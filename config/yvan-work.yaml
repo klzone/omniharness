@@ -1,0 +1,102 @@
+# ==============================================================================
+# OmniDesk / Yvan AI Workbench — 个人工作环境全局配置
+# 规范定义：定义 ~/YvanAI 外部数据中枢、子系统目录与 Agent 访问策略
+# ==============================================================================
+
+version: "1.0.0"
+
+workspace:
+  name: "Yvan AI Sovereign Workbench"
+  root: "~/YvanAI"
+  description: "Personal Knowledge, Memory & Project Operating Center"
+  timezone: "Asia/Shanghai"
+  encoding: "utf-8"
+
+# 知识库子系统 (Knowledge Subsystem)
+knowledge:
+  enabled: true
+  root: "~/YvanAI/knowledge"
+  sources:
+    obsidian:
+      path: "~/YvanAI/knowledge/obsidian"
+      description: "Obsidian 双链个人笔记与卡片盒中枢"
+      format: ["markdown"]
+    documents:
+      path: "~/YvanAI/knowledge/documents"
+      description: "行业报告、工作材料、技术文档"
+      format: ["pdf", "markdown", "docx", "txt"]
+    references:
+      path: "~/YvanAI/knowledge/references"
+      description: "外部引用材料、竞品分析与开源论文"
+      format: ["markdown", "pdf", "html"]
+
+# 长期记忆子系统 (Long-term Memory Subsystem)
+memory:
+  enabled: true
+  root: "~/YvanAI/memory"
+  persistence:
+    format: "markdown"
+    encoding: "utf-8"
+  channels:
+    decisions:
+      path: "~/YvanAI/memory/decisions"
+      naming_pattern: "YYYY-MM-DD_{topic}.md"
+      description: "重大技术选型、架构调整与业务决策记录"
+    conversations:
+      path: "~/YvanAI/memory/conversations"
+      naming_pattern: "YYYY-MM-DD_{session_id}.md"
+      description: "高价值交互长上下文与关键对话提炼"
+    summaries:
+      path: "~/YvanAI/memory/summaries"
+      naming_pattern: "{project}_summary.md"
+      description: "各项目定期进展摘要与技术复盘总结"
+
+# 重点项目关联 (Projects Subsystem)
+projects:
+  enabled: true
+  root: "~/YvanAI/projects"
+  tracked:
+    V2T:
+      path: "~/YvanAI/projects/V2T"
+      repo_path: "/mnt/data/Code/V2T"
+      description: "视频转文本/内容生成智能管道"
+      status: "active"
+    Omnidesk:
+      path: "~/YvanAI/projects/Omnidesk"
+      repo_path: "/mnt/data/Code/MyWorkStation"
+      description: "基于 DSH 的个人专属 AI 工作操作系统"
+      status: "active"
+    Website:
+      path: "~/YvanAI/projects/Website"
+      repo_path: ""
+      description: "个人公开技术博客与 Hugo 输出平台"
+      status: "active"
+
+# 模板与资产复用 (Templates)
+templates:
+  root: "~/YvanAI/templates"
+  types:
+    - "decision_record"
+    - "daily_brief"
+    - "project_status"
+    - "investigation_report"
+
+# 备份与容灾机制 (Backups)
+backups:
+  enabled: true
+  root: "~/YvanAI/backups"
+  retention_days: 30
+  targets:
+    - name: "dsh_sessions"
+      source: "~/.dsh/sessions"
+      exclude: ["*.lock"]
+    - name: "dsh_storages"
+      source: "~/.dsh/storages"
+    - name: "profiles"
+      source: "~/.dsh/profiles"
+
+# 运行日志归档 (Logs)
+logs:
+  root: "~/YvanAI/logs"
+  retention_days: 14
+
