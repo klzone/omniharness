@@ -1,50 +1,96 @@
-# Yvan AI Workbench
+# OmniDesk (OmniHarness)
 
-个人定制的专属 AI 工作台项目。以 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 为底层 Agent Runtime，面向个人知识管理、内容生产、项目协作和长期记忆积累打造。
-
----
-
-## 核心设计原则
-
-1. **数据资产独立**：所有知识资产、记忆沉淀存放在 `~/YvanAI/`（通用 Markdown/JSON 格式），与 Agent 软件解耦。
-2. **不修改 DSH 核心**：通过 Profile、Bundle、Skill 与外部配置进行渐进式增强，保障未来上游升级无痛无损。
-3. **稳定优先**：生产工作环境使用稳定配置，开发探索与版本测试走独立隔离层。
+> **Personal AI Operating Environment · 个人专属 AI 工作操作系统**  
+> 基于 DeepSeek Harness (DSH) 核心底座构建，面向个人知识沉淀、长期记忆保持、项目敏捷协作与内容自动化生产。
 
 ---
 
-## 目录结构说明
+## 视觉形象与品牌标识 (Monogram O-D)
+
+<div align="center">
+  <img src="docs/brand-and-ui/logo.svg" width="128" height="128" alt="OmniDesk Logo" />
+  <p><strong>OmniDesk — The Sovereign AI Workbench</strong></p>
+</div>
+
+- **左环 [ O · Omni ]**：连续运行的 Agent Loop 状态机闭环，象征稳固的 DSH 运行时底层。
+- **右弧 [ D · Desk ]**：开放延展的工作台操作面，承载五大专业特种 Agent。
+- **中轴 [ Neural Seam ]**：白色神经分发中枢，打通记忆、知识与工程项目的无缝互联。
+- **设计原型与规范**：详见 [docs/brand-and-ui/preview.html](docs/brand-and-ui/preview.html)。
+
+---
+
+## 系统五层分层架构
+
+OmniDesk 采用单向解耦依赖模型，详细架构定义请参阅 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：
 
 ```text
-MyWorkStation/
-├── runtime/              # DSH 核心运行时底座
-│   ├── deepseek-harness/ # DSH 官方干净源码 (v0.2.1-alpha.2，独立 git tracking)
-│   └── patches/          # 针对 Linux 打包与环境适配的补丁归档
-├── profiles/             # Cordis / DSH Profile 定制配置
-│   ├── desktop/          # 与当前正在运行的 Desktop 保持同步的配置快照
-│   └── yvan-work/        # 面向个人定制工作台扩展的 Profile
-├── skills/               # 专属 Agent Skills (以 Markdown 指令驱动)
-│   ├── memory-agent/     # 长期记忆与关键决策记录
-│   ├── knowledge-agent/  # 知识检索、Obsidian/Hugo 整合
-│   ├── project-agent/    # 工程巡检与进度跟踪
-│   ├── writing-agent/    # 写作与材料输出
-│   └── coding-agent/     # 辅助研发与代码分析
-├── data-template/        # ~/YvanAI/ 外部资产目录的基础规范与模板
-├── scripts/              # 自动化运维脚本 (配置同步、会话备份等)
-└── docs/                 # 架构分析报告与使用指引
+┌────────────────────────────────────────────────────────┐
+│                      UI Layer                          │
+│        (Desktop App Shell / Web Browser / CLI)         │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│                External Data Layer                     │
+│    (~/YvanAI: knowledge, memory, projects, backups)    │
+└───────────────────────────▲────────────────────────────┘
+                            │ (读写通用 Markdown/JSON 资产)
+┌───────────────────────────┴────────────────────────────┐
+│                    Skills Layer                        │
+│    (memory, knowledge, project, writing, coding)       │
+└───────────────────────────┬────────────────────────────┘
+                            │ (声明式注册 / ctx.skills)
+┌───────────────────────────▼────────────────────────────┐
+│                   Profile Layer                        │
+│  (cordis.patch.yml: 模型路由, UI偏好, 工具裁剪, 插件管理) │
+└───────────────────────────┬────────────────────────────┘
+                            │ (Cordis 插件树装配)
+┌───────────────────────────▼────────────────────────────┐
+│                    DSH Runtime                         │
+│  (runtime/deepseek-harness: AgentLoop, Seams, Session) │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 常用运维脚本
+## 架构三大红线（不可破坏的边界）
 
-- `./scripts/init-yvan-data.sh`: 快速初始化本地 `~/YvanAI` 外部存储骨架。
-- `./scripts/backup-sessions.sh`: 归档并备份当前 DSH 的会话与索引数据。
-- `./scripts/sync-skills.sh`: 将工作台编写的 Agent Skills 挂载/同步至 DSH 搜索目录。
-
+1. **绝对禁止修改 DSH Runtime 核心**：`runtime/deepseek-harness` 作为官方纯净底座隔离维护，所有功能扩展必须通过 Profile 配置补丁、外部 Skill 或标准 MCP 协议实现，保障 DSH 升级无痛。
+2. **绝对禁止将个人知识库放入 DSH 内部**：个人资产固定存储于 `~/YvanAI/`（通用 Markdown/JSON），与 Obsidian/Hugo 静态站打通，避免与任何特定软件私有格式绑定。
+3. **绝对禁止将用户个人数据放入 Git 项目代码库**：代码库仅管理框架、配置模板、Agent 技能与自动化脚本，严防会话私有数据和敏感凭证入库。
 
 ---
 
-## 品牌设计与 UI 原型预览
+## 项目代码库目录规划
 
-- **品牌 Monogram 矢量图**：[omnidesk-monomark.svg](docs/brand-and-ui/omnidesk-monomark.svg)
-- **三栏式工作台 UI 原型**：[preview.html](docs/brand-and-ui/preview.html)
+```text
+omniharness/
+├── runtime/              # 底层运行环境底座 (DSH 官方只读源码 + Linux 打包补丁)
+├── profiles/             # Cordis / DSH Profile 定制配置 (模型路由、UI 裁剪)
+├── skills/               # 专属 Agent 技能层 (基于纯 Markdown 提示词契约)
+│   ├── memory-agent/     # 长期记忆与关键决策记录
+│   ├── knowledge-agent/  # 知识检索与跨库整合
+│   ├── project-agent/    # 工程巡检与进度追踪
+│   ├── writing-agent/    # 自动化材料产出
+│   └── coding-agent/     # 代码辅助与架构分析
+├── scripts/              # 自动化运维工具 (初始化资产骨架、会话备份、Skill 同步)
+├── data-template/        # ~/YvanAI/ 外部资产目录的基础规范与模板
+└── docs/                 # 系统架构规范、分析报告与品牌设计体系
+```
+
+---
+
+## 快速运维指令
+
+- **初始化本地外部数据中心**：
+  ```bash
+  ./scripts/init-yvan-data.sh
+  ```
+- **备份 DSH 会话与工作区索引**：
+  ```bash
+  ./scripts/backup-sessions.sh
+  ```
+- **将自定义 Skills 装载至当前 DSH**：
+  ```bash
+  ./scripts/sync-skills.sh
+  ```
+
