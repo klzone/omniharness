@@ -1,0 +1,50 @@
+# ==============================================================================
+# OmniDesk Discipline Workstation Profile
+# 业务领域：纪检监察综合履职工作站配置
+# 适配运行时：DeepSeek Harness (DSH) Profile / Cordis Patch Specification
+# ==============================================================================
+
+name: "omnidesk-discipline"
+displayName: "OmniDesk Discipline Workstation"
+description: "AI Workstation tailored for discipline inspection and supervision comprehensive duties."
+version: "0.1.0"
+
+# 基础模型与推理默认设定
+defaults:
+  provider: agnescom
+  model: agnes-3.0-flash
+  reasoningEffort: high
+
+# DSH Cordis 插件覆盖层 (直接映射为 cordis.patch.yml)
+cordisPatch:
+  - id: agent-default-model
+    name: "@deepseek-ai/dsh-agent-default-model"
+    config:
+      provider: agnescom
+      model: agnes-3.0-flash
+      reasoningEffort: high
+
+  - id: ui-settings-general
+    name: "@deepseek-ai/dsh-client-ui-settings-general"
+    config:
+      welcomeNoticeVersion: 2026-08-13.1
+
+  - id: ui-chat
+    name: "@deepseek-ai/dsh-client-ui-chat"
+    config:
+      transcriptView: detailed
+      linkOpening: new-tab
+
+  # 禁用与纪检履职无关的多余交互面板
+  - id: ui-settings
+    name: "@deepseek-ai/dsh-client-ui-settings"
+    config:
+      enabled: false
+
+# 领域工作站挂载目录
+workspacePaths:
+  root: "~/OmniDesk/workspaces/discipline"
+  knowledge: "~/OmniDesk/knowledge"
+  templates: "workstations/discipline/templates"
+  memory: "~/OmniDesk/memory"
+
