@@ -41,3 +41,10 @@ MyWorkStation/
 - `./scripts/backup-sessions.sh`: 归档并备份当前 DSH 的会话与索引数据。
 - `./scripts/sync-skills.sh`: 将工作台编写的 Agent Skills 挂载/同步至 DSH 搜索目录。
 
+
+---
+
+## 品牌设计与 UI 原型预览
+
+- **品牌 Monogram 矢量图**：[omnidesk-monomark.svg](docs/brand-and-ui/omnidesk-monomark.svg)
+- **三栏式工作台 UI 原型**：[preview.html](docs/brand-and-ui/preview.html)
