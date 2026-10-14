@@ -1,0 +1,25 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Node & Build artifacts (for runtime or custom tools)
+node_modules/
+dist/
+build/
+*.log
+
+# Sensitive credentials & environment keys (NEVER COMMIT)
+*.key
+*.pem
+.credentials.yaml
+.env
+.env.*
+
+# Local temporary files
+tmp/
+*.tmp
+
