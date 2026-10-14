@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#0B0F17"/>
+  <defs>
+    <linearGradient id="primaryGrad" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#C084FC"/>
+    </linearGradient>
+    <linearGradient id="innerGlow" x1="256" y1="128" x2="256" y2="384" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="coreGlow" x="156" y="156" width="200" height="200" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <!-- Outer Technical Hexagon / Orbit -->
+  <polygon points="256,64 422,160 422,352 256,448 90,352 90,160" stroke="url(#primaryGrad)" stroke-width="16" stroke-linejoin="round" fill="url(#innerGlow)"/>
+  
+  <!-- Subtle Internal Geometry Connection Lines -->
+  <line x1="256" y1="64" x2="256" y2="180" stroke="#38BDF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="12 8"/>
+  <line x1="422" y1="352" x2="320" y2="294" stroke="#818CF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="12 8"/>
+  <line x1="90" y1="352" x2="192" y2="294" stroke="#818CF8" stroke-width="8" stroke-linecap="round" stroke-dasharray="12 8"/>
+  
+  <!-- Central Pulse Nucleus (The Agent Core) -->
+  <circle cx="256" cy="256" r="64" fill="url(#primaryGrad)" filter="url(#coreGlow)"/>
+  <circle cx="256" cy="256" r="32" fill="#FFFFFF"/>
+</svg>
