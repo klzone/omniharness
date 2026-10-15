@@ -2,7 +2,6 @@
 name: memory-agent
 description: Personal Long-term Memory Agent for Yvan AI Workbench. Captures key decisions, session states, daily work logs, and next steps into structured Markdown files in ~/YvanAI/memory.
 user-invocable: true
-model-invocable: true
 ---
 
 # Memory Agent (记忆管理专家)

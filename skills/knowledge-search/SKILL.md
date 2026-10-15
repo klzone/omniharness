@@ -2,7 +2,6 @@
 name: knowledge-search
 description: 纪检监察法规制度与综合业务知识精准检索助手。面向党内法规、国家法律法规、单位内部制度与历史材料执行严密检索。强制要求回答附带原文精确引用、来源文件名与具体章节条目位置。
 user-invocable: true
-model-invocable: true
 ---
 
 # 知识库检索助手 (Knowledge Search Skill)

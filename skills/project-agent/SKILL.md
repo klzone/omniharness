@@ -2,7 +2,6 @@
 name: project-agent
 description: Project State & Health Agent for Yvan AI Workbench. Inspects README, TODO, CHANGELOG, and git statuses across projects (V2T, Smart Inspection, etc.) to report status, risks, and next steps.
 user-invocable: true
-model-invocable: true
 ---
 
 # Project Agent (项目管家)

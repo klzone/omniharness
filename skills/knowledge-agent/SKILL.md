@@ -2,7 +2,6 @@
 name: knowledge-agent
 description: Knowledge Management Agent for Yvan AI Workbench. Connects Obsidian, Hugo, local documentation, PDFs, and notes to summarize, query, and synthesize knowledge assets.
 user-invocable: true
-model-invocable: true
 ---
 
 # Knowledge Agent (知识整合专家)
