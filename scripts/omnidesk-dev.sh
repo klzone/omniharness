@@ -21,6 +21,7 @@
 #   scripts/omnidesk-dev.sh web             # 同上（web 为显式写法）
 #   scripts/omnidesk-dev.sh web --port 3090 # 指定端口启动 Web UI
 #   scripts/omnidesk-dev.sh --profile yvan-work --no-open
+#   scripts/omnidesk-dev.sh --sync          # 启动前把仓库 Skills 同步到隔离根
 #
 # 说明：DSH 的 `dsh <name>` 等价于 `dsh --profile <name>`，`web` 本身就是一个
 #       Profile 名而不是子命令。yvan-work Profile 已经挂载了 dsh-web-app bundle，
@@ -50,6 +51,9 @@ OMNIDESK_ASAR_FILE='/opt/DeepSeek Harness/resources/app.asar'
 # asar 归档内的路径无法用 bash 的 -f 检测，只能交给 Electron 的 asar 感知 fs 读取。
 OMNIDESK_CLI_ENTRY_1='/opt/DeepSeek Harness/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js'
 OMNIDESK_CLI_ENTRY_2="$HOME/dsh-asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"
+# 入口 0（首选）：由 scripts/bootstrap-runtime.sh 按 runtime/RUNTIME.lock 安装的
+# 锁定版本底座。它独立于系统安装，保证任何机器上跑的都是维护者验证过的同一版本。
+OMNIDESK_CLI_ENTRY_0="$PROJECT_ROOT/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
 # 隔离实例允许的入口白名单（防止被环境变量或参数改写为任意脚本）。
 
 # --------------------------------------------------------------------------
@@ -67,7 +71,7 @@ abspath() {
 }
 
 usage() {
-  sed -n '2,24p' "${BASH_SOURCE[0]}" | sed -e 's/^# \{0,1\}//'
+  sed -n '2,29p' "${BASH_SOURCE[0]}" | sed -e 's/^# \{0,1\}//'
 }
 
 # --------------------------------------------------------------------------
@@ -75,6 +79,7 @@ usage() {
 # --------------------------------------------------------------------------
 CHECK_ONLY=0
 DRY_RUN=0
+SYNC_REQUESTED=0
 PASSTHROUGH=()
 
 while [ $# -gt 0 ]; do
@@ -85,6 +90,10 @@ while [ $# -gt 0 ]; do
       ;;
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --sync)
+      SYNC_REQUESTED=1
       shift
       ;;
     --help|-h)
@@ -194,7 +203,24 @@ CLI_PREFIX=()
 
 # 入口 1：Desktop 自带的打包 CLI 本体。bin.js 位于 asar 归档内，因此必须用真实
 # 执行来确认（--version 返回成功即视为可用），而不是用文件存在性判断。
-if [ -x "$OMNIDESK_ELECTRON_BIN" ] && [ -f "$OMNIDESK_ASAR_FILE" ]; then
+entry0_version=''
+# 入口 0（首选）：仓库内按锁定版本安装的底座。node 引擎与官方一致（^22.19 || >=24），
+# 因此不做 node 主版本门槛，只以「能否真实执行 --version」为准。
+if [ -z "$CLI_KIND" ] && [ -f "$OMNIDESK_CLI_ENTRY_0" ] && command -v node >/dev/null 2>&1; then
+  set +e
+  entry0_version="$(node "$OMNIDESK_CLI_ENTRY_0" --version 2>/dev/null)"
+  entry0_rc=$?
+  set -e
+  if [ "$entry0_rc" -eq 0 ] && [ -n "$entry0_version" ]; then
+    CLI_KIND='locked'
+    CLI_ENTRY="$OMNIDESK_CLI_ENTRY_0"
+    CLI_NODE='node'
+  fi
+fi
+
+# 入口 1：Desktop 自带的打包 CLI 本体。bin.js 位于 asar 归档内，因此必须用真实
+# 执行来确认（--version 返回成功即视为可用），而不是用文件存在性判断。
+if [ -z "$CLI_KIND" ] && [ -x "$OMNIDESK_ELECTRON_BIN" ] && [ -f "$OMNIDESK_ASAR_FILE" ]; then
   set +e
   asar_version="$(ELECTRON_RUN_AS_NODE=1 "$OMNIDESK_ELECTRON_BIN" --expose-internals \
     "$OMNIDESK_CLI_ENTRY_1" --version 2>/dev/null)"
@@ -224,10 +250,20 @@ if [ -z "$CLI_KIND" ] && [ -f "$OMNIDESK_CLI_ENTRY_2" ] && command -v node >/dev
   fi
 fi
 
-DSH_CLI_VERSION="${asar_version:-${ext_version:-未知}}"
+DSH_CLI_VERSION="${entry0_version:-${asar_version:-${ext_version:-未知}}}"
+
+# 3.6.1 锁定版本一致性提示：入口 0 存在时，校验它是否等于 RUNTIME.lock 记录值。
+RUNTIME_LOCK_FILE="$PROJECT_ROOT/runtime/RUNTIME.lock"
+if [ "$CLI_KIND" = 'locked' ] && [ -f "$RUNTIME_LOCK_FILE" ]; then
+  lock_ver="$(awk '/^runtime:/{f=1;next} /^[a-z]/{if(f)f=0} f && /^[[:space:]]+version:/{gsub(/["'"'"' ]/,"",$2); print $2; exit}' "$RUNTIME_LOCK_FILE")"
+  if [ -n "$lock_ver" ] && [ "$DSH_CLI_VERSION" != "$lock_ver" ]; then
+    info "提示：当前底座版本 $DSH_CLI_VERSION 与 runtime/RUNTIME.lock 记录的 $lock_ver 不一致，建议执行 scripts/bootstrap-runtime.sh 恢复锁定版本。"
+  fi
+fi
 
 if [ -z "$CLI_KIND" ]; then
   die "未找到可用的 DSH CLI 入口。已尝试：
+  0) $OMNIDESK_CLI_ENTRY_0（需先运行 scripts/bootstrap-runtime.sh）
   1) $OMNIDESK_CLI_ENTRY_1（需要 $OMNIDESK_ELECTRON_BIN）
   2) $OMNIDESK_CLI_ENTRY_2（需要 node >= 24）"
 fi
@@ -277,6 +313,44 @@ printf '%s\n' "=============================================================="
 if [ "$CHECK_ONLY" -eq 1 ]; then
   info "--check 通过：隔离边界校验全部成功，未启动任何进程。"
   exit 0
+fi
+
+# --------------------------------------------------------------------------
+# 4.5 Skill 同步链路（显式、可重复；默认只读检查，不在启动时无条件覆盖）
+#
+#   - 默认：只做只读漂移检查，提示仓库源与隔离副本是否一致；
+#   - --sync：显式调用 scripts/sync-skills.sh 执行同步（会 --delete 覆盖隔离副本，
+#             因此不默认启用，以免抹掉用户在隔离实例中的合法改动）。
+#   同步失败或未同步时，启动照常进行，但会打印明确警告与手动命令。
+# --------------------------------------------------------------------------
+SYNC_SCRIPT="$PROJECT_ROOT/scripts/sync-skills.sh"
+if [ -f "$SYNC_SCRIPT" ] && [ -d "$PROJECT_ROOT/skills" ]; then
+  if [ "$SYNC_REQUESTED" -eq 1 ]; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+      info "--sync + --dry-run：将执行同步，但此处仅预览（未写入）。"
+      bash "$SYNC_SCRIPT" --dry-run || info "同步预览失败（不阻断启动）。"
+    else
+      info "--sync：同步仓库 Skills 到隔离根……"
+      if bash "$SYNC_SCRIPT"; then
+        info "Skill 同步完成。"
+      else
+        info "[警告] Skill 同步失败（不阻断启动）。请手动执行：scripts/sync-skills.sh"
+      fi
+    fi
+  else
+    set +e
+    bash "$SYNC_SCRIPT" --check >/dev/null 2>&1
+    sync_check_rc=$?
+    set -e
+    if [ "$sync_check_rc" -eq 0 ]; then
+      info "Skill 副本检查：隔离根与仓库源一致。"
+    else
+      info "[警告] Skill 副本与仓库源不一致（隔离实例可能加载旧版本）。"
+      info "         如需更新，请显式执行：bash '$SYNC_SCRIPT'"
+    fi
+  fi
+else
+  info "[警告] 未找到 scripts/sync-skills.sh 或 skills/，跳过 Skill 同步检查。"
 fi
 
 # --------------------------------------------------------------------------
