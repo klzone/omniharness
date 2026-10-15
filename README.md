@@ -64,34 +64,57 @@ OmniDesk 采用单向解耦依赖模型，详细架构定义请参阅 [docs/ARCH
 
 ```text
 omniharness/
-├── runtime/              # 底层运行环境底座 (DSH 官方只读源码 + Linux 打包补丁)
-├── profiles/             # Cordis / DSH Profile 定制配置 (模型路由、UI 裁剪)
-├── skills/               # 专属 Agent 技能层 (基于纯 Markdown 提示词契约)
-│   ├── memory-agent/     # 长期记忆与关键决策记录
-│   ├── knowledge-agent/  # 知识检索与跨库整合
-│   ├── project-agent/    # 工程巡检与进度追踪
-│   ├── writing-agent/    # 自动化材料产出
-│   └── coding-agent/     # 代码辅助与架构分析
-├── scripts/              # 自动化运维工具 (初始化资产骨架、会话备份、Skill 同步)
-├── data-template/        # ~/YvanAI/ 外部资产目录的基础规范与模板
-└── docs/                 # 系统架构规范、分析报告与品牌设计体系
+├── runtime/                    # 运行底座
+│   ├── deepseek-harness/       # DSH 官方源码底本 (git submodule，只读，勿改)
+│   ├── RUNTIME.lock            # 锁定经过验证的 DSH 版本 (download-and-run)
+│   └── dsh-runtime/            # bootstrap 安装的可运行 CLI (已忽略，勿提交)
+├── profiles/                   # DSH Profile 定制配置 (模型路由、UI 裁剪)
+│   └── yvan-work/              # 真实生效的 OmniDesk Profile 源
+├── skills/                     # 专属 Agent 技能层 (Skill 正文唯一开发源)
+│   ├── memory-agent/           # 长期记忆与关键决策记录
+│   ├── knowledge-agent/        # 知识检索与跨库整合
+│   ├── knowledge-search/       # 带来源引用的知识检索
+│   ├── material-writing/       # 材料写作助手
+│   ├── document-review/        # 材料质量评估
+│   └── project-agent/          # 工程巡检与进度追踪
+├── templates/                  # 材料模板唯一开发源
+├── knowledge/                  # 写作风格 / 优秀范例 / 法规库规范 (唯一开发源)
+├── workstations/               # 领域工作站定义 (只放配置与指向说明，不放副本)
+├── config/                     # 外部数据底座配置 (yvan-work.yaml)
+├── tests/                      # 黄金任务基准与验证报告
+├── scripts/                    # 底座引导、隔离启动、Skill 同步、备份
+└── docs/                       # 架构规范、分析报告与品牌设计体系
 ```
+
+> 目录中带有「唯一开发源」标注的位置是权威副本；`workstations/` 下不再保存
+> 模板、风格或 Skill 的副本，需要同步到运行时请执行 `scripts/sync-skills.sh`。
 
 ---
 
-## 快速运维指令
+## 快速上手（下载即用）
 
+- **准备运行底座（拉取锁定版本 DSH，独立于系统安装）**：
+  ```bash
+  ./scripts/bootstrap-runtime.sh
+  ```
+  版本锁定在 [runtime/RUNTIME.lock](runtime/RUNTIME.lock)：即维护者实机验证过的版本，
+  不是「最新版」，保证任何机器上结果一致。
 - **初始化本地外部数据中心**：
   ```bash
   ./scripts/init-yvan-data.sh
   ```
+- **在隔离环境中启动（不影响你已有的 DSH）**：
+  ```bash
+  ./scripts/omnidesk-dev.sh
+  ```
+- **将自定义 Skills 同步到隔离运行时**：
+  ```bash
+  ./scripts/sync-skills.sh
+  ```
+  同步器只管理由它自己装入的 Skill；你在运行时根自行创建的 Skill 不会被删除。
 - **备份 DSH 会话与工作区索引**：
   ```bash
   ./scripts/backup-sessions.sh
-  ```
-- **将自定义 Skills 装载至当前 DSH**：
-  ```bash
-  ./scripts/sync-skills.sh
   ```
 
 

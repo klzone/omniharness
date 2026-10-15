@@ -71,7 +71,7 @@ OmniDesk 采用严格的单向解耦依赖拓扑，禁止逆向依赖与跨层�
 - **合规路径**：
   - 动态用户数据统一由 `~/YvanAI/` 托管；
   - 敏感凭证存放在 `~/.dsh/.credentials.yaml`，由 `.gitignore` 严格阻断；
-  - 本仓库只保留 `data-template/` 目录作为初始化的空目录骨架与说明模板。
+  - 本仓库只保留 `data-template/` 目录作为初始化的目录骨架与说明；真实数据由 `scripts/init-yvan-data.sh` 生成在仓库之外的 `~/YvanAI/`。
 
 ---
 

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# OmniDesk 一键初始化（download-and-run）
+#
+# 目的：克隆本仓库后，用一条命令完成「准备底座 -> 初始化数据骨架 -> 同步技能」，
+#       得到一个可启动、与你验证版本一致的 OmniDesk 环境。
+#
+# 设计约束：
+#   1. 只在仓库内与 ~/YvanAI（外部数据）写入，绝不触碰 ~/.dsh、~/.agents 或系统 DSH。
+#   2. 底座版本来自 runtime/RUNTIME.lock，不追「最新版」。
+#   3. 任一步失败即停止，并说明如何手动重跑该步。
+#   4. 不询问、不删除、不迁移任何已有 DSH 数据。
+#
+# 用法:
+#   scripts/setup.sh            # 完整初始化
+#   scripts/setup.sh --check    # 只检查现状，不写入
+# ==============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+info() { printf '\n[OmniDesk][setup] %s\n' "$*"; }
+die()  { printf '[OmniDesk][setup][错误] %s\n' "$*" >&2; exit 1; }
+
+CHECK_ONLY=0
+[ "${1:-}" = "--check" ] && CHECK_ONLY=1
+
+info "1/3 校验并准备运行底座（锁定版本）"
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  bash "$SCRIPT_DIR/bootstrap-runtime.sh" --check || true
+else
+  bash "$SCRIPT_DIR/bootstrap-runtime.sh" || die "底座准备失败；可手动重跑：scripts/bootstrap-runtime.sh"
+fi
+
+info "2/3 初始化外部数据骨架（~/YvanAI）"
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  info "（--check）跳过数据骨架初始化。"
+else
+  [ -x "$SCRIPT_DIR/init-yvan-data.sh" ] && bash "$SCRIPT_DIR/init-yvan-data.sh" || info "跳过（未找到 init-yvan-data.sh）。"
+fi
+
+info "3/3 同步技能到隔离运行时"
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  bash "$SCRIPT_DIR/sync-skills.sh" --check || true
+else
+  bash "$SCRIPT_DIR/sync-skills.sh" || die "技能同步失败；可手动重跑：scripts/sync-skills.sh"
+fi
+
+info "初始化完成。启动隔离实例：scripts/omnidesk-dev.sh"
+

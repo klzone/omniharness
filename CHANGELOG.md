@@ -4,10 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.1] - 2026-10-15 (discipline-v0.2 / 结构收敛)
+
+### Changed
+- **统一资产权威源**：Skill 正文以 `skills/`、材料模板以 `templates/discipline/`、
+  写作风格与优秀范例以 `knowledge/` 为唯一开发源；`workstations/discipline/` 下的
+  副本（knowledge/、templates/、skills/）已删除，替换为指向说明。
+- `workstations/discipline/profile.yaml` 重新标注为「规划声明 · 非生效配置」，
+  生效 Profile 源明确为 `profiles/yvan-work/`；其 package.json 更名为 `dsh-profile-yvan-work`。
+- 移除与 `profiles/yvan-work/` 完全重复的 `profiles/desktop/` 参考快照。
+
+### Added
+- **运行底座锁定与引导**：新增 `runtime/RUNTIME.lock` 与 `scripts/bootstrap-runtime.sh`，
+  一条命令即可得到与维护者验证一致的 DSH 版本（0.2.1-alpha.2），无需另找安装包。
+- **DSH 源码底本可复现**：新增 `.gitmodules`，`runtime/deepseek-harness` 以子模块形式
+  固定在 `dsh-v0.2.1-alpha.2`（commit d7432673），克隆即得同一底本。
+- 新增 `data-template/README.md`，使文档承诺的外部数据骨架真实存在于仓库。
+
+### Fixed
+- **同步器安全缺陷**：`scripts/sync-skills.sh` 原先会把用户在隔离根自建的 Skill
+  当作「多余」删除。现引入托管清单 `.omnidesk-managed`，只删除受同步器管理、
+  且源目录已移除的 Skill；用户自有目录一律保留并提示。
+- `--check` 不再把未托管目录计为漂移；新增 dry-run 汇总（新增/更新/删除/保留）。
+- 同步中途失败会明确提示「可能处于半更新状态」，不再静默。
+
+---
+
 ## [0.2.0] - 2026-10-14 (discipline-v0.2)
 
 ### Added
-- **Discipline 知识库六大结构** (`workstations/discipline/knowledge/` 与 `knowledge/`)：
+- **Discipline 知识库六大结构** (`knowledge/`)：
   - `regulations/`：法规制度库
   - `policies/`：上级政策与工作要点库
   - `writing-style/`：个人写作风格库

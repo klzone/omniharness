@@ -1,0 +1,27 @@
+# OmniDesk 运行底座锁定文件
+#
+# 本文件记录 OmniDesk 经过实机验证、可稳定运行的 DSH 底座版本。
+# 升级 DSH 必须同时更新本文件，并重跑 tests/golden_tasks 与隔离自检。
+#
+# 权威来源（二选一，二者版本必须一致）：
+#   1) 源码底本（git submodule）：runtime/deepseek-harness
+#   2) 可运行 CLI（npm，由 scripts/bootstrap-runtime.sh 安装）
+
+source:
+  repo: https://github.com/deepseek-ai/deepseek-harness.git
+  tag: dsh-v0.2.1-alpha.2
+  commit: d743267388641bc76f17c45ce8b4c231aed1d32c
+
+runtime:
+  npm_package: "@deepseek-ai/dsh"
+  version: 0.2.1-alpha.2
+  node_engine: "^22.19.0 || >=24.0.0"
+  install_dir: runtime/dsh-runtime   # 由 bootstrap 脚本生成，已被 .gitignore 排除
+
+verified:
+  date: 2026-10-15
+  by: 实机安装并运行 `dsh --version` -> 0.2.1-alpha.2
+  notes: >
+    与用户本机 /opt/DeepSeek Harness 打包 CLI 版本一致（0.2.1-alpha.2）。
+    OmniDesk 的隔离启动器优先使用本锁定版本，确保任何机器上下载即得同一底座。
+
