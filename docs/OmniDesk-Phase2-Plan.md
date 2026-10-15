@@ -179,7 +179,13 @@ Web config 没有指向旧版 DSH，隔离完好。本阶段**不需要**为此�
 
 结论：**存在两条官方路径，但都依赖技能被正确发现；接口本身可用。**[源码]
 
-- 模型可调用：技能声明了 model-invocable，由工具按名称调用；若某技能声明为不可模型调用，工具会明确拒绝并提示"该技能不可用于模型调用"。[源码]
+- 模型可调用：技能由工具按名称调用；若某技能声明为不可模型调用，工具会明确拒绝并提示「该技能不可用于模型调用」。[源码]
+  > [!WARNING]
+  > **已过时（Phase 2B 期间经源码核实更正）**：原表述「技能声明了 model-invocable」有误。
+  > DSH 的 parseInvocationPolicy 只识别 kebab 键 disable-model-invocation 与 user-invocable；
+  > 一旦写入 camelCase 键（modelInvocable / userInvocable / disableModelInvocation），**整个 Skill 会被静默忽略**；
+  > 而 kebab 的 model-invocable 本身是**无效键**。
+  > 详见 docs/OmniDesk-Phase2A-Report.md 第 56 节。
 - 用户显式调用：工具会扫描用户消息的第一步，识别以斜杠加技能名开头的首行，从而强制启用该技能。[源码]
 - 前端是否存在可见的技能选择控件尚未确认。[推断] 源码中存在一个技能相关的前端插件，但其呈现方式未在本次只读检查中确认。
 
