@@ -12,7 +12,7 @@ OmniDesk 已能以独立实例运行，与原版 DSH 完全隔离，且未修改
 - 独立 Agent 根：`~/OmniDesk/runtime/agents-home`
 - 独立 Desktop userData（本阶段预留，未启用）：`~/OmniDesk/runtime/desktop-user-data`
 - 专用 Profile：`yvan-work`
-- 启动入口：直接调用系统安装的 DSH CLI 本体，绕过会强制 `DSH_HOME=~/.dsh` 的用户 shim。
+- 启动入口：直接调用系统安装的 DSH CLI 本体（asar 归档内的 bin.js），绕过会强制 `DSH_HOME=/home/kevin/.dsh` 的用户 shim。
 - 隔离自检：37 项全部通过。
 - 真实启动：CLI/Web 均已在隔离根成功运行，并只监听 127.0.0.1。
 
@@ -30,7 +30,7 @@ CLI 运行时 : /opt/DeepSeek Harness/deepseek-harness （asar 模式，ELECTRON
 1. 系统安装的 `/opt/DeepSeek Harness/deepseek-harness --version` 返回 `0.2.1-alpha.2`，与上游标签 `dsh-v0.2.1-alpha.2` 一致。
 2. CLI 本体位于 `app.asar` 归档内，无法用文件存在性判断，因此启动器改用真实执行探测：用 `ELECTRON_RUN_AS_NODE=1` 以 Node 模式运行该 `bin.js`，能返回版本号即视为可用。
 3. 备用入口为从归档提取的 CLI 树 `$HOME/dsh-asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js`，需要系统 `node >= 24`（与官方 engines 一致）；当 asar 入口不可用时才会启用。
-4. 明确不使用 `~/.local/bin/dsh`：该文件是桌面应用生成的 shim，内部显式 `export DSH_HOME='~/.dsh'`，会覆盖外层传入的隔离值。启动器也把它排除在候选之外。
+4. 明确不使用 `~/.local/bin/dsh`：该文件是桌面应用生成的 shim，内部显式 `export DSH_HOME='/home/kevin/.dsh'`（绝对路径，非波浪号写法），会覆盖外层传入的隔离值；且它会在设置变量之前先扫描 `$PATH` 抢占其它 dsh，兜底路径指向的 `dependencies/dsh` 目录当前为空。启动器把它排除在候选之外。
 
 关于 `dsh web`：在 DSH 中 `dsh <name>` 等价于 `dsh --profile <name>`，`web` 是一个 Profile 名而不是子命令。OmniDesk 使用 `yvan-work` Profile（已挂载 `dsh-web-app` bundle），因此 Web 旗标直接跟在 `--profile yvan-work` 之后，启动器也把单独书写的 `web` 归一化为“使用隔离 Web 旗标”。
 
@@ -173,7 +173,7 @@ dsh web: http://127.0.0.1:3210/?token=...
 
 - `~/.dsh`
 - `~/.agents`
-- `~/.config/DSH Desktop` 及桌面应用数据目录
+- `~/.config/deepseek-harness`（实测当前生效的 Electron userData，由 `--user-data-dir` 指定）及 `~/.config/DSH Desktop`、`~/.config/@deepseek-ai` 两个陈旧目录
 
 然后在隔离实例中创建会话、改配置、加载 Skill，之后再次记录并逐项比对：
 
