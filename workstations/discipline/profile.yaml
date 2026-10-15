@@ -1,4 +1,13 @@
 # ==============================================================================
+# 【规划声明 · 非生效配置】
+#
+# 本文件不被任何加载器读取；DSH 只读取 profiles/<name>/ 下的 cordis.patch.yml 与
+# package.json。真正生效的 OmniDesk Profile 配置源在 profiles/yvan-work/。
+#
+# 本文件保留为「Discipline 工作站」的领域规划声明（模型偏好、领域目录设想）。
+# 其中 workspacePaths 指向的 ~/OmniDesk/workspaces/discipline 等路径目前尚未建立。
+# 请勿把它当作生效配置来修改；要改运行行为请改 profiles/yvan-work/。
+# ==============================================================================
 # OmniDesk Discipline Workstation Profile
 # 业务领域：纪检监察综合履职工作站配置
 # 适配运行时：DeepSeek Harness (DSH) Profile / Cordis Patch Specification
