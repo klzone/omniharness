@@ -126,8 +126,10 @@ omniharness/
 面向纪检监察综合履职场景的专业 AI 工作站：
 - **设计原则与系统宪法**：详见 [docs/OmniDesk-Design-Principles-v0.3.md](docs/OmniDesk-Design-Principles-v0.3.md)
 - **阶段执行计划与验收标准**：详见 [docs/OmniDesk-Discipline-MVP-Plan-v0.1.md](docs/OmniDesk-Discipline-MVP-Plan-v0.1.md)
-- **工作站工作目录**：[workstations/discipline/](workstations/discipline/)
-- **材料模板库**：[templates/discipline/](templates/discipline/)
-- **黄金任务基准集 (20 Case)**：[tests/golden_tasks/](tests/golden_tasks/)
-- **真实场景验证报告**：[tests/reports/v0.1-validation-report.md](tests/reports/v0.1-validation-report.md)
+- **工作站规划声明**：[workstations/discipline/](workstations/discipline/)（非生效配置；生效 Profile 见 `profiles/yvan-work/`）
+- **材料模板库（唯一权威源）**：[templates/discipline/](templates/discipline/)
+- **写作风格规则（唯一权威源）**：[knowledge/writing-style/](knowledge/writing-style/)
+- **黄金任务基准集（40 Case）**：[tests/golden_tasks/](tests/golden_tasks/)
+- **下一阶段规划交接简报**：[docs/OmniDesk-Next-Phase-Brief.md](docs/OmniDesk-Next-Phase-Brief.md)
+- **历史验证报告**（产生于隔离验证之前，仅供参考）：[tests/reports/](tests/reports/)
 
