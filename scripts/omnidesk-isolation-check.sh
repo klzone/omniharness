@@ -124,7 +124,9 @@ expect_pass "omnidesk-dev.sh --check 通过" bash "$DEV" --check
 
 dry_out="$(bash "$DEV" --dry-run 2>&1)"
 # 只对“即将执行的命令行”做断言；摘要里会显式打印原版数据根作为“本次不访问”的提示。
-dry_cmd="$(printf '%s\n' "$dry_out" | grep -F 'env ELECTRON_RUN_AS_NODE' | tail -1)"
+# 命令行形如 'env [ELECTRON_RUN_AS_NODE=1] <node> ... <bin.js> ...'，入口种类不同前缀也不同，
+# 因此只锚定行首的 env，避免与具体入口实现绑定。
+dry_cmd="$(printf '%s\n' "$dry_out" | grep -E '^env ' | tail -1)"
 if printf '%s' "$dry_out" | grep -qF "DSH_HOME=$HOME/OmniDesk/runtime/dsh-home"; then
   ok "--dry-run 使用独立 DSH_HOME"
 else
