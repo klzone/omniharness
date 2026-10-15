@@ -27,7 +27,7 @@ cordisPatch:
   - id: ui-settings-general
     name: "@deepseek-ai/dsh-client-ui-settings-general"
     config:
-      welcomeNoticeVersion: 2026-08-13.1
+      welcomeNoticeVersion: 2026-09-28.1
 
   - id: ui-chat
     name: "@deepseek-ai/dsh-client-ui-chat"
@@ -47,4 +47,3 @@ workspacePaths:
   knowledge: "~/OmniDesk/knowledge"
   templates: "workstations/discipline/templates"
   memory: "~/OmniDesk/memory"
-
