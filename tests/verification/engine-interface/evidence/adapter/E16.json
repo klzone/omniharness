@@ -1,0 +1,109 @@
+{
+  "scenario": "E16",
+  "title": "E16 引擎不可用",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091908.42835,
+  "checks": [
+    {
+      "check": "initialize_fails",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "engine_unavailable",
+        "message": "[engine_unavailable] engine exited (rc=1) before responding to initialize",
+        "detail": {
+          "stderr_tail": "<omitted from evidence>"
+        }
+      }
+    },
+    {
+      "check": "maps_to_engine_unavailable",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "engine_unavailable",
+        "message": "[engine_unavailable] engine exited (rc=1) before responding to initialize",
+        "detail": {
+          "stderr_tail": "<omitted from evidence>"
+        }
+      }
+    },
+    {
+      "check": "submit_fails_no_task_created",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "engine_unavailable",
+        "message": "[engine_unavailable] engine process already exited (rc=1); frame not sent",
+        "detail": {}
+      }
+    },
+    {
+      "check": "no_phantom_non_terminal_task",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "check": "no_task_falsely_succeeded",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "check": "no_silent_fallback",
+      "pass": true
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e16_cbutbhry",
+    "initialize_error": {
+      "exception": "EngineError",
+      "engine_error_code": "engine_unavailable",
+      "message": "[engine_unavailable] engine exited (rc=1) before responding to initialize",
+      "detail": {
+        "stderr_tail": "<omitted from evidence>"
+      }
+    },
+    "submit_error": {
+      "exception": "EngineError",
+      "engine_error_code": "engine_unavailable",
+      "message": "[engine_unavailable] engine process already exited (rc=1); frame not sent",
+      "detail": {}
+    },
+    "task_records": [
+      {
+        "omni_task_id": "omni-7044a439-d6fb-4086-8f49-f69faa178be5",
+        "intent": "synthetic-writing-task",
+        "workspace_dir": "/tmp/omni_p1s3_e16_cbutbhry/work",
+        "idempotency_key": null,
+        "engine_session_id": null,
+        "state": "interrupted",
+        "evidence_source": "engine_error",
+        "created_at": 1792091908.5641794,
+        "state_since": 1792091908.5651011,
+        "seq": 1,
+        "stop_reason": null,
+        "error_code": "engine_unavailable",
+        "error_message": "engine process already exited (rc=1); frame not sent",
+        "cancel_phase": "not_requested",
+        "truncated": false,
+        "persisted_at": 1792091908.565746,
+        "content": ""
+      }
+    ],
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 1,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091908.5660398
+}

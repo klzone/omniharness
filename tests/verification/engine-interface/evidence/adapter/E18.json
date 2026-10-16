@@ -1,0 +1,150 @@
+{
+  "scenario": "E18",
+  "title": "E18 人格前缀对照",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091920.0036128,
+  "checks": [
+    {
+      "check": "dump_config_default_has_baseline_persona",
+      "pass": true,
+      "detail": "You are a coding agent powered by the {{model}} model."
+    },
+    {
+      "check": "dump_config_override_changes_persona",
+      "pass": true,
+      "detail": {
+        "default": "You are a coding agent powered by the {{model}} model.",
+        "overridden": "OMNI-E18-PERSONA-OVERLAY-MARKER "
+      }
+    },
+    {
+      "check": "override_persona_reaches_model_request",
+      "pass": true,
+      "detail": [
+        {
+          "probe_hits": [
+            "OMNI-E18-PERSONA-OVERLAY-MARKER"
+          ],
+          "probe_misses": [
+            "You are a coding agent"
+          ]
+        }
+      ]
+    },
+    {
+      "check": "override_persona_replaces_baseline",
+      "pass": true,
+      "detail": [
+        [
+          "OMNI-E18-PERSONA-OVERLAY-MARKER"
+        ]
+      ]
+    },
+    {
+      "check": "baseline_persona_present_without_override",
+      "pass": true,
+      "detail": [
+        [
+          "You are a coding agent"
+        ]
+      ]
+    },
+    {
+      "check": "marker_absent_without_override",
+      "pass": true,
+      "detail": [
+        [
+          "You are a coding agent"
+        ]
+      ]
+    },
+    {
+      "check": "model_arm_blocked_or_run",
+      "pass": true,
+      "detail": {
+        "blocked": true,
+        "reason": "no credential in process env; credential file not read per constraint"
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e18_o22dvzmv",
+    "dump_default_persona": {
+      "rc": 0,
+      "persona_lines": [
+        "personaPrefix: You are a coding agent powered by the {{model}} model."
+      ],
+      "stderr_tail": ""
+    },
+    "dump_override_persona": {
+      "rc": 0,
+      "persona_lines": [
+        "personaPrefix: 'OMNI-E18-PERSONA-OVERLAY-MARKER '"
+      ],
+      "stderr_tail": ""
+    },
+    "override_requests": [
+      {
+        "path": "/v1/chat/completions",
+        "model": "synthetic-model",
+        "stream": true,
+        "message_count": 3,
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_o22dvzmv/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "mode": "ok",
+        "probe_hits": [
+          "OMNI-E18-PERSONA-OVERLAY-MARKER"
+        ],
+        "probe_misses": [
+          "You are a coding agent"
+        ]
+      }
+    ],
+    "arm_a_shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    },
+    "baseline_requests": [
+      {
+        "path": "/v1/chat/completions",
+        "model": "synthetic-model",
+        "stream": true,
+        "message_count": 3,
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_o22dvzmv/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "mode": "ok",
+        "probe_hits": [
+          "You are a coding agent"
+        ],
+        "probe_misses": [
+          "OMNI-E18-PERSONA-OVERLAY-MARKER"
+        ]
+      }
+    ],
+    "arm_b_shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    },
+    "model_arm_credential_file_exists": true,
+    "model_arm_credential_env_names": []
+  },
+  "notes": [
+    "臂 A（script 级）：补丁层覆盖 personaPrefix 后，合成端点实测在模型请求文本中命中覆盖标记、不再命中基线前缀，证明配置不是只写在文件里而是真正进入模型请求。",
+    "臂 C（model 级）需要真实模型凭证。脚本运行环境的进程环境变量里没有任何 *_API_KEY；隔离根的凭证库 .credentials.yaml 存在但按硬约束**不读取、不复制、不修改**，也不擅自切换模型路由。因此真实模型对照记为阻塞（unverified），不把配置静态检查当作模型实测通过。",
+    "复现步骤（具备凭证时）：\n1) 为隔离实例配置的 provider 提供对应 *_API_KEY（例如 OPENDESIGN_API_KEY），仅通过进程环境注入，不写入仓库；\n2) 以相同合成输入分别运行两次：一次不带 personaPrefix 覆盖，一次带覆盖；\n3) 对照两次原始模型输出与所用配置来源，人工判定差异；\n4) 测试结束后核实隔离配置与原版环境边界未被破坏。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091925.1992369
+}

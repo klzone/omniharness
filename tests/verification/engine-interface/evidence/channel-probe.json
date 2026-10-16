@@ -1,0 +1,238 @@
+{
+  "evidence_level": "script（真实执行 DSH 进程；无模型推理）",
+  "dsh_bin": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+  "dsh_home": "/tmp/omni_p1_audit_307574/dsh-home（本次运行专用，进程级一次性）",
+  "agents_home": "/tmp/omni_p1_audit_307574/agents（本次运行专用）",
+  "probes": [
+    {
+      "channel": "A:headless",
+      "evidence": "script",
+      "findings": {
+        "submit_and_stream": {
+          "rc": 1,
+          "event_types": [
+            "session",
+            "status",
+            "status",
+            "status",
+            "status",
+            "final"
+          ],
+          "first_event": {
+            "type": "session",
+            "sessionId": "session-8e399efc-1f1a-4f88-9a82-5309e790b5f8",
+            "cwd": "/tmp"
+          },
+          "terminal_event": {
+            "type": "final",
+            "text": ""
+          },
+          "stream_is_ndjson_on_stdout": true,
+          "note": "无凭证时底层如实返回 turn_end(reason=error)+final(text=''), 退出码 1"
+        },
+        "stderr_head": [
+          "dsh: MISSING_CREDENTIAL: llm-deepseek: no API key for provider route \"deepseek-official\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment"
+        ],
+        "recover_unknown_id": {
+          "rc": 1,
+          "events": [
+            {
+              "type": "error",
+              "message": "session \"session-does-not-exist\" does not exist; omit --session-id to start a new Session"
+            }
+          ],
+          "note": "未知 session id 直接报错，不会静默新建会话"
+        },
+        "cancel": {
+          "supported": false,
+          "note": "CLI 帮助面没有取消旗标；源码只提供进程生命周期与 Session 写锁，取消只能由外部结束进程实现"
+        }
+      }
+    },
+    {
+      "channel": "B:sdk",
+      "evidence": "script",
+      "findings": {
+        "initialize": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": {
+            "serverInfo": {
+              "name": "deepseek-harness-sdk-runtime",
+              "version": "0.0.1"
+            }
+          }
+        },
+        "submit_task": {
+          "response": {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+              "messageId": "64c261fd-22ea-4441-8b4a-226f01490898"
+            }
+          },
+          "note": "只返回入队回执 messageId；不直接返回最终结果"
+        },
+        "stream_events": {
+          "notification_methods": [
+            "session.event",
+            "session.status"
+          ],
+          "status_frames": [
+            {
+              "sessionId": "audit-p1-sdk-session",
+              "status": "running"
+            },
+            {
+              "sessionId": "audit-p1-sdk-session",
+              "status": "idle"
+            }
+          ],
+          "turn_end_seen": true,
+          "turn_end_reason": {
+            "turn": 1,
+            "reason": {
+              "kind": "error",
+              "error": {
+                "message": "llm-deepseek: no API key for provider route \"deepseek-official\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment",
+                "code": "MISSING_CREDENTIAL"
+              }
+            }
+          },
+          "note": "事件按持久化 Session 事件推送；状态为 idle/running 两态"
+        },
+        "cancel_task": {
+          "supported": false,
+          "response": {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {
+              "code": -32603,
+              "message": "unknown DeepSeek Harness SDK runtime method: session/cancel"
+            }
+          },
+          "note": "实测：协议无 session/cancel 方法"
+        },
+        "get_task_result": {
+          "wait_response": {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "result": {}
+          },
+          "note": "session/wait 只等待静默，不返回最终结果；最终文本需客户端从 session.event 自行拼装"
+        },
+        "get_task_status": {
+          "supported": true,
+          "note": "由 session.status（idle/running）通知提供"
+        },
+        "recover_task": {
+          "supported": "partial",
+          "note": "SDK 协议没有 list/resume；未知 sessionId 在 prompt 时会惰性创建，因此不能区分恢复与新建"
+        }
+      },
+      "exit_code": 0
+    },
+    {
+      "channel": "C:acp",
+      "evidence": "script",
+      "findings": {
+        "initialize": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": {
+            "protocolVersion": 1,
+            "agentInfo": {
+              "name": "deepseek-harness-acp",
+              "version": "0.0.1"
+            },
+            "agentCapabilities": {
+              "mcpCapabilities": {
+                "http": true
+              },
+              "promptCapabilities": {
+                "image": false,
+                "audio": false,
+                "embeddedContext": false
+              },
+              "sessionCapabilities": {
+                "close": {},
+                "list": {},
+                "resume": {}
+              }
+            },
+            "authMethods": []
+          }
+        },
+        "advertised_session_capabilities": {
+          "close": {},
+          "list": {},
+          "resume": {}
+        },
+        "session_new": {
+          "sessionId_present": true,
+          "result_keys": [
+            "configOptions",
+            "sessionId"
+          ]
+        },
+        "submit_task": {
+          "response": {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {
+              "code": -32603,
+              "message": "Internal error: turn failed: llm-deepseek: no API key for provider route \"deepseek-official\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment"
+            }
+          },
+          "note": "无凭证时以 JSON-RPC error(-32603, turn failed) 返回；prompt 请求本身与最终结果同源"
+        },
+        "cancel_task": {
+          "supported": true,
+          "mechanism": "session/cancel 通知（通知帧无响应）；AcpSession.cancel() 取消当前 prompt 或自主工作",
+          "connection_alive_after_cancel": true,
+          "stop_reason_mapping_source": "dsh-acp/lib/index.js: interrupted->cancelled"
+        },
+        "close_task_session": {
+          "response": {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "result": {}
+          }
+        },
+        "recover_task": {
+          "supported": true,
+          "resume_after_close_ok": true,
+          "note": "session/list + session/resume 提供跨进程恢复；close 后仍可 resume"
+        },
+        "recover_unknown_id": {
+          "jsonrpc": "2.0",
+          "id": 7,
+          "error": {
+            "code": -32602,
+            "message": "Invalid params: session is not resumable: nonexistent"
+          }
+        }
+      },
+      "exit_code": 0
+    },
+    {
+      "channel": "C:acp-crash-recovery",
+      "evidence": "script",
+      "findings": {
+        "created_session": "08e076b1-8f38-40a3-b04b-6b6452fe2d5e",
+        "listed_after_crash": true,
+        "resume_after_crash_ok": true,
+        "note": "被强杀的进程没有机会写取消/终止记录；既有 Session 仍可被新进程列出并 resume。这证明状态可发现与可重新接管，但不等于原任务被自动续跑：进行中的一轮不会自动重放。"
+      },
+      "exit_code": 0
+    },
+    {
+      "channel": "D:web-static",
+      "evidence": "static",
+      "findings": {
+        "help": "Usage: dsh --profile web [options]\n\nServe the DeepSeek Harness browser UI.\n\nOptions:\n  --host <host>                  bind address: one concrete IPv4 or IPv6 literal\n                                 of a local interface; wildcard addresses are\n                                 rejected\n  --no-open                      do not open the Web UI in the default browser\n  --port <port>                  listen port; pass 0 to let the OS pick a free\n                                 one\n  --public-url <url>             advertise this HTTP(S) root in the printed,\n                                 opened, web-surface, and DSH_WEB_URL forms;\n                                 grants no trust\n  --trusted-host <authority...>  extra authority the /api browser-trust fence\n                                 accepts (host or host:port; repeatable)\n  --tls-cert <file>              PEM server certificate chain; requires\n                                 --tls-key\n  --tls-key <file>               unencrypted PEM private key; requires\n                                 --tls-cert\n  -h, --help                     show this help\n\nExamples:\n  dsh --profile web                          serve on the composed host and port\n  dsh --profile web --no-open                serve without opening a browser\n  dsh --profile web --port 8080              serve on another port\n  dsh --profile web --host 10.0.0.7          bind one local interface address\n  dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example\n                                             advertise a prefix-stripping HTTPS proxy entry and admit its authority\n  dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem\n                                             serve HTTPS with an existing certificate and key\n\n",
+        "note": "web profile 的业务能力（session cancel/follow、job kill 等）由私有 Remote 协议承载，属未发布内部接口；本审计只核对帮助面与源码事实，不对其做联机调用。"
+      }
+    }
+  ]
+}

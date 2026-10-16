@@ -1,0 +1,138 @@
+{
+  "scenario": "E03",
+  "title": "E03 正常完成",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091862.284769,
+  "checks": [
+    {
+      "check": "reached_succeeded",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091864.0820806,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": "stop_reason=end_turn"
+      }
+    },
+    {
+      "check": "terminal_evidence_engine",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091864.0820806,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": "stop_reason=end_turn"
+      }
+    },
+    {
+      "check": "form_complete",
+      "pass": true,
+      "detail": "complete"
+    },
+    {
+      "check": "integrity_complete",
+      "pass": true,
+      "detail": "complete"
+    },
+    {
+      "check": "content_non_empty",
+      "pass": true,
+      "detail": "合成回复内容"
+    },
+    {
+      "check": "not_derived_from_process_exit",
+      "pass": true,
+      "detail": "终态依据为引擎终态证据，非进程退出码"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e03_gmzlpb3_",
+    "status_series": [
+      {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091863.8404126,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091863.8404126,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091863.8404126,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091864.0820806,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "note": "stop_reason=end_turn"
+      }
+    ],
+    "task_result": {
+      "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+      "form": "complete",
+      "content": "合成回复内容",
+      "persisted_at": 1792091864.0823476,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_stop_reason",
+          "value": "end_turn"
+        },
+        {
+          "kind": "engine_terminal",
+          "value": "end_turn 无法区分 completed/blocked"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 agent_message_chunk 拼装；end_turn 语义存在缺口"
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091864.5353699
+}

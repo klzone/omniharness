@@ -1,0 +1,102 @@
+{
+  "scenario": "E05",
+  "title": "E05 用户取消",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091866.6965396,
+  "checks": [
+    {
+      "check": "running_before_cancel",
+      "pass": true,
+      "detail": "running"
+    },
+    {
+      "check": "phase_never_fake_acknowledged",
+      "pass": true,
+      "detail": "confirmed_cancelled"
+    },
+    {
+      "check": "confirmed_from_engine_terminal",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+        "phase": "confirmed_cancelled",
+        "requested_at": 1792091869.193067,
+        "settled_at": 1792091869.2434127,
+        "final_state": "cancelled",
+        "evidence": "engine_terminal",
+        "note": "引擎以 stopReason=cancelled 落定"
+      }
+    },
+    {
+      "check": "cancel_notification_sent",
+      "pass": true,
+      "detail": [
+        {
+          "method": "session/cancel",
+          "id": null
+        }
+      ]
+    },
+    {
+      "check": "outcome_consistent_with_status",
+      "pass": true,
+      "detail": {
+        "cancel": "confirmed_cancelled",
+        "status": "cancelled"
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e05_z04eo0cz",
+    "status_before_cancel": {
+      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792091868.192587,
+      "last_event_seq": 1,
+      "partial_output_size": 0,
+      "engine_session_id": "6eb9e354-2bb4-4244-96c2-3d47cb9e3db3",
+      "note": ""
+    },
+    "cancel_outcome": {
+      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "phase": "confirmed_cancelled",
+      "requested_at": 1792091869.193067,
+      "settled_at": 1792091869.2434127,
+      "final_state": "cancelled",
+      "evidence": "engine_terminal",
+      "note": "引擎以 stopReason=cancelled 落定"
+    },
+    "cancel_frame_sent": [
+      {
+        "method": "session/cancel",
+        "id": null
+      }
+    ],
+    "status_after_cancel": {
+      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "status": "cancelled",
+      "evidence_source": "engine_terminal",
+      "since": 1792091869.2434134,
+      "last_event_seq": 3,
+      "partial_output_size": 0,
+      "engine_session_id": "6eb9e354-2bb4-4244-96c2-3d47cb9e3db3",
+      "note": "stop_reason=cancelled"
+    },
+    "shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091869.4023352
+}

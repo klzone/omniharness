@@ -1,0 +1,261 @@
+{
+  "scenario": "E20",
+  "title": "E20 安全隔离",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091836.2863708,
+  "checks": [
+    {
+      "check": "idle_control_isolation_holds",
+      "pass": true,
+      "detail": {
+        "agents_home": {
+          "added": [],
+          "added_count": 0,
+          "removed": [],
+          "removed_count": 0,
+          "changed": [],
+          "changed_count": 0
+        },
+        "omnidesk_root": {
+          "added": [],
+          "added_count": 0,
+          "removed": [],
+          "removed_count": 0,
+          "changed": [],
+          "changed_count": 0
+        },
+        "yvanai_root": {
+          "added": [],
+          "added_count": 0,
+          "removed": [],
+          "removed_count": 0,
+          "changed": [],
+          "changed_count": 0
+        }
+      }
+    },
+    {
+      "check": "rerun_all_scenarios_rc_zero",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "check": "rerun_covered_all_ids",
+      "pass": true,
+      "detail": {
+        "missing": []
+      }
+    },
+    {
+      "check": "rerun_all_verdicts_pass",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "check": "no_own_trace__dsh_home",
+      "pass": true,
+      "detail": {
+        "own_trace_paths": [],
+        "third_party_count": 0
+      }
+    },
+    {
+      "check": "no_own_trace__agents_home",
+      "pass": true,
+      "detail": {
+        "own_trace_paths": [],
+        "third_party_count": 0
+      }
+    },
+    {
+      "check": "no_own_trace__omnidesk_root",
+      "pass": true,
+      "detail": {
+        "own_trace_paths": [],
+        "third_party_count": 0
+      }
+    },
+    {
+      "check": "no_own_trace__yvanai_root",
+      "pass": true,
+      "detail": {
+        "own_trace_paths": [],
+        "third_party_count": 0
+      }
+    },
+    {
+      "check": "no_missing_root_created",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "check": "repo_working_tree_status_unchanged",
+      "pass": true,
+      "detail": {
+        "before_n": 27,
+        "after_n": 27,
+        "delta": []
+      }
+    },
+    {
+      "check": "runtime_lock_present",
+      "pass": true
+    },
+    {
+      "check": "runtime_not_modified_by_rerun",
+      "pass": true,
+      "detail": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e20_7xkgdp02",
+    "snapshot_targets": {
+      "dsh_home": "/home/kevin/.dsh",
+      "agents_home": "/home/kevin/.agents",
+      "omnidesk_root": "/home/kevin/OmniDesk",
+      "yvanai_root": "/home/kevin/YvanAI"
+    },
+    "targets_exist_before": {
+      "dsh_home": true,
+      "agents_home": true,
+      "omnidesk_root": true,
+      "yvanai_root": true
+    },
+    "idle_control_seconds": 20.0,
+    "idle_control_drift": {
+      "dsh_home": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "agents_home": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "omnidesk_root": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "yvanai_root": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      }
+    },
+    "rerun_rc": 0,
+    "rerun_summary": "E01 -> pass\nE02 -> pass\nE03 -> pass\nE04 -> pass\nE05 -> pass\nE06 -> pass\nE07 -> pass\nE08 -> pass\nE09 -> pass\nE10 -> pass\nE11 -> pass\nE12 -> pass\nE13 -> pass\nE14 -> pass\nE15 -> pass\nE16 -> pass\nE17 -> pass\nE18 -> pass\nE19 -> pass\n{\n \"E01\": \"pass\",\n \"E02\": \"pass\",\n \"E03\": \"pass\",\n \"E04\": \"pass\",\n \"E05\": \"pass\",\n \"E06\": \"pass\",\n \"E07\": \"pass\",\n \"E08\": \"pass\",\n \"E09\": \"pass\",\n \"E10\": \"pass\",\n \"E11\": \"pass\",\n \"E12\": \"pass\",\n \"E13\": \"pass\",\n \"E14\": \"pass\",\n \"E15\": \"pass\",\n \"E16\": \"pass\",\n \"E17\": \"pass\",\n \"E18\": \"pass\",\n \"E19\": \"pass\"\n}\n",
+    "rerun_verdicts": {
+      "E01": "pass",
+      "E02": "pass",
+      "E03": "pass",
+      "E04": "pass",
+      "E05": "pass",
+      "E06": "pass",
+      "E07": "pass",
+      "E08": "pass",
+      "E09": "pass",
+      "E10": "pass",
+      "E11": "pass",
+      "E12": "pass",
+      "E13": "pass",
+      "E14": "pass",
+      "E15": "pass",
+      "E16": "pass",
+      "E17": "pass",
+      "E18": "pass",
+      "E19": "pass"
+    },
+    "target_diffs": {
+      "dsh_home": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "agents_home": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "omnidesk_root": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      },
+      "yvanai_root": {
+        "added": [],
+        "added_count": 0,
+        "removed": [],
+        "removed_count": 0,
+        "changed": [],
+        "changed_count": 0
+      }
+    },
+    "target_attribution": {
+      "dsh_home": {
+        "own_trace_paths": [],
+        "third_party_paths": []
+      },
+      "agents_home": {
+        "own_trace_paths": [],
+        "third_party_paths": []
+      },
+      "omnidesk_root": {
+        "own_trace_paths": [],
+        "third_party_paths": []
+      },
+      "yvanai_root": {
+        "own_trace_paths": [],
+        "third_party_paths": []
+      }
+    },
+    "runtime_diff": {
+      "added": [],
+      "added_count": 0,
+      "removed": [],
+      "removed_count": 0,
+      "changed": [],
+      "changed_count": 0
+    },
+    "leftover_scenario_roots": [
+      "/tmp/omni_p1s3_e20_7xkgdp02"
+    ]
+  },
+  "notes": [
+    "E20 是隔离边界核对：先对原版 DSH 与用户数据做只读元数据快照（路径/类型/大小/mtime，不读内容），再完整复跑 E01-E19，最后再次快照比对。在**独立子进程**中复跑 E01-E19（显式列出，避免递归触发 E20 自身）。\n注意：本机原版 DSH Desktop 正被用户实时使用，会自行写它自己的 ~/.dsh。因此 dsh_home 的差异必须做**归因**：只有命中本阶段痕迹特征的路径才算本阶段写入，其余归为第三方（原版 Desktop / 其他进程）。",
+    "归因结论：E01-E19 全部使用 /tmp 下一次性 DSH_HOME / DSH_AGENTS_HOME，这些根之外的目标目录（~/.agents、~/OmniDesk、~/YvanAI）元数据零差异；~/.dsh 的变化路径均不含本阶段痕迹特征，属于本机原版 DSH Desktop 自身（用户正在使用）的写入，不计入本阶段副作用。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091933.6823857
+}

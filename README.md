@@ -1,135 +1,36 @@
-# OmniDesk (OmniHarness)
+# OmniDesk Discipline
 
-> **Personal AI Operating Environment · 个人专属 AI 工作操作系统**  
-> 基于 DeepSeek Harness (DSH) 核心底座构建，面向个人知识沉淀、长期记忆保持、项目敏捷协作与内容自动化生产。
+OmniDesk Discipline 是面向个人专业工作的独立 AI 工作台。它拥有自己的任务体验、领域规则、数据组织和成果管理；DSH 只是当前可替换的执行引擎，不是产品 UI，也不是 OmniDesk 的业务边界。
 
----
+## 当前状态
 
-## 视觉形象与品牌标识 (Monogram O-D)
+- 当前仓库包含自有 Tauri/React/Rust 桌面技术切片和个人 MVP 纵向试点。它们证明了部分技术链路，不代表正式桌面产品已获批准。
+- ARCHITECT 的独立审查结论为 **不通过**：保存确认、模型来源真实性、处理前闸门和真实路径边界仍有阻断问题。见 [REVIEW.md](REVIEW.md)。
+- 后续代码修复计划 OD-BUILD-001 尚待用户批准。作者真实数据使用前须完成修复并经独立复核。
+- 当前仅使用合成数据及明确许可范围内的公开数据。用户转述许可只覆盖满足指定脱敏要求、个人数据分析与生态研判且不得分发；不能推定其他任务、模型服务商、工具、设备或运行环境已获准。
 
-<div align="center">
-  <img src="docs/brand-and-ui/logo.svg" width="128" height="128" alt="OmniDesk Logo" />
-  <p><strong>OmniDesk — The Sovereign AI Workbench</strong></p>
-</div>
+## 共享项目状态
 
-- **左环 [ O · Omni ]**：连续运行的 Agent Loop 状态机闭环，象征稳固的 DSH 运行时底层。
-- **右弧 [ D · Desk ]**：开放延展的工作台操作面，承载五大专业特种 Agent。
-- **中轴 [ Neural Seam ]**：白色神经分发中枢，打通记忆、知识与工程项目的无缝互联。
-- **设计原型与规范**：详见 [docs/brand-and-ui/preview.html](docs/brand-and-ui/preview.html)。
+- [AGENTS.md](AGENTS.md)：长期协作规则与硬边界
+- [GOALS.md](GOALS.md)：产品目标、当前阶段和范围
+- [PLANS.md](PLANS.md)：唯一当前实施计划及审批状态
+- [STATUS.md](STATUS.md)：BUILDER 执行记录
+- [REVIEW.md](REVIEW.md)：ARCHITECT 独立审查与验收结论
+- [docs/decisions.md](docs/decisions.md)：已定架构决策与未决事项
 
----
+详细工程契约、数据布局、审计报告和测试证据保留在 docs/、tests/reports/、tests/verification/。历史规划和路线材料归档在 docs/archive/。
 
-## 系统五层分层架构
+## 关键架构边界
 
-OmniDesk 采用单向解耦依赖模型，详细架构定义请参阅 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：
+- 不修改 runtime/deepseek-harness/；不把 DSH 内部格式当作 OmniDesk 产品契约。
+- 共用任务外壳可服务相似的周报、材料撰写和日常项目管理，但每种能力仍需独立规则、权限与评测；目前仅有脱敏数据分析与生态研判试点。
+- 文件优先；只有出现可观察的并发冲突、状态查询瓶颈或文件检索评测不达标时，才评估 SQLite。
+- 不建设通用 Agent 平台、工作流编辑器、Registry、插件市场、微服务或复杂模型路由层，除非后续证据和单独批准支持。
+- 作者个人试用不以 20% 节时为门槛；扩展到同事或启动产品化需另行评估价值、质量、授权和具体产品痛点。
 
-```text
-┌────────────────────────────────────────────────────────┐
-│                      UI Layer                          │
-│        (Desktop App Shell / Web Browser / CLI)         │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
-│                External Data Layer                     │
-│    (~/YvanAI: knowledge, memory, projects, backups)    │
-└───────────────────────────▲────────────────────────────┘
-                            │ (读写通用 Markdown/JSON 资产)
-┌───────────────────────────┴────────────────────────────┐
-│                    Skills Layer                        │
-│    (memory, knowledge, project, writing, coding)       │
-└───────────────────────────┬────────────────────────────┘
-                            │ (声明式注册 / ctx.skills)
-┌───────────────────────────▼────────────────────────────┐
-│                   Profile Layer                        │
-│  (cordis.patch.yml: 模型路由, UI偏好, 工具裁剪, 插件管理) │
-└───────────────────────────┬────────────────────────────┘
-                            │ (Cordis 插件树装配)
-┌───────────────────────────▼────────────────────────────┐
-│                    DSH Runtime                         │
-│  (runtime/deepseek-harness: AgentLoop, Seams, Session) │
-└────────────────────────────────────────────────────────┘
-```
+## 验证入口
 
----
-
-## 架构三大红线（不可破坏的边界）
-
-1. **绝对禁止修改 DSH Runtime 核心**：`runtime/deepseek-harness` 作为官方纯净底座隔离维护，所有功能扩展必须通过 Profile 配置补丁、外部 Skill 或标准 MCP 协议实现，保障 DSH 升级无痛。
-2. **绝对禁止将个人知识库放入 DSH 内部**：个人资产固定存储于 `~/YvanAI/`（通用 Markdown/JSON），与 Obsidian/Hugo 静态站打通，避免与任何特定软件私有格式绑定。
-3. **绝对禁止将用户个人数据放入 Git 项目代码库**：代码库仅管理框架、配置模板、Agent 技能与自动化脚本，严防会话私有数据和敏感凭证入库。
-
----
-
-## 项目代码库目录规划
-
-```text
-omniharness/
-├── runtime/                    # 运行底座
-│   ├── deepseek-harness/       # DSH 官方源码底本 (git submodule，只读，勿改)
-│   ├── RUNTIME.lock            # 锁定经过验证的 DSH 版本 (download-and-run)
-│   └── dsh-runtime/            # bootstrap 安装的可运行 CLI (已忽略，勿提交)
-├── profiles/                   # DSH Profile 定制配置 (模型路由、UI 裁剪)
-│   └── yvan-work/              # 真实生效的 OmniDesk Profile 源
-├── skills/                     # 专属 Agent 技能层 (Skill 正文唯一开发源)
-│   ├── memory-agent/           # 长期记忆与关键决策记录
-│   ├── knowledge-agent/        # 知识检索与跨库整合
-│   ├── knowledge-search/       # 带来源引用的知识检索
-│   ├── material-writing/       # 材料写作助手
-│   ├── document-review/        # 材料质量评估
-│   └── project-agent/          # 工程巡检与进度追踪
-├── templates/                  # 材料模板唯一开发源
-├── knowledge/                  # 写作风格 / 优秀范例 / 法规库规范 (唯一开发源)
-├── workstations/               # 领域工作站定义 (只放配置与指向说明，不放副本)
-├── config/                     # 外部数据底座配置 (yvan-work.yaml)
-├── tests/                      # 黄金任务基准与验证报告
-├── scripts/                    # 底座引导、隔离启动、Skill 同步、备份
-└── docs/                       # 架构规范、分析报告与品牌设计体系
-```
-
-> 目录中带有「唯一开发源」标注的位置是权威副本；`workstations/` 下不再保存
-> 模板、风格或 Skill 的副本，需要同步到运行时请执行 `scripts/sync-skills.sh`。
-
----
-
-## 快速上手（下载即用）
-
-- **准备运行底座（拉取锁定版本 DSH，独立于系统安装）**：
-  ```bash
-  ./scripts/bootstrap-runtime.sh
-  ```
-  版本锁定在 [runtime/RUNTIME.lock](runtime/RUNTIME.lock)：即维护者实机验证过的版本，
-  不是「最新版」，保证任何机器上结果一致。
-- **初始化本地外部数据中心**：
-  ```bash
-  ./scripts/init-yvan-data.sh
-  ```
-- **在隔离环境中启动（不影响你已有的 DSH）**：
-  ```bash
-  ./scripts/omnidesk-dev.sh
-  ```
-- **将自定义 Skills 同步到隔离运行时**：
-  ```bash
-  ./scripts/sync-skills.sh
-  ```
-  同步器只管理由它自己装入的 Skill；你在运行时根自行创建的 Skill 不会被删除。
-- **备份 DSH 会话与工作区索引**：
-  ```bash
-  ./scripts/backup-sessions.sh
-  ```
-
-
-
----
-
-## 当前落地产品：OmniDesk Discipline v0.1
-
-面向纪检监察综合履职场景的专业 AI 工作站：
-- **设计原则与系统宪法**：详见 [docs/OmniDesk-Design-Principles-v0.3.md](docs/OmniDesk-Design-Principles-v0.3.md)
-- **阶段执行计划与验收标准**：详见 [docs/OmniDesk-Discipline-MVP-Plan-v0.1.md](docs/OmniDesk-Discipline-MVP-Plan-v0.1.md)
-- **工作站规划声明**：[workstations/discipline/](workstations/discipline/)（非生效配置；生效 Profile 见 `profiles/yvan-work/`）
-- **材料模板库（唯一权威源）**：[templates/discipline/](templates/discipline/)
-- **写作风格规则（唯一权威源）**：[knowledge/writing-style/](knowledge/writing-style/)
-- **黄金任务基准集（40 Case）**：[tests/golden_tasks/](tests/golden_tasks/)
-- **下一阶段规划交接简报**：[docs/OmniDesk-Next-Phase-Brief.md](docs/OmniDesk-Next-Phase-Brief.md)
-- **历史验证报告**（产生于隔离验证之前，仅供参考）：[tests/reports/](tests/reports/)
-
+- 桌面 MVP 审查与限制：[REVIEW.md](REVIEW.md)
+- 桌面架构与运行边界：[docs/OmniDesk-Desktop-Architecture.md](docs/OmniDesk-Desktop-Architecture.md)、[docs/OmniDesk-Desktop-Data-Layout.md](docs/OmniDesk-Desktop-Data-Layout.md)、[docs/OmniDesk-Desktop-Engine-IPC.md](docs/OmniDesk-Desktop-Engine-IPC.md)
+- 阶段和适配器证据：[tests/reports/](tests/reports/)
+- DSH 隔离运行引导：[scripts/setup.sh](scripts/setup.sh)

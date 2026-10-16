@@ -1,0 +1,110 @@
+{
+  "scenario": "E17",
+  "title": "E17 不支持的能力",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091908.5675805,
+  "checks": [
+    {
+      "check": "headless_help_ok",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "check": "headless_has_no_cancel_flag",
+      "pass": true,
+      "detail": [
+        "  --json             write newline-delimited run events to stdout instead of the",
+        "  --session-id <id>  adopt the persisted Session with this id; an unknown id is"
+      ]
+    },
+    {
+      "check": "headless_initialize_fails_not_silent",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "timeout",
+        "message": "[timeout] initialize did not respond within 8.0s",
+        "detail": {}
+      }
+    },
+    {
+      "check": "headless_error_is_standard_code",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "timeout",
+        "message": "[timeout] initialize did not respond within 8.0s",
+        "detail": {}
+      }
+    },
+    {
+      "check": "headless_no_descriptor_when_failed",
+      "pass": true
+    },
+    {
+      "check": "sdk_cancel_is_unknown_method",
+      "pass": true,
+      "detail": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": {
+          "code": -32603,
+          "message": "unknown DeepSeek Harness SDK runtime method: session/cancel"
+        }
+      }
+    },
+    {
+      "check": "sdk_resume_is_unknown_method",
+      "pass": true,
+      "detail": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "error": {
+          "code": -32603,
+          "message": "unknown DeepSeek Harness SDK runtime method: session/resume"
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e17_jtefrbqp",
+    "headless_help_rc": 0,
+    "headless_initialize_error": {
+      "exception": "EngineError",
+      "engine_error_code": "timeout",
+      "message": "[timeout] initialize did not respond within 8.0s",
+      "detail": {}
+    },
+    "sdk_initialize": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32603,
+        "message": "The \"paths[0]\" argument must be of type string. Received undefined"
+      }
+    },
+    "sdk_cancel": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "error": {
+        "code": -32603,
+        "message": "unknown DeepSeek Harness SDK runtime method: session/cancel"
+      }
+    },
+    "sdk_resume": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "error": {
+        "code": -32603,
+        "message": "unknown DeepSeek Harness SDK runtime method: session/resume"
+      }
+    }
+  },
+  "notes": [
+    "headless 通道帮助面没有取消旗标；sdk 通道实测 session/cancel 与 session/resume 均为未知方法（-32603）。两者都不具备 ACP 语义的取消/恢复能力，因此适配层在非 ACP 通道上如实失败，不做语义不等价的降级。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091920.0029242
+}

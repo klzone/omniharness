@@ -32,5 +32,22 @@ __pycache__/
 knowledge/regulations/*
 !knowledge/regulations/README.md
 
+# Personal original documents (require no desensitization but stay local-only)
+knowledge/reflections/*
+!knowledge/reflections/README.md
+!knowledge/reflections/**/
+knowledge/reflections/thoughts/*
+!knowledge/reflections/thoughts/README.md
+knowledge/reflections/speeches/*
+!knowledge/reflections/speeches/README.md
+knowledge/reflections/reports/*
+!knowledge/reflections/reports/README.md
+knowledge/reflections/news/*
+!knowledge/reflections/news/README.md
+
+# Learning materials (large public PDFs/PPTs, keep local)
+knowledge/learning-materials/*
+!knowledge/learning-materials/README.md
+
 # Bootstrap 安装的锁定版本底座（由 scripts/bootstrap-runtime.sh 生成，勿提交）
 runtime/dsh-runtime/

@@ -1,0 +1,24 @@
+{
+  "instance_a_root": "/tmp/omni_p2desktop_dualA_4zljegnl",
+  "instance_b_root": "/tmp/omni_p2desktop_dualB_gc3p1uvx",
+  "init_a_ok": true,
+  "init_b_ok": true,
+  "pid_a": 407363,
+  "pid_b": 407366,
+  "distinct_pids": true,
+  "task_a": "omni-599a2dc5-e77b-44ce-8c2d-af8559267d8e",
+  "b_can_see_a_task": false,
+  "b_lookup_error_code": "unknown_task",
+  "a_can_see_a_task": true,
+  "a_task_status": "running",
+  "roots_disjoint": true,
+  "checks": {
+    "both_initialized": true,
+    "distinct_pids": true,
+    "task_not_visible_in_other_instance": true,
+    "other_instance_error_is_unknown_task": true,
+    "owner_instance_sees_task": true,
+    "roots_disjoint": true
+  },
+  "verdict": "pass"
+}

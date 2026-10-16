@@ -1,0 +1,132 @@
+{
+  "scenario": "E10",
+  "title": "E10 中断任务",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091882.5685086,
+  "checks": [
+    {
+      "check": "in_flight_client_started",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+        "engine_session_id": "ac80f3a8-1642-4ba5-a80f-8b7a691e6379",
+        "status": "running",
+        "child_pid": 347450
+      }
+    },
+    {
+      "check": "receipt_state_is_in_flight",
+      "pass": true,
+      "detail": "running"
+    },
+    {
+      "check": "recover_returns_state",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+        "status": {
+          "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+          "status": "unknown",
+          "evidence_source": "process_state",
+          "since": 1792091884.1893358,
+          "last_event_seq": 0,
+          "partial_output_size": 0,
+          "engine_session_id": "ac80f3a8-1642-4ba5-a80f-8b7a691e6379",
+          "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
+        },
+        "replayed": false,
+        "evidence": "process_state",
+        "note": "恢复仅重建可发现状态；不自动重放中断的任务"
+      }
+    },
+    {
+      "check": "no_auto_replay",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "check": "state_marks_uncertain",
+      "pass": true,
+      "detail": "unknown"
+    },
+    {
+      "check": "no_automatic_prompt_replay",
+      "pass": true,
+      "detail": {
+        "initialize": 1,
+        "session/resume": 1
+      }
+    },
+    {
+      "check": "no_fabricated_output",
+      "pass": true,
+      "detail": 0
+    },
+    {
+      "check": "no_fake_complete_result_when_unknown",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_task",
+        "message": "[unknown_task] unknown omni_task_id: omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+        "detail": {
+          "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794"
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e10_k4_onrzk",
+    "client_receipt": {
+      "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+      "engine_session_id": "ac80f3a8-1642-4ba5-a80f-8b7a691e6379",
+      "status": "running",
+      "child_pid": 347450
+    },
+    "recover_interrupted": {
+      "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+      "status": {
+        "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+        "status": "unknown",
+        "evidence_source": "process_state",
+        "since": 1792091884.1893358,
+        "last_event_seq": 0,
+        "partial_output_size": 0,
+        "engine_session_id": "ac80f3a8-1642-4ba5-a80f-8b7a691e6379",
+        "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
+      },
+      "replayed": false,
+      "evidence": "process_state",
+      "note": "恢复仅重建可发现状态；不自动重放中断的任务"
+    },
+    "restart_sent_methods": {
+      "initialize": 1,
+      "session/resume": 1
+    },
+    "result_lookup": {
+      "exception": "EngineError",
+      "engine_error_code": "unknown_task",
+      "message": "[unknown_task] unknown omni_task_id: omni-5b1d46dd-8691-4e6c-92ea-a86037060794",
+      "detail": {
+        "omni_task_id": "omni-5b1d46dd-8691-4e6c-92ea-a86037060794"
+      }
+    },
+    "restart_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [
+    "中断任务不会被自动重放；也未生成任何替代结果，符合「不伪造结果」的验收标准。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091887.8759995
+}

@@ -1,0 +1,256 @@
+{
+  "scenario": "E19",
+  "title": "E19 结果完整性",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091925.2263834,
+  "checks": [
+    {
+      "check": "arm_a_failed",
+      "pass": true,
+      "detail": "failed"
+    },
+    {
+      "check": "arm_a_not_marked_complete",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+        "form": "unrecoverable",
+        "content": "",
+        "persisted_at": 1792091926.8609586,
+        "integrity": "partial",
+        "sources": [
+          {
+            "kind": "status",
+            "value": "failed"
+          },
+          {
+            "kind": "error",
+            "value": "task_failed"
+          }
+        ],
+        "note": "终态非成功且未收到任何输出"
+      }
+    },
+    {
+      "check": "arm_a_unrecoverable_when_no_output",
+      "pass": true,
+      "detail": {
+        "form": "unrecoverable",
+        "content": ""
+      }
+    },
+    {
+      "check": "arm_b_succeeded_but_truncated",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091929.0540457,
+        "last_event_seq": 4,
+        "partial_output_size": 8,
+        "engine_session_id": "2314b23b-9acc-4738-b79f-7d830ca24dc9",
+        "note": "stop_reason=max_tokens"
+      }
+    },
+    {
+      "check": "arm_b_marked_partial",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+        "form": "partial",
+        "content": "被截断的合成内容",
+        "persisted_at": 1792091929.0543237,
+        "integrity": "partial",
+        "sources": [
+          {
+            "kind": "engine_stop_reason",
+            "value": "max_tokens"
+          },
+          {
+            "kind": "engine_terminal",
+            "value": "end_turn 无法区分 completed/blocked"
+          },
+          {
+            "kind": "persist",
+            "value": "ok"
+          }
+        ],
+        "note": "结果由 OmniDesk 从 agent_message_chunk 拼装"
+      }
+    },
+    {
+      "check": "arm_b_no_unrecoverable_relaunch",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "check": "arm_c_partial_received",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "check": "arm_c_settle_effective",
+      "pass": true,
+      "detail": "failed"
+    },
+    {
+      "check": "arm_c_failed",
+      "pass": true,
+      "detail": "failed"
+    },
+    {
+      "check": "arm_c_partial_output_preserved",
+      "pass": true,
+      "detail": {
+        "content": "已收到的部分输出"
+      }
+    },
+    {
+      "check": "arm_c_partial_not_complete",
+      "pass": true,
+      "detail": {
+        "form": "partial",
+        "integrity": "partial"
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e19_5scyqwxc",
+    "arm_a_status": {
+      "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+      "status": "failed",
+      "evidence_source": "engine_error",
+      "since": 1792091926.8606384,
+      "last_event_seq": 2,
+      "partial_output_size": 0,
+      "engine_session_id": "65e60291-fec4-4756-a854-34709570e30d",
+      "note": "error=Internal error: turn failed: synthetic mid-stream failure"
+    },
+    "arm_a_result": {
+      "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+      "form": "unrecoverable",
+      "content": "",
+      "persisted_at": 1792091926.8609586,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "status",
+          "value": "failed"
+        },
+        {
+          "kind": "error",
+          "value": "task_failed"
+        }
+      ],
+      "note": "终态非成功且未收到任何输出"
+    },
+    "arm_a_shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    },
+    "arm_b_status": {
+      "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792091929.0540457,
+      "last_event_seq": 4,
+      "partial_output_size": 8,
+      "engine_session_id": "2314b23b-9acc-4738-b79f-7d830ca24dc9",
+      "note": "stop_reason=max_tokens"
+    },
+    "arm_b_result": {
+      "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+      "form": "partial",
+      "content": "被截断的合成内容",
+      "persisted_at": 1792091929.0543237,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "engine_stop_reason",
+          "value": "max_tokens"
+        },
+        {
+          "kind": "engine_terminal",
+          "value": "end_turn 无法区分 completed/blocked"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 agent_message_chunk 拼装"
+    },
+    "arm_b_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    },
+    "arm_c_status_before_error": {
+      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792091930.9942896,
+      "last_event_seq": 3,
+      "partial_output_size": 8,
+      "engine_session_id": "ba537f92-ead2-42f7-8895-0d0ab14f08e5",
+      "note": ""
+    },
+    "arm_c_status_after_error": {
+      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "status": "failed",
+      "evidence_source": "engine_error",
+      "since": 1792091932.2951279,
+      "last_event_seq": 4,
+      "partial_output_size": 8,
+      "engine_session_id": "ba537f92-ead2-42f7-8895-0d0ab14f08e5",
+      "note": "error=synthetic injected turn failure"
+    },
+    "arm_c_result": {
+      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "form": "partial",
+      "content": "已收到的部分输出",
+      "persisted_at": 1792091932.2958283,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "status",
+          "value": "failed"
+        },
+        {
+          "kind": "error",
+          "value": "task_failed"
+        }
+      ],
+      "note": "已保留已接收输出，但不构成完整成果"
+    },
+    "arm_c_shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    }
+  },
+  "notes": [
+    "臂 C 为**桩级**（stub-level）验证，证据等级 script，用于覆盖适配层的结果整形分支；真实的失败场景见臂 A（流内错误会丢弃整轮输出 → unrecoverable）。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091932.6986115
+}

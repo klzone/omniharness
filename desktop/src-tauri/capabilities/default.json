@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "OmniDesk 最小能力集：仅允许主窗口使用核心事件与窗口 API。不授予任何 DSH 侧能力。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

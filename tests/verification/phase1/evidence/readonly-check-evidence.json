@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-10-15 23:24:21+0800",
+  "repo": "/mnt/data/Code/MyWorkStation",
+  "steps": {
+    "readonly_check": {
+      "snapshot_before": {
+        "repo": 43245,
+        "omnidesk_root": 56,
+        "yvanai": 122,
+        "stock_dsh": 9798,
+        "stock_agents": 0
+      },
+      "normal_check": {
+        "cmd": [
+          "bash",
+          "scripts/setup.sh",
+          "--check"
+        ],
+        "cwd": "/mnt/data/Code/MyWorkStation",
+        "rc": 0,
+        "stdout": "\n[OmniDesk][setup] 1/3 校验并准备运行底座（锁定版本）\n\n[OmniDesk][setup] 检查：运行底座\n[OmniDesk][bootstrap] 锁定版本 : 0.2.1-alpha.2\n[OmniDesk][bootstrap] 安装目录 : /mnt/data/Code/MyWorkStation/runtime/dsh-runtime\n[OmniDesk][bootstrap] 已安装且版本一致（0.2.1-alpha.2），无需重新安装。\n\n[OmniDesk][setup] 2/3 初始化外部数据骨架（~/YvanAI）\n\n[OmniDesk][setup] （--check）跳过数据骨架初始化。\n\n[OmniDesk][setup] 3/3 同步技能到隔离运行时\n\n[OmniDesk][setup] 检查：Skill 同步状态\n[OmniDesk][sync] 源目录   : /mnt/data/Code/MyWorkStation/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /home/kevin/OmniDesk/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : check（只读比对，不写入）\n[OmniDesk][sync] --check：隔离副本与仓库源一致（未发现漂移）。\n[OmniDesk][sync] （注：未托管目录属于用户自有内容，不参与漂移判定。）\n\n[OmniDesk][setup] 只读检查完成。\n",
+        "stderr": ""
+      },
+      "bootstrap_check": {
+        "cmd": [
+          "bash",
+          "scripts/bootstrap-runtime.sh",
+          "--check"
+        ],
+        "cwd": "/mnt/data/Code/MyWorkStation",
+        "rc": 0,
+        "stdout": "[OmniDesk][bootstrap] 锁定版本 : 0.2.1-alpha.2\n[OmniDesk][bootstrap] 安装目录 : /mnt/data/Code/MyWorkStation/runtime/dsh-runtime\n[OmniDesk][bootstrap] 已安装且版本一致（0.2.1-alpha.2），无需重新安装。\n",
+        "stderr": ""
+      },
+      "sync_check": {
+        "cmd": [
+          "bash",
+          "scripts/sync-skills.sh",
+          "--check"
+        ],
+        "cwd": "/mnt/data/Code/MyWorkStation",
+        "rc": 0,
+        "stdout": "[OmniDesk][sync] 源目录   : /mnt/data/Code/MyWorkStation/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /home/kevin/OmniDesk/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : check（只读比对，不写入）\n[OmniDesk][sync] --check：隔离副本与仓库源一致（未发现漂移）。\n[OmniDesk][sync] （注：未托管目录属于用户自有内容，不参与漂移判定。）\n",
+        "stderr": ""
+      },
+      "fail_case": {
+        "cmd": [
+          "bash",
+          "scripts/setup.sh",
+          "--check"
+        ],
+        "cwd": "/tmp/omni_calib_z14eyw6_/sandbox",
+        "rc": 1,
+        "stdout": "\n[OmniDesk][setup] 1/3 校验并准备运行底座（锁定版本）\n\n[OmniDesk][setup] 检查：运行底座\n\n[OmniDesk][setup] 2/3 初始化外部数据骨架（~/YvanAI）\n\n[OmniDesk][setup] （--check）跳过数据骨架初始化。\n\n[OmniDesk][setup] 3/3 同步技能到隔离运行时\n\n[OmniDesk][setup] 检查：Skill 同步状态\n[OmniDesk][sync] 源目录   : /tmp/omni_calib_z14eyw6_/sandbox/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /tmp/omni_calib_z14eyw6_/isolated_root/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : check（只读比对，不写入）\n",
+        "stderr": "[OmniDesk][bootstrap][错误] 缺少锁定文件：/tmp/omni_calib_z14eyw6_/sandbox/runtime/RUNTIME.lock\n[OmniDesk][setup][错误] 运行底座 检查失败（退出码 1）。\n[OmniDesk][sync][警告] 隔离副本不存在：/tmp/omni_calib_z14eyw6_/isolated_root/runtime/dsh-home/skills —— 需要执行同步。\n[OmniDesk][setup][错误] Skill 同步状态 检查失败（退出码 1）。\n[OmniDesk][setup][错误] 只读检查未通过；请根据上方错误修复后重新运行 scripts/setup.sh --check。\n",
+        "isolated_root_created": false,
+        "isolated_root": "/tmp/omni_calib_z14eyw6_/isolated_root",
+        "reported_runtime_fail": true,
+        "reported_sync_fail": true
+      },
+      "snapshot_after": {
+        "repo": 43245,
+        "omnidesk_root": 56,
+        "yvanai": 122,
+        "stock_dsh": 9798,
+        "stock_agents": 0
+      },
+      "readonly_diff": {
+        "repo": {
+          "changed": 0,
+          "added": 0,
+          "removed": 0,
+          "changed_items": [],
+          "added_items": [],
+          "removed_items": []
+        },
+        "omnidesk_root": {
+          "changed": 0,
+          "added": 0,
+          "removed": 0,
+          "changed_items": [],
+          "added_items": [],
+          "removed_items": []
+        },
+        "yvanai": {
+          "changed": 0,
+          "added": 0,
+          "removed": 0,
+          "changed_items": [],
+          "added_items": [],
+          "removed_items": []
+        },
+        "stock_dsh": {
+          "changed": 0,
+          "added": 0,
+          "removed": 0,
+          "changed_items": [],
+          "added_items": [],
+          "removed_items": []
+        },
+        "stock_agents": {
+          "changed": 0,
+          "added": 0,
+          "removed": 0,
+          "changed_items": [],
+          "added_items": [],
+          "removed_items": []
+        }
+      }
+    }
+  }
+}

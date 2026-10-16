@@ -1,7 +1,9 @@
 # OmniDesk 系统设计原则与设计方案 v0.3
 
-> 状态：FROZEN（项目宪法）  
+> 归档说明：历史设计基线，不作为当前状态或实施计划。现行目标与规则以仓库根目录的 GOALS.md、AGENTS.md、PLANS.md、REVIEW.md 和 docs/decisions.md 为准；本归档的部分相对链接可能失效。
+> 状态：历史基线（其余原则继续有效；GUI 方向由 [产品目标与架构路线图](OmniDesk-Product-and-Architecture-Roadmap.md) 更新）
 > 适用：OmniDesk 全系列产品与所有协同 AI 模型（Codex / Claude / Gemini）
+> 修订说明：原“暂不实现自研 GUI”是当时的阶段决策，现已被“最终建设独立桌面应用、分阶段验证”取代。其他数据、安全、先产品后平台和不修改 DSH Runtime 等约束继续有效。
 
 ---
 
@@ -64,11 +66,13 @@ Local Data
 - DSH 运行机制；
 - DSH 升级逻辑。
 
-**所有业务扩展必须通过：**
+**当前 DSH 验证阶段的配置定制通过：**
 - Profile 配置补丁；
 - Skill 声明；
 - 外部配置文件；
 - 外部数据目录。
+
+进入独立桌面产品阶段后，OmniDesk 自有的界面、工作流与应用服务在 DSH 之外实现，不受上述 DSH 配置定制清单限制；仍不得修改 DSH Runtime，也不得把用户数据或领域业务逻辑塞入 DSH 私有实现。DSH 仅通过经验证的适配边界提供执行能力。阶段转换条件见产品路线图。
 
 ---
 
@@ -107,14 +111,14 @@ Skill 负责：“怎么做”。
 AI 模型与运行工具会变，业务与个人资产必须长期存在。
 统一外部数据中枢：
 ```
-~/OmniDesk/
-├── workspaces/
+~/YvanAI/          # 外部数据中枢（本原则所指的权威数据目录）
 ├── knowledge/
-├── templates/
 ├── memory/
 ├── projects/
+├── templates/
 └── backups/
 ```
+（`~/OmniDesk/` 是**隔离运行根**，只放运行时副本，不存个人知识资产；两者职责不混用。与 [下一阶段简报](OmniDesk-Next-Phase-Brief.md) §1.2、[知识入库与脱敏规则](OmniDesk-Knowledge-Ingestion-and-Desensitization-Policy.md) 一致。）
 
 ### 数据分级保护原则
 - **一级（公开数据）**：法规公开文件、通用知识。允许云端模型处理。
@@ -148,13 +152,17 @@ AI 模型与运行工具会变，业务与个人资产必须长期存在。
 3. 监督检查 Agent（涉及敏感数据）
 4. OmniDesk Core 通用抽象（过度设计）
 5. Agent Registry / Marketplace（过度设计）
-6. 自研 GUI（直接复用 DSH 现成桌面视窗与 Web 界面）
+6. **阶段性历史约束，已更新**：原计划直接复用 DSH 桌面/Web UI，现改为最终建设 OmniDesk 自有桌面应用；当前仍不得一次性铺开完整 GUI，按产品路线图先验证工作流与引擎边界。
 
 ---
 
 ## 八、版本升级原则（Golden Tasks 守门）
 DSH 升级必须通过基线验证。
-在 `tests/golden_tasks/` 保存 20-30 个真实场景脱敏任务。
+在 `tests/golden_tasks/` 保存 20-40 个**基准任务**，用于底座升级的回归守门。
+任务素材只能是以下三类之一：**合成虚构数据**、**许可范围内的公开资料**、**经书面授权可使用且已脱敏的数据**。
+在未取得单位书面授权前，**不得**把真实工作材料、内部文件或任何三级敏感数据编入基准任务；
+此时基准任务只能验证**技术与评测流程**是否走通，**不得**据此宣称真实业务收益或真实场景准确率。
+授权门槛、逐项授权状态、价值评测与产品化门槛见 [产品目标与架构路线图](OmniDesk-Product-and-Architecture-Roadmap.md) 与 [价值评测协议](../OmniDesk-Value-Evaluation-Protocol.md)。
 任何底座升级前，必须跑通：
 - Profile 加载测试
 - Skill 调度测试
@@ -169,3 +177,7 @@ DSH 升级必须通过基线验证。
 2. 知识查询可靠性：引用准确率 ≥ 90%
 3. 形成个人持续积累的模版与知识资产
 
+> **口径说明（2026-10-16）**：以上是**产品化**方向的成功度量，**不是作者个人自用的开始使用前置条件**。
+> 个人自用先按路线图「阶段 2.6」推进：**不以净节省率 > 20% 作为开始使用的门槛**，使用中先收集低负担的体验与返工记录。
+> 度量本身仍须按 [价值评测协议](../OmniDesk-Value-Evaluation-Protocol.md) 计算，且基准任务只能使用合成、公开或经明确批准的数据。
+> 逐项授权状态见 [产品目标与架构路线图](OmniDesk-Product-and-Architecture-Roadmap.md) 阶段 2.5。

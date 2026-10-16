@@ -1,0 +1,79 @@
+{
+  "generated_at": "2026-10-15 23:24:27+0800",
+  "isolation": "一次性 /tmp 副本 + 一次性隔离根；仓库与 ~/OmniDesk 只读",
+  "steps": {
+    "disposable_copy": {
+      "repo": "/tmp/omni_scen7_g4ryrck2/repo",
+      "iso": "/tmp/omni_scen7_g4ryrck2/iso",
+      "note": "仓库与 ~/OmniDesk 未被写入"
+    },
+    "sync_v0": {
+      "cmd": [
+        "bash",
+        "scripts/sync-skills.sh"
+      ],
+      "rc": 0,
+      "stdout": "[OmniDesk][sync] 源目录   : /tmp/omni_scen7_g4ryrck2/repo/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : 实际同步\n[OmniDesk][sync] 同步 Skill: document-review\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 同步 Skill: knowledge-agent\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-agent\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 同步 Skill: knowledge-search\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-search\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 同步 Skill: material-writing\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 同步 Skill: memory-agent\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/memory-agent\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 同步 Skill: project-agent\ncreated directory /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/project-agent\ncd+++++++++ ./\n>f+++++++++ SKILL.md\n[OmniDesk][sync] 托管清单不存在，本次不做任何删除（首次同步或清单缺失时属预期行为）。\n[OmniDesk][sync] 物化写作资产 -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/references\n[OmniDesk][sync] 物化写作资产 -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review/references\n[OmniDesk][sync] 写作资产已物化到 2 个 Skill。\n\n[OmniDesk][sync] ===== 同步汇总 =====\n  新增 Skill : document-review knowledge-agent knowledge-search material-writing memory-agent project-agent \n  更新 Skill : （无）\n  删除托管   : 0\n  保留未托管 : （无）\n[OmniDesk][sync] 完成：共处理 6 个 Skill -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills\n[OmniDesk][sync] 托管清单已更新：/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/.omnidesk-managed\n",
+      "stderr": ""
+    },
+    "discover_v0": {
+      "cmd": [
+        "node",
+        "/mnt/data/Code/MyWorkStation/tests/verification/phase1/probe_provider.mjs",
+        "{\"dshHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home\", \"agentsHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/agents-home\", \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\", \"marker\": \"<!-- SCENARIO7-MARKER: v0 -->\", \"includeDefaultRoots\": true}"
+      ],
+      "rc": 0,
+      "stdout": "{\n  \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\",\n  \"count\": 6,\n  \"skills\": [\n    {\n      \"name\": \"document-review\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 1423,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 210,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-search\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-search/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 735,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"material-writing\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 2953,\n      \"bodyHasMarker\": true\n    },\n    {\n      \"name\": \"memory-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/memory-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 486,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"project-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/project-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 207,\n      \"bodyHasMarker\": false\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "sync_v1": {
+      "cmd": [
+        "bash",
+        "scripts/sync-skills.sh"
+      ],
+      "rc": 0,
+      "stdout": "[OmniDesk][sync] 源目录   : /tmp/omni_scen7_g4ryrck2/repo/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : 实际同步\n[OmniDesk][sync] 同步 Skill: document-review\n*deleting   references/writing-style/style-guide.md\n*deleting   references/writing-style/structure-patterns.md\n*deleting   references/writing-style/common-phrases.md\n*deleting   references/writing-style/avoid-list.md\n*deleting   references/writing-style/README.md\n*deleting   references/writing-style/\n*deleting   references/templates/work-summary-template.md\n*deleting   references/templates/speech-template.md\n*deleting   references/templates/report-template.md\n*deleting   references/templates/\n*deleting   references/excellent-cases/README.md\n*deleting   references/excellent-cases/\n*deleting   references/README.md\n*deleting   references/\n.d..t...... ./\n[OmniDesk][sync] 同步 Skill: knowledge-agent\n[OmniDesk][sync] 同步 Skill: knowledge-search\n[OmniDesk][sync] 同步 Skill: material-writing\n*deleting   references/writing-style/style-guide.md\n*deleting   references/writing-style/structure-patterns.md\n*deleting   references/writing-style/common-phrases.md\n*deleting   references/writing-style/avoid-list.md\n*deleting   references/writing-style/README.md\n*deleting   references/writing-style/\n*deleting   references/templates/work-summary-template.md\n*deleting   references/templates/speech-template.md\n*deleting   references/templates/report-template.md\n*deleting   references/templates/\n*deleting   references/excellent-cases/README.md\n*deleting   references/excellent-cases/\n*deleting   references/README.md\n*deleting   references/\n.d..t...... ./\n>f..t...... SKILL.md\n[OmniDesk][sync] 同步 Skill: memory-agent\n[OmniDesk][sync] 同步 Skill: project-agent\n[OmniDesk][sync] 物化写作资产 -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/references\n[OmniDesk][sync] 物化写作资产 -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review/references\n[OmniDesk][sync] 写作资产已物化到 2 个 Skill。\n\n[OmniDesk][sync] ===== 同步汇总 =====\n  新增 Skill : （无）\n  更新 Skill : document-review knowledge-agent knowledge-search material-writing memory-agent project-agent \n  删除托管   : 0\n  保留未托管 : （无）\n[OmniDesk][sync] 完成：共处理 6 个 Skill -> /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills\n[OmniDesk][sync] 托管清单已更新：/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/.omnidesk-managed\n",
+      "stderr": ""
+    },
+    "discover_v1": {
+      "cmd": [
+        "node",
+        "/mnt/data/Code/MyWorkStation/tests/verification/phase1/probe_provider.mjs",
+        "{\"dshHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home\", \"agentsHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/agents-home\", \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\", \"marker\": \"<!-- SCENARIO7-MARKER: v1 -->\", \"includeDefaultRoots\": true}"
+      ],
+      "rc": 0,
+      "stdout": "{\n  \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\",\n  \"count\": 6,\n  \"skills\": [\n    {\n      \"name\": \"document-review\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 1423,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 210,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-search\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-search/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 735,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"material-writing\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 2953,\n      \"bodyHasMarker\": true\n    },\n    {\n      \"name\": \"memory-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/memory-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 486,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"project-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/project-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 207,\n      \"bodyHasMarker\": false\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "discover_v1_oldmarker": {
+      "cmd": [
+        "node",
+        "/mnt/data/Code/MyWorkStation/tests/verification/phase1/probe_provider.mjs",
+        "{\"dshHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home\", \"agentsHome\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/agents-home\", \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\", \"marker\": \"<!-- SCENARIO7-MARKER: v0 -->\", \"includeDefaultRoots\": true}"
+      ],
+      "rc": 0,
+      "stdout": "{\n  \"cwd\": \"/tmp/omni_scen7_g4ryrck2/repo\",\n  \"count\": 6,\n  \"skills\": [\n    {\n      \"name\": \"document-review\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/document-review/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 1423,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 210,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"knowledge-search\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/knowledge-search/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 735,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"material-writing\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 2953,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"memory-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/memory-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 486,\n      \"bodyHasMarker\": false\n    },\n    {\n      \"name\": \"project-agent\",\n      \"source\": \"user-dsh\",\n      \"rank\": 400,\n      \"path\": \"/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/project-agent/SKILL.md\",\n      \"invocation\": {\n        \"modelInvocable\": true,\n        \"userInvocable\": true\n      },\n      \"hasBody\": true,\n      \"bodyLen\": 207,\n      \"bodyHasMarker\": false\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "check_after_sync": {
+      "cmd": [
+        "bash",
+        "scripts/sync-skills.sh",
+        "--check"
+      ],
+      "rc": 0,
+      "stdout": "[OmniDesk][sync] 源目录   : /tmp/omni_scen7_g4ryrck2/repo/skills（6 个 Skill）\n[OmniDesk][sync] 源清单：\n  - document-review\n  - knowledge-agent\n  - knowledge-search\n  - material-writing\n  - memory-agent\n  - project-agent\n[OmniDesk][sync] 目标目录 : /tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills\n[OmniDesk][sync] 模式     : check（只读比对，不写入）\n[OmniDesk][sync] --check：隔离副本与仓库源一致（未发现漂移）。\n[OmniDesk][sync] （注：未托管目录属于用户自有内容，不参与漂移判定。）\n",
+      "stderr": ""
+    }
+  },
+  "verdict": {
+    "discovered_count_v0": 6,
+    "discovered_count_v1": 6,
+    "v0_body_has_marker": true,
+    "v1_body_has_new_marker": true,
+    "v1_body_still_has_old_marker": false,
+    "v1_skill_source": "user-dsh",
+    "v1_skill_path": "/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/SKILL.md",
+    "check_rc": 0
+  }
+}

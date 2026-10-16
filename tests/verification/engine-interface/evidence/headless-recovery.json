@@ -1,0 +1,62 @@
+{
+  "evidence_level": "script（真实执行 headless 进程；无模型推理）",
+  "workdir": "/tmp/omni_p1_headless_workdir",
+  "steps": {
+    "fresh_run": {
+      "rc": 1,
+      "session_id": "session-93b7621d-b1b2-4aa4-8809-5b3cc3746f61",
+      "event_types": [
+        "session",
+        "status",
+        "status",
+        "status",
+        "status",
+        "final"
+      ],
+      "note": "一次进程 = 一次任务；session id 由底层生成并在首个事件里给出"
+    },
+    "adopt_same_cwd": {
+      "rc": 1,
+      "adopted": true,
+      "turn_numbers_seen": [
+        2
+      ],
+      "event_types": [
+        "session",
+        "status",
+        "status",
+        "status",
+        "status",
+        "final"
+      ],
+      "note": "接管成功时事件流延续原 Session（turn 编号递增），说明恢复的是既有任务而非新建"
+    },
+    "adopt_wrong_cwd": {
+      "rc": 1,
+      "events": [
+        {
+          "type": "error",
+          "message": "session \"session-93b7621d-b1b2-4aa4-8809-5b3cc3746f61\" was recorded in \"/tmp/omni_p1_headless_workdir\", not \"/tmp\""
+        }
+      ],
+      "stderr_head": [
+        "dsh: session \"session-93b7621d-b1b2-4aa4-8809-5b3cc3746f61\" was recorded in \"/tmp/omni_p1_headless_workdir\", not \"/tmp\""
+      ],
+      "note": "cwd 不一致时明确拒绝接管"
+    },
+    "adopt_unknown_id": {
+      "rc": 1,
+      "events": [
+        {
+          "type": "error",
+          "message": "session \"session-00000000-0000-0000-0000-000000000000\" does not exist; omit --session-id to start a new Session"
+        }
+      ],
+      "note": "未知 id 直接报错，不会静默新建"
+    },
+    "concurrent_ownership": {
+      "verified": false,
+      "note": "本步未实测：需要并行持有同一 Session 的活进程；留待第三步（适配器原型）用显式场景验证"
+    }
+  }
+}

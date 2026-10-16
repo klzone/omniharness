@@ -10,11 +10,21 @@
   config:
     apiKeyEnv: DEEPSEEK_API_KEY
     maxUses: 20
+- id: workspace-controller
+  name: "@deepseek-ai/dsh-api-workspace-controller"
+  # “默认工作区”落点：不覆盖时跟随系统 Documents（Linux 用 xdg-user-dir），
+  # 会落到 OmniDesk 隔离根之外，且与原版 DSH 的默认工作区同路径。
+  # 显式改指向本实例自己的 DSH_HOME 下，避免与原版或其他实例共享目录。
+  config:
+    documentsDirectory: !!js dshHomePath('workspace-documents')
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
+  # 默认模型：OpenDesign 路由下的 DeepSeek V4.1 Flash（推理档位由下方 llm-pi-ai 声明）。
+  # 如需临时切回 Agnes，只需把 provider/model/reasoningEffort 改回
+  # agnescom / agnes-3.0-flash / high（该路由仍保留在下方 providers 中）。
   config:
-    provider: agnescom
-    model: agnes-3.0-flash
+    provider: opendesign
+    model: deepseek-v4.1-flash
     reasoningEffort: high
 - id: ui-settings-account
   name: "@deepseek-ai/dsh-client-ui-settings-account"
@@ -78,3 +88,33 @@
               thinkingFormat: qwen-chat-template
           - id: agnes-image-2.5-flash
             name: agnes-image-2.5-flash
+      # OpenDesign 聚合路由：提供 deepseek-v4.1-flash 等模型。
+      # 该路由不在 pi-ai 内置目录中，因此必须在配置里逐项列出模型，
+      # 并显式声明思考档位（installed catalog 不提供默认值）。
+      opendesign:
+        displayName: OpenDesign
+        apiKeyEnv: OPENDESIGN_API_KEY
+        api: openai-completions
+        baseURL: https://amr-link.open-design.ai/v1
+        models:
+          - id: claude-haiku-5.5
+            name: claude-haiku-5.5
+          - id: deepseek-v4.1-flash
+            name: DeepSeek V4.1 Flash
+            # 该端点的真实思考档位取值：none/minimal/low/medium/high/xhigh/max
+            # (已实测；'on' 会被拒绝)。DSH 只有 7 档，故逐一映射。
+            # 注意: YAML 1.1 中 off 是无引号布尔词，键与值都必须加引号。
+            reasoningEfforts:
+              "off": "none"
+              minimal: minimal
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+              max: max
+          - id: glm-5.3-flashx
+            name: glm-5.3-flashx
+          - id: gpt-6-luna
+            name: gpt-6-luna
+          - id: kimi-k2.7-code
+            name: kimi-k2.7-code

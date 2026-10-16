@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-10-16T00:10:53+0800",
+  "scope": "OmniDesk Phase 2：真实模型端到端材料写作验证",
+  "isolation": {
+    "dshHome": "/tmp/omnidesk-verify-home",
+    "note": "一次性验证根，位于 /tmp，脚本结束后可由用户自行删除；未触碰 ~/.dsh 与 ~/.agents"
+  },
+  "profile": {
+    "provider": "opendesign",
+    "model": "deepseek-v4.1-flash",
+    "reasoningEffort": "high",
+    "baseURL": "https://amr-link.open-design.ai/v1",
+    "api": "openai-completions",
+    "declaredReasoningEfforts": {
+      "off": "none",
+      "minimal": "minimal",
+      "low": "low",
+      "medium": "medium",
+      "high": "high",
+      "xhigh": "xhigh",
+      "max": "max"
+    }
+  },
+  "skillUnderTest": "material-writing",
+  "assetsExpected": {
+    "templates": [
+      "report-template.md",
+      "speech-template.md",
+      "work-summary-template.md"
+    ],
+    "writingStyle": [
+      "style-guide.md",
+      "common-phrases.md",
+      "structure-patterns.md",
+      "avoid-list.md"
+    ],
+    "excellentCases": "仅 README.md（无范文）"
+  },
+  "observations": {
+    "outputLength": 3213,
+    "claimsReadTemplates": true,
+    "claimsReadWritingStyle": true,
+    "declaredNoHistoricalExamples": true,
+    "declaredTemplatePartialFit": true,
+    "markedPendingConfirmation": true,
+    "didNotFabricateMetrics": true,
+    "outputTailSectionPresent": true
+  }
+}

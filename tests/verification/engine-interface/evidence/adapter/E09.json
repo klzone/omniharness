@@ -1,0 +1,87 @@
+{
+  "scenario": "E09",
+  "title": "E09 未知会话",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091880.565202,
+  "checks": [
+    {
+      "check": "recover_unknown_rejected",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_session",
+        "message": "[unknown_session] Invalid params: session is not resumable: synthetic-session-does-not-exist",
+        "detail": {
+          "rpc_code": -32602,
+          "rpc_message": "Invalid params: session is not resumable: synthetic-session-does-not-exist",
+          "method": "session/resume"
+        }
+      }
+    },
+    {
+      "check": "maps_to_standard_unknown_session",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_session",
+        "message": "[unknown_session] Invalid params: session is not resumable: synthetic-session-does-not-exist",
+        "detail": {
+          "rpc_code": -32602,
+          "rpc_message": "Invalid params: session is not resumable: synthetic-session-does-not-exist",
+          "method": "session/resume"
+        }
+      }
+    },
+    {
+      "check": "no_new_session_created_on_unknown",
+      "pass": true,
+      "detail": {
+        "initialize": 1,
+        "session/resume": 1
+      }
+    },
+    {
+      "check": "no_prompt_for_unknown_session",
+      "pass": true,
+      "detail": {
+        "initialize": 1,
+        "session/resume": 1
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e09_krhqyl2a",
+    "unknown_session_error": {
+      "exception": "EngineError",
+      "engine_error_code": "unknown_session",
+      "message": "[unknown_session] Invalid params: session is not resumable: synthetic-session-does-not-exist",
+      "detail": {
+        "rpc_code": -32602,
+        "rpc_message": "Invalid params: session is not resumable: synthetic-session-does-not-exist",
+        "method": "session/resume"
+      }
+    },
+    "sent_before": {
+      "initialize": 1
+    },
+    "sent_after": {
+      "initialize": 1,
+      "session/resume": 1
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091882.5677464
+}

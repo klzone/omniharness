@@ -1,0 +1,66 @@
+{
+  "guarded_paths": [
+    "/home/kevin/.dsh",
+    "/home/kevin/.agents",
+    "/home/kevin/.config/DSH Desktop",
+    "/home/kevin/.local/share/io.github.hairyf.deepseek-harness-desktop"
+  ],
+  "before": {
+    "/home/kevin/.dsh": {
+      "exists": true,
+      "entries": 4000,
+      "truncated": true,
+      "digest": "e17a9ced671aa345960c65b7c0efab592a65a2a3b8e9de414dce75f83c43c370"
+    },
+    "/home/kevin/.agents": {
+      "exists": true,
+      "entries": 0,
+      "truncated": false,
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/home/kevin/.config/DSH Desktop": {
+      "exists": true,
+      "entries": 153,
+      "truncated": false,
+      "digest": "595bb75685f2815aa69ce2865fe6798b82ff77ac6096dce182bc6b4e9b9578e9"
+    },
+    "/home/kevin/.local/share/io.github.hairyf.deepseek-harness-desktop": {
+      "exists": true,
+      "entries": 1560,
+      "truncated": false,
+      "digest": "a7516d0adc896b0088a8eea1fd72a615ea6ee09944320db2d38b9e57dc935639"
+    }
+  },
+  "after": {
+    "/home/kevin/.dsh": {
+      "exists": true,
+      "entries": 4000,
+      "truncated": true,
+      "digest": "e17a9ced671aa345960c65b7c0efab592a65a2a3b8e9de414dce75f83c43c370"
+    },
+    "/home/kevin/.agents": {
+      "exists": true,
+      "entries": 0,
+      "truncated": false,
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/home/kevin/.config/DSH Desktop": {
+      "exists": true,
+      "entries": 153,
+      "truncated": false,
+      "digest": "595bb75685f2815aa69ce2865fe6798b82ff77ac6096dce182bc6b4e9b9578e9"
+    },
+    "/home/kevin/.local/share/io.github.hairyf.deepseek-harness-desktop": {
+      "exists": true,
+      "entries": 1560,
+      "truncated": false,
+      "digest": "a7516d0adc896b0088a8eea1fd72a615ea6ee09944320db2d38b9e57dc935639"
+    }
+  },
+  "differences": [],
+  "unchanged": true,
+  "test_roots_only_in_tmp": true,
+  "stray_roots": [],
+  "note": "受守护路径在测试前后完全一致。",
+  "verdict": "pass"
+}

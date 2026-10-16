@@ -24,10 +24,25 @@ die()  { printf '[OmniDesk][setup][错误] %s\n' "$*" >&2; exit 1; }
 
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
+CHECK_FAILED=0
+
+run_check() {
+  local label="$1"
+  shift
+  info "检查：$label"
+  if "$@"; then
+    return 0
+  else
+    local rc=$?
+    CHECK_FAILED=1
+    printf "[OmniDesk][setup][错误] %s 检查失败（退出码 %s）。\n" "$label" "$rc" >&2
+    return 0
+  fi
+}
 
 info "1/3 校验并准备运行底座（锁定版本）"
 if [ "$CHECK_ONLY" -eq 1 ]; then
-  bash "$SCRIPT_DIR/bootstrap-runtime.sh" --check || true
+  run_check "运行底座" bash "$SCRIPT_DIR/bootstrap-runtime.sh" --check
 else
   bash "$SCRIPT_DIR/bootstrap-runtime.sh" || die "底座准备失败；可手动重跑：scripts/bootstrap-runtime.sh"
 fi
@@ -41,10 +56,17 @@ fi
 
 info "3/3 同步技能到隔离运行时"
 if [ "$CHECK_ONLY" -eq 1 ]; then
-  bash "$SCRIPT_DIR/sync-skills.sh" --check || true
+  run_check "Skill 同步状态" bash "$SCRIPT_DIR/sync-skills.sh" --check
 else
   bash "$SCRIPT_DIR/sync-skills.sh" || die "技能同步失败；可手动重跑：scripts/sync-skills.sh"
 fi
 
-info "初始化完成。启动隔离实例：scripts/omnidesk-dev.sh"
+if [ "$CHECK_ONLY" -eq 1 ] && [ "$CHECK_FAILED" -ne 0 ]; then
+  die "只读检查未通过；请根据上方错误修复后重新运行 scripts/setup.sh --check。"
+fi
 
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  info "只读检查完成。"
+else
+  info "初始化完成。启动隔离实例：scripts/omnidesk-dev.sh"
+fi

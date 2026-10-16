@@ -1,0 +1,136 @@
+{
+  "scenario": "E12",
+  "title": "E12 重复事件",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091891.8735585,
+  "checks": [
+    {
+      "check": "session_established",
+      "pass": true,
+      "detail": "5cfd7356-65d6-41d7-9c42-93d8cc7177b7"
+    },
+    {
+      "check": "duplicate_dropped",
+      "pass": true,
+      "detail": "dropped_duplicate_chunks=1"
+    },
+    {
+      "check": "no_duplicate_concatenation",
+      "pass": true,
+      "detail": {
+        "content": "甲乙"
+      }
+    },
+    {
+      "check": "seq_unique_monotonic",
+      "pass": true,
+      "detail": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "check": "task_not_reexecuted",
+      "pass": true,
+      "detail": 1
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e12_exci40u6",
+    "injected_frames": [
+      {
+        "messageId": "msg-inject",
+        "text": "甲"
+      },
+      {
+        "messageId": "msg-inject",
+        "text": "甲"
+      },
+      {
+        "messageId": "msg-inject",
+        "text": "乙"
+      }
+    ],
+    "status_after_injection": {
+      "omni_task_id": "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792091893.328185,
+      "last_event_seq": 3,
+      "partial_output_size": 2,
+      "engine_session_id": "5cfd7356-65d6-41d7-9c42-93d8cc7177b7",
+      "note": "dropped_duplicate_chunks=1"
+    },
+    "result_after_injection": {
+      "omni_task_id": "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775",
+      "form": "not_ready",
+      "content": "甲乙",
+      "persisted_at": 1792091893.3281653,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "status",
+          "value": "running"
+        }
+      ],
+      "note": "任务尚未取得终态"
+    },
+    "event_sequence": [
+      {
+        "omni_task_id": "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775",
+        "seq": 1,
+        "occurred_at": 1792091893.3283033,
+        "type": "task_started",
+        "payload": {
+          "normalized": true,
+          "reason": "session/prompt 已发出",
+          "intent": "synthetic-writing-task"
+        }
+      },
+      {
+        "omni_task_id": "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775",
+        "seq": 2,
+        "occurred_at": 1792091894.329127,
+        "type": "text_delta",
+        "payload": {
+          "text": "甲",
+          "message_id": "msg-inject",
+          "chars": 1
+        }
+      },
+      {
+        "omni_task_id": "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775",
+        "seq": 3,
+        "occurred_at": 1792091894.329244,
+        "type": "text_delta",
+        "payload": {
+          "text": "乙",
+          "message_id": "msg-inject",
+          "chars": 1
+        }
+      }
+    ],
+    "shutdown": {
+      "mode": "force",
+      "in_flight_before": [
+        "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775"
+      ],
+      "cancelled": [],
+      "still_running": [
+        "omni-5f029911-f9d4-461c-ad3f-3b9a9e7c9775"
+      ],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    }
+  },
+  "notes": [
+    "注入式重复被适配层去重（键为 messageId+text）。transport 层的观察：DSH 会把连续相同增量在交付前聚合，故真实链路里重复帧通常不会到达适配层；因此本项证明的是适配层去重分支正确，而非底层一定会产生重复帧。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091898.0212872
+}

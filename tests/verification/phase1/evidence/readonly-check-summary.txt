@@ -1,0 +1,19 @@
+OmniDesk Phase 1 只读副作用验证（脚本/隔离环境实测级证据）
+生成时间: 2026-10-15 23:24:21+0800
+
+[正常路径] bash scripts/setup.sh --check
+  退出码: 0
+  尾部输出: [OmniDesk][setup] 只读检查完成。
+
+[失败路径] 一次性沙箱（无底座 + 无隔离根）
+  退出码: 1
+  报告底座失败: True
+  报告 Skill 失败: True
+  缺失的隔离根被创建: False
+
+[只读副作用] 快照前后差异（元数据级；~/.dsh/sessions 子树已排除）
+  repo           changed=0 added=0 removed=0
+  omnidesk_root  changed=0 added=0 removed=0
+  yvanai         changed=0 added=0 removed=0
+  stock_dsh      changed=0 added=0 removed=0
+  stock_agents   changed=0 added=0 removed=0

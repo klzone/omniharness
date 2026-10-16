@@ -12,7 +12,7 @@
 
 **1. 原 Phase 2 计划的「三组副本逐字节相同」结论已经过时。**【实测】
 
-该结论写在 `docs/OmniDesk-Phase2-Plan.md` 第 232 行，但 Phase 2A 修改了仓库根副本后，只有模板一组仍完全相同：
+该历史结论写在归档文件 `docs/archive/OmniDesk-Phase2-Plan.md` 第 232 行；Phase 2A 修改了仓库根副本后，只有模板一组仍完全相同：
 
 | 重复组 | Phase 2 结论 | 当前实测 |
 | --- | --- | --- |
@@ -141,7 +141,7 @@ git ls-files -s runtime/deepseek-harness
 | `README.md:76` | 描述 `data-template/` | 补齐该目录或删去该行 |
 | `README.md` 目录规划段 | 未列出 `templates/`、`knowledge/`、`workstations/` | 补全，与第二节映射一致 |
 | `CHANGELOG.md:10` | 「`workstations/discipline/knowledge/` 与 `knowledge/`」并列 | 收敛为单一来源表述 |
-| `docs/OmniDesk-Phase2-Plan.md:232` | 「三组逐字节相同」 | 标注已过时（或加修订说明） |
+| `docs/archive/OmniDesk-Phase2-Plan.md:232` | 「三组逐字节相同」 | 已通过归档说明标记为历史快照；旧结论保留，不作为当前事实 |
 | `docs/OmniDesk-Web-Notice-Error-Fix.md:54` | 列 `workstations/discipline/profile.yaml` 为需同步的配置 | 改为「规划文件，不生效」 |
 
 ---

@@ -1,0 +1,68 @@
+{
+  "scenario": "E06",
+  "title": "E06 取消与完成竞争",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091869.4061136,
+  "checks": [
+    {
+      "check": "terminal_unique",
+      "pass": true,
+      "detail": "cancelled"
+    },
+    {
+      "check": "no_contradictory_terminal",
+      "pass": true,
+      "detail": {
+        "cancel_final": "cancelled",
+        "status_final": "cancelled"
+      }
+    },
+    {
+      "check": "no_backward_from_terminal",
+      "pass": true,
+      "detail": [
+        "cancelled"
+      ]
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e06_uzr67_mk",
+    "cancel_outcome": {
+      "omni_task_id": "omni-8b6562b2-8bcb-4b7a-9d23-5d6a4adff4c0",
+      "phase": "confirmed_cancelled",
+      "requested_at": 1792091871.7633395,
+      "settled_at": 1792091871.813837,
+      "final_state": "cancelled",
+      "evidence": "engine_terminal",
+      "note": "引擎以 stopReason=cancelled 落定"
+    },
+    "status_series": [
+      {
+        "omni_task_id": "omni-8b6562b2-8bcb-4b7a-9d23-5d6a4adff4c0",
+        "status": "cancelled",
+        "evidence_source": "engine_terminal",
+        "since": 1792091871.813838,
+        "last_event_seq": 4,
+        "partial_output_size": 2,
+        "engine_session_id": "d6ee55c9-6bba-4e1c-b4d9-f257e4b3d201",
+        "note": "stop_reason=cancelled"
+      }
+    ],
+    "first_observed_state": "cancelled",
+    "shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091872.1379478
+}

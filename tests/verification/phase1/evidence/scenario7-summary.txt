@@ -1,0 +1,11 @@
+OmniDesk Phase 1 场景 7（隔离 Skill 同步加载）离线验证
+生成时间: 2026-10-15 23:24:27+0800
+隔离方式: 一次性 /tmp 副本 + 一次性隔离根；仓库与 ~/OmniDesk 只读
+
+旧标记发现结果: 发现 6 个 Skill；material-writing 正文含旧标记 = True
+同步后再发现:   发现 6 个 Skill；material-writing 正文含新标记 = True
+旧标记是否仍在: False（False = 已被新版本替换）
+发现来源/路径:  source=user-dsh path=/tmp/omni_scen7_g4ryrck2/iso/runtime/dsh-home/skills/material-writing/SKILL.md
+同步后 --check 退出码: 0（0=无漂移）
+
+判定: 隔离实例是否加载新版本 Skill = 是（DSH 真实发现机制读到新正文）

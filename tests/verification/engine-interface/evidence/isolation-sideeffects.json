@@ -1,0 +1,45 @@
+{
+  "evidence_level": "script（元数据快照比对）",
+  "targets": {
+    "dsh_home": {
+      "path": "/home/kevin/.dsh",
+      "added": [],
+      "added_count": 0,
+      "removed": [],
+      "removed_count": 0,
+      "changed": [],
+      "changed_count": 0
+    },
+    "agents_home": {
+      "path": "/home/kevin/.agents",
+      "added": [],
+      "added_count": 0,
+      "removed": [],
+      "removed_count": 0,
+      "changed": [],
+      "changed_count": 0
+    },
+    "omnidesk_root": {
+      "path": "/home/kevin/OmniDesk",
+      "added": [],
+      "added_count": 0,
+      "removed": [],
+      "removed_count": 0,
+      "changed": [],
+      "changed_count": 0
+    },
+    "yvanai_root": {
+      "path": "/home/kevin/YvanAI",
+      "added": [],
+      "added_count": 0,
+      "removed": [],
+      "removed_count": 0,
+      "changed": [],
+      "changed_count": 0
+    }
+  },
+  "probe_rc": 0,
+  "repo_git_status_changed": false,
+  "repo_git_status_delta": [],
+  "conclusion": "全部目标差异为 0 时，说明本审计的引擎探测对本机原版 DSH、隔离根与用户数据中枢无写入副作用。"
+}

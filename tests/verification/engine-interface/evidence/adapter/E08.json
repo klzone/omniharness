@@ -1,0 +1,137 @@
+{
+  "scenario": "E08",
+  "title": "E08 会话恢复",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091876.788363,
+  "checks": [
+    {
+      "check": "session_id_captured",
+      "pass": true,
+      "detail": "0e13a11a-8c01-4e91-a507-eb60cc608015"
+    },
+    {
+      "check": "recover_session_ok",
+      "pass": true,
+      "detail": {
+        "engine_session_id": "0e13a11a-8c01-4e91-a507-eb60cc608015",
+        "resumed": true,
+        "cwd": "/tmp/omni_p1s3_e08_li3n7i43/work",
+        "config_option_count": 1,
+        "evidence": "engine_terminal",
+        "note": "恢复的是既有会话；恢复不触发任何任务重放"
+      }
+    },
+    {
+      "check": "resumed_is_existing_session",
+      "pass": true,
+      "detail": {
+        "engine_session_id": "0e13a11a-8c01-4e91-a507-eb60cc608015",
+        "resumed": true,
+        "cwd": "/tmp/omni_p1s3_e08_li3n7i43/work",
+        "config_option_count": 1,
+        "evidence": "engine_terminal",
+        "note": "恢复的是既有会话；恢复不触发任何任务重放"
+      }
+    },
+    {
+      "check": "no_implicit_new_session",
+      "pass": true,
+      "detail": {
+        "initialize": 1,
+        "session/resume": 1
+      }
+    },
+    {
+      "check": "recovery_does_not_replay",
+      "pass": true,
+      "detail": {
+        "initialize": 1,
+        "session/resume": 1
+      }
+    },
+    {
+      "check": "task_recovery_ok",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-77a4c101-dafc-4ef0-99b8-dc7d2a15bef7",
+        "status": {
+          "omni_task_id": "omni-77a4c101-dafc-4ef0-99b8-dc7d2a15bef7",
+          "status": "succeeded",
+          "evidence_source": "engine_terminal",
+          "since": 1792091878.6081707,
+          "last_event_seq": 4,
+          "partial_output_size": 6,
+          "engine_session_id": "0e13a11a-8c01-4e91-a507-eb60cc608015",
+          "note": "来自本地记录（前次运行取得的引擎终态证据）"
+        },
+        "replayed": false,
+        "evidence": "engine_terminal",
+        "note": "按本地记录恢复终态；未自动重放"
+      }
+    },
+    {
+      "check": "task_recovery_no_replay",
+      "pass": true,
+      "detail": false
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e08_li3n7i43",
+    "first_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    },
+    "session_recovery": {
+      "engine_session_id": "0e13a11a-8c01-4e91-a507-eb60cc608015",
+      "resumed": true,
+      "cwd": "/tmp/omni_p1s3_e08_li3n7i43/work",
+      "config_option_count": 1,
+      "evidence": "engine_terminal",
+      "note": "恢复的是既有会话；恢复不触发任何任务重放"
+    },
+    "sent_before_recover": {
+      "initialize": 1
+    },
+    "sent_after_recover": {
+      "initialize": 1,
+      "session/resume": 1
+    },
+    "task_recovery": {
+      "omni_task_id": "omni-77a4c101-dafc-4ef0-99b8-dc7d2a15bef7",
+      "status": {
+        "omni_task_id": "omni-77a4c101-dafc-4ef0-99b8-dc7d2a15bef7",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091878.6081707,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "0e13a11a-8c01-4e91-a507-eb60cc608015",
+        "note": "来自本地记录（前次运行取得的引擎终态证据）"
+      },
+      "replayed": false,
+      "evidence": "engine_terminal",
+      "note": "按本地记录恢复终态；未自动重放"
+    },
+    "second_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091880.5642996
+}

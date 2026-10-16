@@ -1,0 +1,149 @@
+{
+  "scenario": "E13",
+  "title": "E13 最终结果未落盘",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091898.0249777,
+  "checks": [
+    {
+      "check": "engine_completed",
+      "pass": true,
+      "detail": "succeeded"
+    },
+    {
+      "check": "persist_failure_recorded",
+      "pass": true,
+      "detail": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+    },
+    {
+      "check": "plain_result_kept_content",
+      "pass": true,
+      "detail": "合成回复内容"
+    },
+    {
+      "check": "plain_not_marked_persisted",
+      "pass": true,
+      "detail": {
+        "persisted_at": null,
+        "persist_source": "failed"
+      }
+    },
+    {
+      "check": "require_persisted_raises_standard_code",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "result_persist_failed",
+        "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+        "detail": {
+          "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+          "content_chars": 6
+        }
+      }
+    },
+    {
+      "check": "no_rerun_to_fake_persist",
+      "pass": true,
+      "detail": {
+        "session/prompt": 1,
+        "session/new": 1,
+        "tasks": 1
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e13_e2epsi5x",
+    "status_series": [
+      {
+        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091899.5002785,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+      },
+      {
+        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091899.5002785,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+      },
+      {
+        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091899.5002785,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+      },
+      {
+        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792091899.7219858,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
+        "note": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+      }
+    ],
+    "result_plain": {
+      "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+      "form": "complete",
+      "content": "合成回复内容",
+      "persisted_at": null,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_stop_reason",
+          "value": "end_turn"
+        },
+        {
+          "kind": "engine_terminal",
+          "value": "end_turn 无法区分 completed/blocked"
+        },
+        {
+          "kind": "persist",
+          "value": "failed"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 agent_message_chunk 拼装；end_turn 语义存在缺口"
+    },
+    "require_persisted_error": {
+      "exception": "EngineError",
+      "engine_error_code": "result_persist_failed",
+      "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+      "detail": {
+        "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+        "content_chars": 6
+      }
+    },
+    "sent_method_counts": {
+      "initialize": 1,
+      "session/new": 1,
+      "session/prompt": 1
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091900.1833465
+}

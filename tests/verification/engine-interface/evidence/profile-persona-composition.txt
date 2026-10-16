@@ -1,0 +1,38 @@
+# OmniDesk P1 第二步 —— 有效人格前缀（personaPrefix）静态合成核对
+#
+# 证据类型：static（文件事实）+ script（离线配置合成；不调用模型、不读写凭证）
+# 方法：把仓库 profiles/yvan-work 复制到一次性 DSH_HOME，运行 --dump-config 离线合成插件树。
+#        --dump-config 只打印合成后的配置，不挂载运行时、不绑定端口、不调用模型。
+#
+# 命令：
+#   DSH_HOME=<一次性>/dsh-home DSH_AGENTS_HOME=<一次性>/agents \
+#     node runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js \
+#     --profile yvan-work --dump-config
+#
+exit_code: 0
+
+--- 上下文 ---
+  name: '@deepseek-ai/dsh-tools'
+  config:
+    mode: !!js process.env.DSH_TOOLS_MODE
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+  config:
+    personaPrefix: You are a coding agent powered by the {{model}} model.
+# == @deepseek-ai/dsh-base
+
+# 分层来源（bundle 补丁栈，后者覆盖前者）：
+#   @deepseek-ai/dsh-base      -> system-prompt.personaPrefix = ''
+#   @deepseek-ai/dsh-web-app   -> system-prompt.personaPrefix = "You are a coding agent powered by the {{model}} model."
+#   profiles/yvan-work 的用户层补丁未覆盖 system-prompt.personaPrefix
+
+# 其他 shipped profile 的对照（grep cordis.patch.yml）：
+#   dsh-acp-app      -> "You are a coding agent powered by the {{model}} model."
+#   dsh-headless     -> "You are a coding agent powered by the {{model}} model."
+#   dsh-sdk-app      -> (无 system-prompt 条目；继承 dsh-base 的 personaPrefix = ''）
+#   dsh-sdk-minimal  -> !!js process.env.DSH_SYSTEM_PROMPT ?? 'You are a helpful software engineer assistant.'
+
+# 结论（配置层事实，非模型行为结论）：
+# 1. 当前 yvan-work（web 形态）有效 personaPrefix 为 "coding agent"。
+# 2. 该值来自 bundle 补丁层，可由上层 profile 补丁覆盖，无需修改 runtime。
+# 3. 本核对不代表模型在非编码任务上的实际行为；行为验证须用纯合成任务实测（见契约文档第六节）。

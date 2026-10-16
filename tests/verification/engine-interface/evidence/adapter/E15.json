@@ -1,0 +1,75 @@
+{
+  "scenario": "E15",
+  "title": "E15 关闭超时",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091905.7317352,
+  "checks": [
+    {
+      "check": "forced_terminate_recorded",
+      "pass": true,
+      "detail": {
+        "mode": "graceful",
+        "in_flight_before": [
+          "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552"
+        ],
+        "cancelled": [],
+        "still_running": [
+          "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552"
+        ],
+        "connection_closed": true,
+        "process_exit_code": -9,
+        "forced_terminate": true,
+        "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
+      }
+    },
+    {
+      "check": "not_reported_as_graceful",
+      "pass": true,
+      "detail": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
+    },
+    {
+      "check": "still_running_or_unknown_recorded",
+      "pass": true,
+      "detail": [
+        "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552"
+      ]
+    },
+    {
+      "check": "status_not_reported_success",
+      "pass": true,
+      "detail": "running"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e15_4iasoh3z",
+    "shutdown_report": {
+      "mode": "graceful",
+      "in_flight_before": [
+        "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552"
+      ],
+      "cancelled": [],
+      "still_running": [
+        "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552"
+      ],
+      "connection_closed": true,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
+    },
+    "status_after_force": {
+      "omni_task_id": "omni-d6bb8638-4f3f-432c-8c1a-59cba4949552",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792091907.2265003,
+      "last_event_seq": 1,
+      "partial_output_size": 0,
+      "engine_session_id": "baea92fd-facf-485c-9dab-d160b51becad",
+      "note": ""
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091908.4242976
+}

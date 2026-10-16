@@ -1,0 +1,112 @@
+{
+  "scenario": "E11",
+  "title": "E11 事件断流",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091887.9046884,
+  "checks": [
+    {
+      "check": "no_duplicate_seq",
+      "pass": true,
+      "detail": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "check": "gap_recorded_or_none",
+      "pass": true,
+      "detail": {
+        "last_before": 2,
+        "first_after": 3
+      }
+    },
+    {
+      "check": "partial_output_preserved",
+      "pass": true,
+      "detail": 2
+    },
+    {
+      "check": "reconnect_join_not_duplicated",
+      "pass": true,
+      "detail": {
+        "joined": "甲乙丙丁戊",
+        "final": "甲乙丙丁戊"
+      }
+    },
+    {
+      "check": "no_fabricated_success",
+      "pass": true,
+      "detail": "complete"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e11__x_7d2cr",
+    "partial_before_reconnect": [
+      {
+        "omni_task_id": "omni-9ad8fd5e-500e-48e4-8a3f-ad670928b267",
+        "seq": 1,
+        "occurred_at": 1792091889.6691997,
+        "type": "task_started",
+        "payload": {
+          "normalized": true,
+          "reason": "session/prompt 已发出",
+          "intent": "synthetic-writing-task"
+        }
+      },
+      {
+        "omni_task_id": "omni-9ad8fd5e-500e-48e4-8a3f-ad670928b267",
+        "seq": 2,
+        "occurred_at": 1792091891.4131703,
+        "type": "text_delta",
+        "payload": {
+          "text": "甲乙丙丁戊",
+          "message_id": "a0df2f1e-4563-4a28-919f-4c417d3c720b",
+          "chars": 5
+        }
+      }
+    ],
+    "resumed_after_reconnect": [
+      {
+        "omni_task_id": "omni-9ad8fd5e-500e-48e4-8a3f-ad670928b267",
+        "seq": 3,
+        "occurred_at": 1792091891.4145184,
+        "type": "progress",
+        "payload": {
+          "kind": "usage",
+          "used": 5728,
+          "size": 262144
+        }
+      },
+      {
+        "omni_task_id": "omni-9ad8fd5e-500e-48e4-8a3f-ad670928b267",
+        "seq": 4,
+        "occurred_at": 1792091891.4249902,
+        "type": "task_completed",
+        "payload": {
+          "stop_reason": "end_turn",
+          "integrity": "complete",
+          "truncated": false,
+          "note": "stopReason=end_turn；该通道无法区分 completed 与 blocked，属已知语义缺口"
+        }
+      }
+    ],
+    "joined_after_reconnect": "甲乙丙丁戊",
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091891.870752
+}

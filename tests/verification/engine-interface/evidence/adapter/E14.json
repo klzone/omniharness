@@ -1,0 +1,113 @@
+{
+  "scenario": "E14",
+  "title": "E14 优雅关闭",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091900.1864157,
+  "checks": [
+    {
+      "check": "in_flight_reported",
+      "pass": true,
+      "detail": {
+        "mode": "graceful",
+        "in_flight_before": [
+          "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+        ],
+        "cancelled": [],
+        "still_running": [
+          "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+        ],
+        "connection_closed": true,
+        "process_exit_code": 0,
+        "forced_terminate": false,
+        "note": "优雅关闭"
+      }
+    },
+    {
+      "check": "connection_closed",
+      "pass": true,
+      "detail": {
+        "mode": "graceful",
+        "in_flight_before": [
+          "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+        ],
+        "cancelled": [],
+        "still_running": [
+          "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+        ],
+        "connection_closed": true,
+        "process_exit_code": 0,
+        "forced_terminate": false,
+        "note": "优雅关闭"
+      }
+    },
+    {
+      "check": "not_reported_as_cancelled",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "check": "in_flight_reported_arm2",
+      "pass": true,
+      "detail": {
+        "mode": "graceful",
+        "in_flight_before": [
+          "omni-607cb9e6-81b2-4d63-b691-87d38591073c"
+        ],
+        "cancelled": [
+          "omni-607cb9e6-81b2-4d63-b691-87d38591073c"
+        ],
+        "still_running": [],
+        "connection_closed": true,
+        "process_exit_code": 0,
+        "forced_terminate": false,
+        "note": "优雅关闭"
+      }
+    },
+    {
+      "check": "cancelled_or_still_running_reported",
+      "pass": true,
+      "detail": {
+        "cancelled": [
+          "omni-607cb9e6-81b2-4d63-b691-87d38591073c"
+        ],
+        "still_running": []
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e14_xxt4xf3l",
+    "shutdown_no_cancel": {
+      "mode": "graceful",
+      "in_flight_before": [
+        "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+      ],
+      "cancelled": [],
+      "still_running": [
+        "omni-cdea551f-1efd-4171-ac00-db2d47d5643d"
+      ],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    },
+    "shutdown_with_cancel": {
+      "mode": "graceful",
+      "in_flight_before": [
+        "omni-607cb9e6-81b2-4d63-b691-87d38591073c"
+      ],
+      "cancelled": [
+        "omni-607cb9e6-81b2-4d63-b691-87d38591073c"
+      ],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091905.7289286
+}

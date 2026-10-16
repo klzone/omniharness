@@ -1,0 +1,144 @@
+{
+  "scenario": "E04",
+  "title": "E04 执行失败",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091864.5380604,
+  "checks": [
+    {
+      "check": "reached_failed",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "status": "failed",
+        "evidence_source": "engine_error",
+        "since": 1792091866.2340565,
+        "last_event_seq": 2,
+        "partial_output_size": 0,
+        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+      }
+    },
+    {
+      "check": "no_fake_success",
+      "pass": true,
+      "detail": "failed"
+    },
+    {
+      "check": "content_empty_so_unrecoverable",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "form": "unrecoverable",
+        "content": "",
+        "persisted_at": 1792091866.2343013,
+        "integrity": "partial",
+        "sources": [
+          {
+            "kind": "status",
+            "value": "failed"
+          },
+          {
+            "kind": "error",
+            "value": "task_failed"
+          }
+        ],
+        "note": "终态非成功且未收到任何输出"
+      }
+    },
+    {
+      "check": "error_code_present",
+      "pass": true,
+      "detail": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+    },
+    {
+      "check": "unknown_task_maps_to_standard_code",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_task",
+        "message": "[unknown_task] unknown omni_task_id: omni-does-not-exist",
+        "detail": {
+          "omni_task_id": "omni-does-not-exist"
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e04_619itw92",
+    "status_series": [
+      {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091866.0324411,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091866.0324411,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792091866.0324411,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "status": "failed",
+        "evidence_source": "engine_error",
+        "since": 1792091866.2340565,
+        "last_event_seq": 2,
+        "partial_output_size": 0,
+        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+      }
+    ],
+    "task_result": {
+      "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+      "form": "unrecoverable",
+      "content": "",
+      "persisted_at": 1792091866.2343013,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "status",
+          "value": "failed"
+        },
+        {
+          "kind": "error",
+          "value": "task_failed"
+        }
+      ],
+      "note": "终态非成功且未收到任何输出"
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091866.693644
+}

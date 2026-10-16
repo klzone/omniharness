@@ -1,0 +1,133 @@
+{
+  "scenario": "E01",
+  "title": "E01 正常提交",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091857.9630027,
+  "checks": [
+    {
+      "check": "initialize_ok",
+      "pass": true,
+      "detail": {
+        "engine_kind": "dsh-acp",
+        "engine_version": "0.0.1",
+        "protocol_version": "acp/1",
+        "compatibility": "compatible",
+        "healthy": true,
+        "capabilities": {
+          "submit_task": "implementation_supported",
+          "get_task_status": "implementation_supported",
+          "stream_events": "implementation_supported",
+          "cancel_task": "implementation_supported",
+          "recover_session": "implementation_supported",
+          "recover_task": "partial",
+          "get_task_result": "implementation_supported"
+        },
+        "detail": {
+          "agent_name": "deepseek-harness-acp",
+          "advertised_session_capabilities": [
+            "close",
+            "list",
+            "resume"
+          ],
+          "advertised_mcp_http": true,
+          "auth_methods": 0,
+          "command": [
+            "node",
+            "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+            "--profile",
+            "acp",
+            "--patch",
+            "/tmp/omni_p1s3_e01_67ycc0ou/e01.yml"
+          ],
+          "client_capabilities": {
+            "fs": {
+              "readTextFile": false,
+              "writeTextFile": false
+            }
+          },
+          "note": "capabilities 为适配层声明；实际通过与否见 E01-E20 执行状态"
+        }
+      }
+    },
+    {
+      "check": "capabilities_declared",
+      "pass": true,
+      "detail": {
+        "submit_task": "implementation_supported",
+        "get_task_status": "implementation_supported",
+        "stream_events": "implementation_supported",
+        "cancel_task": "implementation_supported",
+        "recover_session": "implementation_supported",
+        "recover_task": "partial",
+        "get_task_result": "implementation_supported"
+      }
+    },
+    {
+      "check": "submit_ok",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
+        "status": "running",
+        "accepted_at": 1792091859.3153818,
+        "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388",
+        "note": "适配层已建立会话并提交；等待引擎终态证据"
+      }
+    },
+    {
+      "check": "omni_task_id_stable",
+      "pass": true,
+      "detail": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48"
+    },
+    {
+      "check": "id_layers_distinct",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
+        "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388"
+      }
+    },
+    {
+      "check": "accepted_state_is_early",
+      "pass": true,
+      "detail": "running"
+    },
+    {
+      "check": "idempotency_same_when_key_repeats",
+      "pass": true,
+      "detail": {
+        "first": "omni-45509d05-0efb-412a-ba72-bf329ebb13f1",
+        "second": "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e01_67ycc0ou",
+    "receipt": {
+      "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
+      "status": "running",
+      "accepted_at": 1792091859.3153818,
+      "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388",
+      "note": "适配层已建立会话并提交；等待引擎终态证据"
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [
+        "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+      ],
+      "cancelled": [],
+      "still_running": [
+        "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+      ],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    },
+    "engine_stderr": ""
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792091860.0780723
+}

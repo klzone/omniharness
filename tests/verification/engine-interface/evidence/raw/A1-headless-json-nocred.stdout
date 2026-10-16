@@ -1,0 +1,7 @@
+{"type":"session","sessionId":"session-8e7150e8-c82d-40dc-9a6e-2624797b133f","cwd":"/mnt/data/Code/MyWorkStation"}
+{"type":"status","phase":"turn_start","turn":1}
+{"type":"status","phase":"step_start","turn":1,"step":1}
+{"type":"status","phase":"step_end","turn":1,"step":1}
+{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"error","error":{"message":"llm-deepseek: no API key for provider route \"deepseek-official\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment","code":"MISSING_CREDENTIAL"}}}
+{"type":"final","text":""}
+A1_EXIT=1

@@ -1,0 +1,155 @@
+{
+  "scenario": "E02",
+  "title": "E02 流式输出",
+  "channel": "acp",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792091860.0814154,
+  "checks": [
+    {
+      "check": "seq_strictly_increasing",
+      "pass": true,
+      "detail": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "check": "has_task_started",
+      "pass": true,
+      "detail": [
+        "task_started",
+        "text_delta",
+        "progress",
+        "task_completed"
+      ]
+    },
+    {
+      "check": "has_text_delta",
+      "pass": true,
+      "detail": [
+        "task_started",
+        "text_delta",
+        "progress",
+        "task_completed"
+      ]
+    },
+    {
+      "check": "stream_join_eq_result",
+      "pass": true,
+      "detail": {
+        "join": "甲乙丙丁",
+        "final": "甲乙丙丁"
+      }
+    },
+    {
+      "check": "granularity_is_message_level_not_token",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "check": "delta_and_final_separated",
+      "pass": true,
+      "detail": "增量与完整结果分别取自事件流与 get_task_result"
+    },
+    {
+      "check": "terminal_event_present",
+      "pass": true,
+      "detail": [
+        "task_completed"
+      ]
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_e02_24xvoyeu",
+    "event_sequence": [
+      {
+        "omni_task_id": "omni-41163a00-8a72-4528-8f27-cf89e77294e7",
+        "seq": 1,
+        "occurred_at": 1792091861.596461,
+        "type": "task_started",
+        "payload": {
+          "normalized": true,
+          "reason": "session/prompt 已发出",
+          "intent": "synthetic-writing-task"
+        }
+      },
+      {
+        "omni_task_id": "omni-41163a00-8a72-4528-8f27-cf89e77294e7",
+        "seq": 2,
+        "occurred_at": 1792091862.0258708,
+        "type": "text_delta",
+        "payload": {
+          "text": "甲乙丙丁",
+          "message_id": "16325411-7724-4354-8b62-8692cfece916",
+          "chars": 4
+        }
+      },
+      {
+        "omni_task_id": "omni-41163a00-8a72-4528-8f27-cf89e77294e7",
+        "seq": 3,
+        "occurred_at": 1792091862.02711,
+        "type": "progress",
+        "payload": {
+          "kind": "usage",
+          "used": 5727,
+          "size": 262144
+        }
+      },
+      {
+        "omni_task_id": "omni-41163a00-8a72-4528-8f27-cf89e77294e7",
+        "seq": 4,
+        "occurred_at": 1792091862.039687,
+        "type": "task_completed",
+        "payload": {
+          "stop_reason": "end_turn",
+          "integrity": "complete",
+          "truncated": false,
+          "note": "stopReason=end_turn；该通道无法区分 completed 与 blocked，属已知语义缺口"
+        }
+      }
+    ],
+    "stream_join": "甲乙丙丁",
+    "final_result": {
+      "omni_task_id": "omni-41163a00-8a72-4528-8f27-cf89e77294e7",
+      "form": "complete",
+      "content": "甲乙丙丁",
+      "persisted_at": 1792091861.5964088,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_stop_reason",
+          "value": "end_turn"
+        },
+        {
+          "kind": "engine_terminal",
+          "value": "end_turn 无法区分 completed/blocked"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 agent_message_chunk 拼装；end_turn 语义存在缺口"
+    },
+    "text_delta_count": 1,
+    "model_request_count_for_run": 1,
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "notes": [
+    "流式粒度实测：合成端点分 4 块、每块间隔 0.05s 逐步返回，但 ACP 通道只在整轮结束时投递 1 个 assistant 消息块。因此本通道的 text_delta 是「按 assistant 消息」粒度，不是 token 级流式；适配层不得对外声称 token 级流（对照契约 4.4 的归一化说明）。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792091862.2814324
+}
