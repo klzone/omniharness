@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniDesk",
+  "version": "0.1.0",
+  "identifier": "dev.omnidesk.discipline",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:5273",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "OmniDesk Discipline",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "category": "Productivity",
+    "shortDescription": "OmniDesk 独立 AI 工作站外壳",
+    "longDescription": "OmniDesk 桌面外壳：自有 React UI + Rust 宿主 + Python 引擎适配层。不加载 DSH Desktop 界面，不依赖 DSH Web 服务。"
+  }
+}
