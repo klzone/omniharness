@@ -1,0 +1,46 @@
+{
+  "schema": "omnidesk.offline-flows.v1",
+  "weekly": {
+    "tab_label": "周记录 → 周报",
+    "input_label": "每行格式：日期 | 事项 | 状态（done / pending / blocked）；日期须真实存在（如 2 月 30 日会被拒绝）",
+    "input_placeholder": "2026-10-12 | 合成事项 | done",
+    "sample_label": "载入合成样例",
+    "result_title": "本周工作记录汇总（本地确定性生成）",
+    "details_heading": "事项明细",
+    "confirm_heading": "需要人工确认",
+    "draft": {
+      "rules": "把用户提供的事项记录整理成本周周报：先按状态归类，再逐项归纳进展、问题与下步；只依据提供的记录与所选材料，不得补充未提及的成效、数据或人员；信息缺失一律单列“待确认”。",
+      "sections": "本周概述\n事项进展\n问题与风险\n下步计划\n待确认事项"
+    }
+  },
+  "writing": {
+    "tab_label": "一般文案结构",
+    "purpose_label": "材料目的（要解决什么问题、用于什么场合）",
+    "audience_label": "受众（交给谁看、由谁使用）",
+    "requirements_label": "明确要求（篇幅、时限、必须包含的内容；可留空）",
+    "facts_label": "可用事实与数据（可留空；留空会标为待确认）",
+    "sample_label": "载入合成样例",
+    "result_title": "材料结构建议（本地生成，未调用模型）",
+    "structure_heading": "建议结构",
+    "pending_heading": "待确认",
+    "draft": {
+      "rules": "按材料目的与受众组织起草：先给结构，再给正文；区分事实、分析、判断与建议，不把推断写成事实；不得虚构数据、政策依据、文件名称、文号或工作成效；关键信息缺失单列“待确认”。",
+      "sections": "结构（章节列表）\n初稿正文\n待确认事项\n事实来源"
+    }
+  },
+  "project": {
+    "tab_label": "项目跟进",
+    "input_label": "每行格式：事项 | 负责人代号 | 期限 | 状态 | 下一步。负责人只填 P1 这类代号，不要填真实姓名；期限须真实存在。",
+    "input_placeholder": "合成事项 | P1 | 2026-10-20 | in_progress | 补齐说明",
+    "today_label": "逾期判定日期（留空使用 UTC 当天；填 YYYY-MM-DD 可复现，须是真实存在的日期）",
+    "today_placeholder": "2026-10-15",
+    "sample_label": "载入合成样例",
+    "result_title": "项目跟进汇总（本地确定性生成）",
+    "details_heading": "事项明细",
+    "confirm_heading": "需要人工确认",
+    "draft": {
+      "rules": "把事项清单整理成项目跟进汇总：说明整体状态、逐项进展、逾期与阻塞、下一步动作；负责人只写用户给出的代号；日期与逾期判定以代码计算为准，不得改写或补造。",
+      "sections": "整体状态\n事项明细\n逾期与阻塞\n下步安排\n待确认事项"
+    }
+  }
+}
