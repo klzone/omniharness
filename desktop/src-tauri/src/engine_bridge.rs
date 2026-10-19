@@ -11,6 +11,7 @@
 //!   * 不读取、不打印、不落盘任何凭证。
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -69,6 +70,9 @@ pub struct EngineBridge {
     initialized: bool,
     /// omni.initialize 的真实返回（引擎描述符），健康快照据此报告，不虚报。
     descriptor: Option<serde_json::Value>,
+    /// 仅测试：取得 supervisor 锁之前的同步点（OD-ARCH-024 的确定性时序测试）。
+    #[cfg(test)]
+    pre_lock_hook: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl EngineBridge {
@@ -78,6 +82,8 @@ impl EngineBridge {
             pump_running: Arc::new(AtomicBool::new(false)),
             initialized: false,
             descriptor: None,
+            #[cfg(test)]
+            pre_lock_hook: None,
         }
     }
 
@@ -86,13 +92,26 @@ impl EngineBridge {
     }
 
     /// 启动子进程并完成 omni.initialize（幂等）。返回引擎描述符。
+    ///
+    /// 必须传入宿主签发的准入凭据：未通过端点与授权判定时，上层拿不到凭据，
+    /// 也就无法初始化引擎。
     pub fn ensure_initialized(
         &mut self,
         sink: &EventSink,
+        grant: &crate::admission::AdmissionGrant,
     ) -> Result<serde_json::Value, serde_json::Value> {
+        // OD-ARCH-023：凭据必须绑定“当前权限世代”。未盖章的凭据（在引擎调用守卫
+        // 之外取得的准入结果）不得用于启动引擎。
+        if grant.epoch() == crate::admission::GRANT_UNSTAMPED_EPOCH {
+            return Err(serde_json::json!({
+                "engine_error_code": "grant_not_stamped",
+                "message": "已拒绝启动引擎：准入凭据未绑定当前权限世代。未创建子进程、未提交任务。",
+                "detail": { "reason": "grant_not_stamped", "enforced_by": "host" },
+            }));
+        }
         let mut guard = self.supervisor.lock().unwrap();
         if !guard.is_running() {
-            guard.start().map_err(|e| {
+            guard.start(grant).map_err(|e| {
                 serde_json::json!({
                     "engine_error_code": "engine_unavailable",
                     "message": e,
@@ -114,7 +133,10 @@ impl EngineBridge {
                 .unwrap_or(serde_json::Value::Null);
             self.descriptor = Some(descriptor.clone());
             self.initialized = true;
-            self.start_pump(sink);
+            // 调用方此时**已持有** supervisor 锁，因此把句柄就地取出后传进去。
+            // （泵不可自行加锁：本互斥锁不可重入。）
+            let handle = guard.notification_handle();
+            self.start_pump(sink, handle);
             return Ok(descriptor);
         }
         Ok(self
@@ -123,45 +145,54 @@ impl EngineBridge {
             .unwrap_or(serde_json::Value::Null))
     }
 
-    fn start_pump(&self, sink: &EventSink) {
+    /// 启动事件泵。
+    ///
+    /// **关键（锁饥饿修复）**：泵只借用一次 supervisor 锁，换取一个独立的通知句柄；
+    /// 此后它**不再触碰 supervisor 互斥锁**。旧实现对每一次 500ms 等待都持锁，
+    /// 超时后立即重新加锁，形成紧循环，把 GTK 主线程（`engine_health`）永久饿死，
+    /// 表现为窗口整体「无响应」。
+    fn start_pump(
+        &self,
+        sink: &EventSink,
+        handle: Option<(Arc<Mutex<Receiver<serde_json::Value>>>, Arc<AtomicBool>)>,
+    ) {
         if self.pump_running.swap(true, Ordering::SeqCst) {
             return;
         }
-        let supervisor = Arc::clone(&self.supervisor);
+        // 取不到句柄说明引擎尚未启动，本轮不起泵。
+        let Some((notif_rx, exited)) = handle else {
+            self.pump_running.store(false, Ordering::SeqCst);
+            return;
+        };
+
         let running = Arc::clone(&self.pump_running);
         let sink = Arc::clone(sink);
         thread::Builder::new()
             .name("omnidesk-event-pump".to_string())
             .spawn(move || loop {
-                let frame = {
-                    let mut guard = supervisor.lock().unwrap();
-                    match guard.with_channel(|channel| {
-                        Ok(channel.recv_notification_timeout(Duration::from_millis(500)))
-                    }) {
-                        Ok(frame) => frame,
-                        Err(_) => {
-                            // 通道不可用（引擎未启动/已退出）。
-                            if !guard.is_running() {
-                                sink(serde_json::json!({
-                                    "omni_task_id": "unknown",
-                                    "seq": -1,
-                                    "occurred_at": now_secs(),
-                                    "type": "protocol_error",
-                                    "payload": {
-                                        "engine_error_code": "engine_unavailable",
-                                        "message": "引擎事件流已中断（子进程退出）",
-                                    },
-                                }));
-                                running.store(false, Ordering::SeqCst);
-                                return;
-                            }
-                            None
-                        }
-                    }
-                };
+                // 只锁通知接收端本身（不涉及 supervisor），超时即释放。
+                let frame = notif_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_millis(500))
+                    .ok();
 
                 let Some(frame) = frame else {
-                    // 超时无事件属正常空转，继续等待。
+                    // 超时无事件属正常空转；子进程退出则明确声明事件流中断。
+                    if exited.load(Ordering::SeqCst) {
+                        sink(serde_json::json!({
+                            "omni_task_id": "unknown",
+                            "seq": -1,
+                            "occurred_at": now_secs(),
+                            "type": "protocol_error",
+                            "payload": {
+                                "engine_error_code": "engine_unavailable",
+                                "message": "引擎事件流已中断（子进程退出）",
+                            },
+                        }));
+                        running.store(false, Ordering::SeqCst);
+                        return;
+                    }
                     continue;
                 };
 
@@ -235,6 +266,53 @@ impl EngineBridge {
         )
     }
 
+    /// 列出引擎已持久化的会话元数据（不返回正文）。
+    pub fn list_sessions(
+        &mut self,
+        cwd: Option<&str>,
+        after_cursor: Option<&str>,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        let mut params = serde_json::json!({});
+        if let Some(value) = cwd {
+            params["cwd"] = serde_json::json!(value);
+        }
+        if let Some(value) = after_cursor {
+            params["after_cursor"] = serde_json::json!(value);
+        }
+        self.rpc("omni.list_sessions", params, Duration::from_secs(30))
+    }
+
+    /// 重开一个既有会话（resume）。不代表任务续跑。
+    pub fn recover_session(
+        &mut self,
+        engine_session_id: &str,
+        workspace_token: Option<&str>,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        let mut params = serde_json::json!({ "engine_session_id": engine_session_id });
+        if let Some(value) = workspace_token {
+            params["workspace_token"] = serde_json::json!(value);
+        }
+        self.rpc("omni.recover_session", params, Duration::from_secs(60))
+    }
+
+    /// 列出 OmniDesk 自己落盘的任务台账元数据。
+    pub fn list_task_records(&mut self, limit: u32) -> Result<serde_json::Value, serde_json::Value> {
+        self.rpc(
+            "omni.list_task_records",
+            serde_json::json!({ "limit": limit }),
+            Duration::from_secs(30),
+        )
+    }
+
+    /// 重启后恢复可证实状态；无终态证据的任务返回 unknown，不自动重放。
+    pub fn recover_task(&mut self, omni_task_id: &str) -> Result<serde_json::Value, serde_json::Value> {
+        self.rpc(
+            "omni.recover_task",
+            serde_json::json!({ "omni_task_id": omni_task_id }),
+            Duration::from_secs(60),
+        )
+    }
+
     pub fn stream_events(
         &mut self,
         omni_task_id: &str,
@@ -253,11 +331,27 @@ impl EngineBridge {
         params: serde_json::Value,
         timeout: Duration,
     ) -> Result<serde_json::Value, serde_json::Value> {
+        // 仅测试用同步点：在**取得 supervisor 锁之前**执行，用于确定性地复现
+        // “命令已进入发送路径、尚未持锁，关闭先拿到锁”的时序（OD-ARCH-024）。
+        #[cfg(test)]
+        {
+            let hook = self.pre_lock_hook.clone();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
         let mut guard = self.supervisor.lock().unwrap();
+        // 关闭中优先于“未初始化”：两段式关闭会先摘除通道、后重置 initialized，
+        // 期间必须稳定地返回“关闭中、未发送”，而不是等关闭结束后才报普通错误。
+        if guard.is_stopping() {
+            return Err(error_to_json(&EngineRpcError::shutting_down(
+                "引擎正在关闭，本次请求未发送。请等待关闭完成后重试。",
+            )));
+        }
         if !self.initialized {
             return Err(serde_json::json!({
                 "engine_error_code": "engine_unavailable",
-                "message": "引擎尚未初始化，请先调用 engine_describe",
+                "message": "引擎未运行或已停止（可能正被关闭），本次请求未发送。请先重新初始化引擎后再试。",
                 "detail": {},
             }));
         }
@@ -266,18 +360,53 @@ impl EngineBridge {
             .map_err(|e| error_to_json(&e))
     }
 
-    /// 关闭引擎。
+    /// 关闭引擎（两段式，OD-ARCH-024）。
+    ///
+    /// 摘除通道在 supervisor 锁内完成，耗时的协议关闭与进程收尾在**锁外**执行。
+    /// 因此关闭期间任何状态/结果/取消命令都能立刻拿锁并得到明确结论，不会被
+    /// 排队到关闭结束。
+    ///
+    /// **调用方不得在持有宿主锁时等待本方法**：虽然本方法自身不长时间持锁，但它的
+    /// 等待会一直占用调用方手里的宿主锁，从而把并发的状态/结果/取消命令堵住。
+    /// 宿主生产路径请统一用 `lib.rs` 的 `stop_engine()` / `on_window_destroyed_shutdown()`。
     pub fn shutdown(&mut self, grace: Duration) -> Result<serde_json::Value, String> {
-        let mut guard = self.supervisor.lock().unwrap();
-        let (forced, exit_code) = guard.stop(grace)?;
-        self.initialized = false;
-        self.descriptor = None;
-        self.pump_running.store(false, Ordering::SeqCst);
+        let supervisor = Arc::clone(&self.supervisor);
+        let detached = {
+            let mut guard = supervisor.lock().unwrap();
+            guard.begin_stop()
+        };
+        let outcome = match detached {
+            None => Ok((false, None)),
+            Some(channel) => EngineSupervisor::finish_stop(channel, grace),
+        };
+        {
+            let mut guard = supervisor.lock().unwrap();
+            guard.end_stop();
+        }
+        // 通道已被摘除：无论关闭成功与否，旧引擎都不再可用，如实重置自身状态。
+        self.mark_stopped();
+        let (forced, exit_code) = outcome?;
         Ok(serde_json::json!({
             "forced_terminate": forced,
             "process_exit_code": exit_code,
             "note": if forced { "超出优雅等待，已强制终止" } else { "引擎已优雅退出" },
         }))
+    }
+
+    /// 仅重置“已初始化”状态（OD-ARCH-024）。
+    ///
+    /// 供宿主在**不持有 supervisor 锁的**关闭等待之后调用，使后续命令得到
+    /// 如实的 `engine_unavailable`（“未运行或已停止”），而不是含糊的成功/超时。
+    pub fn mark_stopped(&mut self) {
+        self.initialized = false;
+        self.descriptor = None;
+        self.pump_running.store(false, Ordering::SeqCst);
+    }
+
+    /// 仅测试：安装一个在取得 supervisor 锁之前执行的回调（生产构建不存在）。
+    #[cfg(test)]
+    pub(crate) fn set_pre_lock_hook(&mut self, hook: Option<Arc<dyn Fn() + Send + Sync>>) {
+        self.pre_lock_hook = hook;
     }
 
     /// 健康快照（不发起任务、不读凭证）。
@@ -311,5 +440,123 @@ impl EngineBridge {
             },
             "stderr_tail": stderr_tail,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine_supervisor::{supervisor_with_fake_channel, EngineConfig};
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Instant;
+
+    fn fake_config() -> EngineConfig {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME"));
+        let app = std::env::temp_dir().join("omnidesk-host-tests").join("app");
+        EngineConfig {
+            python: std::env::var("OMNIDESK_PYTHON").unwrap_or_else(|_| "python3".to_string()),
+            engine_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures")
+                .join("fake_engine"),
+            dsh_cli: PathBuf::from("/bin/true"),
+            dsh_home: home.join("OmniDesk").join("runtime").join("dsh-home"),
+            agents_home: home.join("OmniDesk").join("runtime").join("agents-home"),
+            engine_state_dir: app.join("engine-state"),
+            result_dir: app.join("engine-state").join("results"),
+            profile: "acp".to_string(),
+            patch_files: vec![],
+        }
+    }
+
+    /// 事件泵运行期间，`health()` 必须在有限时间内返回。
+    ///
+    /// 回归背景：旧事件泵在**持有 supervisor 互斥锁**时做 500ms 阻塞等待，超时后立即
+    /// 重新加锁形成紧循环，把 GTK 主线程上的 `engine_health` 永久饿死，窗口表现为
+    /// 整体「无响应」。本测试在旧实现下会明确失败（10 秒内拿不到锁）。
+    #[test]
+    fn event_pump_does_not_starve_host_lock() {
+        let supervisor = supervisor_with_fake_channel(fake_config());
+        let bridge = EngineBridge::new(Arc::new(Mutex::new(supervisor)));
+        let shared = Arc::new(Mutex::new(bridge));
+        let sink: EventSink = Arc::new(|_| {});
+
+        {
+            let mut guard = shared.lock().unwrap();
+            guard
+                .ensure_initialized(&sink, &crate::admission::AdmissionGrant::for_test())
+                .expect("假引擎应能完成 omni.initialize 并启动事件泵");
+        }
+
+        for round in 0..5 {
+            let (tx, rx) = channel();
+            {
+                let shared = Arc::clone(&shared);
+                thread::Builder::new()
+                    .name(format!("health-probe-{}", round))
+                    .spawn(move || {
+                        let start = Instant::now();
+                        let health = {
+                            let mut guard = shared.lock().unwrap();
+                            guard.health("/tmp/omnidesk-host-tests/app")
+                        };
+                        let _ = tx.send((health, start.elapsed()));
+                    })
+                    .expect("spawn health probe");
+            }
+
+            let (health, elapsed) = rx
+                .recv_timeout(Duration::from_secs(10))
+                .expect("health() 在 10 秒内未返回：宿主锁被事件泵饿死（旧缺陷重现）");
+            assert_eq!(health["running"], true, "引擎应在运行");
+            assert!(
+                elapsed < Duration::from_secs(2),
+                "第 {} 轮 health() 耗时 {:?}，超出可接受范围（疑似锁饥饿）",
+                round,
+                elapsed
+            );
+        }
+
+        let mut guard = shared.lock().unwrap();
+        let outcome = guard.shutdown(Duration::from_secs(5)).expect("关闭引擎");
+        assert_eq!(outcome["forced_terminate"], false, "假引擎应能优雅退出");
+    }
+
+    /// OD-ARCH-023：未绑定权限世代的准入凭据不得启动引擎。
+    ///
+    /// 这堵住“在引擎调用守卫之外取得准入结果、之后再用来启动引擎”的路径；
+    /// 用真实假引擎验证：拒绝时**不创建子进程**。
+    #[test]
+    fn unstamped_grant_cannot_start_engine() {
+        let supervisor = supervisor_with_fake_channel(fake_config());
+        let bridge = EngineBridge::new(Arc::new(Mutex::new(supervisor)));
+        let shared = Arc::new(Mutex::new(bridge));
+        let sink: EventSink = Arc::new(|_| {});
+
+        let mut guard = shared.lock().unwrap();
+        let err = guard
+            .ensure_initialized(&sink, &crate::admission::AdmissionGrant::unstamped_for_test())
+            .expect_err("未绑定世代的凭据必须被拒绝");
+        let health_before = guard.health("/tmp/omnidesk-host-tests/app");
+
+        // 对照组：盖章后的凭据正常初始化；先收尾再断言，避免任何断言失败时
+        // 留下子进程阻塞测试框架。
+        let init = guard.ensure_initialized(&sink, &crate::admission::AdmissionGrant::for_test());
+        let health_after = guard.health("/tmp/omnidesk-host-tests/app");
+        let shutdown = guard.shutdown(Duration::from_secs(5));
+
+        assert_eq!(err["engine_error_code"], "grant_not_stamped");
+        assert_eq!(err["detail"]["enforced_by"], "host");
+        // 拒绝发生在启动/初始化之前：子进程未初始化。
+        assert_eq!(health_before["note"], "引擎子进程在运行（未初始化）");
+        assert!(health_before["engine_version"].is_null());
+
+        init.expect("持当前世代的凭据应能启动假引擎");
+        assert_eq!(health_after["note"], "引擎已初始化并在运行");
+        assert!(!health_after["engine_version"].is_null());
+        let _ = shutdown;
     }
 }

@@ -12,6 +12,9 @@ use std::time::Duration;
 
 use omnidesk_desktop_lib::engine_ipc::EngineChannel;
 use omnidesk_desktop_lib::engine_supervisor::{EngineConfig, EngineSupervisor};
+use omnidesk_desktop_lib::admission::{self, AdmissionFacts};
+use omnidesk_desktop_lib::route_classifier::RouteFacts;
+use omnidesk_desktop_lib::settings::ModelPermissions;
 use serde_json::json;
 
 fn fixture_dir() -> PathBuf {
@@ -50,7 +53,9 @@ fn base_config() -> EngineConfig {
         agents_home: home().join("OmniDesk").join("runtime").join("agents-home"),
         engine_state_dir: app_root.join("engine-state"),
         result_dir: app_root.join("engine-state").join("results"),
-        profile: "yvan-work".to_string(),
+        // 这里只是假引擎的占位配置（不起真实 DSH、不接 ACP），对行为无影响。
+        // 真实默认值为 `acp`，见 engine_supervisor.rs 默认值及 OD-BUILD-003 回归场景 R1/R1b。
+        profile: "acp".to_string(),
         patch_files: vec![],
     }
 }
@@ -164,21 +169,54 @@ fn ipc_unknown_method_returns_jsonrpc_error() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn supervisor_start_initialize_and_stop() {
-    let mut supervisor = EngineSupervisor::new(base_config());
-    supervisor.start().expect("启动假引擎应成功");
-    assert!(supervisor.is_running());
-    assert!(supervisor.pid().unwrap_or(0) > 0);
+fn admission_refuses_before_any_process_state_exists() {
+    // 准入判定只依赖端点事实与用户权限，不需要先校验/启动引擎。
+    // 这里用坏配置构造监督器，验证拒绝路径不会创建目录或子进程。
+    let base = std::env::temp_dir().join(format!(
+        "omnidesk-admission-{}-{}",
+        std::process::id(),
+        line!()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let mut config = base_config();
+    config.engine_dir = base.join("missing-engine");
+    config.dsh_cli = base.join("missing-cli.js");
+    config.dsh_home = base.join("dsh-home");
+    config.agents_home = base.join("agents-home");
+    config.engine_state_dir = base.join("app").join("engine-state");
+    config.result_dir = config.engine_state_dir.join("results");
 
-    let init = supervisor
-        .initialize(Duration::from_secs(10))
-        .expect("initialize 应成功");
-    assert_eq!(init["engine"]["engine_kind"], "fake-engine");
-
-    let (forced, exit_code) = supervisor.stop(Duration::from_secs(5)).expect("关闭应成功");
-    assert!(!forced, "优雅关闭不应触发强杀");
-    assert_eq!(exit_code, Some(0));
+    let mut supervisor = EngineSupervisor::new(config);
+    let route = RouteFacts {
+        provider: "synthetic".to_string(),
+        model: "synthetic".to_string(),
+        endpoint: Some("http://127.0.0.1:9/v1".to_string()),
+        endpoint_host: Some("127.0.0.1:9".to_string()),
+        category: "local".to_string(),
+        category_reason: "回环地址".to_string(),
+        basis: vec!["provider=synthetic".to_string()],
+        leaves_device: Some(false),
+    };
+    let denied = AdmissionFacts { route: route.clone(), permissions: ModelPermissions::default() };
+    let err = admission::require_allowed(&denied, admission::SUBMIT_REFUSAL_MESSAGE)
+        .expect_err("默认权限下必须拒绝");
+    assert_eq!(err["engine_error_code"], admission::REFUSAL_CODE);
+    assert_eq!(supervisor.pid(), None, "拒绝后不得存在子进程");
     assert!(!supervisor.is_running());
+    assert!(!base.exists(), "拒绝路径不得创建任何目录：{}", base.display());
+
+    let allowed = AdmissionFacts {
+        route,
+        permissions: ModelPermissions { local: true, private: false, public: false },
+    };
+    assert!(admission::require_allowed(&allowed, admission::SUBMIT_REFUSAL_MESSAGE).is_ok());
+
+    let mut unknown = allowed.clone();
+    unknown.route.category = "unknown".to_string();
+    unknown.permissions = ModelPermissions { local: true, private: true, public: true };
+    let err = admission::require_allowed(&unknown, admission::SUBMIT_REFUSAL_MESSAGE)
+        .expect_err("未知类别必须拒绝");
+    assert_eq!(err["engine_error_code"], admission::UNKNOWN_ENDPOINT_CODE);
 }
 
 #[test]
@@ -229,3 +267,7 @@ fn supervisor_reports_engine_unavailable_before_start() {
         .expect_err("未启动时应返回通道错误");
     assert_eq!(err.engine_error_code(), "engine_unavailable");
 }
+
+// 说明：原「supervisor 生命周期」与「事件泵不饿死宿主锁」两项测试需要挂载假引擎通道，
+// 而该入口是 `#[cfg(test)]` 的 crate 内部接口，集成测试无法也不应访问。
+// 两项已迁入 crate 单元测试（engine_supervisor.rs / engine_bridge.rs）。

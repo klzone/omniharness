@@ -113,6 +113,7 @@ fn vertical_slice_walks_all_five_stages_outside_repo() {
             rework_kind: "none".to_string(),
             blocker: "none".to_string(),
             duration_bucket: Some("5_15m".to_string()),
+            reuse_willingness: true,
         },
         now,
     )

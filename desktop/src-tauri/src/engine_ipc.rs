@@ -74,6 +74,31 @@ impl EngineRpcError {
             }),
         }
     }
+
+    /// 宿主判定“引擎正在关闭”：请求**未发送**给引擎（OD-ARCH-024）。
+    ///
+    /// 与 `transport` 区分开，是为了让调用方和用户能分清两种结果：
+    /// “请求发出去了但引擎没在”（`engine_unavailable`）与“压根没发，因为正在关闭”
+    /// （`engine_shutting_down`）。后者可以明确告知用户重新打开权限后再试。
+    pub fn shutting_down(message: impl Into<String>) -> Self {
+        Self {
+            code: ENGINE_ERROR_CODE,
+            message: message.into(),
+            data: serde_json::json!({
+                "engine_error_code": "engine_shutting_down",
+                "retryable": "yes",
+                "needs_human": "no",
+                "degradable": "no",
+                "may_duplicate_execution": "no",
+                "may_lose_output": "no",
+                "detail": {
+                    "reason": "engine_shutting_down",
+                    "sent_to_engine": false,
+                    "enforced_by": "host",
+                },
+            }),
+        }
+    }
 }
 
 impl std::fmt::Display for EngineRpcError {
@@ -89,7 +114,9 @@ pub struct EngineChannel {
     child: Child,
     stdin: Option<ChildStdin>,
     pending: Arc<Mutex<HashMap<u64, Sender<serde_json::Value>>>>,
-    notif_rx: Mutex<Receiver<serde_json::Value>>,
+    /// 通知接收端。用 `Arc<Mutex<..>>` 是为了让事件泵能拿到一个**独立句柄**，
+    /// 在完全不持有上层锁的情况下等待通知（见 engine_bridge.rs 的锁饥饿修复）。
+    notif_rx: Arc<Mutex<Receiver<serde_json::Value>>>,
     next_id: AtomicU64,
     exited: Arc<AtomicBool>,
     exit_code: Arc<Mutex<Option<i32>>>,
@@ -204,7 +231,7 @@ impl EngineChannel {
             child,
             stdin: Some(stdin),
             pending,
-            notif_rx: Mutex::new(notif_rx),
+            notif_rx: Arc::new(Mutex::new(notif_rx)),
             next_id: AtomicU64::new(1),
             exited,
             exit_code,
@@ -318,6 +345,21 @@ impl EngineChannel {
     /// 带超时取出一条通知帧；用于事件泵。
     pub fn recv_notification_timeout(&self, timeout: Duration) -> Option<serde_json::Value> {
         self.notif_rx.lock().unwrap().recv_timeout(timeout).ok()
+    }
+
+    /// 通知接收端的共享句柄。
+    ///
+    /// 事件泵用它在**不持有任何上层锁**的前提下独立阻塞等待通知。
+    /// 调用方不得在其它请求路径上长时间持有该锁。
+    pub fn notification_receiver(&self) -> Arc<Mutex<Receiver<serde_json::Value>>> {
+        Arc::clone(&self.notif_rx)
+    }
+
+    /// 进程是否已退出（stdout 关闭即视作退出）的共享标志。
+    ///
+    /// 事件泵用它判断「引擎是否还在」而无需再向上层取锁。
+    pub fn exited_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.exited)
     }
 
     pub fn stderr_tail(&self) -> Vec<String> {

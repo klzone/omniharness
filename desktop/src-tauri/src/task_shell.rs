@@ -19,11 +19,12 @@
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app_paths::resolve_real_path;
+use crate::flow_pack::FlowPack;
 use crate::sha256::sha256_hex;
 
 /// 任务外壳版本号。写进每个产物，便于将来识别格式。
@@ -250,6 +251,14 @@ pub fn red_line_scan(text: &str) -> Vec<RedLineHit> {
     hits
 }
 
+/// 提交时红线扫描的对象：优先用户原始输入，缺省时退回完整提示词。
+///
+/// 提示词模板含边界说明用词（案件、线索、未公开），扫描全文会让
+/// 正常提交全部被误拒；用户原文才是需要判定是否禁入的内容。
+pub fn scan_target<'a>(prompt_text: &'a str, user_input_text: Option<&'a str>) -> &'a str {
+    user_input_text.unwrap_or(prompt_text)
+}
+
 /// 处理前的输入闸门。命中即拒绝处理，且不把命中原文写进错误信息。
 pub fn assert_input_allowed(text: &str) -> Result<(), String> {
     let hits = red_line_scan(text);
@@ -270,9 +279,8 @@ pub fn assert_input_allowed(text: &str) -> Result<(), String> {
 // 本地数据根（产物与使用记录的落盘边界）
 // ---------------------------------------------------------------------------
 
-/// 默认本地数据目录（相对 $HOME）。刻意放在 YvanAI 数据区，与 DSH 运行环境分离。
-const DEFAULT_LOCAL_SUBDIR: &str = "YvanAI/projects/Omnidesk/analysis";
 /// 覆盖本地数据根的官方入口（绝对路径）。
+#[cfg(test)]
 const LOCAL_ROOT_ENV: &str = "OMNIDESK_LOCAL_DATA_ROOT";
 
 /// 禁止作为本地数据根或落盘路径的片段（小写匹配）。
@@ -379,15 +387,28 @@ fn assert_no_forbidden_path_fragment(path: &Path) -> Result<(), String> {
 }
 
 /// 解析并校验本地数据根。
+///
+/// 优先级：`OMNIDESK_LOCAL_DATA_ROOT`（开发/测试隔离）→ 应用设置中的成果目录 →
+/// 默认 `~/OmniDesk/workspace/artifacts`。只影响**未来新写入**的文件，
+/// 不读取、不迁移、不改名任何旧路径中的内容。
 pub fn resolve_local_data_root() -> Result<PathBuf, String> {
-    let root = match std::env::var_os(LOCAL_ROOT_ENV) {
-        Some(raw) if !raw.is_empty() => PathBuf::from(raw),
-        _ => {
-            let home = std::env::var_os("HOME")
-                .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认本地数据目录".to_string())?;
-            PathBuf::from(home).join(DEFAULT_LOCAL_SUBDIR)
-        }
-    };
+    let config = crate::settings::app_config_dir()?;
+    let root = crate::settings::effective_root(&config)?.root;
+    assert_local_root_allowed(&root)?;
+    assert_outside_repo(&root)?;
+    Ok(root)
+}
+
+/// 幂等准备本地数据根，供引擎任务用作工作目录。
+///
+/// 为什么需要单独一个入口：引擎侧把工作目录收敛为唯一物理身份时要求该目录
+/// **已经存在且可解析**（见 engine/omnidesk_engine/acp_adapter.py 的 canonical_cwd），
+/// 不存在会被判为 invalid_argument。这里复用与保存入口同一套边界校验后创建目录本身，
+/// 不写入任何内容；调用是幂等的。
+pub fn prepare_local_data_root() -> Result<PathBuf, String> {
+    let root = resolve_local_data_root()?;
+    fs::create_dir_all(&root).map_err(|e| format!("创建本地数据目录失败：{}", e))?;
+    // 目录真正建立后再校验一次，防止符号链接等把落点引到禁区。
     assert_local_root_allowed(&root)?;
     assert_outside_repo(&root)?;
     Ok(root)
@@ -779,21 +800,7 @@ pub fn save_artifact(
 
     let content = render_artifact(request, &recomputed, now);
 
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&target)
-        .map_err(|e| {
-            format!(
-                "无法创建产物文件 {}：{}（已存在或不可写；本阶段不覆盖已有文件）",
-                target.display(),
-                e
-            )
-        })?;
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("写入产物失败：{}", e))?;
-    file.sync_all()
-        .map_err(|e| format!("刷新产物到磁盘失败：{}", e))?;
+    write_new_file_durable(&target, &content)?;
 
     Ok(SaveArtifactReceipt {
         path: target.display().to_string(),
@@ -889,6 +896,10 @@ pub struct UsageRecord {
     pub rework_kind: String,
     pub blocker: String,
     pub duration_bucket: Option<String>,
+    /// 是否愿意在类似任务中再次使用。只是布尔值，不承载任何理由文本。
+    /// 旧记录没有该字段时默认为 false，保证历史记录仍可读。
+    #[serde(default)]
+    pub reuse_willingness: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -900,6 +911,12 @@ pub struct UsageRecordInput {
     pub blocker: String,
     #[serde(default)]
     pub duration_bucket: Option<String>,
+    #[serde(default = "default_reuse_willingness")]
+    pub reuse_willingness: bool,
+}
+
+fn default_reuse_willingness() -> bool {
+    false
 }
 
 pub fn build_usage_record(input: &UsageRecordInput, now: f64) -> Result<UsageRecord, String> {
@@ -928,6 +945,7 @@ pub fn build_usage_record(input: &UsageRecordInput, now: f64) -> Result<UsageRec
         rework_kind: input.rework_kind.clone(),
         blocker: input.blocker.clone(),
         duration_bucket: input.duration_bucket.clone(),
+        reuse_willingness: input.reuse_willingness,
     })
 }
 
@@ -1075,6 +1093,983 @@ pub fn now_secs() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0)
+}
+
+// ---------------------------------------------------------------------------
+// 离线场景流程（不调用模型）
+//
+// 这三个流程是**纯本地**的：只做格式校验、确定性统计和 Markdown 生成。
+// 模型撰写步骤在端点准入关闭期间一律标为「受准入阻塞、未验证」。
+// 它们不是通用工作流引擎，各自只有一套固定字段和固定规则。
+// ---------------------------------------------------------------------------
+
+/// 周记录汇总的状态取值。
+pub const WEEKLY_STATUSES: &[&str] = &["done", "pending", "blocked"];
+/// 项目跟进的状态取值。
+pub const PROJECT_STATUSES: &[&str] = &["not_started", "in_progress", "blocked", "done"];
+
+fn scenario_err(line_no: usize, message: &str) -> String {
+    format!("第 {} 行：{}", line_no, message)
+}
+
+/// 某年某月的实际天数（含公历闰年规则）。
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 0,
+    }
+}
+
+/// 日期校验：YYYY-MM-DD，按实际月份天数与闰年规则拒绝不存在的日期。
+/// 周记录日期、项目期限与逾期判定日共用本函数。
+fn parse_date(text: &str) -> Option<(i32, u32, u32)> {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    // 只接受 ASCII 数字，避免非数字字符被 parse 拒绝时产生歧义。
+    let digits_ok = bytes
+        .iter()
+        .enumerate()
+        .all(|(i, b)| matches!(i, 4 | 7) || b.is_ascii_digit());
+    if !digits_ok {
+        return None;
+    }
+    let year: i32 = text[0..4].parse().ok()?;
+    let month: u32 = text[5..7].parse().ok()?;
+    let day: u32 = text[8..10].parse().ok()?;
+    if !(1900..=2999).contains(&year) || !(1..=12).contains(&month) {
+        return None;
+    }
+    if day < 1 || day > days_in_month(year, month) {
+        return None;
+    }
+    Some((year, month, day))
+}
+
+fn date_cmp(a: (i32, u32, u32), b: (i32, u32, u32)) -> std::cmp::Ordering {
+    a.cmp(&b)
+}
+
+/// 周记录中的一条事项。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct WeeklyItem {
+    pub date: String,
+    pub item: String,
+    pub status: String,
+}
+
+/// 周记录汇总结果。所有计数都由本模块确定性计算。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct WeeklySummary {
+    pub schema: &'static str,
+    pub total: u64,
+    pub done: u64,
+    pub pending: u64,
+    pub blocked: u64,
+    pub items: Vec<WeeklyItem>,
+    pub notes: Vec<String>,
+}
+
+pub const WEEKLY_SCHEMA: &str = "omnidesk.weekly.v1";
+
+/// 每行格式：`日期 | 事项 | 状态`。字段缺失、日期非法、状态未知都按行号报错。
+pub fn summarize_week(input: &str) -> Result<WeeklySummary, String> {
+    assert_input_allowed(input)?;
+    let mut items: Vec<WeeklyItem> = Vec::new();
+    for (index, raw) in input.lines().enumerate() {
+        let line_no = index + 1;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let cells: Vec<&str> = line.split('|').map(|c| c.trim()).collect();
+        if cells.len() != 3 {
+            return Err(scenario_err(
+                line_no,
+                "每行必须是「日期 | 事项 | 状态」三个字段，用竖线分隔",
+            ));
+        }
+        if cells[1].is_empty() {
+            return Err(scenario_err(line_no, "事项不能为空"));
+        }
+        if parse_date(cells[0]).is_none() {
+            return Err(scenario_err(
+                line_no,
+                "日期必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
+            ));
+        }
+        if !WEEKLY_STATUSES.contains(&cells[2]) {
+            return Err(scenario_err(
+                line_no,
+                "状态只允许 done / pending / blocked",
+            ));
+        }
+        items.push(WeeklyItem {
+            date: cells[0].to_string(),
+            item: cells[1].to_string(),
+            status: cells[2].to_string(),
+        });
+    }
+    if items.is_empty() {
+        return Err("没有可用事项：每行必须是「日期 | 事项 | 状态」".to_string());
+    }
+
+    let mut done = 0u64;
+    let mut pending = 0u64;
+    let mut blocked = 0u64;
+    for item in &items {
+        match item.status.as_str() {
+            "done" => done += 1,
+            "pending" => pending += 1,
+            _ => blocked += 1,
+        }
+    }
+
+    let mut notes = Vec::new();
+    let mut dates: Vec<(i32, u32, u32)> = items
+        .iter()
+        .filter_map(|item| parse_date(&item.date))
+        .collect();
+    dates.sort_unstable();
+    dates.dedup();
+    if dates.len() != items.len() {
+        notes.push(
+            "同一天有多条事项：未按自然日去重，周报中的条数按事项数统计。".to_string(),
+        );
+    }
+    if pending > 0 || blocked > 0 {
+        notes.push(format!(
+            "有 {} 条未完成事项（pending {} / blocked {}），下周计划需逐条确认责任人与期限。",
+            pending + blocked,
+            pending,
+            blocked
+        ));
+    }
+    if items.iter().any(|item| item.item.trim().is_empty()) {
+        notes.push("存在事项内容为空：请补充后再生成周报。".to_string());
+    }
+    notes.push(
+        "本汇总只统计已填写的记录；未记录的工作不会自动出现，缺失信息需人工确认。"
+            .to_string(),
+    );
+
+    Ok(WeeklySummary {
+        schema: WEEKLY_SCHEMA,
+        total: items.len() as u64,
+        done,
+        pending,
+        blocked,
+        items,
+        notes,
+    })
+}
+
+/// 把周记录汇总渲染为 Markdown。模型步骤明确标注为受准入阻塞。
+pub fn render_weekly_markdown(summary: &WeeklySummary) -> String {
+    render_weekly_markdown_with(summary, &crate::flow_pack::default_pack())
+}
+
+/// 带流程包的渲染：只替换展示文案，统计与固定声明仍由本模块给出。
+pub fn render_weekly_markdown_with(summary: &WeeklySummary, pack: &FlowPack) -> String {
+    let copy = &pack.weekly;
+    let mut out = String::new();
+    out.push_str(&format!("# {}\n\n", copy.result_title.trim()));
+    out.push_str("- 数据来源：使用者填写的周记录，纯本地处理\n");
+    out.push_str("- 模型撰写：受准入阻塞，未验证（本次未调用任何模型）\n");
+    out.push_str(&format!("- 事项总数：{}\n", summary.total));
+    out.push_str(&format!("- 已完成：{}\n", summary.done));
+    out.push_str(&format!("- 待完成：{}\n", summary.pending));
+    out.push_str(&format!("- 受阻：{}\n\n", summary.blocked));
+    out.push_str(&format!("## {}\n\n", copy.details_heading.trim()));
+    out.push_str("| 日期 | 事项 | 状态 |\n| --- | --- | --- |\n");
+    for item in &summary.items {
+        out.push_str(&format!(
+            "| {} | {} | {} |\n",
+            item.date, item.item, item.status
+        ));
+    }
+    out.push_str(&format!("\n## {}\n\n", copy.confirm_heading.trim()));
+    for note in &summary.notes {
+        out.push_str(&format!("- {}\n", note));
+    }
+    out
+}
+
+/// 一般文案的结构建议结果。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct WritingPlan {
+    pub schema: &'static str,
+    pub purpose: String,
+    pub audience: String,
+    pub sections: Vec<String>,
+    pub missing: Vec<String>,
+    pub template_used: Option<String>,
+}
+
+pub const WRITING_SCHEMA: &str = "omnidesk.writing-plan.v1";
+
+/// 按用途与受众给出结构建议；信息不足时只提出结构，不强行套模板。
+///
+/// 刻意不按关键词匹配固定模板：目的、受众、明确要求缺失时，先列待确认项。
+pub fn plan_writing(
+    purpose: &str,
+    audience: &str,
+    requirements: &str,
+    facts: &str,
+) -> Result<WritingPlan, String> {
+    assert_input_allowed(purpose)?;
+    assert_input_allowed(audience)?;
+    assert_input_allowed(requirements)?;
+    assert_input_allowed(facts)?;
+
+    let purpose = purpose.trim();
+    let audience = audience.trim();
+    if purpose.is_empty() {
+        return Err("缺少材料目的：请先说明这份材料要解决什么问题、用于什么场合".to_string());
+    }
+    if audience.is_empty() {
+        return Err("缺少受众：请说明材料交给谁看、由谁使用".to_string());
+    }
+
+    let mut missing = Vec::new();
+    if requirements.trim().is_empty() {
+        missing.push("明确要求（篇幅、时限、必须包含的内容）待确认".to_string());
+    }
+    if facts.trim().is_empty() {
+        missing.push("可用事实与数据待确认：没有事实依据时不得编造".to_string());
+    }
+    if facts
+        .lines()
+        .any(|line| line.contains("TODO") || line.contains("待补"))
+    {
+        missing.push("事实清单中仍有未填写的占位项，需补齐后再定稿".to_string());
+    }
+
+    let mut sections = vec![
+        format!("开头：说明背景与目的（面向{}）", audience),
+        format!("主体：围绕「{}」展开事实与做法", purpose),
+        "结果：只写有依据的成效，无数据则说明未统计".to_string(),
+        "下一步：列出待办与需要确认的事项".to_string(),
+    ];
+    if !requirements.trim().is_empty() {
+        sections.push("按要求补充的章节（见使用者填写的明确要求）".to_string());
+    }
+    if facts.trim().is_empty() {
+        sections.insert(0, "【待确认】事实依据缺失，暂不能形成初稿".to_string());
+    }
+
+    sections.push("模型撰写：受准入阻塞，未验证（本次未调用任何模型）".to_string());
+
+    Ok(WritingPlan {
+        schema: WRITING_SCHEMA,
+        purpose: purpose.to_string(),
+        audience: audience.to_string(),
+        sections,
+        missing,
+        template_used: None,
+    })
+}
+
+/// 把结构建议渲染为 Markdown。
+pub fn render_writing_markdown(plan: &WritingPlan) -> String {
+    render_writing_markdown_with(plan, &crate::flow_pack::default_pack())
+}
+
+/// 带流程包的渲染：标题、章节名可由流程包调整，结构内容仍来自确定性计划。
+pub fn render_writing_markdown_with(plan: &WritingPlan, pack: &FlowPack) -> String {
+    let copy = &pack.writing;
+    let mut out = String::new();
+    out.push_str(&format!("# {}\n\n", copy.result_title.trim()));
+    out.push_str(&format!("- 目的：{}\n", plan.purpose));
+    out.push_str(&format!("- 受众：{}\n", plan.audience));
+    out.push_str(&format!(
+        "- 模板：{}\n\n",
+        match &plan.template_used {
+            Some(name) => format!("使用「{}」", name),
+            None => "未使用模板（没有与用途匹配的模板，按用途组织）".to_string(),
+        }
+    ));
+    out.push_str(&format!("## {}\n\n", copy.structure_heading.trim()));
+    for (index, section) in plan.sections.iter().enumerate() {
+        out.push_str(&format!("{}. {}\n", index + 1, section));
+    }
+    out.push_str(&format!("\n## {}\n\n", copy.pending_heading.trim()));
+    if plan.missing.is_empty() {
+        out.push_str("- 无（仍需人工核对事实）\n");
+    } else {
+        for item in &plan.missing {
+            out.push_str(&format!("- {}\n", item));
+        }
+    }
+    out
+}
+
+/// 项目跟进中的一条事项。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ProjectItem {
+    pub item: String,
+    pub owner: String,
+    pub due: String,
+    pub status: String,
+    pub next_step: String,
+    pub overdue: bool,
+}
+
+/// 项目跟进汇总。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ProjectSummary {
+    pub schema: &'static str,
+    pub total: u64,
+    pub done: u64,
+    pub in_progress: u64,
+    pub blocked: u64,
+    pub not_started: u64,
+    pub overdue: u64,
+    pub items: Vec<ProjectItem>,
+    pub notes: Vec<String>,
+}
+
+pub const PROJECT_SCHEMA: &str = "omnidesk.project.v1";
+
+/// 每行格式：`事项 | 负责人代号 | 期限 | 状态 | 下一步`。
+///
+/// `today` 由调用方显式传入（YYYY-MM-DD），用于判定逾期；不读系统时钟，
+/// 保证同样的输入与日期得到同样的输出。
+pub fn summarize_project(input: &str, today: &str) -> Result<ProjectSummary, String> {
+    assert_input_allowed(input)?;
+    let today_date = parse_date(today)
+        .ok_or_else(|| {
+            "today 必须是存在的 YYYY-MM-DD 日期（按实际月份天数与闰年校验），用于判定逾期"
+                .to_string()
+        })?;
+    let mut items: Vec<ProjectItem> = Vec::new();
+    for (index, raw) in input.lines().enumerate() {
+        let line_no = index + 1;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let cells: Vec<&str> = line.split('|').map(|c| c.trim()).collect();
+        if cells.len() != 5 {
+            return Err(scenario_err(
+                line_no,
+                "每行必须是「事项 | 负责人代号 | 期限 | 状态 | 下一步」五个字段",
+            ));
+        }
+        for (pos, label) in ["事项", "负责人代号", "下一步"].iter().enumerate() {
+            let cell = match pos {
+                0 => cells[0],
+                1 => cells[1],
+                _ => cells[4],
+            };
+            if cell.is_empty() {
+                return Err(scenario_err(line_no, &format!("{}不能为空", label)));
+            }
+        }
+        if !cells[1].chars().next().map(|c| c == 'P').unwrap_or(false)
+            || !cells[1][1..].chars().all(|c| c.is_ascii_digit())
+        {
+            return Err(scenario_err(
+                line_no,
+                "负责人只填代号（例如 P1），不得填写真实姓名",
+            ));
+        }
+        let due = parse_date(cells[2])
+            .ok_or_else(|| {
+                scenario_err(
+                    line_no,
+                    "期限必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
+                )
+            })?;
+        if !PROJECT_STATUSES.contains(&cells[3]) {
+            return Err(scenario_err(
+                line_no,
+                "状态只允许 not_started / in_progress / blocked / done",
+            ));
+        }
+        let status = cells[3];
+        let overdue = status != "done" && date_cmp(due, today_date) == std::cmp::Ordering::Less;
+        items.push(ProjectItem {
+            item: cells[0].to_string(),
+            owner: cells[1].to_string(),
+            due: cells[2].to_string(),
+            status: status.to_string(),
+            next_step: cells[4].to_string(),
+            overdue,
+        });
+    }
+    if items.is_empty() {
+        return Err("没有可用事项：每行必须是五个字段".to_string());
+    }
+
+    let mut done = 0u64;
+    let mut in_progress = 0u64;
+    let mut blocked = 0u64;
+    let mut not_started = 0u64;
+    let mut overdue = 0u64;
+    for item in &items {
+        match item.status.as_str() {
+            "done" => done += 1,
+            "in_progress" => in_progress += 1,
+            "blocked" => blocked += 1,
+            _ => not_started += 1,
+        }
+        if item.overdue {
+            overdue += 1;
+        }
+    }
+    let mut notes = Vec::new();
+    if blocked > 0 {
+        notes.push(format!("有 {} 条受阻事项，需要明确解除条件。", blocked));
+    }
+    if overdue > 0 {
+        notes.push(format!(
+            "有 {} 条已过期限且未完成，需要重新确认期限或范围。",
+            overdue
+        ));
+    }
+    notes.push(format!(
+        "逾期判定基于调用方给定的日期 {}；未记录的事项不会自动出现。",
+        today
+    ));
+    notes.push("模型撰写：受准入阻塞，未验证（本次未调用任何模型）".to_string());
+
+    Ok(ProjectSummary {
+        schema: PROJECT_SCHEMA,
+        total: items.len() as u64,
+        done,
+        in_progress,
+        blocked,
+        not_started,
+        overdue,
+        items,
+        notes,
+    })
+}
+
+/// 把项目跟进汇总渲染为 Markdown。
+pub fn render_project_markdown(summary: &ProjectSummary) -> String {
+    render_project_markdown_with(summary, &crate::flow_pack::default_pack())
+}
+
+/// 带流程包的渲染：只替换标题与章节名，逾期判定等结果不变。
+pub fn render_project_markdown_with(summary: &ProjectSummary, pack: &FlowPack) -> String {
+    let copy = &pack.project;
+    let mut out = String::new();
+    out.push_str(&format!("# {}\n\n", copy.result_title.trim()));
+    out.push_str(&format!("- 事项总数：{}\n", summary.total));
+    out.push_str(&format!(
+        "- 状态：done {} / in_progress {} / blocked {} / not_started {}\n",
+        summary.done, summary.in_progress, summary.blocked, summary.not_started
+    ));
+    out.push_str(&format!("- 逾期：{}\n\n", summary.overdue));
+    out.push_str("| 事项 | 负责人 | 期限 | 状态 | 下一步 |\n| --- | --- | --- | --- | --- |\n");
+    for item in &summary.items {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} |\n",
+            item.item, item.owner, item.due, item.status, item.next_step
+        ));
+    }
+    out.push_str(&format!("\n## {}\n\n", copy.confirm_heading.trim()));
+    for note in &summary.notes {
+        out.push_str(&format!("- {}\n", note));
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// 离线流程：Tauri 命令用的薄封装
+//
+// 三个场景都**不调用模型**。返回值里 fixed 字段显式携带「模型步骤受准入阻塞」，
+// UI 不得把它显示成已生成。
+// ---------------------------------------------------------------------------
+
+/// 周记录汇总响应。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WeeklyFlowResponse {
+    pub ok: bool,
+    pub summary: Option<WeeklySummary>,
+    pub markdown: Option<String>,
+    pub model_step: &'static str,
+    pub error: Option<String>,
+}
+
+pub const MODEL_STEP_BLOCKED: &str = "受准入阻塞、未验证：本次未调用任何模型";
+
+pub fn weekly_flow(input: &str) -> WeeklyFlowResponse {
+    weekly_flow_with(input, &crate::flow_pack::default_pack())
+}
+
+/// 带流程包的周报流程。计算不变，仅换展示文案。
+pub fn weekly_flow_with(input: &str, pack: &FlowPack) -> WeeklyFlowResponse {
+    match summarize_week(input) {
+        Ok(summary) => WeeklyFlowResponse {
+            ok: true,
+            markdown: Some(render_weekly_markdown_with(&summary, pack)),
+            summary: Some(summary),
+            model_step: MODEL_STEP_BLOCKED,
+            error: None,
+        },
+        Err(message) => WeeklyFlowResponse {
+            ok: false,
+            summary: None,
+            markdown: None,
+            model_step: MODEL_STEP_BLOCKED,
+            error: Some(message),
+        },
+    }
+}
+
+/// 一般文案结构建议响应。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WritingFlowResponse {
+    pub ok: bool,
+    pub plan: Option<WritingPlan>,
+    pub markdown: Option<String>,
+    pub model_step: &'static str,
+    pub error: Option<String>,
+}
+
+pub fn writing_flow(
+    purpose: &str,
+    audience: &str,
+    requirements: &str,
+    facts: &str,
+) -> WritingFlowResponse {
+    writing_flow_with(
+        purpose,
+        audience,
+        requirements,
+        facts,
+        &crate::flow_pack::default_pack(),
+    )
+}
+
+/// 带流程包的文案结构流程。
+pub fn writing_flow_with(
+    purpose: &str,
+    audience: &str,
+    requirements: &str,
+    facts: &str,
+    pack: &FlowPack,
+) -> WritingFlowResponse {
+    match plan_writing(purpose, audience, requirements, facts) {
+        Ok(plan) => WritingFlowResponse {
+            ok: true,
+            markdown: Some(render_writing_markdown_with(&plan, pack)),
+            plan: Some(plan),
+            model_step: MODEL_STEP_BLOCKED,
+            error: None,
+        },
+        Err(message) => WritingFlowResponse {
+            ok: false,
+            plan: None,
+            markdown: None,
+            model_step: MODEL_STEP_BLOCKED,
+            error: Some(message),
+        },
+    }
+}
+
+/// 项目跟进汇总响应。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectFlowResponse {
+    pub ok: bool,
+    pub summary: Option<ProjectSummary>,
+    pub markdown: Option<String>,
+    pub model_step: &'static str,
+    pub error: Option<String>,
+}
+
+/// `today` 为空时使用 UTC 当天日期；显式传入则完全可复现。
+pub fn project_flow(input: &str, today: Option<&str>) -> ProjectFlowResponse {
+    project_flow_with(input, today, &crate::flow_pack::default_pack())
+}
+
+/// 带流程包的项目跟进流程。
+pub fn project_flow_with(input: &str, today: Option<&str>, pack: &FlowPack) -> ProjectFlowResponse {
+    let resolved = match today {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => utc_iso(now_secs())[..10].to_string(),
+    };
+    match summarize_project(input, &resolved) {
+        Ok(summary) => ProjectFlowResponse {
+            ok: true,
+            markdown: Some(render_project_markdown_with(&summary, pack)),
+            summary: Some(summary),
+            model_step: MODEL_STEP_BLOCKED,
+            error: None,
+        },
+        Err(message) => ProjectFlowResponse {
+            ok: false,
+            summary: None,
+            markdown: None,
+            model_step: MODEL_STEP_BLOCKED,
+            error: Some(message),
+        },
+    }
+}
+
+/// 离线流程保存请求：不涉及模型，不需要统计指纹。
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SaveOfflineRequest {
+    pub scenario: String,
+    pub title: String,
+    pub markdown: String,
+    /// 人工确认是硬前提，缺失该字段会让反序列化失败。
+    pub user_confirmed: bool,
+    /// 成果是否包含模型生成的初稿。缺省为 false（纯本地确定性处理）。
+    /// 只用于在产物里如实标注来源，不影响任何计算或准入判断。
+    #[serde(default)]
+    pub ai_assisted: bool,
+}
+
+/// 产物落盘的三步文件操作。生产路径固定为真实实现；仅供 Rust 测试注入故障。
+///
+/// 刻意不实现 `Default`、不从环境变量或配置读取，也没有任何 pub 导出：
+/// 宿主命令、前端、环境变量都无法把它换成失败版本。
+struct NewFileOps {
+    write: fn(&mut std::fs::File, &[u8]) -> io::Result<()>,
+    sync: fn(&mut std::fs::File) -> io::Result<()>,
+    remove: fn(&Path) -> io::Result<()>,
+}
+
+impl NewFileOps {
+    /// 生产用：真实写入、真实刷盘、真实删除。
+    const REAL: NewFileOps = NewFileOps {
+        write: |file, bytes| file.write_all(bytes),
+        sync: |file| file.sync_all(),
+        remove: |path| fs::remove_file(path),
+    };
+}
+
+/// 新建并写入一个产物文件：绝不覆盖既有文件，失败时清掉本次半成品。
+///
+/// 两条保存路径（分析成果、离线场景成果）共用这里，避免行为分叉。
+/// `create_new(true)` 同时承担「存在即拒绝」和「只删自己刚建的文件」两个作用。
+fn write_new_file_durable(target: &Path, content: &str) -> Result<(), String> {
+    write_new_file_durable_with(target, content, &NewFileOps::REAL)
+}
+
+fn write_new_file_durable_with(
+    target: &Path,
+    content: &str,
+    ops: &NewFileOps,
+) -> Result<(), String> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+        .map_err(|e| {
+            format!(
+                "无法创建产物文件 {}：{}（已存在或不可写；本阶段不覆盖已有文件）",
+                target.display(),
+                e
+            )
+        })?;
+    let write_result = (ops.write)(&mut file, content.as_bytes()).and_then(|_| (ops.sync)(&mut file));
+    drop(file);
+    if let Err(e) = write_result {
+        // 失败时删除本次新建的半成品；既有同名文件绝不会被触及。
+        let suffix = match (ops.remove)(target) {
+            Ok(()) => "已删除本次未完成的半成品".to_string(),
+            Err(cleanup_err) => format!("清理半成品失败：{}", cleanup_err),
+        };
+        return Err(format!("写入产物失败：{}；{}", e, suffix));
+    }
+    Ok(())
+}
+
+/// 保存离线场景成果到仓库外本地目录（不覆盖）。
+pub fn save_offline_artifact(
+    request: &SaveOfflineRequest,
+    now: f64,
+) -> Result<SaveArtifactReceipt, String> {
+    if !matches!(
+        request.scenario.as_str(),
+        "weekly_report" | "material_writing" | "project_management"
+    ) {
+        return Err(format!("未知离线场景：{:?}", request.scenario));
+    }
+    if !request.user_confirmed {
+        return Err("必须显式人工确认后才能保存离线成果。".to_string());
+    }
+    if request.markdown.trim().is_empty() {
+        return Err("成果内容为空，拒绝保存。".to_string());
+    }
+    let root = resolve_local_data_root()?;
+    fs::create_dir_all(&root).map_err(|e| format!("创建本地数据目录失败：{}", e))?;
+    assert_local_root_allowed(&root)?;
+    assert_outside_repo(&root)?;
+
+    let file_name = format!(
+        "offline-{}-{}.md",
+        request.scenario.replace('_', "-"),
+        utc_stamp(now)
+    );
+    let target = root.join(&file_name);
+    assert_local_root_allowed(&target)?;
+    assert_outside_repo(&target)?;
+
+    let mut content = String::new();
+    content.push_str(&format!("# {}\n\n", request.title.trim()));
+    content.push_str(&format!("- 场景：{}\n", request.scenario));
+    content.push_str(&format!("- 生成时间 (UTC)：{}\n", utc_iso(now)));
+    if request.ai_assisted {
+        content.push_str("- 处理方式：本地确定性代码 + 模型初稿（模型来源未复核，已由人工编辑核对）\n");
+    } else {
+        content.push_str("- 处理方式：本地确定性代码；未调用模型\n");
+    }
+    content.push_str("- 数据边界：仅合成 / 公开 / 经明确批准的数据\n\n");
+    content.push_str(&request.markdown);
+
+    write_new_file_durable(&target, &content)?;
+
+    Ok(SaveArtifactReceipt {
+        path: target.display().to_string(),
+        fingerprint: "offline".to_string(),
+        bytes: content.len() as u64,
+        written_at: now,
+    })
+}
+
+/// 已保存成果的一条只读摘要：只含自生成文件名、大小与时间，不回读正文。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct OfflineArtifactEntry {
+    pub file_name: String,
+    pub bytes: u64,
+    pub modified_at: f64,
+    pub scenario: String,
+}
+
+/// 读取一条已保存成果的正文，供用户重新打开确认。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct OfflineArtifactContent {
+    pub file_name: String,
+    pub content: String,
+}
+
+/// 只接受本模块自己生成的 `offline-<scenario>-<stamp>.md` 文件名。
+///
+/// 重新打开是只读操作，但仍要求严格的文件名形状与所在目录校验：
+/// 不允许借 `..`、符号链接或任意路径读取数据根之外的任何文件。
+fn offline_artifact_name_allowed(name: &str) -> bool {
+    let Some((_, stamp)) = split_offline_artifact_name(name) else {
+        return false;
+    };
+    let bytes = stamp.as_bytes();
+    if bytes.len() != 15 || bytes[8] != b'-' {
+        return false;
+    }
+    bytes
+        .iter()
+        .enumerate()
+        .all(|(i, b)| i == 8 || b.is_ascii_digit())
+}
+
+/// 把 `offline-<scenario>-<YYYYMMDD>-<HHMMSS>.md` 拆成场景名与时间戳。
+///
+/// 场景名本身含连字符，因此按已登记场景前缀精确匹配，不能从末尾切分。
+fn split_offline_artifact_name(name: &str) -> Option<(&str, &str)> {
+    let stem = name.strip_prefix("offline-")?.strip_suffix(".md")?;
+    for scenario in ["weekly-report", "material-writing", "project-management"] {
+        if let Some(rest) = stem.strip_prefix(scenario) {
+            if let Some(stamp) = rest.strip_prefix('-') {
+                return Some((scenario, stamp));
+            }
+        }
+    }
+    None
+}
+
+/// 列出数据根中由本模块写入的离线成果（只读元数据，按修改时间倒序）。
+pub fn list_offline_artifacts() -> Result<Vec<OfflineArtifactEntry>, String> {
+    let root = resolve_local_data_root()?;
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    let read_dir = fs::read_dir(&root).map_err(|e| format!("读取成果目录失败：{}", e))?;
+    for item in read_dir {
+        let item = item.map_err(|e| format!("读取成果目录失败：{}", e))?;
+        let name = item.file_name().to_string_lossy().to_string();
+        if !offline_artifact_name_allowed(&name) {
+            continue;
+        }
+        // 符号链接即使在数据根内也不跟随：只接受普通文件。
+        let meta = match fs::symlink_metadata(item.path()) {
+            Ok(m) if m.file_type().is_file() => m,
+            _ => continue,
+        };
+        let scenario = split_offline_artifact_name(&name)
+            .map(|(s, _)| s.to_string())
+            .unwrap_or_default();
+        let modified_at = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        entries.push(OfflineArtifactEntry {
+            file_name: name,
+            bytes: meta.len(),
+            modified_at,
+            scenario,
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.modified_at
+            .partial_cmp(&a.modified_at)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Ok(entries)
+}
+
+/// 重新打开一条已保存成果的内容（只读，不修改文件）。
+pub fn read_offline_artifact(file_name: &str) -> Result<OfflineArtifactContent, String> {
+    if !offline_artifact_name_allowed(file_name) {
+        return Err("只允许重新打开 OmniDesk 自己生成的离线成果文件。".to_string());
+    }
+    let root = resolve_local_data_root()?;
+    assert_local_root_allowed(&root)?;
+    let target = root.join(file_name);
+    assert_local_root_allowed(&target)?;
+    assert_outside_repo(&target)?;
+    let meta = fs::symlink_metadata(&target)
+        .map_err(|e| format!("无法读取成果 {}：{}", file_name, e))?;
+    if !meta.file_type().is_file() {
+        return Err("目标不是普通文件，拒绝读取。".to_string());
+    }
+    // 读取上限：离线成果是本地渲染的 Markdown，异常大小说明文件不属于本流程。
+    const MAX_ARTIFACT_BYTES: u64 = 1024 * 1024;
+    if meta.len() > MAX_ARTIFACT_BYTES {
+        return Err("成果文件超过 1 MiB，拒绝在界面中打开。".to_string());
+    }
+    let content = fs::read_to_string(&target)
+        .map_err(|e| format!("无法读取成果 {}：{}", file_name, e))?;
+    Ok(OfflineArtifactContent {
+        file_name: file_name.to_string(),
+        content,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 用户明确选择的材料文件（OD-ARCH-026）
+//
+// 只读、单文件、有界。这不是目录扫描器：一次只读用户显式给出的那一个文件，
+// 也不解析数据库。表格/文档的“解析”就是把该文件的文本原样交给同一条引擎适配链路。
+// ---------------------------------------------------------------------------
+
+/// 允许作为模型材料的文本/表格扩展名。目录、二进制与未知类型一律拒绝。
+pub const MATERIAL_ALLOWED_EXTS: &[&str] = &[
+    "md", "markdown", "txt", "text", "csv", "tsv", "json", "yaml", "yml", "log",
+];
+
+/// 单个材料文件的最大字节数。超过即拒绝，不做静默截断。
+pub const MATERIAL_MAX_BYTES: u64 = 512 * 1024;
+
+/// 材料读取结果：正文 + 可核验的来源事实（供界面记录来源，不额外保存副本）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct MaterialRead {
+    pub path: String,
+    pub file_name: String,
+    pub bytes: u64,
+    pub chars: usize,
+    pub extension: String,
+    pub sha256: String,
+    pub content: String,
+}
+
+/// 只读读取用户**明确给出路径**的一个材料文件。
+///
+/// 边界全部由本函数强制，而不是提示词约定：
+///   * 必须是绝对路径；路径与解析后的真实落点都不得命中被禁止片段（DSH / agent / 仓库内）；
+///   * 必须是已存在的普通文件（不跟随目录、设备、管道）；
+///   * 扩展名必须命中白名单；
+///   * 大小不超过 `MATERIAL_MAX_BYTES`；
+///   * 必须是合法 UTF-8 文本。
+///
+/// 不递归、不列目录、不接受通配符：一次一个文件，由用户显式选择。
+pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
+    let raw = path_text.trim();
+    if raw.is_empty() {
+        return Err("请提供要读取的材料文件路径。".to_string());
+    }
+    let path = Path::new(raw);
+    if !path.is_absolute() {
+        return Err(format!("材料路径必须是绝对路径：{}", raw));
+    }
+    assert_no_forbidden_path_fragment(path).map_err(|_| {
+        format!(
+            "拒绝读取 {}：该路径位于被禁止的目录（DSH / agent / 仓库内）。",
+            path.display()
+        )
+    })?;
+    let resolved = resolve_real_path(path)?;
+    assert_no_forbidden_path_fragment(&resolved).map_err(|_| {
+        format!(
+            "拒绝读取 {}：解析后的真实落点位于被禁止的目录（DSH / agent / 仓库内）。",
+            resolved.display()
+        )
+    })?;
+    assert_outside_repo(&resolved).map_err(|_| {
+        format!(
+            "拒绝读取 {}：该文件位于工作区仓库内，不能作为模型材料。",
+            resolved.display()
+        )
+    })?;
+
+    let meta = fs::metadata(&resolved)
+        .map_err(|e| format!("无法读取材料文件 {}：{}", resolved.display(), e))?;
+    if !meta.is_file() {
+        return Err(format!("{} 不是普通文件，拒绝读取。", resolved.display()));
+    }
+    let extension = resolved
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !MATERIAL_ALLOWED_EXTS.contains(&extension.as_str()) {
+        return Err(format!(
+            "不支持的材料类型 {:?}；只接受纯文本与表格：{}。",
+            extension,
+            MATERIAL_ALLOWED_EXTS.join(" / ")
+        ));
+    }
+    if meta.len() > MATERIAL_MAX_BYTES {
+        return Err(format!(
+            "材料文件 {} 字节，超过上限 {} 字节；请先自行拆分，或改用更小的文件。",
+            meta.len(),
+            MATERIAL_MAX_BYTES
+        ));
+    }
+    let bytes = fs::read(&resolved)
+        .map_err(|e| format!("无法读取材料文件 {}：{}", resolved.display(), e))?;
+    let content = String::from_utf8(bytes)
+        .map_err(|_| "材料文件不是合法 UTF-8 文本，拒绝读取。".to_string())?;
+    let file_name = resolved
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| resolved.display().to_string());
+    Ok(MaterialRead {
+        path: resolved.display().to_string(),
+        file_name,
+        bytes: meta.len(),
+        chars: content.chars().count(),
+        extension,
+        sha256: sha256_hex(content.as_bytes()),
+        content,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1228,6 +2223,28 @@ mod tests {
         assert!(!error.contains("110101199003077777"));
         assert!(!error.contains("13800138000"));
         assert!(error.contains("启发式"));
+    }
+
+    /// 边界规则正文本身包含「案件/线索/未公开」等词；扫描应以用户原文为准。
+    #[test]
+    fn prompt_rules_do_not_trip_red_line_scan() {
+        assert!(
+            !red_line_scan(explanation_rules()).is_empty(),
+            "前提：规则正文含边界说明用词，直接扫描全文会误判正常提交"
+        );
+        assert!(
+            red_line_scan(samples()[0].content).is_empty(),
+            "用户原始合成输入必须通过扫描"
+        );
+    }
+
+    #[test]
+    fn submit_scan_target_prefers_user_input() {
+        let prompt = "规则说明：不处理案件、线索或未公开信息；素材：合成数据";
+        assert_eq!(scan_target(prompt, Some("合成数据")), "合成数据");
+        assert_eq!(scan_target(prompt, None), prompt);
+        assert!(assert_input_allowed(scan_target(prompt, Some("合成数据"))).is_ok());
+        assert!(assert_input_allowed(scan_target(prompt, Some("虚构案件占位"))).is_err());
     }
 
     #[test]
@@ -1474,6 +2491,7 @@ mod tests {
                 rework_kind: "none".to_string(),
                 blocker: "none".to_string(),
                 duration_bucket: None,
+                reuse_willingness: true,
             },
             0.0,
         )
@@ -1489,6 +2507,7 @@ mod tests {
                 "duration_bucket",
                 "record_id",
                 "recorded_at",
+                "reuse_willingness",
                 "rework_kind",
                 "schema",
                 "task_type",
@@ -1506,6 +2525,7 @@ mod tests {
             rework_kind: "none".to_string(),
             blocker: "none".to_string(),
             duration_bucket: None,
+            reuse_willingness: true,
         };
         assert!(build_usage_record(&base, 0.0).is_ok());
 
@@ -1538,6 +2558,7 @@ mod tests {
                     rework_kind: "wording".to_string(),
                     blocker: "none".to_string(),
                     duration_bucket: Some("5_15m".to_string()),
+                    reuse_willingness: true,
                 },
                 1_760_572_800.0,
             )
@@ -1550,6 +2571,7 @@ mod tests {
                     rework_kind: "none".to_string(),
                     blocker: "credentials_missing".to_string(),
                     duration_bucket: None,
+                    reuse_willingness: true,
                 },
                 1_760_572_900.0,
             )
@@ -1573,6 +2595,29 @@ mod tests {
     }
 
     #[test]
+    fn usage_record_without_reuse_field_still_reads() {
+        with_env_root("usage_legacy", |root| {
+            let path = root.join("logs/usage.jsonl");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            // 上一版本写入的记录没有 reuse_willingness 字段。
+            let legacy = "{\"record_id\":\"20261018-070000-0000\",\"schema\":\"omnidesk.usage.v1\",\"task_type\":\"weekly_report\",\"recorded_at\":1792306800.0,\"completed\":true,\"usable\":true,\"rework_kind\":\"none\",\"blocker\":\"none\",\"duration_bucket\":null}\n";
+            std::fs::write(&path, legacy).unwrap();
+
+            let read = read_usage_records(&path).unwrap();
+            assert_eq!(read.records.len(), 1);
+            assert_eq!(read.unparsable_lines, 0);
+            assert!(!read.records[0].reuse_willingness);
+
+            // 旧记录仍可删除。
+            assert_eq!(
+                delete_usage_record(&path, "20261018-070000-0000").unwrap(),
+                1
+            );
+            assert_eq!(read_usage_records(&path).unwrap().records.len(), 0);
+        });
+    }
+
+    #[test]
     fn usage_records_cannot_be_written_into_repo() {
         let inside = repo_dir().join("tests/reports/usage.jsonl");
         let record = build_usage_record(
@@ -1583,6 +2628,7 @@ mod tests {
                 rework_kind: "none".to_string(),
                 blocker: "none".to_string(),
                 duration_bucket: None,
+                reuse_willingness: true,
             },
             0.0,
         )
@@ -1590,6 +2636,47 @@ mod tests {
         assert!(append_usage_record(&inside, &record).is_err());
         assert!(read_usage_records(&inside).is_err());
         assert!(clear_usage_records(&inside).is_err());
+    }
+
+    // --- 引擎工作目录准备 ---
+
+    #[test]
+    fn prepare_local_data_root_is_idempotent_and_outside_repo() {
+        with_env_root("prepare", |root| {
+            // 目录尚不存在时应被创建出来（引擎要求工作目录已存在且可解析）。
+            let nested = root.join("engine-run");
+            std::env::set_var(LOCAL_ROOT_ENV, &nested);
+            assert!(!nested.exists(), "前置条件：目录应先不存在");
+
+            let first = prepare_local_data_root().unwrap();
+            assert_eq!(first, nested);
+            assert!(first.is_dir(), "首次调用应创建目录");
+
+            // 幂等：再次调用仍然成功且不报错、不改变路径。
+            let second = prepare_local_data_root().unwrap();
+            assert_eq!(second, first);
+            assert!(second.is_dir());
+
+            // 边界校验仍然生效：落点必须在仓库之外。
+            assert_outside_repo(&first).unwrap();
+        });
+    }
+
+    #[test]
+    fn prepare_local_data_root_rejects_forbidden_root() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var_os(LOCAL_ROOT_ENV);
+        // 指向原版 DSH 数据根下的目录：应在创建之前就被边界校验拒绝。
+        std::env::set_var(LOCAL_ROOT_ENV, "/home/example/.dsh/engine-work");
+        let outcome = prepare_local_data_root();
+        match previous {
+            Some(value) => std::env::set_var(LOCAL_ROOT_ENV, value),
+            None => std::env::remove_var(LOCAL_ROOT_ENV),
+        }
+        assert!(
+            outcome.is_err(),
+            "禁止片段 / .dsh 应被拒绝，不得创建目录"
+        );
     }
 
     // --- 时间换算 ---
@@ -1638,5 +2725,662 @@ mod tests {
         // 均衡样例应确实完全均衡。
         let flat = deterministic_analysis(all[2].content).unwrap();
         assert_eq!(fmt_num(flat.min), fmt_num(flat.max));
+    }
+
+    // --- 离线工作场景（周报 / 文案结构 / 项目跟进）---
+
+    const WEEKLY_SAMPLE: &str = include_str!("../../../samples/workflows/synthetic-weekly.txt");
+    const PROJECT_SAMPLE: &str = include_str!("../../../samples/workflows/synthetic-project.txt");
+
+    #[test]
+    fn weekly_sample_is_synthetic_and_summarizes_deterministically() {
+        assert!(WEEKLY_SAMPLE.contains("纯虚构"));
+        let summary = summarize_week(WEEKLY_SAMPLE).expect("合成周记录应可汇总");
+        assert_eq!(summary.schema, WEEKLY_SCHEMA);
+        assert_eq!(summary.total, 4);
+        assert_eq!(summary.done, 2);
+        assert_eq!(summary.pending, 1);
+        assert_eq!(summary.blocked, 1);
+        // 同一输入重复运行必须给出完全一致的结果。
+        assert_eq!(summary, summarize_week(WEEKLY_SAMPLE).unwrap());
+        let md = render_weekly_markdown(&summary);
+        assert!(md.contains("受准入阻塞，未验证"));
+        assert!(md.contains("本次未调用任何模型"));
+        assert!(!md.contains("model_generated"));
+    }
+
+    #[test]
+    fn weekly_rejects_bad_rows_with_line_numbers() {
+        let err = summarize_week("2026-10-12 | 合成事项\n").unwrap_err();
+        assert!(err.contains("第 1 行"), "{}", err);
+        assert!(err.contains("三个字段"), "{}", err);
+        let err = summarize_week("2026-13-01 | 合成事项 | done").unwrap_err();
+        assert!(err.contains("YYYY-MM-DD"), "{}", err);
+        let err = summarize_week("2026-10-12 | 合成事项 | finished").unwrap_err();
+        assert!(err.contains("done / pending / blocked"), "{}", err);
+        assert!(summarize_week("# 只有注释\n").unwrap_err().contains("没有可用事项"));
+    }
+
+    #[test]
+    fn calendar_dates_follow_month_lengths_and_leap_years() {
+        // 合法：闰日与非闰年的月末。
+        assert!(parse_date("2024-02-29").is_some());
+        assert!(parse_date("2026-02-28").is_some());
+        assert!(parse_date("2024-01-31").is_some());
+        assert!(parse_date("2026-12-31").is_some());
+        // 非法：不存在的日期。
+        for bad in [
+            "2026-02-29",
+            "2026-02-30",
+            "2024-02-30",
+            "2026-04-31",
+            "2026-06-31",
+            "2026-09-31",
+            "2026-11-31",
+            "2026-00-10",
+            "2026-13-10",
+            "2026-01-00",
+            "2026-01-32",
+        ] {
+            assert!(parse_date(bad).is_none(), "应拒绝 {}", bad);
+        }
+        // 世纪闰年规则：2000 是闰年，1900 与 2100 不是。
+        assert!(parse_date("2000-02-29").is_some());
+        assert!(parse_date("1900-02-29").is_none());
+        assert!(parse_date("2100-02-29").is_none());
+        // 形式与字符约束。
+        assert!(parse_date("2026-2-03").is_none());
+        assert!(parse_date("2026-02-3a").is_none());
+        assert!(parse_date("2026/02/03").is_none());
+    }
+
+    #[test]
+    fn weekly_and_project_reject_calendar_impossible_dates() {
+        let err = summarize_week("2026-02-30 | 合成事项 | done").unwrap_err();
+        assert!(err.contains("第 1 行"), "{}", err);
+        assert!(err.contains("YYYY-MM-DD"), "{}", err);
+        // 合法闰日必须被接受。
+        assert!(summarize_week("2024-02-29 | 合成事项 | done").is_ok());
+
+        let row = "合成事项 | P1 | 2026-02-30 | in_progress | 补齐说明";
+        let err = summarize_project(row, "2026-10-15").unwrap_err();
+        assert!(err.contains("第 1 行"), "{}", err);
+        assert!(err.contains("YYYY-MM-DD"), "{}", err);
+        let row = "合成事项 | P1 | 2024-02-29 | in_progress | 补齐说明";
+        assert!(summarize_project(row, "2026-10-15").is_ok());
+        // 判定日同样要按日历校验。
+        assert!(summarize_project(row, "2026-02-30").is_err());
+        assert!(summarize_project(row, "2026-13-01").is_err());
+    }
+
+    #[test]
+    fn overdue_boundary_and_cross_year_comparison_are_deterministic() {
+        // 期限与判定日相同不算逾期；差一天即逾期。
+        let same_day = "合成事项 | P1 | 2026-10-15 | in_progress | 继续";
+        assert_eq!(summarize_project(same_day, "2026-10-15").unwrap().overdue, 0);
+        let one_day_late = "合成事项 | P1 | 2026-10-14 | in_progress | 继续";
+        assert_eq!(summarize_project(one_day_late, "2026-10-15").unwrap().overdue, 1);
+        // 已完成事项即使期限已过也不计逾期。
+        let done_late = "合成事项 | P1 | 2026-10-01 | done | 无";
+        assert_eq!(summarize_project(done_late, "2026-10-15").unwrap().overdue, 0);
+        // 跨年比较：期限在去年。
+        let last_year = "合成事项 | P1 | 2025-12-31 | blocked | 说明";
+        assert_eq!(summarize_project(last_year, "2026-01-01").unwrap().overdue, 1);
+        // 跨年但未到期。
+        let next_year = "合成事项 | P1 | 2027-01-02 | not_started | 启动";
+        assert_eq!(summarize_project(next_year, "2026-12-31").unwrap().overdue, 0);
+    }
+
+    #[test]
+    fn default_new_artifact_root_is_omnidesk_not_legacy_yvanai() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = temp_root("default-home");
+        let _ = fs::remove_dir_all(&home);
+        fs::create_dir_all(&home).expect("创建临时 HOME");
+        let previous_local = std::env::var_os(LOCAL_ROOT_ENV);
+        let previous_home = std::env::var_os("HOME");
+        std::env::remove_var(LOCAL_ROOT_ENV);
+        std::env::set_var("HOME", &home);
+        let expected = home.join("OmniDesk/workspace/artifacts");
+        let resolved = resolve_local_data_root();
+        let legacy_exists = home.join("YvanAI").exists();
+        match previous_local {
+            Some(v) => std::env::set_var(LOCAL_ROOT_ENV, v),
+            None => std::env::remove_var(LOCAL_ROOT_ENV),
+        }
+        match previous_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        let _ = fs::remove_dir_all(&home);
+
+        let resolved = resolved.expect("默认本地数据根应可解析");
+        assert_eq!(resolved, expected, "新成果默认落在 OmniDesk 之下：{}", resolved.display());
+        // 不指向旧试点路径，解析过程也不会创建旧路径。
+        assert!(!resolved.to_string_lossy().contains("YvanAI"));
+        assert!(!legacy_exists, "解析默认路径不得创建旧路径");
+    }
+
+    #[test]
+    fn writing_plan_uses_purpose_and_flags_missing_facts() {
+        let plan = plan_writing("说明合成样例的处理流程", "项目内部评审人", "", "")
+            .expect("缺失事实时仍应给出结构建议");
+        assert_eq!(plan.schema, WRITING_SCHEMA);
+        assert!(plan.template_used.is_none(), "没有匹配模板时不得声称套用模板");
+        assert!(plan.missing.iter().any(|m| m.contains("可用事实")));
+        assert!(plan.missing.iter().any(|m| m.contains("明确要求")));
+        assert!(plan.sections[0].contains("待确认"));
+        assert!(plan.sections.iter().any(|s| s.contains("项目内部评审人")));
+        let md = render_writing_markdown(&plan);
+        assert!(md.contains("未使用模板"));
+        assert!(md.contains("受准入阻塞，未验证"));
+
+        let err = plan_writing(" ", "评审人", "", "").unwrap_err();
+        assert!(err.contains("缺少材料目的"));
+        let err = plan_writing("说明流程", "", "", "").unwrap_err();
+        assert!(err.contains("缺少受众"));
+    }
+
+    #[test]
+    fn project_sample_flags_overdue_and_rejects_real_names() {
+        assert!(PROJECT_SAMPLE.contains("纯虚构"));
+        let summary = summarize_project(PROJECT_SAMPLE, "2026-10-15").expect("应可汇总");
+        assert_eq!(summary.total, 4);
+        assert_eq!(summary.done, 1);
+        assert_eq!(summary.blocked, 1);
+        // 逾期两条：10-10 in_progress、10-12 blocked（10-08 已完成不计）。
+        assert_eq!(summary.overdue, 2);
+        assert_eq!(summary, summarize_project(PROJECT_SAMPLE, "2026-10-15").unwrap());
+        let md = render_project_markdown(&summary);
+        assert!(md.contains("受准入阻塞，未验证"));
+
+        let err = summarize_project("合成事项 | 张三 | 2026-10-10 | done | 无", "2026-10-15")
+            .unwrap_err();
+        assert!(err.contains("代号"), "{}", err);
+        let err = summarize_project("合成事项 | P1 | 2026-10-10 | finished | 无", "2026-10-15")
+            .unwrap_err();
+        assert!(err.contains("not_started"), "{}", err);
+    }
+
+    #[test]
+    fn flows_expose_model_step_as_blocked() {
+        let weekly = weekly_flow(WEEKLY_SAMPLE);
+        assert!(weekly.ok);
+        assert!(weekly.model_step.contains("受准入阻塞"));
+        let writing = writing_flow("说明流程", "评审人", "", "合成事实一条");
+        assert!(writing.ok);
+        assert!(writing.model_step.contains("未调用任何模型"));
+        let project = project_flow(PROJECT_SAMPLE, Some("2026-10-15"));
+        assert!(project.ok);
+        assert!(project.model_step.contains("受准入阻塞"));
+        // 空输入必须明确失败，而不是返回空成功。
+        assert!(!weekly_flow("").ok);
+        assert!(!project_flow("", Some("2026-10-15")).ok);
+    }
+
+    #[test]
+    fn flow_pack_changes_copy_but_not_computation() {
+        let mut pack = crate::flow_pack::default_pack();
+        pack.weekly.result_title = "自定义周报标题".to_string();
+        pack.weekly.details_heading = "自定义明细".to_string();
+        pack.writing.result_title = "自定义文案标题".to_string();
+        pack.project.result_title = "自定义项目标题".to_string();
+
+        let base = weekly_flow(WEEKLY_SAMPLE);
+        let themed = weekly_flow_with(WEEKLY_SAMPLE, &pack);
+        assert!(themed.ok);
+        assert_eq!(base.summary, themed.summary, "统计结果不得随文案变化");
+        let md = themed.markdown.unwrap();
+        assert!(md.contains("自定义周报标题"));
+        assert!(md.contains("自定义明细"));
+        assert!(md.contains("受准入阻塞，未验证"));
+        assert!(md.contains("本次未调用任何模型"));
+
+        let writing = writing_flow_with("说明流程", "评审人", "", "合成事实一条", &pack);
+        assert!(writing.markdown.unwrap().contains("自定义文案标题"));
+
+        let project = project_flow_with(PROJECT_SAMPLE, Some("2026-10-15"), &pack);
+        assert_eq!(project.summary.as_ref().unwrap().overdue, 2);
+        assert!(project.markdown.unwrap().contains("自定义项目标题"));
+    }
+
+    #[test]
+    fn offline_save_requires_confirmation_and_never_overwrites() {
+        with_env_root("offline-save", |root| {
+            let markdown = render_weekly_markdown(&summarize_week(WEEKLY_SAMPLE).unwrap());
+            let request = SaveOfflineRequest {
+                scenario: "weekly_report".to_string(),
+                title: "合成周报".to_string(),
+                markdown: markdown.clone(),
+                user_confirmed: true,
+                ai_assisted: false,
+            };
+            let receipt = save_offline_artifact(&request, 1_760_572_800.0).expect("首次应成功");
+            assert!(receipt.path.starts_with(&root.to_string_lossy().to_string()));
+            let written = fs::read_to_string(&receipt.path).unwrap();
+            assert!(written.contains("未调用模型"));
+            assert!(written.contains("合成周报"));
+            assert!(!written.contains("engine_pid"));
+
+            let again = save_offline_artifact(&request, 1_760_572_800.0).unwrap_err();
+            assert!(again.contains("不覆盖") || again.contains("已存在"));
+
+            let mut unconfirmed = request.clone();
+            unconfirmed.user_confirmed = false;
+            let err = save_offline_artifact(&unconfirmed, 1_760_572_900.0).unwrap_err();
+            assert!(err.contains("人工确认"));
+
+            let mut unknown = request.clone();
+            unknown.scenario = "case_review".to_string();
+            assert!(save_offline_artifact(&unknown, 1_760_572_900.0).is_err());
+        });
+    }
+
+    #[test]
+    fn shared_writer_never_clobbers_an_existing_file() {
+        with_env_root("shared-writer", |root| {
+            let target = root.join("artifact.md");
+            fs::write(&target, "既有内容").expect("准备既有文件");
+            let err = write_new_file_durable(&target, "新内容").unwrap_err();
+            assert!(err.contains("不覆盖"), "{}", err);
+            assert_eq!(fs::read_to_string(&target).unwrap(), "既有内容");
+
+            let fresh = root.join("fresh.md");
+            write_new_file_durable(&fresh, "新内容").expect("新文件应写入成功");
+            assert_eq!(fs::read_to_string(&fresh).unwrap(), "新内容");
+        });
+    }
+
+    /// 写入失败：先写进一部分字节再报错，模拟磁盘写满/中断。
+    fn ops_with_write_failure() -> NewFileOps {
+        NewFileOps {
+            write: |file, bytes| {
+                file.write_all(&bytes[..bytes.len() / 2])?;
+                Err(io::Error::new(io::ErrorKind::WriteZero, "injected write failure"))
+            },
+            ..NewFileOps::REAL
+        }
+    }
+
+    /// 刷盘失败：内容已写进文件，但 sync_all 失败。
+    fn ops_with_sync_failure() -> NewFileOps {
+        NewFileOps {
+            sync: |_file| Err(io::Error::new(io::ErrorKind::Other, "injected sync failure")),
+            ..NewFileOps::REAL
+        }
+    }
+
+    #[test]
+    fn write_failure_removes_only_the_partial_file() {
+        with_env_root("write-failure", |root| {
+            let sibling = root.join("existing-artifact.md");
+            fs::write(&sibling, "既有成果正文").expect("准备既有文件");
+            let target = root.join("partial.md");
+
+            let err = write_new_file_durable_with(&target, "半成品内容", &ops_with_write_failure())
+                .unwrap_err();
+            assert!(err.contains("写入产物失败"), "{}", err);
+            assert!(err.contains("已删除本次未完成的半成品"), "{}", err);
+            // 半成品必须消失，且错误信息里不能带出正文。
+            assert!(!target.exists(), "半成品未被清理");
+            assert!(!err.contains("半成品内容"), "错误信息泄露了正文：{}", err);
+            // 同目录既有文件不受影响。
+            assert_eq!(fs::read_to_string(&sibling).unwrap(), "既有成果正文");
+            let left: Vec<_> = fs::read_dir(root)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name())
+                .collect();
+            assert_eq!(left.len(), 1, "应只剩既有文件：{:?}", left);
+        });
+    }
+
+    #[test]
+    fn sync_failure_removes_the_written_file() {
+        with_env_root("sync-failure", |root| {
+            let target = root.join("unsynced.md");
+            let err = write_new_file_durable_with(&target, "已写入但未刷盘", &ops_with_sync_failure())
+                .unwrap_err();
+            assert!(err.contains("已删除本次未完成的半成品"), "{}", err);
+            assert!(!target.exists(), "刷盘失败后文件仍存在");
+            assert!(!err.contains("已写入但未刷盘"), "错误信息泄露了正文：{}", err);
+            assert_eq!(fs::read_dir(root).unwrap().count(), 0, "目录应被清理干净");
+        });
+    }
+
+    #[test]
+    fn cleanup_failure_is_reported_honestly_not_as_success() {
+        let ops = NewFileOps {
+            sync: |_file| Err(io::Error::new(io::ErrorKind::Other, "injected sync failure")),
+            remove: |_path| Err(io::Error::new(io::ErrorKind::PermissionDenied, "injected remove failure")),
+            ..NewFileOps::REAL
+        };
+        with_env_root("cleanup-failure", |root| {
+            let target = root.join("stuck.md");
+            let err = write_new_file_durable_with(&target, "内容", &ops).unwrap_err();
+            assert!(err.contains("清理半成品失败"), "{}", err);
+            // 清理失败时文件会残留；报告必须承认，不能假装原子成功。
+            assert!(target.exists(), "本用例假定半成品残留");
+        });
+    }
+
+    #[test]
+    fn failing_write_ops_cannot_be_reached_from_production_entry_points() {
+        // 生产入口没有 ops 参数，产物保存函数只调用 REAL 版本；
+        // 这里以编译期签名约束证明注入口不会从命令层传入。
+        let _: fn(&Path, &str) -> Result<(), String> = write_new_file_durable;
+        with_env_root("production-entry", |root| {
+            let target = root.join("ok.md");
+            write_new_file_durable(&target, "生产路径内容").expect("生产写入应成功");
+            assert_eq!(fs::read_to_string(&target).unwrap(), "生产路径内容");
+        });
+    }
+
+    #[test]
+    fn offline_artifacts_list_and_reopen_roundtrip() {
+        with_env_root("artifact-roundtrip", |root| {
+            let weekly = SaveOfflineRequest {
+                scenario: "weekly_report".to_string(),
+                title: "合成周报".to_string(),
+                markdown: "## 本周完成\n\n- 合成条目\n".to_string(),
+                user_confirmed: true,
+                ai_assisted: false,
+            };
+            let project = SaveOfflineRequest {
+                scenario: "project_management".to_string(),
+                title: "合成跟进".to_string(),
+                markdown: "## 风险\n\n- 合成风险\n".to_string(),
+                user_confirmed: true,
+                ai_assisted: false,
+            };
+            let first = save_offline_artifact(&weekly, 1_760_572_800.0).expect("周报应保存");
+            let second = save_offline_artifact(&project, 1_760_572_900.0).expect("跟进应保存");
+
+            let listed = list_offline_artifacts().expect("应可列出成果");
+            assert_eq!(listed.len(), 2, "只应列出本模块写入的两个成果");
+            let names: Vec<&str> = listed.iter().map(|e| e.file_name.as_str()).collect();
+            assert!(names.contains(&"offline-weekly-report-20251016-000000.md"));
+            assert!(names.contains(&"offline-project-management-20251016-000140.md"));
+            let scenarios: Vec<&str> = listed.iter().map(|e| e.scenario.as_str()).collect();
+            assert!(scenarios.contains(&"weekly-report"));
+            assert!(scenarios.contains(&"project-management"));
+            for entry in &listed {
+                assert!(entry.bytes > 0);
+                assert!(entry.modified_at > 0.0);
+            }
+
+            let before = fs::read(&first.path).expect("读取保存前正文");
+            let reopened = read_offline_artifact("offline-weekly-report-20251016-000000.md")
+                .expect("应可重新打开");
+            assert_eq!(reopened.file_name, "offline-weekly-report-20251016-000000.md");
+            assert!(reopened.content.contains("合成周报"));
+            assert!(reopened.content.contains("## 本周完成"));
+            assert!(reopened.content.contains("未调用模型"));
+            let after = fs::read(&first.path).expect("读取重开后的正文");
+            assert_eq!(before, after, "重新打开必须是只读操作");
+            let weekly_entry = listed
+                .iter()
+                .find(|e| e.file_name == reopened.file_name)
+                .expect("周报应出现在列表中");
+            assert_eq!(weekly_entry.bytes, after.len() as u64);
+            assert!(Path::new(&second.path).starts_with(root));
+        });
+    }
+
+    #[test]
+    fn offline_artifact_list_ignores_unrelated_and_non_regular_files() {
+        with_env_root("artifact-list-filter", |root| {
+            let valid = SaveOfflineRequest {
+                scenario: "material_writing".to_string(),
+                title: "合成文案".to_string(),
+                markdown: "正文\n".to_string(),
+                user_confirmed: true,
+                ai_assisted: false,
+            };
+            save_offline_artifact(&valid, 1_760_572_800.0).expect("合法成果应保存");
+            // 文件名形状不符或场景未登记的文件不得进入列表。
+            for name in [
+                "notes.md",
+                "offline-weekly-report.md",
+                "offline-case-review-20251018-080000.md",
+                "offline-weekly-report-20251018-080000.txt",
+                "offline-weekly-report-2025-10-18.md",
+            ] {
+                fs::write(root.join(name), "不该被列出").expect("准备干扰文件");
+            }
+            // 与合法成果同名的目录也不得被当成成果。
+            fs::create_dir_all(root.join("offline-weekly-report-20251018-090000.md"))
+                .expect("准备同名目录");
+
+            let listed = list_offline_artifacts().expect("应可列出成果");
+            assert_eq!(listed.len(), 1, "只应保留一个合法成果");
+            assert_eq!(listed[0].file_name, "offline-material-writing-20251016-000000.md");
+            assert_eq!(listed[0].scenario, "material-writing");
+        });
+    }
+
+    #[test]
+    fn offline_artifact_read_rejects_unknown_names_and_oversize() {
+        with_env_root("artifact-read-reject", |root| {
+            let name = "offline-weekly-report-20251018-080000.md";
+            fs::write(root.join(name), "合法正文").expect("准备合法文件");
+            fs::write(root.join("notes.md"), "无关文件").expect("准备无关文件");
+
+            for bad in [
+                "../offline-weekly-report-20251018-080000.md",
+                "/etc/passwd",
+                "notes.md",
+                "offline-case-review-20251018-080000.md",
+                "offline-weekly-report-2025-10-18.md",
+                "",
+            ] {
+                let err = read_offline_artifact(bad).unwrap_err();
+                assert!(err.contains("只允许"), "{} 应被文件名校验拒绝：{}", bad, err);
+            }
+
+            let missing = read_offline_artifact("offline-weekly-report-20991231-235959.md").unwrap_err();
+            assert!(missing.contains("无法读取"), "不存在的成果应报读取失败：{}", missing);
+
+            fs::create_dir_all(root.join("offline-project-management-20251018-090000.md"))
+                .expect("准备同名目录");
+            let dir_err = read_offline_artifact("offline-project-management-20251018-090000.md").unwrap_err();
+            assert!(dir_err.contains("普通文件"), "目录不得被当成成果：{}", dir_err);
+
+            let big_name = "offline-weekly-report-20251018-100000.md";
+            fs::write(root.join(big_name), vec![b'a'; 1024 * 1024 + 1]).expect("准备超大文件");
+            let big_err = read_offline_artifact(big_name).unwrap_err();
+            assert!(big_err.contains("1 MiB"), "超大文件应被拒绝：{}", big_err);
+
+            let ok = read_offline_artifact(name).expect("合法成果应可读取");
+            assert_eq!(ok.content, "合法正文");
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_artifact_symlink_is_not_listed_or_read() {
+        with_env_root("artifact-symlink", |root| {
+            let name = "offline-weekly-report-20251018-080000.md";
+            let outside = root.parent().unwrap().join(format!(
+                "omnidesk-symlink-target-{}-{}.md",
+                std::process::id(),
+                1_760_572_800u64
+            ));
+            let _ = fs::remove_file(&outside);
+            fs::write(&outside, "数据根之外的合成正文").expect("准备外部文件");
+            let link = root.join(name);
+            match std::os::unix::fs::symlink(&outside, &link) {
+                Ok(()) => {}
+                Err(e) => {
+                    let _ = fs::remove_file(&outside);
+                    eprintln!("跳过符号链接用例：当前文件系统不支持创建符号链接（{}）", e);
+                    return;
+                }
+            }
+
+            let listed = list_offline_artifacts().expect("应可列出成果");
+            assert!(listed.is_empty(), "符号链接不得出现在成果列表");
+            let err = read_offline_artifact(name).unwrap_err();
+            assert!(err.contains("普通文件"), "符号链接不得被读取：{}", err);
+            let _ = fs::remove_file(&link);
+            let _ = fs::remove_file(&outside);
+        });
+    }
+
+    #[test]
+    fn offline_save_default_goes_to_omnidesk_and_leaves_legacy_files_alone() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = temp_root("save-home");
+        let _ = fs::remove_dir_all(&home);
+        let legacy = home.join("YvanAI/projects/Omnidesk/analysis");
+        fs::create_dir_all(&legacy).expect("创建旧路径");
+        let legacy_file = legacy.join("existing-artifact.md");
+        fs::write(&legacy_file, "旧成果正文").expect("写入旧成果");
+
+        let previous_local = std::env::var_os(LOCAL_ROOT_ENV);
+        let previous_home = std::env::var_os("HOME");
+        std::env::remove_var(LOCAL_ROOT_ENV);
+        std::env::set_var("HOME", &home);
+
+        let request = SaveOfflineRequest {
+            scenario: "weekly_report".to_string(),
+            title: "合成周报".to_string(),
+            markdown: render_weekly_markdown(&summarize_week(WEEKLY_SAMPLE).unwrap()),
+            user_confirmed: true,
+            ai_assisted: false,
+        };
+        let saved = save_offline_artifact(&request, 1_760_572_800.0);
+        let legacy_after = fs::read_to_string(&legacy_file);
+        let legacy_entries = fs::read_dir(&legacy)
+            .map(|it| it.filter_map(|e| e.ok()).map(|e| e.file_name()).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        match previous_local {
+            Some(v) => std::env::set_var(LOCAL_ROOT_ENV, v),
+            None => std::env::remove_var(LOCAL_ROOT_ENV),
+        }
+        match previous_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+
+        let receipt = saved.expect("默认位置应可保存");
+        let expected_root = home.join("OmniDesk/workspace/artifacts");
+        assert!(
+            Path::new(&receipt.path).starts_with(&expected_root),
+            "新成果应落在 {}，实际 {}",
+            expected_root.display(),
+            receipt.path
+        );
+        assert!(!Path::new(&receipt.path).starts_with(&legacy));
+        assert_eq!(legacy_after.ok().as_deref(), Some("旧成果正文"), "旧文件正文不得被改写");
+        assert_eq!(legacy_entries.len(), 1, "旧目录不得新增或删除文件");
+        let _ = fs::remove_dir_all(&home);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 材料读取的边界测试（OD-ARCH-026）
+//
+// 证据等级：script（Rust 测试运行）。全部使用系统临时目录，不触碰用户数据或仓库内容。
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod material_tests {
+    use super::*;
+
+    fn material_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "omnidesk-material-{}-{}-{}",
+            std::process::id(),
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn reads_plain_text_material_with_provenance() {
+        let dir = material_dir("ok");
+        let file = dir.join("notes.md");
+        fs::write(&file, "# 合成材料\n事项 A | done\n").unwrap();
+        let read = read_material(file.to_str().unwrap()).expect("应读到材料");
+        assert_eq!(read.extension, "md");
+        assert_eq!(read.file_name, "notes.md");
+        assert!(read.content.contains("合成材料"));
+        assert_eq!(read.bytes, fs::metadata(&file).unwrap().len());
+        assert_eq!(read.chars, read.content.chars().count());
+        assert_eq!(read.sha256.len(), 64);
+        assert_eq!(read.sha256, sha256_hex(read.content.as_bytes()));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_relative_path_and_empty() {
+        assert!(read_material("   ").is_err());
+        let err = read_material("relative/notes.md").unwrap_err();
+        assert!(err.contains("绝对路径"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_directory_and_disallowed_extension() {
+        let dir = material_dir("dir_ext");
+        let err = read_material(dir.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("不是普通文件"), "{}", err);
+
+        let bin = dir.join("payload.bin");
+        fs::write(&bin, b"PK\x03\x04").unwrap();
+        let err = read_material(bin.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("不支持的材料类型"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_forbidden_directory_fragment() {
+        let err = read_material("/home/someone/.dsh/notes.md").unwrap_err();
+        assert!(err.contains("被禁止"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_missing_file_and_oversize() {
+        let dir = material_dir("missing_big");
+        let err = read_material(dir.join("nope.md").to_str().unwrap()).unwrap_err();
+        assert!(err.contains("无法读取材料文件"), "{}", err);
+
+        let big = dir.join("big.txt");
+        fs::write(&big, vec![b'a'; (MATERIAL_MAX_BYTES as usize) + 16]).unwrap();
+        let err = read_material(big.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("超过上限"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_non_utf8_material() {
+        let dir = material_dir("utf8");
+        let file = dir.join("raw.txt");
+        fs::write(&file, [0xff, 0xfe, 0x00, 0x41]).unwrap();
+        let err = read_material(file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("UTF-8"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_material_inside_repo_with_reading_wording() {
+        // 仓库内的文件（扩展名合法）也不得作为材料；提示必须是「读取」语义，
+        // 不能复用产物写入路径的报错文案。
+        let repo = repo_root_hint().expect("应能推断仓库根");
+        let inside = repo.join("samples").join("workflows").join("offline-flows.v1.json");
+        if !inside.is_file() {
+            return;
+        }
+        let err = read_material(inside.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("拒绝读取"), "{}", err);
+        assert!(err.contains("仓库内"), "{}", err);
+        assert!(!err.contains("写入"), "{}", err);
     }
 }
