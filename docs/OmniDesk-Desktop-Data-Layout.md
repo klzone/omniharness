@@ -92,7 +92,7 @@
 | `OMNIDESK_DSH_HOME` | 隔离 `DSH_HOME` | `$HOME/OmniDesk/runtime/dsh-home` |
 | `OMNIDESK_AGENTS_HOME` | 隔离 agents | `$HOME/OmniDesk/runtime/agents-home` |
 | `OMNIDESK_ENGINE_STATE_DIR` | 引擎状态目录 | `<app root>/engine-state` |
-| `OMNIDESK_DSH_PROFILE` | Profile 名 | `yvan-work` |
+| `OMNIDESK_DSH_PROFILE` | 引擎子进程的 Profile 名（该子进程只讲 ACP，因此默认与内置模板 `acp` 对齐） | `acp` |
 | `OMNIDESK_DSH_PATCHES` | 逗号分隔的补丁绝对路径 | 空 |
 | `OMNIDESK_REPO_ROOT` | 仓库根（用于推导默认 repo 相对路径） | 自动探测 |
 
@@ -112,14 +112,24 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
 ## 5. 业务数据（不在桌面数据根内）
 
-个人知识、模板与成果保存在仓库外独立目录，以可迁移文件格式为权威源（`static`）：
+个人知识、模板与成果保存在仓库外独立目录，以可迁移文件格式为权威源：
+
+**新成果的规范位置（`static`，OD-ARCH-011 起）：**
+
+    ~/OmniDesk/workspace/artifacts/      # 桌面新生成的离线成果与分析成果
+
+默认值定义在 `desktop/src-tauri/src/task_shell.rs` 的 `DEFAULT_LOCAL_SUBDIR = "OmniDesk/workspace/artifacts"`，可用 `OMNIDESK_LOCAL_DATA_ROOT` 显式覆盖（测试用它指向一次性 `/tmp` 根）。两条保存路径共用 `write_new_file_durable()`：`create_new` 拒绝覆盖同名文件，写入或刷盘失败时删除本次半成品。
+
+**历史位置（`static`，不迁移、不读取正文）：**
 
     ~/YvanAI/
     ├── knowledge/   memory/   projects/   templates/   backups/   logs/
 
 以及运行期知识资产：`knowledge/regulations/`、`knowledge/writing-style/`、`knowledge/excellent-cases/`（仓库内权威源，经显式同步进入隔离运行根）。
 
-桌面与引擎数据根都**不承载**业务正文；这保证更换 DSH 或替换桌面外壳时业务数据可迁移。
+`~/YvanAI/projects/Omnidesk/analysis/` 是旧版分析成果的落点，可能仍有真实成果。OD-ARCH-011 只把**将来**的新文件改到 `~/OmniDesk/workspace/artifacts`，没有读取、迁移、改名或覆盖其中任何文件。**因此当前不能推断资产已统一**；是否迁移旧成果须另行评估并经用户明确授权。
+
+桌面与引擎数据根都**不承载**业务正文；这保证更换 DSH 或替换桌面外壳时业务数据可迁移。注意 `~/OmniDesk` 下同时存在运行时数据根（`runtime/`、`app/`）与业务成果目录（`workspace/artifacts/`），二者语义不同，备份与清理时不得混为一谈。
 
 ---
 
