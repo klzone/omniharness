@@ -3,7 +3,7 @@
 > 状态：**技术栈冻结**（OmniDesk P1-Desktop Phase 2 · Step 2 产物）
 > 日期：2026-10-16
 > 上游依据：[GOALS.md](../GOALS.md)、[架构决策](decisions.md)、[OmniDesk-Engine-Interface-Contract.md](OmniDesk-Engine-Interface-Contract.md)、[../tests/reports/p2-desktop-baseline-report.md](../tests/reports/p2-desktop-baseline-report.md)。本架构文档记录技术切片，不构成正式产品化批准。
-> 说明：本文冻结**桌面外壳的技术栈与分层职责**；不描述已实现的代码（当前 `desktop/` 尚未创建）。
+> 说明：本文冻结**桌面外壳的技术栈与分层职责**。`desktop/` 工程已创建并可在 Linux 本机构建；实现进度与验收状态以 `PLANS.md`、`STATUS.md`、`REVIEW.md` 为准。
 
 ---
 
@@ -141,11 +141,11 @@
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| `desktop/` 工程 | 尚未创建 | Step 5 产物 |
-| Rust 工具链 | **本机缺失** | `cargo`/`rustc` 不存在；见 Step 1 报告第 5 节 |
-| Tauri Linux 构建依赖 | **本机缺失** | `libwebkit2gtk-4.1-dev`、`libgtk-3-dev`、`libsoup-3.0-dev` 未装；无密码提权 |
-| Tauri 构建可行性 | `unverified` | 待安装工具链后实测 |
-| Python Engine 子进程入口 | **不存在** | 现为进程内库；Step 8 需新增入口进程 |
+| `desktop/` 工程 | 已创建 | Tauri 2 + React + Rust 宿主；技术切片已验证，非正式产品化批准 |
+| Rust 工具链 | 可用（经项目脚本） | 先执行 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"` |
+| Tauri Linux 构建依赖 | 本机可构建 | `.deb` 已实际产出；构建前提见下文 |
+| Tauri 构建产物 | 部分通过 | `desktop/src-tauri/target/release/bundle/deb/OmniDesk_0.1.0_amd64.deb`（包名 `omni-desk`、版本 `0.1.0`）；AppImage 因 `linuxdeploy` 失败未产出；`.deb` 未安装 |
+| Python Engine 子进程入口 | 已存在 | 由 Rust 宿主启动与回收；调用能力见引擎接口契约与验证报告 |
 | Windows / macOS 行为 | `unverified` | 未实测，不声称支持 |
 
 ---
