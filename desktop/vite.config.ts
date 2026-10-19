@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // Tauri 在开发态从固定端口加载前端，故此处固定端口并禁止自动改端口。
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {
     port: 5273,
@@ -16,4 +17,3 @@ export default defineConfig({
     emptyOutDir: true,
   },
 });
-

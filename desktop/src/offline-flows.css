@@ -1,0 +1,440 @@
+/*
+ * 「离线工作流程」局部样式 —— 仅作用于 .ofl-v2 子树。
+ *
+ * 背景：styles.css 的旧版深色规则已整体降级到 @layer legacy，
+ * 但离线流程仍沿用旧类名（.workbench/.pane/.prompt/.text-input/.tab ...），
+ * 在浅色外壳下出现深色底 + 深色字。这里只为本页补齐浅色可读样式，
+ * 不改功能、不改文案、不隐藏边界提示。
+ *
+ * 约束：不使用全局选择器；复用 theme.css 的令牌，不新增令牌。
+ * 本文件不带 @layer，按级联层规则优先于 @layer legacy。
+ */
+
+.ofl-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0.25rem 0 1.5rem;
+  color: var(--color-on-surface);
+  font-family: var(--font-body-md);
+  font-size: 14px;
+  line-height: 1.6;
+  /* 旧版 :root 声明了 color-scheme: dark；本页局部改回 light，
+     否则原生 <textarea>/<input>/复选框会渲染成深色。 */
+  color-scheme: light;
+  /* 覆盖旧版 .workbench 的深色分隔底色与内层滚动，只由外层容器滚动。 */
+  background: transparent;
+  overflow: visible;
+}
+
+/* ---- 卡片 ---- */
+.ofl-v2 .pane {
+  background: rgba(255, 255, 255, 0.78);
+  /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter（每个面板一层，合成成本高、收益低）。 */
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 1rem;
+  padding: 1.25rem 1.5rem;
+  box-shadow:
+    0 12px 32px -14px rgba(15, 23, 42, 0.08),
+    0 2px 8px -2px rgba(79, 70, 229, 0.04);
+}
+
+.ofl-v2 .wb-header {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+/* ---- 标题 ---- */
+.ofl-v2 .pane-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.625rem;
+  margin: 0 0 0.875rem;
+  font-family: var(--font-headline-md);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-on-surface);
+}
+
+.ofl-v2 .pane-title .count {
+  font-family: var(--font-label-caps);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--color-on-surface-variant);
+  background: rgba(234, 237, 255, 0.9);
+  border-radius: 9999px;
+  padding: 2px 9px;
+}
+
+/* ---- 范围提示：保持醒目，不弱化 ---- */
+.ofl-v2 .scope-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(180, 120, 0, 0.28);
+  background: rgba(255, 244, 214, 0.72);
+  color: #6b4700;
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.ofl-v2 .scope-notice strong {
+  color: #7a3e00;
+  font-weight: 600;
+}
+
+.ofl-v2 .scope-notice ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.ofl-v2 .scope-path {
+  margin-top: 0.55rem;
+  font-family: var(--font-label-caps);
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ---- 场景切换 ---- */
+.ofl-v2 .type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.ofl-v2 .tab {
+  padding: 0.4rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(199, 196, 216, 0.7);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-body-sm);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.ofl-v2 .tab:hover:not(:disabled) {
+  border-color: rgba(53, 37, 205, 0.35);
+  color: var(--color-on-surface);
+}
+
+.ofl-v2 .tab.active {
+  background: var(--color-primary);
+  border-color: transparent;
+  color: var(--color-on-primary);
+}
+
+/* 选中项在悬停时必须保持高对比（否则:higher-specificity 的 hover 规则会把字压暗）。 */
+.ofl-v2 .tab.active:hover:not(:disabled) {
+  background: var(--color-primary-container);
+  border-color: transparent;
+  color: var(--color-on-primary);
+}
+
+/* ---- 按钮 ---- */
+.ofl-v2 .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.ofl-v2 button.primary,
+.ofl-v2 button.ghost {
+  font-family: var(--font-body-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.55rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
+}
+
+.ofl-v2 button.primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  box-shadow: 0 6px 16px -8px rgba(53, 37, 205, 0.55);
+}
+
+.ofl-v2 button.primary:hover:not(:disabled) {
+  background: var(--color-primary-container);
+}
+
+.ofl-v2 button.ghost {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(199, 196, 216, 0.7);
+  color: var(--color-on-surface);
+}
+
+.ofl-v2 button.ghost:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: rgba(53, 37, 205, 0.35);
+}
+
+.ofl-v2 button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ofl-v2 button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ofl-v2 button:focus-visible,
+.ofl-v2 input:focus-visible,
+.ofl-v2 textarea:focus-visible,
+.ofl-v2 .check input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---- 输入 ---- */
+.ofl-v2 textarea.prompt,
+.ofl-v2 input.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-body-sm);
+  font-size: 13px;
+  color: var(--color-on-surface);
+  background: rgba(242, 243, 255, 0.85);
+  border: 1px solid rgba(199, 196, 216, 0.65);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  outline: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ofl-v2 textarea.prompt {
+  display: block;
+  margin: 0.4rem 0 0;
+  min-height: 6rem;
+  resize: vertical;
+  line-height: 1.65;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+.ofl-v2 textarea.prompt::placeholder,
+.ofl-v2 input.text-input::placeholder {
+  color: rgba(119, 117, 135, 0.75);
+}
+
+.ofl-v2 textarea.prompt:focus,
+.ofl-v2 input.text-input:focus {
+  background: #ffffff;
+  border-color: rgba(53, 37, 205, 0.45);
+  box-shadow: 0 0 0 3px rgba(53, 37, 205, 0.15);
+}
+
+.ofl-v2 textarea.prompt:disabled,
+.ofl-v2 input.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---- 表单 ---- */
+.ofl-v2 .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.ofl-v2 .field-label {
+  font-family: var(--font-label-caps);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-on-surface-variant);
+  line-height: 1.6;
+}
+
+/* 本页表单是多字段纵向填写，保持单列，不套用工作台的横排布局。 */
+.ofl-v2 .record-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.75rem 0 0;
+}
+
+.ofl-v2 .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(199, 196, 216, 0.6);
+  border-radius: 0.7rem;
+  background: rgba(242, 243, 255, 0.6);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.ofl-v2 .check input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2rem;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+/* ---- 结果与状态 ---- */
+.ofl-v2 pre.text {
+  margin: 0.4rem 0 0;
+  padding: 0.85rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(199, 196, 216, 0.5);
+  background: rgba(250, 248, 255, 0.9);
+  color: var(--color-on-surface);
+  font-family: var(--font-label-caps);
+  font-size: 11.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 26rem;
+  overflow: auto;
+}
+
+.ofl-v2 .hint {
+  margin: 0.5rem 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--color-on-surface-variant);
+}
+
+.ofl-v2 .alert {
+  margin: 0.65rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 218, 214, 0.75);
+  border: 1px solid rgba(186, 26, 26, 0.25);
+  color: var(--color-on-error-container);
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.ofl-v2 .status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.6rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(242, 243, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.ofl-v2 .status-row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, max-content) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+
+.ofl-v2 .status-row .k {
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-label-caps);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.ofl-v2 .status-row .v {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.ofl-v2 .mono {
+  font-family: var(--font-label-caps);
+  font-variant-numeric: tabular-nums;
+}
+
+.ofl-v2 .record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ofl-v2 .record-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "name action"
+    "meta action";
+  gap: 0.15rem 0.75rem;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.7rem;
+  background: rgba(242, 243, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.ofl-v2 .record-item > .mono {
+  grid-area: name;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12.5px;
+}
+
+.ofl-v2 .record-item > .hint {
+  grid-area: meta;
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.ofl-v2 .record-item > button {
+  grid-area: action;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .ofl-v2 {
+    gap: 0.75rem;
+  }
+
+  .ofl-v2 .pane {
+    padding: 1rem 1.05rem;
+  }
+
+  .ofl-v2 .status-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}

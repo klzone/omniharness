@@ -1,3 +1,6 @@
+/* 旧版深色样式：整体降级到 legacy 层，避免覆盖 Tailwind 工具类与设计令牌。
+ * 保留全部既有规则（尤其离线流程依赖的 .scope-notice/.scope-path）。 */
+@layer legacy {
 :root {
   --bg: #0b0f17;
   --bg-panel: #111725;
@@ -314,6 +317,41 @@ button.ghost {
   overflow-wrap: anywhere;
 }
 
+/* --- 输入范围提示（说明适用范围与扫描局限，不构成授权或保护） --- */
+.scope-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 9px;
+  background: rgba(251, 191, 36, 0.07);
+  color: #fde68a;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.scope-notice strong {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.scope-notice ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scope-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+
 /* --- 技术细节折叠 --- */
 .tech {
   margin-top: auto;
@@ -605,4 +643,5 @@ button.tiny {
 .alert ul {
   margin: 6px 0 0;
   padding-left: 18px;
+}
 }
