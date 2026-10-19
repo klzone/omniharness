@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 import threading
 import time
 from dataclasses import dataclass, field
@@ -75,6 +76,47 @@ __all__ = [
 ]
 
 ACP_PROTOCOL_VERSION = 1
+
+
+def canonical_cwd(path: str, *, field: str = "cwd") -> str:
+    """把工作目录收敛到唯一物理身份（单一规范化落点）。
+
+    为什么需要：会话**存储**按原始 cwd 字符串分组（projectKey），而工作区注册表与
+    ACP list/resume 按 realpath 分组。同一物理目录的别名写法（符号链接、多余斜杠、`..`）
+    会被分成两个存储项目目录。在提交/恢复前统一 realpath 化，使两边身份一致。
+
+    不可解析的路径（不存在或无法解析）按契约明确报错，不静默退化为字符串相等。
+    """
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise EngineError(
+            EngineErrorCode.INVALID_ARGUMENT,
+            field + " must be an absolute path",
+            detail={field: path},
+        )
+    try:
+        return os.path.realpath(path, strict=True)
+    except OSError as exc:
+        raise EngineError(
+            EngineErrorCode.INVALID_ARGUMENT,
+            field + " does not resolve to an existing directory: " + str(exc),
+            detail={field: path},
+        ) from exc
+
+
+def workspace_label_for(cwd: str, *, ordinal: int) -> str:
+    """给界面一个稳定但不含目录名的展示标识。
+
+    目录名本身可能含项目名或人名，因此连 basename 也不显示；只用序号
+    加路径指纹前缀，既能区分不同工作区，又不泄露路径信息。
+    """
+    digest = hashlib.sha256(os.path.realpath(cwd).encode("utf-8")).hexdigest()[:8]
+    return "工作区 " + str(ordinal) + " · " + digest
+
+
+def workspace_token_for(cwd: str) -> str:
+    """与 label 独立的不透明标识，用于把恢复请求绑定到用户看到的那一项。"""
+    return hashlib.sha256(os.path.realpath(cwd).encode("utf-8")).hexdigest()[:16]
+
 
 # 客户端能力声明：本原型不授予引擎读写本地文件的能力（最小权限）。
 CLIENT_CAPS: Mapping[str, Any] = {"fs": {"readTextFile": False, "writeTextFile": False}}
@@ -164,14 +206,112 @@ class SessionRecovery:
     config_option_count: int
     evidence: str
     note: str = ""
+    workspace_token: str = ""
+    workspace_label: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "engine_session_id": self.engine_session_id,
             "resumed": self.resumed,
-            "cwd": self.cwd,
+            # 恢复仍使用真实 cwd（内部字段），但不回传给界面或证据。
+            "workspace_token": self.workspace_token,
+            "workspace_label": self.workspace_label,
             "config_option_count": self.config_option_count,
             "evidence": self.evidence,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
+class SessionSummary:
+    """一个可发现会话的**元数据**。不包含任何消息正文。
+
+    metadata_valid 只表示引擎返回的记录结构可解析，不代表 resume 一定成功；
+    resume_status 固定为 unverified（尚未实际恢复），重开是否可行由
+    实际 session/resume 的结果决定。
+    """
+
+    engine_session_id: str
+    workspace_dir: str
+    workspace_label: str = ""
+    workspace_token: str = ""
+    created_at: Optional[float] = None
+    metadata_valid: bool = True
+    resume_status: str = "unverified"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "engine_session_id": self.engine_session_id,
+            # 绝对路径与目录名都可能含真实项目/个人信息，不进入界面响应。
+            # 恢复所需的真实 cwd 只保留在适配层内部（见 recover_session）。
+            "workspace_label": self.workspace_label,
+            "workspace_token": self.workspace_token,
+            "created_at": self.created_at,
+            "metadata_valid": self.metadata_valid,
+            "resume_status": self.resume_status,
+        }
+
+
+@dataclass(frozen=True)
+class SessionListing:
+    """一页会话清单，按规范化工作区归组。"""
+
+    groups: tuple[dict[str, Any], ...]
+    total: int
+    skipped_invalid: int
+    next_cursor: Optional[str]
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "groups": list(self.groups),
+            "total": self.total,
+            "skipped_invalid": self.skipped_invalid,
+            "next_cursor": self.next_cursor,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
+class TaskRecordSummary:
+    """本地任务台账的一条**元数据**记录（不含内容正文与事件）。"""
+
+    omni_task_id: str
+    state: str
+    intent: str
+    created_at: float
+    state_since: float
+    engine_session_id: Optional[str]
+    cancel_phase: str
+    persistence: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "omni_task_id": self.omni_task_id,
+            "state": self.state,
+            # intent 是自由文本，可能含用户输入内容；台账 UI 不需要它。
+            "created_at": self.created_at,
+            "state_since": self.state_since,
+            "engine_session_id": self.engine_session_id,
+            "cancel_phase": self.cancel_phase,
+            "persistence": self.persistence,
+        }
+
+
+@dataclass(frozen=True)
+class TaskLedgerListing:
+    """本地任务台账的一页清单。只含元数据，不含结果正文与事件流。"""
+
+    records: tuple[TaskRecordSummary, ...]
+    skipped_invalid: int
+    limit: int
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "records": [r.to_dict() for r in self.records],
+            "skipped_invalid": self.skipped_invalid,
+            "limit": self.limit,
             "note": self.note,
         }
 
@@ -273,6 +413,7 @@ class AcpEngineAdapter:
         default_timeout: float = 120.0,
         session_timeout: float = 60.0,
         init_timeout: float = 30.0,
+        engine_profile: Optional[str] = None,
     ) -> None:
         if not command:
             raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "command must be a non-empty list")
@@ -289,6 +430,11 @@ class AcpEngineAdapter:
         self._default_timeout = float(default_timeout)
         self._session_timeout = float(session_timeout)
         self._init_timeout = float(init_timeout)
+        # 当前配置的 DSH Profile 名。只用于**报错可读性**（指出是哪个 Profile 没应答），
+        # 不参与任何行为判定；也绝不据此猜测 Profile 能力（不读 DSH 私有 bundle 清单）。
+        self._engine_profile = (
+            str(engine_profile).strip() if engine_profile not in (None, "") else None
+        )
 
         self._lock = threading.RLock()
         self._cond = threading.Condition(self._lock)
@@ -298,6 +444,9 @@ class AcpEngineAdapter:
         self._sent_ids: set = set()
         self._tasks: dict = {}
         self._sessions: dict = {}
+        # 会话列表产生的不透明工作区标识 → 真实目录。仅进程内使用，不回传路径。
+        self._workspace_tokens: dict = {}
+        self._workspace_labels: dict = {}
         self._idempotency: dict = {}
         self._unmatched_frames: list = []
         self._orphan_updates: list = []
@@ -320,7 +469,54 @@ class AcpEngineAdapter:
         cmd = ["node", dsh_bin, "--profile", profile]
         for p in patch_files:
             cmd.extend(["--patch", p])
+        kwargs.setdefault("engine_profile", profile)
         return cls(command=cmd, cwd=cwd, env=env, **kwargs)
+
+    # -- 报错可读性（只影响 message/detail 文本，不参与行为判定）-------------
+
+    def _profile_phrase(self, *, for_handshake: bool) -> str:
+        """把「所配 Profile」写进错误文本；没有 Profile 信息时返回空串。"""
+        if not self._engine_profile:
+            return ""
+        name = json.dumps(self._engine_profile)
+        if for_handshake:
+            return (
+                ": OmniDesk expects profile "
+                + name
+                + " to speak ACP over stdio, but it never completed the ACP handshake"
+            )
+        return ": profile " + name + " is not responding on the ACP channel"
+
+    def _profile_detail(self, method: str, *, handshake: bool) -> dict:
+        """结构化补充：所配 Profile、OmniDesk 预期的协议，以及可读的一句话原因。
+
+        说明：serve.py 的 JSON-RPC 错误帧把 `message` 字段填成错误码（如 "timeout"），
+        `EngineError.message` 并不会原样过线。因此可读解释必须放进 `detail`，
+        否则调用方只会看到一个光秃禿的 "timeout"。这里不改错误码、不改服务端错误映射。
+        """
+        detail: dict = {"method": method, "expected_protocol": "acp"}
+        if self._engine_profile:
+            detail["engine_profile"] = self._engine_profile
+        if handshake:
+            detail["handshake"] = "acp/initialize"
+        if self._engine_profile and handshake:
+            detail["reason"] = (
+                "OmniDesk expects DSH profile "
+                + self._engine_profile
+                + " to speak ACP over stdio, but it never completed the ACP handshake "
+                "within the bounded wait; a profile that does not serve ACP (for example "
+                "a web-UI bundle) starts up but never answers the handshake"
+            )
+        elif handshake:
+            detail["reason"] = (
+                "OmniDesk expects the configured DSH profile to speak ACP over stdio, "
+                "but the ACP handshake was not answered within the bounded wait"
+            )
+        else:
+            detail["reason"] = (
+                "no response arrived on the ACP channel before the bounded wait ended"
+            )
+        return detail
 
     # -- 进程生命周期 -------------------------------------------------------
     def _ensure_peer(self) -> JsonRpcPeer:
@@ -376,9 +572,19 @@ class AcpEngineAdapter:
                     detail={"stderr_tail": peer.stderr_text()[-2000:]},
                     omni_task_id=omni_task_id,
                 )
+            # 进程还活着但一句话都不说：最典型的原因是所配 Profile 不是 ACP Profile
+            # （例如 web bundle：它会起来，却永不回应 stdio 上的 ACP 握手）。
+            # 这里只把「所配 Profile + 预期协议」写清楚，让错误可读、可区分；
+            # 判定依旧只看「有界等待内是否收到响应」，不读 DSH 私有 Profile 结构。
+            handshake = method == "initialize"
             raise EngineError(
                 EngineErrorCode.TIMEOUT,
-                method + " did not respond within " + str(timeout) + "s",
+                method
+                + " did not respond within "
+                + str(timeout)
+                + "s"
+                + self._profile_phrase(for_handshake=handshake),
+                detail=self._profile_detail(method, handshake=handshake),
                 omni_task_id=omni_task_id,
             )
         if "error" in frame:
@@ -764,8 +970,8 @@ class AcpEngineAdapter:
     def submit_task(self, request: SubmitTaskRequest) -> SubmitTaskReceipt:
         if not request.intent or not isinstance(request.intent, str):
             raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "intent must be a non-empty string")
-        if not os.path.isabs(request.workspace_dir):
-            raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "workspace_dir must be absolute")
+        # 单一规范化落点：后续的记录、session/new 与本地落盘均使用规范化后的路径。
+        workspace_dir = canonical_cwd(request.workspace_dir, field="workspace_dir")
         text = request.prompt_text
         if text is None and request.input_file:
             try:
@@ -801,7 +1007,7 @@ class AcpEngineAdapter:
             record = _TaskRecord(
                 omni_task_id=omni_task_id,
                 intent=request.intent,
-                workspace_dir=request.workspace_dir,
+                workspace_dir=workspace_dir,
                 idempotency_key=request.idempotency_key,
                 created_at=request.requested_at or now(),
                 state_since=now(),
@@ -817,7 +1023,7 @@ class AcpEngineAdapter:
         try:
             created = self._request(
                 "session/new",
-                {"cwd": request.workspace_dir, "mcpServers": []},
+                {"cwd": workspace_dir, "mcpServers": []},
                 self._session_timeout,
                 omni_task_id=omni_task_id,
             )
@@ -1198,11 +1404,214 @@ class AcpEngineAdapter:
             note="取消请求已发送但未取得可靠终态证据；不得报告为取消成功",
         )
 
-    # -- 4.7 recover_session / recover_task ---------------------------------
-    def recover_session(self, engine_session_id: str, *, cwd: Optional[str] = None) -> SessionRecovery:
+    # -- 4.7 session listing / recover_session / recover_task ---------------
+    def list_sessions(
+        self,
+        *,
+        after_cursor: Optional[str] = None,
+        cwd: Optional[str] = None,
+        max_pages: int = 20,
+    ) -> SessionListing:
+        """通过公开的 `session/list` 列出会话**元数据**，按规范化工作区归组。
+
+        约束：
+          * 只使用 ACP 公开接口，不扫描、不解析 DSH 的会话持久化文件；
+          * 只返回 sessionId / cwd / createdAt，不读取任何消息正文；
+          * cwd 的显示值可能含真实路径，调用方（UI/报告）自行决定是否展示；
+          * 无法解析 cwd 的记录计入 skipped_invalid，不猜测其工作区；
+          * 分页沿 nextCursor 有界推进，避免无限循环。单页大小由引擎的
+            sessionListPageSize 配置决定（公开 schema），适配层不覆盖该配置。
+        """
+        filter_cwd: Optional[str] = None
+        if cwd is not None:
+            filter_cwd = canonical_cwd(cwd)
+        cursor = after_cursor
+        entries: list[Mapping[str, Any]] = []
+        skipped = 0
+        pages = 0
+        next_cursor: Optional[str] = None
+        while pages < max(1, int(max_pages)):
+            params: dict[str, Any] = {}
+            if cursor:
+                params["cursor"] = cursor
+            if filter_cwd is not None:
+                params["cwd"] = filter_cwd
+            try:
+                page = self._request("session/list", params, self._session_timeout)
+            except EngineError as error:
+                if error.code == EngineErrorCode.UNSUPPORTED:
+                    raise EngineError(
+                        EngineErrorCode.UNSUPPORTED,
+                        "engine does not support session/list",
+                        detail=dict(error.detail),
+                    )
+                raise EngineError(
+                    EngineErrorCode.RECOVER_FAILED,
+                    "session listing failed: " + error.message,
+                    detail=dict(error.detail),
+                ) from error
+            pages += 1
+            raw_sessions = page.get("sessions")
+            if not isinstance(raw_sessions, list):
+                raise EngineError(
+                    EngineErrorCode.EVENT_PARSE_ERROR,
+                    "session/list response has no sessions array",
+                    detail={"result_keys": sorted(str(k) for k in page.keys())},
+                )
+            for item in raw_sessions:
+                if not isinstance(item, Mapping):
+                    skipped += 1
+                    continue
+                session_id = item.get("sessionId")
+                raw_cwd = item.get("cwd")
+                if not isinstance(session_id, str) or not session_id:
+                    skipped += 1
+                    continue
+                if not isinstance(raw_cwd, str) or not os.path.isabs(raw_cwd):
+                    skipped += 1
+                    continue
+                entries.append(
+                    {
+                        "sessionId": session_id,
+                        # 展示与归组都使用物理身份；不存在的旧目录保留词法规范化结果。
+                        "cwd": os.path.realpath(raw_cwd),
+                        "cwdExists": os.path.isdir(raw_cwd),
+                    }
+                )
+            raw_next = page.get("nextCursor")
+            if not raw_next:
+                next_cursor = None
+                break
+            if not isinstance(raw_next, str):
+                raise EngineError(
+                    EngineErrorCode.EVENT_PARSE_ERROR,
+                    "session/list nextCursor is not a string",
+                )
+            if raw_next == cursor:
+                raise EngineError(
+                    EngineErrorCode.EVENT_PARSE_ERROR,
+                    "session/list pagination did not advance",
+                )
+            cursor = raw_next
+            next_cursor = raw_next
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for entry in entries:
+            grouped.setdefault(str(entry["cwd"]), []).append(
+                {
+                    "engine_session_id": entry["sessionId"],
+                    "workspace_label": workspace_label_for(
+                        str(entry["cwd"]), ordinal=0
+                    ),
+                    "workspace_token": workspace_token_for(str(entry["cwd"])),
+                    "created_at": None,
+                    "workspace_exists": entry["cwdExists"],
+                    "metadata_valid": True,
+                    # 列表可见 != 可恢复；只有实际 resume 成功才可改变该值。
+                    "resume_status": "unverified",
+                }
+            )
+        groups = []
+        for ordinal, (key, value) in enumerate(sorted(grouped.items()), start=1):
+            label = workspace_label_for(key, ordinal=ordinal)
+            token = workspace_token_for(key)
+            with self._lock:
+                self._workspace_tokens[token] = key
+                self._workspace_labels[token] = label
+            for session in value:
+                session["workspace_label"] = label
+                session["workspace_token"] = token
+            groups.append({"workspace_label": label, "workspace_token": token, "sessions": value})
+        groups = tuple(groups)
+        return SessionListing(
+            groups=groups,
+            total=len(entries),
+            skipped_invalid=skipped,
+            next_cursor=next_cursor,
+            note="只含会话元数据；列表可见不代表可恢复，重开结果以 session/resume 为准",
+        )
+
+    def list_task_records(self, *, limit: int = 100) -> TaskLedgerListing:
+        """列出 OmniDesk 自己落盘的任务台账（元数据），不返回正文。
+
+        台账在 `engine_state_dir/<omni_task_id>.json`。这里只解析结构并丢弃
+        `content` 字段；文件本身不会被修改。
+        """
+        limit = max(1, min(int(limit), 1000))
+        if self._state_dir is None:
+            return TaskLedgerListing(
+                records=(), skipped_invalid=0, limit=limit,
+                note="未配置引擎状态目录，无本地任务台账",
+            )
+        base = Path(self._state_dir)
+        try:
+            files = sorted(base.glob("omni-*.json"))
+        except OSError as exc:
+            raise EngineError(
+                EngineErrorCode.RESULT_PERSIST_FAILED,
+                "task ledger is unreadable: " + type(exc).__name__,
+            ) from exc
+        records: list[TaskRecordSummary] = []
+        skipped = 0
+        for path in files:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                skipped += 1
+                continue
+            if not isinstance(data, Mapping):
+                skipped += 1
+                continue
+            task_id = data.get("omni_task_id")
+            if not isinstance(task_id, str) or not task_id:
+                skipped += 1
+                continue
+            state = str(data.get("state") or "unknown")
+            # 记录内容字段一律不读入结果；只保留契约内的元数据。
+            records.append(
+                TaskRecordSummary(
+                    omni_task_id=task_id,
+                    state=state,
+                    intent=str(data.get("intent") or ""),
+                    created_at=float(data.get("created_at") or 0.0),
+                    state_since=float(data.get("state_since") or 0.0),
+                    engine_session_id=(
+                        str(data.get("engine_session_id"))
+                        if data.get("engine_session_id")
+                        else None
+                    ),
+                    cancel_phase=str(data.get("cancel_phase") or "not_requested"),
+                    persistence="recorded",
+                )
+            )
+        records.sort(key=lambda r: r.created_at, reverse=True)
+        return TaskLedgerListing(
+            records=tuple(records[:limit]),
+            skipped_invalid=skipped,
+            limit=limit,
+            note="任务台账仅含元数据；恢复结果以 recover_task 为准，不自动重放",
+        )
+
+    def recover_session(
+        self,
+        engine_session_id: str,
+        *,
+        cwd: Optional[str] = None,
+        workspace_token: Optional[str] = None,
+    ) -> SessionRecovery:
         with self._lock:
             known = self._sessions.get(engine_session_id)
-            target_cwd = cwd or (known.workspace_dir if known is not None else self._cwd)
+            raw_cwd = cwd or (known.workspace_dir if known is not None else self._cwd)
+            if workspace_token:
+                # 界面只能回传它见过的不透明 token，不能凭自由路径重开会话。
+                resolved = self._workspace_tokens.get(str(workspace_token))
+                if resolved is None:
+                    raise EngineError(
+                        EngineErrorCode.UNKNOWN_SESSION,
+                        "unknown workspace token; list sessions again",
+                    )
+                raw_cwd = resolved
+        # 同一个规范化落点：恢复时也必须用 realpath，否则别名写法会被引擎当作另一个工作区。
+        target_cwd = canonical_cwd(raw_cwd)
         try:
             result = self._request(
                 "session/resume",
@@ -1226,6 +1635,10 @@ class AcpEngineAdapter:
             config_option_count=len(options),
             evidence="engine_terminal",
             note="恢复的是既有会话；恢复不触发任何任务重放",
+            workspace_token=workspace_token_for(target_cwd),
+            workspace_label=self._workspace_labels.get(
+                workspace_token_for(target_cwd), ""
+            ),
         )
 
     def recover_task(

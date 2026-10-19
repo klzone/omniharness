@@ -362,11 +362,37 @@ class EngineService:
             recovery = adapter.recover_session(
                 str(params.get("engine_session_id") or ""),
                 cwd=params.get("cwd"),
+                workspace_token=params.get("workspace_token"),
             )
         except EngineError as error:
             self._fail(req_id, error)
             return
         self._result(req_id, recovery.to_dict())
+
+    def m_list_sessions(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        try:
+            listing = adapter.list_sessions(
+                after_cursor=params.get("after_cursor"),
+                cwd=params.get("cwd"),
+            )
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        self._result(req_id, listing.to_dict())
+
+    def m_list_task_records(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        try:
+            listing = adapter.list_task_records(limit=int(params.get("limit") or 100))
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        self._result(req_id, listing.to_dict())
 
     def m_recover_task(self, req_id: Any, params: Mapping[str, Any]) -> None:
         adapter = self._require_adapter(req_id)
@@ -418,6 +444,8 @@ class EngineService:
         "omni.get_task_result_text": "m_get_task_result_text",
         "omni.recover_session": "m_recover_session",
         "omni.recover_task": "m_recover_task",
+        "omni.list_sessions": "m_list_sessions",
+        "omni.list_task_records": "m_list_task_records",
         "omni.shutdown": "m_shutdown",
     }
 
