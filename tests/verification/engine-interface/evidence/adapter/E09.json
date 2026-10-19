@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091880.565202,
+  "started_at": 1792302084.3244994,
   "checks": [
     {
       "check": "recover_unknown_rejected",
@@ -52,7 +52,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e09_krhqyl2a",
+    "data_root": "/tmp/omni_p1s3_e09_zqmjazjm",
     "unknown_session_error": {
       "exception": "EngineError",
       "engine_error_code": "unknown_session",
@@ -83,5 +83,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091882.5677464
+  "finished_at": 1792302086.328087
 }

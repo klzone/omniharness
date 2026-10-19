@@ -1,0 +1,287 @@
+{
+  "step": "step4",
+  "label": "step4-B-before-engine-healthy-run1",
+  "mode": "engine-healthy",
+  "dmabuf": "1",
+  "verdict": "ok",
+  "preseeded_settings": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": "/tmp/od027-step4/step4-B-before-engine-healthy-run1/artifacts",
+    "model_permissions": {
+      "local": true,
+      "private": false,
+      "public": false
+    }
+  },
+  "window": {
+    "title": "OmniDesk Discipline",
+    "geometry": [
+      80,
+      90,
+      1280,
+      820
+    ]
+  },
+  "app_pid": 197746,
+  "home_frame": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-home.png",
+    "mean_luma": 245.46,
+    "luma_std": 30.7,
+    "dark_fraction": 0.0042,
+    "distinct_colors_subsampled": 1381,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "status_chip": {
+    "emerald_px": 554,
+    "amber_px": 0,
+    "state": "healthy(emerald)"
+  },
+  "engine_children": [
+    "97500 /opt/DeepSeek Harness/deepseek-harness",
+    "97507 /opt/DeepSeek Harness/deepseek-harness --type=zygote --no-zygote-sandbox",
+    "97508 /opt/DeepSeek Harness/deepseek-harness --type=zygote",
+    "97510 /opt/DeepSeek Harness/deepseek-harness --type=zygote",
+    "97540 /opt/DeepSeek Harness/deepseek-harness --type=gpu-process --ozone-platform=wayland --render-node-override=/dev/dri/renderD128 --enable",
+    "97545 /opt/DeepSeek Harness/deepseek-harness --type=utility --utility-sub-type=network.mojom.NetworkService --lang=zh-CN --service-sandbox-t",
+    "97570 /opt/DeepSeek Harness/deepseek-harness --type=renderer --enable-crash-reporter=3395dd60-3bf6-42c5-ad73-d71d39d9b460,no_channel --user-",
+    "97965 /opt/DeepSeek Harness/deepseek-harness --expose-internals /opt/DeepSeek Harness/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-d",
+    "197901 python3 -m omnidesk_engine",
+    "197904 node /mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile acp --patch /tmp/od027-step4"
+  ],
+  "idle_cpu": {
+    "window_seconds": 60.06,
+    "curve": [
+      {
+        "t": 5.0,
+        "webkit_web_process": 19.19,
+        "webkit_network_process": 0.2,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.19
+      },
+      {
+        "t": 10.0,
+        "webkit_web_process": 18.88,
+        "webkit_network_process": 0.1,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.29
+      },
+      {
+        "t": 15.0,
+        "webkit_web_process": 18.72,
+        "webkit_network_process": 0.07,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.26
+      },
+      {
+        "t": 20.0,
+        "webkit_web_process": 18.78,
+        "webkit_network_process": 0.05,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.29
+      },
+      {
+        "t": 25.0,
+        "webkit_web_process": 18.78,
+        "webkit_network_process": 0.04,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.27
+      },
+      {
+        "t": 30.0,
+        "webkit_web_process": 18.75,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.26
+      },
+      {
+        "t": 35.0,
+        "webkit_web_process": 18.81,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.16
+      },
+      {
+        "t": 40.0,
+        "webkit_web_process": 18.76,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.17
+      },
+      {
+        "t": 45.0,
+        "webkit_web_process": 18.81,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.21
+      },
+      {
+        "t": 50.0,
+        "webkit_web_process": 18.84,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.25
+      },
+      {
+        "t": 55.1,
+        "webkit_web_process": 18.82,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.25
+      },
+      {
+        "t": 60.1,
+        "webkit_web_process": 18.82,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 10.26
+      }
+    ],
+    "curve_every_s": 5.0,
+    "webkit_web_process": {
+      "pids": [
+        197763
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "197763": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 22"
+      },
+      "dmabuf_env": {
+        "197763": "1"
+      },
+      "avg_percent": 18.82,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        197761
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "197761": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 22"
+      },
+      "dmabuf_env": {
+        "197761": "1"
+      },
+      "avg_percent": 0.02,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "app_main": {
+      "pids": [
+        197746
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "197746": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop"
+      },
+      "dmabuf_env": {
+        "197746": "1"
+      },
+      "avg_percent": 10.26,
+      "missing_pids": []
+    }
+  },
+  "paint_progress_home": {
+    "samples": 30,
+    "distinct_frames": 27,
+    "changed_pairs": 28,
+    "pairs": 29,
+    "mean_delta_fraction": 0.0,
+    "max_delta_fraction": 0.0,
+    "capture_seconds_mean": 0.0255,
+    "region": [
+      80,
+      90,
+      1360,
+      910
+    ],
+    "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+  },
+  "stability_frames": [
+    {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-stab-0.png",
+      "sig": "3b0c9c2dddb149329d406b72a339c0e3",
+      "chip": {
+        "emerald_px": 553,
+        "amber_px": 0,
+        "state": "healthy(emerald)"
+      }
+    },
+    {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-stab-1.png",
+      "sig": "ff89f77c3922e6d1327725b6cc6cdd24",
+      "chip": {
+        "emerald_px": 553,
+        "amber_px": 0,
+        "state": "healthy(emerald)"
+      }
+    },
+    {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-stab-2.png",
+      "sig": "88fa5a5c1849e96a5344109c98fef148",
+      "chip": {
+        "emerald_px": 553,
+        "amber_px": 0,
+        "state": "healthy(emerald)"
+      }
+    },
+    {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-stab-3.png",
+      "sig": "17528d5a27158701661f9359c44ebe66",
+      "chip": {
+        "emerald_px": 553,
+        "amber_px": 0,
+        "state": "healthy(emerald)"
+      }
+    },
+    {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/shots-step4-B-before-engine-healthy-run1/step4-B-before-engine-healthy-run1-stab-4.png",
+      "sig": "708f89e993aa8456f4af8904398b8cab",
+      "chip": {
+        "emerald_px": 553,
+        "amber_px": 0,
+        "state": "healthy(emerald)"
+      }
+    }
+  ],
+  "stability": {
+    "distinct_signatures": 5,
+    "chip_states": [
+      "healthy(emerald)",
+      "healthy(emerald)",
+      "healthy(emerald)",
+      "healthy(emerald)",
+      "healthy(emerald)"
+    ]
+  },
+  "dmabuf_env_check": {
+    "app_main": "1"
+  },
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "Xvfb :96（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-19 18:49:50+0800",
+    "generated_at_epoch": 1792406990.3630989,
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step4/scripts/step4-app.py --label step4-B-before-engine-healthy-run1 --engine-healthy --idle-seconds 60 --settle 14 --own-xvfb --display :96",
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "data_root": "/tmp/od027-step4/step4-B-before-engine-healthy-run1",
+    "binary": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop",
+    "binary_mtime": 1792393486.1816764,
+    "window_size": "1280x820（tauri.conf 默认，未 resize）",
+    "idle_seconds": 60.0,
+    "nav_repeats": 5,
+    "engine_healthy_mode": true,
+    "note": "engine-healthy 模式在启动前预写 model_permissions.local=true，使顶栏状态点 animate-pulse 真正运行"
+  }
+}

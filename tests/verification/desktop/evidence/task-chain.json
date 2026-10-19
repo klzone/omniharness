@@ -1,12 +1,12 @@
 {
-  "generated_at": 1792112961.4136212,
+  "generated_at": 1792424739.652822,
   "evidence_level": "script（真实引擎+真实 DSH 进程 + 本机合成模型端点）",
   "channel": "IPC-2 stdio JSON-RPC（进程边界）",
   "dsh_cli": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
   "scenarios": {
     "success": {
       "scenario": "success",
-      "root": "/tmp/omni_p2desktop_ok_inokorv3",
+      "root": "/tmp/omni_p2desktop_ok_fmn8ob7l",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -41,7 +41,7 @@
               "--profile",
               "acp",
               "--patch",
-              "/tmp/omni_p2desktop_ok_inokorv3/synthetic-provider.yml"
+              "/tmp/omni_p2desktop_ok_fmn8ob7l/synthetic-provider.yml"
             ],
             "client_capabilities": {
               "fs": {
@@ -57,42 +57,32 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-64da048f-f2a0-49e0-8123-47eb995c8635",
+          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
           "status": "running",
-          "accepted_at": 1792112963.3691204,
-          "engine_session_id": "674790ab-f16b-4be1-8406-41d6a0810554",
+          "accepted_at": 1792424741.0042355,
+          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
           "note": "适配层已建立会话并提交；等待引擎终态证据"
         }
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-64da048f-f2a0-49e0-8123-47eb995c8635",
+          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
           "status": "running",
           "evidence_source": "operator_confirm",
-          "since": 1792112963.4502478,
+          "since": 1792424741.045202,
           "last_event_seq": 1,
           "partial_output_size": 0,
-          "engine_session_id": "674790ab-f16b-4be1-8406-41d6a0810554",
+          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
           "note": ""
         },
         {
-          "omni_task_id": "omni-64da048f-f2a0-49e0-8123-47eb995c8635",
-          "status": "running",
-          "evidence_source": "operator_confirm",
-          "since": 1792112963.4502478,
-          "last_event_seq": 1,
-          "partial_output_size": 0,
-          "engine_session_id": "674790ab-f16b-4be1-8406-41d6a0810554",
-          "note": ""
-        },
-        {
-          "omni_task_id": "omni-64da048f-f2a0-49e0-8123-47eb995c8635",
+          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
           "status": "succeeded",
           "evidence_source": "engine_terminal",
-          "since": 1792112963.7121594,
+          "since": 1792424741.246669,
           "last_event_seq": 4,
           "partial_output_size": 6,
-          "engine_session_id": "674790ab-f16b-4be1-8406-41d6a0810554",
+          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
           "note": "stop_reason=end_turn"
         }
       ],
@@ -103,7 +93,7 @@
         "form": "complete",
         "integrity": "complete",
         "content": "合成材料草稿",
-        "persisted_at": 1792112963.712838
+        "persisted_at": 1792424741.2471192
       },
       "event_count": 4,
       "event_types": [
@@ -126,7 +116,7 @@
     },
     "failure": {
       "scenario": "failure",
-      "root": "/tmp/omni_p2desktop_fail_1_qlbs7c",
+      "root": "/tmp/omni_p2desktop_fail_rdksz1_6",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -136,42 +126,32 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-c5038a65-53a1-4286-a73d-2131327b36ea",
+          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
           "status": "running",
-          "accepted_at": 1792112966.3585587,
-          "engine_session_id": "bd1968ed-8ef5-4ff1-8bb8-ff32d10d3a82",
+          "accepted_at": 1792424743.1377497,
+          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
           "note": "适配层已建立会话并提交；等待引擎终态证据"
         }
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-c5038a65-53a1-4286-a73d-2131327b36ea",
+          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
           "status": "running",
           "evidence_source": "operator_confirm",
-          "since": 1792112966.4399257,
+          "since": 1792424743.1793993,
           "last_event_seq": 1,
           "partial_output_size": 0,
-          "engine_session_id": "bd1968ed-8ef5-4ff1-8bb8-ff32d10d3a82",
+          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
           "note": ""
         },
         {
-          "omni_task_id": "omni-c5038a65-53a1-4286-a73d-2131327b36ea",
-          "status": "running",
-          "evidence_source": "operator_confirm",
-          "since": 1792112966.4399257,
-          "last_event_seq": 1,
-          "partial_output_size": 0,
-          "engine_session_id": "bd1968ed-8ef5-4ff1-8bb8-ff32d10d3a82",
-          "note": ""
-        },
-        {
-          "omni_task_id": "omni-c5038a65-53a1-4286-a73d-2131327b36ea",
+          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
           "status": "failed",
           "evidence_source": "engine_error",
-          "since": 1792112966.6818259,
+          "since": 1792424743.4016535,
           "last_event_seq": 2,
           "partial_output_size": 0,
-          "engine_session_id": "bd1968ed-8ef5-4ff1-8bb8-ff32d10d3a82",
+          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
           "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
         }
       ],
@@ -200,7 +180,7 @@
     },
     "cancel": {
       "scenario": "cancel",
-      "root": "/tmp/omni_p2desktop_cancel_8ifeni7s",
+      "root": "/tmp/omni_p2desktop_cancel_0v3wx1fv",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -210,10 +190,10 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-20317cb5-07e9-4e41-b811-b6ae722d3d54",
+          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
           "status": "running",
-          "accepted_at": 1792112968.8818653,
-          "engine_session_id": "863c5d75-e4bb-4d17-aebb-9a00b7181f04",
+          "accepted_at": 1792424745.277936,
+          "engine_session_id": "00b3eb74-5de8-4ac5-9ae5-27343691c4ed",
           "note": "适配层已建立会话并提交；等待引擎终态证据"
         }
       },
@@ -222,10 +202,10 @@
         "ok": true,
         "error": null,
         "outcome": {
-          "omni_task_id": "omni-20317cb5-07e9-4e41-b811-b6ae722d3d54",
+          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
           "phase": "confirmed_cancelled",
-          "requested_at": 1792112969.0027733,
-          "settled_at": 1792112969.0532644,
+          "requested_at": 1792424745.3585706,
+          "settled_at": 1792424745.4089663,
           "final_state": "cancelled",
           "evidence": "engine_terminal",
           "note": "引擎以 stopReason=cancelled 落定"
@@ -233,13 +213,13 @@
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-20317cb5-07e9-4e41-b811-b6ae722d3d54",
+          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
           "status": "cancelled",
           "evidence_source": "engine_terminal",
-          "since": 1792112969.0532653,
+          "since": 1792424745.4089673,
           "last_event_seq": 3,
           "partial_output_size": 0,
-          "engine_session_id": "863c5d75-e4bb-4d17-aebb-9a00b7181f04",
+          "engine_session_id": "00b3eb74-5de8-4ac5-9ae5-27343691c4ed",
           "note": "stop_reason=cancelled"
         }
       ],

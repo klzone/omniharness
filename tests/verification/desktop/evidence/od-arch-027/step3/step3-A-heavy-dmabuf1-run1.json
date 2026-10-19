@@ -1,0 +1,124 @@
+{
+  "step": "step3",
+  "group": "A-pages",
+  "subject": "MiniBrowser（页面级，决定性对照）",
+  "page": "heavy",
+  "page_file": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/heavy.html",
+  "page_sha256": "d5917b534892948ec5c1c00e448aaf0ac5fef2bf9574adae11ab345de4fe1995",
+  "dmabuf": "1",
+  "run": 1,
+  "seconds": 30.0,
+  "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/step3-A-heavy-dmabuf1-run1.png",
+  "process_set": {
+    "webkit_web_process": [
+      163056
+    ],
+    "webkit_network_process": [
+      163042
+    ],
+    "webkit_gpu_process": []
+  },
+  "cpu": {
+    "window_seconds": 30.02,
+    "curve": [
+      {
+        "t": 5.0,
+        "webkit_web_process": 100.36,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 10.0,
+        "webkit_web_process": 100.15,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 15.0,
+        "webkit_web_process": 100.22,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 20.0,
+        "webkit_web_process": 100.19,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 25.0,
+        "webkit_web_process": 100.18,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 30.0,
+        "webkit_web_process": 100.17,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      }
+    ],
+    "curve_every_s": 5.0,
+    "webkit_web_process": {
+      "pids": [
+        163056
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "163056": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 21"
+      },
+      "dmabuf_env": {
+        "163056": "1"
+      },
+      "avg_percent": 100.17,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        163042
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "163042": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 14"
+      },
+      "dmabuf_env": {
+        "163042": "1"
+      },
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "app_main_note": "页面级对照：MiniBrowser 无 OmniDesk 主进程，不统计"
+  },
+  "frame": {
+    "mean_luma": 131.21,
+    "luma_std": 121.06,
+    "dark_fraction": 0.4549,
+    "distinct_colors_subsampled": 626,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "pid_env_check": {
+    "163056": "1"
+  },
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "Xvfb :93（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-19 17:15:39+0800",
+    "generated_at_epoch": 1792401339.0577898,
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step3/scripts/step3-pages.py --pages simple,heavy --dmabuf 1 --runs 3 --seconds 30 --own-xvfb --display :93",
+    "seconds": 30.0,
+    "run": 1,
+    "page": "heavy"
+  }
+}

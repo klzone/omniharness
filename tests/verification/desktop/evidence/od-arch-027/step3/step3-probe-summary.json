@@ -1,0 +1,136 @@
+{
+  "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+  "script_version": "step3 v1",
+  "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+  "display_backend": "Xvfb :93（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+  "webkit_disable_dmabuf_renderer": "probe",
+  "generated_at": "2026-10-19 17:31:32+0800",
+  "generated_at_epoch": 1792402292.9073925,
+  "invocation": "tests/verification/desktop/evidence/od-arch-027/step3/scripts/step3-dmabuf-probe.py --own-xvfb --display :93 --seconds 30",
+  "treatments": [
+    {
+      "treatment": "unset",
+      "env_set": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": null,
+        "WEBKIT_FORCE_DMABUF_RENDERER": null
+      },
+      "error": null,
+      "stderr_line_count": 149,
+      "web_avg_percent": 99.91,
+      "gpu_count": 0,
+      "paint_progress": {
+        "samples": 30,
+        "distinct_frames": 6,
+        "changed_pairs": 5,
+        "pairs": 29,
+        "mean_delta_fraction": 0.00277,
+        "max_delta_fraction": 0.01987,
+        "capture_seconds_mean": 0.0175,
+        "region": [
+          0,
+          0,
+          1030,
+          770
+        ],
+        "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+      },
+      "stderr_matching_lines": [
+        "libEGL warning: DRI3 error: Could not get DRI3 device",
+        "libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering"
+      ]
+    },
+    {
+      "treatment": "0",
+      "env_set": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "0",
+        "WEBKIT_FORCE_DMABUF_RENDERER": null
+      },
+      "error": null,
+      "stderr_line_count": 149,
+      "web_avg_percent": 99.98,
+      "gpu_count": 0,
+      "paint_progress": {
+        "samples": 30,
+        "distinct_frames": 6,
+        "changed_pairs": 5,
+        "pairs": 29,
+        "mean_delta_fraction": 0.00212,
+        "max_delta_fraction": 0.01381,
+        "capture_seconds_mean": 0.0159,
+        "region": [
+          0,
+          0,
+          1030,
+          770
+        ],
+        "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+      },
+      "stderr_matching_lines": [
+        "libEGL warning: DRI3 error: Could not get DRI3 device",
+        "libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering"
+      ]
+    },
+    {
+      "treatment": "1",
+      "env_set": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+        "WEBKIT_FORCE_DMABUF_RENDERER": null
+      },
+      "error": null,
+      "stderr_line_count": 149,
+      "web_avg_percent": 100.12,
+      "gpu_count": 0,
+      "paint_progress": {
+        "samples": 30,
+        "distinct_frames": 7,
+        "changed_pairs": 6,
+        "pairs": 29,
+        "mean_delta_fraction": 0.0032,
+        "max_delta_fraction": 0.0197,
+        "capture_seconds_mean": 0.0137,
+        "region": [
+          0,
+          0,
+          1030,
+          770
+        ],
+        "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+      },
+      "stderr_matching_lines": [
+        "libEGL warning: DRI3 error: Could not get DRI3 device",
+        "libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering"
+      ]
+    },
+    {
+      "treatment": "force",
+      "env_set": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": null,
+        "WEBKIT_FORCE_DMABUF_RENDERER": "1"
+      },
+      "error": null,
+      "stderr_line_count": 149,
+      "web_avg_percent": 62.07,
+      "gpu_count": 0,
+      "paint_progress": {
+        "samples": 30,
+        "distinct_frames": 30,
+        "changed_pairs": 29,
+        "pairs": 29,
+        "mean_delta_fraction": 0.01112,
+        "max_delta_fraction": 0.02156,
+        "capture_seconds_mean": 0.0148,
+        "region": [
+          0,
+          0,
+          1030,
+          770
+        ],
+        "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+      },
+      "stderr_matching_lines": [
+        "libEGL warning: DRI3 error: Could not get DRI3 device",
+        "libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering"
+      ]
+    }
+  ]
+}

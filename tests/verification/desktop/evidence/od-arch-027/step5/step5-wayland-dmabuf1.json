@@ -1,0 +1,291 @@
+{
+  "step": "step5",
+  "label": "step5-wayland-dmabuf1",
+  "backend": "wayland",
+  "display": "wayland-0",
+  "dmabuf": "1",
+  "verdict": "ok",
+  "preseeded_settings": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": "/tmp/od027-step5/step5-wayland-dmabuf1/local-data",
+    "model_permissions": {
+      "local": true,
+      "private": false,
+      "public": false
+    }
+  },
+  "session_facts": {
+    "XDG_SESSION_TYPE": "wayland",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "DISPLAY": ":0",
+    "XDG_RUNTIME_DIR": "/run/user/1000",
+    "XDG_CURRENT_DESKTOP": "ubuntu:GNOME",
+    "XAUTHORITY_set": true,
+    "wayland_capture_probes": {
+      "gnome_shell_screenshot_dbus": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "错误：GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: ScreenshotArea is not allowed"
+      },
+      "gnome_shell_eval_dbus": {
+        "exit": 0,
+        "stdout": "(false, '')",
+        "stderr": ""
+      }
+    }
+  },
+  "app_pid": 304262,
+  "webview_ready": true,
+  "a11y_sample": [
+    "application:omnidesk-desktop",
+    "frame:OmniDesk Discipline",
+    "document web:OmniDesk",
+    "button:发送指令",
+    "button:语音",
+    "button:挂载库",
+    "entry:与 OmniDesk 协同探索、下达任务或记录灵感…",
+    "button:前往任务工作台",
+    "heading:今日重点推进",
+    "image:OmniDesk 吉祥物",
+    "heading:夜深了· 欢迎回到 OmniDesk",
+    "button:引擎诊断（只读）",
+    "button:成果目录与模型权限",
+    "button:会话与任务（只读元数据）",
+    "button:任务工作台（合成数据 · 五阶段）",
+    "button:项目跟踪（模型起草）",
+    "button:文案写作（模型起草）",
+    "button:周报与随记（模型起草）",
+    "button:工作台首页",
+    "button:关闭",
+    "button:最大化",
+    "button:最小化",
+    "button:未实现：通知与待办",
+    "button:系统偏好设置 / 引擎技术切片",
+    "entry:全局检索（未实现）"
+  ],
+  "idle_cpu": {
+    "window_seconds": 60.04,
+    "curve": [
+      {
+        "t": 5.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.4
+      },
+      {
+        "t": 10.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.2
+      },
+      {
+        "t": 15.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.13
+      },
+      {
+        "t": 20.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.05,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 25.0,
+        "webkit_web_process": 0.08,
+        "webkit_network_process": 0.04,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.12
+      },
+      {
+        "t": 30.0,
+        "webkit_web_process": 0.07,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 35.0,
+        "webkit_web_process": 0.09,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.11
+      },
+      {
+        "t": 40.0,
+        "webkit_web_process": 0.07,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 45.0,
+        "webkit_web_process": 0.07,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.09
+      },
+      {
+        "t": 50.0,
+        "webkit_web_process": 0.06,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.08
+      },
+      {
+        "t": 55.0,
+        "webkit_web_process": 0.09,
+        "webkit_network_process": 0.04,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.07
+      },
+      {
+        "t": 60.0,
+        "webkit_web_process": 0.08,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.07
+      }
+    ],
+    "curve_every_s": 5.0,
+    "webkit_web_process": {
+      "pids": [
+        304372
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "304372": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 25"
+      },
+      "dmabuf_env": {
+        "304372": "1"
+      },
+      "avg_percent": 0.08,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        304370
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "304370": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 25"
+      },
+      "dmabuf_env": {
+        "304370": "1"
+      },
+      "avg_percent": 0.03,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "app_main": {
+      "pids": [
+        304262
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "304262": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop"
+      },
+      "dmabuf_env": {
+        "304262": "1"
+      },
+      "avg_percent": 0.07,
+      "missing_pids": []
+    }
+  },
+  "dmabuf_env": {
+    "app_main": "1",
+    "webkit": {
+      "304372": "1"
+    }
+  },
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "原生 Wayland",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-20 00:42:06+0800",
+    "generated_at_epoch": 1792428126.4224727,
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step5/scripts/step5-real-desktop.py --label step5-wayland-dmabuf1 --backend wayland --display wayland-0 --dmabuf 1",
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "data_root": "/tmp/od027-step5/step5-wayland-dmabuf1",
+    "artifact_root": "/tmp/od027-step5/step5-wayland-dmabuf1/local-data",
+    "synthetic_endpoint": "http://127.0.0.1:34157/v1",
+    "model_permissions": "一次性数据根内预置 local=true（合成端点）",
+    "idle_seconds": 60.0,
+    "note": "真实用户会话；未使用真实材料或凭证；成果只写在一次性隔离根"
+  },
+  "nav_latency": {
+    "任务工作台": {
+      "n": 5,
+      "samples_s": [
+        0.614,
+        0.448,
+        0.436,
+        0.45,
+        0.445
+      ],
+      "p50_s": 0.448,
+      "p95_s": 0.581,
+      "timeouts": 0
+    },
+    "离线流程·项目跟踪": {
+      "n": 5,
+      "samples_s": [
+        1.179,
+        1.14,
+        1.179,
+        1.222,
+        1.201
+      ],
+      "p50_s": 1.179,
+      "p95_s": 1.218,
+      "timeouts": 0
+    },
+    "成果目录与模型权限": {
+      "n": 5,
+      "samples_s": [
+        1.125,
+        1.084,
+        1.09,
+        1.114,
+        1.104
+      ],
+      "p50_s": 1.104,
+      "p95_s": 1.123,
+      "timeouts": 0
+    },
+    "工作台首页": {
+      "n": 5,
+      "samples_s": [
+        1.055,
+        1.057,
+        1.102,
+        1.088,
+        1.078
+      ],
+      "p50_s": 1.078,
+      "p95_s": 1.099,
+      "timeouts": 0
+    }
+  },
+  "pixel_evidence": {
+    "status": "not_available",
+    "reason": "原生 Wayland 无截图通道：GNOME Shell Screenshot D-Bus 被拒、Shell Eval 禁用、Gdk 根窗口抓图为全黑（实测见 session_facts.wayland_capture_probes）；像素级视觉证据由 XWayland 组单独记录，Xvfb 与真实桌面不混为一组"
+  },
+  "input_test": {
+    "status": "not_measured",
+    "reason": "原生 Wayland 无合成输入通道（无 ydotool/wtype），XTEST 只对 XWayland 生效；连续输入校验由 XWayland 组单独记录"
+  }
+}

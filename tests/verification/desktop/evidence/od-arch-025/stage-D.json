@@ -1,0 +1,77 @@
+{
+  "stage": "D",
+  "verdict": "pass",
+  "facts": [
+    {
+      "name": "安装包存在（当前源码构建）",
+      "ok": true,
+      "detail": {
+        "deb": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/release/bundle/deb/OmniDesk_0.1.0_amd64.deb",
+        "mtime": 1792369080.4778433
+      }
+    },
+    {
+      "name": "安装包可解包",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "安装入口与桌面项存在",
+      "ok": true,
+      "detail": {
+        "exe": "/tmp/od025-evidence/deb-root/usr/bin/omnidesk-desktop",
+        "desktop": "/tmp/od025-evidence/deb-root/usr/share/applications/OmniDesk.desktop"
+      }
+    },
+    {
+      "name": "安装入口启动出真实窗口",
+      "ok": true,
+      "detail": {
+        "geometry": [
+          80,
+          90,
+          1280,
+          820
+        ],
+        "binary": "/tmp/od025-evidence/deb-root/usr/bin/omnidesk-desktop"
+      }
+    },
+    {
+      "name": "安装实例沿用同一数据根：成果目录设置保持",
+      "ok": true,
+      "detail": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od25a\",\n  \"model_permissions\": {\n    \"local\": true,\n    \"private\": false,\n    \"public\": false\n  }\n}"
+    },
+    {
+      "name": "安装实例可见既有成果文件",
+      "ok": true,
+      "detail": [
+        "20261019-035655-320dae745102.md",
+        "offline-project-management-20261019-035831.md"
+      ]
+    },
+    {
+      "name": "任务台账文件可读（终态如实记录）",
+      "ok": true,
+      "detail": [
+        {
+          "file": "omni-d2fc2276-5e64-401e-b596-6f6ca3e8d7f3.json",
+          "state": "succeeded",
+          "stop_reason": "end_turn",
+          "error_code": null
+        },
+        {
+          "file": "omni-f03b1a56-7d15-4818-8ab6-1458771b32bb.json",
+          "state": "starting",
+          "stop_reason": null,
+          "error_code": null
+        }
+      ]
+    }
+  ],
+  "build": {
+    "built": false,
+    "log_tail": "",
+    "binary_mtime": 1792366537.7857795
+  },
+  "generated_at": 1792382696.0485368
+}

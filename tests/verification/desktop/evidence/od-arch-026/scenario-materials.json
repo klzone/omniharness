@@ -1,0 +1,139 @@
+{
+  "prompts_from_real_source": {
+    "count": 3,
+    "material_in_prompt": true
+  },
+  "scenarios": [
+    {
+      "intent": "weekly_report",
+      "mode": "ok",
+      "root": "/tmp/omni_p2desktop_material_weekly_report__pa6d1b3",
+      "isolation_problems": [],
+      "initialize_ok": true,
+      "submit_ok": true,
+      "final_status": "succeeded",
+      "result_form": "complete",
+      "result_content": "合成初稿正文",
+      "model_request_count": 1,
+      "material_probe_hit": true,
+      "material_in_last_user": false,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "model_request_recorded": true,
+        "material_entered_model_request": true,
+        "no_isolation_violation": true,
+        "reached_succeeded": true,
+        "result_visible": true
+      },
+      "verdict": "pass"
+    },
+    {
+      "intent": "material_writing",
+      "mode": "ok",
+      "root": "/tmp/omni_p2desktop_material_material_writing_lfbgtiiv",
+      "isolation_problems": [],
+      "initialize_ok": true,
+      "submit_ok": true,
+      "final_status": "succeeded",
+      "result_form": "complete",
+      "result_content": "合成初稿正文",
+      "model_request_count": 1,
+      "material_probe_hit": true,
+      "material_in_last_user": false,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "model_request_recorded": true,
+        "material_entered_model_request": true,
+        "no_isolation_violation": true,
+        "reached_succeeded": true,
+        "result_visible": true
+      },
+      "verdict": "pass"
+    },
+    {
+      "intent": "project_management",
+      "mode": "ok",
+      "root": "/tmp/omni_p2desktop_material_project_management_v7up10ol",
+      "isolation_problems": [],
+      "initialize_ok": true,
+      "submit_ok": true,
+      "final_status": "succeeded",
+      "result_form": "complete",
+      "result_content": "合成初稿正文",
+      "model_request_count": 1,
+      "material_probe_hit": true,
+      "material_in_last_user": false,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "model_request_recorded": true,
+        "material_entered_model_request": true,
+        "no_isolation_violation": true,
+        "reached_succeeded": true,
+        "result_visible": true
+      },
+      "verdict": "pass"
+    },
+    {
+      "intent": "weekly_report",
+      "mode": "error_400",
+      "root": "/tmp/omni_p2desktop_material_weekly_report_q50zf1eu",
+      "isolation_problems": [],
+      "initialize_ok": true,
+      "submit_ok": true,
+      "final_status": "failed",
+      "result_form": "unrecoverable",
+      "result_content": "",
+      "model_request_count": 1,
+      "material_probe_hit": true,
+      "material_in_last_user": false,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "model_request_recorded": true,
+        "material_entered_model_request": true,
+        "no_isolation_violation": true,
+        "reached_failed": true,
+        "no_fake_success": true
+      },
+      "verdict": "pass"
+    },
+    {
+      "intent": "weekly_report",
+      "mode": "hang",
+      "root": "/tmp/omni_p2desktop_material_weekly_report_9cbv23zm",
+      "isolation_problems": [],
+      "initialize_ok": true,
+      "submit_ok": true,
+      "cancel": {
+        "ok": true,
+        "phase": "confirmed_cancelled"
+      },
+      "final_status": "cancelled",
+      "result_form": "unrecoverable",
+      "result_content": "",
+      "model_request_count": 0,
+      "material_probe_hit": false,
+      "material_in_last_user": false,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "cancel_request_recorded": true,
+        "phase_not_misreported": true,
+        "terminal_not_succeeded": true,
+        "no_isolation_violation": true
+      },
+      "verdict": "pass"
+    }
+  ],
+  "compile": {
+    "exit": 0,
+    "module": "/tmp/od26-materials-a0retgpa/out/aiDraft.js"
+  },
+  "probe": {
+    "exit": 0,
+    "count": 3
+  }
+}

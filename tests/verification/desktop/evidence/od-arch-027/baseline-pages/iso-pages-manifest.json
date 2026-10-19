@@ -1,0 +1,72 @@
+{
+  "generator": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step4/scripts/generate-iso-pages.py",
+  "note": "受控对照页；simple.html / heavy.html 原件未改写",
+  "pages": {
+    "iso-blur-only": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-blur-only.html",
+      "sha256": "1a134731ad4c5672301557bb7bdfe53b3eefd6a3cd1db52c5e55e3d5ce4f3807",
+      "flags": {
+        "blur": true,
+        "glass": true,
+        "pulse": false,
+        "float": false,
+        "dot": false
+      }
+    },
+    "iso-anim-only": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-anim-only.html",
+      "sha256": "eb2cfeb3d7c2cddc668b8a84127503092b254df63ec8427f0a0dcc635fcb6cb0",
+      "flags": {
+        "blur": false,
+        "glass": false,
+        "pulse": true,
+        "float": true,
+        "dot": false
+      }
+    },
+    "iso-anim-blur": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-anim-blur.html",
+      "sha256": "b49949593f3a6c188faf116a7740256c231b1acce58b18f41f8258ee9098c359",
+      "flags": {
+        "blur": true,
+        "glass": true,
+        "pulse": true,
+        "float": true,
+        "dot": false
+      }
+    },
+    "iso-anim-pulse-only": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-anim-pulse-only.html",
+      "sha256": "4ed3a01be6eb0cb4f00bd73ef6e401cd3ac329d9d44c1e76587f772b10206651",
+      "flags": {
+        "blur": false,
+        "glass": false,
+        "pulse": true,
+        "float": false,
+        "dot": false
+      }
+    },
+    "iso-anim-float-only": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-anim-float-only.html",
+      "sha256": "ad62281134b7ae0770e73deae326d9752b42817b85cc4bbc4546e9bc311b10c9",
+      "flags": {
+        "blur": false,
+        "glass": false,
+        "pulse": false,
+        "float": true,
+        "dot": false
+      }
+    },
+    "iso-navpulse": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/iso-navpulse.html",
+      "sha256": "222e7e725cf0fd8b0c4479b48ea3414e61fc53db76f3ae4e33a2a7f97ffc33f8",
+      "flags": {
+        "blur": true,
+        "glass": true,
+        "pulse": false,
+        "float": false,
+        "dot": true
+      }
+    }
+  }
+}

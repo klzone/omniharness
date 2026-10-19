@@ -1,0 +1,25 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running `target/debug/examples/evaluate_offline_scenarios`
+== 场景 1：周记录 → 周报（本地确定性） ==
+判定: 通过 | 事项 4 / done 2 / pending 1 / blocked 1
+模型步骤: 受准入阻塞、未验证：本次未调用任何模型
+
+== 场景 2：一般文案结构建议 ==
+缺事实: 判定通过 | 模板=None | 待确认 1 项 | 首节=【待确认】事实依据缺失，暂不能形成初稿
+有合成事实: 判定通过 | 模板=None | 待确认 0 项 | 首节=开头：说明背景与目的（面向项目评审人）
+
+== 场景 3：项目跟进汇总（today=2026-10-15） ==
+判定: 通过 | 事项 4 / done 1 / in_progress 1 / blocked 1 / not_started 1 / overdue 2
+模型步骤: 受准入阻塞、未验证：本次未调用任何模型
+
+== 准入拒绝：直接调用宿主启动入口 ==
+ENDPOINT_ISOLATION_CONFIRMED = false
+拒绝信息: 当前宿主未获端点隔离许可，已拒绝启动引擎（endpoint_unconfirmed）。未创建子进程、未创建目录、未提交任务。
+
+== 日期边界（OD-ARCH-011） ==
+周记录 2026-02-30: ok=false | 第 1 行：日期必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）
+周记录 2024-02-29（闰日）: ok=true
+逾期判定 today=2026-10-14: overdue=0
+逾期判定 today=2026-10-15: overdue=1
+逾期判定 today=2026-02-30: 拒绝 | today 必须是存在的 YYYY-MM-DD 日期（按实际月份天数与闰年校验），用于判定逾期
+新成果默认根: /home/kevin/OmniDesk/workspace/artifacts

@@ -1,0 +1,187 @@
+{
+  "scenario": "R3",
+  "title": "R3/R4 别名与 realpath 落同一存储目录且可 resume",
+  "channel": "ipc2",
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 合成模型端点）",
+  "executed": true,
+  "started_at": 1792155659.501309,
+  "checks": [
+    {
+      "check": "alias_and_cwd_are_same_physical_dir",
+      "pass": true,
+      "detail": {
+        "alias": "/tmp/omni_p1s3_r3_09krl99e/work",
+        "cwd": "/tmp/omni_p1s3_r3_09krl99e/work"
+      }
+    },
+    {
+      "check": "counterfactual_shows_two_keys_without_fix",
+      "pass": true,
+      "detail": {
+        "alias": "--tmp-omni_p1s3_r3_09krl99e-work-alias--",
+        "real": "--tmp-omni_p1s3_r3_09krl99e-work--"
+      }
+    },
+    {
+      "check": "initialize_ok",
+      "pass": true
+    },
+    {
+      "check": "submit_via_alias_ok",
+      "pass": true
+    },
+    {
+      "check": "submit_via_realpath_with_trailing_slash_ok",
+      "pass": true
+    },
+    {
+      "check": "alias_task_succeeded",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-7ab83b9a-0f81-414d-a574-53e09da1a1e4",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792155661.714134,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "ae5d9f34-6470-4152-a8b2-67462833c4b2",
+        "note": "stop_reason=end_turn"
+      }
+    },
+    {
+      "check": "realpath_task_succeeded",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-9f436174-3d2d-45ae-b6c4-ed38991c4597",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792155661.7567086,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "04ed07a5-4624-4a9a-a558-c52f1ba63a6a",
+        "note": "stop_reason=end_turn"
+      }
+    },
+    {
+      "check": "exactly_one_storage_project_dir",
+      "pass": true,
+      "detail": [
+        "--tmp-omni_p1s3_r3_09krl99e-work--"
+      ]
+    },
+    {
+      "check": "storage_dir_key_is_realpath_key",
+      "pass": true,
+      "detail": {
+        "dirs": [
+          "--tmp-omni_p1s3_r3_09krl99e-work--"
+        ],
+        "expected": "--tmp-omni_p1s3_r3_09krl99e-work--"
+      }
+    },
+    {
+      "check": "both_sessions_share_project_dir",
+      "pass": true,
+      "detail": [
+        "04ed07a5-4624-4a9a-a558-c52f1ba63a6a",
+        "ae5d9f34-6470-4152-a8b2-67462833c4b2"
+      ]
+    },
+    {
+      "check": "persisted_cwd_canonicalized",
+      "pass": true,
+      "detail": {
+        "records": {
+          "omni-7ab83b9a-0f81-414d-a574-53e09da1a1e4": "/tmp/omni_p1s3_r3_09krl99e/work",
+          "omni-9f436174-3d2d-45ae-b6c4-ed38991c4597": "/tmp/omni_p1s3_r3_09krl99e/work"
+        },
+        "real": "/tmp/omni_p1s3_r3_09krl99e/work"
+      }
+    },
+    {
+      "check": "second_process_initialize_ok",
+      "pass": true
+    },
+    {
+      "check": "resume_alias_session_with_alias_cwd_ok",
+      "pass": true
+    },
+    {
+      "check": "resume_reports_canonical_cwd",
+      "pass": true,
+      "detail": {
+        "reported": "/tmp/omni_p1s3_r3_09krl99e/work",
+        "real": "/tmp/omni_p1s3_r3_09krl99e/work"
+      }
+    },
+    {
+      "check": "resume_did_not_replay",
+      "pass": true,
+      "detail": "恢复的是既有会话；恢复不触发任何任务重放"
+    },
+    {
+      "check": "resume_realpath_session_ok",
+      "pass": true
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_r3_09krl99e",
+    "alias_path": "/tmp/omni_p1s3_r3_09krl99e/work-alias",
+    "realpath_of_alias": "/tmp/omni_p1s3_r3_09krl99e/work",
+    "realpath_of_cwd": "/tmp/omni_p1s3_r3_09krl99e/work",
+    "counterfactual_project_keys_without_fix": {
+      "via_alias": "--tmp-omni_p1s3_r3_09krl99e-work-alias--",
+      "via_realpath": "--tmp-omni_p1s3_r3_09krl99e-work--"
+    },
+    "terminal_alias": {
+      "omni_task_id": "omni-7ab83b9a-0f81-414d-a574-53e09da1a1e4",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792155661.714134,
+      "last_event_seq": 4,
+      "partial_output_size": 6,
+      "engine_session_id": "ae5d9f34-6470-4152-a8b2-67462833c4b2",
+      "note": "stop_reason=end_turn"
+    },
+    "terminal_realpath": {
+      "omni_task_id": "omni-9f436174-3d2d-45ae-b6c4-ed38991c4597",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792155661.7567086,
+      "last_event_seq": 4,
+      "partial_output_size": 6,
+      "engine_session_id": "04ed07a5-4624-4a9a-a558-c52f1ba63a6a",
+      "note": "stop_reason=end_turn"
+    },
+    "storage_project_dirs": [
+      "--tmp-omni_p1s3_r3_09krl99e-work--"
+    ],
+    "session_ids_in_project_dir": [
+      "04ed07a5-4624-4a9a-a558-c52f1ba63a6a",
+      "ae5d9f34-6470-4152-a8b2-67462833c4b2"
+    ],
+    "persisted_workspace_dirs": {
+      "omni-7ab83b9a-0f81-414d-a574-53e09da1a1e4": "/tmp/omni_p1s3_r3_09krl99e/work",
+      "omni-9f436174-3d2d-45ae-b6c4-ed38991c4597": "/tmp/omni_p1s3_r3_09krl99e/work"
+    },
+    "resume_alias_recovery": {
+      "engine_session_id": "ae5d9f34-6470-4152-a8b2-67462833c4b2",
+      "resumed": true,
+      "cwd": "/tmp/omni_p1s3_r3_09krl99e/work",
+      "config_option_count": 1,
+      "evidence": "engine_terminal",
+      "note": "恢复的是既有会话；恢复不触发任何任务重放"
+    },
+    "resume_realpath_recovery": {
+      "engine_session_id": "04ed07a5-4624-4a9a-a558-c52f1ba63a6a",
+      "resumed": true,
+      "cwd": "/tmp/omni_p1s3_r3_09krl99e/work",
+      "config_option_count": 1,
+      "evidence": "engine_terminal",
+      "note": "恢复的是既有会话；恢复不触发任何任务重放"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792155664.4503274
+}

@@ -1,0 +1,146 @@
+{
+  "scenario": "R2",
+  "title": "R2 非 ACP Profile 不被静默接受",
+  "channel": "ipc2",
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 合成模型端点）",
+  "executed": true,
+  "started_at": 1792155671.6263623,
+  "checks": [
+    {
+      "check": "nonexistent_profile_not_silently_accepted",
+      "pass": true,
+      "detail": {
+        "code": -32000,
+        "message": "engine_unavailable",
+        "data": {
+          "retryable": "conditional",
+          "needs_human": "yes",
+          "degradable": "yes",
+          "may_duplicate_execution": "no",
+          "may_lose_output": "no",
+          "engine_error_code": "engine_unavailable",
+          "detail": {
+            "stderr_tail": "file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1055\n\t\tif (template === void 0) throw new Error(`${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`);\n\t\t                               ^\n\nError: dsh: profile \"omnidesk-nonexistent-profile\" does not exist; create it with 'dsh plugin --profile omnidesk-nonexistent-profile add <package>'\n    at loadProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1055:34)\n    at prepareProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:187:18)\n    at composeProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:206:46)\n    at runProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:241:26)\n    at async runCli (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:215:5)\n    at async file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:252:23\n\nNode.js v22.23.2\n"
+          }
+        }
+      }
+    },
+    {
+      "check": "nonexistent_profile_error_code_is_engine_unavailable",
+      "pass": true,
+      "detail": "engine_unavailable"
+    },
+    {
+      "check": "nonexistent_profile_named_in_error_detail",
+      "pass": true,
+      "detail": "time/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:215:5)\n    at async file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:252:23\n\nNode.js v22.23.2\n"
+    },
+    {
+      "check": "non_acp_profile_not_silently_accepted",
+      "pass": true,
+      "detail": {
+        "code": -32000,
+        "message": "timeout",
+        "data": {
+          "retryable": "conditional",
+          "needs_human": "no",
+          "degradable": "yes",
+          "may_duplicate_execution": "yes",
+          "may_lose_output": "yes",
+          "engine_error_code": "timeout",
+          "detail": {
+            "method": "initialize",
+            "expected_protocol": "acp",
+            "engine_profile": "web",
+            "handshake": "acp/initialize",
+            "reason": "OmniDesk expects DSH profile web to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+          }
+        }
+      }
+    },
+    {
+      "check": "failure_still_bounded",
+      "pass": true,
+      "detail": {
+        "elapsed_seconds": 30.1
+      }
+    },
+    {
+      "check": "unsupported_for_acp_code_is_standard",
+      "pass": true,
+      "detail": "timeout"
+    },
+    {
+      "check": "error_names_configured_profile",
+      "pass": true,
+      "detail": "web"
+    },
+    {
+      "check": "error_states_expected_protocol_is_acp",
+      "pass": true,
+      "detail": "acp"
+    },
+    {
+      "check": "error_message_names_profile_and_acp_expectation",
+      "pass": true,
+      "detail": "OmniDesk expects DSH profile web to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+    },
+    {
+      "check": "distinguishable_from_nonexistent_profile",
+      "pass": true,
+      "detail": {
+        "web_code": "timeout",
+        "nonexistent_code": "engine_unavailable"
+      }
+    },
+    {
+      "check": "no_leftover_engine_process",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_r2_y7zko7_o",
+    "nonexistent_profile_error": {
+      "code": -32000,
+      "message": "engine_unavailable",
+      "data": {
+        "retryable": "conditional",
+        "needs_human": "yes",
+        "degradable": "yes",
+        "may_duplicate_execution": "no",
+        "may_lose_output": "no",
+        "engine_error_code": "engine_unavailable",
+        "detail": {
+          "stderr_tail": "file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1055\n\t\tif (template === void 0) throw new Error(`${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`);\n\t\t                               ^\n\nError: dsh: profile \"omnidesk-nonexistent-profile\" does not exist; create it with 'dsh plugin --profile omnidesk-nonexistent-profile add <package>'\n    at loadProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:1055:34)\n    at prepareProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:187:18)\n    at composeProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:206:46)\n    at runProfile (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot-BZ2ZjNWi.js:241:26)\n    at async runCli (file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:215:5)\n    at async file:///mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js:252:23\n\nNode.js v22.23.2\n"
+        }
+      }
+    },
+    "web_profile_elapsed_seconds": 30.1,
+    "web_profile_error": {
+      "code": -32000,
+      "message": "timeout",
+      "data": {
+        "retryable": "conditional",
+        "needs_human": "no",
+        "degradable": "yes",
+        "may_duplicate_execution": "yes",
+        "may_lose_output": "yes",
+        "engine_error_code": "timeout",
+        "detail": {
+          "method": "initialize",
+          "expected_protocol": "acp",
+          "engine_profile": "web",
+          "handshake": "acp/initialize",
+          "reason": "OmniDesk expects DSH profile web to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+        }
+      }
+    },
+    "leftover_engine_processes": []
+  },
+  "notes": [
+    "已闭合 OD-BUILD-003 的缺口：非 ACP Profile 仍在有界等待（约 30s）后失败，但错误现在带上所配 Profile（web）与预期协议（ACP）及可读原因，并与「Profile 不存在」的错误码可区分；子进程已确认退出。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792155702.1634612
+}

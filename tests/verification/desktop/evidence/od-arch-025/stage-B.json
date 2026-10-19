@@ -1,0 +1,53 @@
+{
+  "stage": "B",
+  "verdict": "pass",
+  "facts": [
+    {
+      "name": "重启后真实窗口出现",
+      "ok": true,
+      "detail": {
+        "geometry": [
+          80,
+          90,
+          1280,
+          820
+        ],
+        "display": ":95"
+      }
+    },
+    {
+      "name": "重启后成果目录设置保持",
+      "ok": true,
+      "detail": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od25a\",\n  \"model_permissions\": {\n    \"local\": true,\n    \"private\": false,\n    \"public\": false\n  }\n}"
+    },
+    {
+      "name": "重启后模型权限保持（本机模型仍开启）",
+      "ok": true,
+      "detail": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od25a\",\n  \"model_permissions\": {\n    \"local\": true,\n    \"private\": false,\n    \"public\": false\n  }\n}"
+    },
+    {
+      "name": "重启后引擎任务记录仍在",
+      "ok": true,
+      "detail": [
+        [
+          "omni-d2fc2276-5e64-401e-b596-6f6ca3e8d7f3.json",
+          "succeeded"
+        ]
+      ]
+    },
+    {
+      "name": "重启后成果目录内文件仍在",
+      "ok": true,
+      "detail": [
+        "20261019-035655-320dae745102.md",
+        "offline-project-management-20261019-035831.md"
+      ]
+    }
+  ],
+  "build": {
+    "built": false,
+    "log_tail": "",
+    "binary_mtime": 1792366537.7857795
+  },
+  "generated_at": 1792382488.8192825
+}

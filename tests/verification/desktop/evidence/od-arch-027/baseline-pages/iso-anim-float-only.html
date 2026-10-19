@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>OD-ARCH-027 Step 4 单因素对照 · iso-anim-float-only</title>
+<!--
+  由 tests/verification/desktop/evidence/od-arch-027/step4/scripts/generate-iso-pages.py 生成。
+  受控对照页（非产品代码、非 Step 0 归档件）。因素开关：
+    模糊/玻璃 = False   动画 = pulse:False / float:True
+  场景与 heavy.html 同构（同布局/尺寸/颜色），只切换上述两个因素。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #f4f5ff; overflow: hidden; }
+  .blob { position: fixed; border-radius: 9999px; pointer-events: none; }
+  .b1 { top: -15%; left: 20%; width: 60rem; height: 50rem; background: linear-gradient(135deg, #c7d2fe, #ddd6fe);  }
+  .b2 { top: 45%; right: -10%; width: 48rem; height: 48rem; background: linear-gradient(315deg, #dbe0ff, #e0e7ff);  }
+  .b3 { bottom: -20%; left: 8%; width: 42rem; height: 42rem; background: linear-gradient(45deg, #e8e6ff, #eef0ff);  }
+  .dock { position: fixed; left: 20px; top: 40%; width: 64px; height: 320px; border-radius: 9999px;
+          background: rgba(255,255,255,.85);  }
+  .nav  { position: fixed; left: 120px; right: 40px; top: 24px; height: 56px; border-radius: 9999px;
+          background: rgba(255,255,255,.8);  }
+  .panes { position: relative; padding: 120px 40px 40px 120px; display: flex; flex-direction: column; gap: 18px; }
+  .pane { background: rgba(255,255,255,.78); 
+          border: 1px solid rgba(255,255,255,.9); border-radius: 16px; padding: 20px 24px; height: 90px; }
+  .plate { background: rgba(255,255,255,.72); 
+           border-radius: 16px; padding: 20px 24px; height: 90px; }
+  @keyframes pulse-subtle { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .75; transform: scale(1.05);} }
+  @keyframes float-companion { 0%,100% { transform: translateY(0) rotate(0);} 50% { transform: translateY(-7px) rotate(1.2deg);} }
+  .pulse { position: fixed; right: 60px; bottom: 60px; width: 120px; height: 120px; border-radius: 24px;
+           background: #6366f1;  }
+  .mascot { position: fixed; right: 220px; bottom: 60px; width: 112px; height: 112px; border-radius: 50%;
+            background: #a5b4fc; animation: float-companion 5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="nav"></div><div class="dock"></div>
+  <div class="panes">
+    <div class="plate">iso-anim-float-only · plate</div>
+    <div class="pane">iso-anim-float-only · pane 1</div>
+    <div class="pane">iso-anim-float-only · pane 2</div>
+    <div class="pane">iso-anim-float-only · pane 3</div>
+    <div class="pane">iso-anim-float-only · pane 4</div>
+  </div>
+  <div class="pulse"></div><div class="mascot"></div>
+</body>
+</html>

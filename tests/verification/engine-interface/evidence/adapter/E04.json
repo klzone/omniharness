@@ -4,19 +4,19 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091864.5380604,
+  "started_at": 1792302066.934661,
   "checks": [
     {
       "check": "reached_failed",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "status": "failed",
         "evidence_source": "engine_error",
-        "since": 1792091866.2340565,
+        "since": 1792302069.382289,
         "last_event_seq": 2,
         "partial_output_size": 0,
-        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "engine_session_id": "59b330ea-a4d1-456f-ac9e-dbd48a79e34e",
         "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
       }
     },
@@ -29,10 +29,10 @@
       "check": "content_empty_so_unrecoverable",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "form": "unrecoverable",
         "content": "",
-        "persisted_at": 1792091866.2343013,
+        "persisted_at": 1792302069.3825502,
         "integrity": "partial",
         "sources": [
           {
@@ -66,54 +66,54 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e04_619itw92",
+    "data_root": "/tmp/omni_p1s3_e04_dpxsc1_5",
     "status_series": [
       {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091866.0324411,
+        "since": 1792302069.1808622,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "engine_session_id": "59b330ea-a4d1-456f-ac9e-dbd48a79e34e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091866.0324411,
+        "since": 1792302069.1808622,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "engine_session_id": "59b330ea-a4d1-456f-ac9e-dbd48a79e34e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091866.0324411,
+        "since": 1792302069.1808622,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "engine_session_id": "59b330ea-a4d1-456f-ac9e-dbd48a79e34e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+        "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
         "status": "failed",
         "evidence_source": "engine_error",
-        "since": 1792091866.2340565,
+        "since": 1792302069.382289,
         "last_event_seq": 2,
         "partial_output_size": 0,
-        "engine_session_id": "cf57813d-9a81-49b4-9535-d5168cc8a971",
+        "engine_session_id": "59b330ea-a4d1-456f-ac9e-dbd48a79e34e",
         "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-c9694910-e068-4c12-94f2-80ef83c8b6be",
+      "omni_task_id": "omni-32d6994f-1996-4adf-b4ce-ee0b39391045",
       "form": "unrecoverable",
       "content": "",
-      "persisted_at": 1792091866.2343013,
+      "persisted_at": 1792302069.3825502,
       "integrity": "partial",
       "sources": [
         {
@@ -140,5 +140,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091866.693644
+  "finished_at": 1792302069.8527832
 }

@@ -1,0 +1,283 @@
+{
+  "step": "step4",
+  "group": "A-iso",
+  "derived_from": "step4-A-iso-*-run*.json（由各次落盘 JSON 汇总，未重新测量）",
+  "dmabuf": "1",
+  "seconds_per_run": 30,
+  "runs_per_page": 3,
+  "note": "受控页面证据；不直接等于真实应用。blur/glass 与 infinite animation 为两个独立变量。",
+  "aggregate_web_percent": {
+    "iso-anim-blur": {
+      "n": 3,
+      "min": 94.9,
+      "max": 100.28,
+      "mean": 98.48
+    },
+    "iso-anim-float-only": {
+      "n": 3,
+      "min": 23.31,
+      "max": 23.61,
+      "mean": 23.43
+    },
+    "iso-anim-only": {
+      "n": 3,
+      "min": 21.45,
+      "max": 33.24,
+      "mean": 26.0
+    },
+    "iso-anim-pulse-only": {
+      "n": 3,
+      "min": 21.32,
+      "max": 23.55,
+      "mean": 22.36
+    },
+    "iso-blur-only": {
+      "n": 3,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0
+    },
+    "iso-navpulse": {
+      "n": 3,
+      "min": 100.15,
+      "max": 100.22,
+      "mean": 100.19
+    }
+  },
+  "runs": [
+    {
+      "page": "iso-anim-blur",
+      "run": 1,
+      "web_avg_percent": 94.9,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.37,
+      "paint_changed_pairs": 6,
+      "paint_pairs": 29,
+      "page_sha256": "b49949593f3a6c188faf116a7740256c231b1acce58b18f41f8258ee9098c359",
+      "json": "step4-A-iso-iso-anim-blur-run1.json"
+    },
+    {
+      "page": "iso-anim-blur",
+      "run": 2,
+      "web_avg_percent": 100.28,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.41,
+      "paint_changed_pairs": 6,
+      "paint_pairs": 29,
+      "page_sha256": "b49949593f3a6c188faf116a7740256c231b1acce58b18f41f8258ee9098c359",
+      "json": "step4-A-iso-iso-anim-blur-run2.json"
+    },
+    {
+      "page": "iso-anim-blur",
+      "run": 3,
+      "web_avg_percent": 100.25,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.42,
+      "paint_changed_pairs": 6,
+      "paint_pairs": 29,
+      "page_sha256": "b49949593f3a6c188faf116a7740256c231b1acce58b18f41f8258ee9098c359",
+      "json": "step4-A-iso-iso-anim-blur-run3.json"
+    },
+    {
+      "page": "iso-anim-float-only",
+      "run": 1,
+      "web_avg_percent": 23.61,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.67,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "ad62281134b7ae0770e73deae326d9752b42817b85cc4bbc4546e9bc311b10c9",
+      "json": "step4-A-iso-iso-anim-float-only-run1.json"
+    },
+    {
+      "page": "iso-anim-float-only",
+      "run": 2,
+      "web_avg_percent": 23.38,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.67,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "ad62281134b7ae0770e73deae326d9752b42817b85cc4bbc4546e9bc311b10c9",
+      "json": "step4-A-iso-iso-anim-float-only-run2.json"
+    },
+    {
+      "page": "iso-anim-float-only",
+      "run": 3,
+      "web_avg_percent": 23.31,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.67,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "ad62281134b7ae0770e73deae326d9752b42817b85cc4bbc4546e9bc311b10c9",
+      "json": "step4-A-iso-iso-anim-float-only-run3.json"
+    },
+    {
+      "page": "iso-anim-only",
+      "run": 1,
+      "web_avg_percent": 21.45,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.02,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "eb2cfeb3d7c2cddc668b8a84127503092b254df63ec8427f0a0dcc635fcb6cb0",
+      "json": "step4-A-iso-iso-anim-only-run1.json"
+    },
+    {
+      "page": "iso-anim-only",
+      "run": 2,
+      "web_avg_percent": 23.32,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.09,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "eb2cfeb3d7c2cddc668b8a84127503092b254df63ec8427f0a0dcc635fcb6cb0",
+      "json": "step4-A-iso-iso-anim-only-run2.json"
+    },
+    {
+      "page": "iso-anim-only",
+      "run": 3,
+      "web_avg_percent": 33.24,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.08,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "eb2cfeb3d7c2cddc668b8a84127503092b254df63ec8427f0a0dcc635fcb6cb0",
+      "json": "step4-A-iso-iso-anim-only-run3.json"
+    },
+    {
+      "page": "iso-anim-pulse-only",
+      "run": 1,
+      "web_avg_percent": 23.55,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.9,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "4ed3a01be6eb0cb4f00bd73ef6e401cd3ac329d9d44c1e76587f772b10206651",
+      "json": "step4-A-iso-iso-anim-pulse-only-run1.json"
+    },
+    {
+      "page": "iso-anim-pulse-only",
+      "run": 2,
+      "web_avg_percent": 21.32,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.87,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "4ed3a01be6eb0cb4f00bd73ef6e401cd3ac329d9d44c1e76587f772b10206651",
+      "json": "step4-A-iso-iso-anim-pulse-only-run2.json"
+    },
+    {
+      "page": "iso-anim-pulse-only",
+      "run": 3,
+      "web_avg_percent": 22.22,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 239.9,
+      "paint_changed_pairs": 29,
+      "paint_pairs": 29,
+      "page_sha256": "4ed3a01be6eb0cb4f00bd73ef6e401cd3ac329d9d44c1e76587f772b10206651",
+      "json": "step4-A-iso-iso-anim-pulse-only-run3.json"
+    },
+    {
+      "page": "iso-blur-only",
+      "run": 1,
+      "web_avg_percent": 0.0,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.16,
+      "paint_changed_pairs": 0,
+      "paint_pairs": 29,
+      "page_sha256": "1a134731ad4c5672301557bb7bdfe53b3eefd6a3cd1db52c5e55e3d5ce4f3807",
+      "json": "step4-A-iso-iso-blur-only-run1.json"
+    },
+    {
+      "page": "iso-blur-only",
+      "run": 2,
+      "web_avg_percent": 0.0,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.16,
+      "paint_changed_pairs": 0,
+      "paint_pairs": 29,
+      "page_sha256": "1a134731ad4c5672301557bb7bdfe53b3eefd6a3cd1db52c5e55e3d5ce4f3807",
+      "json": "step4-A-iso-iso-blur-only-run2.json"
+    },
+    {
+      "page": "iso-blur-only",
+      "run": 3,
+      "web_avg_percent": 0.0,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.16,
+      "paint_changed_pairs": 0,
+      "paint_pairs": 29,
+      "page_sha256": "1a134731ad4c5672301557bb7bdfe53b3eefd6a3cd1db52c5e55e3d5ce4f3807",
+      "json": "step4-A-iso-iso-blur-only-run3.json"
+    },
+    {
+      "page": "iso-navpulse",
+      "run": 1,
+      "web_avg_percent": 100.21,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.15,
+      "paint_changed_pairs": 9,
+      "paint_pairs": 29,
+      "page_sha256": "222e7e725cf0fd8b0c4479b48ea3414e61fc53db76f3ae4e33a2a7f97ffc33f8",
+      "json": "step4-A-iso-iso-navpulse-run1.json"
+    },
+    {
+      "page": "iso-navpulse",
+      "run": 2,
+      "web_avg_percent": 100.15,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.15,
+      "paint_changed_pairs": 10,
+      "paint_pairs": 29,
+      "page_sha256": "222e7e725cf0fd8b0c4479b48ea3414e61fc53db76f3ae4e33a2a7f97ffc33f8",
+      "json": "step4-A-iso-iso-navpulse-run2.json"
+    },
+    {
+      "page": "iso-navpulse",
+      "run": 3,
+      "web_avg_percent": 100.22,
+      "web_count": 1,
+      "gpu_avg_percent": 0.0,
+      "gpu_count": 0,
+      "mean_luma": 240.15,
+      "paint_changed_pairs": 10,
+      "paint_pairs": 29,
+      "page_sha256": "222e7e725cf0fd8b0c4479b48ea3414e61fc53db76f3ae4e33a2a7f97ffc33f8",
+      "json": "step4-A-iso-iso-navpulse-run3.json"
+    }
+  ]
+}

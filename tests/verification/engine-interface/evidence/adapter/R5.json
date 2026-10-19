@@ -1,0 +1,88 @@
+{
+  "scenario": "R5",
+  "title": "R5 不可解析 cwd 明确报错",
+  "channel": "ipc2",
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 合成模型端点）",
+  "executed": true,
+  "started_at": 1792155664.4773355,
+  "checks": [
+    {
+      "check": "initialize_ok",
+      "pass": true
+    },
+    {
+      "check": "unresolvable_cwd_rejected",
+      "pass": true,
+      "detail": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": {
+          "code": -32000,
+          "message": "invalid_argument",
+          "data": {
+            "retryable": "no",
+            "needs_human": "no",
+            "degradable": "no",
+            "may_duplicate_execution": "no",
+            "may_lose_output": "no",
+            "engine_error_code": "invalid_argument",
+            "detail": {
+              "workspace_dir": "/tmp/omni_p1s3_r5_f4yk2wtt/does-not-exist/sub"
+            }
+          }
+        }
+      }
+    },
+    {
+      "check": "error_code_is_invalid_argument",
+      "pass": true,
+      "detail": "invalid_argument"
+    },
+    {
+      "check": "error_not_degraded_into_success",
+      "pass": true,
+      "detail": {
+        "retryable": "no",
+        "needs_human": "no",
+        "degradable": "no",
+        "may_duplicate_execution": "no",
+        "may_lose_output": "no",
+        "engine_error_code": "invalid_argument",
+        "detail": {
+          "workspace_dir": "/tmp/omni_p1s3_r5_f4yk2wtt/does-not-exist/sub"
+        }
+      }
+    },
+    {
+      "check": "relative_cwd_rejected",
+      "pass": true,
+      "detail": "invalid_argument"
+    },
+    {
+      "check": "no_storage_dir_created_for_invalid_cwd",
+      "pass": true,
+      "detail": []
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_r5_f4yk2wtt",
+    "unresolvable_cwd_error": {
+      "code": -32000,
+      "message": "invalid_argument",
+      "data": {
+        "retryable": "no",
+        "needs_human": "no",
+        "degradable": "no",
+        "may_duplicate_execution": "no",
+        "may_lose_output": "no",
+        "engine_error_code": "invalid_argument",
+        "detail": {
+          "workspace_dir": "/tmp/omni_p1s3_r5_f4yk2wtt/does-not-exist/sub"
+        }
+      }
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792155666.481134
+}

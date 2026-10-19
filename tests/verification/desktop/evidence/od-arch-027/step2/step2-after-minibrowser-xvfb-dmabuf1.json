@@ -1,0 +1,89 @@
+{
+  "label": "step2-after-minibrowser-xvfb-dmabuf1",
+  "script_version": "step2-minibrowser-control.py v1",
+  "script_path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/scripts/step2-minibrowser-control.py",
+  "note": "MiniBrowser 受控补充：只用于单因素隔离对照，不替代应用级窗口证据。",
+  "dmabuf_disable_renderer": "1",
+  "display": "Xvfb :92",
+  "invocation": "tests/verification/desktop/evidence/od-arch-027/step2/scripts/step2-minibrowser-control.py --label step2-minibrowser-control-after --pages simple,heavy,heavy-after --own-xvfb --display :92 --seconds 40 --dmabuf 1",
+  "generated_at": "2026-10-19 16:44:59+0800",
+  "generated_at_epoch": 1792399499.5251992,
+  "measurements": [
+    {
+      "label": "simple",
+      "url": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/simple.html",
+      "env": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+      },
+      "seconds": 40.0,
+      "pids": {
+        "web": [
+          150166
+        ],
+        "gpu": []
+      },
+      "webkit_web_process": {
+        "pids": [
+          150166
+        ],
+        "avg_percent": 0.0
+      },
+      "webkit_gpu_process": {
+        "pids": [],
+        "avg_percent": 0.0
+      },
+      "window_seconds": 40.0
+    },
+    {
+      "label": "heavy",
+      "url": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/heavy.html",
+      "env": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+      },
+      "seconds": 40.0,
+      "pids": {
+        "web": [
+          150563
+        ],
+        "gpu": []
+      },
+      "webkit_web_process": {
+        "pids": [
+          150563
+        ],
+        "avg_percent": 100.22
+      },
+      "webkit_gpu_process": {
+        "pids": [],
+        "avg_percent": 0.0
+      },
+      "window_seconds": 40.0
+    },
+    {
+      "label": "heavy-after",
+      "url": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/heavy-after.html",
+      "env": {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+      },
+      "seconds": 40.0,
+      "pids": {
+        "web": [
+          150989
+        ],
+        "gpu": []
+      },
+      "webkit_web_process": {
+        "pids": [
+          150989
+        ],
+        "avg_percent": 19.62
+      },
+      "webkit_gpu_process": {
+        "pids": [],
+        "avg_percent": 0.0
+      },
+      "window_seconds": 40.0
+    }
+  ],
+  "renamed_note": "落盘时按计划 §6 命名为 step2-after-minibrowser-xvfb-dmabuf1.json（原 label step2-minibrowser-control-after）"
+}

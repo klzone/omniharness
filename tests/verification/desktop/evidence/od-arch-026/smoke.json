@@ -1,0 +1,39 @@
+{
+  "display": ":96",
+  "shots": [
+    {
+      "name": "00-home",
+      "path": "/tmp/od26/evidence/shots/00-home.png"
+    },
+    {
+      "name": "01-report",
+      "path": "/tmp/od26/evidence/shots/01-report.png"
+    },
+    {
+      "name": "01-writing",
+      "path": "/tmp/od26/evidence/shots/01-writing.png"
+    },
+    {
+      "name": "01-project",
+      "path": "/tmp/od26/evidence/shots/01-project.png"
+    }
+  ],
+  "notes": [
+    "report@y=285",
+    "writing@y=335",
+    "project@y=385"
+  ],
+  "xvfb_started": true,
+  "build": {
+    "built": false,
+    "log_tail": "\n  If you've already installed it, ensure the pkg-config command is one of the\n  directories in the PATH environment variable.\n\n  If you did not expect this build to link to a pre-installed system library,\n  then check documentation of the gio-sys crate for an option to\n  build the library from source, or disable features or dependencies\n  that require pkg-config.",
+    "binary_mtime": 1792393486.1816764
+  },
+  "geometry": [
+    80,
+    90,
+    1280,
+    820
+  ],
+  "verdict": "pass"
+}

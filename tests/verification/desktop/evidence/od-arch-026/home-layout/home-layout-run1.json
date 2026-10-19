@@ -1,0 +1,322 @@
+{
+  "step": "od-arch-026-home-layout",
+  "label": "home-layout-run1",
+  "verdict": "ok",
+  "preseeded_settings": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": "/tmp/od26-home/home-layout-run1/artifacts",
+    "model_permissions": {
+      "local": true,
+      "private": false,
+      "public": false
+    }
+  },
+  "window": {
+    "title": "OmniDesk Discipline",
+    "geometry": [
+      80,
+      90,
+      1280,
+      820
+    ]
+  },
+  "app_pid": 232986,
+  "home_empty": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-01-home-empty.png",
+    "mean_luma": 247.02,
+    "luma_std": 22.08,
+    "dark_fraction": 0.0014,
+    "distinct_colors_subsampled": 1584,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "stability": {
+    "frames": [
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-20-stability-0.png",
+        "sig": "f8a19559b5a0baeeed40a9da0320ae6c"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-20-stability-1.png",
+        "sig": "f8a19559b5a0baeeed40a9da0320ae6c"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-20-stability-2.png",
+        "sig": "f8a19559b5a0baeeed40a9da0320ae6c"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-20-stability-3.png",
+        "sig": "f8a19559b5a0baeeed40a9da0320ae6c"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-20-stability-4.png",
+        "sig": "f8a19559b5a0baeeed40a9da0320ae6c"
+      }
+    ],
+    "distinct_signatures": 1,
+    "note": "1 = 首页无持续动画/重绘"
+  },
+  "chat_input": {
+    "xy": [
+      430,
+      676
+    ],
+    "typed": "synthetic layout check: reply in one short sentence"
+  },
+  "home_input_filled": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-02-home-input-filled.png",
+    "mean_luma": 246.52,
+    "luma_std": 24.66,
+    "dark_fraction": 0.0028,
+    "distinct_colors_subsampled": 1581,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "home_after_send": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-03-home-after-send.png",
+    "mean_luma": 246.19,
+    "luma_std": 24.56,
+    "dark_fraction": 0.0026,
+    "distinct_colors_subsampled": 1709,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "task_record": {
+    "file": "/tmp/od26-home/home-layout-run1/app-data/engine-state/omni-5d480b60-3489-4219-98ba-395e13bfffe2.json",
+    "omni_task_id": "omni-5d480b60-3489-4219-98ba-395e13bfffe2",
+    "state": "succeeded",
+    "stop_reason": "end_turn",
+    "error_message": null,
+    "content": "合成回复内容",
+    "created_at": 1792412512.6401203
+  },
+  "home_reply": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-04-home-reply.png",
+    "mean_luma": 246.19,
+    "luma_std": 24.56,
+    "dark_fraction": 0.0026,
+    "distinct_colors_subsampled": 1709,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "message_area": {
+    "empty_fraction": 0.0,
+    "after_send_fraction": 0.03739,
+    "reply_fraction": 0.03739,
+    "note": "消息区非背景像素占比；空对话应接近 0"
+  },
+  "reply": {
+    "task_state": "succeeded",
+    "stop_reason": "end_turn",
+    "content_excerpt": "合成回复内容",
+    "waited_s": 0.0
+  },
+  "pages": {
+    "首页": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-10-page-home.png",
+      "mean_luma": 246.19,
+      "luma_std": 24.56,
+      "dark_fraction": 0.0026,
+      "distinct_colors_subsampled": 1709,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "任务工作台": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-10-page-workbench.png",
+      "mean_luma": 246.08,
+      "luma_std": 28.37,
+      "dark_fraction": 0.0084,
+      "distinct_colors_subsampled": 911,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "离线流程·项目跟踪": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-10-page-project.png",
+      "mean_luma": 243.63,
+      "luma_std": 31.91,
+      "dark_fraction": 0.0077,
+      "distinct_colors_subsampled": 1181,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "成果目录与模型权限": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-10-page-settings.png",
+      "mean_luma": 244.78,
+      "luma_std": 31.39,
+      "dark_fraction": 0.0065,
+      "distinct_colors_subsampled": 991,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    }
+  },
+  "idle_cpu": {
+    "window_seconds": 60.07,
+    "curve": [
+      {
+        "t": 5.0,
+        "webkit_web_process": 0.2,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.2
+      },
+      {
+        "t": 10.0,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 15.0,
+        "webkit_web_process": 0.2,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.2
+      },
+      {
+        "t": 20.0,
+        "webkit_web_process": 0.15,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.15
+      },
+      {
+        "t": 25.0,
+        "webkit_web_process": 0.12,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.12
+      },
+      {
+        "t": 30.0,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.13
+      },
+      {
+        "t": 35.0,
+        "webkit_web_process": 0.09,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.14
+      },
+      {
+        "t": 40.0,
+        "webkit_web_process": 0.07,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.12
+      },
+      {
+        "t": 45.0,
+        "webkit_web_process": 0.09,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.16
+      },
+      {
+        "t": 50.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.16
+      },
+      {
+        "t": 55.1,
+        "webkit_web_process": 0.09,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.15
+      },
+      {
+        "t": 60.1,
+        "webkit_web_process": 0.08,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.15
+      }
+    ],
+    "curve_every_s": 5.0,
+    "webkit_web_process": {
+      "pids": [
+        233001
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "233001": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 22"
+      },
+      "dmabuf_env": {
+        "233001": "1"
+      },
+      "avg_percent": 0.08,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        232999
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "232999": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 22"
+      },
+      "dmabuf_env": {
+        "232999": "1"
+      },
+      "avg_percent": 0.02,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "app_main": {
+      "pids": [
+        232986
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "232986": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop"
+      },
+      "dmabuf_env": {
+        "232986": "1"
+      },
+      "avg_percent": 0.15,
+      "missing_pids": []
+    }
+  },
+  "idle_shot": {
+    "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-026/home-layout/shots/home-layout-run1-30-idle.png",
+    "mean_luma": 246.72,
+    "luma_std": 23.7,
+    "dark_fraction": 0.0026,
+    "distinct_colors_subsampled": 1585,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "dmabuf_env": {
+    "app_main": "1"
+  },
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "Xvfb :97（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-19 20:23:42+0800",
+    "generated_at_epoch": 1792412622.3649213,
+    "invocation": "tests/verification/desktop/evidence/od-arch-026/home-layout/scripts/home-layout-check.py --label home-layout-run1 --display :97 --own-xvfb",
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "data_root": "/tmp/od26-home/home-layout-run1",
+    "binary": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop",
+    "window_size": "1280x820（tauri.conf 默认，未 resize）",
+    "synthetic_endpoint": "http://127.0.0.1:40061/v1",
+    "model_permissions": "一次性数据根内预置 local=true（合成端点）",
+    "idle_seconds": 60.0,
+    "note": "真实窗口；未截取用户桌面；未使用真实材料或凭证"
+  }
+}

@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091920.0036128,
+  "started_at": 1792302122.4285858,
   "checks": [
     {
       "check": "dump_config_default_has_baseline_persona",
@@ -70,7 +70,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e18_o22dvzmv",
+    "data_root": "/tmp/omni_p1s3_e18_ys8mpmfi",
     "dump_default_persona": {
       "rc": 0,
       "persona_lines": [
@@ -91,7 +91,7 @@
         "model": "synthetic-model",
         "stream": true,
         "message_count": 3,
-        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_o22dvzmv/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_ys8mpmfi/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
         "mode": "ok",
         "probe_hits": [
           "OMNI-E18-PERSONA-OVERLAY-MARKER"
@@ -117,7 +117,7 @@
         "model": "synthetic-model",
         "stream": true,
         "message_count": 3,
-        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_o22dvzmv/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_ys8mpmfi/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
         "mode": "ok",
         "probe_hits": [
           "You are a coding agent"
@@ -146,5 +146,5 @@
     "复现步骤（具备凭证时）：\n1) 为隔离实例配置的 provider 提供对应 *_API_KEY（例如 OPENDESIGN_API_KEY），仅通过进程环境注入，不写入仓库；\n2) 以相同合成输入分别运行两次：一次不带 personaPrefix 覆盖，一次带覆盖；\n3) 对照两次原始模型输出与所用配置来源，人工判定差异；\n4) 测试结束后核实隔离配置与原版环境边界未被破坏。"
   ],
   "verdict": "pass",
-  "finished_at": 1792091925.1992369
+  "finished_at": 1792302126.9818614
 }

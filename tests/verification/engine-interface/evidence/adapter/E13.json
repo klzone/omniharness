@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091898.0249777,
+  "started_at": 1792302100.8768356,
   "checks": [
     {
       "check": "engine_completed",
@@ -14,7 +14,7 @@
     {
       "check": "persist_failure_recorded",
       "pass": true,
-      "detail": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+      "detail": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'"
     },
     {
       "check": "plain_result_kept_content",
@@ -35,9 +35,9 @@
       "detail": {
         "exception": "EngineError",
         "engine_error_code": "result_persist_failed",
-        "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+        "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'",
         "detail": {
-          "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+          "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'",
           "content_chars": 6
         }
       }
@@ -53,51 +53,51 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e13_e2epsi5x",
+    "data_root": "/tmp/omni_p1s3_e13_qlgb32__",
     "status_series": [
       {
-        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "omni_task_id": "omni-d4152d67-f154-4704-97b3-8baa43a94376",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091899.5002785,
+        "since": 1792302102.3924723,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
-        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+        "engine_session_id": "766435b7-dd6f-45fb-87e3-4e132571b4ce",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'"
       },
       {
-        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "omni_task_id": "omni-d4152d67-f154-4704-97b3-8baa43a94376",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091899.5002785,
+        "since": 1792302102.3924723,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
-        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+        "engine_session_id": "766435b7-dd6f-45fb-87e3-4e132571b4ce",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'"
       },
       {
-        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "omni_task_id": "omni-d4152d67-f154-4704-97b3-8baa43a94376",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091899.5002785,
+        "since": 1792302102.3924723,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
-        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+        "engine_session_id": "766435b7-dd6f-45fb-87e3-4e132571b4ce",
+        "note": "persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'"
       },
       {
-        "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+        "omni_task_id": "omni-d4152d67-f154-4704-97b3-8baa43a94376",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792091899.7219858,
+        "since": 1792302102.6144502,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "ca778cbf-25d6-4c62-a876-24e56ce38111",
-        "note": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'"
+        "engine_session_id": "766435b7-dd6f-45fb-87e3-4e132571b4ce",
+        "note": "stop_reason=end_turn; persist_failed=FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'"
       }
     ],
     "result_plain": {
-      "omni_task_id": "omni-b8a883f0-9c3f-4518-bcfe-958bb9cb6521",
+      "omni_task_id": "omni-d4152d67-f154-4704-97b3-8baa43a94376",
       "form": "complete",
       "content": "合成回复内容",
       "persisted_at": null,
@@ -121,9 +121,9 @@
     "require_persisted_error": {
       "exception": "EngineError",
       "engine_error_code": "result_persist_failed",
-      "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+      "message": "[result_persist_failed] engine completed but local persistence failed: FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'",
       "detail": {
-        "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_e2epsi5x/state-blocker'",
+        "persist_error": "FileExistsError: [Errno 17] File exists: '/tmp/omni_p1s3_e13_qlgb32__/state-blocker'",
         "content_chars": 6
       }
     },
@@ -145,5 +145,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091900.1833465
+  "finished_at": 1792302103.0674841
 }

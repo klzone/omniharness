@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091908.5675805,
+  "started_at": 1792302110.9823616,
   "checks": [
     {
       "check": "headless_help_ok",
@@ -25,8 +25,14 @@
       "detail": {
         "exception": "EngineError",
         "engine_error_code": "timeout",
-        "message": "[timeout] initialize did not respond within 8.0s",
-        "detail": {}
+        "message": "[timeout] initialize did not respond within 8.0s: OmniDesk expects profile \"headless\" to speak ACP over stdio, but it never completed the ACP handshake",
+        "detail": {
+          "method": "initialize",
+          "expected_protocol": "acp",
+          "engine_profile": "headless",
+          "handshake": "acp/initialize",
+          "reason": "OmniDesk expects DSH profile headless to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+        }
       }
     },
     {
@@ -35,8 +41,14 @@
       "detail": {
         "exception": "EngineError",
         "engine_error_code": "timeout",
-        "message": "[timeout] initialize did not respond within 8.0s",
-        "detail": {}
+        "message": "[timeout] initialize did not respond within 8.0s: OmniDesk expects profile \"headless\" to speak ACP over stdio, but it never completed the ACP handshake",
+        "detail": {
+          "method": "initialize",
+          "expected_protocol": "acp",
+          "engine_profile": "headless",
+          "handshake": "acp/initialize",
+          "reason": "OmniDesk expects DSH profile headless to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+        }
       }
     },
     {
@@ -69,13 +81,19 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e17_jtefrbqp",
+    "data_root": "/tmp/omni_p1s3_e17_blujd0hk",
     "headless_help_rc": 0,
     "headless_initialize_error": {
       "exception": "EngineError",
       "engine_error_code": "timeout",
-      "message": "[timeout] initialize did not respond within 8.0s",
-      "detail": {}
+      "message": "[timeout] initialize did not respond within 8.0s: OmniDesk expects profile \"headless\" to speak ACP over stdio, but it never completed the ACP handshake",
+      "detail": {
+        "method": "initialize",
+        "expected_protocol": "acp",
+        "engine_profile": "headless",
+        "handshake": "acp/initialize",
+        "reason": "OmniDesk expects DSH profile headless to speak ACP over stdio, but it never completed the ACP handshake within the bounded wait; a profile that does not serve ACP (for example a web-UI bundle) starts up but never answers the handshake"
+      }
     },
     "sdk_initialize": {
       "jsonrpc": "2.0",
@@ -106,5 +124,5 @@
     "headless 通道帮助面没有取消旗标；sdk 通道实测 session/cancel 与 session/resume 均为未知方法（-32603）。两者都不具备 ACP 语义的取消/恢复能力，因此适配层在非 ACP 通道上如实失败，不做语义不等价的降级。"
   ],
   "verdict": "pass",
-  "finished_at": 1792091920.0029242
+  "finished_at": 1792302122.4273474
 }

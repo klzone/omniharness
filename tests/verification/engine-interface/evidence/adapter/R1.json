@@ -1,0 +1,94 @@
+{
+  "scenario": "R1",
+  "title": "R1 默认 Profile 可用（无手工覆盖）",
+  "channel": "ipc2",
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 合成模型端点）",
+  "executed": true,
+  "started_at": 1792155656.6440504,
+  "checks": [
+    {
+      "check": "ambient_env_has_no_profile_override",
+      "pass": true
+    },
+    {
+      "check": "acp_initialize_ok_without_manual_override",
+      "pass": true,
+      "detail": "compatible"
+    },
+    {
+      "check": "capabilities_declared",
+      "pass": true,
+      "detail": {
+        "submit_task": "implementation_supported",
+        "get_task_status": "implementation_supported",
+        "stream_events": "implementation_supported",
+        "cancel_task": "implementation_supported",
+        "recover_session": "implementation_supported",
+        "recover_task": "partial",
+        "get_task_result": "implementation_supported"
+      }
+    },
+    {
+      "check": "session_new_reached_engine",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-1fa8256e-5ca6-434e-910a-40066a6633b0",
+        "engine_session_id": "b365b6a4-7055-4b98-8a7e-e7421ebc57a4"
+      }
+    },
+    {
+      "check": "task_reached_terminal",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-1fa8256e-5ca6-434e-910a-40066a6633b0",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792155659.023607,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "b365b6a4-7055-4b98-8a7e-e7421ebc57a4",
+        "note": "stop_reason=end_turn"
+      }
+    },
+    {
+      "check": "storage_project_dir_created",
+      "pass": true,
+      "detail": [
+        "--tmp-omni_p1s3_r1_k64wz5pu-work--"
+      ]
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_r1_k64wz5pu",
+    "initialize_frame_keys": [
+      "id",
+      "jsonrpc",
+      "result"
+    ],
+    "receipt": {
+      "omni_task_id": "omni-1fa8256e-5ca6-434e-910a-40066a6633b0",
+      "status": "running",
+      "accepted_at": 1792155658.639607,
+      "engine_session_id": "b365b6a4-7055-4b98-8a7e-e7421ebc57a4",
+      "note": "适配层已建立会话并提交；等待引擎终态证据"
+    },
+    "terminal_status": {
+      "omni_task_id": "omni-1fa8256e-5ca6-434e-910a-40066a6633b0",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792155659.023607,
+      "last_event_seq": 4,
+      "partial_output_size": 6,
+      "engine_session_id": "b365b6a4-7055-4b98-8a7e-e7421ebc57a4",
+      "note": "stop_reason=end_turn"
+    },
+    "auto_initialized_profiles": [
+      "acp"
+    ]
+  },
+  "notes": [
+    "本场景只用 dsh.profile=acp（即宿主默认链产出的值）启动真实引擎子进程，不注入 OMNIDESK_DSH_PROFILE，避免用「脚本自己塞 acp」冒充「宿主默认为 acp」。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792155659.471593
+}

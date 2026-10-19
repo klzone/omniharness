@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>OmniDesk UI 负载对照 · 改后 CSS 复刻（Step 2）</title>
+<!--
+  OD-ARCH-027 Step 2 · 受控补充：本文件复刻「Step 2 改动后」的 CSS，与 heavy.html 单因素对照。
+
+  与 heavy.html 的唯一差异 = Step 2 实际改的东西：
+    1) 三个全屏光斑：filter: blur(120–140px) → 静态 radial-gradient（同色系、同位置、同尺寸）
+    2) .pane / .plate：去掉卡片级 backdrop-filter
+    3) .dock：去掉 backdrop-blur（底色 .85 → .95）
+  保持相同：.nav 的 backdrop-filter: blur(40px)（Step 2 保留的关键视觉层）、
+            两个无限动画（Step 4 范围，本步不动）、布局与尺寸。
+
+  heavy.html / simple.html 原件只读，未改写。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #f4f5ff; overflow: hidden; }
+  /* 改后：静态径向渐变光晕，无 filter: blur */
+  .blob { position: fixed; border-radius: 9999px; pointer-events: none; background-repeat: no-repeat; }
+  .b1 { top: -15%; left: 20%; width: 60rem; height: 50rem;
+        background-image: radial-gradient(closest-side, rgba(199,192,255,.35), rgba(172,237,255,.30) 58%, transparent); }
+  .b2 { top: 45%; right: -10%; width: 48rem; height: 48rem;
+        background-image: radial-gradient(closest-side, rgba(218,226,253,.50), rgba(226,223,255,.20) 60%, transparent); }
+  .b3 { bottom: -20%; left: 8%; width: 42rem; height: 42rem;
+        background-image: radial-gradient(closest-side, rgba(87,223,254,.20), rgba(234,237,255,.60) 55%, transparent); }
+  /* 改后：Dock 去掉 backdrop-filter（底色提高不透明度保持可读） */
+  .dock { position: fixed; left: 20px; top: 40%; width: 64px; height: 320px; border-radius: 9999px;
+          background: rgba(255,255,255,.95); }
+  /* 改后：保留的唯一关键视觉层 */
+  .nav  { position: fixed; left: 120px; right: 40px; top: 24px; height: 56px; border-radius: 9999px;
+          background: rgba(255,255,255,.8); backdrop-filter: blur(40px) saturate(170%); }
+  .panes { position: relative; padding: 120px 40px 40px 120px; display: flex; flex-direction: column; gap: 18px; }
+  .pane { background: rgba(255,255,255,.78);
+          border: 1px solid rgba(255,255,255,.9); border-radius: 16px; padding: 20px 24px; height: 90px; }
+  .plate { background: rgba(255,255,255,.72);
+           border-radius: 16px; padding: 20px 24px; height: 90px; }
+  /* 与 heavy.html 完全相同的无限动画（Step 4 范围，本步未动） */
+  @keyframes pulse-subtle { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .75; transform: scale(1.05);} }
+  @keyframes float-companion { 0%,100% { transform: translateY(0) rotate(0);} 50% { transform: translateY(-7px) rotate(1.2deg);} }
+  .pulse { position: fixed; right: 60px; bottom: 60px; width: 120px; height: 120px; border-radius: 24px;
+           background: #6366f1; animation: pulse-subtle 6s cubic-bezier(.4,0,.6,1) infinite; }
+  .mascot { position: fixed; right: 220px; bottom: 60px; width: 112px; height: 112px; border-radius: 50%;
+            background: #a5b4fc; animation: float-companion 5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="nav"></div><div class="dock"></div>
+  <div class="panes">
+    <div class="plate">plate（改后：无 backdrop-filter）</div>
+    <div class="pane">pane（改后：无 backdrop-filter）</div>
+    <div class="pane">pane（改后：无 backdrop-filter）</div>
+    <div class="pane">pane（改后：无 backdrop-filter）</div>
+    <div class="pane">pane（改后：无 backdrop-filter）</div>
+  </div>
+  <div class="pulse"></div><div class="mascot"></div>
+</body>
+</html>

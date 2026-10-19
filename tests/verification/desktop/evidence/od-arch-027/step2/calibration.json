@@ -1,0 +1,28 @@
+{
+  "dock_y": {
+    "home": 235,
+    "report": 285,
+    "writing": 335,
+    "project": 385,
+    "workbench": 435,
+    "sessions": 485,
+    "settings": 535,
+    "engine": 585
+  },
+  "shots": {
+    "home": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/00-home.png",
+    "report": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/01-report.png",
+    "writing": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/02-writing.png",
+    "project": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/03-project.png",
+    "workbench": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/04-workbench.png",
+    "sessions": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/05-sessions.png",
+    "settings": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/06-settings.png",
+    "engine": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/calibration/07-engine.png"
+  },
+  "geometry": [
+    80,
+    90,
+    1280,
+    820
+  ]
+}

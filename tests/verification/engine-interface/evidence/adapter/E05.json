@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091866.6965396,
+  "started_at": 1792302069.8567805,
   "checks": [
     {
       "check": "running_before_cancel",
@@ -20,10 +20,10 @@
       "check": "confirmed_from_engine_terminal",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+        "omni_task_id": "omni-830fd4a4-57d8-45ec-a634-fc4a00ae532a",
         "phase": "confirmed_cancelled",
-        "requested_at": 1792091869.193067,
-        "settled_at": 1792091869.2434127,
+        "requested_at": 1792302072.3143961,
+        "settled_at": 1792302072.3646603,
         "final_state": "cancelled",
         "evidence": "engine_terminal",
         "note": "引擎以 stopReason=cancelled 落定"
@@ -49,22 +49,22 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e05_z04eo0cz",
+    "data_root": "/tmp/omni_p1s3_e05_zgopn8ta",
     "status_before_cancel": {
-      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "omni_task_id": "omni-830fd4a4-57d8-45ec-a634-fc4a00ae532a",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792091868.192587,
+      "since": 1792302071.3137534,
       "last_event_seq": 1,
       "partial_output_size": 0,
-      "engine_session_id": "6eb9e354-2bb4-4244-96c2-3d47cb9e3db3",
+      "engine_session_id": "05508f32-59f5-40e1-996c-b7d0060ee90a",
       "note": ""
     },
     "cancel_outcome": {
-      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "omni_task_id": "omni-830fd4a4-57d8-45ec-a634-fc4a00ae532a",
       "phase": "confirmed_cancelled",
-      "requested_at": 1792091869.193067,
-      "settled_at": 1792091869.2434127,
+      "requested_at": 1792302072.3143961,
+      "settled_at": 1792302072.3646603,
       "final_state": "cancelled",
       "evidence": "engine_terminal",
       "note": "引擎以 stopReason=cancelled 落定"
@@ -76,13 +76,13 @@
       }
     ],
     "status_after_cancel": {
-      "omni_task_id": "omni-b98cf296-b86f-4837-89d4-f130e88ff0f3",
+      "omni_task_id": "omni-830fd4a4-57d8-45ec-a634-fc4a00ae532a",
       "status": "cancelled",
       "evidence_source": "engine_terminal",
-      "since": 1792091869.2434134,
+      "since": 1792302072.3646615,
       "last_event_seq": 3,
       "partial_output_size": 0,
-      "engine_session_id": "6eb9e354-2bb4-4244-96c2-3d47cb9e3db3",
+      "engine_session_id": "05508f32-59f5-40e1-996c-b7d0060ee90a",
       "note": "stop_reason=cancelled"
     },
     "shutdown": {
@@ -98,5 +98,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091869.4023352
+  "finished_at": 1792302072.5392091
 }

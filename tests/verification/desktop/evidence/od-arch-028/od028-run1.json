@@ -1,0 +1,324 @@
+{
+  "step": "od-arch-028-acceptance",
+  "label": "od028-run1",
+  "verdict": "ok",
+  "scenes": {
+    "weekly": {
+      "scenario": "weekly_report",
+      "steps": [
+        {
+          "step": "load_sample",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-02-weekly-sample.png"
+        },
+        {
+          "step": "read_material",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-03-weekly-material-read.png"
+        },
+        {
+          "step": "generate",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-04-weekly-generating.png"
+        },
+        {
+          "step": "task_terminal",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-05-weekly-after-generate.png"
+        },
+        {
+          "step": "edit_draft",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-06-weekly-edited.png"
+        },
+        {
+          "step": "confirmed",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-07-weekly-confirmed.png"
+        },
+        {
+          "step": "saved",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-08-weekly-saved.png"
+        },
+        {
+          "step": "reopened",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-09-weekly-reopened.png"
+        }
+      ],
+      "generate_button": [
+        212,
+        471
+      ],
+      "task": {
+        "omni_task_id": "omni-6df65895-b29e-4f3a-af60-fa170b53d6a2",
+        "state": "succeeded",
+        "stop_reason": "end_turn",
+        "error_message": null
+      },
+      "task_waited_s": 0.0,
+      "artifacts": [
+        "offline-weekly-report-20261019-153832.md"
+      ],
+      "artifact": {
+        "path": "/tmp/od028/od028-run1/local-data/offline-weekly-report-20261019-153832.md",
+        "bytes": 427,
+        "has_title": true,
+        "has_model_text": true,
+        "has_human_edit": true,
+        "has_material_provenance": true,
+        "head": "# OD028 weekly synthetic\n\n- 场景：weekly_report\n- 生成时间 (UTC)：2026-10-19 15:38:32 UTC\n- 处理方式：本地确定性代码 + 模型初稿（模型来源未复核，已由人工编辑核对）\n- 数据边界：仅合成 / 公开 / 经明确批准的数据\n\n\n> 材料来源（由 OmniDesk 记录，非模型输出）：\n> - material-weekly.md（sha256:b6768861e632，124 字节）\n合成回复内容 (human-edit-ok)"
+      },
+      "artifacts_count_at_readback": 1,
+      "readback_targets_newest": true,
+      "mock_requests": [
+        {
+          "probe_hits": [
+            "OD028-WEEKLY-MARKER-3a91"
+          ],
+          "probe_misses": []
+        }
+      ],
+      "material_marker_in_request": true,
+      "elapsed_s": 196.0,
+      "verdict": "ok"
+    },
+    "writing": {
+      "scenario": "material_writing",
+      "steps": [
+        {
+          "step": "load_sample",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-10-writing-sample.png"
+        },
+        {
+          "step": "read_material",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-11-writing-material-read.png"
+        },
+        {
+          "step": "generate",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-12-writing-generating.png"
+        },
+        {
+          "step": "task_terminal",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-13-writing-after-generate.png"
+        },
+        {
+          "step": "edit_draft",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-14-writing-edited.png"
+        },
+        {
+          "step": "confirmed",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-15-writing-confirmed.png"
+        },
+        {
+          "step": "saved",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-16-writing-saved.png"
+        },
+        {
+          "step": "reopened",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-17-writing-reopened.png"
+        }
+      ],
+      "generate_button": [
+        212,
+        728
+      ],
+      "task": {
+        "omni_task_id": "omni-c4322b50-b3e9-460e-a8c2-2065edde427b",
+        "state": "succeeded",
+        "stop_reason": "end_turn",
+        "error_message": null
+      },
+      "task_waited_s": 0.0,
+      "artifacts": [
+        "offline-weekly-report-20261019-153832.md",
+        "offline-material-writing-20261019-154024.md"
+      ],
+      "artifact": {
+        "path": "/tmp/od028/od028-run1/local-data/offline-material-writing-20261019-154024.md",
+        "bytes": 432,
+        "has_title": true,
+        "has_model_text": true,
+        "has_human_edit": true,
+        "has_material_provenance": true,
+        "head": "# OD028 writing synthetic\n\n- 场景：material_writing\n- 生成时间 (UTC)：2026-10-19 15:40:24 UTC\n- 处理方式：本地确定性代码 + 模型初稿（模型来源未复核，已由人工编辑核对）\n- 数据边界：仅合成 / 公开 / 经明确批准的数据\n\n\n> 材料来源（由 OmniDesk 记录，非模型输出）：\n> - material-writing.md（sha256:0c6d3dc75dc1，126 字节）\n合成回复内容 (human-edit-ok)"
+      },
+      "artifacts_count_at_readback": 2,
+      "readback_targets_newest": false,
+      "mock_requests": [
+        {
+          "probe_hits": [
+            "OD028-WRITING-MARKER-6c42"
+          ],
+          "probe_misses": []
+        }
+      ],
+      "material_marker_in_request": true,
+      "elapsed_s": 111.8,
+      "verdict": "ok"
+    },
+    "project": {
+      "scenario": "project_management",
+      "steps": [
+        {
+          "step": "load_sample",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-18-project-sample.png"
+        },
+        {
+          "step": "read_material",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-19-project-material-read.png"
+        },
+        {
+          "step": "generate",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-20-project-generating.png"
+        },
+        {
+          "step": "task_terminal",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-21-project-after-generate.png"
+        },
+        {
+          "step": "edit_draft",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-22-project-edited.png"
+        },
+        {
+          "step": "confirmed",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-23-project-confirmed.png"
+        },
+        {
+          "step": "saved",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-24-project-saved.png"
+        },
+        {
+          "step": "reopened",
+          "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-25-project-reopened.png"
+        }
+      ],
+      "generate_button": [
+        212,
+        547
+      ],
+      "task": {
+        "omni_task_id": "omni-627c29b2-fc97-4d2b-8dc0-c002c1eeaedb",
+        "state": "succeeded",
+        "stop_reason": "end_turn",
+        "error_message": null
+      },
+      "task_waited_s": 0.0,
+      "artifacts": [
+        "offline-weekly-report-20261019-153832.md",
+        "offline-material-writing-20261019-154024.md",
+        "offline-project-management-20261019-154224.md"
+      ],
+      "artifact": {
+        "path": "/tmp/od028/od028-run1/local-data/offline-project-management-20261019-154224.md",
+        "bytes": 434,
+        "has_title": true,
+        "has_model_text": true,
+        "has_human_edit": true,
+        "has_material_provenance": true,
+        "head": "# OD028 project synthetic\n\n- 场景：project_management\n- 生成时间 (UTC)：2026-10-19 15:42:24 UTC\n- 处理方式：本地确定性代码 + 模型初稿（模型来源未复核，已由人工编辑核对）\n- 数据边界：仅合成 / 公开 / 经明确批准的数据\n\n\n> 材料来源（由 OmniDesk 记录，非模型输出）：\n> - material-project.md（sha256:c970bf8d214d，126 字节）\n合成回复内容 (human-edit-ok)"
+      },
+      "artifacts_count_at_readback": 3,
+      "readback_targets_newest": false,
+      "mock_requests": [
+        {
+          "probe_hits": [
+            "OD028-PROJECT-MARKER-9b17"
+          ],
+          "probe_misses": []
+        }
+      ],
+      "material_marker_in_request": true,
+      "elapsed_s": 120.4,
+      "verdict": "ok"
+    }
+  },
+  "preseeded_settings": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": "/tmp/od028/od028-run1/local-data",
+    "model_permissions": {
+      "local": true,
+      "private": false,
+      "public": false
+    }
+  },
+  "materials": {
+    "weekly": "/tmp/od028/od028-run1/material-weekly.md",
+    "writing": "/tmp/od028/od028-run1/material-writing.md",
+    "project": "/tmp/od028/od028-run1/material-project.md"
+  },
+  "window": {
+    "title": "OmniDesk Discipline",
+    "geometry": [
+      80,
+      90,
+      1280,
+      820
+    ]
+  },
+  "app_pid": 286680,
+  "home_baseline_shot": "od028-run1-home-baseline",
+  "negative_failure": {
+    "mode": "error_400",
+    "scenario": "project_management",
+    "steps": [
+      {
+        "step": "generate",
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-26-neg-project-error_400-generating.png"
+      },
+      {
+        "step": "failed",
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-27-neg-project-error_400-failed.png"
+      }
+    ],
+    "task": {
+      "omni_task_id": "omni-545da5ad-c401-4965-937c-b539de3f054c",
+      "state": "failed",
+      "stop_reason": null,
+      "error_message": "Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+    },
+    "task_waited_s": 0.0,
+    "new_artifacts": [],
+    "verdict": "ok"
+  },
+  "negative_cancel": {
+    "mode": "hang",
+    "scenario": "project_management",
+    "steps": [
+      {
+        "step": "generate",
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-28-neg-project-hang-generating.png"
+      },
+      {
+        "step": "cancel",
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-028/shots/od028-run1-29-neg-project-hang-cancelled.png"
+      }
+    ],
+    "task": {
+      "omni_task_id": "omni-bddc619b-91a6-4f14-8a52-1e49b0f18065",
+      "state": "cancelled",
+      "stop_reason": "cancelled",
+      "error_message": null
+    },
+    "task_waited_s": 0.0,
+    "new_artifacts": [],
+    "verdict": "ok"
+  },
+  "artifacts": [
+    "offline-material-writing-20261019-154024.md",
+    "offline-project-management-20261019-154224.md",
+    "offline-weekly-report-20261019-153832.md"
+  ],
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "Xvfb :98（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-19 23:44:53+0800",
+    "generated_at_epoch": 1792424693.9125955,
+    "invocation": "tests/verification/desktop/evidence/od-arch-028/scripts/od028-acceptance.py --label od028-run1 --display :98 --own-xvfb",
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "data_root": "/tmp/od028/od028-run1",
+    "artifact_root": "/tmp/od028/od028-run1/local-data",
+    "synthetic_endpoint": "http://127.0.0.1:44859/v1",
+    "model_permissions": "一次性数据根内预置 local=true（合成端点）",
+    "note": "真实窗口；未截取用户桌面；未使用真实材料或凭证；成果只写在一次性隔离根"
+  },
+  "app_env_check": {
+    "OMNIDESK_LOCAL_DATA_ROOT": "/tmp/od028/od028-run1/local-data"
+  }
+}

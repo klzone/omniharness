@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091857.9630027,
+  "started_at": 1792302058.2315788,
   "checks": [
     {
       "check": "initialize_ok",
@@ -39,7 +39,7 @@
             "--profile",
             "acp",
             "--patch",
-            "/tmp/omni_p1s3_e01_67ycc0ou/e01.yml"
+            "/tmp/omni_p1s3_e01_e3ey0z6h/e01.yml"
           ],
           "client_capabilities": {
             "fs": {
@@ -68,24 +68,24 @@
       "check": "submit_ok",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
+        "omni_task_id": "omni-a8b7d4f4-d4ac-42b5-a6a0-bdc500bab768",
         "status": "running",
-        "accepted_at": 1792091859.3153818,
-        "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388",
+        "accepted_at": 1792302060.2510185,
+        "engine_session_id": "5bc2598a-cbc9-418d-9818-75ef998fee2e",
         "note": "适配层已建立会话并提交；等待引擎终态证据"
       }
     },
     {
       "check": "omni_task_id_stable",
       "pass": true,
-      "detail": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48"
+      "detail": "omni-a8b7d4f4-d4ac-42b5-a6a0-bdc500bab768"
     },
     {
       "check": "id_layers_distinct",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
-        "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388"
+        "omni_task_id": "omni-a8b7d4f4-d4ac-42b5-a6a0-bdc500bab768",
+        "engine_session_id": "5bc2598a-cbc9-418d-9818-75ef998fee2e"
       }
     },
     {
@@ -97,28 +97,28 @@
       "check": "idempotency_same_when_key_repeats",
       "pass": true,
       "detail": {
-        "first": "omni-45509d05-0efb-412a-ba72-bf329ebb13f1",
-        "second": "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+        "first": "omni-4c54b1c7-1a65-4260-af18-759056d21b12",
+        "second": "omni-4c54b1c7-1a65-4260-af18-759056d21b12"
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e01_67ycc0ou",
+    "data_root": "/tmp/omni_p1s3_e01_e3ey0z6h",
     "receipt": {
-      "omni_task_id": "omni-0c494631-9dc1-4dbe-9295-f05bcd58ca48",
+      "omni_task_id": "omni-a8b7d4f4-d4ac-42b5-a6a0-bdc500bab768",
       "status": "running",
-      "accepted_at": 1792091859.3153818,
-      "engine_session_id": "e2c4f925-4f01-49b6-89b8-6d1921ec0388",
+      "accepted_at": 1792302060.2510185,
+      "engine_session_id": "5bc2598a-cbc9-418d-9818-75ef998fee2e",
       "note": "适配层已建立会话并提交；等待引擎终态证据"
     },
     "shutdown": {
       "mode": "graceful",
       "in_flight_before": [
-        "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+        "omni-4c54b1c7-1a65-4260-af18-759056d21b12"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-45509d05-0efb-412a-ba72-bf329ebb13f1"
+        "omni-4c54b1c7-1a65-4260-af18-759056d21b12"
       ],
       "connection_closed": true,
       "process_exit_code": 0,
@@ -129,5 +129,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091860.0780723
+  "finished_at": 1792302061.1154468
 }

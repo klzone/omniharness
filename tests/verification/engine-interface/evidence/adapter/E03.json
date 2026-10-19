@@ -4,19 +4,19 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091862.284769,
+  "started_at": 1792302063.972463,
   "checks": [
     {
       "check": "reached_succeeded",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792091864.0820806,
+        "since": 1792302066.476311,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": "stop_reason=end_turn"
       }
     },
@@ -24,13 +24,13 @@
       "check": "terminal_evidence_engine",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792091864.0820806,
+        "since": 1792302066.476311,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": "stop_reason=end_turn"
       }
     },
@@ -56,54 +56,54 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e03_gmzlpb3_",
+    "data_root": "/tmp/omni_p1s3_e03_53u8clyh",
     "status_series": [
       {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091863.8404126,
+        "since": 1792302066.1939735,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": ""
       },
       {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091863.8404126,
+        "since": 1792302066.1939735,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": ""
       },
       {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792091863.8404126,
+        "since": 1792302066.1939735,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": ""
       },
       {
-        "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792091864.0820806,
+        "since": 1792302066.476311,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "cae57440-0071-4656-90db-13b6c21eb932",
+        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
         "note": "stop_reason=end_turn"
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-6446d5e4-caf4-4c8f-afd1-a2cf5ca99351",
+      "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
       "form": "complete",
       "content": "合成回复内容",
-      "persisted_at": 1792091864.0823476,
+      "persisted_at": 1792302066.4766543,
       "integrity": "complete",
       "sources": [
         {
@@ -134,5 +134,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792091864.5353699
+  "finished_at": 1792302066.9315407
 }

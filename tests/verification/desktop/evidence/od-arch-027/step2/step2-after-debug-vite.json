@@ -1,0 +1,225 @@
+{
+  "label": "step2-after-debug-vite",
+  "variant": "after",
+  "verdict": "ok",
+  "window": {
+    "title": "OmniDesk Discipline",
+    "geometry": [
+      80,
+      90,
+      1280,
+      820
+    ]
+  },
+  "page_shots": {
+    "首页": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/step2-after-debug-vite-page-home.png",
+    "任务工作台": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/step2-after-debug-vite-page-workbench.png",
+    "离线流程·项目跟踪": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/step2-after-debug-vite-page-offline.png",
+    "成果目录与模型权限": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/step2-after-debug-vite-page-settings.png"
+  },
+  "idle_cpu": {
+    "window_seconds": 60.03,
+    "curve_5s": [
+      {
+        "t": 5.0,
+        "app_main": 0.0,
+        "webkit_web_process": 0.2,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 10.0,
+        "app_main": 0.0,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 15.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 20.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 25.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 30.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 35.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 40.0,
+        "app_main": 0.0,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 45.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 50.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 55.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      },
+      {
+        "t": 60.0,
+        "app_main": 0.1,
+        "webkit_web_process": 0.1,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0
+      }
+    ],
+    "app_main": {
+      "pids": [
+        153155
+      ],
+      "cmdlines": {
+        "153155": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop"
+      },
+      "avg_percent": 0.07,
+      "missing_pids": []
+    },
+    "webkit_web_process": {
+      "pids": [
+        153170
+      ],
+      "cmdlines": {
+        "153170": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 22"
+      },
+      "avg_percent": 0.07,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        153168
+      ],
+      "cmdlines": {
+        "153168": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 22"
+      },
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "cmdlines": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "pids_total": 3
+  },
+  "nav_latency": {
+    "workbench": {
+      "label": "任务工作台",
+      "n": 5,
+      "samples_s": [
+        2.147,
+        2.134,
+        2.138,
+        1.732,
+        2.1
+      ],
+      "p50_s": 2.134,
+      "p95_s": 2.145
+    },
+    "project": {
+      "label": "离线流程·项目跟踪",
+      "n": 5,
+      "samples_s": [
+        1.728,
+        1.713,
+        1.709,
+        1.71,
+        1.726
+      ],
+      "p50_s": 1.713,
+      "p95_s": 1.728
+    },
+    "settings": {
+      "label": "成果目录与模型权限",
+      "n": 5,
+      "samples_s": [
+        1.781,
+        2.546,
+        2.586,
+        1.734,
+        2.571
+      ],
+      "p50_s": 2.546,
+      "p95_s": 2.583
+    },
+    "home": {
+      "label": "工作台首页",
+      "n": 5,
+      "samples_s": [
+        2.576,
+        1.728,
+        1.752,
+        2.562,
+        2.566
+      ],
+      "p50_s": 2.562,
+      "p95_s": 2.574
+    },
+    "_all": {
+      "n": 20,
+      "p50_s": 1.941,
+      "p95_s": 2.577,
+      "timeouts": 0
+    }
+  },
+  "nav_latency_note": "点击 → 轮询内容帧签名变化；每次轮询含 GDK 稳定截图读回（≥0.35 s 量级），因此该延迟是交互端到端上界，含截图开销，只作 before/after 相对参考。",
+  "env": {
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "use_dev_server": true,
+    "binary": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop",
+    "binary_mtime": 1792393486.1816764,
+    "data_root": "/tmp/od027-step2/after",
+    "display_backend": "Xvfb :91（无窗口管理器；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1（AppSession 固定值，与 scripts/dev-ui.sh 默认一致；Step 2 保持 DMABUF 默认，不与变量混同）",
+    "window_size": "1280x820（tauri.conf 默认，未 resize）",
+    "idle_seconds": 60.0,
+    "nav_repeats": 5,
+    "script_path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step2/scripts/step2-perf.py",
+    "script_version": "step2-perf.py v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step2/scripts/step2-perf.py --label step2-after-debug-vite --variant after --own-xvfb --display :91 --root /tmp/od027-step2/after --idle-seconds 60 --repeats 5",
+    "generated_at": "2026-10-19 16:51:16+0800",
+    "generated_at_epoch": 1792399876.870462
+  }
+}

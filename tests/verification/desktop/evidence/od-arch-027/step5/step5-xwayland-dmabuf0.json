@@ -1,0 +1,420 @@
+{
+  "step": "step5",
+  "label": "step5-xwayland-dmabuf0",
+  "backend": "xwayland",
+  "display": ":0",
+  "dmabuf": "0",
+  "verdict": "ok",
+  "preseeded_settings": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": "/tmp/od027-step5/step5-xwayland-dmabuf0/local-data",
+    "model_permissions": {
+      "local": true,
+      "private": false,
+      "public": false
+    }
+  },
+  "session_facts": {
+    "XDG_SESSION_TYPE": "wayland",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "DISPLAY": ":0",
+    "XDG_RUNTIME_DIR": "/run/user/1000",
+    "XDG_CURRENT_DESKTOP": "ubuntu:GNOME",
+    "XAUTHORITY_set": true,
+    "wayland_capture_probes": {
+      "gnome_shell_screenshot_dbus": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "错误：GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: ScreenshotArea is not allowed"
+      },
+      "gnome_shell_eval_dbus": {
+        "exit": 0,
+        "stdout": "(false, '')",
+        "stderr": ""
+      }
+    }
+  },
+  "app_pid": 309933,
+  "window_move": {
+    "moved_to": [
+      40,
+      40
+    ]
+  },
+  "window": {
+    "title": "OmniDesk Discipline",
+    "geometry": [
+      40,
+      40,
+      1280,
+      857
+    ]
+  },
+  "a11y_sample": [
+    "application:omnidesk-desktop",
+    "frame:OmniDesk Discipline",
+    "document web:OmniDesk",
+    "button:发送指令",
+    "button:语音",
+    "button:挂载库",
+    "entry:与 OmniDesk 协同探索、下达任务或记录灵感…",
+    "button:前往任务工作台",
+    "heading:今日重点推进",
+    "image:OmniDesk 吉祥物",
+    "heading:夜深了· 欢迎回到 OmniDesk",
+    "button:引擎诊断（只读）",
+    "button:成果目录与模型权限",
+    "button:会话与任务（只读元数据）",
+    "button:任务工作台（合成数据 · 五阶段）",
+    "button:项目跟踪（模型起草）",
+    "button:文案写作（模型起草）",
+    "button:周报与随记（模型起草）",
+    "button:工作台首页",
+    "button:关闭",
+    "button:最大化",
+    "button:最小化",
+    "button:未实现：通知与待办",
+    "button:系统偏好设置 / 引擎技术切片",
+    "entry:全局检索（未实现）"
+  ],
+  "idle_cpu": {
+    "window_seconds": 60.06,
+    "curve": [
+      {
+        "t": 5.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.2
+      },
+      {
+        "t": 10.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 15.0,
+        "webkit_web_process": 0.0,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.13
+      },
+      {
+        "t": 20.0,
+        "webkit_web_process": 0.05,
+        "webkit_network_process": 0.0,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 25.0,
+        "webkit_web_process": 0.32,
+        "webkit_network_process": 0.04,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.08
+      },
+      {
+        "t": 30.0,
+        "webkit_web_process": 0.27,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.07
+      },
+      {
+        "t": 35.0,
+        "webkit_web_process": 0.26,
+        "webkit_network_process": 0.03,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.11
+      },
+      {
+        "t": 40.0,
+        "webkit_web_process": 0.22,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.1
+      },
+      {
+        "t": 45.0,
+        "webkit_web_process": 0.2,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.09
+      },
+      {
+        "t": 50.0,
+        "webkit_web_process": 0.24,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.08
+      },
+      {
+        "t": 55.0,
+        "webkit_web_process": 0.31,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.13
+      },
+      {
+        "t": 60.1,
+        "webkit_web_process": 0.28,
+        "webkit_network_process": 0.02,
+        "webkit_gpu_process": 0.0,
+        "app_main": 0.12
+      }
+    ],
+    "curve_every_s": 5.0,
+    "webkit_web_process": {
+      "pids": [
+        309964
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "309964": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 26"
+      },
+      "dmabuf_env": {
+        "309964": "0"
+      },
+      "avg_percent": 0.28,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        309945
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "309945": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 15"
+      },
+      "dmabuf_env": {
+        "309945": "0"
+      },
+      "avg_percent": 0.02,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "app_main": {
+      "pids": [
+        309933
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "309933": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/debug/omnidesk-desktop"
+      },
+      "dmabuf_env": {
+        "309933": "0"
+      },
+      "avg_percent": 0.12,
+      "missing_pids": []
+    }
+  },
+  "dmabuf_env": {
+    "app_main": "0",
+    "webkit": {
+      "309964": "0"
+    }
+  },
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "XWayland（x11 后端连用户会话 :0）",
+    "webkit_disable_dmabuf_renderer": "0",
+    "generated_at": "2026-10-20 00:52:25+0800",
+    "generated_at_epoch": 1792428745.470512,
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step5/scripts/step5-real-desktop.py --label step5-xwayland-dmabuf0 --backend xwayland --display :0 --dmabuf 0",
+    "build": "debug + vite dev（前端 dev server，非内嵌产物）",
+    "data_root": "/tmp/od027-step5/step5-xwayland-dmabuf0",
+    "artifact_root": "/tmp/od027-step5/step5-xwayland-dmabuf0/local-data",
+    "synthetic_endpoint": "http://127.0.0.1:46671/v1",
+    "model_permissions": "一次性数据根内预置 local=true（合成端点）",
+    "idle_seconds": 60.0,
+    "note": "真实用户会话；未使用真实材料或凭证；成果只写在一次性隔离根"
+  },
+  "nav_latency": {
+    "任务工作台": {
+      "n": 5,
+      "samples_s": [
+        0.459,
+        0.315,
+        0.321,
+        0.322,
+        0.294
+      ],
+      "p50_s": 0.321,
+      "p95_s": 0.432,
+      "timeouts": 0
+    },
+    "离线流程·项目跟踪": {
+      "n": 5,
+      "samples_s": [
+        0.809,
+        0.776,
+        0.816,
+        0.786,
+        0.862
+      ],
+      "p50_s": 0.809,
+      "p95_s": 0.853,
+      "timeouts": 0
+    },
+    "成果目录与模型权限": {
+      "n": 5,
+      "samples_s": [
+        0.828,
+        0.736,
+        0.767,
+        0.731,
+        0.723
+      ],
+      "p50_s": 0.736,
+      "p95_s": 0.816,
+      "timeouts": 0
+    },
+    "工作台首页": {
+      "n": 5,
+      "samples_s": [
+        0.767,
+        0.744,
+        0.774,
+        0.711,
+        0.7
+      ],
+      "p50_s": 0.744,
+      "p95_s": 0.773,
+      "timeouts": 0
+    }
+  },
+  "pages": {
+    "首页": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-page-home.png",
+      "size": [
+        1280,
+        857
+      ],
+      "mean_luma": 246.95,
+      "max_luma": 255,
+      "nonblack_fraction": 1.0,
+      "luma_std": 21.62,
+      "dark_fraction": 0.0013,
+      "distinct_colors_subsampled": 1667,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "任务工作台": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-page-workbench.png",
+      "size": [
+        1280,
+        857
+      ],
+      "mean_luma": 247.51,
+      "max_luma": 255,
+      "nonblack_fraction": 1.0,
+      "luma_std": 20.75,
+      "dark_fraction": 0.0024,
+      "distinct_colors_subsampled": 970,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "离线流程·项目跟踪": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-page-project.png",
+      "size": [
+        1280,
+        857
+      ],
+      "mean_luma": 245.41,
+      "max_luma": 255,
+      "nonblack_fraction": 1.0,
+      "luma_std": 24.91,
+      "dark_fraction": 0.0013,
+      "distinct_colors_subsampled": 1246,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    },
+    "成果目录与模型权限": {
+      "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-page-settings.png",
+      "size": [
+        1280,
+        857
+      ],
+      "mean_luma": 244.72,
+      "max_luma": 255,
+      "nonblack_fraction": 1.0,
+      "luma_std": 26.76,
+      "dark_fraction": 0.0027,
+      "distinct_colors_subsampled": 1217,
+      "black_screen_suspect": false,
+      "blank_suspect": false
+    }
+  },
+  "stability": {
+    "frames": [
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-stability-0.png",
+        "sig": "01bf1ed9806f98d51da4736067298a3f"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-stability-1.png",
+        "sig": "01bf1ed9806f98d51da4736067298a3f"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-stability-2.png",
+        "sig": "01bf1ed9806f98d51da4736067298a3f"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-stability-3.png",
+        "sig": "01bf1ed9806f98d51da4736067298a3f"
+      },
+      {
+        "path": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step5/shots-step5-xwayland-dmabuf0/step5-xwayland-dmabuf0-stability-4.png",
+        "sig": "01bf1ed9806f98d51da4736067298a3f"
+      }
+    ],
+    "distinct_signatures": 1
+  },
+  "input_test": {
+    "typed": "/tmp/od027-step5/step5-xwayland-dmabuf0/local-data",
+    "editable_fields": [
+      "entry:/home/you/Documents/OmniDesk",
+      "entry:全局检索（未实现）"
+    ],
+    "page_buttons": [
+      "刷新端点信息",
+      "撤销全部模型权限",
+      "刷新状态",
+      "打开当前目录",
+      "校验并保存",
+      "引擎诊断（只读）",
+      "成果目录与模型权限",
+      "会话与任务（只读元数据）",
+      "任务工作台（合成数据 · 五阶段）",
+      "项目跟踪（模型起草）",
+      "文案写作（模型起草）",
+      "周报与随记（模型起草）",
+      "工作台首页",
+      "关闭",
+      "最大化",
+      "最小化",
+      "未实现：通知与待办",
+      "系统偏好设置 / 引擎技术切片"
+    ],
+    "chosen_field": "/home/you/Documents/OmniDesk",
+    "input_extents": [
+      712,
+      625
+    ],
+    "value_read_error": "TypeError: Atspi.Accessible.get_text() takes exactly 1 argument (3 given)",
+    "field_value": null,
+    "settings_excerpt": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od027-step5/step5-xwayland-dmabuf0/local-data\",\n  \"model_permissions\": {\n    \"local\": true,\n    \"private\": false,\n    \"public\": false\n  }\n}",
+    "status": "exact_hit"
+  }
+}

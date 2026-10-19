@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792091925.2263834,
+  "started_at": 1792322159.7309885,
   "checks": [
     {
       "check": "arm_a_failed",
@@ -15,10 +15,10 @@
       "check": "arm_a_not_marked_complete",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+        "omni_task_id": "omni-71cf6284-2574-474d-ad0d-7e1295a23aca",
         "form": "unrecoverable",
         "content": "",
-        "persisted_at": 1792091926.8609586,
+        "persisted_at": 1792322161.7471926,
         "integrity": "partial",
         "sources": [
           {
@@ -45,13 +45,13 @@
       "check": "arm_b_succeeded_but_truncated",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+        "omni_task_id": "omni-82cd8a2e-2a85-40ca-85b2-04a63153ba7a",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792091929.0540457,
+        "since": 1792322163.962656,
         "last_event_seq": 4,
         "partial_output_size": 8,
-        "engine_session_id": "2314b23b-9acc-4738-b79f-7d830ca24dc9",
+        "engine_session_id": "35d9553f-3aa5-4ec6-aab2-039fe419ad43",
         "note": "stop_reason=max_tokens"
       }
     },
@@ -59,10 +59,10 @@
       "check": "arm_b_marked_partial",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+        "omni_task_id": "omni-82cd8a2e-2a85-40ca-85b2-04a63153ba7a",
         "form": "partial",
         "content": "被截断的合成内容",
-        "persisted_at": 1792091929.0543237,
+        "persisted_at": 1792322163.9629223,
         "integrity": "partial",
         "sources": [
           {
@@ -118,22 +118,22 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e19_5scyqwxc",
+    "data_root": "/tmp/omni_p1s3_e19_kgw6kacx",
     "arm_a_status": {
-      "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+      "omni_task_id": "omni-71cf6284-2574-474d-ad0d-7e1295a23aca",
       "status": "failed",
       "evidence_source": "engine_error",
-      "since": 1792091926.8606384,
+      "since": 1792322161.7468848,
       "last_event_seq": 2,
       "partial_output_size": 0,
-      "engine_session_id": "65e60291-fec4-4756-a854-34709570e30d",
+      "engine_session_id": "60ee2b4a-d7fd-4455-8ac8-fd5ae1cf3400",
       "note": "error=Internal error: turn failed: synthetic mid-stream failure"
     },
     "arm_a_result": {
-      "omni_task_id": "omni-390054cf-5d3f-4860-8d4c-0845a4f5a2dd",
+      "omni_task_id": "omni-71cf6284-2574-474d-ad0d-7e1295a23aca",
       "form": "unrecoverable",
       "content": "",
-      "persisted_at": 1792091926.8609586,
+      "persisted_at": 1792322161.7471926,
       "integrity": "partial",
       "sources": [
         {
@@ -158,20 +158,20 @@
       "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
     },
     "arm_b_status": {
-      "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+      "omni_task_id": "omni-82cd8a2e-2a85-40ca-85b2-04a63153ba7a",
       "status": "succeeded",
       "evidence_source": "engine_terminal",
-      "since": 1792091929.0540457,
+      "since": 1792322163.962656,
       "last_event_seq": 4,
       "partial_output_size": 8,
-      "engine_session_id": "2314b23b-9acc-4738-b79f-7d830ca24dc9",
+      "engine_session_id": "35d9553f-3aa5-4ec6-aab2-039fe419ad43",
       "note": "stop_reason=max_tokens"
     },
     "arm_b_result": {
-      "omni_task_id": "omni-e2c78c16-1583-4142-9f6f-90cd4a32f5a0",
+      "omni_task_id": "omni-82cd8a2e-2a85-40ca-85b2-04a63153ba7a",
       "form": "partial",
       "content": "被截断的合成内容",
-      "persisted_at": 1792091929.0543237,
+      "persisted_at": 1792322163.9629223,
       "integrity": "partial",
       "sources": [
         {
@@ -200,30 +200,30 @@
       "note": "优雅关闭"
     },
     "arm_c_status_before_error": {
-      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "omni_task_id": "omni-e45958e0-f2cc-45b3-8e02-b49371f448d5",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792091930.9942896,
+      "since": 1792322165.9309034,
       "last_event_seq": 3,
       "partial_output_size": 8,
-      "engine_session_id": "ba537f92-ead2-42f7-8895-0d0ab14f08e5",
+      "engine_session_id": "bca60aa8-182d-4248-8448-610ebd75109e",
       "note": ""
     },
     "arm_c_status_after_error": {
-      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "omni_task_id": "omni-e45958e0-f2cc-45b3-8e02-b49371f448d5",
       "status": "failed",
       "evidence_source": "engine_error",
-      "since": 1792091932.2951279,
+      "since": 1792322167.2316234,
       "last_event_seq": 4,
       "partial_output_size": 8,
-      "engine_session_id": "ba537f92-ead2-42f7-8895-0d0ab14f08e5",
+      "engine_session_id": "bca60aa8-182d-4248-8448-610ebd75109e",
       "note": "error=synthetic injected turn failure"
     },
     "arm_c_result": {
-      "omni_task_id": "omni-593b1164-07ce-4234-9876-b0ef2ada31bb",
+      "omni_task_id": "omni-e45958e0-f2cc-45b3-8e02-b49371f448d5",
       "form": "partial",
       "content": "已收到的部分输出",
-      "persisted_at": 1792091932.2958283,
+      "persisted_at": 1792322167.2325227,
       "integrity": "partial",
       "sources": [
         {
@@ -252,5 +252,5 @@
     "臂 C 为**桩级**（stub-level）验证，证据等级 script，用于覆盖适配层的结果整形分支；真实的失败场景见臂 A（流内错误会丢弃整轮输出 → unrecoverable）。"
   ],
   "verdict": "pass",
-  "finished_at": 1792091932.6986115
+  "finished_at": 1792322167.6215405
 }

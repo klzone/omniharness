@@ -1,0 +1,106 @@
+{
+  "treatment": "1",
+  "page": "heavy.html",
+  "page_file": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/baseline-pages/heavy.html",
+  "stderr_log": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/step3-probe-1.log",
+  "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/step3-probe-1.png",
+  "env_set": {
+    "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+    "WEBKIT_FORCE_DMABUF_RENDERER": null
+  },
+  "process_set": {
+    "webkit_web_process": [
+      174134
+    ],
+    "webkit_network_process": [
+      174124
+    ],
+    "webkit_gpu_process": []
+  },
+  "cpu": {
+    "window_seconds": 30.01,
+    "webkit_web_process": {
+      "pids": [
+        174134
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "174134": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 21"
+      },
+      "dmabuf_env": {
+        "174134": "1"
+      },
+      "avg_percent": 100.12,
+      "missing_pids": []
+    },
+    "webkit_network_process": {
+      "pids": [
+        174124
+      ],
+      "process_count": 1,
+      "cmdlines": {
+        "174124": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 14"
+      },
+      "dmabuf_env": {
+        "174124": "1"
+      },
+      "avg_percent": 0.0,
+      "missing_pids": []
+    },
+    "webkit_gpu_process": {
+      "pids": [],
+      "process_count": 0,
+      "cmdlines": {},
+      "dmabuf_env": {},
+      "avg_percent": 0.0,
+      "missing_pids": []
+    }
+  },
+  "pid_env_check": {
+    "174134": {
+      "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+      "WEBKIT_FORCE_DMABUF_RENDERER": null
+    }
+  },
+  "frame": {
+    "mean_luma": 131.23,
+    "luma_std": 121.06,
+    "dark_fraction": 0.4549,
+    "distinct_colors_subsampled": 628,
+    "black_screen_suspect": false,
+    "blank_suspect": false
+  },
+  "paint_progress": {
+    "samples": 30,
+    "distinct_frames": 7,
+    "changed_pairs": 6,
+    "pairs": 29,
+    "mean_delta_fraction": 0.0032,
+    "max_delta_fraction": 0.0197,
+    "capture_seconds_mean": 0.0137,
+    "region": [
+      0,
+      0,
+      1030,
+      770
+    ],
+    "note": "近似指标：抓图有开销，只能分辨「明显更少帧 / 停摆」，不是精确帧率"
+  },
+  "stderr_matching_lines": [
+    "libEGL warning: DRI3 error: Could not get DRI3 device",
+    "libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering"
+  ],
+  "stderr_line_count": 149,
+  "env": {
+    "script": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-027/step3/scripts/_step3lib.py",
+    "script_version": "step3 v1",
+    "repo_head": "5ffc7101e90dcf3a2047f214b71286d3a32208a8",
+    "display_backend": "Xvfb :93（无 GPU / 无 DRI3；GDK_BACKEND=x11，清空 WAYLAND_DISPLAY/SOCKET）",
+    "webkit_disable_dmabuf_renderer": "1",
+    "generated_at": "2026-10-19 17:30:44+0800",
+    "generated_at_epoch": 1792402244.5517888,
+    "invocation": "tests/verification/desktop/evidence/od-arch-027/step3/scripts/step3-dmabuf-probe.py --own-xvfb --display :93 --seconds 30",
+    "treatment": "1",
+    "seconds": 30.0
+  }
+}

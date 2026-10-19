@@ -1,0 +1,17 @@
+{
+  "generate_button": [
+    208,
+    645
+  ],
+  "save_button": [
+    195,
+    593
+  ],
+  "artifacts": [
+    "offline-weekly-report-20261019-074115.md"
+  ],
+  "first_artifact_head": "# 周记录 → 周报\n\n- 场景：weekly_report\n- 生成时间 (UTC)：2026-10-19 07:41:15 UTC\n- 处理方式：本地确定性代码 + 模型初稿（模型来源未复核，已由人工编辑核对）\n- 数据边界：仅合成 / 公开 / 经明确批准的数据\n\n\n> 材料来源（由 OmniDesk 记录，非模型输出）：\n> - material.md（sha256:46913042cc45，85 字节）\n合成初稿正文",
+  "model_text_saved": true,
+  "material_provenance_saved": true,
+  "verdict": "pass"
+}

@@ -1,0 +1,208 @@
+{
+  "generated_at": 1792424746.7133758,
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 本机回环合成端点 + Rust 真实冻结提示词）",
+  "channel": "IPC-2 stdio JSON-RPC（进程边界）：与界面 host.submitTask / taskStatus / taskResult / cancelTask 同形",
+  "note": "提示词由 desktop/src-tauri/examples/frozen_prompt.rs 真实产出（本地重算 + 指纹比对），脚本不自行拼提示词；workspace_dir 来自 task_shell::prepare_local_data_root。",
+  "frozen_prompt": {
+    "sample_id": "ecology-basic",
+    "fingerprint": "320dae745102cd0ddefcb464be9739ffa2380e5313cfeed643fdd83d69d507e0",
+    "rows": 5,
+    "total": 204.0,
+    "mean": 40.8,
+    "top_category": "制度执行",
+    "workspace_dir": "/tmp/omni_wkpath_localroot_be0d3lda/analysis",
+    "workspace_error": null,
+    "prompt_length": 1773
+  },
+  "scenarios": {
+    "success": {
+      "scenario": "engine_explanation_success",
+      "root": "/tmp/omni_p2desktop_wkpath_ok_qfywnt5q",
+      "isolation_problems": [],
+      "workspace_dir_used": "/tmp/omni_wkpath_localroot_be0d3lda/analysis",
+      "prompt_is_rust_product": true,
+      "initialize": {
+        "ok": true,
+        "error": null
+      },
+      "submit": {
+        "ok": true,
+        "error": null,
+        "receipt": {
+          "omni_task_id": "omni-9544c706-bf6a-4cf2-bfcb-c577a83f0bf6",
+          "status": "running",
+          "accepted_at": 1792424748.0651968,
+          "engine_session_id": "de9aa821-f9af-4810-b8c3-0569b0ffe219",
+          "note": "适配层已建立会话并提交；等待引擎终态证据"
+        }
+      },
+      "final_status": "succeeded",
+      "status_snapshots": [
+        {
+          "omni_task_id": "omni-9544c706-bf6a-4cf2-bfcb-c577a83f0bf6",
+          "status": "running",
+          "evidence_source": "operator_confirm",
+          "since": 1792424748.126356,
+          "last_event_seq": 1,
+          "partial_output_size": 0,
+          "engine_session_id": "de9aa821-f9af-4810-b8c3-0569b0ffe219",
+          "note": ""
+        },
+        {
+          "omni_task_id": "omni-9544c706-bf6a-4cf2-bfcb-c577a83f0bf6",
+          "status": "succeeded",
+          "evidence_source": "engine_terminal",
+          "since": 1792424748.3280153,
+          "last_event_seq": 4,
+          "partial_output_size": 30,
+          "engine_session_id": "de9aa821-f9af-4810-b8c3-0569b0ffe219",
+          "note": "stop_reason=end_turn"
+        }
+      ],
+      "result": {
+        "ok": true,
+        "error": null,
+        "form": "complete",
+        "integrity": "complete",
+        "content": "按冻结统计块：合计 204、平均 40.8。（合成端点输出）",
+        "persisted_at": 1792424748.3285186
+      },
+      "backfilled_content": "按冻结统计块：合计 204、平均 40.8。（合成端点输出）",
+      "save": {
+        "ok": true,
+        "path": "/tmp/omni_wkpath_localroot_be0d3lda/analysis/20261019-154548-320dae745102.md",
+        "fingerprint": "320dae745102cd0ddefcb464be9739ffa2380e5313cfeed643fdd83d69d507e0",
+        "error": null,
+        "outside_repo": true
+      },
+      "artifact_contains_engine_output": true,
+      "artifact_contains_frozen_numbers": true,
+      "artifact_records_unverified_source": true,
+      "artifact_records_confirmation": true,
+      "event_types": [
+        "task_started",
+        "text_delta",
+        "progress",
+        "task_completed"
+      ],
+      "text_delta_joined": "按冻结统计块：合计 204、平均 40.8。（合成端点输出）",
+      "checks": {
+        "initialize_ok": true,
+        "prompt_is_rust_product": true,
+        "submit_ok": true,
+        "reached_succeeded": true,
+        "result_complete": true,
+        "content_non_empty": true,
+        "saved_outside_repo": true,
+        "artifact_has_engine_output": true,
+        "artifact_has_frozen_numbers": true,
+        "artifact_marks_source_unverified": true,
+        "artifact_records_confirmation": true,
+        "no_isolation_violation": true
+      },
+      "verdict": "pass"
+    },
+    "failure": {
+      "scenario": "engine_explanation_failure",
+      "root": "/tmp/omni_p2desktop_wkpath_fail_asyhh402",
+      "isolation_problems": [],
+      "initialize": {
+        "ok": true,
+        "error": null
+      },
+      "submit": {
+        "ok": true,
+        "error": null,
+        "receipt": {
+          "omni_task_id": "omni-30de3c90-0762-487f-9462-292999ef9460",
+          "status": "running",
+          "accepted_at": 1792424750.7146766,
+          "engine_session_id": "5eef06e3-edcc-49f7-aff3-ab2cad59efe7",
+          "note": "适配层已建立会话并提交；等待引擎终态证据"
+        }
+      },
+      "final_status": "failed",
+      "status_snapshots": [
+        {
+          "omni_task_id": "omni-30de3c90-0762-487f-9462-292999ef9460",
+          "status": "running",
+          "evidence_source": "operator_confirm",
+          "since": 1792424750.7556715,
+          "last_event_seq": 1,
+          "partial_output_size": 0,
+          "engine_session_id": "5eef06e3-edcc-49f7-aff3-ab2cad59efe7",
+          "note": ""
+        },
+        {
+          "omni_task_id": "omni-30de3c90-0762-487f-9462-292999ef9460",
+          "status": "failed",
+          "evidence_source": "engine_error",
+          "since": 1792424750.9570804,
+          "last_event_seq": 2,
+          "partial_output_size": 0,
+          "engine_session_id": "5eef06e3-edcc-49f7-aff3-ab2cad59efe7",
+          "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+        }
+      ],
+      "result_form": "unrecoverable",
+      "result_content": "",
+      "event_types": [
+        "task_started",
+        "task_failed"
+      ],
+      "checks": {
+        "not_reported_as_success": true,
+        "failure_observable": true,
+        "no_backfilled_success_content": true,
+        "no_isolation_violation": true
+      },
+      "verdict": "pass"
+    },
+    "cancel": {
+      "scenario": "engine_explanation_cancel",
+      "root": "/tmp/omni_p2desktop_wkpath_cancel_iahdbhbt",
+      "isolation_problems": [],
+      "initialize": {
+        "ok": true,
+        "error": null
+      },
+      "submit": {
+        "ok": true,
+        "error": null,
+        "receipt": {
+          "omni_task_id": "omni-997dcbc2-b6fd-4a5c-9bdf-96c2de75cd32",
+          "status": "running",
+          "accepted_at": 1792424752.823156,
+          "engine_session_id": "c89bd1c8-007d-40d1-b8bc-41e325143aef",
+          "note": "适配层已建立会话并提交；等待引擎终态证据"
+        }
+      },
+      "running_before_cancel": true,
+      "cancel": {
+        "ok": true,
+        "error": null,
+        "outcome": {
+          "omni_task_id": "omni-997dcbc2-b6fd-4a5c-9bdf-96c2de75cd32",
+          "phase": "confirmed_cancelled",
+          "requested_at": 1792424752.9239264,
+          "settled_at": 1792424752.9741185,
+          "final_state": "cancelled",
+          "evidence": "engine_terminal",
+          "note": "引擎以 stopReason=cancelled 落定"
+        }
+      },
+      "cancel_phase": "confirmed_cancelled",
+      "final_status": "cancelled",
+      "final_cancel_phase": null,
+      "checks": {
+        "initialize_ok": true,
+        "submit_ok": true,
+        "cancel_request_recorded": true,
+        "phase_not_misreported_as_success": true,
+        "no_isolation_violation": true
+      },
+      "verdict": "pass"
+    }
+  },
+  "verdict": "pass"
+}

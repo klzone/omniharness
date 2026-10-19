@@ -1,0 +1,31 @@
+{
+  "scenario": "R1B",
+  "title": "R1b 引擎侧默认 Profile 为 acp",
+  "channel": "ipc2",
+  "evidence_level": "script（真实引擎子进程 + 真实 DSH CLI + 合成模型端点）",
+  "executed": true,
+  "started_at": 1792155654.6116173,
+  "checks": [
+    {
+      "check": "engine_default_profile_is_acp",
+      "pass": true,
+      "detail": "compatible"
+    },
+    {
+      "check": "default_uses_shipped_acp_template",
+      "pass": true,
+      "detail": [
+        "acp"
+      ]
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_r1b_2pf01wly",
+    "auto_initialized_profiles": [
+      "acp"
+    ]
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792155656.6170628
+}

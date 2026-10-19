@@ -1,0 +1,96 @@
+{
+  "stage": "A",
+  "verdict": "pass",
+  "facts": [
+    {
+      "name": "真实桌面窗口出现",
+      "ok": true,
+      "detail": {
+        "title": "OmniDesk Discipline",
+        "geometry": [
+          80,
+          90,
+          1280,
+          820
+        ],
+        "display": ":95"
+      }
+    },
+    {
+      "name": "用户设置的成果目录写入设置文件",
+      "ok": true,
+      "detail": {
+        "settings_file": "/tmp/od025-evidence/run/app-data/config/settings.v1.json",
+        "typed_settle": 0.25,
+        "content": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od25a\",\n  \"model_permissions\": {\n    \"local\": false,\n    \"private\": false,\n    \"public\": false\n  }\n}"
+      }
+    },
+    {
+      "name": "成果目录已按设置创建",
+      "ok": true,
+      "detail": "/tmp/od25a"
+    },
+    {
+      "name": "开启本机模型后权限写入设置文件",
+      "ok": true,
+      "detail": {
+        "clicked_y": 431,
+        "content": "{\n  \"schema\": \"omnidesk.settings.v1\",\n  \"artifact_root\": \"/tmp/od25a\",\n  \"model_permissions\": {\n    \"local\": true,\n    \"private\": false,\n    \"public\": false\n  }\n}"
+      }
+    },
+    {
+      "name": "引擎任务完成并落盘（合成端点）",
+      "ok": true,
+      "detail": {
+        "omni_task_id": "omni-d2fc2276-5e64-401e-b596-6f6ca3e8d7f3",
+        "intent": "desensitized_analysis",
+        "workspace_dir": "/tmp/od25a",
+        "idempotency_key": null,
+        "engine_session_id": "75d28f38-6de7-4270-a3fc-2476318c4d7e",
+        "state": "succeeded",
+        "evidence_source": "engine_terminal",
+        "created_at": 1792382171.9623134,
+        "state_since": 1792382172.286128,
+        "seq": 4,
+        "stop_reason": "end_turn",
+        "error_code": null,
+        "error_message": null,
+        "cancel_phase": "not_requested",
+        "truncated": false,
+        "persisted_at": 1792382172.0238497,
+        "content": "合成回复内容"
+      }
+    },
+    {
+      "name": "AI 任务成果保存到用户设置的目录",
+      "ok": true,
+      "detail": {
+        "new_files": [
+          "20261019-035655-320dae745102.md"
+        ],
+        "dir": "/tmp/od25a"
+      }
+    },
+    {
+      "name": "离线项目流程成果保存到用户设置的目录",
+      "ok": true,
+      "detail": {
+        "new_files": [
+          "offline-project-management-20261019-035831.md"
+        ],
+        "dir": "/tmp/od25a"
+      }
+    },
+    {
+      "name": "成果列表可重新打开（只读）",
+      "ok": true,
+      "detail": "见 22_reopened.png"
+    }
+  ],
+  "build": {
+    "built": false,
+    "log_tail": "",
+    "binary_mtime": 1792366537.7857795
+  },
+  "generated_at": 1792382349.4556465
+}

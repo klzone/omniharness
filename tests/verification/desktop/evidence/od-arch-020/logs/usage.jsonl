@@ -1,0 +1,2 @@
+{"record_id":"20261018-082705-0000","schema":"omnidesk.usage.v1","task_type":"weekly_report","recorded_at":1792312025.7930179,"completed":false,"usable":true,"rework_kind":"none","blocker":"none","duration_bucket":null,"reuse_willingness":false}
+{"record_id":"20261018-084247-0001","schema":"omnidesk.usage.v1","task_type":"project_management","recorded_at":1792312967.5571902,"completed":true,"usable":true,"rework_kind":"none","blocker":"none","duration_bucket":null,"reuse_willingness":true}

@@ -1,0 +1,291 @@
+{
+  "plan": "OD-ARCH-017",
+  "evidence_level": "script (real engine process + loopback synthetic model endpoint)",
+  "checks_total": 32,
+  "checks_failed": 0,
+  "checks": [
+    {
+      "check": "initialize_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "submit_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "session_id_captured",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "check": "first_run_reached_success",
+      "pass": true,
+      "detail": "succeeded"
+    },
+    {
+      "check": "restart_initialize_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "session_list_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "listed_session_found",
+      "pass": true,
+      "detail": {
+        "total": 1
+      }
+    },
+    {
+      "check": "listing_groups_match_cwd",
+      "pass": true,
+      "detail": [
+        "<workspace>"
+      ]
+    },
+    {
+      "check": "listing_has_no_message_body",
+      "pass": true,
+      "detail": "fields are metadata only"
+    },
+    {
+      "check": "listing_does_not_claim_resumable",
+      "pass": true,
+      "detail": "resume_status=unverified before any resume call"
+    },
+    {
+      "check": "list_is_read_only_on_source",
+      "pass": true,
+      "detail": {
+        "before": {
+          "files": 8,
+          "sha256": "4337f775c67fa31a2bbe61bd73af9338686531bfaa246ae7376190ea2dab8953"
+        },
+        "after": {
+          "files": 8,
+          "sha256": "4337f775c67fa31a2bbe61bd73af9338686531bfaa246ae7376190ea2dab8953"
+        }
+      }
+    },
+    {
+      "check": "resume_session_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "resume_returns_same_session",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "check": "resume_does_not_create_new_session",
+      "pass": true,
+      "detail": "session/new count unchanged"
+    },
+    {
+      "check": "resume_does_not_replay_prompt",
+      "pass": true,
+      "detail": "session/prompt count unchanged across resume"
+    },
+    {
+      "check": "unknown_session_rejected",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "check": "unknown_session_maps_to_standard_code",
+      "pass": true,
+      "detail": {
+        "code": "unknown_session"
+      }
+    },
+    {
+      "check": "recover_task_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "recover_task_terminal_known",
+      "pass": true,
+      "detail": "succeeded"
+    },
+    {
+      "check": "recover_task_no_replay",
+      "pass": true,
+      "detail": false
+    },
+    {
+      "check": "task_ledger_ok",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "ledger_contains_task",
+      "pass": true,
+      "detail": {
+        "count": 1
+      }
+    },
+    {
+      "check": "ledger_is_metadata_only",
+      "pass": true,
+      "detail": "no content field in any record"
+    },
+    {
+      "check": "corrupt_ledger_counted_not_fabricated",
+      "pass": true,
+      "detail": {
+        "skipped_invalid": 1
+      }
+    },
+    {
+      "check": "corrupt_task_not_reported_known",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_task",
+        "message": "[unknown_task] unknown omni_task_id (no local record): omni-synthetic-corrupt",
+        "detail": {
+          "omni_task_id": "omni-synthetic-corrupt"
+        }
+      }
+    },
+    {
+      "check": "interrupted_task_recovered",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "interrupted_task_not_marked_succeeded",
+      "pass": true,
+      "detail": "unknown"
+    },
+    {
+      "check": "interrupted_task_no_replay",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "check": "ledger_does_not_leak_content",
+      "pass": true,
+      "detail": "synthetic content sentinel absent"
+    },
+    {
+      "check": "resume_writes_only_engine_session_store",
+      "pass": true,
+      "detail": {
+        "changed": 2
+      }
+    },
+    {
+      "check": "resume_did_not_touch_other_dsh_home_files",
+      "pass": true,
+      "detail": "non-session files unchanged"
+    },
+    {
+      "check": "source_hash_matches_recorded_deltas",
+      "pass": true,
+      "detail": {
+        "files_before": 8,
+        "files_after": 8
+      }
+    }
+  ],
+  "artifacts": {
+    "first_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    },
+    "listing_error": null,
+    "listing_meta": {
+      "total": 1,
+      "groups": 1,
+      "skipped_invalid": 0,
+      "next_cursor_present": false
+    },
+    "resume_error": null,
+    "resume_result": {
+      "engine_session_id": "15677027-18e1-4f26-929e-71d46b757894",
+      "resumed": true,
+      "cwd": "/tmp/omni_p1s3_arch017_09ffp9uq/work",
+      "config_option_count": 1,
+      "evidence": "engine_terminal",
+      "note": "恢复的是既有会话；恢复不触发任何任务重放"
+    },
+    "sent_methods": {
+      "initialize": 1,
+      "session/list": 1,
+      "session/resume": 1
+    },
+    "unknown_session_error": {
+      "exception": "EngineError",
+      "engine_error_code": "unknown_session",
+      "message": "[unknown_session] Invalid params: session is not resumable: synthetic-session-does-not-exist",
+      "detail": {
+        "rpc_code": -32602,
+        "rpc_message": "Invalid params: session is not resumable: synthetic-session-does-not-exist",
+        "method": "session/resume"
+      }
+    },
+    "task_recovery": {
+      "omni_task_id": "omni-c2c58acd-b987-452f-9017-2a8fdb77b91a",
+      "status": {
+        "omni_task_id": "omni-c2c58acd-b987-452f-9017-2a8fdb77b91a",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792301265.63473,
+        "last_event_seq": 4,
+        "partial_output_size": 6,
+        "engine_session_id": "15677027-18e1-4f26-929e-71d46b757894",
+        "note": "来自本地记录（前次运行取得的引擎终态证据）"
+      },
+      "replayed": false,
+      "evidence": "engine_terminal",
+      "note": "按本地记录恢复终态；未自动重放"
+    },
+    "ledger_error": null,
+    "interrupted_recovery": {
+      "omni_task_id": "omni-synthetic-interrupted",
+      "status": {
+        "omni_task_id": "omni-synthetic-interrupted",
+        "status": "unknown",
+        "evidence_source": "process_state",
+        "since": 1792301268.0981,
+        "last_event_seq": 0,
+        "partial_output_size": 31,
+        "engine_session_id": null,
+        "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放"
+      },
+      "replayed": false,
+      "evidence": "process_state",
+      "note": "恢复仅重建可发现状态；不自动重放中断的任务"
+    },
+    "resume_changed_file_kinds": [
+      "session-projection-cache",
+      "session-store"
+    ],
+    "resume_changed_file_count": 2,
+    "second_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "优雅关闭"
+    }
+  },
+  "result": "pass"
+}

@@ -1,0 +1,363 @@
+{
+  "plan": "OD-ARCH-016",
+  "evidence_level": "code static check + compiled source execution (no engine/model run)",
+  "source": "/mnt/data/Code/MyWorkStation/desktop/src/workbench.tsx",
+  "compile_exit": 0,
+  "probe_exit": 0,
+  "state_cases_total": 23,
+  "state_cases_failed": 0,
+  "static_checks_total": 8,
+  "static_checks_failed": 0,
+  "static_checks": [
+    {
+      "name": "取消按钮只由取消状态模型控制",
+      "passed": true,
+      "detail": "disabled=!engineCancelView.enabled"
+    },
+    {
+      "name": "取消按钮未被 engineBusy 阻塞",
+      "passed": true,
+      "detail": "按钮 disabled 表达式中不含 engineBusy"
+    },
+    {
+      "name": "取消请求有同步防重入锁",
+      "passed": true,
+      "detail": "置位在首个 await 之前，复位在 await 之后"
+    },
+    {
+      "name": "取消路径不改写解释正文与来源",
+      "passed": true,
+      "detail": "cancelEngineExplanation 内无 setExplanation/setSource"
+    },
+    {
+      "name": "取消中只有明确超时才允许重试",
+      "passed": true,
+      "detail": "普通 cancelling 在点击入口即被拒绝，仅 timeout_unknown 放行一次重试"
+    },
+    {
+      "name": "已发出取消请求后不重复发送",
+      "passed": true,
+      "detail": "宿主状态滞后（仍为 running）时按 requestSent 拒绝第二次请求"
+    },
+    {
+      "name": "重试前清空上一次取消结果",
+      "passed": true,
+      "detail": "清空发生在置位同步锁与发起请求之前"
+    },
+    {
+      "name": "只在宿主确认后展示取消成功",
+      "passed": true,
+      "detail": "取消结果文案来自 describeEngineCancelOutcome"
+    }
+  ],
+  "state_cases": [
+    {
+      "kind": "button",
+      "name": "no-task",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "取消引擎任务",
+        "hint": null
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "button",
+      "name": "no-status",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "等待任务状态…",
+        "hint": "尚未取得宿主状态，暂不能取消。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "等待任务状态…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "running",
+      "passed": true,
+      "got": {
+        "enabled": true,
+        "label": "取消引擎任务",
+        "hint": "请求取消不等于取消成功；结果以宿主回读的终态为准。"
+      },
+      "expect": {
+        "enabled": true,
+        "label": "取消引擎任务"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "queued",
+      "passed": true,
+      "got": {
+        "enabled": true,
+        "label": "取消引擎任务",
+        "hint": "请求取消不等于取消成功；结果以宿主回读的终态为准。"
+      },
+      "expect": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "button",
+      "name": "starting",
+      "passed": true,
+      "got": {
+        "enabled": true,
+        "label": "取消引擎任务",
+        "hint": "请求取消不等于取消成功；结果以宿主回读的终态为准。"
+      },
+      "expect": {
+        "enabled": true
+      }
+    },
+    {
+      "kind": "button",
+      "name": "cancelling",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "等待取消结果…",
+        "hint": "取消请求已发出，正在等待宿主终态；请求发出不等于取消成功。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "等待取消结果…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "cancelling-request-not-sent",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "等待取消结果…",
+        "hint": "取消请求已发出，正在等待宿主终态；请求发出不等于取消成功。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "等待取消结果…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "request-sent-host-lagging",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "等待取消结果…",
+        "hint": "取消请求已发出，尚未取得终态证据；不会重复发送。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "等待取消结果…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "in-flight",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "正在请求取消…",
+        "hint": "取消请求已发出，正在等待宿主回读状态；请求发出不等于取消成功。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "正在请求取消…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "in-flight-terminal",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "正在请求取消…",
+        "hint": "取消请求已发出，正在等待宿主回读状态；请求发出不等于取消成功。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "正在请求取消…"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "succeeded",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "任务已结束",
+        "hint": "任务已进入终态，不能再取消。"
+      },
+      "expect": {
+        "enabled": false,
+        "label": "任务已结束"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "failed",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "任务已结束",
+        "hint": "任务已进入终态，不能再取消。"
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "button",
+      "name": "cancelled",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "任务已结束",
+        "hint": "任务已进入终态，不能再取消。"
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "button",
+      "name": "interrupted",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "任务已结束",
+        "hint": "任务已进入终态，不能再取消。"
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "button",
+      "name": "unknown",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "任务已结束",
+        "hint": "任务已进入终态，不能再取消。"
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "button",
+      "name": "retry-after-timeout",
+      "passed": true,
+      "got": {
+        "enabled": true,
+        "label": "重试取消",
+        "hint": "上次取消在超时内未获终态确认，允许重试一次；仍以宿主终态为准。"
+      },
+      "expect": {
+        "enabled": true,
+        "label": "重试取消"
+      }
+    },
+    {
+      "kind": "button",
+      "name": "retry-in-flight",
+      "passed": true,
+      "got": {
+        "enabled": false,
+        "label": "正在请求取消…",
+        "hint": "取消请求已发出，正在等待宿主回读状态；请求发出不等于取消成功。"
+      },
+      "expect": {
+        "enabled": false
+      }
+    },
+    {
+      "kind": "message",
+      "name": "confirmed",
+      "passed": true,
+      "got": {
+        "confirmed": true,
+        "message": "取消已确认：宿主报告任务已取消。"
+      },
+      "expect": {
+        "confirmed": true,
+        "contains": "取消已确认"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "final-cancelled",
+      "passed": true,
+      "got": {
+        "confirmed": true,
+        "message": "取消已确认：宿主报告任务已取消。"
+      },
+      "expect": {
+        "confirmed": true,
+        "contains": "取消已确认"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "race-succeeded",
+      "passed": true,
+      "got": {
+        "confirmed": false,
+        "message": "取消未确认（阶段：request_sent，宿主最终态为 succeeded）。任务已完成。"
+      },
+      "expect": {
+        "confirmed": false,
+        "contains": "succeeded"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "timeout",
+      "passed": true,
+      "got": {
+        "confirmed": false,
+        "message": "取消未确认（阶段：timeout_unknown）。"
+      },
+      "expect": {
+        "confirmed": false,
+        "contains": "取消未确认"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "acknowledged",
+      "passed": true,
+      "got": {
+        "confirmed": false,
+        "message": "取消未确认（阶段：acknowledged，宿主最终态为 running）。"
+      },
+      "expect": {
+        "confirmed": false,
+        "contains": "取消未确认"
+      }
+    },
+    {
+      "kind": "message",
+      "name": "failed-final",
+      "passed": true,
+      "got": {
+        "confirmed": false,
+        "message": "取消未确认（阶段：request_sent，宿主最终态为 failed）。"
+      },
+      "expect": {
+        "confirmed": false
+      }
+    }
+  ],
+  "result": "pass"
+}

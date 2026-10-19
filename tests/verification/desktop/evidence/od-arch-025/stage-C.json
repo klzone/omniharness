@@ -1,0 +1,54 @@
+{
+  "stage": "C",
+  "verdict": "pass",
+  "facts": [
+    {
+      "name": "关闭前引擎子进程在运行（慢关闭场景前提）",
+      "ok": true,
+      "detail": [
+        "91416   91277 python3 -m omnidesk_engine",
+        "91419   91416 node /mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile acp --patch /tmp/od025-evidence/run/synth"
+      ]
+    },
+    {
+      "name": "真实关闭窗口后应用进程自行退出（未被强杀）",
+      "ok": true,
+      "detail": {
+        "seconds": 0.25,
+        "exit_code": 0
+      }
+    },
+    {
+      "name": "关闭后显示上不再有应用窗口",
+      "ok": true,
+      "detail": {
+        "window_count": 2
+      }
+    },
+    {
+      "name": "关闭后无孤儿引擎进程",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "被关闭打断的任务未留下伪造的成功终态",
+      "ok": true,
+      "detail": {
+        "new_records": [
+          {
+            "file": "omni-f03b1a56-7d15-4818-8ab6-1458771b32bb.json",
+            "state": "starting",
+            "stop_reason": null
+          }
+        ],
+        "note": "非终态/无记录时按契约显示未验证状态，不自动重放"
+      }
+    }
+  ],
+  "build": {
+    "built": false,
+    "log_tail": "",
+    "binary_mtime": 1792366537.7857795
+  },
+  "generated_at": 1792382629.748484
+}
