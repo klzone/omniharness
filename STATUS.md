@@ -1,5 +1,56 @@
 # BUILDER 执行状态
 
+## OD-ARCH-029：备份收口 + 双 Agent 复测 + 使用记录通道自检（2026-10-20，ARCHITECT 执行）
+
+- **授权：** 用户「批准 OD-ARCH-029」。该计划明确「批准即视同授权其中的 Git 提交与推送动作」。
+  开工快照：HEAD `5ffc710`、工作区 682 项（折叠计数 115）、远端 `git@github.com:klzone/omniharness.git`
+  （**公开仓库**）、分支 `main`、本机无未推送提交。执行中未合并 `omniharness-ui` worktree，
+  未改业务代码、`runtime/`、模型路由、凭证与用户数据。
+
+### 1) 备份收口：分批提交并推送（完成）
+
+- **提交前扫描：** 对全部 681 个待提交文件做敏感信息启发式扫描（凭证形态、私钥、JWT、GitHub/AWS/Slack token、
+  真实环境变量赋值、案件类词、身份证/手机号形态、家目录凭证路径），命中 28 条**逐条人工核对**，
+  全部为**无害命中**：红线关键词表本身（`task_shell.rs` 的禁入词表、`aiDraft.ts` 的写作规则）、
+  Rust 单测里的**合成**号码（`110101199003077777` / `13800138000`，且断言不回显）、
+  `workspace_token_for(key)` 之类的**函数调用**、以及文档中「不读取 .credentials.yaml」的说明。
+  **无真实凭证、无真实业务材料、无会话日志、无仓库外数据。**
+- **分批提交（8 批，每批单独扫描 + 核对文件清单）：**
+  | 批 | 内容 | 提交号 |
+  | --- | --- | --- |
+  | 1 | 桌面前端（`desktop/src`、`public`、`vite.config`、依赖） | `2705148` |
+  | 2 | 桌面宿主 Rust（`src-tauri/src`、`tests`、`capabilities`、`tauri.conf`、`examples`、`scripts`） | `90e2731` |
+  | 3 | 引擎适配层（`engine/omnidesk_engine`） | `1be6992` |
+  | 4 | 流程包与合成样例（`samples/workflows`） | `b5e7a1e` |
+  | 5 | 本地脚本（`scripts/dev-ui.sh`、`scripts/lib/port-owner.sh`） | `bfff57f` |
+  | 6 | 双 Agent 配置（`.opencode/agents`） | `593c49f` |
+  | 7 | 文档、协作状态与 Token 审计（`docs/`、`GOALS/PLANS/STATUS/REVIEW/README`、`audit/`） | `2b4be2d` |
+  | 8 | 验收装置与证据（`tests/verification/**`，605 个文件 / 28134 行） | `3f84ca5` |
+- **推送：** `git push origin main` → `5ffc710..3f84ca5 main -> main`（成功）。
+  远端 `refs/heads/main` 与本地 HEAD **一致**（`3f84ca5`）。
+- **无丢失核对：** 提交前 682 项 = 提交后 681 个已提交文件 + 1 个剩余未跟踪项，逐项对齐。
+- **剩余未跟踪项（明确说明）：** 仅 1 个文件 `当前没有正在执行中的`——**2026-10-16 遗留的 0 字节空文件**，
+  无内容、无引用、非本计划产物；**未提交也未删除**（删除属计划外动作），建议后续单独清理。
+
+### 2) T-001 三项复测：本会话内无法执行（如实记录）
+
+- 实际调用 subagent 工具传 `agent: "super-plan"` → 返回 `Unknown agent: super-plan`（2026-10-20 实测两次）。
+  官方文档确认项目级 agent 目录就是 `.opencode/agents/<name>.md`（**路径没写错**）；两个文件创建于
+  2026-10-19 22:47 之后，而**本会话的 agent 目录早于文件创建时间**。
+- 按计划风险条款「复测延后不阻塞备份」处理：备份已完成；复测步骤仍是
+  [docs/agent-toolchain-retest.md](docs/agent-toolchain-retest.md) 的三段照做式提示词，**新开会话**即可跑完。
+
+### 3) 使用记录通道自检（完成）
+
+- 真实窗口（用户会话 XWayland）+ 一次性隔离根 `/tmp/od029-usage/od029-usage-run1` + 回环合成端点：
+  进入「项目跟踪」场景 → 用 AT-SPI 勾选使用记录的两个复选框 → 点「记录一次」。
+- 结果：记录数 **0 → 1**；落盘文件 `/tmp/od029-usage/.../app-data/logs/usage.jsonl`（**在仓库外**）；
+  记录内容**只有枚举与时间**：`record_id / schema / task_type / recorded_at / completed / usable /
+  rework_kind / blocker / duration_bucket / reuse_willingness`，**无任何输入、输出、正文、标题或路径**；
+  界面读回显示「查看记录（1）」。
+  证据：`tests/verification/desktop/evidence/od-arch-029/od029-usage-run1.json` 与两张真实窗口截图。
+- 说明：本次点击把默认已勾选的「结果可以直接用」翻转成了 `usable=false`（枚举值，非缺陷）。
+
 ## OD-ARCH-029 已制定待批准（2026-10-20，ARCHITECT）
 
 本条为计划登记，非执行记录。OD-ARCH-028 复核通过后，ARCHITECT 判定项目未偏离（首页对话中枢基线 + 三模块真实窗口闭环 + 数据分析后置，与用户 2026-10-20 现场验收结论一致）。当前最高风险为 115 项工作区改动未提交备份；T-001 三项复测与使用记录通道自检合并入 OD-ARCH-029 一并执行。计划全文见 PLANS.md 顶部。

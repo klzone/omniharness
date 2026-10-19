@@ -1,0 +1,57 @@
+{
+  "label": "od029-usage-run1",
+  "verdict": "ok",
+  "a11y_roles": {
+    "application": 1,
+    "frame": 1,
+    "filler": 3,
+    "scroll pane": 1,
+    "document web": 1,
+    "button": 25,
+    "label": 12,
+    "combo box": 3,
+    "menu": 3,
+    "menu item": 18,
+    "check box": 3,
+    "paragraph": 9,
+    "heading": 7,
+    "entry": 7,
+    "section": 12,
+    "panel": 1,
+    "list item": 3,
+    "landmark": 3
+  },
+  "checkboxes": [
+    "类似任务还愿意再用",
+    "结果可以直接用",
+    "本次流程完成"
+  ],
+  "records_before": 0,
+  "usage_file": "/tmp/od029-usage/od029-usage-run1/app-data/logs/usage.jsonl",
+  "usage_file_inside_repo": false,
+  "toggled": [
+    "类似任务还愿意再用",
+    "结果可以直接用"
+  ],
+  "records_after": 1,
+  "new_records": [
+    {
+      "record_id": "20261019-231928-0000",
+      "schema": "omnidesk.usage.v1",
+      "task_type": "project_management",
+      "recorded_at": 1792451968.880723,
+      "completed": true,
+      "usable": false,
+      "rework_kind": "none",
+      "blocker": "none",
+      "duration_bucket": null,
+      "reuse_willingness": true
+    }
+  ],
+  "unexpected_keys": [],
+  "values_are_scalars": true,
+  "view_button_label": [
+    "查看记录（1）"
+  ],
+  "readback_count_label": "查看记录（1）"
+}
