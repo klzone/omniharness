@@ -4,22 +4,37 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { currentEngineSubmitDecision } from "./engineAdmission";
 import type {
+  AdmissionStatusResponse,
   AnalysisRunResponse,
   CancelOutcome,
   EngineDescriptor,
   EngineHealth,
   ExplanationSource,
   LocalRootInfo,
+  MaterialRead,
+  OfflineFlowResponse,
+  ProjectSummary,
   SampleCatalog,
   SaveArtifactReceipt,
+  SessionListing,
+  SessionRecovery,
   SubmitTaskReceipt,
   TaskEvent,
+  TaskLedgerListing,
+  TaskRecovery,
   TaskResult,
   TaskStatus,
   TaskTypeCatalog,
+  OfflineArtifactContent,
+  OfflineArtifactEntry,
+  OfflineFlowPackResponse,
+  PermissionChangeResponse,
   UsageReadResult,
   UsageRecord,
+  WeeklySummary,
+  WorkflowSample,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -53,17 +68,68 @@ export const host = {
     });
   },
 
+  /** 只读：当前端点类别与用户授权的可核实事实。准入关闭时也可调用。 */
+  admissionStatus(): Promise<AdmissionStatusResponse> {
+    return invoke<AdmissionStatusResponse>("engine_admission_status").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 停止引擎进程（OD-ARCH-022 恢复路径）。
+   * 权限变更未能确认旧引擎停止时会置位屏障并拒绝新提交；确认停止后屏障自动清除。
+   */
+  shutdownEngine(): Promise<{
+    forced_terminate: boolean;
+    process_exit_code: number | null;
+    note: string;
+  }> {
+    return invoke<{ forced_terminate: boolean; process_exit_code: number | null; note: string }>(
+      "engine_shutdown",
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 开启/关闭某一类端点的模型权限；未知类别由宿主拒绝。 */
+  setModelPermission(
+    category: "local" | "private" | "public",
+    enabled: boolean,
+  ): Promise<PermissionChangeResponse> {
+    return invoke<PermissionChangeResponse>("model_permission_set", {
+      category,
+      enabled,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 一次性撤销全部模型权限。 */
+  revokeAllModelPermissions(): Promise<PermissionChangeResponse> {
+    return invoke<PermissionChangeResponse>("model_permission_revoke_all").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   submitTask(input: {
     promptText: string;
     intent?: string;
     workspaceDir?: string;
     idempotencyKey?: string;
+    /** 用户原始输入（红线扫描对象）；只传用户写/粘贴的内容，不传提示词模板。 */
+    userInputText?: string;
   }): Promise<SubmitTaskReceipt> {
+    // 前端只拦空文本（OD-ARCH-021）；端点类别与授权由宿主按实际配置强制判定。
+    const decision = currentEngineSubmitDecision(input.promptText);
+    if (!decision.allowed) {
+      return Promise.reject(new Error(decision.reason));
+    }
     return invoke<SubmitTaskReceipt>("engine_submit_task", {
       promptText: input.promptText,
       intent: input.intent ?? "material_writing",
       workspaceDir: input.workspaceDir ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
+      userInputText: input.userInputText ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -88,6 +154,53 @@ export const host = {
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /**
+   * 会话清单（只含元数据）。需要启动引擎，宿主准入关闭时会直接拒绝。
+   * 只读：不修改来源会话文件或注册表。
+   */
+  listSessions(input?: {
+    cwd?: string | null;
+    afterCursor?: string | null;
+  }): Promise<SessionListing> {
+    return invoke<SessionListing>("engine_list_sessions", {
+      cwd: input?.cwd ?? null,
+      afterCursor: input?.afterCursor ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 重开既有会话。恢复会话不等于恢复任务，不触发任何重放。 */
+  recoverSession(
+    engineSessionId: string,
+    workspaceToken: string | null,
+  ): Promise<SessionRecovery> {
+    return invoke<SessionRecovery>("engine_recover_session", {
+      engineSessionId,
+      workspaceToken,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** OmniDesk 自己落盘的任务台账元数据（不含正文）。 */
+  taskRecords(limit = 100): Promise<TaskLedgerListing> {
+    return invoke<TaskLedgerListing>("engine_task_records", { limit }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 重启后重建可证实状态；没有终态证据的任务返回 unknown，且不重放。 */
+  recoverTask(omniTaskId: string): Promise<TaskRecovery> {
+    return invoke<TaskRecovery>("engine_recover_task", { omniTaskId }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
   },
 };
 
@@ -121,6 +234,29 @@ export const shell = {
     });
   },
 
+  /** 保存新的成果目录。只影响之后新建的成果，不迁移、不覆盖既有文件。 */
+  setArtifactRoot(path: string): Promise<{
+    ok: boolean;
+    artifact_root: string;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; artifact_root: string; note: string }>(
+      "task_set_artifact_root",
+      { path },
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在系统文件管理器中打开当前成果目录（只读）。 */
+  openArtifactRoot(): Promise<{ ok: boolean; opened: string }> {
+    return invoke<{ ok: boolean; opened: string }>(
+      "task_open_artifact_root",
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   runAnalysis(inputText: string): Promise<AnalysisRunResponse> {
     return invoke<AnalysisRunResponse>("task_run_analysis", { inputText }).catch(
       (e) => {
@@ -139,6 +275,22 @@ export const shell = {
       inputText: input.inputText,
       fingerprint: input.fingerprint,
     }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 幂等准备引擎任务的隔离工作目录（本地数据根），并返回其绝对路径。
+   * 只创建空目录；不做任何写入，也不改变任何配置。
+   */
+  prepareWorkspaceDir(): Promise<{
+    ok: boolean;
+    workspace_dir: string | null;
+    error: string | null;
+  }> {
+    return invoke<{ ok: boolean; workspace_dir: string | null; error: string | null }>(
+      "task_prepare_workspace_dir",
+    ).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -174,6 +326,7 @@ export const shell = {
     reworkKind: string;
     blocker: string;
     durationBucket: string | null;
+    reuseWillingness: boolean;
   }): Promise<UsageRecord> {
     return invoke<UsageRecord>("task_usage_record", {
       input: {
@@ -183,6 +336,7 @@ export const shell = {
         rework_kind: input.reworkKind,
         blocker: input.blocker,
         duration_bucket: input.durationBucket,
+        reuse_willingness: input.reuseWillingness,
       },
     }).catch((e) => {
       throw new Error(normalizeError(e));
@@ -205,6 +359,108 @@ export const shell = {
 
   usageClear(): Promise<{ cleared: boolean }> {
     return invoke<{ cleared: boolean }>("task_usage_clear").catch((e) => {
+      throw new Error(normalizeError(e));
+      });
+  },
+
+  /** 编译期嵌入的纯虚拟流程样例（周记录、项目跟进）。 */
+  workflowSamples(): Promise<{ samples: WorkflowSample[] }> {
+    return invoke<{ samples: WorkflowSample[] }>("workflow_samples").catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 读取仓库外流程包；失败时整次拒绝，界面不得退回看似成功的默认文案。 */
+  offlineFlowPack(): Promise<OfflineFlowPackResponse> {
+    return invoke<OfflineFlowPackResponse>("offline_flow_pack").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  weeklySummary(inputText: string): Promise<OfflineFlowResponse<WeeklySummary>> {
+    return invoke<OfflineFlowResponse<WeeklySummary>>("task_weekly_summary", {
+      inputText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  writingPlan(input: {
+    purpose: string;
+    audience: string;
+    requirements: string;
+    facts: string;
+  }): Promise<OfflineFlowResponse<never>> {
+    return invoke<OfflineFlowResponse<never>>("task_writing_plan", {
+      purpose: input.purpose,
+      audience: input.audience,
+      requirements: input.requirements,
+      facts: input.facts,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  projectSummary(
+    inputText: string,
+    today: string | null,
+  ): Promise<OfflineFlowResponse<ProjectSummary>> {
+    return invoke<OfflineFlowResponse<ProjectSummary>>("task_project_summary", {
+      inputText,
+      today,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存离线成果：必须人工确认，不覆盖已有文件，落仓库外本地数据目录。 */
+  saveOffline(input: {
+    scenario: string;
+    title: string;
+    markdown: string;
+    userConfirmed: boolean;
+    /** 成果是否包含模型初稿；只有实际取得模型文本时才可为 true。 */
+    aiAssisted?: boolean;
+  }): Promise<SaveArtifactReceipt> {
+    return invoke<SaveArtifactReceipt>("task_save_offline", {
+      request: {
+        scenario: input.scenario,
+        title: input.title,
+        markdown: input.markdown,
+        user_confirmed: input.userConfirmed,
+        ai_assisted: input.aiAssisted ?? false,
+      },
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 已保存的离线成果（只读元数据，按时间倒序）。 */
+  offlineArtifacts(): Promise<{ items: OfflineArtifactEntry[] }> {
+    return invoke<{ items: OfflineArtifactEntry[] }>(
+      "task_list_offline_artifacts",
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 重新打开一条已保存成果；只读，不改写原文件。 */
+  readOfflineArtifact(fileName: string): Promise<OfflineArtifactContent> {
+    return invoke<OfflineArtifactContent>("task_read_offline_artifact", {
+      fileName,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读读取用户**明确给出绝对路径**的一个材料文件（OD-ARCH-026）。
+   * 一次一个文件，不列目录、不递归；白名单扩展名、大小上限与 UTF-8 由宿主强制。
+   */
+  readMaterial(path: string): Promise<MaterialRead> {
+    return invoke<MaterialRead>("task_read_material", { path }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

@@ -1,0 +1,280 @@
+@layer legacy;
+@import "tailwindcss";
+
+/*
+ * OmniDesk UI v2 —— 设计系统 "Aetheria OS"
+ * 令牌来源：_design/stitch_omnidesk/DESIGN.md（Stitch 导出）。
+ *
+ * 说明：
+ * - 只使用本地资源，不引任何外链（字体/图标/图片），以符合 Tauri CSP。
+ * - Sora / Plus Jakarta Sans / JetBrains Mono 目前无法自托管（本机无法访问
+ *   Google 字体源），故给出系统回退栈；字体文件到位后无需改类名。
+ */
+@theme {
+  /* ---- 颜色：MD3 色调板 ---- */
+  --color-surface: #faf8ff;
+  --color-surface-dim: #d2d9f4;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-surface-variant: #dae2fd;
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #464555;
+  --color-inverse-surface: #283044;
+  --color-inverse-on-surface: #eef0ff;
+  --color-outline: #777587;
+  --color-outline-variant: #c7c4d8;
+  --color-surface-tint: #4d44e3;
+
+  --color-primary: #3525cd;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #4f46e5;
+  --color-on-primary-container: #dad7ff;
+  --color-inverse-primary: #c3c0ff;
+  --color-primary-fixed: #e2dfff;
+  --color-primary-fixed-dim: #c3c0ff;
+  --color-on-primary-fixed: #0f0069;
+  --color-on-primary-fixed-variant: #3323cc;
+
+  --color-secondary: #00687a;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #57dffe;
+  --color-on-secondary-container: #006172;
+  --color-secondary-fixed: #acedff;
+  --color-secondary-fixed-dim: #4cd7f6;
+  --color-on-secondary-fixed: #001f26;
+  --color-on-secondary-fixed-variant: #004e5c;
+
+  --color-tertiary: #313ba4;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #4a55be;
+  --color-on-tertiary-container: #d7d8ff;
+  --color-tertiary-fixed: #e0e0ff;
+  --color-tertiary-fixed-dim: #bdc2ff;
+  --color-on-tertiary-fixed: #000767;
+  --color-on-tertiary-fixed-variant: #2f3aa3;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --color-background: #faf8ff;
+  --color-on-background: #131b2e;
+
+  /* ---- 字体（含系统回退；字体文件可后补） ---- */
+  --font-display-hero: "Sora", "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-headline-xl: "Sora", "Noto Sans SC", system-ui, sans-serif;
+  --font-headline-lg: "Sora", "Noto Sans SC", system-ui, sans-serif;
+  --font-headline-md: "Sora", "Noto Sans SC", system-ui, sans-serif;
+  --font-body-lg: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-md: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-sm: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-label-caps: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-label-sm: "Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif;
+
+  /* ---- 圆角（对齐 Stitch 的 borderRadius 配置） ---- */
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+
+  /* ---- 命名间距 ---- */
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2rem;
+  --spacing-space-2xl: 2.5rem;
+  --spacing-space-3xl: 3rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-gutter-desktop: 2rem;
+  --spacing-margin: 1.5rem;
+  --spacing-margin-desktop: 3rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * 玻璃拟态构件（来自 Stitch code.html 的 <style>，改为本地类）
+ * ------------------------------------------------------------------ */
+.plate-sculpted {
+  /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter: blur(28px)（合成成本高、低收益）。
+     保留原有半透明底色与描边，玻璃观感由「半透明 + 阴影 + 描边」表达。 */
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 16px 40px -12px rgba(15, 23, 42, 0.04),
+    0 4px 16px -2px rgba(79, 70, 229, 0.03);
+  border-top: 1px solid rgba(255, 255, 255, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.8);
+  border-right: 1px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.plate-soft-inset {
+  background: rgba(235, 240, 248, 0.55);
+  box-shadow:
+    inset 0 2px 4px rgba(15, 23, 42, 0.03),
+    inset 0 1px 2px rgba(79, 70, 229, 0.02);
+}
+
+/* ------------------------------------------------------------------ *
+ * 环境光斑（OD-ARCH-027 Step 2）
+ *
+ * 原先 App.tsx 用三个全屏 div + `filter: blur(120–140px)` 画背景光斑；
+ * 高半径高斯模糊在软件合成路径上成本高。这里改为**同色系、同位置的静态径向渐变**：
+ * 保留原来的位置/尺寸/圆角类，只是不再产生高成本 blur 滤镜。
+ * 观感：由「模糊的实心渐变块」变为「边缘自然淡出的柔和光晕」，色相与明度基本一致。
+ * ------------------------------------------------------------------ */
+.ambient-glow {
+  background-repeat: no-repeat;
+}
+
+.ambient-glow-a {
+  background-image: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-primary-fixed-dim) 35%, transparent) 0%,
+    color-mix(in oklab, var(--color-secondary-fixed) 30%, transparent) 58%,
+    transparent 100%
+  );
+}
+
+.ambient-glow-b {
+  background-image: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-surface-variant) 50%, transparent) 0%,
+    color-mix(in oklab, var(--color-primary-fixed) 20%, transparent) 60%,
+    transparent 100%
+  );
+}
+
+.ambient-glow-c {
+  background-image: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--color-secondary-container) 20%, transparent) 0%,
+    color-mix(in oklab, var(--color-surface-container) 60%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+.chat-fade-mask {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.15) 12%,
+    rgba(0, 0, 0, 0.9) 32%,
+    black 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.15) 12%,
+    rgba(0, 0, 0, 0.9) 32%,
+    black 100%
+  );
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(199, 196, 216, 0.5);
+  border-radius: 9999px;
+}
+
+/* 应用使用浅色设计系统；显式声明 color-scheme，避免 WebKitGTK 采用深色原生滚动条/控件。 */
+:root {
+  color-scheme: light;
+}
+
+/* 全局滚动条：与浅色界面一致，避免 WebKitGTK 回退到深色系统滚动条。
+ * 布局上首页已固定高度，只有对话历史区可滚动。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.65);
+}
+
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.05);
+  }
+}
+.animate-pulse-ambient {
+  animation: pulse-subtle 6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes float-companion {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1.2deg);
+  }
+}
+.animate-float-mascot {
+  animation: float-companion 5s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ *
+ * 持续更新治理（OD-ARCH-027 Step 4）
+ *
+ * 1) 尊重系统「减少动态效果」：prefers-reduced-motion: reduce 时停用无限动画。
+ * 2) 顶栏状态点原先直接用 Tailwind 的 `animate-pulse`（2 s 无限）。它位于
+ *    **保留下来的**顶栏 backdrop-blur 之上，实测是当前产品里唯一持续的
+ *    重绘源（证据索引 §8）：引擎健康时把 WebKitWebProcess 从 0.05% 推到
+ *    ~18.8%、UI 进程 ~10%，合计约 29% 一个核，**不满足计划 §5 的 <10% 目标**。
+ *
+ *    **OD-ARCH-027 Step 4（最终改动）：默认静态以消除持续合成成本。**
+ *    状态点不再持续脉冲，但**颜色语义保留**（emerald = 引擎健康 / amber = 其它），
+ *    位置、尺寸、布局与信息含义均不变。键帧 `status-dot-pulse` 仍保留，
+ *    供将来「显式启用脉冲」的可选场景使用（加回即恢复上述渲染成本）。
+ * ------------------------------------------------------------------ */
+@keyframes status-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-dot-pulse {
+  /* Step 4：默认静态（消除持续重绘）。
+     如需脉冲可显式改为：
+       animation: status-dot-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+     代价：引擎健康时约 18.8% 的持续渲染占用（证据索引 §8）。 */
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-ambient,
+  .animate-float-mascot,
+  .status-dot-pulse {
+    animation: none;
+  }
+}
