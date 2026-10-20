@@ -1,20 +1,18 @@
-# T-001 复测清单：超级Plan / 超级劳工（2026-10-20 晚更新：①②③已闭环，④待用户决策）
+# T-001 复测清单：超级Plan / 超级劳工（2026-10-20 晚最终版：①②③④全部闭环）
 
 > 这三项在 2026-10-19 部署时被**主动挂起**（用户指示「先别测试 agent，先部署好」），不是失败、也不是通过。
 > 部署与静态校验已完成；缺的是**运行复测**。本清单把它们写成可直接照做的三步。
 
-## 复测结果（2026-10-20 晚，限期已解除后执行，subagent 真实调用）
+## 复测结果（2026-10-20 晚最终版，限期解除后执行，subagent 真实调用）
 
 | 复测项 | 结果 | 关键证据 |
 |---|---|---|
 | ① `git rev-parse*` 放行 | **通过** | 单条 `git rev-parse HEAD`（workdir=仓库根）成功输出 HEAD `653bf4a`。首次尝试因 agent 自报 workdir 笔误（`/mmnt/...`）被 `Permission denied: external_directory` 拒绝——该拒绝**证实工作区外路径防线生效**，补跑正确 workdir 后成功 |
 | ② 管道/复合命令匹配语义 | **结论明确：管道被拒** | 单条 `git status --porcelain` 曾成功；`git status --porcelain \| wc -l`（workdir 无误）返回 `Permission denied: shell`。即 `git status*` 只按**单条命令**前缀匹配放行，管道命令整体不在白名单内。影响：超级Plan 的开工快照需**逐条**运行只读命令（`git status --porcelain` 本身可跑，不能接 `\| wc -l`）；这也是安全上合理的语义 |
-| ③ `git diff --check HEAD` | **通过** | 成功，输出为空（当前 HEAD 无空白类差异） |
-| ④ super-plan→super-worker 派工 | **未通过（原因已查证，非配置缺陷）** | super-plan 自身**作为子 agent** 时再调 sub-worker，运行时返回 `Subagent depth limit reached (1). Increase "experimental.subagent_depth" to allow nested subagents.`；已核实官方 schema：`experimental.subagent_depth`（整数，默认 1 = 禁止子 agent 内再派工） |
+| ③ `git diff --check HEAD` | **通过** | 成功，输出为空（当时 HEAD 无空白类差异） |
+| ④ super-plan→super-worker 派工 | **通过（用户批准 B 方案后）** | 用户批准 B：新增项目级 `.opencode/opencode.json`（`experimental.subagent_depth: 2`，含 `$schema` 引用）。配置写入后**同一会话即时生效**：ARCHITECT → super-plan（深度1，GLM-5.3-Flash Free）→ super-worker（深度2，DeepSeek V4.1 Flash Free）派工成功，super-worker 只读执行 `git rev-parse HEAD` 并回报（当时 HEAD `581c964`，与 ARCHITECT 本会话独立核实一致） |
 
-④ 的两条可选路径（需用户选择其一，未经批准不擅自改配置）：
-- **A. 使用方式适配（零配置改动）**：超级Plan 以**主 agent** 身份使用（它配置 `mode: all`，可在会话中选择为主 agent）；主 agent 深度为 0，派工应不被深度限制。批准后的执行也可由 ARCHITECT/用户直接调 `super-worker`（本会话已直连验证 super-worker 可用、模型自报 `deepseek-v4.1-flash-free`）。
-- **B. 配置改动**：新增项目级配置 `experimental.subagent_depth: 2`，允许嵌套派工。属**实验性设置**，且超出 T-001 已批准的「不创建 opencode.json」边界，须用户明确批准。
+历史事实：B 方案之前，④ 曾被运行时默认深度 1 拦截（`Subagent depth limit reached (1)`；该键已在官方 schema 核实为 `experimental.subagent_depth`，整数，默认 1）。
 
 ## 新增证据（2026-10-20 凌晨）：阻塞已被定性为「模型额度」，不是 agent 发现
 
