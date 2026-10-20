@@ -1268,6 +1268,8 @@ pub fn run() {
             task_set_artifact_root,
             task_open_artifact_root,
             task_open_dsh_settings,
+            task_list_model_routes,
+            task_set_model_route,
             task_prepare_workspace_dir,
             task_run_analysis,
             task_explanation_prompt,
