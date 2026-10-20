@@ -2313,6 +2313,10 @@ mod tests {
         assert_eq!(scan_target(prompt, None), prompt);
         assert!(assert_input_allowed(scan_target(prompt, Some("合成数据"))).is_ok());
         assert!(assert_input_allowed(scan_target(prompt, Some("虚构案件占位"))).is_err());
+        // 场景预设自带这些词：只有把**用户原文**交上去扫描，规则本身才不会被误判成敏感内容；
+        // 不给用户原文时（前端漏传）整条提示词会被扫描 → 规则里的词导致误拒。
+        assert!(assert_input_allowed(scan_target(prompt, Some("请把本周进展整理成周报"))).is_ok());
+        assert!(assert_input_allowed(scan_target(prompt, None)).is_err());
     }
 
     #[test]

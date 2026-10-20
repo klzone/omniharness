@@ -170,6 +170,8 @@ export function HomeChat({
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** 宿主拒绝准备工作目录时的真实原因（供提交失败时原样带出）。 */
+  const workspaceNoteRef = useRef<string | null>(null);
 
   // 切换会话（threadKey 变化）时载入该会话的消息。
   useEffect(() => {
@@ -263,12 +265,17 @@ export function HomeChat({
       const prep = await shell.prepareWorkspaceDir();
       if (prep.ok && prep.workspace_dir) {
         setWorkspaceNote(null);
+        workspaceNoteRef.current = null;
         return prep.workspace_dir;
       }
-      setWorkspaceNote(prep.error ?? "宿主未返回可用的工作目录。");
+      const reason = prep.error ?? "宿主未返回可用的工作目录。";
+      setWorkspaceNote(reason);
+      workspaceNoteRef.current = reason;
       return null;
     } catch (e) {
-      setWorkspaceNote(e instanceof Error ? e.message : String(e));
+      const reason = e instanceof Error ? e.message : String(e);
+      setWorkspaceNote(reason);
+      workspaceNoteRef.current = reason;
       return null;
     }
   }, []);
@@ -459,7 +466,12 @@ export function HomeChat({
           setWorkspaceDir(dir);
         }
         if (!dir) {
-          throw new Error("本地数据根未解析，无法为引擎提供工作目录（请检查应用数据根设置）。");
+          // 宿主拒绝准备工作目录的真实原因（通常是「模型端点未获许可」），原样带出，
+          // 不要用「数据根未解析」这种会误导的通用文案。
+          throw new Error(
+            workspaceNoteRef.current ??
+              "无法为引擎提供工作目录（宿主未返回可用目录）。",
+          );
         }
         // 提示词：普通对话发上下文本身；带预设的对话用同一套组装器把场景规则、
         // 期望章节与上文（上一轮对话）一起带进去。
@@ -468,7 +480,14 @@ export function HomeChat({
           turns: messages.map((m) => ({ role: m.role, text: m.text })),
           current: text,
         });
-        const receipt = await host.submitTask({ promptText, workspaceDir: dir });
+        // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
+        // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
+        // 扫描用户原始输入，而不是拼好之后的完整提示词）。
+        const receipt = await host.submitTask({
+          promptText,
+          workspaceDir: dir,
+          userInputText: text,
+        });
         setMessages((prev) => [
           ...prev,
           {
@@ -728,7 +747,9 @@ export function HomeChat({
               ? "模型权限：正在读取宿主事实…"
               : admission === "ready"
                 ? `模型权限：已开启 · ${categoryText}`
-                : "模型权限：未开启，提交已关闭"}
+                : facts && facts.configurable
+                  ? `模型权限：未开启（当前端点：${categoryText}）——请到设置里开启对应类别`
+                  : "模型权限：未开启，提交已关闭"}
           </span>
           {admission === "blocked" ? (
             <button
