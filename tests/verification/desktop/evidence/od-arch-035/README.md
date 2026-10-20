@@ -52,3 +52,19 @@ NODE_USE_ENV_PROXY = "1"
   `mcp__screenshots_design_inspiration__*`；重启后的首次真实调用需另行确认。
   `search_inspiration` 的 `count` 参数在 schema 中存在，但探测返回恒为 20 条，未细究分页语义。
 
+## 补充：重启后会话内实测（2026-10-21）
+
+Codex 重启后，本会话已出现 7 个 `mcp__screenshots_design_inspiration__*` 工具，说明挂载成功。
+
+| 调用 | 结果 |
+| --- | --- |
+| `list_tags`（首次） | `fetch failed` |
+| `list_tags`（重试） | 成功，product_tags 共 1124 个（Minimalist 130、Dark Mode 89、Dashboard 86…） |
+| `search_inspiration`（query=`AI chat workspace dashboard`） | 成功，20 个产品，带图库与截图直链 |
+| `get_product_screenshots`（Harvey AI / Web） | 成功，29 张，含逐图标签 |
+| 下载 `Harvey AI` 首图 | HTTP 200，PNG 1859×982，本地目视确认正常 |
+
+结论：搜索 → 取产品截图 → 下载 → 查看，整条链路可用。
+
+遗留：首次调用仍可能偶发一次 `fetch failed`（冷启动时联网未就绪），重试即恢复；
+`count` 参数实测不生效，始终返回 20 条。
