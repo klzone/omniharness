@@ -37,8 +37,8 @@ const ITEMS: DockItem[] = [
   {
     scene: "sessions",
     icon: "history",
-    label: "会话与任务",
-    note: "只读元数据",
+    label: "项目与会话",
+    note: "引擎项目 · 对话",
   },
   { scene: "settings", icon: "folder", label: "成果目录与模型权限" },
   { scene: "engine", icon: "settings", label: "引擎诊断", note: "只读" },
