@@ -799,9 +799,6 @@ export function HomeChat({
             </button>
           </div>
         </div>
-        {cancelNote !== null ? (
-          <div className="mt-2 font-label-caps text-[10px] text-outline">取消：{cancelNote || "已请求"}</div>
-        ) : null}
       </div>
 
       {modelNote ? <p className="text-[10.5px] text-outline pb-1">{modelNote}</p> : null}
@@ -842,6 +839,11 @@ export function HomeChat({
               : "Token 上下文：—（引擎未上报）"}
           </span>
         </span>
+        {cancelNote !== null ? (
+          <span className="font-label-caps text-[10px] text-outline truncate" title={cancelNote}>
+            取消：{cancelNote || "已请求"}
+          </span>
+        ) : null}
         {workspaceNote ? (
           <span className="font-label-caps text-[10px] text-outline truncate" title={workspaceNote}>
             工作目录：{workspaceNote}
