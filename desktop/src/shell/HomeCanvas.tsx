@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Icon } from "../components/Icon";
 import type { Scene } from "./Dock";
 import { HomeChat } from "./HomeChat";
@@ -30,11 +29,6 @@ function greeting(date: Date): string {
 
 export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
   const now = new Date();
-  // 卡片层级：鼠标在哪一块，哪一块在最前；其余渐隐到它后面（不上收、不悬浮）。
-  const [focus, setFocus] = useState<"mascot" | "today" | "calendar" | null>(null);
-  const layer = (id: "mascot" | "today" | "calendar") =>
-    "relative transition-all duration-200 ease-out " +
-    (focus === null || focus === id ? "opacity-100 z-20" : "opacity-30 z-0");
 
   return (
     <SceneScaffold
@@ -53,11 +47,7 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
 
         <div className="relative flex flex-col lg:flex-row items-stretch gap-4">
           {/* 左：机器人（本地透明背景资源），独立一列、底部对齐 */}
-          <div
-            className={"hidden lg:flex w-[112px] shrink-0 flex-col items-center justify-end " + layer("mascot")}
-            onMouseEnter={() => setFocus("mascot")}
-            onMouseLeave={() => setFocus(null)}
-          >
+          <div className="hidden lg:flex w-[112px] shrink-0 flex-col items-center justify-end">
             <img
               src="/mascot.png"
               alt="OmniDesk 吉祥物"
@@ -66,11 +56,7 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
           </div>
 
           {/* 中：今日重点推进（诚实空态，保留版式） */}
-          <div
-            className={"flex-1 bg-white/80 p-5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px] " + layer("today")}
-            onMouseEnter={() => setFocus("today")}
-            onMouseLeave={() => setFocus(null)}
-          >
+          <div className="flex-1 bg-white/80 p-5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px]">
             <div className="flex items-center justify-between pb-2.5 border-b border-surface-variant/20">
               <div className="flex items-center space-x-2">
                 <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
@@ -105,11 +91,7 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
           </div>
 
           {/* 右：日程节律（三周日期骨架，不显示业务内容） */}
-          <div
-            className={"w-full lg:w-[330px] flex-shrink-0 bg-white/80 p-3.5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px] " + layer("calendar")}
-            onMouseEnter={() => setFocus("calendar")}
-            onMouseLeave={() => setFocus(null)}
-          >
+          <div className="w-full lg:w-[330px] flex-shrink-0 bg-white/80 p-3.5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px]">
             <div className="flex items-center justify-between pb-1.5 border-b border-surface-variant/20">
               <div className="flex items-center space-x-1.5">
                 <div className="w-5 h-5 rounded-full bg-secondary-fixed/50 text-secondary flex items-center justify-center">

@@ -1,5 +1,15 @@
 # BUILDER 执行状态
 
+## OD-ARCH-040：对话为主的两层布局（2026-10-20，ARCHITECT 执行）
+
+- **用户澄清口径：** 对话占满上下全屏；顶部卡片平时显示；指针进对话区（对话历史/输入框）时卡片渐隐，
+  对话上移、显示在卡片位置之上。上一轮 039 的「卡片之间互渐隐」为误读，**已撤回**。
+- **实现：** `SceneScaffold.tsx` 两层（卡片 `absolute z-0` 背景层 + 对话 `relative z-10` 全屏层），
+  指针纵向位置判定（避开元素 hover 互相遮挡的死角），卡片带高度用 `ResizeObserver` 实测并在高度变化时重判。
+- **撤回：** HomeCanvas / ScenePage 的 `layer()`/`focus` 实现删除。
+- **证据：** `evidence/od-arch-040/shots/`（首页/场景页各两态）。
+- **回归：** tsc 0、构建通过、verify_conversation_prompt 15/15；本轮未改 Rust。
+
 ## OD-ARCH-038：对话为主的工作台（2026-10-20，ARCHITECT 执行）
 
 - **用户实测（性能事实）：** 思考等级 关=秒回 / 中≈5s / 高>1min → `reasoningEffort` 确实生效；
