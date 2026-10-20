@@ -3,7 +3,7 @@
 ## OD-ARCH-039：卡片层级改为「聚焦在前、其余渐隐」+ 接缝选择复盘（2026-10-20）
 
 **结论：UI 改法按用户最终口径落地并截图佐证；并把「思路是否走偏」这个问题正式记录为待裁定事项
-（docs/decisions.md D-023），本轮不动引擎与协议。**
+（docs/decisions.md **D-024**），本轮不动引擎与协议。**
 
 - **UI（按用户口径）：** 不上收、不悬浮；卡片留在原位，**鼠标在哪一块，那一块在最前（z 序更高、透明度满），
   其余渐隐到它后面**。首页三块（机器人 / 今日重点推进 / 日程节律）与场景页三块（提醒·建议 / 历史对话 / 成果·进度）
@@ -13,10 +13,18 @@
   而是**接缝选窄了**：我们从 DSH 的 `omni.submit_task`（每次 `session/new`）这条窄缝进去，
   于是 DSH 本来就有的 token 级流式、会话续接、思考块、模型/思考等级目录，只能一个个手工重做
   （流式是本地逐字效果、思考链是补传文本、多轮是重放上文）。按用户原意（基于 DSH 原代码增改 UI）
-  这些能力本可直接继承。两条候选路径与代价已记入 decisions.md **D-023（待裁定）**：
+  这些能力本可直接继承。两条候选路径与代价已记入 decisions.md **D-024（待裁定）**：
   A 以 DSH 应用为底座改 UI；B 保留我们的 UI、把引擎侧换成 DSH 本地 web API。
   **建议先做最小验证**（让 DSH web 应用跑起来、走它的本地 API 发一条消息，核实流式/续接/思考块是否真的存在），
   核实成立再决定路线。本轮**未改引擎、未改协议**。
+- **补充核实（本地 runtime 源码，文件级）：** ①`dsh-acp/lib/index.js` 的 `assistantUpdates()` 只把**已提交**消息
+  转成更新 ⇒ ACP 侧**确实没有 token 级流式**（这是唯一确凿的引擎限制）；②同一包里已有 `session/new` /
+  `session/prompt` / `session/resume`，且我们的 `acp_adapter.py` **已实现 `session/resume`**，
+  但 `submit_task` 每次都 `session/new` ⇒ **真多轮不需要新契约，是我们自己没接线程↔会话**；
+  ③`dsh-api-session-controller` 暴露 `selectModel` / `modelCatalog` / `fork` / `page` 等 Remote ⇒ 模型目录、
+  每会话选模型、会话分叉引擎里本来就有；④`dsh-client-connection` 的 `openStream` + webserver 的
+  `text/event-stream` 处理 ⇒ 实时事件流在 web 路径上存在；⑤profile `cordis.patch.yml` 支持插入 bundle
+  ⇒ 路径 A（注入自有 UI）有落地手段。
 - **回归：** `tsc` 0、构建通过（本轮未改 Rust）。
 
 ## OD-ARCH-038：对话为主的工作台（思考等级默认 / 宽对话 / 悬停面板）（2026-10-20）
