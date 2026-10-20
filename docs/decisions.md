@@ -159,9 +159,9 @@
   **不含真实材料、凭证、会话日志或仓库外数据**。后续计划若要提交，仍需**单独批准**。
 - 来源：OD-ARCH-029 计划与执行记录（STATUS.md / REVIEW.md 同名小节）、`docs/agent-toolchain-retest.md` 的同一边界纪律。
 
-### D-023（**待用户裁定，尚未实施**）：接缝选择复盘——ACP 窄接口 vs 直接基于 DSH 应用
+### D-024（**待用户裁定，尚未实施**）：接缝选择复盘——ACP 窄接口 vs 直接基于 DSH 应用
 
-- **状态：候选方案，等待用户裁定；本轮不实施。**
+- **状态：候选方案，等待用户裁定；本轮不实施（仅核实源码事实）。**
 - **用户指出的问题：** 原意是「在 DSH 原代码的基础上增加功能，替换或改造它的 UI」；
   现在的实现却是在 DSH 的 **ACP 窄接口**上重造了一套对话栈，于是流式、思考链、多轮、模型目录
   这些 DSH 本来就有的能力，只能一个个手工补（流式是本地逐字效果、思考链是补传文本、多轮是重放上文模拟）。
@@ -169,15 +169,33 @@
   DSH 自己的应用（本地 runtime 里的 `dsh-web` / `dsh-host-webserver` / `dsh-client-ui-*` / `dsh-api-*`）
   本来就具备 token 级流式、会话续接、思考块、模型与思考等级目录、Skill 调度；
   我们改从 `omni.submit_task`（每次 `session/new`）这条窄缝进去，能力自然要重做。
+- **已核实的源码事实（本地 runtime，文件级证据）：**
+  1. **ACP 无 token 级流式（真实限制）：** `runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-acp/lib/index.js`
+     的 `assistantUpdates()` 是把**已提交的**助手消息转成 `agent_thought_chunk` / `agent_message_chunk`
+     —— 思考与正文在提交时**同时**到达，ACP 本身不吐增量。
+  2. **真多轮并不需要新契约：** 同一文件里有 `session/new` / `session/prompt` / `session/resume`；
+     我们的 `engine/omnidesk_engine/acp_adapter.py` 也**已经实现了 `session/resume`**（`recover_session`），
+     但 `submit_task` 每次都走 `session/new`（约 1032 行），**没有把「同一个线程 → 同一个引擎会话」接起来**。
+     ⇒ 现在的「上下文累积/重放」是我们自己造出来的绕路，不是引擎限制。
+  3. **DSH web 应用会话面更宽：** `dsh-api-session-controller/lib/typert.host.js` 暴露
+     `create` / `prompt` / `selectModel` / `modelCatalog` / `page` / `fork` / `cancel` / `search` 等 Remote —— 即
+     **每会话选模型、模型目录、会话分叉、历史分页**引擎里本来就有，我们此前是手搓模型选择器与路由覆盖文件。
+  4. **流式通道在 web 路径上存在：** `dsh-client-connection` 的 `openStream`（`/api` channel 流载体）与
+     `dsh-host-webserver` 对 `text/event-stream` 的处理说明引擎有实时事件流，只是没经 ACP 暴露。
+  5. **注入自有 UI 在机制上可行：** profile 的 `cordis.patch.yml` 支持插入/禁用 bundle 条目 ⇒ 路径 A 有落地手段。
 - **两条候选路径（供裁定）：**
-  - **A. 改 UI**：以 DSH 自己的应用为底座（profile 补丁可注入我们自己的 UI bundle），在它上面加我们的功能；
+  - **A. 改 UI**：以 DSH 自己的应用为底座（profile 补丁注入我们自己的 UI bundle），在它上面加我们的功能；
   - **B. 换接缝**：保留我们的 React UI，但把引擎侧从 ACP 换成 **DSH 本地 web 应用的 HTTP API**
     （`dsh-api-session-*` / `dsh-api-settings-*` 等），从而直接继承流式、会话续接、思考与模型目录。
 - **代价（必须一起权衡）：** DSH 的这些接口是**内部接口**（非公开契约，会随版本变），需要锁定 runtime 版本；
-  换过去之后，OmniDesk 与 DSH 的耦合会明显变深——这正是当初选 ACP 窄接缝的原因（产品独立性，D-002）。
+  换过去之后，OmniDesk 与 DSH 的耦合会明显变深——这正是当初选 ACP 窄接缝的原因（产品独立性，D-002/D-001）。
   **体验继承** 与 **产品独立性** 之间要做一个明确取舍。
-- **建议的下一步（先验证，不改产品）：** 用一个最小脚本让 DSH 的 web 应用跑起来，走它的本地 API 发一条消息，
-  核实它是否真的给 token 级流式、会话续接与思考块；**核实成立再决定走 A 还是 B**。
+- **建议的分步（先小后大，每步可独立验收）：**
+  - **第 1 步（不换接缝，先修我们自己的绕路）：** 把「线程 ↔ 引擎会话」接起来（`submit_task` 接受既有
+    `engine_session_id`，前端线程持有该 id），去掉上下文重放，恢复原版延迟、得到真多轮。
+  - **第 2 步（只验证、不改产品）：** 起 DSH 自带的 web 应用，走它的本地 API 发一条消息，核实
+    token 级流式 / 思考块 / 模型目录 / 会话续接是否真的存在，形成证据。
+  - **第 3 步（裁定）：** 第 2 步成立再决定走 A 还是 B；不成立就保留 ACP，接受「非流式」。
 
 ## 当前未决事项
 - **由模型调用预制 Python 处理表格/文档/数据库、以及一般数据库接入：后置未决。** OD-ARCH-026 只实现三类场景的模型起草闭环，不实现该能力；另行规划与验收。
