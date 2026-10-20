@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { host, onTaskEvent, shell } from "../api";
+import { host, invalidateEngineFactsCache, onTaskEvent, shell } from "../api";
 import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
@@ -255,6 +255,8 @@ export function HomeChat({
       setModelBusy(true);
       setModelNote(null);
       try {
+        // 改选模型后，路由与端点事实都会变：先让缓存作废（OD-ARCH-041）。
+        invalidateEngineFactsCache();
         const r = await shell.setModelRoute({
           sourceProfile: profile,
           provider,
@@ -557,6 +559,8 @@ export function HomeChat({
           { id: nextId(), role: "assistant", text: "", error: String(e) },
         ]);
         // 提交被拒绝常常意味着权限/准入发生了变化：重新读一遍宿主事实。
+        // 缓存可能还是旧的（权限刚变），先作废再读。
+        invalidateEngineFactsCache();
         void refreshAdmission();
       }
     },

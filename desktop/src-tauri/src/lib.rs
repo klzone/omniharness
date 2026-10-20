@@ -488,27 +488,28 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
 ///
 /// 即使准入被拒绝也照常返回：用户必须先看到“端点在哪里、是否离开本机”，
 /// 才能决定是否开启。分类失败同样如实返回错误，不伪报为“本机”。
+///
+/// **异步执行（OD-ARCH-041）：** 端点分类要起一个 node 进程（~1-2 秒）。
+/// 同步命令会占住 Tauri 主线程，界面在它返回前无法重绘——场景切换时就会表现为
+/// 整页卡住。改成 async 后这段等待发生在异步运行时上，界面照常可交互。
 #[tauri::command]
-fn engine_admission_status(state: State<'_, SharedHost>) -> serde_json::Value {
+async fn engine_admission_status(app: tauri::AppHandle) -> serde_json::Value {
     // OD-ARCH-023：屏障状态取自生命周期守卫；先释放宿主锁再读，避免与
     // 「生命周期 → 宿主」的加锁顺序形成死锁。
-    let lifecycle = {
-        let host = state.lock().unwrap();
-        Arc::clone(&host.lifecycle)
+    //
+    // OD-ARCH-041：异步命令不能借用 `State<'_, _>`（future 必须是 'static），
+    // 所以改用 AppHandle 取一次状态、立刻克隆出需要的值并放掉锁，
+    // 后面那段 node 分类的等待不占任何宿主锁。
+    let (lifecycle, config, config_dir) = {
+        let host = app.state::<SharedHost>();
+        let host = host.lock().unwrap();
+        (
+            Arc::clone(&host.lifecycle),
+            host.bridge.supervisor().lock().unwrap().config().clone(),
+            host.paths.config.clone(),
+        )
     };
     let blocked = lifecycle.blocked_reason();
-    let (config, config_dir) = match admission_context(state.inner()) {
-        Ok(pair) => pair,
-        Err(err) => {
-            return serde_json::json!({
-                "ok": false,
-                "facts": null,
-                "error": err,
-                "blocked": blocked.is_some(),
-                "block_reason": blocked,
-            })
-        }
-    };
     match admission::read_facts(&config, &config_dir) {
         Ok(facts) => serde_json::json!({
             "ok": true,
@@ -784,10 +785,15 @@ fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Va
 ///
 /// 供工作台的模型下拉使用：**不同 Profile 的模型选择互不相通**（只有凭据共享），
 /// 这里把各 Profile 的候选都列出来，由用户选一个。
+///
+/// **异步执行（OD-ARCH-041）：** 列出候选同样要起 node 进程（~1-2 秒）；
+/// 同步执行会占住主线程，把场景切换卡成整页无响应。改成 async 后不阻塞界面。
 #[tauri::command]
-fn task_list_model_routes(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+async fn task_list_model_routes(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    // OD-ARCH-041：同 engine_admission_status——异步命令用 AppHandle 取状态。
     let app_root = {
-        let host = state.lock().unwrap();
+        let host = app.state::<SharedHost>();
+        let host = host.lock().unwrap();
         host.paths.root.clone()
     };
     let config = engine_supervisor::EngineConfig::from_env(&app_root)?;

@@ -512,3 +512,23 @@ export interface TaskRecovery {
   evidence: string;
   note: string;
 }
+
+/** 各 DSH Profile 的模型候选（只含非机密字段；OD-ARCH-041 提取为具名类型以便缓存）。 */
+export interface ModelRouteListing {
+  ok: boolean;
+  engine_profile: string;
+  overlay: string;
+  profiles: Array<{
+    profile: string;
+    error?: string;
+    default: { provider: string | null; model: string | null } | null;
+    providers: Array<{
+      id: string;
+      displayName: string;
+      api: string | null;
+      apiKeyEnv: string | null;
+      baseURL: string | null;
+      models: string[];
+    }>;
+  }>;
+}

@@ -35,6 +35,7 @@ import type {
   UsageRecord,
   WeeklySummary,
   WorkflowSample,
+  ModelRouteListing,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -55,6 +56,38 @@ function normalizeError(error: unknown): string {
   return String(error);
 }
 
+
+// ---------------------------------------------------------------------------
+// 端点事实与模型候选的缓存（OD-ARCH-041）
+//
+// 这两项都要让宿主起一个 node 进程（~1-2 秒）：
+//   * 端点分类（engine_admission_status → route_classifier）
+//   * 模型候选列表（task_list_model_routes → model-routes.mjs）
+//
+// 场景切换会重新挂载对话区，于是每次切换都重拉一遍——同步执行时还会占住主线程，
+// 表现为整页卡住 2-6 秒（实测：首页 → 周报 6.07s，回到首页 3.51s）。
+//
+// 处置：宿主侧改成异步命令（不占 UI 线程）+ 这里加缓存（不必重复拉）。
+// 失效点：改选模型/思考等级后立刻作废（模型与端点都可能变）。
+// ---------------------------------------------------------------------------
+
+/** 端点事实的缓存有效期（毫秒）。权限开关的变化由设置页自己刷新。 */
+const ADMISSION_CACHE_MS = 2000;
+
+let admissionCache: { at: number; value: AdmissionStatusResponse } | null = null;
+let admissionInflight: Promise<AdmissionStatusResponse> | null = null;
+
+let modelRoutesCache: ModelRouteListing | null = null;
+let modelRoutesInflight: Promise<ModelRouteListing> | null = null;
+
+/** 改选模型/思考等级后调用：相关事实与候选都可能变化。 */
+export function invalidateEngineFactsCache(): void {
+  admissionCache = null;
+  admissionInflight = null;
+  modelRoutesCache = null;
+  modelRoutesInflight = null;
+}
+
 export const host = {
   describe(): Promise<EngineDescriptor> {
     return invoke<EngineDescriptor>("engine_describe").catch((e) => {
@@ -68,11 +101,31 @@ export const host = {
     });
   },
 
-  /** 只读：当前端点类别与用户授权的可核实事实。准入关闭时也可调用。 */
+  /**
+   * 只读：当前端点类别与用户授权的可核实事实。准入关闭时也可调用。
+   *
+   * 带短缓存（OD-ARCH-041）：宿主要起 node 进程分类端点（~1-2 秒），
+   * 场景切换时反复拉取会卡住界面。失效点见 invalidateEngineFactsCache。
+   */
   admissionStatus(): Promise<AdmissionStatusResponse> {
-    return invoke<AdmissionStatusResponse>("engine_admission_status").catch((e) => {
-      throw new Error(normalizeError(e));
-    });
+    const now = Date.now();
+    if (admissionCache && now - admissionCache.at < ADMISSION_CACHE_MS) {
+      return Promise.resolve(admissionCache.value);
+    }
+    if (!admissionInflight) {
+      admissionInflight = invoke<AdmissionStatusResponse>("engine_admission_status")
+        .then((value) => {
+          admissionCache = { at: Date.now(), value };
+          return value;
+        })
+        .catch((e) => {
+          throw new Error(normalizeError(e));
+        })
+        .finally(() => {
+          admissionInflight = null;
+        });
+    }
+    return admissionInflight;
   },
 
   /**
@@ -264,45 +317,28 @@ export const shell = {
    * 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
    *
    * 不同 Profile 的**模型选择互不相通**（只有凭据共享），所以这里把各 Profile 的候选都列出来。
+   *
+   * 带缓存（OD-ARCH-041）。
+   *
+   * 宿主侧同样要起 node 进程（~1-2 秒）；候选只在改选模型时变化，
+   * 因此缓存到下次 invalidateEngineFactsCache 为止。
    */
-  listModelRoutes(): Promise<{
-    ok: boolean;
-    engine_profile: string;
-    overlay: string;
-    profiles: Array<{
-      profile: string;
-      error?: string;
-      default: { provider: string | null; model: string | null } | null;
-      providers: Array<{
-        id: string;
-        displayName: string;
-        api: string | null;
-        apiKeyEnv: string | null;
-        baseURL: string | null;
-        models: string[];
-      }>;
-    }>;
-  }> {
-    return invoke<{
-      ok: boolean;
-      engine_profile: string;
-      overlay: string;
-      profiles: Array<{
-        profile: string;
-        error?: string;
-        default: { provider: string | null; model: string | null } | null;
-        providers: Array<{
-          id: string;
-          displayName: string;
-          api: string | null;
-          apiKeyEnv: string | null;
-          baseURL: string | null;
-          models: string[];
-        }>;
-      }>;
-    }>("task_list_model_routes").catch((e) => {
-      throw new Error(normalizeError(e));
-    });
+  listModelRoutes(): Promise<ModelRouteListing> {
+    if (modelRoutesCache) return Promise.resolve(modelRoutesCache);
+    if (!modelRoutesInflight) {
+      modelRoutesInflight = invoke<ModelRouteListing>("task_list_model_routes")
+        .catch((e) => {
+          throw new Error(normalizeError(e));
+        })
+        .finally(() => {
+          modelRoutesInflight = null;
+        })
+        .then((value) => {
+          modelRoutesCache = value;
+          return value;
+        });
+    }
+    return modelRoutesInflight;
   },
 
   /**
