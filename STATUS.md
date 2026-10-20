@@ -1,5 +1,31 @@
 # BUILDER 执行状态
 
+## 正式环境启动器与首次真实使用就绪（2026-10-20，ARCHITECT）
+
+- **背景：** 用户准备人工审核并跑真实流程。`scripts/dev-ui.sh` 按 OD-ARCH-004 的硬边界**故意不提供**真实端点开关，
+  因此**另建**一个独立启动器 `scripts/omnidesk.sh`（不改开发启动器的边界）。
+- **新增：** `scripts/omnidesk.sh`（正式环境）。与 dev-ui.sh 的分工：dev-ui.sh = 隔离合成环境（零凭证、/tmp 数据根）；
+  omnidesk.sh = 正式数据根 + 真实模型配置。启动器**不设置**任何 `OMNIDESK_*` 隔离变量，宿主按默认解析到
+  `~/OmniDesk/app`（设置/台账/使用记录）、`~/OmniDesk/workspace/artifacts`（成果）、
+  `~/OmniDesk/runtime/dsh-home`（真实模型配置与凭证，**脚本不读取**）；**不注入**合成 provider 覆盖；
+  **不开启任何模型权限**（默认全关，由用户在设置页自行确认端点后开启）。支持 `--no-build` / `--status` / `--stop`，
+  停止前按命令行指纹核对进程身份。后台进程用 `setsid` 完全脱离，停止不留孤儿。
+- **实测（本机）：** `--status` / `--stop` 正常；`--no-build` 启动成功（app pid 与 vite pid 均登记），应用跑在
+  **原生 Wayland**（无系统标题栏，符合已确认 UI 基线）；设置页三个权限开关状态与设置文件一致；
+  场景页「使用记录」显示 `查看记录（0）」，落点为正式根 `~/OmniDesk/app/logs/usage.jsonl`。
+- **发现并如实记录（不是产品缺陷）：** 正式根的 `config/settings.v1.json` 在 13:07:20 出现，三个权限全为 `true`。
+  复现结论：**启动不会写设置文件**（用一次性全新应用数据根启动，`config/` 为空），代码里也只有
+  `set_model_permission` / `revoke_all` / `set_artifact_root` 三个写点，均由显式命令触发 →
+  该文件来自**界面上的权限勾选操作**，不是默认放行。同一时段（13:08）有两条引擎台账，
+  两次都**失败**并给出真实原因：`no API key for provider route "deepseek-official"`（凭据服务里只有
+  `OPENDESIGN_API_KEY`，没有该路由的 key）——失败是响亮的，未写出任何正文。补 key 的两条正规路径见
+  [docs/pilot-first-real-use.md](docs/pilot-first-real-use.md)。
+- **未做：** 不代取、不打印、不写入任何 key；不代用户开启权限；不改模型路由。
+
+## OD-ARCH-030 复核通过（2026-10-20，ARCHITECT）
+
+计划登记，非执行记录。四项（端点引导修正与假端点全链路、使用记录持久化至正式根并清空测试数据、遗留杂物删除、3+1 批提交推送）复核通过，详见 REVIEW.md 顶部。T-001 双 agent 四项复测闭环作为超计划收益一并认可。真实服务商端点与真实模型质量未验证，属用户首次真实使用范围。当前无待批准计划，等待用户体验反馈。
+
 ## OD-ARCH-030：真实使用前置收口（2026-10-20，ARCHITECT 执行）
 
 - **授权：** 用户「批准执行 OD-ARCH-030」。开工快照：HEAD `653bf4a`（与 `origin/main` 一致）、工作区 6 项登记差异
@@ -201,7 +227,7 @@
 - **配置修正：** 首测发现白名单缺 `git rev-parse*`（HEAD 快照必需），已补入 `super-plan.md` 权限。
 - **静态校验（部署后自检）：** 两文件 frontmatter 以 YAML 解析通过；super-plan 16 条权限规则顺序正确（`*/*` deny 在首、read/grep/glob allow、edit 仅 `PLANS.md`、只读 git 五条 allow、subagent 仅 `super-worker`、凭证类 read deny 五条在末）；super-worker 无 permissions 段。system prompt 长度：super-plan 1166 字符、super-worker 744 字符。
 - **未验证/限制（挂起原因：GLM 与 DeepSeek 双通道限流，且用户 2026-10-19 指示「先别测试 agent，先部署好」——属主动暂缓，非失败）：** 补白名单后 `git rev-parse*` 的复测、含管道/复合命令的匹配语义、super-plan→super-worker 派工端到端链路；agent 的模型绑定为配置事实，运行时实际模型由 OpenCode 解析决定。
-- **复测完成记录（2026-10-20 晚，限期解除后，ARCHITECT，subagent 真实调用）：** ① `git rev-parse HEAD` **成功**（白名单放行生效）——首次尝试因 agent 自报 workdir 笔误被 `external_directory` 拒绝（反而证实了外路径防线），补跑后通过；② **管道命令被拒**：`git status --porcelain | wc -l` 返回 `Permission denied: shell`，对比此前单条 `git status --porcelain` 成功 → **白名单只按单条命令前缀匹配，管道整体不匹配**，超级Plan 需逐条运行只读命令，语义安全合理；③ `git diff --check HEAD` **成功**（输出为空）；④ super-plan→super-worker 派工**未通过**：super-plan 自身作为子 agent 时再嵌套派工撞运行时深度限制（默认 1，错误原文 `Subagent depth limit reached (1). Increase "experimental.subagent_depth"...`，该键已在官方 schema 核实）。④ 的两条路径（A. 超级Plan 以主 agent 使用/批准后直调 super-worker；B. 配置 `experimental.subagent_depth: 2` 属实验性设置且超出 T-001 边界）**待用户选择**，另见 [docs/agent-toolchain-retest.md](docs/agent-toolchain-retest.md) 复测结果表。同时直连验证：super-worker 加载正常并自述模型 `deepseek-v4.1-flash-free`（会话配置自报，非逐 token 凭据）。
+- **复测完成记录（2026-10-20 晚，限期解除后，ARCHITECT，subagent 真实调用）：** ① `git rev-parse HEAD` **成功**（白名单放行生效）——首次尝试因 agent 自报 workdir 笔误被 `external_directory` 拒绝（反而证实了外路径防线），补跑后通过；② **管道命令被拒**：`git status --porcelain | wc -l` 返回 `Permission denied: shell`，对比此前单条 `git status --porcelain` 成功 → **白名单只按单条命令前缀匹配，管道整体不匹配**，超级Plan 需逐条运行只读命令，语义安全合理；③ `git diff --check HEAD` **成功**（输出为空）；④ super-plan→super-worker 派工**未通过**：super-plan 自身作为子 agent 时再嵌套派工撞运行时深度限制（默认 1，错误原文 `Subagent depth limit reached (1). Increase "experimental.subagent_depth"...`，该键已在官方 schema 核实）。**④ 的解决（用户批准 B 方案）：** 新增项目级 `.opencode/opencode.json`（内容仅 `$schema` + `experimental.subagent_depth: 2`），配置写入后**同一会话即时生效**；端到端验证：ARCHITECT → super-plan（深度1，GLM-5.3-Flash Free）→ super-worker（深度2，DeepSeek V4.1 Flash Free）**派工成功**，super-worker 只读执行 `git rev-parse HEAD` 并回报（当时 HEAD `581c964`，与 ARCHITECT 本会话独立核实一致）。历史事实：B 之前 ④ 曾被默认深度 1 拦截（`Subagent depth limit reached (1)`）。同时直连验证：super-worker 加载正常并自述模型 `deepseek-v4.1-flash-free`（会话配置自报，非逐 token 凭据）。
 - **复测重试记录（2026-10-19 23:5x → 2026-10-20 07:2x，ARCHITECT）：** 用户指示「隔 5 分钟测试一次，重试 99 次再失败就结束任务」。按 5 分钟间隔连续重试 **99 次**，super-plan 与 super-worker 交替探测，**99/99 全部返回 `Rate limit exceeded. Please try again later.`**。**关键诊断：** 同一重试窗口内，**内置 `general` agent（继承本会话模型 MiniMax M3.1 Flash Free）调用成功** → 限流是 **GLM-5.3-Flash Free 与 DeepSeek V4.1 Flash Free 两个模型自身的免费额度**，不是 OpenCode 子 agent 通道故障、不是本项目配置缺陷、不是 agent 发现机制问题。本会话内两个 agent **曾被成功发现并加载**（见上「实测」条），与另一会话记录的 `Unknown agent: super-plan` 现象不一致，**原因未查证**。与另一会话记录的 `Unknown agent: super-plan` 现象**并存，原因未查证**；本会话后续实测发现两 agent 均可被调用（见上「实测」条与「复测完成记录」），两处证据并存。**复测结论（②）**：管道/复合命令匹配语义已明确——白名单只按单条命令前缀匹配；**（④）** super-plan→super-worker 派工链路未通过，原因是子 agent 嵌套深度限制（默认 1），两条路径待用户选择，见 [docs/agent-toolchain-retest.md](docs/agent-toolchain-retest.md)。
 - **工作区外部变动（非本会话所为，事实记录）：** 等待期间工作区被**外部提交并推送**——HEAD `5ffc710` → `653bf4a`；两个 agent 文件进入提交 `593c49f`（`chore(opencode): 新增「超级Plan / 超级劳工」两个项目级 agent`）；另有 `2b4be2d` / `3f84ca5` / `653bf4a` 三个后续提交。本会话**未执行任何 commit/push**。当前工作区仅剩 1 个 2026-10-16 遗留的 0 字节未跟踪文件 `当前没有正在执行中的`。
 - **工作区：** 新增 `.opencode/` 目录（2 个文件）；既有 111 项差异未触碰；未触碰 `runtime/`、业务代码、模型路由与凭证。

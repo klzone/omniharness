@@ -4,7 +4,56 @@
 > 这一页是给**你自己用一次**用的：走一遍真实节奏，然后把体验记进产品的「使用记录」。
 > 真实体验指标（澄清了几次、改了几轮、顺不顺手）**只能来自你**，自动化跑出来的 0 不算。
 
-## 0. 开始之前
+## 0. 怎么启动（两条路，别混用）
+
+### A. 人工审核 UI 与合成流程 —— 隔离环境，零凭证
+
+```bash
+cd /mnt/data/Code/MyWorkStation
+scripts/dev-ui.sh --no-build      # 启动（合成端点、一次性数据根在 /tmp/omnidesk-dev/）
+scripts/dev-ui.sh --status        # 看状态
+scripts/dev-ui.sh --stop          # 停止
+```
+
+这条路的模型端点是**本机回环的合成端点**，不碰你的真实配置与凭证；数据落在一次性 `/tmp` 根。
+审核 UI、三个场景、保存与读回，用它就够。
+
+### B. 真实流程（试点）—— 正式环境，真实端点与正式数据根
+
+```bash
+cd /mnt/data/Code/MyWorkStation
+scripts/omnidesk.sh                # 启动（正式数据根 + 真实模型配置）
+scripts/omnidesk.sh --status
+scripts/omnidesk.sh --stop
+```
+
+正式环境解析到（**不设置**任何 `OMNIDESK_*` 隔离变量，宿主按默认取）：
+
+| 用途 | 落点 |
+| --- | --- |
+| 应用数据根（设置 / 引擎台账 / **使用记录**） | `~/OmniDesk/app/` |
+| 成果目录 | `~/OmniDesk/workspace/artifacts/` |
+| DSH 数据根（真实模型配置与凭证，脚本不读取） | `~/OmniDesk/runtime/dsh-home/` |
+
+> `scripts/dev-ui.sh` 按 OD-ARCH-004 的硬边界**故意不提供** `--real`；两条路是**两个独立启动器**，不是给开发启动器加开关。
+
+### B 路的前置：真实端点要有 key
+
+本机真实路由解析为：`provider=deepseek-official`、`model=deepseek-v4-flash`、
+`endpoint=https://api.deepseek.com/anthropic`、类别 **非回环 · 公网**（内容会发往本机以外的地址）。
+凭据服务里目前只有一个 `OPENDESIGN_API_KEY` 条目，**没有**这个路由的 key，因此提交会失败并明确报错
+（`no API key for provider route "deepseek-official"`）——失败是响亮的，不会写出假正文。
+
+两条正规路径（**由你自己选择与执行**，本仓库不代持、不打印任何 key）：
+
+1. **写进 DSH 凭据服务**：在该 DSH 数据根（`~/OmniDesk/runtime/dsh-home/`）的凭据存储里
+   登记 `DEEPSEEK_API_KEY`（DSH 自己的 Models 页/凭据服务就是干这个的）；
+2. **启动时导出环境变量**：`DEEPSEEK_API_KEY=… scripts/omnidesk.sh`（此时**必须重启**实例才能带上该变量）。
+
+**权限开关默认全关**，需要你在设置页自己确认端点类别后开启——本机这条路由对应的是
+「**非回环地址 · 公网**」，不是「本机模型」。
+
+## 1. 开始之前
 
 - **材料**：用**公开或合成**的一份材料（推荐先用合成的：一份自己写的周记录 `.md`/`.txt`/`.csv`）。
   真实工作材料是否可用，取决于你**单独取得的书面授权**；本工作台不替你扩大授权范围。
