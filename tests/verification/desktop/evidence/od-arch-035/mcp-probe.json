@@ -1,0 +1,61 @@
+{
+  "server": {
+    "name": "design-screenshots",
+    "version": "1.1.0"
+  },
+  "proxy": "NODE_USE_ENV_PROXY=1",
+  "queries": [
+    {
+      "query": "AI chat workspace dashboard",
+      "ms": 2933,
+      "isError": false,
+      "productCount": 20,
+      "top3": [
+        {
+          "name": "Dovetail",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/Dovetail/",
+          "imageCount": 26
+        },
+        {
+          "name": "Hoops AI",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/Hoops AI/",
+          "imageCount": 20
+        },
+        {
+          "name": "Airtable",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/Airtable/",
+          "imageCount": 45
+        }
+      ]
+    },
+    {
+      "query": "sidebar dock task dashboard",
+      "ms": 32,
+      "isError": false,
+      "productCount": 20,
+      "top3": [
+        {
+          "name": "AlphaSights",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/AlphaSights/",
+          "imageCount": 9
+        },
+        {
+          "name": "Arbolus",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/Arbolus/",
+          "imageCount": 48
+        },
+        {
+          "name": "Asana",
+          "platform": "Web",
+          "gallery": "https://screenshots.designknowledgebase.com/Web/Asana/",
+          "imageCount": 44
+        }
+      ]
+    }
+  ]
+}
