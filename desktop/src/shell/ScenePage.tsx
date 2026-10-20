@@ -8,6 +8,7 @@ import {
   removeThread,
   retagThread,
   saveThreadMessages,
+  setThreadEngineSession,
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
@@ -331,6 +332,12 @@ export function ScenePage({
           preset={preset}
           threadKey={activeId ?? "none"}
           initialMessages={active?.messages ?? []}
+          engineSessionId={active?.engineSessionId ?? null}
+          onEngineSessionId={(sid) => {
+            if (!activeId) return;
+            setThreadEngineSession(activeId, sid);
+            refreshThreads();
+          }}
           onMessagesChange={(messages) => {
             if (!activeId) return;
             saveThreadMessages(activeId, messages);

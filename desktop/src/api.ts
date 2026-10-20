@@ -118,6 +118,8 @@ export const host = {
     idempotencyKey?: string;
     /** 用户原始输入（红线扫描对象）；只传用户写/粘贴的内容，不传提示词模板。 */
     userInputText?: string;
+    /** 既有引擎会话号（OD-ARCH-034）：给出即续接同一会话（真多轮）；不给则新建。 */
+    engineSessionId?: string | null;
   }): Promise<SubmitTaskReceipt> {
     // 前端只拦空文本（OD-ARCH-021）；端点类别与授权由宿主按实际配置强制判定。
     const decision = currentEngineSubmitDecision(input.promptText);
@@ -130,6 +132,7 @@ export const host = {
       workspaceDir: input.workspaceDir ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       userInputText: input.userInputText ?? null,
+      engineSessionId: input.engineSessionId ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });

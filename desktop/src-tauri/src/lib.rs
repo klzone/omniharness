@@ -252,6 +252,7 @@ fn engine_submit_task(
     workspace_dir: Option<String>,
     idempotency_key: Option<String>,
     user_input_text: Option<String>,
+    engine_session_id: Option<String>,
 ) -> Result<serde_json::Value, serde_json::Value> {
     // 提交链路的固定顺序：红线扫描 → 端点与授权准入 → 才触达引擎。
     // 红线拒绝发生在任何引擎动作之前，且不回显命中原文或输入内容。
@@ -284,6 +285,14 @@ fn engine_submit_task(
             }
             if let Some(key) = idempotency_key {
                 params["idempotency_key"] = serde_json::json!(key);
+            }
+            // OD-ARCH-034：带上既有引擎会话号即续接同一会话（真多轮）；
+            // 不带就是新建会话。宿主只做透传，不解析、不猜测会话归属。
+            if let Some(sid) = engine_session_id {
+                let sid = sid.trim();
+                if !sid.is_empty() {
+                    params["engine_session_id"] = serde_json::json!(sid);
+                }
             }
             host.bridge.submit_task(params)
         },

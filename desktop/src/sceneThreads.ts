@@ -25,6 +25,11 @@ export interface SceneThread {
   /** 对话开场预设键。 */
   preset: string;
   messages: ChatMessage[];
+  /**
+   * 引擎会话号（OD-ARCH-034）：同一线程续发时复用同一个 DSH 会话（真多轮）。
+   * 没有这一项的旧线程在首次续聊时会自动降级为新建会话，并从那一刻起开始持有它。
+   */
+  engineSessionId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -104,6 +109,20 @@ export function saveThreadMessages(id: string, messages: ChatMessage[]): void {
 /** 事后改挂标签（换场景）。 */
 export function retagThread(id: string, tag: ThreadTag): void {
   write(read().map((t) => (t.id === id ? { ...t, tag, updatedAt: Date.now() } : t)));
+}
+
+/**
+ * 记录线程的引擎会话号（OD-ARCH-034）。
+ *
+ * 这是**引擎侧的会话标识**，不是对话正文；与线程消息一样只存在浏览器本地存储，
+ * 不进仓库、不进成果目录。换会话（新建线程）时自然另起一个会话号。
+ */
+export function setThreadEngineSession(id: string, engineSessionId: string): void {
+  write(
+    read().map((t) =>
+      t.id === id ? { ...t, engineSessionId, updatedAt: Date.now() } : t,
+    ),
+  );
 }
 
 export function removeThread(id: string): void {

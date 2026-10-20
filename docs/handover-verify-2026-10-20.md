@@ -116,13 +116,17 @@ Tauri 命令共 41 个（`lib.rs` 的 `invoke_handler`）：`engine_*` 12 个、
 | 模型起草闭环 | 27/0 | `verify_ai_draft.py` |
 | 场景材料校验 | 5/0 | `verify_scenario_materials.py` |
 | 两层布局真实窗口 | 首页/场景页各两态截图 | `tests/verification/desktop/evidence/od-arch-040/shots/` |
+| 真多轮（单元 / 真实引擎 / 提示词） | 27/27、33/33、24/24 | `verify_multiturn_unit.py`、`verify_true_multiturn.py`、`verify_conversation_prompt.py`；证据 `evidence/od-arch-034/` |
 | 历史各轮证据 | 025–040 共 16 个证据目录 | `tests/verification/desktop/evidence/` |
 
 ### 未验证（别当已实现）
 - **真实模型的思考内容**：合成端点不返回 reasoning ⇒ 只验证了「有思考时能显示」这条路径的**界面**，
   没有验证过真实模型的思考文本质量。
 - **token 级流式**：ACP 通道**不提供**（源码级确认，见 §6），界面是逐字呈现效果。
-- **真多轮**：每轮仍**新建**引擎会话 + 上文重放，不是同一会话续发（§7 第 1 步）。
+- **真多轮（OD-ARCH-034 已完成，2026-10-20）**：同一线程现在复用同一个引擎会话
+  （首轮 `session/new`，其后同会话续发），工作台**不再重放上文**；台账带 `session_mode`
+  可查（new/continued/resumed/degraded）。仍存：ACP 无 token 级流式；首页对话无线程记录
+  （应用重启后首页新开会话并重放可见上文）。
 - **真实桌面（Wayland / release 包）**、**触屏/无指针设备**的降级路径。
 - **真实使用指标**（澄清/返工次数）与真实 token 用量（引擎不上报 usage ⇒ 一律记未知，不估算）。
 
@@ -155,8 +159,10 @@ Tauri 命令共 41 个（`lib.rs` 的 `invoke_handler`）：`engine_*` 12 个、
 
 主记录：`docs/decisions.md` **D-024**（候选方案，未实施）。
 
-- **第 1 步（我方欠账，不换接缝）**：把「线程 ↔ 引擎会话」接起来（`submit_task` 接受既有 `engine_session_id`，
-  前端线程持有该 id），去掉上文重放 ⇒ 真多轮 + 原版延迟。
+- **第 1 步（我方欠账，不换接缝）：已完成（OD-ARCH-034，2026-10-20）** ——「线程 ↔ 引擎会话」已接起来
+  （`submit_task` 接受既有 `engine_session_id`，前端线程持有该 id），上文重放已去掉。
+  实施中修正：DSH 的 `session/resume` 只接受已落盘可重开的会话，对活会话报 `invalid_argument` ⇒
+  进程内续发直接再发 `session/prompt`，进程重启后才 `session/resume`。
 - **第 2 步（只验证、不改产品）**：起 DSH 自带的 web 应用，走它的本地 API 发一条消息，核实
   token 级流式 / 思考块 / 模型目录 / 会话续接是否真的存在，形成证据。
 - **第 3 步（裁定）**：第 2 步成立再决定：路径 A（以 DSH 应用为底座改 UI）还是路径 B（保留我们的 UI、

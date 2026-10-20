@@ -1,11 +1,12 @@
-// 对话流工作区的提示词组装（OD-ARCH-031 Part B）。
+// 对话流工作区的提示词组装（OD-ARCH-031 Part B；OD-ARCH-034 真多轮）。
 //
 // 刻意不依赖 React、Tauri 或任何传输层：组件与离线验证脚本执行同一份源码。
 //
 // 事实与边界：
-//   * 工作台对话的**每一轮**都是一次独立任务（宿主按 cwd 新建 DSH 会话）；
-//     连续性由这里把上文重放进下一轮提示实现——**不是**同一个引擎会话里的多轮。
-//   * 上文有长度上限，超出时只保留最近的部分并显式标注截断。
+//   * **续接既有引擎会话时**（OD-ARCH-034）：同一个 DSH 会话里继续对话，上下文由引擎
+//     自己持有，**这里不再重放上文**——只发本轮输入。
+//   * **新建会话时**（首轮，或旧线程没有会话号、或续接失败降级）：连续性靠这里把上文
+//     重放进下一轮提示实现，上文有长度上限，超出时只保留最近的部分并显式标注截断。
 //   * 场景预设的规则来自可编辑的流程包；**不可关闭**的写作规则由 aiDraft 的组装器统一带上。
 
 import { buildDraftPrompt } from "./aiDraft";
@@ -36,9 +37,9 @@ export const CONTEXT_ASSISTANT_TURNS = 2;
  *
  * 只带用户与助手的**文本**；不带任务标识、内部状态、路径或任何正文之外的元数据。
  *
- * 窗口化说明：工作台每轮是**独立任务**（引擎侧每次新建会话），连续性靠这里重放上文实现，
- * 所以重放越多、提示词越长、模型越慢。这里只保留最近若干轮 + 字符上限，
- * 换来「上一轮说了什么」还在，同时不让提示词无限膨胀。
+ * 窗口化说明：只在**新建会话**时用（引擎侧还没有上文）。重放越多、提示词越长、模型越慢，
+ * 所以这里只保留最近若干轮 + 字符上限，换来「上一轮说了什么」还在，
+ * 同时不让提示词无限膨胀。
  */
 export function buildContext(turns: ConversationTurn[], current: string): string {
   const users = turns.filter((t) => t.role === "user" && t.text).slice(-CONTEXT_USER_TURNS);
@@ -59,13 +60,18 @@ export function buildContext(turns: ConversationTurn[], current: string): string
  *
  * - 无预设（普通对话）：发上下文本身，保持既有行为。
  * - 有预设：走与三场景同一套组装器，把场景规则、期望章节与上下文一起带上。
+ * - continuation=true（OD-ARCH-034）：**续接既有引擎会话**，引擎侧已持有完整上文，
+ *   这里只发本轮输入，不再重放上文（避免提示词膨胀与重复内容）。
  */
 export function composeConversationPrompt(input: {
   preset: ConversationPreset | null;
   turns: ConversationTurn[];
   current: string;
+  continuation?: boolean;
 }): string {
-  const context = buildContext(input.turns, input.current);
+  const context = input.continuation
+    ? "用户：" + input.current
+    : buildContext(input.turns, input.current);
   const preset = input.preset;
   if (!preset) return context;
   return buildDraftPrompt({

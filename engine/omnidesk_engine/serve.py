@@ -269,6 +269,7 @@ class EngineService:
                 prompt_text=params.get("prompt_text"),
                 input_file=params.get("input_file"),
                 timeout_policy=params.get("timeout_policy") or {},
+                engine_session_id=params.get("engine_session_id"),
             )
             receipt = adapter.submit_task(request)
         except EngineError as error:
