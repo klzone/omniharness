@@ -742,6 +742,24 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
     Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
 }
 
+/// 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
+///
+/// 固定动作、**无参数**：前端只能请求「打开 DSH 设置」，不能传命令、路径或 URL。
+/// 宿主不拼接 shell、不读不写不打印任何凭证；只把设置界面拉起来。
+#[tauri::command]
+fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let dsh_home = engine_supervisor::EngineConfig::from_env(&app_root)
+        .map(|cfg| cfg.dsh_home)
+        .unwrap_or_else(|err| {
+            std::path::PathBuf::from(format!("（无法确定 DSH 数据根：{}）", err))
+        });
+    task_shell::open_dsh_settings(&dsh_home)
+}
+
 /// 读取（必要时首次创建）离线流程包。
 ///
 /// 不创建模型会话、不启动引擎；只读一个仓库外的纯文本 JSON。
@@ -1152,6 +1170,7 @@ pub fn run() {
             task_local_root_info,
             task_set_artifact_root,
             task_open_artifact_root,
+            task_open_dsh_settings,
             task_prepare_workspace_dir,
             task_run_analysis,
             task_explanation_prompt,
