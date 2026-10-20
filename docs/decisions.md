@@ -131,11 +131,11 @@
 - 影响：`decorations` 与权限编译在 Rust 二进制中，**改动必须重建并完整重启，前端 HMR 不生效**；Xvfb 无窗口管理器，不能证明系统装饰消失，真实桌面效果只能由用户本机会话验收。回退路径：`decorations` 改回 `true`、移除顶栏控件与缩放热区后重建。用户已确认重启后系统标题栏消失、拖动与— □ × 均正常；双击最大化、边缘缩放、最大化图标切换未被逐项点名验证。
 - 来源：用户批准与验收记录（PLANS.md、STATUS.md、REVIEW.md）；`desktop/src-tauri/tauri.conf.json`、`desktop/src-tauri/capabilities/default.json`、`desktop/src/shell/WindowChrome.tsx`、`desktop/src/shell/TopNav.tsx`、`desktop/src/App.tsx`。
 
-### D-021：项目级固定双 Agent——超级Plan（规划）与超级劳工（执行）
-- 状态：已实施于当前未提交工作区（2026-10-19，用户明确要求并逐项指定模型）；未提交、未推送、未打标签。
+### D-023：项目级固定双 Agent——超级Plan（规划）与超级劳工（执行）
+- 状态：已实施并已入库（2026-10-19 实施；文件进入提交 `593c49f`，随 OD-ARCH-029 批次推送 `origin/main`）；**三项运行复测因模型额度阻塞而挂起**（2026-10-20，99 次重试全部 `Rate limit exceeded`）。
 - 决策：在仓库内以 OpenCode V2 项目级 agent 固定两个角色，均不设 `default_agent`、不改全局模型路由与凭证。**超级Plan**（ID `super-plan`，model `opencode/glm-5.3-flash-free`）负责只读调研代码库与文档、需求分类、产出计划写入 `PLANS.md`，经用户明确批准后派工；权限为「默认全拒后逐条放行」：read/grep/glob、仅 `PLANS.md` 的 edit、只读 git 命令、仅 `super-worker` 的 subagent，并对 `.env*`/`*credentials*`/`*secret*`/`*.pem`/`*.key` 追加 read deny。**超级劳工**（ID `super-worker`，model `opencode/deepseek-v4.1-flash-free`）负责在获批范围内实施，权限等同 build 默认，边界靠 prompt 红线约束（范围刚性、禁改 `runtime/`、禁读凭证、禁触真实业务材料、开工记快照、执行记录写 `STATUS.md`、完成即停等待复核）。
 - 理由：把「规划」与「执行」分成两个可识别、模型固定、权限分层的角色，使计划产出与实施证据可分别审查，降低单会话既规划又动手的越界风险；模型按用户指定分工（规划用 GLM-5.3-Flash Free，执行用 DeepSeek V4.1 Flash Free），不使用会话继承模型。
-- 影响：两 agent 的 system prompt 内嵌 AGENTS.md 纪律，形成**配置级**防线而非代码级安全控制；super-worker 保留编辑与 shell 能力，若出现越界应先加权限白名单。规划方唯一可写文件是 `PLANS.md`，因此计划登记与状态更新仍由 ARCHITECT 落盘。当前已验证：两 agent 可被发现加载、super-plan 只读与单条只读 git 可用、未放行命令被拒、未越界写入、frontmatter 静态解析通过；**挂起未验证**（GLM/DeepSeek 限流，用户 2026-10-19 指示暂缓测试）：`git rev-parse*` 补入后复测、管道/复合命令匹配语义、super-plan→super-worker 派工端到端链路。复审触发条件：任一 agent 出现越界写入、模型绑定被改、或 OpenCode 升级改变 agent 配置语义。
+- 影响：两 agent 的 system prompt 内嵌 AGENTS.md 纪律，形成**配置级**防线而非代码级安全控制；super-worker 保留编辑与 shell 能力，若出现越界应先加权限白名单。规划方唯一可写文件是 `PLANS.md`，因此计划登记与状态更新仍由 ARCHITECT 落盘。当前已验证：两 agent 可被发现加载、super-plan 只读与单条只读 git 可用、未放行命令被拒、未越界写入、frontmatter 静态解析通过；**挂起未验证**（模型额度阻塞，2026-10-20 证据见下）：`git rev-parse*` 补入后复测、管道/复合命令匹配语义、super-plan→super-worker 派工端到端链路。**2026-10-20 复测阻塞的定性（新增证据）：** 在 5 分钟间隔下连续重试 99 次（约 8.3 小时，2026-10-19 23:5x → 2026-10-20 07:2x），GLM-5.3-Flash Free 与 DeepSeek V4.1 Flash Free 两个绑定模型**全部返回 `Rate limit exceeded`**；同一时刻内置 `general` agent（继承本会话模型）**调用成功**。据此把阻塞定性为**模型级免费额度**，**不是** OpenCode 子 agent 通道故障、**不是**本项目配置缺陷、**不是** agent 发现机制问题。复审触发条件：任一 agent 出现越界写入、模型绑定被改、额度恢复后复测结论与本条冲突、或 OpenCode 升级改变 agent 配置语义。
 - 来源：用户指令（2026-10-19）；PLANS.md「工具链计划 T-001」；STATUS.md 与 REVIEW.md 同名小节；`.opencode/agents/super-plan.md`、`.opencode/agents/super-worker.md`。
 
 ### D-021：三场景模型起草闭环的验收口径与已知边界
