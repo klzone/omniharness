@@ -810,6 +810,7 @@ fn task_set_model_route(
     source_profile: String,
     provider: String,
     model: String,
+    reasoning_effort: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let app_root = {
         let host = state.lock().unwrap();
@@ -817,7 +818,14 @@ fn task_set_model_route(
     };
     let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
     let overlay = model_routes::overlay_path(&app_root);
-    let written = model_routes::select_route(&config, &overlay, &source_profile, &provider, &model)?;
+    let written = model_routes::select_route(
+        &config,
+        &overlay,
+        &source_profile,
+        &provider,
+        &model,
+        reasoning_effort.as_deref(),
+    )?;
 
     // 引擎已在跑时旧路由仍在生效：先停掉它，下次任务会按新覆盖文件重启。
     let lifecycle = {

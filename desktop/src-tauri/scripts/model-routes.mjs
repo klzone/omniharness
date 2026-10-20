@@ -29,7 +29,7 @@ function fail(code, message, basis = []) {
 }
 
 function parseArgs(argv) {
-  const out = { profiles: [], dshCli: null, dshHome: null, list: false, writeOverlay: null, provider: null, model: null };
+  const out = { profiles: [], dshCli: null, dshHome: null, list: false, writeOverlay: null, provider: null, model: null, reasoningEffort: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--list") out.list = true;
@@ -39,6 +39,7 @@ function parseArgs(argv) {
     else if (arg === "--write-overlay") out.writeOverlay = argv[++i];
     else if (arg === "--provider") out.provider = argv[++i];
     else if (arg === "--model") out.model = argv[++i];
+    else if (arg === "--reasoning-effort") out.reasoningEffort = argv[++i];
     else throw new Error("unknown argument: " + arg);
   }
   return out;
@@ -126,6 +127,7 @@ function main() {
       if (parsed.writeOverlay) argv.push("--write-overlay", String(parsed.writeOverlay));
       if (parsed.provider) argv.push("--provider", String(parsed.provider));
       if (parsed.model) argv.push("--model", String(parsed.model));
+      if (parsed.reasoningEffort) argv.push("--reasoning-effort", String(parsed.reasoningEffort));
     } catch {
       process.stdout.write(JSON.stringify(fail("bad_arguments", "OMNIDESK_ROUTE_ARGS 不是合法 JSON")) + "\n");
       process.exit(2);
@@ -161,6 +163,11 @@ function main() {
         baseURL: provider.baseURL,
         models: provider.models.map((id) => ({ id, name: id })),
       };
+      const acpConfig = { provider: provider.id, model: args.model };
+      if (args.reasoningEffort && args.reasoningEffort !== "default") {
+        // 思考等级（对应 DSH 的 reasoningEffort）：不传时由模型/Provider 默认决定。
+        acpConfig.reasoningEffort = args.reasoningEffort;
+      }
       const overlay = [
         {
           id: "llm-pi-ai",
@@ -172,7 +179,7 @@ function main() {
           // `agent-default-model` 只服务没有显式选择的 Agent——两处都写，避免歧义。
           id: "acp",
           name: "@deepseek-ai/dsh-acp",
-          config: { provider: provider.id, model: args.model },
+          config: acpConfig,
         },
         {
           id: "agent-default-model",
