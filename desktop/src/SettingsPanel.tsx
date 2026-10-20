@@ -70,7 +70,9 @@ export default function SettingsPanel() {
     setDshNote(null);
     try {
       const r = await shell.openDshSettings();
-      setDshNote(`${r.note}（DSH 数据根：${r.dsh_home}）`);
+      setDshNote(
+        `${r.note}\nDSH 数据根：${r.dsh_home}\n凭据文件：${r.credentials_file}\n启动日志：${r.log_path}`,
+      );
     } catch (e) {
       setDshError(String(e));
     } finally {

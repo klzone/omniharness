@@ -745,19 +745,29 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
 /// 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
 ///
 /// 固定动作、**无参数**：前端只能请求「打开 DSH 设置」，不能传命令、路径或 URL。
-/// 宿主不拼接 shell、不读不写不打印任何凭证；只把设置界面拉起来。
+/// 宿主不拼接 shell、不读不写不打印任何凭证；只把设置界面拉起来，
+/// 并把 `DSH_HOME` 指向**引擎正在用的那份** DSH 数据根——否则用户在那里登记的模型配置
+/// 落在另一处，OmniDesk 读不到（这正是实测到的问题）。
 #[tauri::command]
 fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let app_root = {
         let host = state.lock().unwrap();
         host.paths.root.clone()
     };
-    let dsh_home = engine_supervisor::EngineConfig::from_env(&app_root)
-        .map(|cfg| cfg.dsh_home)
-        .unwrap_or_else(|err| {
-            std::path::PathBuf::from(format!("（无法确定 DSH 数据根：{}）", err))
-        });
-    task_shell::open_dsh_settings(&dsh_home)
+    let (dsh_home, agents_home, dsh_cli) = match engine_supervisor::EngineConfig::from_env(&app_root) {
+        Ok(cfg) => (cfg.dsh_home, cfg.agents_home, cfg.dsh_cli),
+        Err(err) => {
+            return Err(format!(
+                "无法确定引擎使用的 DSH 数据根（{}）；为避免打开另一份配置，本次不启动 DSH。",
+                err
+            ))
+        }
+    };
+    let log_path = {
+        let host = state.lock().unwrap();
+        host.paths.logs.join("dsh-settings.log")
+    };
+    task_shell::open_dsh_settings(&dsh_home, &agents_home, &dsh_cli, &log_path)
 }
 
 /// 读取（必要时首次创建）离线流程包。

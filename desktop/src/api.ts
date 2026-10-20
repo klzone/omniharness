@@ -262,14 +262,28 @@ export const shell = {
    *
    * 固定动作、无参数：宿主只执行固定的 `gtk-launch` / `xdg-open`，不接受命令或路径；
    * 未安装时明确报错，不静默失败。宿主不读、不写、不打印任何凭证值。
+   * 宿主会把 DSH 指向**引擎正在用的那份 DSH 数据根**，使两边共享同一份凭据与 Profile。
    */
   openDshSettings(): Promise<{
     ok: boolean;
     launched: string;
+    pid: number;
     dsh_home: string;
+    agents_home: string;
+    credentials_file: string;
+    log_path: string;
     note: string;
   }> {
-    return invoke<{ ok: boolean; launched: string; dsh_home: string; note: string }>(
+    return invoke<{
+      ok: boolean;
+      launched: string;
+      pid: number;
+      dsh_home: string;
+      agents_home: string;
+      credentials_file: string;
+      log_path: string;
+      note: string;
+    }>(
       "task_open_dsh_settings",
     ).catch((e) => {
       throw new Error(normalizeError(e));

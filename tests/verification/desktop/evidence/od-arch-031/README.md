@@ -9,7 +9,7 @@
 
 | 层 | 文件 | 内容 |
 | --- | --- | --- |
-| 宿主 | `desktop/src-tauri/src/task_shell.rs` | 新增 `open_dsh_settings()`：固定白名单的 DSH Desktop 启动器（`gtk-launch <app-id>` → 回退 `xdg-open <desktop file>`），**不拼接 shell、不接受前端传入的命令/路径/URL、不读不写不打印任何凭证**；未安装时**明确报错**。另抽出 `find_dsh_desktop_file()` 供单测在不启动任何东西的前提下断言「装没装」。 |
+| 宿主 | `desktop/src-tauri/src/task_shell.rs` | 新增 `open_dsh_settings()`：**启动引擎运行时自带的 DSH（`node <runtime>/dsh/lib/bin.js web`），并把 `DSH_HOME` / `DSH_AGENTS_HOME` 指向引擎实际使用的那两个目录**——与引擎共享同一份凭据与 Profile，用户在那里登记的模型配置引擎能直接读到。固定命令、不拼接 shell、不接受前端传入的命令/路径/URL、不读不写不打印任何凭证；启动失败**明确报错**。 |
 | 宿主 | `desktop/src-tauri/src/lib.rs` | 注册命令 `task_open_dsh_settings`（**无参数**：前端只能请求这一个固定动作）。 |
 | 前端 | `desktop/src/api.ts` | `shell.openDshSettings()` 绑定。 |
 | 前端 | `desktop/src/SettingsPanel.tsx` | 「模型权限」区块顶部**常驻**「打开 DSH 设置（登记 key）」与「刷新端点信息」；端点事实读不出时给出明确说明与同样两个入口；`facts && !facts.configurable` 的旧提示合并为一条；底部只留「撤销全部模型权限」。**三类开关与默认全关语义未动。** |
@@ -17,8 +17,12 @@
 ### A.2 实测（真实窗口，用户会话，正式环境）
 
 - 设置页按钮（AT-SPI 实读）：`['撤销全部模型权限', '刷新端点信息', '打开 DSH 设置（登记 key）', '刷新状态', '打开当前目录', '校验并保存', …]` — **两个入口在端点已识别时可见可点**。
-- 点「打开 DSH 设置」→ **DSH Desktop 真的被拉起**（`/opt/DeepSeek Harness/deepseek-harness` 进程出现，窗口在用户桌面），
-  界面给出提示与 DSH 数据根路径；宿主全程未读、未写、未打印任何凭证值。
+- 点「打开 DSH 设置」→ **引擎同款的 DSH 被拉起**（`node <runtime>/dsh/lib/bin.js web` 进程出现，本地地址与浏览器自动打开），
+  界面给出 DSH 数据根、凭据文件与启动日志路径；宿主全程未读、未写、未打印任何凭证值。
+- **实测该 DSH 的环境**：`DSH_HOME=/home/kevin/OmniDesk/runtime/dsh-home`、`DSH_AGENTS_HOME=…/agents-home`——
+  与引擎读的是**同一份**数据根（`evidence/od-arch-033/dsh-jump-check.py` 可复跑）。
+- **首版曾有错**（已修）：原先拉起的是系统里那个 DSH Desktop，它读的是用户**自己那份** DSH 数据根，
+  于是「在 DSH 界面里登记的模型配置」根本进不了 OmniDesk——用户实测发现并指出，现已改为同一份数据根。
 - 端点**不可识别**状态：另起一个实例（空 DSH 数据根）复核 → 两个入口同样可见；权限开关在端点可识别时正常渲染（3 个）。
   **限制：** 本机 DSH 在没有自定义 baseURL 时会回落到 DeepSeek 默认端点，因此**自然构造不出「端点不可识别」的状态**；
   该分支是按代码条件渲染的（`!facts || factsError`），已由源码核对，**未做真实不可识别状态的截图**。
