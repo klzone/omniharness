@@ -1,5 +1,19 @@
 # BUILDER 执行状态
 
+## OD-ARCH-034：模型路由切换（2026-10-20，ARCHITECT 执行）
+
+- **起因（用户实测）：** 在 DSH 界面配了自定义模型（agnescn / agnes-3.0-flash）后，回 OmniDesk「刷新端点」
+  仍是 deepseek，任务只拿到 partial。**根因：** DSH 的模型选择**按 Profile 存**——用户改的是 `web` Profile，
+  引擎跑的是 `acp` Profile；两边**只有凭据共享**（`AGNESCN_API_KEY` 在共享凭据里 ✓）。界面显示 deepseek 是
+  如实反映引擎那条路。
+- **已实现：** 对话区**右下角、发送按钮前**的模型下拉（显示当前路由 + 各 Profile 候选）；选中即写
+  OmniDesk 自己的路由覆盖文件（`~/OmniDesk/app/config/omnidesk-model.yml`，**只含非机密字段**），
+  引擎与端点分类器共用同一份（引擎 patch 列表附加该文件），并停掉/重启引擎、重新判定端点。
+- **实测：** 覆盖后判定为 `agnescn / agnes-3.0-flash @ https://api.agnes-ai.cn/v1`（public）；应用内下拉显示
+  「模型：agnescn / agnes-3.0-flash」；覆盖文件内**无任何 key**；截图
+  `evidence/od-arch-034/shots/od034-chat-model-dropdown.png`。回归 Rust 143/143、tsc 0、构建通过。
+- **未验证：** 切换后的真实模型往返（需真实 key，属用户真实使用范围）。
+
 ## OD-ARCH-033：场景模块页（2026-10-20，ARCHITECT 执行）
 
 - **执行方式：** 原计划派 super-worker；本会话的 agent 目录发现不到项目 agent（工具返回

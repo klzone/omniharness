@@ -94,7 +94,7 @@ impl EngineConfig {
         // scripts/omnidesk-dev.sh 独立控制，两者不是同一个用途。`acp` 是 DSH 内置模板，
         // 首次使用时会自动初始化（dsh-base + dsh-acp-app），无需仓库另存 Profile 模板。
         let profile = env_or("OMNIDESK_DSH_PROFILE", "acp");
-        let patch_files = std::env::var("OMNIDESK_DSH_PATCHES")
+        let mut patch_files = std::env::var("OMNIDESK_DSH_PATCHES")
             .ok()
             .map(|raw| {
                 raw.split(',')
@@ -104,6 +104,13 @@ impl EngineConfig {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        // OmniDesk 自己的模型路由覆盖（用户在设置里选定的 provider/model，只有非机密字段）。
+        // 与引擎、端点分类器共用同一份，保证「界面显示的路由」＝「引擎实际走的路由」。
+        if let Some(overlay) = crate::model_routes::overlay_for_engine(app_root) {
+            if !patch_files.contains(&overlay) {
+                patch_files.push(overlay);
+            }
+        }
 
         let config = Self {
             python,

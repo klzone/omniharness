@@ -258,6 +258,77 @@ export const shell = {
   },
 
   /**
+   * 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
+   *
+   * 不同 Profile 的**模型选择互不相通**（只有凭据共享），所以这里把各 Profile 的候选都列出来。
+   */
+  listModelRoutes(): Promise<{
+    ok: boolean;
+    engine_profile: string;
+    overlay: string;
+    profiles: Array<{
+      profile: string;
+      error?: string;
+      default: { provider: string | null; model: string | null } | null;
+      providers: Array<{
+        id: string;
+        displayName: string;
+        api: string | null;
+        apiKeyEnv: string | null;
+        baseURL: string | null;
+        models: string[];
+      }>;
+    }>;
+  }> {
+    return invoke<{
+      ok: boolean;
+      engine_profile: string;
+      overlay: string;
+      profiles: Array<{
+        profile: string;
+        error?: string;
+        default: { provider: string | null; model: string | null } | null;
+        providers: Array<{
+          id: string;
+          displayName: string;
+          api: string | null;
+          apiKeyEnv: string | null;
+          baseURL: string | null;
+          models: string[];
+        }>;
+      }>;
+    }>("task_list_model_routes").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 选定模型：把该 Profile 的 provider 配置 + 选中的模型写成 OmniDesk 自己的覆盖文件
+   * （只含非机密字段），并重启引擎、重新判定端点。
+   */
+  setModelRoute(input: {
+    sourceProfile: string;
+    provider: string;
+    model: string;
+  }): Promise<{
+    ok: boolean;
+    route: { provider: string; model: string; endpoint: string | null; category: string };
+    note: string;
+  }> {
+    return invoke<{
+      ok: boolean;
+      route: { provider: string; model: string; endpoint: string | null; category: string };
+      note: string;
+    }>("task_set_model_route", {
+      sourceProfile: input.sourceProfile,
+      provider: input.provider,
+      model: input.model,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
    * 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
    *
    * 固定动作、无参数：宿主只执行固定的 `gtk-launch` / `xdg-open`，不接受命令或路径；

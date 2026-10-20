@@ -123,6 +123,16 @@ export function HomeChat({
   const [admission, setAdmission] = useState<AdmissionState>("checking");
   const [facts, setFacts] = useState<AdmissionFacts | null>(null);
   const [admissionError, setAdmissionError] = useState<string | null>(null);
+  /** OD-ARCH-034：各 DSH Profile 生效的模型候选（不同 Profile 的模型选择互不相通）。 */
+  const [modelRoutes, setModelRoutes] = useState<
+    Array<{
+      profile: string;
+      default: { provider: string | null; model: string | null } | null;
+      providers: Array<{ id: string; models: string[]; baseURL: string | null }>;
+    }>
+  >([]);
+  const [modelNote, setModelNote] = useState<string | null>(null);
+  const [modelBusy, setModelBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // 切换会话（threadKey 变化）时载入该会话的消息。
@@ -168,6 +178,45 @@ export function HomeChat({
   useEffect(() => {
     void refreshAdmission();
   }, [refreshAdmission]);
+
+  // 列出各 Profile 的模型候选（只取非机密字段）。
+  const loadModelRoutes = useCallback(async () => {
+    try {
+      const r = await shell.listModelRoutes();
+      setModelRoutes(r.profiles ?? []);
+    } catch {
+      setModelRoutes([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadModelRoutes();
+  }, [loadModelRoutes]);
+
+  /** 切换模型：写 OmniDesk 自己的覆盖文件 → 引擎重启 → 端点重新判定。 */
+  const selectModel = useCallback(
+    async (profile: string, provider: string, model: string) => {
+      setModelBusy(true);
+      setModelNote(null);
+      try {
+        const r = await shell.setModelRoute({
+          sourceProfile: profile,
+          provider,
+          model,
+        });
+        setModelNote(
+          `已切到 ${provider} / ${model}（端点 ${r.route.endpoint ?? "未解析"}，类别 ${r.route.category}）。` +
+            "引擎已按新路由重启。",
+        );
+        await refreshAdmission();
+      } catch (e) {
+        setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        setModelBusy(false);
+      }
+    },
+    [refreshAdmission],
+  );
 
   // 引擎要求 workspace_dir 为绝对路径。宿主在端点未获准时会拒绝准备，
   // 此时如实记录拒绝原因并把工作目录置空，不用「仅解析出的路径」冒充可用目录。
@@ -552,6 +601,38 @@ export function HomeChat({
             </button>
           </div>
           <div className="flex items-center space-x-2">
+            {/* 模型选择：不同 DSH Profile 的模型选择互不相通（只有凭据共享），
+                这里把各 Profile 的候选都列出来，选中即写进 OmniDesk 自己的覆盖文件。 */}
+            <select
+              className="max-w-[220px] text-[11px] px-2 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps disabled:opacity-60"
+              value=""
+              disabled={modelBusy || busy}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (!value) return;
+                const [profile, provider, model] = value.split("|");
+                void selectModel(profile, provider, model);
+              }}
+              title={
+                facts
+                  ? "当前路由：" + facts.provider + " / " + facts.model + "（换选会重启引擎）"
+                  : "当前端点尚未识别；可在此选择各 DSH Profile 里已配置的模型"
+              }
+            >
+              <option value="">
+                {modelBusy ? "切换中…" : "模型：" + (facts ? facts.provider + " / " + facts.model : "未识别")}
+              </option>
+              {modelRoutes.map((p) =>
+                p.providers.flatMap((prov) =>
+                  prov.models.map((m) => (
+                    <option key={p.profile + "|" + prov.id + "|" + m} value={p.profile + "|" + prov.id + "|" + m}>
+                      {prov.id} / {m}
+                      {"（" + p.profile + "）"}
+                    </option>
+                  )),
+                ),
+              )}
+            </select>
             {busy ? (
               <button
                 onClick={cancel}
@@ -577,6 +658,8 @@ export function HomeChat({
           <div className="mt-2 font-label-caps text-[10px] text-outline">取消：{cancelNote || "已请求"}</div>
         ) : null}
       </div>
+
+      {modelNote ? <p className="text-[10.5px] text-outline pb-1">{modelNote}</p> : null}
 
       {/* 底部状态行：模型权限 + Token 上下文用量，一行显示。
           顶部「LOCAL IPC ACTIVE」表示引擎 IPC 健康；这里表示权限与用量，含义不同。
