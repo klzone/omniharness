@@ -5,7 +5,6 @@ import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
 import { Icon } from "../components/Icon";
 import { ModelPicker } from "./ModelPicker";
-import { useChatLayerHover } from "./SceneScaffold";
 import type { Scene } from "./Dock";
 
 /**
@@ -159,8 +158,6 @@ export function HomeChat({
   // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
   const [replayNextTurn, setReplayNextTurn] = useState(false);
   const effectiveEngineSessionId = engineSessionId ?? localEngineSessionId;
-  // 指针落在对话历史还是输入框：上报给骨架，决定顶部卡片是否渐隐（OD-ARCH-040）。
-  const reportChatHover = useChatLayerHover();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -634,13 +631,10 @@ export function HomeChat({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* 对话流（=对话历史）。指针停在这里时**不渐隐**顶部卡片：卡片保持全亮，
-          于是卡片内容落在对话历史背后（OD-ARCH-040 用户口径）。 */}
+      {/* 对话流（=对话历史） */}
       <div
         ref={scrollRef}
         className="chat-fade-mask chat-scroll flex-1 min-h-0 overflow-y-auto pr-2 pb-3 space-y-3.5 flex flex-col"
-        onMouseEnter={() => reportChatHover("history")}
-        onMouseLeave={() => reportChatHover(null)}
       >
         {messages.map((m) =>
             m.role === "user" ? (
@@ -728,12 +722,8 @@ export function HomeChat({
       </div>
 
       {/* 指令坞 */}
-      {/* 输入框（对话框）。指针停在这里时顶部卡片渐隐到 30%，把注意力让给输入。 */}
-      <div
-        className="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white flex-shrink-0 rounded-xl"
-        onMouseEnter={() => reportChatHover("input")}
-        onMouseLeave={() => reportChatHover(null)}
-      >
+      {/* 输入框（对话框） */}
+      <div className="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white flex-shrink-0 rounded-xl">
         <div className="flex items-center space-x-3 px-1">
           <Icon name="spark" className="w-5 h-5 text-primary flex-shrink-0" />
           <input

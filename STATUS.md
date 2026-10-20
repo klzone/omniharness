@@ -13,8 +13,9 @@
   （Dovetail / ChatGPT / Harvey AI / Asana 等），带图库与截图直链。
 - **排障：** 首次 `fetch failed` 的根因是 Node fetch 不读 `HTTPS_PROXY`；对照片段见证据 README。
 - **证据：** `tests/verification/desktop/evidence/od-arch-035/`（README + `mcp-probe.json`）。
-- **未验证/限制：** 当前会话内工具尚未挂载（Codex 需重启才加载新 MCP），重启后的首次真实调用待确认；
-  `count` 参数语义未细究（实测恒返回 20 条）。
+- **会话内实测（2026-10-21 补）：** Codex 重启后 7 个工具已挂载；`list_tags` 重试成功（1124 个标签），
+  `search_inspiration`、`get_product_screenshots`（Harvey AI 29 张）均成功，首图下载 200 并目视正常。
+- **限制：** 首次调用偶发一次 `fetch failed`，重试即恢复；`count` 参数实测不生效（恒返回 20 条）。
 - **Git：** 未提交、未推送、未打标签；`runtime/` 未改动。
 
 
