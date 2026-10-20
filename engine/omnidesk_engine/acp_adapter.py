@@ -754,10 +754,17 @@ class AcpEngineAdapter:
         elif kind == "agent_thought_chunk":
             content = update.get("content") or {}
             text = str((content or {}).get("text") or "") if isinstance(content, Mapping) else ""
+            # 思考内容**不计入最终结果**，但要透出给界面（用户要在对话里看到思考过程）。
+            # 文本本身是模型产出的思考，不含凭据；仍然按「思考」单独标注，不与最终正文混在一起。
             self._emit(
                 record,
                 EventType.PROGRESS,
-                {"kind": "thought_delta", "chars": len(text), "note": "思考内容不计入最终结果"},
+                {
+                    "kind": "thought_delta",
+                    "chars": len(text),
+                    "text": text,
+                    "note": "思考内容不计入最终结果",
+                },
             )
         elif kind == "tool_call":
             payload = {

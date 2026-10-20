@@ -148,16 +148,21 @@ pub fn select_route(
     source_profile: &str,
     provider: &str,
     model: &str,
+    reasoning_effort: Option<&str>,
 ) -> Result<Value, String> {
     if source_profile.trim().is_empty() || provider.trim().is_empty() || model.trim().is_empty() {
         return Err("请选择要使用的 Profile、provider 与模型。".to_string());
     }
-    run_script(json!({
+    let mut payload = json!({
         "dshCli": config.dsh_cli.display().to_string(),
         "dshHome": config.dsh_home.display().to_string(),
         "profiles": [source_profile],
         "writeOverlay": overlay.display().to_string(),
         "provider": provider,
         "model": model,
-    }))
+    });
+    if let Some(effort) = reasoning_effort {
+        payload["reasoningEffort"] = Value::String(effort.to_string());
+    }
+    run_script(payload)
 }

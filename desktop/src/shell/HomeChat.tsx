@@ -4,6 +4,7 @@ import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
 import { Icon } from "../components/Icon";
+import { ModelPicker } from "./ModelPicker";
 import type { Scene } from "./Dock";
 
 /**
@@ -86,6 +87,37 @@ function enabledCategories(facts: AdmissionFacts): string[] {
   return (["local", "private", "public"] as const).filter((k) => p[k]);
 }
 
+/**
+ * 逐字呈现（本地呈现效果）。
+ *
+ * 说明：DSH 的 **ACP 通道**是「助手消息提交后才发块」，**没有** token 级流式
+ * （DSH 网页端的逐字效果走的是它自己的 harness 事件流）。这里在界面层做**逐字显现**，
+ * 让观感接近网页端；文本本身仍以引擎返回的**最终正文**为准，不改写、不补全。
+ */
+function StreamedText({ text, live }: { text: string; live: boolean }) {
+  const [shown, setShown] = useState(live ? 0 : text.length);
+
+  useEffect(() => {
+    if (!live) {
+      setShown(text.length);
+      return;
+    }
+    if (shown >= text.length) return;
+    const step = Math.max(2, Math.ceil(text.length / 80));
+    const timer = window.setInterval(() => {
+      setShown((n) => Math.min(text.length, n + step));
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, [text, live, shown]);
+
+  return (
+    <>
+      {text.slice(0, shown)}
+      {live && shown < text.length ? <span className="opacity-50">▍</span> : null}
+    </>
+  );
+}
+
 export interface HomeChatProps {
   onNavigate: (scene: Scene) => void;
   /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
@@ -133,6 +165,10 @@ export function HomeChat({
   >([]);
   const [modelNote, setModelNote] = useState<string | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
+  /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
+  const [modelEffort, setModelEffort] = useState("default");
+  /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
+  const [thoughts, setThoughts] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // 切换会话（threadKey 变化）时载入该会话的消息。
@@ -195,7 +231,7 @@ export function HomeChat({
 
   /** 切换模型：写 OmniDesk 自己的覆盖文件 → 引擎重启 → 端点重新判定。 */
   const selectModel = useCallback(
-    async (profile: string, provider: string, model: string) => {
+    async (profile: string, provider: string, model: string, effort?: string) => {
       setModelBusy(true);
       setModelNote(null);
       try {
@@ -203,10 +239,12 @@ export function HomeChat({
           sourceProfile: profile,
           provider,
           model,
+          reasoningEffort: effort ?? modelEffort,
         });
         setModelNote(
-          `已切到 ${provider} / ${model}（端点 ${r.route.endpoint ?? "未解析"}，类别 ${r.route.category}）。` +
-            "引擎已按新路由重启。",
+          `已切到 ${provider} / ${model}` +
+            (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
+            `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
         );
         await refreshAdmission();
       } catch (e) {
@@ -215,7 +253,7 @@ export function HomeChat({
         setModelBusy(false);
       }
     },
-    [refreshAdmission],
+    [modelEffort, refreshAdmission],
   );
 
   // 引擎要求 workspace_dir 为绝对路径。宿主在端点未获准时会拒绝准备，
@@ -243,9 +281,16 @@ export function HomeChat({
       if (event.type === "progress") {
         // 引擎上报的上下文用量（used / size tokens）。只显示宿主转发的真实数值，
         // 不自行估算或累加；未上报时界面显示「—」。
-        const p = event.payload as { kind?: unknown; used?: unknown; size?: unknown };
+        const p = event.payload as { kind?: unknown; used?: unknown; size?: unknown; text?: unknown };
         if (p.kind === "usage" && typeof p.used === "number" && typeof p.size === "number") {
           setUsage({ used: p.used, size: p.size });
+        }
+        // 思考过程（模型产出的思考，不计入最终结果）：按任务累积，单独展示。
+        if (p.kind === "thought_delta" && typeof p.text === "string" && p.text) {
+          setThoughts((prev) => ({
+            ...prev,
+            [event.omni_task_id]: (prev[event.omni_task_id] ?? "") + p.text,
+          }));
         }
         return;
       }
@@ -451,6 +496,22 @@ export function HomeChat({
     [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated],
   );
 
+  /** 切换思考等级：沿用当前 provider/model，只改 reasoningEffort。 */
+  const selectEffort = useCallback(
+    async (effort: string) => {
+      if (!facts?.provider || !facts?.model) {
+        setModelNote("当前端点尚未识别，先选一个模型再设思考等级。");
+        return;
+      }
+      const route = modelRoutes.find((g) =>
+        g.providers.some((p) => p.id === facts.provider && p.models.includes(facts.model!)),
+      );
+      setModelEffort(effort);
+      await selectModel(route?.profile ?? "", facts.provider, facts.model, effort);
+    },
+    [facts, modelRoutes, selectModel],
+  );
+
   const send = useCallback(() => {
     const text = input.trim();
     if (!text) return;
@@ -528,13 +589,30 @@ export function HomeChat({
                     </span>
                   </div>
 
+                  {m.taskId && thoughts[m.taskId] ? (
+                    <details
+                      className="rounded-lg bg-surface-container/70 px-3 py-2 text-[11.5px] text-on-surface-variant"
+                      open={m.state !== "succeeded" && m.state !== "failed" ? true : undefined}
+                    >
+                      <summary className="cursor-pointer select-none text-outline">
+                        思考过程（模型产出，不计入最终结果）
+                      </summary>
+                      <p className="pt-1.5 whitespace-pre-wrap break-words leading-relaxed">
+                        {thoughts[m.taskId]}
+                      </p>
+                    </details>
+                  ) : null}
+
                   {m.error ? (
                     <div className="rounded-lg bg-error-container text-on-error-container px-3 py-2 text-[12px] leading-relaxed">
                       {m.error}
                     </div>
                   ) : m.text ? (
                     <p className="text-on-surface-variant leading-relaxed whitespace-pre-wrap break-words">
-                      {m.text}
+                      <StreamedText
+                        text={m.text}
+                        live={!!m.taskId && !(TERMINAL_STATES as string[]).includes(String(m.state ?? ""))}
+                      />
                     </p>
                   ) : m.notice ? (
                     <p className="text-outline leading-relaxed">未收到可显示的输出。</p>
@@ -601,38 +679,16 @@ export function HomeChat({
             </button>
           </div>
           <div className="flex items-center space-x-2">
-            {/* 模型选择：不同 DSH Profile 的模型选择互不相通（只有凭据共享），
-                这里把各 Profile 的候选都列出来，选中即写进 OmniDesk 自己的覆盖文件。 */}
-            <select
-              className="max-w-[220px] text-[11px] px-2 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps disabled:opacity-60"
-              value=""
-              disabled={modelBusy || busy}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (!value) return;
-                const [profile, provider, model] = value.split("|");
-                void selectModel(profile, provider, model);
-              }}
-              title={
-                facts
-                  ? "当前路由：" + facts.provider + " / " + facts.model + "（换选会重启引擎）"
-                  : "当前端点尚未识别；可在此选择各 DSH Profile 里已配置的模型"
-              }
-            >
-              <option value="">
-                {modelBusy ? "切换中…" : "模型：" + (facts ? facts.provider + " / " + facts.model : "未识别")}
-              </option>
-              {modelRoutes.map((p) =>
-                p.providers.flatMap((prov) =>
-                  prov.models.map((m) => (
-                    <option key={p.profile + "|" + prov.id + "|" + m} value={p.profile + "|" + prov.id + "|" + m}>
-                      {prov.id} / {m}
-                      {"（" + p.profile + "）"}
-                    </option>
-                  )),
-                ),
-              )}
-            </select>
+            {/* 模型选择（自绘下拉 + 思考等级）：与工作台同一套视觉。 */}
+            <ModelPicker
+              currentProvider={facts?.provider ?? null}
+              currentModel={facts?.model ?? null}
+              groups={modelRoutes}
+              effort={modelEffort}
+              busy={modelBusy || busy}
+              onSelectModel={(profile, provider, model) => void selectModel(profile, provider, model)}
+              onSelectEffort={(effort) => void selectEffort(effort)}
+            />
             {busy ? (
               <button
                 onClick={cancel}

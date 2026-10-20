@@ -310,6 +310,8 @@ export const shell = {
     sourceProfile: string;
     provider: string;
     model: string;
+    /** 思考等级（对应 DSH 的 reasoningEffort）；默认 "default"＝不传该参数。 */
+    reasoningEffort?: string;
   }): Promise<{
     ok: boolean;
     route: { provider: string; model: string; endpoint: string | null; category: string };
@@ -323,6 +325,7 @@ export const shell = {
       sourceProfile: input.sourceProfile,
       provider: input.provider,
       model: input.model,
+      reasoningEffort: input.reasoningEffort ?? "default",
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
