@@ -789,9 +789,6 @@ export function HomeChat({
                 取消生成
               </button>
             ) : null}
-            <span className="font-label-caps text-[10px] text-outline hidden sm:inline">
-              {canSubmit ? "↵ 发送" : "提交已关闭"}
-            </span>
             <button
               onClick={send}
               disabled={!canSubmit || !input.trim()}
@@ -813,7 +810,7 @@ export function HomeChat({
       {/* 底部状态行：模型权限 + Token 上下文用量，一行显示。
           顶部「LOCAL IPC ACTIVE」表示引擎 IPC 健康；这里表示权限与用量，含义不同。
           Token 只显示引擎通过 progress/usage 上报的真实 used/size，不自行估算。 */}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 px-1 flex-shrink-0">
+      <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 px-1 flex-shrink-0">
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <Icon name="shield-check" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
           <span className="font-label-caps text-[10px] text-outline truncate" title={permissionDetail}>

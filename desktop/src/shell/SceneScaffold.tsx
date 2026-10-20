@@ -102,8 +102,12 @@ export function SceneScaffold({
     const y = event.clientY - rect.top;
     lastMoveRef.current = Date.now();
     if (idle) setIdle(false);
-    if (y === pointerYRef.current) return;
+    const prev = pointerYRef.current;
     pointerYRef.current = y;
+    // 第一次 mousemove 只是「指针在窗口里」这一事实（窗口打开时 WebKit 会补一次），
+    // **不算用户动过鼠标**：这时保持顶部卡片显示，符合「打开时默认显示卡片」。
+    // 之后只有位置真的变了，才按指针位置改层级。
+    if (prev === null || y === prev) return;
     setChatActive(y > upperHRef.current);
   };
 
