@@ -255,6 +255,12 @@ export default function SettingsPanel() {
           使用模型的任务才会被放行。无法确认位置的端点永远不会被放行。
         </p>
         <p className="hint">
+          <strong>端点不在这里配。</strong>
+          实际端点来自 DSH 侧的模型配置（Profile 与补丁合成后的结果）；本应用只读取**非机密**的
+          provider / model / 地址用于判定，<strong>不保存端点、也不读取凭证值</strong>。
+          要换端点就改 DSH 侧那份模型配置，改完回到本页点「刷新端点信息」即可看到新的判定。
+        </p>
+        <p className="hint">
           说明：类别只能表达“是不是本机回环”。地址范围**不能**证明端点属于哪个组织，
           也不能证明数据是否离开你所在的组织；请自行确认发布方的授权与数据去向。
         </p>
@@ -313,7 +319,7 @@ export default function SettingsPanel() {
         {facts && !facts.configurable ? (
           <div className="alert">
             当前端点位置无法确认，宿主会一律拒绝此类端点，且没有可开启的开关。
-            请先在隔离环境中把模型配置指向明确的地址。
+            请先把 DSH 侧的模型配置指向一个明确的地址，再回到本页点「刷新端点信息」。
           </div>
         ) : null}
 
