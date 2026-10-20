@@ -1,5 +1,18 @@
 # BUILDER 执行状态
 
+## OD-ARCH-034：真多轮接线（2026-10-20，用户批准，ARCHITECT 执行）
+
+- **目标：** 同一线程复用同一引擎会话，去掉「每轮新建会话 + 前端重放上文」的绕路。
+- **实现：** 适配层 `submit_task` 支持 `engine_session_id`，四种会话取得方式
+  new/continued/resumed/degraded；回执与任务台账新增 `session_mode`；宿主透传一个可选参数；
+  前端线程持久化 `engineSessionId`、提示词新增 `continuation`（不重放）、降级时下一轮补重放。
+- **事实修正：** DSH 的 `session/resume` 只接受已落盘可重开的会话，对活会话报 `invalid_argument` ⇒
+  进程内续发直接再发 prompt；重启后才 resume。计划原文的「后两轮 session/resume」按事实修正。
+- **验证：** 单元 27/27；真实引擎+合成端点 33/33（消息条数 3→5→7 证明引擎带上下文）；
+  提示词 24/24；真实窗口台账 new→continued 且会话号相同；Rust 143/143、tsc 0、构建通过。
+- **证据：** `tests/verification/desktop/evidence/od-arch-034/`（README + 2 张窗口截图 + JSON）。
+- **未解决：** ACP 无 token 级流式（未变）；首页对话无线程记录（既有缺口）；降级那一轮丢上下文。
+
 ## OD-ARCH-040：对话为主的两层布局（2026-10-20，ARCHITECT 执行）
 
 - **用户澄清口径：** 对话占满上下全屏；顶部卡片平时显示；指针进对话区（对话历史/输入框）时卡片渐隐，

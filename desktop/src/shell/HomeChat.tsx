@@ -132,6 +132,13 @@ export interface HomeChatProps {
   onMessagesChange?: (messages: ChatMessage[]) => void;
   /** 引擎产生了新的 DSH 会话（第一轮提交后）时回调，供模块把它关联到引擎会话。 */
   onTaskCreated?: (omniTaskId: string) => void;
+  /**
+   * 既有引擎会话号（OD-ARCH-034）：给出即续接同一会话（真多轮，引擎自己持有上文）。
+   * 没有时本组件在本次运行内自行记住第一轮拿到的会话号。
+   */
+  engineSessionId?: string | null;
+  /** 拿到（新建或续接后的）引擎会话号时回调，供上层按线程持久化。 */
+  onEngineSessionId?: (engineSessionId: string) => void;
 }
 
 export function HomeChat({
@@ -142,8 +149,15 @@ export function HomeChat({
   initialMessages = [],
   onMessagesChange,
   onTaskCreated,
+  engineSessionId = null,
+  onEngineSessionId,
 }: HomeChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  // 没有上层按线程传入时（例如首页），本组件自己持有本轮运行内的会话号。
+  const [localEngineSessionId, setLocalEngineSessionId] = useState<string | null>(null);
+  // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
+  const [replayNextTurn, setReplayNextTurn] = useState(false);
+  const effectiveEngineSessionId = engineSessionId ?? localEngineSessionId;
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -491,10 +505,15 @@ export function HomeChat({
         }
         // 提示词：普通对话发上下文本身；带预设的对话用同一套组装器把场景规则、
         // 期望章节与上文（上一轮对话）一起带进去。
+        //
+        // OD-ARCH-034：续接既有引擎会话时，**不再重放上文**——上下文由引擎会话自己持有，
+        // 只发本轮输入；否则（新会话／旧线程／续接失败降级）仍按窗口化重放，保证历史不丢。
+        const continuation = Boolean(effectiveEngineSessionId) && !replayNextTurn;
         const promptText = composeConversationPrompt({
           preset,
           turns: messages.map((m) => ({ role: m.role, text: m.text })),
           current: text,
+          continuation,
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
@@ -503,7 +522,17 @@ export function HomeChat({
           promptText,
           workspaceDir: dir,
           userInputText: text,
+          engineSessionId: effectiveEngineSessionId,
         });
+        // 记住本线程的引擎会话号：下一轮据此续接同一会话（真多轮）。
+        if (receipt.engine_session_id) {
+          setLocalEngineSessionId(receipt.engine_session_id);
+          onEngineSessionId?.(receipt.engine_session_id);
+        }
+        // 续接失败被降级为新建会话时，这一轮**没有**继承旧会话的上文：
+        // 下一轮补一次窗口化重放，把历史接回去（引擎侧此时已持有这一轮）。
+        const degraded = receipt.session_mode === "degraded";
+        setReplayNextTurn(degraded);
         setMessages((prev) => [
           ...prev,
           {
@@ -512,6 +541,9 @@ export function HomeChat({
             text: "",
             taskId: receipt.omni_task_id,
             state: receipt.status,
+            notice: degraded
+              ? "引擎会话已失效，这一轮改用新会话；下一轮会把上文补回去。"
+              : null,
           },
         ]);
         setActiveTaskId(receipt.omni_task_id);
@@ -528,7 +560,7 @@ export function HomeChat({
         void refreshAdmission();
       }
     },
-    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated],
+    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn],
   );
 
   /** 切换思考等级：沿用当前 provider/model，只改 reasoningEffort。 */

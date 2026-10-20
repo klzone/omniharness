@@ -2,6 +2,40 @@
 
 ## 当前待批准计划与最近复核
 
+
+
+### OD-ARCH-035：接入免费 UI 设计参考 MCP（screenshots-design-inspiration）（待批准，2026-10-20）
+
+- **目标：** 为 BUILDER 接入开源设计参考 MCP，使后续 UI 任务实现前能先搜真实产品界面作参考。不涉及产品代码改动。
+- **步骤：**
+  1. 在 OpenCode 的 MCP 配置中添加：command = "npx"，args = ["--yes", "screenshots-design-inspiration-mcp@latest"]（Node.js 已具备即可，无需克隆仓库）。
+  2. 重启 OpenCode 后验证：调用 search_inspiration 搜 "AI chat workspace dashboard" 类关键词，确认能返回截图结果。
+  3. 在任务指令模板中加入固定条款：UI 实现前先用该 MCP 搜 2-3 个同类产品布局（关键词示例：chat workspace / sidebar dock / task dashboard），给出 2 句以内的借鉴要点，再动工。
+- **验收：** OpenCode 会话中能成功调用该 MCP 并返回截图；未成功时报告失败原因（网络/Node 版本），不降级硬编。
+- **风险：** npx 首次运行需联网下载包；该 MCP 数据为静态截图库（410+ 产品），覆盖有限，效果不足再评估 Mobbin 付费版。
+### OD-ARCH-034：真多轮接线——去掉上文重放（**已执行，2026-10-20，ARCHITECT**）
+
+- **状态：已执行（用户批准后由 ARCHITECT 执行；提交见 REVIEW/STATUS 同名小节）。**
+  同一线程复用同一引擎会话（`new` / `continued` / `resumed` / `degraded` 四种会话取得方式，
+  回执与台账带 `session_mode`），前端不再重放上文；降级时下一轮自动补重放。
+  **按事实修正了计划措辞：** DSH 的 `session/resume` 只接受已落盘可重开的会话，对活会话报
+  `invalid_argument` ⇒ 进程内续发直接再发 `session/prompt`，进程重启后才 `session/resume`。
+  验证：单元 27/27、真实引擎+合成端点 33/33（消息条数 3→5→7）、提示词 24/24、
+  真实窗口台账 `new→continued` 且会话号相同、Rust 143/143、tsc 0、构建通过。
+  证据：`tests/verification/desktop/evidence/od-arch-034/`。
+  **本轮不含 D-024 第 2/3 步**（DSH web API 验证与路径 A/B 裁定）——按计划另行立项。
+
+- **背景：** D-024 复盘已核实：ACP 本身支持 session/prompt 与 session/resume，我方适配层也已实现 recover_session，但 submit_task 每轮新建引擎会话、前端靠"上文重放"模拟多轮。这是自造绕路，不是引擎限制。接线后可获得真多轮与原版延迟。
+- **目标：** 同一工作台线程复用同一引擎会话：线程首次对话用 session/new 并记住 engine_session_id；后续轮次经 session/resume + session/prompt 续发，不再重放全部上文。前端线程记录持有 engine_session_id 并持久化。
+- **影响范围：** engine/omnidesk_engine/acp_adapter.py（submit_task 接受既有 engine_session_id）与 engine_bridge.rs 的传参打通；前端线程存储加字段。不新增通信层、不改协议、不动 runtime/、不动模型路由与凭证。
+- **验收标准：**
+  - 同一线程连续三轮对话，适配层日志显示第一轮 session/new、后两轮 session/resume，界面无需重放即有完整上下文（第二轮能引用第一轮内容）。
+  - 线程重启应用后恢复，续发仍走 resume；会话被关闭（close）后 resume 仍可用（ACP 已注明支持）。
+  - 旧线程（无 engine_session_id）首次续聊自动降级为新建会话并开始持有 id，不报错、不丢历史。
+  - Rust 与 tsc 测试全绿；新增适配层单测覆盖 new/resume 分支。
+- **风险与停止条件：** 若 resume 后上下文语义与预期不符（如引擎侧不带历史），停下报告而不是保留两套机制；本轮不做 D-024 第 2/3 步（DSH web API 验证与路径 A/B 裁定），那两步另行立项。
+- **执行方式：** 本计划与「D-024 第 2 步验证」（只起 DSH 自带 web 应用验证流式/思考/模型目录是否存在，不改产品代码）可合并为一个任务交给 BUILDER 连续执行；第 2 步只产验证报告，不产产品代码。
+
 ### OD-ARCH-033：场景模块页设计 v3（已执行，2026-10-20，ARCHITECT）
 
 - **状态：已执行（2026-10-20，ARCHITECT 执行；原计划派 super-worker，因该会话 agent 目录发现不到项目 agent 而改由主会话执行）。**

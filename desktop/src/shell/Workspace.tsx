@@ -7,6 +7,7 @@ import {
   listThreadsByTag,
   retagThread,
   saveThreadMessages,
+  setThreadEngineSession,
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
@@ -26,8 +27,9 @@ import { ProjectRail } from "./ProjectRail";
  *   * **本机对话**：工作台自己的对话线程（带场景标签）；打标后即归入对应场景页。
  *
  * 诚实性约束：
- *   * 本机对话的每一轮都是一次**独立任务**（宿主按工作区新建 DSH 会话）；
- *     连续性由工作台把上文重放进下一轮提示实现，不是同一个引擎会话里的多轮。
+ *   * 本机对话的每一轮都是一次**独立任务**（任务号不同），但**引擎会话是同一个**：
+ *     线程记住引擎会话号，下一轮续接同一会话（OD-ARCH-034），上下文由引擎持有，
+ *     工作台不再重放上文；只有新建会话或旧线程首次续聊时才走窗口化重放。
  *   * 上下文保存在**本地存储**（只在本机、只在这份前端里），不进 Git、不进成果目录。
  */
 
@@ -193,6 +195,12 @@ export function Workspace() {
             projectDir={null}
             threadKey={activeKey ?? "empty"}
             initialMessages={messages}
+            engineSessionId={activeThread?.engineSessionId ?? null}
+            onEngineSessionId={(sid) => {
+              if (!activeDraftId) return;
+              setThreadEngineSession(activeDraftId, sid);
+              refreshDrafts();
+            }}
             onMessagesChange={(next) => {
               if (!activeDraftId) return;
               saveThreadMessages(activeDraftId, next);

@@ -7,6 +7,7 @@
 2. 带预设：提示词里同时出现**流程包的场景规则**、**期望章节**与上下文。
 3. 长上下文：超过上限时只保留最近部分，并显式标注截断。
 4. 预设路径**不丢**不可关闭的写作规则（禁入案件材料那条仍在）。
+5. OD-ARCH-034：续接既有引擎会话时**不重放上文**（普通对话与带预设两条路径）。
 
 **不**验证真实模型输出、真实宿主或窗口交互。不读取凭证，不访问网络，不启动引擎。
 
@@ -71,6 +72,21 @@ const windowed = mod.composeConversationPrompt({ preset: null, turns: many, curr
 check("window_drops_old_user_turns", !windowed.includes("U1"), windowed.slice(0, 80));
 check("window_keeps_recent_user_turns", windowed.includes("U6") && windowed.includes("U3"), "");
 check("window_bounded_chars", windowed.length <= mod.CONTEXT_MAX_CHARS + 200, String(windowed.length));
+
+// 4) OD-ARCH-034：续接既有引擎会话时**不重放上文**（上下文由引擎会话持有）
+const continued = mod.composeConversationPrompt({ preset: null, turns, current: "第三轮提问", continuation: true });
+check("continuation_contains_current", continued.includes("第三轮提问"), continued.slice(0, 80));
+check("continuation_drops_prev_user", !continued.includes("第一轮标记 ALPHA-123"), continued.slice(0, 80));
+check("continuation_drops_prev_assistant", !continued.includes("助手第一轮回应 BETA-456"), "");
+check("continuation_is_short", continued.length <= 200, String(continued.length));
+
+// 4b) 续接 + 预设：场景规则仍在，但不带上文
+const continuedPreset = mod.composeConversationPrompt({ preset, turns, current: "第三轮提问", continuation: true });
+check("continuation_preset_keeps_rules", continuedPreset.includes(weekly.rules), "");
+check("continuation_preset_keeps_sections", weekly.sections.split("\n").every((s) => !s.trim() || continuedPreset.includes(s)), "");
+check("continuation_preset_drops_context", !continuedPreset.includes("第一轮标记 ALPHA-123"), "");
+check("continuation_preset_keeps_current", continuedPreset.includes("第三轮提问"), "");
+check("continuation_preset_keeps_forbidden_rule", continuedPreset.includes("不处理案件材料"), "");
 
 console.log(JSON.stringify({ cases, failed: cases.filter((c) => !c.ok).length }));
 """

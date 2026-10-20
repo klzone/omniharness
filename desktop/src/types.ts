@@ -81,6 +81,13 @@ export interface SubmitTaskReceipt {
   status: TaskState;
   accepted_at: number;
   note: string;
+  /** 引擎会话号：续接既有会话时与传入的一致；新建时是新号。 */
+  engine_session_id?: string | null;
+  /**
+   * 本轮取得会话的方式（OD-ARCH-034）：new=新建；continued=在同一活会话内继续；
+   * resumed=重开已落盘会话；degraded=续接失败、已降级为新建会话（本轮没有继承旧上文）。
+   */
+  session_mode?: "new" | "continued" | "resumed" | "degraded" | string;
 }
 
 export interface CancelOutcome {

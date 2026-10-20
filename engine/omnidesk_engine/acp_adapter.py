@@ -146,6 +146,10 @@ class SubmitTaskRequest:
 
     prompt_text 与 input_file 二者至少其一：input_file 由 OmniDesk 自己读取后
     作为受控载荷发送（引擎不直接访问该路径）。
+
+    engine_session_id（OD-ARCH-034）：给出时**续接该既有会话**（session/resume +
+    session/prompt），实现同一会话内的真多轮；不给时新建会话。续接失败会降级为
+    新建会话并在回执里说明，不丢历史。
     """
 
     intent: str
@@ -156,6 +160,7 @@ class SubmitTaskRequest:
     input_file: Optional[str] = None
     timeout_policy: Mapping[str, float] = field(default_factory=dict)
     requested_at: Optional[float] = None
+    engine_session_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +170,9 @@ class SubmitTaskReceipt:
     accepted_at: float
     engine_session_id: Optional[str] = None
     note: str = ""
+    # 本轮取得会话的方式（OD-ARCH-034）：new / continued / resumed / degraded。
+    # degraded = 续接失败、已降级为新建会话：调用方应知道这一轮**没有**继承旧会话的上文。
+    session_mode: str = "new"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -173,6 +181,7 @@ class SubmitTaskReceipt:
             "accepted_at": self.accepted_at,
             "engine_session_id": self.engine_session_id,
             "note": self.note,
+            "session_mode": self.session_mode,
         }
 
 
@@ -284,6 +293,8 @@ class TaskRecordSummary:
     engine_session_id: Optional[str]
     cancel_phase: str
     persistence: str
+    # 本轮取得会话的方式（OD-ARCH-034）：new / continued / resumed / degraded。
+    session_mode: str = "new"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -295,6 +306,7 @@ class TaskRecordSummary:
             "engine_session_id": self.engine_session_id,
             "cancel_phase": self.cancel_phase,
             "persistence": self.persistence,
+            "session_mode": self.session_mode,
         }
 
 
@@ -374,6 +386,9 @@ class _TaskRecord:
     state: TaskState
     evidence_source: str
     engine_session_id: Optional[str] = None
+    # 会话取得方式：new=新建；continued=在同一活会话内继续；resumed=重开已落盘会话；
+    # degraded=续接失败后降级新建。
+    session_mode: str = "new"
     seq: int = 0
     events: list = field(default_factory=list)
     text_parts: list = field(default_factory=list)
@@ -916,6 +931,7 @@ class AcpEngineAdapter:
             "workspace_dir": record.workspace_dir,
             "idempotency_key": record.idempotency_key,
             "engine_session_id": record.engine_session_id,
+            "session_mode": record.session_mode,
             "state": record.state.value,
             "evidence_source": record.evidence_source,
             "created_at": record.created_at,
@@ -1027,45 +1043,101 @@ class AcpEngineAdapter:
                 self._idempotency[request.idempotency_key] = record
         self._persist(record)
 
-        try:
-            created = self._request(
-                "session/new",
-                {"cwd": workspace_dir, "mcpServers": []},
-                self._session_timeout,
-                omni_task_id=omni_task_id,
-            )
-        except EngineError as error:
-            # 受理阶段就失败时，不能让记录停留在 queued：否则该任务既没有回执给
-            # 调用方，又会被 recover_task 当成「进行中」的幻影任务。这里按契约
-            # 把记录落定为相应终态后再抛出，保证失败可诊断且不留悬空状态。
-            self._settle_failed(record, error)
-            raise
-        session_id = created.get("sessionId")
-        if not session_id:
-            error = EngineError(
-                EngineErrorCode.ENGINE_UNAVAILABLE,
-                "session/new did not return a session id",
-                detail={"result_keys": sorted(str(k) for k in created.keys())},
-                omni_task_id=omni_task_id,
-            )
-            self._settle_failed(record, error)
-            raise error
+        # 会话取得：优先**续接既有会话**（真多轮），否则新建。
+        #
+        # OD-ARCH-034：ACP 本身支持在**同一个会话**里续发（session/prompt），
+        # 此前这里每轮都 session/new，靠前端重放上文模拟多轮——那是我们自造的绕路。
+        #
+        # 两种续接方式（按 DSH 的真实语义区分，不猜）：
+        #   * **continued**：会话在**本进程里还活着**（本适配层建过、引擎没关）
+        #     → 直接再发一次 session/prompt；**不能**先 session/resume
+        #       （DSH 的 resume 只接受「已落盘、可重开」的会话，对活会话会报 invalid_argument）。
+        #   * **resumed**：会话不在本进程（例如应用重启后）→ session/resume 重开它，
+        #     引擎侧从会话存储恢复上文，再 session/prompt 续发。
+        # 两者都失败/不可用时**降级为新建会话**并如实标注，不让一次失败拖垮整轮对话
+        # （此时前端仍会带上文重放，历史不丢）。
+        session_id: Optional[str] = None
+        session_mode = "new"
+        resume_note = ""
+        if request.engine_session_id:
+            with self._lock:
+                live_here = str(request.engine_session_id) in self._sessions
+            if live_here:
+                session_id = str(request.engine_session_id)
+                session_mode = "continued"
+            else:
+                try:
+                    self._request(
+                        "session/resume",
+                        {
+                            "sessionId": request.engine_session_id,
+                            "cwd": workspace_dir,
+                            "mcpServers": [],
+                        },
+                        self._session_timeout,
+                        omni_task_id=omni_task_id,
+                    )
+                    session_id = str(request.engine_session_id)
+                    session_mode = "resumed"
+                except EngineError as error:
+                    session_mode = "degraded"
+                    resume_note = (
+                        "既有会话无法续接（已改为新建会话继续）：" + error.code.value
+                    )
+
+        if session_id is None:
+            try:
+                created = self._request(
+                    "session/new",
+                    {"cwd": workspace_dir, "mcpServers": []},
+                    self._session_timeout,
+                    omni_task_id=omni_task_id,
+                )
+            except EngineError as error:
+                # 受理阶段就失败时，不能让记录停留在 queued：否则该任务既没有回执给
+                # 调用方，又会被 recover_task 当成「进行中」的幻影任务。这里按契约
+                # 把记录落定为相应终态后再抛出，保证失败可诊断且不留悬空状态。
+                self._settle_failed(record, error)
+                raise
+            new_session_id = created.get("sessionId")
+            if not new_session_id:
+                error = EngineError(
+                    EngineErrorCode.ENGINE_UNAVAILABLE,
+                    "session/new did not return a session id",
+                    detail={"result_keys": sorted(str(k) for k in created.keys())},
+                    omni_task_id=omni_task_id,
+                )
+                self._settle_failed(record, error)
+                raise error
+            session_id = str(new_session_id)
+            if session_mode != "degraded":
+                session_mode = "new"
         with self._lock:
-            record.engine_session_id = str(session_id)
+            record.engine_session_id = session_id
+            record.session_mode = session_mode
             record.state = TaskState.STARTING
             record.evidence_source = "operator_confirm"
             record.state_since = now()
-            self._sessions[str(session_id)] = record
+            self._sessions[session_id] = record
         self._persist(record)
         self._start_prompt(record, text)
         with self._lock:
             state = record.state
+        if session_mode == "resumed":
+            receipt_note = "已续接既有引擎会话并提交；等待引擎终态证据"
+        elif session_mode == "continued":
+            receipt_note = "已在同一引擎会话内继续本轮；等待引擎终态证据"
+        elif session_mode == "degraded":
+            receipt_note = resume_note + "；等待引擎终态证据"
+        else:
+            receipt_note = "适配层已建立会话并提交；等待引擎终态证据"
         return SubmitTaskReceipt(
             omni_task_id=omni_task_id,
             status=state,
             accepted_at=record.created_at,
             engine_session_id=record.engine_session_id,
-            note="适配层已建立会话并提交；等待引擎终态证据",
+            note=receipt_note,
+            session_mode=session_mode,
         )
 
     def _start_prompt(self, record: _TaskRecord, text: str) -> None:
@@ -1087,10 +1159,16 @@ class AcpEngineAdapter:
             self._settle(record, TaskState.INTERRUPTED, "process_state", note=str(exc))
             return
         # task_started 是 OmniDesk 归一化事件，不是 ACP 原生事件。
+        # session_mode 如实记录本轮是新建会话还是续接既有会话（台账与证据用）。
         self._emit(
             record,
             EventType.TASK_STARTED,
-            {"normalized": True, "reason": "session/prompt 已发出", "intent": record.intent},
+            {
+                "normalized": True,
+                "reason": "session/prompt 已发出",
+                "intent": record.intent,
+                "session_mode": record.session_mode,
+            },
         )
         worker = threading.Thread(target=self._prompt_worker, args=(record, rid), daemon=True)
         worker.start()
@@ -1588,6 +1666,7 @@ class AcpEngineAdapter:
                     ),
                     cancel_phase=str(data.get("cancel_phase") or "not_requested"),
                     persistence="recorded",
+                    session_mode=str(data.get("session_mode") or "new"),
                 )
             )
         records.sort(key=lambda r: r.created_at, reverse=True)
