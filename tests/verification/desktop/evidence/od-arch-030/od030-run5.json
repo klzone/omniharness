@@ -1,0 +1,115 @@
+{
+  "label": "od030-run5",
+  "phase": "a",
+  "verdict": "ok",
+  "phase_a": {
+    "phase": "A",
+    "settings_text_names": [
+      "heading:模型权限 默认全部关闭",
+      "heading:新成果保存目录",
+      "heading:设置 本地"
+    ],
+    "guidance_source_checks": {
+      "本机回环": true,
+      "非回环": true,
+      "默认全部关闭": true,
+      "端点不在这里配": true,
+      "不读取凭证值": true,
+      "自行确认授权与数据去向": true,
+      "端点来自DSH侧配置": true,
+      "无法确认位置不放行": true
+    },
+    "guidance_hits": {
+      "本机回环": true,
+      "非回环": true,
+      "默认全部关闭": true,
+      "端点不在这里配": true,
+      "不读取凭证值": true,
+      "自行确认授权与数据去向": true,
+      "端点来自DSH侧配置": true,
+      "无法确认位置不放行": true
+    },
+    "permission_label_names": [
+      "check box:非回环地址 · 公网\n该端点不是本机回环，内容会发往本机以外的地址；是否离开你所在的组织无法从地址判断（也可能经过单位内代理）。请自行确认发布方的授权与数据去向后再开启。",
+      "check box:非回环地址 · 私有 / 链路本地网段\n该端点不是本机回环。地址范围只能说明它不是公网地址；**无法**据此判断它属于哪个组织、是否在你的单位网络内，也无法确认实际转发路径。请自行确认发布方的授权与数据去向后再开启。",
+      "check box:本机模型（localhost / 127.0.0.1 回环地址）\n可就地判定：内容不经过本机以外的地址。仍只用于允许范围内的材料。"
+    ],
+    "checkbox_states": [
+      {
+        "name": "非回环地址 · 公网\n该端点不是本机回环，内容会发往本机以外的地址；是否离开你所在的组织无法从地址判断（也可能经过单位内代理）。请自行确认发布方的授权与数据去向后再开启。",
+        "checked": false
+      },
+      {
+        "name": "非回环地址 · 私有 / 链路本地网段\n该端点不是本机回环。地址范围只能说明它不是公网地址；**无法**据此判断它属于哪个组织、是否在你的单位网络内，也无法确认实际转发路径。请自行确认发布方的授权与数据去向后再开启。",
+        "checked": false
+      },
+      {
+        "name": "本机模型（localhost / 127.0.0.1 回环地址）\n可就地判定：内容不经过本机以外的地址。仍只用于允许范围内的材料。",
+        "checked": false
+      }
+    ],
+    "settings_file_exists_before": false,
+    "settings_before": null,
+    "chat_input_when_off": {
+      "name": "模型权限未开启：可在设置中确认端点后启用",
+      "extents": [
+        203,
+        770,
+        1050,
+        23
+      ]
+    },
+    "send_button_enabled_when_off": null,
+    "chat_typed": {
+      "ok": true,
+      "xy": [
+        728,
+        781
+      ]
+    },
+    "chat_sent": false,
+    "task_when_permission_off": {
+      "state": null,
+      "error": null,
+      "waited_s": 20.0,
+      "existed": false
+    },
+    "permission_toggled": "本机模型（localhost / 127.0.0.1 回环地址）\n可就地判定：内容不经过本机以外的地址。仍只用于允许范围内的材料。",
+    "settings_after": {
+      "schema": "omnidesk.settings.v1",
+      "artifact_root": null,
+      "model_permissions": {
+        "local": true,
+        "private": false,
+        "public": false
+      }
+    },
+    "local_permission_written": true,
+    "chat_input_when_on": {
+      "name": "与 OmniDesk 协同探索、下达任务或记录灵感…",
+      "extents": [
+        203,
+        774,
+        1050,
+        23
+      ]
+    },
+    "send_button_enabled_when_on": false,
+    "material_field_name": "/tmp/od26/合成材料.md",
+    "material_typed": {
+      "ok": true,
+      "xy": [
+        237,
+        1450
+      ]
+    },
+    "read_clicked": true,
+    "generate_clicked": true,
+    "task_when_permission_on": {
+      "state": "succeeded",
+      "content": "合成回复内容",
+      "waited_s": 3.0
+    },
+    "verdict": "ok"
+  }
+}

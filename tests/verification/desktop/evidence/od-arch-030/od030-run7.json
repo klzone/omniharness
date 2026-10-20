@@ -1,0 +1,70 @@
+{
+  "label": "od030-run7",
+  "phase": "b",
+  "verdict": "ok",
+  "phase_b": {
+    "phase": "B",
+    "usage_file": "/home/kevin/OmniDesk/app/logs/usage.jsonl",
+    "usage_file_existed_before": true,
+    "checkboxes": [
+      "类似任务还愿意再用",
+      "结果可以直接用",
+      "本次流程完成"
+    ],
+    "usage_file_exists_after": true,
+    "records": [
+      {
+        "record_id": "20261020-042934-0000",
+        "schema": "omnidesk.usage.v1",
+        "task_type": "project_management",
+        "recorded_at": 1792470574.411191,
+        "completed": true,
+        "usable": true,
+        "rework_kind": "none",
+        "blocker": "none",
+        "duration_bucket": null,
+        "reuse_willingness": true
+      },
+      {
+        "record_id": "20261020-043037-0000",
+        "schema": "omnidesk.usage.v1",
+        "task_type": "project_management",
+        "recorded_at": 1792470637.3756838,
+        "completed": true,
+        "usable": true,
+        "rework_kind": "none",
+        "blocker": "none",
+        "duration_bucket": null,
+        "reuse_willingness": true
+      }
+    ],
+    "record_count": 2,
+    "unexpected_keys": [],
+    "body_free": true,
+    "readback_label": [
+      "查看记录（2）"
+    ],
+    "records_expanded": true,
+    "deleted_records": 2,
+    "records_after_delete": 0,
+    "tree_diff": {
+      "added": {},
+      "removed": {},
+      "changed": {
+        "app/logs/usage.jsonl": [
+          [
+            248,
+            1792470574.411
+          ],
+          [
+            0,
+            1792470643.263
+          ]
+        ]
+      }
+    },
+    "quarantine_untouched": true,
+    "runtime_untouched": true,
+    "verdict": "ok"
+  }
+}
