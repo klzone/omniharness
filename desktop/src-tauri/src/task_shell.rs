@@ -2076,83 +2076,68 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
 // 打开 DSH Desktop（模型/凭据设置界面）
 // ---------------------------------------------------------------------------
 
-/// DSH Desktop 的应用 id（系统安装的 `deepseek-harness.desktop`）。
-const DSH_DESKTOP_APP_ID: &str = "deepseek-harness";
-
-/// 在给定的候选目录里找 DSH Desktop 的 desktop 文件（找不到返回 None）。
+/// 拉起**与引擎同款、同一份数据根**的 DSH 设置界面（web profile）。
 ///
-/// 抽出来是为了能**在不启动任何东西**的前提下测「装没装」这一步。
-fn find_dsh_desktop_file(dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
-    dirs.iter()
-        .map(|dir| dir.join(format!("{}.desktop", DSH_DESKTOP_APP_ID)))
-        .find(|candidate| candidate.is_file())
-}
-
-/// 拉起已安装的 DSH Desktop，让用户在其模型/凭据设置页登记 key。
+/// 为什么不是直接打开系统里那个 DSH Desktop：它读的是**另一份** DSH 数据根（用户自己那份），
+/// 在那里登记的模型配置 OmniDesk 根本读不到——这正是实测到的问题。
+/// 这里用**引擎运行时自带**的 DSH CLI 启动 `web` profile，并把 `DSH_HOME` / `DSH_AGENTS_HOME`
+/// 指向引擎实际使用的那两个目录，于是「设置界面」与「引擎」共享同一份凭据与 Profile。
 ///
-/// 边界（与「打开成果目录」同一风格）：
-///   * 只执行固定的 `gtk-launch <app-id>`，**不拼接 shell 命令**，也不接受前端传入的
+/// 边界：
+///   * 只执行固定的 `node <dsh_cli> web`，**不拼接 shell 命令**，不接受前端传入的
 ///     命令、路径或 URL；前端只能请求「打开 DSH 设置」这一个固定动作。
-///   * 未安装或无法启动时**明确报错**，不静默失败、不假装已打开。
-///   * 本函数**不读、不写、不打印任何凭证文件**，只负责把设置界面拉起来；
-///     `dsh_home` 只是告诉用户「凭据服务的数据根在哪」，路径本身不是机密。
-pub fn open_dsh_settings(dsh_home: &Path) -> Result<serde_json::Value, String> {
-    // 1) 先确认系统里确实装了这个应用：找不到 desktop 文件就不尝试启动。
-    let mut dirs: Vec<std::path::PathBuf> = vec![
-        std::path::PathBuf::from("/usr/share/applications"),
-        std::path::PathBuf::from("/usr/local/share/applications"),
-    ];
-    if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
-        dirs.insert(0, std::path::PathBuf::from(xdg).join("applications"));
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        dirs.push(std::path::PathBuf::from(home).join(".local/share/applications"));
-    }
-    let mut found: Option<std::path::PathBuf> = find_dsh_desktop_file(&dirs);
-    let Some(desktop_file) = found else {
+///   * 启动失败时**明确报错**，不静默失败、不假装已打开。
+///   * 本函数**不读、不写、不打印任何凭证文件**；只把设置界面拉起来。
+///     界面上显示的路径只是「配置落在哪」，不是机密内容。
+pub fn open_dsh_settings(
+    dsh_home: &Path,
+    agents_home: &Path,
+    dsh_cli: &Path,
+    log_path: &Path,
+) -> Result<serde_json::Value, String> {
+    if !dsh_cli.is_file() {
         return Err(format!(
-            "未检测到 DSH Desktop（{}.desktop）。请先安装 DSH Desktop 后重试；\
-             或改用环境变量方式：启动前导出 DEEPSEEK_API_KEY 再运行启动器。",
-            DSH_DESKTOP_APP_ID
+            "找不到引擎运行时里的 DSH CLI：{}；请先完成运行时引导（scripts/bootstrap-runtime.sh）。",
+            dsh_cli.display()
         ));
-    };
-
-    // 2) 用固定的启动器拉起（app-id 来自上面的 desktop 文件名，不接受外部输入）。
-    let mut last_error = String::new();
-    let attempts: Vec<(&str, Option<PathBuf>)> = vec![
-        ("gtk-launch", None),
-        ("xdg-open", Some(desktop_file.clone())),
-    ];
-    for (program, arg) in attempts {
-        let mut cmd = std::process::Command::new(program);
-        if let Some(path) = arg {
-            cmd.arg(path);
-        } else {
-            cmd.arg(DSH_DESKTOP_APP_ID);
-        }
-        match cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "launched": DSH_DESKTOP_APP_ID,
-                    "dsh_home": dsh_home.display().to_string(),
-                    "note": "已启动 DSH Desktop。请在它的模型/凭据设置页登记该路由的 key；\
-                             本应用不读、不写、不复制任何凭证值。",
-                }))
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
     }
-    Err(format!(
-        "无法启动 DSH Desktop（{}）；已找到其安装项：{}",
-        last_error,
-        desktop_file.display()
-    ))
+    let node = std::env::var("OMNIDESK_NODE")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "node".to_string());
+    if let Some(parent) = log_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let out = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .map_err(|e| format!("打开 DSH 启动日志失败（{}）：{}", log_path.display(), e))?;
+    let err = out
+        .try_clone()
+        .map_err(|e| format!("复制日志句柄失败：{}", e))?;
+    let child = std::process::Command::new(&node)
+        .arg(dsh_cli)
+        .arg("web")
+        .env("DSH_HOME", dsh_home)
+        .env("DSH_AGENTS_HOME", agents_home)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(out))
+        .stderr(std::process::Stdio::from(err))
+        .spawn()
+        .map_err(|e| format!("启动 DSH（{}）失败：{}", node, e))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "launched": "dsh web",
+        "pid": child.id(),
+        "dsh_home": dsh_home.display().to_string(),
+        "agents_home": agents_home.display().to_string(),
+        "credentials_file": dsh_home.join(".credentials.yaml").display().to_string(),
+        "log_path": log_path.display().to_string(),
+        "note": "已启动与引擎同款的 DSH（web profile），并指向引擎正在用的那份 DSH 数据根——\
+                 同一份凭据与 Profile，你在这里登记的模型配置引擎能直接读到。\
+                 本地地址与启动日志见上面的日志文件；本应用不读、不写、不复制任何凭证值。",
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -3439,19 +3424,6 @@ mod material_tests {
         fs::write(&big, vec![b'a'; (MATERIAL_MAX_BYTES as usize) + 16]).unwrap();
         let err = read_material(big.to_str().unwrap()).unwrap_err();
         assert!(err.contains("超过上限"), "{}", err);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn dsh_desktop_lookup_finds_only_existing_desktop_files() {
-        let dir = material_dir("dsh_desktop");
-        // 没有 desktop 文件时必须找不到（→ 明确报错，不静默失败）。
-        assert!(find_dsh_desktop_file(&[dir.clone()]).is_none());
-        // 放一个同名 desktop 文件后必须能定位到。
-        let desktop = dir.join(format!("{}.desktop", DSH_DESKTOP_APP_ID));
-        fs::write(&desktop, "[Desktop Entry]\n").unwrap();
-        let found = find_dsh_desktop_file(&[dir.clone()]);
-        assert_eq!(found.as_deref(), Some(desktop.as_path()));
         let _ = fs::remove_dir_all(&dir);
     }
 
