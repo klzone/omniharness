@@ -5,6 +5,7 @@ import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
 import { Icon } from "../components/Icon";
 import { ModelPicker } from "./ModelPicker";
+import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
 
 /**
@@ -158,6 +159,8 @@ export function HomeChat({
   // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
   const [replayNextTurn, setReplayNextTurn] = useState(false);
   const effectiveEngineSessionId = engineSessionId ?? localEngineSessionId;
+  // 输入框是否有焦点：上报给骨架（输入框有焦点时不把顶部卡片放回来，OD-ARCH-042）。
+  const reportInputFocus = useChatInputFocus();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -738,6 +741,8 @@ export function HomeChat({
             value={input}
             disabled={busy}
             onChange={(e) => setInput(e.target.value)}
+            onFocus={() => reportInputFocus(true)}
+            onBlur={() => reportInputFocus(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
