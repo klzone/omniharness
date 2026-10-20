@@ -166,7 +166,7 @@ export function HomeChat({
   const [modelNote, setModelNote] = useState<string | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
-  const [modelEffort, setModelEffort] = useState("default");
+  const [modelEffort, setModelEffort] = useState("off");
   /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
   const [sendNote, setSendNote] = useState<string | null>(null);
   /** 已等待秒数（让「慢」可见，而不是像卡死）。 */
@@ -607,7 +607,7 @@ export function HomeChat({
       >
         {messages.map((m) =>
             m.role === "user" ? (
-              <div key={m.id} className="flex items-start justify-end space-x-3 max-w-2xl ml-auto">
+              <div key={m.id} className="flex items-start justify-end space-x-3 max-w-[80%] ml-auto">
                 <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13px] shadow-sm leading-relaxed whitespace-pre-wrap">
                   {m.text}
                 </div>
@@ -616,7 +616,7 @@ export function HomeChat({
                 </div>
               </div>
             ) : (
-              <div key={m.id} className="flex items-start space-x-3 max-w-3xl">
+              <div key={m.id} className="flex items-start space-x-3 max-w-[80%]">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
                   <Icon name="bot" className="w-[15px] h-[15px]" />
                 </div>
@@ -634,7 +634,7 @@ export function HomeChat({
                   {m.taskId && thoughts[m.taskId] ? (
                     <details
                       className="rounded-lg bg-surface-container/70 px-3 py-2 text-[11.5px] text-on-surface-variant"
-                      open={m.state !== "succeeded" && m.state !== "failed" ? true : undefined}
+                      open
                     >
                       <summary className="cursor-pointer select-none text-outline">
                         思考过程（模型产出，不计入最终结果）
@@ -643,6 +643,10 @@ export function HomeChat({
                         {thoughts[m.taskId]}
                       </p>
                     </details>
+                  ) : m.taskId && m.state && ["succeeded", "failed", "cancelled"].includes(String(m.state)) ? (
+                    <p className="text-[10.5px] text-outline">
+                      本轮没有思考内容（该模型/端点可能不返回思考过程，或思考等级为关闭）。
+                    </p>
                   ) : null}
 
                   {m.error ? (
