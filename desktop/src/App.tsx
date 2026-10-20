@@ -6,6 +6,7 @@ import Workbench from "./workbench";
 import { Dock, type Scene } from "./shell/Dock";
 import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { HomeCanvas } from "./shell/HomeCanvas";
+import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
 import { WindowResizeHandles } from "./shell/WindowChrome";
@@ -104,6 +105,11 @@ export default function App() {
       <div className="flex-1 min-h-0 flex flex-col">
         {scene === "home" ? (
           <HomeCanvas onNavigate={selectScene} />
+        ) : scene === "report" || scene === "writing" || scene === "project" ? (
+          <ScenePage
+            scene={scene === "report" ? "weekly" : scene === "writing" ? "writing" : "project"}
+            onNavigate={selectScene}
+          />
         ) : scene === "sessions" ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <Workspace />
