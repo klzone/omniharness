@@ -25,18 +25,28 @@ export interface ConversationPreset {
 }
 
 /** 重放进下一轮提示的上文上限（字符）。 */
-export const CONTEXT_MAX_CHARS = 4000;
+export const CONTEXT_MAX_CHARS = 2500;
+
+/** 参与重放的轮次窗口：最近 4 条用户消息 + 最近 2 条助手回复。 */
+export const CONTEXT_USER_TURNS = 4;
+export const CONTEXT_ASSISTANT_TURNS = 2;
 
 /**
  * 把本轮之前的内容与本轮输入拼成一份上下文。
  *
  * 只带用户与助手的**文本**；不带任务标识、内部状态、路径或任何正文之外的元数据。
+ *
+ * 窗口化说明：工作台每轮是**独立任务**（引擎侧每次新建会话），连续性靠这里重放上文实现，
+ * 所以重放越多、提示词越长、模型越慢。这里只保留最近若干轮 + 字符上限，
+ * 换来「上一轮说了什么」还在，同时不让提示词无限膨胀。
  */
 export function buildContext(turns: ConversationTurn[], current: string): string {
+  const users = turns.filter((t) => t.role === "user" && t.text).slice(-CONTEXT_USER_TURNS);
+  const assistants = turns.filter((t) => t.role === "assistant" && t.text).slice(-CONTEXT_ASSISTANT_TURNS);
+  const picked = [...users, ...assistants].sort((a, b) => turns.indexOf(a) - turns.indexOf(b));
   const parts: string[] = [];
-  for (const t of turns) {
-    if (t.role === "user" && t.text) parts.push("用户：" + t.text);
-    else if (t.role === "assistant" && t.text) parts.push("助手：" + t.text);
+  for (const t of picked) {
+    parts.push((t.role === "user" ? "用户：" : "助手：") + t.text);
   }
   parts.push("用户：" + current);
   const joined = parts.join("\n");

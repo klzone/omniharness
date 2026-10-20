@@ -69,7 +69,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 /** 轮询间隔（毫秒）。 */
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 300;
 /** 连续失败多少次后停止自动轮询，避免界面永久停在「生成中」。 */
 const MAX_POLL_FAILURES = 5;
 /** 单个任务最长等待（毫秒）。超时不代表成功，也不代表已终止。 */
@@ -167,6 +167,10 @@ export function HomeChat({
   const [modelBusy, setModelBusy] = useState(false);
   /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
   const [modelEffort, setModelEffort] = useState("default");
+  /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
+  const [sendNote, setSendNote] = useState<string | null>(null);
+  /** 已等待秒数（让「慢」可见，而不是像卡死）。 */
+  const [elapsed, setElapsed] = useState(0);
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -439,6 +443,18 @@ export function HomeChat({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // 生成中的计时：让等待可见
+  useEffect(() => {
+    if (!activeTaskId) {
+      setElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    setElapsed(0);
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
+    return () => window.clearInterval(timer);
+  }, [activeTaskId]);
+
   const submitText = useCallback(
     async (raw: string) => {
       const text = raw.trim();
@@ -534,9 +550,15 @@ export function HomeChat({
   const send = useCallback(() => {
     const text = input.trim();
     if (!text) return;
+    if (busy) {
+      // 上一条还在生成：不静默丢弃，明确告诉用户（否则看起来像「没有回复」）。
+      setSendNote("上一条还在生成中，这条先没发出去。等它结束（或点「取消生成」）再发。");
+      return;
+    }
+    setSendNote(null);
     setInput("");
     void submitText(text);
-  }, [input, submitText]);
+  }, [input, busy, submitText]);
 
   /** 手动重试：重新进入轮询（已终态的任务会立即走到结果回读）。 */
   const retryQuery = useCallback((taskId: string) => {
@@ -604,6 +626,7 @@ export function HomeChat({
                     <span>
                       模型输出 · 未复核
                       {m.state ? " · " + STATE_LABEL[m.state] : ""}
+                      {m.taskId && activeTaskId === m.taskId && elapsed > 0 ? ` · 已等待 ${elapsed}s` : ""}
                       {m.stopReason ? " · stop=" + m.stopReason : ""}
                     </span>
                   </div>
@@ -625,6 +648,11 @@ export function HomeChat({
                   {m.error ? (
                     <div className="rounded-lg bg-error-container text-on-error-container px-3 py-2 text-[12px] leading-relaxed">
                       {m.error}
+                    </div>
+                  ) : !m.text && m.state === "succeeded" ? (
+                    <div className="rounded-lg bg-surface-container px-3 py-2 text-[12px] leading-relaxed text-on-surface-variant">
+                      引擎报告已完成，但**没有返回任何正文**。若界面此时空白，请点「重新查询」；若反复如此，
+                      把这次任务号告诉我（可在应用数据根的 engine-state 里查到）。
                     </div>
                   ) : m.text ? (
                     <p className="text-on-surface-variant leading-relaxed whitespace-pre-wrap break-words">
@@ -735,6 +763,7 @@ export function HomeChat({
       </div>
 
       {modelNote ? <p className="text-[10.5px] text-outline pb-1">{modelNote}</p> : null}
+      {sendNote ? <p className="text-[10.5px] text-outline pb-1">{sendNote}</p> : null}
 
       {/* 底部状态行：模型权限 + Token 上下文用量，一行显示。
           顶部「LOCAL IPC ACTIVE」表示引擎 IPC 健康；这里表示权限与用量，含义不同。
