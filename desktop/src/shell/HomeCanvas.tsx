@@ -1,6 +1,7 @@
 import { Icon } from "../components/Icon";
 import type { Scene } from "./Dock";
 import { HomeChat } from "./HomeChat";
+import { PeekPanel } from "./PeekPanel";
 import { SceneScaffold } from "./SceneScaffold";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 
@@ -34,8 +35,8 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
     <SceneScaffold
       upper={
         <>
-      {/* 上部：问候 + 一行三模块 */}
-      <section className="flex flex-col flex-shrink-0 pt-2 pb-4 mb-2">
+      {/* 上部：问候 + 一行三模块（收进悬停面板，把纵向空间让给对话） */}
+      <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
         <div className="pb-3 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
           <h1 className="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-tight">
             {greeting(now)}
@@ -45,6 +46,7 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
           </h1>
         </div>
 
+        <PeekPanel label="今日概览" hint="机器人 · 重点推进 · 日程节律">
         <div className="relative flex flex-col lg:flex-row items-stretch gap-4">
           {/* 左：机器人（本地透明背景资源），独立一列、底部对齐 */}
           <div className="hidden lg:flex w-[112px] shrink-0 flex-col items-center justify-end">
@@ -114,6 +116,7 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
             </div>
           </div>
         </div>
+        </PeekPanel>
       </section>
         </>
       }

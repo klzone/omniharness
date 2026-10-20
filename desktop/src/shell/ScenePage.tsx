@@ -14,6 +14,7 @@ import {
 import type { OfflineArtifactEntry } from "../types";
 import { AnnouncementBar } from "./AnnouncementBar";
 import { HomeChat } from "./HomeChat";
+import { PeekPanel } from "./PeekPanel";
 import { SceneScaffold } from "./SceneScaffold";
 import type { Scene } from "./Dock";
 
@@ -168,9 +169,15 @@ export function ScenePage({
   );
 
   const upper = (
-    <>
-      <AnnouncementBar scene={def} itemsText={itemsText} onOpenArtifact={(f) => void openArtifact(f)} />
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 max-h-[30vh]">
+    <PeekPanel label="提醒 · 成果 · 进度" hint="悬停查看">
+      <div className="flex flex-col lg:flex-row gap-4 max-h-[52vh]">
+        <div className="lg:w-[320px] shrink-0 flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <AnnouncementBar
+            scene={def}
+            itemsText={itemsText}
+            onOpenArtifact={(f) => void openArtifact(f)}
+          />
+        </div>
         {/* 左栏：本场景历史对话 */}
         <section className="lg:w-[300px] shrink-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
           <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
@@ -312,7 +319,7 @@ export function ScenePage({
           </div>
         </section>
       </div>
-    </>
+    </PeekPanel>
   );
 
   return (
