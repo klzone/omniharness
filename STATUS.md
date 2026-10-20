@@ -1,5 +1,62 @@
 # BUILDER 执行状态
 
+## OD-ARCH-030：真实使用前置收口（2026-10-20，ARCHITECT 执行）
+
+- **授权：** 用户「批准执行 OD-ARCH-030」。开工快照：HEAD `653bf4a`（与 `origin/main` 一致）、工作区 6 项登记差异
+  + 1 个遗留 0 字节文件；未改 `runtime/`、模型路由、凭证、真实材料与用户数据；未合并 `omniharness-ui` worktree。
+
+### ① 端点设置引导与验证（通过，含 1 处文案修正）
+
+- **文案核实（源码 + 渲染截图）：** 设置页「模型权限」引导覆盖 8 项要点，逐项核对为真：本机回环 / 非回环
+  （私有·链路本地、公网）分类说明、默认全部关闭、无法确认位置的端点永不放行、自行确认发布方的授权与数据去向、
+  端点来自 DSH 侧配置、不读取凭证值、刷新端点信息的路径。
+- **修正（唯一的产品代码改动）：** 原文「请先在**隔离环境**中把模型配置指向明确的地址」会让人以为要在隔离环境里
+  改端点；实际端点来自 DSH 侧模型配置。已改为「请先把 DSH 侧的模型配置指向一个明确的地址，再回到本页点
+  「刷新端点信息」」，并在权限区块补一段：端点不在这里配、本应用只读**非机密**的 provider/model/地址用于判定、
+  **不保存端点也不读取凭证值**。未改路由代码与凭证。
+- **假端点验证（真实窗口 + 回环假端点 + 一次性隔离根）：**
+  - 默认：三个权限开关全部未勾选；
+  - 权限关闭时提交：输入框占位提示变为「模型权限未开启：可在设置中确认端点后启用」、发送按钮不可用、
+    **未产生任何任务**（20 s 内台账无记录）→ **不出错、不静默降级**；
+  - 界面开启「本机模型」→ 设置文件写入 `model_permissions.local=true` → 首页占位提示变回可提交文案（准入已传播）；
+  - 开启后真实调用：场景页「读取材料 → 生成模型初稿」终态 `succeeded`，返回合成端点内容。
+  → **端点判定 → 权限开关 → 配置落盘 → 提交放行 → 模型返回**链路打通。
+
+### ② 使用记录持久化到正式数据根（通过）
+
+- **落盘位置** `~/OmniDesk/app/logs/usage.jsonl`（应用数据根的 logs/，仓库外）。此前自检落在 `/tmp`
+  只是因为测试覆盖了 `OMNIDESK_APP_DATA_ROOT`；**产品代码无需改动**即可落到正式根。
+- **格式：** 只含枚举与时间（`record_id/schema/task_type/recorded_at/completed/usable/rework_kind/blocker/
+  duration_bucket/reuse_willingness`），**无输入、输出、正文、标题、路径或会话**。
+- **读回：** 界面「查看记录（2）」，展开后逐条列出。
+- **清理：** 用产品自带的**逐条删除**清掉本轮 2 条合成记录 → 文件回到 **0 字节**，正式根干净，
+  用户的首次真实使用不会混入测试数据。
+- **边界核对（目录快照前后比对）：** `~/OmniDesk/quarantine/`（真实案件材料）与 `~/OmniDesk/runtime/`（含凭证）
+  **均未新增、未改动、未删除**；`~/OmniDesk/app/config/offline-flows.v1.json` 是应用首启写入的**可编辑流程包副本**
+  （2918 字节，无凭证无用户数据），属正常首启行为。
+- **保留期限与清理规则已登记：** `docs/OmniDesk-Desktop-Data-Layout.md` §5.1（默认不自动清理；由用户在界面
+  逐条/整体清除；验证数据必须在验证后删除；不进 Git；不得与 `quarantine/`、`runtime/` 混放混备）。
+
+### ③ 遗留杂物清理（完成）
+
+删除仓库根 0 字节文件 `当前没有正在执行中的`（2026-10-16 遗留、无内容、无引用；用户批准本计划即视为授权）。
+
+### ④ 提交与推送（见下方「OD-ARCH-030 提交与推送」小节）
+
+### 未验证 / 限制
+
+- **真实端点未验证**：全程用回环假端点；真实服务商端点的配置与判定未验证。
+- **真实模型质量**：内容来自合成端点。
+- **原生 Wayland 未覆盖**：本轮用 XWayland（用户会话），因为原生 Wayland 无合成输入通道（见 OD-ARCH-027 §9）。
+- **T-001 双 agent 复测本轮未执行**：本会话的 subagent 仍返回 `Unknown agent: super-plan`；①②③ 已由另一会话的
+  **真实 subagent 调用**闭环并登记在 `docs/agent-toolchain-retest.md`（随 ④ 一并提交），
+  ④（super-plan → super-worker 派工）因 OpenCode 子代理深度限制**未通过**，两条可选路径待用户决策。
+- **工作区：** 开工 7 项 → 本轮结束后仅剩明确说明的未跟踪项（0 字节文件已删，剩余项为提交前状态登记差异）。
+
+## OD-ARCH-030 已制定待批准（2026-10-20，ARCHITECT）
+
+计划登记，非执行记录。OD-ARCH-029 复核通过后制定：真实使用前置收口（端点设置引导验证、使用记录持久化到 ~/OmniDesk 正式根、遗留 0 字节文件清理、文档登记提交推送）。全文见 PLANS.md 顶部。批准后执行；完成后交 ARCHITECT 复核，通过即进入用户首次真实使用。
+
 ## OD-ARCH-029：备份收口 + 双 Agent 复测 + 使用记录通道自检（2026-10-20，ARCHITECT 执行）
 
 - **授权：** 用户「批准 OD-ARCH-029」。该计划明确「批准即视同授权其中的 Git 提交与推送动作」。
@@ -131,6 +188,9 @@
 - **配置修正：** 首测发现白名单缺 `git rev-parse*`（HEAD 快照必需），已补入 `super-plan.md` 权限。
 - **静态校验（部署后自检）：** 两文件 frontmatter 以 YAML 解析通过；super-plan 16 条权限规则顺序正确（`*/*` deny 在首、read/grep/glob allow、edit 仅 `PLANS.md`、只读 git 五条 allow、subagent 仅 `super-worker`、凭证类 read deny 五条在末）；super-worker 无 permissions 段。system prompt 长度：super-plan 1166 字符、super-worker 744 字符。
 - **未验证/限制（挂起原因：GLM 与 DeepSeek 双通道限流，且用户 2026-10-19 指示「先别测试 agent，先部署好」——属主动暂缓，非失败）：** 补白名单后 `git rev-parse*` 的复测、含管道/复合命令的匹配语义、super-plan→super-worker 派工端到端链路；agent 的模型绑定为配置事实，运行时实际模型由 OpenCode 解析决定。
+- **复测完成记录（2026-10-20 晚，限期解除后，ARCHITECT，subagent 真实调用）：** ① `git rev-parse HEAD` **成功**（白名单放行生效）——首次尝试因 agent 自报 workdir 笔误被 `external_directory` 拒绝（反而证实了外路径防线），补跑后通过；② **管道命令被拒**：`git status --porcelain | wc -l` 返回 `Permission denied: shell`，对比此前单条 `git status --porcelain` 成功 → **白名单只按单条命令前缀匹配，管道整体不匹配**，超级Plan 需逐条运行只读命令，语义安全合理；③ `git diff --check HEAD` **成功**（输出为空）；④ super-plan→super-worker 派工**未通过**：super-plan 自身作为子 agent 时再嵌套派工撞运行时深度限制（默认 1，错误原文 `Subagent depth limit reached (1). Increase "experimental.subagent_depth"...`，该键已在官方 schema 核实）。④ 的两条路径（A. 超级Plan 以主 agent 使用/批准后直调 super-worker；B. 配置 `experimental.subagent_depth: 2` 属实验性设置且超出 T-001 边界）**待用户选择**，另见 [docs/agent-toolchain-retest.md](docs/agent-toolchain-retest.md) 复测结果表。同时直连验证：super-worker 加载正常并自述模型 `deepseek-v4.1-flash-free`（会话配置自报，非逐 token 凭据）。
+- **复测重试记录（2026-10-19 23:5x → 2026-10-20 07:2x，ARCHITECT）：** 用户指示「隔 5 分钟测试一次，重试 99 次再失败就结束任务」。按 5 分钟间隔连续重试 **99 次**，super-plan 与 super-worker 交替探测，**99/99 全部返回 `Rate limit exceeded. Please try again later.`**。**关键诊断：** 同一重试窗口内，**内置 `general` agent（继承本会话模型 MiniMax M3.1 Flash Free）调用成功** → 限流是 **GLM-5.3-Flash Free 与 DeepSeek V4.1 Flash Free 两个模型自身的免费额度**，不是 OpenCode 子 agent 通道故障、不是本项目配置缺陷、不是 agent 发现机制问题。本会话内两个 agent **曾被成功发现并加载**（见上「实测」条），与另一会话记录的 `Unknown agent: super-plan` 现象不一致，**原因未查证**。与另一会话记录的 `Unknown agent: super-plan` 现象**并存，原因未查证**；本会话后续实测发现两 agent 均可被调用（见上「实测」条与「复测完成记录」），两处证据并存。**复测结论（②）**：管道/复合命令匹配语义已明确——白名单只按单条命令前缀匹配；**（④）** super-plan→super-worker 派工链路未通过，原因是子 agent 嵌套深度限制（默认 1），两条路径待用户选择，见 [docs/agent-toolchain-retest.md](docs/agent-toolchain-retest.md)。
+- **工作区外部变动（非本会话所为，事实记录）：** 等待期间工作区被**外部提交并推送**——HEAD `5ffc710` → `653bf4a`；两个 agent 文件进入提交 `593c49f`（`chore(opencode): 新增「超级Plan / 超级劳工」两个项目级 agent`）；另有 `2b4be2d` / `3f84ca5` / `653bf4a` 三个后续提交。本会话**未执行任何 commit/push**。当前工作区仅剩 1 个 2026-10-16 遗留的 0 字节未跟踪文件 `当前没有正在执行中的`。
 - **工作区：** 新增 `.opencode/` 目录（2 个文件）；既有 111 项差异未触碰；未触碰 `runtime/`、业务代码、模型路由与凭证。
 
 ## 窗口外框一体化（frameless，2026-10-19，ARCHITECT 直接实施 + 用户验收）

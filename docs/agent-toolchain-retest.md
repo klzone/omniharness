@@ -1,7 +1,36 @@
-# T-001 复测清单：超级Plan / 超级劳工（2026-10-20）
+# T-001 复测清单：超级Plan / 超级劳工（2026-10-20 晚更新：①②③已闭环，④待用户决策）
 
 > 这三项在 2026-10-19 部署时被**主动挂起**（用户指示「先别测试 agent，先部署好」），不是失败、也不是通过。
 > 部署与静态校验已完成；缺的是**运行复测**。本清单把它们写成可直接照做的三步。
+
+## 复测结果（2026-10-20 晚，限期已解除后执行，subagent 真实调用）
+
+| 复测项 | 结果 | 关键证据 |
+|---|---|---|
+| ① `git rev-parse*` 放行 | **通过** | 单条 `git rev-parse HEAD`（workdir=仓库根）成功输出 HEAD `653bf4a`。首次尝试因 agent 自报 workdir 笔误（`/mmnt/...`）被 `Permission denied: external_directory` 拒绝——该拒绝**证实工作区外路径防线生效**，补跑正确 workdir 后成功 |
+| ② 管道/复合命令匹配语义 | **结论明确：管道被拒** | 单条 `git status --porcelain` 曾成功；`git status --porcelain \| wc -l`（workdir 无误）返回 `Permission denied: shell`。即 `git status*` 只按**单条命令**前缀匹配放行，管道命令整体不在白名单内。影响：超级Plan 的开工快照需**逐条**运行只读命令（`git status --porcelain` 本身可跑，不能接 `\| wc -l`）；这也是安全上合理的语义 |
+| ③ `git diff --check HEAD` | **通过** | 成功，输出为空（当前 HEAD 无空白类差异） |
+| ④ super-plan→super-worker 派工 | **未通过（原因已查证，非配置缺陷）** | super-plan 自身**作为子 agent** 时再调 sub-worker，运行时返回 `Subagent depth limit reached (1). Increase "experimental.subagent_depth" to allow nested subagents.`；已核实官方 schema：`experimental.subagent_depth`（整数，默认 1 = 禁止子 agent 内再派工） |
+
+④ 的两条可选路径（需用户选择其一，未经批准不擅自改配置）：
+- **A. 使用方式适配（零配置改动）**：超级Plan 以**主 agent** 身份使用（它配置 `mode: all`，可在会话中选择为主 agent）；主 agent 深度为 0，派工应不被深度限制。批准后的执行也可由 ARCHITECT/用户直接调 `super-worker`（本会话已直连验证 super-worker 可用、模型自报 `deepseek-v4.1-flash-free`）。
+- **B. 配置改动**：新增项目级配置 `experimental.subagent_depth: 2`，允许嵌套派工。属**实验性设置**，且超出 T-001 已批准的「不创建 opencode.json」边界，须用户明确批准。
+
+## 新增证据（2026-10-20 凌晨）：阻塞已被定性为「模型额度」，不是 agent 发现
+
+在 5 分钟间隔下连续重试 **99 次**（约 8.3 小时，2026-10-19 23:5x → 2026-10-20 07:2x，super-plan 与 super-worker 交替探测），
+两个 agent **每次都返回 `Rate limit exceeded. Please try again later.`**。同一次重试窗口内，
+**内置 `general` agent（继承本会话模型）调用成功**。据此：
+
+- **阻塞点是两个绑定模型（`opencode/glm-5.3-flash-free`、`opencode/deepseek-v4.1-flash-free`）的免费额度**，
+  不是 OpenCode 子 agent 通道故障，不是本项目配置缺陷，也不是 agent 目录路径写错。
+- **「必须换新会话才能发现 agent」并非必要条件**：同一批 agent 文件在本会话创建后**立即被成功发现并加载**
+  （super-plan 完成了只读调研与单条 `git status --porcelain`，super-worker 加载并自述模型为 DeepSeek V4.1 Flash Free）。
+  与本文件 §0 记录的「`Unknown agent: super-plan`」差异，**原因未查证**（可能是不同会话的 agent 目录快照时机差异），
+  在查清前不要把「换会话」当作已验证的解法。
+- 复测仍需在**额度恢复后**执行；在此之前，本清单三项**保持挂起**（既非通过也非失败）。
+- 附带事实：等待期间工作区被**外部提交并推送**（HEAD `5ffc710` → `653bf4a`，agent 文件进入提交 `593c49f`），
+  本清单与两个 agent 文件均已在 `origin/main`；复测无需再动 Git 历史。
 
 ## 0. 为什么必须换一个新会话
 
