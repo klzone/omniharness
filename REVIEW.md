@@ -1,5 +1,26 @@
 # ARCHITECT 审查记录
 
+## OD-ARCH-034：模型路由切换（对话流里的模型下拉，2026-10-20）
+
+**结论：根因查实并修好——用户实测「在 DSH 界面配了自定义模型，回 OmniDesk 刷新端点仍是 deepseek、任务只拿到 partial」，
+原因是 DSH 的**模型选择按 Profile 存**：用户改的是 `web` Profile，引擎跑的是 `acp` Profile，两边**只有凭据共享**。
+现已提供模型下拉（对话区右下角、发送按钮前），选中即写入 OmniDesk 自己的路由覆盖文件，引擎与端点判定共用同一份。**
+
+- **根因（实测）：** `web` Profile 生效 `agnescn / agnes-3.0-flash`（baseURL `https://api.agnes-ai.cn/v1`，
+  key 以 ref `AGNESCN_API_KEY` 形式存在**共享**凭据里）；`acp` Profile（引擎所用）仍是 `deepseek-official /
+  deepseek-flash` 且无 key → 任务 partial/失败。「刷新端点」显示 deepseek 是**如实反映引擎那条路**，不是界面骗人。
+- **实现：** 新增 `model-routes.mjs`（只用 DSH 公开的 `--dump-config`；`--list` 列候选、`--write-overlay` 写覆盖文件，
+  **只含非机密字段**，key/secret 一律剔除）+ `model_routes.rs`（宿主调用）+ 引擎 patch 列表附加该覆盖文件 +
+  `task_list_model_routes` / `task_set_model_route` 两个命令 + 对话区下拉。
+- **实测：** 覆盖后分类器判定为 `agnescn / agnes-3.0-flash @ api.agnes-ai.cn`（public）；应用内下拉显示
+  「模型：agnescn / agnes-3.0-flash」，位置为**右下角、发送按钮前**（截图
+  `evidence/od-arch-034/shots/od034-chat-model-dropdown.png`）；覆盖文件里**没有任何 key**。
+- **边界：** 写的是 **OmniDesk 自己数据根**下的那一个文件，**不碰用户的 DSH Profile**；切换会停掉并重启引擎
+  （路由在引擎启动时确定），停不掉就**明确报错**。
+- **需复核确认：** 本轮新增了两个宿主命令与一个覆盖文件机制，超出此前「宿主不新增命令」的边界——
+  但这是用户明确要求的功能（对话里要有模型下拉），故实现并在此标注。
+- **未验证：** 切换后的真实模型往返（需真实 key，属用户真实使用范围）；对已发出的任务无效。
+
 ## OD-ARCH-033：场景模块页（骨架化 + 双栏 + 提醒/建议栏 + 会话打标，2026-10-20）
 
 **结论：结构目标 1/2/3 与 v3 的提醒/建议栏已落地并可截图佐证；目标 4（线程落到仓库外数据根）与

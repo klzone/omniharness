@@ -16,6 +16,7 @@ pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod flow_pack;
+pub mod model_routes;
 pub mod route_classifier;
 pub mod settings;
 pub mod sha256;
@@ -768,6 +769,84 @@ fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Va
         host.paths.logs.join("dsh-settings.log")
     };
     task_shell::open_dsh_settings(&dsh_home, &agents_home, &dsh_cli, &log_path)
+}
+
+/// 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
+///
+/// 供工作台的模型下拉使用：**不同 Profile 的模型选择互不相通**（只有凭据共享），
+/// 这里把各 Profile 的候选都列出来，由用户选一个。
+#[tauri::command]
+fn task_list_model_routes(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    let profiles = model_routes::discover_profiles(&config.dsh_home, &config.profile);
+    let mut result = model_routes::list_routes(&config, &profiles)?;
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert(
+            "engine_profile".to_string(),
+            serde_json::Value::String(config.profile.clone()),
+        );
+        obj.insert(
+            "overlay".to_string(),
+            serde_json::Value::String(
+                model_routes::overlay_path(&app_root).display().to_string(),
+            ),
+        );
+    }
+    Ok(result)
+}
+
+/// 选定模型：把该 Profile 的 provider 配置 + 选中的模型写成 OmniDesk 自己的覆盖文件，
+/// 然后停掉引擎（下次任务按新路由重启）并重新判定端点。
+///
+/// 只写 OmniDesk 数据根下的那一个文件（只含非机密字段），**不碰用户的 DSH Profile**；
+/// key 仍由共享凭据服务按 provider 的 `apiKeyEnv` 提供。
+#[tauri::command]
+fn task_set_model_route(
+    state: State<'_, SharedHost>,
+    source_profile: String,
+    provider: String,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    let overlay = model_routes::overlay_path(&app_root);
+    let written = model_routes::select_route(&config, &overlay, &source_profile, &provider, &model)?;
+
+    // 引擎已在跑时旧路由仍在生效：先停掉它，下次任务会按新覆盖文件重启。
+    let lifecycle = {
+        let host = state.lock().unwrap();
+        Arc::clone(&host.lifecycle)
+    };
+    let change = lifecycle.begin_change();
+    match stop_engine(state.inner(), Duration::from_secs(10)) {
+        Ok(_) => {
+            change.succeed();
+        }
+        Err(message) => {
+            change.fail(message.clone());
+            return Err(format!(
+                "模型路由已写入，但未能确认引擎停止（{}）；请到设置页手动停止引擎后再试。",
+                message
+            ));
+        }
+    }
+
+    // 用新的覆盖文件重新判定端点（配置里已包含该覆盖）。
+    let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    let facts = route_classifier::classify(&config)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "written": written,
+        "route": facts,
+        "note": "已切换模型路由：引擎与端点判定现在用同一份路由（OmniDesk 数据根下的覆盖文件，只含非机密字段）。",
+    }))
 }
 
 /// 读取（必要时首次创建）离线流程包。
