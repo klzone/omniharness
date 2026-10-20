@@ -64,6 +64,14 @@ check("truncated_drops_oldest", !truncated.includes("OLD-MARKER"), "");
 check("truncated_keeps_newest", truncated.includes("NEW-MARKER"), "");
 check("truncated_within_budget", truncated.length <= mod.CONTEXT_MAX_CHARS + 200, String(truncated.length));
 
+// 3b) 轮次窗口：只重放最近若干轮（更早的历史不进提示词）
+const many = [];
+for (let i = 1; i <= 6; i += 1) many.push({ role: "user", text: "U" + i });
+const windowed = mod.composeConversationPrompt({ preset: null, turns: many, current: "NOW" });
+check("window_drops_old_user_turns", !windowed.includes("U1"), windowed.slice(0, 80));
+check("window_keeps_recent_user_turns", windowed.includes("U6") && windowed.includes("U3"), "");
+check("window_bounded_chars", windowed.length <= mod.CONTEXT_MAX_CHARS + 200, String(windowed.length));
+
 console.log(JSON.stringify({ cases, failed: cases.filter((c) => !c.ok).length }));
 """
 
