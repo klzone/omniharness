@@ -1,5 +1,25 @@
 # ARCHITECT 审查记录
 
+## 正式环境启动器 `scripts/omnidesk.sh`（新增能力，2026-10-20）
+
+**结论：可用；开发启动器的硬边界未被削弱；真实端点的 key 仍缺，属用户自己的选择。**
+
+- **为什么另建而不是加开关：** `scripts/dev-ui.sh` 的文件头与 `--real` 分支都明确写着
+  「本启动器只支持隔离合成端点，不提供 `--real`」（OD-ARCH-004）。因此新增**独立**启动器
+  `scripts/omnidesk.sh`，而不是给开发启动器开洞——两条路、两个数据域，边界更清楚。
+- **边界核对：** 启动器**不设置**任何 `OMNIDESK_*` 隔离变量（宿主按默认解析到正式根）、
+  **不注入**合成 provider 覆盖、**不写**凭证、**不开启**任何模型权限（默认全关）、
+  **不碰** `runtime/`、**不提交** Git；停止前按命令行指纹核对进程身份，不误杀别的实例。
+- **实测：** 启动/状态/停止三态正常；应用跑在原生 Wayland；使用记录落点为 `~/OmniDesk/app/logs/usage.jsonl`（正式根）。
+- **一次需要澄清的观察（已查证，非缺陷）：** 正式根出现 `model_permissions` 三项全为 `true` 的设置文件。
+  复现排除「启动自动写默认」：用一次性全新应用数据根启动后 `config/` 为空；代码里只有
+  `set_model_permission` / `revoke_all_model_permissions` / `set_artifact_root` 三个写点，均由显式命令触发。
+  → 该文件来自界面上的勾选操作。同期的两条真实任务**失败**且报错明确
+  （`no API key for provider route "deepseek-official"`），**未写出任何正文**，符合「失败响亮、不静默降级」。
+- **待用户处理：** 真实路由是 `api.deepseek.com`（类别 **非回环 · 公网**），凭据服务里只有 `OPENDESIGN_API_KEY`，
+  缺该路由的 key；补 key 的两条正规路径（写进 DSH 凭据服务 / 启动时导出 `DEEPSEEK_API_KEY`）写在
+  [docs/pilot-first-real-use.md](docs/pilot-first-real-use.md)。**本仓库不代取、不打印、不写入任何 key。**
+
 ## OD-ARCH-030：真实使用前置收口（ARCHITECT 执行与复核，2026-10-20）
 
 **结论：四件事全部达成**——端点引导文案完整并修正了一处误导表述、假端点下「判定→开关→落盘→放行→模型返回」
@@ -55,6 +75,19 @@
 - **遗留（不在本计划内）：** 那个 0 字节空文件的清理、真实使用体验数据、release 内嵌产物验证、
   真实模型端点启用与 UI 微调，均需另行单独批准。
 
+## OD-ARCH-030：ARCHITECT 独立复核（2026-10-20）
+
+**结论：通过。** 基于 git log 实测、提交 diff 逐项核对、证据 JSON 与正式数据根现场核验，非采信执行方自述。
+
+- **端点设置引导修正属实且正确：** b5fb000 的 SettingsPanel.tsx 改动仅 8 行文案——「在隔离环境中改端点」的错误说法改为「改 DSH 侧模型配置后回本页刷新」，并补明应用只读非机密 provider/model/地址、不保存端点不读凭证。不改判定与路由代码，改动范围与计划一致。证据 od030-run5.json 显示 8 项引导要点与三类权限开关（默认全关、关闭时输入框明确提示且不产生任务、开启后配置落盘并放行到模型返回）全部实测通过。
+- **使用记录持久化属实：** 现场核验 ~/OmniDesk/app/logs/usage.jsonl 存在且为 0 字节（测试记录已用产品自带删除清空），首次真实使用不会混入测试数据。数据布局 §5.1 已登记保留与清理规则。quarantine/ 与 runtime/ 目录未被动过（目录清单比对一致）。
+- **遗留杂物已删：** 0 字节文件「当前没有正在执行中的」已按授权删除。
+- **提交推送属实：** 3 批提交（b5fb000/2a9ddf5/8645413）+ 本轮登记（581c964），HEAD 与 origin/main 一致；历史全量文件清单再次核查无凭证类文件。工作区剩 5 个登记文件差异 + 1 个未跟踪 .opencode/opencode.json。
+- **T-001 双 agent 复测全部闭环（超计划收益，如实认可）：** ① git rev-parse 放行通过（且工作区外路径防线被意外证实生效）；② 管道命令被拒、语义明确（白名单按单条命令匹配，安全上合理）；③ git diff --check 通过；④ 派工链路在用户批准 B 方案（项目级 opencode.json 设 subagent_depth: 2）后端到端调通，super-worker 自报模型与 ARCHITECT 独立核实的 HEAD 一致。「换会话才能发现 agent」的旧疑点确认非必要条件。
+- **如实保留的限制：** 真实服务商端点与真实模型质量未验证（本轮全程合成端点）——这正是把首次真实使用交给用户的原因；原生 Wayland 未覆盖（合成输入通道限制，非缺陷）。
+
+**验收放行：** 首次真实使用的前置条件全部满足。用户按 docs/pilot-first-real-use.md 执行，体验数据与改动要求反馈后进入下一轮需求。
+
 ## OD-ARCH-029：ARCHITECT 独立复核（2026-10-20）
 
 **结论：通过（备份收口 + 使用记录通道；T-001 复测保持挂起，阻塞定性成立）。** 基于 git log 实测、推送后远端状态、历史全量敏感路径核查与本轮证据文件独立验证，非采信执行方自述。
@@ -72,7 +105,7 @@
 
 ## T-001：固定双 Agent「超级Plan / 超级劳工」配置（2026-10-19）
 
-**结论：配置已部署完成并已入库，静态校验通过，运行验证**部分通过**；剩余三项复测经 99 次重试仍未完成，阻塞已定性为**绑定模型的免费额度**（非配置缺陷、非 agent 发现问题），状态**挂起**（挂起 ≠ 失败，也 ≠ 已通过）。** 本次由 ARCHITECT 自行实施并自查（非 BUILDER 交付后独立复核），证据等级为真实运行调用 + 静态解析，不含推断结论。**入库事实：两个 agent 文件在等待期间被外部提交（`593c49f`）并随 OD-ARCH-029 批次推送 `origin/main`；本会话未执行任何 commit/push。**
+**结论（2026-10-20 晚最终版）：①②③④ 全部闭环——部署可用、静态校验通过、三项复测通过、④ 派工链路经用户批准 `experimental.subagent_depth: 2` 后端到端调通。** 本次由 ARCHITECT 自行实施并自查（非 BUILDER 交付后独立复核），证据等级为真实运行调用 + 静态解析，不含推断结论。**入库事实：两个 agent 文件在等待期间被外部提交（`593c49f`）并随 OD-ARCH-029 批次推送 `origin/main`；本会话未执行任何 commit/push。**
 
 - **文件事实：** `.opencode/agents/super-plan.md`、`.opencode/agents/super-worker.md` 两个新文件，格式符合 OpenCode V2 项目级 agent（frontmatter + 正文 system prompt）。模型绑定按用户逐项指定：super-plan = `opencode/glm-5.3-flash-free`、super-worker = `opencode/deepseek-v4.1-flash-free`；两个模型引用均经 models 工具核实为 `opencode` provider 下的 active 条目。未创建 `opencode.json`、未设 `default_agent`、未改全局模型路由与凭证。
 - **权限矩阵核对（配置事实）：** super-plan 为「默认 `*/*` deny + 逐条放行」结构，放行项限于 read/grep/glob、仅 `PLANS.md` 的 edit、只读 git 命令、仅 `super-worker` 的 subagent，并对 `.env*`/`*credentials*`/`*secret*`/`*.pem`/`*.key` 追加 read deny。super-worker 未加额外限制，权限等同 build 默认（敏感环境文件与工作区外访问仍会弹确认）——这是**有意选择**：执行 agent 需要编辑与运行测试，把边界约束放在 system prompt 的红线条款（范围刚性、禁改 runtime/、禁读凭证、禁触真实业务材料、完成即停）而非权限层。
@@ -82,7 +115,9 @@
 - **静态校验（部署后自检，证据等级：文件解析）：** 两文件 frontmatter 以 YAML 解析通过，键与取值正确；super-plan 16 条权限规则顺序为「宽 deny 在首、窄 allow 在后」，与 OpenCode「后匹配者优先」语义一致；super-worker 无 permissions 段（= build 默认）。
 - **风险：** 权限规则是**配置级**防线，不等同代码级安全控制；super-worker 的无限制编辑能力配合 prompt 红线是当前设计取舍，若日后发现越界，应先加权限白名单而非仅依赖 prompt。中文名保留在 description 与正文，英文文件名规避了非 ASCII agent ID 的匹配风险。**部署层面的残余风险：两个 agent 目前绑定在额度紧张的免费模型上，额度耗尽时它们不可用**——这属于可用性风险，不是权限风险。
 - **2026-10-20 晚复测结果（限期解除后，真实调用证据）：** ① **通过**——`git rev-parse HEAD` 单条成功输出 HEAD `653bf4a`（首次因 agent workdir 笔误被 `external_directory` 拒，恰证外路径防线生效，补跑通过）；② **结论明确：管道被拒**——`git status --porcelain | wc -l` 返回 `Permission denied: shell`，对比单条 `git status --porcelain` 成功 → `git status*` 仅按**单条命令**前缀匹配，管道整体不在白名单（安全上合理；超级Plan 快照命令须逐条运行）；③ **通过**——`git diff --check HEAD` 成功且输出为空；④ **未通过（原因已查证）**——super-plan 作为子 agent 时嵌套派工被深度限制拦截（`Subagent depth limit reached (1)`；官方 schema 核实该键为 `experimental.subagent_depth`，默认 1）。同时直连验证 super-worker 可用并自述模型 `deepseek-v4.1-flash-free`。
-- **下一步（需用户决策的 ④ 两条路径）：** A. 使用方式适配——超级Plan 以主 agent 身份使用（`mode: all` 允许），或批准后由 ARCHITECT/用户直接调 `super-worker`（已实测可用）；零配置改动。B. 配置改动——项目级 `experimental.subagent_depth: 2`（实验性设置，且**超出 T-001 已批的「不创建 opencode.json」边界**，必须用户明确批准）。未经批准前，维持使用方式 A 的默认适配。
+- **④ 的解决（用户批准 B 方案）：** 新增项目级 `.opencode/opencode.json`（内容仅 `$schema` + `experimental.subagent_depth: 2`），配置写入后**同一会话即时生效**；端到端验证：ARCHITECT → super-plan（深度1，GLM-5.3-Flash Free）→ super-worker（深度2，DeepSeek V4.1 Flash Free）**派工成功**，super-worker 只读执行 `git rev-parse HEAD` 并回报（当时 HEAD `581c964`，与 ARCHITECT 本会话独立核实一致）。历史事实：B 之前 ④ 曾被默认深度 1 拦截（`Subagent depth limit reached (1)`）。
+- **B 方案授权记录：** 用户在 2026-10-20 晚的两选一询问中选择「B. 改配置放开嵌套」，构成对本配置变更的明确批准；A 方案（主 agent 用法/直调 super-worker）仍为等效可用路径，未配置时可作为回退。
+- **T-001 综合结论（2026-10-20 晚）：** ①②③④ 全部闭环。部署（两个 agent + 权限矩阵 + 固定模型）可用且已入库；权限白名单按单条命令前缀匹配（管道被拒，安全合理）；嵌套派工经用户批准的 `experimental.subagent_depth: 2` 放开并端到端验证。模型绑定仍是配置事实（两模型自报与其一致），实际生效由 OpenCode 解析。残余风险：两个绑定模型的免费额度紧张，额度耗尽时双 agent 不可用；`experimental.subagent_depth` 为实验性设置，OpenCode 升级可能改变语义（复审触发条件）。
 
 ## OD-ARCH-028：阶段二试点（前置复核 + 集中验收，2026-10-19）
 
