@@ -60,7 +60,9 @@ export function Dock({
             <button
               onClick={() => onSelect(item.scene)}
               aria-current={active ? "page" : undefined}
-              title={item.note ? `${item.label}（${item.note}）` : item.label}
+              // 用 aria-label 而不是 title：title 会让浏览器再弹一个大号原生提示，
+              // 与图标旁边那条小字提示重复（OD-ARCH-044）。可访问名保持不变。
+              aria-label={item.note ? `${item.label}（${item.note}）` : item.label}
               className={
                 "w-10 h-10 rounded-full flex items-center justify-center transition-all " +
                 (active
