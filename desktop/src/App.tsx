@@ -6,7 +6,7 @@ import Sessions from "./Sessions";
 import Workbench from "./workbench";
 import { Dock, type Scene } from "./shell/Dock";
 import { EngineTechSlice } from "./shell/EngineTechSlice";
-import { HomeCanvas } from "./shell/HomeCanvas";
+import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
 import { WindowResizeHandles } from "./shell/WindowChrome";
 import type { EngineDescriptor } from "./types";
@@ -103,7 +103,7 @@ export default function App() {
 
       <div className="flex-1 min-h-0 flex flex-col">
         {scene === "home" ? (
-          <HomeCanvas onNavigate={selectScene} />
+          <Workspace onNavigate={selectScene} />
         ) : scene === "sessions" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
             <Sessions />

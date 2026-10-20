@@ -1,0 +1,56 @@
+{
+  "verdict": "fail",
+  "home_buttons": [
+    "发送指令",
+    "语音",
+    "挂载库",
+    "前往任务工作台",
+    "加入",
+    "项目跟踪",
+    "文案写作",
+    "周报与随记",
+    "普通对话",
+    "新会话",
+    "引擎诊断（只读）",
+    "成果目录与模型权限",
+    "会话与任务（只读元数据）",
+    "任务工作台（合成数据 · 五阶段）",
+    "项目跟踪（模型起草）",
+    "文案写作（模型起草）",
+    "周报与随记（模型起草）",
+    "工作台首页",
+    "关闭",
+    "最大化",
+    "最小化",
+    "未实现：通知与待办",
+    "系统偏好设置 / 引擎技术切片"
+  ],
+  "has_rail_new_thread": true,
+  "has_preset_weekly": true,
+  "entry_names": [
+    "与 OmniDesk 协同探索、下达任务或记录灵感…",
+    "加一个项目目录（绝对路径）",
+    "全局检索（未实现）"
+  ],
+  "project_typed": true,
+  "project_added": true,
+  "project_visible": false,
+  "preset_clicked": true,
+  "new_thread_clicked": true,
+  "turn1_typed": true,
+  "turn1_sent": true,
+  "turn1": {
+    "state": null,
+    "waited_s": 90.0
+  },
+  "turn2_typed": true,
+  "turn2_sent": true,
+  "turn2": {
+    "state": null,
+    "waited_s": 90.0
+  },
+  "requests": [],
+  "context_probe_hit_in_any_request": false,
+  "preset_probe_hit_in_any_request": false,
+  "context_in_second_request": false
+}

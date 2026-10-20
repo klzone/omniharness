@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { host, onTaskEvent, shell } from "../api";
+import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
 import { Icon } from "../components/Icon";
@@ -19,7 +20,19 @@ import type { Scene } from "./Dock";
  *   * 状态轮询与结果读取失败都有可见、有界的结果，不静默、不无限「生成中」；
  *   * 本入口只承载公开或合成内容；案件、线索与未公开调查信息不得输入。
  */
-interface ChatMessage {
+/**
+ * 对话开场预设（OD-ARCH-031 Part B）：三场景不再是向导表单，而是**带进对话的规则**。
+ */
+export interface ChatPreset {
+  key: string;
+  label: string;
+  /** 来自可编辑流程包的场景规则；缺省时由提示词组装回落内置默认。 */
+  rules: string | null;
+  /** 期望输出章节（每行一个）。 */
+  sections: string | null;
+}
+
+export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -32,6 +45,8 @@ interface ChatMessage {
   /** 是否允许手动重新查询该任务。 */
   retryable?: boolean;
 }
+
+/** 重放进下一轮提示的上文上限（字符）。超出时保留最近的部分。 */
 
 const STATE_LABEL: Record<TaskState, string> = {
   queued: "排队中",
@@ -71,8 +86,29 @@ function enabledCategories(facts: AdmissionFacts): string[] {
   return (["local", "private", "public"] as const).filter((k) => p[k]);
 }
 
-export function HomeChat({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export interface HomeChatProps {
+  onNavigate: (scene: Scene) => void;
+  /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
+  preset?: ChatPreset | null;
+  /** 项目工作目录（绝对路径）；缺省时用宿主准备的工作区。 */
+  projectDir?: string | null;
+  /** 线程标识：变化时重置对话（切换会话）。 */
+  threadKey?: string;
+  /** 线程的初始消息（从本地存储恢复）。 */
+  initialMessages?: ChatMessage[];
+  /** 消息变化回调（用于本地持久化）。 */
+  onMessagesChange?: (messages: ChatMessage[]) => void;
+}
+
+export function HomeChat({
+  onNavigate,
+  preset = null,
+  projectDir = null,
+  threadKey = "default",
+  initialMessages = [],
+  onMessagesChange,
+}: HomeChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -85,6 +121,18 @@ export function HomeChat({ onNavigate }: { onNavigate: (scene: Scene) => void })
   const [facts, setFacts] = useState<AdmissionFacts | null>(null);
   const [admissionError, setAdmissionError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // 切换会话（threadKey 变化）时载入该会话的消息。
+  useEffect(() => {
+    setMessages(initialMessages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadKey]);
+
+  // 消息变化回传给工作区（本地持久化）。
+  useEffect(() => {
+    onMessagesChange?.(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   const canSubmit = admission === "ready" && !busy;
 
@@ -305,6 +353,10 @@ export function HomeChat({ onNavigate }: { onNavigate: (scene: Scene) => void })
       setBusy(true);
       try {
         let dir = workspaceDir;
+        if (!dir && projectDir) {
+          dir = projectDir;
+          setWorkspaceDir(dir);
+        }
         if (!dir) {
           dir = await resolveWorkspaceDir();
           setWorkspaceDir(dir);
@@ -312,7 +364,14 @@ export function HomeChat({ onNavigate }: { onNavigate: (scene: Scene) => void })
         if (!dir) {
           throw new Error("本地数据根未解析，无法为引擎提供工作目录（请检查应用数据根设置）。");
         }
-        const receipt = await host.submitTask({ promptText: text, workspaceDir: dir });
+        // 提示词：普通对话发上下文本身；带预设的对话用同一套组装器把场景规则、
+        // 期望章节与上文（上一轮对话）一起带进去。
+        const promptText = composeConversationPrompt({
+          preset,
+          turns: messages.map((m) => ({ role: m.role, text: m.text })),
+          current: text,
+        });
+        const receipt = await host.submitTask({ promptText, workspaceDir: dir });
         setMessages((prev) => [
           ...prev,
           {
@@ -334,7 +393,7 @@ export function HomeChat({ onNavigate }: { onNavigate: (scene: Scene) => void })
         void refreshAdmission();
       }
     },
-    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission],
+    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir],
   );
 
   const send = useCallback(() => {

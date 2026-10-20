@@ -1,6 +1,6 @@
 import { Icon } from "../components/Icon";
 import type { Scene } from "./Dock";
-import { HomeChat } from "./HomeChat";
+import { HomeChat, type ChatMessage, type ChatPreset } from "./HomeChat";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 
 /**
@@ -26,11 +26,27 @@ function greeting(date: Date): string {
   return "晚上好";
 }
 
-export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
+export interface HomeCanvasProps {
+  onNavigate: (scene: Scene) => void;
+  /** 左侧栏（OD-ARCH-031 Part B 的项目/会话栏）。 */
+  rail?: React.ReactNode;
+  /** 传给对话区的附加参数（预设、项目目录、线程与持久化回调）。 */
+  chat?: {
+    preset?: ChatPreset | null;
+    projectDir?: string | null;
+    threadKey?: string;
+    initialMessages?: ChatMessage[];
+    onMessagesChange?: (messages: ChatMessage[]) => void;
+  };
+}
+
+export function HomeCanvas({ onNavigate, rail = null, chat = {} }: HomeCanvasProps) {
   const now = new Date();
 
   return (
-    <main className="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-12 md:pl-28 md:pr-12 flex flex-col min-h-0 overflow-hidden">
+    <main className="flex-1 min-w-0 flex gap-4 min-h-0 overflow-hidden px-6 sm:px-12 md:pl-28 md:pr-12">
+      {rail}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
       {/* 上部：问候 + 一行三模块 */}
       <section className="flex flex-col flex-shrink-0 pt-2 pb-4 mb-2">
         <div className="pb-3 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
@@ -115,8 +131,9 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
 
       {/* 下部：整幅对话（全宽），消息区顶部向上渐隐由 chat-fade-mask 提供 */}
       <section className="flex-1 flex flex-col min-h-0 pb-3 pt-1">
-        <HomeChat onNavigate={onNavigate} />
+        <HomeChat onNavigate={onNavigate} {...chat} />
       </section>
+      </div>
     </main>
   );
 }
