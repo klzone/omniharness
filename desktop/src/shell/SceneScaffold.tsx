@@ -71,12 +71,13 @@ export function SceneScaffold({
         setChatActive(false);
       }}
     >
-      {/* 下层：顶部卡片区。指针进入对话区时渐隐并让出点击。 */}
+      {/* 下层：顶部卡片区。指针进入对话区时渐隐并让出点击。
+          渐隐到 30% 而不是 0：卡片保留一点存在感（不彻底消失），对话叠在其上。 */}
       <div
         ref={upperRef}
         className={
           "absolute inset-x-0 top-0 z-0 px-6 sm:px-12 md:pl-28 md:pr-12 transition-opacity duration-300 " +
-          (chatActive ? "opacity-0 pointer-events-none" : "opacity-100")
+          (chatActive ? "opacity-30 pointer-events-none" : "opacity-100")
         }
       >
         {upper}
