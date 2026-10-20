@@ -31,7 +31,7 @@ const STATE_TEXT: Record<string, string> = {
   unknown: "状态未知（未自动重放）",
 };
 
-export default function Sessions() {
+export default function Sessions({ onlyLedger = false }: { onlyLedger?: boolean } = {}) {
   const [sessions, setSessions] = useState<SessionListing | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [admission, setAdmission] = useState<{ checked: boolean; allowed: boolean; reason: string | null }>({
@@ -173,6 +173,7 @@ export default function Sessions() {
         </div>
       ) : null}
 
+      {onlyLedger ? null : (
       <section className="rounded-2xl bg-surface-container-lowest/80 ring-1 ring-outline-variant/40 p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-on-surface">引擎会话</h2>
@@ -230,6 +231,7 @@ export default function Sessions() {
           </>
         ) : null}
       </section>
+      )}
 
       <section className="rounded-2xl bg-surface-container-lowest/80 ring-1 ring-outline-variant/40 p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">

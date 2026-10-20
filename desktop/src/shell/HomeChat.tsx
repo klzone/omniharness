@@ -98,6 +98,8 @@ export interface HomeChatProps {
   initialMessages?: ChatMessage[];
   /** 消息变化回调（用于本地持久化）。 */
   onMessagesChange?: (messages: ChatMessage[]) => void;
+  /** 引擎产生了新的 DSH 会话（第一轮提交后）时回调，供模块把它关联到引擎会话。 */
+  onTaskCreated?: (omniTaskId: string) => void;
 }
 
 export function HomeChat({
@@ -107,6 +109,7 @@ export function HomeChat({
   threadKey = "default",
   initialMessages = [],
   onMessagesChange,
+  onTaskCreated,
 }: HomeChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -383,6 +386,9 @@ export function HomeChat({
           },
         ]);
         setActiveTaskId(receipt.omni_task_id);
+        // 这一轮由引擎新建了一个 DSH 会话：把任务号报给上层，便于在工作台里关联到
+        // 「项目与会话」里的引擎会话（引擎会话号从任务台账读，不改宿主协议）。
+        onTaskCreated?.(receipt.omni_task_id);
       } catch (e) {
         setBusy(false);
         setMessages((prev) => [
@@ -393,7 +399,7 @@ export function HomeChat({
         void refreshAdmission();
       }
     },
-    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir],
+    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated],
   );
 
   const send = useCallback(() => {
