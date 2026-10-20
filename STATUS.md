@@ -1,5 +1,23 @@
 # BUILDER 执行状态
 
+## OD-ARCH-035：接入 UI 设计参考 MCP（2026-10-20，用户批准，BUILDER 执行）
+
+- **范围修正：** 用户明确要求装在 **Codex**，不是 OpenCode。未改 `~/.config/opencode/`；
+  只改了 `~/.codex/config.toml`（改前备份 `config.toml.bak.od035`）。
+- **配置：** `[mcp_servers.screenshots_design_inspiration]`，`npx --yes screenshots-design-inspiration-mcp@latest`，
+  启动超时 120 s、工具超时 180 s，专属 env `NODE_USE_ENV_PROXY=1`（本机有代理，Node 默认不读）。
+- **模板条款：** 新增 `docs/BUILDER-Task-Instruction-Template.md`（含「UI 实现前先搜参考」固定条款与派工正文模板），
+  `AGENTS.md` 证据与沟通段加一行派工规则指向该模板。未改 `.opencode/agents/*`。
+- **实测（脚本层）：** stdio 探测 `initialize` → `tools/list` → `tools/call` 真实通过。
+  服务 `design-screenshots` v1.1.0，7 个工具；`search_inspiration` 两次查询均 `isError=false`，各返回 20 个产品
+  （Dovetail / ChatGPT / Harvey AI / Asana 等），带图库与截图直链。
+- **排障：** 首次 `fetch failed` 的根因是 Node fetch 不读 `HTTPS_PROXY`；对照片段见证据 README。
+- **证据：** `tests/verification/desktop/evidence/od-arch-035/`（README + `mcp-probe.json`）。
+- **未验证/限制：** 当前会话内工具尚未挂载（Codex 需重启才加载新 MCP），重启后的首次真实调用待确认；
+  `count` 参数语义未细究（实测恒返回 20 条）。
+- **Git：** 未提交、未推送、未打标签；`runtime/` 未改动。
+
+
 ## OD-ARCH-034：真多轮接线（2026-10-20，用户批准，ARCHITECT 执行）
 
 - **目标：** 同一线程复用同一引擎会话，去掉「每轮新建会话 + 前端重放上文」的绕路。

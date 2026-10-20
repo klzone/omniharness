@@ -29,6 +29,7 @@
 - 报告结论时区分文件事实、静态代码检查、脚本/运行测试、真实模型输出和未验证事项；注明实际运行的命令及结果。
 - 不把设计文档、用户转述或 BUILDER 自述当作运行证据。不得伪称阅读未提供的授权原件。
 - 控制实现和验证范围以节省时间与 token，但不能省略风险相关的审查或验收证据。
+- 派工使用 `docs/BUILDER-Task-Instruction-Template.md`。涉及界面的实现，动工前先用 `screenshots-design-inspiration` MCP 搜 2–3 个同类产品布局并在任务记录里写 2 句以内的借鉴要点（来源计划 OD-ARCH-035）。
 
 ## 共享项目状态文件
 - GOALS.md 是产品方向、范围与阶段目标的权威入口；PLANS.md 只保留当前待批准/执行的计划；STATUS.md 记录 BUILDER 的实测执行状态；REVIEW.md 记录 ARCHITECT 的独立审查与验收；docs/decisions.md 记录已定架构决策。

@@ -4,14 +4,20 @@
 
 
 
-### OD-ARCH-035：接入免费 UI 设计参考 MCP（screenshots-design-inspiration）（待批准，2026-10-20）
+### OD-ARCH-035：接入免费 UI 设计参考 MCP（screenshots-design-inspiration）（用户已批准；BUILDER 已执行；待 ARCHITECT 复核，2026-10-20）
+
+> **执行口径修正（2026-10-20，用户当场纠正）：** 目标环境是 **Codex**，不是 OpenCode。
+> 实际配置写在 `~/.codex/config.toml`（`[mcp_servers.screenshots_design_inspiration]`），
+> OpenCode 配置未作任何改动。下文步骤 1、2 中「OpenCode」一词按此口径替换为「Codex」。
+> 另因本机走代理而 Node 默认不读代理环境变量，该 MCP 专属 env 增加了 `NODE_USE_ENV_PROXY=1`。
+> 证据与未验证项见 `tests/verification/desktop/evidence/od-arch-035/README.md`。
 
 - **目标：** 为 BUILDER 接入开源设计参考 MCP，使后续 UI 任务实现前能先搜真实产品界面作参考。不涉及产品代码改动。
 - **步骤：**
-  1. 在 OpenCode 的 MCP 配置中添加：command = "npx"，args = ["--yes", "screenshots-design-inspiration-mcp@latest"]（Node.js 已具备即可，无需克隆仓库）。
-  2. 重启 OpenCode 后验证：调用 search_inspiration 搜 "AI chat workspace dashboard" 类关键词，确认能返回截图结果。
+  1. 在 Codex 的 MCP 配置（`~/.codex/config.toml`）中添加：command = "npx"，args = ["--yes", "screenshots-design-inspiration-mcp@latest"]（Node.js 已具备即可，无需克隆仓库）。
+  2. 重启 Codex 后验证：调用 search_inspiration 搜 "AI chat workspace dashboard" 类关键词，确认能返回截图结果。
   3. 在任务指令模板中加入固定条款：UI 实现前先用该 MCP 搜 2-3 个同类产品布局（关键词示例：chat workspace / sidebar dock / task dashboard），给出 2 句以内的借鉴要点，再动工。
-- **验收：** OpenCode 会话中能成功调用该 MCP 并返回截图；未成功时报告失败原因（网络/Node 版本），不降级硬编。
+- **验收：** Codex 会话中能成功调用该 MCP 并返回截图；未成功时报告失败原因（网络/Node 版本），不降级硬编。
 - **风险：** npx 首次运行需联网下载包；该 MCP 数据为静态截图库（410+ 产品），覆盖有限，效果不足再评估 Mobbin 付费版。
 ### OD-ARCH-034：真多轮接线——去掉上文重放（**已执行，2026-10-20，ARCHITECT**）
 
