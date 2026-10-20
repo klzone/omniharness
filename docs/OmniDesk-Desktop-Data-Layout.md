@@ -133,6 +133,43 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
 ---
 
+## 5.1 使用记录（usage.jsonl）：位置、格式与清理规则
+
+**位置（`static` + `script`，OD-ARCH-030 实测）：**
+
+    ~/OmniDesk/app/logs/usage.jsonl     # 正式使用：应用数据根的 logs/ 子目录（仓库外）
+    /tmp/<一次性根>/app-data/logs/usage.jsonl   # 测试：OMNIDESK_APP_DATA_ROOT 指向一次性根时
+
+**格式（一行一条 JSON，`static`）：** 只含枚举与时间，**不含**输入、输出、正文、标题、路径或会话：
+
+| 字段 | 含义 |
+| --- | --- |
+| `record_id` / `schema` | 记录标识与模式版本（`omnidesk.usage.v1`） |
+| `task_type` | 场景：`weekly_report` / `material_writing` / `project_management` |
+| `recorded_at` | 记录时间（UTC 时间戳） |
+| `completed` / `usable` | 是否完成、结果是否可直接用 |
+| `rework_kind` / `blocker` | 返工类别、障碍类别（枚举） |
+| `duration_bucket` | 耗时分档（枚举） |
+| `reuse_willingness` | 是否愿意再做类似任务 |
+
+**写入规则：** 只在用户点「记录一次」时追加；**默认不写**。界面「查看记录（N）」可展开、逐条删除或整体清除。
+
+**保留期限与清理规则（登记，暂不实现自动清理）：**
+
+1. 该文件是**试点评价的唯一来源**（人工澄清数、返工轮数、耗时），因此**验证/测试产生的记录必须在验证后删除**，
+   不得混进真实使用的数据。OD-ARCH-030 的验证即按此执行：写入 2 条合成记录 → 走产品自带的逐条删除 →
+   文件保留为 0 字节，正式根保持干净。
+2. 默认**不做自动清理**。当记录条数明显增多或文件体积变大时，由用户在界面里逐条或整体清除；
+   清除是产品自带路径，不需要手工改文件。
+3. 该文件在**仓库外**（`~/OmniDesk/app/`），**不进 Git**；备份与清理时与 `~/OmniDesk/app` 的其余内容一致对待。
+4. **不得**与 `~/OmniDesk/quarantine/`（真实案件材料）或 `~/OmniDesk/runtime/`（含凭证）混放、混备或互拷。
+
+**同目录下的其它文件：** 应用首次运行会把可编辑的流程包副本写到 `~/OmniDesk/app/config/offline-flows.v1.json`
+（OD-ARCH-030 实测新增 2918 字节）。它是**可编辑的场景规则**（`draft.rules` / `draft.sections`），
+不含凭证与用户数据；改动它等于改动工作台的整理规则。
+
+---
+
 ## 6. 测试期行为（`script`）
 
 `tests/verification/desktop/run_desktop_e2e.py` 与 Rust 集成测试都以 `OMNIDESK_APP_DATA_ROOT` / `OMNIDESK_ENGINE_STATE_DIR` / `OMNIDESK_DSH_HOME` 指向**一次性 `/tmp` 根**，并在提交前用 `validate_isolated_root()` 自检：每个根都必须以 `/tmp/` 开头，且不含 `/.dsh`、`/.agents`、`deepseek-harness`。
