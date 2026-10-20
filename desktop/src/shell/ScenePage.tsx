@@ -41,11 +41,6 @@ export function ScenePage({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tab, setTab] = useState<"progress" | "artifacts">(def.hasProgress ? "progress" : "artifacts");
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
-  // 卡片层级：鼠标在哪一块，哪一块在最前；其余渐隐到它后面（不上收、不悬浮）。
-  const [focus, setFocus] = useState<"notice" | "history" | "artifacts" | null>(null);
-  const layer = (id: "notice" | "history" | "artifacts") =>
-    "relative transition-all duration-200 ease-out " +
-    (focus === null || focus === id ? "opacity-100 z-20" : "opacity-30 z-0");
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
@@ -174,24 +169,16 @@ export function ScenePage({
 
   const upper = (
     <>
-      <div
-        className={"shrink-0 transition-all duration-200 ease-out " + layer("notice")}
-        onMouseEnter={() => setFocus("notice")}
-        onMouseLeave={() => setFocus(null)}
-      >
+      <div className="shrink-0">
         <AnnouncementBar
           scene={def}
           itemsText={itemsText}
           onOpenArtifact={(f) => void openArtifact(f)}
         />
       </div>
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 max-h-[30vh]">
+      <div className="flex flex-col lg:flex-row gap-4 lg:items-stretch max-h-[34vh]">
         {/* 左栏：本场景历史对话 */}
-        <section
-          className={"lg:w-[300px] shrink-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0 transition-all duration-200 ease-out " + layer("history")}
-          onMouseEnter={() => setFocus("history")}
-          onMouseLeave={() => setFocus(null)}
-        >
+        <section className="lg:w-[300px] shrink-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
           <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
             <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">
               {def.label} · 历史对话
@@ -252,11 +239,7 @@ export function ScenePage({
         </section>
 
         {/* 右栏：成果档案 / 进度 */}
-        <section
-          className={"flex-1 min-w-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0 transition-all duration-200 ease-out " + layer("artifacts")}
-          onMouseEnter={() => setFocus("artifacts")}
-          onMouseLeave={() => setFocus(null)}
-        >
+        <section className="flex-1 min-w-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
           {def.hasProgress ? (
             <div className="flex items-center gap-1 pb-2 border-b border-surface-variant/20">
               <button
