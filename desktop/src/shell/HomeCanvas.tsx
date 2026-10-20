@@ -1,6 +1,7 @@
 import { Icon } from "../components/Icon";
 import type { Scene } from "./Dock";
 import { HomeChat } from "./HomeChat";
+import { SceneScaffold } from "./SceneScaffold";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 
 /**
@@ -30,7 +31,9 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
   const now = new Date();
 
   return (
-    <main className="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-12 md:pl-28 md:pr-12 flex flex-col min-h-0 overflow-hidden">
+    <SceneScaffold
+      upper={
+        <>
       {/* 上部：问候 + 一行三模块 */}
       <section className="flex flex-col flex-shrink-0 pt-2 pb-4 mb-2">
         <div className="pb-3 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
@@ -112,11 +115,12 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
           </div>
         </div>
       </section>
-
-      {/* 下部：整幅对话（全宽），消息区顶部向上渐隐由 chat-fade-mask 提供 */}
-      <section className="flex-1 flex flex-col min-h-0 pb-3 pt-1">
+        </>
+      }
+      chat={
+        /* 下部：整幅对话（全宽），消息区顶部向上渐隐由 chat-fade-mask 提供 */
         <HomeChat onNavigate={onNavigate} />
-      </section>
-    </main>
+      }
+    />
   );
 }
