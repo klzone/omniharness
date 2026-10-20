@@ -257,6 +257,25 @@ export const shell = {
     });
   },
 
+  /**
+   * 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
+   *
+   * 固定动作、无参数：宿主只执行固定的 `gtk-launch` / `xdg-open`，不接受命令或路径；
+   * 未安装时明确报错，不静默失败。宿主不读、不写、不打印任何凭证值。
+   */
+  openDshSettings(): Promise<{
+    ok: boolean;
+    launched: string;
+    dsh_home: string;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; launched: string; dsh_home: string; note: string }>(
+      "task_open_dsh_settings",
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   runAnalysis(inputText: string): Promise<AnalysisRunResponse> {
     return invoke<AnalysisRunResponse>("task_run_analysis", { inputText }).catch(
       (e) => {

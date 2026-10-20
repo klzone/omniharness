@@ -59,6 +59,24 @@ export default function SettingsPanel() {
   const [permissionNote, setPermissionNote] = useState<string | null>(null);
   // OD-ARCH-022：权限变更未确认停止旧引擎时，宿主会置位屏障并拒绝新提交。
   const [blocked, setBlocked] = useState<string | null>(null);
+  // OD-ARCH-031：跳转到 DSH 原有设置界面登记 key。固定动作，宿主不读写凭证。
+  const [dshNote, setDshNote] = useState<string | null>(null);
+  const [dshError, setDshError] = useState<string | null>(null);
+  const [dshBusy, setDshBusy] = useState(false);
+
+  const openDshSettings = useCallback(async () => {
+    setDshBusy(true);
+    setDshError(null);
+    setDshNote(null);
+    try {
+      const r = await shell.openDshSettings();
+      setDshNote(`${r.note}（DSH 数据根：${r.dsh_home}）`);
+    } catch (e) {
+      setDshError(String(e));
+    } finally {
+      setDshBusy(false);
+    }
+  }, []);
 
   const refreshAdmission = useCallback(async () => {
     try {
@@ -282,6 +300,31 @@ export default function SettingsPanel() {
 
         {factsError ? <div className="alert">无法读取端点：{factsError}</div> : null}
 
+        {/* OD-ARCH-031：跳转与刷新**始终可见**——端点没解析出来时也必须能跳到 DSH 设置并重试。 */}
+        <div className="actions">
+          <button className="primary" onClick={() => void openDshSettings()} disabled={dshBusy}>
+            {dshBusy ? "正在打开 DSH…" : "打开 DSH 设置（登记 key）"}
+          </button>
+          <button className="ghost" onClick={() => void refreshAdmission()} disabled={permissionBusy}>
+            刷新端点信息
+          </button>
+        </div>
+        {dshNote ? <p className="hint">{dshNote}</p> : null}
+        {dshError ? <div className="alert">打不开 DSH 设置：{dshError}</div> : null}
+        {!facts && !factsError ? (
+          <div className="alert">
+            端点事实还没读出来（可能引擎未启动，或配置尚未就绪）。请先点「刷新端点信息」；
+            需要改 key 或换端点时，点「打开 DSH 设置」。
+          </div>
+        ) : null}
+        {facts && !facts.configurable ? (
+          <div className="alert">
+            当前端点位置无法确认，宿主会一律拒绝此类端点，且没有可开启的开关。
+            请先把 DSH 侧的模型配置指向一个明确的地址（可点「打开 DSH 设置」），
+            再点「刷新端点信息」。
+          </div>
+        ) : null}
+
         {facts ? (
           <div className="status-card">
             <div className="status-row">
@@ -316,13 +359,6 @@ export default function SettingsPanel() {
           </div>
         ) : null}
 
-        {facts && !facts.configurable ? (
-          <div className="alert">
-            当前端点位置无法确认，宿主会一律拒绝此类端点，且没有可开启的开关。
-            请先把 DSH 侧的模型配置指向一个明确的地址，再回到本页点「刷新端点信息」。
-          </div>
-        ) : null}
-
         {facts?.configurable
           ? PERMISSION_ITEMS.map((item) => (
               <label className="check" key={item.key}>
@@ -344,9 +380,6 @@ export default function SettingsPanel() {
         <div className="actions">
           <button className="ghost" onClick={() => void revokeAll()} disabled={permissionBusy}>
             撤销全部模型权限
-          </button>
-          <button className="ghost" onClick={() => void refreshAdmission()}>
-            刷新端点信息
           </button>
         </div>
         {permissionNote ? <p className="hint">{permissionNote}</p> : null}

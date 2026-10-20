@@ -2073,6 +2073,89 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
 }
 
 // ---------------------------------------------------------------------------
+// 打开 DSH Desktop（模型/凭据设置界面）
+// ---------------------------------------------------------------------------
+
+/// DSH Desktop 的应用 id（系统安装的 `deepseek-harness.desktop`）。
+const DSH_DESKTOP_APP_ID: &str = "deepseek-harness";
+
+/// 在给定的候选目录里找 DSH Desktop 的 desktop 文件（找不到返回 None）。
+///
+/// 抽出来是为了能**在不启动任何东西**的前提下测「装没装」这一步。
+fn find_dsh_desktop_file(dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    dirs.iter()
+        .map(|dir| dir.join(format!("{}.desktop", DSH_DESKTOP_APP_ID)))
+        .find(|candidate| candidate.is_file())
+}
+
+/// 拉起已安装的 DSH Desktop，让用户在其模型/凭据设置页登记 key。
+///
+/// 边界（与「打开成果目录」同一风格）：
+///   * 只执行固定的 `gtk-launch <app-id>`，**不拼接 shell 命令**，也不接受前端传入的
+///     命令、路径或 URL；前端只能请求「打开 DSH 设置」这一个固定动作。
+///   * 未安装或无法启动时**明确报错**，不静默失败、不假装已打开。
+///   * 本函数**不读、不写、不打印任何凭证文件**，只负责把设置界面拉起来；
+///     `dsh_home` 只是告诉用户「凭据服务的数据根在哪」，路径本身不是机密。
+pub fn open_dsh_settings(dsh_home: &Path) -> Result<serde_json::Value, String> {
+    // 1) 先确认系统里确实装了这个应用：找不到 desktop 文件就不尝试启动。
+    let mut dirs: Vec<std::path::PathBuf> = vec![
+        std::path::PathBuf::from("/usr/share/applications"),
+        std::path::PathBuf::from("/usr/local/share/applications"),
+    ];
+    if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
+        dirs.insert(0, std::path::PathBuf::from(xdg).join("applications"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(std::path::PathBuf::from(home).join(".local/share/applications"));
+    }
+    let mut found: Option<std::path::PathBuf> = find_dsh_desktop_file(&dirs);
+    let Some(desktop_file) = found else {
+        return Err(format!(
+            "未检测到 DSH Desktop（{}.desktop）。请先安装 DSH Desktop 后重试；\
+             或改用环境变量方式：启动前导出 DEEPSEEK_API_KEY 再运行启动器。",
+            DSH_DESKTOP_APP_ID
+        ));
+    };
+
+    // 2) 用固定的启动器拉起（app-id 来自上面的 desktop 文件名，不接受外部输入）。
+    let mut last_error = String::new();
+    let attempts: Vec<(&str, Option<PathBuf>)> = vec![
+        ("gtk-launch", None),
+        ("xdg-open", Some(desktop_file.clone())),
+    ];
+    for (program, arg) in attempts {
+        let mut cmd = std::process::Command::new(program);
+        if let Some(path) = arg {
+            cmd.arg(path);
+        } else {
+            cmd.arg(DSH_DESKTOP_APP_ID);
+        }
+        match cmd
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "launched": DSH_DESKTOP_APP_ID,
+                    "dsh_home": dsh_home.display().to_string(),
+                    "note": "已启动 DSH Desktop。请在它的模型/凭据设置页登记该路由的 key；\
+                             本应用不读、不写、不复制任何凭证值。",
+                }))
+            }
+            Err(e) => last_error = format!("{}：{}", program, e),
+        }
+    }
+    Err(format!(
+        "无法启动 DSH Desktop（{}）；已找到其安装项：{}",
+        last_error,
+        desktop_file.display()
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // 单元测试
 //
 // 证据等级：本模块为 script（Rust 测试运行），不是静态检查推断。
@@ -3356,6 +3439,19 @@ mod material_tests {
         fs::write(&big, vec![b'a'; (MATERIAL_MAX_BYTES as usize) + 16]).unwrap();
         let err = read_material(big.to_str().unwrap()).unwrap_err();
         assert!(err.contains("超过上限"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dsh_desktop_lookup_finds_only_existing_desktop_files() {
+        let dir = material_dir("dsh_desktop");
+        // 没有 desktop 文件时必须找不到（→ 明确报错，不静默失败）。
+        assert!(find_dsh_desktop_file(&[dir.clone()]).is_none());
+        // 放一个同名 desktop 文件后必须能定位到。
+        let desktop = dir.join(format!("{}.desktop", DSH_DESKTOP_APP_ID));
+        fs::write(&desktop, "[Desktop Entry]\n").unwrap();
+        let found = find_dsh_desktop_file(&[dir.clone()]);
+        assert_eq!(found.as_deref(), Some(desktop.as_path()));
         let _ = fs::remove_dir_all(&dir);
     }
 
