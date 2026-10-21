@@ -20,6 +20,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::sha256::sha256_hex;
+
 /// 声明文件 schema 标识。版本不符一律拒绝。
 pub const PROFILE_DECL_SCHEMA: &str = "omnidesk.profile-decl.v1";
 /// 声明文件名（位于应用数据根下的 profiles/ 下）。
@@ -124,8 +126,36 @@ pub struct LoadedDecl {
     pub path: String,
     /// true 表示本次首次创建了默认文件（不是覆盖用户修改）。
     pub created: bool,
+    /// 本次载入时文件内容的 SHA-256。用于判断文件在运行期间是否被改动，
+    /// 从而提示"重启应用生效"（OD-ARCH-052 第 2 步）。只做比对，不做热重载。
+    pub content_sha256: String,
     /// 加载告警（例如目录里出现了第二个 Profile 目录，本阶段不加载它）。
     pub warnings: Vec<String>,
+}
+
+/// 只读探测：当前磁盘上声明文件的内容指纹。
+///
+/// - 文件不存在 → `Ok(None)`（用户可能自己删了，界面应提示会重建默认声明）。
+/// - 读取失败 → `Err`（不猜内容）。
+///
+/// 刻意**不**创建文件、不改解析逻辑：这条路径只服务于"是否已经改了"的判断。
+pub fn decl_digest(profiles_dir: &Path) -> Result<Option<String>, String> {
+    if !profiles_dir.is_absolute() {
+        return Err(format!(
+            "Profile 声明目录必须是绝对路径：{}",
+            profiles_dir.display()
+        ));
+    }
+    let path = decl_path(profiles_dir);
+    match fs::read(&path) {
+        Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!(
+            "无法读取 Profile 声明（{}）：{}",
+            path.display(),
+            e
+        )),
+    }
 }
 
 /// 声明文件路径（`profiles/` 目录由调用方给出，必须是绝对路径）。
@@ -164,6 +194,7 @@ pub fn load_decl(profiles_dir: &Path) -> Result<LoadedDecl, String> {
     }
     let text = fs::read_to_string(&path)
         .map_err(|e| format!("读取 Profile 声明失败（{}）：{}", path.display(), e))?;
+    let content_sha256 = sha256_hex(text.as_bytes());
     let decl = parse_decl(&text).map_err(|e| {
         format!(
             "Profile 声明格式错误（{}）：{}。该声明已被拒绝，界面使用内置默认入口。",
@@ -197,6 +228,7 @@ pub fn load_decl(profiles_dir: &Path) -> Result<LoadedDecl, String> {
         decl,
         path: path.display().to_string(),
         created,
+        content_sha256,
         warnings,
     })
 }
@@ -453,5 +485,58 @@ mod tests {
         assert!(load_decl(&dir).is_err());
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    fn temp_profiles_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "od-profile-digest-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn digest_matches_loaded_content_and_changes_after_edit() {
+        let dir = temp_profiles_dir("edit");
+        let loaded = load_decl(&dir).expect("首次加载应创建默认文件");
+        // 载入后未改动：指纹一致 —— 界面此时不应提示重启。
+        assert_eq!(
+            decl_digest(&dir).expect("应能读指纹"),
+            Some(loaded.content_sha256.clone())
+        );
+
+        // 用户改了文件：指纹变化 —— 界面据此提示"重启应用生效"。
+        let edited = "schema: omnidesk.profile-decl.v1\ndisplay_name: 我的工作台\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n";
+        fs::write(decl_path(&dir), edited).unwrap();
+        let after = decl_digest(&dir).expect("应能读指纹");
+        assert!(after.is_some());
+        assert_ne!(after, Some(loaded.content_sha256));
+
+        // 探测是只读的：文件内容与修改时间不被它改写。
+        assert_eq!(fs::read_to_string(decl_path(&dir)).unwrap(), edited);
+        // 此时真正的加载才会拿到新内容，证明"重启生效"的说法属实。
+        assert_eq!(
+            load_decl(&dir).unwrap().decl.display_name,
+            "我的工作台"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn digest_of_missing_file_is_none_and_does_not_create_it() {
+        let dir = temp_profiles_dir("missing");
+        // 目标目录与文件都不存在：探测不得创建任何东西。
+        assert_eq!(decl_digest(&dir).expect("缺失应返回 None"), None);
+        assert!(!dir.exists(), "只读探测不得创建 Profile 目录");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn digest_rejects_relative_dir() {
+        assert!(decl_digest(Path::new("profiles")).is_err());
     }
 }

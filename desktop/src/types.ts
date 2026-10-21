@@ -677,5 +677,7 @@ export interface ProfileDeclPayload {
   decl: ProfileDecl;
   path: string;
   created: boolean;
+  /** 载入时文件内容的 SHA-256；用于判断运行期间文件是否被改动（需重启生效）。 */
+  content_sha256: string;
   warnings: string[];
 }

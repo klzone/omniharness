@@ -652,6 +652,20 @@ fn profile_decl_load(
     profile_decl::load_decl(&profiles_dir)
 }
 
+/// 只读：声明文件当前的内容指纹（OD-ARCH-052 第 2 步）。
+///
+/// 界面拿它和启动时载入的指纹比对，判断用户是否已在磁盘上改过声明——
+/// 改动只在下次启动生效，因此要显式提示"重启应用生效"。
+/// 这条命令不创建文件、不改配置、不启动引擎。
+#[tauri::command(async)]
+fn profile_decl_digest(state: State<'_, SharedHost>) -> Result<Option<String>, String> {
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    profile_decl::decl_digest(&profiles_dir)
+}
+
 // ---------------------------------------------------------------------------
 // 工作台线程记录（OD-ARCH-045 第 1 步）
 //
@@ -1828,6 +1842,7 @@ pub fn run() {
             model_permission_revoke_all,
             app_paths_info,
             profile_decl_load,
+            profile_decl_digest,
             task_types,
             task_samples,
             task_explanation_rules,
