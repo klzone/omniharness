@@ -1,5 +1,63 @@
 # BUILDER 执行状态
 
+## OD-ARCH-051（批次 2 完成）：S3 纪检 Profile 声明固化 + S4 设置窗口外壳统一（2026-10-21）
+
+- 开工 HEAD `f268eda`（`main`，与 `origin/main` 同步）；开始前工作区只有 ARCHITECT 写入的批次 1 记录，未动。
+- 未改 `runtime/`（`git status --porcelain runtime/` 为空）；未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk`、凭证与模型路由；未打标签。
+- 未新增依赖（这一条是硬约束的直接后果，见下面「解析方式」）。
+
+### S3（纪检 Profile 固化）——完成，文件驱动
+
+新增 `desktop/src-tauri/src/profile_decl.rs`（457 行）与默认声明 `samples/profiles/discipline.yml`（`include_str!` 编译期嵌入）。
+
+- **落点：`<应用数据根>/profiles/discipline.yml`**（仓库外）。宿主首次启动时用 `create_new` 创建，文件已存在就绝不覆盖；`profiles/` 下若出现第二个目录，只提示「本阶段只加载 discipline.yml」，不加载、不管理。
+- **声明只能决定界面入口**：`schema / display_name / scenes[]`，场景 id 限定 `home/report/writing/project/sessions`，图标限定 `brand/note/book/checklist/history`，顺序即 Dock 顺序。不改插件、不改模型路由、不改 Skill 清单、不涉及任何判定逻辑。
+- **解析方式：不新增 YAML 依赖。** 本仓库离线构建，锁文件里没有 YAML crate，因此写了一个受限子集解析器：只接受顶层 `key: value`、`scenes:` 下的列表项与列表项内两级键值；制表符、未知键、重复字段、嵌套映射、未闭合引号一律报错。遇到看不懂的写法直接失败，不做猜测式兼容。
+- **失败即提示，不静默**：解析或校验失败返回带文件路径与原因的错误；前端置 `decl=null`，界面回退内置默认入口，并在顶部显示红色提示条（`role=status`）。坏文件保持原样，不被改写。
+- 命令接线：`profile_decl_load`（`#[tauri::command(async)]`，不占 UI 主线程），只在锁内取一次数据根路径；`app_paths_info` 增加 `profiles` 字段（未改 `AppPaths` 结构）。前端 `App.tsx` 启动时读一次，`Dock` 按声明渲染业务入口，`TopNav` 用声明的 `display_name` 作品牌名（空则回退 `OmniDesk Discipline`）。任务工作台 / 设置 / 引擎诊断三个内置工具入口由代码固定，声明删不掉。
+
+### S4（设置页外观统一）——窗口外壳完成，页面内部未改
+
+- 改的是 Tauri 设置窗口本身：标题 `OmniDesk · DSH 设置`、底色 `#faf8ff`（与 `theme.css` 的 `--color-surface` 一致）、尺寸 1160×820（最小 880×620）。
+- **没有改 DSH 设置页内部的字体与配色。** 该窗口加载的是 DSH 原生页面（D-026 的既定选择），页面样式由 DSH 自己控制，且 CSP 不允许从本应用注入脚本或样式。**所以「外观统一」目前只到窗口外壳这一层**，不要据此认为 DSH 页面已被 OmniDesk 主题化。
+- 未改 DSH 配置读写逻辑、未改会话令牌处理（仍是宿主内存内的 URL，不落日志、不暴露给前端）。
+
+### 测试中发现并修复的缺陷（真实窗口实测暴露）
+
+声明是异步到达的。最初的校准逻辑在声明到达时无条件校验「当前场景是否在声明里」，而设置页、任务工作台、引擎诊断都不在声明管辖范围内，于是**用户刚点进设置页就被拽回首页**。修复为只校准 5 个业务场景，内置工具页不受影响。这条不是计划内项，属普通实现缺陷，已由本节登记。
+
+### 验证（证据等级：真实桌面窗口运行 / 文件事实 / 静态检查 / 脚本运行）
+
+| 检查 | 结果 | 等级 | 证据 |
+| --- | --- | --- | --- |
+| `verify_profile_decl.py` | 3 轮全通过：默认声明被创建且与 `samples` 逐字一致、Dock 5 个业务入口；改声明后品牌变「我的纪检工作台」且「文案写作」入口消失；写坏后顶部出现错误提示、回退内置入口、坏文件未被覆盖、进程存活 | 真实桌面窗口运行（一次性 Xvfb `:97` + 一次性数据根 `/tmp/od051-s3` + 合成端点） | `tests/verification/desktop/evidence/od-arch-051/profile-decl-run.json`，截图 `shots/01-default.png`、`02-edited.png`、`03-broken.png` |
+| `verify_settings_shell.py` | 设置窗口标题为 `OmniDesk · DSH 设置`、可视图层 1160×820、加载的是 DSH 原生页、主窗口存活 | 真实桌面窗口运行（一次性 Xvfb `:98`，用仓库 `runtime/dsh-runtime` 起隔离 `dsh web`，一次性 `DSH_HOME`，随机端口） | `evidence/od-arch-051/settings-shell-run.json`，截图 `shots/10-settings-page.png`、`11-settings-window.png`、`12-settings-window-only.png` |
+| `cargo test --offline` | **169 passed / 0 failed**（lib，含本次新增 9 个单测）+ 2 + 13 + 3 + 1，0 failed | 脚本运行 | 本机执行，命令见下 |
+| `cargo build --offline` | 通过 | 脚本运行 | — |
+| `npx tsc --noEmit` | 0 错误 | 静态检查 | — |
+| `npm run build` | 通过（403.77 kB） | 脚本运行 | — |
+| `python3 -m pytest tests -q` | 26 passed | 脚本运行 | — |
+| `git status --porcelain runtime/` | 空 | 文件事实 | — |
+
+本机 cargo 环境（cargo 不在默认 PATH，且需指向 Tauri 依赖）：
+
+```bash
+cd desktop/src-tauri
+env PATH="/home/kevin/.cargo/bin:$PATH" \
+  PKG_CONFIG_PATH="/home/kevin/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu/pkgconfig:/home/kevin/.local/omnidesk-tauri-deps/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig" \
+  PKG_CONFIG_SYSROOT_DIR="/home/kevin/.local/omnidesk-tauri-deps" \
+  LIBRARY_PATH="/home/kevin/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu" \
+  cargo test --offline
+```
+
+### 未验证 / 限制
+
+- 声明改动需要**重启应用**才生效（启动时读一次，没有做热重载）。计划只要求「改文件、不动代码即生效」，重启属于可接受范围，但界面上没有提示用户这一点。
+- 设置窗口内部仍是 DSH 原生外观，见 S4 说明。
+- 截图证据里 `11-settings-window.png` 是把整个 1440×900 根窗口抓下来的，Xvfb 无窗口管理器时新窗口落在 (0,0) 会被裁掉一部分，以 `12-settings-window-only.png`（按窗口几何单独抓）为准。
+- 用户此前反馈过「启动软件卡死、切换不了场景」。本批次两轮真实窗口测试中主窗口始终可交互（含等待引擎冷启动期间），**未能复现**该故障；不据此认定已修复。
+- 声明文件是界面层的东西，**不是** DSH 的 Profile 配置。真正的 Skill / 插件 / 模型设置仍走 DSH 侧的 Profile 与覆盖文件，两者不要混为一谈。
+
 ## OD-ARCH-051（批次 1 完成）：S1 按用户裁决窄口径整合；S2 补齐输入量对比证据（2026-10-21）
 
 - 开工 HEAD `984c9dc`（`main`）。开始时工作区唯一未提交改动是 ARCHITECT 新写入的 `PLANS.md`（051 计划原文），按要求保留未动。
