@@ -45,6 +45,11 @@ import type {
   WorkflowSample,
   ModelRouteListing,
   EngineModelCatalog,
+  ModelSettings,
+  ModelSettingsSaveReceipt,
+  ModelSettingsView,
+  ProfileDeclOpenReceipt,
+  ProfileDeclSaveReceipt,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -505,6 +510,47 @@ export const shell = {
     return invoke<{ ok: boolean; archived: string | null; note: string }>(
       "task_clear_model_route",
     ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // 原生设置页（OD-ARCH-053）。密钥只在保存时单向传入，永不回读。
+  // -------------------------------------------------------------------------
+
+  /** 读取模型配置与非机密凭据状态（已配置 / 来源 / 是否可写）。 */
+  modelSettingsLoad(): Promise<ModelSettingsView> {
+    return invoke<ModelSettingsView>("model_settings_load").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 保存模型配置；`apiKey` 非空时同时写入 DSH 凭据服务。
+   * 宿主返回体只有 `key_written` 与错误原因，不含密钥本身。
+   */
+  modelSettingsSave(input: {
+    settings: ModelSettings;
+    apiKey?: string | null;
+  }): Promise<ModelSettingsSaveReceipt> {
+    return invoke<ModelSettingsSaveReceipt>("model_settings_save", {
+      settings: input.settings,
+      apiKey: input.apiKey ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在系统编辑器里打开场景声明文件。宿主不接受任何路径参数。 */
+  profileDeclOpen(): Promise<ProfileDeclOpenReceipt> {
+    return invoke<ProfileDeclOpenReceipt>("profile_decl_open").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存场景声明：宿主先校验，失败拒绝写；通过则备份旧文件后原子写。 */
+  profileDeclSave(text: string): Promise<ProfileDeclSaveReceipt> {
+    return invoke<ProfileDeclSaveReceipt>("profile_decl_save", { text }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

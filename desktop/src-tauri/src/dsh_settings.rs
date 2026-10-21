@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 
 use crate::engine_supervisor::EngineConfig;
 
+use crate::local_http;
+
 /// 等 DSH 打印本地地址的上限（首次启动要装插件、跑 HMR 等）。
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(25);
 /// 判断“端口还在听”的连接超时。
@@ -113,6 +115,99 @@ impl SettingsService {
             None
         }
     }
+
+    /// 用一个**内存中**的会话调用 DSH 官方 `credentials` RPC（OD-ARCH-053 S1）。
+    ///
+    /// 为什么不用引擎通道：用户配置新 provider 时往往还没开启对应端点的模型权限，
+    /// 此时引擎起不来，写 key 会死锁在准入上。这里直接对本机 DSH 实例走官方
+    /// `credentials/set|describe|unset`（`packages/api/settings-controller/src/credentials.ts`），
+    /// 不需要模型权限；会话 cookie 只在本次调用内存在，不落盘、不进前端。
+    /// 失败时只回报状态码与 DSH 自己的错误文本，不回显请求体（里面是密钥）。
+    pub fn credentials_rpc(
+        &self,
+        config: &EngineConfig,
+        log_path: &Path,
+        record_path: &Path,
+        method: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        if !matches!(method, "credentials/describe" | "credentials/set" | "credentials/unset") {
+            return Err(format!("拒绝调用未知的凭据方法：{}", method));
+        }
+        let opened = self.ensure(config, log_path, record_path)?;
+        let url = self
+            .reusable()
+            .map(|r| r.url)
+            .ok_or_else(|| "DSH 设置服务已启动，但地址没有留在内存里；请重试。".to_string())?;
+        let cookie = exchange_token(opened.port, &url)?;
+        let body = serde_json::json!({
+            "type": "client-request",
+            "rpcId": format!("omni-settings-{}", std::process::id()),
+            "method": method,
+            "payload": { "args": args },
+        })
+        .to_string();
+        let response = local_http::request(
+            opened.port,
+            "POST",
+            &format!("/api/{}", method),
+            &[
+                ("Content-Type", "application/json".to_string()),
+                ("Cookie", cookie),
+            ],
+            Some(&body),
+            Duration::from_secs(20),
+        )?;
+        if response.status == 401 || response.status == 403 {
+            return Err(format!(
+                "DSH 拒绝了本地会话（HTTP {}）；请重试，若仍失败请重启应用。",
+                response.status
+            ));
+        }
+        let parsed: serde_json::Value = serde_json::from_str(&response.body).map_err(|e| {
+            format!(
+                "DSH 凭据接口返回的不是 JSON（HTTP {}）：{}",
+                response.status, e
+            )
+        })?;
+        let result = parsed.get("result").cloned().unwrap_or(serde_json::Value::Null);
+        if result.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            let code = result
+                .pointer("/error/code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let message = result
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("DSH 凭据接口拒绝本次请求");
+            return Err(format!("{}（{}）", message, code));
+        }
+        Ok(result.get("value").cloned().unwrap_or(serde_json::Value::Null))
+    }
+}
+
+/// 用 URL 里的会话令牌换 cookie（303 + `Set-Cookie`），只在本进程内存中使用。
+fn exchange_token(port: u16, url: &str) -> Result<String, String> {
+    let path = match url.find("/?token=") {
+        Some(i) => &url[i..],
+        None => return Err("DSH 设置服务地址里没有会话令牌；请重启应用后重试。".to_string()),
+    };
+    let response = local_http::request(port, "GET", path, &[], None, Duration::from_secs(10))?;
+    let cookie = response
+        .header_all("set-cookie")
+        .iter()
+        .filter_map(|c| c.split(';').next())
+        .map(|c| c.trim())
+        .filter(|c| c.contains('='))
+        .collect::<Vec<_>>()
+        .join("; ");
+    if cookie.is_empty() {
+        return Err(format!(
+            "DSH 没有返回本地会话 cookie（HTTP {}）",
+            response.status
+        ));
+    }
+    Ok(cookie)
 }
 
 /// 起一个 `dsh web --port 0 --no-open`，输出按行打码后写日志。

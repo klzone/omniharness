@@ -17,6 +17,8 @@ pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod flow_pack;
+mod local_http;
+pub mod model_settings;
 pub mod model_routes;
 pub mod pending_writes;
 pub mod profile_decl;
@@ -664,6 +666,227 @@ fn profile_decl_digest(state: State<'_, SharedHost>) -> Result<Option<String>, S
         host.paths.root.join("profiles")
     };
     profile_decl::decl_digest(&profiles_dir)
+}
+
+/// 在系统编辑器里打开场景声明文件（OD-ARCH-053 S3）。**不**接受路径参数。
+#[tauri::command(async)]
+fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    // 先确保文件存在（与启动时同一套 create_new 逻辑，永不覆盖）。
+    let loaded = profile_decl::load_decl(&profiles_dir)?;
+    let path = std::path::PathBuf::from(&loaded.path);
+    let mut last_error = String::new();
+    for (program, args) in [
+        ("xdg-open", Vec::<String>::new()),
+        ("gio", vec!["open".to_string()]),
+    ] {
+        match std::process::Command::new(program)
+            .args(&args)
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "opened": loaded.path,
+                    "note": "已在系统编辑器打开声明文件；保存后需重启应用生效。",
+                }))
+            }
+            Err(e) => last_error = format!("{}：{}", program, e),
+        }
+    }
+    Err(format!("无法打开声明文件，系统缺少可用的打开器（{}）", last_error))
+}
+
+/// 保存场景声明（OD-ARCH-053 S3）：先校验，校验通过才备份并原子写。
+///
+/// 校验失败一律拒绝保存，文件原样保留；写前把旧文件复制成 `discipline.yml.bak-<epoch>`。
+#[tauri::command(async)]
+fn profile_decl_save(state: State<'_, SharedHost>, text: String) -> Result<serde_json::Value, String> {
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    if text.len() > 64 * 1024 {
+        return Err("声明文件过大（上限 64 KB）".to_string());
+    }
+    let decl = profile_decl::parse_decl(&text)?;
+    decl.validate()?;
+    std::fs::create_dir_all(&profiles_dir)
+        .map_err(|e| format!("创建 Profile 目录失败（{}）：{}", profiles_dir.display(), e))?;
+    let path = profile_decl::decl_path(&profiles_dir);
+    let backup = if path.is_file() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let target = path.with_file_name(format!("{}.bak-{}", profile_decl::PROFILE_DECL_FILE, stamp));
+        std::fs::copy(&path, &target)
+            .map_err(|e| format!("写入前备份失败（{}）：{}", target.display(), e))?;
+        Some(target.display().to_string())
+    } else {
+        None
+    };
+    model_settings::write_atomic(&path, text.as_bytes())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": path.display().to_string(),
+        "backup": backup,
+        "digest": crate::sha256::sha256_hex(text.as_bytes()),
+        "note": "声明已保存；重启应用后生效。",
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// 模型与端点设置（OD-ARCH-053 S1/S2）
+//
+// 只碰 OmniDesk 自己数据根下的两个文件：模型配置 JSON 与 DSH 补丁覆盖文件。
+// 密钥值只经官方 `credentials/set` 写入 DSH 凭据服务，从不进入配置文件、日志或返回值。
+// ---------------------------------------------------------------------------
+
+/// 读取模型配置与凭据状态（只回报「已配置/来源」，不含值）。
+#[tauri::command]
+async fn model_settings_load(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let (config_dir, app_root) = {
+        let state = app.state::<SharedHost>();
+        let host = state.lock().unwrap();
+        (host.paths.config.clone(), host.paths.root.clone())
+    };
+    let loaded = model_settings::load(&config_dir);
+    let (value, error) = match &loaded {
+        Ok(Some(s)) => (serde_json::to_value(s).ok(), None),
+        Ok(None) => (None, None),
+        Err(message) => (None, Some(message.clone())),
+    };
+    // 凭据状态只在配置可读时查询；失败不影响配置本身展示。
+    let mut key_status: Option<serde_json::Value> = None;
+    let mut key_error: Option<String> = None;
+    if let Ok(Some(ref s)) = loaded {
+        match model_settings_credentials(&app, "credentials/describe", serde_json::json!({ "refs": [s.api_key_ref] })).await {
+            Ok(value) => {
+                key_status = value
+                    .get(&s.api_key_ref)
+                    .cloned();
+            }
+            Err(message) => key_error = Some(message),
+        }
+    }
+    Ok(serde_json::json!({
+        "ok": error.is_none(),
+        "settings": value,
+        "error": error,
+        "config_path": model_settings::settings_path(&config_dir).display().to_string(),
+        "overlay_path": model_settings::overlay_path(&config_dir).display().to_string(),
+        "overlay_present": model_settings::overlay_path(&config_dir).is_file(),
+        "app_root": app_root.display().to_string(),
+        "key_status": key_status,
+        "key_error": key_error,
+    }))
+}
+
+/// 调一次 DSH 官方凭据 RPC（不经过引擎准入；密钥只在请求体里出现一次）。
+async fn model_settings_credentials(
+    app: &tauri::AppHandle,
+    method: &str,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let (config, log_path, record_path) = {
+        let snap = app.state::<HostSnapshot>();
+        let config = snap.config.lock().unwrap().clone();
+        (
+            config,
+            snap.paths.logs.join("dsh-settings.log"),
+            snap.paths.engine_state.join("dsh-settings.json"),
+        )
+    };
+    let service = std::sync::Arc::clone(app.state::<std::sync::Arc<dsh_settings::SettingsService>>().inner());
+    let method = method.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        service.credentials_rpc(&config, &log_path, &record_path, &method, args)
+    })
+    .await
+    .map_err(|e| format!("凭据接口任务异常结束：{}", e))?
+}
+
+/// 保存模型配置；可选同时写入密钥（只写 DSH 凭据服务）。
+/// 保存后停引擎并按新覆盖文件重新判定端点。
+#[tauri::command]
+async fn model_settings_save(
+    app: tauri::AppHandle,
+    settings: model_settings::ModelSettings,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    settings.validate()?;
+    if let Some(key) = api_key.as_deref() {
+        if key.trim() != key || key.trim().is_empty() {
+            return Err("API Key 不能为空，首尾也不能有空格".to_string());
+        }
+        if key.len() > 8192 {
+            return Err("API Key 过长（上限 8192 字符）".to_string());
+        }
+    }
+    let (config_dir, app_root) = {
+        let state = app.state::<SharedHost>();
+        let host = state.lock().unwrap();
+        (host.paths.config.clone(), host.paths.root.clone())
+    };
+    let (json_path, overlay) = model_settings::save(&config_dir, &settings)?;
+
+    let mut key_written = false;
+    let mut key_error: Option<String> = None;
+    if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+        match model_settings_credentials(
+            &app,
+            "credentials/set",
+            serde_json::json!({ "ref": settings.api_key_ref, "value": key }),
+        )
+        .await
+        {
+            Ok(_) => key_written = true,
+            Err(message) => key_error = Some(message),
+        }
+    }
+
+    // 新覆盖文件就位：同步到 supervisor 与事实快照，停掉旧引擎（下次任务按新路由启动）。
+    let state = app.state::<SharedHost>();
+    sync_model_overlay(&app, state.inner(), &app_root);
+    let lifecycle = {
+        let host = state.lock().unwrap();
+        Arc::clone(&host.lifecycle)
+    };
+    let change = lifecycle.begin_change();
+    let stopped = match stop_engine(state.inner(), Duration::from_secs(10)) {
+        Ok(_) => {
+            change.succeed();
+            true
+        }
+        Err(message) => {
+            change.fail(message.clone());
+            false
+        }
+    };
+    let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    let route = route_classifier::classify(&config).ok();
+    Ok(serde_json::json!({
+        "ok": true,
+        "config_path": json_path.display().to_string(),
+        "overlay_path": overlay.display().to_string(),
+        "key_written": key_written,
+        "key_error": key_error,
+        "engine_stopped": stopped,
+        "route": route,
+        "note": if key_written {
+            "配置与密钥均已保存；引擎已停止，下次任务按新路由启动。"
+        } else {
+            "配置已保存；引擎已停止，下次任务按新路由启动。密钥未写入。"
+        },
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1843,6 +2066,10 @@ pub fn run() {
             app_paths_info,
             profile_decl_load,
             profile_decl_digest,
+            profile_decl_open,
+            profile_decl_save,
+            model_settings_load,
+            model_settings_save,
             task_types,
             task_samples,
             task_explanation_rules,

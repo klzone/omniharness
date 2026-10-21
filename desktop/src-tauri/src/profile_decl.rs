@@ -131,6 +131,8 @@ pub struct LoadedDecl {
     pub content_sha256: String,
     /// 加载告警（例如目录里出现了第二个 Profile 目录，本阶段不加载它）。
     pub warnings: Vec<String>,
+    /// 声明原文（供设置页内嵌编辑框载入；只读展示，保存仍走 `profile_decl_save` 校验）。
+    pub text: String,
 }
 
 /// 只读探测：当前磁盘上声明文件的内容指纹。
@@ -161,6 +163,35 @@ pub fn decl_digest(profiles_dir: &Path) -> Result<Option<String>, String> {
 /// 声明文件路径（`profiles/` 目录由调用方给出，必须是绝对路径）。
 pub fn decl_path(profiles_dir: &Path) -> PathBuf {
     profiles_dir.join(PROFILE_DECL_FILE)
+}
+
+/// 只读读取声明原文（OD-ARCH-053 设置页内嵌编辑框）。
+///
+/// 只读、不创建、不改写；文件不存在返回 `Ok(None)`。上限与保存端一致（64 KB）。
+pub fn read_text(profiles_dir: &Path) -> Result<Option<String>, String> {
+    if !profiles_dir.is_absolute() {
+        return Err(format!(
+            "Profile 声明目录必须是绝对路径：{}",
+            profiles_dir.display()
+        ));
+    }
+    let path = decl_path(profiles_dir);
+    match fs::metadata(&path) {
+        Ok(meta) if meta.len() > 64 * 1024 => Err(format!(
+            "声明文件超过 64 KB（{} 字节），请用系统编辑器处理：{}",
+            meta.len(),
+            path.display()
+        )),
+        Ok(_) => fs::read_to_string(&path)
+            .map(Some)
+            .map_err(|e| format!("无法读取 Profile 声明（{}）：{}", path.display(), e)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!(
+            "无法读取 Profile 声明（{}）：{}",
+            path.display(),
+            e
+        )),
+    }
 }
 
 /// 加载声明：不存在则创建默认文件；存在则读取并校验。
@@ -230,6 +261,7 @@ pub fn load_decl(profiles_dir: &Path) -> Result<LoadedDecl, String> {
         created,
         content_sha256,
         warnings,
+        text,
     })
 }
 

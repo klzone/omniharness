@@ -237,3 +237,13 @@
 - **副作用边界：** 设置窗口关闭不得触发引擎收尾（仅主窗口收尾）；DSH 子进程必须收回 stdin（`DEVNULL`），否则会因共享打开描述被设为非阻塞而导致引擎假 EOF 退出。
 - **证据：** cargo 160 passed；`test_web_api_unit.py` 26 passed（含 stdin 隔离回归）；真实窗口实测（模型目录、设置窗口、跟随模式、关闭后引擎存活）。
 - **复审触发：** ①DSH 设置页在窗口内出现 CSP/权限问题；②需要在设置窗口里直接感知「引擎需重启」的状态；③真实模型端到端验证发现跟随模式的思考等级与预期不符。
+
+### D-027：设置能力收回 OmniDesk 原生页，取代 D-026 的「设置界面内嵌 DSH」一条（2026-10-22，已定；OD-ARCH-053 落地）
+- **状态：** 已实现（`model_settings.rs` / `dsh_settings.rs` / `profile_decl.rs` / `SettingsPanel.tsx`）。仅取代 D-026 中「设置界面：用临时端口起 DSH 自带设置页」这一段；D-026 的「默认来源」「副作用边界」两条继续有效，`task_open_dsh_settings` 与 stdin 隔离逻辑未删除。
+- **理由：** 用户实测「打开 DSH 设置」弹出的是完整 DSH Web 应用首页（设置只是应用内弹层，官方无直达路由），用户会在两套界面之间来回且容易误改 DSH 原生配置。
+- **新口径：** 模型端点、默认模型、思考等级、凭据名与 API Key、场景声明（profile）编辑、权限开关全部在 OmniDesk 原生设置页完成；DSH 完整应用入口降级到「关于（高级）」折叠区，文案注明会打开完整 DSH 应用，默认折叠。
+- **密钥口径：** DSH 的 `llm-pi-ai` 只接受 `apiKeyEnv` 引用名，不接受明文密钥；因此 `api_key` 不再作为独立字段保存在 OmniDesk 文件里，而是经 DSH 官方 `credentials/set` RPC 写入 `$DSH_HOME/.credentials.yaml`，OmniDesk 只保存引用名。命令返回值、日志、evidence 一律不含密钥值，只显示「已配置/来源/可写」。
+- **配置文件口径：** 模型路由实际加载源是 OmniDesk 自有覆盖文件（默认 `~/OmniDesk/app/config/omnidesk-model.yml`，`OMNIDESK_APP_DATA_ROOT` 可改），由 `scripts/model-routes.mjs` 生成、以 `--patch` 传给引擎；不是 DSH Profile 里的 `cordis.patch.yml`。计划原文的预期路径按实际改正。
+- **场景声明口径：** 设置页只能打开数据根里的 `profiles/discipline.yml`（无路径参数），保存前先校验，写前留 `.bak-<epoch>` 备份，原子替换；校验失败禁止写入。仓库里的模板不因设置页保存而被改动。
+- **证据：** `cargo test --offline` 182 passed（lib，含 `model_settings` 7 个、`local_http` 3 个单测）；`npx tsc --noEmit` 0 错误；`npm run build` 通过；真实窗口四区截图（`tests/verification/desktop/evidence/od-arch-053/`）。
+- **复审触发：** ①用户需要直接改 DSH 原生 provider 配置（如自定义 headers、账号级参数）而原生页表达不了时，评估增加「只读展示 + 跳转原生页」而不是继续扩字段；②DSH 改动 `credentials/*` RPC 形态或 `--patch` 参数语义；③出现「原生页保存后引擎起不来」的实测反馈。
