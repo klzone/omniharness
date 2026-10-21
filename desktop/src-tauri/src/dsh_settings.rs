@@ -22,6 +22,23 @@ use crate::engine_supervisor::EngineConfig;
 
 use crate::local_http;
 
+/// 设置页一次「测试连接 / 拉模型列表」的结果（OD-ARCH-054）。
+///
+/// `classification` 只用于界面分组，固定为下列之一：
+/// `ok` / `auth` / `network` / `format` / `unsupported` / `local`。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ModelProbe {
+    pub classification: String,
+    pub message: String,
+    pub models: Vec<DiscoveredModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DiscoveredModel {
+    pub id: String,
+    pub name: String,
+}
+
 /// 等 DSH 打印本地地址的上限（首次启动要装插件、跑 HMR 等）。
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(25);
 /// 判断“端口还在听”的连接超时。
@@ -183,6 +200,170 @@ impl SettingsService {
             return Err(format!("{}（{}）", message, code));
         }
         Ok(result.get("value").cloned().unwrap_or(serde_json::Value::Null))
+    }
+
+    /// 拉取某个端点声明的模型列表，并做一次真正的连接测试（OD-ARCH-054 S1/S2）。
+    ///
+    /// 为什么不从 Rust 直接请求 base_url：宿主只允许 http 回环（`local_http`），
+    /// 真实端点几乎都是 https。DSH 自带 `llm/discoverModels`（`packages/llm/llm-pi-ai/src/discovery.ts`），
+    /// 由它发请求、自己处理 TLS 与鉴权头；宿主只负责把草稿端点传进去、把失败归类。
+    ///
+    /// 草稿里**不含**落在磁盘上的密钥：`api_key` 只在本次调用内使用，不落盘、不记录。
+    /// 不传 `provider`，避免命中内置 catalog 而绕过真实网络请求。
+    pub fn probe_models(
+        &self,
+        config: &EngineConfig,
+        log_path: &Path,
+        record_path: &Path,
+        base_url: &str,
+        api: &str,
+        api_key: Option<&str>,
+        timeout: Duration,
+    ) -> Result<ModelProbe, String> {
+        let mut draft = serde_json::json!({ "baseURL": base_url, "api": api });
+        if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+            draft["apiKey"] = serde_json::Value::String(key.to_string());
+        }
+        let opened = self.ensure(config, log_path, record_path)?;
+        let url = self
+            .reusable()
+            .map(|r| r.url)
+            .ok_or_else(|| "DSH 设置服务已启动，但地址没有留在内存里；请重试。".to_string())?;
+        let cookie = exchange_token(opened.port, &url)?;
+        let body = serde_json::json!({
+            "type": "client-request",
+            "rpcId": format!("omni-probe-{}", std::process::id()),
+            "method": "llm/discoverModels",
+            // Gateway 的 Remote 参数是**按名字**传的（`args` 必须是对象），
+            // 传数组会被 `gateway/arguments-invalid` 直接拒掉——实测踩到过。
+            "payload": { "args": { "settingsNs": "llm-pi-ai", "request": draft } },
+        })
+        .to_string();
+        let response = match local_http::request(
+            opened.port,
+            "POST",
+            "/api/llm/discoverModels",
+            &[
+                ("Content-Type", "application/json".to_string()),
+                ("Cookie", cookie),
+            ],
+            Some(&body),
+            timeout,
+        ) {
+            Ok(response) => response,
+            Err(message) => {
+                // 请求还没到 DSH 就失败，或 DSH 迟迟不返回：都归为「网络/超时」。
+                return Ok(ModelProbe {
+                    classification: "network".to_string(),
+                    message: format!(
+                        "{} 秒内没有拿到结果：{}",
+                        timeout.as_secs(),
+                        message
+                    ),
+                    models: Vec::new(),
+                });
+            }
+        };
+        if response.status == 401 || response.status == 403 {
+            return Err(format!(
+                "DSH 拒绝了本地会话（HTTP {}）；请重试，若仍失败请重启应用。",
+                response.status
+            ));
+        }
+        let parsed: serde_json::Value = serde_json::from_str(&response.body).map_err(|e| {
+            format!(
+                "DSH 模型发现接口返回的不是 JSON（HTTP {}）：{}",
+                response.status, e
+            )
+        })?;
+        let result = parsed.get("result").cloned().unwrap_or(serde_json::Value::Null);
+        Ok(classify_probe(&result))
+    }
+}
+
+/// 把 `llm/discoverModels` 的 JSON-RPC 结果翻译成界面能直接显示的判定。
+///
+/// 分类口径（失败原因只有三类起步，另加两种「不是端点的问题」）：
+///   * `ok`          —— 拿到了模型列表；
+///   * `auth`        —— 401/403 或 DSH 明说检查 API Key；
+///   * `network`     —— 连不上、超时、DNS/TLS 之类；
+///   * `format`      —— 通了，但返回的不是可读的模型列表；
+///   * `unsupported` —— 该协议没有可读的列表接口（DSH 的 DISCOVERY_UNSUPPORTED）；
+///   * `local`       —— 本机 DSH 侧的问题（找不到发现服务等）。
+///
+/// 只读错误文本做归类，不改写 DSH 的原因，避免界面比底层知道得更多。
+pub fn classify_probe(result: &serde_json::Value) -> ModelProbe {
+    if result.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        let models = result
+            .get("value")
+            .and_then(|v| v.as_array())
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| {
+                        let id = row.get("id").and_then(|v| v.as_str())?.to_string();
+                        let name = row
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(&id)
+                            .to_string();
+                        Some(DiscoveredModel { id, name })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let message = if models.is_empty() {
+            "端点可以连通，但没有返回任何模型；可以直接手填模型 id。".to_string()
+        } else {
+            format!("连接成功，读到 {} 个模型。", models.len())
+        };
+        return ModelProbe {
+            classification: "ok".to_string(),
+            message,
+            models,
+        };
+    }
+    let code = result
+        .pointer("/error/code")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let message = result
+        .pointer("/error/message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("DSH 没有给出失败原因");
+    let lower = message.to_ascii_lowercase();
+    let classification = if lower.contains("check the api key")
+        || lower.contains("answered 401")
+        || lower.contains("answered 403")
+        || lower.contains("invalid_credential")
+        || lower.contains("missing_credential")
+    {
+        "auth"
+    } else if lower.contains("answered 404") || lower.contains("answered 405") {
+        // 连通了，但那个路径不提供模型列表：多半是地址少了/多了 `/v1`。
+        "format"
+    } else if lower.contains("could not reach")
+        || lower.contains("aborted")
+        || lower.contains("timed out")
+        || lower.contains("certificate")
+        || lower.contains("dns")
+    {
+        "network"
+    } else if code == "DISCOVERY_UNSUPPORTED" || code == "NO_DISCOVERY" {
+        "unsupported"
+    } else if lower.contains("neither a \"data\" array nor a \"models\" object")
+        || lower.contains("not json")
+        || lower.contains("has no model listing")
+    {
+        "format"
+    } else if code == "INVALID_DISCOVERY" || code == "DISCOVERY_FAILED" {
+        "network"
+    } else {
+        "local"
+    };
+    ModelProbe {
+        classification: classification.to_string(),
+        message: format!("{}（{}）", message, code),
+        models: Vec::new(),
     }
 }
 
@@ -435,5 +616,105 @@ mod tests {
         );
         assert_eq!(port_of(&extract_url(line).unwrap()), Some(41234));
         assert_eq!(extract_url("dsh web: opening the default browser"), None);
+    }
+
+    // —— OD-ARCH-054：模型发现结果归类（纯函数，不联网） ——
+
+    fn probe_of(value: serde_json::Value) -> ModelProbe {
+        classify_probe(&value)
+    }
+
+    #[test]
+    fn probe_lists_discovered_models() {
+        let probe = probe_of(serde_json::json!({
+            "ok": true,
+            "value": [
+                { "id": "synthetic-model", "name": "Synthetic" },
+                { "id": "no-name" }
+            ]
+        }));
+        assert_eq!(probe.classification, "ok");
+        assert_eq!(probe.models.len(), 2);
+        assert_eq!(probe.models[1].name, "no-name");
+        assert!(probe.message.contains("2"));
+    }
+
+    #[test]
+    fn probe_reports_empty_catalogue_as_success() {
+        let probe = probe_of(serde_json::json!({ "ok": true, "value": [] }));
+        assert_eq!(probe.classification, "ok");
+        assert!(probe.models.is_empty());
+        assert!(probe.message.contains("手填"));
+    }
+
+    #[test]
+    fn probe_classifies_wrong_key_as_auth() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "DISCOVERY_FAILED",
+                "message": "https://example.invalid/v1/models answered 401; check the API key"
+            }
+        }));
+        assert_eq!(probe.classification, "auth");
+        assert!(probe.models.is_empty());
+        assert!(probe.message.contains("DISCOVERY_FAILED"));
+    }
+
+    #[test]
+    fn probe_classifies_unreachable_as_network() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "DISCOVERY_FAILED",
+                "message": "could not reach http://127.0.0.1:9/v1/models"
+            }
+        }));
+        assert_eq!(probe.classification, "network");
+    }
+
+    #[test]
+    fn probe_classifies_bad_listing_shape_as_format() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "DISCOVERY_FAILED",
+                "message": "the endpoint's model listing has neither a \"data\" array nor a \"models\" object; enter this provider's models by hand"
+            }
+        }));
+        assert_eq!(probe.classification, "format");
+    }
+
+    #[test]
+    fn probe_classifies_wrong_path_as_format() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "DISCOVERY_FAILED",
+                "message": "http://127.0.0.1:1/v1/models answered 404"
+            }
+        }));
+        assert_eq!(probe.classification, "format");
+    }
+
+    #[test]
+    fn probe_classifies_unsupported_protocol() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": {
+                "code": "DISCOVERY_UNSUPPORTED",
+                "message": "pi-ai protocol \"x\" has no model listing this build can read; enter this provider's models by hand"
+            }
+        }));
+        assert_eq!(probe.classification, "unsupported");
+    }
+
+    #[test]
+    fn probe_classifies_unknown_failure_as_local() {
+        let probe = probe_of(serde_json::json!({
+            "ok": false,
+            "error": { "code": "gateway/internal", "message": "boom" }
+        }));
+        assert_eq!(probe.classification, "local");
     }
 }

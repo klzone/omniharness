@@ -814,6 +814,71 @@ async fn model_settings_credentials(
     .map_err(|e| format!("凭据接口任务异常结束：{}", e))?
 }
 
+/// 测试连接 / 拉取模型列表（OD-ARCH-054 S1/S2）。
+///
+/// 由 DSH 的 `llm/discoverModels` 发真实请求（宿主自己不连公网、不需要 TLS）。
+/// `api_key` 可空：空时沿用 DSH 里该路由已登记的凭据；界面新填的 key 只用于这一次探测。
+/// 返回值里没有密钥、没有请求头，只有分类、原因与模型 id/名称。
+#[tauri::command]
+async fn model_settings_probe(
+    app: tauri::AppHandle,
+    base_url: String,
+    api: String,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    model_settings::validate_base_url(&base_url)?;
+    if !model_settings::ALLOWED_APIS.contains(&api.as_str()) {
+        return Err(format!(
+            "api 协议只支持：{}（收到 {}）",
+            model_settings::ALLOWED_APIS.join(" / "),
+            api
+        ));
+    }
+    let key = api_key.filter(|k| !k.trim().is_empty());
+    if let Some(key) = key.as_deref() {
+        if key.trim() != key {
+            return Err("API Key 首尾不能有空格".to_string());
+        }
+        if key.len() > 8192 {
+            return Err("API Key 过长（上限 8192 字符）".to_string());
+        }
+    }
+    let (config, log_path, record_path) = {
+        let snap = app.state::<HostSnapshot>();
+        let config = snap.config.lock().unwrap().clone();
+        (
+            config,
+            snap.paths.logs.join("dsh-settings.log"),
+            snap.paths.engine_state.join("dsh-settings.json"),
+        )
+    };
+    let service = std::sync::Arc::clone(
+        app.state::<std::sync::Arc<dsh_settings::SettingsService>>()
+            .inner(),
+    );
+    // 计划要求 10 秒超时：本地 DSH 收到请求后会自己带超时去连端点。
+    let probe = tauri::async_runtime::spawn_blocking(move || {
+        service.probe_models(
+            &config,
+            &log_path,
+            &record_path,
+            &base_url,
+            &api,
+            key.as_deref(),
+            std::time::Duration::from_secs(10),
+        )
+    })
+    .await
+    .map_err(|e| format!("连接测试任务异常结束：{}", e))??;
+    Ok(serde_json::json!({
+        "ok": probe.classification == "ok",
+        "classification": probe.classification,
+        "message": probe.message,
+        "models": probe.models,
+        "note": "本结果只说明这一次请求的结果；",
+    }))
+}
+
 /// 保存模型配置；可选同时写入密钥（只写 DSH 凭据服务）。
 /// 保存后停引擎并按新覆盖文件重新判定端点。
 #[tauri::command]
@@ -2069,6 +2134,7 @@ pub fn run() {
             profile_decl_open,
             profile_decl_save,
             model_settings_load,
+            model_settings_probe,
             model_settings_save,
             task_types,
             task_samples,

@@ -37,6 +37,10 @@ export default function App() {
   // 声明文件在运行期间被改动（OD-ARCH-052 第 2 步）：声明只在启动时读一次，
   // 改动要到下次启动才生效，所以这里只做提示，不做热重载、不自动覆盖。
   const [declDrift, setDeclDrift] = useState<"modified" | "missing" | null>(null);
+  // 首次运行引导（OD-ARCH-054 S3）：只在「确实没有任何模型配置」时出现一张卡。
+  // 判定依据是宿主的两个只读事实：配置文件不存在、且覆盖文件不存在。
+  // 已有配置（包括用户手写的覆盖文件）一律不打扰；读取失败也不猜。
+  const [firstRun, setFirstRun] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +98,23 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [decl]);
+
+  // 首次运行判定：只读一次，失败就当「不确定」，不弹引导。
+  useEffect(() => {
+    let cancelled = false;
+    shell
+      .modelSettingsLoad()
+      .then((r) => {
+        if (cancelled) return;
+        setFirstRun(r.ok && r.settings === null && r.overlay_present === false);
+      })
+      .catch(() => {
+        if (!cancelled) setFirstRun(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 线程记录以数据根为准（OD-ARCH-045 第 1 步）：启动时先读回一次。
   // 读完之前不挂载场景页，避免"先用缓存新建、再被数据根覆盖"的错位。
@@ -212,6 +233,22 @@ export default function App() {
           {declDrift === "missing"
             ? "Profile 声明文件已被删除，重启应用后会重建默认声明。当前仍按启动时的入口显示。"
             : "Profile 声明已在磁盘上修改，重启应用后生效。当前仍按启动时的入口显示。"}
+        </div>
+      ) : null}
+
+      {firstRun && scene !== "settings" ? (
+        <div className="mx-auto mt-2 max-w-4xl w-[calc(100%-3rem)] rounded-2xl bg-surface-container-high px-4 py-3 ring-1 ring-outline-variant/50">
+          <p className="text-[12.5px] font-medium text-on-surface">先配置一个模型端点</p>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-on-surface-variant">
+            这台机器上还没有模型配置。到设置里填服务商地址、协议与密钥，点「测试连接」确认能通，
+            保存后就能在周报、文案与项目跟进里使用模型。已有配置的机器不会再看到这条提示。
+          </p>
+          <button
+            className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-[11.5px] text-on-primary"
+            onClick={() => setScene("settings")}
+          >
+            去设置
+          </button>
         </div>
       ) : null}
 

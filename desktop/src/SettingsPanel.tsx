@@ -18,6 +18,7 @@ import type {
   LocalRootInfo,
   ModelCategory,
   ModelPermissions,
+  ModelProbeReceipt,
   ModelSettings,
   ModelSettingsView,
   ProfileDeclPayload,
@@ -84,6 +85,16 @@ const PERMISSION_ITEMS: Array<{
   },
 ];
 
+/** 连接测试的失败归类 → 给用户看的下一步（只描述可做的事）。 */
+const PROBE_LABEL: Record<string, string> = {
+  ok: "连接成功",
+  auth: "鉴权失败",
+  network: "连不上",
+  format: "地址能连上，但返回的不是可读的模型列表",
+  unsupported: "该协议不支持列模型",
+  local: "本机 DSH 侧的问题",
+};
+
 /** 卡片头：左侧标题与状态摘要，右侧主操作。 */
 function CardHead({
   title,
@@ -143,6 +154,10 @@ export default function SettingsPanel() {
   const [modelBusy, setModelBusy] = useState(false);
   const [modelNote, setModelNote] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
+  // 连接测试（OD-ARCH-054 S1/S2）：结果只说明这一次请求，不代表已保存。
+  const [probe, setProbe] = useState<ModelProbeReceipt | null>(null);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [probeError, setProbeError] = useState<string | null>(null);
 
   // —— 场景声明（S3）——
   const [decl, setDecl] = useState<ProfileDeclPayload | null>(null);
@@ -279,6 +294,25 @@ export default function SettingsPanel() {
       setModelBusy(false);
     }
   }, [form, apiKey, refreshModel, refreshAdmission]);
+
+  const probeConnection = useCallback(async () => {
+    setProbeBusy(true);
+    setProbe(null);
+    setProbeError(null);
+    try {
+      const r = await shell.modelSettingsProbe({
+        baseUrl: form.base_url,
+        api: form.api,
+        // 输入框里的 key 只用于这一次探测；空则沿用 DSH 已登记的凭据。
+        apiKey: apiKey.trim().length > 0 ? apiKey : null,
+      });
+      setProbe(r);
+    } catch (e) {
+      setProbeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProbeBusy(false);
+    }
+  }, [form.base_url, form.api, apiKey]);
 
   const openDecl = useCallback(async () => {
     setDeclBusy(true);
@@ -562,6 +596,25 @@ export default function SettingsPanel() {
             placeholder="例如 deepseek-v4.1-flash"
             onChange={(e) => setForm({ ...form, default_model: e.target.value })}
           />
+          {probe && probe.models.length > 0 ? (
+            <>
+              <select
+                className="text-input"
+                value={probe.models.some((m) => m.id === form.default_model) ? form.default_model : ""}
+                onChange={(e) => {
+                  if (e.target.value) setForm({ ...form, default_model: e.target.value });
+                }}
+              >
+                <option value="">从端点返回的 {probe.models.length} 个模型里选一个…</option>
+                {probe.models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name === m.id ? m.id : m.name + "（" + m.id + "）"}
+                  </option>
+                ))}
+              </select>
+              <p className="hint">上面的输入框仍然可以直接手填；这个列表只是端点自己报的候选。</p>
+            </>
+          ) : null}
         </div>
 
         <div className="field">
@@ -626,10 +679,36 @@ export default function SettingsPanel() {
           <button className="primary" onClick={() => void saveModel()} disabled={modelBusy}>
             {modelBusy ? "保存中…" : "保存模型配置"}
           </button>
+          <button
+            className="ghost"
+            onClick={() => void probeConnection()}
+            disabled={probeBusy || modelBusy || form.base_url.trim().length === 0}
+            title="用当前填写的地址与协议，让 DSH 实际请求一次端点"
+          >
+            {probeBusy ? "测试中…" : "测试连接"}
+          </button>
           <button className="ghost" onClick={() => void refreshModel()} disabled={modelBusy}>
             重新读取
           </button>
         </div>
+        {probeError ? <div className="alert">测试没有完成：{probeError}</div> : null}
+        {probe ? (
+          <div className={probe.ok ? "status-card" : "alert"}>
+            <div className="status-row">
+              <span className="k">{probe.ok ? "连接结果" : "连接失败"}</span>
+              <span className="v">
+                {/* 成功时 message 本身已经是「连接成功…」，不再重复前缀。 */}
+                {probe.ok
+                  ? probe.message
+                  : (PROBE_LABEL[probe.classification] ?? probe.classification) + " —— " + probe.message}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">说明</span>
+              <span className="v">{probe.note}没有保存任何设置。</span>
+            </div>
+          </div>
+        ) : null}
         {modelNote ? <p className="hint">{modelNote}</p> : null}
         <p className="hint">
           保存会写入两个<strong>非机密</strong>文件（模型配置与 DSH 补丁），并停掉当前引擎；
