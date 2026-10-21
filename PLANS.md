@@ -29,8 +29,17 @@
 >   **用户已裁决（2026-10-21）：「按最新的版本来，哪边最新用哪边，如果整合两边也行」→ 以主仓库现版为基线，只整合该分支独有且仍有用的资产。** 实际纳入：`_design/stitch_omnidesk/`（设计稿原件 7 个文件，主仓库 `theme.css` 的令牌注释本就指向这里但目录缺失）、`docs/omnidesk-ui-v2-handoff.md`、`tests/verification/desktop/verify_launcher_identity.sh`、`verify_port_ownership.sh`。未纳入：三个 `host_*_admission.rs`（依赖已被 048 重构掉的 `*_after_admission` 符号，直接复制编译不过；主仓库 `admission_classification.rs` 与 `host_integration.rs::admission_refuses_before_any_process_state_exists` 已覆盖同等能力）、`verify_engine_admission.py`（断言旧常量 `ENDPOINT_ISOLATION_CONFIRMED`，与 021 之后的宿主侧判定口径冲突）、`_preview.html`（临时预览）、`desktop/src/components/Icon.tsx` 等两边逐字一致的文件。因为不再整支合并，`omniharness-ui` 侧的 71 个未提交文件保持原状、未提交。
 > - **S2 实现已在 048 落地，本轮补齐验收要求的对比数据。** 证据：`tests/verification/desktop/verify_resume_token_savings.py` → `tests/verification/desktop/evidence/od-arch-051/s2-token-savings.json`，11/11 通过。
 >   **实测推翻了计划里的假设：** 前端组装层面三轮输入从 252 字符降到 78（省 69%），但**模型实际收到的量反而更大**（续接轮 6488 字符/6 条消息 vs 重放轮 623 字符/2 条消息）——DSH 续接会话时会把会话历史一起送给模型。因此本计划的「合成端点下输入量应显著下降」只在提示词拼装层面成立，**不能表述为节省 token 或节省费用**。
-> - **S3、S4 未开工**，等 ARCHITECT 复核批次 1 后再决定是否开启批次 2。
+> - **S3、S4 未开工**，等 ARCHITECT 复核批次 1 后再决定是否开启批次 2（→ 用户 2026-10-21 指令「如果详细计划已经有了就继续往下」后开启，结果见下段）。
 > - 未提交、未推送、未打标签；`runtime/` 零差异；全程合成数据 + 一次性数据根。
+
+> **执行状态（BUILDER，2026-10-21）：批次 2 完成（S3 + S4），待 ARCHITECT 独立复核。**
+> - **S3 完成，文件驱动。** 声明落 `<应用数据根>/profiles/discipline.yml`（首次用 `create_new` 创建，永不覆盖）。只决定 Dock 上的业务场景与品牌名；不改插件/路由/Skill/判定。**解析器是自写的受限 YAML 子集，未新增依赖**（离线构建，锁文件无 YAML crate）——遇到超出子集的写法（制表符、未知键、重复字段、嵌套映射、未闭合引号）一律报错，不猜测兼容。失败时回退内置入口并在界面显式报错，坏文件原样保留。内置工具入口（任务工作台/设置/引擎诊断）由代码固定，声明不可删改。
+> - **S4 只完成窗口外壳**：标题 `OmniDesk · DSH 设置`、底色 `#faf8ff`、1160×820。**DSH 页面内部的字体与配色未改**——该窗口加载 DSH 原生页（D-026），样式由 DSH 控制，CSP 不允许本应用注入脚本/样式。**「外观统一」目前仅到窗口外壳这一层**，验收记录不得写成页面已主题化。DSH 配置读写与令牌处理未动。
+> - **测试中发现并修复的缺陷：** 声明异步到达时，原校准逻辑会把正停留在设置页的用户强行切回首页（内置工具页不在声明管辖范围内）。已改为只校准 5 个业务场景。属普通实现缺陷，未改架构。
+> - **真实窗口验收（非仅单测）**：①默认启动 → 宿主创建声明文件且与 `samples` 逐字一致，Dock 5 个业务入口；②改文件（去掉「文案写作」、改名「我的纪检工作台」）→ 重启后入口消失、品牌名变化，**未改代码**；③写坏文件 → 顶部红条报出路径与原因、回退内置入口、坏文件未被覆盖、进程存活；④设置窗口标题与尺寸符合，主窗口存活。证据：`tests/verification/desktop/evidence/od-arch-051/profile-decl-run.json`、`settings-shell-run.json` 与 `shots/`。
+> - **回归：** cargo `169 passed / 0 failed`（lib，含新增 9 个声明单测）+ 2 + 13 + 3 + 1 全绿；`cargo build` 通过；tsc 0；`npm run build` 通过；pytest 26 passed；`runtime/` 零差异。
+> - **限制：** 声明改动需重启应用生效（启动读一次，无热重载，界面未提示）；设置页内部外观未统一（见 S4）；`11-settings-window.png` 因 Xvfb 无窗口管理器只作旁证，以 `12-settings-window-only.png` 为准；用户报过的「启动卡死」在本批次两轮真实窗口中**未复现**，不认定已修复。声明文件是界面层配置，不是 DSH Profile。
+> - 按计划授权范围分批提交并推送（A 代码 / B 测试与证据 / C 记录）。
 
 ### OD-ARCH-050
 ### OD-ARCH-050：修「新建任务后模型消失」+「打开 DSH 设置」改为应用内独立窗口（已执行，2026-10-21）
