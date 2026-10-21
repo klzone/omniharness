@@ -393,6 +393,50 @@ impl SaveOfflineRequest {
     }
 }
 
+/// 执行入口终检（OD-ARCH-049 第 3 步）。
+///
+/// 任务真正触达引擎之前做一次状态校验，检查结果只有两种：
+///   * 通过：任务原样执行（返回 `Ok(())`，调用方不改写任何内容）；
+///   * 不通过：**整条任务拒绝**（返回指名道姓的错误），绝不“跳过部分内容继续执行”。
+///
+/// 拦截范围最小化：只有与任务属于**同一场景成果目录**的未决确认卡才拦截。
+/// 其它场景的卡片不挡任务；过期 / 已确认 / 已放弃的卡片也不挡。
+pub fn scene_gate(dir: &Path, scenario: &str, now: f64) -> Result<(), String> {
+    let (records, broken) = list(dir, now)?;
+    if broken > 0 {
+        // 读不出来的记录无法证明“没有挡路卡片”，这里选择拦住并说清原因，
+        // 而不是当作没有记录继续执行。
+        return Err(format!(
+            "有 {} 条待确认记录无法解析（{}），无法确认能否开始任务；请先核对并处理这些记录。",
+            broken,
+            dir.display()
+        ));
+    }
+    match records
+        .into_iter()
+        .find(|record| record.status == "pending" && record.payload.scenario == scenario)
+    {
+        Some(record) => Err(format!(
+            "有一条未确认写入（{}），请先处理：确认或放弃该确认卡后再开始任务。",
+            record.summary
+        )),
+        None => Ok(()),
+    }
+}
+
+/// 把任务入口的 intent 映射到离线场景；非场景任务返回 `None`（不进入拦截范围）。
+///
+/// 只接受三个场景标识（下划线或连字符写法）；其它 intent 一律不拦，
+/// 因为提交入口无法据此判断资源归属。
+pub fn scene_for_intent(intent: &str) -> Option<&'static str> {
+    match intent.trim().replace('-', "_").as_str() {
+        "weekly_report" => Some("weekly_report"),
+        "material_writing" => Some("material_writing"),
+        "project_management" => Some("project_management"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,5 +536,66 @@ mod tests {
         let settled = mark_resolved(&dir, &record.id, "rejected", 1_800_000_050.0).unwrap();
         assert_eq!(settled.status, "rejected");
         assert!(mark_resolved(&dir, &record.id, "rejected", 1_800_000_060.0).is_err());
+    }
+
+    /// OD-ARCH-049 第 3 步验收一：同场景未决卡 → 整条任务拒绝，且错误指名卡片的摘要。
+    #[test]
+    fn scene_gate_blocks_same_scene_pending_card_with_named_error() {
+        let dir = temp_dir("gate-same");
+        let record = create(&dir, &request("合成正文"), 1_800_000_000.0).unwrap();
+        let error = scene_gate(&dir, "weekly_report", 1_800_000_010.0)
+            .expect_err("同场景有未决确认卡时必须拒绝任务");
+        assert!(
+            error.contains("有一条未确认写入"),
+            "错误应指名未确认写入：{}",
+            error
+        );
+        assert!(
+            error.contains(&record.summary),
+            "错误应带上卡片摘要以便定位：{}",
+            error
+        );
+    }
+
+    /// OD-ARCH-049 第 3 步验收二：其它场景的未决卡不挡本场景任务。
+    #[test]
+    fn scene_gate_ignores_other_scenes() {
+        let dir = temp_dir("gate-other");
+        create(&dir, &request("合成正文"), 1_800_000_000.0).unwrap();
+        assert!(scene_gate(&dir, "material_writing", 1_800_000_010.0).is_ok());
+        assert!(scene_gate(&dir, "project_management", 1_800_000_010.0).is_ok());
+    }
+
+    /// 已结算 / 已过期的卡不再挡任务；无法解析的记录则拦下并说清原因（不静默放行）。
+    #[test]
+    fn scene_gate_respects_settled_expired_and_broken_records() {
+        let dir = temp_dir("gate-settled");
+        let record = create(&dir, &request("合成正文"), 1_800_000_000.0).unwrap();
+        mark_resolved(&dir, &record.id, "rejected", 1_800_000_010.0).unwrap();
+        assert!(scene_gate(&dir, "weekly_report", 1_800_000_020.0).is_ok());
+
+        // 过期：超过 24 小时有效期后不再挡任务。
+        let second = create(&dir, &request("另一份正文"), 1_800_000_030.0).unwrap();
+        let after_ttl = second.expires_at + 1.0;
+        assert!(scene_gate(&dir, "weekly_report", after_ttl).is_ok());
+
+        // 坏记录：无法证明没有挡路卡片，必须拒绝并给出原因。
+        fs::write(dir.join("pw-broken.json"), b"{\"schema\":\"oms").unwrap();
+        let error = scene_gate(&dir, "material_writing", after_ttl)
+            .expect_err("有无法解析的记录时必须拒绝");
+        assert!(error.contains("无法解析"), "error={}", error);
+    }
+
+    #[test]
+    fn scene_for_intent_only_maps_known_scenes() {
+        assert_eq!(scene_for_intent("weekly_report"), Some("weekly_report"));
+        assert_eq!(scene_for_intent("weekly-report"), Some("weekly_report"));
+        assert_eq!(scene_for_intent("material_writing"), Some("material_writing"));
+        assert_eq!(
+            scene_for_intent("project_management"),
+            Some("project_management")
+        );
+        assert_eq!(scene_for_intent("desensitized_analysis"), None);
+        assert_eq!(scene_for_intent(""), None);
     }
 }
