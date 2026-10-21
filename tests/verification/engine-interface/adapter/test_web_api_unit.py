@@ -198,6 +198,22 @@ class RedactionAndCommandTests(unittest.TestCase):
             WebApiAdapter(command=["node"], cwd="relative/path")
 
 
+class SpawnIsolationTests(unittest.TestCase):
+    """OD-ARCH-050 回归：DSH 子进程不得继承引擎的协议 stdin。
+
+    继承后 Node 会把共享的“打开文件描述”设为非阻塞，引擎的 `for line in sys.stdin`
+    随后读到假 EOF 并安静退出（rc=0、无栈）；表现是“引擎启动后立刻退出”、
+    模型目录永远拿不到。
+    """
+
+    def test_dsh_child_stdin_is_devnull(self):
+        import inspect
+
+        source = inspect.getsource(WebApiAdapter._ensure_started)
+        self.assertIn("stdin=subprocess.DEVNULL", source)
+        self.assertIn("stderr=subprocess.STDOUT", source)
+
+
 class SessionHelpersTests(unittest.TestCase):
     def test_highest_turn_reads_record_and_event(self):
         records = [{"turn": 2}, {"event": {"data": {"turn": 5}}}, {"turn": 3}, "junk"]
