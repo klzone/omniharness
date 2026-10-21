@@ -1,5 +1,68 @@
 # BUILDER 执行状态
 
+## 夜间批次交接（053 → 054 → 055 全部执行完毕，2026-10-22）
+
+三份计划按序完成，每份收尾都跑了同一套全回归并全绿，已分批提交推送。工作区仅剩 ARCHITECT 原有的 `M PLANS.md`、`M REVIEW.md`，未改动、未提交。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/写/打印任何真实凭证，未新增依赖。**待 ARCHITECT 复核，未开新计划。**
+
+| 计划 | 结果 | 提交 |
+| --- | --- | --- |
+| 053 原生设置页 | 完成（含 D-026 取代记录） | `4740195` / `e965771` / `eb23528` |
+| 054 设置页深化 + 首次运行引导 | 完成（修掉 `llm/discoverModels` 位置传参缺陷） | `c5155b6` / `cea8b2b` / `c888b7b` |
+| 055 场景页收尾核对 | 完成（见下） | 本次三批 |
+
+### 给 ARCHITECT 的三项待决
+
+1. **`scripts/setup.sh` 第 2 步仍在初始化 `~/YvanAI`**（`init-yvan-data.sh` 默认根即该路径），与「旧 YvanAI 只读兼容、不迁移」的口径有张力。改初始化脚本会改变新机器上的目录副作用，超出 055「只修路径常量/文档」的范围，故**只登记未改**，请决定是否单开计划。
+2. **设置页「凭据状态：读取中…」在无已保存配置时不收敛**（054 已登记，仍未修）。
+3. **高屏下 Dock 会整体重排**，自动化按固定像素点击不可靠。本轮 S3 改为按入口数量换算「第 3 个图标」的坐标做 A/B 对照，属测试方法限制而非产品缺陷；若后续要长期依赖 Dock 点击，建议加稳定的可访问名选择器。
+
+## OD-ARCH-055（完成，待 ARCHITECT 复核）：场景页收尾核对（2026-10-22）
+
+- 开工 HEAD `c888b7b`（`main`，与 `origin/main` 一致）；原有未提交改动原样保留。未改 `runtime/`，未碰用户数据与凭证，未新增依赖。
+- **UI 参考检索（OD-ARCH-035 条款）：** 动工前用 `screenshots-design-inspiration` 检索「empty state chat onboarding placeholder」（Branch Messenger 等 3 个产品）。借鉴两点：①空态用一句主句 + 一行说明，不放大插画；②空态文案要指向下一步动作，而不是解释系统内部。
+
+### S1 成果路径核对（文件事实 + 单测）
+
+| 落点 | 实际路径 | 依据 |
+| --- | --- | --- |
+| 人工「保存成果」 | `~/OmniDesk/workspace/artifacts/` | `settings.rs:33 DEFAULT_ARTIFACT_SUBDIR`，经 `task_shell.rs resolve_local_data_root()` 校验 |
+| 模型/定时产出 | 数据根下按场景分目录（weekly-report / material-writing / project-management） | `pending_writes::scenario_dir()` |
+| 旧 `~/YvanAI` | 不读正文、不迁移、不覆盖 | 已有单测 `offline_save_default_goes_to_omnidesk_and_leaves_legacy_files_alone` |
+
+发现并修掉一处**纯文档**漂移：`docs/OmniDesk-Desktop-Data-Layout.md` 把常量写成 `task_shell.rs` 的 `DEFAULT_LOCAL_SUBDIR`，实际是 `settings.rs` 的 `DEFAULT_ARTIFACT_SUBDIR`。已改正并注明解析入口。代码无改动。
+
+### S2 空状态检查（静态检查 + 真实窗口）
+
+- 三场景 `emptyHint` 齐全；`ScenePage` 的历史对话空态与进度空态都有文案。
+- 唯一缺口：`HomeChat` 对话流在零消息时整片空白。已补一句主句 + 一行说明（一处文案，一次提交），见 `desktop/src/shell/HomeChat.tsx`，截图 `01-default.png`。
+
+### S3 场景声明联动（真实窗口 + 文件事实）
+
+脚本 `tests/verification/desktop/verify_scene_decl_linkage_055.py`，一次性 Xvfb 显示 + 一次性 `/tmp` 数据根 + 合成端点：
+
+- 默认声明：Dock 5 个业务入口 + 3 个基础设施入口；声明与 `samples/profiles/discipline.yml` 逐字一致。
+- 删掉 `writing` 入口后重启：Dock 少一项，**第 3 个图标变成「项目跟踪」**，截图 `04-hidden-slot3-project.png` 显示项目页（含「进度 / 阶段成果」页签）；默认声明下同序号位置是「文案写作」（`02-default-slot3-writing.png`）。A/B 对照成立。
+- 无 router / hash / 深链，隐藏后界面没有可直达该页面的路径。
+- 恢复声明后重启：截图回到初始状态，`sha256` 前后一致（`6e0fa2cb…a4d9`），`decl_restored_identical=true`。
+
+### 验证
+
+| 检查 | 结果 | 等级 | 证据 |
+| --- | --- | --- | --- |
+| `cargo test --offline` | 190 + 2 + 13 + 3 + 1 全 passed，0 failed | 脚本运行 | `tests/verification/desktop/evidence/od-arch-055/regression.txt` |
+| `cargo build --offline` | 通过（1 个既有 dead_code warning） | 脚本运行 | 同上 |
+| `npx tsc --noEmit` | 0 错误 | 静态检查 | 同上 |
+| `npm run build` | 通过 | 脚本运行 | 同上 |
+| `python3 -m pytest tests -q` | 26 passed | 脚本运行 | 同上 |
+| `git status --porcelain runtime/` | 空（零差异） | 文件事实 | 同上 |
+| S3 三态真实窗口 | 默认 / 隐藏 / 恢复，App 全程存活 | 真实窗口运行 | `tests/verification/desktop/evidence/od-arch-055/`（5 张截图 + `scene-decl-linkage-run.json`） |
+| evidence 密钥扫描 | 无长密钥串；端点用占位串 | 脚本运行 | `grep` 全目录 |
+
+### 未验证 / 限制
+
+- Dock 可见性由截图人工比对判定（无 DOM 断言）；点击用「入口序号 + 数量换算」定位，Dock 若再次改版需同步更新坐标常量。
+- 未接入真实材料与真实端点（不在本计划范围）。
+
 ## OD-ARCH-054（完成，待 ARCHITECT 复核）：设置页深化与首次运行引导（2026-10-22）
 
 - 开工 HEAD `eb23528`（`main`，与 `origin/main` 一致）；工作区原有 `M PLANS.md`、`M REVIEW.md` 原样保留，未重置、未覆盖。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/未写/未打印任何真实凭证，未新增依赖。
