@@ -300,6 +300,28 @@ async fn engine_submit_task(
             "detail": { "reason": "red_line_rejected", "enforced_by": "host" },
         }));
     }
+    // OD-ARCH-049 第 3 步：执行入口终检。
+    //
+    // 只有调用方**明确声明了离线场景**（周报/文案/项目）的任务才进入拦截范围；
+    // 首页闲聊不声明场景（intent 缺省值只是记录用），不按场景资源拦。
+    // 命中同场景未决确认卡时整条任务拒绝，错误点名是哪张卡，不做“跳过部分内容”。
+    if let Some(scene) = intent
+        .as_deref()
+        .and_then(pending_writes::scene_for_intent)
+    {
+        let dir = pending_write_dir(&state);
+        if let Err(message) = pending_writes::scene_gate(&dir, scene, task_shell::now_secs()) {
+            return Err(serde_json::json!({
+                "engine_error_code": "pending_write_blocked",
+                "message": message,
+                "detail": {
+                    "reason": "pending_write_blocked",
+                    "enforced_by": "host",
+                    "scenario": scene,
+                },
+            }));
+        }
+    }
     let sink = bridge_sink(app.clone());
     // OD-ARCH-045 第 3 步：引擎冷启动（ensure_initialized）可能耗时数秒，
     // 放到阻塞线程池里执行，主线程与 UI 立即返回，不再冻结窗口。
@@ -2632,6 +2654,39 @@ mod engine_lifecycle_wiring_tests {
         assert!(
             !body.contains("permission_barrier"),
             "旧屏障字段不得残留（并发边界已改由 EngineLifecycle 表达）"
+        );
+    }
+
+    /// OD-ARCH-049 第 3 步：执行入口终检必须发生在触达引擎之前。
+    ///
+    /// 提交入口在红线扫描之后、`with_engine_call` 之前检查“同场景未决确认卡”：
+    /// 命中即整条任务拒绝（错误码 `pending_write_blocked`），不进入引擎、不做部分执行。
+    #[test]
+    fn submit_entry_checks_pending_scene_gate_before_touching_engine() {
+        let src = include_str!("lib.rs");
+        let body = src.split("\n#[cfg(test)]").next().expect("源码前缀");
+        let start = body
+            .find("fn engine_submit_task")
+            .expect("找不到 engine_submit_task");
+        let rest = &body[start..];
+        let end = rest[1..]
+            .find("\n#[tauri::command")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        let cmd = &rest[..end];
+        let gate = cmd
+            .find("pending_writes::scene_gate(")
+            .expect("提交入口必须做同场景未决确认卡终检");
+        let engine = cmd
+            .find("with_engine_call(")
+            .expect("提交入口必须经 with_engine_call");
+        assert!(
+            gate < engine,
+            "终检必须先于触达引擎执行（否则会先跑任务再拒绝）"
+        );
+        assert!(
+            cmd.contains("\"pending_write_blocked\""),
+            "拒绝必须带可识别的错误码，便于界面如实说明原因"
         );
     }
 
