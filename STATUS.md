@@ -1,5 +1,90 @@
 # BUILDER 执行状态
 
+## OD-ARCH-048：对话通道切到 DSH 本地 Web API（2026-10-21，已执行，待 ARCHITECT 复核）
+
+- 开工 HEAD `15aef4f`（`main`）。**未提交、未推送、未打标签。**
+- 未改 `runtime/`（`git diff -- runtime/` 为空），未碰 `~/.dsh`/`~/.agents`/`~/OmniDesk`、凭证、模型路由。
+- 验证只用 `/tmp` 一次性数据根 + 本机回环合成端点，零真实凭证、零外网。
+
+### 已完成
+
+- `engine/omnidesk_engine/task_core.py`：从 ACP 适配器抽出的公共任务核心（任务状态机、事件、结果落盘、取消语义）。
+- `engine/omnidesk_engine/web_api_adapter.py`：新通道。token→cookie 鉴权后丢弃 token、HTTP RPC + WS `session/follow`、新会话/同会话续接/重启恢复、`assistant-stream/text-delta` 逐字流式、`turn/end` 落定、`session/modelCatalog` 模型目录、优雅关闭。
+- `serve.py`：按 `dsh.channel` 选适配器，默认 `web-api`，非法值返回 `INVALID_ARGUMENT`。
+- 宿主：`EngineConfig.channel` + `OMNIDESK_ENGINE_CHANNEL`（默认 web-api）；新增 `engine_list_models`，模型路由 Profile 回退。
+- 前端：`ModelPicker` 用真实模型目录；`HomeChat` 消费真实增量，ACP 无增量时保留打字机降级。
+- `dev-ui.sh`/`omnidesk.sh` 默认 web-api；`OMNIDESK_ENGINE_CHANNEL=acp` 可回退。
+
+### 测试命令与结果（最终代码上实跑）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd tests/verification/engine-interface/adapter && python3 -u run_web_api_scenarios.py` | **W01–W10 一次性全 pass**（exit 0） |
+| `cd tests/verification/engine-interface/adapter && python3 -m unittest test_web_api_unit` | **25 passed / 0 failed** |
+| `python3 tests/verification/engine-interface/adapter/run_engine_adapter_scenarios.py` | **E01–E20 全 pass**（ACP 通道未回归） |
+| `cd desktop && npx tsc --noEmit` | exit 0，0 错误 |
+| `cd desktop && npm run build` | 通过（built in 1.03s） |
+| `cd desktop/src-tauri && cargo test --offline` | **165 passed / 0 failed**（lib 146 + 2 + 13 + 3 + 1） |
+| `python3 -m compileall -q engine/omnidesk_engine` | 通过 |
+| `node scripts/dump-model-route.mjs --self-test` | **24/24 通过** |
+| `git diff --stat -- runtime/` | 空（未改 Runtime） |
+
+### 关键实测事实
+
+- **逐字流式**：W02 三块分别在 0.381 / 0.615 / 0.866s 到达（跨度 0.485s），序号严格递增，拼接等于最终结果。
+- **取消**：W04 `turn/end=aborted` → `confirmed_cancelled`，实测 0.032s 落定。
+- **失败不伪装成功**：W03 上游 400 → `turn/end reason.kind="error"` → failed，内容为空。
+- **重启恢复**：W07 重启后能列会话、`recover_ok=true`、以 `resumed` 继续并产出新文本。
+- **未知会话**：W09 顶层 `{"type":"error"}` 帧被识别，立即返回 `UNKNOWN_SESSION`，0 次模型请求。
+- **模型目录**：W10 归一化出 provider/分组/efforts，扫描无凭证字段。
+
+### 实现中修正的四处偏差（均已在证据 README 登记）
+
+1. `turn/end` 实际 `reason.kind="completed"`，`stop` 在 assistant-stream 的 finish 帧——两处分别记录。
+2. 路由分类器只认 `acp` 条目，web Profile 的 `agent-default-model` 被判 `route_missing`——给脚本与 `route_classifier.rs` 增加 `channel`（计划外最小修复）。
+3. 失败态实为 `error`，原实现只认 `failed` 会落成 unknown——已修正并补 `max-tokens`/`interrupted`/`blocked` 分支。
+4. `session/not-found` 是顶层错误帧，原实现只看 `value.type` 会拖到超时——已加 `_frame_error()` 与单测。
+
+### 第五处偏差（回归中发现，本轮修复）
+
+5. `desktop/src-tauri/tests/admission_classification.rs` 的合成夹具原来只写 `acp` 条目，宿主默认走 web-api 后读到内置 `deepseek-official/deepseek-flash` 默认路由，导致两个用例失败。已改为同时声明 `acp` 与 `agent-default-model`（各自 plugin name 必须匹配，否则 DSH 只打印 `name mismatch ... skipping` 并静默回落）。属测试夹具修正，未改产品判定逻辑。
+
+### 未验证事项
+
+- 思考块流式：合成端点不产思考内容，未验证。
+- personaPrefix 是否真正送达模型：`--dump-config` 显示配置被覆盖，但请求体整包探针 `body_hits=[]`。只记录为“配置被接受、请求中不可见”，不推断模型收到。
+- 真实模型端点逐字流式：本轮未接真实模型（凭证不动）。
+- 真实窗口人工抽验：本轮未做。
+- `wss://`：内置 WS 客户端仅支持 `ws://`，对 https 端点返回 `UNSUPPORTED`；当前 DSH 本地服务为 http，未阻塞。
+- `cargo fmt`：本机无 rustfmt，未运行。
+
+### 证据路径
+
+- `tests/verification/engine-interface/evidence/web-api/W01..W10.json`
+- `tests/verification/desktop/evidence/od-arch-048/README.md`
+- `tests/verification/engine-interface/evidence/adapter/E01..E20.json`（本轮 ACP 回归重写）
+
+### 卡死修复（2026-10-21，同一计划内追加，用户报告「启动后整窗无响应、场景切不动、只能强制退出」）
+
+- **根因（文件事实）：** Tauri 2 里 `#[tauri::command]` 直接修饰**同步** fn 时，命令在 UI 主线程执行（`tauri-macros-2.7.3/src/command/wrapper.rs`：缺省 `ExecutionContext::Blocking`，只有 `(async)` 或 `async fn` 才改走线程池）。本项目 49 个命令是同步 fn，且大多要先拿全局宿主锁 `SharedHost = Arc<Mutex<HostState>>`，再等引擎冷启动（最长 60s）。其中 `thread_store_load` 决定首屏，`engine_list_models` 等要等引擎——任何一条占住主线程，整窗就不能重绘、不能切场景。
+- **改法（不改锁语义、不改架构）：**
+  1. `desktop/src-tauri/src/lib.rs`：49 个同步命令的属性改为 `#[tauri::command(async)]`，函数体与签名不动（Tauri 生成的 wrapper 只是换执行上下文，仍等同一个 `Mutex`，不引入并发写）。原本 6 个 `async fn` 命令保持原样。
+  2. `desktop/src/sceneThreads.ts`：首屏不再无限等数据根。`thread_store_load` 4 秒未回就用本地缓存先渲染，后台继续等，读到后自动补上；`hydrated` 只在真正读到数据根时置位，后台结果不会被当成已读。
+  3. `desktop/src-tauri/src/lib.rs` 新增回归 `every_tauri_command_runs_off_the_ui_thread`：扫生产代码里每个 `#[tauri::command]`，只要修饰的是同步 fn 就失败，防止以后新增命令再把主线程堵回去。
+- **测试命令与结果（最终代码上实跑）：**
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | exit 0 |
+| `cd desktop && npm run build` | 通过 |
+| `cargo test --offline`（先 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"`） | **166 passed / 0 failed**（lib 147 + 0 + 2 + 13 + 3 + 1） |
+| `git diff --stat -- runtime/` | 空 |
+
+- **真实窗口实测（脚本运行级，Xvfb 隔离显示，未碰用户 DISPLAY=:0 与 :3080 的 DSH）：** 用 `OMNIDESK_PYTHON=/tmp/slow-python.sh`（`sleep 40` 后再起引擎）模拟慢启动，跑的是修复后重新 `cargo build` 的二进制。引擎慢启动期间：首页→周报 0.73s、周报→文案写作 0.30s、文案→项目跟进 0.22s、项目→任务工作台 0.22s、回首页 0.38s；每张截图都显示对应场景正确渲染。引擎接通后复测：0.23 / 0.84 / 0.24 / 0.22 / 0.22 / 0.36s。约 40s 后底栏由「正在读取宿主事实…」变为「模型权限：已开启 · 本机」，模型选择器出现合成模型。截图：`/tmp/odshots/slow11_*.png`、`chk1_*.png`（一次性证据，不入库）。
+- **同轮更正（重要）：** 本小节最初写的 0.18 / 0.43 / 0.17 / 0.18s 不可用——那次运行的进程是**修复前的旧二进制**，且判定脚本只截左侧 180px，测到的是 Dock 悬停气泡。已改用内容区（x 300–1240、y 120–700）像素签名判据重测，上列数字为新材料。
+- **首页「空白」不是缺陷：** 权限开启后曾看到首页中部整块空白。按 `SceneScaffold` 既有设计，指针停在对话区时卡片带整层淡出（opacity 0），此时没有历史消息，中间自然为空；指针移回卡片区即恢复。已用截图对照确认（`idle_0_hover.png` / `idle_6_restored.png`），未改该交互。
+- **未验证：** 用户真实机器上同一故障状态未复现验证（本机 `:0` 被其他程序持有 pointer/keyboard grab，无法注入点击）；DSH 真实冷启动耗时未测（只用合成 40s 延迟）；修复只在 Xvfb 下测过，尚未在用户日常桌面环境人工确认。
+
 ## OD-ARCH-047：045 补复核 + 分批备份提交 + 实测准备（2026-10-21，已执行）
 
 - 开工 HEAD `22e53d3`（`main`），`origin/main` 同为 `22e53d3`（fetch 后无落后、无需合并）。用户本轮明确授权“批准 047（含推送授权）”。

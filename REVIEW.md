@@ -1,3 +1,13 @@
+## OD-ARCH-048：对话通道切到 DSH 本地 Web API（ARCHITECT 独立复核 2026-10-21）
+
+- **结论：通过（计划范围内）。** 开工 HEAD 15aef4f，全部改动未提交未推送，runtime/ 零差异（git diff --stat -- runtime/ 为空）。
+- **独立实跑验证（本机重跑，非转述 STATUS）：** cargo test --offline 166 passed / 0 failed（含新增 every_tauri_command_runs_off_the_ui_thread 1 passed）；tsc --noEmit 0 错误；test_web_api_unit.py 25 passed；W01–W10 证据逐份核 verdict=pass（W02 流式 3 块 0.381/0.615/0.866s、拼接=终文；W04 取消 0.048s 落定；W03 失败内容为空；W07 重启恢复 resumed；W09 未知会话 0 次模型请求）；ACP E01–E20 证据 verdict 全 pass。
+- **安全检查：** 引擎 diff 无凭证常量/密钥值；web_api_adapter.py 鉴权 token→cookie 后不落盘、_redact 覆盖日志与错误 detail；W01/W10 证据含 token_discarded/no_token_in_public_objects。
+- **四处偏差 + 第五处夹具修正：均接受。** ①turn/end reason.kind=completed 与 finish 帧 stop 并存——按探针事实处理，正确；②route_classifier 加 channel——无此修复 web 通道经宿主准入即不可用，属最小必要修复且有测试；③失败态 error→failed 映射修正——原实现会把失败落 unknown，违反数据诚实红线，修正正确且补齐 max-tokens/interrupted/blocked 分支；④顶层错误帧 _frame_error——消除超时假象，有单测；⑤测试夹具补双通道声明——不改产品逻辑，接受。
+- **卡死修复（同计划内追加）：** 根因（Tauri 同步命令占 UI 主线程）成立、修复方式（49 命令 async 化 + 首屏 4s 上界降级读缓存）不改契约与锁语义；Xvfb 慢启动实测方法修正（旧数据假阳性已声明并替换）处理诚实。回归测试钉住不变量，接受。
+- **限制（不降低结论但须知晓）：** 思考块流式、personaPrefix 是否送达模型、真实模型端点、真实窗口人工抽验（用户日常桌面因 pointer grab 未复测）、wss:// 未验证；全局 HostState 锁语义未变，双引擎命令仍串行排队（已知限制，暂不动）。
+- **遗留登记：** personaPrefix 探针未命中——待真实模型联调时以模型可见输出侧证；真实窗口流式体验待用户实测。
+
 # ARCHITECT 审查记录
 
 ## 2026-10-21 独立复核：OD-ARCH-045（ARCHITECT，047 第 1 步补做）
@@ -1419,3 +1429,10 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 - **遗留（不阻塞验收）：** 窗口侧心跳提醒逐字比对未做（有单测等效覆盖）；真实过期记录的界面提示未窗口实测；取消中任务的降级分支未单独截图。均已在证据 README 如实标注。
 - **工作区注意：** 本轮含 OD-ARCH-045 线程持久化遗留改动（thread_store.rs 等）与 046 改动共存（25 项未提交）。045 的登记此前未见独立复核记录，本复核顺带确认 thread_store 测试存在（thread_store_restart.rs）；045 完整复核仍需单独做。
 - **结论：OD-ARCH-046 验收通过。** 全部改动未提交未推送，等用户晨间决定提交与推送安排。
+
+## 2026-10-21 独立复核：047（推送结果 + 045 补复核 + 实测清单）
+
+- **推送：** 远端 origin/main 与本地一致（领先 0），工作区干净 0 项。三批提交（ba77c2d 功能/a3bf0ad 证据/bb09af1 文档）主题清晰。
+- **045 补复核：** 六步证据齐全；其中第 5 步（DSH web API 只读探针）为**关键新证据**——token 级流式（assistant-stream 帧）、同会话连续两轮、取消、重启后会话持久、模型目录**全部实测存在**（脚本运行级）；思考块流式与工具调用事件未验证（合成端点不产思考内容）。D-024 第 2 步成立，路径 B（换接缝用 DSH 本地 web API）已具备证据基础，待用户对第 3 步拍板。
+- **实测清单：** docs/user-testing-checklist.md 已就位，照做即可开始真实模型体验。
+- **结论：047 验收通过。**
