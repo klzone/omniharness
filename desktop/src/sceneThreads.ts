@@ -205,6 +205,8 @@ interface ThreadListing {
   dir: string;
   threads: unknown[];
   skipped: number;
+  /** 宿主逐条报出的损坏/无法迁移文件（OD-ARCH-049 第 2 步）；不静默跳过。 */
+  issues?: Array<{ file: string; reason: string }>;
   note: string;
 }
 
@@ -213,6 +215,7 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
   const fromDisk = listing.threads
     .map(normalizeThread)
     .filter((t): t is SceneThread => t !== null);
+  const issues = listing.issues ?? [];
   if (fromDisk.length === 0 && local.length > 0 && !migratedFlag()) {
     // 首次迁移：旧缓存一次性写入数据根，旧缓存保留（只读兼容）。
     cache = local;
@@ -228,11 +231,19 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
   cache = [...fromDisk, ...leftovers];
   hydrated = true;
   storageNote =
-    listing.skipped > 0
-      ? "读取线程记录时跳过 " + listing.skipped + " 个不合规文件。"
-      : leftovers.length > 0
-        ? "有 " + leftovers.length + " 条旧缓存记录尚未迁移到数据根。"
-        : null;
+    issues.length > 0
+      ? "有 " +
+        issues.length +
+        " 条线程文件未能读回（" +
+        issues[0].file +
+        "：" +
+        issues[0].reason +
+        "），其余记录已正常显示。"
+      : listing.skipped > 0
+        ? "读取线程记录时跳过 " + listing.skipped + " 个不合规文件。"
+        : leftovers.length > 0
+          ? "有 " + leftovers.length + " 条旧缓存记录尚未迁移到数据根。"
+          : null;
 }
 
 function migratedFlag(): boolean {
