@@ -1,0 +1,113 @@
+{
+  "plan": "OD-ARCH-055 S3",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（sha256）",
+  "display": ":96",
+  "root": "/tmp/od055-s3",
+  "rounds": {
+    "default": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/01-default.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "title": "OmniDesk Discipline",
+      "app_alive": true,
+      "window": [
+        80,
+        40,
+        1280,
+        820
+      ],
+      "decl_path": "/tmp/od055-s3/app-data/profiles/discipline.yml",
+      "decl_matches_sample": true,
+      "click_point": [
+        127,
+        373
+      ],
+      "click_slot3": {
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/02-default-slot3-writing.png",
+        "frame": [
+          0,
+          0,
+          1440,
+          900
+        ],
+        "title": "OmniDesk Discipline",
+        "app_alive": true,
+        "window": [
+          80,
+          40,
+          1280,
+          820
+        ]
+      }
+    },
+    "hidden": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/03-writing-hidden.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "title": "OmniDesk Discipline",
+      "app_alive": true,
+      "window": [
+        80,
+        40,
+        1280,
+        820
+      ],
+      "decl_sha256": "3ce5f7b1d70f4e80ec69449c0c06e7b7c3e62c330d3f35d42c2f197c44723752",
+      "decl_byte_identical_to_edit": true,
+      "click_point": [
+        127,
+        398
+      ],
+      "click_old_writing_slot": {
+        "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/04-hidden-slot3-project.png",
+        "frame": [
+          0,
+          0,
+          1440,
+          900
+        ],
+        "title": "OmniDesk Discipline",
+        "app_alive": true,
+        "window": [
+          80,
+          40,
+          1280,
+          820
+        ]
+      }
+    },
+    "restored": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/05-restored.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "title": "OmniDesk Discipline",
+      "app_alive": true,
+      "window": [
+        80,
+        40,
+        1280,
+        820
+      ]
+    }
+  },
+  "notes": [
+    "Dock 入口可见性由截图人工比对判定，不是 DOM 断言。",
+    "无 router / hash / 深链：隐藏场景后界面没有 URL 或命令可直达该页面。",
+    "演练结束把声明恢复为初始字节，sha256 前后比对见 decl_sha256_*。"
+  ],
+  "decl_sha256_before": "6e0fa2cb3223da26be3dfabfb1cb1a9c3ce8cad353b67c94b19733675461a4d9",
+  "decl_sha256_after": "6e0fa2cb3223da26be3dfabfb1cb1a9c3ce8cad353b67c94b19733675461a4d9",
+  "decl_restored_identical": true
+}
