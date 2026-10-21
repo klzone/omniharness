@@ -167,7 +167,13 @@ echo "启动 OmniDesk（正式环境）…"
 setsid bash -c '
   unset OMNIDESK_APP_DATA_ROOT OMNIDESK_LOCAL_DATA_ROOT OMNIDESK_DSH_HOME \
         OMNIDESK_AGENTS_HOME OMNIDESK_DSH_PATCHES OMNI_FAKE_KEY DSH_HOME DSH_AGENTS_HOME
-  export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-acp}"
+  # OD-ARCH-048：默认 web-api 通道；`OMNIDESK_ENGINE_CHANNEL=acp` 一键回退。
+  export OMNIDESK_ENGINE_CHANNEL="${OMNIDESK_ENGINE_CHANNEL:-web-api}"
+  if [ "$OMNIDESK_ENGINE_CHANNEL" = "acp" ]; then
+    export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-acp}"
+  else
+    export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-web}"
+  fi
   cd "$1"
   exec "$2"
 ' _ "$REPO" "$BIN" </dev/null >>"$RUNDIR/app.log" 2>&1 &

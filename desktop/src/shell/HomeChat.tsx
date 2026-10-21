@@ -5,6 +5,7 @@ import { currentEngineSubmitDecision } from "../engineAdmission";
 import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
 import { Icon } from "../components/Icon";
 import { ModelPicker } from "./ModelPicker";
+import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
 
@@ -119,6 +120,33 @@ function StreamedText({ text, live }: { text: string; live: boolean }) {
   );
 }
 
+/**
+ * 助手正文（OD-ARCH-048）。
+ *
+ * web-api 通道会推真实 `text_delta`，此时文本**原样增量渲染**，不再二次切片，
+ * 否则观感上会落后于引擎并且掩盖真实时序。ACP 通道没有 token 级流式
+ * （消息提交后才发块），此时保留原有的本地逐字显现作为降级。
+ */
+function AssistantText({
+  text,
+  live,
+  streamed,
+}: {
+  text: string;
+  live: boolean;
+  streamed: boolean;
+}) {
+  if (streamed) {
+    return (
+      <>
+        {text}
+        {live ? <span className="opacity-50">▍</span> : null}
+      </>
+    );
+  }
+  return <StreamedText text={text} live={live} />;
+}
+
 export interface HomeChatProps {
   onNavigate: (scene: Scene) => void;
   /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
@@ -181,6 +209,14 @@ export function HomeChat({
     }>
   >([]);
   const [modelNote, setModelNote] = useState<string | null>(null);
+  /**
+   * OD-ARCH-048：web-api 通道直读的模型目录。
+   * 取得真实目录时用它渲染选择器；ACP 或读取失败时回退到 Profile 候选（groups）。
+   */
+  const [modelCatalog, setModelCatalog] = useState<EngineModelCatalog | null>(null);
+  /** 已收到过真实 `text_delta` 的任务（这些任务的正文不再做本地打字机降级）。 */
+  const streamedTasksRef = useRef<Set<string>>(new Set());
+  const [, forceStreamRender] = useState(0);
   const [modelBusy, setModelBusy] = useState(false);
   /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
   const [modelEffort, setModelEffort] = useState("off");
@@ -248,10 +284,19 @@ export function HomeChat({
 
   // 列出各 Profile 的模型候选（只取非机密字段）。
   const loadModelRoutes = useCallback(async () => {
-    try {
-      const r = await shell.listModelRoutes();
-      setModelRoutes(r.profiles ?? []);
-    } catch {
+    // 两条数据源都要看：目录直读（web-api）优先，Profile 候选作为回退与写覆盖的来源。
+    const [catalog, routes] = await Promise.allSettled([
+      shell.listEngineModels(),
+      shell.listModelRoutes(),
+    ]);
+    if (catalog.status === "fulfilled") {
+      setModelCatalog(catalog.value);
+    } else {
+      setModelCatalog({ available: false, channel: "web-api", reason: String(catalog.reason) });
+    }
+    if (routes.status === "fulfilled") {
+      setModelRoutes(routes.value.profiles ?? []);
+    } else {
       setModelRoutes([]);
     }
   }, []);
@@ -335,6 +380,11 @@ export function HomeChat({
       if (event.type !== "text_delta") return;
       const delta = String((event.payload as { text?: unknown }).text ?? "");
       if (!delta) return;
+      // 记下「这条任务有真实增量」——渲染层据此停用本地打字机降级。
+      if (!streamedTasksRef.current.has(event.omni_task_id)) {
+        streamedTasksRef.current.add(event.omni_task_id);
+        forceStreamRender((n) => n + 1);
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.role === "assistant" && m.taskId === event.omni_task_id
@@ -752,9 +802,10 @@ export function HomeChat({
                     </div>
                   ) : m.text ? (
                     <p className="text-on-surface-variant leading-relaxed whitespace-pre-wrap break-words">
-                      <StreamedText
+                      <AssistantText
                         text={m.text}
                         live={!!m.taskId && !(TERMINAL_STATES as string[]).includes(String(m.state ?? ""))}
+                        streamed={!!m.taskId && streamedTasksRef.current.has(m.taskId)}
                       />
                     </p>
                   ) : m.notice ? (
@@ -830,6 +881,7 @@ export function HomeChat({
               currentProvider={facts?.provider ?? null}
               currentModel={facts?.model ?? null}
               groups={modelRoutes}
+              catalog={modelCatalog}
               effort={modelEffort}
               busy={modelBusy || busy}
               onSelectModel={(profile, provider, model) => void selectModel(profile, provider, model)}

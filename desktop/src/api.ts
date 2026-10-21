@@ -43,6 +43,7 @@ import type {
   WeeklySummary,
   WorkflowSample,
   ModelRouteListing,
+  EngineModelCatalog,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -87,12 +88,20 @@ let admissionInflight: Promise<AdmissionStatusResponse> | null = null;
 let modelRoutesCache: ModelRouteListing | null = null;
 let modelRoutesInflight: Promise<ModelRouteListing> | null = null;
 
+// OD-ARCH-048：模型目录（engine_list_models）也会触达引擎——首次要冷启动 DSH web
+// 进程。首页每次挂载都重拉，来回切换场景就会反复等待。目录只在改选模型或通道
+// 变化时才会变，因此与模型候选一样缓存到 invalidateEngineFactsCache 为止。
+let engineCatalogCache: EngineModelCatalog | null = null;
+let engineCatalogInflight: Promise<EngineModelCatalog> | null = null;
+
 /** 改选模型/思考等级后调用：相关事实与候选都可能变化。 */
 export function invalidateEngineFactsCache(): void {
   admissionCache = null;
   admissionInflight = null;
   modelRoutesCache = null;
   modelRoutesInflight = null;
+  engineCatalogCache = null;
+  engineCatalogInflight = null;
 }
 
 export const host = {
@@ -375,6 +384,62 @@ export const shell = {
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /**
+   * 模型目录（OD-ARCH-048）。
+   *
+   * web-api 通道直读 DSH `session/modelCatalog`；ACP 通道不支持时返回
+   * `available: false` 并带上真实原因，界面回退到 Profile 候选列表。
+   *
+   * 不读、不转发任何凭证：目录只有 provider/模型标识/思考等级。
+   */
+  listEngineModels(refresh = false): Promise<EngineModelCatalog> {
+    if (!refresh && engineCatalogCache) return Promise.resolve(engineCatalogCache);
+    if (!refresh && engineCatalogInflight) return engineCatalogInflight;
+    const request = invoke<{
+      channel?: string;
+      default?: { provider?: string | null; model?: string | null; effort?: string | null };
+      routable_providers?: string[];
+      groups?: EngineModelCatalog["groups"];
+      models?: EngineModelCatalog["models"];
+      failures?: Array<Record<string, unknown>>;
+    }>("engine_list_models", { refresh })
+      .then((value) => ({
+        available: true,
+        channel: value.channel ?? "web-api",
+        default: value.default,
+        routable_providers: value.routable_providers,
+        groups: value.groups ?? [],
+        models: value.models ?? [],
+        failures: value.failures ?? [],
+      }) as EngineModelCatalog)
+      .catch((e) => {
+        const reason = normalizeError(e);
+        // 通道不支持是「正常的回退」，不是故障：如实标注并让界面用 Profile 候选。
+        const unsupported = /unsupported|only available on the web-api/i.test(reason);
+        return {
+          available: false,
+          channel: unsupported ? "acp" : "web-api",
+          reason: unsupported
+            ? "当前通道不支持直读模型目录（ACP）：已回退到 Profile 候选列表。"
+            : reason,
+        } as EngineModelCatalog;
+      });
+
+    // refresh=true 视为强制重取：结果直接返回，不写共享缓存。
+    if (refresh) return request;
+    engineCatalogInflight = request.finally(() => {
+      engineCatalogInflight = null;
+    });
+    void engineCatalogInflight.then(
+      (value) => {
+        // 失败结果不缓存：下次挂载应能重新尝试（例如引擎当时还没起来）。
+        if (value.available) engineCatalogCache = value;
+      },
+      () => undefined,
+    );
+    return engineCatalogInflight;
   },
 
   /**

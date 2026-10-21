@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
+import type { EngineModelCatalog } from "../types";
 
 /**
  * 模型选择器（OD-ARCH-035）：与工作台同一套视觉的**自绘**下拉，不用原生 select。
@@ -30,6 +31,7 @@ export function ModelPicker({
   currentProvider,
   currentModel,
   groups,
+  catalog = null,
   effort,
   busy,
   onSelectModel,
@@ -38,6 +40,8 @@ export function ModelPicker({
   currentProvider: string | null;
   currentModel: string | null;
   groups: ModelRouteGroup[];
+  /** OD-ARCH-048：web-api 通道直读的模型目录；为空或不可用时回退到 groups。 */
+  catalog?: EngineModelCatalog | null;
   effort: string;
   busy: boolean;
   onSelectModel: (profile: string, provider: string, model: string) => void;
@@ -45,6 +49,11 @@ export function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const catalogModels = catalog?.available ? catalog.models ?? [] : [];
+  /** 当前模型在目录里声明的思考等级（没有则为空，退回固定档位）。 */
+  const currentEfforts =
+    catalogModels.find((m) => m.provider === currentProvider && m.id === currentModel)
+      ?.efforts ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -99,10 +108,52 @@ export function ModelPicker({
             <p className="pt-1.5 text-[10px] text-outline leading-relaxed">
               思考等级是请求参数：模型/Provider 不支持时可能直接报错，界面会显示真实原因。
             </p>
+            {currentEfforts.length > 0 ? (
+              <p className="pt-1 text-[10px] text-outline leading-relaxed">
+                当前模型目录声明的等级：
+                {currentEfforts.map((e) => e.name || e.id).join(" / ")}
+              </p>
+            ) : null}
           </div>
 
           <div className="pt-2 max-h-[240px] overflow-y-auto">
-            {groups.length === 0 ? (
+            {catalogModels.length > 0 ? (
+              (catalog?.groups ?? []).map((g) => (
+                <div key={g.id} className="pb-2">
+                  <div className="text-[10px] uppercase tracking-wide text-outline px-1 pt-1">
+                    {g.name || g.id}
+                  </div>
+                  {g.models.map((m) => {
+                    const active = m.provider === currentProvider && m.id === currentModel;
+                    return (
+                      <button
+                        key={g.id + "|" + m.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectModel(g.id, m.provider, m.id);
+                          setOpen(false);
+                        }}
+                        className={
+                          "w-full text-left px-2 py-1.5 rounded-lg text-[11.5px] transition-colors " +
+                          (active
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-on-surface-variant hover:bg-surface-container")
+                        }
+                        title={m.description || undefined}
+                      >
+                        <span className="block truncate">{m.name || m.id}</span>
+                        <span className="block truncate text-[10px] text-outline">
+                          {m.description ||
+                            (m.efforts.length
+                              ? "思考等级：" + m.efforts.map((e) => e.id).join(" / ")
+                              : "未声明思考等级")}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            ) : groups.length === 0 ? (
               <p className="text-[11px] text-outline">没有读到任何模型候选（DSH 配置转储未成功）。</p>
             ) : (
               groups.map((g) => (
@@ -149,6 +200,11 @@ export function ModelPicker({
             )}
           </div>
           <p className="pt-2 border-t border-surface-variant/20 text-[10px] text-outline leading-relaxed">
+            {catalog?.available
+              ? "目录来自 DSH 本地 API 的模型目录（" + (catalog.channel || "web-api") + " 通道）。"
+              : catalog && !catalog.available
+                ? catalog.reason ?? "当前通道不支持直读模型目录。"
+                : "候选来自各 Profile 的配置转储。"}
             切换会重启引擎（路由在引擎启动时确定），并写一份只含非机密的路由覆盖到 OmniDesk 数据根；
             不会修改你在 DSH 里的 Profile。
           </p>

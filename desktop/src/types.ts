@@ -540,6 +540,53 @@ export interface ModelRouteListing {
 }
 
 // ---------------------------------------------------------------------------
+// 模型目录（OD-ARCH-048，web-api 通道直读 session/modelCatalog）
+// ---------------------------------------------------------------------------
+
+/** 一个模型支持的思考等级（DSH `reasoning.efforts`）。 */
+export interface ModelCatalogEffort {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/** 目录里的单个模型（非机密：只有标识、名称、描述与思考等级）。 */
+export interface ModelCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  provider: string;
+  provider_name: string;
+  efforts: ModelCatalogEffort[];
+  default_effort: string | null;
+}
+
+/** 按 provider 分组的模型目录。 */
+export interface ModelCatalogGroup {
+  id: string;
+  name: string;
+  models: ModelCatalogEntry[];
+}
+
+/**
+ * 引擎模型目录。
+ *
+ * `available=false` 表示当前通道不支持（ACP）或目录读取失败，界面必须回退到
+ * Profile 候选列表，而不是伪造一份目录。
+ */
+export interface EngineModelCatalog {
+  available: boolean;
+  channel: string;
+  default?: { provider?: string | null; model?: string | null; effort?: string | null };
+  routable_providers?: string[];
+  groups?: ModelCatalogGroup[];
+  models?: ModelCatalogEntry[];
+  failures?: Array<Record<string, unknown>>;
+  /** unavailable 时的真实原因（引擎错误码 + 消息），原样展示。 */
+  reason?: string;
+}
+
+// ---------------------------------------------------------------------------
 // 待确认写操作与调度（OD-ARCH-046）
 // ---------------------------------------------------------------------------
 
