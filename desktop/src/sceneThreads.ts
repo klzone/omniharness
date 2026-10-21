@@ -48,6 +48,15 @@ let hydrated = false;
 let storageNote: string | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
 
+/**
+ * 首屏兜底（OD-ARCH-048 卡死修复）：读数据根的最长等待时间。
+ *
+ * 宿主命令现已走阻塞线程池，但首次启动时宿主可能正忙于冷启动引擎；此处再给
+ * 一个上界。超时后先用本地缓存渲染，不等磁盘——线程记录稍后被读到也不会覆盖
+ * 用户已经看到的内容（`hydrated` 只在成功读取后置位）。
+ */
+const HYDRATE_TIMEOUT_MS = 4000;
+
 function readLocal(): SceneThread[] {
   try {
     const raw = window.localStorage.getItem(THREADS_KEY);
@@ -143,43 +152,87 @@ export async function hydrateThreads(): Promise<void> {
     storageNote = "宿主不可用，线程记录暂存在浏览器缓存。";
     return;
   }
+  const pending = invoke<{
+    dir: string;
+    threads: unknown[];
+    skipped: number;
+    note: string;
+  }>("thread_store_load");
   try {
-    const listing = await invoke<{
-      dir: string;
-      threads: unknown[];
-      skipped: number;
-      note: string;
-    }>("thread_store_load");
-    const fromDisk = listing.threads
-      .map(normalizeThread)
-      .filter((t): t is SceneThread => t !== null);
-    if (fromDisk.length === 0 && local.length > 0 && !migratedFlag()) {
-      // 首次迁移：旧缓存一次性写入数据根，旧缓存保留（只读兼容）。
-      cache = local;
-      hydrated = true;
-      for (const thread of local) persist(thread);
-      setMigratedFlag();
-      storageNote =
-        "已把 " + local.length + " 条本地缓存的对话迁移到数据根（旧缓存保留）。";
-      return;
-    }
-    const diskIds = new Set(fromDisk.map((t) => t.id));
-    const leftovers = local.filter((t) => !diskIds.has(t.id));
-    cache = [...fromDisk, ...leftovers];
-    hydrated = true;
-    storageNote =
-      listing.skipped > 0
-        ? "读取线程记录时跳过 " + listing.skipped + " 个不合规文件。"
-        : leftovers.length > 0
-          ? "有 " + leftovers.length + " 条旧缓存记录尚未迁移到数据根。"
-          : null;
+    const listing = await withTimeout(pending, HYDRATE_TIMEOUT_MS);
+    applyListing(listing, local);
   } catch (e) {
     cache = local;
     hydrated = true;
+    if (e instanceof HydrateTimeout) {
+      // 读数据根太慢：先用本地缓存让界面可用，后台继续等这次读取。
+      storageNote = "读取数据根较慢，先用本地缓存显示；读到后会自动补上。";
+      pending.then(
+        (listing) => {
+          applyListing(listing, readLocal());
+        },
+        () => {
+          /* 后台读取最终失败：保留缓存，不再打扰用户 */
+        },
+      );
+      return;
+    }
     storageNote =
       "读取数据根的线程记录失败，暂用本地缓存：" +
       (e instanceof Error ? e.message : String(e));
   }
+}
+
+class HydrateTimeout extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new HydrateTimeout()), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+interface ThreadListing {
+  dir: string;
+  threads: unknown[];
+  skipped: number;
+  note: string;
+}
+
+/** 把数据根读到的记录并入缓存；`hydrated` 只在这里置位（表示数据根已被读过一次）。 */
+function applyListing(listing: ThreadListing, local: SceneThread[]): void {
+  const fromDisk = listing.threads
+    .map(normalizeThread)
+    .filter((t): t is SceneThread => t !== null);
+  if (fromDisk.length === 0 && local.length > 0 && !migratedFlag()) {
+    // 首次迁移：旧缓存一次性写入数据根，旧缓存保留（只读兼容）。
+    cache = local;
+    hydrated = true;
+    for (const thread of local) persist(thread);
+    setMigratedFlag();
+    storageNote =
+      "已把 " + local.length + " 条本地缓存的对话迁移到数据根（旧缓存保留）。";
+    return;
+  }
+  const diskIds = new Set(fromDisk.map((t) => t.id));
+  const leftovers = local.filter((t) => !diskIds.has(t.id));
+  cache = [...fromDisk, ...leftovers];
+  hydrated = true;
+  storageNote =
+    listing.skipped > 0
+      ? "读取线程记录时跳过 " + listing.skipped + " 个不合规文件。"
+      : leftovers.length > 0
+        ? "有 " + leftovers.length + " 条旧缓存记录尚未迁移到数据根。"
+        : null;
 }
 
 function migratedFlag(): boolean {

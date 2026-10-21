@@ -357,7 +357,14 @@ export DSH_AGENTS_HOME="$RUNDIR/agents"
 export OMNIDESK_DSH_HOME="$RUNDIR/dsh-home"
 export OMNIDESK_AGENTS_HOME="$RUNDIR/agents"
 mkdir -p "$OMNIDESK_APP_DATA_ROOT" "$OMNIDESK_LOCAL_DATA_ROOT" "$DSH_HOME" "$DSH_AGENTS_HOME"
-export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-acp}"
+# OD-ARCH-048：默认走 web-api 通道（DSH 本地 Web API，逐字流式）；
+# `OMNIDESK_ENGINE_CHANNEL=acp` 可一键切回 ACP（回退路径）。
+export OMNIDESK_ENGINE_CHANNEL="${OMNIDESK_ENGINE_CHANNEL:-web-api}"
+if [ "$OMNIDESK_ENGINE_CHANNEL" = "acp" ]; then
+  export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-acp}"
+else
+  export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-web}"
+fi
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}" # 本机 WebKit 渲染规避
 
 # 用本次启动独有的一次性文件名，避免读到上一次残留的端点地址。
@@ -393,12 +400,23 @@ case "$MOCK_URL" in
 esac
 
 OVERLAY="$RUNDIR/synthetic-provider.yml"
-cat > "$OVERLAY" <<EOF
-- id: acp
+# 覆盖层随通道而变：ACP 通道走 dsh-acp app 的 provider/model 配置；
+# web-api 通道走 agent 的默认模型（web app 不加载 dsh-acp）。
+if [ "$OMNIDESK_ENGINE_CHANNEL" = "acp" ]; then
+  CHANNEL_LAYER='- id: acp
   name: "@deepseek-ai/dsh-acp"
   config:
     provider: fake
-    model: synthetic-model
+    model: synthetic-model'
+else
+  CHANNEL_LAYER='- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: fake
+    model: synthetic-model'
+fi
+cat > "$OVERLAY" <<EOF
+$CHANNEL_LAYER
 - id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
