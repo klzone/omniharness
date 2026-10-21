@@ -733,6 +733,33 @@ export interface ModelSettingsSaveReceipt {
   note: string;
 }
 
+/**
+ * 「测试连接 / 拉模型列表」的结果（OD-ARCH-054 S1/S2）。
+ *
+ * 只描述这一次请求的结果，不代表设置已保存。`classification` 是宿主给出的
+ * 失败归类；界面据此给出下一步建议，不自行推断原因。
+ */
+export type ModelProbeClass =
+  | "ok"
+  | "auth"
+  | "network"
+  | "format"
+  | "unsupported"
+  | "local";
+
+export interface DiscoveredModel {
+  id: string;
+  name: string;
+}
+
+export interface ModelProbeReceipt {
+  ok: boolean;
+  classification: ModelProbeClass;
+  message: string;
+  models: DiscoveredModel[];
+  note: string;
+}
+
 export interface ProfileDeclOpenReceipt {
   ok: boolean;
   opened: string;

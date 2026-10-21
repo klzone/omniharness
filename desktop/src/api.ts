@@ -47,6 +47,7 @@ import type {
   EngineModelCatalog,
   ModelSettings,
   ModelSettingsSaveReceipt,
+  ModelProbeReceipt,
   ModelSettingsView,
   ProfileDeclOpenReceipt,
   ProfileDeclSaveReceipt,
@@ -542,6 +543,26 @@ export const shell = {
   },
 
   /** 在系统编辑器里打开场景声明文件。宿主不接受任何路径参数。 */
+  /**
+   * 测试连接并顺带拉模型列表（OD-ARCH-054 S1/S2）。
+   *
+   * 由 DSH 发真实请求；`apiKey` 只用于这一次探测，不落盘。失败也返回结构化结果
+   * （分类 + 原因），网络/鉴权错误不算异常抛出。
+   */
+  modelSettingsProbe(input: {
+    baseUrl: string;
+    api: string;
+    apiKey?: string | null;
+  }): Promise<ModelProbeReceipt> {
+    return invoke<ModelProbeReceipt>("model_settings_probe", {
+      baseUrl: input.baseUrl,
+      api: input.api,
+      apiKey: input.apiKey ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   profileDeclOpen(): Promise<ProfileDeclOpenReceipt> {
     return invoke<ProfileDeclOpenReceipt>("profile_decl_open").catch((e) => {
       throw new Error(normalizeError(e));
