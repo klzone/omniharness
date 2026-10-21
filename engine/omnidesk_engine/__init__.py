@@ -45,6 +45,7 @@ from .acp_adapter import (
     TaskRecordSummary,
     TaskRecovery,
 )
+from .web_api_adapter import WEB_API_PROTOCOL_VERSION, WebApiAdapter
 
 __all__ = [
     "ACP_PROTOCOL_VERSION",
@@ -75,5 +76,7 @@ __all__ = [
     "TaskResult",
     "TaskState",
     "TaskStatus",
+    "WEB_API_PROTOCOL_VERSION",
+    "WebApiAdapter",
     "new_omni_task_id",
 ]

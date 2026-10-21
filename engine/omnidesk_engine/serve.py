@@ -1,13 +1,13 @@
 """OmniDesk 引擎子进程入口（IPC-2 服务端）。
 
-职责：把 engine/omnidesk_engine/ 里已有的 AcpEngineAdapter 包成一个
+职责：把 engine/omnidesk_engine/ 里已有的适配器（ACP 或 DSH 本地 Web API）包成一个
 **由 Rust 宿主启动的独立子进程**，与宿主按 docs/OmniDesk-Desktop-Engine-IPC.md
 第 3 节的七类消息交换行分隔 JSON-RPC 2.0。
 
 严格边界（见 IPC 契约 §0）：
   * 本进程只被 OmniDesk 宿主启动；不注册 systemd，不做常驻服务。
   * 只经 stdin/stdout 通信；不监听任何 TCP/UDP 端口。
-  * 不修改、不复制 DSH Runtime；对 DSH 的所有调用都经适配层的 --profile acp CLI。
+  * 不修改、不复制 DSH Runtime；对 DSH 的所有调用都经适配层的公开 CLI 入口。
   * 不读取、不打印、不复制任何凭证；凭证仅由 DSH 自身在其 DSH_HOME 内读取。
   * ACP 内部字段（sessionId / stopReason / 方法名）不越过本层，只输出归一化字段。
 
@@ -36,6 +36,7 @@ if __package__ in (None, ""):  # 允许 python3 path/to/serve.py 直接跑
         EngineErrorCode,
         SubmitTaskRequest,
         TaskState,
+        WebApiAdapter,
     )
     from omnidesk_engine.contract import TERMINAL_STATES
 else:
@@ -45,6 +46,7 @@ else:
         EngineErrorCode,
         SubmitTaskRequest,
         TaskState,
+        WebApiAdapter,
     )
     from .contract import TERMINAL_STATES
 
@@ -68,13 +70,19 @@ def _log(message: str) -> None:
 
 
 class EngineService:
-    """IPC-2 服务端：把归一化方法映射到 AcpEngineAdapter。"""
+    """IPC-2 服务端：把归一化方法映射到当前选择的适配器。"""
+
+    #: 宿主未下发 channel 时的默认通道。web-api 提供逐字流式与模型目录；
+    #: ACP 保留为一键回退通道（见 PLANS.md OD-ARCH-048）。
+    DEFAULT_CHANNEL = "web-api"
+    SUPPORTED_CHANNELS = ("web-api", "acp")
 
     def __init__(self, *, stdin, stdout) -> None:
         self._stdin = stdin
         self._stdout = stdout
         self._write_lock = threading.Lock()
-        self._adapter: Optional[AcpEngineAdapter] = None
+        self._adapter: Optional[Any] = None
+        self._channel: Optional[str] = None
         self._initialized = False
         self._cwd: Optional[str] = None
         self._stop = threading.Event()
@@ -165,7 +173,7 @@ class EngineService:
             stop.set()
 
     # -- 方法实现 -----------------------------------------------------------
-    def _require_adapter(self, req_id: Any) -> Optional[AcpEngineAdapter]:
+    def _require_adapter(self, req_id: Any) -> Optional[Any]:
         if self._adapter is None:
             self._reject(
                 req_id,
@@ -222,14 +230,34 @@ class EngineService:
             env["DSH_AGENTS_HOME"] = str(dsh["agents_home"])
 
         patch_files = [str(p) for p in (dsh.get("patch_files") or [])]
-        adapter = AcpEngineAdapter.for_dsh(
-            str(cli_entry),
-            cwd=cwd,
-            profile=str(dsh.get("profile") or "acp"),
-            patch_files=patch_files,
-            env=env,
-            state_dir=params.get("engine_state_dir"),
-        )
+        channel = str(dsh.get("channel") or self.DEFAULT_CHANNEL)
+        if channel not in self.SUPPORTED_CHANNELS:
+            self._reject(
+                req_id,
+                EngineErrorCode.INVALID_ARGUMENT,
+                "params.dsh.channel must be one of " + ", ".join(self.SUPPORTED_CHANNELS),
+            )
+            return
+        if channel == "web-api":
+            adapter: Any = WebApiAdapter.for_dsh(
+                str(cli_entry),
+                cwd=cwd,
+                # web-api 通道的默认 Profile 是 DSH 内置 web 模板；宿主显式下发时以宿主为准。
+                profile=str(dsh.get("profile") or "web"),
+                patch_files=patch_files,
+                env=env,
+                state_dir=params.get("engine_state_dir"),
+            )
+        else:
+            adapter = AcpEngineAdapter.for_dsh(
+                str(cli_entry),
+                cwd=cwd,
+                profile=str(dsh.get("profile") or "acp"),
+                patch_files=patch_files,
+                env=env,
+                state_dir=params.get("engine_state_dir"),
+            )
+        self._channel = channel
         self._cwd = cwd
         result_dir = params.get("result_dir") or params.get("engine_state_dir")
         self._result_dir = str(result_dir) if result_dir else None
@@ -252,6 +280,7 @@ class EngineService:
             {
                 "protocol_version": PROTOCOL_VERSION,
                 "server": SERVER_NAME,
+                "channel": channel,
                 "engine": descriptor.to_dict(),
             },
         )
@@ -406,6 +435,32 @@ class EngineService:
             return
         self._result(req_id, recovery.to_dict())
 
+    def m_list_models(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        """模型目录（OD-ARCH-048）。
+
+        只有 web-api 通道能从 DSH 的 session/modelCatalog 直读真实目录；
+        ACP 通道没有该能力，明确返回 unsupported，绝不编造候选。
+        """
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        if self._channel != "web-api":
+            self._reject(
+                req_id,
+                EngineErrorCode.UNSUPPORTED,
+                "model catalog is only available on the web-api channel",
+                channel=self._channel,
+            )
+            return
+        try:
+            catalog = adapter.model_catalog(refresh=bool(params.get("refresh", False)))
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        payload = dict(catalog)
+        payload["channel"] = self._channel
+        self._result(req_id, payload)
+
     def m_shutdown(self, req_id: Any, params: Mapping[str, Any]) -> None:
         if self._adapter is None:
             self._result(
@@ -447,6 +502,7 @@ class EngineService:
         "omni.recover_task": "m_recover_task",
         "omni.list_sessions": "m_list_sessions",
         "omni.list_task_records": "m_list_task_records",
+        "omni.list_models": "m_list_models",
         "omni.shutdown": "m_shutdown",
     }
 
