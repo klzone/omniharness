@@ -1,0 +1,590 @@
+<!DOCTYPE html><html class="h-full" lang="zh-CN" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>OmniDesk Discipline — Ambient Cognitive Canvas</title>
+<!-- Material Symbols Literal Font -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Brand Typography: Sora, Plus Jakarta Sans, JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@300;400;500;600&amp;family=Sora:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-secondary": "#ffffff",
+            "on-primary-fixed-variant": "#3323cc",
+            "tertiary-fixed": "#e0e0ff",
+            "on-primary-fixed": "#0f0069",
+            "surface-bright": "#faf8ff",
+            "on-tertiary-fixed-variant": "#2f3aa3",
+            "surface-container": "#eaedff",
+            "primary": "#3525cd",
+            "primary-container": "#4f46e5",
+            "tertiary": "#313ba4",
+            "secondary-fixed": "#acedff",
+            "surface-variant": "#dae2fd",
+            "error": "#ba1a1a",
+            "primary-fixed-dim": "#c3c0ff",
+            "secondary-container": "#57dffe",
+            "on-tertiary-container": "#d7d8ff",
+            "surface": "#faf8ff",
+            "on-secondary-fixed-variant": "#004e5c",
+            "surface-container-high": "#e2e7ff",
+            "error-container": "#ffdad6",
+            "surface-container-low": "#f2f3ff",
+            "background": "#faf8ff",
+            "inverse-on-surface": "#eef0ff",
+            "on-error": "#ffffff",
+            "inverse-surface": "#283044",
+            "secondary-fixed-dim": "#4cd7f6",
+            "outline-variant": "#c7c4d8",
+            "primary-fixed": "#e2dfff",
+            "on-tertiary": "#ffffff",
+            "outline": "#777587",
+            "surface-tint": "#4d44e3",
+            "on-primary": "#ffffff",
+            "on-background": "#131b2e",
+            "surface-container-highest": "#dae2fd",
+            "on-tertiary-fixed": "#000767",
+            "on-surface-variant": "#464555",
+            "on-secondary-fixed": "#001f26",
+            "on-error-container": "#93000a",
+            "tertiary-container": "#4a55be",
+            "tertiary-fixed-dim": "#bdc2ff",
+            "inverse-primary": "#c3c0ff",
+            "on-surface": "#131b2e",
+            "on-primary-container": "#dad7ff",
+            "on-secondary-container": "#006172",
+            "surface-dim": "#d2d9f4",
+            "surface-container-lowest": "#ffffff",
+            "secondary": "#00687a"
+          },
+          "borderRadius": {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-md": "1rem",
+            "space-3xl": "3rem",
+            "gutter": "1.5rem",
+            "space-2xl": "2.5rem",
+            "space-xs": "0.25rem",
+            "space-xl": "2rem",
+            "space-sm": "0.5rem",
+            "margin-desktop": "3rem",
+            "space-lg": "1.5rem",
+            "margin": "1.5rem",
+            "gutter-desktop": "2rem"
+          },
+          "fontFamily": {
+            "display-hero-mobile": ["Sora"],
+            "body-lg": ["Plus Jakarta Sans"],
+            "body-sm": ["Plus Jakarta Sans"],
+            "headline-xl": ["Sora"],
+            "label-caps": ["JetBrains Mono"],
+            "body-md": ["Plus Jakarta Sans"],
+            "headline-lg": ["Sora"],
+            "display-hero": ["Sora"],
+            "headline-md": ["Sora"],
+            "headline-xl-mobile": ["Sora"],
+            "label-sm": ["Plus Jakarta Sans"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Avant-garde atmospheric lens & subtle lighting effects */
+    .plate-sculpted {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(28px) saturate(170%);
+      box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.04), 0 4px 16px -2px rgba(79, 70, 229, 0.03);
+      border-top: 1px solid rgba(255, 255, 255, 0.95);
+      border-left: 1px solid rgba(255, 255, 255, 0.8);
+      border-right: 1px solid rgba(255, 255, 255, 0.4);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .plate-soft-inset {
+      background: rgba(235, 240, 248, 0.55);
+      box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.03), inset 0 1px 2px rgba(79, 70, 229, 0.02);
+    }
+
+    /* Conversation Canvas upward fade mask */
+    .chat-fade-mask {
+      mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 12%, rgba(0, 0, 0, 0.9) 32%, black 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 12%, rgba(0, 0, 0, 0.9) 32%, black 100%);
+    }
+
+    /* Custom ultra-thin scrollbar */
+    .chat-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .chat-scroll::-webkit-scrollbar-thumb {
+      background: rgba(199, 196, 216, 0.5);
+      border-radius: 9999px;
+    }
+
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 0.35; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(1.05); }
+    }
+    .animate-pulse-ambient {
+      animation: pulse-subtle 6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes float-companion {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-7px) rotate(1.2deg); }
+    }
+    .animate-float-mascot {
+      animation: float-companion 5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface antialiased h-screen overflow-hidden selection:bg-secondary-fixed selection:text-on-secondary-fixed relative flex flex-col font-body-md">
+<!-- Ambient Ethereal Mist Underlay -->
+<div class="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+<div class="absolute -top-[15%] left-[20%] w-[60rem] h-[50rem] rounded-full bg-gradient-to-br from-primary-fixed-dim/35 to-secondary-fixed/30 filter blur-[130px] animate-pulse-ambient"></div>
+<div class="absolute top-[45%] -right-[10%] w-[48rem] h-[48rem] rounded-full bg-gradient-to-tl from-surface-variant/50 to-primary-fixed/20 filter blur-[140px]"></div>
+<div class="absolute -bottom-[20%] left-[8%] w-[42rem] h-[42rem] rounded-full bg-gradient-to-tr from-secondary-container/20 to-surface-container/60 filter blur-[120px]"></div>
+</div>
+<!-- ==================== 1. 精简集成式顶部导航栏 (高度集成、无多余分栏) ==================== -->
+<header class="w-full pt-4 px-6 sm:px-10 z-40 flex-shrink-0">
+<nav class="bg-surface-container-lowest/80 backdrop-blur-2xl ring-1 ring-white/90 shadow-[0_8px_30px_-6px_rgba(15,23,42,0.04),0_2px_8px_rgba(79,70,229,0.02)] rounded-full w-full max-w-7xl mx-auto flex items-center justify-between px-6 py-2.5 transition-all">
+<!-- 左侧：软件图标 + 标题 + 本地IPC状态指示 -->
+<div class="flex items-center space-x-3.5">
+<a class="flex items-center space-x-3 text-on-surface tracking-tight group" href="#">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-primary-container flex items-center justify-center text-on-primary shadow-sm group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-[18px]">grain</span>
+</div>
+<span class="font-headline-md text-[17px] font-semibold tracking-tight text-on-surface">OmniDesk Discipline</span>
+</a>
+<span class="hidden md:inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-label-caps text-[10px] tracking-wider border border-emerald-500/20">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+<span class="">LOCAL IPC ACTIVE</span>
+</span>
+</div>
+<!-- 中间偏左：全局搜索栏 (⌘K) -->
+<div class="flex-1 max-w-md mx-6 hidden sm:block">
+<div class="flex items-center plate-soft-inset rounded-full px-4 py-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/25 transition-all group">
+<span class="material-symbols-outlined text-outline text-[18px] mr-2.5 group-focus-within:text-primary transition-colors">search</span>
+<input class="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none w-full" placeholder="检索任务、制度、数据或随记..." type="text">
+<kbd class="font-label-caps text-[10px] text-outline bg-white/80 px-2 py-0.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-surface-container ml-2">⌘K</kbd>
+</div>
+</div>
+<!-- 右侧功能簇：时间/天气微胶囊 -> 设置 -> 待办提醒(红点) -> 用户头像(Yvan 主任) -->
+<div class="flex items-center space-x-2.5 sm:space-x-3">
+<!-- 时间/日期与天气微胶囊 -->
+<div class="hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full bg-surface-container-low/70 border border-white/80 shadow-xs">
+<span class="material-symbols-outlined text-amber-500 text-[16px]">wb_sunny</span>
+<span class="font-headline-md text-[12px] font-medium text-on-surface">10月24日 星期四</span>
+<span class="text-outline-variant text-[11px]">·</span>
+<span class="font-label-caps text-[11px] text-on-surface-variant font-medium">晴 21°C</span>
+</div>
+<!-- 系统设置 -->
+<button class="w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 flex items-center justify-center" title="系统偏好设置">
+<span class="material-symbols-outlined text-[19px]">tune</span>
+</button>
+<!-- 待办与消息提醒 (带未读小红点) -->
+<button class="w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 relative flex items-center justify-center" title="通知与待办">
+<span class="material-symbols-outlined text-[19px]">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error ring-2 ring-white"></span>
+</button>
+<div class="h-4 w-px bg-outline-variant/30 hidden sm:block"></div>
+<!-- 用户头像 (Yvan 主任) -->
+<div class="flex items-center space-x-2 pl-0.5 group cursor-pointer" title="当前身份：Yvan 主任">
+<div class="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary/20 shadow-sm flex items-center justify-center bg-surface-container-high transition-transform group-hover:scale-105">
+<img class="w-full h-full object-cover" data-alt="Yvan 用户头像" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoQKoptm7qSP5wqPOO1A-TZwLSIo84zcWwdfPQQWQL_F79c-ko3pYzsaN2VlOwPfKaJYRbHUnmD4iybyGdsvrV3zqtXZWb-bu6tVXDE9NYR_s2Xbx1v-vuq6VRDmybvb4uSVIeodpcf9MyT6Oj_tdPguteL6g6FV_HzV1uIGQXsrLhb20wyQF8_jqJ5arx_3HPajSumpNBMZRDpYdDpRoNBw1zY2omOM-cfBba3dAx-dMglf1I_vaiUw">
+</div>
+<span class="hidden xl:inline text-[13px] font-medium text-on-surface group-hover:text-primary transition-colors">Yvan</span>
+</div>
+</div>
+</nav>
+</header>
+<!-- ==================== 2. 左侧紧凑型悬浮 macOS 胶囊 DOCK (自适应高度、居中靠左) ==================== -->
+<aside class="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center bg-surface-container-lowest/85 backdrop-blur-2xl ring-1 ring-white/95 rounded-full py-3 px-2 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] space-y-2.5">
+<!-- 业务场景 1: 周报与工作随记 -->
+<div class="relative group flex items-center">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all active:scale-90">
+<span class="material-symbols-outlined text-[20px]">edit_note</span>
+</button>
+<!-- Tooltip -->
+<div class="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/90 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg backdrop-blur-md">
+        周报与工作随记
+      </div>
+</div>
+<!-- 业务场景 2: 文案创作工坊 -->
+<div class="relative group flex items-center">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all active:scale-90">
+<span class="material-symbols-outlined text-[20px]">auto_stories</span>
+</button>
+<!-- Tooltip -->
+<div class="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/90 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg backdrop-blur-md">
+        文案创作工坊
+      </div>
+</div>
+<!-- 业务场景 3: 本地数据分析 -->
+<div class="relative group flex items-center">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all active:scale-90">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+</button>
+<!-- Tooltip -->
+<div class="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/90 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg backdrop-blur-md">
+        本地数据分析
+      </div>
+</div>
+<!-- 业务场景 4: 专项监督 (激活状态 · 带微发光指示点) -->
+<div class="relative group flex items-center">
+<button class="w-10 h-10 rounded-full flex items-center justify-center bg-primary text-on-primary shadow-md active:scale-90 transition-all relative">
+<span class="material-symbols-outlined text-[20px]">radar</span>
+<span class="absolute -right-1 -top-1 w-2.5 h-2.5 rounded-full bg-secondary-container ring-2 ring-white"></span>
+</button>
+<!-- Tooltip -->
+<div class="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/90 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg backdrop-blur-md flex items-center space-x-1.5">
+<span class="">专项监督 · 研判中</span>
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+</div>
+</div>
+<div class="w-5 h-px bg-outline-variant/30 my-0.5"></div>
+<!-- + 自定义添加拓展按钮 -->
+<div class="relative group flex items-center">
+<button class="w-9 h-9 rounded-full flex items-center justify-center text-outline hover:text-on-surface hover:bg-surface-container-high/60 transition-all active:scale-90 border border-dashed border-outline-variant/60" title="添加常用业务入口">
+<span class="material-symbols-outlined text-[17px]">add</span>
+</button>
+<div class="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/90 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg backdrop-blur-md">
+        自定义添加入口
+      </div>
+</div>
+</aside>
+<!-- ==================== 主内容区：严格 50/50 纵向空间切分 ==================== -->
+<main class="flex-1 w-full max-w-7xl mx-auto px-6 sm:px-12 md:pl-28 md:pr-12 flex flex-col h-[calc(100vh-4.75rem)] overflow-hidden">
+<!-- ==================== 上部 50% 空间：问候与空间自由吉祥物看板 ==================== -->
+<section class="flex flex-col flex-shrink-0 pt-2 pb-4 mb-3">
+<!-- 问候与微状态提示 (大留白、克制优雅) -->
+<div class="pb-3 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+<div>
+<h1 class="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-tight">
+            早上好，<span class="font-normal text-primary">Yvan</span>
+<span class="text-on-surface-variant font-light text-base sm:text-lg ml-3 tracking-normal">· 今天有 <span class="font-medium text-primary">3 项</span> 重点事项推进中</span>
+</h1>
+</div>
+<div class="flex items-center space-x-2 text-outline font-label-caps text-[11px]">
+<span class="inline-block w-1.5 h-1.5 rounded-full bg-primary/70"></span>
+<span class="">COGNITIVE FLOW : OPTIMAL</span>
+</div>
+</div>
+<!-- 1号区域：精细三层架构舞台 (Layer 1 底部框 + Layer 2 宇航小人中层 + Layer 3 前景卡片底部对齐) -->
+<div class="relative w-full rounded-2xl border border-white/90 shadow-[0_20px_50px_-10px_rgba(79,70,229,0.08)] overflow-visible" style="background-color: #f2f4fd; padding: 24px 32px; box-shadow: inset 0 1px 3px rgba(255,255,255,0.8), 0 20px 50px -10px rgba(79,70,229,0.08);"><div class="absolute pointer-events-none flex flex-col items-center justify-center animate-float-mascot" style="z-index: 10; left: -36px; top: 12px; width: 140px;"><img alt="Astronaut Companion" class="w-full h-auto object-contain drop-shadow-[0_12px_20px_rgba(79,70,229,0.15)]" src="https://lh3.googleusercontent.com/aida/AEtjO1WZXk46E0RH_ip-rMPfLeP5-4vnIWyeCkNduO4dZoOb67K-UMGsG0F-LSi42VAUn5AVlVUBFtuy5apNDTbqLoTLi8x6v2nAIw1O9h78hkmH0oj0iil-W8_j66Mwckmk7DjowEMz77UfZR8HSr5YbTRoTekBAfTP72ufjvvrYxeFqbRZU37GWU4k48XwRvcoJQfXL0A_50hY2ULQOjnnHY-cPk8oj0YnkllUi2UonJIzN0_XoL4eAQErmbWr" style="mix-blend-mode: multiply; transform: scaleX(-1);"><div class="-mt-2 inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-white/90 backdrop-blur-md shadow-xs border border-white text-on-surface font-label-caps text-[8px]"><span class="w-1 h-1 rounded-full bg-primary animate-pulse"></span><span class="font-medium">协同就绪</span></div></div>
+<!-- Layer 2 (Middle layer, z-index: 10): 3D宇航小人 companion (置于卡片之间空隙，向上提80px至top: -16px，150%比例，在卡片层下方) -->
+<div class="absolute pointer-events-none flex flex-col items-center justify-center animate-float-mascot" style="z-index: 10; right: 26%; top: -45px; width: 245px;"><img alt="Cool Companion Character" class="w-full h-auto object-contain drop-shadow-[0_16px_24px_rgba(79,70,229,0.18)]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDF_yvEMcfymQmD8jZTkZq8muJYsvmIYul8h9b10Y2v_f1bZw9ZtG-7zZAi26fG5JpZZ8KOmOV-2PVnzjRyZK629JNEq-5lsftVATbxGxI3r-FsYBaXnGOFrleXz7V8HLKeLiEm60PKOjZczflWcJNx9BscBV2yF1XSs9l0CNj8ac5KKoj20XrZr5IoOKsRQrZnuHEpwaeR9EZgOG17j7DBwCwZbhL6YdS9t9oW12d6kuZZupry1gnHBw" style="mix-blend-mode: multiply; transform: translateX(80px) scale(0.8);"><div class="-mt-5 inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-white text-on-surface font-label-caps text-[9px]"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><span class="font-medium">已专注 4.2h</span></div></div>
+<!-- Layer 3 (Foreground Cards, z-index: 20): 卡片容器 (align-items: flex-end; justify-content: space-between;) -->
+<div class="relative flex items-end justify-between w-full" style="z-index: 20; min-height: 260px;">
+<!-- 左侧卡片 ('今日重点推进'): 增加100px宽度(calc(55% + 100px)), 左对齐, height: 260px, 微圆角4px -->
+<div class="flex-shrink-0 bg-white/80 backdrop-blur-md p-5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] flex flex-col justify-between" style="width: calc(55% + 100px); height: 260px; margin-left: 0; border-radius: 4px;">
+<!-- 头部 -->
+<div class="flex items-center justify-between pb-2.5 border-b border-surface-variant/20">
+<div class="flex items-center space-x-2">
+<div class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[15px]">checklist</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<h2 class="font-headline-md text-[13px] font-semibold text-on-surface">今日重点推进</h2>
+<span class="px-1.5 py-0.5 rounded-full bg-primary-fixed/50 text-on-primary-fixed font-label-caps text-[9px] font-medium">3项待办</span>
+</div>
+</div>
+<span class="font-label-caps text-[9px] text-outline-variant hover:text-primary transition-colors flex items-center cursor-pointer">
+<span class="">透视</span>
+<span class="material-symbols-outlined text-[11px] ml-0.5">unfold_more</span>
+</span>
+</div>
+<!-- 内部结构重构：均衡双栏布局 (左栏: 待办事项 / 今日任务；右栏: 专项进度与状态) -->
+<div class="grid grid-cols-2 gap-4 py-2 flex-1 items-center">
+<!-- 左栏：待办事项 / 今日任务 -->
+<div class="space-y-2 border-r border-surface-variant/20 pr-3.5">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-caps text-[9px] text-outline font-semibold tracking-wider flex items-center space-x-1">
+<span class="material-symbols-outlined text-[12px] text-primary">task_alt</span>
+<span class="">待办事项 / 今日任务</span>
+</span>
+</div>
+<div class="flex items-center justify-between text-[11px] bg-white/90 px-3 py-2 rounded-lg border border-white/95 shadow-xs hover:bg-white transition-colors">
+<span class="flex items-center space-x-2 text-on-surface truncate">
+<span class="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0"></span>
+<span class="font-medium text-[12px] truncate">供应链专项合规推演</span>
+</span>
+<span class="font-label-caps text-[10px] text-primary flex-shrink-0 ml-1 bg-primary-fixed/40 px-2 py-0.5 rounded-full">14:00</span>
+</div>
+<div class="flex items-center justify-between text-[11px] bg-white/75 px-3 py-2 rounded-lg border border-white/80 shadow-xs hover:bg-white/85 transition-colors">
+<span class="flex items-center space-x-2 text-on-surface truncate">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary flex-shrink-0"></span>
+<span class="text-on-surface-variant text-[12px] truncate">跨部门随记提炼</span>
+</span>
+<span class="font-label-caps text-[10px] text-secondary flex-shrink-0 ml-1 bg-secondary-fixed/40 px-2 py-0.5 rounded-full">就绪</span>
+</div>
+</div>
+<!-- 右栏：专项进度与状态 -->
+<div class="space-y-2.5 pl-0.5 flex flex-col justify-between h-full py-0.5">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-[9px] text-outline font-semibold tracking-wider flex items-center space-x-1">
+<span class="material-symbols-outlined text-[12px] text-secondary">trending_up</span>
+<span class="">专项进度与状态</span>
+</span>
+<span class="font-headline-md text-[11px] font-bold text-primary">75%</span>
+</div>
+<!-- 进度条 -->
+<div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
+<div class="bg-gradient-to-r from-primary to-secondary h-full rounded-full" style="width: 75%;"></div>
+</div>
+<!-- 核心状态指标标签组 -->
+<div class="grid grid-cols-2 gap-2 pt-0.5">
+<div class="bg-white/70 px-2.5 py-1.5 rounded-lg border border-white shadow-2xs">
+<div class="font-label-caps text-[8px] text-outline">节点交付</div>
+<div class="font-headline-md text-[12px] font-semibold text-on-surface mt-0.5">3 <span class="text-[9px] text-outline font-normal">/ 4 阶段</span></div>
+</div>
+<div class="bg-white/70 px-2.5 py-1.5 rounded-lg border border-white shadow-2xs">
+<div class="font-label-caps text-[8px] text-outline">沙箱交叉校验</div>
+<div class="font-headline-md text-[12px] font-semibold text-emerald-600 mt-0.5 flex items-center space-x-0.5">
+<span class="">100%</span>
+<span class="material-symbols-outlined text-[11px]">verified</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部链接与提示 -->
+<div class="pt-2 border-t border-surface-variant/20 flex items-center justify-between font-label-caps text-[10px]">
+<div class="text-outline flex items-center space-x-1">
+<span class="material-symbols-outlined text-[13px] text-primary">bolt</span>
+<span class="">下个节点 15:30 评审</span>
+</div>
+<span class="text-primary hover:underline flex items-center space-x-0.5 cursor-pointer">
+<span class="">全部日程</span>
+<span class="material-symbols-outlined text-[11px]">arrow_forward</span>
+</span>
+</div>
+</div>
+<!-- 右侧卡片 ('日程节律'): width: 35%, 右对齐, height: 210px, 微圆角4px -->
+<div class="flex-shrink-0 bg-white/80 backdrop-blur-md p-3.5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] flex flex-col justify-between" style="width: 35%; height: 210px; margin-right: 0; border-radius: 4px;">
+<!-- 头部 -->
+<div class="flex items-center justify-between pb-1 border-b border-surface-variant/20">
+<div class="flex items-center space-x-1.5">
+<div class="w-5 h-5 rounded-full bg-secondary-fixed/50 text-secondary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[13px]">calendar_view_week</span>
+</div>
+<span class="font-headline-md text-[12px] font-semibold text-on-surface">日程节律</span>
+</div>
+<span class="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full bg-secondary-fixed/30 text-secondary font-label-caps text-[9px] font-medium">
+<span class="w-1 h-1 rounded-full bg-secondary"></span>
+<span class="">W43 · Q4</span>
+</span>
+</div>
+<!-- 3行周日历 -->
+<div class="py-0.5 w-full">
+<div class="grid grid-cols-7 gap-1 text-center font-label-caps text-[9px] text-outline mb-0.5">
+<span class="">一</span><span class="">二</span><span class="">三</span><span class="text-primary font-semibold">四</span><span class="">五</span><span class="">六</span><span class="">日</span>
+</div>
+<div class="grid grid-cols-7 gap-1 text-center text-[10px] font-label-caps opacity-40 py-0.5">
+<span class="text-on-surface-variant">14</span><span class="text-on-surface-variant">15</span><span class="text-on-surface-variant">16</span><span class="text-on-surface-variant">17</span><span class="text-on-surface-variant">18</span><span class="text-outline">19</span><span class="text-outline">20</span>
+</div>
+<div class="grid grid-cols-7 gap-1 text-center text-[10px] font-label-caps items-center py-0.5 font-medium">
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors">
+<span class="text-on-surface leading-none text-[10px]">21</span><span class="w-1 h-1 rounded-full bg-secondary mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors">
+<span class="text-on-surface leading-none text-[10px]">22</span><span class="w-1 h-1 rounded-full bg-transparent mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors">
+<span class="text-on-surface leading-none text-[10px]">23</span><span class="w-1 h-1 rounded-full bg-primary/70 mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md bg-primary/10 text-primary border border-primary/20 shadow-xs font-semibold">
+<span class="leading-none text-primary text-[10px]">24</span><span class="w-1 h-1 rounded-full bg-primary mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors">
+<span class="text-on-surface leading-none text-[10px]">25</span><span class="w-1 h-1 rounded-full bg-error mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors text-outline">
+<span class="leading-none text-[10px]">26</span><span class="w-1 h-1 rounded-full bg-transparent mt-0.5"></span>
+</div>
+<div class="flex flex-col items-center justify-center h-5 rounded-md hover:bg-white/70 transition-colors text-outline">
+<span class="leading-none text-[10px]">27</span><span class="w-1 h-1 rounded-full bg-transparent mt-0.5"></span>
+</div>
+</div>
+</div>
+<!-- 底部指标小组件 -->
+<div class="pt-1 border-t border-surface-variant/20 grid grid-cols-4 gap-1">
+<div class="bg-white/70 rounded-md px-1.5 py-1 border border-white flex flex-col justify-between shadow-xs">
+<span class="font-label-caps text-[8px] text-outline truncate">本周随记</span>
+<div class="flex items-baseline space-x-0.5">
+<span class="font-headline-md text-[11px] font-bold text-on-surface">14</span><span class="text-[8px] text-secondary font-medium">条</span>
+</div>
+</div>
+<div class="bg-white/70 rounded-md px-1.5 py-1 border border-white flex flex-col justify-between shadow-xs">
+<span class="font-label-caps text-[8px] text-outline truncate">完成任务</span>
+<div class="flex items-baseline space-x-0.5">
+<span class="font-headline-md text-[11px] font-bold text-primary">8</span><span class="text-[8px] text-outline">/11</span>
+</div>
+</div>
+<div class="bg-white/70 rounded-md px-1.5 py-1 border border-white flex flex-col justify-between shadow-xs">
+<span class="font-label-caps text-[8px] text-outline truncate">专项监督</span>
+<div class="flex items-baseline space-x-0.5">
+<span class="font-headline-md text-[11px] font-bold text-amber-500">3</span><span class="text-[8px] text-outline">节</span>
+</div>
+</div>
+<div class="bg-white/70 rounded-md px-1.5 py-1 border border-white flex flex-col justify-between shadow-xs">
+<span class="font-label-caps text-[8px] text-outline truncate">离线专注</span>
+<div class="flex items-baseline space-x-0.5">
+<span class="font-headline-md text-[11px] font-bold text-emerald-600">4.2</span><span class="text-[8px] text-outline">h</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- ==================== 下半部 50% 空间：向上自适应延伸的无边界对话流 ==================== -->
+<section class="flex-1 flex flex-col justify-end pb-3 pt-1 min-h-0 relative overflow-hidden" style="mask-image: linear-gradient(to top, rgb(0, 0, 0) 0%, rgba(0, 0, 0, 0.95) 60%, rgba(0, 0, 0, 0) 100%);">
+<!-- 对话流滚动容器 (采用 top 蒙版渐变，实现无边界向上淡出消隐效果，更大面积自适应展示) -->
+<div class="chat-fade-mask chat-scroll flex-1 overflow-y-auto pr-2 pb-3 space-y-3.5 flex flex-col justify-end">
+<!-- 早前历史消息 (顶部自然浅化隐退) -->
+<div class="flex items-start space-x-3 max-w-2xl opacity-60 hover:opacity-100 transition-opacity">
+<div class="relative group flex items-center justify-center flex-shrink-0 cursor-pointer"><div class="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center text-primary text-[13px] group-hover:bg-primary-fixed group-hover:scale-105 transition-all shadow-xs"><span class="material-symbols-outlined text-[15px]">smart_toy</span></div><div class="absolute left-0 bottom-full mb-2.5 w-64 p-3 rounded-2xl bg-white/85 backdrop-blur-2xl border border-white/90 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-300 z-30"><div class="flex items-center justify-between pb-1.5 mb-2 border-b border-surface-variant/30"><span class="font-label-caps text-[10px] font-semibold text-primary flex items-center space-x-1"><span class="material-symbols-outlined text-[13px]">history</span><span class="">最近对话历史</span></span><span class="font-label-caps text-[9px] text-outline">4条已归档</span></div><div class="space-y-1.5 text-[11px] font-body-sm"><div class="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface flex items-start space-x-1.5"><span class="font-label-caps text-[10px] text-primary font-medium flex-shrink-0">1.</span><span class="truncate font-medium">采购合规自检报告生成</span></div><div class="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant flex items-start space-x-1.5"><span class="font-label-caps text-[10px] text-outline flex-shrink-0">2.</span><span class="truncate">上周供应链滞留项提取与分析</span></div><div class="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant flex items-start space-x-1.5"><span class="font-label-caps text-[10px] text-outline flex-shrink-0">3.</span><span class="truncate">Q3 数据看板离线交叉校验</span></div><div class="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant flex items-start space-x-1.5"><span class="font-label-caps text-[10px] text-outline flex-shrink-0">4.</span><span class="truncate">专项督办节点推进与纪要同步</span></div></div></div></div>
+<div class="bg-surface-container-lowest/70 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-2.5 text-[13px] text-on-surface-variant shadow-xs border border-white/60">
+            已检索到本周 4 条工作随记，发现供应链采购环节有审批节点滞留记录，是否调阅对应专项数据？
+          </div>
+</div>
+<!-- 用户对话气泡 (Yvan) -->
+<div class="flex items-start justify-end space-x-3 max-w-2xl ml-auto">
+<div class="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13px] shadow-sm leading-relaxed">
+            立即生成该采购专项的合规自检报告，重点对比近两季度的履约周期异动，并直接加入周报草案。
+          </div>
+<div class="w-7 h-7 rounded-full overflow-hidden ring-1 ring-primary/30 flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Yvan" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoQKoptm7qSP5wqPOO1A-TZwLSIo84zcWwdfPQQWQL_F79c-ko3pYzsaN2VlOwPfKaJYRbHUnmD4iybyGdsvrV3zqtXZWb-bu6tVXDE9NYR_s2Xbx1v-vuq6VRDmybvb4uSVIeodpcf9MyT6Oj_tdPguteL6g6FV_HzV1uIGQXsrLhb20wyQF8_jqJ5arx_3HPajSumpNBMZRDpYdDpRoNBw1zY2omOM-cfBba3dAx-dMglf1I_vaiUw">
+</div>
+</div>
+<!-- OmniDesk 智能体回复气泡 (高质感卡片气泡) -->
+<div class="flex items-start space-x-3 max-w-3xl">
+<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white text-[13px] flex-shrink-0 shadow-xs">
+<span class="material-symbols-outlined text-[15px]">neurology</span>
+</div>
+<div class="plate-sculpted rounded-2xl rounded-tl-sm p-4 text-[13px] text-on-surface shadow-sm border border-white space-y-2.5">
+<div class="flex items-center space-x-2 text-primary font-medium">
+<span class="material-symbols-outlined text-[15px]">check_circle</span>
+<span class="">专项监督研判完成 · 3项异动已提取</span>
+</div>
+<p class="text-on-surface-variant leading-relaxed">
+              本地安全沙箱已调用离线 DeepSeek 引擎完成 48 份合同节点交叉校验。平均交付滞后天数同比增加 <span class="text-error font-medium">18.4%</span>，主要瓶颈出现在法务三审环节。已为您整理为可视化图表，并同步暂存至周记《重点专项进展》。
+            </p>
+<div class="flex items-center space-x-2 pt-1">
+<span class="px-2.5 py-1 rounded-full bg-surface-container font-label-caps text-[10px] text-outline">产出: 专项报告_Q4.pdf</span>
+<button class="px-2.5 py-1 rounded-full bg-primary-fixed/60 text-on-primary-fixed font-label-caps text-[10px] hover:bg-primary-fixed transition-colors">查看推演卡片</button>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部现代触感指令输入坞 (紧贴底部、浑然一体、无生硬边框) -->
+<div class="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white focus-within:ring-2 focus-within:ring-primary/20 transition-all flex-shrink-0 rounded-xl">
+<!-- 输入区域 -->
+<div class="flex items-center space-x-3 px-1">
+<span class="material-symbols-outlined text-primary text-[20px] flex-shrink-0">spark</span>
+<input class="w-full bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none" placeholder="与 OmniDesk 协同探索、下达专项任务或直接记录灵感..." type="text">
+</div>
+<!-- 触感动作标签与分发键 -->
+<div class="mt-2.5 pt-2 border-t border-surface-variant/30 flex flex-wrap items-center justify-between gap-2">
+<!-- 功能切换胶囊 -->
+<div class="flex items-center space-x-1.5">
+<!-- 挂载本地库 -->
+<button class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:text-on-surface hover:bg-white transition-colors">
+<span class="material-symbols-outlined text-[13px]">folder_open</span>
+<span class="">挂载库</span>
+</button>
+<!-- 语音随记 -->
+<button class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:text-on-surface hover:bg-white transition-colors">
+<span class="material-symbols-outlined text-[13px]">mic</span>
+<span class="">语音</span>
+</button>
+<!-- 本地离线引擎切换胶囊 -->
+<button class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-secondary-fixed/40 text-secondary font-label-caps text-[11px] hover:bg-secondary-fixed/60 transition-colors">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span class="">DeepSeek 离线</span>
+</button>
+</div>
+<!-- 发送按钮与快捷键提示 -->
+<div class="flex items-center space-x-2">
+<span class="font-label-caps text-[10px] text-outline hidden sm:inline">↵ 发送 / ⌘K 唤起</span>
+<button class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 shadow-sm transition-all" title="发送指令">
+<span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- 浮动存盘状态胶囊 (极简右下角角标) -->
+<aside class="fixed bottom-4 right-6 z-30 pointer-events-auto hidden sm:block">
+<div class="plate-sculpted rounded-full px-3.5 py-1.5 flex items-center space-x-2 shadow-[0_8px_20px_-4px_rgba(15,23,42,0.06)] border border-white text-[11px] font-label-caps text-outline hover:text-on-surface transition-colors cursor-pointer">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+<span class="">本地沙箱状态正常 · ⌘S 存盘</span>
+</div>
+</aside>
+<!-- 对话流模拟交互 -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.querySelector('input[placeholder*="协同探索"]');
+      const chatContainer = document.querySelector('.chat-scroll');
+      
+      if (input && chatContainer) {
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && input.value.trim()) {
+            const userText = input.value.trim();
+            input.value = '';
+            
+            // Append User Message
+            const userMsg = document.createElement('div');
+            userMsg.className = 'flex items-start justify-end space-x-3 max-w-2xl ml-auto';
+            userMsg.innerHTML = `
+              <div class="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13px] shadow-sm leading-relaxed">
+                ${userText}
+              </div>
+              <div class="w-7 h-7 rounded-full overflow-hidden ring-1 ring-primary/30 flex-shrink-0">
+                <img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoQKoptm7qSP5wqPOO1A-TZwLSIo84zcWwdfPQQWQL_F79c-ko3pYzsaN2VlOwPfKaJYRbHUnmD4iybyGdsvrV3zqtXZWb-bu6tVXDE9NYR_s2Xbx1v-vuq6VRDmybvb4uSVIeodpcf9MyT6Oj_tdPguteL6g6FV_HzV1uIGQXsrLhb20wyQF8_jqJ5arx_3HPajSumpNBMZRDpYdDpRoNBw1zY2omOM-cfBba3dAx-dMglf1I_vaiUw"/>
+              </div>
+            `;
+            chatContainer.appendChild(userMsg);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Delayed Assistant Response
+            setTimeout(() => {
+              const aiMsg = document.createElement('div');
+              aiMsg.className = 'flex items-start space-x-3 max-w-3xl';
+              aiMsg.innerHTML = `
+                <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white text-[13px] flex-shrink-0 shadow-xs">
+                  <span class="material-symbols-outlined text-[15px]">neurology</span>
+                </div>
+                <div class="plate-sculpted rounded-2xl rounded-tl-sm p-4 text-[13px] text-on-surface shadow-sm border border-white space-y-1.5">
+                  <p class="text-on-surface leading-relaxed">
+                    已收到指令并接入本地沙箱执行。DeepSeek 离线模型正在基于本地库推演相关内容...
+                  </p>
+                  <span class="font-label-caps text-[10px] text-outline">响应耗时: 18ms · 本地IPC安全</span>
+                </div>
+              `;
+              chatContainer.appendChild(aiMsg);
+              chatContainer.scrollTop = chatContainer.scrollHeight;
+            }, 600);
+          }
+        });
+      }
+    });
+  </script>
+
+
+
+
+</body></html>
