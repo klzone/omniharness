@@ -680,4 +680,69 @@ export interface ProfileDeclPayload {
   /** 载入时文件内容的 SHA-256；用于判断运行期间文件是否被改动（需重启生效）。 */
   content_sha256: string;
   warnings: string[];
+  /** 声明原文（设置页编辑框载入用；保存前由宿主重新校验）。 */
+  text: string;
+}
+
+// ---------------------------------------------------------------------------
+// 原生设置页：模型与端点（OD-ARCH-053）
+//
+// 这里**没有**密钥字段：密钥只经官方凭据接口写入 DSH 凭据服务，
+// 宿主从不把它回传给界面。界面只知道「是否已配置 / 来自哪一层」。
+// ---------------------------------------------------------------------------
+
+export interface ModelSettings {
+  schema: string;
+  provider: string;
+  display_name: string;
+  base_url: string;
+  api: string;
+  default_model: string;
+  /** DSH 配置里的 apiKeyEnv 引用名（非机密）。 */
+  api_key_ref: string;
+  reasoning_effort?: string | null;
+}
+
+/** 凭据状态。值永不下发，只有这三项事实。 */
+export interface ModelKeyStatus {
+  configured: boolean;
+  source?: string | null;
+  writable: boolean;
+}
+
+export interface ModelSettingsView {
+  ok: boolean;
+  settings: ModelSettings | null;
+  error: string | null;
+  config_path: string;
+  overlay_path: string;
+  overlay_present: boolean;
+  app_root: string;
+  key_status: ModelKeyStatus | null;
+  key_error: string | null;
+}
+
+export interface ModelSettingsSaveReceipt {
+  ok: boolean;
+  config_path: string;
+  overlay_path: string;
+  key_written: boolean;
+  key_error: string | null;
+  engine_stopped: boolean;
+  route: unknown;
+  note: string;
+}
+
+export interface ProfileDeclOpenReceipt {
+  ok: boolean;
+  opened: string;
+  note: string;
+}
+
+export interface ProfileDeclSaveReceipt {
+  ok: boolean;
+  path: string;
+  backup: string | null;
+  digest: string;
+  note: string;
 }
