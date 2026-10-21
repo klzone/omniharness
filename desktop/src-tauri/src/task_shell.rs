@@ -2235,57 +2235,6 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
 ///   * 启动失败时**明确报错**，不静默失败、不假装已打开。
 ///   * 本函数**不读、不写、不打印任何凭证文件**；只把设置界面拉起来。
 ///     界面上显示的路径只是「配置落在哪」，不是机密内容。
-pub fn open_dsh_settings(
-    dsh_home: &Path,
-    agents_home: &Path,
-    dsh_cli: &Path,
-    log_path: &Path,
-) -> Result<serde_json::Value, String> {
-    if !dsh_cli.is_file() {
-        return Err(format!(
-            "找不到引擎运行时里的 DSH CLI：{}；请先完成运行时引导（scripts/bootstrap-runtime.sh）。",
-            dsh_cli.display()
-        ));
-    }
-    let node = std::env::var("OMNIDESK_NODE")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "node".to_string());
-    if let Some(parent) = log_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let out = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-        .map_err(|e| format!("打开 DSH 启动日志失败（{}）：{}", log_path.display(), e))?;
-    let err = out
-        .try_clone()
-        .map_err(|e| format!("复制日志句柄失败：{}", e))?;
-    let child = std::process::Command::new(&node)
-        .arg(dsh_cli)
-        .arg("web")
-        .env("DSH_HOME", dsh_home)
-        .env("DSH_AGENTS_HOME", agents_home)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::from(out))
-        .stderr(std::process::Stdio::from(err))
-        .spawn()
-        .map_err(|e| format!("启动 DSH（{}）失败：{}", node, e))?;
-    Ok(serde_json::json!({
-        "ok": true,
-        "launched": "dsh web",
-        "pid": child.id(),
-        "dsh_home": dsh_home.display().to_string(),
-        "agents_home": agents_home.display().to_string(),
-        "credentials_file": dsh_home.join(".credentials.yaml").display().to_string(),
-        "log_path": log_path.display().to_string(),
-        "note": "已启动与引擎同款的 DSH（web profile），并指向引擎正在用的那份 DSH 数据根——\
-                 同一份凭据与 Profile，你在这里登记的模型配置引擎能直接读到。\
-                 本地地址与启动日志见上面的日志文件；本应用不读、不写、不复制任何凭证值。",
-    }))
-}
-
 // ---------------------------------------------------------------------------
 // 单元测试
 //

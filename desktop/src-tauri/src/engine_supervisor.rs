@@ -46,6 +46,18 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
+    /// 按磁盘现状同步「OmniDesk 模型覆盖文件」是否参与本次启动（OD-ARCH-050）。
+    ///
+    /// 覆盖文件会因「切换模型 / 改为跟随 DSH 设置」而出现或消失；配置里若继续带着
+    /// 一个已不存在的补丁路径，DSH 启动会直接失败。这里只改 patch 列表，不动其它字段。
+    pub fn sync_overlay(&mut self, app_root: &std::path::Path) {
+        let overlay = crate::model_routes::overlay_path(app_root);
+        self.patch_files.retain(|p| p != &overlay);
+        if overlay.is_file() {
+            self.patch_files.push(overlay);
+        }
+    }
+
     /// 从环境变量解析配置；缺失关键项时返回可读错误，而不是凭空造默认值。
     ///
     /// 支持的变量：
@@ -491,6 +503,11 @@ impl EngineSupervisor {
 
     pub fn config(&self) -> &EngineConfig {
         &self.config
+    }
+
+    /// 可变配置（仅用于同步覆盖文件这类不改变隔离边界的字段）。
+    pub fn config_mut(&mut self) -> &mut EngineConfig {
+        &mut self.config
     }
 
     pub fn pid(&self) -> Option<u32> {

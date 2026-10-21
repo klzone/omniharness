@@ -4,7 +4,13 @@
 // 这里不拼接 shell，不读写文件，也不推断“设置已生效”——一律以宿主返回为准。
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { host, scheduler as schedulerApi, shell } from "./api";
+import {
+  host,
+  invalidateEngineFactsCache,
+  onDshSettingsClosed,
+  scheduler as schedulerApi,
+  shell,
+} from "./api";
 import { PendingWritePanel } from "./shell/PendingWriteCard";
 import type {
   AdmissionFacts,
@@ -94,6 +100,8 @@ export default function SettingsPanel() {
   // —— 模型与端点 / 权限 ——
   const [facts, setFacts] = useState<AdmissionFacts | null>(null);
   const [factsError, setFactsError] = useState<string | null>(null);
+  /** OD-ARCH-050：区分「加载中」与「读不出来」。 */
+  const [factsLoading, setFactsLoading] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [permissionNote, setPermissionNote] = useState<string | null>(null);
   // OD-ARCH-022：权限变更未确认停止旧引擎时，宿主会置位屏障并拒绝新提交。
@@ -118,10 +126,9 @@ export default function SettingsPanel() {
       const r = await shell.openDshSettings();
       setDshNote(
         r.note +
-          "\nDSH 数据根：" +
-          r.dsh_home +
-          "\n凭据文件：" +
-          r.credentials_file +
+          "\n实例端口：" +
+          r.port +
+          (r.reused ? "（复用已开的实例）" : "（本次新起）") +
           "\n启动日志：" +
           r.log_path,
       );
@@ -133,9 +140,11 @@ export default function SettingsPanel() {
   }, []);
 
   const refreshAdmission = useCallback(async () => {
+    setFactsLoading(true);
     try {
       const r = await host.admissionStatus();
-      setFacts(r.facts);
+      // OD-ARCH-050：读取失败时保留上一次已知事实，不把界面闪成「未识别」。
+      if (r.facts) setFacts(r.facts);
       setBlocked(r.blocked ? (r.block_reason ?? "原因未提供") : null);
       setFactsError(
         r.ok
@@ -143,10 +152,28 @@ export default function SettingsPanel() {
           : r.error?.message ?? r.error?.engine_error_code ?? "无法读取端点信息",
       );
     } catch (e) {
-      setFacts(null);
       setFactsError(String(e));
+    } finally {
+      setFactsLoading(false);
     }
   }, []);
+
+  /** 改为跟随 DSH 设置：归档 OmniDesk 覆盖文件并停引擎，下次任务用 DSH 的默认模型。 */
+  const followDsh = useCallback(async () => {
+    setDshBusy(true);
+    setDshError(null);
+    setDshNote(null);
+    try {
+      const r = await shell.clearModelRoute();
+      setDshNote(r.note);
+      invalidateEngineFactsCache();
+      await refreshAdmission();
+    } catch (e) {
+      setDshError(String(e));
+    } finally {
+      setDshBusy(false);
+    }
+  }, [refreshAdmission]);
 
   const refresh = useCallback(async () => {
     try {
@@ -175,6 +202,20 @@ export default function SettingsPanel() {
     void refreshAdmission();
     void refreshScheduler();
   }, [refresh, refreshAdmission, refreshScheduler]);
+
+  // OD-ARCH-050：设置窗口关闭后重新读端点事实——用户在 DSH 里改的模型要立刻可见。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void onDshSettingsClosed(() => {
+      invalidateEngineFactsCache();
+      void refreshAdmission();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [refreshAdmission]);
 
   const changePermission = useCallback(
     async (category: keyof ModelPermissions, enabled: boolean) => {
@@ -315,13 +356,18 @@ export default function SettingsPanel() {
                 facts.model +
                 " · " +
                 (CATEGORY_LABEL[facts.category] ?? facts.category)
-              : factsError
-                ? "端点信息读取失败"
-                : "尚未读取端点信息"
+              : factsLoading
+                ? "正在读取端点信息…"
+                : factsError
+                  ? "端点信息读取失败"
+                  : "尚未读取端点信息"
           }
         >
           <button className="primary" onClick={() => void openDshSettings()} disabled={dshBusy}>
-            {dshBusy ? "正在打开 DSH…" : "打开 DSH 设置（登记 key）"}
+            {dshBusy ? "正在打开 DSH…" : "打开 DSH 设置"}
+          </button>
+          <button className="ghost" onClick={() => void followDsh()} disabled={dshBusy}>
+            改为跟随 DSH 设置
           </button>
           <button
             className="ghost"
@@ -339,11 +385,18 @@ export default function SettingsPanel() {
         </p>
         {dshNote ? <p className="hint mono">{dshNote}</p> : null}
         {dshError ? <div className="alert">打不开 DSH 设置：{dshError}</div> : null}
-        {factsError ? <div className="alert">无法读取端点：{factsError}</div> : null}
-        {!facts && !factsError ? (
+        {factsError ? (
           <div className="alert">
-            端点事实还没读出来（可能引擎未启动，或配置尚未就绪）。请先点「刷新端点信息」；
-            需要改 key 或换端点时，点「打开 DSH 设置」。
+            无法读取端点：{factsError}
+            {facts ? "（下面仍是上一次读到的结果，可点「刷新端点信息」重试）" : ""}
+          </div>
+        ) : null}
+        {!facts && !factsError && factsLoading ? (
+          <div className="hint">正在读取端点信息…（引擎启动期间也能读到，不需要重启应用）</div>
+        ) : null}
+        {!facts && !factsError && !factsLoading ? (
+          <div className="alert">
+            端点事实还没读出来。先点「刷新端点信息」；需要改 key 或换端点时，点「打开 DSH 设置」。
           </div>
         ) : null}
         {facts && !facts.configurable ? (

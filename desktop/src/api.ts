@@ -443,33 +443,42 @@ export const shell = {
   },
 
   /**
-   * 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
+   * 打开 DSH 自带的设置界面（模型提供方 / 默认模型 / 凭据登记）。
    *
-   * 固定动作、无参数：宿主只执行固定的 `gtk-launch` / `xdg-open`，不接受命令或路径；
-   * 未安装时明确报错，不静默失败。宿主不读、不写、不打印任何凭证值。
-   * 宿主会把 DSH 指向**引擎正在用的那份 DSH 数据根**，使两边共享同一份凭据与 Profile。
+   * OD-ARCH-050：宿主用临时端口起一个专用 `dsh web`（`--no-open`），再在应用内
+   * 打开独立窗口「DSH 设置」。URL 里的会话令牌只留在宿主内存，不经过前端。
    */
   openDshSettings(): Promise<{
     ok: boolean;
-    launched: string;
-    pid: number;
-    dsh_home: string;
-    agents_home: string;
-    credentials_file: string;
+    port: number;
+    reused: boolean;
     log_path: string;
     note: string;
   }> {
     return invoke<{
       ok: boolean;
-      launched: string;
-      pid: number;
-      dsh_home: string;
-      agents_home: string;
-      credentials_file: string;
+      port: number;
+      reused: boolean;
       log_path: string;
       note: string;
-    }>(
-      "task_open_dsh_settings",
+    }>("task_open_dsh_settings").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 改为「跟随 DSH 设置」（OD-ARCH-050 S5）。
+   *
+   * 把 OmniDesk 自己的模型覆盖文件归档到旁边（不删除），并停掉当前引擎：
+   * 下次任务会按 DSH Profile 里配置的 provider / 默认模型启动。
+   */
+  clearModelRoute(): Promise<{
+    ok: boolean;
+    archived: string | null;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; archived: string | null; note: string }>(
+      "task_clear_model_route",
     ).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -804,4 +813,16 @@ export function onTaskEvent(
   handler: (event: TaskEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<TaskEvent>("omni://task-event", (e) => handler(e.payload));
+}
+
+/**
+ * 订阅「DSH 设置窗口已关闭」（OD-ARCH-050）。
+ *
+ * 用户可能在设置窗口里改了 provider / 默认模型：关闭后需要重新读端点事实与模型目录，
+ * 否则界面会停留在旧结果。
+ */
+export function onDshSettingsClosed(
+  handler: () => void,
+): Promise<UnlistenFn> {
+  return listen("omni://dsh-settings-closed", () => handler());
 }

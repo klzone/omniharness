@@ -133,6 +133,8 @@ export interface EngineHealth {
   dsh_agents_home: string | null;
   engine_pid: number | null;
   note: string;
+  /** 引擎子进程最后几行 stderr（OD-ARCH-050：启动失败时用于定位真实原因）。 */
+  stderr_tail?: string[];
 }
 
 // ---------------------------------------------------------------------------

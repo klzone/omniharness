@@ -205,6 +205,16 @@ export function EngineTechSlice({ onClose }: { onClose: () => void }) {
             {health?.note ? (
               <p className="mt-2 text-[11px] text-outline">{health.note}</p>
             ) : null}
+            {health?.stderr_tail && health.stderr_tail.length > 0 ? (
+              <div className="mt-3">
+                <div className="text-[10px] uppercase tracking-wide text-outline">
+                  引擎输出（最后 {health.stderr_tail.length} 行）
+                </div>
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-container p-2 text-[10.5px] text-on-surface-variant">
+                  {health.stderr_tail.join("\n")}
+                </pre>
+              </div>
+            ) : null}
 
             {descriptorError ? (
               <div className="mt-3 rounded-lg bg-error-container text-on-error-container px-3 py-2 text-[12px]">

@@ -252,11 +252,20 @@ export function HomeChat({
 
   const canSubmit = admission === "ready" && !busy;
 
+  /** OD-ARCH-050：区分「正在读」与「读失败」——刷新期间保留上一次事实，不再闪成「未识别」。 */
+  const [factsLoading, setFactsLoading] = useState(false);
+  const factsRef = useRef<AdmissionFacts | null>(null);
+  useEffect(() => {
+    factsRef.current = facts;
+  }, [facts]);
+
   const refreshAdmission = useCallback(async () => {
+    setFactsLoading(true);
+    if (!factsRef.current) setAdmission("checking");
     try {
       const status = await host.admissionStatus();
       if (!status.ok || !status.facts) {
-        setFacts(null);
+        // 读取失败时保留上一次已知事实（如果有），只把原因记下来。
         setAdmission("blocked");
         setAdmissionError(status.error?.message ?? "无法读取模型端点信息。");
         return;
@@ -272,9 +281,10 @@ export function HomeChat({
         status.facts.allowed ? null : status.facts.category_reason || "模型权限未开启。",
       );
     } catch (e) {
-      setFacts(null);
       setAdmission("blocked");
       setAdmissionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFactsLoading(false);
     }
   }, []);
 
@@ -333,6 +343,25 @@ export function HomeChat({
     },
     [modelEffort, refreshAdmission],
   );
+
+  /**
+   * 改为跟随 DSH 设置（OD-ARCH-050）：归档 OmniDesk 覆盖文件、停掉引擎，
+   * 下次任务直接使用 DSH 里配置的 provider 与默认模型，不再要求在这里重选。
+   */
+  const followDsh = useCallback(async () => {
+    setModelBusy(true);
+    setModelNote(null);
+    try {
+      const r = await shell.clearModelRoute();
+      setModelNote(r.note);
+      invalidateEngineFactsCache();
+      await Promise.all([refreshAdmission(), loadModelRoutes()]);
+    } catch (e) {
+      setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setModelBusy(false);
+    }
+  }, [refreshAdmission, loadModelRoutes]);
 
   // 引擎要求 workspace_dir 为绝对路径。宿主在端点未获准时会拒绝准备，
   // 此时如实记录拒绝原因并把工作目录置空，不用「仅解析出的路径」冒充可用目录。
@@ -841,7 +870,11 @@ export function HomeChat({
           <input
             className="w-full bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none"
             placeholder={
-              canSubmit ? "与 OmniDesk 协同探索、下达任务或记录灵感…" : "模型权限未开启：可在设置中确认端点后启用"
+              canSubmit
+                ? "与 OmniDesk 协同探索、下达任务或记录灵感…"
+                : factsLoading && !facts
+                  ? "正在读取模型端点信息…"
+                  : "模型权限未开启：可在设置中确认端点后启用"
             }
             value={input}
             disabled={busy}
@@ -884,8 +917,10 @@ export function HomeChat({
               catalog={modelCatalog}
               effort={modelEffort}
               busy={modelBusy || busy}
+              loading={factsLoading && !facts}
               onSelectModel={(profile, provider, model) => void selectModel(profile, provider, model)}
               onSelectEffort={(effort) => void selectEffort(effort)}
+              onFollowDsh={() => void followDsh()}
             />
             {busy ? (
               <button

@@ -34,8 +34,10 @@ export function ModelPicker({
   catalog = null,
   effort,
   busy,
+  loading = false,
   onSelectModel,
   onSelectEffort,
+  onFollowDsh,
 }: {
   currentProvider: string | null;
   currentModel: string | null;
@@ -44,8 +46,12 @@ export function ModelPicker({
   catalog?: EngineModelCatalog | null;
   effort: string;
   busy: boolean;
+  /** OD-ARCH-050：首次读取事实期间显示「读取中」，而不是「未识别」。 */
+  loading?: boolean;
   onSelectModel: (profile: string, provider: string, model: string) => void;
   onSelectEffort: (effort: string) => void;
+  /** OD-ARCH-050：改为跟随 DSH 设置（用它配的 provider 与默认模型）。 */
+  onFollowDsh?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -64,7 +70,21 @@ export function ModelPicker({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
 
-  const label = currentProvider && currentModel ? `${currentProvider} / ${currentModel}` : "未识别";
+  const label =
+    currentProvider && currentModel
+      ? `${currentProvider} / ${currentModel}`
+      : loading
+        ? "读取中…"
+        : "未识别";
+
+  /** DSH 侧的默认路由（用于「跟随 DSH 设置」一项的说明）。 */
+  const dshDefault =
+    catalog?.default?.provider
+      ? {
+          provider: catalog.default.provider,
+          model: catalog.default.model ?? null,
+        }
+      : groups[0]?.default ?? null;
 
   return (
     <div className="relative" ref={ref}>
@@ -82,6 +102,25 @@ export function ModelPicker({
 
       {open ? (
         <div className="absolute right-0 bottom-full mb-2 w-[330px] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-3 z-50">
+          <div className="pb-2 mb-2 border-b border-surface-variant/20">
+            <button
+              type="button"
+              onClick={() => {
+                onFollowDsh?.();
+                setOpen(false);
+              }}
+              disabled={busy || !onFollowDsh}
+              className="w-full text-left px-2 py-1.5 rounded-lg text-[11.5px] text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-60"
+              title="归档 OmniDesk 的模型覆盖文件，改用 DSH 设置里的 provider 与默认模型"
+            >
+              <span className="block truncate">跟随 DSH 设置（推荐）</span>
+              <span className="block truncate text-[10px] text-outline">
+                {dshDefault
+                  ? `DSH 默认：${dshDefault.provider} / ${dshDefault.model ?? "?"}`
+                  : "使用 DSH 里配置的 provider 与默认模型，不再单独覆盖"}
+              </span>
+            </button>
+          </div>
           <div className="pb-2 border-b border-surface-variant/20">
             <div className="text-[10px] uppercase tracking-wide text-outline">思考等级</div>
             <div className="pt-1.5 flex flex-wrap gap-1">
