@@ -1,0 +1,31 @@
+# OD-ARCH-006 端口归属与进程树回收验证
+# 日期: 2026-10-21T21:41:26+08:00
+# 仓库: /mnt/data/Code/MyWorkStation
+
+## A. 归属判定（独立网络命名空间，受控进程）
+  launcher=887294 owner=887294 unrelated=887296
+  PASS  后代进程 + 正确工作目录：放行
+  PASS  无关进程：拒绝
+  PASS  空父进程：拒绝
+  PASS  错误工作目录：拒绝
+
+## B. 真实 npm 链：仅杀 npm 会留下 vite（缺陷复现）
+    listening=yes npm=887400 pgid=887400 owner=887416
+    REPRO  只杀 npm 后端口仍被占（owner=887416）
+  结果：缺陷可复现（说明整树回收必要）
+
+## C. 启动器 --stop 回收整棵前端进程树
+  录制 npm PID=887523，端口占用者=887539
+  停止 /tmp/od-stop-tree-1WuRsm/od-dev-87ca1cd8 下由本脚本记录的进程：
+    vite：已停止 3 个（含子进程），跳过 0 个。
+  vite 残留数=0
+PASS  端口释放且无 vite 残留
+
+## D. 身份不符时不连坐杀子进程
+  停止 /tmp/od-identity-tree-9ghxFW/od-dev-87ca1cd8 下由本脚本记录的进程：
+    跳过 vite PID 892061：进程身份不符，未发送信号。
+    vite：已停止 0 个（含子进程），跳过 1 个。
+  parent_alive=yes child_alive=yes
+PASS  身份不符时父子进程均未被触碰
+
+port_ownership_passed=true

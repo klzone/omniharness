@@ -147,6 +147,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "model": req.get("model"),
                 "stream": bool(req.get("stream")),
                 "message_count": len(req.get("messages") or []),
+                # 模型侧实际收到的文本长度（字符数）。用于对比「每轮重放」与「续接会话」
+                # 两种前端的输入量，不保存正文。
+                "text_chars": len(joined),
                 "last_user": _last_user_text(req),
                 "mode": mode,
                 "probe_hits": [p for p in probes if p and p in joined],

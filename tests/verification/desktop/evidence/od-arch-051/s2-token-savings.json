@@ -1,0 +1,231 @@
+{
+  "plan": "OD-ARCH-051 S2",
+  "evidence_level": "script（真实源码 + 真实 DSH web 进程 + 合成模型端点）",
+  "checks": [
+    {
+      "name": "prompt_source_measured",
+      "ok": true,
+      "detail": "真实 conversationPrompt.ts 编译并运行"
+    },
+    {
+      "name": "resume_keeps_current_turn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "resume_drops_prior_user",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "replay_carries_prior_user",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "resume_input_is_clearly_smaller",
+      "ok": true,
+      "detail": {
+        "saved_ratio": 0.6905,
+        "saved_chars": 174
+      }
+    },
+    {
+      "name": "adapter_resume_mode_continued",
+      "ok": true,
+      "detail": "continued"
+    },
+    {
+      "name": "adapter_same_session",
+      "ok": true,
+      "detail": true
+    },
+    {
+      "name": "adapter_replay_mode_new_session",
+      "ok": true,
+      "detail": "new"
+    },
+    {
+      "name": "adapter_both_turns_succeeded",
+      "ok": true,
+      "detail": {
+        "resume": [
+          "succeeded",
+          "succeeded"
+        ],
+        "replay": [
+          "succeeded",
+          "succeeded"
+        ]
+      }
+    },
+    {
+      "name": "adapter_turn2_measured_in_both_modes",
+      "ok": true,
+      "detail": {
+        "resume": {
+          "text_chars": 6488,
+          "message_count": 6
+        },
+        "replay": {
+          "text_chars": 623,
+          "message_count": 2
+        }
+      }
+    },
+    {
+      "name": "adapter_turn2_current_turn_reaches_model",
+      "ok": true,
+      "detail": "合成第二轮：把下周计划补一条。"
+    }
+  ],
+  "checks_total": 11,
+  "checks_failed": 0,
+  "prompt_measurement": {
+    "per_turn_replay_chars": [
+      22,
+      89,
+      141
+    ],
+    "per_turn_resume_chars": [
+      22,
+      29,
+      27
+    ],
+    "total_replay_chars": 252,
+    "total_resume_chars": 78,
+    "resume_keeps_current_turn": true,
+    "resume_drops_prior_user": true,
+    "replay_carries_prior_user": true,
+    "context_max_chars": 2500,
+    "ok": true,
+    "saved_chars": 174,
+    "saved_ratio": 0.6905
+  },
+  "adapter_measurement": {
+    "resume": {
+      "ok": true,
+      "session_mode": "continued",
+      "same_session": true,
+      "first_status": "succeeded",
+      "second_status": "succeeded",
+      "model_requests": [
+        {
+          "index": 0,
+          "message_count": 4,
+          "last_user": "Time sampled while preparing turn 1, step 1: 2026-10-21T21:12:30+08:00[Asia/Shanghai]\nBrowser time zone for this request: unavailable. Ask the user to clarify otherwise-unqualified dates and times.\nEl",
+          "text_chars": 6460,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        },
+        {
+          "index": 1,
+          "message_count": 2,
+          "last_user": "Generate the session title from this JSON array of human messages:\n[{\"seq\":8,\"text\":\"合成第一轮：请记录本周进展。\"}]",
+          "text_chars": 584,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        },
+        {
+          "index": 2,
+          "message_count": 6,
+          "last_user": "合成第二轮：把下周计划补一条。",
+          "text_chars": 6488,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        }
+      ],
+      "turn1_marker": "合成第一轮：请记录本周进展。",
+      "turn2_marker": "合成第二轮：把下周计划补一条。",
+      "shutdown": {
+        "mode": "graceful",
+        "in_flight_before": [],
+        "cancelled": [],
+        "still_running": [],
+        "connection_closed": false,
+        "process_exit_code": 0,
+        "forced_terminate": false,
+        "note": "已关闭事件流并终止隔离的 DSH web 进程"
+      }
+    },
+    "replay": {
+      "ok": true,
+      "session_mode": "new",
+      "same_session": false,
+      "first_status": "succeeded",
+      "second_status": "succeeded",
+      "model_requests": [
+        {
+          "index": 0,
+          "message_count": 4,
+          "last_user": "Time sampled while preparing turn 1, step 1: 2026-10-21T21:12:34+08:00[Asia/Shanghai]\nBrowser time zone for this request: unavailable. Ask the user to clarify otherwise-unqualified dates and times.\nEl",
+          "text_chars": 6460,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        },
+        {
+          "index": 1,
+          "message_count": 2,
+          "last_user": "Generate the session title from this JSON array of human messages:\n[{\"seq\":8,\"text\":\"合成第一轮：请记录本周进展。\"}]",
+          "text_chars": 584,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        },
+        {
+          "index": 2,
+          "message_count": 4,
+          "last_user": "Time sampled while preparing turn 1, step 1: 2026-10-21T21:12:34+08:00[Asia/Shanghai]\nBrowser time zone for this request: unavailable. Ask the user to clarify otherwise-unqualified dates and times.\nEl",
+          "text_chars": 6497,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        },
+        {
+          "index": 3,
+          "message_count": 2,
+          "last_user": "Generate the session title from this JSON array of human messages:\n[{\"seq\":8,\"text\":\"用户：合成第一轮：请记录本周进展。\\n助手：FIRST-REPLY\\n用户：合成第二轮：把下周计划补一条。\"}]",
+          "text_chars": 623,
+          "probe_hits": [
+            "合成第一轮：请记录本周进展。"
+          ],
+          "probe_misses": []
+        }
+      ],
+      "turn1_marker": "合成第一轮：请记录本周进展。",
+      "turn2_marker": "合成第二轮：把下周计划补一条。",
+      "shutdown": {
+        "mode": "graceful",
+        "in_flight_before": [],
+        "cancelled": [],
+        "still_running": [],
+        "connection_closed": false,
+        "process_exit_code": 0,
+        "forced_terminate": false,
+        "note": "已关闭事件流并终止隔离的 DSH web 进程"
+      }
+    },
+    "turn2_at_model": {
+      "resume": {
+        "text_chars": 6488,
+        "message_count": 6
+      },
+      "replay": {
+        "text_chars": 623,
+        "message_count": 2
+      }
+    }
+  },
+  "finding": "前端组装层面：续接轮只发本轮输入，三轮累计字符从 252 降到 78（省 174）。模型实际收到的总量请见 adapter_measurement.turn2_at_model：DSH 会在续接会话时把该会话历史一并送给模型，因此「省下的是前端重复拼装，不是引擎侧上下文」。",
+  "result": "pass"
+}
