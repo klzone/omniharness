@@ -11,6 +11,7 @@
 
 pub mod admission;
 pub mod app_paths;
+pub mod dsh_settings;
 pub mod engine_bridge;
 pub mod engine_ipc;
 pub mod engine_lifecycle;
@@ -51,6 +52,41 @@ struct HostState {
 }
 
 type SharedHost = Arc<Mutex<HostState>>;
+
+/// 端点事实读取用的只读快照（OD-ARCH-049 之后的 050 修复）。
+///
+/// 为什么要单独放一份：引擎冷启动时 `with_engine_call` 会**持有 SharedHost 锁**
+/// 直到 `initialize` 结束（最长 90 秒）。如果「读端点事实」也去抢那把锁，界面就会
+/// 在这段时间里拿不到事实，表现为「模型：未识别 / 端点事实还没读出来」。
+///
+/// 快照里的三样东西在运行期都不变（配置只由环境变量与磁盘覆盖文件决定，覆盖文件
+/// 由分类器每次现读），因此读事实不需要任何宿主锁，也不会看到过期状态。
+struct HostSnapshot {
+    paths: AppPaths,
+    /// 引擎配置快照。覆盖文件（provider/模型）会随用户操作变化，因此这里可更新；
+    /// 更新只动这份快照与 supervisor 的同一字段，不需要宿主锁。
+    config: Mutex<EngineConfig>,
+    lifecycle: Arc<EngineLifecycle>,
+}
+
+
+/// 覆盖文件变化后，同步 supervisor 与端点事实快照里的 patch 列表（OD-ARCH-050）。
+///
+/// 不重新解析 env、不动隔离边界；只保证两处配置看到同一份磁盘事实。
+fn sync_model_overlay(app: &tauri::AppHandle, host: &SharedHost, app_root: &std::path::Path) {
+    {
+        let host = host.lock().unwrap();
+        host.bridge
+            .supervisor()
+            .lock()
+            .unwrap()
+            .config_mut()
+            .sync_overlay(app_root);
+    }
+    if let Some(snap) = app.try_state::<HostSnapshot>() {
+        snap.config.lock().unwrap().sync_overlay(app_root);
+    }
+}
 
 fn bridge_sink(app: tauri::AppHandle) -> EventSink {
     Arc::new(move |event: serde_json::Value| {
@@ -655,22 +691,17 @@ fn thread_store_delete(
 /// 整页卡住。改成 async 后这段等待发生在异步运行时上，界面照常可交互。
 #[tauri::command]
 async fn engine_admission_status(app: tauri::AppHandle) -> serde_json::Value {
-    // OD-ARCH-023：屏障状态取自生命周期守卫；先释放宿主锁再读，避免与
-    // 「生命周期 → 宿主」的加锁顺序形成死锁。
+    // OD-ARCH-050：只读快照，不取 SharedHost 锁。
     //
-    // OD-ARCH-041：异步命令不能借用 `State<'_, _>`（future 必须是 'static），
-    // 所以改用 AppHandle 取一次状态、立刻克隆出需要的值并放掉锁，
-    // 后面那段 node 分类的等待不占任何宿主锁。
-    let (lifecycle, config, config_dir) = {
-        let host = app.state::<SharedHost>();
-        let host = host.lock().unwrap();
-        (
-            Arc::clone(&host.lifecycle),
-            host.bridge.supervisor().lock().unwrap().config().clone(),
-            host.paths.config.clone(),
-        )
+    // 旧实现为取 EngineConfig 去锁 SharedHost，而引擎冷启动会在持有该锁期间等
+    // `initialize`（最长 90s）——于是「读事实」被堵到启动结束，界面显示「未识别」。
+    let (config, config_dir, blocked) = {
+        let snap = app.state::<HostSnapshot>();
+        let config = snap.config.lock().unwrap().clone();
+        let config_dir = snap.paths.config.clone();
+        let blocked = snap.lifecycle.blocked_reason();
+        (config, config_dir, blocked)
     };
-    let blocked = lifecycle.blocked_reason();
     match admission::read_facts(&config, &config_dir) {
         Ok(facts) => serde_json::json!({
             "ok": true,
@@ -914,32 +945,85 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
     Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
 }
 
-/// 拉起已安装的 DSH Desktop（模型/凭据设置界面）。
+/// 打开 DSH 自带的设置界面（模型 provider / 默认模型 / 凭据登记）——OD-ARCH-050。
+///
+/// 与旧版（每次 `dsh web` 固定 3080 + 系统浏览器）的区别：
+///   * 服务用临时端口、`--no-open`，由宿主开**应用内独立窗口**；
+///   * 会话令牌只留在宿主内存，日志里打码，不经过前端；
+///   * 复用本进程内已起的实例；应用退出时停掉它，不再留僵尸进程。
 ///
 /// 固定动作、**无参数**：前端只能请求「打开 DSH 设置」，不能传命令、路径或 URL。
-/// 宿主不拼接 shell、不读不写不打印任何凭证；只把设置界面拉起来，
-/// 并把 `DSH_HOME` 指向**引擎正在用的那份** DSH 数据根——否则用户在那里登记的模型配置
-/// 落在另一处，OmniDesk 读不到（这正是实测到的问题）。
-#[tauri::command(async)]
-fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
-    let app_root = {
-        let host = state.lock().unwrap();
-        host.paths.root.clone()
+#[tauri::command]
+async fn task_open_dsh_settings(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let (config, log_path, record_path) = {
+        let snap = app.state::<HostSnapshot>();
+        let config = snap.config.lock().unwrap().clone();
+        let log_path = snap.paths.logs.join("dsh-settings.log");
+        let record_path = snap.paths.engine_state.join("dsh-settings.json");
+        (config, log_path, record_path)
     };
-    let (dsh_home, agents_home, dsh_cli) = match engine_supervisor::EngineConfig::from_env(&app_root) {
-        Ok(cfg) => (cfg.dsh_home, cfg.agents_home, cfg.dsh_cli),
-        Err(err) => {
-            return Err(format!(
-                "无法确定引擎使用的 DSH 数据根（{}）；为避免打开另一份配置，本次不启动 DSH。",
-                err
-            ))
-        }
-    };
-    let log_path = {
-        let host = state.lock().unwrap();
-        host.paths.logs.join("dsh-settings.log")
-    };
-    task_shell::open_dsh_settings(&dsh_home, &agents_home, &dsh_cli, &log_path)
+    let service = Arc::clone(app.state::<Arc<dsh_settings::SettingsService>>().inner());
+    let ensure_log = log_path.clone();
+    let opened = tauri::async_runtime::spawn_blocking(move || {
+        service.ensure(&config, &ensure_log, &record_path)
+    })
+    .await
+    .map_err(|e| format!("打开 DSH 设置的任务异常结束：{}", e))??;
+
+    let url = Arc::clone(app.state::<Arc<dsh_settings::SettingsService>>().inner())
+        .current_url()
+        .ok_or_else(|| "DSH 设置服务已启动，但地址没有留在内存里；请重试。".to_string())?;
+    open_settings_window(&app, url)?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "port": opened.port,
+        "reused": opened.reused,
+        "log_path": log_path.to_string_lossy(),
+        "note": "已在应用内打开 DSH 设置窗口（模型提供方与默认模型都在这里配）。\
+                 保存后回到本应用即可；引擎会在下次任务时按新配置启动。\
+                 本应用不读、不写、不复制任何凭证值。",
+    }))
+}
+
+/// 在应用内开/复用「DSH 设置」窗口。
+///
+/// URL 里有会话令牌：只在这个函数里交给窗口，不返回前端、不写日志。
+fn open_settings_window(app: &tauri::AppHandle, url: String) -> Result<(), String> {
+    let target: tauri::Url = url
+        .parse()
+        .map_err(|e| format!("DSH 设置地址不合法：{}", e))?;
+    let handle = app.clone();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    app.run_on_main_thread(move || {
+        let outcome = (|| -> Result<(), String> {
+            if let Some(window) = handle.get_webview_window("dsh-settings") {
+                window
+                    .navigate(target)
+                    .map_err(|e| format!("切换 DSH 设置页失败：{}", e))?;
+                let _ = window.show();
+                let _ = window.set_focus();
+                return Ok(());
+            }
+            tauri::WebviewWindowBuilder::new(
+                &handle,
+                "dsh-settings",
+                tauri::WebviewUrl::External(target),
+            )
+            .title("DSH 设置")
+            .inner_size(1120.0, 800.0)
+            .min_inner_size(880.0, 620.0)
+            .build()
+            .map_err(|e| format!("创建 DSH 设置窗口失败：{}", e))?;
+            Ok(())
+        })();
+        let _ = tx.send(outcome);
+    })
+    .map_err(|e| format!("无法在主线程创建设置窗口：{}", e))?;
+    match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(result) => result,
+        Err(_) => Err("创建 DSH 设置窗口超时（主线程没有响应）".to_string()),
+    }
 }
 
 /// 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
@@ -982,6 +1066,7 @@ async fn task_list_model_routes(app: tauri::AppHandle) -> Result<serde_json::Val
 /// key 仍由共享凭据服务按 provider 的 `apiKeyEnv` 提供。
 #[tauri::command(async)]
 fn task_set_model_route(
+    app: tauri::AppHandle,
     state: State<'_, SharedHost>,
     source_profile: String,
     provider: String,
@@ -1037,6 +1122,9 @@ fn task_set_model_route(
         }
     })?;
 
+    // 覆盖文件刚写入：先让 supervisor 与事实快照看到它，再停引擎。
+    sync_model_overlay(&app, state.inner(), &app_root);
+
     // 引擎已在跑时旧路由仍在生效：先停掉它，下次任务会按新覆盖文件重启。
     let lifecycle = {
         let host = state.lock().unwrap();
@@ -1064,6 +1152,67 @@ fn task_set_model_route(
         "written": written,
         "route": facts,
         "note": "已切换模型路由：引擎与端点判定现在用同一份路由（OmniDesk 数据根下的覆盖文件，只含非机密字段）。",
+    }))
+}
+
+/// 改为跟随 DSH 设置（OD-ARCH-050）。
+///
+/// 归档 OmniDesk 自己的模型覆盖文件（**不删除**，改名留在原地便于回滚），停掉引擎；
+/// 下次任务按 DSH Profile 里配置的 provider 与默认模型启动。
+#[tauri::command(async)]
+fn task_clear_model_route(
+    app: tauri::AppHandle,
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let overlay = model_routes::overlay_path(&app_root);
+    let archived = if overlay.is_file() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let target = overlay.with_file_name(format!("omnidesk-model.yml.bak-{}", stamp));
+        std::fs::rename(&overlay, &target)
+            .map_err(|e| format!("归档模型覆盖文件失败（{}）：{}", overlay.display(), e))?;
+        Some(target)
+    } else {
+        None
+    };
+
+    // 覆盖文件已归档：先让 supervisor 与事实快照去掉这个补丁，再停引擎。
+    sync_model_overlay(&app, state.inner(), &app_root);
+
+    // 引擎已在跑时仍按旧覆盖文件启动：停掉它，下次任务按 DSH 配置重启。
+    let lifecycle = {
+        let host = state.lock().unwrap();
+        Arc::clone(&host.lifecycle)
+    };
+    let change = lifecycle.begin_change();
+    match stop_engine(state.inner(), Duration::from_secs(10)) {
+        Ok(_) => change.succeed(),
+        Err(message) => {
+            change.fail(message.clone());
+            return Err(format!(
+                "已改为跟随 DSH 设置，但未能确认引擎停止（{}）；请到设置页手动停止引擎后再试。",
+                message
+            ));
+        }
+    }
+
+    let note = match &archived {
+        Some(path) => format!(
+            "已改为跟随 DSH 设置：OmniDesk 的模型覆盖文件已归档到 {}，下次任务将使用 DSH 里配置的 provider 与默认模型。",
+            path.display()
+        ),
+        None => "当前已经是跟随 DSH 设置（没有 OmniDesk 覆盖文件）。".to_string(),
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "archived": archived.map(|p| p.display().to_string()),
+        "note": note,
     }))
 }
 
@@ -1622,8 +1771,21 @@ pub fn run() {
 
     let shared: SharedHost = Arc::new(Mutex::new(state));
 
+    // OD-ARCH-050：端点事实用的只读快照；构造时取一次，之后不再加宿主锁。
+    let snapshot = {
+        let host = shared.lock().unwrap();
+        HostSnapshot {
+            paths: host.paths.clone(),
+            config: Mutex::new(host.bridge.supervisor().lock().unwrap().config().clone()),
+            lifecycle: Arc::clone(&host.lifecycle),
+        }
+    };
+
     tauri::Builder::default()
         .manage(Arc::clone(&shared))
+        .manage(snapshot)
+        // OD-ARCH-050：DSH 设置服务（临时端口实例 + 应用内窗口）。
+        .manage(Arc::new(dsh_settings::SettingsService::new()))
         .invoke_handler(tauri::generate_handler![
             engine_describe,
             engine_health,
@@ -1650,6 +1812,7 @@ pub fn run() {
             task_open_dsh_settings,
             task_list_model_routes,
             task_set_model_route,
+            task_clear_model_route,
             task_prepare_workspace_dir,
             task_run_analysis,
             task_explanation_prompt,
@@ -1689,6 +1852,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // OD-ARCH-050：设置窗口的关闭只通知界面刷新，不得收尾引擎。
+            if window.label() != "main" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let _ = window
+                        .app_handle()
+                        .emit("omni://dsh-settings-closed", ());
+                }
+                return;
+            }
             if let tauri::WindowEvent::Destroyed = event {
                 // 窗口关闭即收尾引擎，不留孤儿进程。
                 //
@@ -1700,8 +1872,20 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("启动 OmniDesk 桌面应用失败");
+        .build(tauri::generate_context!())
+        .expect("启动 OmniDesk 桌面应用失败")
+        .run(|app, event| {
+            // OD-ARCH-050：应用退出时停掉自起的 DSH 设置服务，避免再留占用端口的僵尸进程。
+            if let tauri::RunEvent::Exit = event {
+                if let Some(service) = app.try_state::<Arc<dsh_settings::SettingsService>>() {
+                    let record = app
+                        .try_state::<HostSnapshot>()
+                        .map(|snap| snap.paths.engine_state.join("dsh-settings.json"))
+                        .unwrap_or_default();
+                    service.stop(&record);
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -2654,6 +2838,52 @@ mod engine_lifecycle_wiring_tests {
         assert!(
             !body.contains("permission_barrier"),
             "旧屏障字段不得残留（并发边界已改由 EngineLifecycle 表达）"
+        );
+    }
+
+    /// OD-ARCH-050：读端点事实不得抢宿主锁（否则引擎冷启动期间会被堵成「未识别」）。
+    #[test]
+    fn admission_status_reads_snapshot_without_host_lock() {
+        let src = include_str!("lib.rs");
+        let body = src.split("\n#[cfg(test)]").next().expect("源码前缀");
+        let start = body
+            .find("fn engine_admission_status")
+            .expect("找不到 engine_admission_status");
+        let rest = &body[start..];
+        let end = rest[1..]
+            .find("\n#[tauri::command")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        let code = rest[..end]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !code.contains("host.lock()"),
+            "读端点事实不得抢宿主锁：引擎冷启动最长持有 90 秒"
+        );
+        assert!(
+            code.contains("HostSnapshot"),
+            "端点事实必须从只读快照读取"
+        );
+    }
+
+    /// OD-ARCH-050：关闭「DSH 设置」窗口不得触发引擎收尾（只允许主窗口收尾）。
+    #[test]
+    fn only_main_window_shutdown_is_wired_to_engine_teardown() {
+        let src = include_str!("lib.rs");
+        let start = src
+            .find(".on_window_event(|window, event| {")
+            .expect("找不到窗口事件回调");
+        let rest = &src[start..];
+        let end = rest
+            .find(".build(tauri::generate_context!")
+            .expect("找不到窗口事件回调的结束位置");
+        let callback = &rest[..end];
+        assert!(
+            callback.contains("window.label() != \"main\""),
+            "非主窗口（DSH 设置窗口）关闭时不得收尾引擎"
         );
     }
 
