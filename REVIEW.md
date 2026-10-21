@@ -1,3 +1,22 @@
+## OD-ARCH-051 批次 2（S3/S4）：**待 ARCHITECT 独立复核**（BUILDER 提交，2026-10-21）
+
+> 本节是 BUILDER 的准备材料，**不是验收结论**。按 AGENTS.md，结论须由 ARCHITECT 读实际 diff、重跑测试后写入。
+
+- **提交范围：** `18d133f` 代码（8 文件：`profile_decl.rs` 新增 457 行、`samples/profiles/discipline.yml`、`lib.rs`、`App.tsx`、`api.ts`、`Dock.tsx`、`TopNav.tsx`、`types.ts`）/ `31b6d4a` 测试与证据 / `3f41f4e`、`7e93ecb`、`d672a4a` 记录。已推送 `origin/main`，工作区干净。
+- **建议复核入口（按优先级）：**
+  1. `desktop/src-tauri/src/profile_decl.rs` 的解析器——重点看 `strip_comment`（`#` 前须为行首或空白）、`split_kv`（未闭合引号、空键）、`apply_scene_field`（重复键）是否真的收紧了错误面；以及 `load_decl` 是否在任何路径上会覆盖用户文件。
+  2. `desktop/src/App.tsx` 中声明到达后的场景校准：确认只作用于 `home/report/writing/project/sessions`，设置页不会被拽走（这条是真实窗口里撞出来的缺陷）。
+  3. `lib.rs::profile_decl_load` 是否真的不占 UI 主线程、是否只取路径不持锁跨 await。
+  4. `lib.rs::open_settings_window` 的 S4 改动是否只碰窗口属性（标题/底色/尺寸），未触及 `dsh_settings` 的配置读写与令牌路径。
+  5. `samples/profiles/discipline.yml` 与运行时创建的文件是否逐字一致（脚本已断言，可复跑复核）。
+- **BUILDER 本轮实跑（供对照，须独立重跑）：** `cargo test --offline` 169+2+13+3+1 全绿 0 失败；`cargo build` 通过；`npx tsc --noEmit` 0；`npm run build` 通过；`pytest tests -q` 26 passed；`git status --porcelain runtime/` 空。
+- **真实窗口证据：** `tests/verification/desktop/evidence/od-arch-051/profile-decl-run.json`（三轮）、`settings-shell-run.json`、`shots/` 6 张。**注意：**Dock 入口增减与品牌名变化是人工比对截图判定，脚本只自动断言文件创建/一致性/存活/未覆盖。
+- **需要 ARCHITECT 裁定的三处：**
+  1. 声明只做「场景入口 + 品牌名」，未纳入 Skill 清单/插件开关/默认设置（避免与 DSH 侧权威源双写）。计划原文列了这些内容项，按 BUILDER 判断属新增数据契约，未做。
+  2. 加载声明必须新增 Rust 模块（仓库无既有声明读取机制），而计划停止条件③写「若需动 Rust 代码才能加载，停下报告」。BUILDER 按影响范围写有 Rust 宿主，判定在界内并已实现。**该边界判断请明确。**
+  3. S4 只统一窗口外壳，DSH 页面内部字体/配色未改（CSP 不允许注入）。是否接受「外壳统一」为验收口径。
+- **已知限制：** 声明改动需重启应用生效（无热重载、界面未提示）；用户报过的「启动卡死」本批次两轮真实窗口未复现，**不认定已修复**。
+
 ## OD-ARCH-050：模型消失修复 + 应用内 DSH 设置窗口（自执行自复核，2026-10-21）
 
 - **结论：通过；含一项计划外根因修复，用户症状已按真实窗口证据闭合。**
