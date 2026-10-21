@@ -13,7 +13,7 @@
 
 > **执行方式：** 三步按序，每步独立验证登记；失败记录后跳下一步。不碰凭证、不接真实端点、不改 runtime/。
 >
-> **执行结果（2026-10-21，用户已批准含推送）：** 三步全部完成。①045 补复核结论已写入 `REVIEW.md`；②未提交改动按主题分 4 批提交并推送 `origin/main`（哈希见 STATUS.md）；③新增 `docs/user-testing-checklist.md`，只读核实引擎当前实际路由为 `agnescn / agnes-3.0-flash`（与 `yvan-work` Profile 里的 `deepseek-v4.1-flash` 不同，因 OmniDesk 覆盖文件优先），未改动任何路由/凭证。回归：tsc 0、build 通过、cargo 165 passed。未打标签。
+> **执行结果（2026-10-21，用户已批准含推送）：** 三步全部完成。①045 补复核结论已写入 `REVIEW.md`；②84 个未提交路径按“可编译单元”分 3 批提交并推送 `origin/main`（`ba77c2d` 代码 / `a3bf0ad` 证据 / `bb09af1` 文档）——未按 045/046 逐块拆代码，因两轮改同一批函数，逐块拆会留下无法编译的中间提交；③新增 `docs/user-testing-checklist.md`，只读核实引擎当前实际路由为 `agnescn / agnes-3.0-flash`（与 `yvan-work` Profile 里的 `deepseek-v4.1-flash` 不同，因 OmniDesk 覆盖文件优先），未改动任何路由/凭证。回归：tsc 0、build 通过、cargo 165 passed。未打标签。
 
 1. **045 补复核（ARCHITECT 职责，BUILDER 仅准备材料）：** 按 045 计划六步清单逐项核对（线程落数据根/成果目录树开关/首提卡顿修复/AI 复盘打通/DSH web 验证报告/整批回归），已覆盖项标证据、缺项列出；不重复已由 046 复核覆盖的部分。
 2. **分批备份提交（需用户在此明确批准后执行）：** 25 项未提交改动按主题分 3-4 批提交——①045 线程持久化+成果目录树；②046 四项机制（pending_writes/scheduler/设置页/公告栏）；③借鉴研究与计划文档；④证据目录。每批提交前跑红线扫描与文件清单核对；提交后推送到 origin/main（沿用 OD-ARCH-029 一次性授权模式，本轮为第二次明确授权）。
