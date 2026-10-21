@@ -19,6 +19,7 @@ pub mod engine_supervisor;
 pub mod flow_pack;
 pub mod model_routes;
 pub mod pending_writes;
+pub mod profile_decl;
 pub mod route_classifier;
 pub mod scheduler;
 pub mod settings;
@@ -628,7 +629,27 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
         "results": p.results.display().to_string(),
         "threads": p.threads.display().to_string(),
         "config": p.config.display().to_string(),
+        "profiles": p.root.join("profiles").display().to_string(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// 纪检 Profile 声明（OD-ARCH-051 S3）
+//
+// 只决定 Dock 上显示哪些业务场景入口，不加载插件、不改模型路由与 Skill。
+// 文件固定在应用数据根下 profiles/discipline.yml（仓库外）；首次启动创建默认声明，
+// 之后不再覆盖。加载/校验失败一律返回错误，由界面显式提示并回退内置入口。
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
+fn profile_decl_load(
+    state: State<'_, SharedHost>,
+) -> Result<profile_decl::LoadedDecl, String> {
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    profile_decl::load_decl(&profiles_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,8 +1031,11 @@ fn open_settings_window(app: &tauri::AppHandle, url: String) -> Result<(), Strin
                 "dsh-settings",
                 tauri::WebviewUrl::External(target),
             )
-            .title("DSH 设置")
-            .inner_size(1120.0, 800.0)
+            // OD-ARCH-051 S4：只统一窗口外壳（标题 / 底色 / 尺寸），页面自身仍是 DSH 原生页。
+            // 外部页面的字体与配色受 DSH 页面与 CSP 限制，本应用不注入脚本、不篡改 DSH 配置页。
+            .title("OmniDesk · DSH 设置")
+            .background_color(tauri::window::Color(250, 248, 255, 255))
+            .inner_size(1160.0, 820.0)
             .min_inner_size(880.0, 620.0)
             .build()
             .map_err(|e| format!("创建 DSH 设置窗口失败：{}", e))?;
@@ -1803,6 +1827,7 @@ pub fn run() {
             model_permission_set,
             model_permission_revoke_all,
             app_paths_info,
+            profile_decl_load,
             task_types,
             task_samples,
             task_explanation_rules,
