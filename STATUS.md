@@ -1,5 +1,45 @@
 # BUILDER 执行状态
 
+## OD-ARCH-054（完成，待 ARCHITECT 复核）：设置页深化与首次运行引导（2026-10-22）
+
+- 开工 HEAD `eb23528`（`main`，与 `origin/main` 一致）；工作区原有 `M PLANS.md`、`M REVIEW.md` 原样保留，未重置、未覆盖。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/未写/未打印任何真实凭证，未新增依赖。
+- **UI 参考检索（OD-ARCH-035 条款）：** 沿用 053 动工前的 Notion 设置面板 / Shopify 管理后台参考结论——①「先给结论再给可改项」的状态行；②连接测试这类诊断动作放主操作行，不塞折叠区。本计划未新增布局范式，故未重复检索。
+
+### 实施
+
+- `desktop/src-tauri/src/dsh_settings.rs`（+281）：新增 `ModelProbe` / `DiscoveredModel` / `probe_models()` / `classify_probe()`。探针走宿主已有的网关 RPC 通道（`llm/discoverModels`），由 DSH 侧真实请求一次端点，宿主不自己发 HTTP、不读凭据；结果归一为 `ok / auth / network / format / unsupported / local` 六类，附 8 个单测（含 401、连不上、404/405、非模型列表、成功列举）。
+- `desktop/src-tauri/src/lib.rs`（+66）：新增 `#[tauri::command] model_settings_probe`。10 秒超时、`spawn_blocking` 执行、返回值只有 `{ok, classification, message, models, note}`，不含密钥与请求体。
+- `desktop/src/SettingsPanel.tsx`（+79）：「测试连接」按钮 + 结果卡（成功/失败两态与六类中文标签），成功后把端点自报的模型填进"默认模型"下方的候选下拉，输入框仍可手填。成功态不再重复"连接成功 · 连接成功…"。
+- `desktop/src/{types,api}.ts`：`ModelProbeClass` / `DiscoveredModel` / `ModelProbeReceipt` 类型与调用（返回类型里没有密钥字段）。
+- `desktop/src/App.tsx`（+37）：首次运行引导卡。判定条件严格为 `settings === null && overlay_present === false`（即确实一处配置都没有）；读取失败当作"不确定"，**不弹**引导，避免误伤已配置用户。
+- `docs/user-testing-checklist.md`：第 1 步改写为原生设置页四区流程 + 「测试连接」三类结果对照表 + 首次运行引导卡说明；「已知限制」里"设置页是内嵌 DSH 原生页面"一条改为原生页口径，并补"连接测试不代表端点合规可用"。
+
+### 实施中修掉的实际 Bug
+
+`llm/discoverModels` 原按位置传参（`args: ["llm-pi-ai", draft]`），网关只接受按参数名的对象，报 `Remote payload must contain exactly one plain-object args field`。已改为 `args: { settingsNs: "llm-pi-ai", request: draft }` 并在代码注释写明原因。改动前该接口 100% 失败，属实现层缺陷，非计划变更。
+
+### 验证（证据等级：真实桌面窗口运行 / 脚本运行 / 静态检查）
+
+| 检查 | 结果 | 等级 | 证据 |
+| --- | --- | --- | --- |
+| `cargo test --offline` | **190 passed / 0 failed**（lib，含新增 8 个探针单测）+ 2 + 13 + 3 + 1 全绿 | 脚本运行 | `/tmp/od054-reg2.log` |
+| `cargo build --offline` | 通过（1 个 dead_code warning） | 脚本运行 | 同上 |
+| `npx tsc --noEmit` | 0 错误 | 静态检查 | 同上 |
+| `npm run build` | 通过（dist 653ms） | 脚本运行 | 同上 |
+| `python3 -m pytest tests -q` | 26 passed | 脚本运行 | 同上 |
+| `git status --porcelain runtime/` | 空（零差异） | 文件事实 | 同上 |
+| 真实窗口三态截图 | 连不上 / 鉴权失败 / 连接成功+模型候选，App 存活 | 真实窗口运行 | `tests/verification/desktop/evidence/od-arch-054/`（`01`~`05` + `facts.json`），脚本 `verify_settings_probe_054.py` |
+| 首次运行引导卡 | 空配置下出现，「去设置」直达设置页 | 真实窗口运行 | `01-first-run-banner.png` |
+| S4 权限开关核对 | 051 三开关（本机 / 私网 / 公网）在原生设置页可见可改，**只核对未重做** | 真实窗口运行（053 证据） | `evidence/od-arch-053/04-settings-scroll14.png` |
+| evidence 密钥扫描 | 无 `sk-…` 长串；测试密钥为占位串 `synthetic-wrong-key`，密钥框显示为圆点 | 脚本运行 | `grep` 全目录 |
+
+### 未验证 / 限制
+
+- **未在真实服务商与真实密钥上测试连接**（本阶段只用回环 mock 与 401 stub，属正确行为但覆盖面有限）。真实端点的分类是否准确待用户实测。
+- 「凭据状态：读取中…」在没有已保存配置时会一直停在读取中（不报错也不收敛），已登记待 ARCHITECT 决定是否单开计划，本计划未改。
+- 高屏（1440x1700）下左侧 Dock 会重排，自动化脚本改走页面内按钮；这是测试方法限制，不是产品缺陷。
+- 连接测试只判断可达性/鉴权/响应形态，**不构成**端点合规或数据去向授权。
+
 ## OD-ARCH-053（完成，待 ARCHITECT 复核）：原生设置页替代 DSH 设置窗口（2026-10-22）
 
 - 开工 HEAD `5c8eb51`（`main`）；工作区原有 `M PLANS.md`、`M REVIEW.md` 原样保留，未重置、未覆盖。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据与凭证值，未新增依赖。
