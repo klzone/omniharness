@@ -1,5 +1,57 @@
 # BUILDER 执行状态
 
+## OD-ARCH-049：备份提交 + 会话日志版本化 + 终检设计（2026-10-21，已执行）
+
+- 开工 HEAD `15aef4f`；本轮由 ARCHITECT 直接执行（041/042 先例），非 BUILDER 会话。
+- 未改 `runtime/`（`git status --porcelain runtime/` 为空）；未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 实际数据、凭证与模型路由；未打标签。
+- 未接真实模型端点，验证全部为单元测试 / 源码级接线检查 / 构建。
+
+### 第 1 段：备份提交（已完成并推送）
+
+- 63 个路径（44 修改 + 19 新增）按可编译单元分 5 批，每批提交前跑 `/tmp/od029/scan-staged.py`（5 批均 `OK`，零关键凭证命中）并人工核对文件清单：
+
+| 批次 | 哈希 | 内容 |
+| --- | --- | --- |
+| 1 | `5ba0738` | 引擎：`web_api_adapter` / `task_core` / 通道切换 |
+| 2 | `f3a5dae` | 宿主：模型目录、channel 贯通、命令 async 化 |
+| 3 | `a728907` | 前端流式与模型目录、启动器默认 web-api |
+| 4 | `5a0664a` | web-api 场景 W01–W10 与 ACP 回归 E01–E20 证据 |
+| 5 | `b3802bb` | 048 复核记录、049 计划、dsh-java 审计报告 |
+
+- 推送：`15aef4f..b3802bb main -> main`；推送后工作区 0 项、`runtime/` 0 项。
+
+### 第 2 段：会话日志版本化（已完成）
+
+- `desktop/src-tauri/src/thread_store.rs`：
+  - 新增 `THREAD_SCHEMA_VERSION = 1`；`save()` 统一经 `migrate_thread_record` 打版本戳，落盘文件必带 `"version": 1`。
+  - `migrate_thread_record()` 只读迁移：v0（无 version 字段）→ v1 只补版本号，**不改写磁盘原文件**；版本高于当前、version 非非负整数、记录非对象一律返回原因。
+  - 读取端 `read_one` 区分 `Ignored`（非本存储文件，只计数）与 `Broken`（本存储但读不回）；后者写入 `ThreadListing.issues`（文件名 + 原因），`note` 里点名第一条。
+  - 前端 `sceneThreads.ts`：`applyListing` 优先显示 `issues` 原因，其次才是 skipped 计数。
+- 新增单测 4 个：`legacy_record_without_version_loads_and_migrates_in_memory`、`save_stamps_current_version`、`future_version_is_refused_and_reported`、`interrupted_write_keeps_previous_record_readable`。
+
+### 第 3 段：执行入口终检（已完成）
+
+- `desktop/src-tauri/src/pending_writes.rs`：新增 `scene_for_intent()`（只认三个离线场景，其它 intent 不拦）与 `scene_gate()`（同场景未决卡 → 指名拒绝；坏记录 → 拦住并说明）。
+- `desktop/src-tauri/src/lib.rs`：`engine_submit_task` 在红线扫描之后、`with_engine_call` 之前调用 `scene_gate`；拒绝时返回 `engine_error_code = "pending_write_blocked"`，消息形如「有一条未确认写入（<卡片摘要>），请先处理：确认或放弃该确认卡后再开始任务。」
+- 新增单测 4 个（同场景拒绝+指名、他场景放行、已结算/过期放行、坏记录拒绝）+ 源码级接线测试 1 个（终检必须先于触达引擎）。
+
+### 测试命令与结果（最终代码上实跑）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop/src-tauri && cargo test --offline` | **175 passed / 0 failed**（lib 156 + 2 + 13 + 3 + 1） |
+| `cargo test --offline --test thread_store_restart` | 1 passed（重建存储＝模拟重启后仍读回；强杀恢复回归） |
+| `cd desktop && npx tsc --noEmit` | exit 0，0 错误 |
+| `cd desktop && npm run build` | 通过（built in 1.32s） |
+| `cargo build --offline` | 通过，无 warning |
+| `git status --porcelain runtime/` | 空（零差异） |
+
+### 偏差与未验证
+
+- **偏差①（资源粒度）：** 计划写「同场景、同一资源」，但提交请求里没有目标文件名，入口只能精确到**场景成果目录**；以场景为最小可判定边界，其他场景卡片不挡。
+- **偏差②（坏记录 fail-closed）：** 待确认目录存在无法解析的记录时，选择拦住任务并说明原因（无法证明没有挡路卡片），不做「当作没有记录继续跑」。
+- **未验证：** 真实窗口点选（本轮只有单元/源码级证据）；真实模型端点下的现场拦截体验待用户实测。
+
 ## OD-ARCH-048：对话通道切到 DSH 本地 Web API（2026-10-21，已执行，待 ARCHITECT 复核）
 
 - 开工 HEAD `15aef4f`（`main`）。**未提交、未推送、未打标签。**
