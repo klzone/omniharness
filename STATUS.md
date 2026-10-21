@@ -39,6 +39,8 @@
 | `python3 -m pytest tests -q` | 26 passed | 脚本运行 | — |
 | `git status --porcelain runtime/` | 空 | 文件事实 | — |
 
+**这条证据的强度要说清楚：** 脚本自动断言的是「声明文件被创建 / 与 `samples` 逐字一致 / 进程存活 / 坏文件未被覆盖」；**Dock 入口的增减与品牌名的变化是人工比对三张截图判定的，不是 DOM 断言**。窗口标题（`WM_NAME`）由 `tauri.conf` 固定，不随声明变，别拿它当证据。
+
 本机 cargo 环境（cargo 不在默认 PATH，且需指向 Tauri 依赖）：
 
 ```bash
