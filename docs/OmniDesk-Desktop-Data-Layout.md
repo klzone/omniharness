@@ -118,7 +118,7 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
     ~/OmniDesk/workspace/artifacts/      # 桌面新生成的离线成果与分析成果
 
-默认值定义在 `desktop/src-tauri/src/task_shell.rs` 的 `DEFAULT_LOCAL_SUBDIR = "OmniDesk/workspace/artifacts"`，可用 `OMNIDESK_LOCAL_DATA_ROOT` 显式覆盖（测试用它指向一次性 `/tmp` 根）。两条保存路径共用 `write_new_file_durable()`：`create_new` 拒绝覆盖同名文件，写入或刷盘失败时删除本次半成品。
+默认值定义在 `desktop/src-tauri/src/settings.rs` 的 `DEFAULT_ARTIFACT_SUBDIR = "OmniDesk/workspace/artifacts"`（由 `task_shell.rs` 的 `resolve_local_data_root()` 解析并做边界校验），可用 `OMNIDESK_LOCAL_DATA_ROOT` 显式覆盖（测试用它指向一次性 `/tmp` 根）。两条保存路径共用 `write_new_file_durable()`：`create_new` 拒绝覆盖同名文件，写入或刷盘失败时删除本次半成品。
 
 **历史位置（`static`，不迁移、不读取正文）：**
 

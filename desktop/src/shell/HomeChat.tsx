@@ -776,6 +776,15 @@ export function HomeChat({
         ref={scrollRef}
         className="chat-fade-mask chat-scroll flex-1 min-h-0 overflow-y-auto pr-2 pb-3 space-y-3.5 flex flex-col"
       >
+        {/* OD-ARCH-055 S2：没有任何消息时给一句引导，不留一整片空白。 */}
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+            <p className="text-[13px] text-on-surface-variant">这里还没有对话。</p>
+            <p className="text-[11.5px] text-outline leading-relaxed max-w-[36ch]">
+              直接在下面输入要处理的事，或在左栏点「新对话」开始一段新的。对话只保存在本机，不会自动上传。
+            </p>
+          </div>
+        ) : null}
         {messages.map((m) =>
             m.role === "user" ? (
               <div key={m.id} className="flex items-start justify-end space-x-3 max-w-[80%] ml-auto">
