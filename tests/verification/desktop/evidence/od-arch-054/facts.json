@@ -1,0 +1,30 @@
+{
+  "cases": {
+    "unreachable": {
+      "endpoint_kind": "127.0.0.1:9 (closed)",
+      "expected": "连不上"
+    },
+    "auth": {
+      "endpoint_kind": "loopback 401 stub",
+      "key": "synthetic-wrong-key（占位串，非真实凭证）",
+      "expected": "鉴权失败"
+    },
+    "ok": {
+      "endpoint_kind": "loopback synthetic mock",
+      "expected": "ok + 模型候选下拉"
+    }
+  },
+  "evidence_dir": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-054",
+  "shots": [
+    "01-first-run-banner.png",
+    "02-settings-fresh.png",
+    "03-probe-unreachable-focused.png",
+    "03-probe-unreachable.png",
+    "04-probe-auth.png",
+    "04-probe-ok-focused.png",
+    "04-probe-ok.png",
+    "05-probe-auth.png",
+    "05-probe-ok.png"
+  ],
+  "app_alive": true
+}
