@@ -335,6 +335,13 @@ class WebApiAdapter(TaskCoreBase):
                     self._command,
                     cwd=self._cwd,
                     env=env,
+                    # OD-ARCH-050 修复：**必须**收回 stdin。
+                    #
+                    # 不指定 stdin 时子进程会继承引擎自己的协议管道（fd 0）。Node 起
+                    # stdin 流时会把这份共享的“打开文件描述”设为非阻塞，引擎随后的
+                    # `for line in sys.stdin` 会读到一个假 EOF 并安静退出（rc=0、无栈），
+                    # 表现就是“引擎子进程启动后立刻退出”。
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
