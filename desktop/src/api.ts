@@ -319,6 +319,18 @@ export const shell = {
     });
   },
 
+  /**
+   * 只读：声明文件当前的内容指纹（OD-ARCH-052 第 2 步）。
+   *
+   * 与启动时载入的 `content_sha256` 比对，即可知道用户是否已在磁盘上改过声明。
+   * 只返回指纹或 null（文件不存在），不创建文件、不改配置。
+   */
+  profileDeclDigest(): Promise<string | null> {
+    return invoke<string | null>("profile_decl_digest").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /** 保存新的成果目录。只影响之后新建的成果，不迁移、不覆盖既有文件。 */
   setArtifactRoot(path: string): Promise<{
     ok: boolean;

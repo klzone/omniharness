@@ -34,6 +34,9 @@ export default function App() {
   // 读不到/文件坏掉时用内置默认入口，并把原因显示出来——不静默回退。
   const [decl, setDecl] = useState<ProfileDeclPayload | null>(null);
   const [declError, setDeclError] = useState<string | null>(null);
+  // 声明文件在运行期间被改动（OD-ARCH-052 第 2 步）：声明只在启动时读一次，
+  // 改动要到下次启动才生效，所以这里只做提示，不做热重载、不自动覆盖。
+  const [declDrift, setDeclDrift] = useState<"modified" | "missing" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +68,31 @@ export default function App() {
     if (!ids.includes(scene)) setScene((decl.decl.scenes[0]?.id as Scene) ?? "home");
     // scene 变化不需要重跑：只在声明到达时校准一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decl]);
+
+  // 每 5 秒比一次文件指纹：只读，失败就静默跳过（提示条不能因为读不到文件而反复报警）。
+  useEffect(() => {
+    if (!decl) {
+      setDeclDrift(null);
+      return;
+    }
+    const loadedDigest = decl.content_sha256;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const current = await shell.profileDeclDigest();
+        if (cancelled) return;
+        setDeclDrift(current === null ? "missing" : current === loadedDigest ? null : "modified");
+      } catch {
+        /* 读不到就保持上一次的判断，不打扰用户 */
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [decl]);
 
   // 线程记录以数据根为准（OD-ARCH-045 第 1 步）：启动时先读回一次。
@@ -172,6 +200,18 @@ export default function App() {
           className="mx-auto mt-2 max-w-4xl rounded-2xl bg-surface-container px-4 py-2 text-[11.5px] text-on-surface-variant ring-1 ring-outline-variant/40"
         >
           {decl.warnings.join(" ")}
+        </div>
+      ) : null}
+
+      {declDrift ? (
+        <div
+          role="status"
+          className="mx-auto mt-2 max-w-4xl rounded-2xl bg-surface-container-high px-4 py-2.5 text-[11.5px] leading-relaxed text-on-surface-variant ring-1 ring-outline-variant/50"
+          title={decl?.path}
+        >
+          {declDrift === "missing"
+            ? "Profile 声明文件已被删除，重启应用后会重建默认声明。当前仍按启动时的入口显示。"
+            : "Profile 声明已在磁盘上修改，重启应用后生效。当前仍按启动时的入口显示。"}
         </div>
       ) : null}
 
