@@ -30,7 +30,14 @@ import type {
   OfflineArtifactContent,
   OfflineArtifactEntry,
   OfflineFlowPackResponse,
+  PendingWriteConfirmReceipt,
+  PendingWriteListing,
+  PendingWriteView,
   PermissionChangeResponse,
+  SchedulerConfig,
+  SchedulerSnapshot,
+  SchedulerTick,
+  HeartbeatScan,
   UsageReadResult,
   UsageRecord,
   WeeklySummary,
@@ -569,6 +576,13 @@ export const shell = {
     userConfirmed: boolean;
     /** 成果是否包含模型初稿；只有实际取得模型文本时才可为 true。 */
     aiAssisted?: boolean;
+    /**
+     * 写动作来源（OD-ARCH-046）。缺省 human；模型 / 定时来源必须同时给出
+     * 宿主发出的待确认编号，否则宿主直接拒绝。界面上的“确认”按钮应调用
+     * pendingConfirm，而不是带上 userConfirmed 直接写。
+     */
+    source?: "human" | "model" | "scheduler";
+    pendingId?: string | null;
   }): Promise<SaveArtifactReceipt> {
     return invoke<SaveArtifactReceipt>("task_save_offline", {
       request: {
@@ -577,6 +591,8 @@ export const shell = {
         markdown: input.markdown,
         user_confirmed: input.userConfirmed,
         ai_assisted: input.aiAssisted ?? false,
+        source: input.source ?? "human",
+        pending_id: input.pendingId ?? null,
       },
     }).catch((e) => {
       throw new Error(normalizeError(e));
@@ -584,9 +600,10 @@ export const shell = {
   },
 
   /** 已保存的离线成果（只读元数据，按时间倒序）。 */
-  offlineArtifacts(): Promise<{ items: OfflineArtifactEntry[] }> {
+  offlineArtifacts(includeSubdirs = false): Promise<{ items: OfflineArtifactEntry[] }> {
     return invoke<{ items: OfflineArtifactEntry[] }>(
       "task_list_offline_artifacts",
+      { includeSubdirs },
     ).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -607,6 +624,111 @@ export const shell = {
    */
   readMaterial(path: string): Promise<MaterialRead> {
     return invoke<MaterialRead>("task_read_material", { path }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+};
+
+/**
+ * 待确认写操作（OD-ARCH-046）。
+ *
+ * 模型 / 定时任务只能“登记”一条待确认记录，不能直接写成果文件。用户在确认卡片上
+ * 点“确认”后，由宿主重新从磁盘校验该记录（存在、未过期、未消费、正文一致）才落盘。
+ */
+export const pendingWrites = {
+  create(input: {
+    action: "save_offline";
+    source: "model" | "scheduler";
+    summary: string;
+    impact: string;
+    payload: {
+      scenario: string;
+      title: string;
+      markdown: string;
+      ai_assisted?: boolean;
+    };
+  }): Promise<PendingWriteView> {
+    return invoke<PendingWriteView>("pending_write_create", {
+      request: {
+        action: input.action,
+        source: input.source,
+        summary: input.summary,
+        impact: input.impact,
+        payload: {
+          scenario: input.payload.scenario,
+          title: input.payload.title,
+          markdown: input.payload.markdown,
+          ai_assisted: input.payload.ai_assisted ?? false,
+        },
+      },
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  list(): Promise<PendingWriteListing> {
+    return invoke<PendingWriteListing>("pending_write_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  confirm(id: string): Promise<PendingWriteConfirmReceipt> {
+    return invoke<PendingWriteConfirmReceipt>("pending_write_confirm", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  reject(id: string): Promise<{ ok: boolean; id: string; status: string }> {
+    return invoke<{ ok: boolean; id: string; status: string }>("pending_write_reject", {
+      id,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+};
+
+/**
+ * 应用运行期调度（OD-ARCH-046）。
+ *
+ * 宿主只保存配置并判定是否到点；触发由前端运行期定时器负责，不做常驻进程。
+ */
+export const scheduler = {
+  getConfig(): Promise<SchedulerSnapshot> {
+    return invoke<SchedulerSnapshot>("scheduler_config_get").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  setConfig(config: SchedulerConfig): Promise<SchedulerSnapshot> {
+    return invoke<SchedulerSnapshot>("scheduler_config_set", { config }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  tick(): Promise<SchedulerTick> {
+    return invoke<SchedulerTick>("scheduler_tick").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  markReviewed(): Promise<SchedulerSnapshot> {
+    return invoke<SchedulerSnapshot>("scheduler_mark_reviewed").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  markHeartbeat(): Promise<SchedulerSnapshot> {
+    return invoke<SchedulerSnapshot>("scheduler_mark_heartbeat").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只做本地确定性扫描，不调模型、不写文件。 */
+  heartbeatScan(inputText: string, today: string | null = null): Promise<HeartbeatScan> {
+    return invoke<HeartbeatScan>("scheduler_heartbeat_scan", {
+      inputText,
+      today,
+    }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

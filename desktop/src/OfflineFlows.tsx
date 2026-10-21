@@ -759,12 +759,12 @@ export default function OfflineFlows({ initialTab = "weekly" }: { initialTab?: T
         ) : (
           <ul className="record-list">
             {artifacts.map((a) => (
-              <li key={a.file_name} className="record-item">
-                <span className="mono">{a.file_name}</span>
+              <li key={a.relative_path} className="record-item">
+                <span className="mono">{a.relative_path}</span>
                 <span className="hint">
                   {a.bytes} 字节 · {a.scenario}
                 </span>
-                <button className="ghost" onClick={() => void reopen(a.file_name)}>
+                <button className="ghost" onClick={() => void reopen(a.relative_path)}>
                   重新打开
                 </button>
               </li>

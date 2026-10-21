@@ -421,10 +421,16 @@ export interface OfflineFlowPackResponse {
 
 /** 已保存离线成果的只读摘要；不含正文。 */
 export interface OfflineArtifactEntry {
+  /** 相对数据根的路径，子目录成果会带目录前缀。 */
+  relative_path: string;
   file_name: string;
   bytes: number;
   modified_at: number;
   scenario: string;
+  /** 目录行只用于展示层级，不能打开。 */
+  is_dir: boolean;
+  /** 相对数据根的层级，顶层为 0。 */
+  depth: number;
 }
 
 export interface OfflineArtifactContent {
@@ -531,4 +537,74 @@ export interface ModelRouteListing {
       models: string[];
     }>;
   }>;
+}
+
+// ---------------------------------------------------------------------------
+// 待确认写操作与调度（OD-ARCH-046）
+// ---------------------------------------------------------------------------
+
+/** 待确认写操作的展示视图：由宿主生成，**不含正文**。 */
+export interface PendingWriteView {
+  id: string;
+  action: string;
+  /** model / scheduler：只有这两类来源需要用户确认。 */
+  source: string;
+  scenario: string;
+  title: string;
+  summary: string;
+  impact: string;
+  chars: number;
+  created_at: number;
+  expires_at: number;
+  /** pending / consumed / rejected / expired */
+  status: string;
+}
+
+export interface PendingWriteListing {
+  items: PendingWriteView[];
+  /** 无法解析的记录数（只计数，不伪造内容）。 */
+  broken: number;
+}
+
+export interface PendingWriteConfirmReceipt {
+  ok: boolean;
+  id: string;
+  status: string;
+  path: string;
+  bytes: number;
+  written_at: number;
+}
+
+export type SchedulerCadence = "daily" | "weekly" | "once";
+
+export interface SchedulerConfig {
+  schema: string;
+  review_enabled: boolean;
+  cadence: SchedulerCadence;
+  hour: number;
+  once_at: number | null;
+  utc_offset_minutes: number;
+  heartbeat_enabled: boolean;
+  heartbeat_minutes: number;
+  last_review_at: number;
+  last_heartbeat_at: number;
+}
+
+export interface SchedulerSnapshot {
+  config: SchedulerConfig;
+  hint: string;
+}
+
+export interface SchedulerTick extends SchedulerSnapshot {
+  now: number;
+  review_due: boolean;
+  heartbeat_due: boolean;
+}
+
+export interface HeartbeatScan {
+  ok: boolean;
+  markdown: string | null;
+  overdue: number;
+  total: number;
+  error: string | null;
 }

@@ -186,6 +186,14 @@ export function HomeChat({
   const [modelEffort, setModelEffort] = useState("off");
   /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
   const [sendNote, setSendNote] = useState<string | null>(null);
+  /** 已提交到宿主、引擎尚未返回任务号（冷启动可能数秒）。 */
+  const [starting, setStarting] = useState(false);
+  /**
+   * 本轮提交的放弃标记（OD-ARCH-045 第 3 步）。
+   * 冷启动期间还没有任务号，宿主无法按任务号取消失败的提交；这里只能撤销
+   * 界面上这次等待，并**在任务号返回后立即请求取消**。绝不把「已放弃」写成「引擎已终止」。
+   */
+  const submitTokenRef = useRef<{ aborted: boolean; noteId: string | null } | null>(null);
   /** 已等待秒数（让「慢」可见，而不是像卡死）。 */
   const [elapsed, setElapsed] = useState(0);
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
@@ -490,6 +498,9 @@ export function HomeChat({
       setCancelNote(null);
       setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
       setBusy(true);
+      setStarting(true);
+      const token = { aborted: false, noteId: null as string | null };
+      submitTokenRef.current = token;
       try {
         let dir = workspaceDir;
         if (!dir && projectDir) {
@@ -534,6 +545,27 @@ export function HomeChat({
           setLocalEngineSessionId(receipt.engine_session_id);
           onEngineSessionId?.(receipt.engine_session_id);
         }
+        if (token.aborted) {
+          // 用户在启动期间放弃了这次提交：任务号现在才回来，立刻请求取消。
+          const mark = (notice: string) =>
+            setMessages((prev) =>
+              prev.map((m) => (m.id === token.noteId ? { ...m, notice } : m)),
+            );
+          mark(`已放弃本次提交；引擎仍返回任务号 ${receipt.omni_task_id}，正在请求取消。`);
+          try {
+            const outcome = await host.cancelTask(receipt.omni_task_id);
+            mark(
+              `已放弃本次提交；任务 ${receipt.omni_task_id} 已请求取消：` +
+                (outcome.note || outcome.phase),
+            );
+          } catch (e) {
+            mark(
+              `已放弃本次提交；任务 ${receipt.omni_task_id} 的取消请求失败（需人工确认）：` +
+                String(e),
+            );
+          }
+          return;
+        }
         // 续接失败被降级为新建会话时，这一轮**没有**继承旧会话的上文：
         // 下一轮补一次窗口化重放，把历史接回去（引擎侧此时已持有这一轮）。
         const degraded = receipt.session_mode === "degraded";
@@ -565,6 +597,8 @@ export function HomeChat({
         // 缓存可能还是旧的（权限刚变），先作废再读。
         invalidateEngineFactsCache();
         void refreshAdmission();
+      } finally {
+        setStarting(false);
       }
     },
     [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn],
@@ -610,14 +644,34 @@ export function HomeChat({
   }, []);
 
   const cancel = useCallback(async () => {
-    if (!activeTaskId) return;
+    if (!activeTaskId) {
+      // 还没有任务号（引擎冷启动中）：只撤销这次等待，并在任务号返回后立即取消。
+      const token = submitTokenRef.current;
+      if (!token || !starting) return;
+      token.aborted = true;
+      token.noteId = nextId();
+      const noteId = token.noteId;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: noteId,
+          role: "assistant",
+          text: "",
+          notice: "已放弃本次提交（引擎仍在启动，尚未拿到任务号）。拿到任务号后会立即请求取消。",
+        },
+      ]);
+      setCancelNote("已放弃本次提交；引擎启动完成后会立即尝试取消。");
+      setBusy(false);
+      setStarting(false);
+      return;
+    }
     try {
       const outcome = await host.cancelTask(activeTaskId);
       setCancelNote(outcome.note || "");
     } catch (e) {
       setCancelNote(String(e));
     }
-  }, [activeTaskId]);
+  }, [activeTaskId, starting]);
 
   const enabled = facts ? enabledCategories(facts) : [];
   const categoryText = facts ? (CATEGORY_LABEL[facts.category] ?? facts.category) : "类别未知";  /**
@@ -784,9 +838,17 @@ export function HomeChat({
             {busy ? (
               <button
                 onClick={cancel}
+                disabled={!activeTaskId && !starting}
+                title={
+                  activeTaskId
+                    ? "请求取消当前任务"
+                    : starting
+                      ? "放弃本次提交：引擎返回任务号后会立即请求取消"
+                      : "当前没有可取消的任务"
+                }
                 className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container-high transition-colors"
               >
-                取消生成
+                {starting ? "引擎启动中…（点此放弃）" : "取消生成"}
               </button>
             ) : null}
             <button
@@ -803,6 +865,11 @@ export function HomeChat({
 
       {modelNote ? <p className="text-[10.5px] text-outline pb-1">{modelNote}</p> : null}
       {sendNote ? <p className="text-[10.5px] text-outline pb-1">{sendNote}</p> : null}
+      {starting ? (
+        <p className="text-[10.5px] text-outline pb-1">
+          正在启动引擎并提交（首次启动可能要几秒）…
+        </p>
+      ) : null}
 
       {/* 底部状态行：模型权限 + Token 上下文用量，一行显示。
           顶部「LOCAL IPC ACTIVE」表示引擎 IPC 健康；这里表示权限与用量，含义不同。

@@ -17,10 +17,13 @@ pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod flow_pack;
 pub mod model_routes;
+pub mod pending_writes;
 pub mod route_classifier;
+pub mod scheduler;
 pub mod settings;
 pub mod sha256;
 pub mod task_shell;
+pub mod thread_store;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -244,7 +247,7 @@ fn engine_health(state: State<'_, SharedHost>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn engine_submit_task(
+async fn engine_submit_task(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
     prompt_text: String,
@@ -269,13 +272,25 @@ fn engine_submit_task(
             "detail": { "reason": "red_line_rejected", "enforced_by": "host" },
         }));
     }
-    let sink = bridge_sink(app);
-    // 准入判定与引擎启动在同一守卫内完成；屏障由守卫本身表达（OD-ARCH-023）。
-    with_engine_call(
-        &sink,
-        state.inner(),
-        admission::SUBMIT_REFUSAL_MESSAGE,
-        move |host, _grant, _descriptor| {
+    let sink = bridge_sink(app.clone());
+    // OD-ARCH-045 第 3 步：引擎冷启动（ensure_initialized）可能耗时数秒，
+    // 放到阻塞线程池里执行，主线程与 UI 立即返回，不再冻结窗口。
+    //
+    // 语义不变：准入判定、引擎启动与提交仍在同一个 EngineLifecycle 调用守卫内完成，
+    // 守卫覆盖整个阻塞调用；权限变更仍无法与之交错。只是“等待”从 UI 线程挪到 worker。
+    let host_state = Arc::clone(state.inner());
+    let refusal = admission::SUBMIT_REFUSAL_MESSAGE;
+    let prompt_text = prompt_text.clone();
+    let intent = intent.clone();
+    let workspace_dir = workspace_dir.clone();
+    let idempotency_key = idempotency_key.clone();
+    let engine_session_id = engine_session_id.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        with_engine_call(
+            &sink,
+            &host_state,
+            refusal,
+            move |host, _grant, _descriptor| {
             let mut params = serde_json::json!({
                 "prompt_text": prompt_text,
                 "intent": intent.unwrap_or_else(|| "material_writing".to_string()),
@@ -295,8 +310,18 @@ fn engine_submit_task(
                 }
             }
             host.bridge.submit_task(params)
-        },
-    )
+            },
+        )
+    })
+    .await;
+    match joined {
+        Ok(result) => result,
+        Err(e) => Err(serde_json::json!({
+            "engine_error_code": "host_task_join_failed",
+            "message": format!("启动引擎的后台任务异常结束：{}", e),
+            "detail": { "reason": "host_task_join_failed", "enforced_by": "host" },
+        })),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -480,8 +505,59 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
         "logs": p.logs.display().to_string(),
         "engine_state": p.engine_state.display().to_string(),
         "results": p.results.display().to_string(),
+        "threads": p.threads.display().to_string(),
         "config": p.config.display().to_string(),
     })
+}
+
+// ---------------------------------------------------------------------------
+// 工作台线程记录（OD-ARCH-045 第 1 步）
+//
+// 只读写 OmniDesk 应用数据根下的 threads/，不启动引擎、不做准入判定：
+// 这是纯本地文件能力，与模型权限无关。前端把 localStorage 降为缓存，
+// 启动时以这里读回的内容为准。旧缓存只读兼容，不删除。
+// ---------------------------------------------------------------------------
+
+/// 读回全部线程记录（含被跳过的文件数，如实报告而不静默丢弃）。
+#[tauri::command]
+fn thread_store_load(
+    state: State<'_, SharedHost>,
+) -> Result<thread_store::ThreadListing, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let store = thread_store::ThreadStore::resolve(&paths)?;
+    store.load()
+}
+
+/// 写入（覆盖）一条线程记录。只接受结构完整、id 合规的记录。
+#[tauri::command]
+fn thread_store_save(
+    state: State<'_, SharedHost>,
+    thread: serde_json::Value,
+) -> Result<thread_store::ThreadSaveReceipt, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let store = thread_store::ThreadStore::resolve(&paths)?;
+    store.save(&thread)
+}
+
+/// 删除一条线程记录（幂等；只删除本存储自己命名的文件）。
+#[tauri::command]
+fn thread_store_delete(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let store = thread_store::ThreadStore::resolve(&paths)?;
+    let removed = store.delete(&id)?;
+    Ok(serde_json::json!({ "id": id, "removed": removed }))
 }
 
 /// 模型端点与授权现状（只读，不启动引擎）。
@@ -1139,8 +1215,11 @@ fn task_save_offline(request: task_shell::SaveOfflineRequest) -> Result<serde_js
 
 /// 列出已保存的离线成果（只读元数据，仓库外数据根）。
 #[tauri::command]
-fn task_list_offline_artifacts() -> Result<serde_json::Value, String> {
-    task_shell::list_offline_artifacts().map(|items| serde_json::json!({ "items": items }))
+fn task_list_offline_artifacts(
+    include_subdirs: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    task_shell::list_offline_artifacts_with(include_subdirs.unwrap_or(false))
+        .map(|items| serde_json::json!({ "items": items }))
 }
 
 /// 重新打开一条已保存的离线成果（只读，不修改原文件）。
@@ -1157,6 +1236,172 @@ fn task_read_offline_artifact(file_name: String) -> Result<serde_json::Value, St
 #[tauri::command]
 fn task_read_material(path: String) -> Result<serde_json::Value, String> {
     task_shell::read_material(&path).map(|item| serde_json::json!(item))
+}
+
+// ---------------------------------------------------------------------------
+// 待确认写操作（OD-ARCH-046 写确认制）
+//
+// 模型 / 定时任务想写文件时，先由前端提交一条“待确认记录”（含动作摘要、影响范围
+// 与完整待写正文）。宿主把它存到应用数据根，**不写成果文件**。
+// 用户在确认卡片上点“确认”后，宿主重新从磁盘读取该记录、校验未过期未消费、
+// 正文与记录一致，才真正落盘；写失败则保留 pending 状态，不会标成成功。
+//
+// 不做“前端说已确认就放行”：校验只认磁盘上的记录。
+// ---------------------------------------------------------------------------
+
+/// 同一时刻只允许一个确认动作在执行，避免双击/重放把同一条记录写两次。
+static PENDING_CONFIRM_LOCK: Mutex<()> = Mutex::new(());
+
+fn pending_write_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
+    let host = state.lock().unwrap();
+    pending_writes::dir(&host.paths.engine_state)
+}
+
+/// 登记一条待确认写操作。只有模型 / 定时来源可以登记；人工保存不走这里。
+#[tauri::command]
+fn pending_write_create(
+    state: State<'_, SharedHost>,
+    request: pending_writes::CreatePendingWrite,
+) -> Result<serde_json::Value, String> {
+    let dir = pending_write_dir(&state);
+    let now = task_shell::now_secs();
+    pending_writes::create(&dir, &request, now)
+        .map(|record| serde_json::json!(record.view(now)))
+}
+
+/// 列出待确认记录（新的在前）。损坏的记录只计数，不伪造内容。
+#[tauri::command]
+fn pending_write_list(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dir = pending_write_dir(&state);
+    let now = task_shell::now_secs();
+    let (records, broken) = pending_writes::list(&dir, now)?;
+    let items: Vec<pending_writes::PendingWriteView> =
+        records.iter().map(|record| record.view(now)).collect();
+    Ok(serde_json::json!({ "items": items, "broken": broken }))
+}
+
+/// 用户确认后执行写入：记录 → 校验 → 落盘 → 标记已消费。
+#[tauri::command]
+fn pending_write_confirm(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let _guard = PENDING_CONFIRM_LOCK
+        .lock()
+        .map_err(|_| "确认通道不可用（锁已损坏），未执行写入。".to_string())?;
+    let dir = pending_write_dir(&state);
+    let now = task_shell::now_secs();
+    // 先载入以拿到登记时的正文；随后用同一份正文回校验，任何前端改动都会被拒。
+    let record = pending_writes::load(&dir, &id)?;
+    let validated =
+        pending_writes::validate_for_write(&dir, &id, &record.payload, now)?;
+    let request = task_shell::SaveOfflineRequest::from_record(&validated);
+    // 写失败时保持 pending：调用方能看到错误，也能重试或放弃。
+    let receipt = task_shell::save_offline_artifact(&request, now)?;
+    let settled = pending_writes::mark_resolved(&dir, &id, "consumed", task_shell::now_secs())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "id": settled.id,
+        "status": settled.status,
+        "path": receipt.path,
+        "bytes": receipt.bytes,
+        "written_at": receipt.written_at,
+    }))
+}
+
+/// 放弃一条待确认写操作：只改记录状态，不产生任何成果文件。
+#[tauri::command]
+fn pending_write_reject(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let dir = pending_write_dir(&state);
+    let settled =
+        pending_writes::mark_resolved(&dir, &id, "rejected", task_shell::now_secs())?;
+    Ok(serde_json::json!({ "ok": true, "id": settled.id, "status": settled.status }))
+}
+
+// ---------------------------------------------------------------------------
+// 应用运行期调度（OD-ARCH-046）
+//
+// 宿主只做配置与到点判定；触发由前端运行期定时器负责。不常驻、不起系统定时、
+// 不开线程。心跳只做本地确定性扫描（与手动逾期扫描同一条代码路径）。
+// ---------------------------------------------------------------------------
+
+fn scheduler_config_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
+    let host = state.lock().unwrap();
+    host.paths.config.clone()
+}
+
+fn scheduler_payload(config: &scheduler::SchedulerConfig) -> serde_json::Value {
+    serde_json::json!({
+        "config": config,
+        "hint": scheduler::schedule_hint(config),
+    })
+}
+
+#[tauri::command]
+fn scheduler_config_get(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dir = scheduler_config_dir(&state);
+    scheduler::load(&dir).map(|config| scheduler_payload(&config))
+}
+
+/// 保存调度配置。校验失败整次拒绝，不写半份文件；不覆盖用户成果。
+#[tauri::command]
+fn scheduler_config_set(
+    state: State<'_, SharedHost>,
+    config: scheduler::SchedulerConfig,
+) -> Result<serde_json::Value, String> {
+    let dir = scheduler_config_dir(&state);
+    scheduler::write(&dir, &config)?;
+    scheduler::load(&dir).map(|saved| scheduler_payload(&saved))
+}
+
+/// 到点判定：一次返回复盘与心跳两种状态，前端据此决定是否触发。
+#[tauri::command]
+fn scheduler_tick(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dir = scheduler_config_dir(&state);
+    let config = scheduler::load(&dir)?;
+    let now = task_shell::now_secs();
+    Ok(serde_json::json!({
+        "now": now,
+        "review_due": scheduler::review_due(&config, now),
+        "heartbeat_due": scheduler::heartbeat_due(&config, now),
+        "config": config,
+        "hint": scheduler::schedule_hint(&config),
+    }))
+}
+
+/// 记录一次复盘的实际执行时间（用于“错过只补跑一次”与去重）。
+#[tauri::command]
+fn scheduler_mark_reviewed(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dir = scheduler_config_dir(&state);
+    let mut config = scheduler::load(&dir)?;
+    config.last_review_at = task_shell::now_secs();
+    scheduler::write(&dir, &config)?;
+    scheduler::load(&dir).map(|saved| scheduler_payload(&saved))
+}
+
+/// 记录一次心跳的实际执行时间。心跳本身不产生文件。
+#[tauri::command]
+fn scheduler_mark_heartbeat(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dir = scheduler_config_dir(&state);
+    let mut config = scheduler::load(&dir)?;
+    config.last_heartbeat_at = task_shell::now_secs();
+    scheduler::write(&dir, &config)?;
+    scheduler::load(&dir).map(|saved| scheduler_payload(&saved))
+}
+
+/// 心跳扫描：与手动“逾期扫描”共用 project_flow_with，结果必须一致。
+#[tauri::command]
+fn scheduler_heartbeat_scan(
+    state: State<'_, SharedHost>,
+    input_text: String,
+    today: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let loaded = current_flow_pack(&state)?;
+    let scan = scheduler::heartbeat_scan(&input_text, today.as_deref(), &loaded.pack);
+    serde_json::to_value(scan).map_err(|e| format!("序列化心跳结果失败：{}", e))
 }
 
 #[cfg(test)]
@@ -1302,6 +1547,19 @@ pub fn run() {
             task_list_offline_artifacts,
             task_read_offline_artifact,
             task_read_material,
+            thread_store_load,
+            thread_store_save,
+            thread_store_delete,
+            pending_write_create,
+            pending_write_list,
+            pending_write_confirm,
+            pending_write_reject,
+            scheduler_config_get,
+            scheduler_config_set,
+            scheduler_tick,
+            scheduler_mark_reviewed,
+            scheduler_mark_heartbeat,
+            scheduler_heartbeat_scan,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。
@@ -1419,6 +1677,7 @@ mod host_wrapper_tests {
                 logs: self.base.join("app/logs"),
                 engine_state: self.base.join("app/engine-state"),
                 results: self.base.join("app/engine-state/results"),
+                threads: self.base.join("app/threads"),
                 config: self.base.join("config"),
             }
         }

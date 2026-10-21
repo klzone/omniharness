@@ -438,3 +438,68 @@
     gap: 0.15rem;
   }
 }
+
+/* ---- 设置页卡片头（OD-ARCH-046）：左侧标题+状态摘要，右侧主操作 ---- */
+.ofl-v2 .card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.ofl-v2 .card-head-main {
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.ofl-v2 .card-head .pane-title {
+  margin-bottom: 0.25rem;
+}
+
+.ofl-v2 .card-status {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+.ofl-v2 .card-head-actions {
+  margin: 0;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+/* 下拉框与文本框保持同一组样式（原生箭头保留，不自定义外观）。 */
+.ofl-v2 select.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-body-sm);
+  font-size: 13px;
+  color: var(--color-on-surface);
+  background: rgba(242, 243, 255, 0.85);
+  border: 1px solid rgba(199, 196, 216, 0.65);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  outline: none;
+}
+
+.ofl-v2 select.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ofl-v2 .pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 767px) {
+  .ofl-v2 .card-head-actions {
+    justify-content: flex-start;
+  }
+}

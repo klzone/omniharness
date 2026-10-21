@@ -68,3 +68,15 @@ export const SCENE_KEYS = Object.keys(SCENES) as SceneKey[];
 export function isSceneKey(value: string | null | undefined): value is SceneKey {
   return !!value && value in SCENES;
 }
+
+/**
+ * 场景标识的等价判断。
+ *
+ * 前端用下划线形状（`weekly_report`，也是保存时的请求值），而宿主列举成果时
+ * 从文件名还原出的是连字符形状（`weekly-report`）。两者指的是同一场景，
+ * 直接字符串比较会让右栏与提醒栏永远是空的，因此统一在这里归一后再比。
+ */
+export function sameScenario(a: string, b: string): boolean {
+  const norm = (v: string) => v.trim().toLowerCase().replace(/-/g, "_");
+  return norm(a) === norm(b);
+}

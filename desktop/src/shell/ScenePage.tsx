@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { shell } from "../api";
-import { SCENES, type SceneKey } from "../scenes";
+import { SCENES, sameScenario, type SceneKey } from "../scenes";
 import type { OfflineFlowPack } from "../types";
 import {
   createThread,
@@ -17,6 +17,62 @@ import { AnnouncementBar } from "./AnnouncementBar";
 import { HomeChat } from "./HomeChat";
 import { SceneScaffold } from "./SceneScaffold";
 import type { Scene } from "./Dock";
+
+/** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
+const SUBDIRS_KEY_PREFIX = "omnidesk.scene.include-subdirs.";
+
+function readSubdirsPref(scene: SceneKey): boolean {
+  try {
+    return window.localStorage.getItem(SUBDIRS_KEY_PREFIX + scene) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSubdirsPref(scene: SceneKey, value: boolean) {
+  try {
+    window.localStorage.setItem(SUBDIRS_KEY_PREFIX + scene, value ? "1" : "0");
+  } catch {
+    // 缓存写不进去时只影响下次默认值，不影响本次结果。
+  }
+}
+
+/**
+ * 只保留本场景的成果；树状模式下由这些文件反推目录行，
+ * 避免把「只装着别的场景成果」的目录也显示出来。
+ */
+function filterSceneArtifacts(
+  items: OfflineArtifactEntry[],
+  scenario: string,
+  includeSubdirs: boolean,
+): OfflineArtifactEntry[] {
+  const files = items.filter((i) => !i.is_dir && sameScenario(i.scenario, scenario));
+  if (!includeSubdirs) return files;
+  const dirs = new Set<string>();
+  for (const f of files) {
+    const parts = f.relative_path.split("/");
+    for (let i = 1; i < parts.length; i += 1) dirs.add(parts.slice(0, i).join("/"));
+  }
+  const base = files.length > 0 ? Math.min(...files.map((f) => f.depth)) : 0;
+  const rows: OfflineArtifactEntry[] = [
+    ...Array.from(dirs).map((relative) => ({
+      relative_path: relative,
+      file_name: relative.split("/").pop() ?? relative,
+      bytes: 0,
+      modified_at: 0,
+      scenario: "",
+      is_dir: true,
+      depth: relative.split("/").length - 1 - base,
+    })),
+    ...files.map((f) => ({ ...f, depth: f.depth - base })),
+  ];
+  rows.sort((a, b) =>
+    a.depth !== b.depth
+      ? a.depth - b.depth
+      : a.relative_path.localeCompare(b.relative_path, "zh-Hans-CN"),
+  );
+  return rows;
+}
 
 /**
  * 场景页（OD-ARCH-033 目标 2/3/5）。
@@ -43,6 +99,7 @@ export function ScenePage({
   const [tab, setTab] = useState<"progress" | "artifacts">(def.hasProgress ? "progress" : "artifacts");
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
+  const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() => readSubdirsPref(scene));
   const [progress, setProgress] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [pack, setPack] = useState<OfflineFlowPack | null>(null);
@@ -83,14 +140,14 @@ export function ScenePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene]);
 
-  // 成果档案：只列本场景自己保存的成果。
+  // 成果档案：只列本场景自己保存的成果。开关决定是否含下级目录。
   useEffect(() => {
     let alive = true;
     shell
-      .offlineArtifacts()
+      .offlineArtifacts(includeSubdirs)
       .then((r) => {
         if (!alive) return;
-        setArtifacts(r.items.filter((i) => i.scenario === def.scenario));
+        setArtifacts(filterSceneArtifacts(r.items, def.scenario, includeSubdirs));
       })
       .catch(() => {
         if (alive) setArtifacts([]);
@@ -98,7 +155,7 @@ export function ScenePage({
     return () => {
       alive = false;
     };
-  }, [def.scenario, activeId]);
+  }, [def.scenario, activeId, includeSubdirs]);
 
   const active = threads.find((t) => t.id === activeId) ?? null;
 
@@ -261,14 +318,34 @@ export function ScenePage({
               >
                 阶段成果
               </button>
-              <span className="ml-auto text-[10px] text-outline">数据来自确定性汇总与本场景保存的成果</span>
             </div>
           ) : (
             <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
               <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果档案</h2>
-              <span className="text-[10px] text-outline">只列本场景保存的成果</span>
             </div>
           )}
+
+          {tab === "artifacts" ? (
+            <div className="flex items-center gap-2 pt-1.5 pb-1 border-b border-surface-variant/10">
+              <span className="text-[10px] text-outline">只列本场景保存的成果</span>
+              <label
+                className="ml-auto flex items-center gap-1 text-[10.5px] text-on-surface-variant cursor-pointer select-none"
+                title="打开后按文件夹层级列出数据根下级目录里的成果；关闭则只看最外层"
+              >
+                <input
+                  type="checkbox"
+                  className="accent-current"
+                  checked={includeSubdirs}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setIncludeSubdirs(next);
+                    writeSubdirsPref(scene, next);
+                  }}
+                />
+                含下级目录
+              </label>
+            </div>
+          ) : null}
 
           <div className="pt-2 min-h-0 overflow-y-auto flex-1">
             {tab === "progress" ? (
@@ -284,21 +361,40 @@ export function ScenePage({
                 </p>
               )
             ) : artifacts.length === 0 ? (
-              <p className="text-[11px] text-outline leading-relaxed">{def.emptyHint}</p>
+              <p className="text-[11px] text-outline leading-relaxed">
+                {includeSubdirs
+                  ? def.emptyHint + "（已包含下级目录；当前没有找到本场景的成果。）"
+                  : def.emptyHint}
+              </p>
             ) : (
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col gap-0.5">
                 {artifacts.map((a) => (
-                  <li key={a.file_name} className="flex items-center gap-2">
-                    <span className="mono text-[11px] text-on-surface-variant truncate">
-                      {a.file_name}
-                    </span>
-                    <span className="text-[10px] text-outline">{a.bytes} 字节</span>
-                    <button
-                      className="text-[10.5px] text-primary hover:underline ml-auto"
-                      onClick={() => void openArtifact(a.file_name)}
-                    >
-                      打开
-                    </button>
+                  <li
+                    key={a.relative_path}
+                    className="flex items-center gap-2"
+                    style={{ paddingLeft: a.depth * 14 }}
+                  >
+                    {a.is_dir ? (
+                      <span className="text-[11px] text-outline truncate" title={a.relative_path}>
+                        ▸ {a.file_name}
+                      </span>
+                    ) : (
+                      <>
+                        <span
+                          className="mono text-[11px] text-on-surface-variant truncate"
+                          title={a.relative_path}
+                        >
+                          {a.file_name}
+                        </span>
+                        <span className="text-[10px] text-outline shrink-0">{a.bytes} 字节</span>
+                        <button
+                          className="text-[10.5px] text-primary hover:underline ml-auto shrink-0"
+                          onClick={() => void openArtifact(a.relative_path)}
+                        >
+                          打开
+                        </button>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -306,7 +402,9 @@ export function ScenePage({
             {opened ? (
               <div className="mt-2">
                 <div className="flex items-center justify-between">
-                  <span className="mono text-[10.5px] text-outline">{opened.name}</span>
+                  <span className="mono text-[10.5px] text-outline truncate" title={opened.name}>
+                    {opened.name}
+                  </span>
                   <button className="text-[10.5px] text-outline hover:underline" onClick={() => setOpened(null)}>
                     收起
                   </button>
