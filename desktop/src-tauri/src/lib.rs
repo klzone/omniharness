@@ -224,26 +224,54 @@ fn admission_denied(err: serde_json::Value) -> serde_json::Value {
 ///
 /// 描述符来自引擎 omni.initialize 的真实返回，本层不虚构能力表。
 #[tauri::command]
-fn engine_describe(
+async fn engine_describe(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
 ) -> Result<serde_json::Value, serde_json::Value> {
     let sink = bridge_sink(app);
+    let host_state = Arc::clone(state.inner());
     // 先准入、后触达宿主：拒绝时不得启动子进程或初始化引擎。
     // 准入与启动在同一守卫内完成（OD-ARCH-023）。
-    with_engine_call(
-        &sink,
-        state.inner(),
-        admission::DESCRIBE_REFUSAL_MESSAGE,
-        |_host, _grant, descriptor| Ok(descriptor),
-    )
+    //
+    // **异步执行（OD-ARCH-048 修复）：** `with_engine_call` 会拉起引擎（冷启动
+    // 数秒）且会等宿主全局锁；同步命令占住 Tauri 主线程时，启动界面与场景切换
+    // 都会整页卡死、只能强制退出。改到阻塞线程池执行，等待不再落在 UI 线程。
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        with_engine_call(
+            &sink,
+            &host_state,
+            admission::DESCRIBE_REFUSAL_MESSAGE,
+            |_host, _grant, descriptor| Ok(descriptor),
+        )
+    })
+    .await;
+    match joined {
+        Ok(result) => result,
+        Err(e) => Err(serde_json::json!({
+            "engine_error_code": "host_task_join_failed",
+            "message": format!("读取引擎描述的后台任务异常结束：{}", e),
+            "detail": { "reason": "host_task_join_failed", "enforced_by": "host" },
+        })),
+    }
 }
 
 #[tauri::command]
-fn engine_health(state: State<'_, SharedHost>) -> serde_json::Value {
-    let mut host = state.lock().unwrap();
-    let root = host.paths.root.display().to_string();
-    host.bridge.health(&root)
+async fn engine_health(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    // OD-ARCH-048 修复：只读健康快照也要等宿主全局锁。当另一条引擎命令正在
+    // 冷启动/等待模型目录（最长 60s）时，同步读锁会把这段等待压到 UI 线程上，
+    // 表现为切场景整页卡死。改到阻塞线程池执行。
+    // 异步命令不能借用 `State<'_, _>`（future 必须是 'static），改用 AppHandle。
+    let host_state = {
+        let state = app.state::<SharedHost>();
+        Arc::clone(state.inner())
+    };
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        let mut host = host_state.lock().unwrap();
+        let root = host.paths.root.display().to_string();
+        host.bridge.health(&root)
+    })
+    .await;
+    joined.map_err(|e| format!("读取引擎健康状态的后台任务异常结束：{}", e))
 }
 
 #[tauri::command]
@@ -375,7 +403,7 @@ fn cancel_task_impl(
     host.bridge.cancel_task(omni_task_id, timeout_seconds)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_task_status(
     state: State<'_, SharedHost>,
     omni_task_id: String,
@@ -383,7 +411,7 @@ fn engine_task_status(
     task_status_impl(state.inner(), &omni_task_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_task_result(
     state: State<'_, SharedHost>,
     omni_task_id: String,
@@ -391,7 +419,7 @@ fn engine_task_result(
     task_result_impl(state.inner(), &omni_task_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_cancel_task(
     state: State<'_, SharedHost>,
     omni_task_id: String,
@@ -400,7 +428,7 @@ fn engine_cancel_task(
     cancel_task_impl(state.inner(), &omni_task_id, timeout_seconds.unwrap_or(15.0))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_shutdown(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let lifecycle = {
         let host = state.lock().unwrap();
@@ -424,7 +452,7 @@ fn engine_shutdown(state: State<'_, SharedHost>) -> Result<serde_json::Value, St
 }
 
 /// 会话清单：需要引擎启动，因此与描述命令共用同一准入判定。
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_list_sessions(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
@@ -444,7 +472,7 @@ fn engine_list_sessions(
 }
 
 /// 重开既有会话：恢复会话不等于恢复任务，也不会重放任何轮次。
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_recover_session(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
@@ -464,7 +492,7 @@ fn engine_recover_session(
 }
 
 /// 任务台账（只读元数据）。台账在 OmniDesk 自己的数据根内，不接触 DSH 数据。
-#[tauri::command]
+#[tauri::command(async)]
 fn engine_task_records(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
@@ -479,8 +507,43 @@ fn engine_task_records(
     )
 }
 
-/// 重启后恢复任务状态：只重建可证实状态，不自动重放。
+/// 模型目录（OD-ARCH-048）：web-api 通道直读 DSH `session/modelCatalog`。
+///
+/// 只返回 provider/模型名/思考等级这类**非机密**目录信息；不读、不转发凭证。
+/// ACP 通道不支持该能力时，引擎返回 `unsupported`，前端据此回退到 Profile 候选。
+///
+/// **异步执行（OD-ARCH-048 修复）：** 该调用会触达引擎（首次要冷启动 DSH web
+/// 进程，RPC 超时 60s）。同步命令占住 Tauri 主线程时，首页重新挂载（场景切换）
+/// 就会整页卡住、只能强制退出——与 OD-ARCH-041 同一类问题。因此改为 async +
+/// `spawn_blocking`：等待发生在工作线程，准入与引擎调用仍在同一生命周期守卫内。
 #[tauri::command]
+async fn engine_list_models(
+    app: tauri::AppHandle,
+    state: State<'_, SharedHost>,
+    refresh: Option<bool>,
+) -> Result<serde_json::Value, serde_json::Value> {
+    let sink = bridge_sink(app);
+    let host_state = Arc::clone(state.inner());
+    let refusal = admission::DESCRIBE_REFUSAL_MESSAGE;
+    let refresh = refresh.unwrap_or(false);
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        with_engine_call(&sink, &host_state, refusal, move |host, _grant, _descriptor| {
+            host.bridge.list_models(refresh)
+        })
+    })
+    .await;
+    match joined {
+        Ok(result) => result,
+        Err(e) => Err(serde_json::json!({
+            "engine_error_code": "host_task_join_failed",
+            "message": format!("读取模型目录的后台任务异常结束：{}", e),
+            "detail": { "reason": "host_task_join_failed", "enforced_by": "host" },
+        })),
+    }
+}
+
+/// 重启后恢复任务状态：只重建可证实状态，不自动重放。
+#[tauri::command(async)]
 fn engine_recover_task(
     app: tauri::AppHandle,
     state: State<'_, SharedHost>,
@@ -495,7 +558,7 @@ fn engine_recover_task(
     )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
     let host = state.lock().unwrap();
     let p = &host.paths;
@@ -519,7 +582,7 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
 // ---------------------------------------------------------------------------
 
 /// 读回全部线程记录（含被跳过的文件数，如实报告而不静默丢弃）。
-#[tauri::command]
+#[tauri::command(async)]
 fn thread_store_load(
     state: State<'_, SharedHost>,
 ) -> Result<thread_store::ThreadListing, String> {
@@ -532,7 +595,7 @@ fn thread_store_load(
 }
 
 /// 写入（覆盖）一条线程记录。只接受结构完整、id 合规的记录。
-#[tauri::command]
+#[tauri::command(async)]
 fn thread_store_save(
     state: State<'_, SharedHost>,
     thread: serde_json::Value,
@@ -546,7 +609,7 @@ fn thread_store_save(
 }
 
 /// 删除一条线程记录（幂等；只删除本存储自己命名的文件）。
-#[tauri::command]
+#[tauri::command(async)]
 fn thread_store_delete(
     state: State<'_, SharedHost>,
     id: String,
@@ -683,7 +746,7 @@ fn apply_model_permission_change(
 }
 
 /// 设置某一端点类别的模型权限（失败关闭，见上）。
-#[tauri::command]
+#[tauri::command(async)]
 fn model_permission_set(
     state: State<'_, SharedHost>,
     category: String,
@@ -695,7 +758,7 @@ fn model_permission_set(
 }
 
 /// 一次性撤销全部模型权限（失败关闭，见上）。
-#[tauri::command]
+#[tauri::command(async)]
 fn model_permission_revoke_all(
     state: State<'_, SharedHost>,
 ) -> Result<serde_json::Value, serde_json::Value> {
@@ -714,7 +777,7 @@ fn model_permission_revoke_all(
 // ---------------------------------------------------------------------------
 
 /// 列出已登记任务类型（含 reserved 边界，但只有 implemented 可执行）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_types() -> serde_json::Value {
     serde_json::json!({
         "shell_version": task_shell::SHELL_VERSION,
@@ -724,19 +787,19 @@ fn task_types() -> serde_json::Value {
 }
 
 /// 返回编译期嵌入的合成样例（纯虚构数据）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_samples() -> serde_json::Value {
     serde_json::json!({ "samples": task_shell::samples() })
 }
 
 /// 返回解释阶段规则正文（只读展示，帮助使用者了解约束）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_explanation_rules() -> serde_json::Value {
     serde_json::json!({ "rules": task_shell::explanation_rules() })
 }
 
 /// 本地数据根信息（产物与使用记录的落盘位置）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_local_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
     let host = state.lock().unwrap();
     let app_root = host.paths.root.display().to_string();
@@ -773,7 +836,7 @@ fn task_local_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
 ///
 /// 校验顺序：绝对路径 → 仓库/DSH/应用数据根边界 → 创建目录 → 再次校验真实落点
 /// → 一次性写入探针（写完即删）→ 原子替换设置文件。任一步失败都不写入设置。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_set_artifact_root(
     state: State<'_, SharedHost>,
     path: String,
@@ -794,7 +857,7 @@ fn task_set_artifact_root(
 ///
 /// 不拼接 shell 命令：只执行固定的 `xdg-open` / `gio open`，目录作为单独参数传入，
 /// 且必须通过与保存同一条边界校验。找不到可用的打开器时如实返回错误。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let config_dir = {
         let host = state.lock().unwrap();
@@ -835,7 +898,7 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
 /// 宿主不拼接 shell、不读不写不打印任何凭证；只把设置界面拉起来，
 /// 并把 `DSH_HOME` 指向**引擎正在用的那份** DSH 数据根——否则用户在那里登记的模型配置
 /// 落在另一处，OmniDesk 读不到（这正是实测到的问题）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_open_dsh_settings(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let app_root = {
         let host = state.lock().unwrap();
@@ -895,7 +958,7 @@ async fn task_list_model_routes(app: tauri::AppHandle) -> Result<serde_json::Val
 ///
 /// 只写 OmniDesk 数据根下的那一个文件（只含非机密字段），**不碰用户的 DSH Profile**；
 /// key 仍由共享凭据服务按 provider 的 `apiKeyEnv` 提供。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_set_model_route(
     state: State<'_, SharedHost>,
     source_profile: String,
@@ -909,14 +972,48 @@ fn task_set_model_route(
     };
     let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
     let overlay = model_routes::overlay_path(&app_root);
-    let written = model_routes::select_route(
-        &config,
-        &overlay,
-        &source_profile,
-        &provider,
-        &model,
-        reasoning_effort.as_deref(),
-    )?;
+    // OD-ARCH-048：web-api 通道的模型目录按 provider 列模型，provider 未必定义在
+    // 引擎 Profile 里（它可能来自共享凭据层的另一个 Profile）。先试指定 Profile，
+    // 只有「该 Profile 没有这个 provider」时才依次尝试其余已知 Profile；
+    // 其它错误原样返回，不做猜测性回退。
+    let mut candidates = vec![source_profile.clone()];
+    for profile in model_routes::discover_profiles(&config.dsh_home, &config.profile) {
+        if !candidates.contains(&profile) {
+            candidates.push(profile);
+        }
+    }
+    let mut written = None;
+    let mut last_error = String::new();
+    for candidate in &candidates {
+        match model_routes::select_route(
+            &config,
+            &overlay,
+            candidate,
+            &provider,
+            &model,
+            reasoning_effort.as_deref(),
+        ) {
+            Ok(value) => {
+                written = Some(value);
+                break;
+            }
+            Err(message) => {
+                let provider_missing = message.contains("没有这个 provider")
+                    || message.contains("provider_not_found");
+                if !provider_missing {
+                    return Err(message);
+                }
+                last_error = message;
+            }
+        }
+    }
+    let written = written.ok_or_else(|| {
+        if last_error.is_empty() {
+            "没有可写入该模型的 Profile。".to_string()
+        } else {
+            format!("{}（已尝试 Profile：{}）", last_error, candidates.join(", "))
+        }
+    })?;
 
     // 引擎已在跑时旧路由仍在生效：先停掉它，下次任务会按新覆盖文件重启。
     let lifecycle = {
@@ -951,7 +1048,7 @@ fn task_set_model_route(
 /// 读取（必要时首次创建）离线流程包。
 ///
 /// 不创建模型会话、不启动引擎；只读一个仓库外的纯文本 JSON。
-#[tauri::command]
+#[tauri::command(async)]
 fn offline_flow_pack(state: State<'_, SharedHost>) -> serde_json::Value {
     let config = {
         let host = state.lock().unwrap();
@@ -980,7 +1077,7 @@ fn offline_flow_pack(state: State<'_, SharedHost>) -> serde_json::Value {
 /// 目录取「本地数据根」（与产物落点同一处，边界校验完全一致，界面阶段 5 已展示该路径），
 /// 因此不引入用户看不见的新目录。引擎要求工作目录已存在且可解析，这是调用引擎前的必要一步；
 /// 只创建空目录本身，不写入内容，也不新增任何下发给引擎的环境变量。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_prepare_workspace_dir(state: State<'_, SharedHost>) -> Result<serde_json::Value, serde_json::Value> {
     // 先准入、后创建目录：拒绝时不得有任何文件系统副作用。
     // OD-ARCH-023：准入与目录创建在生命周期守卫内完成，权限变更无法插入。
@@ -1015,7 +1112,7 @@ fn prepare_workspace_dir() -> Result<serde_json::Value, serde_json::Value> {
 ///
 /// 先过统一输入闸门：命中红线扫描时不返回统计结果（与解释提示词、保存入口同一道闸门）。
 /// 扫描为启发式，仅降低误贴概率，不构成合规判断或完整个人信息检测。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_run_analysis(input_text: String) -> serde_json::Value {
     let hits = task_shell::red_line_scan(&input_text);
     match task_shell::analyze_input(&input_text) {
@@ -1035,7 +1132,7 @@ fn task_run_analysis(input_text: String) -> serde_json::Value {
 }
 
 /// 构造模型解释提示词。内含**冻结统计块**，并在本地复核指纹。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_explanation_prompt(
     task_type: String,
     input_text: String,
@@ -1046,14 +1143,14 @@ fn task_explanation_prompt(
 }
 
 /// 保存产物到仓库外本地数据目录（不覆盖已有文件）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_save_artifact(request: SaveArtifactRequest) -> Result<serde_json::Value, String> {
     let now = task_shell::now_secs();
     task_shell::save_artifact(&request, now).map(|receipt| serde_json::json!(receipt))
 }
 
 /// 追加一条轻量使用记录（不含输入输出、不含自由文本）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_usage_record(
     state: State<'_, SharedHost>,
     input: UsageRecordInput,
@@ -1068,7 +1165,7 @@ fn task_usage_record(
 }
 
 /// 查看使用记录（本地可读、可删）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_usage_view(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let path = {
         let host = state.lock().unwrap();
@@ -1078,7 +1175,7 @@ fn task_usage_view(state: State<'_, SharedHost>) -> Result<serde_json::Value, St
 }
 
 /// 删除单条使用记录。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_usage_delete(state: State<'_, SharedHost>, record_id: String) -> Result<serde_json::Value, String> {
     let path = {
         let host = state.lock().unwrap();
@@ -1089,7 +1186,7 @@ fn task_usage_delete(state: State<'_, SharedHost>, record_id: String) -> Result<
 }
 
 /// 清空全部使用记录。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_usage_clear(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let path = {
         let host = state.lock().unwrap();
@@ -1106,7 +1203,7 @@ fn task_usage_clear(state: State<'_, SharedHost>) -> Result<serde_json::Value, S
 // ---------------------------------------------------------------------------
 
 /// 编译期嵌入的纯虚拟流程样例。
-#[tauri::command]
+#[tauri::command(async)]
 fn workflow_samples() -> serde_json::Value {
     serde_json::json!({
         "samples": [
@@ -1151,7 +1248,7 @@ fn pack_refusal(message: String) -> serde_json::Value {
 }
 
 /// 周记录 → 周报（本地确定性汇总）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_weekly_summary(state: State<'_, SharedHost>, input_text: String) -> serde_json::Value {
     let loaded = match current_flow_pack(&state) {
         Ok(loaded) => loaded,
@@ -1163,7 +1260,7 @@ fn task_weekly_summary(state: State<'_, SharedHost>, input_text: String) -> serd
 }
 
 /// 一般文案 → 结构建议（缺信息时只列待确认，不强行套模板）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_writing_plan(
     state: State<'_, SharedHost>,
     purpose: String,
@@ -1188,7 +1285,7 @@ fn task_writing_plan(
 }
 
 /// 项目跟进 → 汇总（含逾期判定；today 留空用 UTC 当天）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_project_summary(
     state: State<'_, SharedHost>,
     input_text: String,
@@ -1207,14 +1304,14 @@ fn task_project_summary(
 }
 
 /// 保存离线场景成果（不覆盖已有文件，必须人工确认）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_save_offline(request: task_shell::SaveOfflineRequest) -> Result<serde_json::Value, String> {
     task_shell::save_offline_artifact(&request, task_shell::now_secs())
         .map(|receipt| serde_json::json!(receipt))
 }
 
 /// 列出已保存的离线成果（只读元数据，仓库外数据根）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_list_offline_artifacts(
     include_subdirs: Option<bool>,
 ) -> Result<serde_json::Value, String> {
@@ -1223,7 +1320,7 @@ fn task_list_offline_artifacts(
 }
 
 /// 重新打开一条已保存的离线成果（只读，不修改原文件）。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_read_offline_artifact(file_name: String) -> Result<serde_json::Value, String> {
     task_shell::read_offline_artifact(&file_name)
         .map(|item| serde_json::json!(item))
@@ -1233,7 +1330,7 @@ fn task_read_offline_artifact(file_name: String) -> Result<serde_json::Value, St
 ///
 /// 一次一个文件，不列目录、不递归、不解析数据库；绝对路径、普通文件、
 /// 扩展名白名单、大小上限与 UTF-8 全部由 task_shell::read_material 强制。
-#[tauri::command]
+#[tauri::command(async)]
 fn task_read_material(path: String) -> Result<serde_json::Value, String> {
     task_shell::read_material(&path).map(|item| serde_json::json!(item))
 }
@@ -1258,7 +1355,7 @@ fn pending_write_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
 }
 
 /// 登记一条待确认写操作。只有模型 / 定时来源可以登记；人工保存不走这里。
-#[tauri::command]
+#[tauri::command(async)]
 fn pending_write_create(
     state: State<'_, SharedHost>,
     request: pending_writes::CreatePendingWrite,
@@ -1270,7 +1367,7 @@ fn pending_write_create(
 }
 
 /// 列出待确认记录（新的在前）。损坏的记录只计数，不伪造内容。
-#[tauri::command]
+#[tauri::command(async)]
 fn pending_write_list(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let dir = pending_write_dir(&state);
     let now = task_shell::now_secs();
@@ -1281,7 +1378,7 @@ fn pending_write_list(state: State<'_, SharedHost>) -> Result<serde_json::Value,
 }
 
 /// 用户确认后执行写入：记录 → 校验 → 落盘 → 标记已消费。
-#[tauri::command]
+#[tauri::command(async)]
 fn pending_write_confirm(
     state: State<'_, SharedHost>,
     id: String,
@@ -1310,7 +1407,7 @@ fn pending_write_confirm(
 }
 
 /// 放弃一条待确认写操作：只改记录状态，不产生任何成果文件。
-#[tauri::command]
+#[tauri::command(async)]
 fn pending_write_reject(
     state: State<'_, SharedHost>,
     id: String,
@@ -1340,14 +1437,14 @@ fn scheduler_payload(config: &scheduler::SchedulerConfig) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_config_get(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let dir = scheduler_config_dir(&state);
     scheduler::load(&dir).map(|config| scheduler_payload(&config))
 }
 
 /// 保存调度配置。校验失败整次拒绝，不写半份文件；不覆盖用户成果。
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_config_set(
     state: State<'_, SharedHost>,
     config: scheduler::SchedulerConfig,
@@ -1358,7 +1455,7 @@ fn scheduler_config_set(
 }
 
 /// 到点判定：一次返回复盘与心跳两种状态，前端据此决定是否触发。
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_tick(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let dir = scheduler_config_dir(&state);
     let config = scheduler::load(&dir)?;
@@ -1373,7 +1470,7 @@ fn scheduler_tick(state: State<'_, SharedHost>) -> Result<serde_json::Value, Str
 }
 
 /// 记录一次复盘的实际执行时间（用于“错过只补跑一次”与去重）。
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_mark_reviewed(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let dir = scheduler_config_dir(&state);
     let mut config = scheduler::load(&dir)?;
@@ -1383,7 +1480,7 @@ fn scheduler_mark_reviewed(state: State<'_, SharedHost>) -> Result<serde_json::V
 }
 
 /// 记录一次心跳的实际执行时间。心跳本身不产生文件。
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_mark_heartbeat(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let dir = scheduler_config_dir(&state);
     let mut config = scheduler::load(&dir)?;
@@ -1393,7 +1490,7 @@ fn scheduler_mark_heartbeat(state: State<'_, SharedHost>) -> Result<serde_json::
 }
 
 /// 心跳扫描：与手动“逾期扫描”共用 project_flow_with，结果必须一致。
-#[tauri::command]
+#[tauri::command(async)]
 fn scheduler_heartbeat_scan(
     state: State<'_, SharedHost>,
     input_text: String,
@@ -1516,6 +1613,7 @@ pub fn run() {
             engine_list_sessions,
             engine_recover_session,
             engine_task_records,
+            engine_list_models,
             engine_recover_task,
             engine_admission_status,
             model_permission_set,
@@ -1691,7 +1789,10 @@ mod host_wrapper_tests {
                 agents_home: self.base.join("agents"),
                 engine_state_dir: self.base.join("app/engine-state"),
                 result_dir: self.base.join("app/engine-state/results"),
+                // 这组用例只验证宿主包装与锁行为：假引擎不接真实 DSH，
+                // 端点分类仍按 ACP Profile + 合成覆盖层跑，保持原有夹具。
                 profile: "acp".to_string(),
+                channel: "acp".to_string(),
                 patch_files: vec![self.base.join("overlay.yml")],
             }
         }
@@ -2319,6 +2420,7 @@ mod engine_lifecycle_wiring_tests {
             "fn engine_list_sessions",
             "fn engine_recover_session",
             "fn engine_task_records",
+            "fn engine_list_models",
             "fn engine_recover_task",
         ] {
             let start = body
@@ -2326,7 +2428,7 @@ mod engine_lifecycle_wiring_tests {
                 .unwrap_or_else(|| panic!("找不到宿主命令 {}", cmd));
             let rest = &body[start..];
             let end = rest[1..]
-                .find("\n#[tauri::command]")
+                .find("\n#[tauri::command")
                 .map(|i| i + 1)
                 .unwrap_or(rest.len());
             assert!(
@@ -2377,7 +2479,7 @@ mod engine_lifecycle_wiring_tests {
                 .unwrap_or_else(|| panic!("找不到宿主命令 {}", cmd));
             let rest = &body[start..];
             let end = rest[1..]
-                .find("\n#[tauri::command]")
+                .find("\n#[tauri::command")
                 .map(|i| i + 1)
                 .unwrap_or(rest.len());
             let segment = &rest[..end];
@@ -2530,6 +2632,73 @@ mod engine_lifecycle_wiring_tests {
         assert!(
             !body.contains("permission_barrier"),
             "旧屏障字段不得残留（并发边界已改由 EngineLifecycle 表达）"
+        );
+    }
+
+    /// 宿主命令一律不得在 Tauri 主线程上等待（OD-ARCH-048 卡死回归）。
+    ///
+    /// Tauri 2 的同步命令（`#[tauri::command]` 直接修饰同步 fn）在 UI 线程执行。
+    /// 本文件几乎所有命令都会取 `SharedHost` 的互斥锁，并可能等引擎冷启动
+    /// （实测可达数十秒）。只要有一条同步命令占住 UI 线程，窗口就无法重绘、
+    /// 场景无法切换，只能强制退出——这正是用户报告的卡死现象。
+    ///
+    /// 因此本测试把“所有命令都标注 `(async)`”固定为不变量：新增命令若漏写，
+    /// 会在此处失败，而不是等到用户端整窗冻结才发现。
+    #[test]
+    fn every_tauri_command_runs_off_the_ui_thread() {
+        let src = include_str!("lib.rs");
+        // 生产代码只到 `run()` 之后第一个测试模块为止；测试模块内的字符串不算。
+        let run_at = src.find("pub fn run()").expect("找不到 run()");
+        let prefix_end = src[run_at..]
+            .find("\n#[cfg(test)]")
+            .map(|i| run_at + i + 1)
+            .unwrap_or(src.len());
+        let production = &src[..prefix_end];
+
+        // 逐行扫描：属性行之后的第一个 `fn` 才是它修饰的函数。
+        // 不能用 `split("\nfn ")` 之类的做法——会跨过下一条命令的属性，
+        // 把别的函数名误配给本条属性
+        // 先剥掉注释行，避免注释里出现的属性样例被当成真实命令。
+        let code: Vec<&str> = production
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect();
+        let mut blocking: Vec<String> = Vec::new();
+        for (index, line) in code.iter().enumerate() {
+            if line.trim() != "#[tauri::command]" {
+                continue;
+            }
+            let signature = code[index + 1..]
+                .iter()
+                .map(|l| l.trim())
+                .find(|l| {
+                    let l = l.trim_start_matches("pub ");
+                    l.starts_with("fn ") || l.starts_with("async fn ")
+                });
+            let Some(signature) = signature else {
+                blocking.push("<unknown>".to_string());
+                continue;
+            };
+            let bare = signature.trim_start_matches("pub ");
+            // 已经是 `async fn` 的命令本来就跑在异步运行时上，无需属性标注。
+            if bare.starts_with("async fn ") {
+                continue;
+            }
+            blocking.push(
+                bare.trim_start_matches("fn ")
+                    .split('(')
+                    .next()
+                    .unwrap_or("<unknown>")
+                    .trim()
+                    .to_string(),
+            );
+        }
+
+        assert!(
+            blocking.is_empty(),
+            "以下命令仍是同步命令，会占用 UI 线程并导致整窗卡死：{:?}。\
+             请改为 #[tauri::command(async)]（同步函数体保持不变即可）。",
+            blocking
         );
     }
 }

@@ -53,6 +53,8 @@ fn base_config() -> EngineConfig {
         agents_home: home().join("OmniDesk").join("runtime").join("agents-home"),
         engine_state_dir: app_root.join("engine-state"),
         result_dir: app_root.join("engine-state").join("results"),
+        // OD-ARCH-048：宿主集成测试使用假引擎，通道沿用 ACP 夹具。
+        channel: "acp".to_string(),
         // 这里只是假引擎的占位配置（不起真实 DSH、不接 ACP），对行为无影响。
         // 真实默认值为 `acp`，见 engine_supervisor.rs 默认值及 OD-BUILD-003 回归场景 R1/R1b。
         profile: "acp".to_string(),

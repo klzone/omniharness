@@ -63,6 +63,8 @@ pub fn classify(config: &EngineConfig) -> Result<RouteFacts, String> {
         "dshCli": config.dsh_cli.display().to_string(),
         "dshHome": config.dsh_home.display().to_string(),
         "profile": config.profile,
+        // OD-ARCH-048：通道决定实际生效的路由条目（web-api → agent-default-model）。
+        "channel": config.channel,
         "patches": config.patch_files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
     })
     .to_string();

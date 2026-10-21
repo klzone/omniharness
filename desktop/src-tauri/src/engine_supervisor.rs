@@ -4,7 +4,7 @@
 //! 引擎**不是**系统级常驻服务，只由本宿主按需拉起（契约 §1.1）。
 //!
 //! 边界：
-//!   * 不修改、不复制 DSH Runtime；引擎只走 DSH 的公开 CLI（--profile acp）。
+//!   * 不修改、不复制 DSH Runtime；引擎只走 DSH 的公开 CLI。
 //!   * 隔离数据根由宿主**显式下发**，不从环境猜测。
 //!   * 不读取、不打印、不落盘任何凭证。
 
@@ -33,9 +33,14 @@ pub struct EngineConfig {
     pub engine_state_dir: PathBuf,
     /// 结果落盘目录。
     pub result_dir: PathBuf,
-    /// 引擎子进程使用的隔离 Profile 名（默认 `acp`，即该子进程始终只讲 ACP）。
-    /// 注意：这与 Web UI 的 Profile（`scripts/omnidesk-dev.sh` 的 `yvan-work`）是两件事。
+    /// 引擎子进程使用的隔离 Profile 名。
+    ///
+    /// 默认值随通道而定（web-api → `web`，acp → `acp`）。注意这与 Web UI 的
+    /// Profile（`scripts/omnidesk-dev.sh` 的 `yvan-work`）是两件事。
     pub profile: String,
+    /// 对话通道：`web-api`（DSH 本地 Web API，逐字流式）或 `acp`（窄接口，保留回退）。
+    /// OD-ARCH-048：默认 web-api；用户可通过 `OMNIDESK_ENGINE_CHANNEL=acp` 一键切回。
+    pub channel: String,
     /// 额外 Profile 补丁（绝对路径，可为空）。
     pub patch_files: Vec<PathBuf>,
 }
@@ -50,7 +55,8 @@ impl EngineConfig {
     ///   OMNIDESK_DSH_HOME          隔离 DSH_HOME，默认 $HOME/OmniDesk/runtime/dsh-home
     ///   OMNIDESK_AGENTS_HOME       隔离 agents，默认 $HOME/OmniDesk/runtime/agents-home
     ///   OMNIDESK_ENGINE_STATE_DIR  引擎状态目录，默认 <app root>/engine-state
-    ///   OMNIDESK_DSH_PROFILE       Profile 名，默认 acp
+    ///   OMNIDESK_ENGINE_CHANNEL    对话通道：web-api（默认）或 acp
+    ///   OMNIDESK_DSH_PROFILE       Profile 名，默认随通道（web-api→web，acp→acp）
     ///   OMNIDESK_DSH_PATCHES       逗号分隔的补丁绝对路径
     pub fn from_env(app_root: &Path) -> Result<Self, String> {
         let repo_root = Self::repo_root();
@@ -89,11 +95,22 @@ impl EngineConfig {
         let engine_state_dir = env_path("OMNIDESK_ENGINE_STATE_DIR")
             .unwrap_or_else(|| app_root.join("engine-state"));
 
-        // 默认 Profile 必须与引擎子进程的协议对齐：本子进程始终只讲 ACP，而仓库内
-        // profiles/yvan-work 打包的是 Web bundle（不产生 ACP 会话）。Web UI 的 Profile 由
-        // scripts/omnidesk-dev.sh 独立控制，两者不是同一个用途。`acp` 是 DSH 内置模板，
-        // 首次使用时会自动初始化（dsh-base + dsh-acp-app），无需仓库另存 Profile 模板。
-        let profile = env_or("OMNIDESK_DSH_PROFILE", "acp");
+        // 通道决定 Profile 默认值；两者必须对齐，否则会出现「通道说 web-api、Profile 却是
+        // acp」的错配（DSH 会以 acp app 启动，没有本地 Web API）。
+        //   * web-api → DSH 内置 `web` 模板（launcher 直接起 web app，自带 HTTP+WS API）
+        //   * acp     → DSH 内置 `acp` 模板（dsh-base + dsh-acp-app，窄接口）
+        // 仓库内 profiles/yvan-work 是 Web UI 用的 Profile，两者不是同一个用途。
+        let channel = env_or("OMNIDESK_ENGINE_CHANNEL", "web-api");
+        if channel != "web-api" && channel != "acp" {
+            return Err(format!(
+                "OMNIDESK_ENGINE_CHANNEL 只支持 web-api 或 acp，收到：{}",
+                channel
+            ));
+        }
+        let profile = env_or(
+            "OMNIDESK_DSH_PROFILE",
+            if channel == "web-api" { "web" } else { "acp" },
+        );
         let mut patch_files = std::env::var("OMNIDESK_DSH_PATCHES")
             .ok()
             .map(|raw| {
@@ -121,6 +138,7 @@ impl EngineConfig {
             result_dir: engine_state_dir.join("results"),
             engine_state_dir,
             profile,
+            channel,
             patch_files,
         };
         config.validate()?;
@@ -183,6 +201,7 @@ impl EngineConfig {
             ("OMNIDESK_AGENTS_HOME".to_string(), self.agents_home.display().to_string()),
             ("OMNIDESK_DSH_CLI".to_string(), self.dsh_cli.display().to_string()),
             ("OMNIDESK_DSH_PROFILE".to_string(), self.profile.clone()),
+            ("OMNIDESK_ENGINE_CHANNEL".to_string(), self.channel.clone()),
             (
                 "OMNIDESK_ENGINE_STATE_DIR".to_string(),
                 self.engine_state_dir.display().to_string(),
@@ -199,6 +218,7 @@ impl EngineConfig {
             "result_dir": self.result_dir.display().to_string(),
             "dsh": {
                 "cli_entry": self.dsh_cli.display().to_string(),
+                "channel": self.channel,
                 "profile": self.profile,
                 "dsh_home": self.dsh_home.display().to_string(),
                 "agents_home": self.agents_home.display().to_string(),
@@ -231,8 +251,9 @@ mod tests {
     use super::*;
 
     /// 本测试模块读写的环境变量（用于结束后还原，避免影响同进程的其它测试）。
-    const OWNED_ENV_KEYS: [&str; 6] = [
+    const OWNED_ENV_KEYS: [&str; 7] = [
         "OMNIDESK_DSH_PROFILE",
+        "OMNIDESK_ENGINE_CHANNEL",
         "OMNIDESK_DSH_PATCHES",
         "OMNIDESK_ENGINE_DIR",
         "OMNIDESK_DSH_CLI",
@@ -318,7 +339,8 @@ mod tests {
             agents_home: home.join("OmniDesk").join("runtime").join("agents-home"),
             engine_state_dir: app.join("engine-state"),
             result_dir: app.join("engine-state").join("results"),
-            profile: "acp".to_string(),
+            profile: "web".to_string(),
+            channel: "web-api".to_string(),
             patch_files: vec![],
         }
     }
@@ -341,39 +363,53 @@ mod tests {
         assert!(!supervisor.is_running());
     }
 
-    /// OD-BUILD-004 回归（**直接构造宿主配置**）：不设置 `OMNIDESK_DSH_PROFILE` 时，
-    /// `EngineConfig::from_env()` 解析出的 Profile 必须为 `acp`，并且 `child_env()` 与
-    /// `initialize_params()` 都把该值传给子进程——即宿主默认链本身就是 ACP，
-    /// **不依赖任何调用方手工注入 acp**。
+    /// OD-ARCH-048 回归（原 OD-BUILD-004 口径已随计划更新）：不设置
+    /// `OMNIDESK_ENGINE_CHANNEL` / `OMNIDESK_DSH_PROFILE` 时，默认通道必须是
+    /// `web-api`、Profile 必须是 `web`，并且 `child_env()` 与 `initialize_params()`
+    /// 都把两者传给子进程。显式设 `OMNIDESK_ENGINE_CHANNEL=acp` 时切回 ACP 与 `acp` Profile。
     ///
     /// 环境变量争用：本模块只有这一个测试改动 `OWNED_ENV_KEYS`，且不触碰被其它测试模块读取的
     /// `HOME` / `OMNIDESK_REPO_ROOT` / `OMNIDESK_LOCAL_DATA_ROOT`；因此可与并行测试共存。
     /// 测试结束后按快照还原，避免污染同进程的其它测试。
     #[test]
-    fn engine_config_default_profile_chain_is_acp() {
+    fn engine_config_default_channel_is_web_api() {
         let snapshot = owned_env_snapshot();
         let fixture = ConfigFixture::new("default");
         fixture.apply_to_env();
         // 前置条件：宿主（或测试宿主的外层 shell）不得已经设过 Profile；
-        // 这正是「宿主不设置该变量」的场景，与 R1 那种「脚本硬塞 acp」不是一回事。
         std::env::remove_var("OMNIDESK_DSH_PROFILE");
+        std::env::remove_var("OMNIDESK_ENGINE_CHANNEL");
         std::env::remove_var("OMNIDESK_DSH_PATCHES");
 
         let default_config =
             EngineConfig::from_env(&fixture.app_root()).expect("默认配置应能解析通过");
         assert_eq!(
-            default_config.profile, "acp",
-            "不设 OMNIDESK_DSH_PROFILE 时默认 Profile 必须是 acp"
+            default_config.channel, "web-api",
+            "不设 OMNIDESK_ENGINE_CHANNEL 时默认通道必须是 web-api"
+        );
+        assert_eq!(
+            default_config.profile, "web",
+            "web-api 通道的默认 Profile 是 web"
+        );
+        assert_eq!(
+            child_env_value(&default_config, "OMNIDESK_ENGINE_CHANNEL").as_deref(),
+            Some("web-api"),
+            "child_env() 必须把默认通道传给引擎子进程"
         );
         assert_eq!(
             child_env_value(&default_config, "OMNIDESK_DSH_PROFILE").as_deref(),
-            Some("acp"),
+            Some("web"),
             "child_env() 必须把默认 Profile 传给引擎子进程"
         );
         assert_eq!(
             default_config.initialize_params()["dsh"]["profile"],
-            serde_json::json!("acp"),
+            serde_json::json!("web"),
             "initialize_params() 必须把默认 Profile 传给引擎子进程"
+        );
+        assert_eq!(
+            default_config.initialize_params()["dsh"]["channel"],
+            serde_json::json!("web-api"),
+            "initialize_params() 必须把默认通道传给引擎子进程"
         );
         // 默认配置还要真的通过隔离边界校验（否则上面的断言只是解析结果，不代表可用配置）。
         assert!(
@@ -399,10 +435,32 @@ mod tests {
         // 纯空白覆盖不得被当作有效值，否则会把 Profile 名澄成空字符串。
         std::env::set_var("OMNIDESK_DSH_PROFILE", "   ");
         let blank = EngineConfig::from_env(&fixture.app_root()).expect("空白覆盖应回退默认值");
-        assert_eq!(blank.profile, "acp", "空白覆盖应回退到 acp");
+        assert_eq!(blank.profile, "web", "空白覆盖应回退到通道默认值");
         assert_eq!(
             child_env_value(&blank, "OMNIDESK_DSH_PROFILE").as_deref(),
+            Some("web")
+        );
+
+        // 一键切回 ACP（OD-ARCH-048 的回退路径）：通道与 Profile 默认值一起回到 acp。
+        std::env::remove_var("OMNIDESK_DSH_PROFILE");
+        std::env::set_var("OMNIDESK_ENGINE_CHANNEL", "acp");
+        let acp = EngineConfig::from_env(&fixture.app_root()).expect("ACP 通道应能解析通过");
+        assert_eq!(acp.channel, "acp");
+        assert_eq!(acp.profile, "acp", "acp 通道的默认 Profile 是 acp");
+        assert_eq!(
+            acp.initialize_params()["dsh"]["channel"],
+            serde_json::json!("acp")
+        );
+        assert_eq!(
+            child_env_value(&acp, "OMNIDESK_ENGINE_CHANNEL").as_deref(),
             Some("acp")
+        );
+
+        // 非法通道必须报错，不得静默回退（否则用户以为切了通道其实没有）。
+        std::env::set_var("OMNIDESK_ENGINE_CHANNEL", "grpc");
+        assert!(
+            EngineConfig::from_env(&fixture.app_root()).is_err(),
+            "非法通道应报错，而不是猜测"
         );
 
         restore_env(snapshot);
