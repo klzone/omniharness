@@ -1,5 +1,38 @@
 # 当前实施计划
 
+### OD-ARCH-051：UI 合一 + 原生多轮会话 + 纪检 Profile 固化 + 设置页外观统一（待批准→派工，2026-10-21）
+
+> **背景（用户 2026-10-21 口径修正后的定位）：** ①纪检是**一个** profile，周报/文案/项目跟进是它内部三个场景，不是三个 profile；②会话与历史存 OmniDesk 自有数据根、不依赖 DSH（已实现），缺的是接 DSH 原生会话续接（当前每轮新开会话+重放历史）；③旧 DSH 桌面会话导入功能**不存在、本计划不做**，需用户明确要求才立项；④设置页继续用 DSH 原生页面（D-026），仅外观向 OmniDesk 统一。
+
+**目标：** UI 只留一份（合并用户实际使用的 omniharness-ui 版本）；对话不再每轮重放；纪检 profile 以文件形式固化（Skill+插件+默认设置声明）；设置页窗口外观统一。
+
+**影响范围：** `desktop/`（Rust 宿主 + React 前端）、`engine/omnidesk_engine/web_api_adapter.py`、配置文件（纪检 profile 声明 + 场景入口注册）、PLANS/STATUS/REVIEW/GOALS/decisions.md、提交推送（沿用 047/049 一次性授权模式：**用户批准本计划即批准执行中的分批提交与推送**）。不碰 `runtime/`（零差异验收）、不碰凭证/路由、不接真实工作材料。
+
+**批次 1（先行，有依赖顺序）：**
+
+1. **S1 备份与合并 UI**：`omniharness-ui`（HEAD `5ffc710`，71 个未提交文件）先在它自己的仓库分批提交（每批前跑红线扫描 + 文件清单核对，清单附在执行记录中供用户过目；发现疑似真实材料/凭证即停）→ 按 OD-ARCH-026 既定方式（逐文件审查后择取必要前端，不整支强并）合入主仓库 `desktop/` 前端，旧界面文件冻结归档不删除。验收：合并后 `npm run build` 通过、cargo 全量绿、UI 行为与 omniharness-ui 版本一致（三场景入口 + 首页对话中枢骨架）。
+2. **S2 接 DSH 原生会话续接**：web_api_adapter 由「每轮 session/new + 历史重放」改为 DSH Web API 的会话续接（045 第 5 步探针已实测该能力存在）；失败降级为现有行为并记日志，不静默丢轮。验收：多轮对话 token 消耗对比记录（同任务重放版 vs 续接版，合成端点下输入量应显著下降）；对话历史正确性不回退（现有 thread_store 回归全绿）；会话中断恢复行为不回退。
+
+**批次 2（批次 1 验收后）：**
+
+3. **S3 纪检 Profile 固化**：新增一份 profile 声明文件（数据根 `~/OmniDesk/app/profiles/discipline.yml` 或仓库配置目录，位置由 BUILDER 按现有配置加载机制选定并在执行记录中说明），内容：Skill 清单、插件开关、默认设置；周报/文案/项目跟进注册为该 profile 下三个场景入口；预留第二个 profile 的加载位置（只留结构，不实现多 profile 管理界面）。验收：改声明文件、不动代码，场景入口可见变化（新增或隐藏一个场景入口即算证明）；配置加载失败时回退默认行为并明确提示。
+4. **S4 设置页外观统一**：D-026 内嵌 DSH 设置窗口的标题、配色、字体向 OmniDesk 主界面统一；不改 DSH 配置读写逻辑、不改会话令牌处理。验收：真实窗口截图；DSH 配置读写回归测试不回退。
+
+**风险与停止条件：** ①omniharness-ui 合并若发现与主仓库前端结构性冲突（同文件不同骨架），停下报告冲突清单，不自行取舍；②S2 若 DSH 续接接口与 045 探针结论不符（接口漂移），停下报告，不猜内部协议；③S3 profile 声明若需动 Rust 代码才能加载，停下报告（说明为什么文件不够）；④批次 1 验收不过，批次 2 不开工。
+
+**验收总表：** 合并清单已过目并推送到 omniharness-ui 仓库；cargo / tsc / build 全绿；runtime/ 零差异；S2 token 对比数据落盘 audit/；S3 改文件即生效的证据；STATUS.md 执行记录 + REVIEW.md ARCHITECT 复核记录。
+
+**明确不做（本计划）：** 旧 DSH 桌面会话导入；多 profile 管理界面；安装包重打；真实模型端到端（等用户批准端点后按 docs/user-testing-checklist.md 走）。
+
+> **执行状态（BUILDER，2026-10-21）：批次 1 完成，S1 按用户裁决改为窄口径整合。**
+> - **S1 收口：命中停止条件①（结构性冲突）后由用户裁决，按窄口径完成。** `omniharness-ui` HEAD `5ffc710`（10-16）的未提交前端，已被主仓库 `2705148`（10-20「引入桌面 React 前端」）按**同一份 Aetheria OS 设计稿**落地并继续演进到 048/049/050；两边 `App.tsx`（76/161 行）、Dock 场景（4/8 个）、`api.ts`（239/828 行）骨架不同，整支合并会让主仓库丢掉会话、项目、设置、引擎诊断、线程持久化与流式对话。**未改任何前端源码文件，`omniharness-ui` 的 71 个未提交文件保持原状。**
+>   **用户已裁决（2026-10-21）：「按最新的版本来，哪边最新用哪边，如果整合两边也行」→ 以主仓库现版为基线，只整合该分支独有且仍有用的资产。** 实际纳入：`_design/stitch_omnidesk/`（设计稿原件 7 个文件，主仓库 `theme.css` 的令牌注释本就指向这里但目录缺失）、`docs/omnidesk-ui-v2-handoff.md`、`tests/verification/desktop/verify_launcher_identity.sh`、`verify_port_ownership.sh`。未纳入：三个 `host_*_admission.rs`（依赖已被 048 重构掉的 `*_after_admission` 符号，直接复制编译不过；主仓库 `admission_classification.rs` 与 `host_integration.rs::admission_refuses_before_any_process_state_exists` 已覆盖同等能力）、`verify_engine_admission.py`（断言旧常量 `ENDPOINT_ISOLATION_CONFIRMED`，与 021 之后的宿主侧判定口径冲突）、`_preview.html`（临时预览）、`desktop/src/components/Icon.tsx` 等两边逐字一致的文件。因为不再整支合并，`omniharness-ui` 侧的 71 个未提交文件保持原状、未提交。
+> - **S2 实现已在 048 落地，本轮补齐验收要求的对比数据。** 证据：`tests/verification/desktop/verify_resume_token_savings.py` → `tests/verification/desktop/evidence/od-arch-051/s2-token-savings.json`，11/11 通过。
+>   **实测推翻了计划里的假设：** 前端组装层面三轮输入从 252 字符降到 78（省 69%），但**模型实际收到的量反而更大**（续接轮 6488 字符/6 条消息 vs 重放轮 623 字符/2 条消息）——DSH 续接会话时会把会话历史一起送给模型。因此本计划的「合成端点下输入量应显著下降」只在提示词拼装层面成立，**不能表述为节省 token 或节省费用**。
+> - **S3、S4 未开工**，等 ARCHITECT 复核批次 1 后再决定是否开启批次 2。
+> - 未提交、未推送、未打标签；`runtime/` 零差异；全程合成数据 + 一次性数据根。
+
+### OD-ARCH-050
 ### OD-ARCH-050：修「新建任务后模型消失」+「打开 DSH 设置」改为应用内独立窗口（已执行，2026-10-21）
 
 > **执行结果（ARCHITECT，2026-10-21）：用户批准（内嵌 DSH 设置页 + 同意清理旧进程）后执行。**
