@@ -313,6 +313,16 @@ impl EngineBridge {
         )
     }
 
+    /// 模型目录（OD-ARCH-048）：只有 web-api 通道能从 DSH `session/modelCatalog` 直读；
+    /// ACP 通道由引擎返回 `unsupported`，上层据此回退到 Profile 候选列表。
+    pub fn list_models(&mut self, refresh: bool) -> Result<serde_json::Value, serde_json::Value> {
+        self.rpc(
+            "omni.list_models",
+            serde_json::json!({ "refresh": refresh }),
+            Duration::from_secs(60),
+        )
+    }
+
     pub fn stream_events(
         &mut self,
         omni_task_id: &str,
@@ -467,7 +477,8 @@ mod tests {
             agents_home: home.join("OmniDesk").join("runtime").join("agents-home"),
             engine_state_dir: app.join("engine-state"),
             result_dir: app.join("engine-state").join("results"),
-            profile: "acp".to_string(),
+            profile: "web".to_string(),
+            channel: "web-api".to_string(),
             patch_files: vec![],
         }
     }

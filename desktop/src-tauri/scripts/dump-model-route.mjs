@@ -16,7 +16,7 @@
  * 只输出 provider/model、端点、类别和判定依据；不读取、不输出任何凭证。
  *
  * 用法：
- *   node dump-model-route.mjs --dsh-cli <bin.js> --dsh-home <dir> [--profile acp] [--patch <file>]...
+ *   node dump-model-route.mjs --dsh-cli <bin.js> --dsh-home <dir> [--profile acp] [--channel acp|web-api] [--patch <file>]...
  *   node dump-model-route.mjs --self-test
  */
 
@@ -32,13 +32,14 @@ function fail(code, message, basis = []) {
 }
 
 function parseArgs(argv) {
-  const out = { profile: "acp", patches: [], selfTest: false };
+  const out = { profile: "acp", patches: [], selfTest: false, channel: "acp" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--self-test") out.selfTest = true;
     else if (arg === "--dsh-cli") out.dshCli = argv[++i];
     else if (arg === "--dsh-home") out.dshHome = argv[++i];
     else if (arg === "--profile") out.profile = argv[++i];
+    else if (arg === "--channel") out.channel = argv[++i];
     else if (arg === "--patch") out.patches.push(argv[++i]);
     else throw new Error("unknown argument: " + arg);
   }
@@ -152,38 +153,47 @@ function entryConfig(entries, id) {
   return { found: true, config: hits[0].config ?? {}, entry: hits[0] };
 }
 
-function resolveRoute(entries, env = {}) {
-  const acp = entryConfig(entries, "acp");
-  if (!acp.found) return fail("route_missing", "配置中没有 ACP 模型路由");
-  if (acp.conflict) return fail("route_conflict", acp.conflict);
-  const provider = acp.config.provider;
-  const model = acp.config.model;
+function resolveRoute(entries, env = {}, channel = "acp") {
+  // OD-ARCH-048：对话通道不同，实际生效的路由条目也不同——
+  //   acp 通道      → `acp`（dsh-acp 会话的 agentOptions / initialSelection）
+  //   web-api 通道  → `agent-default-model`（web app 不加载 dsh-acp，见
+  //                   @deepseek-ai/dsh-agent-default-model 的 currentSelection 语义）
+  // 只读对应条目；另一条只记录为依据，便于人工核对。
+  const isWeb = channel === "web-api";
+  const routeId = isWeb ? "agent-default-model" : "acp";
+  const routeEntry = entryConfig(entries, routeId);
+  const routeLabel = isWeb ? "Web API（agent-default-model）" : "ACP";
+  if (!routeEntry.found) return fail("route_missing", "配置中没有 " + routeLabel + " 模型路由");
+  if (routeEntry.conflict) return fail("route_conflict", routeEntry.conflict);
+  const provider = routeEntry.config.provider;
+  const model = routeEntry.config.model;
   if (typeof provider !== "string" || provider.trim() === "") {
-    return fail("route_missing", "ACP 路由缺少 provider");
+    return fail("route_missing", routeLabel + " 路由缺少 provider");
   }
   if (typeof model !== "string" || model.trim() === "") {
-    return fail("route_missing", "ACP 路由缺少 model");
+    return fail("route_missing", routeLabel + " 路由缺少 model");
   }
 
-  const basis = ["provider=" + provider, "model=" + model];
+  const basis = ["channel=" + (isWeb ? "web-api" : "acp"), "provider=" + provider, "model=" + model];
   // `acp.provider/model` 才是 ACP 会话实际使用的路由（见 dsh 源码
   // packages/acp/acp/src/index.ts：agentOptions / initialSelection）。
   // `agent-default-model` 只服务没有显式选择的 Agent，两者不同不构成冲突；
   // 这里仅把它记录为依据，便于人工核对。
-  const defaultRoute = entryConfig(entries, "agent-default-model");
-  if (defaultRoute.conflict) {
-    basis.push("agent-default-model 配置重复，已忽略");
-  } else if (defaultRoute.found) {
-    const otherProvider = defaultRoute.config.provider;
-    const otherModel = defaultRoute.config.model;
+  const otherId = isWeb ? "acp" : "agent-default-model";
+  const otherRoute = entryConfig(entries, otherId);
+  if (otherRoute.conflict) {
+    basis.push(otherId + " 配置重复，已忽略");
+  } else if (otherRoute.found) {
+    const otherProvider = otherRoute.config.provider;
+    const otherModel = otherRoute.config.model;
     if (typeof otherProvider === "string" && otherProvider.trim() !== "") {
-      basis.push("agent-default-model=" + otherProvider + "/" + String(otherModel ?? "?"));
+      basis.push(otherId + "=" + otherProvider + "/" + String(otherModel ?? "?"));
     }
   }
   let endpoint;
   if (provider === "deepseek-official") {
-    if (typeof acp.config.baseURL === "string" && acp.config.baseURL.trim() !== "") {
-      endpoint = acp.config.baseURL;
+    if (typeof routeEntry.config.baseURL === "string" && routeEntry.config.baseURL.trim() !== "") {
+      endpoint = routeEntry.config.baseURL;
       basis.push("端点为 Profile 配置的 baseURL");
     } else if (typeof env.DEEPSEEK_BASE_URL === "string" && env.DEEPSEEK_BASE_URL.trim() !== "") {
       endpoint = env.DEEPSEEK_BASE_URL;
@@ -352,6 +362,41 @@ function selfTest() {
     actual: duplicated.ok,
     pass: duplicated.ok === false,
   });
+  // OD-ARCH-048：web-api 通道读 `agent-default-model`（web app 不加载 dsh-acp）。
+  const webOnly = resolveRoute(
+    [
+      { id: "agent-default-model", config: { provider: "fake", model: "synthetic-model" } },
+      {
+        id: "llm-pi-ai",
+        config: { providers: { fake: { baseURL: "http://127.0.0.1:9/v1" } } },
+      },
+    ],
+    {},
+    "web-api",
+  );
+  results.push({
+    case: "web-api 通道无 acp 条目时读 agent-default-model",
+    expected: "local",
+    actual: webOnly.route?.category ?? webOnly.error?.code,
+    pass:
+      webOnly.ok === true &&
+      webOnly.route.category === "local" &&
+      webOnly.route.provider === "fake",
+  });
+  const webMissing = resolveRoute(entries, {}, "web-api");
+  results.push({
+    case: "web-api 通道缺少 agent-default-model 时拒绝",
+    expected: "route_missing",
+    actual: webMissing.error?.code,
+    pass: webMissing.ok === false && webMissing.error.code === "route_missing",
+  });
+  const acpOnly = resolveRoute(entries, {}, "acp");
+  results.push({
+    case: "acp 通道仍读 acp 条目",
+    expected: "local",
+    actual: acpOnly.route?.category ?? acpOnly.error?.code,
+    pass: acpOnly.ok === true && acpOnly.route.category === "local",
+  });
   // OD-ARCH-022：私有地址不等于单位网络。类别只能说明地址范围，说明文字
   // 不得出现“单位内部/组织内部”之类的归属断言，并必须显式声明不代表所属组织。
   const privateCases = ["http://192.168.1.20:8000/v1", "http://10.1.2.3/v1", "http://model.local/v1"];
@@ -390,6 +435,7 @@ function main() {
     if (parsed.dshCli) argv.push("--dsh-cli", String(parsed.dshCli));
     if (parsed.dshHome) argv.push("--dsh-home", String(parsed.dshHome));
     if (parsed.profile) argv.push("--profile", String(parsed.profile));
+    if (parsed.channel) argv.push("--channel", String(parsed.channel));
     for (const patch of Array.isArray(parsed.patches) ? parsed.patches : []) {
       argv.push("--patch", String(patch));
     }
@@ -409,7 +455,7 @@ function main() {
     };
     const text = dumpConfig({ ...args, env });
     const entries = parseDump(text, args.dshCli);
-    const result = resolveRoute(entries, env);
+    const result = resolveRoute(entries, env, args.channel);
     process.stdout.write(JSON.stringify(result) + "\n");
     process.exit(result.ok ? 0 : 3);
   } catch (error) {

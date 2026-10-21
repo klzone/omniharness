@@ -36,13 +36,25 @@ fn temp_root(tag: &str) -> PathBuf {
 }
 
 fn overlay(base: &Path, provider: &str, base_url: Option<&str>) -> PathBuf {
-    let mut lines = vec![
-        "- id: acp".to_string(),
-        "  name: \"@deepseek-ai/dsh-acp\"".to_string(),
-        "  config:".to_string(),
-        format!("    provider: {}", provider),
-        "    model: synthetic-model".to_string(),
-    ];
+    // OD-ARCH-048：宿主默认通道是 web-api，实际生效路由条目为
+    // `agent-default-model`（web app 不加载 dsh-acp）。夹具同时声明两条同源
+    // 路由，使两种通道都指向同一端点；只写 acp 会落到 DSH 内置 DeepSeek
+    // 默认路由，测不到夹具意图。
+    // 条目的 plugin name 必须与 id 匹配，否则 DSH 只打印 "name mismatch ... skipping"
+    // 并静默回落到内置 DeepSeek 默认路由（OD-ARCH-048 实测）。
+    let mut lines = Vec::new();
+    for (id, name) in [
+        ("acp", "@deepseek-ai/dsh-acp"),
+        ("agent-default-model", "@deepseek-ai/dsh-agent-default-model"),
+    ] {
+        lines.extend([
+            format!("- id: {}", id),
+            format!("  name: \"{}\"", name),
+            "  config:".to_string(),
+            format!("    provider: {}", provider),
+            "    model: synthetic-model".to_string(),
+        ]);
+    }
     if let Some(url) = base_url {
         lines.extend([
             "- id: llm-pi-ai".to_string(),
@@ -72,6 +84,8 @@ fn config(base: &Path, patch: PathBuf) -> EngineConfig {
         agents_home: base.join("agents"),
         engine_state_dir: base.join("state"),
         result_dir: base.join("state/results"),
+        // OD-ARCH-048：该夹具只测端点分类，通道与宿主默认一致（web-api）。
+        channel: "web-api".to_string(),
         profile: "acp".to_string(),
         patch_files: vec![patch],
     }
