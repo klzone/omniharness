@@ -1,0 +1,64 @@
+{
+  "plan": "OD-ARCH-052 第 2 步",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
+  "display": ":96",
+  "rounds": {
+    "cold": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-052/shots/01-cold.png",
+      "band": "47b13c51ba3a2e39",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true,
+      "decl_path": "/tmp/od052-hint/app-data/profiles/discipline.yml"
+    },
+    "modified_live": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-052/shots/02-modified-live.png",
+      "band": "0c38a19d3e0881db",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true
+    },
+    "missing_live": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-052/shots/03-deleted-live.png",
+      "band": "6a257f38bae4b6e1",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true
+    },
+    "after_restart": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-052/shots/04-after-restart.png",
+      "band": "47b13c51ba3a2e39",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true
+    }
+  },
+  "checks": {
+    "hint_appears_after_edit": true,
+    "user_edit_not_overwritten": true,
+    "hint_changes_when_file_deleted": true,
+    "delete_is_not_hot_reloaded": true,
+    "hint_cleared_after_restart": true,
+    "missing_recreated_on_launch": true
+  },
+  "notes": [
+    "提示条判定 = 顶部横带像素指纹变化 + 人工看截图确认文案；脚本不做 OCR。",
+    "Dock 入口是否变化由截图人工比对（第 2 轮应保持启动时入口）。"
+  ]
+}
