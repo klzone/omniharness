@@ -1,5 +1,50 @@
 # BUILDER 执行状态
 
+## OD-ARCH-050：模型消失修复 + 应用内 DSH 设置窗口 + 跟随 DSH 默认模型（2026-10-21，已执行）
+
+- 开工 HEAD `2e4e5e4`（049 之后、未推送）；ARCHITECT 直接执行。
+- 未改 `runtime/`（`git status --porcelain runtime/` 为空）；未碰 `~/.dsh`、`~/.agents`；未提交、未推送、未打标签。
+- 已按用户同意停掉旧版本遗留的 `dsh web`（pid 491674，占 127.0.0.1:3080）。只停进程，未动任何数据。
+
+### 根因（两个，互相独立）
+
+1. **引擎「启动后立刻退出」（计划外发现，用户症状的直接原因）：** `web_api_adapter._ensure_started()` 起 DSH 子进程时没有收回 stdin，DSH 继承了引擎的协议管道；Node 起 stdin 流时把这份**共享的打开文件描述**设为非阻塞（`os.get_blocking(0)` 从 True 变 False），引擎的 `for line in sys.stdin` 随后读到假 EOF，`run()` 正常返回 0、无 traceback。于是：模型目录调用一开始 → 引擎就没了 → 界面「模型：未识别」。实测证据：stderr 只有 `[omnidesk-engine] starting`，`select` 说 fd0 无数据、`blocking=False`。
+2. **端点事实被引擎启动锁住：** `with_engine_call` 在持有全局 `SharedHost` 锁时执行 `initialize`（最长 90s），而 `engine_admission_status` 为取配置也要这把锁 ⇒ 启动期间读不到事实，界面显示「未识别 / 端点事实还没读出来」。
+
+### 已完成
+
+- **引擎修复：** `web_api_adapter` 的 DSH 子进程加 `stdin=subprocess.DEVNULL`；新增回归单测 `test_dsh_child_stdin_is_devnull`。
+- **事实读取解耦：** 新增 `HostSnapshot`（paths / `Mutex<EngineConfig>` / lifecycle）作为独立 managed state；`engine_admission_status` 只读快照。新增测试 `admission_status_reads_snapshot_without_host_lock`。
+- **DSH 设置窗口：** 新模块 `dsh_settings.rs`（临时端口、`--no-open`、输出打码落日志、复用实例、pid/port 记录、退出清理、按 cmdline 校验再停遗留进程）；`task_open_dsh_settings` 改为 Rust 侧建 `dsh-settings` 窗口（URL 含令牌不经前端）；`on_window_event` 只允许主窗口触发引擎收尾，设置窗口关闭改为发 `omni://dsh-settings-closed` 事件；新增测试 `only_main_window_shutdown_is_wired_to_engine_teardown`。
+- **前端：** 事实三态（读取中/已读到/读失败，刷新保留旧值）；模型选择器显示「读取中…」、「跟随 DSH 设置（推荐）」入口与 DSH 默认说明；设置页新增「改为跟随 DSH 设置」、设置窗口关闭后自动刷新事实；诊断页显示引擎 stderr 尾部（排障用）。
+- **跟随 DSH：** 新命令 `task_clear_model_route`（归档覆盖文件 → 停引擎 → 返回归档路径）；新 `EngineConfig::sync_overlay` 在覆盖文件写入/归档后同步 supervisor 与快照的 patch 列表。
+
+### 测试命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test --offline` | **160 passed / 0 failed**（+2 dsh_settings、+2 源码级不变量） |
+| `cargo test --offline --test thread_store_restart` | 1 passed |
+| `python3 tests/.../test_web_api_unit.py` | **26 passed** |
+| `npx tsc --noEmit` | 0 错误 |
+| `npm run build` | 通过 |
+| `git status --porcelain runtime/` | 空 |
+
+### 真实窗口实测（X11 :0，正式数据根）
+
+- 冷启动 12 秒、顶栏仍 `ENGINE OFFLINE` 时，模型已显示 `agnescn / agnes-3.0-flash`、权限「已开启 · 外部」。
+- 引擎进程持续运行（本次观察 3 分钟以上），不再「启动即退」。
+- 模型下拉显示真实目录：DeepSeek-V4.1-Flash / DeepSeek-V4-Pro / AGNESCN。
+- 「打开 DSH 设置」→ 独立窗口打开 DSH 设置页；再点一次复用同一实例（同端口、仅一个服务进程）。
+- 关闭设置窗口后主应用与引擎均存活；`dsh-settings.log` 中 `token=***`。
+- 点「跟随 DSH 设置」：覆盖文件归档为 `omnidesk-model.yml.bak-1792578256`、引擎停止，界面与日志如实说明；重启后分类器（无覆盖）仍解析为 `agnescn / agnes-3.0-flash · public`。
+
+### 偏差与未验证
+
+- **计划外修复：** stdin 隔离与 `sync_overlay` 不在 050 原计划内，但不修则 050 的目标（模型可用、设置窗口可用）无法达成；均已补单测/回归。
+- **未验证：** 真实模型端到端生成、思考等级在跟随模式下的实际值、设置窗口内改模型后引擎重启的手工端到端（本轮只验证了事实刷新与路由解析）。
+- **回滚：** `~/OmniDesk/app/config/omnidesk-model.yml.bak-1792578256` 是原覆盖文件；恢复即回到显式覆盖模式。
+
 ## OD-ARCH-049：备份提交 + 会话日志版本化 + 终检设计（2026-10-21，已执行）
 
 - 开工 HEAD `15aef4f`；本轮由 ARCHITECT 直接执行（041/042 先例），非 BUILDER 会话。

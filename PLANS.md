@@ -1,5 +1,38 @@
 # 当前实施计划
 
+### OD-ARCH-050：修「新建任务后模型消失」+「打开 DSH 设置」改为应用内独立窗口（已执行，2026-10-21）
+
+> **执行结果（ARCHITECT，2026-10-21）：用户批准（内嵌 DSH 设置页 + 同意清理旧进程）后执行。**
+> **额外发现并修复的根因（计划外，用户当场症状的真正来源）：** 引擎子进程「启动后立刻退出」——`web_api_adapter._ensure_started()` 起 DSH 时没收回 stdin，DSH 继承了引擎的协议管道，Node 把这份共享的「打开文件描述」设为非阻塞，引擎随后 `for line in sys.stdin` 读到假 EOF（rc=0、无栈）安静退出；表现为模型目录永远读不到、引擎一启动就没。修复：`stdin=subprocess.DEVNULL` + 回归单测 `test_dsh_child_stdin_is_devnull`。
+> **S1：** 宿主把 `EngineConfig` 快照放进独立 managed state（`HostSnapshot`），`engine_admission_status` 不再抢 `SharedHost` 锁 ⇒ 引擎冷启动期间也能读到端点事实（实测：应用启动 12 秒、引擎仍 `ENGINE OFFLINE` 时，界面已显示 `agnescn / agnes-3.0-flash`）。
+> **S2：** 前端区分「读取中 / 已读到 / 读失败」，刷新期间保留上次事实；首次加载显示「读取中…」而不是「未识别」；失败时保留旧值并附「可重试」说明。
+> **S3：** 「打开 DSH 设置」改为：复用本进程已起的实例 → 否则 `dsh web --port 0 --no-open`（输出按行打码后落日志）→ Rust 侧建**应用内独立窗口**「DSH 设置」。会话令牌只留宿主内存，日志 `token=***`；窗口不授予任何 IPC/文件能力；关闭窗口**不再**触发引擎收尾（只允许主窗口收尾，新增源码级测试）；退出时停掉自起的设置服务。
+> **S4：** 已停掉 2026-10-20 18:27 起占用 127.0.0.1:3080 的旧 `dsh web`（pid 491674，旧版本按钮遗留），端口已释放。
+> **S5（用户新要求）：** 新增「跟随 DSH 设置（推荐）」——归档 OmniDesk 覆盖文件（改名保留、不删除）+ 停引擎，之后新建任务/重启直接使用 DSH 里配置的 provider 与默认模型，不再要求在本应用重选；覆盖文件存在时仍以用户在本应用里的显式选择为准。修了随之暴露的两个问题：覆盖文件变化后 supervisor/事实快照里的 patch 列表不同步（会导致分类器拿到已不存在的补丁路径而拒绝），新增 `EngineConfig::sync_overlay` 并在写/归档后同步。
+>
+> **验证：** cargo 160 passed / 0 failed（新增 3 个源码级不变量测试 + 2 个 dsh_settings 单测）；`--test thread_store_restart` 1 passed；test_web_api_unit.py **26 passed**（含新增 stdin 隔离回归）；tsc 0；`npm run build` 通过；真实窗口实测：应用启动 12s 模型已知、引擎存活（`omnidesk_engine` 持续运行 3 分钟以上）、模型目录下拉显示 DeepSeek-V4.1-Flash/V4-Pro/AGNESCN、设置窗口独立打开并复用同一实例（同一端口）、关闭设置窗口后引擎仍在、日志无明文 token、`runtime/` 零差异。
+>
+> **未验证/遗留：** 真实模型端到端回答（本轮不接真实端点做生成）；思考等级在「跟随 DSH」下由 DSH 配置决定（原覆盖文件里的 `reasoningEffort: off` 已随归档保留在 `.bak-*`，如需恢复可切回或重新选一次）；`omnidesk-model.yml.bak-1792578256` 留在用户数据根供回滚。
+
+
+
+> **证据（代码事实，非推断）：**
+> - `lib.rs` `with_engine_call` 在持有全局 `SharedHost` 锁时调用 `ensure_initialized`；后者持 supervisor 锁执行 `initialize(Duration::from_secs(90))`（`engine_bridge.rs`）。web-api 通道冷启动要起 DSH web 服务，耗时数十秒。
+> - `engine_admission_status` 为取 `EngineConfig` 需要同一把宿主锁 ⇒ 引擎启动期间该读取一直排队到 init 结束（最长 90s）。前端此时 `facts=null` ⇒ 「模型：未识别」；设置页进入分支 `!facts && !factsError` 直接显示「端点事实还没读出来」（`SettingsPanel.tsx:344`），把「加载中」误报成「读不出来」。用户看到的「几十秒后模型又出现」＝ init 完成、锁释放。
+> - `task_shell::open_dsh_settings` 每次点击都 `spawn node <dsh_cli> web`（固定端口 3080、默认打开系统浏览器）。2026-10-20 18:27 起的旧实例（pid 491674）仍占 3080；之后每次点击在约 70s 后 `EADDRINUSE` 失败，只写 `~/OmniDesk/app/logs/dsh-settings.log`，界面只显示「已启动」，没有任何窗口。日志首行含 `?token=…`（会话令牌，不得外泄）。
+> - 现有 UI 没有「应用内 DSH 设置窗口」；OD-ARCH-031 的设计是「跳系统浏览器」。
+
+1. **S1 端点事实与引擎启动解耦（宿主，P0）：** 宿主启动时固定一份 `EngineConfig` 快照放入独立 managed state；`engine_admission_status` 只读快照 + `config_dir`，**不再取宿主锁**。提交路径的准入与守卫语义一字不改（仍走 `with_engine_call`）。新增源码级不变量测试（该命令内不得出现 `state.lock()`）+ 并发分类单测。
+2. **S2 事实读取 UI 三态（前端，P0）：** HomeChat / SettingsPanel 区分 `loading / ready / error`；刷新期间保留上次事实（显示「正在刷新」），只有首次加载才显示「加载中」；读取加 5s 超时，超时给重试提示但不清空已知事实。模型选择器在目录不可用时仍显示 facts 里的 provider/model，不再退成「未识别」。
+3. **S3「打开 DSH 设置」改为应用内独立窗口（宿主 + 前端，P0）：** 新命令按以下顺序工作——读数据根 `runtime/dsh-settings.json`（pid/port/started_at）→ 进程活着且端口可连则复用 → 否则 `dsh web --port 0 --no-open`（日志落盘前把 `token=` 打码），15s 内解析 `dsh web: http://127.0.0.1:<port>/?token=…` → 由 Rust 侧建 `dsh-settings` 窗口（标题「DSH 设置」）并直接传入 URL（**不经前端、不写日志明文**）。失败返回结构化原因（未启动/超时/端口/日志路径）。窗口不授予任何 IPC 与文件能力；应用退出时停掉自起的设置服务。旧固定 3080 路径移除。
+4. **S4 现状清理（需用户单独同意）：** 停掉 2026-10-20 18:27 起占着 3080 的旧 `dsh web`（pid 491674）——那是旧版本按钮留下的进程；不删任何数据、不动 FSH 数据根。
+
+**验收：** ①冷启动首个任务期间连续 3 次打开设置页，「模型与端点」始终显示 `agnescn / agnes-3.0-flash`、事实读取 ≤1s、不出现「未识别/读不出来」；②点「打开 DSH 设置」≤15s 出现独立窗口并显示 DSH 设置页，关闭再点复用同一实例，重复点击只有 1 个服务进程，日志无明文 token；③失败路径（如 DSH CLI 缺失）给明确错误与日志路径；④`cargo test --offline` 全绿、`tsc` 0、`npm run build` 通过、`runtime/` 零差异。
+
+**风险与停止条件：** 远程页面在 Tauri 窗口里的 CSP/权限行为需实测——若被 app CSP 拦住且无法在不放宽主窗口 CSP 的前提下解决，停下报告，改用「系统浏览器 + 界面给出地址」的降级方案等用户裁定；token 是会话令牌，禁止写入日志/仓库/前端可见区域，解析方式若随 CLI 输出变化则停下报告、不猜。
+
+**需用户裁定：** ①设置页形态＝内嵌 DSH 自有设置页（推荐，复用 DSH 本体、不重复实现）／自研模型提供方设置页（会与 DSH 配置双写，违背 D-024 复用原则）；②是否同意 S4 停掉旧 `dsh web` 进程。
+
 ### OD-ARCH-049：备份提交 + 会话日志版本化 + 终检设计（已执行，2026-10-21）
 
 > **执行结果（ARCHITECT，2026-10-21）：三段按序完成。**
