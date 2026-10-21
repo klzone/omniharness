@@ -1,5 +1,160 @@
 # BUILDER 执行状态
 
+## OD-ARCH-047：045 补复核 + 分批备份提交 + 实测准备（2026-10-21，已执行）
+
+- 开工 HEAD `22e53d3`（`main`），`origin/main` 同为 `22e53d3`（fetch 后无落后、无需合并）。用户本轮明确授权“批准 047（含推送授权）”。
+- 未改 `runtime/`，未碰 `~/.dsh`/`~/.agents`、凭证、模型路由；未打标签。
+
+### 第 1 步：045 补复核材料
+
+- 按 045 六步逐项读源码、重跑定向测试、核对证据文件；结论写入 `REVIEW.md` 顶部（“2026-10-21 独立复核：OD-ARCH-045”）。
+- 关键事实：第 1 步 `thread_store` 8 passed + 重启测试 1 passed；第 2 步 `include_subdirs` 递归与开关确实存在；第 3 步 `engine_submit_task` 确为 `async fn`；第 4 步原“顶层落盘”偏差已由 046 的场景子目录逻辑修正（045 当时截图不改写）；第 5 步 Web API 证据齐全、未验证项保持未验证；第 6 步本轮重跑 165 passed。
+- 未覆盖项如实登记：首页对话仍未接线程存储；思考块/工具事件未验证。
+
+### 第 2 步：分批提交与推送
+
+（提交哈希见下方“提交记录”，推送后回填。）
+
+### 第 3 步：真实模型实测准备
+
+- 只读检查端点现状（读 `~/OmniDesk/app/config/` 的非机密字段，未打开 `~/.credentials.yaml`）：引擎当前生效路由为 `agnescn / agnes-3.0-flash`（`https://api.agnes-ai.cn/v1`，公网类别）；权限为公网开、本机/私有关；成果目录默认 `~/OmniDesk/workspace/artifacts`。
+- 注意：`yvan-work` Profile 里是 `opendesign / deepseek-v4.1-flash`，但引擎优先读 OmniDesk 覆盖文件，因此实际跑 Agnes。此差异写入清单，未擅自改动。
+- 新增 `docs/user-testing-checklist.md`：开权限→选/看端点→周报起草→人工确认保存→定时复盘→确认写卡→排障→使用记录口径，共 9 节。
+
+### 测试与回归（提交前实跑）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | exit 0，0 错误 |
+| `cd desktop && npm run build` | exit 0，built in 705ms |
+| `cargo test --offline --manifest-path desktop/src-tauri/Cargo.toml` | **165 passed / 0 failed**（146 + 0 + 2 + 13 + 3 + 1 + 0），exit 0 |
+| `cargo test --lib thread_store` / `--test thread_store_restart` | 8 passed / 1 passed（045 补复核用） |
+| `cargo fmt` | 未运行（本机无 rustfmt），沿用 046 登记 |
+
+红线扫描：84 个待提交路径内未检出密钥/令牌/个人信息模式；未包含 `credentials`、`target/`、`dist/`、`local-data`、会话目录；两个证据目录合计 7.3M，均为合成数据截图与 JSON。
+
+## OD-ARCH-046：写确认制 / 自动降级 / 定时·心跳 / Agent 式设置页（2026-10-21，BUILDER 执行，待 ARCHITECT 复核）
+
+- 开工 HEAD `22e53d3`（`main`）；**未提交、未推送、未打标签**。未改 `runtime/`，未碰 `~/.dsh`/`~/.agents`、凭证、模型路由。
+- 全部运行验证在仓库外一次性目录 `/tmp/od046-evidence/run`（app-data / dsh-home / local-data 三者分离），端点为本机回环合成端点 `fake / synthetic-model`。
+- 证据索引：`tests/verification/desktop/evidence/od-arch-046/README.md`（13 张截图 + 逐场景判定 + 未验证项）。
+
+### 完成内容
+
+1. **写确认制（宿主强制）**：新增 `pending_writes.rs`。模型/定时发起的写动作先生成待确认记录（`engine-state/pending-writes/<id>.json`，schema `omnidesk.pending-write.v1`，TTL 24h，`create_new` 防覆盖，逐字段校验负载）；确认时校验记录存在、未过期、未消费、负载一致才落盘；来源必须匹配（人工不得携带 pending_id，模型/定时必须携带）。放弃后记录落定为 rejected。
+2. **落盘路径修正 045 偏差**：模型/定时写入落到成果目录的场景子目录（`weekly-report/` 等）；人工在界面上手动的保存仍保持原有顶层行为。
+3. **自动降级**：模型失败/超时/权限关闭时，公告栏显示「AI 暂不可用（原因），已用本地规则结果」并保留本地规则提醒；内容生成类（周报/文案起草）**不降级为模板**，直接报错且不产文件。
+4. **定时与心跳**：新增 `scheduler.rs`（配置 `config/scheduler.v1.json`，schema `omnidesk.scheduler.v1`）。仅应用运行期触发，无常驻线程、无系统定时；心跳只做本地确定性扫描（复用 `task_shell::project_flow_with`），不调模型、不写文件。
+5. **Agent 式设置页**：五张卡片（模型与端点 / 模型权限三档 / 定时与提醒 / 成果目录 / 数据与日志），每卡左标题+状态摘要、右主操作；权限默认关闭语义未变。数据卡内嵌待确认写入面板（刷新键 + 确认后回执）。
+
+### 修改文件
+
+- 新增：`desktop/src-tauri/src/pending_writes.rs`、`desktop/src-tauri/src/scheduler.rs`、`desktop/src/shell/PendingWriteCard.tsx`、`tests/verification/desktop/evidence/od-arch-046/README.md` + `shots/`（13 张）。
+- 修改：`desktop/src-tauri/src/{lib.rs, task_shell.rs}`、`desktop/src/{types.ts, api.ts, SettingsPanel.tsx, offline-flows.css}`、`desktop/src/shell/AnnouncementBar.tsx`、`PLANS.md`、`STATUS.md`。
+- OD-ARCH-045 及更早的未提交改动全部原样保留。
+
+### 测试命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | 0 错误，exit 0 |
+| `cd desktop && npm run build` | 成功（`built in 551ms`），在最后一次代码改动之后运行 |
+| `cargo test --offline --manifest-path desktop/src-tauri/Cargo.toml` | lib **146 passed**；集成 target 2 / 13 / 3 / 1 passed；**合计 165 passed / 0 failed**，exit 0 |
+| `cargo build --offline` | 成功 |
+| `cargo fmt` | **未运行**：本机未安装 rustfmt |
+
+注：cargo 需要设 `PKG_CONFIG_PATH/PKG_CONFIG_SYSROOT_DIR/LIBRARY_PATH` 指向 `/home/kevin/.local/omnidesk-tauri-deps`，否则 `atk` 找不到；命令见证据 README。
+
+### 真实窗口验证（脚本运行，隔离实例）
+
+- 设置页五卡状态与配置文件一致；切换本机模型权限后「当前判定」由「拒绝提交」变「允许提交」，配置真实落盘。
+- 一次性定时（`once_at` 设为约 40 秒后）：前端 30 秒 tick 自动触发，`last_review_at` 由 0 变非 0，生成 `pending` 记录；此时成果目录文件数不变。
+- 点「确认写入」后出现 `local-data/weekly-report/offline-weekly-report-…-015859.md`，记录变 `consumed`，回执显示实际写入路径。
+- 权限全关后人为把 `once_at` 改到过去：多轮 tick 后 `last_review_at` 仍为 0，无新文件、无新待确认记录，公告栏写明「定时复盘未执行：模型权限未开启」。
+- 合成端点退出后：公告栏显示「AI 暂不可用（任务 failed），已用本地规则结果」「复盘未成功（failed），没有写入建议文件」。
+- 权限关闭时在周报页发起起草：显示 `Error.endpoint_unconfirmed`，明示未准备工作目录、未启动引擎、输入未发送；文件数 3 → 3。
+
+### 本轮修复的普通 Bug
+
+1. 待确认面板挂载时列表为空、只在创建时刷新一次 → 增加刷新键，定时 tick 与创建后都刷新。
+2. 确认后记录变 `consumed` 即从列表消失，用户看不到落盘路径 → 增加确认回执快照。
+3. 权限关闭时降级原因误用「地址类别说明」当理由 → 统一改为「模型权限未开启」。
+
+### 未解决问题与限制
+
+1. 调度只在应用运行期间生效，无常驻线程、无系统级定时；「应用长时间挂起后补跑」只在 `once` 场景实测过。
+2. 待确认记录含待写正文，存在应用数据根（仓库外），24h 后失效；「过期后界面提示」只有单测证据，未在窗口制造真实过期记录。
+3. `cargo fmt` 未运行；窗口侧未逐字比对心跳前后规则提醒文本（一致性由单测覆盖）。
+4. 首页对话仍不写线程存储（045 遗留，未在本轮范围）。
+
+### 与 Plan 的冲突 / 偏差
+
+- 无架构、数据模型、依赖、安全机制或产品目标层面的冲突。
+- 实现选择（需 ARCHITECT 确认是否可接受）：定时由「前端运行期定时器 + 宿主判定命令」实现，而非宿主常驻调度；计划原文允许「应用运行期调度器」，与实现一致。
+- 人工手动保存仍落数据根顶层（保持 045 既有行为），只有模型/定时写入落场景子目录。
+
+### 建议 ARCHITECT 下一步关注
+
+1. 复核 `pending_writes.rs` 的来源匹配与负载校验是否足以防止绕过（尤其人工路径与模型路径共用 `save_offline` 命令时的边界）。
+2. 决定是否需要在宿主侧提供「补跑错过的定时」的显式记录，而不是依赖 `last_review_at` 推断。
+3. 决定 `cargo fmt`/clippy 是否纳入 CI 基线（本机无 rustfmt）。
+
+## OD-ARCH-045：功能完善夜间批量任务（2026-10-21，BUILDER 执行，待 ARCHITECT 复核）
+
+- 开工 HEAD `22e53d3`（`main`）；六步按序执行，全部未提交、未推送、未打标签。
+- 未改 `runtime/`、未碰 `~/.dsh`/`~/.agents`、未接真实模型端点、未读取凭证；运行时数据根全部是仓库外一次性目录 `/tmp/od045-evidence/*`，模型端点为回环合成端点 `127.0.0.1:42191`。
+- 证据索引：`tests/verification/desktop/evidence/od-arch-045/README.md`（逐张截图判定、排除项、缺口）。
+
+### 第 1 步：线程持久化到数据根 —— 通过
+
+- 新增 `desktop/src-tauri/src/thread_store.rs`（按项目分目录、原子写、拒绝不安全 id、跳过符号链接与坏文件、改项目即搬移不重复）。
+- `app_paths.rs` 增加 `threads` 目录并在 `ensure()` 建目录；`lib.rs` 暴露存取/列举/删除命令；前端 `sceneThreads.ts` 改为「数据根为准、本地存储降为缓存」，启动从数据根恢复。
+- 验证：`cargo test --offline thread_store` → **8 passed / 0 failed**；`cargo test --offline --test thread_store_restart` → **1 passed / 0 failed**（重建存储后读回同一线程，并断言仓库内无线程文件）。
+- 真实窗口产出：`/tmp/od045-evidence/step6v1/app-data/threads/_unassigned/tmvgntwski9t5.json`（12 条消息 + `engineSessionId`），`git status` 无任何线程记录。
+
+### 第 2 步：成果目录树与「含下级目录」开关 —— 通过
+
+- 宿主 `list_offline_artifacts_with(include_subdirs)` 改为按深度递归列举，带相对路径与目录层级；拒绝 `..` 与越界相对路径，限制深度、跳过符号链接目录；前端三场景页右栏加开关（默认不含）。
+- 同时修两个 bug：场景键 `weekly_report` 与目录 `weekly-report` 不一致；顶部卡片被透明层挡住无法点选。
+- 证据：`shots/02-writing-subdirs-off.png`、`03-writing-subdirs-on.png`、`04-open-nested-artifact.png`、`05-open-nested-artifact-content.png`。
+
+### 第 3 步：首次提交卡顿修复 —— 通过
+
+- `engine_submit_task` 改为异步启动引擎：UI 立即进入「正在启动」并可取消；权限校验保持同步语义。
+- 证据：`shots/25-abort-during-starting.png`（启动期间点 Dock 界面即切换，未冻结）、`26-abort-settled.png`（台账 `state=cancelled`，落定文案「引擎以 stopReason=cancelled 落定」）。
+
+### 第 4 步：AI 复盘建议接通引擎 —— 通过（1 处计划偏差）
+
+- 公告栏「立即复盘」接通引擎，走既有权限三档；权限未开时按钮置灰并说明原因。
+- 脚本运行证据：合成端点收到 1 次 chat completion；台账终态 `succeeded / engine_terminal / end_turn`；建议文件真实落盘 `/tmp/od045-evidence/step4v2/local-data/offline-weekly-report-20261020-175229.md`。
+- 截图：`shots/27-review-bar-weekly.png`、`28-review-running.png`、`29-review-after.png`。
+- **偏差：** 落盘在数据根**顶层**，计划要求「该场景目录」。根因是 `task_shell.rs::save_offline_artifact` 一律写顶层。本步只满足「在数据根、不在仓库」，不满足子目录归属。
+
+### 第 5 步：DSH 自带 Web 应用本地 API 只读验证 —— 通过（2 项未验证）
+
+- 零产品代码改动。隔离实例：`/tmp/od045-evidence/step5v1/{dsh-home,agents}`，profile `omnidesk-web`（由锁定 runtime 的 web 默认模板派生），`--port 3217`，合成 provider 补丁。
+- 脚本运行证实存在：本地 JSON RPC API、启动 token→HttpOnly cookie、`session/modelCatalog`、`session/create`（参数 `{request:{cwd}}`）、`session/prompt`（`accepted:true`）、WebSocket `/api/remote.mux` + `session/follow` 的 token 级 `assistant-stream`、同会话两轮续接（各约 1.45s，均 `turn/end`）、`session/page` 读回（需 follow 快照 cursor 作 `throughSeq`）、`session/cancel`（`turn/end reason.kind=aborted`，19ms 落定）、引擎重启后会话仍在且可续发。
+- 证据：`web-api-probe.md` + `web-api/{turns.json,stream-log3.json,durable-history.json,cancel.json,resume-proof.json,overlay.yml}`（token 未写入任何文件）。
+- **未验证：** 思考块（reasoning delta）流式、工具调用事件（本轮只发纯文本）。
+
+### 第 6 步：整批回归与证据包 —— 通过
+
+- `cargo test --offline` → **154 passed / 0 failed**，exit 0（target 分项 135 / 0 / 2 / 13 / 3 / 1 / 0）。
+- `npx tsc --noEmit` → clean，exit 0；`npm run build` → exit 0，built in 1.12s。
+- 真实窗口收尾截图（数据根 `/tmp/od045-evidence/step6v1`）：`shots/30-final-home.png`、`31-final-weekly.png`、`32-final-copy.png`、`33-final-project.png`，四张均已目视核对。
+- 证据包：`tests/verification/desktop/evidence/od-arch-045/README.md`（含排查过程图 `dbg-*`、`09a/11/20/21/22/23/24-*` 已明确标注不作验收证据）。
+
+### 已登记缺口（本轮不扩范围修复）
+
+1. 首页对话不写线程存储：`HomeCanvas.tsx` 渲染 `HomeChat` 时未传 `onMessagesChange`，首页产生的对话不会落到数据根（场景页与模块页正常）。
+2. 第 4 步复盘成果落在数据根顶层，未按场景分目录。
+3. 第 5 步思考块与工具事件未验证。
+
+### 计划冲突与偏差
+
+- 无架构/数据模型/依赖类冲突；仅上述第 4 步落盘路径偏差，属实现层问题，按规则未自行扩大改动。
+
+
 ## OD-ARCH-044：Dock 悬停提示去重（2026-10-21，ARCHITECT 执行）
 
 - Dock 按钮的 `title`（触发浏览器原生大号提示，与图标右侧小字提示重复）改为 `aria-label`；

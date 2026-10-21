@@ -1,5 +1,18 @@
 # ARCHITECT 审查记录
 
+## 2026-10-21 独立复核：OD-ARCH-045（ARCHITECT，047 第 1 步补做）
+
+- **背景：** 046 复核时只顺带确认了 `thread_store` 测试存在，045 六步没有完整复核记录。本段按 045 原文六条逐项核对，不重复 046 已覆盖的写确认制/调度/降级部分。方式是不采信 STATUS 自述，直接读源码、重跑定向测试、核对证据文件。
+- **第 1 步（线程持久化）：事实成立。** `thread_store.rs` 存在，按项目分目录、原子写、拒绝不安全 id；`app_paths.rs` 有 `threads` 字段；`lib.rs` 挂接 `thread_store_load/save/delete` 三条命令。本轮实跑 `cargo test --lib thread_store` → **8 passed / 0 failed**，`--test thread_store_restart` → **1 passed / 0 failed**。`git status` 中无任何线程记录文件。
+- **第 2 步（成果目录树 + 含下级开关）：事实成立。** `list_offline_artifacts_with(include_subdirs)` 按深度递归、父目录行先于子项；前端 `ScenePage.tsx` 有本开关、默认关闭并读本地偏好；`api.ts` 透传参数。截图 `02/03/04/05` 覆盖开/关两态与嵌套文件打开。
+- **第 3 步（首提卡顿）：事实成立。** `lib.rs` 的 `engine_submit_task` 已是 `async fn`；截图 `25/26` 显示启动期间点 Dock 界面已切换、取消后台账落 `cancelled`。
+- **第 4 步（AI 复盘）：功能成立，原偏差已由 046 修复。** 045 当时建议文件落在数据根顶层（截图与 TEMP 路径可佐证），确实不满足"落该场景目录"；046 的 `task_shell.rs::save_offline_artifact` 已按 `WriteSource::Model | Scheduler` 写入场景子目录（`pending_writes::scenario_dir`），并有 046 证据 README 的落盘路径佐证。**045 当时的截图仍是顶层，历史结论不改写。** 遗留：045 的第 4 步偏差在 045 这一轮本身未修，验收口径以"功能达成 + 偏差已由后续计划修正"记。
+- **第 5 步（DSH Web 本地 API 只读验证）：事实成立。** `web-api-probe.md` 与 `web-api/*.json` 齐全；抽查 `overlay.yml` 为 `fake/synthetic-model` 回环端点、`apiKeyEnv` 仅为环境变量名（无密钥值），`cancel.json` 的 `reason.kind=aborted`、`durable-history.json` 有会话记录结构。未验证项（思考块流式、工具事件）保持"未验证"。
+- **第 6 步（整批回归）：本轮独立重跑，结论成立且更强。** `cargo test --offline` → **165 passed / 0 failed**（045 当时为 154，046 增加 11 项）；`npx tsc --noEmit` exit 0；`npm run build` exit 0。四张收尾截图存在。
+- **证据卫生：** `od-arch-045`（5.1M / 37 张）与 `od-arch-046`（2.2M / 13 张）内未检出凭证、令牌、身份证或手机号；命中的长数字串经抽查为毫秒时间戳。两个目录均在仓库内、不含真实业务材料。
+- **已知缺口（不阻塞，已登记）：** ①首页对话仍未接线程存储（`HomeCanvas.tsx` 渲染 `HomeChat` 未传 `onMessagesChange`，本轮源码复核仍如此）；②第 5 步思考块与工具事件未验证；③045 截图未重拍，历史偏差说明以文字记录。
+- **结论：OD-ARCH-045 六步均可复核，功能达成；第 4 步的历史偏差已由 046 代码修正，不追溯改写 045 当时的证据。验收通过（带上述三项已知缺口）。**
+
 ## OD-ARCH-044：Dock 悬停只保留小字提示（2026-10-21）
 
 **结论：重复的原生大号提示已去掉，图标右侧的小字提示保留，可访问名不变。**
@@ -1398,3 +1411,11 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 - **范围修正确认：** 装在 Codex（~/.codex/config.toml，带备份）而非 OpenCode，符合用户实际要求；未动 OpenCode 配置。
 - **结论：通过。** 035 完成且真实可用；"UI 先搜参考"条款已固化进派工模板（OD-ARCH-041 之后的新 UI 任务自动适用）。
 - **顺带确认：** HEAD 6dff9dc（OD-ARCH-041 场景切换性能修复已提交），工作区 1 项改动；041 复核另行安排。
+
+## 2026-10-21 独立复核：OD-ARCH-046（ARCHITECT）
+
+- **方式：** 不采信 STATUS/证据自述。独立复测：tsc 0 错（exit 0）；cargo test --lib **146/146 通过**（用 setup-desktop-toolchain.sh --print-env 注入工具链环境后实跑）；源码抽查 pending_writes.rs/scheduler.rs/thread_store.rs 存在且 lib.rs 挂接 5 个 pending_write 命令。
+- **核对计划四项：** ①写确认制——pending/confirm/reject/expiry 机制落地，5 项单测覆盖一次性消费/过期拒绝/负载不一致拒绝；定时任务写建议文件先入待确认卡、确认后落盘、目录前后对比（3→3→新增）属实。②自动降级——端点退出后公告栏明示降级且无假文件；权限全关时起草明确拒绝、无模板冒充（含"未创建目录、未启动引擎"说明），符合数据诚实红线。③定时/心跳——once 定时实测 30 秒 tick 触发、权限关时跳过并说明原因、last_review_at 真实推进；心跳 5 分钟间隔推进且与手动扫描一致性有单测。④设置页五卡——截图与配置文件佐证，权限开关联动宿主判定真实反转。
+- **遗留（不阻塞验收）：** 窗口侧心跳提醒逐字比对未做（有单测等效覆盖）；真实过期记录的界面提示未窗口实测；取消中任务的降级分支未单独截图。均已在证据 README 如实标注。
+- **工作区注意：** 本轮含 OD-ARCH-045 线程持久化遗留改动（thread_store.rs 等）与 046 改动共存（25 项未提交）。045 的登记此前未见独立复核记录，本复核顺带确认 thread_store 测试存在（thread_store_restart.rs）；045 完整复核仍需单独做。
+- **结论：OD-ARCH-046 验收通过。** 全部改动未提交未推送，等用户晨间决定提交与推送安排。
