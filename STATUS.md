@@ -1,5 +1,48 @@
 # BUILDER 执行状态
 
+## OD-ARCH-053（完成，待 ARCHITECT 复核）：原生设置页替代 DSH 设置窗口（2026-10-22）
+
+- 开工 HEAD `5c8eb51`（`main`）；工作区原有 `M PLANS.md`、`M REVIEW.md` 原样保留，未重置、未覆盖。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据与凭证值，未新增依赖。
+- **UI 参考检索（OD-ARCH-035 条款）：** 动工前用 `screenshots-design-inspiration` 搜了 Notion 设置面板与 Shopify 管理后台设置页。借鉴两点：①设置按「卡片分区 + 每区顶部一句状态行」组织，用户先看到当前值再看到可改项；②危险/诊断类入口收进折叠区，主区只放日常项。
+
+### 实施
+
+- `desktop/src-tauri/src/model_settings.rs`（新）：`ModelSettings` 校验（provider 只允许 `[a-z0-9_-]`、base_url 只允许 http/https 且禁止带 userinfo、模型 id 格式）+ 手写 YAML 覆盖文件读写 + 临时文件原子替换 + 0600 权限 + 损坏文件只读报错不重置；7 个单测。
+- `desktop/src-tauri/src/local_http.rs`（新）：自写极简回环 HTTP/1.1 客户端（仅 127.0.0.1、不跟随重定向、不走代理、不 TLS、有响应上限），供后续连接测试复用；3 个单测。
+- `desktop/src-tauri/src/dsh_settings.rs`：新增 `credentials_rpc()`，白名单只放行 `credentials/describe`、`credentials/set`、`credentials/unset`；令牌只在内存里用，返回值里抹掉密钥字段。
+- `desktop/src-tauri/src/profile_decl.rs`：`LoadedDecl` 增 `text`（原文回传，供设置页编辑框载入）；新增只读 `read_text()`（64 KB 上限、不创建文件、不建目录）。
+- `desktop/src-tauri/src/lib.rs`：注册 4 条新命令——`profile_decl_open`（只打开数据根声明文件，不接受路径参数）、`profile_decl_save`（校验→`.bak-<epoch>` 备份→原子写）、`model_settings_load`（只返回 configured/source/writable，不含密钥）、`model_settings_save`（保存→可选写凭据→同步覆盖文件→停引擎→重新分类路由）。
+- `desktop/src/SettingsPanel.tsx`：改为四区——**模型与端点**（provider/显示名/base_url/协议/默认模型/思考等级/凭据名/API Key）、**场景声明**（绝对路径、载入指纹、系统编辑器打开、内嵌编辑框、校验并保存）、**权限**（051 三开关原样保留）、**关于（高级）**（四个默认折叠区，`DSH 原生界面（诊断用）`只在这里）。API Key 输入框保存后立即清空，只用「已配置 / 来源 / 可写」表述状态。
+- `desktop/src/api.ts`、`desktop/src/types.ts`：对应类型与调用（参数 camelCase，返回类型里没有密钥字段）。
+- `docs/decisions.md`：新增 D-027，取代 D-026 的「设置界面内嵌 DSH」一条，写明密钥与配置文件两处口径修正。
+
+### 与计划的偏差（已在 D-027 记录）
+
+1. **配置加载源不是计划预期的 `cordis.patch.yml`。** 实际是 OmniDesk 自有覆盖文件 `~/OmniDesk/app/config/omnidesk-model.yml`（由 `scripts/model-routes.mjs` 生成、以 `--patch` 传给引擎）。按计划 S1「以实际为准并写明」处理，未按预期路径写代码。
+2. **DSH 不接受明文 `api_key`。** `llm-pi-ai` 只按 `apiKeyEnv` 从凭据服务取值。计划字面的「api_key 字段落盘」收敛为「经官方 `credentials/set` 写入 `$DSH_HOME/.credentials.yaml`，OmniDesk 只存引用名」。这是缩小写入面，不是扩大。
+3. 权限字段未新造：沿用 051 已实现的三类开关语义，只搬进新页面。
+
+### 验证（证据等级：真实桌面窗口运行 / 脚本运行 / 静态检查）
+
+| 检查 | 结果 | 等级 | 证据 |
+| --- | --- | --- | --- |
+| `cargo test --offline` | **182 passed / 0 failed**（lib，含新增 10 个）+ 2 + 13 + 3 + 1 全绿 | 脚本运行 | `/tmp/od53-test.log` |
+| `cargo build --offline` | 通过（1 个未使用方法的 dead_code warning，`local_http::Response::header`，留给 054 连接测试用） | 脚本运行 | — |
+| `npx tsc --noEmit` | 0 错误 | 静态检查 | — |
+| `npm run build` | 通过 | 脚本运行 | — |
+| `python3 -m pytest tests -q` | 26 passed | 脚本运行 | — |
+| `git status --porcelain runtime/` | 空（零差异） | 文件事实 | — |
+| 真实窗口四区截图 | 4 张，窗口标题 `OmniDesk Discipline`，App 存活 | 真实窗口运行 | `tests/verification/desktop/evidence/od-arch-053/`（`01`~`04` + `facts.json`），脚本 `verify_native_settings_053.py` |
+| 设置页不请求 DSH 端口 | `SettingsPanel.tsx` 内无 `fetch(`、无端口常量；模型/权限/声明全走宿主 IPC | 静态检查 | — |
+| evidence 密钥扫描 | 目录内无 `sk-…` / 长密钥串；截图只有本地临时路径、合成 provider 名与公开端点地址 | 脚本运行 | 同上 |
+
+### 未验证 / 限制
+
+- **真实模型请求未验证**：本阶段只做配置读写与界面，未用真实端点和真实密钥跑任务；连接测试在 054。
+- **写入后引擎能否用新配置启动**未在真实 provider 上验证；单测覆盖了覆盖文件往返与原子写，但「保存后重启引擎成功加载」仍属未验证。
+- `local_http::Response::header` 目前未被调用（054 会用），保持 warning 不删。
+- 截图里的 provider 区显示的是既有 DSH 默认（`deepseek-official`），不是合成端点；这是隔离根下没有覆盖文件时的实际行为，符合预期。
+
 ## OD-ARCH-052（完成，待 ARCHITECT 复核）：上手清单刷新 + 重启提示 + 移交实测（2026-10-21）
 
 - 开工 HEAD `c71611d`（`main`，与 `origin/main` 一致）；工作区原有 `M PLANS.md`、`M REVIEW.md`（ARCHITECT 写入的 052 计划与 051 复核）**原样保留**，未重置、未覆盖。
