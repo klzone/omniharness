@@ -12,6 +12,10 @@
 //!   * 不跟随符号链接；非普通文件一律跳过，并计入 skipped；
 //!   * 单文件有大小上限；写入走同目录临时文件 + rename（原子替换）；
 //!   * 读出的 JSON 结构不合规就跳过并报告条数，不猜测、不修补。
+//!
+//! 版本化（OD-ARCH-049 第 2 步）：写入时带上 `version`（当前 v1）；读取端遇到
+//! 无版本/旧版本记录走 [`migrate_thread_record`]，**只在内存里补字段，不改写原文件**。
+//! 迁移失败的文件不会被静默跳过，而是以 [`ThreadIssue`] 逐条报出原因。
 
 use std::path::{Path, PathBuf};
 
@@ -21,6 +25,13 @@ use crate::task_shell::{assert_local_root_allowed, assert_outside_repo};
 
 /// 单个线程文件的上限（对话正文可能较长，但异常大小说明文件不属于本流程）。
 pub const THREAD_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// 当前线程记录格式版本（OD-ARCH-049 第 2 步）。
+///
+/// 版本只在需要时递增，且每步迁移**只增字段**、不改已有字段含义：
+///   * v0：历史文件，没有 `version` 字段（结构与 v1 完全相同）；
+///   * v1：写入端显式写 `"version": 1`。
+pub const THREAD_SCHEMA_VERSION: u64 = 1;
 
 /// 线程 id 上限（与前端生成规则一致，留足余量）。
 pub const THREAD_ID_MAX_LEN: usize = 64;
@@ -36,8 +47,17 @@ pub struct ThreadListing {
     pub threads: Vec<serde_json::Value>,
     /// 被跳过的文件数（非法名字、非普通文件、结构不合规、超限）。
     pub skipped: usize,
+    /// 被判为损坏或无法迁移的文件（文件名 + 原因）；不静默跳过。
+    pub issues: Vec<ThreadIssue>,
     /// 人类可读的一句话说明。
     pub note: String,
+}
+
+/// 一个读不回来的线程文件：文件名与原因（不含正文，避免把内容带进日志）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ThreadIssue {
+    pub file: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -86,11 +106,13 @@ impl ThreadStore {
         self.assert_allowed()?;
         let mut threads = Vec::new();
         let mut skipped = 0usize;
+        let mut issues: Vec<ThreadIssue> = Vec::new();
         if !self.root.exists() {
             return Ok(ThreadListing {
                 dir: self.root.display().to_string(),
                 threads,
                 skipped,
+                issues,
                 note: "线程目录尚不存在（首次保存时创建）".to_string(),
             });
         }
@@ -126,9 +148,21 @@ impl ThreadStore {
                 }
             };
             for file_item in files {
+                let file_name = file_item
+                    .as_ref()
+                    .map(|i| i.file_name().to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "<不可读目录项>".to_string());
                 match self.read_one(&file_item) {
-                    Some(value) => threads.push(value),
-                    None => skipped += 1,
+                    Ok(value) => threads.push(value),
+                    Err(ReadFailure::Ignored) => skipped += 1,
+                    Err(ReadFailure::Broken(reason)) => {
+                        // 是本存储的文件但读不回来：计入跳过，同时留下可核对的原因。
+                        skipped += 1;
+                        issues.push(ThreadIssue {
+                            file: file_name,
+                            reason,
+                        });
+                    }
                 }
             }
         }
@@ -137,15 +171,25 @@ impl ThreadStore {
             let ub = b.get("updatedAt").and_then(|v| v.as_f64()).unwrap_or(0.0);
             ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
         });
-        let note = if skipped > 0 {
+        let mut note = if skipped > 0 {
             format!("{} 条线程已读回；跳过 {} 个不合规文件", threads.len(), skipped)
         } else {
             format!("{} 条线程已从数据根读回", threads.len())
         };
+        if !issues.is_empty() {
+            let first = &issues[0];
+            note.push_str(&format!(
+                "；其中 {} 个文件需要人工核对（{}：{}）",
+                issues.len(),
+                first.file,
+                first.reason
+            ));
+        }
         Ok(ThreadListing {
             dir: self.root.display().to_string(),
             threads,
             skipped,
+            issues,
             note,
         })
     }
@@ -153,26 +197,39 @@ impl ThreadStore {
     fn read_one(
         &self,
         item: &Result<std::fs::DirEntry, std::io::Error>,
-    ) -> Option<serde_json::Value> {
-        let item = item.as_ref().ok()?;
+    ) -> Result<serde_json::Value, ReadFailure> {
+        let item = item.as_ref().map_err(|_| ReadFailure::Ignored)?;
         let name = item.file_name().to_string_lossy().to_string();
-        let id = name.strip_suffix(".json")?;
+        let Some(id) = name.strip_suffix(".json") else {
+            return Err(ReadFailure::Ignored);
+        };
         if !thread_id_allowed(id) {
-            return None;
+            return Err(ReadFailure::Ignored);
         }
-        let meta = std::fs::symlink_metadata(item.path()).ok()?;
-        if !meta.file_type().is_file() || meta.len() > THREAD_MAX_BYTES {
-            return None;
+        let meta = std::fs::symlink_metadata(item.path())
+            .map_err(|_| ReadFailure::Ignored)?;
+        if !meta.file_type().is_file() {
+            return Err(ReadFailure::Ignored);
         }
-        let text = std::fs::read_to_string(item.path()).ok()?;
-        let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+        if meta.len() > THREAD_MAX_BYTES {
+            return Err(ReadFailure::Ignored);
+        }
+        let text = std::fs::read_to_string(item.path())
+            .map_err(|e| ReadFailure::Broken(format!("读取失败：{}", e)))?;
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| ReadFailure::Broken(format!("JSON 解析失败：{}", e)))?;
+        let value = migrate_thread_record(value).map_err(ReadFailure::Broken)?;
         if !thread_value_allowed(&value, id) {
-            return None;
+            return Err(ReadFailure::Broken(
+                "结构不合规（需要 id/tag/title/preset/messages/createdAt/updatedAt）".to_string(),
+            ));
         }
-        Some(value)
+        Ok(value)
     }
 
     /// 写入（覆盖）一条线程。若所属项目分目录变化，会删除旧文件并写新文件。
+    ///
+    /// 写入前统一走一次迁移/版本戳：落盘文件一定带当前 `version`。
     pub fn save(&self, thread: &serde_json::Value) -> Result<ThreadSaveReceipt, String> {
         self.assert_allowed()?;
         let id = thread
@@ -182,14 +239,16 @@ impl ThreadStore {
         if !thread_id_allowed(id) {
             return Err(format!("线程 id 不合规，拒绝保存：{}", id));
         }
-        if !thread_value_allowed(thread, id) {
+        let normalized = migrate_thread_record(thread.clone())
+            .map_err(|e| format!("线程记录无法写入：{}", e))?;
+        if !thread_value_allowed(&normalized, id) {
             return Err(
                 "线程结构不完整（需要 tag/title/messages/createdAt/updatedAt），拒绝保存。"
                     .to_string(),
             );
         }
-        let encoded =
-            serde_json::to_vec_pretty(thread).map_err(|e| format!("序列化线程失败：{}", e))?;
+        let encoded = serde_json::to_vec_pretty(&normalized)
+            .map_err(|e| format!("序列化线程失败：{}", e))?;
         if encoded.len() as u64 > THREAD_MAX_BYTES {
             return Err(format!(
                 "线程记录 {} 字节，超过上限 {} 字节，拒绝保存。",
@@ -197,7 +256,7 @@ impl ThreadStore {
                 THREAD_MAX_BYTES
             ));
         }
-        let dir_name = project_dir_for(thread);
+        let dir_name = project_dir_for(&normalized);
         let target_dir = self.root.join(&dir_name);
         self.assert_allowed()?;
         std::fs::create_dir_all(&target_dir)
@@ -304,8 +363,69 @@ fn project_dir_name_allowed(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// 读取一个文件时的失败分类。
+enum ReadFailure {
+    /// 根本不是本存储的文件（目录项不可读 / 名字不合规 / 非普通文件 / 超限）：
+    /// 只计入 skipped，不进 issues（不是本存储的文件，不构成“读到坏记录”）。
+    Ignored,
+    /// 是本存储的文件但读不回来（损坏、JSON 坏、版本无法迁移、结构缺失）：
+    /// 计入 skipped 的同时必须留下原因，不允许静默跳过。
+    Broken(String),
+}
+
+/// 把磁盘上的线程记录迁移到当前版本（OD-ARCH-049 第 2 步）。
+///
+/// 约束：
+///   * 只读：只在内存里补字段，**绝不改写原文件**（原文件只在下次保存时以新版本重写）；
+///   * 只增：每一步迁移只新增字段，不改写已有字段的含义；
+///   * 失败即报原因：版本高于当前支持、version 不是非负整数、记录不是对象，
+///     一律返回 Err，由调用方作为 [`ThreadIssue`] 报出，不做猜测性解释。
+pub fn migrate_thread_record(mut value: serde_json::Value) -> Result<serde_json::Value, String> {
+    let obj = value
+        .as_object_mut()
+        .ok_or_else(|| "线程记录不是 JSON 对象".to_string())?;
+    let version = match obj.get("version") {
+        None => 0,
+        Some(serde_json::Value::Null) => 0,
+        Some(serde_json::Value::Number(n)) => n
+            .as_u64()
+            .ok_or_else(|| "线程记录的 version 不是非负整数".to_string())?,
+        Some(_) => return Err("线程记录的 version 不是数字".to_string()),
+    };
+    if version > THREAD_SCHEMA_VERSION {
+        return Err(format!(
+            "线程记录版本 v{} 高于当前支持的 v{}，未加载（不做降级解释）",
+            version, THREAD_SCHEMA_VERSION
+        ));
+    }
+    let mut current = version;
+    while current < THREAD_SCHEMA_VERSION {
+        match current {
+            // v0 → v1：历史文件没有 version 字段；v1 起由写入端显式写版本号，
+            // 其余字段结构与 v0 完全一致，因此这里只需补版本号，不改动任何内容。
+            0 => {}
+            other => {
+                return Err(format!(
+                    "缺少 v{} → v{} 的迁移步骤，未加载（不猜测字段含义）",
+                    other,
+                    other + 1
+                ))
+            }
+        }
+        current += 1;
+    }
+    obj.insert(
+        "version".to_string(),
+        serde_json::Value::from(THREAD_SCHEMA_VERSION),
+    );
+    Ok(value)
+}
+
 /// 线程的最小结构校验：前端能安全解释的字段必须存在且类型正确。
 fn thread_value_allowed(value: &serde_json::Value, id: &str) -> bool {
+    if value.get("version").and_then(|v| v.as_u64()) != Some(THREAD_SCHEMA_VERSION) {
+        return false;
+    }
     let Some(obj) = value.as_object() else {
         return false;
     };
@@ -547,6 +667,112 @@ mod tests {
         store.save(&thread("tnew", None, 3.0)).expect("new");
         let listing = store.load().expect("load");
         assert_eq!(listing.threads[0]["id"], json!("tnew"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 版本化的核心验收：没有 version 字段的历史样例必须能加载，并补成当前版本。
+    #[test]
+    fn legacy_record_without_version_loads_and_migrates_in_memory() {
+        let (store, base) = temp_store("legacy");
+        let dir = base.join("threads").join(UNASSIGNED_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        // 旧格式样例：与 v1 结构相同，但没有 version 字段。
+        let legacy = json!({
+            "id": "tlegacy",
+            "tag": "weekly",
+            "projectPath": null,
+            "title": "旧格式线程",
+            "preset": "weekly",
+            "messages": [{"id": "m1", "role": "user", "text": "旧内容"}],
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+        });
+        let path = dir.join("tlegacy.json");
+        let original = serde_json::to_vec_pretty(&legacy).unwrap();
+        std::fs::write(&path, &original).unwrap();
+
+        let listing = store.load().expect("load");
+        assert_eq!(listing.threads.len(), 1, "旧格式文件应被加载");
+        assert_eq!(listing.threads[0]["id"], json!("tlegacy"));
+        assert_eq!(listing.threads[0]["version"], json!(THREAD_SCHEMA_VERSION));
+        assert_eq!(listing.threads[0]["messages"][0]["text"], json!("旧内容"));
+        assert_eq!(listing.skipped, 0);
+        assert!(listing.issues.is_empty(), "issues={:?}", listing.issues);
+        // 只增不改写：磁盘上的原文件保持原样（没有 version 字段）。
+        let after = std::fs::read(&path).unwrap();
+        assert_eq!(after, original, "迁移不得改写原文件");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 写入端必须打版本戳；旧记录保存后落盘应带 version。
+    #[test]
+    fn save_stamps_current_version() {
+        let (store, base) = temp_store("stamp");
+        let receipt = store.save(&thread("tstamp", None, 1.0)).expect("save");
+        let text = std::fs::read_to_string(&receipt.path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["version"], json!(THREAD_SCHEMA_VERSION));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 未来版本不猜测、不降级：拒绝写入，并在读取时逐条报出原因。
+    #[test]
+    fn future_version_is_refused_and_reported() {
+        let (store, base) = temp_store("future");
+        let dir = base.join("threads").join(UNASSIGNED_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut future = thread("tfuture", None, 1.0);
+        future["version"] = json!(THREAD_SCHEMA_VERSION + 1);
+        std::fs::write(
+            dir.join("tfuture.json"),
+            serde_json::to_vec_pretty(&future).unwrap(),
+        )
+        .unwrap();
+
+        let listing = store.load().expect("load");
+        assert!(listing.threads.is_empty(), "未来版本不应被当成本版本加载");
+        assert_eq!(listing.skipped, 1);
+        assert_eq!(listing.issues.len(), 1, "必须逐条报出，不能静默跳过");
+        assert_eq!(listing.issues[0].file, "tfuture.json");
+        assert!(
+            listing.issues[0].reason.contains("高于当前支持"),
+            "reason={}",
+            listing.issues[0].reason
+        );
+        assert!(
+            listing.note.contains("需要人工核对"),
+            "note={}",
+            listing.note
+        );
+
+        assert!(
+            store.save(&future).is_err(),
+            "不得把未来版本降级覆盖写入"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 强杀恢复回归：写一半留下的临时文件或半截文件不得影响上一条好记录。
+    #[test]
+    fn interrupted_write_keeps_previous_record_readable() {
+        let (store, base) = temp_store("hardkill");
+        store.save(&thread("tgood", None, 1.0)).expect("save");
+        let dir = base.join("threads").join(UNASSIGNED_DIR);
+        // 模拟被强杀：临时文件残留 + 半截 JSON。
+        std::fs::write(dir.join(".thread-999-123.tmp"), b"{\"id\":\"tgo").unwrap();
+        std::fs::write(dir.join("thalf.json"), b"{\"id\":\"thalf\",\"tit").unwrap();
+
+        let listing = store.load().expect("load");
+        assert_eq!(listing.threads.len(), 1, "好记录应仍可读回");
+        assert_eq!(listing.threads[0]["id"], json!("tgood"));
+        assert_eq!(listing.threads[0]["version"], json!(THREAD_SCHEMA_VERSION));
+        assert_eq!(listing.issues.len(), 1);
+        assert_eq!(listing.issues[0].file, "thalf.json");
+        assert!(
+            listing.issues[0].reason.contains("JSON 解析失败"),
+            "reason={}",
+            listing.issues[0].reason
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 }
