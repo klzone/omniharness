@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -65,14 +66,29 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
 
     SHOTS.mkdir(parents=True, exist_ok=True)
+    # 一次性数据根：上一次运行留下的 profiles/discipline.yml 会让「首次创建默认声明」
+    # 这一步变成读旧文件，断言随之失真（实测复跑时确已发生）。只清本次指定的目录。
+    root = Path(args.root)
+    # 只允许清 /tmp 下的一次性目录：防止误把 --root 指到真实数据根后删用户数据。
+    resolved = root.resolve()
+    if resolved != Path("/tmp") and Path("/tmp") not in resolved.parents:
+        raise SystemExit(f"拒绝清理非 /tmp 下的目录：{resolved}（本脚本只用一次性数据根）")
+    if root.exists():
+        shutil.rmtree(root)
     xvfb = start_xvfb(args.display)
     report: dict = {
         "plan": "OD-ARCH-051 S3",
         "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
         "display": args.display,
         "rounds": {},
+        "notes": [
+            "rounds[*].title 是 X 窗口标题（WM_NAME），由 tauri.conf 固定，不随声明变化；"
+            "声明里的 display_name 只改界面左上角品牌文字，请以截图为准。",
+            "脚本自动断言：声明文件被创建 / 首轮内容与 samples 逐字一致 / 进程存活 / 写坏后坏文件未被覆盖。",
+            "Dock 入口数量与品牌名变化是人工比对三张截图判定的，不是 DOM 断言。",
+        ],
     }
-    session = AppSession(root=Path(args.root), display=args.display)
+    session = AppSession(root=root, display=args.display)
     try:
         session.prepare()
         xs = XSession(args.display)
