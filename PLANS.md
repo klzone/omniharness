@@ -1,5 +1,18 @@
 # 当前实施计划
 
+### OD-ARCH-049：备份提交 + 会话日志版本化 + 终检设计（待批准，2026-10-21）
+
+> **执行方式：** 三段按序，段内连续执行；每段完成登记后进下一段；任一段失败记录后跳到下一段，不反复重试。不碰凭证、不接真实模型端点、不改 runtime/、不改全局锁语义。
+
+1. **备份提交（沿用 047 授权模式，用户批准本计划即视为批准本轮提交推送）：** 048 全部未提交改动（44 文件：代码/证据/文档含 048 复核记录、dsh-java 审计报告、audit/dsh-java-review/）按"可编译单元"分批提交并推送 origin/main。每批前跑红线扫描与文件清单核对；runtime/ 保持零差异确认。
+2. **会话日志版本化（借鉴 dsh-java SessionFormatMigrationTest，P1-2）：** ~/OmniDesk 线程持久化文件写入时加 version 字段（当前 v1）；读取端遇到无版本/旧版本文件走迁移函数——只增不改写原文件，失败保留原样报错，不静默跳过；新增单测"无版本旧格式样例→加载成功"。验收：单测通过 + 强杀恢复回归通过 + cargo 全量绿。
+3. **执行入口终检（借鉴 dsh-java 任务链兜底，P1-1，按用户三条语义条款收紧）：** 宿主任务执行入口加一次状态校验——检查结果只有两种：通过→任务原样执行；不通过→整个任务拒绝，错误信息指名道姓（如"有一条未确认写入（AI 复盘建议保存），请先处理"），**永不静默跳过部分内容**。拦截范围最小化：仅同场景、同一资源的未决确认卡才拦截本任务，其他场景卡片不挡。新增测试用例钉住"同场景未决卡→拒绝+指名错误"与"他场景未决卡→正常执行"两条。验收：两用例通过 + cargo 全量绿 + tsc 0。
+
+**验收：** 提交分批清晰、远端同步；版本化与终检各有独立提交可单独回滚；全部回归绿（cargo/tsc/build）；runtime/ 零差异；STATUS.md 登记。
+
+**完成后：** 真实模型端到端实测移交用户（按 docs/user-testing-checklist.md），产品命运转入使用数据裁决。
+
+
 ## 当前待批准计划与最近复核
 
 
@@ -20,6 +33,34 @@
 3. **真实模型实测准备（只读准备）：** 检查 DSH 侧端点配置现状（不读凭证值）；整理"用户实测清单"——开权限→设端点→跑周报起草→看公告栏定时复盘→确认写卡流程，作为用户上手指南写入 docs/user-testing-checklist.md。
 
 **验收：** 提交历史清晰分批、远端同步；清单文档可直接照做；045 复核结论写入 REVIEW.md。
+
+
+
+### OD-ARCH-048：换接缝（D-024 路径 B）——对话通道切到 DSH 本地 Web API，继承逐字流式与思考链（已执行，2026-10-21，待 ARCHITECT 复核）
+
+> **执行结果（BUILDER，2026-10-21）：四项目标全部实现，未提交、未推送、未打标签。** 引擎新增 `web_api_adapter.py`（与 ACP 并存，`dsh.channel` 切换，默认 web-api）+ 抽出 `task_core.py`；宿主加 `channel`/`engine_list_models`；前端 `ModelPicker` 走真实目录、`HomeChat` 消费真实增量。实测：W01–W10 一次性全 pass（逐字流式 0.381/0.615/0.866s 三块到达、取消 0.032s 落定、失败不伪装成功、重启恢复、未知会话即时拒绝、模型目录归一化）；ACP E01–E20 全 pass 未回归；`test_web_api_unit` 25 passed；Rust 165 passed；tsc 0、构建通过、分类器自检 24/24；`runtime/` 无差异。
+>
+> **四处计划偏差**（详见 `STATUS.md` 与证据 README）：①`turn/end` 实际 `completed`，`stop` 在 finish 帧；②路由分类器只认 `acp`，web Profile 被判 `route_missing`，故给脚本与 `route_classifier.rs` 加 `channel`（计划外最小修复）；③失败态实为 `error`，原映射会落 unknown，已修并补 `max-tokens`/`interrupted`/`blocked`；④`session/not-found` 是顶层错误帧，原实现拖到超时，已修并补单测。另修测试夹具 `admission_classification.rs`（同时声明两条路由、plugin name 需匹配）。
+>
+> **未验证：** 思考块流式（合成端点不产）、personaPrefix 是否真正送达模型（dump-config 生效但请求体探针未命中）、真实模型端点流式、真实窗口人工抽验、`wss://`（仅 `ws://`）。
+
+> **卡死修复（同计划内追加，2026-10-21）：** 用户报「启动后整窗无响应、场景切不动、只能强制退出」。根因是 Tauri 2 同步命令在 UI 主线程执行，49 个同步命令持全局宿主锁等引擎冷启动，堵住重绘。已把它们的属性改为 `#[tauri::command(async)]`（函数体、签名、锁语义不变），首屏读数据根加 4 秒上界（超时先用本地缓存，后台补上），并新增回归测试 `every_tauri_command_runs_off_the_ui_thread` 钉住这条不变量。实测（Xvfb 隔离显示 + 合成 40s 慢启动、修复后重新构建的二进制）：五个场景来回切换在 0.22–0.84s 内完成且画面正确，等待期间窗口全程可交互，40s 后引擎正常接通。回归 166 passed / 0 failed、tsc 0、构建通过、`runtime/` 无差异。**同轮更正：** 早先记录的 0.17–0.43s 是旧二进制 + 只截 Dock 区域的错误判据所得，已在证据 README 标注并替换。**未验证：用户真实机器同一故障状态未复现、真实 DSH 冷启动耗时未测。** 证据见 `STATUS.md` 同章节与 `tests/verification/desktop/evidence/od-arch-048/README.md` 第 7 节。
+
+- **背景：** 045 第 5 步探针已实测 DSH 本地 Web API 具备：token 级流式（WebSocket /api/remote.mux 的 assistant-stream 帧：block-start/text-delta/finish/usage）、同 sessionId 连续两轮、取消（19ms 落定）、重启后会话持久、模型目录。现 UI 走 ACP 窄接口，整段到达、只能本地模拟打字机。用户批准走 D-024 路径 B。
+- **目标：**
+  1. **引擎侧新增 Web API 适配通道**（与 ACP 通道并存，配置切换）：会话创建/续接/取消/历史读回/模型目录直连 DSH 本地 HTTP+WebSocket API；参数格式按探针记录（args.request 包装、throughSeq 需 follow 快照 cursor）。
+  2. **逐字流式端到端**：assistant-stream 的 text-delta 帧经引擎→宿主→前端实时推进对话区；打字机模拟退役（保留为降级）。思考块流式若模型端点支持则同样透传（合成端点不产思考内容，此项标注未验证即可）。
+  3. **模型目录直读**：模型选择器改用 session/modelCatalog 真实数据（provider/分组/reasoning efforts），替换本地手搓列表。
+  4. **ACP 通道保留可切**：配置项选择通道（默认 web-api；异常时一键切回 acp），确保升级风险可控。
+- **影响范围：** engine/omnidesk_engine 新增 web_api 适配模块与通道切换；宿主 engine_bridge 增加对应转发；前端对话区流式渲染改造+模型选择器数据源替换。**不改 runtime/、不改 DSH 源码、不动凭证与路由文件；DSH 本地 API 属内部接口，已在 decisions.md 记录"锁定 runtime 版本"约束。**
+- **验收标准：**
+  - 合成端点（带 chunk 间延迟）下真实窗口逐字流式：文本分多次到达而非一次性；连续两轮同 sessionId；取消 1 秒内界面落定。
+  - 进程重启后恢复会话并继续对话（resume 路径走 web-api）。
+  - 模型选择器显示 modelCatalog 真实内容（含 reasoning efforts）。
+  - 切回 acp 通道后既有行为不回归（全量测试+真实窗口抽验）。
+  - Rust/tsc/构建全绿；新增适配层单测覆盖帧解析与参数包装；runtime/ 无差异。
+- **风险与停止条件：** DSH 本地 API 为内部接口——若发现接口行为与探针记录不符（版本漂移），停下报告不猜；若流式帧格式需要 runtime 改动才能适配，停下报告；凭证注入方式沿用探针的隔离环境变量方案，不新增凭证读取面。
+- **执行方式：** 建议分两段连续执行——第一段引擎+宿主通道打通（含单测），第二段前端流式渲染+模型目录（含真实窗口证据）；ARCHITECT 中途不介入，完成后一次性复核。
 
 ### OD-ARCH-046：借鉴四项落地——写确认制 / 自动降级 / 定时·心跳 / Agent 式设置页（已执行，2026-10-21，待 ARCHITECT 复核）
 
