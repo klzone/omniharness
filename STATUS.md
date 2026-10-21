@@ -1,5 +1,79 @@
 # BUILDER 执行状态
 
+## OD-ARCH-051（批次 1 完成）：S1 按用户裁决窄口径整合；S2 补齐输入量对比证据（2026-10-21）
+
+- 开工 HEAD `984c9dc`（`main`）。开始时工作区唯一未提交改动是 ARCHITECT 新写入的 `PLANS.md`（051 计划原文），按要求保留未动。
+- 未改 `runtime/`（`git status --porcelain runtime/` 为空）；未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk`、凭证与模型路由；未提交、未推送、未打标签；未进入批次 2。
+
+### S1（合并 UI）——**命中停止条件后由用户裁决，已按窄口径完成**
+
+PLANS.md 写明的停止条件是：「omniharness-ui 合并若发现与主仓库前端结构性冲突（同文件不同骨架），停下报告冲突清单，不自行取舍」。实测命中该条：
+
+| 证据 | 内容 |
+| --- | --- |
+| 基线 | `omniharness-ui` = `/mnt/data/Code/omniharness-ui`，HEAD `5ffc710`（2026-10-16），71 个未提交文件；主仓库 HEAD `984c9dc`（2026-10-21） |
+| 目录 | 两处是同一远端 `git@github.com:klzone/omniharness.git` 的两个 clone，`5ffc710` 是 `main` 的祖先 |
+| 骨架 | `App.tsx` UI 分支 76 行 / 主仓库 161 行；Dock 场景 UI 分支 4 个（home/analysis + 两个禁用占位）/ 主仓库 8 个（home/report/writing/project/workbench/sessions/settings/engine） |
+| 能力 | `api.ts` UI 分支 239 行 / 主仓库 828 行；`types.ts` 250 / 659；`workbench.tsx` 1028 / 1287 |
+| 设计稿落点 | 主仓库 `2705148`（2026-10-20「引入桌面 React 前端」）已按同一份 Aetheria OS 设计稿落地 Tailwind 4 + 主题令牌 + `HomeChat`/`HomeCanvas`/`EngineTechSlice`，之后又演进到 048/049/050；UI 分支的未提交改动是这套设计的**更早快照** |
+| UI 独有 | `_design/stitch_omnidesk/`（设计稿原件）、`desktop/public/_preview.html`（临时预览，交接文档自述建议删除）、`docs/omnidesk-ui-v2-handoff.md`、`scripts/lib/`、三个 `host_*_admission.rs` |
+
+**判断：不是「两个都可用的版本二选一」，而是主仓库前端已经是 UI 分支这套设计的后续演进版。** 整支合并会把主仓库退回 10-16 的骨架（丢掉会话/项目/设置/引擎诊断、线程持久化、流式对话、模型选择），违反「旧界面文件冻结归档不删除」之外的多项既有验收。因此本阶段**没有动任何前端源码文件**，也没有按计划先在 `omniharness-ui` 分批提交——因为提交一套已被超越的骨架没有交付价值，且属于计划外的取舍。
+
+**用户裁决（2026-10-21）：** 「按最新的版本来，哪边最新用哪边，如果整合两边也行」→ 以主仓库现版为基线，只把该分支独有且仍有效的资产整合进来。STOP 条件已由这次裁决解除。
+
+| 处理 | 资产 | 理由 |
+| --- | --- | --- |
+| 纳入 | `_design/stitch_omnidesk/`（`DESIGN.md`、`code.html`、`screen.png`、`JQ.jpeg`、`mascot_cut.png`、`mascot_preview_{light,dark}.png`，共 7 个） | 设计稿原件；主仓库 `desktop/src/theme.css` 的令牌注释已指向该路径，但目录此前不存在 |
+| 纳入 | `docs/omnidesk-ui-v2-handoff.md` | UI v2 交接说明，记录技术栈与设计令牌来源 |
+| 纳入 | `tests/verification/desktop/verify_launcher_identity.sh` | 启动器 `--stop` 身份核验（PID + 启动时刻 + 命令行）此前无任何自动化覆盖，主仓库可原样运行 |
+| 纳入 | `tests/verification/desktop/verify_port_ownership.sh` | 端口归属与进程树回收验证，同样补上主仓库的空白；依赖的 `scripts/lib/port-owner.sh` 两边逐字一致 |
+| 不纳入 | `host_submit_admission.rs`、`host_describe_admission.rs`、`host_workspace_prepare_admission.rs` | 依赖 `submit_after_admission` / `describe_after_admission` 等符号，主仓库已用 `with_engine_call` / `with_call_gate` / `admission::check` 重构，直接复制编译失败；同能力已由 `admission_classification.rs` 与 `host_integration.rs::admission_refuses_before_any_process_state_exists` 覆盖 |
+| 不纳入 | `verify_engine_admission.py` | 断言旧常量 `ENDPOINT_ISOLATION_CONFIRMED === false`，与 OD-ARCH-021 之后「前端只拦空文本、授权由宿主判定」的口径冲突，纳入会把已废弃的语义重新写回验收 |
+| 不纳入 | `desktop/public/_preview.html` | 临时预览文件，原交接文档自述建议删除 |
+| 不纳入 | `desktop/src/components/Icon.tsx`、`shell/ThreeWeekCalendar.tsx`、`public/mascot.png` | 两边逐字一致 |
+
+复制前对上述文本文件做了凭证与个人信息扫描（`sk-*`、`api_key`、`bearer`、`password`、身份证/手机号、真实姓名字样），零命中。复制未覆盖任何已有文件（以上路径在主仓库此前均不存在）。
+
+| 检查 | 结果 | 等级 | 证据 |
+| --- | --- | --- | --- |
+| `verify_launcher_identity.sh` | 6 项通过 / 0 失败（`launcher_identity_passed=true`） | 脚本运行 | `tests/verification/desktop/evidence/od-arch-051/s1-launcher-identity.txt` |
+| `verify_port_ownership.sh` | 8 项通过 / 0 失败（`port_ownership_passed=true`，含独立网络命名空间、真实 npm→vite 链、身份不符不连坐） | 脚本运行 | `tests/verification/desktop/evidence/od-arch-051/s1-port-ownership.txt` |
+| `npx tsc --noEmit` | 0 错误 | 静态检查 | — |
+| `npm run build` | 构建通过（`built in 672ms`，`dist/` 产物正常） | 脚本运行 | — |
+| `cargo test --offline` | 196 通过 / 0 失败（lib 160 + admission_classification 2 + host_integration 13 + task_shell_e2e 3/3 + thread_store_restart 1，重复统计来自 cargo 二次列出） | 脚本运行 | 本机 `/tmp/od051-cargo.log`（未入仓） |
+| `git status --porcelain runtime/` | 空 | 文件事实 | — |
+
+注：本机 `cargo` 默认不在 `PATH` 上、且需要 `PKG_CONFIG_PATH/PKG_CONFIG_SYSROOT_DIR/LIBRARY_PATH` 指向 `~/.local/omnidesk-tauri-deps`，否则报 `javascriptcoregtk-4.1` 缺失；环境变量组合见 `tests/verification/desktop/run_workbench_engine_path.py` 的 `CARGO_ENV_HINTS`。这是本机环境约定，不是仓库缺失依赖。
+
+### S2（原生会话续接）——实现已在 048 落地，本轮补齐计划要求的对比数据
+
+续接逻辑在 `engine/omnidesk_engine/web_api_adapter.py`（`session_mode` = new / continued / resumed / degraded）与前端 `conversationPrompt.ts`+`HomeChat.tsx` 中，由 OD-ARCH-034/048 完成，本轮**未改这些实现**。缺的是计划验收表要求的「重放版 vs 续接版输入量对比数据落盘 audit/」。
+
+新增 `tests/verification/desktop/verify_resume_token_savings.py`（同时给合成端点加了只记长度的 `text_chars` 字段，不存正文）：
+
+| 测量 | 数值 | 等级 |
+| --- | --- | --- |
+| 前端组装，三轮对话累计字符 | 重放版 252 → 续接版 78（省 69.1%） | 脚本运行（编译真实 `conversationPrompt.ts`） |
+| 第 2 轮模型实际收到 | 续接 6488 字符 / 6 条消息；重放 623 字符 / 2 条消息 | 脚本运行（真实 DSH web 进程 + 合成端点） |
+
+**重要结论（与计划假设不同）：续接并不减少模型侧的总输入。** DSH 在续接会话时会把该会话历史一并送给模型，因此模型收到的量反而更大；省下来的只是**前端重复拼装的那一段**。计划写的「合成端点下输入量应显著下降」只在提示词组装层面成立，在模型计费口径上不成立。这条不应被后续文档写成「接续后 token 显著下降」。
+
+| 检查 | 结果 | 等级 |
+| --- | --- | --- |
+| `verify_resume_token_savings.py` | 11 项通过 / 0 失败，证据 `tests/verification/desktop/evidence/od-arch-051/s2-token-savings.json` | 脚本运行 |
+| `verify_conversation_prompt.py` | 24 项通过 / 0 失败 | 脚本运行 |
+| `verify_session_continuity.py` | 37 项通过 / 0 失败 | 脚本运行 |
+| `npx tsc --noEmit` / `npm run build` | 0 错误 / 构建通过 | 静态检查 + 脚本运行 |
+| `cargo test --offline` | 179 通过 / 0 失败 | 脚本运行 |
+| `runtime/` 差异 | 空 | 文件事实 |
+
+### 未完成 / 阻塞
+
+- S1 已按用户裁决完成（设计稿资产 + 交接文档 + 两个验证脚本）；未合并任何前端骨架。
+- S3（纪检 Profile 固化）、S4（设置页外观统一）属批次 2，等 ARCHITECT 复核批次 1 后再决定是否开启。
+- 所有验证均在合成数据与一次性数据根下完成，**没有真实模型端到端**，也没有接触任何真实工作材料。
+
 ## OD-ARCH-050：模型消失修复 + 应用内 DSH 设置窗口 + 跟随 DSH 默认模型（2026-10-21，已执行）
 
 - 开工 HEAD `2e4e5e4`（049 之后、未推送）；ARCHITECT 直接执行。
