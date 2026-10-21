@@ -1,0 +1,64 @@
+{
+ "sid_len": 44,
+ "turnEnd1": true,
+ "turnEnd2": true,
+ "ms": [
+  1447,
+  1476
+ ],
+ "cursor": 26,
+ "recordCount": 27,
+ "humanMsgs": [
+  {
+   "type": "user/message",
+   "seq": 8,
+   "text": "SYNTHETIC PROMPT ONE"
+  },
+  {
+   "type": "assistant/message",
+   "seq": 15,
+   "text": ""
+  },
+  {
+   "type": "user/message",
+   "seq": 23,
+   "text": "SYNTHETIC PROMPT TWO"
+  },
+  {
+   "type": "assistant/message",
+   "seq": 24,
+   "text": ""
+  }
+ ],
+ "frames": 18,
+ "frameTypes": [
+  "start",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "end",
+  "start",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "chunk",
+  "end"
+ ],
+ "textDeltas": [
+  "SYNTHETIC-TOKEN-1 ",
+  "SYNTHETIC-TOKEN-2 ",
+  "DONE",
+  "SYNTHETIC-TOKEN-1 ",
+  "SYNTHETIC-TOKEN-2 ",
+  "DONE"
+ ],
+ "reasoningChunks": 0,
+ "toolEvents": []
+}

@@ -1,0 +1,48 @@
+{
+ "cres": {
+  "type": "server-response",
+  "rpcId": "b08f4700-d3f2-4380-8073-4496487fccae",
+  "result": {
+   "ok": true,
+   "value": {
+    "accepted": true
+   }
+  }
+ },
+ "timeToEndMs": 19,
+ "turnEnd": {
+  "type": "turn/end",
+  "seq": 17,
+  "time": 1792519635294,
+  "data": {
+   "turn": 1,
+   "reason": {
+    "kind": "aborted",
+    "reason": {
+     "kind": "user"
+    }
+   }
+  }
+ },
+ "recordTypes": [
+  "permission/preset",
+  "sandbox/mode",
+  "approval/policy",
+  "agent/inbox/spliced",
+  "turn/start",
+  "agent/inbox/spliced",
+  "step/start",
+  "system/message",
+  "user/message",
+  "user/message",
+  "user/message",
+  "request/header",
+  "request/context",
+  "session/title",
+  "session/title-llm-request",
+  "assistant/message",
+  "step/end",
+  "turn/end"
+ ],
+ "hasInterrupted": false
+}

@@ -1,0 +1,139 @@
+[
+ {
+  "t": 11,
+  "snapshot": true
+ },
+ {
+  "t": 1239,
+  "event": "agent/inbox/spliced",
+  "seq": 3
+ },
+ {
+  "t": 1240,
+  "event": "turn/start",
+  "seq": 4
+ },
+ {
+  "t": 1240,
+  "event": "agent/inbox/spliced",
+  "seq": 5
+ },
+ {
+  "t": 1289,
+  "event": "step/start",
+  "seq": 6
+ },
+ {
+  "t": 1292,
+  "event": "system/message",
+  "seq": 7
+ },
+ {
+  "t": 1292,
+  "event": "user/message",
+  "seq": 8
+ },
+ {
+  "t": 1292,
+  "event": "user/message",
+  "seq": 9
+ },
+ {
+  "t": 1292,
+  "event": "user/message",
+  "seq": 10
+ },
+ {
+  "t": 1293,
+  "event": "request/header",
+  "seq": 11
+ },
+ {
+  "t": 1293,
+  "event": "request/context",
+  "seq": 12
+ },
+ {
+  "t": 1293,
+  "stream": "start",
+  "chunk": null
+ },
+ {
+  "t": 1293,
+  "event": "session/title",
+  "seq": 13
+ },
+ {
+  "t": 1293,
+  "event": "session/title-llm-request",
+  "seq": 14
+ },
+ {
+  "t": 1316,
+  "stream": "chunk",
+  "index": 0,
+  "chunk": "{\"type\":\"block-start\",\"index\":0,\"blockType\":\"text\"}"
+ },
+ {
+  "t": 1316,
+  "stream": "chunk",
+  "index": 1,
+  "chunk": "{\"type\":\"text-delta\",\"index\":0,\"text\":\"SYNTHETIC-TOKEN-1 \"}"
+ },
+ {
+  "t": 1712,
+  "stream": "chunk",
+  "index": 2,
+  "chunk": "{\"type\":\"text-delta\",\"index\":0,\"text\":\"SYNTHETIC-TOKEN-2 \"}"
+ },
+ {
+  "t": 2111,
+  "stream": "chunk",
+  "index": 3,
+  "chunk": "{\"type\":\"text-delta\",\"index\":0,\"text\":\"DONE\"}"
+ },
+ {
+  "t": 2522,
+  "event": "session/title",
+  "seq": 15
+ },
+ {
+  "t": 2527,
+  "stream": "chunk",
+  "index": 4,
+  "chunk": "{\"type\":\"block-end\",\"index\":0,\"block\":{\"type\":\"text\",\"text\":\"SYNTHETIC-TOKEN-1 SYNTHETIC-TOKEN-2 DONE\"}}"
+ },
+ {
+  "t": 2545,
+  "stream": "chunk",
+  "index": 5,
+  "chunk": "{\"type\":\"usage\",\"usage\":{\"inputTokens\":0,\"outputTokens\":0,\"totalTokens\":0}}"
+ },
+ {
+  "t": 2545,
+  "stream": "chunk",
+  "index": 6,
+  "chunk": "{\"type\":\"finish\",\"reason\":{\"kind\":\"stop\"},\"replayState\":{\"response\":{\"kind\":\"pi-ai\",\"version\":2,\"api\":\"openai-completions\",\"provider\":\"fake\",\"model\":\"synthetic-model\",\"responseId\":\"cmpl-synthetic\",\"stopReason\":\"stop\"},\"blocks\":[{\"type\":\"text\"}]}}"
+ },
+ {
+  "t": 2545,
+  "event": "assistant/message",
+  "seq": 16
+ },
+ {
+  "t": 2545,
+  "stream": "end",
+  "index": 7,
+  "chunk": null
+ },
+ {
+  "t": 2545,
+  "event": "step/end",
+  "seq": 17
+ },
+ {
+  "t": 2545,
+  "event": "turn/end",
+  "seq": 18
+ }
+]

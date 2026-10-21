@@ -1,0 +1,10 @@
+{
+  "facts": [
+    {
+      "name": "真实窗口出现",
+      "ok": true,
+      "detail": null
+    }
+  ],
+  "root": "/tmp/od045-evidence/step2"
+}

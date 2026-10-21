@@ -1,0 +1,208 @@
+{
+ "recordCount": 19,
+ "selected": [
+  {
+   "type": "user/message",
+   "seq": 8,
+   "data": {
+    "content": [
+     {
+      "type": "text",
+      "text": "SYNTHETIC-TOKEN-PROMPT"
+     }
+    ],
+    "source": {
+     "kind": "user",
+     "rpcId": "c009e8a9-becc-48ba-ba85-66c350aae34a"
+    },
+    "role": "user",
+    "id": "1cf801b1-5eae-47ae-b46c-0e1cdf882d4a"
+   }
+  },
+  {
+   "type": "user/message",
+   "seq": 9,
+   "data": {
+    "content": [
+     {
+      "type": "text",
+      "text": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/od045-evidence/step5v1/work\".\n\nCurrent DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: \"/tmp/od045-evidence/step5v1/work\". Some platform temporary areas may also be writable.\n\nApproval policy: ask. Operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed."
+     }
+    ],
+    "source": {
+     "kind": "runtime-context",
+     "form": "snapshot",
+     "sections": [
+      {
+       "name": "working-directory:current",
+       "text": "Current working directory: \"/tmp/od045-evidence/step5v1/work\"."
+      },
+      {
+       "name": "sandbox:policy",
+       "text": "Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: \"/tmp/od045-evidence/step5v1/work\". Some platform temporary areas may also be writable."
+      },
+      {
+       "name": "approval:policy",
+       "text": "Approval policy: ask. Operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed."
+      }
+     ]
+    },
+    "role": "user",
+    "id": "e61f4965-6bd2-4025-9c77-2c588abf7b39"
+   }
+  },
+  {
+   "type": "user/message",
+   "seq": 10,
+   "data": {
+    "content": [
+     {
+      "type": "text",
+      "text": "Time sampled while preparing turn 1, step 1: 2026-10-21T02:07:00+08:00[Asia/Shanghai]\nBrowser time zone for this request: unavailable. Ask the user to clarify otherwise-unqualified dates and times.\nElapsed since the preceding model-visible message: unavailable."
+     }
+    ],
+    "source": {
+     "kind": "time-context",
+     "form": "snapshot",
+     "sections": [
+      {
+       "name": "time-context",
+       "text": "Time sampled while preparing turn 1, step 1: 2026-10-21T02:07:00+08:00[Asia/Shanghai]\nBrowser time zone for this request: unavailable. Ask the user to clarify otherwise-unqualified dates and times.\nElapsed since the preceding model-visible message: unavailable."
+      }
+     ]
+    },
+    "role": "user",
+    "id": "dad467eb-8e4f-43bc-8d86-83ed9cf6e2c3"
+   }
+  },
+  {
+   "type": "assistant/message",
+   "seq": 16,
+   "data": {
+    "turn": 1,
+    "step": 1,
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "SYNTHETIC-TOKEN-1 SYNTHETIC-TOKEN-2 DONE"
+      }
+     ],
+     "source": {
+      "kind": "model",
+      "provider": "fake",
+      "model": "synthetic-model",
+      "replayState": {
+       "response": {
+        "kind": "pi-ai",
+        "version": 2,
+        "api": "openai-completions",
+        "provider": "fake",
+        "model": "synthetic-model",
+        "responseId": "cmpl-synthetic",
+        "stopReason": "stop"
+       },
+       "blocks": [
+        {
+         "type": "text"
+        }
+       ]
+      }
+     },
+     "id": "1d08051d-159b-4742-8d36-f2f5f737daa5"
+    },
+    "usage": {
+     "inputTokens": 0,
+     "outputTokens": 0,
+     "totalTokens": 0
+    },
+    "stream": [
+     {
+      "type": "chunk",
+      "time": 1792519620279,
+      "chunk": {
+       "type": "block-start",
+       "index": 0,
+       "blockType": "text"
+      }
+     },
+     {
+      "type": "text-chunks",
+      "time0": 1792519620280,
+      "index": 0,
+      "dt": [
+       401,
+       402
+      ],
+      "texts": [
+       "SYNTHETIC-TOKEN-1 ",
+       "SYNTHETIC-TOKEN-2 ",
+       "DONE"
+      ]
+     },
+     {
+      "type": "chunk",
+      "time": 1792519621492,
+      "chunk": {
+       "type": "block-end",
+       "index": 0,
+       "block": {
+        "type": "text",
+        "text": "SYNTHETIC-TOKEN-1 SYNTHETIC-TOKEN-2 DONE"
+       }
+      }
+     },
+     {
+      "type": "chunk",
+      "time": 1792519621493,
+      "chunk": {
+       "type": "usage",
+       "usage": {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "totalTokens": 0
+       }
+      }
+     },
+     {
+      "type": "chunk",
+      "time": 1792519621493,
+      "chunk": {
+       "type": "finish",
+       "reason": {
+        "kind": "stop"
+       },
+       "replayState": {
+        "response": {
+         "kind": "pi-ai",
+         "version": 2,
+         "api": "openai-completions",
+         "provider": "fake",
+         "model": "synthetic-model",
+         "responseId": "cmpl-synthetic",
+         "stopReason": "stop"
+        },
+        "blocks": [
+         {
+          "type": "text"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "type": "turn/end",
+   "seq": 18,
+   "data": {
+    "turn": 1,
+    "reason": {
+     "kind": "completed"
+    }
+   }
+  }
+ ]
+}
