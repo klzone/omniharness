@@ -4,20 +4,21 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302079.9219456,
+  "started_at": 1792559267.353556,
   "checks": [
     {
       "check": "session_id_captured",
       "pass": true,
-      "detail": "ca3b3a50-0bb4-4802-9598-063c8643f3c0"
+      "detail": "d1c35af9-1cb3-4185-9a6a-ee622faa0284"
     },
     {
       "check": "recover_session_ok",
       "pass": true,
       "detail": {
-        "engine_session_id": "ca3b3a50-0bb4-4802-9598-063c8643f3c0",
+        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
         "resumed": true,
-        "cwd": "/tmp/omni_p1s3_e08_9hpjq1cq/work",
+        "workspace_token": "9da686f56e44a16d",
+        "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
         "note": "恢复的是既有会话；恢复不触发任何任务重放"
@@ -27,9 +28,10 @@
       "check": "resumed_is_existing_session",
       "pass": true,
       "detail": {
-        "engine_session_id": "ca3b3a50-0bb4-4802-9598-063c8643f3c0",
+        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
         "resumed": true,
-        "cwd": "/tmp/omni_p1s3_e08_9hpjq1cq/work",
+        "workspace_token": "9da686f56e44a16d",
+        "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
         "note": "恢复的是既有会话；恢复不触发任何任务重放"
@@ -55,15 +57,15 @@
       "check": "task_recovery_ok",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-f417241b-98da-4597-aa40-b7ca1f8d6bc2",
+        "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
         "status": {
-          "omni_task_id": "omni-f417241b-98da-4597-aa40-b7ca1f8d6bc2",
+          "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
           "status": "succeeded",
           "evidence_source": "engine_terminal",
-          "since": 1792302081.8600636,
+          "since": 1792559269.089106,
           "last_event_seq": 4,
           "partial_output_size": 6,
-          "engine_session_id": "ca3b3a50-0bb4-4802-9598-063c8643f3c0",
+          "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
           "note": "来自本地记录（前次运行取得的引擎终态证据）"
         },
         "replayed": false,
@@ -78,7 +80,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e08_9hpjq1cq",
+    "data_root": "/tmp/omni_p1s3_e08_04halold",
     "first_shutdown": {
       "mode": "graceful",
       "in_flight_before": [],
@@ -90,9 +92,10 @@
       "note": "优雅关闭"
     },
     "session_recovery": {
-      "engine_session_id": "ca3b3a50-0bb4-4802-9598-063c8643f3c0",
+      "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
       "resumed": true,
-      "cwd": "/tmp/omni_p1s3_e08_9hpjq1cq/work",
+      "workspace_token": "9da686f56e44a16d",
+      "workspace_label": "",
       "config_option_count": 1,
       "evidence": "engine_terminal",
       "note": "恢复的是既有会话；恢复不触发任何任务重放"
@@ -105,15 +108,15 @@
       "session/resume": 1
     },
     "task_recovery": {
-      "omni_task_id": "omni-f417241b-98da-4597-aa40-b7ca1f8d6bc2",
+      "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
       "status": {
-        "omni_task_id": "omni-f417241b-98da-4597-aa40-b7ca1f8d6bc2",
+        "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792302081.8600636,
+        "since": 1792559269.089106,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "ca3b3a50-0bb4-4802-9598-063c8643f3c0",
+        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
         "note": "来自本地记录（前次运行取得的引擎终态证据）"
       },
       "replayed": false,
@@ -133,5 +136,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792302084.320906
+  "finished_at": 1792559271.547285
 }

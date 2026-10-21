@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302061.1173694,
+  "started_at": 1792559250.2648811,
   "checks": [
     {
       "check": "seq_strictly_increasing",
@@ -63,34 +63,35 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e02_jhvf_0u1",
+    "data_root": "/tmp/omni_p1s3_e02_p4o7vyuj",
     "event_sequence": [
       {
-        "omni_task_id": "omni-52924fa1-59a4-40c6-9f84-4f0a9e7ccf4b",
+        "omni_task_id": "omni-82b0b71c-cc87-4313-9638-d22e3145b000",
         "seq": 1,
-        "occurred_at": 1792302063.1757264,
+        "occurred_at": 1792559251.8005445,
         "type": "task_started",
         "payload": {
           "normalized": true,
           "reason": "session/prompt 已发出",
-          "intent": "synthetic-writing-task"
+          "intent": "synthetic-writing-task",
+          "session_mode": "new"
         }
       },
       {
-        "omni_task_id": "omni-52924fa1-59a4-40c6-9f84-4f0a9e7ccf4b",
+        "omni_task_id": "omni-82b0b71c-cc87-4313-9638-d22e3145b000",
         "seq": 2,
-        "occurred_at": 1792302063.7163186,
+        "occurred_at": 1792559252.2194505,
         "type": "text_delta",
         "payload": {
           "text": "甲乙丙丁",
-          "message_id": "30347bd6-d390-4582-b3e8-8e03ca8aed65",
+          "message_id": "0bad337c-3259-4b42-a2fb-ed90eaf6ac37",
           "chars": 4
         }
       },
       {
-        "omni_task_id": "omni-52924fa1-59a4-40c6-9f84-4f0a9e7ccf4b",
+        "omni_task_id": "omni-82b0b71c-cc87-4313-9638-d22e3145b000",
         "seq": 3,
-        "occurred_at": 1792302063.7197306,
+        "occurred_at": 1792559252.2208848,
         "type": "progress",
         "payload": {
           "kind": "usage",
@@ -99,9 +100,9 @@
         }
       },
       {
-        "omni_task_id": "omni-52924fa1-59a4-40c6-9f84-4f0a9e7ccf4b",
+        "omni_task_id": "omni-82b0b71c-cc87-4313-9638-d22e3145b000",
         "seq": 4,
-        "occurred_at": 1792302063.7250123,
+        "occurred_at": 1792559252.224663,
         "type": "task_completed",
         "payload": {
           "stop_reason": "end_turn",
@@ -113,10 +114,10 @@
     ],
     "stream_join": "甲乙丙丁",
     "final_result": {
-      "omni_task_id": "omni-52924fa1-59a4-40c6-9f84-4f0a9e7ccf4b",
+      "omni_task_id": "omni-82b0b71c-cc87-4313-9638-d22e3145b000",
       "form": "complete",
       "content": "甲乙丙丁",
-      "persisted_at": 1792302063.175669,
+      "persisted_at": 1792559251.8004935,
       "integrity": "complete",
       "sources": [
         {
@@ -151,5 +152,5 @@
     "流式粒度实测：合成端点分 4 块、每块间隔 0.05s 逐步返回，但 ACP 通道只在整轮结束时投递 1 个 assistant 消息块。因此本通道的 text_delta 是「按 assistant 消息」粒度，不是 token 级流式；适配层不得对外声称 token 级流（对照契约 4.4 的归一化说明）。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302063.970742
+  "finished_at": 1792559252.4764132
 }

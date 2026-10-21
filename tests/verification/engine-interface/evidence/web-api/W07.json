@@ -1,0 +1,127 @@
+{
+  "scenario": "W07",
+  "title": "W07 重启后恢复会话",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559424.6519651,
+  "checks": [
+    {
+      "check": "session_id_present",
+      "pass": true,
+      "detail": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc"
+    },
+    {
+      "check": "restarted_engine_lists_session",
+      "pass": true,
+      "detail": 1
+    },
+    {
+      "check": "recover_ok",
+      "pass": true,
+      "detail": {
+        "engine_session_id": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc",
+        "resumed": true,
+        "workspace_token": "865ae45363156e23",
+        "workspace_label": "工作区 1 · 865ae453",
+        "config_option_count": 0,
+        "evidence": "engine_terminal",
+        "note": "Web API 无 session/resume；follow 打开成功即证明会话存在。恢复不触发任务重放；配置项数量在本通道不可观测"
+      }
+    },
+    {
+      "check": "session_mode_resumed",
+      "pass": true,
+      "detail": "resumed"
+    },
+    {
+      "check": "same_session_after_restart",
+      "pass": true,
+      "detail": {
+        "before": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc",
+        "after": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc"
+      }
+    },
+    {
+      "check": "resumed_turn_produced_new_text",
+      "pass": true,
+      "detail": "AFTER-RESTART"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w07_7a26ba91",
+    "first_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    },
+    "session_listing": {
+      "total": 1,
+      "groups": [
+        {
+          "sessions": [
+            "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc"
+          ]
+        }
+      ],
+      "note": "只含会话元数据；列表可见不代表可恢复，重开结果以 follow 是否打开为准"
+    },
+    "recover": {
+      "engine_session_id": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc",
+      "resumed": true,
+      "workspace_token": "865ae45363156e23",
+      "workspace_label": "工作区 1 · 865ae453",
+      "config_option_count": 0,
+      "evidence": "engine_terminal",
+      "note": "Web API 无 session/resume；follow 打开成功即证明会话存在。恢复不触发任务重放；配置项数量在本通道不可观测"
+    },
+    "resumed_receipt": {
+      "omni_task_id": "omni-c81e83ae-7bf4-4531-a236-c886e295bd9c",
+      "status": "running",
+      "accepted_at": 1792559430.2185297,
+      "engine_session_id": "session-abd795fb-7b6b-4947-ac3e-087c1aeee3fc",
+      "note": "已重开既有引擎会话并提交；等待引擎终态证据",
+      "session_mode": "resumed"
+    },
+    "resumed_result": {
+      "omni_task_id": "omni-c81e83ae-7bf4-4531-a236-c886e295bd9c",
+      "form": "complete",
+      "content": "AFTER-RESTART",
+      "persisted_at": 1792559430.5690396,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_turn_end",
+          "value": "stop"
+        },
+        {
+          "kind": "engine_stream",
+          "value": "assistant-stream"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 assistant-stream 的 text-delta 与 assistant/message 拼装"
+    },
+    "second_shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559431.0332363
+}

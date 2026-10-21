@@ -1,0 +1,139 @@
+{
+  "scenario": "W02",
+  "title": "W02 真实分批流式",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559406.4801025,
+  "checks": [
+    {
+      "check": "three_or_more_deltas",
+      "pass": true,
+      "detail": 3
+    },
+    {
+      "check": "deltas_arrive_over_time",
+      "pass": true,
+      "detail": 0.485
+    },
+    {
+      "check": "all_deltas_marked_streamed",
+      "pass": true,
+      "detail": [
+        {
+          "text": "TOK-A ",
+          "streamed": true,
+          "at_s": 0.381
+        },
+        {
+          "text": "TOK-B ",
+          "streamed": true,
+          "at_s": 0.615
+        },
+        {
+          "text": "TOK-C",
+          "streamed": true,
+          "at_s": 0.866
+        }
+      ]
+    },
+    {
+      "check": "seq_strictly_increasing",
+      "pass": true,
+      "detail": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "check": "stream_join_eq_result",
+      "pass": true,
+      "detail": {
+        "join": "TOK-A TOK-B TOK-C",
+        "final": "TOK-A TOK-B TOK-C"
+      }
+    },
+    {
+      "check": "terminal_succeeded",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-148b4d01-587e-4af2-8f77-f5ae325c5123",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792559410.0069258,
+        "last_event_seq": 6,
+        "partial_output_size": 17,
+        "engine_session_id": "session-1e218830-7ed8-4389-b7a5-87e41e2966e9",
+        "note": "stop_reason=stop"
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w02_h0gx2w49",
+    "delta_arrivals": [
+      {
+        "text": "TOK-A ",
+        "streamed": true,
+        "at_s": 0.381
+      },
+      {
+        "text": "TOK-B ",
+        "streamed": true,
+        "at_s": 0.615
+      },
+      {
+        "text": "TOK-C",
+        "streamed": true,
+        "at_s": 0.866
+      }
+    ],
+    "event_types": [
+      "task_started",
+      "text_delta",
+      "text_delta",
+      "text_delta",
+      "progress",
+      "task_completed"
+    ],
+    "final_result": {
+      "omni_task_id": "omni-148b4d01-587e-4af2-8f77-f5ae325c5123",
+      "form": "complete",
+      "content": "TOK-A TOK-B TOK-C",
+      "persisted_at": 1792559408.9202943,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_turn_end",
+          "value": "stop"
+        },
+        {
+          "kind": "engine_stream",
+          "value": "assistant-stream"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 assistant-stream 的 text-delta 与 assistant/message 拼装"
+    },
+    "model_request_count": 2,
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559410.7229104
+}

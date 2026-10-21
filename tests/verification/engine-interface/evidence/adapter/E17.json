@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302110.9823616,
+  "started_at": 1792559298.932118,
   "checks": [
     {
       "check": "headless_help_ok",
@@ -81,7 +81,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e17_blujd0hk",
+    "data_root": "/tmp/omni_p1s3_e17_8vtihxmp",
     "headless_help_rc": 0,
     "headless_initialize_error": {
       "exception": "EngineError",
@@ -124,5 +124,5 @@
     "headless 通道帮助面没有取消旗标；sdk 通道实测 session/cancel 与 session/resume 均为未知方法（-32603）。两者都不具备 ACP 语义的取消/恢复能力，因此适配层在非 ACP 通道上如实失败，不做语义不等价的降级。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302122.4273474
+  "finished_at": 1792559310.5287044
 }

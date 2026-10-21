@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302035.897195,
+  "started_at": 1792559225.7941773,
   "checks": [
     {
       "check": "idle_control_isolation_holds",
@@ -94,8 +94,8 @@
       "check": "repo_working_tree_status_unchanged",
       "pass": true,
       "detail": {
-        "before_n": 81,
-        "after_n": 81,
+        "before_n": 47,
+        "after_n": 47,
         "delta": []
       }
     },
@@ -117,7 +117,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e20_udo4bq54",
+    "data_root": "/tmp/omni_p1s3_e20_jo2fwi5v",
     "snapshot_targets": {
       "dsh_home": "/home/kevin/.dsh",
       "agents_home": "/home/kevin/.agents",
@@ -249,7 +249,16 @@
       "changed_count": 0
     },
     "leftover_scenario_roots": [
-      "/tmp/omni_p1s3_e20_udo4bq54"
+      "/tmp/omni_p1s3_e20_jo2fwi5v",
+      "/tmp/omni_p1s3_w09f_m5orow8w",
+      "/tmp/omni_p1s3_w09e_7dxh0c16",
+      "/tmp/omni_p1s3_w09d_ur60kb3e",
+      "/tmp/omni_p1s3_w09d_4tt1o1r_",
+      "/tmp/omni_p1s3_w09c_iyig8gt5",
+      "/tmp/omni_p1s3_w09b__bu_ofwv",
+      "/tmp/omni_p1s3_w09_m_qdb061",
+      "/tmp/omni_p1s3_w09_ypn5gbuo",
+      "/tmp/omni_p1s3_w09_3gdiz6e8"
     ]
   },
   "notes": [
@@ -257,5 +266,5 @@
     "归因结论：E01-E19 全部使用 /tmp 下一次性 DSH_HOME / DSH_AGENTS_HOME，这些根之外的目标目录（~/.agents、~/OmniDesk、~/YvanAI）元数据零差异；~/.dsh 的变化路径均不含本阶段痕迹特征，属于本机原版 DSH Desktop 自身（用户正在使用）的写入，不计入本阶段副作用。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302136.485234
+  "finished_at": 1792559324.2964475
 }

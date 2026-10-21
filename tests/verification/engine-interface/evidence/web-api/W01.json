@@ -1,0 +1,141 @@
+{
+  "scenario": "W01",
+  "title": "W01 启动与鉴权",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559403.4718463,
+  "checks": [
+    {
+      "check": "initialize_ok",
+      "pass": true,
+      "detail": {
+        "engine_kind": "dsh-web-api",
+        "engine_version": "unknown",
+        "protocol_version": "dsh-web-api/1",
+        "compatibility": "compatible",
+        "healthy": true,
+        "capabilities": {
+          "submit_task": "implementation_supported",
+          "get_task_status": "implementation_supported",
+          "stream_events": "implementation_supported",
+          "cancel_task": "implementation_supported",
+          "recover_session": "implementation_supported",
+          "recover_task": "partial",
+          "get_task_result": "implementation_supported"
+        },
+        "detail": {
+          "channel": "web-api",
+          "profile": "web",
+          "routable_providers": [
+            "deepseek-official",
+            "fake"
+          ],
+          "model_groups": 2,
+          "catalog_failures": 0,
+          "streaming": "assistant-stream/text-delta",
+          "note": "capabilities 为适配层声明；实际通过与否见 048 测试报告",
+          "known_limits": [
+            "DSH local web API is an internal interface; pinned runtime version only",
+            "reasoning stream is unverified with the synthetic endpoint"
+          ]
+        }
+      }
+    },
+    {
+      "check": "engine_kind_is_web_api",
+      "pass": true,
+      "detail": "dsh-web-api"
+    },
+    {
+      "check": "profile_recorded",
+      "pass": true,
+      "detail": "web"
+    },
+    {
+      "check": "catalog_readable",
+      "pass": true,
+      "detail": [
+        "deepseek-flash",
+        "deepseek-v4-pro",
+        "synthetic-model"
+      ]
+    },
+    {
+      "check": "token_discarded_after_auth",
+      "pass": true,
+      "detail": true
+    },
+    {
+      "check": "startup_token_redacted",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "check": "no_token_in_public_objects",
+      "pass": true,
+      "detail": "checked descriptor + catalog"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w01_f1olzbmq",
+    "descriptor": {
+      "engine_kind": "dsh-web-api",
+      "engine_version": "unknown",
+      "protocol_version": "dsh-web-api/1",
+      "compatibility": "compatible",
+      "healthy": true,
+      "capabilities": {
+        "submit_task": "implementation_supported",
+        "get_task_status": "implementation_supported",
+        "stream_events": "implementation_supported",
+        "cancel_task": "implementation_supported",
+        "recover_session": "implementation_supported",
+        "recover_task": "partial",
+        "get_task_result": "implementation_supported"
+      },
+      "detail": {
+        "channel": "web-api",
+        "profile": "web",
+        "routable_providers": [
+          "deepseek-official",
+          "fake"
+        ],
+        "model_groups": 2,
+        "catalog_failures": 0,
+        "streaming": "assistant-stream/text-delta",
+        "note": "capabilities 为适配层声明；实际通过与否见 048 测试报告",
+        "known_limits": [
+          "DSH local web API is an internal interface; pinned runtime version only",
+          "reasoning stream is unverified with the synthetic endpoint"
+        ]
+      }
+    },
+    "catalog_summary": {
+      "groups": [
+        "deepseek-official",
+        "fake"
+      ],
+      "models": [
+        "deepseek-flash",
+        "deepseek-v4-pro",
+        "synthetic-model"
+      ],
+      "failures": []
+    },
+    "startup_tail_redacted": "dsh web: http://127.0.0.1:45735/?token=<redacted>",
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559406.4783053
+}

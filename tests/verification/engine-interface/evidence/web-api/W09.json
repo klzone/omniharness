@@ -1,0 +1,84 @@
+{
+  "scenario": "W09",
+  "title": "W09 未知会话",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559434.1923726,
+  "checks": [
+    {
+      "check": "recover_unknown_rejected",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_session",
+        "message": "[unknown_session] engine session is gone: session \"synthetic-session-does-not-exist\" not found",
+        "detail": {
+          "channel": "web-api",
+          "follow_code": "session/not-found"
+        }
+      }
+    },
+    {
+      "check": "maps_to_unknown_session",
+      "pass": true,
+      "detail": {
+        "exception": "EngineError",
+        "engine_error_code": "unknown_session",
+        "message": "[unknown_session] engine session is gone: session \"synthetic-session-does-not-exist\" not found",
+        "detail": {
+          "channel": "web-api",
+          "follow_code": "session/not-found"
+        }
+      }
+    },
+    {
+      "check": "fails_fast_before_timeout",
+      "pass": true,
+      "detail": {
+        "elapsed_s": 0.011,
+        "timeout": 8
+      }
+    },
+    {
+      "check": "no_task_or_session_created",
+      "pass": true,
+      "detail": {
+        "before": 0,
+        "after": 0
+      }
+    },
+    {
+      "check": "no_model_call",
+      "pass": true,
+      "detail": 0
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w09_i1bffglw",
+    "unknown_session_error": {
+      "exception": "EngineError",
+      "engine_error_code": "unknown_session",
+      "message": "[unknown_session] engine session is gone: session \"synthetic-session-does-not-exist\" not found",
+      "detail": {
+        "channel": "web-api",
+        "follow_code": "session/not-found"
+      }
+    },
+    "elapsed_s": 0.011,
+    "model_request_count": 0,
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559436.6952126
+}

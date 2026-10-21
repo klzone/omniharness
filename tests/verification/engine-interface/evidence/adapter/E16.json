@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302110.844688,
+  "started_at": 1792559298.8177354,
   "checks": [
     {
       "check": "initialize_fails",
@@ -56,7 +56,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e16_basqatlb",
+    "data_root": "/tmp/omni_p1s3_e16_fmpzvk6s",
     "initialize_error": {
       "exception": "EngineError",
       "engine_error_code": "engine_unavailable",
@@ -73,22 +73,23 @@
     },
     "task_records": [
       {
-        "omni_task_id": "omni-e9a4bf39-8ac8-4a6d-9ba9-cda9cda3870b",
+        "omni_task_id": "omni-6478be4c-61dc-4e4a-a9d9-f50291228e8a",
         "intent": "synthetic-writing-task",
-        "workspace_dir": "/tmp/omni_p1s3_e16_basqatlb/work",
+        "workspace_dir": "/tmp/omni_p1s3_e16_fmpzvk6s/work",
         "idempotency_key": null,
         "engine_session_id": null,
+        "session_mode": "new",
         "state": "interrupted",
         "evidence_source": "engine_error",
-        "created_at": 1792302110.9805584,
-        "state_since": 1792302110.9810274,
+        "created_at": 1792559298.9303086,
+        "state_since": 1792559298.9308796,
         "seq": 1,
         "stop_reason": null,
         "error_code": "engine_unavailable",
         "error_message": "engine process already exited (rc=1); frame not sent",
         "cancel_phase": "not_requested",
         "truncated": false,
-        "persisted_at": 1792302110.9813676,
+        "persisted_at": 1792559298.9311838,
         "content": ""
       }
     ],
@@ -105,5 +106,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792302110.9814746
+  "finished_at": 1792559298.931297
 }

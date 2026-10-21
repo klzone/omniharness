@@ -134,6 +134,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(req, dict):
             req = {}
         ctl = self.ctl
+        raw_text = raw.decode("utf-8", "replace")
         with ctl.lock:
             mode = ctl.mode
             chunks = list(ctl.chunks)
@@ -150,6 +151,10 @@ class _Handler(BaseHTTPRequestHandler):
                 "mode": mode,
                 "probe_hits": [p for p in probes if p and p in joined],
                 "probe_misses": [p for p in probes if p and p not in joined],
+                # 整包探针：用于区分“完全没发送”与“走了 messages 之外的字段”。
+                # 只记录命中与否，不保存请求正文。
+                "body_probe_hits": [p for p in probes if p and p in raw_text],
+                "body_keys": sorted(str(k) for k in req.keys()),
             })
 
         if mode == "error_400":

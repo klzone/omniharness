@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302108.2404282,
+  "started_at": 1792559296.1028554,
   "checks": [
     {
       "check": "forced_terminate_recorded",
@@ -12,11 +12,11 @@
       "detail": {
         "mode": "graceful",
         "in_flight_before": [
-          "omni-dc81a3d1-374e-4a49-b086-48f97511b302"
+          "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
         ],
         "cancelled": [],
         "still_running": [
-          "omni-dc81a3d1-374e-4a49-b086-48f97511b302"
+          "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
         ],
         "connection_closed": true,
         "process_exit_code": -9,
@@ -33,7 +33,7 @@
       "check": "still_running_or_unknown_recorded",
       "pass": true,
       "detail": [
-        "omni-dc81a3d1-374e-4a49-b086-48f97511b302"
+        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
       ]
     },
     {
@@ -43,15 +43,15 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e15_f2mmqf2r",
+    "data_root": "/tmp/omni_p1s3_e15_h4bwr4qy",
     "shutdown_report": {
       "mode": "graceful",
       "in_flight_before": [
-        "omni-dc81a3d1-374e-4a49-b086-48f97511b302"
+        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-dc81a3d1-374e-4a49-b086-48f97511b302"
+        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
       ],
       "connection_closed": true,
       "process_exit_code": -9,
@@ -59,17 +59,17 @@
       "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
     },
     "status_after_force": {
-      "omni_task_id": "omni-dc81a3d1-374e-4a49-b086-48f97511b302",
+      "omni_task_id": "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792302109.6515384,
+      "since": 1792559297.6352317,
       "last_event_seq": 1,
       "partial_output_size": 0,
-      "engine_session_id": "cfc2a5d7-6e22-4683-9bc4-c9f7ca33246b",
+      "engine_session_id": "968d87f3-da63-4cca-9090-39ea4faaa20b",
       "note": ""
     }
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792302110.840835
+  "finished_at": 1792559298.8160276
 }

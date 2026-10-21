@@ -4,19 +4,19 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302063.972463,
+  "started_at": 1792559252.4790916,
   "checks": [
     {
       "check": "reached_succeeded",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792302066.476311,
+        "since": 1792559254.2558835,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": "stop_reason=end_turn"
       }
     },
@@ -24,13 +24,13 @@
       "check": "terminal_evidence_engine",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792302066.476311,
+        "since": 1792559254.2558835,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": "stop_reason=end_turn"
       }
     },
@@ -56,54 +56,54 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e03_53u8clyh",
+    "data_root": "/tmp/omni_p1s3_e03_v6pokrx1",
     "status_series": [
       {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792302066.1939735,
+        "since": 1792559254.0344145,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792302066.1939735,
+        "since": 1792559254.0344145,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792302066.1939735,
+        "since": 1792559254.0344145,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": ""
       },
       {
-        "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+        "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792302066.476311,
+        "since": 1792559254.2558835,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "199a1691-6ff0-42fb-b3c8-9698dee4ba01",
+        "engine_session_id": "c3b954f7-9265-4fa2-96ee-55360d2fa09e",
         "note": "stop_reason=end_turn"
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-5e3bed28-b367-4dd5-abd6-801717da372d",
+      "omni_task_id": "omni-60a99739-19d0-458b-990a-f253d3241548",
       "form": "complete",
       "content": "合成回复内容",
-      "persisted_at": 1792302066.4766543,
+      "persisted_at": 1792559254.2561717,
       "integrity": "complete",
       "sources": [
         {
@@ -134,5 +134,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792302066.9315407
+  "finished_at": 1792559254.7145004
 }

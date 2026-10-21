@@ -1,0 +1,81 @@
+{
+  "scenario": "W04",
+  "title": "W04 正常取消",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559414.025392,
+  "checks": [
+    {
+      "check": "was_running",
+      "pass": true,
+      "detail": "running"
+    },
+    {
+      "check": "confirmed_cancelled",
+      "pass": true,
+      "detail": "confirmed_cancelled"
+    },
+    {
+      "check": "evidence_is_engine_terminal",
+      "pass": true,
+      "detail": "engine_terminal"
+    },
+    {
+      "check": "settled_within_2s",
+      "pass": true,
+      "detail": 0.048
+    },
+    {
+      "check": "final_state_cancelled",
+      "pass": true,
+      "detail": "cancelled"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w04_r3gd6m1d",
+    "status_before_cancel": {
+      "omni_task_id": "omni-3459e881-8969-41c8-8cc2-c30874ad2c64",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792559416.4036844,
+      "last_event_seq": 1,
+      "partial_output_size": 0,
+      "engine_session_id": "session-fca09462-e68f-4b9b-97f2-ecc5fa4a5b09",
+      "note": ""
+    },
+    "cancel_outcome": {
+      "omni_task_id": "omni-3459e881-8969-41c8-8cc2-c30874ad2c64",
+      "phase": "confirmed_cancelled",
+      "requested_at": 1792559417.404347,
+      "settled_at": 1792559417.4524002,
+      "final_state": "cancelled",
+      "evidence": "engine_terminal",
+      "note": "引擎以 turn/end=aborted 落定"
+    },
+    "cancel_elapsed_s": 0.048,
+    "status_after_cancel": {
+      "omni_task_id": "omni-3459e881-8969-41c8-8cc2-c30874ad2c64",
+      "status": "cancelled",
+      "evidence_source": "engine_terminal",
+      "since": 1792559417.4401984,
+      "last_event_seq": 3,
+      "partial_output_size": 0,
+      "engine_session_id": "session-fca09462-e68f-4b9b-97f2-ecc5fa4a5b09",
+      "note": "stop_reason=aborted"
+    },
+    "shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559417.7026598
+}

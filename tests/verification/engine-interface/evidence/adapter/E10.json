@@ -4,16 +4,16 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302086.3309822,
+  "started_at": 1792559273.555183,
   "checks": [
     {
       "check": "in_flight_client_started",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
-        "engine_session_id": "ea160007-d276-438e-a32b-6ca2a419652f",
+        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+        "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
         "status": "running",
-        "child_pid": 698
+        "child_pid": 702231
       }
     },
     {
@@ -25,15 +25,15 @@
       "check": "recover_returns_state",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
+        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
         "status": {
-          "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
+          "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
           "status": "unknown",
           "evidence_source": "process_state",
-          "since": 1792302087.8374944,
+          "since": 1792559275.2592187,
           "last_event_seq": 0,
           "partial_output_size": 0,
-          "engine_session_id": "ea160007-d276-438e-a32b-6ca2a419652f",
+          "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
           "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
         },
         "replayed": false,
@@ -70,31 +70,31 @@
       "detail": {
         "exception": "EngineError",
         "engine_error_code": "unknown_task",
-        "message": "[unknown_task] unknown omni_task_id: omni-1f325348-b209-4abf-8343-c928b12c8d90",
+        "message": "[unknown_task] unknown omni_task_id: omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
         "detail": {
-          "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90"
+          "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3"
         }
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e10_kbsxwrd9",
+    "data_root": "/tmp/omni_p1s3_e10_j5idvre9",
     "client_receipt": {
-      "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
-      "engine_session_id": "ea160007-d276-438e-a32b-6ca2a419652f",
+      "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+      "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
       "status": "running",
-      "child_pid": 698
+      "child_pid": 702231
     },
     "recover_interrupted": {
-      "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
+      "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
       "status": {
-        "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90",
+        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
         "status": "unknown",
         "evidence_source": "process_state",
-        "since": 1792302087.8374944,
+        "since": 1792559275.2592187,
         "last_event_seq": 0,
         "partial_output_size": 0,
-        "engine_session_id": "ea160007-d276-438e-a32b-6ca2a419652f",
+        "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
         "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
       },
       "replayed": false,
@@ -108,9 +108,9 @@
     "result_lookup": {
       "exception": "EngineError",
       "engine_error_code": "unknown_task",
-      "message": "[unknown_task] unknown omni_task_id: omni-1f325348-b209-4abf-8343-c928b12c8d90",
+      "message": "[unknown_task] unknown omni_task_id: omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
       "detail": {
-        "omni_task_id": "omni-1f325348-b209-4abf-8343-c928b12c8d90"
+        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3"
       }
     },
     "restart_shutdown": {
@@ -128,5 +128,5 @@
     "中断任务不会被自动重放；也未生成任何替代结果，符合「不伪造结果」的验收标准。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302091.0155969
+  "finished_at": 1792559278.468295
 }

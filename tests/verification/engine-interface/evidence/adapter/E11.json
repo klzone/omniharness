@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302091.016667,
+  "started_at": 1792559278.4713047,
   "checks": [
     {
       "check": "no_duplicate_seq",
@@ -44,36 +44,37 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e11_n1i2xt_h",
+    "data_root": "/tmp/omni_p1s3_e11_8elpnrge",
     "partial_before_reconnect": [
       {
-        "omni_task_id": "omni-778e6bd8-b99a-4b26-919b-2f7e9c2d6996",
+        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
         "seq": 1,
-        "occurred_at": 1792302092.5290082,
+        "occurred_at": 1792559280.005151,
         "type": "task_started",
         "payload": {
           "normalized": true,
           "reason": "session/prompt 已发出",
-          "intent": "synthetic-writing-task"
+          "intent": "synthetic-writing-task",
+          "session_mode": "new"
         }
       },
       {
-        "omni_task_id": "omni-778e6bd8-b99a-4b26-919b-2f7e9c2d6996",
+        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
         "seq": 2,
-        "occurred_at": 1792302094.2931368,
+        "occurred_at": 1792559281.7249064,
         "type": "text_delta",
         "payload": {
           "text": "甲乙丙丁戊",
-          "message_id": "09763d82-35de-4d13-bfe4-ada9de9f4295",
+          "message_id": "64ab1c16-2fce-43e0-9735-a7dadfe2bfc1",
           "chars": 5
         }
       }
     ],
     "resumed_after_reconnect": [
       {
-        "omni_task_id": "omni-778e6bd8-b99a-4b26-919b-2f7e9c2d6996",
+        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
         "seq": 3,
-        "occurred_at": 1792302094.2950115,
+        "occurred_at": 1792559281.7269201,
         "type": "progress",
         "payload": {
           "kind": "usage",
@@ -82,9 +83,9 @@
         }
       },
       {
-        "omni_task_id": "omni-778e6bd8-b99a-4b26-919b-2f7e9c2d6996",
+        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
         "seq": 4,
-        "occurred_at": 1792302094.2974153,
+        "occurred_at": 1792559281.7399797,
         "type": "task_completed",
         "payload": {
           "stop_reason": "end_turn",
@@ -108,5 +109,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792302094.75399
+  "finished_at": 1792559282.198216
 }

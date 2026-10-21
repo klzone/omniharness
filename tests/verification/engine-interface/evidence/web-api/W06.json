@@ -1,0 +1,62 @@
+{
+  "scenario": "W06",
+  "title": "W06 同会话连续两轮",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559421.3425195,
+  "checks": [
+    {
+      "check": "session_mode_continued",
+      "pass": true,
+      "detail": "continued"
+    },
+    {
+      "check": "same_session_id",
+      "pass": true,
+      "detail": {
+        "first": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51",
+        "second": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51"
+      }
+    },
+    {
+      "check": "second_turn_has_its_own_text",
+      "pass": true,
+      "detail": "SECOND"
+    },
+    {
+      "check": "first_result_unchanged",
+      "pass": true,
+      "detail": "FIRST"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w06_zm8pw6m_",
+    "second_receipt": {
+      "omni_task_id": "omni-d30a3b0e-13fe-4ca0-8c98-f4a5e8ce38f6",
+      "status": "running",
+      "accepted_at": 1792559424.086691,
+      "engine_session_id": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51",
+      "note": "已在同一引擎会话内继续本轮；等待引擎终态证据",
+      "session_mode": "continued"
+    },
+    "results": {
+      "first": "FIRST",
+      "second": "SECOND"
+    },
+    "model_request_count": 3,
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559424.6495087
+}

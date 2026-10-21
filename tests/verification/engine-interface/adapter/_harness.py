@@ -47,9 +47,11 @@ SYNTH_PROMPT_2 = "请用一句话说明合成占位材料的写作要点。"
 SYNTH_PROMPT_3 = "请就以下合成要点生成小结：事项 A 完成 12 项；事项 A 完成 9 项。"
 
 
-def write_evidence(name: str, payload: dict) -> Path:
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    path = EVIDENCE_DIR / (name + ".json")
+def write_evidence(name: str, payload: dict, directory: Path | None = None) -> Path:
+    """写证据文件。默认落 ACP 证据目录；web-api 通道传入自己的目录，互不覆盖。"""
+    target = Path(directory) if directory is not None else EVIDENCE_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / (name + ".json")
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -124,6 +126,56 @@ def write_overlay(root: dict, name: str, text: str) -> Path:
     path = root["base"] / (name + ".yml")
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def web_overlay_text(base_url: str, *, model: str = "synthetic-model",
+                     persona_prefix: str | None = None) -> str:
+    """web-api 通道的合成端点覆盖层。
+
+    web 通道不加载 dsh-acp，实际路由条目是 `agent-default-model`；若照抄 ACP
+    覆盖层会在 patch 阶段报 "entry acp not found"（OD-ARCH-048 实测）。
+    """
+    lines = [
+        "- id: agent-default-model",
+        '  name: "@deepseek-ai/dsh-agent-default-model"',
+        "  config:",
+        "    provider: fake",
+        "    model: " + model,
+        "- id: llm-pi-ai",
+        '  name: "@deepseek-ai/dsh-llm-pi-ai"',
+        "  config:",
+        "    providers:",
+        "      fake:",
+        "        displayName: Fake",
+        "        apiKeyEnv: " + FAKE_KEY_ENV,
+        "        api: openai-completions",
+        "        baseURL: " + base_url,
+        "        models:",
+        "          - id: " + model,
+        "            name: " + model,
+    ]
+    if persona_prefix is not None:
+        lines += [
+            "- id: system-prompt",
+            "  config:",
+            "    personaPrefix: " + json.dumps(persona_prefix),
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def make_web_adapter(root: dict, patches=(), *, profile: str = "web",
+                     state_dir=None, dsh_bin=None, env_extra=None, **kwargs):
+    from omnidesk_engine import WebApiAdapter
+
+    return WebApiAdapter.for_dsh(
+        str(dsh_bin if dsh_bin is not None else DSH_BIN),
+        cwd=str(root["cwd"]),
+        profile=profile,
+        patch_files=[str(p) for p in patches],
+        env=adapter_env(root, env_extra),
+        state_dir=str(state_dir if state_dir is not None else root["state"]),
+        **kwargs,
+    )
 
 
 def make_adapter(root: dict, patches=(), *, profile: str = "acp",
@@ -216,9 +268,11 @@ def _safe_detail(detail):
 class ScenarioResult:
     """收集单个场景的证据附件与判定。"""
 
-    def __init__(self, scenario_id: str, title: str, channel: str = "acp"):
+    def __init__(self, scenario_id: str, title: str, channel: str = "acp",
+                 evidence_dir: Path | None = None):
         self.scenario_id = scenario_id
         self.title = title
+        self.evidence_dir = evidence_dir
         self.payload = {
             "scenario": scenario_id,
             "title": title,
@@ -259,9 +313,9 @@ class ScenarioResult:
 
 
 def run_scenario(scenario_id: str, title: str, body, *, root: dict | None = None,
-                 channel: str = "acp") -> dict:
+                 channel: str = "acp", evidence_dir: Path | None = None) -> dict:
     """执行一个场景函数，保证异常也落成证据文件。"""
-    result = ScenarioResult(scenario_id, title, channel=channel)
+    result = ScenarioResult(scenario_id, title, channel=channel, evidence_dir=evidence_dir)
     own_root = root is None
     active_root = root if root is not None else new_root(scenario_id.lower())
     result.artifact("data_root", str(active_root["base"]))
@@ -272,7 +326,7 @@ def run_scenario(scenario_id: str, title: str, body, *, root: dict | None = None
         result.check("scenario_completed_without_exception", False)
     finally:
         payload = result.finish(executed=any(c["check"] for c in result.payload["checks"]))
-        write_evidence(scenario_id, payload)
+        write_evidence(scenario_id, payload, evidence_dir)
         if own_root:
             drop_root(active_root)
     return payload

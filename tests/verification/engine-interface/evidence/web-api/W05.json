@@ -1,0 +1,67 @@
+{
+  "scenario": "W05",
+  "title": "W05 取消与完成竞争",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559417.7038927,
+  "checks": [
+    {
+      "check": "terminal_unique",
+      "pass": true,
+      "detail": "cancelled"
+    },
+    {
+      "check": "cancel_matches_final",
+      "pass": true,
+      "detail": {
+        "phase": "confirmed_cancelled",
+        "final": "cancelled"
+      }
+    },
+    {
+      "check": "no_backward_from_terminal",
+      "pass": true,
+      "detail": [
+        "cancelled"
+      ]
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w05_ri7oa33u",
+    "cancel_outcome": {
+      "omni_task_id": "omni-151a64c8-94c2-4c5d-a137-2534a927daba",
+      "phase": "confirmed_cancelled",
+      "requested_at": 1792559420.842125,
+      "settled_at": 1792559420.8902888,
+      "final_state": "cancelled",
+      "evidence": "engine_terminal",
+      "note": "引擎以 turn/end=aborted 落定"
+    },
+    "status_series": [
+      {
+        "omni_task_id": "omni-151a64c8-94c2-4c5d-a137-2534a927daba",
+        "status": "cancelled",
+        "evidence_source": "engine_terminal",
+        "since": 1792559420.8837445,
+        "last_event_seq": 5,
+        "partial_output_size": 2,
+        "engine_session_id": "session-2882bba5-7797-4f1d-bddf-64bfd7e1db4f",
+        "note": "stop_reason=aborted"
+      }
+    ],
+    "shutdown": {
+      "mode": "force",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": -9,
+      "forced_terminate": true,
+      "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559421.3412302
+}

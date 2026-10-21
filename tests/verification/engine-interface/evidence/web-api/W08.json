@@ -1,0 +1,200 @@
+{
+  "scenario": "W08",
+  "title": "W08 system/message 不进结果",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559431.036071,
+  "checks": [
+    {
+      "check": "system_message_event_observed",
+      "pass": true,
+      "detail": [
+        "assistant-stream",
+        "event",
+        "snapshot"
+      ]
+    },
+    {
+      "check": "result_excludes_persona_marker",
+      "pass": true,
+      "detail": "PUBLIC-ANSWER"
+    },
+    {
+      "check": "events_exclude_persona_marker",
+      "pass": true,
+      "detail": "scanned stream_events payload"
+    },
+    {
+      "check": "answer_still_delivered",
+      "pass": true,
+      "detail": "PUBLIC-ANSWER"
+    },
+    {
+      "check": "persona_marker_not_in_result_or_events",
+      "pass": true,
+      "detail": "PUBLIC-ANSWER"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w08_k2ut1sv0",
+    "observed_frame_kinds": [
+      {
+        "kind": "snapshot",
+        "event": null
+      },
+      {
+        "kind": "event",
+        "event": "agent/inbox/spliced"
+      },
+      {
+        "kind": "event",
+        "event": "turn/start"
+      },
+      {
+        "kind": "event",
+        "event": "agent/inbox/spliced"
+      },
+      {
+        "kind": "event",
+        "event": "step/start"
+      },
+      {
+        "kind": "event",
+        "event": "system/message"
+      },
+      {
+        "kind": "event",
+        "event": "user/message"
+      },
+      {
+        "kind": "event",
+        "event": "user/message"
+      },
+      {
+        "kind": "event",
+        "event": "user/message"
+      },
+      {
+        "kind": "event",
+        "event": "request/header"
+      },
+      {
+        "kind": "event",
+        "event": "request/context"
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "event",
+        "event": "session/title"
+      },
+      {
+        "kind": "event",
+        "event": "session/title-llm-request"
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "event",
+        "event": "assistant/message"
+      },
+      {
+        "kind": "assistant-stream",
+        "event": null
+      },
+      {
+        "kind": "event",
+        "event": "step/end"
+      },
+      {
+        "kind": "event",
+        "event": "turn/end"
+      }
+    ],
+    "task_result": {
+      "omni_task_id": "omni-52d1cfe4-0af6-4639-af6b-c636dc1d4d75",
+      "form": "complete",
+      "content": "PUBLIC-ANSWER",
+      "persisted_at": 1792559433.3994818,
+      "integrity": "complete",
+      "sources": [
+        {
+          "kind": "engine_turn_end",
+          "value": "stop"
+        },
+        {
+          "kind": "engine_stream",
+          "value": "assistant-stream"
+        },
+        {
+          "kind": "persist",
+          "value": "ok"
+        }
+      ],
+      "note": "结果由 OmniDesk 从 assistant-stream 的 text-delta 与 assistant/message 拼装"
+    },
+    "model_request_probe": [
+      {
+        "messages_hits": [],
+        "body_hits": [],
+        "body_keys": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "store",
+          "stream",
+          "stream_options",
+          "tools"
+        ]
+      },
+      {
+        "messages_hits": [],
+        "body_hits": [],
+        "body_keys": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "store",
+          "stream",
+          "stream_options"
+        ]
+      }
+    ],
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [
+    "personaPrefix 未出现在模型请求体中（整包探针也未命中）：该覆盖在 web 通道对模型请求没有可见效果。dump-config 生效只能证明配置被接受，不能证明模型收到。"
+  ],
+  "verdict": "pass",
+  "finished_at": 1792559434.1911862
+}

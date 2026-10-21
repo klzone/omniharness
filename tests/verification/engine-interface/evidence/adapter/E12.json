@@ -4,12 +4,12 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302094.7575455,
+  "started_at": 1792559282.199044,
   "checks": [
     {
       "check": "session_established",
       "pass": true,
-      "detail": "8e8c5cbe-3a28-4784-b046-0a484532e20e"
+      "detail": "da3f76ff-89d0-4f9f-90ab-c4ecae771f1b"
     },
     {
       "check": "duplicate_dropped",
@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e12_05hr2bnx",
+    "data_root": "/tmp/omni_p1s3_e12_web4usaz",
     "injected_frames": [
       {
         "messageId": "msg-inject",
@@ -55,20 +55,20 @@
       }
     ],
     "status_after_injection": {
-      "omni_task_id": "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff",
+      "omni_task_id": "omni-efe7f290-d536-4455-82cf-fd024bf68348",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792302096.1964037,
+      "since": 1792559283.690122,
       "last_event_seq": 3,
       "partial_output_size": 2,
-      "engine_session_id": "8e8c5cbe-3a28-4784-b046-0a484532e20e",
+      "engine_session_id": "da3f76ff-89d0-4f9f-90ab-c4ecae771f1b",
       "note": "dropped_duplicate_chunks=1"
     },
     "result_after_injection": {
-      "omni_task_id": "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff",
+      "omni_task_id": "omni-efe7f290-d536-4455-82cf-fd024bf68348",
       "form": "not_ready",
       "content": "甲乙",
-      "persisted_at": 1792302096.1963904,
+      "persisted_at": 1792559283.6901135,
       "integrity": "partial",
       "sources": [
         {
@@ -80,20 +80,21 @@
     },
     "event_sequence": [
       {
-        "omni_task_id": "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff",
+        "omni_task_id": "omni-efe7f290-d536-4455-82cf-fd024bf68348",
         "seq": 1,
-        "occurred_at": 1792302096.1964905,
+        "occurred_at": 1792559283.6901758,
         "type": "task_started",
         "payload": {
           "normalized": true,
           "reason": "session/prompt 已发出",
-          "intent": "synthetic-writing-task"
+          "intent": "synthetic-writing-task",
+          "session_mode": "new"
         }
       },
       {
-        "omni_task_id": "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff",
+        "omni_task_id": "omni-efe7f290-d536-4455-82cf-fd024bf68348",
         "seq": 2,
-        "occurred_at": 1792302097.197337,
+        "occurred_at": 1792559284.690707,
         "type": "text_delta",
         "payload": {
           "text": "甲",
@@ -102,9 +103,9 @@
         }
       },
       {
-        "omni_task_id": "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff",
+        "omni_task_id": "omni-efe7f290-d536-4455-82cf-fd024bf68348",
         "seq": 3,
-        "occurred_at": 1792302097.1974182,
+        "occurred_at": 1792559284.690784,
         "type": "text_delta",
         "payload": {
           "text": "乙",
@@ -116,11 +117,11 @@
     "shutdown": {
       "mode": "force",
       "in_flight_before": [
-        "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff"
+        "omni-efe7f290-d536-4455-82cf-fd024bf68348"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-0ef8f288-43bf-47d0-a00e-5081b1b3deff"
+        "omni-efe7f290-d536-4455-82cf-fd024bf68348"
       ],
       "connection_closed": true,
       "process_exit_code": -9,
@@ -132,5 +133,5 @@
     "注入式重复被适配层去重（键为 messageId+text）。transport 层的观察：DSH 会把连续相同增量在交付前聚合，故真实链路里重复帧通常不会到达适配层；因此本项证明的是适配层去重分支正确，而非底层一定会产生重复帧。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302100.8732214
+  "finished_at": 1792559288.375193
 }

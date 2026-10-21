@@ -4,16 +4,16 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792302075.287682,
+  "started_at": 1792559262.4587793,
   "checks": [
     {
       "check": "in_flight_client_started",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
-        "engine_session_id": "6217bbc8-6a1e-4b45-be2a-2512830221c0",
+        "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
+        "engine_session_id": "1f3253b3-c2ce-4e21-ad81-8f7a97f39683",
         "status": "running",
-        "child_pid": 618
+        "child_pid": 702133
       }
     },
     {
@@ -35,15 +35,15 @@
       "check": "recover_succeeds",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
+        "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
         "status": {
-          "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
+          "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
           "status": "unknown",
           "evidence_source": "process_state",
-          "since": 1792302076.7525883,
+          "since": 1792559264.13202,
           "last_event_seq": 0,
           "partial_output_size": 0,
-          "engine_session_id": "6217bbc8-6a1e-4b45-be2a-2512830221c0",
+          "engine_session_id": "1f3253b3-c2ce-4e21-ad81-8f7a97f39683",
           "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
         },
         "replayed": false,
@@ -76,24 +76,24 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e07_qi0b3jfx",
+    "data_root": "/tmp/omni_p1s3_e07_6tb40r_g",
     "client_receipt": {
-      "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
-      "engine_session_id": "6217bbc8-6a1e-4b45-be2a-2512830221c0",
+      "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
+      "engine_session_id": "1f3253b3-c2ce-4e21-ad81-8f7a97f39683",
       "status": "running",
-      "child_pid": 618
+      "child_pid": 702133
     },
     "client_kill_returncode": -9,
     "recover_after_restart": {
-      "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
+      "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
       "status": {
-        "omni_task_id": "omni-6c7c3bf5-178f-4b2d-9d1f-d5aaad679339",
+        "omni_task_id": "omni-c6cdf0bc-dcbb-4df8-943f-b4a2c9beb780",
         "status": "unknown",
         "evidence_source": "process_state",
-        "since": 1792302076.7525883,
+        "since": 1792559264.13202,
         "last_event_seq": 0,
         "partial_output_size": 0,
-        "engine_session_id": "6217bbc8-6a1e-4b45-be2a-2512830221c0",
+        "engine_session_id": "1f3253b3-c2ce-4e21-ad81-8f7a97f39683",
         "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
       },
       "replayed": false,
@@ -119,5 +119,5 @@
     "客户端被 SIGKILL 时引擎无机会写终止记录；重启后只能依据本地记录与会话可恢复性判断，因此结果落在 interrupted/unknown 而非 succeeded。"
   ],
   "verdict": "pass",
-  "finished_at": 1792302079.9187415
+  "finished_at": 1792559267.3513694
 }

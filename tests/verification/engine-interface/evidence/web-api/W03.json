@@ -1,0 +1,125 @@
+{
+  "scenario": "W03",
+  "title": "W03 执行失败",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792559410.7245727,
+  "checks": [
+    {
+      "check": "reached_failed",
+      "pass": true,
+      "detail": {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "failed",
+        "evidence_source": "engine_terminal",
+        "since": 1792559413.5602012,
+        "last_event_seq": 3,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": "stop_reason=error; error=engine reported turn/end=error"
+      }
+    },
+    {
+      "check": "terminal_evidence_is_engine",
+      "pass": true,
+      "detail": "engine_terminal"
+    },
+    {
+      "check": "no_fake_content",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "not_complete_form",
+      "pass": true,
+      "detail": "unrecoverable"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w03_igxq0iwq",
+    "status_series": [
+      {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792559413.2258337,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792559413.2258337,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792559413.2258337,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792559413.2258337,
+        "last_event_seq": 1,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": ""
+      },
+      {
+        "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+        "status": "failed",
+        "evidence_source": "engine_terminal",
+        "since": 1792559413.5602012,
+        "last_event_seq": 3,
+        "partial_output_size": 0,
+        "engine_session_id": "session-9fd26ba8-1a31-400b-b70e-3602ecbaeb42",
+        "note": "stop_reason=error; error=engine reported turn/end=error"
+      }
+    ],
+    "task_result": {
+      "omni_task_id": "omni-4aaf0e3c-ad9d-41c1-9549-b5d3aa94b320",
+      "form": "unrecoverable",
+      "content": "",
+      "persisted_at": 1792559413.560444,
+      "integrity": "partial",
+      "sources": [
+        {
+          "kind": "status",
+          "value": "failed"
+        },
+        {
+          "kind": "error",
+          "value": "task_failed"
+        }
+      ],
+      "note": "终态非成功且未收到任何输出"
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": false,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792559414.023224
+}
