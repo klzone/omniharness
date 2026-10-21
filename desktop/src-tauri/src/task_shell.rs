@@ -1732,6 +1732,22 @@ pub struct SaveOfflineRequest {
     /// 只用于在产物里如实标注来源，不影响任何计算或准入判断。
     #[serde(default)]
     pub ai_assisted: bool,
+    /// 写动作来源（OD-ARCH-046）。缺省为人工：既有对话/页面保存路径不变。
+    #[serde(default)]
+    pub source: WriteSource,
+    /// 模型 / 定时任务来源必须携带宿主发出的待确认编号，否则拒绝写入。
+    #[serde(default)]
+    pub pending_id: Option<String>,
+}
+
+/// 写动作来源。人工保存不需要确认记录；其余来源一律需要。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteSource {
+    #[default]
+    Human,
+    Model,
+    Scheduler,
 }
 
 /// 产物落盘的三步文件操作。生产路径固定为真实实现；仅供 Rust 测试注入故障。
@@ -1807,6 +1823,8 @@ pub fn save_offline_artifact(
     if request.markdown.trim().is_empty() {
         return Err("成果内容为空，拒绝保存。".to_string());
     }
+    // OD-ARCH-046：来源与待确认编号的对应关系先在这里拦住，再由命令层做记录校验。
+    crate::pending_writes::assert_source_matches(request.source, &request.pending_id)?;
     let root = resolve_local_data_root()?;
     fs::create_dir_all(&root).map_err(|e| format!("创建本地数据目录失败：{}", e))?;
     assert_local_root_allowed(&root)?;
@@ -1817,7 +1835,19 @@ pub fn save_offline_artifact(
         request.scenario.replace('_', "-"),
         utc_stamp(now)
     );
-    let target = root.join(&file_name);
+    // 人工保存沿用既有顶层位置；模型 / 定时任务的写入（必须先经用户确认）
+    // 落到该场景自己的子目录，便于区分来源、也便于按场景清理。
+    let dir = match request.source {
+        WriteSource::Human => root.clone(),
+        WriteSource::Model | WriteSource::Scheduler => {
+            let sub = crate::pending_writes::scenario_dir(&request.scenario)
+                .ok_or_else(|| format!("未知离线场景：{:?}", request.scenario))?;
+            root.join(sub)
+        }
+    };
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("创建场景成果目录失败（{}）：{}", dir.display(), e))?;
+    let target = dir.join(&file_name);
     assert_local_root_allowed(&target)?;
     assert_outside_repo(&target)?;
 
@@ -1846,10 +1876,16 @@ pub fn save_offline_artifact(
 /// 已保存成果的一条只读摘要：只含自生成文件名、大小与时间，不回读正文。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct OfflineArtifactEntry {
+    /// 相对数据根的路径（可能含子目录，如 `2026/offline-...md`）。
+    pub relative_path: String,
     pub file_name: String,
     pub bytes: u64,
     pub modified_at: f64,
     pub scenario: String,
+    /// 目录行只用于展示层级，不可打开。
+    pub is_dir: bool,
+    /// 相对数据根的层级（顶层为 0）。
+    pub depth: usize,
 }
 
 /// 读取一条已保存成果的正文，供用户重新打开确认。
@@ -1892,25 +1928,103 @@ fn split_offline_artifact_name(name: &str) -> Option<(&str, &str)> {
     None
 }
 
+/// 成果树的最大深度（不含数据根）与最大条数，防止异常目录拖垮界面。
+const ARTIFACT_TREE_MAX_DEPTH: usize = 4;
+const ARTIFACT_TREE_MAX_ENTRIES: usize = 500;
+
+/// 只接受数据根内的普通相对路径：无绝对路径、无 `..`、无空段、层级有界。
+fn offline_relative_path_parts(relative: &str) -> Option<Vec<&str>> {
+    if relative.is_empty() || relative.starts_with('/') || relative.contains('\\') {
+        return None;
+    }
+    let parts: Vec<&str> = relative.split('/').collect();
+    if parts.len() > ARTIFACT_TREE_MAX_DEPTH + 1 {
+        return None;
+    }
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || *p == "." || *p == "..")
+    {
+        return None;
+    }
+    Some(parts)
+}
+
 /// 列出数据根中由本模块写入的离线成果（只读元数据，按修改时间倒序）。
 pub fn list_offline_artifacts() -> Result<Vec<OfflineArtifactEntry>, String> {
+    list_offline_artifacts_with(false)
+}
+
+/// 列出成果。`include_subdirs=false` 只列数据根一层（旧行为）；
+/// `true` 时递归收录子目录中的成果与承载它们的目录行，深度与条数有上限。
+pub fn list_offline_artifacts_with(
+    include_subdirs: bool,
+) -> Result<Vec<OfflineArtifactEntry>, String> {
     let root = resolve_local_data_root()?;
     if !root.exists() {
         return Ok(Vec::new());
     }
+    assert_local_root_allowed(&root)?;
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&root).map_err(|e| format!("读取成果目录失败：{}", e))?;
+    collect_offline_artifacts(&root, &root, 0, include_subdirs, &mut entries)?;
+    if include_subdirs {
+        // 树状模式：父目录行先于子项，同级按路径稳定排序。
+        entries.sort_by(|a, b| {
+            a.depth
+                .cmp(&b.depth)
+                .then_with(|| a.relative_path.cmp(&b.relative_path))
+        });
+    } else {
+        entries.sort_by(|a, b| {
+            b.modified_at
+                .partial_cmp(&a.modified_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+    Ok(entries)
+}
+
+/// 递归收集成果；只跟随真实目录，符号链接一律跳过。
+fn collect_offline_artifacts(
+    root: &Path,
+    dir: &Path,
+    depth: usize,
+    include_subdirs: bool,
+    out: &mut Vec<OfflineArtifactEntry>,
+) -> Result<(), String> {
+    if out.len() >= ARTIFACT_TREE_MAX_ENTRIES {
+        return Ok(());
+    }
+    let read_dir = fs::read_dir(dir).map_err(|e| format!("读取成果目录失败：{}", e))?;
+    let mut dirs: Vec<PathBuf> = Vec::new();
     for item in read_dir {
         let item = item.map_err(|e| format!("读取成果目录失败：{}", e))?;
+        if out.len() >= ARTIFACT_TREE_MAX_ENTRIES {
+            break;
+        }
         let name = item.file_name().to_string_lossy().to_string();
-        if !offline_artifact_name_allowed(&name) {
+        // 符号链接即使在数据根内也不跟随：文件与目录都只接受真实条目。
+        let meta = match fs::symlink_metadata(item.path()) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if meta.file_type().is_dir() {
+            if include_subdirs && depth < ARTIFACT_TREE_MAX_DEPTH {
+                dirs.push(item.path());
+            }
             continue;
         }
-        // 符号链接即使在数据根内也不跟随：只接受普通文件。
-        let meta = match fs::symlink_metadata(item.path()) {
-            Ok(m) if m.file_type().is_file() => m,
-            _ => continue,
+        if !meta.file_type().is_file() || !offline_artifact_name_allowed(&name) {
+            continue;
+        }
+        let relative = match item.path().strip_prefix(root) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => continue,
         };
+        let Some(parts) = offline_relative_path_parts(&relative) else {
+            continue;
+        };
+        let depth = parts.len() - 1;
         let scenario = split_offline_artifact_name(&name)
             .map(|(s, _)| s.to_string())
             .unwrap_or_default();
@@ -1920,29 +2034,61 @@ pub fn list_offline_artifacts() -> Result<Vec<OfflineArtifactEntry>, String> {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
-        entries.push(OfflineArtifactEntry {
+        // 先补目录行（只在该目录确实有成果时出现），再放文件。
+        for i in 1..parts.len() {
+            let dir_relative = parts[..i].join("/");
+            if out.iter().any(|e| e.is_dir && e.relative_path == dir_relative) {
+                continue;
+            }
+            out.push(OfflineArtifactEntry {
+                relative_path: dir_relative.clone(),
+                file_name: parts[i - 1].to_string(),
+                bytes: 0,
+                modified_at: 0.0,
+                scenario: String::new(),
+                is_dir: true,
+                depth: i - 1,
+            });
+        }
+        out.push(OfflineArtifactEntry {
+            relative_path: relative,
             file_name: name,
             bytes: meta.len(),
             modified_at,
             scenario,
+            is_dir: false,
+            depth,
         });
     }
-    entries.sort_by(|a, b| {
-        b.modified_at
-            .partial_cmp(&a.modified_at)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    Ok(entries)
+    dirs.sort();
+    for sub in dirs {
+        collect_offline_artifacts(root, &sub, depth + 1, include_subdirs, out)?;
+    }
+    Ok(())
 }
 
 /// 重新打开一条已保存成果的内容（只读，不修改文件）。
 pub fn read_offline_artifact(file_name: &str) -> Result<OfflineArtifactContent, String> {
-    if !offline_artifact_name_allowed(file_name) {
+    let Some(parts) = offline_relative_path_parts(file_name) else {
+        return Err("只允许重新打开 OmniDesk 自己生成的离线成果文件。".to_string());
+    };
+    let base = parts.last().copied().unwrap_or_default();
+    if !offline_artifact_name_allowed(base) {
         return Err("只允许重新打开 OmniDesk 自己生成的离线成果文件。".to_string());
     }
     let root = resolve_local_data_root()?;
     assert_local_root_allowed(&root)?;
     let target = root.join(file_name);
+    // 逐级确认祖先目录是真实目录，拒绝用符号链接目录把读取引到数据根之外。
+    let mut cursor = root.clone();
+    for part in &parts[..parts.len() - 1] {
+        cursor = cursor.join(part);
+        match fs::symlink_metadata(&cursor) {
+            Ok(m) if m.file_type().is_dir() => {}
+            Ok(_) => return Err("目标路径中的目录不是普通目录，拒绝读取。".to_string()),
+            Err(e) => return Err(format!("无法读取成果 {}：{}", file_name, e)),
+        }
+    }
     assert_local_root_allowed(&target)?;
     assert_outside_repo(&target)?;
     let meta = fs::symlink_metadata(&target)
@@ -3026,6 +3172,8 @@ mod tests {
                 markdown: markdown.clone(),
                 user_confirmed: true,
                 ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
             };
             let receipt = save_offline_artifact(&request, 1_760_572_800.0).expect("首次应成功");
             assert!(receipt.path.starts_with(&root.to_string_lossy().to_string()));
@@ -3157,6 +3305,8 @@ mod tests {
                 markdown: "## 本周完成\n\n- 合成条目\n".to_string(),
                 user_confirmed: true,
                 ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
             };
             let project = SaveOfflineRequest {
                 scenario: "project_management".to_string(),
@@ -3164,6 +3314,8 @@ mod tests {
                 markdown: "## 风险\n\n- 合成风险\n".to_string(),
                 user_confirmed: true,
                 ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
             };
             let first = save_offline_artifact(&weekly, 1_760_572_800.0).expect("周报应保存");
             let second = save_offline_artifact(&project, 1_760_572_900.0).expect("跟进应保存");
@@ -3208,6 +3360,8 @@ mod tests {
                 markdown: "正文\n".to_string(),
                 user_confirmed: true,
                 ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
             };
             save_offline_artifact(&valid, 1_760_572_800.0).expect("合法成果应保存");
             // 文件名形状不符或场景未登记的文件不得进入列表。
@@ -3228,6 +3382,117 @@ mod tests {
             assert_eq!(listed.len(), 1, "只应保留一个合法成果");
             assert_eq!(listed[0].file_name, "offline-material-writing-20251016-000000.md");
             assert_eq!(listed[0].scenario, "material-writing");
+        });
+    }
+
+    #[test]
+    fn offline_artifact_tree_lists_subdirs_only_on_request() {
+        with_env_root("artifact-tree", |root| {
+            let top = SaveOfflineRequest {
+                scenario: "weekly_report".to_string(),
+                title: "合成周报".to_string(),
+                markdown: "正文\n".to_string(),
+                user_confirmed: true,
+                ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
+            };
+            save_offline_artifact(&top, 1_760_572_800.0).expect("顶层成果应保存");
+
+            let nested_dir = root.join("2026-10").join("第2周");
+            fs::create_dir_all(&nested_dir).expect("准备子目录");
+            fs::write(
+                nested_dir.join("offline-material-writing-20251018-080000.md"),
+                "子目录合成正文",
+            )
+            .expect("准备子目录成果");
+            fs::write(nested_dir.join("notes.md"), "不属于成果").expect("准备干扰文件");
+
+            // 关闭开关：只列数据根一层，子目录内容完全不出现。
+            let flat = list_offline_artifacts_with(false).expect("应可列出顶层成果");
+            assert_eq!(flat.len(), 1);
+            assert_eq!(flat[0].relative_path, "offline-weekly-report-20251016-000000.md");
+            assert!(!flat[0].is_dir);
+            assert_eq!(flat[0].depth, 0);
+
+            // 打开开关：目录行在前，成果带层级与相对路径。
+            let tree = list_offline_artifacts_with(true).expect("应可列出子目录成果");
+            let dir_rows: Vec<(&str, usize)> = tree
+                .iter()
+                .filter(|e| e.is_dir)
+                .map(|e| (e.relative_path.as_str(), e.depth))
+                .collect();
+            assert_eq!(dir_rows, vec![("2026-10", 0), ("2026-10/第2周", 1)]);
+            let nested = tree
+                .iter()
+                .find(|e| e.relative_path == "2026-10/第2周/offline-material-writing-20251018-080000.md")
+                .expect("子目录成果应出现");
+            assert_eq!(nested.depth, 2);
+            assert_eq!(nested.scenario, "material-writing");
+            assert!(nested.bytes > 0);
+            assert!(tree.iter().all(|e| !e.relative_path.ends_with("notes.md")));
+
+            // 子目录成果可只读打开，且原文件不被改写。
+            let relative = nested.relative_path.clone();
+            let opened = read_offline_artifact(&relative).expect("子目录成果应可读取");
+            assert_eq!(opened.content, "子目录合成正文");
+
+            // 目录行与越界相对路径一律拒绝读取。
+            for bad in [
+                "2026-10",
+                "2026-10/第2周",
+                "../offline-weekly-report-20251016-000000.md",
+                "2026-10/../offline-weekly-report-20251016-000000.md",
+                "/etc/passwd",
+            ] {
+                let err = read_offline_artifact(bad).unwrap_err();
+                assert!(err.contains("只允许"), "{} 应被拒绝：{}", bad, err);
+            }
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_artifact_tree_skips_symlinked_dirs_and_depth_beyond_limit() {
+        with_env_root("artifact-tree-link", |root| {
+            let outside = root.parent().unwrap().join(format!(
+                "omnidesk-tree-outside-{}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&outside);
+            fs::create_dir_all(&outside).expect("准备外部目录");
+            fs::write(
+                outside.join("offline-weekly-report-20251018-080000.md"),
+                "数据根之外的合成正文",
+            )
+            .expect("准备外部成果");
+            let link = root.join("linked");
+            let linked = match std::os::unix::fs::symlink(&outside, &link) {
+                Ok(()) => true,
+                Err(e) => {
+                    eprintln!("跳过符号链接目录用例：{}", e);
+                    false
+                }
+            };
+            // 超过深度上限的成果不进入树（避免异常目录拖垮界面）。
+            let deep = root.join("a").join("b").join("c").join("d").join("e");
+            fs::create_dir_all(&deep).expect("准备超深目录");
+            fs::write(
+                deep.join("offline-weekly-report-20251019-080000.md"),
+                "超深合成正文",
+            )
+            .expect("准备超深成果");
+
+            let tree = list_offline_artifacts_with(true).expect("应可列出成果");
+            if linked {
+                assert!(tree.iter().all(|e| !e.relative_path.starts_with("linked")));
+            }
+            assert!(tree
+                .iter()
+                .all(|e| !e.relative_path.contains("a/b/c/d/e")));
+
+            let _ = fs::remove_file(&link);
+            let _ = fs::remove_dir_all(&outside);
         });
     }
 
@@ -3320,6 +3585,8 @@ mod tests {
             markdown: render_weekly_markdown(&summarize_week(WEEKLY_SAMPLE).unwrap()),
             user_confirmed: true,
             ai_assisted: false,
+            source: WriteSource::Human,
+            pending_id: None,
         };
         let saved = save_offline_artifact(&request, 1_760_572_800.0);
         let legacy_after = fs::read_to_string(&legacy_file);

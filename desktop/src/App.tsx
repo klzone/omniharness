@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { host } from "./api";
+import { hydrateThreads } from "./sceneThreads";
 import OfflineFlows from "./OfflineFlows";
 import SettingsPanel from "./SettingsPanel";
 import Workbench from "./workbench";
@@ -23,9 +24,28 @@ import type { EngineDescriptor } from "./types";
  */
 export default function App() {
   const [scene, setScene] = useState<Scene>("home");
+  // 线程记录以 OmniDesk 数据根为准（OD-ARCH-045 第 1 步）：启动时先读回，
+  // 读完之前场景页不挂载，避免"先用缓存新建、再被数据根覆盖"的错位。
+  const [threadsReady, setThreadsReady] = useState(false);
   const [showEngine, setShowEngine] = useState(false);
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
+
+  // 线程记录以数据根为准（OD-ARCH-045 第 1 步）：启动时先读回一次。
+  // 读完之前不挂载场景页，避免"先用缓存新建、再被数据根覆盖"的错位。
+  useEffect(() => {
+    let cancelled = false;
+    hydrateThreads()
+      .catch(() => {
+        /* hydrate 内部已降级到本地缓存，并记录了原因 */
+      })
+      .finally(() => {
+        if (!cancelled) setThreadsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 启动时只读检测引擎描述；失败就如实显示“引擎未就绪”，不伪造描述。
   useEffect(() => {
@@ -103,7 +123,11 @@ export default function App() {
       <Dock scene={scene} onSelect={selectScene} />
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {scene === "home" ? (
+        {!threadsReady ? (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <p className="text-[11.5px] text-outline">正在从本机数据目录恢复对话记录…</p>
+          </div>
+        ) : scene === "home" ? (
           <HomeCanvas onNavigate={selectScene} />
         ) : scene === "report" || scene === "writing" || scene === "project" ? (
           <ScenePage
@@ -134,3 +158,4 @@ export default function App() {
     </div>
   );
 }
+

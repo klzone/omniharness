@@ -137,15 +137,17 @@ export function SceneScaffold({
           {upper}
         </div>
 
-        {/* 上层：对话，占满上下；指针在其上时对话上移，叠在卡片之上。 */}
+        {/* 上层：对话，占满上下；指针在其上时对话上移，叠在卡片之上。
+            卡片可见时，对话层顶部留出的空档**不接收点击**（pointer-events-none），
+            否则透明的对话容器会挡住下面卡片的开关与「打开」按钮——实测点不动。 */}
         <section
-          className="relative z-10 flex-1 flex flex-col min-h-0 pb-3"
+          className="relative z-10 flex-1 flex flex-col min-h-0 pb-3 pointer-events-none"
           style={{
             paddingTop: chatExpanded ? 0 : upperH,
             transition: "padding-top 300ms ease",
           }}
         >
-          {chat}
+          <div className="flex-1 flex flex-col min-h-0 pointer-events-auto">{chat}</div>
         </section>
       </main>
     </ChatFocusContext.Provider>

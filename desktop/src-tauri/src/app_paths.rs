@@ -39,6 +39,8 @@ pub struct AppPaths {
     pub engine_state: PathBuf,
     /// 引擎任务结果落盘目录（大文本）。
     pub results: PathBuf,
+    /// 工作台线程/会话记录（OD-ARCH-045：按项目分目录，JSON 一条一线程）。
+    pub threads: PathBuf,
     /// 桌面应用配置。
     pub config: PathBuf,
 }
@@ -97,6 +99,7 @@ impl AppPaths {
             logs: root.join("logs"),
             engine_state: root.join("engine-state"),
             results: root.join("engine-state").join("results"),
+            threads: root.join("threads"),
             config: root.join("config"),
             root,
         }
@@ -163,6 +166,7 @@ impl AppPaths {
             &self.ui_state,
             &self.engine_state,
             &self.results,
+            &self.threads,
         ] {
             std::fs::create_dir_all(dir)?;
         }
