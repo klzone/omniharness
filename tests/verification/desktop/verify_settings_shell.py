@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -93,9 +94,17 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
 
     SHOTS.mkdir(parents=True, exist_ok=True)
+    # 一次性数据根：复用上一次的目录会让设置/缓存状态串到本轮（同 verify_profile_decl.py 修过的问题）。
+    # 只允许清 /tmp 下目录，避免误删真实数据根。
+    root = Path(args.root)
+    resolved = root.resolve()
+    if resolved != Path("/tmp") and Path("/tmp") not in resolved.parents:
+        raise SystemExit(f"拒绝清理非 /tmp 下的目录：{resolved}")
+    if root.exists():
+        shutil.rmtree(root)
     xvfb = start_xvfb(args.display)
     report: dict = {"plan": "OD-ARCH-051 S4", "rounds": {}}
-    session = AppSession(root=Path(args.root), display=args.display)
+    session = AppSession(root=root, display=args.display)
     try:
         session.prepare()
         xs = XSession(args.display)
@@ -111,8 +120,6 @@ def main(argv: list[str]) -> int:
         xs.click(args.settings_dock_x, args.settings_dock_y)
         time.sleep(3)
         xs.shot(SHOTS / "10-settings-page.png")
-        time.sleep(10)
-        xs.shot(SHOTS / "10b-settings-page-late.png")
         report["rounds"]["settings_page"] = {"shot": str(SHOTS / "10-settings-page.png")}
         if not args.shot_only and args.open_btn:
             bx, by = (int(v) for v in args.open_btn.split(","))
