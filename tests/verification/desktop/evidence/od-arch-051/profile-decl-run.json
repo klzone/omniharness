@@ -1,0 +1,44 @@
+{
+  "plan": "OD-ARCH-051 S3",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
+  "display": ":97",
+  "rounds": {
+    "default": {
+      "title": "OmniDesk Discipline",
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-051/shots/01-default.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true,
+      "decl_path": "/tmp/od051-s3/app-data/profiles/discipline.yml",
+      "decl_created": true,
+      "decl_matches_sample": true
+    },
+    "edited": {
+      "title": "OmniDesk Discipline",
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-051/shots/02-edited.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true
+    },
+    "broken": {
+      "title": "OmniDesk Discipline",
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-051/shots/03-broken.png",
+      "frame": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "app_alive": true,
+      "decl_untouched": true
+    }
+  }
+}

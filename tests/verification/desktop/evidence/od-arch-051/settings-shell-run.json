@@ -1,0 +1,105 @@
+{
+  "plan": "OD-ARCH-051 S4",
+  "rounds": {
+    "settings_page": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-051/shots/10-settings-page.png"
+    },
+    "windows": [
+      {
+        "title": "omnidesk-desktop",
+        "class": [
+          "omnidesk-desktop",
+          "Omnidesk-desktop"
+        ],
+        "depth": 0,
+        "viewable": false,
+        "geometry": [
+          10,
+          10,
+          10,
+          10
+        ]
+      },
+      {
+        "title": "OmniDesk Discipline",
+        "class": [
+          "omnidesk-desktop",
+          "Omnidesk-desktop"
+        ],
+        "depth": 0,
+        "viewable": true,
+        "geometry": [
+          80,
+          40,
+          1280,
+          820
+        ]
+      },
+      {
+        "title": null,
+        "class": null,
+        "depth": 1,
+        "viewable": true,
+        "geometry": [
+          -1,
+          -1,
+          1,
+          1
+        ]
+      },
+      {
+        "title": "verify_settings_shell.py",
+        "class": [
+          "verify_settings_shell.py",
+          ""
+        ],
+        "depth": 0,
+        "viewable": false,
+        "geometry": [
+          10,
+          10,
+          10,
+          10
+        ]
+      },
+      {
+        "title": "OmniDesk · DSH 设置",
+        "class": [
+          "omnidesk-desktop",
+          "Omnidesk-desktop"
+        ],
+        "depth": 0,
+        "viewable": true,
+        "geometry": [
+          0,
+          0,
+          1160,
+          820
+        ]
+      },
+      {
+        "title": null,
+        "class": null,
+        "depth": 1,
+        "viewable": true,
+        "geometry": [
+          -1,
+          -1,
+          1,
+          1
+        ]
+      }
+    ],
+    "settings_window": {
+      "title": "OmniDesk · DSH 设置",
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-051/shots/12-settings-window-only.png",
+      "app_alive": true
+    }
+  },
+  "window_geometry": [
+    80,
+    40,
+    1280,
+    820
+  ]
+}
