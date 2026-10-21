@@ -16,6 +16,7 @@ import type {
   MaterialRead,
   OfflineFlowResponse,
   ProjectSummary,
+  ProfileDeclPayload,
   SampleCatalog,
   SaveArtifactReceipt,
   SessionListing,
@@ -302,6 +303,18 @@ export const shell = {
 
   localRootInfo(): Promise<LocalRootInfo> {
     return invoke<LocalRootInfo>("task_local_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：纪检 Profile 声明（OD-ARCH-051 S3）。
+   *
+   * 决定 Dock 上显示哪些业务场景入口。宿主负责首次创建默认文件、解析与校验；
+   * 文件坏掉时这里会 reject，调用方必须显式提示并回退内置入口，不能静默吞掉。
+   */
+  profileDecl(): Promise<ProfileDeclPayload> {
+    return invoke<ProfileDeclPayload>("profile_decl_load").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

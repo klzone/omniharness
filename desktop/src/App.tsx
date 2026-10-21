@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { host } from "./api";
+import { host, shell } from "./api";
 import { hydrateThreads } from "./sceneThreads";
 import OfflineFlows from "./OfflineFlows";
 import SettingsPanel from "./SettingsPanel";
@@ -11,7 +11,7 @@ import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
 import { WindowResizeHandles } from "./shell/WindowChrome";
-import type { EngineDescriptor } from "./types";
+import type { EngineDescriptor, ProfileDeclPayload } from "./types";
 
 /**
  * 应用外壳（OD-ARCH-026）。
@@ -30,6 +30,42 @@ export default function App() {
   const [showEngine, setShowEngine] = useState(false);
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
+  // 纪检 Profile 声明（OD-ARCH-051 S3）：文件驱动 Dock 上的业务场景入口。
+  // 读不到/文件坏掉时用内置默认入口，并把原因显示出来——不静默回退。
+  const [decl, setDecl] = useState<ProfileDeclPayload | null>(null);
+  const [declError, setDeclError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    shell
+      .profileDecl()
+      .then((value) => {
+        if (cancelled) return;
+        setDecl(value);
+        setDeclError(null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setDecl(null);
+        setDeclError(String(e instanceof Error ? e.message : e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 声明里没有当前业务场景时（例如用户删掉了「文案写作」而正停在该页），
+  // 落到声明中的第一个入口。内置工具页（任务工作台/设置/引擎诊断）不受声明管辖，
+  // 绝不能因为声明晚到就把用户从设置页拽走——实测过这个跳转，判定为缺陷。
+  useEffect(() => {
+    if (!decl) return;
+    const managed = ["home", "report", "writing", "project", "sessions"] as const;
+    if (!(managed as readonly string[]).includes(scene)) return;
+    const ids = decl.decl.scenes.map((s) => s.id as string);
+    if (!ids.includes(scene)) setScene((decl.decl.scenes[0]?.id as Scene) ?? "home");
+    // scene 变化不需要重跑：只在声明到达时校准一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decl]);
 
   // 线程记录以数据根为准（OD-ARCH-045 第 1 步）：启动时先读回一次。
   // 读完之前不挂载场景页，避免"先用缓存新建、再被数据根覆盖"的错位。
@@ -114,13 +150,30 @@ export default function App() {
       <TopNav
         engineHealthy={engineHealthy}
         engineLabel={engineLabel}
+        brandName={decl?.decl.display_name}
         onOpenSettings={() => setScene("settings")}
       />
 
       {/* frameless 窗口的边缘缩放热区（最大化时自动隐藏） */}
       <WindowResizeHandles />
 
-      <Dock scene={scene} onSelect={selectScene} />
+      <Dock scene={scene} onSelect={selectScene} declared={decl?.decl.scenes} />
+
+      {declError ? (
+        <div
+          role="status"
+          className="mx-auto mt-2 max-w-4xl rounded-2xl bg-error-container/70 px-4 py-2.5 text-[11.5px] leading-relaxed text-on-error-container ring-1 ring-error/30"
+          title={declError}
+        >
+          Profile 声明未能加载，当前使用内置默认入口。原因：{declError}
+        </div>
+      ) : decl && decl.warnings.length > 0 ? (
+        <div
+          className="mx-auto mt-2 max-w-4xl rounded-2xl bg-surface-container px-4 py-2 text-[11.5px] text-on-surface-variant ring-1 ring-outline-variant/40"
+        >
+          {decl.warnings.join(" ")}
+        </div>
+      ) : null}
 
       <div className="flex-1 min-h-0 flex flex-col">
         {!threadsReady ? (

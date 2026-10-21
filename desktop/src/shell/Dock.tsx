@@ -1,4 +1,5 @@
 import { Icon, type IconName } from "../components/Icon";
+import type { ProfileSceneEntry } from "../types";
 
 /**
  * 左侧 Dock（OD-ARCH-026）：列出已实现的入口。
@@ -23,22 +24,30 @@ interface DockItem {
   note?: string;
 }
 
-const ITEMS: DockItem[] = [
+/** 内置默认的业务入口：声明文件缺失或读取失败时使用（界面另有明确提示）。 */
+export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
   { scene: "home", icon: "brand", label: "工作台首页" },
   { scene: "report", icon: "note", label: "周报与随记", note: "模型起草" },
   { scene: "writing", icon: "book", label: "文案写作", note: "模型起草" },
   { scene: "project", icon: "checklist", label: "项目跟踪", note: "模型起草" },
   {
-    scene: "workbench",
-    icon: "terminal",
-    label: "任务工作台",
-    note: "合成数据 · 五阶段",
-  },
-  {
     scene: "sessions",
     icon: "history",
     label: "项目与会话",
     note: "引擎项目 · 对话",
+  },
+];
+
+/**
+ * 基础设施入口：不属于纪检业务场景，由代码固定，声明文件不能删改。
+ * 声明只决定上面那组业务场景显示什么、按什么顺序显示。
+ */
+const BUILTIN_TOOL_ITEMS: DockItem[] = [
+  {
+    scene: "workbench",
+    icon: "terminal",
+    label: "任务工作台",
+    note: "合成数据 · 五阶段",
   },
   { scene: "settings", icon: "folder", label: "成果目录与模型权限" },
   { scene: "engine", icon: "settings", label: "引擎诊断", note: "只读" },
@@ -47,13 +56,27 @@ const ITEMS: DockItem[] = [
 export function Dock({
   scene,
   onSelect,
+  declared,
 }: {
   scene: Scene;
   onSelect: (scene: Scene) => void;
+  /** 声明文件里的业务场景；null/undefined 表示用内置默认（调用方负责提示原因）。 */
+  declared?: ProfileSceneEntry[] | null;
 }) {
+  const business: DockItem[] =
+    declared && declared.length > 0
+      ? declared.map((s) => ({
+          scene: s.id as Scene,
+          icon: s.icon as IconName,
+          label: s.label,
+          note: s.note || undefined,
+        }))
+      : DEFAULT_BUSINESS_ITEMS;
+  const items = [...business, ...BUILTIN_TOOL_ITEMS];
+
   return (
     <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center bg-surface-container-lowest/95 ring-1 ring-white/95 rounded-full py-3 px-2 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] space-y-2.5">
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const active = item.scene === scene;
         return (
           <div key={item.scene} className="relative group flex items-center">

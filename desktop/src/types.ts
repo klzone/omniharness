@@ -657,3 +657,25 @@ export interface HeartbeatScan {
   total: number;
   error: string | null;
 }
+
+/** 纪检 Profile 声明里的一个场景入口（OD-ARCH-051 S3）。 */
+export interface ProfileSceneEntry {
+  id: "home" | "report" | "writing" | "project" | "sessions";
+  label: string;
+  icon: "brand" | "note" | "book" | "checklist" | "history";
+  note?: string;
+}
+
+export interface ProfileDecl {
+  schema: string;
+  display_name: string;
+  scenes: ProfileSceneEntry[];
+}
+
+/** `profileDecl()` 的返回值：声明本体 + 落盘路径 + 是否首次创建 + 告警。 */
+export interface ProfileDeclPayload {
+  decl: ProfileDecl;
+  path: string;
+  created: boolean;
+  warnings: string[];
+}

@@ -1,0 +1,32 @@
+# OmniDesk 纪检 Profile 声明（omnidesk.profile-decl.v1）
+#
+# 这个文件决定左侧 Dock 上出现哪些业务场景入口、叫什么名字、用什么图标。
+# 运行时会复制到你的 OmniDesk 数据根下的 profiles/discipline.yml，之后以那份为准；
+# 改那里的文件、重启应用即可看到变化，不需要改代码。
+#
+# 允许的 id：home / report / writing / project / sessions
+# 允许的 icon：brand / note / book / checklist / history
+
+schema: omnidesk.profile-decl.v1
+display_name: OmniDesk Discipline
+
+scenes:
+  - id: home
+    label: 工作台首页
+    icon: brand
+  - id: report
+    label: 周报与随记
+    icon: note
+    note: 模型起草
+  - id: writing
+    label: 文案写作
+    icon: book
+    note: 模型起草
+  - id: project
+    label: 项目跟踪
+    icon: checklist
+    note: 模型起草
+  - id: sessions
+    label: 项目与会话
+    icon: history
+    note: 引擎项目 · 对话

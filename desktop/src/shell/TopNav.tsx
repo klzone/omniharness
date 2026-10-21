@@ -51,10 +51,13 @@ function NavClock() {
 export function TopNav({
   engineHealthy,
   engineLabel,
+  brandName,
   onOpenSettings,
 }: {
   engineHealthy: boolean | null;
   engineLabel: string;
+  /** 来自纪检 Profile 声明；缺省时用内置名字。 */
+  brandName?: string;
   onOpenSettings: () => void;
 }) {
   return (
@@ -73,7 +76,7 @@ export function TopNav({
               <Icon name="brand" className="w-[18px] h-[18px]" />
             </div>
             <span className="font-headline-md text-[17px] font-semibold tracking-tight text-on-surface hidden sm:inline">
-              OmniDesk Discipline
+              {brandName && brandName.trim() ? brandName : "OmniDesk Discipline"}
             </span>
           </div>
           <span
