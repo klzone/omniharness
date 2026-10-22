@@ -745,16 +745,35 @@ export interface ProfileDeclPayload {
 // 宿主从不把它回传给界面。界面只知道「是否已配置 / 来自哪一层」。
 // ---------------------------------------------------------------------------
 
-export interface ModelSettings {
-  schema: string;
+export interface ModelEntry {
+  id: string;
+  name: string;
+  /** 上下文窗口（token）。只写配置；端点是否真支持要另行核实。 */
+  contextWindow?: number | null;
+}
+
+export interface ProviderSettings {
+  /** provider 标识，也是 DSH 配置里的键名，必须唯一。 */
   provider: string;
   display_name: string;
   base_url: string;
   api: string;
-  default_model: string;
-  /** DSH 配置里的 apiKeyEnv 引用名（非机密）。 */
+  /** DSH 配置里的 apiKeyEnv 引用名（非机密），每个提供商必须不同。 */
   api_key_ref: string;
+  models: ModelEntry[];
   reasoning_effort?: string | null;
+}
+
+export interface DefaultRoute {
+  provider: string;
+  model: string;
+}
+
+/** 多提供商模型档案（v2）。每个提供商各存模型、地址与凭据引用。 */
+export interface ModelSettings {
+  schema: string;
+  providers: ProviderSettings[];
+  default: DefaultRoute;
 }
 
 /** 凭据状态。值永不下发，只有这三项事实。 */
@@ -772,8 +791,11 @@ export interface ModelSettingsView {
   overlay_path: string;
   overlay_present: boolean;
   app_root: string;
-  key_status: ModelKeyStatus | null;
+  /** 凭据引用名 → 状态。只含 configured/source/writable，永不含值。 */
+  key_status: Record<string, ModelKeyStatus> | null;
   key_error: string | null;
+  /** 旧版单提供商配置文件路径（仅在迁移时用到）。 */
+  legacy_config_path?: string;
 }
 
 export interface ModelSettingsSaveReceipt {
@@ -812,6 +834,14 @@ export interface ModelProbeReceipt {
   message: string;
   models: DiscoveredModel[];
   note: string;
+  /** 这次请求用的密钥来源：沿用已保存 / 本次输入 / 未带密钥。 */
+  key_source?: "stored" | "input" | "none" | string;
+  /** 提供商名命中 DSH 内置目录：返回内置表，未发起真实网络请求。 */
+  builtin_catalog?: boolean;
+  /** 实际沿用了哪个已保存路由（未沿用时为空）。 */
+  provider_route?: string | null;
+  /** 表单端点与已保存路由不一致，因此没有沿用已存密钥。 */
+  route_mismatch?: boolean;
 }
 
 export interface ProfileDeclOpenReceipt {

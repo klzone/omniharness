@@ -580,10 +580,13 @@ export const shell = {
    */
   modelSettingsSave(input: {
     settings: ModelSettings;
+    /** 密钥要写进哪个凭据引用；留空或不属于本配置时宿主拒绝写密钥。 */
+    apiKeyRef?: string | null;
     apiKey?: string | null;
   }): Promise<ModelSettingsSaveReceipt> {
     return invoke<ModelSettingsSaveReceipt>("model_settings_save", {
       settings: input.settings,
+      apiKeyRef: input.apiKeyRef ?? null,
       apiKey: input.apiKey ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
@@ -598,11 +601,14 @@ export const shell = {
    * （分类 + 原因），网络/鉴权错误不算异常抛出。
    */
   modelSettingsProbe(input: {
+    /** 已保存的提供商名：端点与它一致时 DSH 才会沿用该路由的凭据。 */
+    provider?: string | null;
     baseUrl: string;
     api: string;
     apiKey?: string | null;
   }): Promise<ModelProbeReceipt> {
     return invoke<ModelProbeReceipt>("model_settings_probe", {
+      provider: input.provider ?? null,
       baseUrl: input.baseUrl,
       api: input.api,
       apiKey: input.apiKey ?? null,

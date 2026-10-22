@@ -21,10 +21,12 @@ import type {
   CategoryInitReceipt,
   LocalRootInfo,
   ModelCategory,
+  ModelEntry,
   ModelPermissions,
   ModelProbeReceipt,
   ModelSettings,
   ModelSettingsView,
+  ProviderSettings,
   ProfileDeclPayload,
   SchedulerCadence,
   SchedulerConfig,
@@ -112,6 +114,13 @@ const PROBE_LABEL: Record<string, string> = {
   local: "本机 DSH 侧的问题",
 };
 
+/** 这次探测到底用了哪把密钥（OD-ARCH-065 S1 的三态口径）。 */
+const KEY_SOURCE_LABEL: Record<string, string> = {
+  stored: "沿用该提供商已保存的密钥",
+  input: "使用本次输入的新密钥（不保存）",
+  none: "没有带密钥",
+};
+
 /** 卡片头：左侧标题与状态摘要，右侧主操作。 */
 function CardHead({
   title,
@@ -133,16 +142,20 @@ function CardHead({
   );
 }
 
-/** 新建配置时的空白表单（不预填任何真实端点或密钥）。 */
+/** 新建配置时的空白档案（不预填任何真实端点或密钥）。 */
 function blankSettings(): ModelSettings {
+  return { schema: "omnidesk.model-settings.v2", providers: [], default: { provider: "", model: "" } };
+}
+
+/** 新加一个提供商的空白档案。 */
+function blankProvider(): ProviderSettings {
   return {
-    schema: "omnidesk.model-settings.v1",
     provider: "",
     display_name: "",
     base_url: "",
     api: "openai-completions",
-    default_model: "",
     api_key_ref: "",
+    models: [{ id: "", name: "", contextWindow: null }],
     reasoning_effort: "default",
   };
 }
@@ -170,6 +183,8 @@ export default function SettingsPanel() {
   // —— 模型配置（S1）——
   const [view, setView] = useState<ModelSettingsView | null>(null);
   const [form, setForm] = useState<ModelSettings>(blankSettings);
+  /** 当前正在编辑的提供商在 form.providers 里的下标；-1 表示还没选。 */
+  const [editing, setEditing] = useState(-1);
   const [apiKey, setApiKey] = useState("");
   const [modelBusy, setModelBusy] = useState(false);
   const [modelNote, setModelNote] = useState<string | null>(null);
@@ -232,9 +247,14 @@ export default function SettingsPanel() {
       const r = await shell.modelSettingsLoad();
       setView(r);
       if (r.settings) {
-        setForm({ ...r.settings, reasoning_effort: r.settings.reasoning_effort ?? "default" });
+        setForm({
+          ...r.settings,
+          providers: r.settings.providers.map((p) => ({ ...p, reasoning_effort: p.reasoning_effort ?? "default" })),
+        });
+        setEditing((prev) => (prev >= 0 && prev < r.settings!.providers.length ? prev : 0));
       } else {
         setForm(blankSettings());
+        setEditing(-1);
       }
       setModelError(r.ok ? null : r.error ?? "读取模型配置失败");
     } catch (e) {
@@ -422,14 +442,36 @@ export default function SettingsPanel() {
     setModelNote(null);
     setModelError(null);
     try {
+      const target = form.providers[editing];
+      // 默认路由必须落在某个真实存在的提供商的真实模型上。新建/改名时用户常
+      // 忘记点「设为默认」，这里在保存前兜底：先看当前编辑项，再按列表顺序找
+      // 第一个有模型 id 的提供商。找不到就交给宿主校验并报错。
+      const defaultValid =
+        !!form.default.provider &&
+        form.providers.some(
+          (p) => p.provider === form.default.provider && p.models.some((m) => m.id === form.default.model),
+        );
+      const pickDefault = () => {
+        const order = target ? [target, ...form.providers.filter((p) => p !== target)] : form.providers;
+        for (const p of order) {
+          const first = p.models.find((m) => m.id.trim().length > 0);
+          if (p.provider.trim() && first) return { provider: p.provider, model: first.id };
+        }
+        return form.default;
+      };
+      const payload = defaultValid ? form : { ...form, default: pickDefault() };
+      if (!defaultValid) setForm(payload);
       const r = await shell.modelSettingsSave({
-        settings: form,
+        settings: payload,
+        // 密钥只写进当前编辑的提供商；引用名由宿主再校验一次。
+        apiKeyRef: target ? target.api_key_ref : null,
         apiKey: apiKey.trim().length > 0 ? apiKey : null,
       });
       // 密钥只在这一次请求里出现过：无论成败都立刻从界面状态里清掉。
       setApiKey("");
       setModelNote(
-        r.note +
+        (defaultValid ? "" : `已将默认路由设为 ${payload.default.provider} / ${payload.default.model}。`) +
+          r.note +
           (r.key_written ? " 密钥已登记。" : " 本次未写入密钥。") +
           (r.key_error ? " 密钥写入失败：" + r.key_error : "") +
           (r.engine_stopped ? "" : " 注意：旧引擎未能确认停止，下次任务可能仍用旧路由。"),
@@ -443,16 +485,24 @@ export default function SettingsPanel() {
     } finally {
       setModelBusy(false);
     }
-  }, [form, apiKey, refreshModel, refreshAdmission]);
+  }, [form, editing, apiKey, refreshModel, refreshAdmission]);
 
   const probeConnection = useCallback(async () => {
+    const target = form.providers[editing];
+    if (!target) {
+      setProbe(null);
+      setProbeError("先选一个提供商，再测试它的端点。");
+      return;
+    }
     setProbeBusy(true);
     setProbe(null);
     setProbeError(null);
     try {
       const r = await shell.modelSettingsProbe({
-        baseUrl: form.base_url,
-        api: form.api,
+        // 传 provider：端点与已保存路由一致时，DSH 会用该路由已登记的凭据。
+        provider: target.provider.trim() || null,
+        baseUrl: target.base_url,
+        api: target.api,
         // 输入框里的 key 只用于这一次探测；空则沿用 DSH 已登记的凭据。
         apiKey: apiKey.trim().length > 0 ? apiKey : null,
       });
@@ -462,7 +512,99 @@ export default function SettingsPanel() {
     } finally {
       setProbeBusy(false);
     }
-  }, [form.base_url, form.api, apiKey]);
+  }, [form.providers, editing, apiKey]);
+
+  // —— 多提供商编辑（OD-ARCH-065 S4）——
+  const current: ProviderSettings | null = form.providers[editing] ?? null;
+  const keyOk = useCallback(
+    (ref: string) => (ref ? view?.key_status?.[ref]?.configured === true : false),
+    [view],
+  );
+
+  const updateCurrent = useCallback(
+    (patch: Partial<ProviderSettings>) => {
+      setForm((prev) => ({
+        ...prev,
+        providers: prev.providers.map((p, i) => (i === editing ? { ...p, ...patch } : p)),
+      }));
+    },
+    [editing],
+  );
+
+  const updateModel = useCallback(
+    (index: number, patch: Partial<ModelEntry>) => {
+      setForm((prev) => ({
+        ...prev,
+        providers: prev.providers.map((p, i) =>
+          i === editing
+            ? { ...p, models: p.models.map((m, j) => (j === index ? { ...m, ...patch } : m)) }
+            : p,
+        ),
+      }));
+    },
+    [editing],
+  );
+
+  const addModel = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      providers: prev.providers.map((p, i) =>
+        i === editing ? { ...p, models: [...p.models, { id: "", name: "", contextWindow: null }] } : p,
+      ),
+    }));
+  }, [editing]);
+
+  const removeModel = useCallback(
+    (index: number) => {
+      setForm((prev) => ({
+        ...prev,
+        providers: prev.providers.map((p, i) =>
+          i === editing && p.models.length > 1
+            ? { ...p, models: p.models.filter((_, j) => j !== index) }
+            : p,
+        ),
+      }));
+    },
+    [editing],
+  );
+
+  const addProvider = useCallback(() => {
+    setApiKey("");
+    setProbe(null);
+    setProbeError(null);
+    // 选中态跟着新条目走；默认路由由保存时兜底，这里不预先写入空标识。
+    setForm((prev) => ({ ...prev, providers: [...prev.providers, blankProvider()] }));
+    setEditing(form.providers.length);
+  }, [form.providers.length]);
+
+  const removeProvider = useCallback(() => {
+    if (!current) return;
+    const removingDefault = form.default.provider === current.provider;
+    const fallback = form.providers.filter((_, i) => i !== editing)[0];
+    setApiKey("");
+    setProbe(null);
+    setForm((prev) => ({
+      ...prev,
+      providers: prev.providers.filter((_, i) => i !== editing),
+      default: removingDefault
+        ? fallback
+          ? { provider: fallback.provider, model: fallback.models[0]?.id ?? "" }
+          : { provider: "", model: "" }
+        : prev.default,
+    }));
+    setEditing(editing > 0 ? editing - 1 : form.providers.length > 1 ? 0 : -1);
+  }, [current, form.default, form.providers, editing]);
+
+  const applyProbeModels = useCallback(() => {
+    if (!probe || !current) return;
+    const existing = new Map(current.models.filter((m) => m.id).map((m) => [m.id, m]));
+    updateCurrent({
+      models: probe.models.map((m) => {
+        const old = existing.get(m.id);
+        return { id: m.id, name: old?.name || m.name || m.id, contextWindow: old?.contextWindow ?? null };
+      }),
+    });
+  }, [probe, current, updateCurrent]);
 
   const openDecl = useCallback(async () => {
     setDeclBusy(true);
@@ -628,7 +770,8 @@ export default function SettingsPanel() {
       ? "每 " + String(cfg.heartbeat_minutes) + " 分钟"
       : "关闭"
     : null;
-  const keyStatus = view?.key_status ?? null;
+  /** 当前提供商对应的凭据状态（只含 configured/source/writable）。 */
+  const keyStatus = current ? view?.key_status?.[current.api_key_ref] ?? null : null;
   const savedOverlay = view?.overlay_present === true;
 
   return (
@@ -700,149 +843,278 @@ export default function SettingsPanel() {
           </div>
         ) : null}
 
-        <div className="field">
-          <label className="field-label">服务商标识（provider，也是配置里的键名）</label>
-          <input
-            className="text-input"
-            value={form.provider}
-            spellCheck={false}
-            placeholder="例如 deepseek"
-            onChange={(e) => setForm({ ...form, provider: e.target.value })}
-          />
-        </div>
-
-        <div className="field">
-          <label className="field-label">显示名称（你自己看的名字）</label>
-          <input
-            className="text-input"
-            value={form.display_name}
-            spellCheck={false}
-            placeholder="例如 DeepSeek 官方"
-            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
-          />
-        </div>
-
-        <div className="field">
-          <label className="field-label">接口地址（base_url，必须是 http/https 绝对地址）</label>
-          <input
-            className="text-input mono"
-            value={form.base_url}
-            spellCheck={false}
-            placeholder="https://api.example.com/v1"
-            onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-          />
-          <p className="hint">
-            不接受把密钥写进地址（user:pass@ 或 URL 查询串）；密钥请填在下面的输入框。
-          </p>
-        </div>
-
-        <div className="field">
-          <label className="field-label">接口协议</label>
-          <select
-            className="text-input"
-            value={form.api}
-            onChange={(e) => setForm({ ...form, api: e.target.value })}
-          >
-            {API_CHOICES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label className="field-label">默认模型（模型 id）</label>
-          <input
-            className="text-input mono"
-            value={form.default_model}
-            spellCheck={false}
-            placeholder="例如 deepseek-v4.1-flash"
-            onChange={(e) => setForm({ ...form, default_model: e.target.value })}
-          />
-          {probe && probe.models.length > 0 ? (
-            <>
-              <select
-                className="text-input"
-                value={probe.models.some((m) => m.id === form.default_model) ? form.default_model : ""}
-                onChange={(e) => {
-                  if (e.target.value) setForm({ ...form, default_model: e.target.value });
+        <div className="provider-split">
+          <div className="provider-list" data-testid="provider-list">
+            <div className="provider-list-head">
+              <span>提供商</span>
+              <button className="ghost small" onClick={addProvider} disabled={modelBusy}>
+                新增
+              </button>
+            </div>
+            {form.providers.length === 0 ? (
+              <p className="hint">还没有提供商。点“新增”建一个。</p>
+            ) : null}
+            {form.providers.map((p, index) => (
+              <button
+                key={index}
+                className={"provider-item" + (index === editing ? " active" : "")}
+                onClick={() => {
+                  setEditing(index);
+                  setApiKey("");
+                  setProbe(null);
+                  setProbeError(null);
                 }}
               >
-                <option value="">从端点返回的 {probe.models.length} 个模型里选一个…</option>
-                {probe.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name === m.id ? m.id : m.name + "（" + m.id + "）"}
-                  </option>
-                ))}
-              </select>
-              <p className="hint">上面的输入框仍然可以直接手填；这个列表只是端点自己报的候选。</p>
-            </>
-          ) : null}
-        </div>
-
-        <div className="field">
-          <label className="field-label">思考等级（可选）</label>
-          <select
-            className="text-input"
-            value={form.reasoning_effort ?? "default"}
-            onChange={(e) => setForm({ ...form, reasoning_effort: e.target.value })}
-          >
-            {EFFORT_CHOICES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
+                <span className="name">{p.display_name.trim() || p.provider || "未命名"}</span>
+                <span className="sub mono">{p.provider || "缺标识"}</span>
+                <span className="sub">
+                  {keyOk(p.api_key_ref) ? "密钥已配置" : "密钥未配置"}
+                  {form.default.provider === p.provider ? " · 默认" : ""}
+                </span>
+              </button>
             ))}
-          </select>
-        </div>
+          </div>
 
-        <div className="field">
-          <label className="field-label">凭据名（DSH 配置里的 apiKeyEnv，非机密）</label>
-          <input
-            className="text-input mono"
-            value={form.api_key_ref}
-            spellCheck={false}
-            placeholder="例如 DEEPSEEK_API_KEY"
-            onChange={(e) => setForm({ ...form, api_key_ref: e.target.value })}
-          />
-          <p className="hint">
-            DSH 的模型配置只存这个引用名，真正的密钥由 DSH 凭据服务保管。
-          </p>
-        </div>
+          <div className="provider-editor">
+            {!current ? (
+              <p className="hint">选择左侧的提供商来编辑，或点“新增”。</p>
+            ) : (
+              <>
+                <div className="field">
+                  <label className="field-label">服务商标识（provider，也是配置里的键名）</label>
+                  <input
+                    className="text-input"
+                    value={current.provider}
+                    spellCheck={false}
+                    placeholder="例如 deepseek"
+                    onChange={(e) => updateCurrent({ provider: e.target.value })}
+                  />
+                </div>
 
-        <div className="field">
-          <label className="field-label">API Key（只写不读；保存后输入框立即清空）</label>
-          <input
-            className="text-input mono"
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            spellCheck={false}
-            placeholder={
-              keyStatus?.configured ? "已配置（留空表示不改动现有密钥）" : "尚未配置"
-            }
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-          <div className="status-row">
-            <span className="k">凭据状态</span>
-            <span className="v">
-              {keyStatus
-                ? keyStatus.configured
-                  ? "已配置" +
-                    (keyStatus.source ? "（来源：" + keyStatus.source + "）" : "") +
-                    (keyStatus.writable ? "，可在此改写" : "，当前来源不可写")
-                  : "尚未配置"
-                : view?.key_error
-                  ? "无法读取凭据状态（不影响其它设置）"
-                  : view
-                    ? // OD-ARCH-056：Rust 侧在「没有已存配置」时返回 key_status=null 且无
-                      // key_error，属正常的「未配置」。此前这里落到「读取中…」会永久不收敛。
-                      "尚未配置"
-                    : "读取中…"}
-            </span>
+                <div className="field">
+                  <label className="field-label">显示名称（你自己看的名字）</label>
+                  <input
+                    className="text-input"
+                    value={current.display_name}
+                    spellCheck={false}
+                    placeholder="例如 DeepSeek 官方"
+                    onChange={(e) => updateCurrent({ display_name: e.target.value })}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">接口地址（base_url，必须是 http/https 绝对地址）</label>
+                  <input
+                    className="text-input mono"
+                    value={current.base_url}
+                    spellCheck={false}
+                    placeholder="https://api.example.com/v1"
+                    onChange={(e) => updateCurrent({ base_url: e.target.value })}
+                  />
+                  <p className="hint">
+                    不接受把密钥写进地址（user:pass@ 或 URL 查询串）；密钥请填在下面的输入框。
+                  </p>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">接口协议</label>
+                  <select
+                    className="text-input"
+                    value={current.api}
+                    onChange={(e) => updateCurrent({ api: e.target.value })}
+                  >
+                    {API_CHOICES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">思考等级（可选）</label>
+                  <select
+                    className="text-input"
+                    value={current.reasoning_effort ?? "default"}
+                    onChange={(e) => updateCurrent({ reasoning_effort: e.target.value })}
+                  >
+                    {EFFORT_CHOICES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">模型（id 发给端点；名称只影响显示）</label>
+                  <div className="model-list">
+                    {current.models.map((m, index) => (
+                      <div className="model-row" key={index}>
+                        <input
+                          className="text-input mono"
+                          value={m.id}
+                          spellCheck={false}
+                          placeholder="模型 id，例如 deepseek-v4.1-flash"
+                          onChange={(e) => updateModel(index, { id: e.target.value })}
+                        />
+                        <input
+                          className="text-input"
+                          value={m.name}
+                          spellCheck={false}
+                          placeholder="显示名称（可留空）"
+                          onChange={(e) => updateModel(index, { name: e.target.value })}
+                        />
+                        <input
+                          className="text-input mono"
+                          type="number"
+                          min={1}
+                          value={m.contextWindow ?? ""}
+                          placeholder="上下文窗口"
+                          title="上下文窗口（token）。只写配置声明，端点是否真支持需另行核实。"
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            const parsed = raw === "" ? null : Number(raw);
+                            updateModel(index, {
+                              contextWindow:
+                                parsed !== null && Number.isFinite(parsed) && parsed > 0
+                                  ? Math.floor(parsed)
+                                  : null,
+                            });
+                          }}
+                        />
+                        <button
+                          className="ghost small"
+                          onClick={() => removeModel(index)}
+                          disabled={current.models.length <= 1}
+                          title={current.models.length <= 1 ? "至少保留一个模型" : "删除这个模型"}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="actions">
+                    <button className="ghost small" onClick={addModel}>
+                      添加模型
+                    </button>
+                    {probe && probe.ok && probe.models.length > 0 ? (
+                      <button
+                        className="ghost small"
+                        onClick={() => applyProbeModels()}
+                        title="用端点返回的模型列表替换当前列表，并保留同名模型已填的窗口值"
+                      >
+                        用端点返回的 {probe.models.length} 个模型覆盖列表
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="hint">
+                    上下文窗口写成 1048576 即 1M。这是给 DSH 的容量声明，不会让端点凭空变长；
+                    端点实际不支持时会报错，请按服务商真实能力填写。
+                  </p>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">凭据名（DSH 配置里的 apiKeyEnv，非机密）</label>
+                  <input
+                    className="text-input mono"
+                    value={current.api_key_ref}
+                    spellCheck={false}
+                    placeholder="例如 DEEPSEEK_API_KEY"
+                    onChange={(e) => updateCurrent({ api_key_ref: e.target.value })}
+                  />
+                  <p className="hint">
+                    DSH 的模型配置只存这个引用名，真正的密钥由 DSH 凭据服务保管。每个提供商必须用不同的引用名。
+                  </p>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">API Key（只写不读；保存后输入框立即清空）</label>
+                  <input
+                    className="text-input mono"
+                    type="password"
+                    autoComplete="off"
+                    value={apiKey}
+                    spellCheck={false}
+                    placeholder={keyStatus?.configured ? "已配置（留空表示不改动现有密钥）" : "尚未配置"}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
+                  <div className="status-row">
+                    <span className="k">凭据状态</span>
+                    <span className="v">
+                      {keyStatus
+                        ? keyStatus.configured
+                          ? "已配置" +
+                            (keyStatus.source ? "（来源：" + keyStatus.source + "）" : "") +
+                            (keyStatus.writable ? "，可在此改写" : "，当前来源不可写")
+                          : "尚未配置"
+                        : view?.key_error
+                          ? "无法读取凭据状态（不影响其它设置）"
+                          : view
+                            ? "尚未配置"
+                            : "读取中…"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">设为默认路由</label>
+                  <div className="type-row">
+                    <select
+                      className="text-input"
+                      value={form.default.model}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setForm({ ...form, default: { provider: current.provider, model: e.target.value } });
+                        }
+                      }}
+                    >
+                      <option value="">选一个模型作为默认…</option>
+                      {form.default.provider === current.provider
+                        ? null
+                        : <option value="">（当前默认在其它提供商）</option>}
+                      {current.models
+                        .filter((m) => m.id.trim().length > 0)
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name.trim() || m.id}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      className="ghost"
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          default: {
+                            provider: current.provider,
+                            model: form.default.provider === current.provider ? form.default.model : "",
+                          },
+                        })
+                      }
+                      disabled={form.default.provider === current.provider}
+                    >
+                      设为默认
+                    </button>
+                  </div>
+                  <p className="hint">
+                    默认路由指 {form.default.provider || "（未设置）"} / {form.default.model || "（未设置）"}。
+                  </p>
+                </div>
+
+                <div className="actions">
+                  <button className="ghost" onClick={removeProvider} disabled={modelBusy}>
+                    删除这个提供商
+                  </button>
+                </div>
+                <p className="hint">
+                  删除只移除这里的配置，不会删掉 DSH 凭据服务里已保存的密钥。
+                  {form.providers.length <= 1 ? " 删掉最后一个提供商后就没有可用路由了。" : ""}
+                </p>
+              </>
+            )}
           </div>
         </div>
-
         <div className="actions">
           <button className="primary" onClick={() => void saveModel()} disabled={modelBusy}>
             {modelBusy ? "保存中…" : "保存模型配置"}
@@ -850,7 +1122,7 @@ export default function SettingsPanel() {
           <button
             className="ghost"
             onClick={() => void probeConnection()}
-            disabled={probeBusy || modelBusy || form.base_url.trim().length === 0}
+            disabled={probeBusy || modelBusy || !current || current.base_url.trim().length === 0}
             title="用当前填写的地址与协议，让 DSH 实际请求一次端点"
           >
             {probeBusy ? "测试中…" : "测试连接"}
@@ -875,6 +1147,29 @@ export default function SettingsPanel() {
               <span className="k">说明</span>
               <span className="v">{probe.note}没有保存任何设置。</span>
             </div>
+            <div className="status-row">
+              <span className="k">本次密钥</span>
+              <span className="v">
+                {KEY_SOURCE_LABEL[probe.key_source ?? "none"] ?? "未知来源"}
+                {probe.provider_route ? `（路由 ${probe.provider_route}）` : ""}
+              </span>
+            </div>
+            {probe.route_mismatch ? (
+              <div className="status-row">
+                <span className="k">注意</span>
+                <span className="v">
+                  表单里的地址或协议与该提供商的已保存路由不一致，因此没有沿用它的已存密钥。
+                </span>
+              </div>
+            ) : null}
+            {probe.builtin_catalog ? (
+              <div className="status-row">
+                <span className="k">注意</span>
+                <span className="v">
+                  该提供商名命中 DSH 内置目录，返回的是内置模型表，未发起真实网络请求；这不能作为连通性证明。
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {modelNote ? <p className="hint">{modelNote}</p> : null}
