@@ -3,7 +3,7 @@
 
 只做三件事，全部在 /tmp 下的一次性根里：
 
-  1. 默认声明启动，截图（四个业务入口 + 基础设施入口）；
+  1. 默认声明启动，截图（5 个业务入口，OD-ARCH-061 后无基础设施图标）；
   2. 在副本声明里隐藏「文案写作」→ 重启 → 截图，并点原「文案写作」位置的 Dock 图标，
      确认落到的是剩余入口（无 router / 无深链，界面没有可直达已隐藏场景的路径）；
   3. 把声明恢复为初始字节 → 重启 → 截图，并比对前后 sha256 完全一致。
@@ -34,13 +34,47 @@ from window_harness import AppSession, XSession  # noqa: E402
 EVIDENCE = HERE / "evidence" / "od-arch-055"
 SHOTS = EVIDENCE / "shots"
 
-# Dock 图标中心相对窗口左上角的偏移（实测，8 个入口时）。第 3 项在默认声明里是「文案写作」。
-# Dock 是垂直居中的固定列表：少一个入口，整体高度少 50px，所有图标因此各下移 25px。
-# 这是 A/B 对照的坐标依据——同一个「序号」在两个声明下指向不同场景。
+# Dock 坐标（OD-ARCH-061 口径）：不再写死像素。Dock 是垂直居中的固定列，
+# 窗口尺寸和入口数都会改变每个图标的位置，所以下面直接从截图里量出各图标中心。
+# 行距仍是 50px 常量，只用于在量到最后一个图标后反推前面的中心。
 DOCK_DX = 47
-DOCK_SLOT3_DY_8 = 333
 DOCK_ROW_STEP = 50
-DOCK_KEEP_SHIFT = 25  # 入口从 8 个变成 7 个时的下移量
+
+
+def detect_dock_centers(xs: "XSession", win, shot: Path, expect: int) -> list[int]:
+    """量出 Dock 各图标中心的 y（相对窗口左上角）。
+
+    做法：抓一张窗口图，在 Dock 那一列扫描偏深的像素行并聚成连通带；
+    带数必须等于入口数（否则说明入口数或布局与预期不符，直接失败）。
+    用最后一带的中心减去 50 的整数倍，反推整列的中心。
+    """
+    from PIL import Image
+
+    xs.shot(shot)
+    geo = xs.geometry(win)
+    px = Image.open(shot).convert("RGB").load()
+    height = Image.open(shot).size[1]
+    bands: list[tuple[int, int]] = []
+    start = None
+    # 只扫窗口内部：窗口四周是黑色桌面背景，会把「整行都暗」误判成一个图标带。
+    for y in range(geo.y + 1, min(height, geo.y + geo.h - 1)):
+        dark = 0
+        for x in range(geo.x + DOCK_DX - 14, geo.x + DOCK_DX + 15):
+            r, g, b = px[x, y]
+            if r < 200 and b < 235:
+                dark += 1
+        if dark >= 3 and start is None:
+            start = y
+        elif dark < 3 and start is not None:
+            if y - start >= 6:
+                bands.append((start, y - 1))
+            start = None
+    if len(bands) != expect:
+        raise RuntimeError(
+            f"Dock 图标带数量与预期不符：量到 {len(bands)} 带 / 预期 {expect} 带（{shot}）"
+        )
+    last_center = (bands[-1][0] + bands[-1][1]) // 2 - geo.y
+    return [last_center - (expect - 1 - i) * DOCK_ROW_STEP for i in range(expect)]
 
 DEFAULT_DECL = (REPO / "samples" / "profiles" / "discipline.yml").read_text(encoding="utf-8")
 
@@ -61,9 +95,9 @@ scenes:
     icon: checklist
     note: 模型起草
   - id: sessions
-    label: 项目与会话
+    label: 历史会话
     icon: history
-    note: 引擎项目 · 对话
+    note: 引擎会话 · 本机对话
 """
 
 
@@ -158,10 +192,12 @@ def main(argv: list[str]) -> int:
         )
         initial_sha = sha256(decl_path)
         report["decl_sha256_before"] = initial_sha
-        # A 侧：同一像素位置点第 3 个入口，默认声明下应打开「文案写作」。
+        # A 侧：点第 3 个入口（默认声明下是「文案写作」）。
         win = mount_window(session, xs)
+        centers = detect_dock_centers(xs, win, SHOTS / "00-default-dock.png", expect=5)
+        report["rounds"]["default"]["dock_centers"] = centers
         report["rounds"]["default"]["click_point"] = list(
-            click_slot3(xs, win, DOCK_SLOT3_DY_8)
+            click_slot3(xs, win, centers[2])
         )
         time.sleep(4.0)
         report["rounds"]["default"]["click_slot3"] = round_shot(
@@ -179,11 +215,13 @@ def main(argv: list[str]) -> int:
         report["rounds"]["hidden"]["decl_byte_identical_to_edit"] = (
             decl_path.read_text(encoding="utf-8") == HIDDEN_DECL
         )
-        # B 侧：同一个像素位置，隐藏后应落到「项目跟踪」而不是被隐藏的场景。
+        # B 侧：同一个序号（第 3 项），隐藏后应落到「项目跟踪」而不是被隐藏的场景。
         # 界面无 router / hash / 深链，因此不存在用 URL 或命令直达被隐藏页面的路径。
         win = mount_window(session, xs)
+        centers = detect_dock_centers(xs, win, SHOTS / "03b-hidden-dock.png", expect=4)
+        report["rounds"]["hidden"]["dock_centers"] = centers
         report["rounds"]["hidden"]["click_point"] = list(
-            click_slot3(xs, win, DOCK_SLOT3_DY_8 + DOCK_KEEP_SHIFT)
+            click_slot3(xs, win, centers[2])
         )
         time.sleep(4.0)
         report["rounds"]["hidden"]["click_old_writing_slot"] = round_shot(

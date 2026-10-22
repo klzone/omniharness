@@ -1,5 +1,58 @@
 # BUILDER 执行状态
 
+## OD-ARCH-061：界面精简与设置归一（S1–S5 完成，待 ARCHITECT 复核，2026-10-22）
+
+- **开工状态：** 分支 `main`，HEAD `7c79063`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留，未覆盖、未重置。
+- **UI 参考（OD-ARCH-035 要求）：** 动工前用 `screenshots-design-inspiration` 检索 “settings page tabs sidebar segmented control”（Web 平台），返回 Arbolus 等案例。借鉴两点：①设置页用一行胶囊分页，不再另起左侧栏，二段式导航只保留顶栏一处；②选中态用主色实心胶囊，未选中为中性描边，沿用页面现有色阶。未引入新的视觉语言、图标集或动效。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1（部分） | 首页对话左下角固定四类：未分类 / 工作记录 / 文案写作 / 项目跟进。新增 `desktop/src/threadCategories.ts` 作为唯一分类表，键复用既有 `plain/weekly/writing/project`，**未新增持久化字段、未改 Rust、未做数据迁移**。`<select>` 换成胶囊按钮组（`role=radiogroup` + `role=radio`，`aria-checked`，测试钩子 `data-testid=scene-chip-<key>`）。设置页新增「对话分类」分页：列出四类的键/名/归档语义，并如实写明“自定义名称、新增分类、映射文件夹、初始化骨架因风险①暂停”。 |
+| S2 | `SettingsPanel` 改为 6 个分页（模型与端点 / 对话分类 / 成果与文档库 / 权限 / 引擎诊断 / 关于），原设置项全部保留（`hidden` 切换，不卸载组件，避免表单状态丢失）。顶栏齿轮为唯一设置入口；Dock 移除 settings 与 engine 两项。 |
+| S3 | `HomeChat` 输入区删除「挂载库」按钮及相关无引用逻辑；「语音」保留为置灰占位。 |
+| S4 | Dock 固定 5 入口：工作台首页 / 工作记录 / 文案写作 / 项目跟踪 / 历史会话；`Scene` 类型去掉 `workbench`、`engine`；App 路由删 workbench 与 engine 分支，兜底改为“该入口还没有对应页面 + 回首页”；`Workspace.tsx` 重写（删 060 遗留自带对话框死代码，保留 ProjectRail，右侧只读详情 +「去首页继续」）；`samples/profiles/discipline.yml` 入口名改「历史会话」。 |
+| S5 | 真实窗口截图 9 张 + 055/060 联动脚本复跑 + 全量回归 |
+
+### 修改文件
+
+- 前端：`desktop/src/shell/Dock.tsx`、`HomeChat.tsx`、`HomeCanvas.tsx`、`ProjectRail.tsx`、`Workspace.tsx`、`EngineTechSlice.tsx`、`desktop/src/App.tsx`、`desktop/src/SettingsPanel.tsx`、`desktop/src/threadCategories.ts`（新）
+- 声明样例：`samples/profiles/discipline.yml`
+- 验证脚本：`tests/verification/desktop/verify_scene_decl_linkage_055.py`（Dock 坐标改为实测探测，不再写死）、`verify_scene_overview_060.py`（坐标按 5 入口调整）
+- 证据：`tests/verification/desktop/evidence/od-arch-061/shots/`（新）、`evidence/od-arch-055/`、`evidence/od-arch-060/`（复跑刷新）
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | `TSC_OK`，0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功，`dist/assets/index-CsLUr2aJ.js` 384.18 kB |
+| 脚本/运行 | `cargo test --offline`（先 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"`） | 198 / 2 / 13 / 3 / 1 全通过，0 failed |
+| 脚本/运行 | `python3 -m pytest tests -q` | 26 passed |
+| 脚本/运行（真实窗口，合成数据根） | `python3 tests/verification/desktop/verify_scene_decl_linkage_055.py --display :98` | 退出码 0；`decl_restored_identical: true`，声明 sha256 前后一致 `22eec238…bec4ad`；Dock 实测中心 `[309,359,409,459,509]`，点第 3 项进入文案写作；隐藏入口后 `[334,384,434,484]`，点第 3 项进入项目跟踪 |
+| 脚本/运行（真实窗口） | `python3 tests/verification/desktop/verify_scene_overview_060.py --display :97` | 退出码 0，`app_alive_at_end: true`，截图刷新至 `evidence/od-arch-060/` |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+| 文件事实 | `rg -n '挂载库' desktop/src samples` | 0 处（口径见“计划偏差”第 3 条） |
+
+真实窗口截图（`evidence/od-arch-061/shots/`，均人工目视核对）：`01-dock-5-entries.png`（Dock 5 个业务入口，无 workbench/settings/engine）、`02-settings-model.png`、`03-settings-categories.png`（四类清单 + 风险①说明）、`04-settings-artifacts.png`、`05-settings-permissions.png`、`06-settings-engine.png`（只读诊断）、`07-settings-about.png`、`08-chip-weekly.png`（工作记录选中态）、`09-chip-writing.png`（文案写作选中态）、`01` 同时可见输入区无「挂载库」且「语音」置灰。
+
+### 未解决问题与限制
+
+1. **风险①已触发，已按计划停在方案前：** 「显示名可改 / 新增分类 / 每类映射成果文件夹与 vault / 一键初始化骨架」需要宿主新增 `settings.v1` 字段（`desktop/src-tauri/src/settings.rs` 现只有 `artifact_root`、`model_permissions`）。本轮未改 Rust，设置页已如实写明“暂停，等架构决策”。固定四类复用现有持久化键，功能可用。待 ARCHITECT 裁定是否批准新增持久化字段。
+2. **`desktop/src/workbench.tsx` 与 `workbench-ui.css` 未删除（风险②）：** 文件已无产品代码引用（`App.tsx` 不再 import），但 `tests/verification/desktop/verify_engine_cancel.py` 会从该文件文本中抽取 `engine-cancel-model` 区域做静态断言。删除需先把该区域迁到独立模块并改测试路径。计划规定此时停下等裁定，故本轮保留文件，只下线路由与入口。
+3. `desktop/src/OfflineFlows.tsx` 在 061 前已无引用，计划未列入删除范围，保留未动。
+4. `Scene` 类型仍保留 `engine` 键值（无 Dock 图标，无路由，仅设置页承载诊断），避免改动声明样例的键集合；如需彻底移除另行批准。
+
+### 计划偏差
+
+1. S1 只完成“固定四类 + 分类页展示”，未实现自定义命名与新增分类——因风险①触发，按计划停止条件处理，不是遗漏。
+2. S4 的“删除 workbench 独有组件”只完成路由与入口下线，源文件保留——因风险②（验证脚本依赖）停止，已在上面列出。
+3. 验收里的“挂载库 grep 全仓 0 处”字面不可达：`PLANS.md`、`STATUS.md` 历史记录与既往 evidence 中仍保留该词（属历史记录，不篡改）。实际口径为“`desktop/src` 与 `samples/` 0 处”，已按此核对。
+4. 未新增依赖、未改 Rust、未改模型路由与凭证、未接入真实业务材料。
+
+未提交、未推送、未打标签，等 ARCHITECT 复核。
+
 ## OD-ARCH-060：场景页 v2（S1–S6 完成，待 ARCHITECT 复核，2026-10-22）
 
 - **开工状态：** 分支 `main`，HEAD `004b33c`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留，未提交、未覆盖。

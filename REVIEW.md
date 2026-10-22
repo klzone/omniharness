@@ -1,3 +1,20 @@
+## OD-ARCH-060 复核结论：**通过**（ARCHITECT，2026-10-22）
+
+- **独立重跑（本机，与 BUILDER 分离）：** cargo 198/198（含 scene_overview 新增单测）；tsc 0 错误；pytest 26 passed；npm build 通过；runtime/ 零差异。证据 evidence/od-arch-060/（7 张真实窗口截图 + facts.json + regression.txt）。
+- **代码抽查：** ①scene_overview.rs 为只读新增命令，聚合口径与 pending_writes/周报汇总一致，未改既有命令语义；②ArtifactExplorer 对 frontmatter 解析失败按"无元数据"降级，不报错不阻塞；③真实窗口截图与状态条数字断言一致；④055 声明联动复跑通过。
+- **限制与遗留：** OfflineFlows 分支在当前界面路径不可达（场景起草走首页，属既定设计，非缺陷）；Workspace.tsx 自带 HomeChat 未合并（随 061 任务工作台下线一并处理）；文档库 >100 文件分页未压测。
+- **结论：** 060 验收通过；场景页 v2 可供用户试用反馈。
+
+## OD-ARCH-051 复核结论：**通过**（ARCHITECT，2026-10-21）
+
+- **独立重跑（本机，与 BUILDER 分离）：** cargo 169+2+13+3+1 全绿 0 失败；tsc 0 错误；pytest 26 passed；verify_resume_token_savings.py 11/11（证据已刷新落盘，工作区保持干净）；runtime/ 零差异。两个真实窗口脚本（profile_decl / settings_shell）需要 Xvfb 显示器，本复核环境未重跑，采信其修复测试缺陷后重跑的存证（JSON + 6 张截图在档）。
+- **代码抽查（五项复核入口全部与 BUILDER 自述一致）：** ①profile_decl.rs 解析器错误面收紧（注释切断、tab、重复字段、未知键、嵌套映射一律拒绝，不猜）；②load_decl 仅 create_new、文件已存在绝不覆盖；③App.tsx 场景校准只限 5 个业务场景，设置页不会被拽走（真实窗口撞出的缺陷已修）；④profile_decl_load 锁内只取路径、async 命令不占 UI 主线程；⑤open_settings_window 只改窗口外壳属性，未触 DSH 配置读写与令牌路径。
+- **三处裁定：**
+  1. **声明范围窄于计划文字（只管入口+品牌，不管 Skill/插件/模型）——接受。** Skill/插件/端点的权威源在 DSH 侧（D-024/D-026），再抄一份进声明即双写，正是"模型消失"那类事故的成因。此裁定作为 D-026 的边界澄清：OmniDesk 声明只管界面呈现，引擎能力始终以 DSH 配置为唯一权威。
+  2. **新增 Rust 模块 vs 停止条件③——接受，属计划内。** 影响范围本就含 Rust 宿主；停止条件本意是防"文件方案不够却擅自改既有机制"，本实现为新增独立模块、未改任何既有机制，且已如实报告。流程提醒：计划内部矛盾时，动 457 行前先停一段问一句更稳。
+  3. **S4 只统一窗口外壳——接受为验收口径。** CSP 不允许注入是正确的安全边界；给 DSH 页面改肤会绑死它的 DOM 结构，DSH 升级即碎。
+- **遗留：** 声明改动需重启生效且界面无提示→列入 052；omniharness-ui 克隆中剩余未提交文件已无独有资产（独有部分均已入主库），是否归档/清理由用户后续决定，不阻塞；"启动卡死"两轮真实窗口未复现，**不认定已修复**，继续观察（再出现请附任务号报给 ARCHITECT）。
+
 ## OD-ARCH-051 批次 2（S3/S4）：**待 ARCHITECT 独立复核**（BUILDER 提交，2026-10-21）
 
 > 本节是 BUILDER 的准备材料，**不是验收结论**。按 AGENTS.md，结论须由 ARCHITECT 读实际 diff、重跑测试后写入。
