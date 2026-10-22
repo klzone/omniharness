@@ -180,6 +180,24 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 （OD-ARCH-030 实测新增 2918 字节）。它是**可编辑的场景规则**（`draft.rules` / `draft.sections`），
 不含凭证与用户数据；改动它等于改动工作台的整理规则。
 
+### 5.2 模型与端点配置（OD-ARCH-065）
+
+应用数据根的 `config/` 下有两个由「模型与端点」页写入的文件，二者都只含**非机密**字段：
+
+| 文件 | 内容 | 谁读它 |
+| --- | --- | --- |
+| `omnidesk.model-settings.v2.json` | 提供商档案：`providers[]`（`provider` / `display_name` / `base_url` / `api` / `api_key_ref` / `models[]` / `reasoning_effort`）+ `default`（默认 provider 与 model） | 只被 OmniDesk 自己读，用来画设置页、决定默认路由 |
+| `omnidesk-model.yml` | DSH 补丁覆盖文件（权限 `0600`）：把合并后的全部路由与默认模型交给引擎 | 引擎与设置服务，通过 `--patch` 传入 |
+
+要点：
+
+1. **一个提供商一条路由，各自一个凭据引用名**（`api_key_ref`，对应 DSH 的 `apiKeyEnv`）。同一提供商下的多个模型共用这一个引用名，不重复存密钥。两个提供商共用同一个引用名会被直接拒绝，避免串号。
+2. 密钥**不在**这两个文件里。它只经 DSH 官方凭据服务写进隔离数据根的 `.credentials.yaml`（`0600`），OmniDesk 侧不另建加密库、不读回明文、不回显。
+3. 每个模型有 `contextWindow`（可写 `1048576` 表示 1M）。这是**给 DSH 的容量声明**，用于决定何时压缩上下文；它不会让端点真的支持 1M，填大了而端点不支持会在请求时报错。
+4. 覆盖文件是**整份重算**的：保存时先读「Profile + 其它补丁」当前生效的路由，用 OmniDesk 的提供商覆盖同名项、保留其余项，再整体写入。因为补丁层对 `config` 是浅合并，只写自己那几条会静默抹掉 Profile 自带的路由。
+5. v1 结构（单套 provider）首次读取时自动升级为 v2，原件改名为 `omnidesk.model-settings.v1.json.bak-*`；升级失败则原样保留并报错，不覆盖。
+
+
 ---
 
 ## 6. 测试期行为（`script`）
