@@ -86,6 +86,9 @@ export function Dock({
               // 用 aria-label 而不是 title：title 会让浏览器再弹一个大号原生提示，
               // 与图标旁边那条小字提示重复（OD-ARCH-044）。可访问名保持不变。
               aria-label={item.note ? `${item.label}（${item.note}）` : item.label}
+              // data-scene 是稳定的自动化定位锚点（OD-ARCH-056）：展示名会随声明改，
+              // 内部场景键不会。纯属性，不影响布局与可访问名。
+              data-scene={item.scene}
               className={
                 "w-10 h-10 rounded-full flex items-center justify-center transition-all " +
                 (active
