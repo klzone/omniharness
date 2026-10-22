@@ -45,6 +45,7 @@
 | 脚本/运行（真实窗口） | `verify_model_providers_065.py --display :96 --root /tmp/od065-run6` | 通过；`facts.json`：保存写入 provider/key_ref 与 1M 声明、base 路由保留、无明文密钥；沿用已存密钥探测 `request_reached_endpoint: true` / `authorized_delta: 1`；错误密钥 401；双提供商并存、overlay 0600；`app_alive: true` |
 | 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
 | 文件事实 | 对 `verify_model_providers_065.py`、`evidence/od-arch-065/`、两份文档做 `sk-…` / `Bearer …` 扫描 | 0 命中（脚本内只有 `synthetic-placeholder-not-a-credential` 这类明示占位串） |
+| 脚本/运行（引擎实载） | `DSH_HOME=~/OmniDesk/runtime/dsh-home node runtime/dsh-runtime/…/bin.js --profile acp --dump-config --patch ~/OmniDesk/app/config/omnidesk-model.yml` | 引擎实际加载后 `opendesign` 下 5 个模型全部 `contextWindow: 1048576`；`agnescn` 路由保留；默认 `opendesign / deepseek-v4.1-flash`。明细见 `evidence/od-arch-065/engine-routes-facts.json` |
 
 ### 未解决问题 / 偏差
 
