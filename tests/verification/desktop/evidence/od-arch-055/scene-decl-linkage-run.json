@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-055 S3",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（sha256）",
-  "display": ":96",
+  "display": ":98",
   "root": "/tmp/od055-s3",
   "rounds": {
     "default": {
@@ -22,9 +22,16 @@
       ],
       "decl_path": "/tmp/od055-s3/app-data/profiles/discipline.yml",
       "decl_matches_sample": true,
+      "dock_centers": [
+        309,
+        359,
+        409,
+        459,
+        509
+      ],
       "click_point": [
         127,
-        373
+        449
       ],
       "click_slot3": {
         "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/02-default-slot3-writing.png",
@@ -60,11 +67,17 @@
         1280,
         820
       ],
-      "decl_sha256": "7a547b532a4bd55fa12758fc454b42628fd8a59ea4f11925e1366e55905cfb96",
+      "decl_sha256": "7e5ecf81dd03e9e777b3f1dba15b51e3c4ed9967a8f7b943f29549d7f5caa12c",
       "decl_byte_identical_to_edit": true,
+      "dock_centers": [
+        334,
+        384,
+        434,
+        484
+      ],
       "click_point": [
         127,
-        398
+        474
       ],
       "click_old_writing_slot": {
         "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/04-hidden-slot3-project.png",
@@ -107,7 +120,7 @@
     "无 router / hash / 深链：隐藏场景后界面没有 URL 或命令可直达该页面。",
     "演练结束把声明恢复为初始字节，sha256 前后比对见 decl_sha256_*。"
   ],
-  "decl_sha256_before": "aeff82373c21f61102054e8571f53cdd5766a8646a745b4da76c9b8c7298a055",
-  "decl_sha256_after": "aeff82373c21f61102054e8571f53cdd5766a8646a745b4da76c9b8c7298a055",
+  "decl_sha256_before": "22eec238a80afd2b8ba19a2105325d094b54acd0e8b57b0956f4447fd6bec4ad",
+  "decl_sha256_after": "22eec238a80afd2b8ba19a2105325d094b54acd0e8b57b0956f4447fd6bec4ad",
   "decl_restored_identical": true
 }

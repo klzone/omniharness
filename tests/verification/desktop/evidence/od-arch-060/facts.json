@@ -5,15 +5,15 @@
   "steps": {
     "scene_weekly": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-weekly.png",
-      "dock_dy": 325
+      "dock_dy": 400
     },
     "scene_writing": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-writing.png",
-      "dock_dy": 375
+      "dock_dy": 450
     },
     "scene_project": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-project.png",
-      "dock_dy": 425
+      "dock_dy": 500
     },
     "filter": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/03-filter-applied.png",

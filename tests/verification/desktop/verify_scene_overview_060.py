@@ -25,11 +25,13 @@ from window_harness import AppSession, XSession  # noqa: E402
 EVIDENCE = HERE / "evidence" / "od-arch-060"
 SCREEN_W, SCREEN_H = 1440, 900
 
-# Dock 坐标（1440×900，8 个入口；059 S2 实测，行距 50）。
+# Dock 坐标（1440×900，OD-ARCH-061 复标定：5 个业务入口，行距 50，垂直居中）。
+# 实测像素：首页 350 / 工作记录 400 / 文案写作 450 / 项目跟踪 500 / 历史会话 550。
+# 旧值（325/375/425）是 8 入口时代的坐标，061 去掉 3 个图标后整体下移 75px。
 DOCK_DX = 47
-DOCK_WEEKLY_DY = 325
-DOCK_WRITING_DY = 375
-DOCK_PROJECT_DY = 425
+DOCK_WEEKLY_DY = 400
+DOCK_WRITING_DY = 450
+DOCK_PROJECT_DY = 500
 
 NOW = time.time()
 WEEK_FILES = [
