@@ -1,0 +1,110 @@
+{
+  "plan": "OD-ARCH-064",
+  "evidence_level": "真实桌面窗口运行（正式数据根，Xvfb/DISPLAY 实际窗口）+ 静态检查 + 脚本回归",
+  "launch": {
+    "cmd": "bash scripts/omnidesk.sh",
+    "exit_code": 0,
+    "app_pid": 97021,
+    "window_title": "OmniDesk Discipline",
+    "window_size_px": [
+      1280,
+      857
+    ],
+    "window_position": [
+      160,
+      43
+    ],
+    "window_alive_at_end": true,
+    "data_root_app": "~/OmniDesk/app",
+    "data_root_artifacts": "~/OmniDesk/workspace/artifacts",
+    "data_root_dsh_home": "~/OmniDesk/runtime/dsh-home",
+    "vite_dev_server": {
+      "port": 5273,
+      "pid": 11925,
+      "reused": true,
+      "note": "脚本检测到本项目 desktop/ 的 Vite dev server 后复用，属正常行为"
+    },
+    "credentials_read": false
+  },
+  "dock": {
+    "entries": 5,
+    "labels": [
+      "工作台首页",
+      "工作记录",
+      "文案写作",
+      "项目跟踪",
+      "历史会话"
+    ],
+    "settings_entry_in_dock": false,
+    "settings_entry_location": "顶栏右上角齿轮",
+    "settings_tabs": [
+      "模型与端点",
+      "对话分类",
+      "成果与文档库",
+      "权限",
+      "引擎诊断",
+      "关于"
+    ],
+    "code_change_required": false
+  },
+  "checklist": {
+    "path": "docs/user-testing-checklist.md",
+    "lines": 182,
+    "steps": 7,
+    "removed_nonexistent_flows": [
+      "载入合成样例",
+      "生成模型初稿",
+      "保存成果"
+    ],
+    "removed_flows_grep_hits": 0,
+    "entry_note": "实测统一走 scripts/omnidesk.sh；scripts/dev-ui.sh 为隔离合成环境，仅供自动化"
+  },
+  "screenshots": [
+    "tests/verification/desktop/evidence/od-arch-064/00-omnidesk-launch.png"
+  ],
+  "screenshot_capture_method": "Xlib window.get_image()（GDK root 抓图在 :0 全黑）",
+  "reused_evidence": [
+    "evidence/od-arch-063/01-collapsed.png",
+    "evidence/od-arch-063/02-open.png",
+    "evidence/od-arch-063/09-new-category-selected.png",
+    "evidence/od-arch-063/04-settings-layout.png",
+    "evidence/od-arch-063/05-settings-categories.png",
+    "evidence/od-arch-062/06-idle-send-arrow.png",
+    "evidence/od-arch-062/09-after-cancel.png"
+  ],
+  "regressions": [
+    {
+      "cmd": "cd desktop && npx tsc --noEmit",
+      "result": "0 errors (TSC=0)"
+    },
+    {
+      "cmd": "cd desktop && npm run build",
+      "result": "success, index-DiI7_Nn_.js 396.72 kB, BUILD=0"
+    },
+    {
+      "cmd": "cd desktop/src-tauri && cargo test --offline --lib",
+      "result": "202 passed / 0 failed"
+    },
+    {
+      "cmd": "python3 -m pytest tests -q",
+      "result": "26 passed"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_scene_decl_linkage_055.py --display :98",
+      "result": "exit 0; declaration sha256 before == after (22eec238...)"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_scene_overview_060.py --display :97",
+      "result": "exit 0; app_alive_at_end true"
+    },
+    {
+      "cmd": "git status --porcelain runtime/",
+      "result": "empty (DSH Runtime zero diff)"
+    }
+  ],
+  "notes": [
+    "app.log 开头的 corrupted double-linked list / free(): corrupted unsorted chunks 共 13 行来自 23:04 的旧运行；本次 23:28 启动无新增内存错误，窗口稳定。",
+    "未修改任何界面代码：Dock 5 入口与设置 6 页签与清单一致，无残留设置入口。",
+    "未读取、打印或复制任何凭证；未接触 runtime/、~/.dsh、~/.agents 或真实工作材料。"
+  ]
+}
