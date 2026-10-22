@@ -60,7 +60,7 @@
         1280,
         820
       ],
-      "decl_sha256": "3ce5f7b1d70f4e80ec69449c0c06e7b7c3e62c330d3f35d42c2f197c44723752",
+      "decl_sha256": "7a547b532a4bd55fa12758fc454b42628fd8a59ea4f11925e1366e55905cfb96",
       "decl_byte_identical_to_edit": true,
       "click_point": [
         127,
@@ -107,7 +107,7 @@
     "无 router / hash / 深链：隐藏场景后界面没有 URL 或命令可直达该页面。",
     "演练结束把声明恢复为初始字节，sha256 前后比对见 decl_sha256_*。"
   ],
-  "decl_sha256_before": "6e0fa2cb3223da26be3dfabfb1cb1a9c3ce8cad353b67c94b19733675461a4d9",
-  "decl_sha256_after": "6e0fa2cb3223da26be3dfabfb1cb1a9c3ce8cad353b67c94b19733675461a4d9",
+  "decl_sha256_before": "aeff82373c21f61102054e8571f53cdd5766a8646a745b4da76c9b8c7298a055",
+  "decl_sha256_after": "aeff82373c21f61102054e8571f53cdd5766a8646a745b4da76c9b8c7298a055",
   "decl_restored_identical": true
 }

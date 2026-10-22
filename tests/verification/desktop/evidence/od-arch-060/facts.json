@@ -1,0 +1,44 @@
+{
+  "plan": "OD-ARCH-060",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实",
+  "root": "/tmp/od060-verify",
+  "steps": {
+    "scene_weekly": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-weekly.png",
+      "dock_dy": 325
+    },
+    "scene_writing": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-writing.png",
+      "dock_dy": 375
+    },
+    "scene_project": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-project.png",
+      "dock_dy": 425
+    },
+    "filter": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/03-filter-applied.png",
+      "query": "20261021",
+      "expect": "只保留 offline-weekly-report-20261021-140000.md 一条，计数变 1 份"
+    },
+    "list_view": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/04-list-view.png",
+      "expect": "列表视图列出全部 2 份本场景成果，日期与字节数可见"
+    },
+    "pending_panel": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/02-pending-panel.png",
+      "expect": "展开后列出 2 条合成待确认记录（1 条可确认、1 条已过期只能放弃）"
+    }
+  },
+  "artifacts_seeded": [
+    "offline-weekly-report-20261020-090000.md",
+    "offline-weekly-report-20261021-140000.md",
+    "offline-material-writing-20261022-100000.md",
+    "offline-project-management-20261019-160000.md",
+    "offline-project-management-20250105-080000.md"
+  ],
+  "pending_seeded": [
+    "verify060-pending",
+    "verify060-expired"
+  ],
+  "app_alive_at_end": true
+}
