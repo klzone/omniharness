@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-055 S3",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（sha256）",
-  "display": ":98",
+  "display": ":94",
   "root": "/tmp/od055-s3",
   "rounds": {
     "default": {
