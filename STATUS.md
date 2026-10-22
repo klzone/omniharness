@@ -1,5 +1,12 @@
 # BUILDER 执行状态
 
+## OD-ARCH-059 复核修正：移除首页多余的历史对话下拉框（2026-10-22）
+
+- 用户实测指出：首页输入区场景框右侧还有一个「切换本机对话」下拉框，不在设计内，且与场景框并排容易被读成两级分类。
+- 改动：`HomeChat.tsx` 删除 `threadOptions` / `activeThreadId` / `onSelectThread` 三个属性与对应 `<select>`；保留「新对话」按钮；`HomeCanvas.tsx` 移除 `selectThread` 与 `threadOptions` 组装。历史对话统一从场景页左栏「去对话」进入（该路径本轮已验证可续聊且历史完整）。
+- 验证：`tsc --noEmit` 0 错误；`npm run build` 成功；`bash /tmp/od054-reg.sh` 全绿（cargo 194 passed 及其余 2/13/3/1、pytest 26 passed、runtime 零差异）；S2 真实窗口脚本重跑，截图 `01-home-chips.png` 输入区只剩「场景框 + 新对话 + 挂载库/语音（置灰）」。
+- 提交：`96897c4`（未推送）。原有 `M PLANS.md`、`M REVIEW.md` 仍未提交。
+
 ## OD-ARCH-059 S2 / S3：对话归一 + Obsidian 兼容（完成，待 ARCHITECT 复核，2026-10-22）
 
 - 开工 HEAD `35d6f6c`。S1 三批与 S2 A/B 批已提交未推送（`ff63496` / `644e357` / `5323150` / `e35024b` / `8af05ca`）；本轮补 S2 证据、S3 代码与证据、STATUS。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 原样保留、未提交。
