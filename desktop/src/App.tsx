@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { host, shell } from "./api";
 import { hydrateThreads } from "./sceneThreads";
-import OfflineFlows from "./OfflineFlows";
 import SettingsPanel from "./SettingsPanel";
-import Workbench from "./workbench";
 import { Dock, type Scene } from "./shell/Dock";
-import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { HomeCanvas } from "./shell/HomeCanvas";
 import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
@@ -20,14 +17,13 @@ import type { EngineDescriptor, ProfileDeclPayload } from "./types";
  * - 首页以对话为中枢（HomeChat），左侧 Dock 进入工作记录、文案写作、项目跟踪。
  * - 三个工作场景复用离线流程页的同一套交互骨架，按入口进入对应场景；
  *   它们的模型任务都走同一条引擎适配链路，代码只做确定性校验与文件边界控制。
- * - 任务工作台仍是脱敏数据分析的纵向试点；引擎诊断是只读覆盖层。
+ * - 设置只有顶栏一个入口（OD-ARCH-061）；引擎诊断作为设置里的只读分页。
  */
 export default function App() {
   const [scene, setScene] = useState<Scene>("home");
   // 线程记录以 OmniDesk 数据根为准（OD-ARCH-045 第 1 步）：启动时先读回，
   // 读完之前场景页不挂载，避免"先用缓存新建、再被数据根覆盖"的错位。
   const [threadsReady, setThreadsReady] = useState(false);
-  const [showEngine, setShowEngine] = useState(false);
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
   // 纪检 Profile 声明（OD-ARCH-051 S3）：文件驱动 Dock 上的业务场景入口。
@@ -62,7 +58,7 @@ export default function App() {
   }, []);
 
   // 声明里没有当前业务场景时（例如用户删掉了「文案写作」而正停在该页），
-  // 落到声明中的第一个入口。内置工具页（任务工作台/设置/引擎诊断）不受声明管辖，
+  // 落到声明中的第一个入口。设置页不受声明管辖，
   // 绝不能因为声明晚到就把用户从设置页拽走——实测过这个跳转，判定为缺陷。
   useEffect(() => {
     if (!decl) return;
@@ -174,17 +170,7 @@ export default function App() {
       : "正在检测引擎…";
 
   const selectScene = (next: Scene) => {
-    if (next === "engine") {
-      setShowEngine(true);
-      return;
-    }
     setScene(next);
-  };
-
-  const workSceneTab: Record<string, "weekly" | "writing" | "project"> = {
-    report: "weekly",
-    writing: "writing",
-    project: "project",
   };
 
   return (
@@ -266,25 +252,24 @@ export default function App() {
           />
         ) : scene === "sessions" ? (
           <div className="flex-1 min-h-0 overflow-hidden">
-            <Workspace />
+            <Workspace onNavigate={selectScene} />
           </div>
         ) : scene === "settings" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
             <SettingsPanel />
           </div>
-        ) : scene === "workbench" ? (
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
-            <Workbench />
-          </div>
         ) : (
-          // report / writing / project：同一套工作场景骨架，按入口进入对应场景。
+          // 兜底：声明里出现了未知入口时回首页，不渲染任何未实现页面。
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
-            <OfflineFlows key={scene} initialTab={workSceneTab[scene]} />
+            <p className="text-[12px] text-on-surface-variant">
+              这个入口还没有对应页面。
+              <button className="ml-1 text-primary hover:underline" onClick={() => setScene("home")}>
+                回首页
+              </button>
+            </p>
           </div>
         )}
       </div>
-
-      {showEngine ? <EngineTechSlice onClose={() => setShowEngine(false)} /> : null}
     </div>
   );
 }

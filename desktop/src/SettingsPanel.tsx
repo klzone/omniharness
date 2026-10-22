@@ -1,4 +1,5 @@
-// 设置（OD-ARCH-053）：模型与端点 / 场景声明 / 权限 / 关于（高级）。
+// 设置（OD-ARCH-061 S2）：唯一设置入口，按功能分页：
+// 模型与端点 / 对话分类 / 成果与文档库 / 权限 / 引擎诊断 / 关于（高级）。
 //
 // 只负责展示与调用宿主命令；路径校验、协议校验、凭据写入、原子落盘都在 Rust 侧完成。
 // 这里不拼接 shell、不读写文件，也不推断“设置已生效”——一律以宿主返回为准。
@@ -13,6 +14,8 @@ import {
   shell,
 } from "./api";
 import { PendingWritePanel } from "./shell/PendingWriteCard";
+import { EngineTechSlice } from "./shell/EngineTechSlice";
+import { THREAD_CATEGORIES } from "./threadCategories";
 import type {
   AdmissionFacts,
   LocalRootInfo,
@@ -32,6 +35,18 @@ const SOURCE_LABEL: Record<string, string> = {
   default: "默认目录",
   env_override: "开发/测试隔离变量覆盖（本条设置暂不生效）",
 };
+
+/** 设置分页（OD-ARCH-061 S2）。 */
+type SettingsTab = "model" | "categories" | "library" | "permissions" | "engine" | "about";
+
+const SETTINGS_TABS: Array<{ key: SettingsTab; label: string }> = [
+  { key: "model", label: "模型与端点" },
+  { key: "categories", label: "对话分类" },
+  { key: "library", label: "成果与文档库" },
+  { key: "permissions", label: "权限" },
+  { key: "engine", label: "引擎诊断" },
+  { key: "about", label: "关于" },
+];
 
 // 类别只区分“本机回环 / 非回环”，不承诺组织归属。
 const CATEGORY_LABEL: Record<ModelCategory, string> = {
@@ -131,6 +146,9 @@ function blankSettings(): ModelSettings {
 }
 
 export default function SettingsPanel() {
+  // —— 分页（OD-ARCH-061 S2）：唯一设置入口，一页一件事 ——
+  const [tab, setTab] = useState<SettingsTab>("model");
+
   // —— 成果目录 ——
   const [info, setInfo] = useState<LocalRootInfo | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
@@ -492,10 +510,24 @@ export default function SettingsPanel() {
           以下设置只作用于本机的 OmniDesk 实例。模型端点与密钥就在这里填写，不需要打开 DSH。
           成果文件不会因为改设置而移动、覆盖或删除；应用配置与成果目录分开存放。
         </p>
+        <div className="view-tabs" role="tablist" aria-label="设置分页" data-testid="settings-tabs">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              data-testid={`settings-tab-${t.key}`}
+              className={"tab" + (tab === t.key ? " active" : "")}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* ============ 1. 模型与端点 ============ */}
-      <section className="pane">
+      <section className="pane" hidden={tab !== "model"}>
         <CardHead
           title="模型与端点"
           status={
@@ -780,8 +812,40 @@ export default function SettingsPanel() {
         ) : null}
       </section>
 
-      {/* ============ 2. 场景声明 ============ */}
-      <section className="pane">
+      {/* ============ 2. 对话分类 ============ */}
+      <section className="pane" hidden={tab !== "categories"}>
+        <CardHead title="对话分类" status="固定四类（本机对话标签）" />
+        <p className="hint">
+          首页输入框左边的四个胶囊就是这里的分类。选中只改变这段本机对话归到哪个场景，
+          不改模型、不改路由，也不移动任何已有文件。声明里隐藏了某个场景时，对应分类不再出现。
+        </p>
+        <div className="status-card" data-testid="thread-categories">
+          {THREAD_CATEGORIES.map((c) => (
+            <div className="status-row" key={c.key}>
+              <span className="k mono">{c.key}</span>
+              <span className="v">
+                <strong>{c.label}</strong> · {c.hint}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="hint">
+          自定义分类名称、新增分类、给每类单独映射成果文件夹与 Obsidian vault、一键初始化目录骨架，
+          都需要在宿主设置里新增持久化字段。按 OD-ARCH-061 风险①，这一块先停在这里等架构决策，
+          已实现的只有上面的固定四类与下面的入口声明。
+        </p>
+
+        <CardHead
+          title="入口声明"
+          status="决定 Dock 显示哪些场景"
+        />
+        <p className="hint">
+          声明只管界面显示哪些入口、叫什么名字，不影响分类标签本身与内部场景键。
+        </p>
+      </section>
+
+      {/* ============ 声明编辑（归在「对话分类」页） ============ */}
+      <section className="pane" hidden={tab !== "categories"}>
         <CardHead
           title="场景声明"
           status={
@@ -844,7 +908,7 @@ export default function SettingsPanel() {
       </section>
 
       {/* ============ 3. 权限 ============ */}
-      <section className="pane">
+      <section className="pane" hidden={tab !== "permissions"}>
         <CardHead
           title="模型权限"
           status={
@@ -909,15 +973,14 @@ export default function SettingsPanel() {
         </p>
       </section>
 
-      {/* ============ 4. 关于（高级） ============ */}
-      <section className="pane">
-        <CardHead title="关于（高级）" status="默认折叠" />
+      {/* ============ 4. 关于：定时与提醒 ============ */}
+      <section className="pane" hidden={tab !== "about"}>
+        <CardHead title="定时与提醒" status={cfg ? `复盘 ${reviewStatus ?? "—"} · 心跳 ${heartbeatStatus ?? "—"}` : "读取中…"} />
         <p className="hint">
-          日常使用不需要展开这里。定时任务、成果目录、数据路径与 DSH 原生界面都在这一区，
-          改动会影响之后的运行行为。
+          定时与心跳只在应用运行期间触发，关掉应用就不会执行；改动会影响之后的运行行为。
         </p>
 
-        <details className="tech">
+        <details className="tech" open>
           <summary>定时与提醒</summary>
           <p className="hint">
             定时与心跳只在<strong>应用运行期间</strong>触发：关掉应用就不会执行，错过的时间点会在下次打开时补跑一次。
@@ -1041,8 +1104,27 @@ export default function SettingsPanel() {
           ) : null}
           {schedNote ? <p className="hint">{schedNote}</p> : null}
         </details>
+      </section>
 
-        <details className="tech">
+      {/* ============ 5. 成果与文档库 ============ */}
+      <section className="pane" hidden={tab !== "library"}>
+        <CardHead
+          title="成果与文档库"
+          status={info?.artifact_root ?? (infoError ? "目录不可用" : "读取中…")}
+        >
+          <button className="ghost" onClick={() => void openArtifacts()}>
+            打开目录
+          </button>
+          <button className="ghost" onClick={() => void refresh()}>
+            刷新状态
+          </button>
+        </CardHead>
+        <p className="hint">
+          成果是 OmniDesk 自己生成的文稿，保存在仓库之外的本地目录里，可以直接用 Obsidian 打开。
+          这里改的是<strong>之后新建成果</strong>的保存位置。
+        </p>
+
+        <details className="tech" open>
           <summary>成果目录</summary>
           <p className="hint">
             这里只影响<strong>之后新建的成果</strong>保存到哪。已有文件不会移动、覆盖或删除。
@@ -1127,8 +1209,16 @@ export default function SettingsPanel() {
             「含下级目录」是按场景分别设置的开关，在各场景页的成果档案栏里切换，默认只看最外层。
           </p>
         </details>
+      </section>
 
-        <details className="tech">
+      {/* ============ 6. 关于：数据与日志 ============ */}
+      <section className="pane" hidden={tab !== "about"}>
+        <CardHead title="数据与日志" status="默认折叠" />
+        <p className="hint">
+          以下路径都在仓库之外。应用自身数据、成果文件与使用日志分开存放。
+        </p>
+
+        <details className="tech" open>
           <summary>数据与日志</summary>
           <p className="hint">
             以下路径都在仓库之外。应用自身数据、成果文件与使用日志分开存放；
@@ -1171,8 +1261,17 @@ export default function SettingsPanel() {
             <PendingWritePanel refreshKey={pendingKey} />
           </div>
         </details>
+      </section>
 
-        <details className="tech">
+      {/* ============ 7. 引擎诊断（只读，自引擎页迁入） ============ */}
+      <section className="pane" hidden={tab !== "engine"}>
+        <CardHead title="引擎诊断" status="只读" />
+        <p className="hint">
+          这里只读取引擎状态，不能发起任务，也不会把任何文本送给模型。诊断信息用于排查
+          "任务没跑起来"这类问题；日常使用不需要打开。
+        </p>
+        <EngineTechSlice embedded />
+        <details className="tech" open>
           <summary>DSH 原生界面（诊断用）</summary>
           <p className="hint">
             这里会打开<strong>完整的 DSH Web 应用</strong>，不是只打开设置页。日常配置模型请用本页上方的表单；

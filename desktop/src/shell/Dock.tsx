@@ -12,10 +12,8 @@ export type Scene =
   | "report"
   | "writing"
   | "project"
-  | "workbench"
   | "sessions"
-  | "settings"
-  | "engine";
+  | "settings";
 
 interface DockItem {
   scene: Scene;
@@ -33,25 +31,15 @@ export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
   {
     scene: "sessions",
     icon: "history",
-    label: "项目与会话",
-    note: "引擎项目 · 对话",
+    label: "历史会话",
+    note: "引擎会话 · 本机对话",
   },
 ];
 
 /**
- * 基础设施入口：不属于纪检业务场景，由代码固定，声明文件不能删改。
- * 声明只决定上面那组业务场景显示什么、按什么顺序显示。
+ * Dock 只放业务入口（OD-ARCH-061）：设置与引擎诊断都在顶栏设置页里，
+ * 任务工作台已下线，不再有「基础设施」图标占位。
  */
-const BUILTIN_TOOL_ITEMS: DockItem[] = [
-  {
-    scene: "workbench",
-    icon: "terminal",
-    label: "任务工作台",
-    note: "合成数据 · 五阶段",
-  },
-  { scene: "settings", icon: "folder", label: "成果目录与模型权限" },
-  { scene: "engine", icon: "settings", label: "引擎诊断", note: "只读" },
-];
 
 export function Dock({
   scene,
@@ -72,7 +60,7 @@ export function Dock({
           note: s.note || undefined,
         }))
       : DEFAULT_BUSINESS_ITEMS;
-  const items = [...business, ...BUILTIN_TOOL_ITEMS];
+  const items = business;
 
   return (
     <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center bg-surface-container-lowest/95 ring-1 ring-white/95 rounded-full py-3 px-2 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] space-y-2.5">
