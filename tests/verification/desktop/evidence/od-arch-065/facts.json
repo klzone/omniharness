@@ -1,0 +1,53 @@
+{
+  "plan": "OD-ARCH-065",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 回环合成端点）+ 文件事实",
+  "synthetic_endpoint": "http://127.0.0.1:45735/v1",
+  "credentials_read": false,
+  "cases": {
+    "save": {
+      "app_data_json_exists": true,
+      "provider_written": true,
+      "key_ref_written": true,
+      "context_window_1m_in_overlay": true,
+      "base_route_kept": true,
+      "overlay_has_plaintext_key": false,
+      "evidence": "/tmp/od065-run6/app-data/config/omnidesk.model-settings.v2.json"
+    },
+    "probe_stored_key": {
+      "expected": "连接成功，使用已保存密钥",
+      "request_reached_endpoint": true,
+      "authorized_delta": 1,
+      "models_hits": 1
+    },
+    "probe_wrong_key": {
+      "expected": "鉴权失败",
+      "models_hits": 2
+    },
+    "two_providers": {
+      "providers_on_disk": [
+        "alpha",
+        "beta"
+      ],
+      "both_present": true,
+      "overlay_keeps_base_route": true,
+      "overlay_plaintext_key": false,
+      "overlay_mode": "0o600"
+    }
+  },
+  "synthetic_endpoint_hits": {
+    "models_hits": 2,
+    "authorized": 1
+  },
+  "app_alive": true,
+  "shots": [
+    "00-home.png",
+    "01-settings.png",
+    "02-provider-alpha-filled.png",
+    "02-provider-form.png",
+    "03-alpha-saved.png",
+    "03-provider-form-scrolled.png",
+    "04-probe-stored-key.png",
+    "05-probe-wrong-key.png",
+    "06-two-providers.png"
+  ]
+}
