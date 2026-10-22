@@ -615,6 +615,30 @@ export interface PendingWriteListing {
   broken: number;
 }
 
+/**
+ * 场景状态条的聚合数字（OD-ARCH-060 S1/S5）。
+ *
+ * 全部由宿主机从已落盘的记录与成果元数据数出来：不读正文、不调模型。
+ */
+export interface SceneOverview {
+  scenario: string;
+  pending: number;
+  pending_expired: number;
+  pending_broken: number;
+  artifacts_total: number;
+  artifacts_this_week: number;
+  artifacts_this_month: number;
+  latest_artifact_at: number | null;
+  week_start: string;
+  week_deadline: string;
+}
+
+export interface SceneOverviewResponse {
+  ok: boolean;
+  now: number;
+  items: SceneOverview[];
+}
+
 export interface PendingWriteConfirmReceipt {
   ok: boolean;
   id: string;

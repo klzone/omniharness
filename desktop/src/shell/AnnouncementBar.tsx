@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { host, invalidateEngineFactsCache, pendingWrites, scheduler, shell } from "../api";
 import { sameScenario, type SceneDef } from "../scenes";
 import type { SchedulerConfig } from "../types";
-import { PendingWritePanel } from "./PendingWriteCard";
 
 /**
  * 提醒 / 建议栏（OD-ARCH-033 v3；OD-ARCH-046 定时与降级）。
@@ -30,11 +29,14 @@ export function AnnouncementBar({
   scene,
   itemsText,
   onOpenArtifact,
+  onPendingChanged,
 }: {
   scene: SceneDef;
   /** 本场景最近一次输入的事项文本（供确定性汇总使用）。 */
   itemsText: string;
   onOpenArtifact?: (fileName: string) => void;
+  /** 登记了新的待确认写入（或定时 tick 后）时通知外层刷新状态条与待确认面板。 */
+  onPendingChanged?: () => void;
 }) {
   const [rule, setRule] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
@@ -47,8 +49,6 @@ export function AnnouncementBar({
   /** 宿主调度配置；读不到时为 null，界面显示“不可用”，绝不假装已开启。 */
   const [config, setConfig] = useState<SchedulerConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  /** 待确认写入列表的刷新键：新建记录、定时 tick 之后都要重新读取。 */
-  const [pendingTick, setPendingTick] = useState(0);
   /** 宿主回报的模型权限现状：复盘既不能绕过，也不在界面上假装可用。 */
   const [admission, setAdmission] = useState<{ checking: boolean; allowed: boolean; reason: string | null }>({
     checking: true,
@@ -253,9 +253,9 @@ export function AnnouncementBar({
           ai_assisted: true,
         },
       });
-      setNote("AI 复盘已生成草稿，等待你确认后才会写入文件（见下方待确认卡片）。");
+      setNote("AI 复盘已生成草稿，等待你确认后才会写入文件（见上方「待确认写入」）。");
       // 面板挂载时列表还是空的，这里主动刷新一次，否则卡片不会出现。
-      setPendingTick((n) => n + 1);
+      onPendingChanged?.();
       await scheduler.markReviewed();
       await refreshConfig();
       await loadReview();
@@ -269,7 +269,7 @@ export function AnnouncementBar({
     } finally {
       setBusy(false);
     }
-  }, [scene, itemsText, loadReview, admission, refreshAdmission, refreshConfig]);
+  }, [scene, itemsText, loadReview, admission, refreshAdmission, refreshConfig, onPendingChanged]);
 
   // 定时与心跳：前端运行期定时器只向宿主问“到点了吗”。
   // 应用关闭期间不执行；错过由 last_*_at 判定，下一次打开补跑一次。
@@ -291,7 +291,7 @@ export function AnnouncementBar({
           setConfig((prev) => (prev ? { ...prev, last_heartbeat_at: t.now } : prev));
         }
         // 每轮 tick 顺带刷新待确认列表：定时任务可能刚登记了新记录。
-        setPendingTick((n) => n + 1);
+        onPendingChanged?.();
         if (t.review_due) {
           await runReview();
         }
@@ -307,7 +307,7 @@ export function AnnouncementBar({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [runReview]);
+  }, [runReview, onPendingChanged]);
 
   const updateConfig = useCallback(
     async (patch: Partial<SchedulerConfig>) => {
@@ -431,9 +431,6 @@ export function AnnouncementBar({
       {configError ? <p className="text-[10.5px] text-outline mt-1">调度配置不可用：{configError}</p> : null}
       {degraded ? <p className="text-[10.5px] text-error mt-1">{degraded}</p> : null}
       {note ? <p className="text-[10.5px] text-outline mt-1">{note}</p> : null}
-      <div className="mt-1.5">
-        <PendingWritePanel refreshKey={pendingTick} />
-      </div>
     </section>
   );
 }

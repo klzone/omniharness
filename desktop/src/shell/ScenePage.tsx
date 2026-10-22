@@ -10,9 +10,11 @@ import {
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import type { OfflineArtifactEntry } from "../types";
+import type { OfflineArtifactEntry, SceneOverview } from "../types";
 import { AnnouncementBar } from "./AnnouncementBar";
+import { ArtifactExplorer } from "./ArtifactExplorer";
 import type { Scene } from "./Dock";
+import { SceneStatusStrip } from "./SceneStatusStrip";
 
 /** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
 const SUBDIRS_KEY_PREFIX = "omnidesk.scene.include-subdirs.";
@@ -31,6 +33,19 @@ function writeSubdirsPref(scene: SceneKey, value: boolean) {
   } catch {
     // 缓存写不进去时只影响下次默认值，不影响本次结果。
   }
+}
+
+/** 本周一 00:00（本机时区）的 Unix 秒，用于「本期记录碎片」的窗口。 */
+function weekStartSecs(now: Date): number {
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((now.getDay() + 6) % 7));
+  return monday.getTime() / 1000;
+}
+
+/** 文件名 → 可读标题（去掉 .md，下划线/连字符换成空格）。只做展示，不改文件。 */
+function titleFromFile(name: string): string {
+  return name.replace(/\.md$/i, "").replace(/[_-]+/g, " ").trim() || name;
 }
 
 /**
@@ -71,12 +86,15 @@ function filterSceneArtifacts(
 }
 
 /**
- * 场景页（OD-ARCH-033 目标 2/3/5）。
+ * 场景页 v2（OD-ARCH-060）。
  *
- * 场景页是**档案页**（OD-ARCH-057）：只列本场景的对话与成果，自己不承载对话框。
- * 要接着说事，点「去对话」回首页——整个应用只有首页那一个对话框。
+ * 版式自上而下：场景状态条 → 规则提醒/AI 复盘（AnnouncementBar，046 的降级规则保留）
+ * → 成果文档库（项目跟进保留「进度」页签）→ 底部折叠会话历史（默认收起）。
+ *
+ * 场景页仍是**档案页**（OD-ARCH-057）：自己不承载对话框，要接着说事点「去对话」回首页。
  *
  * 诚实性：
+ *   * 状态条数字来自宿主的 `scene_overview` 聚合命令（数已落盘记录，不调模型）。
  *   * 「进度」页签的数字来自**既有的确定性汇总命令**（`task_project_summary`），不是模型算的。
  *   * 「成果档案」只列**本场景自己保存**的成果（按 scenario 过滤），不读用户其它目录。
  *   * 场景归属是**入口即标签、事后可改**，不用模型猜归类。
@@ -92,10 +110,17 @@ export function ScenePage({
   const [threads, setThreads] = useState<SceneThread[]>(() => listThreadsByTag(scene));
   const [tab, setTab] = useState<"progress" | "artifacts">(def.hasProgress ? "progress" : "artifacts");
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
+  const [artifactsError, setArtifactsError] = useState<string | null>(null);
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() => readSubdirsPref(scene));
   const [progress, setProgress] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<SceneOverview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  /** 刷新键：状态条与待确认面板共用，确认/放弃/定时登记之后一起重读。 */
+  const [pendingTick, setPendingTick] = useState(0);
+  /** 会话历史默认收起（OD-ARCH-060 S3）。 */
+  const [showThreads, setShowThreads] = useState(false);
 
   const refreshThreads = useCallback(() => {
     setThreads(listThreadsByTag(scene));
@@ -114,14 +139,39 @@ export function ScenePage({
       .then((r) => {
         if (!alive) return;
         setArtifacts(filterSceneArtifacts(r.items, def.scenario, includeSubdirs));
+        setArtifactsError(null);
       })
-      .catch(() => {
-        if (alive) setArtifacts([]);
+      .catch((e) => {
+        if (!alive) return;
+        // 读不到就如实报错，不能显示成「零成果」。
+        setArtifacts([]);
+        setArtifactsError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       alive = false;
     };
   }, [def.scenario, includeSubdirs]);
+
+  // 状态条：宿主聚合命令，只数已落盘的元数据（不读正文、不调模型）。
+  useEffect(() => {
+    let alive = true;
+    shell
+      .sceneOverview([def.scenario])
+      .then((r) => {
+        if (!alive) return;
+        const mine = r.items.find((i) => sameScenario(i.scenario, def.scenario)) ?? r.items[0] ?? null;
+        setOverview(mine);
+        setOverviewError(mine ? null : "宿主没有返回本场景的汇总");
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setOverview(null);
+        setOverviewError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [def.scenario, pendingTick, includeSubdirs]);
 
   /** 本场景最近一次输入的事项文本（确定性汇总的输入）。 */
   const itemsText = useMemo(() => {
@@ -197,31 +247,174 @@ export function ScenePage({
     [refreshThreads],
   );
 
+  const toggleSubdirs = useCallback(
+    (next: boolean) => {
+      setIncludeSubdirs(next);
+      writeSubdirsPref(scene, next);
+    },
+    [scene],
+  );
+
+  const bumpPending = useCallback(() => setPendingTick((n) => n + 1), []);
+
+  /**
+   * 「本期记录碎片」（OD-ARCH-060 S4，仅工作记录页）：
+   * 本周已保存的成果条目。只按修改时间窗口过滤已列出的元数据，
+   * 不调模型、不推断「事项」内容——标题就是文件名，点开才读正文。
+   */
+  const weekFragments = useMemo(() => {
+    const from = weekStartSecs(new Date());
+    return artifacts
+      .filter((a) => !a.is_dir && a.modified_at >= from)
+      .sort((a, b) => b.modified_at - a.modified_at);
+  }, [artifacts]);
+
   return (
     <main className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
-      <div className="shrink-0">
-        <AnnouncementBar
-          scene={def}
-          itemsText={itemsText}
-          onOpenArtifact={(f) => void openArtifact(f)}
-        />
-      </div>
-      <div className="flex flex-col lg:flex-row gap-4 lg:items-stretch">
-        {/* 左栏：本场景历史对话 */}
-        <section className="lg:w-[300px] shrink-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
-          <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
-            <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">
-              {def.label} · 历史对话
-            </h2>
+      <SceneStatusStrip
+        scene={def}
+        overview={overview}
+        overviewError={overviewError}
+        refreshKey={pendingTick}
+      />
+      <AnnouncementBar
+        scene={def}
+        itemsText={itemsText}
+        onOpenArtifact={(f) => void openArtifact(f)}
+        onPendingChanged={bumpPending}
+      />
+
+      {scene === "weekly" ? (
+        <section className="mb-2 bg-white/70 border border-white/90 rounded-2xl px-3 py-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[11.5px] font-semibold text-on-surface">本期记录碎片</h2>
+            <span className="text-[10px] text-outline">
+              本周已保存 {weekFragments.length} 条（按文件保存时间统计，不调模型）
+            </span>
+          </div>
+          {weekFragments.length === 0 ? (
+            <p className="pt-1 text-[10.5px] text-outline leading-relaxed">
+              本周还没有保存的记录。保存后的成果会出现在这里；这里不推测你做过什么。
+            </p>
+          ) : (
+            <ul className="pt-1 flex flex-wrap gap-1">
+              {weekFragments.slice(0, 8).map((f) => (
+                <li key={f.relative_path}>
+                  <button
+                    className="px-2 py-0.5 rounded-full bg-surface-container text-[10.5px] text-on-surface-variant hover:bg-surface-container-high truncate max-w-[240px]"
+                    title={f.relative_path}
+                    onClick={() => void openArtifact(f.relative_path)}
+                  >
+                    {titleFromFile(f.file_name)}
+                  </button>
+                </li>
+              ))}
+              {weekFragments.length > 8 ? (
+                <li className="text-[10.5px] text-outline px-1 py-0.5">另有 {weekFragments.length - 8} 条</li>
+              ) : null}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {/* 主区：成果文档库（项目跟进保留「进度」页签） */}
+      <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">
+        {def.hasProgress ? (
+          <div className="flex items-center gap-1 pb-2 border-b border-surface-variant/20">
             <button
-              className="text-[11px] text-primary hover:underline"
-              onClick={newThread}
-              title="回首页，按本场景开一段新对话"
+              className={
+                "px-2 py-1 rounded-full text-[11px] " +
+                (tab === "progress" ? "bg-primary text-on-primary" : "bg-surface-container")
+              }
+              onClick={() => setTab("progress")}
             >
-              去对话 · 新开
+              进度
+            </button>
+            <button
+              className={
+                "px-2 py-1 rounded-full text-[11px] " +
+                (tab === "artifacts" ? "bg-primary text-on-primary" : "bg-surface-container")
+              }
+              onClick={() => setTab("artifacts")}
+            >
+              阶段成果
             </button>
           </div>
-          <div className="pt-2 flex flex-col gap-1 min-h-0 overflow-y-auto flex-1">
+        ) : (
+          <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
+            <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果文档库</h2>
+          </div>
+        )}
+
+        {tab === "artifacts" ? (
+          <div className="pt-2 flex-1 flex flex-col min-h-0">
+            {artifactsError ? (
+              <p className="text-[11px] text-error leading-relaxed pb-1">
+                读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
+              </p>
+            ) : null}
+            <ArtifactExplorer
+              files={artifacts}
+              emptyHint={def.emptyHint}
+              includeSubdirs={includeSubdirs}
+              onToggleSubdirs={toggleSubdirs}
+              onOpen={(p) => void openArtifact(p)}
+            />
+          </div>
+        ) : (
+          <div className="pt-2 flex-1 overflow-y-auto">
+            {progress ? (
+              <pre className="text-[11.5px] text-on-surface-variant whitespace-pre-wrap leading-relaxed">
+                {progress}
+              </pre>
+            ) : (
+              <p className="text-[11px] text-outline leading-relaxed">
+                {progressError
+                  ? "确定性汇总没有产出：" + progressError
+                  : "还没有可汇总的事项。在首页对话里写下事项（日期｜事项｜状态），这里会按本机时间给出进度、逾期与阶段汇总——确定性计算，不调模型。"}
+              </p>
+            )}
+          </div>
+        )}
+
+        {opened ? (
+          <div className="mt-2 border-t border-surface-variant/20 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="mono text-[10.5px] text-outline truncate" title={opened.name}>
+                {opened.name}
+              </span>
+              <button className="text-[10.5px] text-outline hover:underline" onClick={() => setOpened(null)}>
+                收起
+              </button>
+            </div>
+            <pre className="text-[11px] text-on-surface-variant whitespace-pre-wrap leading-relaxed mt-1 max-h-[40vh] overflow-y-auto">
+              {opened.body}
+            </pre>
+          </div>
+        ) : null}
+      </section>
+
+      {/* 底部折叠区：本场景历史对话（OD-ARCH-060 S3，默认收起） */}
+      <section className="mt-2 bg-white/70 border border-white/90 rounded-2xl px-3 py-2">
+        <div className="flex items-center gap-2">
+          <button
+            className="text-[11.5px] text-on-surface-variant hover:text-primary shrink-0"
+            onClick={() => setShowThreads((v) => !v)}
+            aria-expanded={showThreads}
+          >
+            {showThreads ? "▾" : "▸"} 会话历史（{threads.length} 条）
+          </button>
+          <span className="text-[10px] text-outline truncate">对话只在首页发生；这里是本场景已归档的会话</span>
+          <button
+            className="ml-auto text-[11px] text-primary hover:underline shrink-0"
+            onClick={newThread}
+            title="回首页，按本场景开一段新对话"
+          >
+            去对话 · 新开
+          </button>
+        </div>
+        {showThreads ? (
+          <div className="pt-2 flex flex-col gap-1 max-h-[240px] overflow-y-auto">
             {threads.length === 0 ? (
               <p className="text-[11px] text-outline leading-relaxed">
                 还没有这个场景的对话。去首页对话，场景选「{def.label}」即可。
@@ -261,136 +454,8 @@ export function ScenePage({
               ))
             )}
           </div>
-        </section>
-
-        {/* 右栏：成果档案 / 进度 */}
-        <section className="flex-1 min-w-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
-          {def.hasProgress ? (
-            <div className="flex items-center gap-1 pb-2 border-b border-surface-variant/20">
-              <button
-                className={
-                  "px-2 py-1 rounded-full text-[11px] " +
-                  (tab === "progress" ? "bg-primary text-on-primary" : "bg-surface-container")
-                }
-                onClick={() => setTab("progress")}
-              >
-                进度
-              </button>
-              <button
-                className={
-                  "px-2 py-1 rounded-full text-[11px] " +
-                  (tab === "artifacts" ? "bg-primary text-on-primary" : "bg-surface-container")
-                }
-                onClick={() => setTab("artifacts")}
-              >
-                阶段成果
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
-              <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果档案</h2>
-            </div>
-          )}
-
-          {tab === "artifacts" ? (
-            <div className="flex items-center gap-2 pt-1.5 pb-1 border-b border-surface-variant/10">
-              <span className="text-[10px] text-outline">只列本场景保存的成果</span>
-              <label
-                className="ml-auto flex items-center gap-1 text-[10.5px] text-on-surface-variant cursor-pointer select-none"
-                title="打开后按文件夹层级列出数据根下级目录里的成果；关闭则只看最外层"
-              >
-                <input
-                  type="checkbox"
-                  className="accent-current"
-                  checked={includeSubdirs}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    setIncludeSubdirs(next);
-                    writeSubdirsPref(scene, next);
-                  }}
-                />
-                含下级目录
-              </label>
-            </div>
-          ) : null}
-
-          {tab === "artifacts" ? (
-            <p className="pt-1.5 text-[10px] text-outline leading-relaxed">
-              成果是标准 Markdown：可在 Obsidian 里「打开文件夹作为 vault」，指向设置页显示的成果目录即可直接浏览。
-              OmniDesk 只写自己生成的成果，不读取也不改动你 vault 里的其他笔记。
-            </p>
-          ) : null}
-
-          <div className="pt-2 min-h-0 overflow-y-auto flex-1">
-            {tab === "progress" ? (
-              progress ? (
-                <pre className="text-[11.5px] text-on-surface-variant whitespace-pre-wrap leading-relaxed">
-                  {progress}
-                </pre>
-              ) : (
-                <p className="text-[11px] text-outline leading-relaxed">
-                  {progressError
-                    ? "确定性汇总没有产出：" + progressError
-                    : "还没有可汇总的事项。在首页对话里写下事项（日期｜事项｜状态），这里会按本机时间给出进度、逾期与阶段汇总——确定性计算，不调模型。"}
-                </p>
-              )
-            ) : artifacts.length === 0 ? (
-              <p className="text-[11px] text-outline leading-relaxed">
-                {includeSubdirs
-                  ? def.emptyHint + "（已包含下级目录；当前没有找到本场景的成果。）"
-                  : def.emptyHint}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {artifacts.map((a) => (
-                  <li
-                    key={a.relative_path}
-                    className="flex items-center gap-2"
-                    style={{ paddingLeft: a.depth * 14 }}
-                  >
-                    {a.is_dir ? (
-                      <span className="text-[11px] text-outline truncate" title={a.relative_path}>
-                        ▸ {a.file_name}
-                      </span>
-                    ) : (
-                      <>
-                        <span
-                          className="mono text-[11px] text-on-surface-variant truncate"
-                          title={a.relative_path}
-                        >
-                          {a.file_name}
-                        </span>
-                        <span className="text-[10px] text-outline shrink-0">{a.bytes} 字节</span>
-                        <button
-                          className="text-[10.5px] text-primary hover:underline ml-auto shrink-0"
-                          onClick={() => void openArtifact(a.relative_path)}
-                        >
-                          打开
-                        </button>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {opened ? (
-              <div className="mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="mono text-[10.5px] text-outline truncate" title={opened.name}>
-                    {opened.name}
-                  </span>
-                  <button className="text-[10.5px] text-outline hover:underline" onClick={() => setOpened(null)}>
-                    收起
-                  </button>
-                </div>
-                <pre className="text-[11px] text-on-surface-variant whitespace-pre-wrap leading-relaxed mt-1">
-                  {opened.body}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      </div>
+        ) : null}
+      </section>
     </main>
   );
 }
