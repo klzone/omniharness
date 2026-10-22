@@ -286,6 +286,36 @@ export interface LocalRootInfo {
   error: string | null;
 }
 
+/**
+ * 对话分类（OD-ARCH-062 S1）：由宿主 `settings.v1` 持久化，界面只读这份列表。
+ *
+ * `key` 是内部键（plain/weekly/writing/project，或 `custom:...`），换显示名不改键，
+ * 既有线程标签与成果目录因此零迁移。`resolved_dir` 只在映射可用时给出；
+ * 映射越界或不存在时 `resolve_error` 必须显式展示，界面不得静默降级。
+ */
+export interface ThreadCategoryView {
+  key: string;
+  label: string;
+  folder: string | null;
+  vault: string | null;
+  builtin: boolean;
+  resolved_dir: string | null;
+  resolve_error: string | null;
+}
+
+export interface CategorySettingsPayload {
+  ok: boolean;
+  settings_path: string;
+  categories: ThreadCategoryView[];
+}
+
+export interface CategoryInitReceipt {
+  ok: boolean;
+  created: number;
+  items: Array<{ key: string; path: string; created: boolean }>;
+  note: string;
+}
+
 export interface UsageRecord {
   record_id: string;
   schema: string;

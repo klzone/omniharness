@@ -11,6 +11,10 @@
  */
 
 .ofl-v2 {
+  /* OD-ARCH-062 S2：设置页根节点不再借用 .workbench（任务工作台语义），
+     原先由 .workbench 提供的"占满剩余高度 + 自身滚动"改由本类承担。 */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;

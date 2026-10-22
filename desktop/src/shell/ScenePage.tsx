@@ -11,6 +11,7 @@ import {
   type ThreadTag,
 } from "../sceneThreads";
 import type { OfflineArtifactEntry, SceneOverview } from "../types";
+import { useThreadCategories } from "../threadCategories";
 import { AnnouncementBar } from "./AnnouncementBar";
 import { ArtifactExplorer } from "./ArtifactExplorer";
 import type { Scene } from "./Dock";
@@ -106,6 +107,9 @@ export function ScenePage({
   scene: SceneKey;
   onNavigate: (scene: Scene) => void;
 }) {
+  // 改挂下拉与首页胶囊同源（OD-ARCH-062 S1）：显示名、新增分类都读宿主配置。
+  // 未知旧标签不在列表里的，下拉保留原值一行的做法不成立，改由浏览器按 value 兜底。
+  const tagOptions = useThreadCategories().map((c) => ({ key: c.key, label: c.label }));
   const def = SCENES[scene];
   const [threads, setThreads] = useState<SceneThread[]>(() => listThreadsByTag(scene));
   const [tab, setTab] = useState<"progress" | "artifacts">(def.hasProgress ? "progress" : "artifacts");
@@ -435,10 +439,11 @@ export function ScenePage({
                     onChange={(e) => retag(t.id, e.target.value as ThreadTag)}
                     title="改挂到别的场景"
                   >
-                    <option value="weekly">工作记录</option>
-                    <option value="writing">文案</option>
-                    <option value="project">项目</option>
-                    <option value="plain">普通</option>
+                    {tagOptions.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
                   </select>
                   <button
                     className="text-[10px] text-outline hover:text-error px-1"

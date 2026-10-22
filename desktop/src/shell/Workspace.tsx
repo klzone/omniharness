@@ -8,7 +8,7 @@ import {
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import { THREAD_CATEGORIES } from "../threadCategories";
+import { useThreadCategories } from "../threadCategories";
 import type { SessionGroup } from "../types";
 import type { Scene } from "./Dock";
 import { ProjectRail } from "./ProjectRail";
@@ -25,13 +25,9 @@ import { ProjectRail } from "./ProjectRail";
  */
 export type PresetKey = "plain" | "weekly" | "writing" | "project";
 
-/** 归类标签只有一份（OD-ARCH-061）：与首页胶囊同源，避免两处各写一套文案。 */
-const TAG_OPTIONS: Array<{ key: ThreadTag; label: string }> = THREAD_CATEGORIES.map((c) => ({
-  key: c.key,
-  label: c.label,
-}));
-
 export function Workspace({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
+  // 归类标签只有一份（OD-ARCH-061/062）：显示名与新增分类都读宿主配置。
+  const tagOptions = useThreadCategories().map((c) => ({ key: c.key, label: c.label }));
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,7 +95,7 @@ export function Workspace({ onNavigate }: { onNavigate: (scene: Scene) => void }
         activeSessionId={activeSessionId}
         drafts={drafts}
         activeDraftId={activeDraftId}
-        tagOptions={TAG_OPTIONS}
+        tagOptions={tagOptions}
         newTag={newTag}
         loading={loading}
         error={listError}
@@ -154,7 +150,7 @@ export function Workspace({ onNavigate }: { onNavigate: (scene: Scene) => void }
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-outline">归类</span>
                 <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-label-caps text-[10px]">
-                  {TAG_OPTIONS.find((o) => o.key === activeThread.tag)?.label ?? activeThread.tag}
+                  {tagOptions.find((o) => o.key === activeThread.tag)?.label ?? activeThread.tag}
                 </span>
               </div>
               <p className="text-[11.5px] text-on-surface-variant leading-relaxed">

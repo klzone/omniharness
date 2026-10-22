@@ -533,15 +533,8 @@ button.ghost {
 }
 
 /* --- 任务工作台 --- */
-.workbench {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--line);
-  overflow: auto;
-}
+/* OD-ARCH-062 S2：.workbench 规则随任务工作台页面删除。
+   .wb-header 仍由设置页分类分页（.ofl-v2 .wb-header）使用，故保留。 */
 
 .wb-header {
   flex: 0 0 auto;

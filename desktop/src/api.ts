@@ -9,6 +9,8 @@ import type {
   AdmissionStatusResponse,
   AnalysisRunResponse,
   CancelOutcome,
+  CategoryInitReceipt,
+  CategorySettingsPayload,
   EngineDescriptor,
   EngineHealth,
   ExplanationSource,
@@ -310,6 +312,51 @@ export const shell = {
 
   localRootInfo(): Promise<LocalRootInfo> {
     return invoke<LocalRootInfo>("task_local_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 对话分类（OD-ARCH-062 S1）：读宿主持久化的分类表。
+   *
+   * 这是唯一的分类来源；显示名、归档文件夹与 vault 绑定都以这里为准。
+   * 读取失败时调用方必须显式提示，不能悄悄回退到固定四类。
+   */
+  categorySettingsLoad(): Promise<CategorySettingsPayload> {
+    return invoke<CategorySettingsPayload>("category_settings_load").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 改一个分类：只传要改的字段；folder/vault 传空字符串表示清除映射。 */
+  categoryUpdate(patch: {
+    key: string;
+    label?: string;
+    folder?: string;
+    vault?: string;
+  }): Promise<{ ok: boolean; count: number }> {
+    return invoke<{ ok: boolean; count: number }>("category_update", { ...patch }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 新增自定义分类：内部键由宿主生成，新增分类不会出现在 Dock。 */
+  categoryAdd(input: { label: string; folder?: string }): Promise<{ ok: boolean; key: string }> {
+    return invoke<{ ok: boolean; key: string }>("category_add", { ...input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 删除自定义分类。内置四类会被宿主拒绝。 */
+  categoryRemove(key: string): Promise<{ ok: boolean }> {
+    return invoke<{ ok: boolean }>("category_remove", { key }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只创建尚不存在的分类目录；已有目录与文件原样保留。 */
+  categoryInitFolders(): Promise<CategoryInitReceipt> {
+    return invoke<CategoryInitReceipt>("category_init_folders").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

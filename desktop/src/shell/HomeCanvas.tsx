@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
 import { Icon } from "../components/Icon";
-import { SCENES, type SceneKey } from "../scenes";
+import { SCENES, isSceneKey } from "../scenes";
 import {
   createThread,
   listThreads,
@@ -13,7 +13,7 @@ import {
   type ThreadTag,
 } from "../sceneThreads";
 import type { OfflineFlowPack, ProfileSceneEntry } from "../types";
-import { categoryLabel } from "../threadCategories";
+import { useThreadCategories, type ThreadCategory } from "../threadCategories";
 import type { Scene } from "./Dock";
 import { HomeChat, type ChatPreset } from "./HomeChat";
 import { SceneScaffold } from "./SceneScaffold";
@@ -43,26 +43,27 @@ function greeting(date: Date): string {
 }
 
 /**
- * 对话归类的选项（OD-ARCH-061 S1）：固定四类，顺序不动。
- * 声明里隐藏了某个业务场景时，对应那一类不出现；「未分类」始终在。
+ * 对话归类的选项（OD-ARCH-061 S1，次序与显示名改由宿主配置决定，OD-ARCH-062 S1）。
+ *
+ * 声明里隐藏了某个业务场景时，对应的内置分类不出现；「未分类」与自定义分类
+ * 不受声明影响（自定义分类只进归类下拉，不加 Dock 入口）。
  */
 function sceneOptions(
+  categories: ThreadCategory[],
   declared: ProfileSceneEntry[] | null | undefined,
 ): Array<{ key: ThreadTag; label: string }> {
-  const map: Array<[SceneKey, string]> = [
-    ["weekly", "report"],
-    ["writing", "writing"],
-    ["project", "project"],
-  ];
+  const hidden: Record<string, string> = {
+    weekly: "report",
+    writing: "writing",
+    project: "project",
+  };
   const visible = declared ? new Set(declared.map((d) => d.id as string)) : null;
-  const options: Array<{ key: ThreadTag; label: string }> = [
-    { key: "plain", label: categoryLabel("plain") },
-  ];
-  for (const [key, declId] of map) {
-    if (visible && !visible.has(declId)) continue;
-    options.push({ key, label: categoryLabel(key) });
-  }
-  return options;
+  return categories
+    .filter((c) => {
+      const declId = hidden[c.key];
+      return !(visible && declId && !visible.has(declId));
+    })
+    .map((c) => ({ key: c.key, label: c.label }));
 }
 
 export function HomeCanvas({
@@ -151,9 +152,9 @@ export function HomeCanvas({
   const effectiveTag: ThreadTag = active ? active.tag : activeTag;
 
   const preset: ChatPreset | null = useMemo(() => {
-    if (effectiveTag === "plain") return null;
-    const key = effectiveTag as SceneKey;
-    const def = SCENES[key];
+    // 只有三个业务场景带开场预设；未分类与自定义分类都按普通对话进行（OD-ARCH-062 S1）。
+    if (!isSceneKey(effectiveTag)) return null;
+    const def = SCENES[effectiveTag];
     const flow = pack ? pack[def.preset] : null;
     return {
       key: def.preset,
@@ -163,7 +164,11 @@ export function HomeCanvas({
     };
   }, [effectiveTag, pack]);
 
-  const options = useMemo(() => sceneOptions(declaredScenes), [declaredScenes]);
+  const categories = useThreadCategories();
+  const options = useMemo(
+    () => sceneOptions(categories, declaredScenes),
+    [categories, declaredScenes],
+  );
 
   /** 改本段对话的场景标签：已有对话直接改挂（复用 retagThread），新对话先建再挂。 */
   const changeTag = useCallback(
@@ -178,7 +183,8 @@ export function HomeCanvas({
   );
 
   const newThread = useCallback(() => {
-    const t = createThread({ tag: activeTag, preset: activeTag === "plain" ? "plain" : activeTag });
+    // 自定义分类只记归属，开场预设仍按普通对话（不改场景规则）。
+    const t = createThread({ tag: activeTag, preset: isSceneKey(activeTag) ? activeTag : "plain" });
     setActiveId(t.id);
     setViewKey(t.id);
     pendingIdRef.current = null;
@@ -189,7 +195,7 @@ export function HomeCanvas({
   const ensureThread = useCallback(() => {
     if (activeId) return activeId;
     if (pendingIdRef.current) return pendingIdRef.current;
-    const t = createThread({ tag: activeTag, preset: activeTag === "plain" ? "plain" : activeTag });
+    const t = createThread({ tag: activeTag, preset: isSceneKey(activeTag) ? activeTag : "plain" });
     pendingIdRef.current = t.id;
     setActiveId(t.id);
     refresh();

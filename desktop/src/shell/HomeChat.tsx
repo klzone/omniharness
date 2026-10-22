@@ -2,7 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { host, invalidateEngineFactsCache, onTaskEvent, shell } from "../api";
 import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
-import { TERMINAL_STATES, type AdmissionFacts, type TaskState } from "../types";
+import {
+  describeEngineCancelOutcome,
+  engineCancelButtonState,
+  runEngineCancelRequest,
+} from "../engineCancelModel";
+import {
+  TERMINAL_STATES,
+  type AdmissionFacts,
+  type CancelOutcome,
+  type TaskState,
+  type TaskStatus,
+} from "../types";
 import { Icon } from "../components/Icon";
 import { ModelPicker } from "./ModelPicker";
 import type { EngineModelCatalog } from "../types";
@@ -205,7 +216,28 @@ export function HomeChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [cancelNote, setCancelNote] = useState<string | null>(null);
+  /**
+   * OD-ARCH-062 S2：取消入口与任务工作台页面共用同一套取消状态模型
+   * （src/engineCancelModel.ts）。首页不再自己拼取消文案与放行条件。
+   */
+  const [activeTaskStatus, setActiveTaskStatus] = useState<string | null>(null);
+  /** 取消结果文案（只保留阶段与说明，不伪造任务号）。 */
+  const [engineCancel, setEngineCancel] = useState<{
+    phase: string;
+    final_state: string | null;
+    note: string;
+  } | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const cancelInFlightRef = useRef(false);
+  /** 新一轮提交/重试时清空取消态：旧任务的取消结果不能贴到新任务上。 */
+  const resetCancelState = useCallback(() => {
+    cancelInFlightRef.current = false;
+    setCancelBusy(false);
+    setCancelRequested(false);
+    setEngineCancel(null);
+    setActiveTaskStatus(null);
+  }, []);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
   const [workspaceNote, setWorkspaceNote] = useState<string | null>(null);
   /** 引擎上报的上下文用量（ACP `usage_update` → progress/usage 的 used/size）；未上报时为 null。 */
@@ -527,6 +559,7 @@ export function HomeChat({
         const status = await host.taskStatus(taskId);
         if (stopped) return;
         failures = 0;
+        setActiveTaskStatus(status.status);
         setMessages((prev) =>
           prev.map((m) =>
             m.taskId === taskId ? { ...m, state: status.status, stopReason: null } : m,
@@ -587,7 +620,7 @@ export function HomeChat({
         ]);
         return;
       }
-      setCancelNote(null);
+      resetCancelState();
       setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
       setBusy(true);
       setStarting(true);
@@ -727,7 +760,7 @@ export function HomeChat({
 
   /** 手动重试：重新进入轮询（已终态的任务会立即走到结果回读）。 */
   const retryQuery = useCallback((taskId: string) => {
-    setCancelNote(null);
+    resetCancelState();
     setMessages((prev) =>
       prev.map((m) => (m.taskId === taskId ? { ...m, notice: null, retryable: false } : m)),
     );
@@ -735,35 +768,79 @@ export function HomeChat({
     setActiveTaskId(taskId);
   }, []);
 
+  /** 放弃还没有任务号的提交：只撤销界面等待，拿到任务号后立即请求取消。 */
+  const abandonStarting = useCallback(() => {
+    const token = submitTokenRef.current;
+    if (!token || !starting) return;
+    token.aborted = true;
+    token.noteId = nextId();
+    const noteId = token.noteId;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: noteId,
+        role: "assistant",
+        text: "",
+        notice: "已放弃本次提交（引擎仍在启动，尚未拿到任务号）。拿到任务号后会立即请求取消。",
+      },
+    ]);
+    setEngineCancel({ phase: "starting_abandoned", final_state: null, note: "" });
+    setBusy(false);
+    setStarting(false);
+  }, [starting]);
+
+  /**
+   * 取消生成（OD-ARCH-062 S2）：放行判定、防重入与结果解释全部走
+   * src/engineCancelModel.ts，与任务工作台页面同一实现；本组件只负责接线。
+   */
   const cancel = useCallback(async () => {
     if (!activeTaskId) {
-      // 还没有任务号（引擎冷启动中）：只撤销这次等待，并在任务号返回后立即取消。
-      const token = submitTokenRef.current;
-      if (!token || !starting) return;
-      token.aborted = true;
-      token.noteId = nextId();
-      const noteId = token.noteId;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: noteId,
-          role: "assistant",
-          text: "",
-          notice: "已放弃本次提交（引擎仍在启动，尚未拿到任务号）。拿到任务号后会立即请求取消。",
-        },
-      ]);
-      setCancelNote("已放弃本次提交；引擎启动完成后会立即尝试取消。");
-      setBusy(false);
-      setStarting(false);
+      abandonStarting();
       return;
     }
-    try {
-      const outcome = await host.cancelTask(activeTaskId);
-      setCancelNote(outcome.note || "");
-    } catch (e) {
-      setCancelNote(String(e));
-    }
-  }, [activeTaskId, starting]);
+    await runEngineCancelRequest(
+      {
+        taskId: activeTaskId,
+        status: activeTaskStatus,
+        requestInFlight: cancelInFlightRef.current || cancelBusy,
+        lastPhase: engineCancel?.phase ?? null,
+        requestSent: cancelRequested,
+      },
+      {
+        host,
+        onRequestStarted: () => {
+          // 同步锁必须早于首个 await，否则快速双击会发出两次取消。
+          cancelInFlightRef.current = true;
+          setCancelBusy(true);
+          setEngineCancel(null);
+          setCancelRequested(true);
+        },
+        onOutcome: (outcome) => setEngineCancel(outcome as CancelOutcome),
+        onStatus: (status) => setActiveTaskStatus((status as TaskStatus).status),
+        onError: (message) =>
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.taskId === activeTaskId ? { ...m, notice: message } : m,
+            ),
+          ),
+        onSettled: () => {
+          cancelInFlightRef.current = false;
+          setCancelBusy(false);
+        },
+      },
+    );
+  }, [activeTaskId, activeTaskStatus, cancelBusy, engineCancel, cancelRequested, abandonStarting]);
+
+  const engineCancelView = engineCancelButtonState({
+    hasTask: !!activeTaskId,
+    status: activeTaskStatus,
+    requestInFlight: cancelBusy,
+    lastPhase: engineCancel?.phase ?? null,
+    requestSent: cancelRequested,
+    starting,
+  });
+  /** 生成中（含冷启动到拿到任务号之前）：发送按钮此时是取消按钮。 */
+  const generating = busy;
 
   const enabled = facts ? enabledCategories(facts) : [];
   const categoryText = facts ? (CATEGORY_LABEL[facts.category] ?? facts.category) : "类别未知";  /**
@@ -988,29 +1065,29 @@ export function HomeChat({
               onSelectEffort={(effort) => void selectEffort(effort)}
               onFollowDsh={() => void followDsh()}
             />
-            {busy ? (
-              <button
-                onClick={cancel}
-                disabled={!activeTaskId && !starting}
-                title={
-                  activeTaskId
-                    ? "请求取消当前任务"
-                    : starting
-                      ? "放弃本次提交：引擎返回任务号后会立即请求取消"
-                      : "当前没有可取消的任务"
-                }
-                className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container-high transition-colors"
-              >
-                {starting ? "引擎启动中…（点此放弃）" : "取消生成"}
-              </button>
-            ) : null}
+            {/*
+              发送与取消是同一个按钮（对齐 DSH 交互）：
+              空闲时是箭头，点即发送；生成中变成方块，点即取消。
+              放行判定仍由 engineCancelModel 统一决定，按钮外观不替代该判定。
+            */}
             <button
-              onClick={send}
-              disabled={!canSubmit || !input.trim()}
+              onClick={generating ? cancel : send}
+              disabled={
+                generating
+                  ? !engineCancelView.enabled
+                  : !canSubmit || !input.trim()
+              }
               className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              title={canSubmit ? "发送指令" : "当前权限下不发送输入"}
+              title={
+                generating
+                  ? (engineCancelView.hint ?? engineCancelView.label)
+                  : canSubmit
+                    ? "发送指令"
+                    : "当前权限下不发送输入"
+              }
+              aria-label={generating ? engineCancelView.label : "发送指令"}
             >
-              <Icon name="arrow-up" className="w-4 h-4" />
+              <Icon name={generating ? "stop" : "arrow-up"} className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1059,9 +1136,12 @@ export function HomeChat({
               : "Token 上下文：—（引擎未上报）"}
           </span>
         </span>
-        {cancelNote !== null ? (
-          <span className="font-label-caps text-[10px] text-outline truncate" title={cancelNote}>
-            取消：{cancelNote || "已请求"}
+        {engineCancel !== null ? (
+          <span
+            className="font-label-caps text-[10px] text-outline truncate"
+            title={describeEngineCancelOutcome(engineCancel).message}
+          >
+            取消：{describeEngineCancelOutcome(engineCancel).message}
           </span>
         ) : null}
         {workspaceNote ? (
