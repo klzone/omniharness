@@ -1,5 +1,59 @@
 # BUILDER 执行状态
 
+## OD-ARCH-065：多提供商模型档案 + 探测沿用已存密钥（S1–S6 完成，待 ARCHITECT 复核，2026-10-23）
+
+- **开工状态：** 分支 `main`，HEAD `8bd3512`。ARCHITECT 的 `M PLANS.md` 原样保留，随本批入库，未改动其内容。
+- **UI 参考（OD-ARCH-035）：** 用 `screenshots-design-inspiration` 搜「settings page provider list sidebar API keys」，借鉴两点：①左侧纵向提供商列表、右侧详情，选中项高亮；②表单按「连接信息 / 模型 / 凭据」分组。未引入第三方组件库。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | 「测试连接」改为可带 `provider`：该 provider 已在覆盖文件中时才带，草稿无新密钥就由 DSH 用该路由已登记的凭据解析。设置服务改为按引擎同 Profile + 同一份覆盖文件启动（参数只取自 `EngineConfig`，覆盖文件不存在时退回原参数）。界面新增密钥来源三态（沿用已存 / 本次输入 / 未带），并单独提示「命中 DSH 内置目录、未发起真实网络请求」与「地址协议与已存路由不一致」。 |
+| S2 | 配置升级为 `omnidesk.model-settings.v2.json`：`providers[]` + `default`，每家独立地址、协议、凭据引用、模型列表、思考等级、上下文窗口。校验路由名与凭据引用唯一、默认路由有效、模型不重复、api 与 thinking 白名单、`contextWindow` 范围 1..1e8。v1 迁移成功才把老文件改名为 `.v1.bak`，损坏文件原样保留并报错只读。 |
+| S3 | `render_overlay()` 渲染全部 providers，`acp` 与 `agent-default-model` 指向默认。因补丁层对 `config` 是浅合并，保存前先用 `--dump-config`（含其它补丁、排除 OmniDesk 自己的 overlay）算出现行完整路由集，用 OmniDesk 的覆盖同名项、保留其余；读取失败直接报错不写盘。修掉本轮发现的缺陷：合并前漏带其它补丁，导致只存在于补丁里的路由被抹掉。覆盖文件原子写、权限 0600。 |
+| S4 | 「模型与端点」改为左列表右详情：新增、编辑、删除、设为默认；列表标注已配密钥与默认项。删除只移除配置与该路由、不动 DSH 凭据，界面写明；删到空时有警告。密钥框只写：保存后清空，回显只有「已配置 / 未配置 / 读取失败」，切换提供商不回填上一家的密钥，也没有「复制他家密钥」。 |
+| S5 | `ModelPicker` 已能列出多提供商全部模型，无需改动；切换后引擎按对应路由重启（文件事实 + 既有 055 联动覆盖），本轮未新增代码。 |
+| S6 | 回归全绿（见下表）；055/060 联动脚本复跑；真实窗口脚本 `verify_model_providers_065.py` 在一次性隔离根 + 回环合成端点上跑完保存、沿用已存密钥探测、错误密钥探测、双提供商共存。 |
+
+### 用户追加项：OpenDesign 模型上下文改 1M
+
+- **源码事实：** `runtime/deepseek-harness/.../dsh-llm-pi-ai/lib/index.js:959` 的 `DEFAULT_CONTEXT_WINDOW = 262144`，未显式声明的模型按 256K 算（即到 256K 就触发压缩）。
+- **已改：** `~/OmniDesk/app/config/omnidesk.model-settings.v2.json` 与重算后的 `omnidesk-model.yml` 中，opendesign 的 5 个模型（claude-haiku-5.5 / deepseek-v4.1-flash / glm-5.3-flashx / gpt-6-luna / kimi-k2.7-code）全部 `contextWindow: 1048576`；默认 `opendesign / deepseek-v4.1-flash`，思考等级 high。`agnescn` 路由保留。
+- **原配置备份：** `~/OmniDesk/app/config/omnidesk.model-settings.v1.json.bak-od065`。
+- **限制（未验证）：** 这是给 DSH 的容量声明，**端点真实上限未验证**。若某个模型实际低于 1M，超长请求会由端点报错，而不是静默截断。
+
+### 修改文件
+
+- 后端：`desktop/src-tauri/src/model_settings.rs`、`model_routes.rs`、`dsh_settings.rs`、`lib.rs`、`desktop/src-tauri/scripts/model-routes.mjs`
+- 前端：`desktop/src/SettingsPanel.tsx`、`api.ts`、`types.ts`、`settings-panel.css`
+- 文档：`docs/user-testing-checklist.md`（第 1 步按多提供商与探测三态重写）、`docs/OmniDesk-Desktop-Data-Layout.md`（新增 §5.2 配置结构）
+- 验证：`tests/verification/desktop/verify_model_providers_065.py`（新）、`evidence/od-arch-065/`（9 张截图 + `facts.json`）
+- 随批入库：`PLANS.md`（ARCHITECT 写入）、055/060 联动脚本复跑刷新的截图与 `scene-decl-linkage-run.json`
+- 未修改：`runtime/`（零差异）、凭证、模型路由、真实用户数据
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 脚本/运行 | `cargo test --offline` | 212 / 0 / 2 / 13 / 3 / 1 / 0 passed，**0 failed** |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | 0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功 |
+| 脚本/运行 | `python3 -m pytest tests -q` | 26 passed |
+| 脚本/运行（真实窗口） | `verify_scene_decl_linkage_055.py --display :94` | 退出码 0；声明 sha256 前后一致 |
+| 脚本/运行（真实窗口） | `verify_scene_overview_060.py --display :95` | 退出码 0；`app_alive_at_end: true` |
+| 脚本/运行（真实窗口） | `verify_model_providers_065.py --display :96 --root /tmp/od065-run6` | 通过；`facts.json`：保存写入 provider/key_ref 与 1M 声明、base 路由保留、无明文密钥；沿用已存密钥探测 `request_reached_endpoint: true` / `authorized_delta: 1`；错误密钥 401；双提供商并存、overlay 0600；`app_alive: true` |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+| 文件事实 | 对 `verify_model_providers_065.py`、`evidence/od-arch-065/`、两份文档做 `sk-…` / `Bearer …` 扫描 | 0 命中（脚本内只有 `synthetic-placeholder-not-a-credential` 这类明示占位串） |
+
+### 未解决问题 / 偏差
+
+- `facts.json` 是 `:96` 最后一次运行的产物；同目录内 `01-settings.png`、`02-provider-form.png`、`03-provider-form-scrolled.png` 是同日更早一次尝试留下的，`shots` 列表按目录实际文件生成，未删除既有文件。
+- OpenDesign 各模型的端点真实上下文上限未验证（见上「限制」）。
+- `probe_wrong_key` 结构体里只记了 `models_hits` 计数，「401 鉴权失败」的判定依据在脚本的 `self._json(401, …)` 分支与同次截图 `05-probe-wrong-key.png` 上，不是 `facts.json` 的独立字段。
+- `pytest` 只跑 `tests` 目录：全仓收集会把 `runtime/` 内的测试一并收进来而报 collection error，与本轮改动无关。
+- 未发现与 Plan 冲突的实现；`render_overlay` 合并口径按 Plan 的「排除自身 overlay」执行，与「保留其它补丁路由」一致。
+
 ## OD-ARCH-064：用户实测通道整备（S1–S4 完成，待 ARCHITECT 复核，2026-10-22）
 
 - **开工状态：** 分支 `main`，HEAD `c6769f0`（`origin/main` 同步）。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 原样保留并随本批入库。
