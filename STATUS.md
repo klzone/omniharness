@@ -1,5 +1,43 @@
 # BUILDER 执行状态
 
+## OD-ARCH-059 S1：复核遗留修复（056）（完成，待 ARCHITECT 复核，2026-10-22）
+
+- 开工 HEAD `35d6f6c`；原有未提交改动 `M PLANS.md`、`M REVIEW.md` 原样保留、未提交。未改 `runtime/`（`git status --porcelain runtime/` 为空），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/写/打印任何凭证，未新增依赖。
+
+### 已完成
+
+| 项 | 结论 |
+| --- | --- |
+| 凭据状态收敛 | `SettingsPanel.tsx` 渲染链末端改为：`view` 已加载且 `key_status` 为 null 且无 `key_error` → “尚未配置”；`view` 仍为 null → “读取中…”。不新增命令、未改 Rust。三态齐备：未配置 / 已配置（含来源与可否改写）/ 无法读取。 |
+| setup 口径对齐 | `scripts/setup.sh`、`scripts/init-yvan-data.sh` 仅补顶部注释（~/YvanAI 为早期数据根；既有数据只读；新部署仍初始化该路径以保持脚本兼容；桌面端成果不写此目录）。**行为与默认路径未改**。 |
+| Dock 可访问名核对 | `Dock.tsx` 每个图标本已带 `aria-label`（`note` 时追加后缀），无需补。另加纯属性 `data-scene={item.scene}` 作为稳定自动化锚点（展示名随声明变，内部键不变）。 |
+
+### 修改文件
+
+- `desktop/src/SettingsPanel.tsx`（凭据三态收敛）
+- `desktop/src/shell/Dock.tsx`（`data-scene` 属性）
+- `scripts/setup.sh`、`scripts/init-yvan-data.sh`（仅注释）
+- `tests/verification/desktop/verify_credential_state_059.py`（新增，真实窗口验收脚本）
+- `tests/verification/desktop/evidence/od-arch-059/S1/`（截图 + `facts.json` + `regression.txt`）
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 脚本/运行 | `bash scripts/setup.sh --check` | EXIT=0，末尾“只读检查完成”（行为未变，日志 `/tmp/od059-setupcheck.log`） |
+| 脚本/运行（真实窗口） | `python3 tests/verification/desktop/verify_credential_state_059.py --root /tmp/od059-s1b` | 一次性数据根 + 一次性 Xvfb(1440x1700)；设“凭据状态”一行显示**尚未配置**；App 存活 `true`。证据 `evidence/od-arch-059/S1/01-settings-credential-status.png`、`facts.json` |
+| 脚本/运行（全回归） | `bash /tmp/od054-reg.sh` | cargo 190+2+13+3+1 passed / 0 failed；`cargo build` 通过（1 个既有 dead_code warning）；`TSC_OK`；`npm run build` 通过（498ms）；pytest 26 passed；`runtime/` 零差异。输出落盘 `evidence/od-arch-059/S1/regression.txt` |
+
+### 未解决 / 未验证
+
+- **“读取失败”三态只做了代码静态核对**：本轮真实窗口只跑“未配置”路径（新建一次性数据根）；未构造宿主读取失败场景，该分支标记为未验证。
+- 计划 S1 第 4 条要求把 051~055 复核结论随本批入库，但工作区 `REVIEW.md` 只有 ARCHITECT 已写的 051 段（未提交改动），053/054/055 结论文字不在当前文件里。为避免替 ARCHITECT 撰写验收结论，本轮**未改 REVIEW.md**，保留其未提交改动，请 ARCHITECT 补写后随下批入库。
+- Dock 的 `data-scene` 只加属性，尚无消费它的自动化；S2 重构后可改为按 `[data-scene=...]` 定位（当前固定坐标在高屏下会随入口数重排，已在 055 登记）。
+
+### 与计划的冲突
+
+- 仅上面 REVIEW.md 一条（内容缺失，非范围冲突）。S1 其它步骤与代码现状一致，无计划冲突。
+
 ## 夜间批次交接（053 → 054 → 055 全部执行完毕，2026-10-22）
 
 三份计划按序完成，每份收尾都跑了同一套全回归并全绿，已分批提交推送。工作区仅剩 ARCHITECT 原有的 `M PLANS.md`、`M REVIEW.md`，未改动、未提交。未改 `runtime/`（零差异），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/写/打印任何真实凭证，未新增依赖。**待 ARCHITECT 复核，未开新计划。**

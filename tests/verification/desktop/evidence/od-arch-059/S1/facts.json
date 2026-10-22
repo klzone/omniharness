@@ -1,0 +1,11 @@
+{
+  "evidence_dir": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S1",
+  "data_root": "/tmp/od059-s1b",
+  "window": {
+    "title": "OmniDesk Discipline",
+    "w": 1440,
+    "h": 1700
+  },
+  "expected_status_text": "尚未配置",
+  "app_alive": true
+}

@@ -1,0 +1,24 @@
+=== cargo test ===
+test result: ok. 190 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.06s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+=== cargo build ===
+
+warning: `omnidesk-desktop` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.21s
+=== tsc ===
+TSC_OK
+=== npm build ===
+dist/assets/index-gMEE5YZ1.css                                  76.96 kB │ gzip:  14.18 kB
+dist/assets/index-BLPUGoKO.js                                  417.09 kB │ gzip: 123.84 kB
+
+✓ built in 498ms
+=== pytest ===
+..........................                                               [100%]
+26 passed in 0.20s
+=== runtime diff ===
+ALL_DONE
