@@ -4,7 +4,7 @@ import type { ProfileSceneEntry } from "../types";
 /**
  * 左侧 Dock（OD-ARCH-026）：列出已实现的入口。
  *
- * 首页对话是主要工作入口；「周报与随记 / 文案写作 / 项目跟踪」三个场景由模型整理与起草，
+ * 首页对话是主要工作入口；「工作记录 / 文案写作 / 项目跟踪」三个场景由模型整理与起草，
  * 代码负责校验、任务状态与文件读写。其余未实现的业务入口一律不放在这里。
  */
 export type Scene =
@@ -27,7 +27,7 @@ interface DockItem {
 /** 内置默认的业务入口：声明文件缺失或读取失败时使用（界面另有明确提示）。 */
 export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
   { scene: "home", icon: "brand", label: "工作台首页" },
-  { scene: "report", icon: "note", label: "周报与随记", note: "模型起草" },
+  { scene: "report", icon: "note", label: "工作记录", note: "模型起草" },
   { scene: "writing", icon: "book", label: "文案写作", note: "模型起草" },
   { scene: "project", icon: "checklist", label: "项目跟踪", note: "模型起草" },
   {

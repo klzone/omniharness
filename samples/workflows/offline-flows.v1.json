@@ -1,7 +1,7 @@
 {
   "schema": "omnidesk.offline-flows.v1",
   "weekly": {
-    "tab_label": "周记录 → 周报",
+    "tab_label": "工作记录",
     "input_label": "每行格式：日期 | 事项 | 状态（done / pending / blocked）；日期须真实存在（如 2 月 30 日会被拒绝）",
     "input_placeholder": "2026-10-12 | 合成事项 | done",
     "sample_label": "载入合成样例",

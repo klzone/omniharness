@@ -8,7 +8,7 @@ import { shell } from "./api";
 import type { OfflineScenario, UsageRecord } from "./types";
 
 const SCENARIO_LABEL: Record<OfflineScenario, string> = {
-  weekly_report: "周记录 → 周报",
+  weekly_report: "工作记录",
   material_writing: "一般文案结构",
   project_management: "项目跟进",
 };
