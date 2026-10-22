@@ -1,3 +1,9 @@
+## OD-ARCH-063 复核结论：**通过**（ARCHITECT，2026-10-22）
+
+- **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo lib 202/0 失败、tsc 0、pytest 26、npm build 通过、runtime/ 零差异）。代码抽查：①CategoryPicker 自绘浮层与 ModelPicker 同套视觉（plate-soft-inset/rounded-full/向上弹出），键盘可达（Esc/上下键/Enter）且 aria/listbox 语义齐备；②单选即收起并沿用原 onChangeTag/retag 链路，持久化格式与键未动；③styles 命名收尾属实（offline-flows.css→settings-panel.css、.ofl-v2→.settings-surface、.wb-header→.settings-pane-header，全引用同步）；④仓库根 ./0 与 060 目录错名残留已删净；⑤facts.json 落盘齐备（胶囊宽度 4 类与 5 类均 245px、回归命令与 9 张截图清单），062 的落盘缺口已补（rerun-063-check.json，exit_code 0）。
+- **遗留备查：** 自定义分类色点按 key 稳定取色（展示用，不入数据），可接受；后续若用户要求固定色板再立项。061~063 三轮界面收敛全部关闭，无未清欠账。
+- **结论：** 063 验收通过。S3 批次提交后推送（沿用一次性授权，推送前红线扫描 + 文件清单核对）。**下一步为 OD-ARCH-064（用户实测通道整备）**，见 PLANS.md。
+
 ## OD-ARCH-062 复核结论：**通过（chip 改下拉裁定 + 证据勘误备案）**（ARCHITECT，2026-10-22）
 
 - **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo lib 202/0 失败、tsc 0、pytest 26、npm build 通过、runtime/ 零差异）。代码抽查：①settings.rs 的 thread_categories 命令只读写新字段，既有字段与命令语义未动，越界拒绝与非法输入有单测；②engineCancelModel.ts 与原 workbench 区域逐字一致（37 状态用例 + 8 静态检查通过），取消判定未绕过模型；③workbench.tsx / workbench-ui.css / OfflineFlows.tsx 已删，desktop/src 残留引用仅剩样式类名；④发送/取消合并按用户裁定 A 接首页在用按钮，界面不替代放行判定；⑤真实窗口链路：新增分类重启后仍在（study-log 骨架已建）、取消任务台账终态 cancelled、055/060 联动复跑通过。

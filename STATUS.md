@@ -1,5 +1,51 @@
 # BUILDER 执行状态
 
+## OD-ARCH-064：用户实测通道整备（S1–S4 完成，待 ARCHITECT 复核，2026-10-22）
+
+- **开工状态：** 分支 `main`，HEAD `c6769f0`（`origin/main` 同步）。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 原样保留并随本批入库。
+- **范围判定：** 计划允许 `scripts/omnidesk.sh` 与 `Dock.tsx` 仅在发现缺陷时改动。S1、S2 核对后均未发现缺陷，因此**本轮零界面代码改动**，只校准清单与落盘证据。
+- **UI 参考（OD-ARCH-035）：** 本计划不含界面实现，无需新参考；核对依据为现势截图与 063 既有证据。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | `bash scripts/omnidesk.sh` 从干净 shell 一键启动成功，退出码 0；窗口标题 `OmniDesk Discipline`，1280×857，位置 (160,43)，渲染正常。正式数据根为 `~/OmniDesk/app`、`~/OmniDesk/workspace/artifacts`、`~/OmniDesk/runtime/dsh-home`。端口 5273 上已有本项目 `desktop/` 的 Vite dev server（pid 11925），脚本复用属正常行为，未重复起第二个前端。脚本不读取凭证。 |
+| S2 | Dock 实渲染为 5 个入口（工作台首页 / 工作记录 / 文案写作 / 项目跟踪 / 历史会话），逐项核对 `aria-label` 齐全；Dock 中无设置入口，`"settings"` 仅存于联合类型、无渲染分支，判定无需改代码。设置唯一入口为顶栏右上角齿轮，页签 6 个：模型与端点 / 对话分类 / 成果与文档库 / 权限 / 引擎诊断 / 关于。 |
+| S3 | 重写 `docs/user-testing-checklist.md`（182 行 / 7 步）：删除旧版中界面上并不存在的“载入合成样例 / 生成模型初稿 / 保存成果”流程（grep 命中 0）；按现势界面校准 Dock 5 入口、设置 6 页签、左下角分类下拉胶囊、发送/取消同一按钮（空闲箭头、生成中方块）、端点连通测试三态、分类管理与 vault 初始化入口，并补每步的预期结果与「不算数」口径、使用记录字段、排障表、已知限制。同时注明实测统一走 `scripts/omnidesk.sh`，`scripts/dev-ui.sh` 为隔离合成环境仅供自动化。 |
+| S4 | 全量回归全绿（见下表）；055/060 两个真实窗口联动脚本复跑通过；启动截图与 `facts.json` 落盘；`runtime/` 零差异；本计划 S1/S2 未改代码，故未触发 055 的“改后复跑”前置条件，仍按计划复跑一次作为回归。 |
+
+### 修改文件
+
+- `docs/user-testing-checklist.md`（重写校准）
+- `tests/verification/desktop/evidence/od-arch-064/00-omnidesk-launch.png`（新，启动窗口截图）
+- `tests/verification/desktop/evidence/od-arch-064/facts.json`（新，命令 / 结果 / 截图清单 / 事实）
+- `STATUS.md`（本记录）
+- 随批入库的既有改动：`PLANS.md`、`REVIEW.md`（ARCHITECT 写入，未改动内容）
+- 未修改：`scripts/omnidesk.sh`、`desktop/src/shell/Dock.tsx`、`runtime/`、凭证、模型路由、用户数据
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 真实窗口运行 | `bash scripts/omnidesk.sh` | 退出码 0；pid 97021；1280×857；窗口存活至核对结束 |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | 0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功，`index-DiI7_Nn_.js` 396.72 kB |
+| 脚本/运行 | `cd desktop/src-tauri && cargo test --offline --lib` | 202 passed / 0 failed |
+| 脚本/运行 | `python3 -m pytest tests -q` | 26 passed |
+| 脚本/运行（真实窗口） | `verify_scene_decl_linkage_055.py --display :98` | 退出码 0；声明 sha256 前后一致（`22eec238…`） |
+| 脚本/运行（真实窗口） | `verify_scene_overview_060.py --display :97` | 退出码 0；`app_alive_at_end: true` |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+| 文件事实 | 清单 grep `载入合成样例\|保存成果\|生成模型初稿` | 0 命中 |
+
+### 未解决问题 / 偏差
+
+- 无计划偏差；S1/S2 核对通过，未发生计划中的“启动失败 / 设置入口残留 / 清单与界面出入”停止条件。
+- `app.log` 开头的 13 行 `corrupted double-linked list / free(): corrupted unsorted chunks` 来自 23:04 的旧运行；本次 23:28 启动无新增内存错误、窗口稳定，**不计入本轮失败**，但作为历史崩溃痕迹保留在排障视野内。
+- 应用进程 pid 97021 仍在运行，供用户实测，本轮未停止。
+- 计划范围外的既存瑕疵未处理：`PLANS.md` 中 063 标题下有一行多余的 `@@`（合并产物）。
+- 本批按一次性授权分批提交（清单 / 状态与证据）后推送一次；REVIEW 的 064 验收结论留给 ARCHITECT。
+
 ## OD-ARCH-063：分类 chip 下拉化 + 清理收尾（S1–S3 完成，待 ARCHITECT 复核，2026-10-22）
 
 - **开工状态：** 分支 `main`，HEAD `aca4a49`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 未改动内容，随本计划入库。
