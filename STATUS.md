@@ -1,5 +1,56 @@
 # BUILDER 执行状态
 
+## OD-ARCH-062：分类管理持久化 + workbench 清理收尾（S1–S4 完成，S2 按用户裁定 A 实施，待 ARCHITECT 复核，2026-10-22）
+
+- **开工状态：** 分支 `main`，HEAD `ca64b29`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留（本批随计划入库）。
+- **UI 参考（OD-ARCH-035 要求）：** 发送/取消合并按钮按用户指定直接对齐 DSH 本体交互（同一按钮位、空闲箭头、生成中变停止方块），不另找第三方参考；分类页沿用 061 已记录的胶囊分页与主色选中态。
+- **用户裁定（对话内）：** 旧工作台删除后 3 项接线静态检查无处可查，用户在 A/B/C 中选 **A —— 取消按钮接首页真实在用的按钮**，按此实施。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | `settings.rs` 新增 `thread_categories`（显示名 / 归档文件夹 / vault 绑定，默认四类），含默认值、roundtrip、越界拒绝、非法输入 4 个单测；`lib.rs` 注册 5 个命令。前端新增 `threadCategories.ts` 读取宿主配置，`HomeChat` chip 显示名、归档归类下拉、`HomeCanvas`/`Workspace`/`ScenePage` 均改读宿主配置。设置页「对话分类」支持改名、新增分类、映射文件夹与 vault、初始化骨架（只在成果根/已绑定 vault 内建目录，已存在跳过）。 |
+| S2 | 把 `#region engine-cancel-model` 逐字迁到 `desktop/src/engineCancelModel.ts`，逻辑与行为不变；`verify_engine_cancel.py` 改从新模块抽取，接线检查改指 `HomeChat.tsx`，并新增 3 个用例（无任务默认文案、冷启动放弃、已有任务时 starting 不影响），现 37 state cases + 8 static checks 全通过。随后删除 `workbench.tsx` 与 `workbench-ui.css`（删前核对全 `desktop/src` 引用 0 处），`SettingsPanel` 根类改 `settings-v2 ofl-v2`，`styles.css` 的 `.workbench` 规则改为注释说明（`.wb-header` 保留，设置页仍在用）。 |
+| S2 追加（用户实测反馈） | 发送与取消合并为同一个按钮：空闲为箭头，生成中变停止方块、点即取消，与 DSH 一致。`Icon` 增 `stop` 图标；`HomeChat` 用 `generating = busy` 切换 `onClick`/`disabled`/`aria-label`/`title` 与图标。放行判定仍全部走 `engineCancelModel`，外观不替代判定。 |
+| S3 | 确认 `OfflineFlows.tsx` 无任何 import 后删除；`offline-flows.css` 保留（`main.tsx` 全局引入，设置页以 `.ofl-v2` 使用）。 |
+| S4 | 全量回归 + 真实窗口验证（见下表）+ 证据入库。 |
+
+### 修改文件
+
+- 后端：`desktop/src-tauri/src/settings.rs`、`desktop/src-tauri/src/lib.rs`
+- 前端：`desktop/src/engineCancelModel.ts`（新）、`desktop/src/threadCategories.ts`、`desktop/src/shell/HomeChat.tsx`、`HomeCanvas.tsx`、`ScenePage.tsx`、`Workspace.tsx`、`desktop/src/SettingsPanel.tsx`、`desktop/src/components/Icon.tsx`、`desktop/src/api.ts`、`desktop/src/types.ts`、`desktop/src/sceneThreads.ts`、`desktop/src/styles.css`、`desktop/src/offline-flows.css`
+- 删除：`desktop/src/workbench.tsx`、`desktop/src/workbench-ui.css`、`desktop/src/OfflineFlows.tsx`
+- 验证：`tests/verification/desktop/verify_engine_cancel.py`（改抽取源 + 新增用例）、`tests/verification/desktop/verify_thread_categories_062.py`（新）、`tests/verification/desktop/verify_send_cancel_button_062.py`（新）、`tests/verification/desktop/window_harness.py`（修正验收装置的通道/Profile 错配，见偏差 2）
+- 证据：`tests/verification/desktop/evidence/od-arch-062/`（11 张截图 + `send-cancel-facts.json`）；055/060 复跑刷新其证据图
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | `TSC_OK`，0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功，`index-CRszwOkX.js` 393.33 kB |
+| 脚本/运行 | `cd desktop/src-tauri && cargo test --offline --lib` | 202 passed / 0 failed |
+| 脚本/运行 | `python3 -m pytest tests -q` | 26 passed |
+| 脚本/运行 | `python3 tests/verification/desktop/verify_engine_cancel.py` | 37 state cases / 8 static checks，0 失败 |
+| 脚本/运行（真实窗口 + 合成端点） | `python3 tests/verification/desktop/verify_thread_categories_062.py --display :97` | 新增分类重启后仍在，`alive_after_restart=true`，含自定义 `custom:cat-1 / Study Log / study-log`，成果目录骨架已建 |
+| 脚本/运行（真实窗口 + 合成端点 hang） | `python3 tests/verification/desktop/verify_send_cancel_button_062.py --display :96` | 空闲箭头 → 提交后变停止方块 → 点击后任务台账 `state=cancelled, cancel_phase=request_sent, stop_reason=aborted`；合成端点收到 2 次请求；`RESULT: PASS` |
+| 脚本/运行（真实窗口） | `verify_scene_decl_linkage_055.py --display :98` | 退出码 0，声明 sha256 前后一致 `22eec238…bec4ad` |
+| 脚本/运行（真实窗口） | `verify_scene_overview_060.py --display :97` | 退出码 0，7 张截图刷新，`app_alive_at_end: true` |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+
+### 未解决问题与限制
+
+1. 发送/取消合并按钮的真实窗口证据链是「合成端点 hang → 点按钮 → 台账 `cancelled`」。截图本身无法证明按钮图标在每一帧都是方块（无 DOM 断言通道），图标切换依据是脚本按状态抓图 + 台账终态 + `verify_engine_cancel.py` 的状态模型用例，证据等级为「真实窗口运行 + 脚本运行」，不是像素级比对。
+2. 设置页 `.wb-header` 仍是设置页内部布局类，未随 `.workbench` 一起改名（改名会牵动 6 个分页的布局回归，本批不做）。
+3. 分类 chip 仍为平铺一行：自定义分类变多后会挤压，需单独计划（用户已提出该问题，等 ARCHITECT 出方案）。
+
+### 计划偏差
+
+1. **S2 接线对象按用户裁定 A 改到首页 `HomeChat.tsx`**，原计划的 3 项接线检查因此落在真实在用代码上，未缩小覆盖面。
+2. **验收装置修正（`window_harness.py`）**：该装置把 `OMNIDESK_DSH_PROFILE` 固定写为 `acp`，而 OD-ARCH-048 起引擎默认通道是 `web-api`、要求 Profile 为 `web`；错配导致 DSH 以 acp app 启动、永不宣布地址，验收窗口只能得到 `engine_unavailable`。同时覆盖层按 `dev-ui.sh` 口径改为 `agent-default-model`（web app 不加载 `dsh-acp` 层）。属测试装置问题，未改产品代码、未改 DSH Runtime。
+3. 未新增运行时依赖、未改模型路由与凭证、未迁移既有成果数据。
+
 ## OD-ARCH-061：界面精简与设置归一（S1–S5 完成，待 ARCHITECT 复核，2026-10-22）
 
 - **开工状态：** 分支 `main`，HEAD `7c79063`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留，未覆盖、未重置。
