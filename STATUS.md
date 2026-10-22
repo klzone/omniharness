@@ -1,5 +1,51 @@
 # BUILDER 执行状态
 
+## OD-ARCH-060：场景页 v2（S1–S6 完成，待 ARCHITECT 复核，2026-10-22）
+
+- **开工状态：** 分支 `main`，HEAD `004b33c`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留，未提交、未覆盖。
+- **UI 参考：** 动工前用 `screenshots-design-inspiration` 检索 “document library status dashboard file list”，借鉴两点：①关键状态与进度指标集中成顶部一行卡片，不散落进正文；②列表与详情分层，列表只给元数据，点开才读正文。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | `AnnouncementBar` 改为三段状态卡（待确认写入 N / 逾期 N / 周期提醒），覆盖工作记录、文案写作、项目跟进三种周期文案；046 的 AI 复盘建议区与降级规则保留在状态条下方；点「待确认写入」卡展开现有 `PendingWritePanel` |
+| S2 | 新增 `ArtifactExplorer`：目录树含子目录勾选、卡片/列表切换、24 条分页 + 懒加载标题、搜索框过滤文件名与标题、本周/本月与场景标签筛选；三处 `frontmatter` 解析失败降级为「无元数据」按文件名显示，读文件失败如实提示 |
+| S3 | 场景页左栏 300px 会话列表移到底部折叠区「会话历史（N 条）」默认收起，展开后列表与「去对话」原样可用 |
+| S4 | 工作记录页加「本期记录碎片」区；项目跟进页保留「进度 / 阶段成果」页签 |
+| S5 | `HomeCanvas` 「今日重点推进」接宿主聚合真数据，摘掉「未接入数据源」徽标；无数据时显示「今天没有要处理的」 |
+| S6 | 新增真实窗口验收脚本与证据目录 |
+
+新增后端只读命令 `scene_overview`（`desktop/src-tauri/src/scene_overview.rs`）：按场景聚合待确认条数、过期条数、本周/本月成果数与最近保存时间，场景名连字符/下划线归一。**不调模型、不新增写路径、不改既有命令语义**。
+
+### 修改文件
+
+- 后端：`desktop/src-tauri/src/scene_overview.rs`（新）、`desktop/src-tauri/src/lib.rs`（注册命令）
+- 前端：`desktop/src/types.ts`、`desktop/src/api.ts`、`desktop/src/shell/SceneStatusStrip.tsx`（新）、`desktop/src/shell/ArtifactExplorer.tsx`（新）、`desktop/src/shell/ScenePage.tsx`、`desktop/src/shell/AnnouncementBar.tsx`、`desktop/src/shell/HomeCanvas.tsx`
+- 证据：`tests/verification/desktop/verify_scene_overview_060.py`（新）、`tests/verification/desktop/evidence/od-arch-060/`（新）；055 回归复跑刷新的 5 张 `evidence/od-arch-055/shots/*.png` 与 `scene-decl-linkage-run.json`
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 脚本/运行（真实窗口，合成数据） | `python3 tests/verification/desktop/verify_scene_overview_060.py --display :97 --root /tmp/od060-verify` | 7 张截图全部目视核对通过，脚本结束 App 存活 `true`。证据：`evidence/od-arch-060/{00-home,01-scene-weekly,01-scene-writing,01-scene-project,02-pending-panel,03-filter-applied,04-list-view}.png`、`facts.json` |
+| 脚本/运行（入口联动不回退） | `python3 tests/verification/desktop/verify_scene_decl_linkage_055.py` | 退出码 0；`decl_restored=true`，声明 sha256 前后一致 |
+| 脚本/运行（全回归） | `bash /tmp/od054-reg.sh` | cargo lib **198 passed**（另有 0/2/13/3/1 各库通过、0 failed）；`cargo build` 通过（1 个既有 warning）；`TSC_OK`；`npm run build` 成功；`pytest 26 passed`；`runtime/` 零差异。日志：`evidence/od-arch-060/regression.txt` |
+
+窗口实测核对点：工作记录页状态条为「待确认 1 / 逾期 1 / 本期 2 份（10-19–10-23 周五截止）」，碎片 2 条、成果 2 份；文案写作页只列 `material-writing` 成果、无跨场景混入；项目跟进页老文件（无 frontmatter）显示文件名并标「无元数据」；展开待确认列出 2 条合成记录且过期项标注「已过期，不能再执行」；搜索 `20261021` 后计数变「共 1 份」；列表视图显示文件名、日期、字节数。
+
+### 未解决问题与限制
+
+1. **场景页离线起草入口不可达（沿用既有裁决项，060 未授权修）：** `App.tsx` 场景路由直接进 `ScenePage`，`OfflineFlows` 所在分支不可达；场景页目前是纯档案页，起草走首页对话。需 ARCHITECT 定性后再改入口。
+2. **`Workspace.tsx` 仍自带一份 HomeChat（沿用既有裁决项）：** 与首页 HomeCanvas 的对话中枢并存，未在 060 范围内合并。
+3. 文档库按计划整目录列举后前端分页；超过 100 文件的首屏开销未压测（计划风险项①要求「首屏卡顿」才停下改分页，本轮 5 份合成文件下无异常，但真实量级未验证）。
+4. 首页「今日重点推进」在引擎离线时只能显示读取状态，未做在线态下的真实窗口核对。
+5. `REVIEW.md` 未由本轮编辑：文件顶部有 ARCHITECT 未提交改动，仓库惯例的 BUILDER 准备段会连带把该改动带入提交。059/060 复核结论按 AGENTS.md 由 ARCHITECT 撰写。
+
+### 计划偏差
+
+无功能性偏差。S6 中 `REVIEW.md` 的撰写按上述理由留给 ARCHITECT；其余步骤按计划实施。未提交、未推送、未打标签，等复核。
+
 ## OD-ARCH-059 复核修正：移除首页多余的历史对话下拉框（2026-10-22）
 
 - 用户实测指出：首页输入区场景框右侧还有一个「切换本机对话」下拉框，不在设计内，且与场景框并排容易被读成两级分类。
