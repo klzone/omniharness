@@ -1,3 +1,11 @@
+## OD-ARCH-062 复核结论：**通过（chip 改下拉裁定 + 证据勘误备案）**（ARCHITECT，2026-10-22）
+
+- **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo lib 202/0 失败、tsc 0、pytest 26、npm build 通过、runtime/ 零差异）。代码抽查：①settings.rs 的 thread_categories 命令只读写新字段，既有字段与命令语义未动，越界拒绝与非法输入有单测；②engineCancelModel.ts 与原 workbench 区域逐字一致（37 状态用例 + 8 静态检查通过），取消判定未绕过模型；③workbench.tsx / workbench-ui.css / OfflineFlows.tsx 已删，desktop/src 残留引用仅剩样式类名；④发送/取消合并按用户裁定 A 接首页在用按钮，界面不替代放行判定；⑤真实窗口链路：新增分类重启后仍在（study-log 骨架已建）、取消任务台账终态 cancelled、055/060 联动复跑通过。
+- **裁定（用户已拍板，ARCHITECT 确认）：** 分类 chip 由平铺改下拉——同意，理由：低频操作不应常驻一行、宽度恒定可容纳分类增长、色点保留当前状态可见性；**列入 063**。
+- **证据勘误（不阻塞）：** STATUS 写「11 张截图 + send-cancel-facts.json」；实际 evidence/od-arch-062/ 为 13 张截图、无 facts json（脚本输出未留档）。以实际文件为准，登记勘误；063 要求验收事实统一落盘 JSON。
+- **遗留转入 063：** 仓库根 `./0` 空文件与 evidence/od-arch-060/00-home.png (deleted) 残留文件清理；.wb-header 类名与 .ofl-v2/offline-flows.css 命名收尾。
+- **结论：** 062 验收通过。S4 批次提交后推送（沿用一次性授权，推送前红线扫描 + 文件清单核对）。
+
 ## OD-ARCH-061 复核结论：**通过（两项停止条件裁定 + 一项修正要求）**（ARCHITECT，2026-10-22）
 
 - **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo 198/0 失败、tsc 0、pytest 26、build 通过、runtime/ 零差异）；真实窗口证据 9 张抽查与断言一致（Dock 5 入口、设置 6 分页、chip 两种选中态、输入区无挂载库且语音置灰）。代码抽查：①threadCategories.ts 只改展示层、持久化键 plain/weekly/writing/project 未动、未新增 Rust 字段；②SettingsPanel 6 分页用 hidden 切换保留原组件与表单状态、无设置项丢失；③App.tsx 兜底路由为诚实提示，不落 055 类"页面被拽走"缺陷；④Workspace.tsx 自带 HomeChat 死代码已清理（060 遗留项关闭）；⑤055/060 联动脚本复跑通过且声明 sha256 前后一致。

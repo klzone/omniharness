@@ -1,5 +1,48 @@
 # BUILDER 执行状态
 
+## OD-ARCH-063：分类 chip 下拉化 + 清理收尾（S1–S3 完成，待 ARCHITECT 复核，2026-10-22）
+
+- **开工状态：** 分支 `main`，HEAD `aca4a49`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 未改动内容，随本计划入库。
+- **UI 参考（OD-ARCH-035）：** 下拉形态与现有 `ModelPicker`（胶囊 + 自绘浮层、`plate-soft-inset`、向上弹出）保持同套；未引入第三方组件库。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | 新增 `desktop/src/shell/CategoryPicker.tsx`：单枚胶囊（分类色点 + 当前分类名 + 箭头）+ 自绘浮层（勾选 + 色点 + 名称，`max-h-[240px]` 可滚）。单击选中即收起并沿用原 `onChangeTag`；Esc 收起、上下键移动、Enter 选中，焦点全程 `preventScroll`（修掉首次实测的页面下跳）。`HomeChat.tsx` 平铺 chip 行替换为该组件；`Icon.tsx` 增 `chevron-down`、`check`。持久化格式与键、retag/归档链路未改。testid 沿用 `scene-chips` 容器 + `scene-chip-<key>`，新增 `scene-category-picker`。 |
+| S2 | `.wb-header` 全仓仅设置页在用 → 改名 `.settings-pane-header`；`offline-flows.css` 仅被 `main.tsx` 全局引入、类名仅设置页在用 → `git mv` 为 `settings-panel.css`，`.ofl-v2` → `.settings-surface`（同步 `SettingsPanel.tsx`、`main.tsx`、`styles.css` 与 CSS 头注释）。删除仓库根 `./0`（0 字节）与 `evidence/od-arch-060/00-home.png (deleted)`（185249 B，与正常 `00-home.png` sha256 不同）。 |
+| S3 | 全量回归（见下表）；`verify_thread_categories_062.py` 坐标与断言随下拉化更新并重跑；新增 `verify_category_picker_063.py`：一次性隔离根真实窗口，9 张截图 + `facts.json`（含命令与截图清单，断言不足即非零退出）。 |
+
+### 修改文件
+
+- 前端：`desktop/src/shell/CategoryPicker.tsx`（新）、`desktop/src/shell/HomeChat.tsx`、`desktop/src/components/Icon.tsx`、`desktop/src/SettingsPanel.tsx`、`desktop/src/main.tsx`、`desktop/src/styles.css`
+- 重命名：`desktop/src/offline-flows.css` → `desktop/src/settings-panel.css`（类名 `.ofl-v2` → `.settings-surface`，`.wb-header` → `.settings-pane-header`）
+- 删除：仓库根 `./0`、`tests/verification/desktop/evidence/od-arch-060/00-home.png (deleted)`
+- 验证：`tests/verification/desktop/verify_category_picker_063.py`（新）、`tests/verification/desktop/verify_thread_categories_062.py`
+- 证据：`tests/verification/desktop/evidence/od-arch-063/`（9 张截图 + `facts.json`）、`evidence/od-arch-062/04b-chip-selected.png`、`evidence/od-arch-062/rerun-063-check.json`（该次运行的 JSON 输出 + `exit_code: 0`；`.log` 被仓库 `*.log` 规则忽略）；055/060/062 脚本复跑刷新其证据图
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | `TSC_OK`，0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功，`index-DiI7_Nn_.js` 396.72 kB |
+| 脚本/运行 | `cd desktop/src-tauri && cargo test --offline --lib` | 202 passed / 0 failed |
+| 脚本/运行 | `python3 -m pytest tests -q` | 26 passed |
+| 脚本/运行 | `python3 tests/verification/desktop/verify_engine_cancel.py` | 37 state cases / 8 static checks，0 失败 |
+| 脚本/运行（真实窗口） | `verify_scene_decl_linkage_055.py --display :98` | 退出码 0，声明 sha256 前后一致 |
+| 脚本/运行（真实窗口） | `verify_scene_overview_060.py --display :97` | 退出码 0，`app_alive_at_end: true` |
+| 脚本/运行（真实窗口） | `verify_thread_categories_062.py --display :94` | 退出码 0，重启后 5 类仍在（含 `custom:cat-1 / Study Log / study-log`），`alive_after_restart: true` |
+| 脚本/运行（真实窗口，063 验收） | `verify_category_picker_063.py --display :95` | 退出码 0；胶囊宽度 4 类与 5 类均为 245 px；展开/选中后均存活；9 张截图与 `facts.json` 落盘 |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+
+### 未解决问题 / 偏差
+
+- 无计划偏差；无功能性问题遗留。
+- `verify_thread_categories_062.py` 首次重跑时包装进程被回收导致退出码未记录，已在 `:94` 重跑并落盘 `evidence/od-arch-062/rerun-063-check.json`（JSON 输出 + `exit_code: 0`），原结论以该次为准。
+- 自定义分类的色点按 key 稳定取色（展示用），不写入数据；如 ARCHITECT 认为需要固定色板登记，属后续计划范围。
+- 本批按计划一次性授权分两批提交（S1–S2 代码、S3 证据与状态记录）后推送一次；REVIEW 的 063 验收结论留给 ARCHITECT。
+
 ## OD-ARCH-062：分类管理持久化 + workbench 清理收尾（S1–S4 完成，S2 按用户裁定 A 实施，待 ARCHITECT 复核，2026-10-22）
 
 - **开工状态：** 分支 `main`，HEAD `ca64b29`。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 全程原样保留（本批随计划入库）。
