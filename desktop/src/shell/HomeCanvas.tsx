@@ -1,6 +1,20 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { shell } from "../api";
 import { Icon } from "../components/Icon";
+import { SCENES, type SceneKey } from "../scenes";
+import {
+  createThread,
+  listThreads,
+  retagThread,
+  saveThreadMessages,
+  setThreadEngineSession,
+  takePendingThreadRequest,
+  type SceneThread,
+  type ThreadTag,
+} from "../sceneThreads";
+import type { OfflineFlowPack, ProfileSceneEntry } from "../types";
 import type { Scene } from "./Dock";
-import { HomeChat } from "./HomeChat";
+import { HomeChat, type ChatPreset } from "./HomeChat";
 import { SceneScaffold } from "./SceneScaffold";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 
@@ -27,8 +41,143 @@ function greeting(date: Date): string {
   return "晚上好";
 }
 
-export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
+/** 对话 chip 里的场景选项：只放声明里出现的业务场景，普通对话始终第一项。 */
+function sceneOptions(
+  declared: ProfileSceneEntry[] | null | undefined,
+): Array<{ key: ThreadTag; label: string }> {
+  const map: Array<[SceneKey, string]> = [
+    ["weekly", "report"],
+    ["writing", "writing"],
+    ["project", "project"],
+  ];
+  const visible = declared ? new Set(declared.map((d) => d.id as string)) : null;
+  const options: Array<{ key: ThreadTag; label: string }> = [
+    { key: "plain", label: "自由对话（不归类）" },
+  ];
+  for (const [key, declId] of map) {
+    if (visible && !visible.has(declId)) continue;
+    options.push({ key, label: SCENES[key].label });
+  }
+  return options;
+}
+
+export function HomeCanvas({
+  onNavigate,
+  declaredScenes = null,
+}: {
+  onNavigate: (scene: Scene) => void;
+  declaredScenes?: ProfileSceneEntry[] | null;
+}) {
   const now = new Date();
+
+  // 对话中枢（OD-ARCH-057）：整个应用只有这里一个对话框。场景、历史对话都在这里选。
+  const [activeTag, setActiveTag] = useState<ThreadTag>("plain");
+  const [threads, setThreads] = useState<SceneThread[]>(() => listThreads());
+  const [activeId, setActiveId] = useState<string | null>(() => listThreads()[0]?.id ?? null);
+  /**
+   * 对话组件的挂载键：只在**用户主动切换**（选旧对话 / 新建 / 从场景页过来）时变。
+   * 首轮消息后自动补建线程时不改它，否则会重挂组件、把刚发出的对话清空。
+   */
+  const [viewKey, setViewKey] = useState<string>(() => listThreads()[0]?.id ?? "new");
+  const [pack, setPack] = useState<OfflineFlowPack | null>(null);
+  /** 已补建但还没进入 state 的线程号（同一 tick 内多次回调要用同一个）。 */
+  const pendingIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    shell
+      .offlineFlowPack()
+      .then((r) => setPack(r.ok ? r.pack : null))
+      .catch(() => setPack(null));
+  }, []);
+
+  const refresh = useCallback(() => setThreads(listThreads()), []);
+
+  // 从场景页「去对话」过来：一次性请求槽决定是打开旧对话还是新建。
+  useEffect(() => {
+    const req = takePendingThreadRequest();
+    if (req.open) {
+      const t = listThreads().find((x) => x.id === req.open);
+      if (t) {
+        setActiveId(t.id);
+        setActiveTag(t.tag);
+        setViewKey(t.id);
+      }
+    } else if (req.create) {
+      const t = createThread({ tag: req.create, preset: req.create });
+      setActiveId(t.id);
+      setActiveTag(req.create);
+      setViewKey(t.id);
+    }
+    refresh();
+  }, [refresh]);
+
+  const active = activeId ? threads.find((t) => t.id === activeId) ?? null : null;
+  const effectiveTag: ThreadTag = active ? active.tag : activeTag;
+
+  const preset: ChatPreset | null = useMemo(() => {
+    if (effectiveTag === "plain") return null;
+    const key = effectiveTag as SceneKey;
+    const def = SCENES[key];
+    const flow = pack ? pack[def.preset] : null;
+    return {
+      key: def.preset,
+      label: def.label,
+      rules: flow?.draft?.rules ?? null,
+      sections: flow?.draft?.sections ?? null,
+    };
+  }, [effectiveTag, pack]);
+
+  const options = useMemo(() => sceneOptions(declaredScenes), [declaredScenes]);
+
+  /** 改本段对话的场景标签：已有对话直接改挂（复用 retagThread），新对话先建再挂。 */
+  const changeTag = useCallback(
+    (tag: string) => {
+      const next = tag as ThreadTag;
+      setActiveTag(next);
+      if (!activeId) return;
+      retagThread(activeId, next);
+      refresh();
+    },
+    [activeId, refresh],
+  );
+
+  const newThread = useCallback(() => {
+    const t = createThread({ tag: activeTag, preset: activeTag === "plain" ? "plain" : activeTag });
+    setActiveId(t.id);
+    setViewKey(t.id);
+    pendingIdRef.current = null;
+    refresh();
+  }, [activeTag, refresh]);
+
+  // 第一轮消息到达且还没有线程记录时补建一条，避免「聊完没进档案」。
+  const ensureThread = useCallback(() => {
+    if (activeId) return activeId;
+    if (pendingIdRef.current) return pendingIdRef.current;
+    const t = createThread({ tag: activeTag, preset: activeTag === "plain" ? "plain" : activeTag });
+    pendingIdRef.current = t.id;
+    setActiveId(t.id);
+    refresh();
+    return t.id;
+  }, [activeId, activeTag, refresh]);
+
+  const selectThread = useCallback((id: string) => {
+    const t = listThreads().find((x) => x.id === id);
+    if (!t) return;
+    pendingIdRef.current = null;
+    setActiveId(t.id);
+    setActiveTag(t.tag);
+    setViewKey(t.id);
+  }, []);
+
+  const threadOptions = useMemo(
+    () =>
+      threads.map((t) => ({
+        id: t.id,
+        title: t.title,
+        tagLabel: t.tag === "plain" ? null : SCENES[t.tag as SceneKey].label,
+      })),
+    [threads],
+  );
 
   return (
     <SceneScaffold
@@ -119,7 +268,33 @@ export function HomeCanvas({ onNavigate }: { onNavigate: (scene: Scene) => void 
       }
       chat={
         /* 下部：整幅对话（全宽），消息区顶部向上渐隐由 chat-fade-mask 提供 */
-        <HomeChat onNavigate={onNavigate} />
+        <HomeChat
+          key={viewKey}
+          onNavigate={onNavigate}
+          preset={preset}
+          sceneOptions={options}
+          activeTag={effectiveTag}
+          onChangeTag={changeTag}
+          threadOptions={threadOptions}
+          activeThreadId={activeId}
+          onSelectThread={selectThread}
+          onNewThread={newThread}
+          threadKey={viewKey}
+          initialMessages={active?.messages ?? []}
+          engineSessionId={active?.engineSessionId ?? null}
+          onEngineSessionId={(sid) => {
+            const id = ensureThread();
+            setThreadEngineSession(id, sid);
+            refresh();
+          }}
+          onMessagesChange={(messages) => {
+            // 空白新对话不外建档：只在本线程已有内容时才落盘。
+            if (!activeId && messages.length === 0) return;
+            const id = ensureThread();
+            saveThreadMessages(id, messages);
+            refresh();
+          }}
+        />
       }
     />
   );
