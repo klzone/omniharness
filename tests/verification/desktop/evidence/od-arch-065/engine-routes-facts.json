@@ -1,0 +1,31 @@
+{
+  "plan": "OD-ARCH-065",
+  "evidence_level": "脚本/运行：引擎实际加载后的 --dump-config（只读，无凭据）",
+  "command": "DSH_HOME=$HOME/OmniDesk/runtime/dsh-home node runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile acp --dump-config --patch ~/OmniDesk/app/config/omnidesk-model.yml",
+  "providers": {
+    "opendesign": [
+      {
+        "id": "claude-haiku-5.5",
+        "contextWindow": 1048576
+      },
+      {
+        "id": "deepseek-v4.1-flash",
+        "contextWindow": 1048576
+      },
+      {
+        "id": "glm-5.3-flashx",
+        "contextWindow": 1048576
+      },
+      {
+        "id": "gpt-6-luna",
+        "contextWindow": 1048576
+      },
+      {
+        "id": "kimi-k2.7-code",
+        "contextWindow": 1048576
+      }
+    ]
+  },
+  "all_1m": true,
+  "note": "contextWindow 只是给 DSH 的容量声明；端点真实上限未验证。此文件不含任何凭据。"
+}
