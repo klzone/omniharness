@@ -1,0 +1,41 @@
+{
+  "plan": "OD-ARCH-059 S2",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（线程记录 JSON）",
+  "root": "/tmp/od059-s2-verify",
+  "steps": {
+    "home": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/01-home-chips.png",
+      "app_alive": true,
+      "expect": "输入区有 场景chip + 对话chip + 新对话；Dock 第二个入口为「工作记录」"
+    },
+    "loaded": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/02-home-loaded-thread.png",
+      "thread_file": "/tmp/od059-s2-verify/app-data/threads/_unassigned/t059s2verify.json",
+      "expect": "对话chip显示「[工作记录] 合成验收对话」"
+    },
+    "scene_page": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/03-scene-archive.png",
+      "expect": "左栏「工作记录 · 历史对话」列出该对话；页面无对话框（单层档案页）"
+    },
+    "open_thread": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/04-open-thread-home.png",
+      "expect": "回到首页，显示该对话原有两条消息"
+    },
+    "retag": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/05-retag-writing.png",
+      "tag_before": "weekly",
+      "tag_after": "writing",
+      "messages_after": 2,
+      "expect": "tag 由 weekly 变为 writing，消息条数不变"
+    },
+    "decl_linkage": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/06-chip-without-writing.png",
+      "decl_path": "/tmp/od059-s2-verify/app-data/profiles/discipline.yml",
+      "tag_after_home_two_downs_with_writing_hidden": "project",
+      "expect": "同为 Home+两次下移：正常时落到 writing，隐藏后落到 project"
+    }
+  },
+  "decl_restored": true,
+  "app_alive_at_end": true,
+  "note": "2026-10-22 复核后重跑：AppSession 启用 artifact_override，WebKit 存储改用一次性 XDG 根，场景页不再出现用户真实成果文件名。"
+}
