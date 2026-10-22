@@ -1,0 +1,20 @@
+{
+  "plan": "OD-ARCH-059 S3",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
+  "root": "/tmp/od059-s3-verify",
+  "steps": {
+    "settings_open": {
+      "screenshot": "02-settings-top.png",
+      "expect": "进入 OmniDesk 原生设置页（非 DSH 完整应用）"
+    },
+    "vault_guidance": {
+      "screenshot": "04-vault-guidance.png",
+      "expect": "当前生效目录 / 来源 / 作为 Obsidian vault 指引 / 边界声明"
+    },
+    "scene_hint": {
+      "screenshot": "06-scene-artifacts-hint.png",
+      "expect": "成果档案栏含 Obsidian 接入提示，且不出现对话框"
+    }
+  },
+  "app_alive": true
+}

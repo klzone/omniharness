@@ -1,5 +1,53 @@
 # BUILDER 执行状态
 
+## OD-ARCH-059 S2 / S3：对话归一 + Obsidian 兼容（完成，待 ARCHITECT 复核，2026-10-22）
+
+- 开工 HEAD `35d6f6c`。S1 三批与 S2 A/B 批已提交未推送（`ff63496` / `644e357` / `5323150` / `e35024b` / `8af05ca`）；本轮补 S2 证据、S3 代码与证据、STATUS。ARCHITECT 的 `M PLANS.md`、`M REVIEW.md` 原样保留、未提交。
+- 未改 `runtime/`（`git status --porcelain runtime/` 为空）；未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据；未读写任何凭证。S3 仅新增一个 dev 依赖 `serde_yaml`（单测断言 frontmatter 可解析）。
+
+### 已完成内容
+
+| 节 | 内容 |
+| --- | --- |
+| S2 | 首页对话区加场景 chip + 对话 chip + 新对话；场景页纯档案化（移除对话框，点对话标题回首页载入）；展示层「周报」→「工作记录」（内部键 `weekly_report` 与数据目录不动）；声明隐藏某场景后首页 chip 同步隐藏 |
+| S3 | 两个保存入口统一注入 YAML frontmatter（scenario / title / created / tags / omnidesk_version）；设置页成果目录区补「作为 Obsidian vault」指引与边界声明；成果档案页补一句接入提示；数据布局文档新增 §5.0；用户测试清单第 1 步改名 |
+
+### 修改文件
+
+- S2：`desktop/src/App.tsx`、`shell/HomeCanvas.tsx`、`shell/HomeChat.tsx`、`shell/ScenePage.tsx`、`shell/Dock.tsx`、`shell/Workspace.tsx`、`shell/AnnouncementBar.tsx`、`scenes.ts`、`sceneThreads.ts`、`OfflineFlows.tsx`、`UsageLog.tsx`、`api.ts`、`samples/profiles/discipline.yml`、`samples/workflows/offline-flows.v1.json`、`tests/verification/desktop/verify_profile_decl.py`、`tests/verification/desktop/verify_scene_decl_linkage_055.py`（展示层改名；均已在 A/B 批提交）
+- S3：`desktop/src-tauri/src/task_shell.rs`（+212）、`desktop/src-tauri/Cargo.toml`（dev 依赖）、`Cargo.lock`、`desktop/src/SettingsPanel.tsx`、`desktop/src/shell/ScenePage.tsx`、`docs/OmniDesk-Desktop-Data-Layout.md`、`docs/user-testing-checklist.md`
+- 测试与证据：`tests/verification/desktop/verify_conversation_center_059.py`、`tests/verification/desktop/verify_vault_binding_059.py`、`tests/verification/desktop/window_harness.py`（新增 `XDG_*` 隔离）、`tests/verification/desktop/evidence/od-arch-059/{S2,S3}/`
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 脚本/运行（全回归，S2 收尾） | `bash /tmp/od054-reg.sh` | cargo 190+2+13+3+1 passed / 0 failed；build 通过（1 个既有 warning）；`TSC_OK`；npm build 成功；pytest 26 passed；runtime 零差异。`evidence/od-arch-059/S2/regression.txt` |
+| 脚本/运行（全回归，S3 收尾） | `bash /tmp/od054-reg.sh` | cargo 194 passed（+2/13/3/1）、build 通过；`TSC_OK`；npm build 成功（566ms）；pytest 26 passed；runtime 零差异。`evidence/od-arch-059/S3/regression.txt` |
+| 脚本/运行（真实窗口，S2） | `python3 verify_conversation_center_059.py --display :97` | 6 张截图；落盘 `tag` weekly→writing、消息仍 2 条；隐藏 writing 后同操作落 `project`；声明复原 `true`；App 存活 `true` |
+| 脚本/运行（真实窗口，S3） | `python3 verify_vault_binding_059.py --display :97` | 5 张截图；设置页显示当前生效目录与来源、vault 指引、边界声明；成果档案页提示可见且成果为空；App 存活 `true` |
+| 脚本/运行（单测） | `cargo test`（含 `task_shell` 新增 4 例） | 通过：离线/分析产物 frontmatter、危险标题转义、改绑后旧目录字节不变 |
+
+### 证据边界修正（本轮实际发现）
+
+首轮 S3 截图出现了用户真实成果目录里的文件名和一条历史对话名。根因有两条：①`AppSession` 未开启 `artifact_override`；②WebKitGTK 的 localStorage 默认写到用户真实的 `~/.local/share/dev.omnidesk.discipline`，跨运行残留。已做两处修复并重拍：`window_harness.py` 增加 `XDG_DATA_HOME` / `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` 指向一次性根；S2、S3 两个脚本都设 `artifact_override=True`。重拍后 S2/S3 截图只剩合成对话，成果栏为空。未删除或改动用户真实数据。
+
+### 未解决 / 未验证
+
+1. **离线起草流程进不去（待 ARCHITECT 裁决）。** `App.tsx` 把 report/writing/project 三个场景都路由到 `ScenePage`（纯档案页），`OfflineFlows`（载入合成样例 → 生成初稿 → 保存成果）挂在已不可达的 else 分支。`docs/user-testing-checklist.md` 第 4 步「三场景各跑一单」当前无法执行。这是 S2 带来的行为变化，修复涉及界面方案（例如在场景页留「起草」入口），超出本批范围，未自行加回。
+2. **`Workspace.tsx`（项目与会话）仍自带一份 HomeChat（待 ARCHITECT 定范围）。** S2 范围只写三个场景页；若复核要求「全应用只剩首页一个对话框」，需明确本项目页是否也要纳管。
+3. vault 改绑只在单测级验证（新文件落新目录、旧目录字节不变），未在真实窗口点选改绑。
+4. 场景页「无对话框」是目视判定，没有 DOM 断言。
+
+### 与计划的一致性
+
+S1–S3 实施项与 PLANS.md 059 各节一致，无计划外功能。上述第 1 条是计划风险项①（移除场景页对话后发现能力依赖）的具体命中外化，已按计划要求停下报告，未擅自加回。
+
+### 建议 ARCHITECT 下一步关注
+
+- 先裁决离线起草入口去留，再让用户跑 user-testing-checklist；否则用户按清单第 4 步会卡住。
+- 若同意补「场景页起草入口」，建议单开小计划，只做入口与回到结果展示，不动数据模型。
+
 ## OD-ARCH-059 S1：复核遗留修复（056）（完成，待 ARCHITECT 复核，2026-10-22）
 
 - 开工 HEAD `35d6f6c`；原有未提交改动 `M PLANS.md`、`M REVIEW.md` 原样保留、未提交。未改 `runtime/`（`git status --porcelain runtime/` 为空），未碰 `~/.dsh`、`~/.agents`、`~/OmniDesk` 用户数据，未读/写/打印任何凭证，未新增依赖。
