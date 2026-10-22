@@ -1,0 +1,88 @@
+{
+  "display": ":95",
+  "root": "/tmp/od063-picker",
+  "collapsed_width_px": 245,
+  "open_alive": true,
+  "alive_after_select": true,
+  "collapsed_width_after_add_px": 245,
+  "settings_exists": true,
+  "categories": [
+    {
+      "key": "plain",
+      "label": "未分类",
+      "folder": null
+    },
+    {
+      "key": "weekly",
+      "label": "工作记录",
+      "folder": "weekly-report"
+    },
+    {
+      "key": "writing",
+      "label": "文案写作",
+      "folder": "material-writing"
+    },
+    {
+      "key": "project",
+      "label": "项目跟进",
+      "folder": "project-management"
+    },
+    {
+      "key": "custom:cat-1",
+      "label": "Study Log",
+      "folder": "study-log"
+    }
+  ],
+  "alive": true,
+  "app_log_tail": "libEGL warning: DRI3 error: Could not get DRI3 device\nlibEGL warning: Ensure your X server supports DRI3 to get accelerated rendering\n",
+  "regressions": [
+    {
+      "cmd": "cd desktop && npx tsc --noEmit",
+      "result": "0 errors"
+    },
+    {
+      "cmd": "cd desktop && npm run build",
+      "result": "success"
+    },
+    {
+      "cmd": "cd desktop/src-tauri && cargo test --offline --lib",
+      "result": "202 passed / 0 failed"
+    },
+    {
+      "cmd": "python3 -m pytest tests -q",
+      "result": "26 passed"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_engine_cancel.py",
+      "result": "37 state cases + 8 static checks, 0 failed"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_scene_decl_linkage_055.py",
+      "result": "exit 0, declaration sha256 unchanged"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_scene_overview_060.py",
+      "result": "exit 0, app_alive_at_end true"
+    },
+    {
+      "cmd": "python3 tests/verification/desktop/verify_thread_categories_062.py",
+      "result": "exit 0, 5 categories incl. custom:cat-1 after restart",
+      "evidence": "/tmp/od062-rerun3.log (EXIT=0)"
+    },
+    {
+      "cmd": "git status --porcelain runtime/",
+      "result": "empty (DSH runtime zero diff)"
+    }
+  ],
+  "evidence_shots": [
+    "01-collapsed.png",
+    "02-open.png",
+    "03-selected-collapsed.png",
+    "04-settings-layout.png",
+    "05-settings-categories.png",
+    "06-category-added.png",
+    "07-collapsed-with-new-category.png",
+    "08-open-with-new-category.png",
+    "09-new-category-selected.png"
+  ]
+}

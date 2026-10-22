@@ -1,0 +1,43 @@
+{
+  "alive_after_restart": true,
+  "settings_file": "/tmp/od062-window/app-data/config/settings.v1.json",
+  "settings_exists": true,
+  "categories": [
+    {
+      "key": "plain",
+      "label": "未分类",
+      "folder": null
+    },
+    {
+      "key": "weekly",
+      "label": "工作记录",
+      "folder": "weekly-report"
+    },
+    {
+      "key": "writing",
+      "label": "文案写作",
+      "folder": "material-writing"
+    },
+    {
+      "key": "project",
+      "label": "项目跟进",
+      "folder": "project-management"
+    },
+    {
+      "key": "custom:cat-1",
+      "label": "Study Log",
+      "folder": "study-log"
+    }
+  ],
+  "alive_after_add": true,
+  "local_data_root": "/tmp/od062-window/local-data",
+  "created_dirs": [
+    "material-writing",
+    "project-management",
+    "study-log",
+    "weekly-report"
+  ],
+  "exit_code": 0,
+  "rerun_by": "OD-ARCH-063 S3 (same script, coordinates updated for dropdown)",
+  "coverage": "5 categories incl. custom:cat-1 after restart; study-log dir created"
+}

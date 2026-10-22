@@ -1,5 +1,22 @@
 # 当前实施计划
 
+### OD-ARCH-063：分类 chip 下拉化 + 清理收尾（已批准，2026-10-22）
+
+> **批准依据：** 用户已拍板分类 chip 改下拉（色点 + 勾选弹出列表 + 与模型选择器同套样式）；062 复核发现的证据勘误与仓库残留一并收尾。继续合并派工，不零碎。
+
+**目标：** ①对话分类选择器改为下拉胶囊（色点 + 弹出勾选列表，对齐模型选择器样式），分类多时不占行、宽度恒定；②清掉 062 复核发现的仓库残留与命名尾巴；③证据落盘口径修正。
+
+**影响范围：** desktop/src/shell/HomeChat.tsx（chip 改下拉按钮 + 弹出列表）、desktop/src/components/Icon.tsx（如需下拉箭头）、desktop/src/SettingsPanel.tsx 与 styles.css（.wb-header 类名收尾，仅设置页在用才改名，否则注明）、desktop/src/offline-flows.css 与 .ofl-v2 命名（仅设置页在用则改名，牵动布局回归时停下列清单）、删除仓库根 `./0` 空文件、删除 tests/verification/desktop/evidence/od-arch-060/00-home.png (deleted) 残留文件（原 00-home.png 正常保留）、evidence 命名核对、PLANS/STATUS/REVIEW。通用红线同 062：runtime/ 零差异、凭证不碰、旧数据零迁移零覆盖零删除、一次性授权分批提交（每批前红线扫描 + 文件清单核对）、推送一次。
+
+**步骤：**
+1. **S1 分类下拉：** 平铺 chip 行改为单枚下拉胶囊：左侧色点（分类色，未分类用中性色）、中间当前分类名、右侧下拉箭头；点开弹出列表（勾选态 + 色点 + 分类名，滚动容纳），单选后立即收起并生效（复用既有 retag/归档逻辑，不改持久化格式与键）。样式与模型选择器同套（复用其类或同规格新类，不引第三方组件库）。新增分类后下拉列表自动可见。键盘可达（Enter/Esc）与 aria 属性齐备，沿用 data-testid 钩子。
+2. **S2 仓库残留清理：** 删 `./0` 空文件；删 evidence/od-arch-060/00-home.png (deleted) 残留；.wb-header 仅设置页在用则改名（全引用核对），否则保留并注明；.ofl-v2/offline-flows.css 若仅设置页在用则同步改名，若牵动 >3 处布局回归则停下报清单。
+3. **S3 回归与证据：** tsc / cargo test / pytest / npm build 全绿；055/060 联动脚本复跑；真实窗口截图存 evidence/od-arch-063/：下拉收起态（色点可见）1 张、展开列表（含勾选与新增分类）1 张、选中后收起生效 1 张、设置页布局 1 张；**验收事实统一写入 evidence/od-arch-063/facts.json**（命令、结果、截图清单），修正 062 的事实未落盘问题；STATUS 登记执行记录；REVIEW 的 063 验收结论由 ARCHITECT 复核后补写。
+
+**验收：** cargo test 全绿；tsc 0 错误；pytest 通过；npm build 通过；runtime/ 零差异；chip 下拉在 4 类与新增后 ≥5 类两种状态下宽度不变且列表完整可滚；选中变更仍走既有归档链路（不改 thread_store 数据）；facts.json 落盘齐全；仓库根与 evidence 目录无残留文件。
+
+**风险与停止条件：** ①下拉展开与模型选择器/语音按钮层叠冲突（z-index/遮挡）→ 停下报截图与定位，不硬改全局层叠；②分类改名后旧会话显示回退失败 → 如实显示内部键并报问题，不静默改数据；③.ofl-v2 改名牵动面大 → 停下等裁定。
+@@
 ### OD-ARCH-062：分类管理持久化 + workbench 清理收尾（已批准，2026-10-22）
 
 > **批准依据：** 061 复核两项裁定（REVIEW.md 顶部：分类管理高级能力、取消测试解耦方案）+ 一项修正要求（SettingsPanel 样式类去 workbench 语义、OfflineFlows 处置）。用户既定指示：任务合并、不零碎派工。
