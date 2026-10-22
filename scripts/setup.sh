@@ -11,6 +11,15 @@
 #   3. 任一步失败即停止，并说明如何手动重跑该步。
 #   4. 不询问、不删除、不迁移任何已有 DSH 数据。
 #
+# 关于 ~/YvanAI（历史数据根，口径定案见 OD-ARCH-056）：
+#   ~/YvanAI 是本项目早期的个人数据根。那里的既有数据继续被**只读**使用：
+#   不迁移、不改名、不覆盖、不删除。新部署仍然初始化到该路径，是为了让
+#   init-yvan-data.sh 与既有安装保持同一行为（改了默认路径会让老机器被
+#   当成新机器，产生第二套骨架）。
+#   **桌面端成果不写这个目录**：OmniDesk 的新成果落在
+#   ~/OmniDesk/workspace/artifacts（或用户在设置页绑定的 vault 目录），
+#   见 docs/OmniDesk-Desktop-Data-Layout.md 第 5 节。
+#
 # 用法:
 #   scripts/setup.sh            # 完整初始化
 #   scripts/setup.sh --check    # 只检查现状，不写入
