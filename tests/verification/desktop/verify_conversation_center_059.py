@@ -3,8 +3,9 @@
 
 覆盖四件事，全部在 /tmp 下的一次性数据根里（合成对话，无真实材料、无凭证）：
 
-  1. 首页输入区出现场景 chip 与对话 chip，Dock 第二个入口显示「工作记录」；
-  2. 预置一条本机对话记录 → 重启后首页对话 chip 能载入它，场景页左栏列出它，
+  1. 首页输入区只有场景 chip 与「新对话」，不再并排第二个历史对话下拉框；
+     Dock 第二个入口显示「工作记录」；
+  2. 预置一条本机对话记录 → 重启后首页自动载入它（历史切换统一在场景页左栏），
      点标题回首页续聊且历史完整；
   3. 场景页不再有对话框（单层档案页截图）；
   4. 在首页用场景 chip 把该对话改挂到「文案写作」，落盘 tag 同步变化；
@@ -143,14 +144,14 @@ def main(argv: list[str]) -> int:
         xs = XSession(args.display)
         decl_path = session.app_data / "profiles" / "discipline.yml"
 
-        # --- 1. 首页：场景 chip / 对话 chip / Dock 改名 -------------------------
+        # --- 1. 首页：场景 chip / 新对话 / Dock 改名（历史下拉已移除）-------------
         session.start()
         win = mount(session, xs)
         xs.shot(EVIDENCE / "01-home-chips.png")
         facts["steps"]["home"] = {
             "screenshot": str(EVIDENCE / "01-home-chips.png"),
             "app_alive": session.alive(),
-            "expect": "输入区有 场景chip + 对话chip + 新对话；Dock 第二个入口为「工作记录」",
+            "expect": "输入区只有 场景chip + 新对话（不再有第二个历史对话下拉框）；Dock 第二个入口为「工作记录」",
         }
 
         # --- 2. 预置对话 → 重启 → 场景页列出 → 回首页续聊 ----------------------
@@ -168,7 +169,7 @@ def main(argv: list[str]) -> int:
         facts["steps"]["loaded"] = {
             "screenshot": str(EVIDENCE / "02-home-loaded-thread.png"),
             "thread_file": str(target),
-            "expect": "对话chip显示「[工作记录] 合成验收对话」",
+            "expect": "首页自动载入「[工作记录] 合成验收对话」，两条消息完整",
         }
 
         click(xs, win, DOCK_DX, DOCK_REPORT_DY, settle=2.5)
