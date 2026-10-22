@@ -73,12 +73,16 @@ def main() -> int:
         x.click(1202, 293, settle=3.0)
         x.shot(EVID / "03c-init-receipt.png")
 
-        # 回首页，点 chip 下拉，确认新分类出现在列表里
+        # 回首页，点分类胶囊展开下拉（OD-ARCH-063 起 chip 收进下拉），确认新分类出现在列表里
         x.click(47, 351, settle=3.0)
         time.sleep(2)
         x.click(240, 831, settle=1.5)
         time.sleep(1.2)
         x.shot(EVID / "04-chip-dropdown.png")
+        # 5 项时面板向上长高，列表项自下而上：未分类 640 / 工作记录 669 / 文案/698 / 项目/727 / Study Log 742。
+        x.click(240, 742, settle=1.5)
+        time.sleep(1.0)
+        x.shot(EVID / "04b-chip-selected.png")
 
         settings_file = session.app_data / "config" / "settings.v1.json"
         # 重启，确认分类仍在（持久化）

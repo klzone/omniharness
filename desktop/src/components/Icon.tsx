@@ -24,6 +24,8 @@ export type IconName =
   | "spark"
   | "arrow-up"
   | "stop"
+  | "chevron-down"
+  | "check"
   | "arrow-right"
   | "bot"
   | "history"
@@ -114,6 +116,10 @@ const PATHS: Record<IconName, JSX.Element> = {
   "arrow-up": <path d="M12 20V5M6 11l6-6 6 6" />,
   /** 生成中替换发送箭头：实心方块（停止/取消），轮廓与其它图标一致由外层 stroke 控制。 */
   stop: <rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor" stroke="none" />,
+  /** OD-ARCH-063：下拉胶囊的方向指示（展开时由外层旋转）。 */
+  "chevron-down": <path d="m7 10 5 5 5-5" />,
+  /** OD-ARCH-063：下拉列表的选中态。 */
+  check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   "arrow-right": <path d="M5 12h13M13 6l6 6-6 6" />,
   bot: (
     <>

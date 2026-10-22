@@ -1,16 +1,16 @@
 /*
- * 「离线工作流程」局部样式 —— 仅作用于 .ofl-v2 子树。
+ * 设置页局部样式 —— 只作用于 .settings-surface 子树。
  *
- * 背景：styles.css 的旧版深色规则已整体降级到 @layer legacy，
- * 但离线流程仍沿用旧类名（.workbench/.pane/.prompt/.text-input/.tab ...），
- * 在浅色外壳下出现深色底 + 深色字。这里只为本页补齐浅色可读样式，
- * 不改功能、不改文案、不隐藏边界提示。
+ * 历史：本文件原名 offline-flows.css，服务已下线的「离线工作流程」页；
+ * OD-ARCH-062 S2 起该页只剩设置页在用，OD-ARCH-063 S2 随设置页语义更名为
+ * settings-panel.css，根类 .ofl-v2 → .settings-surface、.wb-header →
+ * .settings-pane-header。只改类名与文件名，样式值与布局未变。
  *
  * 约束：不使用全局选择器；复用 theme.css 的令牌，不新增令牌。
  * 本文件不带 @layer，按级联层规则优先于 @layer legacy。
  */
 
-.ofl-v2 {
+.settings-surface {
   /* OD-ARCH-062 S2：设置页根节点不再借用 .workbench（任务工作台语义），
      原先由 .workbench 提供的"占满剩余高度 + 自身滚动"改由本类承担。 */
   flex: 1;
@@ -34,7 +34,7 @@
 }
 
 /* ---- 卡片 ---- */
-.ofl-v2 .pane {
+.settings-surface .pane {
   background: rgba(255, 255, 255, 0.78);
   /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter（每个面板一层，合成成本高、收益低）。 */
   border: 1px solid rgba(255, 255, 255, 0.9);
@@ -45,12 +45,12 @@
     0 2px 8px -2px rgba(79, 70, 229, 0.04);
 }
 
-.ofl-v2 .wb-header {
+.settings-surface .settings-pane-header {
   background: rgba(255, 255, 255, 0.86);
 }
 
 /* ---- 标题 ---- */
-.ofl-v2 .pane-title {
+.settings-surface .pane-title {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -63,7 +63,7 @@
   color: var(--color-on-surface);
 }
 
-.ofl-v2 .pane-title .count {
+.settings-surface .pane-title .count {
   font-family: var(--font-label-caps);
   font-size: 10.5px;
   font-weight: 400;
@@ -75,7 +75,7 @@
 }
 
 /* ---- 范围提示：保持醒目，不弱化 ---- */
-.ofl-v2 .scope-notice {
+.settings-surface .scope-notice {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -90,12 +90,12 @@
   overflow-wrap: anywhere;
 }
 
-.ofl-v2 .scope-notice strong {
+.settings-surface .scope-notice strong {
   color: #7a3e00;
   font-weight: 600;
 }
 
-.ofl-v2 .scope-notice ul {
+.settings-surface .scope-notice ul {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -103,7 +103,7 @@
   padding-left: 1.1rem;
 }
 
-.ofl-v2 .scope-path {
+.settings-surface .scope-path {
   margin-top: 0.55rem;
   font-family: var(--font-label-caps);
   font-size: 11px;
@@ -113,7 +113,7 @@
 }
 
 /* ---- 场景切换 ---- */
-.ofl-v2 .type-row {
+.settings-surface .type-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -121,7 +121,7 @@
   margin-top: 0.9rem;
 }
 
-.ofl-v2 .tab {
+.settings-surface .tab {
   padding: 0.4rem 0.9rem;
   border-radius: 9999px;
   border: 1px solid rgba(199, 196, 216, 0.7);
@@ -136,26 +136,26 @@
     color 0.15s ease;
 }
 
-.ofl-v2 .tab:hover:not(:disabled) {
+.settings-surface .tab:hover:not(:disabled) {
   border-color: rgba(53, 37, 205, 0.35);
   color: var(--color-on-surface);
 }
 
-.ofl-v2 .tab.active {
+.settings-surface .tab.active {
   background: var(--color-primary);
   border-color: transparent;
   color: var(--color-on-primary);
 }
 
 /* 选中项在悬停时必须保持高对比（否则:higher-specificity 的 hover 规则会把字压暗）。 */
-.ofl-v2 .tab.active:hover:not(:disabled) {
+.settings-surface .tab.active:hover:not(:disabled) {
   background: var(--color-primary-container);
   border-color: transparent;
   color: var(--color-on-primary);
 }
 
 /* ---- 按钮 ---- */
-.ofl-v2 .actions {
+.settings-surface .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -163,8 +163,8 @@
   margin: 0.75rem 0 0;
 }
 
-.ofl-v2 button.primary,
-.ofl-v2 button.ghost {
+.settings-surface button.primary,
+.settings-surface button.ghost {
   font-family: var(--font-body-sm);
   font-size: 12.5px;
   font-weight: 600;
@@ -180,48 +180,48 @@
     box-shadow 0.15s ease;
 }
 
-.ofl-v2 button.primary {
+.settings-surface button.primary {
   background: var(--color-primary);
   color: var(--color-on-primary);
   box-shadow: 0 6px 16px -8px rgba(53, 37, 205, 0.55);
 }
 
-.ofl-v2 button.primary:hover:not(:disabled) {
+.settings-surface button.primary:hover:not(:disabled) {
   background: var(--color-primary-container);
 }
 
-.ofl-v2 button.ghost {
+.settings-surface button.ghost {
   background: rgba(255, 255, 255, 0.7);
   border-color: rgba(199, 196, 216, 0.7);
   color: var(--color-on-surface);
 }
 
-.ofl-v2 button.ghost:hover:not(:disabled) {
+.settings-surface button.ghost:hover:not(:disabled) {
   background: #ffffff;
   border-color: rgba(53, 37, 205, 0.35);
 }
 
-.ofl-v2 button:active:not(:disabled) {
+.settings-surface button:active:not(:disabled) {
   transform: scale(0.98);
 }
 
-.ofl-v2 button:disabled {
+.settings-surface button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
 }
 
-.ofl-v2 button:focus-visible,
-.ofl-v2 input:focus-visible,
-.ofl-v2 textarea:focus-visible,
-.ofl-v2 .check input:focus-visible {
+.settings-surface button:focus-visible,
+.settings-surface input:focus-visible,
+.settings-surface textarea:focus-visible,
+.settings-surface .check input:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
 /* ---- 输入 ---- */
-.ofl-v2 textarea.prompt,
-.ofl-v2 input.text-input {
+.settings-surface textarea.prompt,
+.settings-surface input.text-input {
   width: 100%;
   box-sizing: border-box;
   font-family: var(--font-body-sm);
@@ -238,7 +238,7 @@
     box-shadow 0.15s ease;
 }
 
-.ofl-v2 textarea.prompt {
+.settings-surface textarea.prompt {
   display: block;
   margin: 0.4rem 0 0;
   min-height: 6rem;
@@ -249,33 +249,33 @@
   overflow-x: auto;
 }
 
-.ofl-v2 textarea.prompt::placeholder,
-.ofl-v2 input.text-input::placeholder {
+.settings-surface textarea.prompt::placeholder,
+.settings-surface input.text-input::placeholder {
   color: rgba(119, 117, 135, 0.75);
 }
 
-.ofl-v2 textarea.prompt:focus,
-.ofl-v2 input.text-input:focus {
+.settings-surface textarea.prompt:focus,
+.settings-surface input.text-input:focus {
   background: #ffffff;
   border-color: rgba(53, 37, 205, 0.45);
   box-shadow: 0 0 0 3px rgba(53, 37, 205, 0.15);
 }
 
-.ofl-v2 textarea.prompt:disabled,
-.ofl-v2 input.text-input:disabled {
+.settings-surface textarea.prompt:disabled,
+.settings-surface input.text-input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 /* ---- 表单 ---- */
-.ofl-v2 .field {
+.settings-surface .field {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   margin-top: 0.5rem;
 }
 
-.ofl-v2 .field-label {
+.settings-surface .field-label {
   font-family: var(--font-label-caps);
   font-size: 10.5px;
   letter-spacing: 0.04em;
@@ -284,14 +284,14 @@
 }
 
 /* 本页表单是多字段纵向填写，保持单列，不套用工作台的横排布局。 */
-.ofl-v2 .record-form {
+.settings-surface .record-form {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   margin: 0.75rem 0 0;
 }
 
-.ofl-v2 .check {
+.settings-surface .check {
   display: flex;
   align-items: flex-start;
   gap: 0.55rem;
@@ -306,7 +306,7 @@
   cursor: pointer;
 }
 
-.ofl-v2 .check input[type="checkbox"] {
+.settings-surface .check input[type="checkbox"] {
   flex: 0 0 auto;
   width: 1rem;
   height: 1rem;
@@ -316,7 +316,7 @@
 }
 
 /* ---- 结果与状态 ---- */
-.ofl-v2 pre.text {
+.settings-surface pre.text {
   margin: 0.4rem 0 0;
   padding: 0.85rem;
   border-radius: 0.7rem;
@@ -332,14 +332,14 @@
   overflow: auto;
 }
 
-.ofl-v2 .hint {
+.settings-surface .hint {
   margin: 0.5rem 0 0;
   font-size: 12px;
   line-height: 1.7;
   color: var(--color-on-surface-variant);
 }
 
-.ofl-v2 .alert {
+.settings-surface .alert {
   margin: 0.65rem 0 0;
   padding: 0.7rem 0.9rem;
   border-radius: 0.75rem;
@@ -351,7 +351,7 @@
   overflow-wrap: anywhere;
 }
 
-.ofl-v2 .status-card {
+.settings-surface .status-card {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -362,7 +362,7 @@
   border: 1px solid rgba(255, 255, 255, 0.9);
 }
 
-.ofl-v2 .status-row {
+.settings-surface .status-row {
   display: grid;
   grid-template-columns: minmax(6.5rem, max-content) 1fr;
   gap: 0.75rem;
@@ -370,24 +370,24 @@
   font-size: 12.5px;
 }
 
-.ofl-v2 .status-row .k {
+.settings-surface .status-row .k {
   color: var(--color-on-surface-variant);
   font-family: var(--font-label-caps);
   font-size: 10.5px;
   letter-spacing: 0.04em;
 }
 
-.ofl-v2 .status-row .v {
+.settings-surface .status-row .v {
   min-width: 0;
   word-break: break-all;
 }
 
-.ofl-v2 .mono {
+.settings-surface .mono {
   font-family: var(--font-label-caps);
   font-variant-numeric: tabular-nums;
 }
 
-.ofl-v2 .record-list {
+.settings-surface .record-list {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -396,7 +396,7 @@
   list-style: none;
 }
 
-.ofl-v2 .record-item {
+.settings-surface .record-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
   grid-template-areas:
@@ -410,41 +410,41 @@
   border: 1px solid rgba(255, 255, 255, 0.9);
 }
 
-.ofl-v2 .record-item > .mono {
+.settings-surface .record-item > .mono {
   grid-area: name;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12.5px;
 }
 
-.ofl-v2 .record-item > .hint {
+.settings-surface .record-item > .hint {
   grid-area: meta;
   margin: 0;
   font-size: 11.5px;
 }
 
-.ofl-v2 .record-item > button {
+.settings-surface .record-item > button {
   grid-area: action;
   white-space: nowrap;
 }
 
 @media (max-width: 767px) {
-  .ofl-v2 {
+  .settings-surface {
     gap: 0.75rem;
   }
 
-  .ofl-v2 .pane {
+  .settings-surface .pane {
     padding: 1rem 1.05rem;
   }
 
-  .ofl-v2 .status-row {
+  .settings-surface .status-row {
     grid-template-columns: 1fr;
     gap: 0.15rem;
   }
 }
 
 /* ---- 设置页卡片头（OD-ARCH-046）：左侧标题+状态摘要，右侧主操作 ---- */
-.ofl-v2 .card-head {
+.settings-surface .card-head {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -453,16 +453,16 @@
   margin-bottom: 0.25rem;
 }
 
-.ofl-v2 .card-head-main {
+.settings-surface .card-head-main {
   min-width: 0;
   flex: 1 1 18rem;
 }
 
-.ofl-v2 .card-head .pane-title {
+.settings-surface .card-head .pane-title {
   margin-bottom: 0.25rem;
 }
 
-.ofl-v2 .card-status {
+.settings-surface .card-status {
   margin: 0;
   font-size: 11.5px;
   line-height: 1.6;
@@ -470,14 +470,14 @@
   overflow-wrap: anywhere;
 }
 
-.ofl-v2 .card-head-actions {
+.settings-surface .card-head-actions {
   margin: 0;
   flex: 0 0 auto;
   justify-content: flex-end;
 }
 
 /* 下拉框与文本框保持同一组样式（原生箭头保留，不自定义外观）。 */
-.ofl-v2 select.text-input {
+.settings-surface select.text-input {
   width: 100%;
   box-sizing: border-box;
   font-family: var(--font-body-sm);
@@ -490,12 +490,12 @@
   outline: none;
 }
 
-.ofl-v2 select.text-input:disabled {
+.settings-surface select.text-input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.ofl-v2 .pending-list {
+.settings-surface .pending-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -503,7 +503,7 @@
 }
 
 @media (max-width: 767px) {
-  .ofl-v2 .card-head-actions {
+  .settings-surface .card-head-actions {
     justify-content: flex-start;
   }
 }

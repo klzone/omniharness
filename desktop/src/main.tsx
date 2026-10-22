@@ -17,7 +17,7 @@ import "@fontsource/jetbrains-mono/latin-600.css";
 // 设计系统（Tailwind + 视觉令牌）必须先于旧样式加载。
 import "./theme.css";
 import "./styles.css";
-import "./offline-flows.css";
+import "./settings-panel.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

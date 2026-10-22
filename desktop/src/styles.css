@@ -534,9 +534,9 @@ button.ghost {
 
 /* --- 任务工作台 --- */
 /* OD-ARCH-062 S2：.workbench 规则随任务工作台页面删除。
-   .wb-header 仍由设置页分类分页（.ofl-v2 .wb-header）使用，故保留。 */
+   OD-ARCH-063 S2：.wb-header → .settings-pane-header，仅设置页首屏卡片在用。 */
 
-.wb-header {
+.settings-pane-header {
   flex: 0 0 auto;
 }
 
