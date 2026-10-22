@@ -23,6 +23,7 @@ export type IconName =
   | "calendar"
   | "spark"
   | "arrow-up"
+  | "stop"
   | "arrow-right"
   | "bot"
   | "history"
@@ -111,6 +112,8 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   "arrow-up": <path d="M12 20V5M6 11l6-6 6 6" />,
+  /** 生成中替换发送箭头：实心方块（停止/取消），轮廓与其它图标一致由外层 stroke 控制。 */
+  stop: <rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor" stroke="none" />,
   "arrow-right": <path d="M5 12h13M13 6l6 6-6 6" />,
   bot: (
     <>

@@ -22,7 +22,12 @@ const THREADS_KEY = "omnidesk.scenes.threads.v1";
 /** 迁移标记：只迁移一次，且迁移后不删除缓存。 */
 const MIGRATED_KEY = "omnidesk.scenes.threads.v1.migrated";
 
-export type ThreadTag = SceneKey | "plain";
+/**
+ * 归类标签（OD-ARCH-062 S1）：既有三个场景键与 plain，另允许宿主持久化的
+ * 自定义分类 `custom:...`。自定义键只是归属标签：不改变场景页、不进 Dock，
+ * 既有线程的标签与存档格式因此零迁移（thread_store 只要求 tag 是非空字符串）。
+ */
+export type ThreadTag = SceneKey | "plain" | `custom:${string}`;
 
 export interface SceneThread {
   id: string;
@@ -353,7 +358,9 @@ export function removeThread(id: string): void {
 }
 
 export function normalizeTag(value: string | null | undefined): ThreadTag {
-  return isSceneKey(value) ? value : "plain";
+  if (isSceneKey(value)) return value;
+  if (value && value.startsWith("custom:")) return value as ThreadTag;
+  return "plain";
 }
 
 /**

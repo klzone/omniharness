@@ -15,9 +15,10 @@ import {
 } from "./api";
 import { PendingWritePanel } from "./shell/PendingWriteCard";
 import { EngineTechSlice } from "./shell/EngineTechSlice";
-import { THREAD_CATEGORIES } from "./threadCategories";
+import { refreshThreadCategories } from "./threadCategories";
 import type {
   AdmissionFacts,
+  CategoryInitReceipt,
   LocalRootInfo,
   ModelCategory,
   ModelPermissions,
@@ -28,6 +29,7 @@ import type {
   SchedulerCadence,
   SchedulerConfig,
   SchedulerSnapshot,
+  ThreadCategoryView,
 } from "./types";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -184,6 +186,19 @@ export default function SettingsPanel() {
   const [declNote, setDeclNote] = useState<string | null>(null);
   const [declError, setDeclError] = useState<string | null>(null);
 
+  // —— 对话分类管理（OD-ARCH-062 S1）——
+  // 每行一份草稿：只有点“保存这一行”才写盘，避免输入过程中反复落盘。
+  const [categories, setCategories] = useState<ThreadCategoryView[] | null>(null);
+  const [catDrafts, setCatDrafts] = useState<
+    Record<string, { label: string; folder: string; vault: string }>
+  >({});
+  const [catBusy, setCatBusy] = useState(false);
+  const [catNote, setCatNote] = useState<string | null>(null);
+  const [catError, setCatError] = useState<string | null>(null);
+  const [catInit, setCatInit] = useState<CategoryInitReceipt | null>(null);
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [newCatFolder, setNewCatFolder] = useState("");
+
   // —— 定时与提醒 ——
   const [sched, setSched] = useState<SchedulerSnapshot | null>(null);
   const [schedError, setSchedError] = useState<string | null>(null);
@@ -240,6 +255,29 @@ export default function SettingsPanel() {
     }
   }, []);
 
+  const refreshCategories = useCallback(async () => {
+    setCatBusy(true);
+    try {
+      const r = await shell.categorySettingsLoad();
+      setCategories(r.categories);
+      setCatDrafts(
+        Object.fromEntries(
+          r.categories.map((c) => [
+            c.key,
+            { label: c.label, folder: c.folder ?? "", vault: c.vault ?? "" },
+          ]),
+        ),
+      );
+      setCatError(r.ok ? null : "宿主返回的分类读取状态不是 ok");
+      await refreshThreadCategories();
+    } catch (e) {
+      // 读不到就保留上一次的列表并明确报错（风险③：不静默降级）。
+      setCatError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCatBusy(false);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const r = await shell.localRootInfo();
@@ -259,6 +297,95 @@ export default function SettingsPanel() {
     } catch (e) {
       setSched(null);
       setSchedError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  /** 保存一行分类。只传这一行改过的字段；失败时把宿主原因原样显示。 */
+  const saveCategory = useCallback(
+    async (key: string) => {
+      const draft = catDrafts[key];
+      if (!draft) return;
+      setCatBusy(true);
+      setCatNote(null);
+      setCatError(null);
+      try {
+        await shell.categoryUpdate({
+          key,
+          label: draft.label,
+          folder: draft.folder,
+          vault: draft.vault,
+        });
+        await refreshCategories();
+        setCatNote(`已保存分类「${draft.label.trim()}」。`);
+      } catch (e) {
+        setCatError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCatBusy(false);
+      }
+    },
+    [catDrafts, refreshCategories],
+  );
+
+  const addCategory = useCallback(async () => {
+    const label = newCatLabel.trim();
+    if (!label) {
+      setCatError("先给新分类起个名字。");
+      return;
+    }
+    setCatBusy(true);
+    setCatNote(null);
+    setCatError(null);
+    try {
+      const r = await shell.categoryAdd({
+        label,
+        ...(newCatFolder.trim() ? { folder: newCatFolder.trim() } : {}),
+      });
+      setNewCatLabel("");
+      setNewCatFolder("");
+      await refreshCategories();
+      setCatNote(`已新增分类「${label}」（${r.key}）。它只出现在归类下拉里，不会加 Dock 入口。`);
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCatBusy(false);
+    }
+  }, [newCatFolder, newCatLabel, refreshCategories]);
+
+  const removeCategory = useCallback(
+    async (key: string, label: string) => {
+      setCatBusy(true);
+      setCatNote(null);
+      setCatError(null);
+      try {
+        await shell.categoryRemove(key);
+        await refreshCategories();
+        setCatNote(`已删除分类「${label}」。已用该分类的对话标签保持原样，没有迁移或删除。`);
+      } catch (e) {
+        setCatError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCatBusy(false);
+      }
+    },
+    [refreshCategories],
+  );
+
+  const initCategoryFolders = useCallback(async () => {
+    setCatBusy(true);
+    setCatNote(null);
+    setCatError(null);
+    try {
+      const r = await shell.categoryInitFolders();
+      setCatInit(r);
+      setCatNote(
+        r.created > 0
+          ? `已创建 ${r.created} 个缺失目录；其他目录与文件没有改动。`
+          : "所有分类目录都已存在，没有创建或改动任何文件。",
+      );
+    } catch (e) {
+      setCatInit(null);
+      setCatError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCatBusy(false);
     }
   }, []);
 
@@ -284,6 +411,11 @@ export default function SettingsPanel() {
       unlisten?.();
     };
   }, [refreshAdmission, refreshModel]);
+
+  // 对话分类只在打开这一页时读一次，避免与其他分页的读盘互相干扰。
+  useEffect(() => {
+    if (tab === "categories" && categories === null) void refreshCategories();
+  }, [tab, categories, refreshCategories]);
 
   const saveModel = useCallback(async () => {
     setModelBusy(true);
@@ -500,7 +632,7 @@ export default function SettingsPanel() {
   const savedOverlay = view?.overlay_present === true;
 
   return (
-    <div className="workbench ofl-v2 settings-v2">
+    <div className="settings-v2 ofl-v2">
       <section className="pane wb-header">
         <h2 className="pane-title">
           设置
@@ -814,25 +946,160 @@ export default function SettingsPanel() {
 
       {/* ============ 2. 对话分类 ============ */}
       <section className="pane" hidden={tab !== "categories"}>
-        <CardHead title="对话分类" status="固定四类（本机对话标签）" />
+        <CardHead
+          title="对话分类"
+          status={categories ? `${categories.length} 类（本机持久化）` : "读取中…"}
+        >
+          <button className="ghost" onClick={() => void refreshCategories()} disabled={catBusy}>
+            重新读取
+          </button>
+          <button className="primary" onClick={() => void initCategoryFolders()} disabled={catBusy}>
+            初始化目录骨架
+          </button>
+        </CardHead>
         <p className="hint">
-          首页输入框左边的四个胶囊就是这里的分类。选中只改变这段本机对话归到哪个场景，
-          不改模型、不改路由，也不移动任何已有文件。声明里隐藏了某个场景时，对应分类不再出现。
+          首页输入框左边的胶囊就是这里的分类。选一个只改变这段本机对话归到哪一类，
+          不改模型、不改路由，也不移动任何已有文件。声明里隐藏了某个场景时，对应的内置分类不再出现。
         </p>
-        <div className="status-card" data-testid="thread-categories">
-          {THREAD_CATEGORIES.map((c) => (
-            <div className="status-row" key={c.key}>
-              <span className="k mono">{c.key}</span>
-              <span className="v">
-                <strong>{c.label}</strong> · {c.hint}
-              </span>
-            </div>
-          ))}
+
+        {catError ? <div className="alert">分类设置：{catError}</div> : null}
+        {catNote ? <p className="hint">{catNote}</p> : null}
+        {catInit ? (
+          <div className="status-card">
+            {catInit.items.map((it) => (
+              <div className="status-row" key={it.key}>
+                <span className="k mono">{it.key}</span>
+                <span className="v">
+                  {it.path} · {it.created ? "本次新建" : "已存在，未改动"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div data-testid="thread-categories">
+          {categories === null ? (
+            <p className="hint">还没读到分类设置。</p>
+          ) : (
+            categories.map((c) => {
+              const draft = catDrafts[c.key] ?? { label: c.label, folder: "", vault: "" };
+              return (
+                <div key={c.key} className="status-card" style={{ marginBottom: 10 }}>
+                  <div className="status-row">
+                    <span className="k mono">
+                      {c.key}
+                      {c.builtin ? "" : " · 自定义"}
+                    </span>
+                    <span className="v">
+                      {c.resolved_dir
+                        ? "归档到 " + c.resolved_dir
+                        : c.resolve_error
+                          ? "目录不可用：" + c.resolve_error
+                          : "没设归档目录（不影响归类）"}
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">显示名（只改名字，不改内部键与已有文件）</label>
+                    <input
+                      className="text-input"
+                      value={draft.label}
+                      maxLength={24}
+                      onChange={(e) =>
+                        setCatDrafts((prev) => ({
+                          ...prev,
+                          [c.key]: { ...draft, label: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">
+                      成果根下的子文件夹（留空表示不映射；相对路径，不能写 .. 或绝对路径）
+                    </label>
+                    <input
+                      className="text-input"
+                      value={draft.folder}
+                      placeholder="例如 工作记录"
+                      onChange={(e) =>
+                        setCatDrafts((prev) => ({
+                          ...prev,
+                          [c.key]: { ...draft, folder: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">
+                      Obsidian vault 绝对路径（可选；与左边二选一，填了以 vault 为准）
+                    </label>
+                    <input
+                      className="text-input"
+                      value={draft.vault}
+                      placeholder="/home/你/某个/vault"
+                      onChange={(e) =>
+                        setCatDrafts((prev) => ({
+                          ...prev,
+                          [c.key]: { ...draft, vault: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="actions">
+                    <button
+                      className="primary"
+                      onClick={() => void saveCategory(c.key)}
+                      disabled={catBusy}
+                    >
+                      保存这一行
+                    </button>
+                    {c.builtin ? null : (
+                      <button
+                        className="ghost"
+                        onClick={() => void removeCategory(c.key, c.label)}
+                        disabled={catBusy}
+                      >
+                        删除这个自定义分类
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="status-card">
+          <p className="hint">
+            新增分类只进归类下拉与归档映射，不会自动出现在 Dock；三个业务场景入口仍由下面的声明决定。
+          </p>
+          <div className="field">
+            <label className="field-label">新分类名（1–24 字）</label>
+            <input
+              className="text-input"
+              value={newCatLabel}
+              maxLength={24}
+              onChange={(e) => setNewCatLabel(e.target.value)}
+              placeholder="例如 学习笔记"
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">归档子文件夹（可选，留空以后在分类行里补）</label>
+            <input
+              className="text-input"
+              value={newCatFolder}
+              onChange={(e) => setNewCatFolder(e.target.value)}
+              placeholder="例如 学习笔记"
+            />
+          </div>
+          <div className="actions">
+            <button className="primary" onClick={() => void addCategory()} disabled={catBusy}>
+              新增分类
+            </button>
+          </div>
         </div>
         <p className="hint">
-          自定义分类名称、新增分类、给每类单独映射成果文件夹与 Obsidian vault、一键初始化目录骨架，
-          都需要在宿主设置里新增持久化字段。按 OD-ARCH-061 风险①，这一块先停在这里等架构决策，
-          已实现的只有上面的固定四类与下面的入口声明。
+          目录规则：成果子文件夹只能落在成果根内，vault 用绝对路径且不能是应用数据目录；
+          越界会被拒绝并在这里显示原因。「初始化目录骨架」只建缺失目录，已有目录与文件原样保留。
         </p>
 
         <CardHead

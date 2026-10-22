@@ -1230,6 +1230,142 @@ fn task_set_artifact_root(
     }))
 }
 
+/// 对话分类（OD-ARCH-062）：只读写 settings.v1 的 `thread_categories`。
+/// 不迁移既有线程标签、不改成果目录与模型权限；越界目录整次拒绝。
+#[tauri::command(async)]
+fn category_settings_load(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let settings = settings::load(&config_dir)?;
+    let mut rows = Vec::with_capacity(settings.thread_categories.len());
+    for c in &settings.thread_categories {
+        let resolved = settings::resolve_category_target(&config_dir, c);
+        rows.push(serde_json::json!({
+            "key": c.key,
+            "label": c.label,
+            "folder": c.folder,
+            "vault": c.vault,
+            "builtin": settings::BUILTIN_CATEGORY_KEYS.contains(&c.key.as_str()),
+            "resolved_dir": resolved.as_ref().ok().map(|p| p.display().to_string()),
+            "resolve_error": resolved.err(),
+        }));
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "settings_path": settings::settings_path(&config_dir).display().to_string(),
+        "categories": rows,
+    }))
+}
+
+#[tauri::command(async)]
+fn category_update(
+    state: State<'_, SharedHost>,
+    key: String,
+    label: Option<String>,
+    folder: Option<String>,
+    vault: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    // 空字符串表示“清除该映射”，None 表示“这一项不动”。
+    let folder_patch = folder.map(|f| if f.trim().is_empty() { None } else { Some(f) });
+    let vault_patch = vault.map(|v| if v.trim().is_empty() { None } else { Some(v) });
+    let categories = settings::update_thread_category(
+        &paths,
+        &key,
+        label,
+        folder_patch,
+        vault_patch,
+    )?;
+    Ok(serde_json::json!({ "ok": true, "count": categories.len() }))
+}
+
+/// 新增一个自定义分类。键由这里生成（custom:<slug>），不接受前端任意键。
+/// 新增分类只进入归类下拉与成果映射，不会自动出现在 Dock。
+#[tauri::command(async)]
+fn category_add(
+    state: State<'_, SharedHost>,
+    label: String,
+    folder: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let mut settings_now = settings::load(&paths.config)?;
+    let exists = |list: &[settings::ThreadCategory], wanted: &str| {
+        list.iter().any(|c| c.label.trim() == wanted)
+    };
+    let trimmed = label.trim();
+    if exists(&settings_now.thread_categories, trimmed) {
+        return Err(format!("已经有同名分类：{}", trimmed));
+    }
+    let mut seq = 1;
+    let key = loop {
+        let candidate = format!("custom:cat-{}", seq);
+        if !settings_now.thread_categories.iter().any(|c| c.key == candidate) {
+            break candidate;
+        }
+        seq += 1;
+        if seq > settings::MAX_CATEGORIES {
+            return Err("自定义分类数量已达上限".to_string());
+        }
+    };
+    settings_now.thread_categories.push(settings::ThreadCategory {
+        key: key.clone(),
+        label: trimmed.to_string(),
+        folder: folder.map(|f| f.trim().to_string()).filter(|f| !f.is_empty()),
+        vault: None,
+    });
+    settings::set_thread_categories(&paths, settings_now.thread_categories)?;
+    Ok(serde_json::json!({ "ok": true, "key": key }))
+}
+
+/// 删除自定义分类。内置四类不可删；被线程引用的自定义分类也不删（避免线程失去归属）。
+#[tauri::command(async)]
+fn category_remove(
+    state: State<'_, SharedHost>,
+    key: String,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    if settings::BUILTIN_CATEGORY_KEYS.contains(&key.as_str()) {
+        return Err(format!("内置分类不能删除：{}", key));
+    }
+    let mut current = settings::load(&paths.config)?;
+    current.thread_categories.retain(|c| c.key != key);
+    settings::set_thread_categories(&paths, current.thread_categories)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// 建分类对应的目录骨架：只创建缺失目录，已存在跳过，不删不改任何文件。
+#[tauri::command(async)]
+fn category_init_folders(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let categories = settings::load(&config_dir)?.thread_categories;
+    let rows = settings::init_category_folders(&config_dir, &categories)?;
+    let created = rows.iter().filter(|r| r["created"] == true).count();
+    Ok(serde_json::json!({
+        "ok": true,
+        "created": created,
+        "items": rows,
+        "note": "只创建缺失目录；已存在的目录与其中的文件原样保留。",
+    }))
+}
+
 /// 在系统文件管理器中打开当前成果目录（只读入口）。
 ///
 /// 不拼接 shell 命令：只执行固定的 `xdg-open` / `gio open`，目录作为单独参数传入，
@@ -2182,6 +2318,11 @@ pub fn run() {
             task_local_root_info,
             task_set_artifact_root,
             task_open_artifact_root,
+            category_settings_load,
+            category_update,
+            category_add,
+            category_remove,
+            category_init_folders,
             task_open_dsh_settings,
             task_list_model_routes,
             task_set_model_route,
