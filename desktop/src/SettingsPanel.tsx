@@ -670,7 +670,11 @@ export default function SettingsPanel() {
                   : "尚未配置"
                 : view?.key_error
                   ? "无法读取凭据状态（不影响其它设置）"
-                  : "读取中…"}
+                  : view
+                    ? // OD-ARCH-056：Rust 侧在「没有已存配置」时返回 key_status=null 且无
+                      // key_error，属正常的「未配置」。此前这里落到「读取中…」会永久不收敛。
+                      "尚未配置"
+                    : "读取中…"}
             </span>
           </div>
         </div>
