@@ -355,3 +355,29 @@ export function removeThread(id: string): void {
 export function normalizeTag(value: string | null | undefined): ThreadTag {
   return isSceneKey(value) ? value : "plain";
 }
+
+/**
+ * 「去对话」的交接点（OD-ARCH-057）。
+ *
+ * 场景页已不含对话框，只能把「打开哪条对话」交给首页。这里用一个进程内的一次性
+ * 请求槽：写入后首页取走并清空。不落盘、不发事件、不改数据结构。
+ */
+let pendingOpenThreadId: string | null = null;
+let pendingNewThreadTag: ThreadTag | null = null;
+
+export function requestOpenThread(id: string): void {
+  pendingOpenThreadId = id;
+  pendingNewThreadTag = null;
+}
+
+export function requestNewThread(tag: ThreadTag): void {
+  pendingOpenThreadId = null;
+  pendingNewThreadTag = tag;
+}
+
+export function takePendingThreadRequest(): { open: string | null; create: ThreadTag | null } {
+  const out = { open: pendingOpenThreadId, create: pendingNewThreadTag };
+  pendingOpenThreadId = null;
+  pendingNewThreadTag = null;
+  return out;
+}

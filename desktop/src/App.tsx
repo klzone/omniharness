@@ -17,7 +17,7 @@ import type { EngineDescriptor, ProfileDeclPayload } from "./types";
  * 应用外壳（OD-ARCH-026）。
  *
  * 结构：悬浮顶栏 + 左侧 Dock + 场景区。
- * - 首页以对话为中枢（HomeChat），左侧 Dock 进入周报与随记、文案写作、项目跟踪。
+ * - 首页以对话为中枢（HomeChat），左侧 Dock 进入工作记录、文案写作、项目跟踪。
  * - 三个工作场景复用离线流程页的同一套交互骨架，按入口进入对应场景；
  *   它们的模型任务都走同一条引擎适配链路，代码只做确定性校验与文件边界控制。
  * - 任务工作台仍是脱敏数据分析的纵向试点；引擎诊断是只读覆盖层。
@@ -241,7 +241,7 @@ export default function App() {
           <p className="text-[12.5px] font-medium text-on-surface">先配置一个模型端点</p>
           <p className="mt-1 text-[11.5px] leading-relaxed text-on-surface-variant">
             这台机器上还没有模型配置。到设置里填服务商地址、协议与密钥，点「测试连接」确认能通，
-            保存后就能在周报、文案与项目跟进里使用模型。已有配置的机器不会再看到这条提示。
+            保存后就能在工作记录、文案写作与项目跟进里使用模型。已有配置的机器不会再看到这条提示。
           </p>
           <button
             className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-[11.5px] text-on-primary"
@@ -258,7 +258,7 @@ export default function App() {
             <p className="text-[11.5px] text-outline">正在从本机数据目录恢复对话记录…</p>
           </div>
         ) : scene === "home" ? (
-          <HomeCanvas onNavigate={selectScene} />
+          <HomeCanvas onNavigate={selectScene} declaredScenes={decl?.decl.scenes ?? null} />
         ) : scene === "report" || scene === "writing" || scene === "project" ? (
           <ScenePage
             scene={scene === "report" ? "weekly" : scene === "writing" ? "writing" : "project"}

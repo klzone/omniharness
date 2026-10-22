@@ -149,6 +149,18 @@ function AssistantText({
 
 export interface HomeChatProps {
   onNavigate: (scene: Scene) => void;
+  /**
+   * 场景选择（OD-ARCH-057）：首页是唯一的对话入口，场景在这里选。
+   * 传入即显示场景 chip；选项由 Profile 声明联动（隐藏的入口不出现）。
+   */
+  sceneOptions?: Array<{ key: string; label: string }> | null;
+  activeTag?: string;
+  onChangeTag?: (tag: string) => void;
+  /** 本机对话列表（同一行显示，可切回旧对话）。 */
+  threadOptions?: Array<{ id: string; title: string; tagLabel: string | null }> | null;
+  activeThreadId?: string | null;
+  onSelectThread?: (id: string) => void;
+  onNewThread?: () => void;
   /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
   preset?: ChatPreset | null;
   /** 项目工作目录（绝对路径）；缺省时用宿主准备的工作区。 */
@@ -173,6 +185,13 @@ export interface HomeChatProps {
 export function HomeChat({
   onNavigate,
   preset = null,
+  sceneOptions = null,
+  activeTag = "plain",
+  onChangeTag,
+  threadOptions = null,
+  activeThreadId = null,
+  onSelectThread,
+  onNewThread,
   projectDir = null,
   threadKey = "default",
   initialMessages = [],
@@ -781,7 +800,7 @@ export function HomeChat({
           <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
             <p className="text-[13px] text-on-surface-variant">这里还没有对话。</p>
             <p className="text-[11.5px] text-outline leading-relaxed max-w-[36ch]">
-              直接在下面输入要处理的事，或在左栏点「新对话」开始一段新的。对话只保存在本机，不会自动上传。
+              直接在下面输入要处理的事，或点下方的「新对话」开始一段新的。对话只保存在本机，不会自动上传。
             </p>
           </div>
         ) : null}
@@ -900,6 +919,63 @@ export function HomeChat({
         </div>
         <div className="mt-2.5 pt-2 border-t border-surface-variant/30 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5">
+            {/* 场景选择（OD-ARCH-057）：对话只有首页这一处，场景在这里选。
+                选项由 Profile 声明联动——声明里隐藏的入口不会出现在这里。 */}
+            {sceneOptions && sceneOptions.length > 0 ? (
+              <>
+                <label className="sr-only" htmlFor="od-scene-chip">
+                  本次对话归到哪个场景
+                </label>
+                <select
+                  id="od-scene-chip"
+                  data-testid="scene-chip"
+                  className="px-2.5 py-1 rounded-full plate-soft-inset font-label-caps text-[11px] text-on-surface-variant"
+                  value={activeTag}
+                  onChange={(e) => onChangeTag?.(e.target.value)}
+                  disabled={busy}
+                  title="选场景后，这段对话按该场景的规则组织，成果也归到该场景的档案里"
+                >
+                  {sceneOptions.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+            {threadOptions && onSelectThread ? (
+              <>
+                <label className="sr-only" htmlFor="od-thread-chip">
+                  切换本机对话
+                </label>
+                <select
+                  id="od-thread-chip"
+                  className="px-2.5 py-1 rounded-full plate-soft-inset font-label-caps text-[11px] text-on-surface-variant max-w-[13rem]"
+                  value={activeThreadId ?? ""}
+                  onChange={(e) => onSelectThread(e.target.value)}
+                  disabled={busy}
+                  title="本机保存过的对话；选择后接着聊，历史完整保留"
+                >
+                  {threadOptions.length === 0 ? <option value="">还没有保存的对话</option> : null}
+                  {threadOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.tagLabel ? `[${t.tagLabel}] ${t.title}` : t.title}
+                    </option>
+                  ))}
+                </select>
+                {onNewThread ? (
+                  <button
+                    onClick={onNewThread}
+                    disabled={busy}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
+                    title="开一段新对话（当前这段已自动保存在本机）"
+                  >
+                    <Icon name="note" className="w-[13px] h-[13px]" />
+                    <span>新对话</span>
+                  </button>
+                ) : null}
+              </>
+            ) : null}
             <button
               disabled
               title="未实现"

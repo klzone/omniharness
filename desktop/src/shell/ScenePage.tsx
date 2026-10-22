@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { shell } from "../api";
 import { SCENES, sameScenario, type SceneKey } from "../scenes";
-import type { OfflineFlowPack } from "../types";
 import {
-  createThread,
   listThreadsByTag,
   removeThread,
+  requestNewThread,
+  requestOpenThread,
   retagThread,
-  saveThreadMessages,
-  setThreadEngineSession,
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
 import type { OfflineArtifactEntry } from "../types";
 import { AnnouncementBar } from "./AnnouncementBar";
-import { HomeChat } from "./HomeChat";
-import { SceneScaffold } from "./SceneScaffold";
 import type { Scene } from "./Dock";
 
 /** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
@@ -77,9 +73,8 @@ function filterSceneArtifacts(
 /**
  * 场景页（OD-ARCH-033 目标 2/3/5）。
  *
- * 版式与首页一致（同一个 `SceneScaffold`）：
- *   提醒 / 建议栏（横向）→ 双栏（左：本场景历史对话；右：成果档案，项目跟进多一个「进度」页签）
- *   → 下部对话区（与首页同一个 `HomeChat`）。
+ * 场景页是**档案页**（OD-ARCH-057）：只列本场景的对话与成果，自己不承载对话框。
+ * 要接着说事，点「去对话」回首页——整个应用只有首页那一个对话框。
  *
  * 诚实性：
  *   * 「进度」页签的数字来自**既有的确定性汇总命令**（`task_project_summary`），不是模型算的。
@@ -95,49 +90,20 @@ export function ScenePage({
 }) {
   const def = SCENES[scene];
   const [threads, setThreads] = useState<SceneThread[]>(() => listThreadsByTag(scene));
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [tab, setTab] = useState<"progress" | "artifacts">(def.hasProgress ? "progress" : "artifacts");
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() => readSubdirsPref(scene));
   const [progress, setProgress] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
-  const [pack, setPack] = useState<OfflineFlowPack | null>(null);
-
-  // 场景预设的规则来自可编辑的流程包（缺省时由组装器回落内置默认）。
-  useEffect(() => {
-    shell
-      .offlineFlowPack()
-      .then((r) => setPack(r.ok ? r.pack : null))
-      .catch(() => setPack(null));
-  }, []);
-
-  const preset = useMemo(() => {
-    const flow = pack ? pack[def.preset] : null;
-    return {
-      key: def.preset,
-      label: def.label,
-      rules: flow?.draft?.rules ?? null,
-      sections: flow?.draft?.sections ?? null,
-    };
-  }, [pack, def.preset, def.label]);
 
   const refreshThreads = useCallback(() => {
     setThreads(listThreadsByTag(scene));
   }, [scene]);
 
-  // 进场景时若没有正在进行的对话，就开一段新的（带场景标签）。
+  // 进场景时只读档案，**不**自动新建对话（对话只在首页发生）。
   useEffect(() => {
-    const existing = listThreadsByTag(scene);
-    if (existing.length === 0) {
-      const t = createThread({ tag: scene, preset: def.preset });
-      setThreads([t]);
-      setActiveId(t.id);
-    } else {
-      setThreads(existing);
-      setActiveId((prev) => prev ?? existing[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setThreads(listThreadsByTag(scene));
   }, [scene]);
 
   // 成果档案：只列本场景自己保存的成果。开关决定是否含下级目录。
@@ -155,21 +121,18 @@ export function ScenePage({
     return () => {
       alive = false;
     };
-  }, [def.scenario, activeId, includeSubdirs]);
-
-  const active = threads.find((t) => t.id === activeId) ?? null;
+  }, [def.scenario, includeSubdirs]);
 
   /** 本场景最近一次输入的事项文本（确定性汇总的输入）。 */
   const itemsText = useMemo(() => {
-    const pool = active ? [active, ...threads] : threads;
-    for (const t of pool) {
+    for (const t of threads) {
       for (let i = t.messages.length - 1; i >= 0; i -= 1) {
         const m = t.messages[i];
         if (m.role === "user" && m.text.trim()) return m.text;
       }
     }
     return "";
-  }, [threads, active]);
+  }, [threads]);
 
   // 进度：既有确定性汇总（不调模型）。
   useEffect(() => {
@@ -211,11 +174,20 @@ export function ScenePage({
     }
   }, []);
 
+  /** 回首页开一段新对话（带本场景标签）。 */
   const newThread = useCallback(() => {
-    const t = createThread({ tag: scene, preset: def.preset });
-    setThreads(listThreadsByTag(scene));
-    setActiveId(t.id);
-  }, [scene, def.preset]);
+    requestNewThread(scene);
+    onNavigate("home");
+  }, [scene, onNavigate]);
+
+  /** 回首页继续这段对话。 */
+  const openThread = useCallback(
+    (id: string) => {
+      requestOpenThread(id);
+      onNavigate("home");
+    },
+    [onNavigate],
+  );
 
   const retag = useCallback(
     (id: string, tag: ThreadTag) => {
@@ -225,8 +197,8 @@ export function ScenePage({
     [refreshThreads],
   );
 
-  const upper = (
-    <>
+  return (
+    <main className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
       <div className="shrink-0">
         <AnnouncementBar
           scene={def}
@@ -234,7 +206,7 @@ export function ScenePage({
           onOpenArtifact={(f) => void openArtifact(f)}
         />
       </div>
-      <div className="flex flex-col lg:flex-row gap-4 lg:items-stretch max-h-[34vh]">
+      <div className="flex flex-col lg:flex-row gap-4 lg:items-stretch">
         {/* 左栏：本场景历史对话 */}
         <section className="lg:w-[300px] shrink-0 bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-0">
           <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
@@ -244,27 +216,22 @@ export function ScenePage({
             <button
               className="text-[11px] text-primary hover:underline"
               onClick={newThread}
-              title="在本格场景里开一段新对话"
+              title="回首页，按本场景开一段新对话"
             >
-              新对话
+              去对话 · 新开
             </button>
           </div>
           <div className="pt-2 flex flex-col gap-1 min-h-0 overflow-y-auto flex-1">
             {threads.length === 0 ? (
               <p className="text-[11px] text-outline leading-relaxed">
-                还没有这个场景的对话。点「新对话」直接说事。
+                还没有这个场景的对话。去首页对话，场景选「{def.label}」即可。
               </p>
             ) : (
               threads.map((t) => (
                 <div key={t.id} className="flex items-center gap-1">
                   <button
-                    onClick={() => setActiveId(t.id)}
-                    className={
-                      "flex-1 text-left px-2 py-1.5 rounded-lg text-[11.5px] truncate " +
-                      (t.id === activeId
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "text-on-surface-variant hover:bg-surface-container")
-                    }
+                    onClick={() => openThread(t.id)}
+                    className="flex-1 text-left px-2 py-1.5 rounded-lg text-[11.5px] truncate text-on-surface-variant hover:bg-surface-container"
                     title={t.title}
                   >
                     {t.title}
@@ -275,7 +242,7 @@ export function ScenePage({
                     onChange={(e) => retag(t.id, e.target.value as ThreadTag)}
                     title="改挂到别的场景"
                   >
-                    <option value="weekly">周报</option>
+                    <option value="weekly">工作记录</option>
                     <option value="writing">文案</option>
                     <option value="project">项目</option>
                     <option value="plain">普通</option>
@@ -357,7 +324,7 @@ export function ScenePage({
                 <p className="text-[11px] text-outline leading-relaxed">
                   {progressError
                     ? "确定性汇总没有产出：" + progressError
-                    : "还没有可汇总的事项。在下面的对话里写下事项（日期｜事项｜状态），这里会按本机时间给出进度、逾期与阶段汇总——确定性计算，不调模型。"}
+                    : "还没有可汇总的事项。在首页对话里写下事项（日期｜事项｜状态），这里会按本机时间给出进度、逾期与阶段汇总——确定性计算，不调模型。"}
                 </p>
               )
             ) : artifacts.length === 0 ? (
@@ -417,32 +384,6 @@ export function ScenePage({
           </div>
         </section>
       </div>
-    </>
-  );
-
-  return (
-    <SceneScaffold
-      upper={upper}
-      chat={
-        <HomeChat
-          key={activeId ?? "none"}
-          onNavigate={onNavigate}
-          preset={preset}
-          threadKey={activeId ?? "none"}
-          initialMessages={active?.messages ?? []}
-          engineSessionId={active?.engineSessionId ?? null}
-          onEngineSessionId={(sid) => {
-            if (!activeId) return;
-            setThreadEngineSession(activeId, sid);
-            refreshThreads();
-          }}
-          onMessagesChange={(messages) => {
-            if (!activeId) return;
-            saveThreadMessages(activeId, messages);
-            refreshThreads();
-          }}
-        />
-      }
-    />
+    </main>
   );
 }
