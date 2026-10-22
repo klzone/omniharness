@@ -314,6 +314,13 @@ export function ScenePage({
             </div>
           ) : null}
 
+          {tab === "artifacts" ? (
+            <p className="pt-1.5 text-[10px] text-outline leading-relaxed">
+              成果是标准 Markdown：可在 Obsidian 里「打开文件夹作为 vault」，指向设置页显示的成果目录即可直接浏览。
+              OmniDesk 只写自己生成的成果，不读取也不改动你 vault 里的其他笔记。
+            </p>
+          ) : null}
+
           <div className="pt-2 min-h-0 overflow-y-auto flex-1">
             {tab === "progress" ? (
               progress ? (
