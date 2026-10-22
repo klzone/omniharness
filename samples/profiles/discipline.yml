@@ -27,6 +27,6 @@ scenes:
     icon: checklist
     note: 模型起草
   - id: sessions
-    label: 项目与会话
+    label: 历史会话
     icon: history
-    note: 引擎项目 · 对话
+    note: 引擎会话 · 本机对话

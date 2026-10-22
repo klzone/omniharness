@@ -13,6 +13,7 @@ import {
   type ThreadTag,
 } from "../sceneThreads";
 import type { OfflineFlowPack, ProfileSceneEntry } from "../types";
+import { categoryLabel } from "../threadCategories";
 import type { Scene } from "./Dock";
 import { HomeChat, type ChatPreset } from "./HomeChat";
 import { SceneScaffold } from "./SceneScaffold";
@@ -41,7 +42,10 @@ function greeting(date: Date): string {
   return "晚上好";
 }
 
-/** 对话 chip 里的场景选项：只放声明里出现的业务场景，普通对话始终第一项。 */
+/**
+ * 对话归类的选项（OD-ARCH-061 S1）：固定四类，顺序不动。
+ * 声明里隐藏了某个业务场景时，对应那一类不出现；「未分类」始终在。
+ */
 function sceneOptions(
   declared: ProfileSceneEntry[] | null | undefined,
 ): Array<{ key: ThreadTag; label: string }> {
@@ -52,11 +56,11 @@ function sceneOptions(
   ];
   const visible = declared ? new Set(declared.map((d) => d.id as string)) : null;
   const options: Array<{ key: ThreadTag; label: string }> = [
-    { key: "plain", label: "自由对话（不归类）" },
+    { key: "plain", label: categoryLabel("plain") },
   ];
   for (const [key, declId] of map) {
     if (visible && !visible.has(declId)) continue;
-    options.push({ key, label: SCENES[key].label });
+    options.push({ key, label: categoryLabel(key) });
   }
   return options;
 }
@@ -256,13 +260,7 @@ export function HomeCanvas({
                   打开对应场景页，在顶部状态条点「待确认写入」查看。
                 </p>
               )}
-              <button
-                onClick={() => onNavigate("workbench")}
-                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-primary text-on-primary font-label-caps text-[11px] hover:bg-primary-container active:scale-95 transition-all shadow-sm"
-              >
-                <Icon name="terminal" className="w-[14px] h-[14px]" />
-                <span>前往任务工作台</span>
-              </button>
+              {/* 任务工作台已下线（OD-ARCH-061 S4）：同一份计数在场景页顶部状态条里可看。 */}
             </div>
           </div>
 

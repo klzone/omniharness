@@ -1,48 +1,37 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { host, shell } from "../api";
-import { SCENES, type SceneKey } from "../scenes";
+import { useCallback, useEffect, useState } from "react";
+import { host } from "../api";
 import {
-  createThread,
-  listThreads,
   listThreadsByTag,
+  requestNewThread,
+  requestOpenThread,
   retagThread,
-  saveThreadMessages,
-  setThreadEngineSession,
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import type { OfflineFlowPack, SessionGroup } from "../types";
-import { HomeChat, type ChatMessage } from "./HomeChat";
+import { THREAD_CATEGORIES } from "../threadCategories";
+import type { SessionGroup } from "../types";
+import type { Scene } from "./Dock";
 import { ProjectRail } from "./ProjectRail";
 
 /**
- * 项目与会话模块（OD-ARCH-033 目标 3/4）。
+ * 历史会话模块（OD-ARCH-033，OD-ARCH-061 改名并清理）。
  *
- * **这里**是 DSH 原本那套「项目 / 会话」的落点：一个模块、一个分页。
- * 首页不出现项目树、也不做左右分栏——首页仍是用户已确认的对话中枢版式；
- * 左侧 Dock 继续是进入各场景（工作记录 / 文案写作 / 项目跟进…）的入口。
+ * 本页只做检索与定位，不再自带对话框：整个应用只有首页一处对话（OD-ARCH-057）。
+ * 选中本机对话会带回首页继续；引擎会话只展示只读元数据与恢复按钮。
  *
  * 两条线分开呈现，不混为一谈：
  *   * **引擎项目 / 引擎会话**：宿主从 DSH 读回的真实分组与会话（只读元数据，界面不拼路径）。
- *   * **本机对话**：工作台自己的对话线程（带场景标签）；打标后即归入对应场景页。
- *
- * 诚实性约束：
- *   * 本机对话的每一轮都是一次**独立任务**（任务号不同），但**引擎会话是同一个**：
- *     线程记住引擎会话号，下一轮续接同一会话（OD-ARCH-034），上下文由引擎持有，
- *     工作台不再重放上文；只有新建会话或旧线程首次续聊时才走窗口化重放。
- *   * 上下文保存在**本地存储**（只在本机、只在这份前端里），不进 Git、不进成果目录。
+ *   * **本机对话**：工作台自己的对话线程（带归类标签），选中后回首页打开。
  */
-
 export type PresetKey = "plain" | "weekly" | "writing" | "project";
 
-const TAG_OPTIONS: Array<{ key: ThreadTag; label: string }> = [
-  { key: "plain", label: "普通对话" },
-  { key: "weekly", label: SCENES.weekly.label },
-  { key: "writing", label: SCENES.writing.label },
-  { key: "project", label: SCENES.project.label },
-];
+/** 归类标签只有一份（OD-ARCH-061）：与首页胶囊同源，避免两处各写一套文案。 */
+const TAG_OPTIONS: Array<{ key: ThreadTag; label: string }> = THREAD_CATEGORIES.map((c) => ({
+  key: c.key,
+  label: c.label,
+}));
 
-export function Workspace() {
+export function Workspace({ onNavigate }: { onNavigate: (scene: Scene) => void }) {
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,16 +39,8 @@ export function Workspace() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [newTag, setNewTag] = useState<ThreadTag>("plain");
-  const [pack, setPack] = useState<OfflineFlowPack | null>(null);
   const [drafts, setDrafts] = useState<SceneThread[]>([]);
   const [recovered, setRecovered] = useState<string | null>(null);
-
-  useEffect(() => {
-    shell
-      .offlineFlowPack()
-      .then((r) => setPack(r.ok ? r.pack : null))
-      .catch(() => setPack(null));
-  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -86,33 +67,13 @@ export function Workspace() {
     refreshDrafts();
   }, [refreshDrafts]);
 
-  const preset = useMemo(() => {
-    if (newTag === "plain") {
-      return { key: "plain", label: "普通对话", rules: null, sections: null };
-    }
-    const key = newTag as SceneKey;
-    const flow = pack ? pack[key] : null;
-    return {
-      key,
-      label: SCENES[key].label,
-      rules: flow?.draft?.rules ?? null,
-      sections: flow?.draft?.sections ?? null,
-    };
-  }, [newTag, pack]);
+  const activeThread = activeDraftId ? drafts.find((t) => t.id === activeDraftId) ?? null : null;
 
-  const activeKey = activeSessionId ?? activeDraftId;
-  const activeThread = activeDraftId ? listThreads().find((t) => t.id === activeDraftId) ?? null : null;
-  const messages: ChatMessage[] = activeThread?.messages ?? [];
-
+  /** 新对话：交给首页开（唯一对话框）。 */
   const newDraft = useCallback(() => {
-    const t = createThread({
-      tag: newTag,
-      preset: newTag === "plain" ? "plain" : newTag,
-    });
-    refreshDrafts();
-    setActiveDraftId(t.id);
-    setActiveSessionId(null);
-  }, [newTag, refreshDrafts]);
+    requestNewThread(newTag);
+    onNavigate("home");
+  }, [newTag, onNavigate]);
 
   const recover = useCallback(async () => {
     if (!activeSessionId) return;
@@ -164,14 +125,14 @@ export function Workspace() {
         <header className="flex items-center justify-between pb-2 pt-1 flex-shrink-0">
           <div className="min-w-0">
             <h1 className="font-display-hero text-xl font-light text-on-surface tracking-tight truncate">
-              {activeSessionId ? "引擎会话" : activeDraftId ? "本机对话" : "项目与会话"}
+              {activeSessionId ? "引擎会话" : activeThread ? "本机对话" : "历史会话"}
             </h1>
             <p className="text-[11px] text-outline truncate">
               {activeSessionId
                 ? activeSessionId
-                : activeDraftId
-                  ? "打上场景标签后，这条对话会归入对应场景页的左栏"
-                  : "从左侧选一个引擎会话，或点「新会话」开一段对话"}
+                : activeThread
+                  ? "这段对话在首页继续；归类标签决定它归到哪个场景。"
+                  : "从左侧选一段对话，或点「新会话」回首页开一段新的。"}
             </p>
           </div>
           {activeSessionId ? (
@@ -187,26 +148,39 @@ export function Workspace() {
 
         {recovered ? <p className="text-[11px] text-outline pb-1 shrink-0">{recovered}</p> : null}
 
-        <div className="flex-1 min-h-0 flex flex-col">
-          <HomeChat
-            key={activeKey ?? "empty"}
-            onNavigate={() => {}}
-            preset={preset}
-            projectDir={null}
-            threadKey={activeKey ?? "empty"}
-            initialMessages={messages}
-            engineSessionId={activeThread?.engineSessionId ?? null}
-            onEngineSessionId={(sid) => {
-              if (!activeDraftId) return;
-              setThreadEngineSession(activeDraftId, sid);
-              refreshDrafts();
-            }}
-            onMessagesChange={(next) => {
-              if (!activeDraftId) return;
-              saveThreadMessages(activeDraftId, next);
-              refreshDrafts();
-            }}
-          />
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl bg-white/80 border border-white/90 p-4">
+          {activeThread ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-outline">归类</span>
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-label-caps text-[10px]">
+                  {TAG_OPTIONS.find((o) => o.key === activeThread.tag)?.label ?? activeThread.tag}
+                </span>
+              </div>
+              <p className="text-[11.5px] text-on-surface-variant leading-relaxed">
+                这段对话共有 {activeThread.messages.length} 条消息，保存在本机。
+                点下面的按钮回首页接着聊。
+              </p>
+              <button
+                className="self-start px-3 py-1.5 rounded-full bg-primary text-on-primary font-label-caps text-[11px] hover:bg-primary-container"
+                onClick={() => {
+                  requestOpenThread(activeThread.id);
+                  onNavigate("home");
+                }}
+              >
+                去首页继续
+              </button>
+            </div>
+          ) : activeSessionId ? (
+            <p className="text-[11.5px] text-on-surface-variant leading-relaxed">
+              这是引擎里的会话，只显示只读元数据。本页不能直接对话。
+              需要继续工作时，回首页开一段对话即可。
+            </p>
+          ) : (
+            <p className="text-[11.5px] text-on-surface-variant leading-relaxed">
+              从左侧选一段对话；这里不会显示对话内容，也不会把内容复制到别处。
+            </p>
+          )}
         </div>
       </section>
     </main>

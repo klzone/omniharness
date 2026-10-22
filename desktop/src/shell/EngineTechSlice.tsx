@@ -27,7 +27,14 @@ const CATEGORY_LABEL: Record<string, string> = {
  * 合成链路验证由专用脚本承担（`tests/verification/desktop/`），不需要保留一个
  * 可绕过准入的界面入口。
  */
-export function EngineTechSlice({ onClose }: { onClose: () => void }) {
+export function EngineTechSlice({
+  onClose,
+  embedded = false,
+}: {
+  onClose?: () => void;
+  /** 嵌进设置页时去掉全屏覆盖层与标题栏关闭按钮（OD-ARCH-061 S2）。 */
+  embedded?: boolean;
+}) {
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [health, setHealth] = useState<EngineHealth | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
@@ -117,8 +124,19 @@ export function EngineTechSlice({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm p-6 sm:p-10 overflow-y-auto">
-      <div className="mx-auto max-w-6xl bg-surface-container-lowest rounded-2xl shadow-2xl border border-white/80 overflow-hidden">
+    <div
+      className={
+        embedded
+          ? "w-full"
+          : "fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm p-6 sm:p-10 overflow-y-auto"
+      }
+    >
+      <div
+        className={
+          "mx-auto max-w-6xl bg-surface-container-lowest rounded-2xl overflow-hidden " +
+          (embedded ? "border border-surface-container" : "shadow-2xl border border-white/80")
+        }
+      >
         <header className="flex items-center justify-between px-5 py-3.5 border-b border-surface-container">
           <div className="flex items-center space-x-2.5">
             <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center">
@@ -146,12 +164,14 @@ export function EngineTechSlice({ onClose }: { onClose: () => void }) {
             >
               {busy ? "刷新中…" : "刷新"}
             </button>
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container-high transition-colors"
-            >
-              关闭
-            </button>
+            {onClose && !embedded ? (
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container-high transition-colors"
+              >
+                关闭
+              </button>
+            ) : null}
           </div>
         </header>
 
