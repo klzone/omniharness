@@ -1,4 +1,4 @@
-// 三个工作场景：周报与随记（weekly）、文案写作（writing）、项目跟踪（project）。
+// 三个工作场景：工作记录（weekly）、文案写作（writing）、项目跟踪（project）。
 //
 // OD-ARCH-026：模型是内容处理步骤。用户输入 + 用户**明确选择**的材料文件（原样）经现有
 // 引擎适配链路，由可编辑、带版本的流程包规则驱动起草；结果回到界面供人工编辑、确认、保存。
@@ -37,7 +37,7 @@ const MAX_MATERIALS = 5;
 
 /** 流程包不可用时的兜底文案：只用于说明“配置被拒绝”，不用于生成结果。 */
 const FALLBACK_LABEL: Record<Tab, string> = {
-  weekly: "周记录 → 周报",
+  weekly: "工作记录",
   writing: "一般文案结构",
   project: "项目跟进",
 };

@@ -1,7 +1,7 @@
 // 场景注册表（OD-ARCH-033）。
 //
 // 三个工作场景共用同一套骨架与同一套对话；**场景只决定注入什么**：
-//   * 对话开场预设（周报 / 文案 / 项目 的整理与起草规则）；
+//   * 对话开场预设（工作记录 / 文案 / 项目 的整理与起草规则）；
 //   * 右栏看什么（成果档案，或「进度 / 阶段成果」两个页签）；
 //   * 提醒/建议栏的规则提醒取自哪一份确定性汇总。
 //
@@ -31,8 +31,8 @@ export interface SceneDef {
 export const SCENES: Record<SceneKey, SceneDef> = {
   weekly: {
     key: "weekly",
-    label: "周报与随记",
-    dockLabel: "周报与随记",
+    label: "工作记录",
+    dockLabel: "工作记录",
     scenario: "weekly_report",
     preset: "weekly",
     hasProgress: false,

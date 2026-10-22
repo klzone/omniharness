@@ -53,7 +53,7 @@ scenes:
     label: 工作台首页
     icon: brand
   - id: report
-    label: 周报与随记
+    label: 工作记录
     icon: note
     note: 模型起草
   - id: project
