@@ -38,6 +38,7 @@ import type {
   SchedulerConfig,
   SchedulerSnapshot,
   SchedulerTick,
+  SceneOverviewResponse,
   HeartbeatScan,
   UsageReadResult,
   UsageRecord,
@@ -771,6 +772,18 @@ export const shell = {
       "task_list_offline_artifacts",
       { includeSubdirs },
     ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 场景状态汇总（OD-ARCH-060 S1/S5）：待确认条数、本周/本月成果计数与本周截止日。
+   * 全部由宿主从已落盘的元数据数出来，不读正文、不调模型。
+   */
+  sceneOverview(scenarios?: string[]): Promise<SceneOverviewResponse> {
+    return invoke<SceneOverviewResponse>("scene_overview", {
+      scenarios: scenarios ?? null,
+    }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

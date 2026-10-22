@@ -23,6 +23,7 @@ pub mod model_routes;
 pub mod pending_writes;
 pub mod profile_decl;
 pub mod route_classifier;
+pub mod scene_overview;
 pub mod scheduler;
 pub mod settings;
 pub mod sha256;
@@ -1851,6 +1852,45 @@ fn pending_write_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
     pending_writes::dir(&host.paths.engine_state)
 }
 
+/// 场景状态汇总（OD-ARCH-060 S1/S5）。
+///
+/// 只读取宿主机自己落盘的两类元数据：待确认写入记录（不含正文）与成果目录列表
+/// （只有路径、大小、时间）。不读成果正文、不调模型、不写任何文件。
+/// 传入 `scenarios` 时只算这几项；缺省时算三个已知场景。
+#[tauri::command(async)]
+fn scene_overview(
+    state: State<'_, SharedHost>,
+    scenarios: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let now = task_shell::now_secs();
+    let dir = pending_write_dir(&state);
+    let (records, broken) = pending_writes::list(&dir, now)?;
+    let views: Vec<pending_writes::PendingWriteView> =
+        records.iter().map(|r| r.view(now)).collect();
+    // 成果列表读失败时不能当作「零成果」：如实报错，让界面去显示未知。
+    let artifacts = task_shell::list_offline_artifacts_with(true)?;
+    let wanted: Vec<String> = scenarios.unwrap_or_else(|| {
+        vec![
+            "weekly_report".to_string(),
+            "material_writing".to_string(),
+            "project_management".to_string(),
+        ]
+    });
+    let items: Vec<scene_overview::SceneOverview> = wanted
+        .iter()
+        .map(|s| {
+            let mut one = scene_overview::summarize(s, &views, &artifacts, now);
+            one.pending_broken = broken;
+            one
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "ok": true,
+        "now": now,
+        "items": items,
+    }))
+}
+
 /// 登记一条待确认写操作。只有模型 / 定时来源可以登记；人工保存不走这里。
 #[tauri::command(async)]
 fn pending_write_create(
@@ -2170,6 +2210,7 @@ pub fn run() {
             pending_write_list,
             pending_write_confirm,
             pending_write_reject,
+            scene_overview,
             scheduler_config_get,
             scheduler_config_set,
             scheduler_tick,
