@@ -418,8 +418,26 @@ class AppSession:
     def logs(self) -> Path:
         return self.root / "logs"
 
+    @property
+    def xdg(self) -> Path:
+        """WebKitGTK 的 localStorage / 缓存根（默认在 $XDG_DATA_HOME/<identifier>）。
+
+        OD-ARCH-059 S3 实测：不隔离时 App 会把线程缓存写进用户真实的
+        `~/.local/share/dev.omnidesk.discipline`，导致旧对话名漏进验收截图。
+        """
+        return self.root / "xdg"
+
     def prepare(self) -> None:
-        for p in (self.root, self.app_data, self.dsh_home, self.agents_home, self.logs):
+        for p in (
+            self.root,
+            self.app_data,
+            self.dsh_home,
+            self.agents_home,
+            self.logs,
+            self.xdg / "data",
+            self.xdg / "config",
+            self.xdg / "cache",
+        ):
             p.mkdir(parents=True, exist_ok=True)
 
     def _note(self, message: str) -> None:
@@ -508,6 +526,10 @@ class AppSession:
         env["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"
         # 强制 X11 走本次一次性显示，隔离用户的 Wayland 会话（见 XSession 的说明）。
         env["GDK_BACKEND"] = "x11"
+        # WebKitGTK 的本地存储默认落在用户真实目录；验收窗口必须连它一起隔离。
+        env["XDG_DATA_HOME"] = str(self.xdg / "data")
+        env["XDG_CONFIG_HOME"] = str(self.xdg / "config")
+        env["XDG_CACHE_HOME"] = str(self.xdg / "cache")
         env.pop("WAYLAND_DISPLAY", None)
         env.pop("WAYLAND_SOCKET", None)
         if self.artifact_override:
