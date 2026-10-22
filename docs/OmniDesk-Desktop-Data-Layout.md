@@ -120,6 +120,18 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
 默认值定义在 `desktop/src-tauri/src/settings.rs` 的 `DEFAULT_ARTIFACT_SUBDIR = "OmniDesk/workspace/artifacts"`（由 `task_shell.rs` 的 `resolve_local_data_root()` 解析并做边界校验），可用 `OMNIDESK_LOCAL_DATA_ROOT` 显式覆盖（测试用它指向一次性 `/tmp` 根）。两条保存路径共用 `write_new_file_durable()`：`create_new` 拒绝覆盖同名文件，写入或刷盘失败时删除本次半成品。
 
+### 5.0 Obsidian 兼容（OD-ARCH-058 / 059 S3，`code`）
+
+成果 Markdown 可直接当作 Obsidian vault 使用：在 Obsidian 里「打开文件夹作为 vault」指向上面「当前生效」的成果目录即可（路径以设置页「成果目录」区显示为准）。
+
+**frontmatter（仅新文件）：** 两条保存路径在写正文前注入固定的 5 个字段——`scenario`、`title`、`created`（ISO 8601，`YYYY-MM-DDTHH:MM:SSZ`）、`tags`（`["omnidesk", <scenario>]`）、`omnidesk_version`（当前 `omnidesk-task-shell/1`）。渲染函数是 `render_frontmatter()`，单测断言可被 `serde_yaml` 解析、非法字符会加引号转义。frontmatter 属于元数据，不参与输入红线扫描（扫描仍只作用于用户原文）。
+
+**不改造既有文件：** 已在目录里的成果（含旧 YvanAI 位置的）保持字节级不变，不补写 frontmatter、不迁移、不改名、不删除；单测用「先放一份无 frontmatter 的历史成果 → 写入新成果 → 断言历史文件字节不变」覆盖这条边界。
+
+**vault 绑定只有一项：** 默认目录是 `~/OmniDesk/workspace/artifacts`；改绑走设置页「成果目录」区（宿主命令 `task_set_artifact_root`，校验规则与保存路径相同：绝对路径、不在仓库或应用数据根内、软链接解析后仍在允许范围）。改绑后**新**成果落新目录，旧目录文件不动不迁。不做多 vault。
+
+**边界：** OmniDesk 只写自己生成的成果文件，不读取、不改写用户在该 vault 中的其他笔记；用户在 Obsidian 端的整理、改名、删除，OmniDesk 不感知、不干预；读档列表按场景过滤，自然反映文件现状。Obsidian 本体不由 OmniDesk 安装、检测或拉起。
+
 **历史位置（`static`，不迁移、不读取正文）：**
 
     ~/YvanAI/

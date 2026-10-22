@@ -1105,6 +1105,24 @@ export default function SettingsPanel() {
           </div>
           {message ? <p className="hint">{message}</p> : null}
           {error ? <div className="alert">{error}</div> : null}
+          <div className="status-card">
+            <div className="status-row">
+              <span className="k">作为 Obsidian vault</span>
+              <span className="v">
+                在 Obsidian 里选「打开文件夹作为 vault」，指向上面「当前生效」的目录即可。
+                新成果带标准 frontmatter（scenario / title / created / tags），Dataview 可直接查；
+                已有成果保持原样，不会补写或迁移。
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">边界</span>
+              <span className="v">
+                OmniDesk 只写自己生成的成果文件，不读取也不改动你在该 vault 里的其他笔记。
+                你在 Obsidian 端的整理、改名、删除，OmniDesk 不感知、不干预。
+                Obsidian 本体不由 OmniDesk 安装、检测或启动。
+              </span>
+            </div>
+          </div>
           <p className="hint">
             「含下级目录」是按场景分别设置的开关，在各场景页的成果档案栏里切换，默认只看最外层。
           </p>
