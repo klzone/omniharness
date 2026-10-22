@@ -1,5 +1,42 @@
 # 当前实施计划
 
+### OD-ARCH-065：多提供商模型档案 + 探测沿用已存密钥（待批准，2026-10-22）
+
+> **批准依据：** 用户实测 064 通道时点「测试连接」得到 `https://amr-link.open-design.ai/v1/models answered 401`。排查结论（源码事实）：该端点无凭据直连必回 401；用已登记的 `opendesign_Key` 直连返回 200 与 12 个模型。问题不在密钥，而在探测请求没带凭据。用户同时要求：能长期维护多个提供商/模型及其地址与密钥，并明确不得泄露。
+
+**目标：** ①「测试连接」在未输入新密钥时自动沿用该提供商已保存的密钥，不再误报 401；②模型配置从「单套覆盖」升级为「多提供商档案」：每个提供商各存一组模型、各自的地址与凭据引用，用户可增删改与切换默认；③全程沿用 DSH 官方凭据机制，OmniDesk 侧永不读取、缓存、回显或落盘密钥明文。
+
+**已由源码证实的事实（本计划成立的前提，BUILDER 须先复核再动手）：**
+
+1. DSH 的 provider 配置只接受 `apiKeyEnv` 引用名，明文写不进去（`packages/llm/llm-pi-ai/src/index.ts::resolveApiKey`）；密钥只能经官方 `credentials/set` 进入 `$DSH_HOME/.credentials.yaml`。
+2. `credentials` Remote 命名空间只有 `describe / set / unset`，**没有任何取回明文的读路径**（`packages/api/settings-controller/src/credentials.ts`，注释明写 "Secret values cross in one direction only"）。因此「在 OmniDesk 里读回密钥再转发」不可实现，也不能去实现。
+3. DSH 的 `llm/discoverModels` 已内置正确做法：请求里带 `provider` 时，它用该路由已登记的凭据解析密钥（`discoverModels(request, storedProfile)`，`discovery.ts` 第 308–315 行）；只有「草稿未带 key 且未指 provider」时才会裸请求。当前 OmniDesk 恰好走的是后者——`probe_models` 有意不传 `provider`（`dsh_settings.rs` 注释：避免命中内置 catalog 而绕过真实网络请求）。这是本缺陷的直接成因。
+4. 传 `provider` 的唯一副作用：若该 provider 名正好是 pi-ai 内置目录里的厂商（openai / deepseek / openrouter / zai / qwen 等），DSH 会直接返回内置模型表而不发网络请求。当前及计划内的提供商（opendesign、agnescn、glm 网关等自建路由名）不在内置目录中，因此不影响真实连通性判定；但这一点必须在实现中显式处理，不得默认忽略。
+5. `llm-pi-ai` 的 `providers` 是**以路由名为键的字典**（`config.ts::resolveProfiles`），天然支持多提供商并列；补丁层按 entry id 合并，因此多个提供商可写进同一份 OmniDesk 覆盖文件。当前 `render_overlay()` 只渲染一个 provider，是本计划要扩的地方。
+6. **补丁层是浅合并，不是深合并**：`applyEntryPatches` 对非 insert 补丁执行逐键赋值（`runtime/deepseek-harness/vendor/include/src/index.ts` 约 114–119 行），所以补丁里的 `config` 会**整体替换**原 entry 的 `config`。实测 `dsh --profile web --dump-config --patch <覆盖文件>` 后，`providers` 下只剩覆盖文件里的那条路由，Profile 自带的 `agnescn` 消失，`agent-default-model` 同样被整体替换。因此「多 provider 渲染」必须按下面的合并口径写，否则会静默抹掉用户已有的其它路由。
+7. 「测试连接」走的设置服务是独立起的 `dsh web --port 0 --no-open`，**不带 `--profile` 也不带 `--patch`**（`dsh_settings.rs::spawn` 约 394–420 行），Profile 取 DSH 默认（`web`）。所以该进程内存里没有覆盖文件里的 `opendesign` 路由：即使请求带上 `provider`，也解析不到该路由的 storedProfile，仍会退化成裸请求。要让「沿用已保存密钥」真正成立，设置服务必须以与引擎相同的 Profile + 同一份覆盖文件启动。
+
+**影响范围：** `desktop/src-tauri/src/model_settings.rs`（数据结构与渲染，含迁移）、`desktop/src-tauri/src/lib.rs`（`model_settings_probe` 增加 provider 参数；保存/加载命令适配多档案）、`desktop/src-tauri/src/dsh_settings.rs`（`probe_models` 透传 provider，并区分“内置目录答复”与“真实网络答复”）、`desktop/src/SettingsPanel.tsx`（提供商列表 + 增删改 + 设为默认）、`desktop/src/shell/ModelPicker.tsx` 仅当现有目录数据不足时才动、`docs/user-testing-checklist.md` 对应步骤、`docs/OmniDesk-Desktop-Data-Layout.md`（配置文件结构说明）、PLANS/STATUS/REVIEW。通用红线：runtime/ 零差异、凭证零读取零打印零落盘、真实材料不进 Git/evidence、一次性授权分批提交、推送一次。
+
+**步骤：**
+
+1. **S1 探测沿用已存密钥（先修 bug，独立可验收）：** `model_settings_probe` 增加可选 `provider` 入参，前端把当前表单的 `provider` 一并传入；`probe_models` 在草稿里带上 `provider`（仅当该 provider 已存在于覆盖文件时才带，避免凭空造路由）。判定口径：界面文案改为「沿用已保存密钥 / 本次输入的新密钥 / 未带密钥」三态之一，让用户知道这一次到底用了什么。若 DSH 返回的是内置目录而非网络结果，界面须明确标注「该提供商名命中 DSH 内置目录，未发起真实网络请求」，不得当作连通性证明。验收：不填新密钥点测试，OpenDesign 应返回 12 个模型；填入错误密钥点测试，应明确报鉴权失败；两者都不改任何已保存配置。**前提（源码事实 7）：** 设置服务现在不带 `--profile` / `--patch`，进程里的路由表没有覆盖文件里的 provider，只带 `provider` 仍解析不到已存凭据。因此 S1 必须同时让设置服务按引擎同 Profile + 同一份覆盖文件启动：参数只取自 `EngineConfig`（`profile` 与 `sync_overlay()` 后的 `patch_files`），不接受任何外部输入；覆盖文件不存在时退回现有启动参数。此改动只影响 OmniDesk 自己拉起的设置服务进程，不改 Profile 文件、不改 DSH Runtime、不碰原版 DSH 数据。
+2. **S2 多提供商档案数据结构与迁移：** 配置升级为 `omnidesk.model-settings.v2.json`，结构为 `providers: [{ provider, display_name, base_url, api, api_key_ref, models: [...], reasoning_effort }]` + `default: { provider, model }`。**必读**：读取到 v1 文件时自动就地升级为 v2（保留全部字段与老文件名作为 `.v1.bak`），升级失败不得删除或覆盖原文件，界面明确报错并只读。每个 provider 的 `api_key_ref` 必须互不冲突，重名直接拒绝（否则两个提供商共用一把密钥会导致串号）。
+3. **S3 覆盖文件多路由渲染：** `render_overlay()` 渲染全部 providers，`acp` 与 `agent-default-model` 两段指向 `default`。保留既有“只写非机密字段”的约束与单测（`overlay_contains_only_non_secret_fields` 必须继续通过，并扩充为多 provider 场景）。保存前必须校验：路由名唯一、模型列表非空、baseURL 合法、api 在允许集合内。
+
+   **合并口径（因源码事实 6，不得省略）：** 因为补丁层对 `config` 是整体替换，写覆盖文件前必须先把“覆盖生效后的完整路由集合”算出来：读取引擎 Profile 的 `llm-pi-ai` providers（用现有 `--dump-config` 通道，不读凭据），以 OmniDesk 数据根里的 provider 集合覆盖同名项、保留其它项，然后把合并结果整体写入覆盖文件；合并失败（Profile 读不到、结构异常）时直接报错不写盘，不得退回“只写 OmniDesk 自己那几条”（那会静默抹掉其它路由）。若合并后的路由集与引擎实际加载不一致，以 `--dump-config` 的实测结果为准并记录差异。验收必须包含一条：合并后 `providers` 下同时存在 `opendesign` 与 Profile 自带的 `agnescn`（或当前 Profile 实际自带的路由）。
+4. **S4 设置页多提供商管理：** 「模型与端点」页改为左侧提供商列表（显示名 + 是否已配密钥 + 是否默认）+ 右侧编辑区。支持新增、编辑、删除（删除仅移除配置与该路由，**不删除 DSH 凭据**，界面须明说）、设为默认。删除最后一个提供商时须明确警告将导致无可用路由。所有密钥输入框仍为只写：保存后清空、回显只有「已配置 / 未配置 / 读取失败」。密钥仅写入当前选中 provider 的 `api_key_ref`，切换提供商时不得回填或复用上一家的密钥；不提供“复制另一个 provider 的密钥”能力。
+5. **S5 模型选择器与对话路由：** 确认 `ModelPicker` 能列出多提供商下的全部模型并正确切换（当前已有 `providers[]` 结构，预计改动很小）；若切换某提供商模型后引擎未按其路由启动，记录为独立缺陷并停下报告，不在本计划内扩大修复。
+6. **S6 回归与证据：** 单测覆盖 v1→v2 迁移、多路由渲染、密钥引用冲突拒绝、探测三态判定；`tsc` / `npm build` / `cargo test` / `pytest` 全绿；055/060 联动脚本复跑；真实窗口截图存 `evidence/od-arch-065/`（提供商列表、探测成功沿用已存密钥、探测错误密钥失败）；`facts.json` 落盘。**证据中不得出现任何密钥字符或其片段。**
+
+**存储方式（回答“是否用 DSH 原版保存方式”）：** 是。密钥仍由 DSH 官方凭据服务保存在 OmniDesk 隔离数据根的 `.credentials.yaml`（权限 0600），OmniDesk 不另建加密库，也不把密钥写进自己的 JSON/YAML。多提供商的差异只体现在引用名：每个 provider 有自己的 `api_key_ref`（即 DSH 的 `apiKeyEnv` 名），每个名字在 DSH 凭据库对应一条密钥；同一提供商下的多个模型共用该引用名，不重复存密钥。因此新增提供商 = 新增一条路由配置 + 一个新引用名 + 一次官方 `credentials/set`，彼此互不覆盖。
+
+**验收：** 不填新密钥点「测试连接」能成功并显示模型列表；填错密钥能明确报鉴权失败；至少能并列保存两个提供商并各自记住模型列表、地址与凭据引用；切换默认模型后对话走对应路由；v1 配置可无损升级；`runtime/` 零差异；仓库与证据中不存在任何密钥明文；`overlay_contains_only_non_secret_fields` 类单测通过。
+
+**安全要求（不可打折）：** 不实现任何“读回密钥”的接口，无论前后端；不在日志、错误信息、测试夹具、截图、`facts.json` 中出现密钥；不打日志打印请求头；不把 DSH 的 `.credentials.yaml` 复制进 OmniDesk 数据根或仓库；判断“是否已配置”只允许用 `credentials/describe` 的 `configured` 布尔值。
+
+**风险与停止条件：** ①`llm/discoverModels` 在带 `provider` 时对自建路由仍不解析凭据 → 停下报源码位置与实际错误码，不改成前端读密钥；②v1→v2 迁移在真实用户配置上出现字段丢失 → 立即停，保留原文件不动；③多 provider 渲染导致 DSH 启动失败 → 保留单 provider 回退路径并报告；④同一问题连续两轮修复未解决即停。⑤设置服务按 `--profile` + `--patch` 启动后，原先依赖 DSH 默认 `web` 行为的探测或保存流程失效（例如覆盖文件不合法导致设置服务起不来）→ 立即停，退回不带 `--patch` 的启动方式并报告，不得为了让探测通过而写一份不完整的覆盖文件；⑥合并后的覆盖文件在真实 Profile 上造成路由意外丢失或被顶掉 → 停，保留原文件，提交差异清单等 ARCHITECT 裁定。
+
 ### OD-ARCH-064：用户实测通道整备（启动入口 + 清单校准）（已批准，2026-10-22）
 
 > **批准依据：** 061~063 三轮界面收敛验收通过，用户进入实测阶段。本计划只整备实测通道与清单，不做任何功能扩张。用户既定指示：任务合并、不零碎派工。
