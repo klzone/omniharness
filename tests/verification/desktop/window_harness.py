@@ -457,8 +457,10 @@ class AppSession:
         path.write_text(
             "\n".join(
                 [
-                    "- id: acp",
-                    '  name: "@deepseek-ai/dsh-acp"',
+                    # 与 scripts/dev-ui.sh 同口径：web-api 通道走 agent 默认模型覆盖，
+                    # `acp` 层只对 dsh-acp app 生效，web app 不加载它。
+                    "- id: agent-default-model",
+                    '  name: "@deepseek-ai/dsh-agent-default-model"',
                     "  config:",
                     "    provider: fake",
                     "    model: synthetic-model",
@@ -520,7 +522,11 @@ class AppSession:
         env["OMNIDESK_AGENTS_HOME"] = str(self.agents_home)
         env["DSH_HOME"] = str(self.dsh_home)
         env["DSH_AGENTS_HOME"] = str(self.agents_home)
-        env["OMNIDESK_DSH_PROFILE"] = "acp"
+        # OD-ARCH-048 起引擎默认走 web-api 通道，Profile 必须是 `web`（DSH 内置 web app
+        # 才会打印 `dsh web: ...`）。此前这里固定写 `acp`，与默认通道错配，DSH 会以 acp
+        # app 启动、永远不宣布地址，验收窗口只能看到 `engine_unavailable`。
+        env["OMNIDESK_ENGINE_CHANNEL"] = "web-api"
+        env["OMNIDESK_DSH_PROFILE"] = "web"
         env["OMNIDESK_DSH_PATCHES"] = str(overlay)
         env[FAKE_KEY_ENV] = FAKE_KEY_VALUE
         env["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"

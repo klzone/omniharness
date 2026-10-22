@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""OD-ARCH-016：工作台“取消引擎任务”入口的离线验证。
+"""OD-ARCH-016 / OD-ARCH-062 S2：取消入口的离线验证。
 
 只验证两件可离线证明的事：
 
-1. 取消按钮状态模型与取消结果文案：从 `desktop/src/workbench.tsx` 的
+1. 取消按钮状态模型与取消结果文案：从 `desktop/src/engineCancelModel.ts` 的
    `engine-cancel-model` 区域抽取真实源码，编译后用 Node 实际执行；
-2. 静态源码边界：按钮只受取消状态模型控制、取消请求有同步防重入、
-   取消路径不改写解释正文。
+2. 静态源码边界：检查首页真实在用的取消按钮（`desktop/src/shell/HomeChat.tsx`），
+   确认按钮只受取消状态模型控制、取消请求有同步防重入、取消路径不改写正文。
+
+OD-ARCH-062 S2 起，取消模型从旧工作台页面迁出到独立模块，并由首页对话的
+“取消生成”按钮实际使用；接线检查因此指向首页，不再指向已删除的页面。
 
 **不**验证真实宿主取消、真实模型任务或窗口交互；那些属于运行测试。
 不读取凭证，不访问网络，不启动引擎，不启动用户正在使用的实例。
@@ -27,7 +30,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DESKTOP = HERE.parents[2] / "desktop"
-WORKBENCH = DESKTOP / "src" / "workbench.tsx"
+MODEL = DESKTOP / "src" / "engineCancelModel.ts"
+HOME_CHAT = DESKTOP / "src" / "shell" / "HomeChat.tsx"
 
 BEGIN = "// #region engine-cancel-model"
 END = "// #endregion engine-cancel-model"
@@ -112,6 +116,9 @@ def compile_and_probe(region: str) -> dict:
         "}\n"
 "const base = { hasTask: true, status: 'running', requestInFlight: false, lastPhase: null, requestSent: false };\n"
         "btn('no-task', { ...base, hasTask: false, status: null }, { enabled: false });\n"
+        "btn('no-task-label-default', { ...base, hasTask: false, status: null }, { enabled: false, label: '取消引擎任务' });\n"
+        "btn('cold-start-abandon', { ...base, hasTask: false, status: null, starting: true }, { enabled: true, label: '引擎启动中…（点此放弃）' });\n"
+        "btn('cold-start-with-task', { ...base, starting: true }, { enabled: true, label: '取消引擎任务' });\n"
         "btn('no-status', { ...base, status: null }, { enabled: false, label: '等待任务状态…' });\n"
         "btn('running', { ...base }, { enabled: true, label: '取消引擎任务' });\n"
         "btn('queued', { ...base, status: 'queued' }, { enabled: true });\n"
@@ -212,30 +219,34 @@ def compile_and_probe(region: str) -> dict:
     }
 
 
-def static_checks(source: str) -> list[dict]:
+def static_checks(source: str, region_of_gate: str) -> list[dict]:
+    """`source` 是实际承载取消按钮的页面；`region_of_gate` 是共享模型源码。"""
     checks: list[dict] = []
-    region_of_gate = extract_region(source)
 
     def check(name: str, passed: bool, detail: str) -> None:
         checks.append({"name": name, "passed": passed, "detail": detail})
 
+    # 发送与取消合并为同一个按钮（对齐 DSH）：生成中点它就是取消。
     button_attr = re.search(
-        r"onClick=\{cancelEngineExplanation\}\s+disabled=\{([^}]+)\}", source
+        r"onClick=\{generating \? cancel : send\}\s+disabled=\{\s*([^}]+?)\s*\}",
+        source,
     )
     check(
         "取消按钮只由取消状态模型控制",
-        bool(button_attr) and button_attr.group(1).strip() == "!engineCancelView.enabled",
+        bool(button_attr)
+        and re.sub(r"\s+", " ", button_attr.group(1)).strip()
+        == "generating ? !engineCancelView.enabled : !canSubmit || !input.trim()",
         "disabled=" + (button_attr.group(1).strip() if button_attr else "<未找到>"),
     )
     check(
         "取消按钮未被 engineBusy 阻塞",
-        "disabled={!engineCancelView.enabled || engineBusy}" not in source,
+        "engineCancelView.enabled || engineBusy" not in source,
         "按钮 disabled 表达式中不含 engineBusy",
     )
 
-    cancel_body = body_of(source, "cancelEngineExplanation")
+    cancel_body = body_of(source, "cancel")
     cancel_body = cancel_body[: cancel_body.find("\n  }, [")] if "\n  }, [" in cancel_body else cancel_body
-    runner = body_of(source, "runEngineCancelRequest")
+    runner = body_of(region_of_gate, "runEngineCancelRequest")
     guard = runner.find("effects.onRequestStarted();")
     first_await = runner.find("await effects.host.cancelTask")
     reset = runner.find("effects.onSettled();", first_await)
@@ -245,9 +256,11 @@ def static_checks(source: str) -> list[dict]:
         "置位在首个 await 之前，复位在 await 之后",
     )
     check(
-        "取消路径不改写解释正文与来源",
-        "setExplanation" not in cancel_body and "setSource" not in cancel_body,
-        "cancelEngineExplanation 内无 setExplanation/setSource",
+        "取消路径不改写消息正文与来源",
+        "setExplanation" not in cancel_body
+        and "setSource" not in cancel_body
+        and "text:" not in cancel_body,
+        "cancel 内不改写消息正文，失败只写 notice",
     )
     check(
         "取消中只有明确超时才允许重试",
@@ -265,7 +278,7 @@ def static_checks(source: str) -> list[dict]:
         "取消入口调用共享发送路径而非直接 IPC",
         "runEngineCancelRequest(" in cancel_body
         and "host.cancelTask" not in cancel_body,
-        "cancelEngineExplanation 内无直接 host.cancelTask 调用",
+        "cancel 内无直接 host.cancelTask 调用",
     )
     check(
         "只在宿主确认后展示取消成功",
@@ -280,10 +293,11 @@ def main() -> int:
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
-    source = WORKBENCH.read_text(encoding="utf-8")
-    region = extract_region(source)
+    model_source = MODEL.read_text(encoding="utf-8")
+    page = HOME_CHAT.read_text(encoding="utf-8")
+    region = extract_region(model_source)
     probe = compile_and_probe(region)
-    checks = static_checks(source)
+    checks = static_checks(page, region)
 
     cases = probe.get("cases", [])
     failed_cases = [c for c in cases if not c.get("passed")]
@@ -299,7 +313,8 @@ def main() -> int:
     report = {
         "plan": "OD-ARCH-016",
         "evidence_level": "code static check + compiled source execution (no engine/model run)",
-        "source": str(WORKBENCH),
+        "source": str(MODEL),
+        "page": str(HOME_CHAT),
         "compile_exit": probe.get("compile_exit"),
         "probe_exit": probe.get("probe_exit"),
         "state_cases_total": len(cases),

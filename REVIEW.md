@@ -1,3 +1,12 @@
+## OD-ARCH-061 复核结论：**通过（两项停止条件裁定 + 一项修正要求）**（ARCHITECT，2026-10-22）
+
+- **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo 198/0 失败、tsc 0、pytest 26、build 通过、runtime/ 零差异）；真实窗口证据 9 张抽查与断言一致（Dock 5 入口、设置 6 分页、chip 两种选中态、输入区无挂载库且语音置灰）。代码抽查：①threadCategories.ts 只改展示层、持久化键 plain/weekly/writing/project 未动、未新增 Rust 字段；②SettingsPanel 6 分页用 hidden 切换保留原组件与表单状态、无设置项丢失；③App.tsx 兜底路由为诚实提示，不落 055 类"页面被拽走"缺陷；④Workspace.tsx 自带 HomeChat 死代码已清理（060 遗留项关闭）；⑤055/060 联动脚本复跑通过且声明 sha256 前后一致。
+- **裁定 1（风险①，分类管理高级能力）：** 批准新增宿主 settings.v1 持久化字段（分类显示名/新增分类/文件夹映射/vault 绑定/初始化），**列入 062**，不在 061 范围内实施。约束：只增字段不改既有字段与命令语义；初始化只建目录骨架；映射目录必须限定在成果根与已绑定 vault 内，越界拒绝；新增分类不自动出现 Dock 图标。
+- **裁定 2（风险②，workbench 源文件）：** 批准"测试区域迁独立模块 + 改测试路径 + 删 workbench.tsx 与 workbench-ui.css"方案，**列入 062**，实施前须列删除文件清单与迁移后测试对照（抽取区域逐字一致），测试必须真实跑过不能只改路径。
+- **修正要求（复核发现，非 BUILDER 自述）：** SettingsPanel 根节点复用 `.workbench ofl-v2` CSS 类（styles.css L536），与"workbench 下线"口径冲突，且 OfflineFlows.tsx 已无引用仍保留。062 一并处理：设置页样式类改名去 workbench 语义；OfflineFlows.tsx 确认无引用后删除或明确保留理由。
+- **口径修正备案：** "挂载库 grep 全仓 0 处"按 desktop/src 与 samples/ 范围执行（历史记录文件含该词属正常档案），接受。
+- **结论：** 061 验收通过；060 复核结论（见下）一并生效。061 S5 批次提交后推送（沿用一次性授权，推送前红线扫描 + 文件清单核对）。
+
 ## OD-ARCH-060 复核结论：**通过**（ARCHITECT，2026-10-22）
 
 - **独立重跑（本机，与 BUILDER 分离）：** cargo 198/198（含 scene_overview 新增单测）；tsc 0 错误；pytest 26 passed；npm build 通过；runtime/ 零差异。证据 evidence/od-arch-060/（7 张真实窗口截图 + facts.json + regression.txt）。

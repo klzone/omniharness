@@ -1,5 +1,217 @@
 # 当前实施计划
 
+### OD-ARCH-062：分类管理持久化 + workbench 清理收尾（已批准，2026-10-22）
+
+> **批准依据：** 061 复核两项裁定（REVIEW.md 顶部：分类管理高级能力、取消测试解耦方案）+ 一项修正要求（SettingsPanel 样式类去 workbench 语义、OfflineFlows 处置）。用户既定指示：任务合并、不零碎派工。
+
+**目标：** ①对话分类管理落成宿主持久化能力，设置页从展示升级为可管理（显示名/新增分类/文件夹与 vault 映射/初始化骨架）；②彻底清理 workbench 遗留（源文件、样式类、无引用组件），并让取消测试不再依赖待删文件。
+
+**影响范围：** desktop/src-tauri/src/settings.rs（只增字段与读写，不改既有字段与命令语义）、命令注册、desktop/src/SettingsPanel.tsx（分类页管理 UI；根节点样式类改名去 `.workbench ofl-v2` 语义）、desktop/src/shell/HomeChat.tsx（chip 显示名读宿主配置）、新增 engine-cancel 区域独立模块（位置由 BUILDER 按现有结构定，如 src/engineCancelModel.tsx）、tests/verification/desktop/verify_engine_cancel.py（改抽取源）、删除 desktop/src/workbench.tsx 与 workbench-ui.css、OfflineFlows.tsx 确认无引用后删除、styles.css 中仅设置页在用的 .workbench 类同步改名（历史文档与既有 evidence 不动）、PLANS/STATUS/REVIEW。通用红线同 061：runtime/ 零差异、凭证不碰、旧 YvanAI 与既有成果零迁移零覆盖零删除、一次性授权分批提交（每批前红线扫描 + 文件清单核对）、推送一次。
+
+**步骤：**
+1. **S1 分类持久化与管理页：** settings.v1 新增 thread_categories 持久化（默认四类 plain/weekly/writing/project，每类含显示名、归档目标文件夹、vault 绑定），读写命令不改既有字段语义，附单测（默认值、roundtrip、越界拒绝）。设置页分类页实现：显示名编辑、新增分类（只进 chip 与归类下拉，不自动加 Dock 图标）、每类映射成果文件夹与 Obsidian vault（目录必须限定在成果根或已绑定 vault 内，越界拒绝并明示原因）、初始化骨架按钮（只在目标根内建目录骨架，已存在跳过并提示，不触碰既有文件）。HomeChat chip 与归档归类显示名从宿主配置读取，内部键不变。
+2. **S2 取消测试解耦与 workbench 删除：** 把 workbench.tsx 中 `#region engine-cancel-model` 区域**逐字**迁到独立模块（不改逻辑、不改行为），verify_engine_cancel.py 改从新模块抽取；先跑该测试确认通过，再删 workbench.tsx 与 workbench-ui.css（删前列文件清单与全 desktop/src 引用核对）。SettingsPanel 根节点样式类改名，styles.css 内 .workbench 类若仅设置页在用则同步改名，否则保留并注明。
+3. **S3 OfflineFlows 处置：** 确认全仓无 import 后删除该文件；若发现仍被引用，停下列引用清单报 ARCHITECT，不擅自改引用方。
+4. **S4 回归与证据：** tsc / cargo test / pytest / npm build 全绿；改源后的 verify_engine_cancel.py 真实通过；055/060 联动脚本复跑；新增截图存 evidence/od-arch-062/：分类页编辑态 1 张、新增分类在 chip 下拉生效 1 张、初始化骨架后成果目录 1 张；STATUS 登记执行记录（含删除文件清单与迁移对照说明）；REVIEW 的 062 验收结论由 ARCHITECT 复核后补写。
+
+**验收：** cargo test 全绿且 settings 新字段单测覆盖（默认四类/roundtrip/越界拒绝）；tsc 0 错误；pytest 通过；npm build 通过；runtime/ 零差异；desktop/src 内 workbench 与 OfflineFlows 引用 0 处；verify_engine_cancel.py 通过且抽取源为新模块；真实窗口完成一次「新增分类 → chip 下拉可见 → 成果映射保存 → 重启后仍在」链路验证。
+
+**风险与停止条件：** ①settings 既有序列化格式与新增结构不兼容（读旧文件失败）→ 停下报兼容方案，不擅自迁移用户数据；②迁移取消区域发现依赖 workbench 内部状态或上下文 → 停下报告，不得改写逻辑迁就；③新增分类持久化写失败或读取冲突 → 界面明确报错，不静默降级。
+
+### OD-ARCH-061：界面精简与设置归一（已批准，2026-10-22）
+
+> **批准依据：** 用户实测 060 后给出的五条微调，即本计划范围：①对话左下角归类固定为 未分类/工作记录/文案写作/项目跟进，设置中提供分类管理与初始化（含本地文件夹与 Obsidian 适配），样式匹配现有 UI；②设置入口唯一化（顶部导航设置按钮），设置页按功能分页；③去掉挂载库；④Dock 只留工作场景（周报已改工作记录）+ 历史会话；⑤删任务工作台及其相关功能，成果目录与引擎诊断并入设置。
+
+**目标：** 收敛界面入口与设置职责：首页对话保留四类归类，Dock 只剩场景入口，设置一处分页管理。内部 scenario 键（plain/weekly_report/writing/project）、数据目录名、既有命令语义一律不变，只动展示层与设置承载。
+
+**影响范围：** desktop/src/shell/Dock.tsx、HomeChat.tsx、App.tsx（路由）、SettingsPanel.tsx（分页重构）、TopNav.tsx（必要时）、Workspace.tsx 与 EngineTechSlice.tsx（随 workbench 下线，删代码列清单）、desktop/src-tauri（仅当分类映射需要持久化字段时新增，不改既有命令语义）、samples/profiles/discipline.yml（如入口声明需同步）、PLANS/STATUS/REVIEW。通用红线同 059：runtime/ 零差异、凭证不碰、旧 YvanAI 与既有成果零迁移零覆盖零删除、一次性授权分批提交（每批前红线扫描+文件清单核对）。
+
+**步骤：**
+1. **S1 对话归类升级：** HomeChat 左下角场景 chip 固定四类（未分类/工作记录/文案写作/项目跟进），样式对齐现有设计语言（胶囊形/surface 色阶）；选中即会话场景标签（复用 retagThread）。设置页新增"对话分类"分页：四类默认展示、显示名可改、可新增未来分类（新增分类只进归类下拉与归档映射，不自动加 Dock 图标）、每类映射成果文件夹与 Obsidian vault（复用 059 vault 绑定机制）、提供"初始化文件夹"按钮（只在成果根/vault 内建目录骨架，不触碰既有文件）。
+2. **S2 设置唯一入口与分页：** SettingsPanel 改分页：模型与端点 / 对话分类 / 成果与文档库（成果目录管理自 Dock settings 页迁入）/ 权限 / 引擎诊断（只读，自 engine 页迁入）/ 关于。顶部导航设置按钮为全应用唯一设置入口；Dock 移除 settings 与 engine 两项。
+3. **S3 去挂载库：** HomeChat 输入区"挂载库"按钮及相关无引用状态移除（语音置灰占位保留，不在本计划范围）。
+4. **S4 Dock 精简与任务工作台下线：** Dock 固定 5 入口：工作台首页/工作记录/文案写作/项目跟踪/历史会话（"项目与会话"改名"历史会话"）。删除 workbench 入口与路由及其独有组件（EngineTechSlice 面板迁入设置后原页面移除；Workspace.tsx 自带 HomeChat 等 060 遗留死代码一并清理，删改清单写入执行记录）。声明文件场景列表只覆盖 5 个业务场景，基础设施入口由代码固定（沿用 026 规则）。
+5. **S5 证据与记录：** 截图存 evidence/od-arch-061/：Dock 5 入口、设置分页各 1 张、归类 chip 至少两种选中态、挂载库移除后输入区 1 张；复跑 verify_scene_decl_linkage_055.py 与 verify_scene_overview_060.py；STATUS 登记执行记录；REVIEW 中已写入的 051/060 复核结论随本批入库提交（061 验收结论由 ARCHITECT 复核后补写）。
+
+**验收：** tsc 0 错误；cargo test 全绿（沿用既有 PKG_CONFIG_PATH 环境命令）；pytest 通过；npm build 通过；git status runtime/ 零差异；Dock 渲染 5 入口且无 workbench/settings/engine；HomeChat 归类四值与 retag 下拉一致；"挂载库"grep 全仓 0 处；workbench 路由与组件无引用残留（grep 清单核对）；055/060 联动脚本复跑通过。
+
+**风险与停止条件：** ①分类管理需新增 Rust 持久化字段 → 先停下报方案再动手；②删除 workbench 发现被 055/声明联动或其他模块引用 → 停下列引用清单等 ARCHITECT 裁定；③设置分页重构若导致既有设置项丢失 → 优先用原组件分页承载，不重写设置逻辑。
+
+### OD-ARCH-060：场景页 v2——状态条 + 文档库 + 时间线（已批准，2026-10-22）
+
+> **背景：** 用户看过方案讨论后拍板按 ARCHITECT 推荐（A/B 融合骨架）开发，看效果再调。三场景同一骨架，差异用模块开关；会话历史降为次级资源。本计划同时把 059 收尾材料（059 执行记录、059 复核结论、首页下拉框修正）一并入库提交。
+
+**目标：** 场景页从"公告栏 + 双栏"升级为：场景状态条（待确认/逾期/截止）+ 左文档树 + 右成果视图（卡片/列表 + frontmatter 筛选）+ 底部折叠会话历史；工作记录页加"本期记录碎片"区，项目页加"进度"页签（现有）。
+
+**影响范围：** desktop/src/shell/ScenePage.tsx（重排）、AnnouncementBar.tsx（状态条化改造，保留 046 降级规则）、新增 ArtifactExplorer.tsx（文档树+视图）、HomeCanvas.tsx（"今日重点推进"接真数据，摘掉"未接入数据源"空态徽标）、desktop/src-tauri（新增场景汇总命令：按场景聚合 pending_writes 数量与本周截止；复用现有命令，不改既有命令语义）、PLANS/STATUS/REVIEW。提交沿用一次性授权分批模式。通用红线同 059（runtime 零差异、凭证不碰、旧数据零迁移）。
+
+**步骤：**
+1. **S1 状态条：** AnnouncementBar 顶部改为三段状态卡：待确认写入 N（点击展开 PendingWritePanel）/ 逾期 N（pending_writes 过期项）/ 周期提醒（工作记录页=本期周报·周五截止·进行中；项目页=最近节点·剩余天数；文案页=本周产出计数）。数据全部来自既有确定性命令（pending_writes list、weekly/project 汇总），**不新增模型调用、不编造数字**；046 的 AI 复盘建议区与降级规则原样保留在状态条下方。
+2. **S2 文档库视图：** 新增 ArtifactExplorer：左侧目录树（树状模式数据已有）；右侧成果卡片/列表切换，卡片显示 title（frontmatter）、日期、场景标签、字数；顶部筛选条按 scenario 标签 + 本周/本月时间过滤（frontmatter 数据从 task_read_offline_artifact 读，列表页懒加载标题，避免全量读正文）。搜索框过滤文件名/标题。
+3. **S3 会话历史折叠：** 场景页左栏 300px 会话列表移到底部折叠区（默认收起，展开显示现有列表 + 去对话）；retag/删除功能原样保留。
+4. **S4 场景差异模块：** 工作记录页右侧新增"本期记录碎片"区（本周对话中已确认的事项条目，来自现有确定性汇总）；项目页保留"进度"页签（现有，不重做）。
+5. **S5 首页今日重点接真数据：** HomeCanvas"今日重点推进"卡片摘掉"未接入数据源"徽标，接入跨场景待确认+逾期汇总（与 S1 同数据源）；无数据时显示"今天没有要处理的"诚实空态。ThreeWeekCalendar 不动。
+6. **S6 证据与记录：** 真实窗口截图（三场景各 1 张全页 + 状态条展开待确认 1 张 + 筛选生效 1 张）存 evidence/od-arch-060/；STATUS 登记；REVIEW 写 059 复核结论与 060 验收结论。
+
+**验收：** tsc / cargo lib（含新增汇总单测）/ pytest / npm build 全绿；runtime/ 零差异；状态条数字与 pending_writes 实际条数一致（单测断言）；frontmatter 筛选对 059 新格式成果生效（用合成成果验证）；旧成果（无 frontmatter）在视图中按文件名显示不报错（兼容单测）；三场景入口隐藏声明联动不回退（复跑 verify_scene_decl_linkage_055.py）。
+
+**风险与停止条件：** ①懒加载标题若导致视图首屏卡顿或读文件过多（>100 文件），停下报告，改为按需分页；②frontmatter 解析对用户手改文件失败时按"无元数据"降级显示，不报错不阻塞；③发现需改既有命令语义才能取数 → 停下报告，不擅自改。
+
+### OD-ARCH-059：综合批次（056 修复 + 057 对话归一 + 058 Obsidian 兼容）（已批准合并执行，2026-10-22）
+
+> **背景：** 用户指示将 056/057/058 三项合并为一份计划交 BUILDER（DS v4.1-flash）执行。三块内容互相独立（设置修复 / 界面重构 / 成果库格式），可分批提交、独立验收。**本计划获批即视为 056/057/058 一并批准**，其详细步骤以下文 S1–S3 三节为准（各节原文来自对应计划，此处为合并后的权威版本）；若 BUILDER 发现三节间有冲突，以后文为准并报告冲突点。
+
+**目标：** ①修掉夜间批次复核遗留缺陷；②全应用对话归一到首页、场景页纯档案化、"周报"改名"工作记录"；③成果库成为 Obsidian 兼容 vault。三项完成后用户即可开始真实场景试用。
+
+**总影响范围：** desktop/src（前端）、desktop/src-tauri（pending_writes frontmatter、settings vault 绑定；**不改 lib.rs 既有命令语义**）、scripts/setup.sh 与 init-yvan-data.sh（仅注释）、samples/profiles/discipline.yml（入口改名）、docs/OmniDesk-Desktop-Data-Layout.md、docs/user-testing-checklist.md（对话与 vault 新流程）、PLANS/STATUS/REVIEW。
+
+**通用红线（三节共用）：** 不碰 runtime/（零差异验收）；不碰凭证、不改路由；真实材料不进 Git/evidence；旧 YvanAI 与既有成果文件零迁移零覆盖零删除；内部 scenario 键（weekly_report 等）与数据目录名不变；提交沿用一次性授权分批进行，每批前红线扫描+文件清单核对。
+
+---
+
+**S1 = 056 复核遗留修复（先行，最小批）：**
+
+1. 凭据状态收敛：前端在 view 已加载且 keyStatus 为 null 且无 key_error 时显示"尚未配置"（现状：永久"读取中…"）。不新增命令、不改 Rust。核对三态文案齐全：未配置 / 已配置（含来源与可否改写）/ 读取失败。
+2. setup.sh 口径对齐：仅改 setup.sh 与 init-yvan-data.sh 顶部注释，写明 ~/YvanAI 为项目早期数据根、现存数据只读使用、新部署仍初始化到该路径以保持脚本兼容、桌面端成果不写此目录。不改行为、不改默认路径。
+3. Dock 图标可访问名：核对 Dock.tsx 每个图标是否带 aria-label；缺则补（纯属性，同值用于自动化定位）。
+4. STATUS/REVIEW 登记；REVIEW.md 顶部 051~055 复核结论随本批一并入库提交。
+
+**S2 = 057 对话中枢归一（S1 全绿后）：**
+
+1. 首页 HomeChat 输入区加场景选择 chip（默认"自由对话"，可选 工作记录/文案写作/项目跟进，与模型选择器同排）。选定后会话携带场景预设与归档目标；会话中途可改标签（复用 retagThread）。首页历史列表按场景小标签展示、可筛选。
+2. 场景页纯档案化：ScenePage 移除 HomeChat，布局单层化（提醒/公告栏 + 会话列表（每条带"去对话"跳首页加载该会话）+ 成果档案；项目跟进保留进度页签）。SceneScaffold 双层逻辑仅首页保留。
+3. 改名"周报"→"工作记录"：仅展示层（Dock 入口名、前端文案、空态提示、声明样例 discipline.yml）；内部键 weekly_report 与成果目录不动，旧数据零迁移。代码 grep 核对展示层无"周报"残留。
+4. 首页卡片层（今日概览三模块 + 合并提醒）保留现状，不重做。
+5. 声明联动：隐藏某场景入口后，首页场景选择器同步隐藏对应选项。
+
+**S3 = 058 Obsidian 兼容（S2 全绿后）：**
+
+1. frontmatter 标准（仅新文件）：pending_writes 与保存成果共用的写入口（write_new_file_durable 调用前）注入 YAML frontmatter：scenario / title / created(ISO8601) / tags / omnidesk_version。字段固定小集合，供 Obsidian Dataview 直接用；frontmatter 不进红线扫描正文（扫描仍只对用户原文）。
+2. vault 绑定：设置页成果库区新增"vault 目录"显示与修改（默认 ~/OmniDesk/workspace/artifacts；改绑后新成果落新目录，旧目录文件不动不迁）。不做多 vault。
+3. 接入指引：成果档案页与设置页各一步说明（在 Obsidian 中"打开文件夹作为 vault"指向绑定目录）。Obsidian 本体不安装、不检测、不拉起。
+4. 边界声明：OmniDesk 只写自己的成果文件，不读不改用户在 vault 中的其他笔记；用户在 Obsidian 端的整理/改名/删除，OmniDesk 不感知不干预。
+
+---
+
+**验收（每 S 节收尾独立跑）：**
+
+| 节 | 必跑 | 专项核对 |
+| --- | --- | --- |
+| S1 | tsc 0 / cargo lib 全绿 / pytest / runtime 零差异 | 凭据三态文案；setup.sh --check 行为不变 |
+| S2 | 同上 + npm build | 首页选工作记录后成果落 weekly_report 目录；旧会话"去对话"跳转可续聊且历史完整；Dock 改名生效；隐藏入口联动 |
+| S3 | 同上 | 新成果首行为可解析 frontmatter（serde_yaml 单测）；既有成果文件哈希不变（单测断言）；vault 改绑后新文件落新目录、旧目录无写入 |
+
+全部证据截图存 tests/verification/desktop/evidence/od-arch-059/（分 S1/S2/S3 子目录），密钥与真实材料不得出现在任何证据中。
+
+**风险与停止条件（合并版）：** ①S2 移除场景页对话后发现某能力依赖场景页对话上下文 → 停下报告，不擅自加回；②retagThread 中途改标签丢历史映射 → 停下报告；③S3 发现保存入口不止 write_new_file_durable 一处 → 停下报告清单，不擅自全改；④vault 改绑后读档列表越界 → 沿用 resolve_local_data_root 校验，不够用就停；⑤同一问题连续两轮修复未解决即停，写根因与阻塞报告；⑥发现疑似真实材料/凭证、runtime/ 出现差异、需要改 DSH Runtime → 立即停并报告。
+
+**执行顺序与批次建议：** S1（1~2 批）→ S2（2~3 批：结构重构 / 改名+联动 / 证据）→ S3（2 批：frontmatter+单测 / vault 绑定+指引+证据）→ 收尾批（STATUS 总结 + REVIEW 材料 + 交接）。预计 7~9 个提交。完成后停止等 ARCHITECT 复核，不自行开新计划。
+
+<details>
+<summary>原始分计划归档（056/057/058 条文，已由 059 取代）</summary>
+
+
+### OD-ARCH-057：对话中枢归一 + 场景页纯档案化（待批准，2026-10-22）
+
+> **背景：** 用户实测后提出界面重构方向：每个场景页都重复挂对话框，只有卡片不同——应对话归一：首页对话框内选场景（周报改名"工作记录"），内容和成果按所选场景归档；Dock 场景页只做文件/文档管理，不再出现对话框。本计划将该方向落为实施项。
+
+**目标：** 全应用只保留首页一个对话实例；场景选择收进对话框；场景页转为纯档案管理页。
+
+**影响范围：** desktop/src 前端（App.tsx、HomeChat.tsx、ScenePage.tsx、SceneScaffold.tsx、Dock 相关）、samples/profiles/discipline.yml（改 Dock 入口名）与数据根声明样例、PLANS/STATUS/REVIEW。不碰 Rust 宿主（thread store 与成果按 scenario 归档的机制现成）、不碰 runtime/（零差异验收）、不改内部 scenario 键与数据目录（weekly_report 等键不变，**不做任何数据迁移**）。
+
+**步骤：**
+1. **S1 首页对话场景选择器：** HomeChat 输入区加场景选择 chip（默认"自由对话"，可选 工作记录/文案写作/项目跟进，与模型选择器同排）。选定后该会话携带场景预设与归档目标；会话中途可改标签（复用现有 retagThread）。首页历史列表按场景小标签展示、可筛选。
+2. **S2 场景页纯档案化：** ScenePage 移除 HomeChat，布局改为单层：提醒/公告栏 + 会话列表（每条带"去对话"跳首页加载该会话）+ 成果档案（项目跟进保留进度页签）。SceneScaffold 双层焦点/静止恢复逻辑仅首页保留，场景页不再挂载。从档案页跳转 = onNavigate 到 home 并预载对应 thread。
+3. **S3 改名"周报"→"工作记录"：** 声明样例 discipline.yml 的 Dock 入口名、前端展示文案、空态提示全部改用"工作记录"；内部 scenario 键 weekly_report、成果目录、线程标签**一律不动**（旧数据零迁移零覆盖，只改显示名）。声明样例与前端回退文案保持一致。
+4. **S4 首页卡片层保留现状：** 今日概览三模块与合并提醒作为首页空闲卡片层（现有双层逻辑已实现，不重做）；公告栏随场景页保留（S2）。
+5. **S5 记录与证据：** STATUS 登记、REVIEW 复核结论；真实窗口截图（首页含场景选择器、场景页无对话框、改名后 Dock 与空态）存 tests/verification/desktop/evidence/od-arch-057/。
+
+**验收：** tsc、cargo lib、pytest、npm build 全绿；runtime/ 零差异；行为核对：首页选"工作记录"对话后成果落 weekly_report 目录；旧会话从档案页"去对话"跳转后可继续且历史完整；"周报"字样在 UI 不再出现（代码 grep 核对展示层）；隐藏场景入口后首页选择器同步隐藏对应选项（声明联动）。
+
+**风险与停止条件：** ①场景页移除对话后若发现某能力依赖场景页内的对话上下文（如项目进度与对话联动），停下报告，不擅自加回；②retagThread 中途改标签若发现会丢历史映射，停下报告；③改名仅限展示层，若发现内部键有"周报"字样外泄到用户可见的文件路径，记录但不改（避免数据迁移），在执行记录中说明。
+
+### OD-ARCH-058：成果库 Obsidian 兼容（待批准，2026-10-22）
+
+> **背景：** 用户提出用 Obsidian 兼容文件夹作为本地知识库底座，让用户绑定 Obsidian 获得成熟的知识管理能力，OmniDesk 不自建。方向成立：成果已是 Markdown 文件、数据在仓库外用户目录，天然贴近 Obsidian；差距在目录语义与元数据（无 frontmatter），且须守住红线（不自动上传、不反向改用户手写内容）。
+
+**目标：** 成果目录即 Obsidian vault；成果带标准 frontmatter；用户可把任意 vault 目录绑定为成果库；同步向用户提供接入指引。**不做**任何"发送到 Obsidian/同步服务"的自动上传功能。
+
+**影响范围：** desktop/src-tauri（pending_writes 写入时补 frontmatter、settings 增加 vault 绑定项）、SettingsPanel（成果库区显示绑定路径与"在 Obsidian 打开"指引）、docs/OmniDesk-Desktop-Data-Layout.md（vault 口径）、PLANS/STATUS/REVIEW。不碰 runtime/（零差异验收）、不动旧 YvanAI 与既有成果文件（frontmatter 只对**新写入**的文件生效，已有文件不改）。
+
+**步骤：**
+1. **S1 frontmatter 标准（新文件生效）：** pending_writes 与保存成果共用写入口（write_new_file_durable 调用前）注入 YAML frontmatter：scenario、title、created（ISO8601）、tags（场景标签）、omnidesk_version。字段固定小集合，供 Obsidian Dataview 类插件直接用。已有文件零改动；frontmatter 不进红线扫描正文（扫描仍只对用户原文）。
+2. **S2 vault 绑定：** 设置页成果库区新增"vault 目录"显示与修改（默认即 ~/OmniDesk/workspace/artifacts；改为其他目录时新成果落新目录，旧目录文件不动不迁）。不做多 vault，就一个绑定项。
+3. **S3 打开指引：** 成果档案页与设置页提供一步说明：在 Obsidian 中"打开文件夹作为 vault"指向绑定目录；Obsidian 本体不在本计划范围（不自动安装、不检测、不拉起）。
+4. **S4 边界声明：** 设置页与文档写明：OmniDesk 只写入自己的成果文件，不读取不改写用户在 vault 中的其他笔记；用户在 Obsidian 端的整理、重命名、删除 OmniDesk 不感知不干预（读档列表按场景过滤时自然反映文件现状）。
+
+**验收：** tsc、cargo lib（含 frontmatter 生成单测：字段齐全、非法字符转义）、pytest、npm build 全绿；runtime/ 零差异；新成果文件首行为 frontmatter 且 Obsidian 语义可解析（单测断言 YAML 可被 serde_yaml 反序列化）；旧成果文件哈希不变（单测断言不触碰既有文件）。
+
+**风险与停止条件：** ①发现现有保存入口不止 write_new_file_durable 一处（会漏 frontmatter），停下报告清单不擅自全改；②vault 改绑后若发现读档列表跨目录权限边界问题（场景目录校验），沿用现有 resolve_local_data_root 校验逻辑，不够用就停；③不做 Obsidian 安装检测与自动拉起（超出范围）。
+
+### OD-ARCH-056：复核遗留修复 + YvanAI 目录口径定案（待批准，2026-10-22）
+
+> **背景：** 056 起夜间批次收尾后进入修复小批模式（用户 2026-10-22 口径：小修不设长计划，验收按实际改动范围跑必要回归）。本计划内容即夜间批次复核发现的 054/055 两处缺陷 + 一项待用户拍板事项的定案执行。REVIEW.md 顶部 051 通过结论与 053/054/055 复核结论随本计划记录批次一并提交。
+
+**目标：** 修掉凭据状态不收敛与 setup 脚本目录口径矛盾；把 YvanAI 初始化问题按用户决定收口。
+
+**影响范围：** desktop/src/SettingsPanel.tsx（凭据状态收敛）、scripts/setup.sh（注释与目录口径）、docs/OmniDesk-Desktop-Data-Layout.md（如需同步口径）、PLANS/STATUS/REVIEW。提交推送沿用一次性授权模式（每批前红线扫描+文件清单核对）。不碰 runtime/（零差异验收）、凭证、路由、用户数据。
+
+**步骤：**
+1. **S1 凭据状态收敛（修 054 缺陷）：** 现状（源码核实）：Rust 侧 key_status 仅在有已存配置时查询，未配置时返回 null 且无 key_error；前端渲染链 keyStatus→key_error→"读取中…" 落到永久"读取中"。修法：前端在 view 已加载且 keyStatus 为 null 且无 key_error 时显示"尚未配置"，与 placeholder 口径一致；不新增命令、不改 Rust。
+2. **S2 setup.sh 口径对齐（不改行为，改声明）：** 现状（源码核实）：setup.sh 第 22 行注释明确"只在仓库内与 ~/YvanAI（外部数据）写入"，第 2 步调 init-yvan-data.sh 默认根 ~/YvanAI——行为与注释一致，但与数据布局文档"OmniDesk 统一命名、YvanAI 只读不迁移"的迁移后口径矛盾。修法：在 setup.sh 与 init-yvan-data.sh 顶部注释中写明历史原因（该目录为项目早期数据根，现存用户数据继续只读使用，新部署同样初始化到该路径以保证既有脚本兼容；OmniDesk 桌面端成果不写此目录）。不改脚本行为、不改默认路径、不迁移数据。
+3. **S3 Dock 选择器核对（只核对，不改）：** 核对 Dock.tsx 图标是否已带稳定可访问名（aria-label 或 title）；已有则记录结论即可，没有则为每个图标补 aria-label（纯属性，不影响布局，同值用于自动化定位）。
+4. **S4 记录：** STATUS 登记、REVIEW 写 053/054/055 复核结论与本计划验收结论。
+
+**验收：** tsc 0、cargo lib 全绿、pytest 通过、runtime/ 零差异；凭据状态三态（未配置/已配置/读取失败）在代码审查中确认各有明确文案；setup.sh --check 行为不变（可跑一次对照）。
+
+**风险与停止条件：** S1 若发现需改 Rust 返回结构才能修复（与源码核实结论不符），停下报告不擅自改；S2 仅注释改动，若发现脚本实际行为与注释不符的更深问题，停下报告。
+
+> **夜间批次（用户 2026-10-22 已批准连夜执行）：** 053 → 054 → 055 依序执行；每个计划收尾先跑本计划全部回归，全绿才进入下一个；任一步失败或触发停止条件，立即停下写阻塞报告，不自行扩大范围。三份计划共含一次性分批提交+推送授权（沿用 047/049/051 模式：每批提交前跑红线扫描+文件清单核对，附在执行记录中；发现疑似真实材料或凭证即停）。
+
+### OD-ARCH-053：原生设置页替代 DSH 设置窗口（已批准，2026-10-22）
+
+> **背景：** 用户实测确认「打开 DSH 设置」实际弹出完整 DSH Web 应用首页（缺陷；设置面板是 DSH 应用内弹层，官方无直达入口）。用户拍板方案 A：OmniDesk 自建原生设置页，DSH 完整应用入口降级隐藏。本计划修订决策 D-026（执行完成后在 docs/decisions.md 追加取代记录）。
+
+**目标：** 模型端点/密钥/权限全部在 OmniDesk 原生设置页内完成；设置不再依赖 DSH UI；场景声明（profile）入口进设置页。
+
+**影响范围：** desktop/src-tauri（新增宿主配置命令）、desktop/src/SettingsPanel.tsx（重构为原生表单）、docs/decisions.md（D-026 追加取代记录）、PLANS/STATUS/REVIEW。不碰 runtime/ 源码（零差异验收）、不改 DSH Runtime、凭证不入日志/Git/evidence。
+
+**步骤：**
+1. **S1 Rust 配置层：** 新增宿主命令读写模型配置（BUILDER 先核实现有 provider 配置实际加载源——预计为数据根 ~/OmniDesk/runtime/dsh-home/profiles/web/cordis.patch.yml，确认后以实际为准并在执行记录写明）。字段：provider 名称、base_url、api_key、默认模型、分区权限开关。密钥只落盘，日志/命令返回/evidence 一律打码（仅留尾 4 位）；写入用临时文件+原子替换；文件损坏时回退只读并明确报错，不静默重置。
+2. **S2 原生设置页：** SettingsPanel 改为四区表单：模型与端点 / 场景声明 / 权限 / 关于（高级）。「刷新端点信息」改读 S1 层；保留 052 重启提示逻辑不动。
+3. **S3 场景声明区：** 显示 ~/OmniDesk/app/profiles/discipline.yml 绝对路径与当前载入指纹；「在系统编辑器打开」按钮（打开数据根文件，非仓库文件）；内嵌编辑框（载入→校验→写前自动备份→保存），校验失败禁止保存并显示原因；保存后显示"重启应用生效"（复用 decl_digest 现有机制）。
+4. **S4 DSH 入口降级：** 主界面移除「打开 DSH 设置」按钮；在"关于（高级）"折叠区保留「打开 DSH 原生界面（诊断用）」，默认折叠，文案注明会打开完整 DSH 应用。
+
+**验收：** cargo（含新增单测：原子写/密钥打码/损坏回退/patch 读写往返）、tsc、npm run build 全绿；git status --porcelain runtime/ 为空；代码审查确认设置页不请求 DSH 端口；真实窗口截图四区各一张（存 tests/verification/desktop/evidence/）；扫描全部 evidence 与日志确认无密钥明文。
+
+**风险与停止条件：** ①写坏 patch 文件导致 DSH 起不来 → S1 先完成只读解析+往返单测，再开放写入，并用一次性副本实测写入后 dsh web 仍能启动；②实际配置加载源与预期不符 → 停下报告，不猜；③权限字段与 051 已有权限自管实现冲突 → 以已实现语义为准，不新造第二套。
+
+### OD-ARCH-054：设置页深化与首次运行引导（已批准，053 全绿后执行）
+
+**目标：** 用户拿到新构建后，不开文档即可自助完成"配模型 → 测连通 → 跑场景"。
+
+**步骤：**
+1. **S1 连接测试：** 设置页「测试连接」按钮——对 base_url 发 OpenAI 兼容最小请求（/models 或最短补全，载荷固定合成短句），超时 10 秒，结果显示成功/失败原因（网络/鉴权/格式三类起步）。
+2. **S2 模型列表拉取：** 鉴权成功后拉取模型列表填充"默认模型"下拉；失败降级为手动输入，不算测试失败。
+3. **S3 首次运行引导：** 启动检测无 provider 配置时，主界面显示一步引导卡（跳设置页），配置完成后消失；已有配置的用户不受影响。
+4. **S4 权限开关核对：** 核对 051 权限自管项在原生设置页可见可改；已可用则只核对不重做，结论写 STATUS。
+5. **S5 文档：** docs/user-testing-checklist.md 设置段落改为原生页流程。
+
+**验收：** 同 053 回归口径；对不可达端点与错误密钥各有明确失败态截图（载荷不含任何真实材料）。
+
+### OD-ARCH-055：场景页收尾核对（已批准，054 全绿后执行；只核对+小修，不新增功能）
+
+**目标：** 三场景（周报/文案/项目跟进）在用户实测前排掉低级问题。
+
+**步骤：**
+1. **S1 成果路径核对：** 逐场景验证成果实际保存位置符合统一命名（OmniDesk 数据根；旧 YvanAI 路径只读兼容不迁移）；发现不符仅修路径常量/文档，不动数据。
+2. **S2 空状态检查：** 各场景页在无历史会话、无成果时的空状态文案与引导是否明确；缺失则补文案（一处文案一提交粒度）。
+3. **S3 场景声明联动核对：** 在 discipline.yml 隐藏一个场景入口 → 重启后入口消失且对应页面不可直达 → 恢复文件。全程用副本演练，结束后声明文件与演练前一致。
+
+**验收：** 同 053 回归口径；S3 演练前后 decl 指纹一致记录。
+
+**夜间总停止条件（三计划共用）：** 同一问题连续两轮修复未解决即停，写根因与阻塞报告；发现疑似真实材料/凭证、runtime/ 出现差异、需要改 DSH Runtime 才能继续时，立即停并报告，等 ARCHITECT 与用户决定。
+
 ### OD-ARCH-052：上手清单刷新 + 重启提示 + 移交用户实测（待批准，2026-10-21）
 
 > **背景：** 051 复核通过（见 REVIEW.md 顶部）后，技术链路（会话续接、Profile 声明、设置内嵌、权限自管）全部就位。剩余关键路径是**用户真实模型端到端与三场景日常试用**——只能由用户本人执行。052 是移交前最后一小批。
@@ -22,6 +234,7 @@
 > - 回归：cargo 172（lib，含新增 3 个指纹单测）+2+13+3+1 全绿 0 失败；cargo build 通过；tsc 0；npm run build 通过；pytest 26 passed；runtime/ 零差异。
 > - 真实窗口：`verify_decl_restart_hint.py` 6 项自动断言全 true（改文件出提示 / 用户改动未被覆盖 / 删文件换文案 / 不热重载 / 重启后提示消失且像素与冷启动一致 / 重启才重建默认声明）。
 > - 限制：真实模型端到端仍未验证（需用户本人按清单执行）；"启动卡死"仍未复现、未认定修复。
+</details>
 
 
 ### OD-ARCH-051：UI 合一 + 原生多轮会话 + 纪检 Profile 固化 + 设置页外观统一（待批准→派工，2026-10-21）
