@@ -15,6 +15,7 @@ import {
   type TaskStatus,
 } from "../types";
 import { Icon } from "../components/Icon";
+import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
@@ -990,44 +991,17 @@ export function HomeChat({
         </div>
         <div className="mt-2.5 pt-2 border-t border-surface-variant/30 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5">
-            {/* 对话归类（OD-ARCH-061 S1）：固定四类胶囊，选中即给这段对话打标签。
-                选项由 Profile 声明联动——声明里隐藏的场景不会出现在这里。
+            {/* 对话归类（OD-ARCH-063 S1）：单枚下拉胶囊（色点 + 当前分类 + 箭头），
+                点开是勾选列表。分类可新增，平铺会吃满整行，故收进下拉。
+                选项仍由 Profile 声明联动——声明里隐藏的场景不会出现在列表里。
                 归类只是本机对话的组织方式，不改模型、不改路由。 */}
             {sceneOptions && sceneOptions.length > 0 ? (
-              <div
-                role="radiogroup"
-                aria-label="本次对话归到哪一类"
-                data-testid="scene-chips"
-                className="flex items-center gap-1 rounded-full plate-soft-inset p-0.5"
-              >
-                {sceneOptions.map((o) => {
-                  const on = o.key === activeTag;
-                  return (
-                    <button
-                      key={o.key}
-                      role="radio"
-                      aria-checked={on}
-                      data-testid={`scene-chip-${o.key}`}
-                      data-tag={o.key}
-                      onClick={() => onChangeTag?.(o.key)}
-                      disabled={busy}
-                      className={
-                        "px-2.5 py-1 rounded-full font-label-caps text-[11px] transition-colors disabled:opacity-50 " +
-                        (on
-                          ? "bg-primary text-on-primary shadow-sm"
-                          : "text-on-surface-variant hover:bg-surface-container")
-                      }
-                      title={
-                        on
-                          ? "这段对话当前归到这一类"
-                          : "归到这一类后，这段对话按该场景的规则组织，成果也归到该场景的档案里"
-                      }
-                    >
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <CategoryPicker
+                options={sceneOptions}
+                value={activeTag}
+                onChange={(key) => onChangeTag?.(key)}
+                disabled={busy}
+              />
             ) : null}
             {/* 历史对话切换在场景页左栏（OD-ARCH-059 复核修正）。
                 这里原先还有第二个下拉框，与场景框并排容易被读成「两级分类」，已移除。 */}

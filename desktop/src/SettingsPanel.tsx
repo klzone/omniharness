@@ -632,8 +632,8 @@ export default function SettingsPanel() {
   const savedOverlay = view?.overlay_present === true;
 
   return (
-    <div className="settings-v2 ofl-v2">
-      <section className="pane wb-header">
+    <div className="settings-v2 settings-surface">
+      <section className="pane settings-pane-header">
         <h2 className="pane-title">
           设置
           <span className="count">本地</span>
