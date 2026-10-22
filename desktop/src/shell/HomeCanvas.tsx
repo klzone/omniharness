@@ -160,25 +160,6 @@ export function HomeCanvas({
     return t.id;
   }, [activeId, activeTag, refresh]);
 
-  const selectThread = useCallback((id: string) => {
-    const t = listThreads().find((x) => x.id === id);
-    if (!t) return;
-    pendingIdRef.current = null;
-    setActiveId(t.id);
-    setActiveTag(t.tag);
-    setViewKey(t.id);
-  }, []);
-
-  const threadOptions = useMemo(
-    () =>
-      threads.map((t) => ({
-        id: t.id,
-        title: t.title,
-        tagLabel: t.tag === "plain" ? null : SCENES[t.tag as SceneKey].label,
-      })),
-    [threads],
-  );
-
   return (
     <SceneScaffold
       upper={
@@ -275,9 +256,6 @@ export function HomeCanvas({
           sceneOptions={options}
           activeTag={effectiveTag}
           onChangeTag={changeTag}
-          threadOptions={threadOptions}
-          activeThreadId={activeId}
-          onSelectThread={selectThread}
           onNewThread={newThread}
           threadKey={viewKey}
           initialMessages={active?.messages ?? []}

@@ -6,12 +6,12 @@
     "home": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/01-home-chips.png",
       "app_alive": true,
-      "expect": "输入区有 场景chip + 对话chip + 新对话；Dock 第二个入口为「工作记录」"
+      "expect": "输入区只有 场景chip + 新对话（不再有第二个历史对话下拉框）；Dock 第二个入口为「工作记录」"
     },
     "loaded": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/02-home-loaded-thread.png",
       "thread_file": "/tmp/od059-s2-verify/app-data/threads/_unassigned/t059s2verify.json",
-      "expect": "对话chip显示「[工作记录] 合成验收对话」"
+      "expect": "首页自动载入「[工作记录] 合成验收对话」，两条消息完整"
     },
     "scene_page": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-059/S2/03-scene-archive.png",
@@ -36,6 +36,5 @@
     }
   },
   "decl_restored": true,
-  "app_alive_at_end": true,
-  "note": "2026-10-22 复核后重跑：AppSession 启用 artifact_override，WebKit 存储改用一次性 XDG 根，场景页不再出现用户真实成果文件名。"
+  "app_alive_at_end": true
 }

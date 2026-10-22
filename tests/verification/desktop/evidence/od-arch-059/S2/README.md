@@ -15,8 +15,8 @@ bash /tmp/od054-reg.sh   # 夜间批次同一套全回归
 
 | 场景 | 操作 | 可观察证据 | 判定 |
 | --- | --- | --- | --- |
-| 首页对话 chip | 全新数据根启动，截图输入区 | `01-home-chips.png`：场景 chip「工作记录」+ 对话 chip + 「新对话」；Dock 第二项为「工作记录」 | 通过（截图） |
-| 载入既有线程 | 预置 `app-data/threads/_unassigned/t059s2verify.json`（tag=weekly，2 条合成消息）后重启 | `02-home-loaded-thread.png`：对话 chip 显示「[工作记录] 合成验收对话」，两条消息完整显示 | 通过（截图 + 文件） |
+| 首页输入区 | 全新数据根启动，截图输入区 | `01-home-chips.png`：只有场景 chip「自由对话（不归类）」+「新对话」+ 置灰的「挂载库 / 语音」；历史对话下拉已移除；Dock 第二项为「工作记录」 | 通过（截图） |
+| 载入既有线程 | 预置 `app-data/threads/_unassigned/t059s2verify.json`（tag=weekly，2 条合成消息）后重启 | `02-home-loaded-thread.png`：首页直接载入该对话（场景 chip 显示「工作记录」），两条消息完整 | 通过（截图 + 文件） |
 | 场景页纯档案化 | Dock 第二项进入工作记录页 | `03-scene-archive.png`：左栏「工作记录 · 历史对话」列出该对话，右栏成果档案；页面无输入框/对话框 | 通过（截图） |
 | 去对话续聊 | 点左栏对话标题 | `04-open-thread-home.png`：回到首页并载入该对话，历史完整 | 通过（截图） |
 | 场景改挂 | 首页场景 chip 展开 → Home → 两次 Down → Return | 落盘 JSON：`tag` 由 `weekly` 变 `writing`，`messages` 仍为 2 条 | 通过（文件事实） |
@@ -31,6 +31,10 @@ bash /tmp/od054-reg.sh   # 夜间批次同一套全回归
 - npm run build：成功（约 500ms）
 - pytest：26 passed
 - `git status --porcelain runtime/`：空
+
+## 复核修正（2026-10-22 追加）
+
+`HomeChat` 里与场景 chip 并排的第二个下拉框（「切换本机对话」）容易被读成第二级分类，用户要求移除。现已删除该下拉框及其属性通道；历史对话统一从场景页左栏进入，首页只留场景 chip + 新对话。截图已重拍。
 
 ## 已知限制
 

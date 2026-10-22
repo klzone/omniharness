@@ -157,9 +157,6 @@ export interface HomeChatProps {
   activeTag?: string;
   onChangeTag?: (tag: string) => void;
   /** 本机对话列表（同一行显示，可切回旧对话）。 */
-  threadOptions?: Array<{ id: string; title: string; tagLabel: string | null }> | null;
-  activeThreadId?: string | null;
-  onSelectThread?: (id: string) => void;
   onNewThread?: () => void;
   /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
   preset?: ChatPreset | null;
@@ -188,9 +185,6 @@ export function HomeChat({
   sceneOptions = null,
   activeTag = "plain",
   onChangeTag,
-  threadOptions = null,
-  activeThreadId = null,
-  onSelectThread,
   onNewThread,
   projectDir = null,
   threadKey = "default",
@@ -943,38 +937,18 @@ export function HomeChat({
                 </select>
               </>
             ) : null}
-            {threadOptions && onSelectThread ? (
-              <>
-                <label className="sr-only" htmlFor="od-thread-chip">
-                  切换本机对话
-                </label>
-                <select
-                  id="od-thread-chip"
-                  className="px-2.5 py-1 rounded-full plate-soft-inset font-label-caps text-[11px] text-on-surface-variant max-w-[13rem]"
-                  value={activeThreadId ?? ""}
-                  onChange={(e) => onSelectThread(e.target.value)}
-                  disabled={busy}
-                  title="本机保存过的对话；选择后接着聊，历史完整保留"
-                >
-                  {threadOptions.length === 0 ? <option value="">还没有保存的对话</option> : null}
-                  {threadOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.tagLabel ? `[${t.tagLabel}] ${t.title}` : t.title}
-                    </option>
-                  ))}
-                </select>
-                {onNewThread ? (
-                  <button
-                    onClick={onNewThread}
-                    disabled={busy}
-                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
-                    title="开一段新对话（当前这段已自动保存在本机）"
-                  >
-                    <Icon name="note" className="w-[13px] h-[13px]" />
-                    <span>新对话</span>
-                  </button>
-                ) : null}
-              </>
+            {/* 历史对话切换在场景页左栏（OD-ARCH-059 复核修正）。
+                这里原先还有第二个下拉框，与场景框并排容易被读成「两级分类」，已移除。 */}
+            {onNewThread ? (
+              <button
+                onClick={onNewThread}
+                disabled={busy}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
+                title="开一段新对话（当前这段已自动保存在本机）"
+              >
+                <Icon name="note" className="w-[13px] h-[13px]" />
+                <span>新对话</span>
+              </button>
             ) : null}
             <button
               disabled
