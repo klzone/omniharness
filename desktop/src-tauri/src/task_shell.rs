@@ -798,7 +798,13 @@ pub fn save_artifact(
     assert_local_root_allowed(&target)?;
     assert_outside_repo(&target)?;
 
-    let content = render_artifact(request, &recomputed, now);
+    let mut content = render_frontmatter(
+        &request.task_type,
+        "OmniDesk 分析产物",
+        &["omnidesk", &request.task_type],
+        now,
+    );
+    content.push_str(&render_artifact(request, &recomputed, now));
 
     write_new_file_durable(&target, &content)?;
 
@@ -1777,6 +1783,67 @@ fn write_new_file_durable(target: &Path, content: &str) -> Result<(), String> {
     write_new_file_durable_with(target, content, &NewFileOps::REAL)
 }
 
+/// 生成产物 Markdown 的 YAML frontmatter（OD-ARCH-058/059 S3）。
+///
+/// 只对**新写入**的文件生效；既有成果文件一律不重写、不迁移。字段刻意保持小集合，
+/// 供 Obsidian/Dataview 直接读取。frontmatter 属于元数据，不属于用户正文，
+/// 因此不参与输入红线扫描（扫描仍只针对用户原文）。
+pub fn render_frontmatter(scenario: &str, title: &str, tags: &[&str], now: f64) -> String {
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str(&format!("scenario: {}\n", yaml_scalar(scenario)));
+    out.push_str(&format!("title: {}\n", yaml_scalar(title)));
+    out.push_str(&format!("created: {}\n", yaml_scalar(&utc_iso8601(now))));
+    let tags_line: Vec<String> = tags.iter().map(|t| yaml_scalar(t)).collect();
+    out.push_str(&format!("tags: [{}]\n", tags_line.join(", ")));
+    out.push_str(&format!(
+        "omnidesk_version: {}\n",
+        yaml_scalar(SHELL_VERSION)
+    ));
+    out.push_str("---\n");
+    out
+}
+
+/// 把一个字符串写成安全的 YAML 标量：必要时加双引号并转义。
+fn yaml_scalar(raw: &str) -> String {
+    let needs_quotes = raw.is_empty()
+        || raw.chars().any(|c| {
+            matches!(
+                c,
+                ':' | '{' | '}' | '[' | ']' | ',' | '&' | '*' | '#' | '?' | '|' | '>' | '\'' | '"' | '%' | '@' | '`' | '\n' | '\r' | '\t'
+            )
+        })
+        || raw.trim() != raw
+        || raw.starts_with('-')
+        || raw.starts_with('!');
+    if !needs_quotes {
+        return raw.to_string();
+    }
+    let mut out = String::with_capacity(raw.len() + 2);
+    out.push('"');
+    for c in raw.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// ISO 8601（UTC，`YYYY-MM-DDTHH:MM:SSZ`）。Obsidian 与 Dataview 都可直接解析。
+pub fn utc_iso8601(secs: f64) -> String {
+    let (y, mo, d, h, mi, s) = utc_parts(secs);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, mo, d, h, mi, s
+    )
+}
+
 fn write_new_file_durable_with(
     target: &Path,
     content: &str,
@@ -1851,7 +1918,12 @@ pub fn save_offline_artifact(
     assert_local_root_allowed(&target)?;
     assert_outside_repo(&target)?;
 
-    let mut content = String::new();
+    let mut content = render_frontmatter(
+        &request.scenario,
+        request.title.trim(),
+        &["omnidesk", request.scenario.as_str()],
+        now,
+    );
     content.push_str(&format!("# {}\n\n", request.title.trim()));
     content.push_str(&format!("- 场景：{}\n", request.scenario));
     content.push_str(&format!("- 生成时间 (UTC)：{}\n", utc_iso(now)));
@@ -3109,6 +3181,142 @@ mod tests {
         let project = project_flow_with(PROJECT_SAMPLE, Some("2026-10-15"), &pack);
         assert_eq!(project.summary.as_ref().unwrap().overdue, 2);
         assert!(project.markdown.unwrap().contains("自定义项目标题"));
+    }
+
+    #[test]
+    fn offline_save_writes_obsidian_frontmatter_and_keeps_legacy_files() {
+        // OD-ARCH-058/059 S3：新文件首块必须是可解析的 YAML frontmatter。
+        with_env_root("offline-frontmatter", |root| {
+            let request = SaveOfflineRequest {
+                scenario: "material_writing".to_string(),
+                title: "合成：标题 \"带引号\" 与冒号".to_string(),
+                markdown: "## 正文\n\n- 合成内容\n".to_string(),
+                user_confirmed: true,
+                ai_assisted: false,
+                source: WriteSource::Human,
+                pending_id: None,
+            };
+            // 先放一份「历史成果」（无 frontmatter），确认新写入不会碰它。
+            let legacy = root.join("offline-weekly-report-20251001-000000.md");
+            fs::write(&legacy, "# 旧成果\n\n历史正文\n").expect("准备历史成果");
+            let legacy_before = fs::read(&legacy).expect("读取历史成果");
+
+            let receipt = save_offline_artifact(&request, 1_760_572_800.0).expect("应保存成功");
+            let written = fs::read_to_string(&receipt.path).expect("读取新成果");
+            assert!(written.starts_with("---\n"), "首块应是 frontmatter");
+            let end = written[4..].find("\n---\n").expect("frontmatter 应闭合") + 4;
+            let meta: serde_yaml::Value =
+                serde_yaml::from_str(&written[4..end]).expect("frontmatter 应可被 YAML 解析");
+            assert_eq!(meta["scenario"].as_str(), Some("material_writing"));
+            assert_eq!(meta["title"].as_str(), Some("合成：标题 \"带引号\" 与冒号"));
+            assert_eq!(meta["created"].as_str(), Some("2025-10-16T00:00:00Z"));
+            assert_eq!(meta["omnidesk_version"].as_str(), Some(SHELL_VERSION));
+            let tags: Vec<&str> = meta["tags"]
+                .as_sequence()
+                .expect("tags 应是序列")
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            assert_eq!(tags, vec!["omnidesk", "material_writing"]);
+            // frontmatter 之后仍保留原有正文头部（不吞标题）。
+            assert!(written[end..].contains("# 合成：标题"));
+            // 既有文件字节级不变。
+            assert_eq!(fs::read(&legacy).expect("重读历史成果"), legacy_before);
+        });
+    }
+
+    #[test]
+    fn analysis_artifact_also_starts_with_frontmatter() {
+        with_env_root("artifact-frontmatter", |_root| {
+            let request = valid_request(samples()[0].content, "user");
+            let receipt = save_artifact(&request, 1_760_572_800.0).expect("应保存成功");
+            let written = fs::read_to_string(&receipt.path).expect("读取产物");
+            assert!(written.starts_with("---\n"));
+            let end = written[4..].find("\n---\n").expect("frontmatter 应闭合") + 4;
+            let meta: serde_yaml::Value =
+                serde_yaml::from_str(&written[4..end]).expect("frontmatter 应可解析");
+            assert_eq!(meta["scenario"].as_str(), Some("desensitized_analysis"));
+            assert_eq!(meta["created"].as_str(), Some("2025-10-16T00:00:00Z"));
+            assert!(written[end..].contains("# OmniDesk 分析产物"));
+        });
+    }
+
+    #[test]
+    fn yaml_scalar_escapes_unsafe_titles() {
+        assert_eq!(yaml_scalar("plain"), "plain");
+        assert_eq!(yaml_scalar("a: b"), "\"a: b\"");
+        assert_eq!(yaml_scalar("say \"hi\""), "\"say \\\"hi\\\"\"");
+        assert_eq!(yaml_scalar("line\nbreak"), "\"line\\nbreak\"");
+        assert_eq!(yaml_scalar(""), "\"\"");
+        let fm = render_frontmatter("weekly_report", "- 列表开头", &["omnidesk"], 0.0);
+        let body = fm.trim_start_matches("---\n").trim_end_matches("---\n");
+        let parsed: serde_yaml::Value = serde_yaml::from_str(body).expect("应可解析");
+        assert_eq!(parsed["title"].as_str(), Some("- 列表开头"));
+    }
+
+    /// OD-ARCH-059 S3 验收：改绑成果目录后，新文件落新目录，旧目录一个字节都不动。
+    #[test]
+    fn rebinding_artifact_root_writes_only_to_the_new_dir() {
+        static APP_ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _app_guard = APP_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let base = std::env::temp_dir().join(format!("omnidesk-vault-rebind-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let app_root = base.join("app");
+        let old_root = base.join("vault-old");
+        let new_root = base.join("vault-new");
+        fs::create_dir_all(&app_root).unwrap();
+        fs::create_dir_all(&old_root).unwrap();
+
+        let previous_app = std::env::var_os("OMNIDESK_APP_DATA_ROOT");
+        std::env::set_var("OMNIDESK_APP_DATA_ROOT", &app_root);
+        std::env::remove_var(LOCAL_ROOT_ENV);
+
+        let paths = crate::app_paths::AppPaths::from_root(app_root.clone());
+        crate::settings::set_artifact_root(&paths, old_root.to_str().unwrap()).unwrap();
+
+        let request = SaveOfflineRequest {
+            scenario: "weekly_report".to_string(),
+            title: "合成周记".to_string(),
+            markdown: "## 本周\n\n- 合成事项\n".to_string(),
+            user_confirmed: true,
+            ai_assisted: false,
+            source: WriteSource::Human,
+            pending_id: None,
+        };
+        let first = save_offline_artifact(&request, 1_760_572_800.0).expect("旧目录应写入成功");
+        assert!(Path::new(&first.path).starts_with(&old_root));
+        let old_files: Vec<_> = fs::read_dir(&old_root).unwrap().map(|e| e.unwrap().path()).collect();
+        let old_snapshot: Vec<(PathBuf, Vec<u8>)> = old_files
+            .iter()
+            .map(|p| (p.clone(), fs::read(p).unwrap()))
+            .collect();
+
+        crate::settings::set_artifact_root(&paths, new_root.to_str().unwrap()).unwrap();
+        let second = save_offline_artifact(&request, 1_760_572_900.0).expect("新目录应写入成功");
+        assert!(Path::new(&second.path).starts_with(&new_root));
+
+        // 旧目录：文件集合与内容都不变。
+        let after: Vec<(PathBuf, Vec<u8>)> = fs::read_dir(&old_root)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .map(|p| (p.clone(), fs::read(&p).unwrap()))
+            .collect();
+        assert_eq!(after.len(), old_snapshot.len(), "旧目录不得新增文件");
+        for (path, bytes) in &old_snapshot {
+            let now = after.iter().find(|(p, _)| p == path).expect("旧文件应仍在");
+            assert_eq!(&now.1, bytes, "旧文件内容不得变化");
+        }
+        // 新目录里是新成果，且带 frontmatter。
+        let written = fs::read_to_string(&second.path).unwrap();
+        assert!(written.starts_with("---\nscenario: weekly_report\n"));
+
+        match previous_app {
+            Some(v) => std::env::set_var("OMNIDESK_APP_DATA_ROOT", v),
+            None => std::env::remove_var("OMNIDESK_APP_DATA_ROOT"),
+        }
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
