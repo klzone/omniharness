@@ -31,6 +31,10 @@ pub struct ModelProbe {
     pub classification: String,
     pub message: String,
     pub models: Vec<DiscoveredModel>,
+    /// 这次请求用的是哪来的密钥：stored / input / none（只描述来源，不含值）。
+    pub key_source: String,
+    /// 该 provider 命中 DSH 内置目录时为 true：返回内置模型表，未发起真实网络请求。
+    pub builtin_catalog: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -49,6 +53,9 @@ struct Running {
     pid: u32,
     port: u16,
     url: String,
+    /// 启动签名（Profile + 补丁文件的内容指纹）。配置变了必须重建进程，
+    /// 否则设置服务仍按旧路由解析凭据，探测结果与引擎不一致（OD-ARCH-065 S1）。
+    signature: String,
 }
 
 /// 一次打开请求的结果（不含令牌，可安全回给前端）。
@@ -81,11 +88,19 @@ impl SettingsService {
         log_path: &Path,
         record_path: &Path,
     ) -> Result<Opened, String> {
+        let signature = launch_signature(config);
         if let Some(running) = self.reusable() {
-            return Ok(Opened {
-                port: running.port,
-                reused: true,
-            });
+            if running.signature == signature {
+                return Ok(Opened {
+                    port: running.port,
+                    reused: true,
+                });
+            }
+            // 配置已变：停掉旧实例再按新参数起，避免复用一份过期路由。
+            let mut guard = self.running.lock().unwrap();
+            if let Some(old) = guard.take() {
+                kill_pid(old.pid);
+            }
         }
         // 走到这里说明内存里没有可用实例：清掉遗留进程，再起一个新的。
         stop_recorded(record_path);
@@ -95,7 +110,12 @@ impl SettingsService {
             Ok((url, port)) => {
                 write_record(record_path, pid, port);
                 let mut guard = self.running.lock().unwrap();
-                *guard = Some(Running { pid, port, url });
+                *guard = Some(Running {
+                    pid,
+                    port,
+                    url,
+                    signature,
+                });
                 Ok(Opened {
                     port,
                     reused: false,
@@ -127,6 +147,7 @@ impl SettingsService {
                 pid: running.pid,
                 port: running.port,
                 url: running.url.clone(),
+                signature: running.signature.clone(),
             })
         } else {
             None
@@ -217,13 +238,26 @@ impl SettingsService {
         record_path: &Path,
         base_url: &str,
         api: &str,
+        provider: Option<&str>,
         api_key: Option<&str>,
         timeout: Duration,
     ) -> Result<ModelProbe, String> {
         let mut draft = serde_json::json!({ "baseURL": base_url, "api": api });
+        let typed = api_key.filter(|k| !k.trim().is_empty());
         if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
             draft["apiKey"] = serde_json::Value::String(key.to_string());
         }
+        if let Some(name) = provider.filter(|p| !p.trim().is_empty()) {
+            draft["provider"] = serde_json::Value::String(name.trim().to_string());
+        }
+        let provider_named = provider.map(|p| !p.trim().is_empty()).unwrap_or(false);
+        let key_source = if typed.is_some() {
+            "input"
+        } else if provider_named {
+            "stored"
+        } else {
+            "none"
+        };
         let opened = self.ensure(config, log_path, record_path)?;
         let url = self
             .reusable()
@@ -261,6 +295,8 @@ impl SettingsService {
                         message
                     ),
                     models: Vec::new(),
+                    key_source: key_source.to_string(),
+                    builtin_catalog: false,
                 });
             }
         };
@@ -277,7 +313,9 @@ impl SettingsService {
             )
         })?;
         let result = parsed.get("result").cloned().unwrap_or(serde_json::Value::Null);
-        Ok(classify_probe(&result))
+        let mut probe = classify_probe(&result);
+        probe.key_source = key_source.to_string();
+        Ok(probe)
     }
 }
 
@@ -320,6 +358,8 @@ pub fn classify_probe(result: &serde_json::Value) -> ModelProbe {
             classification: "ok".to_string(),
             message,
             models,
+            key_source: "none".to_string(),
+            builtin_catalog: false,
         };
     }
     let code = result
@@ -364,6 +404,8 @@ pub fn classify_probe(result: &serde_json::Value) -> ModelProbe {
         classification: classification.to_string(),
         message: format!("{}（{}）", message, code),
         models: Vec::new(),
+        key_source: "none".to_string(),
+        builtin_catalog: false,
     }
 }
 
@@ -391,7 +433,12 @@ fn exchange_token(port: u16, url: &str) -> Result<String, String> {
     Ok(cookie)
 }
 
-/// 起一个 `dsh web --port 0 --no-open`，输出按行打码后写日志。
+/// 起一个 `dsh --profile <p> --port 0 --no-open`，输出按行打码后写日志。
+///
+/// 注意：`web` **不是** dsh 的子命令。0.2.1-alpha.2 的 CLI 只有 `plugin` 一个子命令，
+/// `web` 会被当成 app 参数而报 “too many arguments”；`--port/--no-open` 必须直接跟在
+/// Profile 与 `--patch` 之后。实测 `dsh --profile web --port 0 --no-open` 会打印
+/// `dsh web: http://127.0.0.1:<port>/?token=...`（OD-ARCH-065）。
 fn spawn(config: &EngineConfig, log_path: &Path) -> Result<Child, String> {
     let node = std::env::var("OMNIDESK_NODE")
         .ok()
@@ -407,9 +454,18 @@ fn spawn(config: &EngineConfig, log_path: &Path) -> Result<Child, String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("创建日志目录失败（{}）：{}", parent.display(), e))?;
     }
-    Command::new(&node)
+    // 参数只取自 EngineConfig：Profile 与补丁文件已在宿主侧校验，
+    // 不接受任何外部输入（OD-ARCH-065 S1）。
+    // \`--profile\` / \`--patch\` 是 launcher 级参数，必须排在 \`web\` 之前。
+    let mut command = Command::new(&node);
+    command
         .arg(&config.dsh_cli)
-        .arg("web")
+        .arg("--profile")
+        .arg(&config.profile);
+    for patch in &config.patch_files {
+        command.arg("--patch").arg(patch);
+    }
+    command
         .arg("--port")
         .arg("0")
         .arg("--no-open")
@@ -420,6 +476,21 @@ fn spawn(config: &EngineConfig, log_path: &Path) -> Result<Child, String> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("启动 DSH 设置服务失败（{}）：{}", node, e))
+}
+
+/// 设置服务进程的启动签名：Profile 名 + 每个补丁文件的路径与内容摘要。
+///
+/// 覆盖文件每次保存都会换内容，签名随之改变，旧设置服务进程不会被误复用
+/// （否则探测仍按旧路由解析凭据，结果与引擎不一致）。
+fn launch_signature(config: &EngineConfig) -> String {
+    let mut parts: Vec<String> = vec![config.profile.clone()];
+    for patch in &config.patch_files {
+        let digest = std::fs::read(patch)
+            .map(|bytes| crate::sha256::sha256_hex(&bytes))
+            .unwrap_or_else(|_| "missing".to_string());
+        parts.push(format!("{}#{}", patch.display(), digest));
+    }
+    parts.join("|")
 }
 
 /// 等 DSH 打出本地地址；期间把输出打码落日志。返回（URL, 端口）。

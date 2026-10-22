@@ -141,6 +141,61 @@ pub fn list_routes(config: &EngineConfig, profiles: &[String]) -> Result<Value, 
     }))
 }
 
+/// 只读：引擎 Profile 当前生效的**非机密**路由集合（OD-ARCH-065 S3）。
+///
+/// 用于在写覆盖文件前做「Profile 路由 + OmniDesk 路由」合并：补丁层对 config 是
+/// 浅合并，若只写自己那几条会静默抹掉 Profile 自带的路由。
+///
+/// 必须带上引擎实际会加载的所有补丁（否则只存在于补丁里的路由会被当成不存在而抹掉），
+/// 但**排除 OmniDesk 自己那份覆盖文件**：它正是本次要重算的内容，读进来会把已删除的
+/// 提供商带回来。
+pub fn base_routes(
+    config: &EngineConfig,
+    app_root: &Path,
+) -> Result<Vec<crate::model_settings::ProviderRoute>, String> {
+    let overlay = overlay_path(app_root);
+    let patches: Vec<String> = config
+        .patch_files
+        .iter()
+        .filter(|p| p.as_path() != overlay.as_path())
+        .map(|p| p.display().to_string())
+        .collect();
+    let value = run_script(json!({
+        "dshCli": config.dsh_cli.display().to_string(),
+        "dshHome": config.dsh_home.display().to_string(),
+        "profiles": [config.profile],
+        "patches": patches,
+        "dumpRoutes": true,
+    }))?;
+    let raw = value
+        .get("providers")
+        .cloned()
+        .ok_or_else(|| "DSH 配置转储里没有 providers 字段".to_string())?;
+    serde_json::from_value(raw).map_err(|e| {
+        format!(
+            "无法解析 DSH Profile 的路由集合（{}）；为避免写出一份不完整的覆盖文件，本次不保存。",
+            e
+        )
+    })
+}
+
+/// 只读：DSH 内置（pi-ai 自带）的 provider 名清单。
+///
+/// \`llm/discoverModels\` 遇到这些名字会直接回内置模型表、不发网络请求，
+/// 因此探测结果必须据此标注，不能当作连通性证明（OD-ARCH-065 S1）。
+pub fn builtin_providers(config: &EngineConfig) -> Result<Vec<String>, String> {
+    let value = run_script(json!({
+        "dshCli": config.dsh_cli.display().to_string(),
+        "dshHome": config.dsh_home.display().to_string(),
+        "builtinProviders": true,
+    }))?;
+    let raw = value
+        .get("providers")
+        .cloned()
+        .ok_or_else(|| "内置 provider 目录没有返回清单".to_string())?;
+    serde_json::from_value(raw).map_err(|e| format!("无法解析内置 provider 目录：{}", e))
+}
+
 /// 选定一个 provider/model，写出覆盖文件（只含非机密字段）。
 pub fn select_route(
     config: &EngineConfig,

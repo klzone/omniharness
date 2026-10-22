@@ -769,12 +769,16 @@ async fn model_settings_load(app: tauri::AppHandle) -> Result<serde_json::Value,
     let mut key_status: Option<serde_json::Value> = None;
     let mut key_error: Option<String> = None;
     if let Ok(Some(ref s)) = loaded {
-        match model_settings_credentials(&app, "credentials/describe", serde_json::json!({ "refs": [s.api_key_ref] })).await {
-            Ok(value) => {
-                key_status = value
-                    .get(&s.api_key_ref)
-                    .cloned();
-            }
+        // 一次问全部凭据引用（只回 configured/source/writable 三项事实，不含值）。
+        let refs: Vec<String> = s.providers.iter().map(|p| p.api_key_ref.clone()).collect();
+        match model_settings_credentials(
+            &app,
+            "credentials/describe",
+            serde_json::json!({ "refs": refs }),
+        )
+        .await
+        {
+            Ok(value) => key_status = Some(value),
             Err(message) => key_error = Some(message),
         }
     }
@@ -783,6 +787,7 @@ async fn model_settings_load(app: tauri::AppHandle) -> Result<serde_json::Value,
         "settings": value,
         "error": error,
         "config_path": model_settings::settings_path(&config_dir).display().to_string(),
+        "legacy_config_path": model_settings::legacy_settings_path(&config_dir).display().to_string(),
         "overlay_path": model_settings::overlay_path(&config_dir).display().to_string(),
         "overlay_present": model_settings::overlay_path(&config_dir).is_file(),
         "app_root": app_root.display().to_string(),
@@ -825,6 +830,7 @@ async fn model_settings_probe(
     app: tauri::AppHandle,
     base_url: String,
     api: String,
+    provider: Option<String>,
     api_key: Option<String>,
 ) -> Result<serde_json::Value, String> {
     model_settings::validate_base_url(&base_url)?;
@@ -844,30 +850,57 @@ async fn model_settings_probe(
             return Err("API Key 过长（上限 8192 字符）".to_string());
         }
     }
-    let (config, log_path, record_path) = {
+    let (config, log_path, record_path, config_dir) = {
         let snap = app.state::<HostSnapshot>();
         let config = snap.config.lock().unwrap().clone();
         (
             config,
             snap.paths.logs.join("dsh-settings.log"),
             snap.paths.engine_state.join("dsh-settings.json"),
+            snap.paths.config.clone(),
         )
     };
+    // 只有「表单端点与该 provider 已保存的路由一致」时才把 provider 交给 DSH：
+    // 这样 DSH 才会用该路由已登记的凭据解析密钥；凭空带一个名字没有意义。
+    let wanted = provider.unwrap_or_default();
+    let saved = model_settings::load(&config_dir)
+        .ok()
+        .flatten()
+        .and_then(|s| s.find(wanted.trim()).cloned());
+    let route_provider = saved
+        .as_ref()
+        .filter(|p| {
+            p.base_url.trim_end_matches('/') == base_url.trim_end_matches('/') && p.api == api
+        })
+        .map(|p| p.provider.clone());
+    let route_mismatch = !wanted.trim().is_empty() && route_provider.is_none();
     let service = std::sync::Arc::clone(
         app.state::<std::sync::Arc<dsh_settings::SettingsService>>()
             .inner(),
     );
+    let provider_for_receipt = route_provider.clone();
     // 计划要求 10 秒超时：本地 DSH 收到请求后会自己带超时去连端点。
-    let probe = tauri::async_runtime::spawn_blocking(move || {
-        service.probe_models(
+    // 命中 DSH 内置目录时 DSH 会直接回内置表、不联网：结果必须如实标注。
+    let (probe, builtin) = tauri::async_runtime::spawn_blocking(move || {
+        let builtin = route_provider
+            .as_ref()
+            .map(|name| {
+                model_routes::builtin_providers(&config)
+                    .map(|list| list.iter().any(|n| n == name))
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        let probe = service.probe_models(
             &config,
             &log_path,
             &record_path,
             &base_url,
             &api,
+            route_provider.as_deref(),
             key.as_deref(),
             std::time::Duration::from_secs(10),
-        )
+        )?;
+        Ok::<_, String>((probe, builtin))
     })
     .await
     .map_err(|e| format!("连接测试任务异常结束：{}", e))??;
@@ -876,7 +909,17 @@ async fn model_settings_probe(
         "classification": probe.classification,
         "message": probe.message,
         "models": probe.models,
-        "note": "本结果只说明这一次请求的结果；",
+        "key_source": probe.key_source,
+        "builtin_catalog": builtin,
+        "provider_route": provider_for_receipt,
+        "route_mismatch": route_mismatch,
+        "note": if builtin {
+            "该提供商名命中 DSH 内置目录，返回的是内置模型表，未发起真实网络请求；"
+        } else if route_mismatch {
+            "当前端点与该提供商的已保存路由不一致，本次按未保存的新端点探测、没有沿用已存密钥；"
+        } else {
+            "本结果只说明这一次请求的结果；"
+        },
     }))
 }
 
@@ -886,6 +929,7 @@ async fn model_settings_probe(
 async fn model_settings_save(
     app: tauri::AppHandle,
     settings: model_settings::ModelSettings,
+    api_key_ref: Option<String>,
     api_key: Option<String>,
 ) -> Result<serde_json::Value, String> {
     settings.validate()?;
@@ -897,20 +941,48 @@ async fn model_settings_save(
             return Err("API Key 过长（上限 8192 字符）".to_string());
         }
     }
+    // 密钥只允许写进本次选中的那个提供商的引用名；引用名必须属于这份配置。
+    // 校验放在写盘之前：引用不合法时什么都不改。
+    let typed_key = api_key.filter(|k| !k.trim().is_empty());
+    let key_target = match typed_key.as_deref() {
+        Some(_) => {
+            let wanted = api_key_ref.unwrap_or_default();
+            Some(
+                settings
+                    .providers
+                    .iter()
+                    .find(|p| p.api_key_ref == wanted)
+                    .map(|p| p.api_key_ref.clone())
+                    .ok_or_else(|| {
+                        "拒绝写入密钥：凭据引用不属于本次保存的配置。密钥未写入，配置未改动。"
+                            .to_string()
+                    })?,
+            )
+        }
+        None => None,
+    };
     let (config_dir, app_root) = {
         let state = app.state::<SharedHost>();
         let host = state.lock().unwrap();
         (host.paths.config.clone(), host.paths.root.clone())
     };
-    let (json_path, overlay) = model_settings::save(&config_dir, &settings)?;
+    let engine_config = {
+        let snap = app.state::<HostSnapshot>();
+        let config = snap.config.lock().unwrap().clone();
+        config
+    };
+    // 先取引擎 Profile 当前生效的路由：补丁层对 config 是浅合并，
+    // 读不到 Profile 路由就不写盘，避免抹掉 Profile 自带的其它路由。
+    let base = model_routes::base_routes(&engine_config, &app_root)?;
+    let (json_path, overlay) = model_settings::save(&config_dir, &settings, &base)?;
 
     let mut key_written = false;
     let mut key_error: Option<String> = None;
-    if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+    if let (Some(key), Some(target)) = (typed_key, key_target.as_deref()) {
         match model_settings_credentials(
             &app,
             "credentials/set",
-            serde_json::json!({ "ref": settings.api_key_ref, "value": key }),
+            serde_json::json!({ "ref": target, "value": key }),
         )
         .await
         {
