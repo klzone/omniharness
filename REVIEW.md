@@ -1,3 +1,17 @@
+## OD-ARCH-065 复核结论：**通过（多提供商模型档案 + 探测沿用已存密钥 + 1M 上下文声明）**（ARCHITECT，2026-10-23）
+
+- **独立核查（本机，与 BUILDER 分离）：** cargo test 212/0（含 13 集成）、tsc 0、pytest 26、npm build 成功，与 BUILDER 记录一致；`git status --porcelain runtime/` 为空；工作区干净、`main` 与 `origin/main` 同步（HEAD `ef16356`）。代码抽查四项全部属实：①`model_settings.rs` v2 结构 `providers[]` + `default`，路由/凭据引用唯一性校验、`contextWindow` 范围 1..1e8、v1 迁移成功才改名 `.v1.bak`（冲突时加时间戳后缀）、损坏文件只读报错不覆盖；②`render_overlay(base)` 以 `--dump-config` 现行完整路由集为底、OmniDesk 覆盖同名项、其余保留，修掉了「只存在于补丁里的路由被浅合并抹掉」的缺陷，覆盖文件原子写、权限 0600；③探测带 `provider` 仅当该 provider 已在覆盖文件中（草稿未填新密钥时由 DSH 凭据库按已存密钥解析），设置服务改为按引擎同 Profile + 同一份覆盖文件启动，密钥来源三态（沿用已存/本次输入/未带）与「命中 DSH 内置目录未发起真实网络请求」提示齐备；④删除提供商只删配置与路由、不动 DSH 凭据，界面明示，删空警告。
+- **证据核验：** `evidence/od-arch-065/` 9 张截图 + facts.json + engine-routes-facts.json；真实窗口回环合成端点：保存写入 provider/key_ref 与 1M 声明、base 路由保留、无明文密钥；沿用已存密钥探测 `request_reached_endpoint: true` / `authorized_delta: 1`；错误密钥 401（判定依据为脚本 `self._json(401)` 分支 + 截图，非独立 JSON 字段，登记为证据面小瑕疵不阻塞）；双提供商共存、overlay 0600。引擎实载 `--dump-config`：opendesign 5 模型全部 `contextWindow: 1048576`、`agnescn` 路由保留、默认 `deepseek-v4.1-flash`。`~/OmniDesk/app/config/` 两份配置各 5 处 contextWindow，v1 备份 `.bak-od065` 在档。`sk-`/`Bearer` 扫描 0 命中。
+- **1M 声明性质（用户须知）：** 这是给 DSH 的容量声明，**端点真实上限未验证**；若实际低于 1M，超长请求由端点报错、不静默截断。超长场景实测属于后续用户实测阶段。
+- **遗留备查：** facts.json 为 `:96` 最后一次运行产物，同目录 3 张早期尝试截图非同次（shots 按目录实况生成，不影响结论）；pytest 只跑 `tests/`（全仓会误收 runtime/ 内测试，与本轮无关）。065 计划标注「待批准」但用户直接派工执行，视为事实批准，本条记录在案。
+- **结论：** 065 验收通过。本批复核前已随 065 批次推送（工作区在复核前即与 origin 同步）。**下一步为用户实测（OD-ARCH-066 入口）：** 按 `docs/user-testing-checklist.md` 七步实测（约 30 分钟，含真实端点、强杀恢复、写确认卡），反馈不顺手点；ARCHITECT 待反馈后定 066 修复/打磨批次。
+
+## OD-ARCH-064 复核结论：**通过（用户实测通道整备）**（ARCHITECT，2026-10-23）
+
+- **独立核查：** 启动核对与 Dock 核对零代码改动属实（S1/S2 计划内允许改动但未发现缺陷）；`docs/user-testing-checklist.md` 197 行 / 7 步，旧版虚构流程（载入合成样例/生成模型初稿/保存成果）grep 0 命中；全量回归与 BUILDER 一致（cargo lib 202/0、tsc 0、pytest 26、build 通过）；`runtime/` 零差异；evidence/od-arch-064/（启动截图 + facts.json）在档，facts 记录 5 个 Dock 入口、设置 6 页签、清单校准明细与 055/060 联动复跑。清单核对现势界面一致（含多提供商设置页第 1 步已按 065 二次校准）。
+- **遗留备注：** ①`app.log` 开头 13 行 corrupted 双链表错误属 23:04 旧运行历史痕迹，本轮启动无新增，继续留观（再出现须附任务号）；②BUILDER 留的应用进程 pid 97021 复核时已不在运行（用户实测时自行重启即可）；③PLANS.md 063 标题下多余 `@@` 行已由 ARCHITECT 顺手修除。
+- **结论：** 064 验收通过。实测通道就绪，用户可开始实测（见 065 结论中的下一步指引）。
+
 ## OD-ARCH-063 复核结论：**通过**（ARCHITECT，2026-10-22）
 
 - **独立核查（本机，与 BUILDER 分离）：** 全量回归与 BUILDER 一致（cargo lib 202/0 失败、tsc 0、pytest 26、npm build 通过、runtime/ 零差异）。代码抽查：①CategoryPicker 自绘浮层与 ModelPicker 同套视觉（plate-soft-inset/rounded-full/向上弹出），键盘可达（Esc/上下键/Enter）且 aria/listbox 语义齐备；②单选即收起并沿用原 onChangeTag/retag 链路，持久化格式与键未动；③styles 命名收尾属实（offline-flows.css→settings-panel.css、.ofl-v2→.settings-surface、.wb-header→.settings-pane-header，全引用同步）；④仓库根 ./0 与 060 目录错名残留已删净；⑤facts.json 落盘齐备（胶囊宽度 4 类与 5 类均 245px、回归命令与 9 张截图清单），062 的落盘缺口已补（rerun-063-check.json，exit_code 0）。
