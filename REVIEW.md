@@ -1,3 +1,9 @@
+## OD-ARCH-081 复核结论：**通过**（ARCHITECT，2026-10-25）
+
+- **独立核查（与 BUILDER 分离）：** tsc exit 0；pytest 75 passed / 14 subtests（本机独立重跑）；cargo --lib 260 passed（BUILDER 报告数字，本轮 Rust 侧仅 external_open.rs 新增，抽查其单测覆盖 http/https 白名单判定）；git status --porcelain runtime/ 零差异；未提交改动 15 项保留未提交未推送。
+- **代码抽查属实：** ①MarkdownText.tsx 无 dangerouslySetInnerHTML、无 rehype-raw，HTML 按文字显示；②external_open.rs 只放行 http/https 绝对地址交系统浏览器，其余拒绝，带单测；③SceneScaffold 问候+待办常驻，指针/聚焦不再改变可见性；④BrandMark 为纯展示 aria-hidden 元素；⑤evidence/od-arch-081/home-fixes-facts.json passed=true、gate_errors=[]（问候条在三场景像素变化均为 0；品牌标渐变像素 37、旧 spark 0；表格/代码块/列表渲染齐备；三根隔离指纹一致）。
+- **结论：081 验收通过。** 首页问候常驻、品牌标、Markdown 正文渲染三项修复均落地，安全边界（无 HTML 注入、外链白名单）符合要求。
+- **遗留备查：** 15 项未提交改动（含 081 本轮）等下一批推送；分支窗口内正向流程验证仍开放（079 遗留）。
 ## OD-ARCH-078 + OD-ARCH-079 复核结论：**通过**（ARCHITECT，2026-10-25）
 
 - **独立核查（与 BUILDER 分离）：** 全量 cargo test --lib 257 passed / 0 failed（本机独立重跑）；pytest 75 passed / 14 subtests；git status --porcelain runtime/ 零差异；未提交改动 127 项全部保留未提交未推送。

@@ -29,9 +29,11 @@ import {
   type TaskStatus,
 } from "../types";
 import { Icon } from "../components/Icon";
+import { BrandMark } from "../components/BrandMark";
 import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
+import { MarkdownText } from "./MarkdownText";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
@@ -135,14 +137,23 @@ function enabledCategories(facts: AdmissionFacts): string[] {
   return (["local", "private", "public"] as const).filter((k) => p[k]);
 }
 
+/** 逐字呈现时的光标（Markdown 结构外单独渲染，避免被当成正文的一部分）。 */
+function Caret() {
+  return <span className="opacity-50 select-none">▍</span>;
+}
+
 /**
- * 逐字呈现（本地呈现效果）。
+ * 逐字呈现（本地呈现效果，OD-ARCH-081 起按 Markdown 渲染）。
  *
  * 说明：DSH 的 **ACP 通道**是「助手消息提交后才发块」，**没有** token 级流式
  * （DSH 网页端的逐字效果走的是它自己的 harness 事件流）。这里在界面层做**逐字显现**，
  * 让观感接近网页端；文本本身仍以引擎返回的**最终正文**为准，不改写、不补全。
+ *
+ * 逐字与 Markdown 并存的做法：只把**已显现的那一段**交给渲染器，尚未显现的部分
+ * 不参与解析，因此不会出现「半张表格先画出来再跳一下」的整段重排；光标挂在
+ * Markdown 容器外，不参与语法解析。
  */
-function StreamedText({ text, live }: { text: string; live: boolean }) {
+function StreamedMarkdown({ text, live }: { text: string; live: boolean }) {
   const [shown, setShown] = useState(live ? 0 : text.length);
 
   useEffect(() => {
@@ -160,8 +171,8 @@ function StreamedText({ text, live }: { text: string; live: boolean }) {
 
   return (
     <>
-      {text.slice(0, shown)}
-      {live && shown < text.length ? <span className="opacity-50">▍</span> : null}
+      <MarkdownText text={text.slice(0, shown)} />
+      {live && shown < text.length ? <Caret /> : null}
     </>
   );
 }
@@ -185,12 +196,12 @@ function AssistantText({
   if (streamed) {
     return (
       <>
-        {text}
-        {live ? <span className="opacity-50">▍</span> : null}
+        <MarkdownText text={text} />
+        {live ? <Caret /> : null}
       </>
     );
   }
-  return <StreamedText text={text} live={live} />;
+  return <StreamedMarkdown text={text} live={live} />;
 }
 
 /**
@@ -1604,8 +1615,10 @@ export function HomeChat({
                 className="flex flex-col items-end max-w-[80%] ml-auto"
               >
                 <div className="flex items-start space-x-3">
-                  <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed whitespace-pre-wrap">
-                    {m.text}
+                  {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
+                      remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
+                  <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
+                    <MarkdownText text={m.text} tone="onPrimary" />
                   </div>
                   <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
                     <Icon name="brand" className="w-4 h-4" />
@@ -1727,17 +1740,17 @@ export function HomeChat({
                     </div>
                   ) : !m.text && m.state === "succeeded" ? (
                     <div className="rounded-lg bg-surface-container px-3 py-2 text-[12px] leading-relaxed text-on-surface-variant">
-                      引擎报告已完成，但**没有返回任何正文**。若界面此时空白，请点「重新查询」；若反复如此，
+                      引擎报告已完成，但没有返回任何正文。若界面此时空白，请点「重新查询」；若反复如此，
                       把这次任务号告诉我（可在应用数据根的 engine-state 里查到）。
                     </div>
                   ) : m.text ? (
-                    <p className="text-on-surface-variant leading-relaxed whitespace-pre-wrap break-words">
+                  <div className="text-on-surface-variant leading-relaxed">
                       <AssistantText
                         text={m.text}
                         live={!!m.taskId && !(TERMINAL_STATES as string[]).includes(String(m.state ?? ""))}
                         streamed={!!m.taskId && streamedTasksRef.current.has(m.taskId)}
                       />
-                    </p>
+                  </div>
                   ) : m.notice ? (
                     <p className="text-outline leading-relaxed">未收到可显示的输出。</p>
                   ) : (
@@ -1879,7 +1892,9 @@ export function HomeChat({
           </div>
         ) : null}
         <div className="flex items-center space-x-3 px-1">
-          <Icon name="spark" className="w-5 h-5 text-primary flex-shrink-0" />
+          {/* 品牌标（OD-ARCH-081 S2）：原先是无动作的 spark 装饰图标，换成 OmniDesk
+              标识。纯装饰，不承担点击；「+」才是附件入口。 */}
+          <BrandMark className="w-[22px] h-[22px] flex-shrink-0" />
           {/*
             「+」附件入口（OD-ARCH-078 S1）：点开系统文件选择框，可多选；
             与拖拽走同一条读取路径。只挑文件，不给前端文件系统读写权限。

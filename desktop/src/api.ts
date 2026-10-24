@@ -1103,3 +1103,13 @@ export function onTaskEvent(
   return listen<TaskEvent>("omni://task-event", (e) => handler(e.payload));
 }
 
+/**
+ * 用系统默认浏览器打开正文里的外部链接（OD-ARCH-081）。
+ * 宿主只放行 http / https；其余 scheme 直接返回错误，不会触达系统。
+ */
+export function openExternalUrl(url: string): Promise<{ ok: boolean; opened: string }> {
+  return invoke<{ ok: boolean; opened: string }>("open_external_url", { url }).catch((e) => {
+    throw new Error(normalizeError(e));
+  });
+}
+
