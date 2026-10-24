@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OmniDesk OD-ARCH-048 —— DSH 本地 Web API 适配通道场景（W01-W10）。
+"""OmniDesk OD-ARCH-048 —— DSH 本地 Web API 适配通道场景（W01-W12）。
 
 设计：
   * 每个场景一次性 /tmp 数据根；DSH_HOME / DSH_AGENTS_HOME 均指向该根。
@@ -10,6 +10,9 @@
 用法：
   python3 run_web_api_scenarios.py            # 全部
   python3 run_web_api_scenarios.py W02 W04    # 指定场景
+
+W11/W12（OD-ARCH-079）验证原生会话分支：真实 session/fork、子会话继承上文、
+切点不合法时如实失败。
 """
 
 from __future__ import annotations
@@ -455,6 +458,121 @@ def w10(result, root):
         server.shutdown()
 
 
+# ---------------------------------------------------------------------------
+# W11 原生会话分支（session/fork）并续接子会话
+# ---------------------------------------------------------------------------
+
+
+def w11(result, root):
+    """证明「分支到新对话」用的是引擎原生 session/fork，而不是本地重放。
+
+    判定依据全部来自引擎与合成端点的可观测事实：
+      * 父会话本轮 turn/end 的 seq 被真实记录（切点存在）；
+      * session/fork 返回新的子会话号；
+      * 往子会话续接一轮时，模型请求里**带着切点前的上文**（text_chars 大于
+        单轮提示词长度、message_count > 2），说明上下文由引擎继承；
+      * 父会话结果不被改写。
+    """
+    marker_parent = "OMNI-W11-PARENT-MARKER"
+    marker_child = "OMNI-W11-CHILD-MARKER"
+    base_url, ctl, server = start({"chunks": [marker_parent], "mode": "ok"},
+                                  probes=[marker_parent, marker_child])
+    adapter = make(root, base_url, "w11")
+    try:
+        adapter.initialize()
+        first = submit(adapter, root, prompt="SYNTHETIC-W11-TURN-1 " + marker_parent)
+        wait_terminal(adapter, first.omni_task_id)
+        status = adapter.get_task_status(first.omni_task_id)
+        cut = status.engine_turn_end_seq
+        result.artifact("parent", {
+            "engine_session_id": first.engine_session_id,
+            "turn_end_seq": cut,
+            "status": status.to_dict(),
+        })
+        result.check("turn_end_seq_recorded", isinstance(cut, int) and cut >= 0, cut)
+        if not isinstance(cut, int):
+            result.check("fork_created_child", False, "没有切点序号，无法继续验证")
+            return
+
+        ok, fork = safe_call(adapter.fork_session, first.engine_session_id, at_seq=cut)
+        result.artifact("fork", fork if not ok else fork.to_dict())
+        result.check("fork_ok", ok, fork if not ok else fork.to_dict())
+        if not ok:
+            return
+        result.check("child_session_is_new",
+                     fork.engine_session_id != first.engine_session_id,
+                     {"parent": first.engine_session_id, "child": fork.engine_session_id})
+        result.check("fork_cut_matches", fork.at_seq == cut, {"ask": cut, "got": fork.at_seq})
+
+        ctl.set(chunks=[marker_child], delay=0.0, mode="ok")
+        ctl.reset_requests()
+        child = submit(adapter, root, prompt="SYNTHETIC-W11-CHILD-TURN " + marker_child,
+                       engine_session_id=fork.engine_session_id)
+        result.artifact("child_receipt", child.to_dict())
+        result.check("child_submit_continued_same_session",
+                     child.engine_session_id == fork.engine_session_id,
+                     {"want": fork.engine_session_id, "got": child.engine_session_id})
+        result.check("child_not_degraded", child.session_mode != "degraded", child.session_mode)
+        wait_terminal(adapter, child.omni_task_id)
+        child_result = adapter.get_task_result(child.omni_task_id)
+        result.check("child_turn_succeeded", child_result.content == marker_child,
+                     child_result.content[:80])
+
+        reqs = ctl.new_requests()
+        result.artifact("child_model_requests", [
+            {"message_count": q.get("message_count"), "text_chars": q.get("text_chars"),
+             "probe_hits": q.get("probe_hits")} for q in reqs])
+        inherited = any((q.get("message_count") or 0) > 2 for q in reqs)
+        result.check("child_request_carries_inherited_context", inherited,
+                     [q.get("message_count") for q in reqs])
+        parent_hits = [q for q in reqs if marker_parent in (q.get("probe_hits") or [])]
+        result.check("parent_turn_text_present_in_child_request", bool(parent_hits),
+                     [q.get("probe_hits") for q in reqs])
+
+        parent_after = adapter.get_task_result(first.omni_task_id)
+        result.check("parent_result_unchanged", parent_after.content == marker_parent,
+                     parent_after.content[:80])
+    finally:
+        result.artifact("shutdown", adapter.shutdown(mode="graceful", grace_period=5).to_dict())
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# W12 分支切点不合法
+# ---------------------------------------------------------------------------
+
+
+def w12(result, root):
+    """切点不在源会话里时，必须如实失败（invalid_argument），不假造子会话。"""
+    base_url, ctl, server = start({"chunks": ["SYNTH-W12"], "mode": "ok"})
+    adapter = make(root, base_url, "w12")
+    try:
+        adapter.initialize()
+        first = submit(adapter, root, prompt="SYNTHETIC-W12")
+        wait_terminal(adapter, first.omni_task_id)
+        before_records = len(adapter.task_records())
+        ok, err = safe_call(adapter.fork_session, first.engine_session_id, at_seq=999_999)
+        result.artifact("bad_cut_error", None if ok else err)
+        result.check("bad_cut_rejected", not ok)
+        if not ok:
+            result.check("bad_cut_is_argument_error",
+                         err.get("engine_error_code") == EngineErrorCode.INVALID_ARGUMENT.value,
+                         err.get("engine_error_code"))
+        ok2, err2 = safe_call(adapter.fork_session, "session-does-not-exist", at_seq=0)
+        result.artifact("unknown_session_error", None if ok2 else err2)
+        result.check("unknown_session_rejected", not ok2)
+        if not ok2:
+            result.check("unknown_session_mapped",
+                         err2.get("engine_error_code") == EngineErrorCode.UNKNOWN_SESSION.value,
+                         err2.get("engine_error_code"))
+        result.check("no_task_created_by_failed_fork",
+                     len(adapter.task_records()) == before_records,
+                     {"before": before_records, "after": len(adapter.task_records())})
+    finally:
+        result.artifact("shutdown", adapter.shutdown(mode="graceful", grace_period=5).to_dict())
+        server.shutdown()
+
+
 SCENARIOS = {
     "W01": ("W01 启动与鉴权", w01),
     "W02": ("W02 真实分批流式", w02),
@@ -466,6 +584,8 @@ SCENARIOS = {
     "W08": ("W08 system/message 不进结果", w08),
     "W09": ("W09 未知会话", w09),
     "W10": ("W10 模型目录归一化", w10),
+    "W11": ("W11 原生会话分支并续接子会话", w11),
+    "W12": ("W12 分支切点不合法时如实失败", w12),
 }
 
 

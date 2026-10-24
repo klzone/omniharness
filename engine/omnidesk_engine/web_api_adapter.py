@@ -59,6 +59,7 @@ from .contract import (
 )
 from .task_core import (
     CancelOutcome,
+    SessionFork,
     SessionSummary,
     SessionListing,
     SessionRecovery,
@@ -70,6 +71,7 @@ from .task_core import (
     _TaskRecord,
 )
 from .acp_adapter import canonical_cwd, workspace_label_for, workspace_token_for
+from .process_owner import record_child_group, terminate_group
 
 __all__ = [
     "WEB_API_PROTOCOL_VERSION",
@@ -166,8 +168,23 @@ class WsClient:
         """返回一个 JSON 文本帧；对端关闭时返回 None。"""
         if self.closed:
             return None
-        if timeout is not None:
-            self.sock.settimeout(max(0.01, float(timeout)))
+        # OD-ARCH-069 修复：timeout 必须是「整次 recv 的总预算」，而不是
+        # 每一小段读出（含心跳/pong 处理）各自的预算。DSH 每 2 秒发一次
+        # ping，若按段计时，心跳会把等待无限续期，调用方的总超时永远到不了。
+        deadline = None if timeout is None else time.monotonic() + max(0.01, float(timeout))
+
+        def _arm() -> None:
+            if deadline is None:
+                # 无等待预算时必须显式切回阻塞模式：套接字握手时带着
+                # create_connection 的 30 秒超时，不重置的话长任务会被误判断流。
+                self.sock.settimeout(None)
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("websocket recv budget exhausted")
+            self.sock.settimeout(max(0.01, remaining))
+
+        _arm()
         while True:
             first, second = self._read_exact(2)
             fin = bool(first & 0x80)
@@ -186,9 +203,12 @@ class WsClient:
                 self.closed = True
                 return None
             if opcode == 0x9:
+                _arm()
                 self.sock.sendall(bytes([0x8A, 0x80]) + os.urandom(4))
+                _arm()
                 continue
             if opcode == 0xA:
+                _arm()
                 continue
             if opcode in (0x1, 0x0):
                 self._fragments += payload
@@ -236,6 +256,140 @@ class _Follow:
         self.client.close()
 
 
+class _ApprovalChannel:
+    """常驻 `$events` 订阅：把 DSH 的审批请求转成适配层的待办（OD-ARCH-066）。
+
+    事实来源（script 探针，见 evidence/web-api/approval-probe/probe-facts.json）：
+      * 打开 `{type:'open', streamId, endpoint:'$events', payload:{args:{}}}` 后首帧是
+        `{type:'ready', clientId, host:{home}}`；
+      * 需要人工决定的请求以 `{type:'waterfall', event:'approval/request', eventId,
+        agentId, request:{toolName, callId?, reason?, displayReason?}}` 下发，
+        且 `agentId` 与本任务的 `engine_session_id` 一致；
+      * 应答走 `$events/result`，args 为 `{clientId, eventId, outcome:{kind:'result',
+        value:'allowed-once'|'rejected'}}`；
+      * 请求被撤回时下发 `{type:'cancel', eventId}`。
+
+    这里只保留归一化后需要的字段，不保存 request 原文。
+    """
+
+    def __init__(self, adapter: "WebApiAdapter") -> None:
+        self._adapter = adapter
+        self._client: Optional[WsClient] = None
+        self._stream_id = "stream-events-" + new_omni_task_id()
+        self._thread: Optional[threading.Thread] = None
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._lock = threading.Lock()
+        self.client_id: Optional[str] = None
+        self.last_error: Optional[str] = None
+
+    def ensure_started(self, timeout: float = 15.0) -> str:
+        """打开（或复用）事件流并等 ready 帧；返回 clientId。"""
+        with self._lock:
+            if self.client_id:
+                return self.client_id
+            if self._thread is not None and self._thread.is_alive():
+                deadline = time.monotonic() + float(timeout)
+                while time.monotonic() < deadline:
+                    if self._ready.wait(0.05) and self.client_id:
+                        return self.client_id
+                    if self._thread is not None and not self._thread.is_alive():
+                        break
+                raise EngineError(
+                    EngineErrorCode.TIMEOUT,
+                    "DSH $events stream did not become ready in " + str(timeout) + "s",
+                    detail={"channel": "web-api", "last_error": self.last_error},
+                )
+            self._stop.clear()
+            self._ready.clear()
+            try:
+                client = self._adapter._open_mux_socket()
+                client.send(
+                    {
+                        "type": "open",
+                        "streamId": self._stream_id,
+                        "endpoint": "$events",
+                        "payload": {"args": {}},
+                    }
+                )
+            except (OSError, ValueError) as exc:
+                raise EngineError(
+                    EngineErrorCode.ENGINE_UNAVAILABLE,
+                    "cannot open DSH $events stream: " + type(exc).__name__,
+                    detail={"channel": "web-api"},
+                ) from None
+            self._client = client
+            self._thread = threading.Thread(
+                target=self._run, name="omni-web-approvals", daemon=True
+            )
+            self._thread.start()
+        if not self._ready.wait(float(timeout)):
+            raise EngineError(
+                EngineErrorCode.TIMEOUT,
+                "DSH $events stream did not become ready in " + str(timeout) + "s",
+                detail={"channel": "web-api", "last_error": self.last_error},
+            )
+        if not self.client_id:
+            raise EngineError(
+                EngineErrorCode.ENGINE_UNAVAILABLE,
+                "DSH $events stream closed before ready",
+                detail={"channel": "web-api", "last_error": self.last_error},
+            )
+        return self.client_id
+
+    def _run(self) -> None:
+        assert self._client is not None
+        client = self._client
+        while not self._stop.is_set():
+            try:
+                message = client.recv(timeout=1.0)
+            except TimeoutError:
+                continue
+            except (OSError, ValueError) as exc:
+                self.last_error = type(exc).__name__
+                break
+            if message is None:
+                self.last_error = "stream_closed"
+                break
+            if message.get("streamId") not in (None, self._stream_id):
+                continue
+            value = message.get("value")
+            if not isinstance(value, Mapping):
+                continue
+            self._on_frame(value)
+        self._ready.set()
+
+    def _on_frame(self, value: Mapping[str, Any]) -> None:
+        frame_type = value.get("type")
+        if frame_type == "ready":
+            head = value.get("clientId")
+            if isinstance(head, str) and head:
+                self.client_id = head
+            self._ready.set()
+            return
+        if frame_type == "waterfall":
+            if str(value.get("event") or "") != "approval/request":
+                # OD-ARCH-069：其它 waterfall（提问、钩子等）仍不自动应答，
+                # 但必须让界面看得见「引擎在等人回答」，否则表现为卡死。
+                self._adapter._on_engine_ask(value)
+                return
+            self._adapter._on_approval_request(value)
+            return
+        if frame_type == "cancel":
+            self._adapter._on_approval_cancel(str(value.get("eventId") or ""))
+            return
+        if frame_type == "error":
+            self.last_error = "event_stream_error"
+        return
+
+    def close(self) -> None:
+        self._stop.set()
+        client = self._client
+        self._client = None
+        if client is not None:
+            client.close()
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """禁止跟随 303：token 换 cookie 只需要读取 Set-Cookie。"""
 
@@ -248,6 +402,9 @@ class WebApiAdapter(TaskCoreBase):
 
     engine_kind = "dsh-web-api"
 
+    # 无等待上限时，静默多久发一次「仍在运行」提示（只提示，不收尾）。
+    _IDLE_NOTE_SECONDS = 60.0
+
     def __init__(
         self,
         *,
@@ -255,7 +412,8 @@ class WebApiAdapter(TaskCoreBase):
         cwd: str,
         env: Optional[Mapping[str, str]] = None,
         state_dir: Optional[str] = None,
-        default_timeout: float = 180.0,
+        # 默认不按墙钟收尾（None）；宿主若要显式设限，传秒数即可（测试用）。
+        default_timeout: Optional[float] = None,
         session_timeout: float = 30.0,
         init_timeout: float = 90.0,
         engine_profile: Optional[str] = None,
@@ -291,6 +449,11 @@ class WebApiAdapter(TaskCoreBase):
         self._workspace_labels: dict = {}
         self._catalog: Optional[Mapping[str, Any]] = None
         self._follow_clients: list = []
+        # OD-ARCH-066：审批通道与待办索引（只存归一化字段与本任务归属）。
+        self._approval_channel: Optional[_ApprovalChannel] = None
+        self._approval_index: dict = {}
+        # OD-ARCH-069：已上报过的「引擎在等人回答」事件 id（只用于去重，不存内容）。
+        self._engine_ask_seen: dict = {}
         # 会话读回时用到的展示映射（只存不透明 token，与 ACP 通道一致）。
         self._session_cwd: dict = {}
 
@@ -335,6 +498,8 @@ class WebApiAdapter(TaskCoreBase):
                     self._command,
                     cwd=self._cwd,
                     env=env,
+                    # OD-ARCH-074：让 DSH 独占一个进程组，崩溃后可按登记回收整棵树。
+                    start_new_session=True,
                     # OD-ARCH-050 修复：**必须**收回 stdin。
                     #
                     # 不指定 stdin 时子进程会继承引擎自己的协议管道（fd 0）。Node 起
@@ -356,6 +521,7 @@ class WebApiAdapter(TaskCoreBase):
                 self._startup_error = err
                 raise err
             self._proc = proc
+            record_child_group(self._state_dir, proc.pid)
 
             # stdout 由 reader 线程接管：readline() 在有界等待里可能永久阻塞，
             # 这里用队列 + 超时，保证“进程起来了但不说地址”能报超时而不是卡死。
@@ -472,11 +638,27 @@ class WebApiAdapter(TaskCoreBase):
                 proc.terminate()
                 proc.wait(timeout=5)
             except (OSError, subprocess.TimeoutExpired):
-                try:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
+                pass
+        # 节点进程可能已退出但留下子进程：按登记过的进程组收尾。
+        self._kill_child_group(3.0)
+        if proc.poll() is None:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+    def _kill_child_group(self, grace: float) -> bool:
+        proc = self._proc
+        if proc is None:
+            return False
+        try:
+            return terminate_group(proc.pid, grace=grace, trusted_leader=proc.pid)
+        except Exception as exc:  # 身份不可核验时不杀，只记诊断
+            self._startup_lines.append(
+                "process-group cleanup skipped: " + type(exc).__name__
+            )
+            return False
 
     # -- HTTP RPC -----------------------------------------------------------
     def _next_rpc_id(self) -> str:
@@ -558,6 +740,31 @@ class WebApiAdapter(TaskCoreBase):
                 detail=detail,
                 omni_task_id=omni_task_id,
             )
+        # OD-ARCH-070：HTTP 400 常常是上游模型网关的拒绝（body 里带
+        # code=upstream_error 与原因）。尽量取出原文，让用户看到真实原因。
+        body = ""
+        try:
+            body = err.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001 - 读不到 body 不影响判定
+            body = ""
+        try:
+            parsed = json.loads(body) if body else None
+        except ValueError:
+            parsed = None
+        error_obj = parsed.get("error") if isinstance(parsed, Mapping) else None
+        code = ""
+        message = ""
+        if isinstance(error_obj, Mapping):
+            code = str(error_obj.get("code") or "")
+            message = str(error_obj.get("message") or "")
+        if "upstream" in (code + " " + message).lower():
+            detail["upstream"] = True
+            return EngineError(
+                EngineErrorCode.TASK_FAILED,
+                self._summarize_upstream_error(message or code),
+                detail=detail,
+                omni_task_id=omni_task_id,
+            )
         return EngineError(
             EngineErrorCode.ENGINE_UNAVAILABLE,
             "DSH web RPC " + method + " failed with HTTP " + str(err.code),
@@ -575,8 +782,21 @@ class WebApiAdapter(TaskCoreBase):
             message = str(error.get("message") or "")
         low = (code + " " + message).lower()
         detail = {"channel": "web-api", "method": method, "rpc_code": code}
+        if "upstream" in low:
+            # OD-ARCH-070：上游网关拒绝（如 HTTP 400 Content Exists Risk）
+            # 是任务失败，不是「引擎不可用」，更不该显示成状态未知。
+            detail["upstream"] = True
+            return EngineError(
+                EngineErrorCode.TASK_FAILED,
+                self._summarize_upstream_error(message or code),
+                detail=detail,
+                omni_task_id=omni_task_id,
+            )
         if "session/not-found" in low or "unknown session" in low:
             mapped = EngineErrorCode.UNKNOWN_SESSION
+        elif "fork-unavailable" in low:
+            # 切点在源会话里不存在（或源会话没有完整轮次）：是参数问题，不是引擎掉线。
+            mapped = EngineErrorCode.INVALID_ARGUMENT
         elif "not-found" in low:
             mapped = EngineErrorCode.UNKNOWN_TASK
         elif "unsupported" in low or "not implemented" in low:
@@ -722,13 +942,8 @@ class WebApiAdapter(TaskCoreBase):
             self._session_cwd[str(session_id)] = workspace_dir
         return str(session_id)
 
-    def _open_follow(self, session_id: str, workspace_dir: str) -> _Follow:
-        """打开 session/follow 并读到首条 snapshot。
-
-        snapshot 之前只允许出现 error 帧；其它帧一律跳过（不猜测语义）。
-        失败时关闭连接后再抛错，避免泄漏文件描述符。
-        """
-        self._ensure_started()
+    def _open_mux_socket(self) -> WsClient:
+        """打开一条新的 remote.mux WebSocket（用内存里的 cookie 鉴权）。"""
         assert self._root is not None and self._cookie is not None
         if self._root.startswith("https://"):
             raise EngineError(
@@ -737,13 +952,29 @@ class WebApiAdapter(TaskCoreBase):
                 detail={"channel": "web-api"},
             )
         ws_url = "ws://" + self._root[len("http://"):] + "/api/remote.mux"
-        stream_id = "stream-" + new_omni_task_id()
         try:
-            client = WsClient(ws_url, self._cookie, timeout=self._session_timeout)
+            return WsClient(ws_url, self._cookie, timeout=self._session_timeout)
         except (OSError, ValueError) as exc:
             raise EngineError(
                 EngineErrorCode.ENGINE_UNAVAILABLE,
-                "cannot open session/follow websocket: " + type(exc).__name__,
+                "cannot open websocket: " + type(exc).__name__,
+                detail={"channel": "web-api"},
+            ) from None
+
+    def _open_follow(self, session_id: str, workspace_dir: str) -> _Follow:
+        """打开 session/follow 并读到首条 snapshot。
+
+        snapshot 之前只允许出现 error 帧；其它帧一律跳过（不猜测语义）。
+        失败时关闭连接后再抛错，避免泄漏文件描述符。
+        """
+        self._ensure_started()
+        stream_id = "stream-" + new_omni_task_id()
+        try:
+            client = self._open_mux_socket()
+        except EngineError as error:
+            raise EngineError(
+                error.code,
+                "cannot open session/follow websocket: " + error.message,
                 detail={"channel": "web-api"},
             ) from None
         follow = _Follow(client=client, stream_id=stream_id, session_id=session_id)
@@ -843,11 +1074,39 @@ class WebApiAdapter(TaskCoreBase):
                 message or code or "session/follow is unsupported",
                 detail={"channel": "web-api", "follow_code": code},
             )
+        # OD-ARCH-070：上游模型网关的失败（如 HTTP 400 + code=upstream_error +
+        # 「Content Exists Risk」）过去被归成 engine_unavailable，于是任务显示为
+        # 「已中断」甚至一路等到超时，用户看不到真正原因。这里把上游原文透传成
+        # 明确的失败：状态 FAILED，error_message 带截断后的上游说明。
+        if "upstream" in low:
+            raise EngineError(
+                EngineErrorCode.TASK_FAILED,
+                self._summarize_upstream_error(message or code),
+                detail={
+                    "channel": "web-api",
+                    "follow_code": code,
+                    "upstream": True,
+                },
+            )
         raise EngineError(
             EngineErrorCode.ENGINE_UNAVAILABLE,
             "session/follow reported an error: " + (message or code or "unknown"),
             detail={"channel": "web-api", "follow_code": code},
         )
+
+    @staticmethod
+    def _summarize_upstream_error(message: str) -> str:
+        """把上游错误压成一行、可展示的原因（最多 300 字符）。
+
+        上游文案可能带 HTML 或大段堆栈；截断只影响展示，不改变判定。
+        不做任何凭证替换以外的改写——用户需要看到真实原因。
+        """
+        text = " ".join(str(message or "").split())
+        if not text:
+            text = "上游模型服务返回错误，未提供原因"
+        if len(text) > 300:
+            text = text[:300] + "…（已截断）"
+        return text
 
     @staticmethod
     def _frame_error(message: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
@@ -973,11 +1232,15 @@ class WebApiAdapter(TaskCoreBase):
                 state=TaskState.QUEUED,
                 evidence_source="operator_confirm",
                 timeouts=dict(request.timeout_policy),
+                submitted_monotonic=time.monotonic(),
             )
             self._tasks[omni_task_id] = record
             if request.idempotency_key:
                 self._idempotency[request.idempotency_key] = record
         self._persist(record)
+
+        # 审批订阅：失败不阻断提交，但会在任务状态里如实体现缺失的审批通道。
+        self._ensure_approval_channel()
 
         session_id: Optional[str] = None
         session_mode = "new"
@@ -1057,12 +1320,64 @@ class WebApiAdapter(TaskCoreBase):
                 pass
         follow.close()
 
-    def _task_timeout(self, record: _TaskRecord) -> float:
+    def _settle(
+        self,
+        record: _TaskRecord,
+        state: TaskState,
+        evidence: str,
+        **kwargs: Any,
+    ) -> bool:
+        """终态落定时清掉待审批索引：引擎已结束，旧请求不应再挂在界面上。"""
+        if state in TERMINAL_STATES:
+            with self._lock:
+                stale = list(record.pending_approvals)
+                record.pending_approvals.clear()
+                for approval_id in stale:
+                    entry = self._approval_index.get(approval_id)
+                    if entry and entry.get("omni_task_id") == record.omni_task_id:
+                        self._approval_index.pop(approval_id, None)
+                # 终态后同一个任务不会再收到询问：顺手清掉去重键，避免无限增长。
+                for key in [k for k in self._engine_ask_seen if k[0] == record.omni_task_id]:
+                    self._engine_ask_seen.pop(key, None)
+        return super()._settle(record, state, evidence, **kwargs)
+
+    def _task_timeout(self, record: _TaskRecord) -> Optional[float]:
+        """本轮等待预算；None 表示不按时间自动收尾。
+
+        产品口径（2026-10-23 用户指令）：只要 DSH 没报错、进程还在跑，就不能
+        因为墙钟时间把任务判成 unknown。原版 DSH 跑一次联网检索转到完成要八分钟
+        以上，任何固定秒数都会误杀正常任务。
+
+        因此 `timeout_policy` 不再作为默认截断开关：只有显式给出正整数才按该值
+        收尾（测试与脚本仍可用它模拟超时）；缺省时沿用构造参数 default_timeout
+        （生产默认 None），0、负数、非法值一律表示无上限。
+        用户点「取消」走 cancel_task，是唯一的主动终止路径。
+        """
         policy = record.timeouts or {}
         total = policy.get("total_seconds")
-        if total is None:
+        if total in (None, ""):
             return self._default_timeout
-        return float(total)
+        if total == 0:
+            return None
+        try:
+            value = float(total)
+        except (TypeError, ValueError):
+            return None
+        if not (value > 0) or value != value:
+            return None
+        return value
+
+    @staticmethod
+    def _timeout_note(seconds: float) -> str:
+        """超时文案（OD-ARCH-069）：说明等了多久、没做什么、下一步能做什么。"""
+        try:
+            shown = int(round(float(seconds)))
+        except (TypeError, ValueError):
+            shown = 0
+        return (
+            "引擎在 " + str(shown) + " 秒内未返回结果，本次未自动重试；"
+            "可点「重发」或降低工具使用后重试"
+        )
 
     def _turn_worker(self, record: _TaskRecord, follow: _Follow, text: str) -> None:
         """发 session/prompt，然后把 follow 流翻译成归一化事件与终态。"""
@@ -1102,23 +1417,58 @@ class WebApiAdapter(TaskCoreBase):
             self._drop_follow(follow)
             return
 
-        deadline = time.monotonic() + self._task_timeout(record)
+        timeout_seconds = self._task_timeout(record)
+        started_at = time.monotonic()
+        # None = 不按墙钟收尾。只有调用方显式给正整数时才设截止（测试与脚本用）。
+        deadline = None if timeout_seconds is None else started_at + timeout_seconds
+        budget_seconds = timeout_seconds or 0
+        last_frame_at = started_at
+        last_idle_note_at = started_at
         final_text = ""
         finish_reason: Optional[str] = None
         try:
             while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    self._settle(
-                        record,
-                        TaskState.UNKNOWN,
-                        "timeout",
-                        note="流在超时前未给出 turn/end；未自动重放",
-                    )
-                    return
+                if deadline is None:
+                    wait_slice = self._IDLE_NOTE_SECONDS
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timeout_note = self._timeout_note(float(budget_seconds))
+                        self._settle(
+                            record,
+                            TaskState.UNKNOWN,
+                            "timeout",
+                            note=timeout_note,
+                            # 状态查询以 stop_reason/error_message 组成 note；
+                            # 只放进事件会让界面看不到「等了多少秒」。
+                            error_code=EngineErrorCode.TIMEOUT.value,
+                            error_message=timeout_note,
+                        )
+                        return
+                    # 有截止时按截止切分等待，一次读取不超过剩余预算。
+                    wait_slice = remaining
                 try:
-                    message = follow.client.recv(timeout=remaining)
+                    message = follow.client.recv(timeout=wait_slice)
                 except TimeoutError:
+                    # 无上限模式下这里只是「一段时间没收到帧」：进程还在、连接还在，
+                    # 只发一条进度提示，绝不改任务状态，更不能收尾。
+                    if deadline is None:
+                        idle_for = time.monotonic() - last_frame_at
+                        if idle_for >= self._IDLE_NOTE_SECONDS and (
+                            time.monotonic() - last_idle_note_at >= self._IDLE_NOTE_SECONDS
+                        ):
+                            last_idle_note_at = time.monotonic()
+                            self._emit(
+                                record,
+                                EventType.PROGRESS,
+                                {
+                                    "kind": "still_running",
+                                    "idle_seconds": int(round(idle_for)),
+                                    "note": "DSH 仍在运行（已静默 "
+                                    + str(int(round(idle_for)))
+                                    + " 秒）；不会自动停止，需要时请手动取消",
+                                },
+                            )
                     continue
                 except (OSError, ValueError) as exc:
                     self._settle(
@@ -1138,6 +1488,7 @@ class WebApiAdapter(TaskCoreBase):
                     return
                 if message.get("streamId") not in (None, follow.stream_id):
                     continue
+                last_frame_at = time.monotonic()
                 frame_error = self._frame_error(message)
                 if frame_error is not None:
                     try:
@@ -1182,11 +1533,17 @@ class WebApiAdapter(TaskCoreBase):
                     # 完整系统提示词：绝不进入事件、结果、日志或台账。
                     continue
                 if event_type == "tool/call" or event_type.startswith("tool/"):
+                    # OD-ARCH-069：工具名来自上游事件，字段名不完全稳定
+                    # （tool/call 用 name，其它形态可能用 toolName/tool），
+                    # 防御性取；取不到就留空，由界面显示「未知工具」。
+                    tool_name = self._tool_name_of(data, event)
                     self._emit(
                         record,
                         EventType.TOOL_ACTIVITY,
                         {
                             "kind": event_type,
+                            "tool_name": tool_name,
+                            "call_id": str(data.get("callId") or data.get("call_id") or ""),
                             "status": str(data.get("status") or ""),
                             "note": "工具被调用不等于工具已成功执行",
                         },
@@ -1199,11 +1556,28 @@ class WebApiAdapter(TaskCoreBase):
                         if isinstance(reason_obj, Mapping)
                         else ""
                     )
+                    # 记下本轮结束事件在会话里的精确序号：DSH 的 session/fork
+                    # 用「包含该切点」的事件序号作分叉边界，界面据此把这条回复
+                    # 变成一条真正的子会话。序号缺失时保持 None，不猜。
+                    self._record_turn_end_seq(record, event)
                     self._settle_turn(record, reason_kind, finish_reason, final_text)
                     return
                 continue
         finally:
             self._drop_follow(follow)
+
+    @staticmethod
+    def _tool_name_of(data: Mapping[str, Any], event: Mapping[str, Any]) -> str:
+        """从工具事件里取工具名；字段形态不稳定，取不到就返回空串。
+
+        只读展示用的短标识，绝不把工具入参/结果放进事件。
+        """
+        for container in (data, event):
+            for key in ("name", "toolName", "tool", "tool_name"):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return ""
 
     @staticmethod
     def _message_text(message: Mapping[str, Any]) -> str:
@@ -1228,9 +1602,17 @@ class WebApiAdapter(TaskCoreBase):
                 text = str(chunk.get("text") or "")
                 if not text:
                     return None
+                measure_ttfb = False
                 with self._lock:
+                    if record.ttfb_seconds is None and record.submitted_monotonic is not None:
+                        record.ttfb_seconds = round(
+                            max(0.0, time.monotonic() - record.submitted_monotonic), 3
+                        )
+                        measure_ttfb = True
                     record.text_parts.append(text)
                     record.text_len += len(text)
+                if measure_ttfb:
+                    self._persist(record)
                 self._emit(
                     record,
                     EventType.TEXT_DELTA,
@@ -1338,6 +1720,183 @@ class WebApiAdapter(TaskCoreBase):
             )
 
     # -- 4.6 cancel_task ----------------------------------------------------
+    # -- 审批（OD-ARCH-066）-------------------------------------------------
+    def _ensure_approval_channel(self) -> Optional[_ApprovalChannel]:
+        """确保常驻审批订阅已就绪；失败只记录，不影响任务提交。"""
+        with self._lock:
+            channel = self._approval_channel
+            if channel is None:
+                channel = _ApprovalChannel(self)
+                self._approval_channel = channel
+        try:
+            channel.ensure_started()
+        except EngineError as error:
+            # 审批通道打不开时，任务仍可跑；界面会缺少审批卡片，须在状态里体现。
+            channel.last_error = error.code.value
+            return None
+        return channel
+
+    def _on_engine_ask(self, value: Mapping[str, Any]) -> None:
+        """OD-ARCH-069：非 approval 类的 waterfall 询问，转成可见进度，不自动应答。
+
+        安全边界：这里**只上报**，不发任何应答帧。未知询问继续等待引擎超时或用户取消，
+        但界面不再是零反馈。事件里只带类型名与归属会话，不带询问正文（可能含业务内容）。
+        """
+        event_type = str(value.get("event") or "")
+        if not event_type:
+            return
+        event_id = str(value.get("eventId") or "")
+        agent_id = str(value.get("agentId") or "")
+        with self._lock:
+            record = self._sessions.get(agent_id)
+            if record is None or record.state in TERMINAL_STATES:
+                return
+            # 同一询问可能重复推送：按 (任务, 事件id或类型) 去重，避免刷屏。
+            key = (record.omni_task_id, event_id or event_type)
+            if key in self._engine_ask_seen:
+                return
+            self._engine_ask_seen[key] = True
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "engine_ask",
+                "event": event_type,
+                "session_id": agent_id,
+                "note": "引擎在等待一项未被识别的确认；未自动应答",
+            },
+        )
+        self._persist(record)
+
+    def _on_approval_request(self, value: Mapping[str, Any]) -> None:
+        """把 DSH 审批请求归一化成 PROGRESS 事件；找不到归属时如实标注。"""
+        event_id = str(value.get("eventId") or "")
+        request = value.get("request")
+        if not event_id or not isinstance(request, Mapping):
+            return
+        agent_id = str(value.get("agentId") or "")
+        with self._lock:
+            record = self._sessions.get(agent_id)
+            if record is not None and record.state in TERMINAL_STATES:
+                record = None
+            if event_id in self._approval_index:
+                return
+            tool_name = str(request.get("toolName") or "")
+            call_id = str(request.get("callId") or "")
+            reason = str(request.get("reason") or "")
+            entry = {
+                "omni_task_id": record.omni_task_id if record is not None else None,
+                "tool_name": tool_name,
+                "call_id": call_id,
+                "reason": reason,
+                "session_id": agent_id,
+            }
+            self._approval_index[event_id] = entry
+            if record is not None:
+                record.pending_approvals[event_id] = dict(entry)
+        if record is None:
+            return
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "approval_request",
+                "approval_id": event_id,
+                "tool_name": tool_name,
+                "call_id": call_id,
+                "reason": reason,
+                "session_id": agent_id,
+            },
+        )
+        self._persist(record)
+
+    def _on_approval_cancel(self, event_id: str) -> None:
+        if not event_id:
+            return
+        with self._lock:
+            entry = self._approval_index.pop(event_id, None)
+            record = self._sessions.get(str((entry or {}).get("session_id") or ""))
+            if record is not None:
+                record.pending_approvals.pop(event_id, None)
+        if record is None or entry is None:
+            return
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {"kind": "approval_cancelled", "approval_id": event_id},
+        )
+        self._persist(record)
+
+    def respond_approval(
+        self, omni_task_id: str, approval_id: str, allow: bool
+    ) -> Mapping[str, Any]:
+        """回传用户对审批请求的决定。只允许答复本任务仍在等待的请求。"""
+        record = self._require_task(omni_task_id)
+        with self._lock:
+            if record.state in TERMINAL_STATES:
+                raise EngineError(
+                    EngineErrorCode.INVALID_ARGUMENT,
+                    "task is already terminal; approval can no longer be answered",
+                    omni_task_id=omni_task_id,
+                )
+            if approval_id not in record.pending_approvals:
+                raise EngineError(
+                    EngineErrorCode.INVALID_ARGUMENT,
+                    "approval_id is not pending for this task",
+                    detail={"channel": "web-api"},
+                    omni_task_id=omni_task_id,
+                )
+        channel = self._ensure_approval_channel()
+        if channel is None:
+            raise EngineError(
+                EngineErrorCode.ENGINE_UNAVAILABLE,
+                "approval channel is not available",
+                detail={"channel": "web-api", "last_error": str(
+                    self._approval_channel.last_error if self._approval_channel else ""
+                )},
+                omni_task_id=omni_task_id,
+            )
+        try:
+            client_id = channel.ensure_started()
+            self._rpc(
+                "$events/result",
+                {
+                    "clientId": client_id,
+                    "eventId": approval_id,
+                    "outcome": {
+                        "kind": "result",
+                        "value": "allowed-once" if allow else "rejected",
+                    },
+                },
+                self._session_timeout,
+                omni_task_id=omni_task_id,
+            )
+        except EngineError:
+            # 保留 pending：用户可重试，界面不得假装已生效。
+            raise
+        with self._lock:
+            record.pending_approvals.pop(approval_id, None)
+            self._approval_index.pop(approval_id, None)
+            remaining = len(record.pending_approvals)
+        decision = "allowed" if allow else "rejected"
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "approval_decided",
+                "approval_id": approval_id,
+                "decision": decision,
+                "pending_approvals": remaining,
+            },
+        )
+        self._persist(record)
+        return {
+            "omni_task_id": omni_task_id,
+            "approval_id": approval_id,
+            "decision": decision,
+            "pending_approvals": remaining,
+        }
+
     def cancel_task(self, omni_task_id: str, *, timeout: float = 15.0) -> CancelOutcome:
         record = self._require_task(omni_task_id)
         with self._lock:
@@ -1623,6 +2182,71 @@ class WebApiAdapter(TaskCoreBase):
             workspace_label=label,
         )
 
+    # -- 会话分支 ---------------------------------------------------------
+    def _record_turn_end_seq(
+        self, record: _TaskRecord, event: Mapping[str, Any]
+    ) -> None:
+        """记下本轮 turn/end 在会话序列里的精确 seq（DSH session/fork 的切点）。
+
+        只接受非负整数；缺失或字段形态异常时保持原值（默认 None），由界面禁用分支，
+        绝不猜一个序号，也绝不退回本地重放冒充原生分叉。
+        """
+        raw_seq = event.get("seq")
+        if isinstance(raw_seq, int) and not isinstance(raw_seq, bool) and raw_seq >= 0:
+            with self._lock:
+                record.turn_end_seq = raw_seq
+
+    def fork_session(
+        self,
+        engine_session_id: str,
+        *,
+        at_seq: Optional[int] = None,
+    ) -> SessionFork:
+        """按 DSH 原生 session/fork 建立子会话。
+
+        `at_seq` 是**包含在内**的会话事件序号（就是本轮 turn/end 的 seq）。
+        省略时由引擎取最近一个完整轮次的边界。
+
+        失败必须如实抛出：不允许在失败后悄悄退回「本地重放」，也不假造子会话号。
+        """
+        if not engine_session_id:
+            raise EngineError(
+                EngineErrorCode.INVALID_ARGUMENT, "engine_session_id is required"
+            )
+        request: dict = {"sessionId": engine_session_id}
+        if at_seq is not None:
+            if not isinstance(at_seq, int) or isinstance(at_seq, bool) or at_seq < 0:
+                raise EngineError(
+                    EngineErrorCode.INVALID_ARGUMENT,
+                    "at_seq must be a non-negative integer",
+                )
+            request["atSeq"] = at_seq
+        value = self._rpc("session/fork", {"request": request}, self._session_timeout)
+        if not isinstance(value, Mapping):
+            raise EngineError(
+                EngineErrorCode.EVENT_PARSE_ERROR,
+                "session/fork returned a non-object value",
+                detail={"channel": "web-api"},
+            )
+        child_id = value.get("sessionId")
+        if not child_id:
+            raise EngineError(
+                EngineErrorCode.EVENT_PARSE_ERROR,
+                "session/fork did not return a session id",
+                detail={"result_keys": sorted(str(k) for k in value.keys())},
+            )
+        child = str(child_id)
+        with self._lock:
+            source_cwd = self._session_cwd.get(engine_session_id)
+            if source_cwd:
+                self._session_cwd[child] = source_cwd
+        return SessionFork(
+            parent_session_id=engine_session_id,
+            engine_session_id=child,
+            at_seq=at_seq,
+            note="已在引擎侧按切点建立子会话；后续消息直接续接该会话，不重放历史",
+        )
+
     # -- 4.8 shutdown -------------------------------------------------------
     def shutdown(
         self,
@@ -1664,6 +2288,9 @@ class WebApiAdapter(TaskCoreBase):
             )
             follows = list(self._follow_clients)
             self._follow_clients.clear()
+            approval_channel = self._approval_channel
+            self._approval_channel = None
+            self._approval_index.clear()
             proc = self._proc
         for task_id in remaining:
             if task_id not in still_running:
@@ -1671,6 +2298,9 @@ class WebApiAdapter(TaskCoreBase):
         connection_closed = False
         for follow in follows:
             follow.close()
+            connection_closed = True
+        if approval_channel is not None:
+            approval_channel.close()
             connection_closed = True
 
         exit_code: Optional[int] = None
@@ -1709,14 +2339,20 @@ class WebApiAdapter(TaskCoreBase):
                         proc.terminate()
                         exit_code = proc.wait(timeout=max(1.0, float(grace_period)))
                     except subprocess.TimeoutExpired:
-                        forced = True
-                        try:
-                            proc.kill()
-                            exit_code = proc.wait(timeout=5.0)
-                        except (OSError, subprocess.TimeoutExpired):
-                            pass
+                        pass
                     except OSError:
                         pass
+                # 无论节点是否已退出，都回收它独占的进程组（空组为无操作）。
+                if self._kill_child_group(3.0):
+                    forced = True
+                if proc.poll() is None:
+                    forced = True
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=5.0)
+                    except (OSError, subprocess.TimeoutExpired):
+                        pass
+                exit_code = proc.poll() if exit_code is None else exit_code
         with self._lock:
             self._closed = True
             self._cookie = None

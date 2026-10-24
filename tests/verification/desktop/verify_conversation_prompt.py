@@ -6,7 +6,7 @@
 1. 普通对话：提示词 = 上下文本身（含上一轮用户与助手的话）。
 2. 带预设：提示词里同时出现**流程包的场景规则**、**期望章节**与上下文。
 3. 长上下文：超过上限时只保留最近部分，并显式标注截断。
-4. 预设路径**不丢**不可关闭的写作规则（禁入案件材料那条仍在）。
+4. 预设路径**不丢** Profile 规则资产里的写作铁律（传入 writingRules 时禁入案件材料那条仍在）。
 5. OD-ARCH-034：续接既有引擎会话时**不重放上文**（普通对话与带预设两条路径）。
 
 **不**验证真实模型输出、真实宿主或窗口交互。不读取凭证，不访问网络，不启动引擎。
@@ -28,13 +28,17 @@ REPO = HERE.parents[2]
 DESKTOP = REPO / "desktop"
 SOURCE = DESKTOP / "src" / "conversationPrompt.ts"
 FLOW_PACK = REPO / "samples" / "workflows" / "offline-flows.v1.json"
+PROFILE_RULES = REPO / "samples" / "profiles" / "discipline.rules.json"
 
 PROBE = r"""
 const mod = require(process.argv[2]);
 const pack = require(process.argv[3]);
+const rulesFile = require(process.argv[4]);
+const writingRules = (rulesFile.global && rulesFile.global.writing_rules) || [];
+if (!Array.isArray(writingRules) || writingRules.length === 0) throw new Error("missing writing_rules");
 
 const weekly = pack.weekly.draft;
-const preset = { key: "weekly", label: "周报与随记", rules: weekly.rules, sections: weekly.sections };
+const preset = { key: "weekly", label: "周报与随记", rules: weekly.rules, sections: weekly.sections, writingRules };
 const turns = [
   { role: "user", text: "第一轮标记 ALPHA-123" },
   { role: "assistant", text: "助手第一轮回应 BETA-456" },
@@ -56,6 +60,10 @@ check("preset_contains_rules", withPreset.includes(weekly.rules), "");
 check("preset_contains_sections", weekly.sections.split("\n").every((s) => !s.trim() || withPreset.includes(s)), "");
 check("preset_contains_context", withPreset.includes("第一轮标记 ALPHA-123") && withPreset.includes("第二轮提问"), "");
 check("preset_keeps_forbidden_rule", withPreset.includes("不处理案件材料"), "");
+// 4a) 纯净底座：不传 writingRules 时不输出写作铁律段，但场景规则与章节仍在
+const purePreset = mod.composeConversationPrompt({ preset: { key: "weekly", label: "周报与随记", rules: weekly.rules, sections: weekly.sections }, turns, current: "第二轮提问" });
+check("pure_profile_has_no_writing_rules", !purePreset.includes("不处理案件材料") && !purePreset.includes("写作规则"), "");
+check("pure_profile_keeps_scene_rules", purePreset.includes(weekly.rules), "");
 
 // 3) 长上下文：截断并标注
 const long = [{ role: "user", text: "旧内容 OLD-MARKER " + "x".repeat(6000) }];
@@ -122,7 +130,7 @@ def main() -> int:
     probe_path = tmp / "probe.js"
     probe_path.write_text(PROBE, encoding="utf-8")
     probe = run(
-        ["node", str(probe_path), str(compiled), str(FLOW_PACK)],
+        ["node", str(probe_path), str(compiled), str(FLOW_PACK), str(PROFILE_RULES)],
         DESKTOP,
     )
     if probe.returncode != 0:

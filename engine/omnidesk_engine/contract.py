@@ -317,6 +317,13 @@ class TaskStatus:
     partial_output_size: int
     engine_session_id: Optional[str] = None
     note: str = ""
+    # OD-ARCH-066：submit → 首个 text-delta 的秒数（仅流式通道可测；未到达为 None）。
+    ttfb_seconds: Optional[float] = None
+    # 等待用户审批的请求数（>0 时界面显示「等待审批中」）。
+    pending_approvals: int = 0
+    # 本轮 turn/end 事件在 DSH 会话里的精确序号：会话分支（session/fork）的切点。
+    # 没有到达终态、或通道不提供序号时为 None，界面据此禁用「分支」按钮。
+    engine_turn_end_seq: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -328,6 +335,9 @@ class TaskStatus:
             "partial_output_size": self.partial_output_size,
             "engine_session_id": self.engine_session_id,
             "note": self.note,
+            "ttfb_seconds": self.ttfb_seconds,
+            "pending_approvals": self.pending_approvals,
+            "engine_turn_end_seq": self.engine_turn_end_seq,
         }
 
 

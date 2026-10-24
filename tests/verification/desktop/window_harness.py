@@ -388,6 +388,10 @@ class AppSession:
     # 阶段 D 用安装入口（.deb 解包后的二进制）：不需要前端 dev server（release 内嵌前端资源）
     binary: Path | None = None
     use_dev_server: bool = True
+    # 端口 5273 可能被用户自己正在运行的 OmniDesk 开发服务占用。此时允许复用那份
+    # **同仓库同源码**的 dev server（不启动、也不终止它），其余数据根/进程/会话总线仍隔离。
+    reuse_running_dev_server: bool = False
+    dev_port: int = DEV_PORT
     # 进程句柄
     proc: subprocess.Popen | None = None
     vite: subprocess.Popen | None = None
@@ -485,6 +489,14 @@ class AppSession:
 
     # --- 前端 dev server ----------------------------------------------------
     def start_vite(self, timeout: float = 90.0) -> None:
+        if self.reuse_running_dev_server:
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if self._port_ready():
+                    self._note(f"复用已在运行的前端 dev server（127.0.0.1:{self.dev_port}，未启动也未终止）")
+                    return
+                time.sleep(0.5)
+            raise RuntimeError(f"复用的前端 dev server 未在 127.0.0.1:{self.dev_port} 就绪")
         log = open(self.logs / "vite.log", "a", buffering=1)
         env = dict(os.environ)
         env["DISPLAY"] = self.display
@@ -511,7 +523,7 @@ class AppSession:
 
         with socket.socket() as s:
             s.settimeout(0.5)
-            return s.connect_ex(("127.0.0.1", DEV_PORT)) == 0
+            return s.connect_ex(("127.0.0.1", self.dev_port)) == 0
 
     # --- App ----------------------------------------------------------------
     def app_env(self, overlay: Path) -> dict:
