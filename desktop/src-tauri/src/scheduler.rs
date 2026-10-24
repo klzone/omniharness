@@ -251,6 +251,21 @@ pub struct HeartbeatScan {
 /// 心跳扫描：只做本地确定性计算，不写文件、不调模型。
 /// 输入为空时明确返回“没有可扫描事项”，不伪造 0 逾期为“一切正常”。
 pub fn heartbeat_scan(items_text: &str, today: Option<&str>, pack: &FlowPack) -> HeartbeatScan {
+    heartbeat_scan_with(
+        items_text,
+        today,
+        pack,
+        &crate::profile_rules::RulePolicy::clean(),
+    )
+}
+
+/// 带 Profile 规则的心跳扫描（OD-ARCH-068）：规则口径必须与手动扫描一致。
+pub fn heartbeat_scan_with(
+    items_text: &str,
+    today: Option<&str>,
+    pack: &FlowPack,
+    policy: &crate::profile_rules::RulePolicy,
+) -> HeartbeatScan {
     if items_text.trim().is_empty() {
         return HeartbeatScan {
             ok: false,
@@ -260,7 +275,7 @@ pub fn heartbeat_scan(items_text: &str, today: Option<&str>, pack: &FlowPack) ->
             error: Some("没有可扫描的事项（还没有输入跟进记录）。".to_string()),
         };
     }
-    let response = task_shell::project_flow_with(items_text, today, pack);
+    let response = task_shell::project_flow_with_policy(items_text, today, pack, policy);
     match response.summary {
         Some(summary) => HeartbeatScan {
             ok: response.ok,

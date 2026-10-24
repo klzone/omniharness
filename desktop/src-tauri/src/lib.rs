@@ -11,6 +11,7 @@
 
 pub mod admission;
 pub mod app_paths;
+pub mod capabilities;
 pub mod dsh_settings;
 pub mod engine_bridge;
 pub mod engine_ipc;
@@ -21,7 +22,10 @@ mod local_http;
 pub mod model_settings;
 pub mod model_routes;
 pub mod pending_writes;
+pub mod process_owner;
 pub mod profile_decl;
+pub mod profile_choice;
+pub mod profile_rules;
 pub mod route_classifier;
 pub mod scene_overview;
 pub mod scheduler;
@@ -212,6 +216,8 @@ fn stop_engine(
         let host = state.lock().unwrap();
         host.bridge.supervisor()
     };
+    // OD-ARCH-074：收尾时需要引擎状态目录来核验并回收遗留子进程组。
+    let engine_state_dir = supervisor.lock().unwrap().config().engine_state_dir.clone();
 
     // 临界区：与任务命令的“判定 + 发送”互斥（锁内只做两件 O(µs) 的事）。
     let detached = {
@@ -221,7 +227,7 @@ fn stop_engine(
 
     let outcome = match detached {
         None => Ok((false, None)),
-        Some(channel) => EngineSupervisor::finish_stop(channel, grace),
+        Some(channel) => EngineSupervisor::finish_stop(channel, grace, &engine_state_dir),
     };
 
     // 通道已被摘除：无论关闭成功与否，旧引擎都不再可用，如实重置自身状态。
@@ -332,14 +338,44 @@ async fn engine_submit_task(
     // 提示词里的写作规则/解释规则本身包含「案件」「线索」「未公开」等
     // 边界说明用词，扫描全文会把每一次正常提交都误判为禁入内容。
     // 调用方未提供用户原文时（旧调用方），退回扫描完整提示词。
+    // OD-ARCH-068：红线词表、隐私策略来自 Profile 规则资产（仓库外数据根）。
+    // 没有规则文件 = 纯净底座（零关键词、不掩码）；文件损坏时**拒绝提交**，
+    // 不静默退回纯净底座——否则等于悄悄关掉了用户以为还在的保护。
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    let rules_view = profile_rules::load_rules(&profiles_dir);
+    if let Some(error) = rules_view.error.clone() {
+        return Err(serde_json::json!({
+            "engine_error_code": "profile_rules_invalid",
+            "message": format!(
+                "Profile 规则文件无法读取，已拒绝提交：{}。请到设置 →「规则资产」修正或恢复默认。",
+                error
+            ),
+            "detail": {
+                "reason": "profile_rules_invalid",
+                "enforced_by": "host",
+                "path": rules_view.path,
+            },
+        }));
+    }
+    let policy = match rules_view.rules.as_ref() {
+        Some(rules) => profile_rules::RulePolicy::from_rules(rules),
+        None => profile_rules::RulePolicy::clean(),
+    };
+    let profile_rules_loaded = !policy.is_clean();
     let scan_target = task_shell::scan_target(&prompt_text, user_input_text.as_deref());
-    if let Err(message) = task_shell::assert_input_allowed(scan_target) {
+    if let Err(message) = task_shell::assert_input_allowed_with(scan_target, &policy) {
         return Err(serde_json::json!({
             "engine_error_code": "red_line_rejected",
             "message": message,
             "detail": { "reason": "red_line_rejected", "enforced_by": "host" },
         }));
     }
+    // 隐私掩码在**出站文本**上执行：前端拼进提示词的原文同样被覆盖。
+    // 本地线程/界面上保留原文，不追溯改写。
+    let (prompt_text, privacy_masked) = profile_rules::mask_privacy(&prompt_text, &policy);
     // OD-ARCH-049 第 3 步：执行入口终检。
     //
     // 只有调用方**明确声明了离线场景**（周报/文案/项目）的任务才进入拦截范围；
@@ -362,6 +398,9 @@ async fn engine_submit_task(
             }));
         }
     }
+    // 2026-10-23：不再向引擎下发任何等待上限。原版 DSH 跑一次联网检索到完成
+    // 需要八分钟以上，固定秒数会误杀仍在正常运行、只是没吐字的任务。
+    // 现在只有用户点「取消」才终止；进程退出、断流、上游报错仍照常落定。
     let sink = bridge_sink(app.clone());
     // OD-ARCH-045 第 3 步：引擎冷启动（ensure_initialized）可能耗时数秒，
     // 放到阻塞线程池里执行，主线程与 UI 立即返回，不再冻结窗口。
@@ -405,7 +444,18 @@ async fn engine_submit_task(
     })
     .await;
     match joined {
-        Ok(result) => result,
+        // 回执里如实标注：本次出站文本是否被掩码、是否加载了 Profile 规则。
+        // 只回传类别计数，不回显原文。
+        Ok(inner) => inner.map(|mut result| {
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("privacy_masked".to_string(), serde_json::json!(privacy_masked));
+                obj.insert(
+                    "profile_rules_loaded".to_string(),
+                    serde_json::json!(profile_rules_loaded),
+                );
+            }
+            result
+        }),
         Err(e) => Err(serde_json::json!({
             "engine_error_code": "host_task_join_failed",
             "message": format!("启动引擎的后台任务异常结束：{}", e),
@@ -465,6 +515,20 @@ fn cancel_task_impl(
     host.bridge.cancel_task(omni_task_id, timeout_seconds)
 }
 
+/// 回传用户对审批请求的决定（OD-ARCH-066）。
+///
+/// 与取消同属收尾动作：不启动引擎；决定是否真的送达由引擎当前待审批集合判定，
+/// 失败时界面保留待审批卡片，不假装已生效。
+fn approval_respond_impl(
+    state: &SharedHost,
+    omni_task_id: &str,
+    approval_id: &str,
+    allow: bool,
+) -> Result<serde_json::Value, serde_json::Value> {
+    let mut host = state.lock().unwrap();
+    host.bridge.approval_respond(omni_task_id, approval_id, allow)
+}
+
 #[tauri::command(async)]
 fn engine_task_status(
     state: State<'_, SharedHost>,
@@ -488,6 +552,16 @@ fn engine_cancel_task(
     timeout_seconds: Option<f64>,
 ) -> Result<serde_json::Value, serde_json::Value> {
     cancel_task_impl(state.inner(), &omni_task_id, timeout_seconds.unwrap_or(15.0))
+}
+
+#[tauri::command(async)]
+fn engine_approval_respond(
+    state: State<'_, SharedHost>,
+    omni_task_id: String,
+    approval_id: String,
+    allow: bool,
+) -> Result<serde_json::Value, serde_json::Value> {
+    approval_respond_impl(state.inner(), &omni_task_id, &approval_id, allow)
 }
 
 #[tauri::command(async)]
@@ -549,6 +623,26 @@ fn engine_recover_session(
         move |host, _grant, _descriptor| {
             host.bridge
                 .recover_session(&engine_session_id, workspace_token.as_deref())
+        },
+    )
+}
+
+/// 会话分支：调用 DSH 原生 session/fork，按本轮 turn/end 的精确序号建子会话。
+/// 与其它触达引擎的命令一样走 with_engine_call（准入与权限世代校验）。
+#[tauri::command(async)]
+fn engine_fork_session(
+    app: tauri::AppHandle,
+    state: State<'_, SharedHost>,
+    engine_session_id: String,
+    at_seq: Option<u64>,
+) -> Result<serde_json::Value, serde_json::Value> {
+    let sink = bridge_sink(app);
+    with_engine_call(
+        &sink,
+        state.inner(),
+        admission::DESCRIBE_REFUSAL_MESSAGE,
+        move |host, _grant, _descriptor| {
+            host.bridge.fork_session(&engine_session_id, at_seq)
         },
     )
 }
@@ -741,6 +835,194 @@ fn profile_decl_save(state: State<'_, SharedHost>, text: String) -> Result<serde
         "backup": backup,
         "digest": crate::sha256::sha256_hex(text.as_bytes()),
         "note": "声明已保存；重启应用后生效。",
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// 引擎 Profile 选择（OD-ARCH-072 首页改版）
+//
+// 只决定「下一次启动引擎用哪个 Profile」。不复制 Profile、不改插件、不改模型路由。
+// 选择只落一个名字到应用数据根 config/settings.v1.json；目录不存在时明确拒绝。
+// ---------------------------------------------------------------------------
+
+/// 轻量解析通道与隔离数据根：即使引擎配置不完整（缺 CLI），也要能打开弹层修正选择。
+fn profile_choice_scope() -> Result<(String, std::path::PathBuf), String> {
+    let channel = std::env::var("OMNIDESK_ENGINE_CHANNEL")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "web-api".to_string());
+    if channel != "web-api" && channel != "acp" {
+        return Err(format!(
+            "OMNIDESK_ENGINE_CHANNEL 只支持 web-api 或 acp，收到：{}",
+            channel
+        ));
+    }
+    let dsh_home = match std::env::var_os("OMNIDESK_DSH_HOME").filter(|v| !v.is_empty()) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let home = std::env::var_os("HOME").ok_or_else(|| "环境变量 HOME 缺失".to_string())?;
+            std::path::PathBuf::from(home)
+                .join("OmniDesk")
+                .join("runtime")
+                .join("dsh-home")
+        }
+    };
+    Ok((channel, dsh_home))
+}
+
+/// 只读：列出隔离数据根里真实存在的 Profile，并返回当前生效的名字。
+#[tauri::command(async)]
+fn profile_choice_view(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let saved = crate::settings::load(&app_root.join("config"))
+        .ok()
+        .and_then(|s| s.engine_profile);
+    // 「本次启动实际生效」只认引擎配置；引擎配置读不出来时退回按已保存选择推算，
+    // 并显式带上 warning，不把推算值当成事实。
+    let (effective, warning) = match engine_supervisor::EngineConfig::from_env(&app_root) {
+        Ok(config) => (config.profile, None),
+        Err(e) => {
+            let guess = profile_choice::resolve(&dsh_home, &channel, saved.as_deref())
+                .unwrap_or_else(|_| profile_choice::standard_profile(&channel).to_string());
+            (guess, Some(e))
+        }
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "channel": channel,
+        "standard": profile_choice::standard_profile(&channel),
+        "saved": saved,
+        "effective": effective,
+        "options": profile_choice::list(&dsh_home, &channel),
+        "warning": warning,
+        "note": "这里是本次启动实际使用的 Profile；改动在下次启动引擎时生效。",
+    }))
+}
+
+/// 保存 Profile 选择（None = 回到标准模式）。只写设置文件，不重启引擎。
+#[tauri::command(async)]
+fn profile_choice_set(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let chosen = match profile.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        None => None,
+        Some(name) => {
+            if !crate::settings::is_valid_profile_name(name) {
+                return Err(format!("Profile 名不合法：{:?}", name));
+            }
+            let manifest = dsh_home.join("profiles").join(name).join("package.json");
+            if !manifest.is_file() {
+                return Err(format!(
+                    "隔离数据根里没有这个 Profile：{}（缺少 {}）",
+                    name,
+                    manifest.display()
+                ));
+            }
+            Some(name.to_string())
+        }
+    };
+    crate::settings::set_engine_profile(&config_dir, chosen.as_deref())?;
+    let effective_next =
+        chosen.clone().unwrap_or_else(|| profile_choice::standard_profile(&channel).to_string());
+    Ok(serde_json::json!({
+        "ok": true,
+        "saved": chosen,
+        "effective_next_start": effective_next,
+        "note": "Profile 已保存，下次启动引擎时生效；正在运行的任务不受影响。",
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Profile 规则资产（OD-ARCH-068 S1/S2/S4）
+//
+// 红线词表、写作铁律、场景规则与思考档、隐私策略都写在应用数据根下的
+// `profiles/discipline.rules.json`（仓库外）。这里只做读写与校验：
+//   * 文件不存在 = 纯净底座（零规则），**不自动创建**；
+//   * 保存前完整解析校验，失败整次拒绝、旧文件原样保留；
+//   * 保存前把旧文件复制成 `.bak-<epoch>`；
+//   * 「恢复默认」把这仓库内的出厂规则包写出去（同样先备份）。
+// ---------------------------------------------------------------------------
+
+fn profile_rules_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
+    let host = state.lock().unwrap();
+    host.paths.root.join("profiles")
+}
+
+/// 读取规则资产（只读；不创建文件）。
+#[tauri::command(async)]
+fn profile_rules_load(state: State<'_, SharedHost>) -> profile_rules::RulesView {
+    profile_rules::load_rules(&profile_rules_dir(&state))
+}
+
+/// 保存规则资产：先完整解析校验，通过才备份并原子写。
+#[tauri::command(async)]
+fn profile_rules_save(
+    state: State<'_, SharedHost>,
+    text: String,
+) -> Result<serde_json::Value, String> {
+    if text.len() > 128 * 1024 {
+        return Err("规则文件过大（上限 128 KB）".to_string());
+    }
+    // 校验失败一律不写：避免把「以为保存成功」的坏规则留在磁盘上。
+    profile_rules::parse_rules(&text)?;
+    write_profile_rules(&profile_rules_dir(&state), &text)
+}
+
+/// 恢复出厂默认规则包（写入编译期嵌入的样例）。
+#[tauri::command(async)]
+fn profile_rules_restore_default(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)?;
+    write_profile_rules(&profile_rules_dir(&state), profile_rules::DEFAULT_RULES_JSON)
+}
+
+fn write_profile_rules(
+    profiles_dir: &std::path::Path,
+    text: &str,
+) -> Result<serde_json::Value, String> {
+    std::fs::create_dir_all(profiles_dir).map_err(|e| {
+        format!(
+            "创建 Profile 目录失败（{}）：{}",
+            profiles_dir.display(),
+            e
+        )
+    })?;
+    let path = profile_rules::rules_path(profiles_dir);
+    let backup = if path.is_file() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let target = path.with_file_name(format!(
+            "{}.bak-{}",
+            profile_rules::PROFILE_RULES_FILE,
+            stamp
+        ));
+        std::fs::copy(&path, &target)
+            .map_err(|e| format!("写入前备份失败（{}）：{}", target.display(), e))?;
+        Some(target.display().to_string())
+    } else {
+        None
+    };
+    model_settings::write_atomic(&path, text.as_bytes())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": path.display().to_string(),
+        "backup": backup,
+        "digest": crate::sha256::sha256_hex(text.as_bytes()),
+        "note": "规则已保存；下一轮提交即生效，不需要重启。",
     }))
 }
 
@@ -1477,88 +1759,79 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
     Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
 }
 
-/// 打开 DSH 自带的设置界面（模型 provider / 默认模型 / 凭据登记）——OD-ARCH-050。
-///
-/// 与旧版（每次 `dsh web` 固定 3080 + 系统浏览器）的区别：
-///   * 服务用临时端口、`--no-open`，由宿主开**应用内独立窗口**；
-///   * 会话令牌只留在宿主内存，日志里打码，不经过前端；
-///   * 复用本进程内已起的实例；应用退出时停掉它，不再留僵尸进程。
-///
-/// 固定动作、**无参数**：前端只能请求「打开 DSH 设置」，不能传命令、路径或 URL。
-#[tauri::command]
-async fn task_open_dsh_settings(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let (config, log_path, record_path) = {
-        let snap = app.state::<HostSnapshot>();
-        let config = snap.config.lock().unwrap().clone();
-        let log_path = snap.paths.logs.join("dsh-settings.log");
-        let record_path = snap.paths.engine_state.join("dsh-settings.json");
-        (config, log_path, record_path)
+// ---------------------------------------------------------------------------
+// 能力管理（OD-ARCH-072）
+//
+// 只读：Skill 列表（扫隔离 DSH_HOME 的 skills/）与插件列表（profile 的 package.json）。
+// 受控写：插件启停 —— 只改 <隔离 DSH_HOME>/profiles/<profile>/package.json
+// 的 dsh.profile.bundles，写前备份，路径越界一律拒绝。
+//
+// D-030（插件冻结）：不提供「新增插件 / 接入插件市场」入口，插件清单随 OmniDesk
+// 版本发布固定；这里只保留对清单内已有条目的查看与启停。
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
+fn capability_view(state: State<'_, SharedHost>) -> Result<capabilities::CapabilityView, String> {
+    let (dsh_home, profile) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (cfg.dsh_home, cfg.profile)
     };
-    let service = Arc::clone(app.state::<Arc<dsh_settings::SettingsService>>().inner());
-    let ensure_log = log_path.clone();
-    let opened = tauri::async_runtime::spawn_blocking(move || {
-        service.ensure(&config, &ensure_log, &record_path)
-    })
-    .await
-    .map_err(|e| format!("打开 DSH 设置的任务异常结束：{}", e))??;
-
-    let url = Arc::clone(app.state::<Arc<dsh_settings::SettingsService>>().inner())
-        .current_url()
-        .ok_or_else(|| "DSH 设置服务已启动，但地址没有留在内存里；请重试。".to_string())?;
-    open_settings_window(&app, url)?;
-
-    Ok(serde_json::json!({
-        "ok": true,
-        "port": opened.port,
-        "reused": opened.reused,
-        "log_path": log_path.to_string_lossy(),
-        "note": "已在应用内打开 DSH 设置窗口（模型提供方与默认模型都在这里配）。\
-                 保存后回到本应用即可；引擎会在下次任务时按新配置启动。\
-                 本应用不读、不写、不复制任何凭证值。",
-    }))
+    capabilities::load(&dsh_home, &profile)
 }
 
-/// 在应用内开/复用「DSH 设置」窗口。
-///
-/// URL 里有会话令牌：只在这个函数里交给窗口，不返回前端、不写日志。
-fn open_settings_window(app: &tauri::AppHandle, url: String) -> Result<(), String> {
-    let target: tauri::Url = url
-        .parse()
-        .map_err(|e| format!("DSH 设置地址不合法：{}", e))?;
-    let handle = app.clone();
-    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
-    app.run_on_main_thread(move || {
-        let outcome = (|| -> Result<(), String> {
-            if let Some(window) = handle.get_webview_window("dsh-settings") {
-                window
-                    .navigate(target)
-                    .map_err(|e| format!("切换 DSH 设置页失败：{}", e))?;
-                let _ = window.show();
-                let _ = window.set_focus();
-                return Ok(());
-            }
-            tauri::WebviewWindowBuilder::new(
-                &handle,
-                "dsh-settings",
-                tauri::WebviewUrl::External(target),
-            )
-            // OD-ARCH-051 S4：只统一窗口外壳（标题 / 底色 / 尺寸），页面自身仍是 DSH 原生页。
-            // 外部页面的字体与配色受 DSH 页面与 CSP 限制，本应用不注入脚本、不篡改 DSH 配置页。
-            .title("OmniDesk · DSH 设置")
-            .background_color(tauri::window::Color(250, 248, 255, 255))
-            .inner_size(1160.0, 820.0)
-            .min_inner_size(880.0, 620.0)
-            .build()
-            .map_err(|e| format!("创建 DSH 设置窗口失败：{}", e))?;
-            Ok(())
-        })();
-        let _ = tx.send(outcome);
-    })
-    .map_err(|e| format!("无法在主线程创建设置窗口：{}", e))?;
-    match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(result) => result,
-        Err(_) => Err("创建 DSH 设置窗口超时（主线程没有响应）".to_string()),
+/// 启用/停用一个插件（= 在 bundles 数组里增删）。`name` 只能是清单里已有的条目。
+#[tauri::command(async)]
+fn capability_set_plugin(
+    state: State<'_, SharedHost>,
+    name: String,
+    enabled: bool,
+) -> Result<capabilities::CapabilityReceipt, String> {
+    let (dsh_home, profile) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (cfg.dsh_home, cfg.profile)
+    };
+    let dir = capabilities::profile_dir(&dsh_home, &profile)?;
+    capabilities::set_bundle(&dir, &name, enabled)
+}
+
+/// 只读：在系统文件管理器中打开 Skill 目录。**不**接受路径参数。
+#[tauri::command(async)]
+fn capability_open_skills(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let dsh_home = {
+        let host = state.lock().unwrap();
+        host.bridge.supervisor().lock().unwrap().config().dsh_home.clone()
+    };
+    capabilities::assert_writable_root(&dsh_home)?;
+    let dir = dsh_home.join("skills");
+    if !dir.is_dir() {
+        return Err(format!("Skill 目录还不存在：{}", dir.display()));
     }
+    let mut last_error = String::new();
+    for (program, args) in [
+        ("xdg-open", Vec::<String>::new()),
+        ("gio", vec!["open".to_string()]),
+    ] {
+        match std::process::Command::new(program)
+            .args(&args)
+            .arg(&dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "opened": dir.display().to_string(),
+                    "note": "Skill 在这里只读展示；改动目录里的文件后重启应用生效。",
+                }))
+            }
+            Err(e) => last_error = format!("{}：{}", program, e),
+        }
+    }
+    Err(format!("无法打开 Skill 目录，系统缺少可用的打开器（{}）", last_error))
 }
 
 /// 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
@@ -1819,9 +2092,21 @@ fn prepare_workspace_dir() -> Result<serde_json::Value, serde_json::Value> {
 /// 先过统一输入闸门：命中红线扫描时不返回统计结果（与解释提示词、保存入口同一道闸门）。
 /// 扫描为启发式，仅降低误贴概率，不构成合规判断或完整个人信息检测。
 #[tauri::command(async)]
-fn task_run_analysis(input_text: String) -> serde_json::Value {
-    let hits = task_shell::red_line_scan(&input_text);
-    match task_shell::analyze_input(&input_text) {
+fn task_run_analysis(state: State<'_, SharedHost>, input_text: String) -> serde_json::Value {
+    // OD-ARCH-068：规则损坏时整次拒绝，不静默按纯净底座计算。
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "result": null,
+                "red_line_hits": [],
+                "error": message,
+            })
+        }
+    };
+    let hits = task_shell::red_line_scan_with(&input_text, &policy);
+    match task_shell::analyze_input_with(&input_text, &policy) {
         Ok(result) => serde_json::json!({
             "ok": true,
             "result": result,
@@ -1840,19 +2125,26 @@ fn task_run_analysis(input_text: String) -> serde_json::Value {
 /// 构造模型解释提示词。内含**冻结统计块**，并在本地复核指纹。
 #[tauri::command(async)]
 fn task_explanation_prompt(
+    state: State<'_, SharedHost>,
     task_type: String,
     input_text: String,
     fingerprint: String,
 ) -> Result<serde_json::Value, String> {
-    task_shell::build_explanation_prompt(&task_type, &input_text, &fingerprint)
+    let policy = current_rule_policy(&state)?;
+    task_shell::build_explanation_prompt_with(&task_type, &input_text, &fingerprint, &policy)
         .map(|prompt| serde_json::json!({ "prompt": prompt }))
 }
 
 /// 保存产物到仓库外本地数据目录（不覆盖已有文件）。
 #[tauri::command(async)]
-fn task_save_artifact(request: SaveArtifactRequest) -> Result<serde_json::Value, String> {
+fn task_save_artifact(
+    state: State<'_, SharedHost>,
+    request: SaveArtifactRequest,
+) -> Result<serde_json::Value, String> {
     let now = task_shell::now_secs();
-    task_shell::save_artifact(&request, now).map(|receipt| serde_json::json!(receipt))
+    let policy = current_rule_policy(&state)?;
+    task_shell::save_artifact_with(&request, now, &policy)
+        .map(|receipt| serde_json::json!(receipt))
 }
 
 /// 追加一条轻量使用记录（不含输入输出、不含自由文本）。
@@ -1944,6 +2236,27 @@ fn current_flow_pack(state: &State<'_, SharedHost>) -> Result<flow_pack::LoadedP
     flow_pack::load_pack(&config)
 }
 
+/// 当前生效的 Profile 规则策略（OD-ARCH-068）。
+///
+/// 文件不存在 → 纯净底座；文件损坏 → 明确报错，由调用方整次拒绝。
+fn current_rule_policy(state: &State<'_, SharedHost>) -> Result<profile_rules::RulePolicy, String> {
+    let profiles_dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("profiles")
+    };
+    let view = profile_rules::load_rules(&profiles_dir);
+    if let Some(error) = view.error {
+        return Err(format!(
+            "Profile 规则文件无法读取，已拒绝本次操作：{}。请到设置 →「规则资产」修正或恢复默认。",
+            error
+        ));
+    }
+    Ok(match view.rules.as_ref() {
+        Some(rules) => profile_rules::RulePolicy::from_rules(rules),
+        None => profile_rules::RulePolicy::clean(),
+    })
+}
+
 fn pack_refusal(message: String) -> serde_json::Value {
     serde_json::json!({
         "ok": false,
@@ -1960,9 +2273,16 @@ fn task_weekly_summary(state: State<'_, SharedHost>, input_text: String) -> serd
         Ok(loaded) => loaded,
         Err(message) => return pack_refusal(message),
     };
-    serde_json::to_value(task_shell::weekly_flow_with(&input_text, &loaded.pack)).unwrap_or_else(
-        |e| serde_json::json!({ "ok": false, "error": format!("序列化结果失败：{}", e) }),
-    )
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => return pack_refusal(message),
+    };
+    serde_json::to_value(task_shell::weekly_flow_with_policy(
+        &input_text,
+        &loaded.pack,
+        &policy,
+    ))
+    .unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": format!("序列化结果失败：{}", e) }))
 }
 
 /// 一般文案 → 结构建议（缺信息时只列待确认，不强行套模板）。
@@ -1978,12 +2298,17 @@ fn task_writing_plan(
         Ok(loaded) => loaded,
         Err(message) => return pack_refusal(message),
     };
-    serde_json::to_value(task_shell::writing_flow_with(
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => return pack_refusal(message),
+    };
+    serde_json::to_value(task_shell::writing_flow_with_policy(
         &purpose,
         &audience,
         &requirements,
         &facts,
         &loaded.pack,
+        &policy,
     ))
     .unwrap_or_else(|e| {
         serde_json::json!({ "ok": false, "error": format!("序列化结果失败：{}", e) })
@@ -2001,10 +2326,15 @@ fn task_project_summary(
         Ok(loaded) => loaded,
         Err(message) => return pack_refusal(message),
     };
-    serde_json::to_value(task_shell::project_flow_with(
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => return pack_refusal(message),
+    };
+    serde_json::to_value(task_shell::project_flow_with_policy(
         &input_text,
         today.as_deref(),
         &loaded.pack,
+        &policy,
     ))
     .unwrap_or_else(|e| serde_json::json!({ "ok": false, "error": format!("序列化结果失败：{}", e) }))
 }
@@ -2039,6 +2369,90 @@ fn task_read_offline_artifact(file_name: String) -> Result<serde_json::Value, St
 #[tauri::command(async)]
 fn task_read_material(path: String) -> Result<serde_json::Value, String> {
     task_shell::read_material(&path).map(|item| serde_json::json!(item))
+}
+
+// ---------------------------------------------------------------------------
+// 对话附件与 @ 引用（OD-ARCH-077 S1）
+//
+// 只允许两个来源根：当前成果根与个人知识库根。根路径由宿主解析并校验，
+// 不接受前端指定根；列表有上限，读取复用 read_material 的全部校验。
+// ---------------------------------------------------------------------------
+
+/// 当前允许引用的来源根（成果根 + 知识库根），不存在的不列出。
+#[tauri::command(async)]
+fn task_reference_roots(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let artifact_root = settings::effective_root(&config_dir)?.root;
+    let knowledge = task_shell::knowledge_root().ok();
+    let mut roots = vec![serde_json::json!({
+        "kind": "artifacts",
+        "label": "成果目录",
+        "path": artifact_root.display().to_string(),
+        "exists": artifact_root.is_dir(),
+    })];
+    if let Some(knowledge) = knowledge {
+        roots.push(serde_json::json!({
+            "kind": "knowledge",
+            "label": "知识库",
+            "path": knowledge.display().to_string(),
+            "exists": knowledge.is_dir(),
+        }));
+    }
+    Ok(serde_json::json!({ "roots": roots }))
+}
+
+/// 列出可引用文件（只读；有界遍历，不创建目录）。
+#[tauri::command(async)]
+fn task_list_references(
+    state: State<'_, SharedHost>,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let artifact_root = settings::effective_root(&config_dir)?.root;
+    let roots = task_shell::reference_roots(&artifact_root);
+    let items = task_shell::list_reference_files(
+        &roots,
+        query.as_deref(),
+        limit.unwrap_or(60),
+    )?;
+    Ok(serde_json::json!({
+        "items": items,
+        "limit": task_shell::REFERENCE_LIST_LIMIT,
+        "roots": roots.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+    }))
+}
+
+/// 读取一个被引用的附件正文与来源事实；越界路径由宿主拒绝。
+#[tauri::command(async)]
+fn task_read_reference(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let artifact_root = settings::effective_root(&config_dir)?.root;
+    let roots = task_shell::reference_roots(&artifact_root);
+    task_shell::read_reference_material(&path, &roots).map(|item| serde_json::json!(item))
+}
+
+/// 读取用户通过**系统文件选择框**显式挑出的附件（OD-ARCH-078 S1）。
+///
+/// 与 `task_read_reference` 的区别只在来源范围：这里不要求落在成果根或知识库内，
+/// 因为文件是用户在文件框里亲手选的（桌面、下载目录等都合法）。
+/// 禁区（DSH / agent / 仓库）、普通文件、大小上限、真实 UTF-8 文本仍由
+/// `task_shell::read_attachment` 强制；二进制一律如实报错，不生成假摘要。
+#[tauri::command(async)]
+fn task_read_attachment(path: String) -> Result<serde_json::Value, String> {
+    task_shell::read_attachment(&path).map(|item| serde_json::json!(item))
 }
 
 // ---------------------------------------------------------------------------
@@ -2242,7 +2656,13 @@ fn scheduler_heartbeat_scan(
     today: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let loaded = current_flow_pack(&state)?;
-    let scan = scheduler::heartbeat_scan(&input_text, today.as_deref(), &loaded.pack);
+    let policy = current_rule_policy(&state)?;
+    let scan = scheduler::heartbeat_scan_with(
+        &input_text,
+        today.as_deref(),
+        &loaded.pack,
+        &policy,
+    );
     serde_json::to_value(scan).map_err(|e| format!("序列化心跳结果失败：{}", e))
 }
 
@@ -2356,6 +2776,17 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        // OD-ARCH-076 S1：必须注册为第一个插件。第二次启动时把已有主窗口叫到前台，
+        // 然后由插件结束这个新进程（不在这里手动 exit，避免与插件自身的收尾竞争）。
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        // OD-ARCH-078 S1：附件入口需要系统文件选择框（只用于「挑文件」，不给前端文件系统权限）。
+        .plugin(tauri_plugin_dialog::init())
         .manage(Arc::clone(&shared))
         .manage(snapshot)
         // OD-ARCH-050：DSH 设置服务（临时端口实例 + 应用内窗口）。
@@ -2367,9 +2798,11 @@ pub fn run() {
             engine_task_status,
             engine_task_result,
             engine_cancel_task,
+            engine_approval_respond,
             engine_shutdown,
             engine_list_sessions,
             engine_recover_session,
+            engine_fork_session,
             engine_task_records,
             engine_list_models,
             engine_recover_task,
@@ -2381,6 +2814,11 @@ pub fn run() {
             profile_decl_digest,
             profile_decl_open,
             profile_decl_save,
+            profile_choice_view,
+            profile_choice_set,
+            profile_rules_load,
+            profile_rules_save,
+            profile_rules_restore_default,
             model_settings_load,
             model_settings_probe,
             model_settings_save,
@@ -2390,12 +2828,14 @@ pub fn run() {
             task_local_root_info,
             task_set_artifact_root,
             task_open_artifact_root,
+            capability_view,
+            capability_set_plugin,
+            capability_open_skills,
             category_settings_load,
             category_update,
             category_add,
             category_remove,
             category_init_folders,
-            task_open_dsh_settings,
             task_list_model_routes,
             task_set_model_route,
             task_clear_model_route,
@@ -2416,6 +2856,10 @@ pub fn run() {
             task_list_offline_artifacts,
             task_read_offline_artifact,
             task_read_material,
+            task_reference_roots,
+            task_list_references,
+            task_read_reference,
+            task_read_attachment,
             thread_store_load,
             thread_store_save,
             thread_store_delete,
@@ -2439,15 +2883,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // OD-ARCH-050：设置窗口的关闭只通知界面刷新，不得收尾引擎。
-            if window.label() != "main" {
-                if let tauri::WindowEvent::Destroyed = event {
-                    let _ = window
-                        .app_handle()
-                        .emit("omni://dsh-settings-closed", ());
-                }
-                return;
-            }
+            // OD-ARCH-076 S2：DSH 原生设置窗口已移除，只有主窗口会走到这里。
             if let tauri::WindowEvent::Destroyed = event {
                 // 窗口关闭即收尾引擎，不留孤儿进程。
                 //
@@ -3215,6 +3651,7 @@ mod engine_lifecycle_wiring_tests {
             "fn engine_task_records",
             "fn engine_list_models",
             "fn engine_recover_task",
+            "fn engine_fork_session",
         ] {
             let start = body
                 .find(cmd)
@@ -3456,9 +3893,12 @@ mod engine_lifecycle_wiring_tests {
         );
     }
 
-    /// OD-ARCH-050：关闭「DSH 设置」窗口不得触发引擎收尾（只允许主窗口收尾）。
+    /// OD-ARCH-076 S2：DSH 原生设置窗口已移除，窗口收尾逻辑只服务主窗口。
+    ///
+    /// 旧测试检查「非主窗口不触发引擎收尾」。窗口入口删除后该分支已成死代码，
+    /// 这里改为钉住新事实：收尾回调只处理主窗口，且不再存在设置窗口事件分支。
     #[test]
-    fn only_main_window_shutdown_is_wired_to_engine_teardown() {
+    fn window_teardown_has_no_dsh_settings_window_branch() {
         let src = include_str!("lib.rs");
         let start = src
             .find(".on_window_event(|window, event| {")
@@ -3469,8 +3909,12 @@ mod engine_lifecycle_wiring_tests {
             .expect("找不到窗口事件回调的结束位置");
         let callback = &rest[..end];
         assert!(
-            callback.contains("window.label() != \"main\""),
-            "非主窗口（DSH 设置窗口）关闭时不得收尾引擎"
+            !callback.contains("dsh-settings-closed"),
+            "DSH 原生设置窗口入口已删除，不应残留它的事件"
+        );
+        assert!(
+            callback.contains("on_window_destroyed_shutdown("),
+            "主窗口关闭仍必须收尾引擎"
         );
     }
 

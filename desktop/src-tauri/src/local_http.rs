@@ -28,6 +28,9 @@ pub struct Response {
 }
 
 impl Response {
+    /// 只在单测里用到；产品代码读多值头走 `header_all`。保留这个取值方法给后续调用方，
+    /// 但不要让它变成每次 release 构建都刷出来的 dead_code 警告。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn header(&self, name: &str) -> Option<&str> {
         let want = name.to_ascii_lowercase();
         self.headers

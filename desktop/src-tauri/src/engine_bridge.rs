@@ -266,6 +266,24 @@ impl EngineBridge {
         )
     }
 
+    /// 回传用户对一次审批请求的决定（OD-ARCH-066）。
+    pub fn approval_respond(
+        &mut self,
+        omni_task_id: &str,
+        approval_id: &str,
+        allow: bool,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        self.rpc(
+            "omni.approval_respond",
+            serde_json::json!({
+                "omni_task_id": omni_task_id,
+                "approval_id": approval_id,
+                "allow": allow,
+            }),
+            Duration::from_secs(30),
+        )
+    }
+
     /// 列出引擎已持久化的会话元数据（不返回正文）。
     pub fn list_sessions(
         &mut self,
@@ -293,6 +311,20 @@ impl EngineBridge {
             params["workspace_token"] = serde_json::json!(value);
         }
         self.rpc("omni.recover_session", params, Duration::from_secs(60))
+    }
+
+    /// 会话分支（DSH 原生 session/fork）：按精确切点拿到一条子会话。
+    /// 失败原样上抛，不在宿主侧退回本地重放。
+    pub fn fork_session(
+        &mut self,
+        engine_session_id: &str,
+        at_seq: Option<u64>,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        let mut params = serde_json::json!({ "engine_session_id": engine_session_id });
+        if let Some(seq) = at_seq {
+            params["at_seq"] = serde_json::json!(seq);
+        }
+        self.rpc("omni.fork_session", params, Duration::from_secs(60))
     }
 
     /// 列出 OmniDesk 自己落盘的任务台账元数据。
@@ -381,13 +413,14 @@ impl EngineBridge {
     /// 宿主生产路径请统一用 `lib.rs` 的 `stop_engine()` / `on_window_destroyed_shutdown()`。
     pub fn shutdown(&mut self, grace: Duration) -> Result<serde_json::Value, String> {
         let supervisor = Arc::clone(&self.supervisor);
+        let engine_state_dir = supervisor.lock().unwrap().config().engine_state_dir.clone();
         let detached = {
             let mut guard = supervisor.lock().unwrap();
             guard.begin_stop()
         };
         let outcome = match detached {
             None => Ok((false, None)),
-            Some(channel) => EngineSupervisor::finish_stop(channel, grace),
+            Some(channel) => EngineSupervisor::finish_stop(channel, grace, &engine_state_dir),
         };
         {
             let mut guard = supervisor.lock().unwrap();
