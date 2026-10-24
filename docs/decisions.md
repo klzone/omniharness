@@ -247,3 +247,31 @@
 - **场景声明口径：** 设置页只能打开数据根里的 `profiles/discipline.yml`（无路径参数），保存前先校验，写前留 `.bak-<epoch>` 备份，原子替换；校验失败禁止写入。仓库里的模板不因设置页保存而被改动。
 - **证据：** `cargo test --offline` 182 passed（lib，含 `model_settings` 7 个、`local_http` 3 个单测）；`npx tsc --noEmit` 0 错误；`npm run build` 通过；真实窗口四区截图（`tests/verification/desktop/evidence/od-arch-053/`）。
 - **复审触发：** ①用户需要直接改 DSH 原生 provider 配置（如自定义 headers、账号级参数）而原生页表达不了时，评估增加「只读展示 + 跳转原生页」而不是继续扩字段；②DSH 改动 `credentials/*` RPC 形态或 `--patch` 参数语义；③出现「原生页保存后引擎起不来」的实测反馈。
+
+### D-028：平台中立与 Profile 规则资产化（2026-10-23，已实现；OD-ARCH-068 落地）
+- **状态：** 已实现（`desktop/src-tauri/src/profile_rules.rs`、`samples/profiles/discipline.rules.json`、设置页「规则资产」分页）。
+- **定调：** OmniDesk 是通用个人工作台（DSH 底座 + 自有 UI），纪检内容只属于 Discipline Profile。装规则包 = 纪检工作台；不装 = 纯净底座。
+- **规则外置：** 红线词表、写作铁律、各场景 rules/sections、默认思考档、隐私动作全部写在 `<应用数据根>/profiles/discipline.rules.json`（schema `omnidesk.profile-rules.v1`）。平台代码只留机制，零业务内容。
+- **纯净底座口径：** 文件不存在 = 零关键词、零铁律、不掩码，界面显示「未加载（纯净底座）」。出厂默认只在仓库里编译期嵌入，**首次启动不自动创建**——用户必须在设置页显式「恢复默认规则包」，「移走文件 → 重启 → 零拦截」才是可复核行为。
+- **损坏口径：** 文件损坏（JSON 错、schema 不符、未知字段、超限）一律报错并拒绝提交（`profile_rules_invalid`），**不**静默退回纯净底座，否则等于悄悄关掉用户以为还在的保护。
+- **隐私口径：** 身份证 / 手机号默认 `mask`（保留前 3 后 2，长度不变），在宿主出站 `prompt_text` 上执行，本地会话原文不动，回执带 `privacy_masked`；用户可改回 `reject`。业务红线词命中仍拒绝。隐私关键词单独分组（`privacy_keywords`），避免 mask 模式下「关键词先拒、正则再放行」的自相矛盾。
+- **分工：** `offline-flows.v1.json` 管「周报怎么组装」，profile-rules 管「什么不能说 + 什么规则必须带上 + 默认思考档」。两文件并存时以 profile-rules 为权威；场景 rules/sections 目前两边各存一份，靠验证脚本逐字比对，尚无自动漂移检测。
+- **影响：** 删掉规则文件后平台对任意输入零拦截（合规上属预期行为，需在界面明示）；思考档默认需经 `setModelRoute` 生效（会重启引擎），故只在引擎空闲且用户未手动选档时应用一次。
+- **证据：** `cargo test --offline` 223 lib + 2 + 13 + 3 全通过；`verify_profile_rules_068.py` 25 cases / 0 failed（`tests/verification/desktop/evidence/od-arch-068/`）。
+- **复审触发：** ①真实端点实测发现随手记并未明显变快；②规则资产与 `offline-flows.v1.json` 出现内容漂移；③需要把规则包分发/版本化给第三方时，评估签名字段与升级迁移。
+
+### D-029（2026-10-24）：引擎进程生命周期 = 双进程组 + owner.json 所有权登记（OD-ARCH-074）
+- **状态：** 已实现并复核通过。引擎（serve.py）启动时自建进程组（组长），DSH node 子进程另开独立组；owner.json（0600，数据根 engine-state/）登记 pid/pgid/child_pid/child_pgid/boot_id/cmdline/channel。回收前四重核验（pid 存活 + pgrp 匹配 + cmdline 完全一致 + boot_id 一致），组杀前校验组内全为本产品进程，拒绝包含自身。
+- **理由：** 引擎被 SIGKILL 后 DSH 子树必须仍有归属可查；单组方案无法在不误杀前提下回收孤儿。boot_id 防跨重启 PID 复用。
+- **互斥口径：** 同数据根同时只允许一个活跃引擎；身份核验不过的组绝不动（unknown_live 拒绝启动）。
+- **已知限制：** Rust 侧无 libc，信号走外部 /bin/kill（缺失时回收失败只记诊断）；「引擎活、宿主已崩」的回收依赖 host_pid 判别，真实双宿主场景未测。
+- **证据：** tests/verification/desktop/evidence/od-arch-074/process-lifecycle-074.json（21/21）；cargo 5 + pytest 10 通过。
+
+### D-030（2026-10-24）：插件清单冻结 + Skill 受控变更（用户定调，OD-ARCH-077 已落地）
+- **状态：** 已实现（产品语义 + 能力管理页文案）。插件冻结由代码层强制：能力管理页无市场入口，宿主无 `capability_market` 命令；Skill 受控目前是产品语义（改内容即时生效、新增只走版本升级），不做文件锁。
+- **定调：** 为保运行稳定性，插件清单随版本冻结——出厂哪些插件就固定哪些，新增/减少只能通过升级 OmniDesk 版本完成；能力管理页不再提供「新增插件」入口，只保留查看/启停/更新提示。Skill 文件平时可修改（内容编辑即时生效），但新增 Skill 不提供产品内入口，同样走版本升级流程；用户直接在文件系统手改仍自由，产品语义上是受控变更。
+- **理由：** 运行时随意装插件是此前多次崩溃/会话丢失的诱因之一；冻结后升级路径可测试、可回滚，符合用户「先能天天用再谈扩展」的原则。
+- **影响：** ①能力管理页去掉/不提供新增入口；②版本升级流程需带「插件清单 + Skill 清单 + 变更说明」三件套；③用户手改文件系统不在产品管控内（预期行为，作者即用户）。
+- **实现落点：** `desktop/src/SettingsPanel.tsx`（能力管理页只保留查看/启停/更新提示，新增「新增插件与 Skill / 随版本升级」说明）；`desktop/src-tauri/src/lib.rs` 移除 `capability_market` 命令及其注册；`desktop/src/{api.ts,types.ts}` 同步去掉 `capabilityMarket`；保留只读的插件/Skill 列表与启停命令。
+- **证据：** 真实窗口截图 `tests/verification/desktop/evidence/od-arch-077/09-capabilities.png` 显示冻结文案且无市场开关；`tests/verification/desktop/evidence/od-arch-077/facts.json` 中 `capability_freeze_copy` / `no_market_entry` / `no_capability_market_cmd` 均为 true（`passed: true`，`missing_checks: []`，`gate_errors: []`）；源码事实见上述文件；用户 2026-10-24 指令「对照 DSH 官方桌面，把除了插件与 skill 外的功能都开发出来……插件定制好后不再新增……skill 平时可以修改但不能随意增加」。
+- **复审触发：** ①出现真实的高价值插件/Skill 需求且冻结带来明显不便时，评估「受控新增」（签名包/白名单）而非放开自由安装；②用户开始分发给同事（打包阶段）时，需补版本升级的用户侧体验设计。

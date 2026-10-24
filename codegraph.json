@@ -1,0 +1,12 @@
+{
+  "exclude": [
+    "runtime/",
+    "tests/verification/**/evidence/",
+    "tests/verification/**/fixtures/",
+    "desktop/dist/",
+    "audit/",
+    "knowledge/",
+    "memory/"
+  ],
+  "deprioritize": ["tests/", "scripts/"]
+}

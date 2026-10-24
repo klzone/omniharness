@@ -7,7 +7,7 @@
 #   * omnidesk.sh —— **正式环境**：使用正式数据根与真实模型配置，供用户本人做真实使用与人工审核。
 #
 # 本脚本做什么：
-#   * 启动前端 dev server（5273）与桌面 App；
+#   * 需要时构建前端与 release 桌面程序，然后启动桌面 App（前端资源已内嵌，不另起 dev server）；
 #   * **不设置**任何 OMNIDESK_* 隔离变量，宿主按默认解析到正式根：
 #       应用数据根  $HOME/OmniDesk/app              （设置、引擎台账、使用记录 usage.jsonl）
 #       成果目录    $HOME/OmniDesk/workspace/artifacts
@@ -20,6 +20,12 @@
 #   * 不改模型路由、不写凭证、不改 runtime/、不提交 Git。
 #   * 不读、不打印、不复制 ~/.credentials.yaml 等任何凭证文件。
 #
+# 本机渲染规避（与 dev-ui.sh 同口径）：
+#   本机（Wayland + 混合显卡）下 WebKitGTK 的 DMABUF 渲染器会导致窗口整屏全黑；
+#   进程仍在运行、窗口也建得出来，所以只看到“黑窗口 + 脚本已返回”。
+#   见 STATUS.md「窗口全黑」条，以及 scripts/dev-ui.sh 同名变量。
+#   该变量只在未显式设置时才填默认值，用户可以自行覆盖做对照。
+#
 # 用法：
 #   scripts/omnidesk.sh                 # 启动（正式环境）
 #   scripts/omnidesk.sh --no-build      # 跳过 cargo build（已有二进制时更快）
@@ -29,7 +35,11 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APPDIR="$REPO/desktop"
-BIN="$APPDIR/src-tauri/target/debug/omnidesk-desktop"
+# OD-ARCH-072：正式环境用 **release** 二进制（前端资源已内嵌）。
+# 此前这里指向 debug 二进制 + 另起 vite dev server：debug 既慢、又依赖 dev server 存活，
+# 用户桌面快捷方式若指向旧二进制还会出现「Command not found」（能力清单即如此）。
+# 开发态热更新请用 scripts/dev-ui.sh（隔离合成环境 + debug 二进制 + dev server）。
+BIN="$APPDIR/src-tauri/target/release/omnidesk-desktop"
 DEV_PORT=5273
 RUNDIR="${OMNIDESK_LIVE_ROOT:-$HOME/.local/state/omnidesk}/live"
 PID_DIR="$RUNDIR/pids"
@@ -106,10 +116,9 @@ if [ "$MODE" = status ]; then
   else
     echo "  app：未运行"
   fi
-  if verify_pid vite "vite"; then
-    echo "  前端 dev server：运行中（pid $(read_pid vite)）"
-  else
-    echo "  前端 dev server：未运行"
+  # 旧版本会另起 vite dev server；这里只报告残留记录，不主动杀进程。
+  if [ -f "$PID_DIR/vite.pid" ]; then
+    echo "  前端 dev server：有旧记录（$PID_DIR/vite.pid），可用 --stop 一并回收"
   fi
   exit 0
 fi
@@ -134,39 +143,38 @@ echo "  DSH 数据根 : $HOME/OmniDesk/runtime/dsh-home  （真实模型配置�
 echo "  模型权限   : 默认全部关闭；请在设置页确认端点与类别后，由你自行开启"
 echo
 
-# 1) 二进制
-if [ ! -x "$BIN" ]; then
-  echo "未找到桌面二进制，先构建…"
+# 1) 二进制（前端产物内嵌在 release 二进制里，所以必须先 npm build 再 cargo build）
+needs_build() {
+  [ -x "$BIN" ] || return 0
+  # 任一前端产物或 Rust 源码比二进制新 → 需要重建
+  local newer
+  newer="$(find "$APPDIR/dist" "$APPDIR/src" "$APPDIR/src-tauri/src" \
+    -newer "$BIN" -type f 2>/dev/null | head -n 1)"
+  [ -n "$newer" ]
+}
+
+if [ "$NO_BUILD" -eq 0 ] && needs_build; then
+  echo "构建前端与桌面二进制（release）…"
+  ( cd "$APPDIR" && npm run build )
+  # Tauri 的前端产物是通过 build.rs 内嵌的，cargo 本身不跟踪 dist/ 的改动。
+  # 不碰 build.rs 的话，改完前端再 cargo build 会「秒过」并继续用旧界面。
+  touch "$APPDIR/src-tauri/build.rs"
   ( cd "$REPO" && eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)" \
-    && cd desktop/src-tauri && cargo build --offline )
-elif [ "$NO_BUILD" -eq 0 ]; then
-  echo "检查二进制是否与源码同步…"
-  ( cd "$REPO" && eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)" \
-    && cd desktop/src-tauri && cargo build --offline )
+    && cd desktop/src-tauri && cargo build --release --offline )
 fi
 [ -x "$BIN" ] || { echo "构建后仍找不到二进制：$BIN" >&2; exit 1; }
 
-# 2) 前端 dev server（直接跑 vite 的 node 入口：单进程，停止时不会留下孤儿）
-if ! (exec 3<>"/dev/tcp/127.0.0.1/$DEV_PORT") 2>/dev/null; then
-  echo "启动前端 dev server（: $DEV_PORT）…"
-  setsid bash -c 'cd "$1" && exec node node_modules/vite/bin/vite.js' _ "$APPDIR" \
-    </dev/null >"$RUNDIR/vite.log" 2>&1 &
-  echo $! >"$PID_DIR/vite.pid"
-  READY=0
-  for _ in $(seq 1 60); do
-    if (exec 3<>"/dev/tcp/127.0.0.1/$DEV_PORT") 2>/dev/null; then READY=1; break; fi
-    sleep 0.5
-  done
-  [ "$READY" = 1 ] || { echo "前端 dev server 未就绪，见 $RUNDIR/vite.log" >&2; tail -n 20 "$RUNDIR/vite.log" >&2 || true; exit 1; }
-else
-  echo "端口 $DEV_PORT 已被占用：若那是本项目的 dev server 可直接复用，否则请先处理。"
-fi
-
-# 3) 桌面 App：正式数据根（不设置任何隔离变量）
+# 2) 桌面 App：正式数据根（不设置任何隔离变量）
+#    release 二进制自带前端资源，不需要 dev server，也没有「端口被占」问题。
 echo "启动 OmniDesk（正式环境）…"
+# 日志加时间戳表头：否则失败时难以判断哪一次启动写了哪一段（旧日志会混在一起）。
+{ echo; echo "===== $(date '+%Y-%m-%d %H:%M:%S') 启动（pid 见 $PID_DIR/app.pid）====="; } >>"$RUNDIR/app.log"
 setsid bash -c '
   unset OMNIDESK_APP_DATA_ROOT OMNIDESK_LOCAL_DATA_ROOT OMNIDESK_DSH_HOME \
         OMNIDESK_AGENTS_HOME OMNIDESK_DSH_PATCHES OMNI_FAKE_KEY DSH_HOME DSH_AGENTS_HOME
+  # 本机 WebKitGTK 渲染规避：DMABUF 渲染器在 Wayland + 混合显卡下会整屏发黑
+  # （进程存活、窗口存在、内容不显示）。可用 WEBKIT_DISABLE_DMABUF_RENDERER=0 做对照。
+  export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
   # OD-ARCH-048：默认 web-api 通道；`OMNIDESK_ENGINE_CHANNEL=acp` 一键回退。
   export OMNIDESK_ENGINE_CHANNEL="${OMNIDESK_ENGINE_CHANNEL:-web-api}"
   if [ "$OMNIDESK_ENGINE_CHANNEL" = "acp" ]; then
@@ -181,11 +189,15 @@ echo $! >"$PID_DIR/app.pid"
 
 sleep 3
 if ! pid_alive "$(cat "$PID_DIR/app.pid")"; then
-  echo "App 启动后立即退出，见 $RUNDIR/app.log" >&2
+  echo "App 启动后立即退出（未进入界面），见 $RUNDIR/app.log" >&2
   tail -n 30 "$RUNDIR/app.log" >&2 || true
   exit 1
 fi
 
 echo
 echo "已启动。app pid $(cat "$PID_DIR/app.pid")，日志 $RUNDIR/app.log"
+echo "注意：本脚本把 App 放到后台后就会返回，终端关闭不影响 App 运行。"
+echo "如果窗口仍是整屏全黑：先 scripts/omnidesk.sh --stop，再用"
+echo "  GDK_BACKEND=x11 bash scripts/omnidesk.sh --no-build"
+echo "改用 XWayland 渲染（默认已开启本机渲染规避，正常不需要这一步）。"
 echo "查看状态：scripts/omnidesk.sh --status      停止：scripts/omnidesk.sh --stop"

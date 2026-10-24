@@ -182,7 +182,7 @@ capability_state: protocol_visible | implementation_supported | verified | parti
 | `intent` | 任务类型/用途（例：`material_writing` / `knowledge_retrieval`） |
 | `input_ref` | 输入内容引用或受控载荷（引用优先，避免把大段内容写入日志） |
 | `workspace_dir` | 工作目录及访问范围 |
-| `timeout_policy` | 超时策略（总超时、无输出超时） |
+| `timeout_policy` | 等待上限，可省略。**省略或给 0/负数/非法值 = 不按墙钟自动收尾**（产品默认）；只有显式给正整数才到点落 `unknown`，供测试与脚本模拟超时。用户取消是唯一的主动终止路径。 |
 | `requested_at` | 任务创建时间 |
 
 `SubmitTaskReceipt`：
