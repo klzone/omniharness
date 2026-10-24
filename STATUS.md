@@ -1,5 +1,48 @@
 # BUILDER 执行状态
 
+## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 main，HEAD 3f8c3ba；126 项未提交/未跟踪改动（079 的 127 项减去已忽略的 `.kb_extract/`）。OD-ARCH-079 已复核通过。
+- **执行边界：** 只做 Git 整理与文档更新；不改业务代码、不改 `runtime/`、不碰凭证与模型路由、不接触真实业务材料。
+
+### 已完成的提交（4 批，均已推送）
+
+| 批次 | 哈希 | 内容 | 文件数 |
+| --- | --- | --- | --- |
+| 1 | `4f8c578` | 文档、状态与配置基线（PLANS/STATUS/REVIEW/README/docs/audit/samples/scripts） | 20 |
+| 2 | `a4327ee` | Rust 宿主层改动（附件边界、session/fork 转发、capabilities/profile_rules/process_owner 等） | 17 |
+| 3 | `bd6afd8` | 前端工作台界面改动（问句操作条、TurnRail、附件入口、设置页多提供商档案） | 16 |
+| 4 | `328a498` | 引擎适配、脚本与验证证据（turn_end_seq/SessionFork、W11-W12、各轮 evidence） | 155 |
+
+远端同步：`origin/main` = `328a498`（推送前 `3f8c3ba..328a498`），推送后工作区干净。
+
+### 提交前红线核对
+
+- **真实材料排除：** 未跟踪的 `.kb_extract/`（4.4 MB，本地真实制度文档的抽取文本）在提交前加入 `.gitignore` 并移出暂存，未进入任何批次；`.codegraph/` 同样忽略。`knowledge/regulations`、`knowledge/learning-materials`、`knowledge/reflections` 的本地内容保持忽略状态。
+- **凭证扫描：** 对全部未跟踪文件与改动文件各扫一遍 `sk-…` / `Bearer …` 模式，零命中；暂存后再扫一遍仍零命中；暂存文件名中无 credential/token/secret/key 路径。未读取、打印或复制任何 `.credentials.yaml`。
+- **误报甄别：** 身份证/手机号模式命中的只是 `task_shell.rs`、`profile_rules.rs`、`STATUS.md` 里测试用占位串（`110101199003077777` / `13800138000`），不是真实数据。
+
+### S2 实测清单更新
+
+`docs/user-testing-checklist.md` 标题与对齐版本升到 OD-ARCH-080，新增「第 4 步附二：附件、操作条、索引条、分支」六条实测步骤，并把「真实模型端到端」标为本轮重点；对照证据指向 `od-arch-079/home-polish-facts.json`、`05e-after-repo-pick.png`、`06c/06d-rail-jumped-*.png`、`web-api/W11.json`。
+
+### 测试命令与结果（推送前实跑）
+
+| 命令 | 结果 |
+| --- | --- |
+| `desktop/node_modules/.bin/tsc --noEmit -p desktop/tsconfig.json` | exit 0 |
+| `npm run build`（desktop/） | 成功，built in 905ms |
+| `cargo test --offline -q --lib` | **257 passed / 0 failed** |
+| `python3 -m pytest tests -q` | **75 passed，14 subtests** |
+| `git status --porcelain runtime/` | 0 行 |
+
+### 未验证项与偏差
+
+- **真实模型端到端仍未验证。** 按计划由用户本人用真实端点执行；本计划只做准备，不接触凭证与路由。
+- 推送已发生（私有仓库），推送后未再改动远端；未打标签、未动其它分支。
+- 计划写「3–4 批」，实际 4 批；分界与计划口径一致，无计划外文件。
+- 本轮未新增功能代码，因此未重跑真实窗口验收脚本；上一轮 079 的窗口证据仍为有效基线。
+
 ## OD-ARCH-079：四项实测修复（2026-10-25，ARCHITECT 复核通过，见 REVIEW.md 顶部）
 
 - **开工状态：** 分支 main，HEAD 3f8c3ba；既有 122 项未提交/未跟踪改动全部保留（收尾 127 项）；未提交、未推送、未打标签；`git status --porcelain runtime/` 为空。
