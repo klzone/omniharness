@@ -60,7 +60,8 @@
 - **图片元数据：** 对 7 张 PNG 的文本块做关键词检索（用户名、家目录、title/author/comment）—— **零命中**，未泄露本机路径或作者信息。
 - **仓库边界：** `git status --porcelain runtime/` 为 0；`knowledge/regulations`、`knowledge/reflections`、`.kb_extract/`、`.credentials.yaml` 仍在 .gitignore 内，未进入批次。
 - **提交：** 单批次 `731d4c5`（`OD-ARCH-081：首页小修复收尾`），24 个文件：PLANS.md、REVIEW.md、STATUS.md、desktop 源码 7 项、新增源码 4 项、验收脚本 1 项、证据目录 8 个、lock 文件 1 项。
-- **推送：** 代码批次 `d2fbc68..731d4c5`、随后本条状态更新 `731d4c5..8c453ae`，均已推送 `origin/main`。推送后本地 HEAD 与 `origin/main` 同为 `8c453ae`，工作区干净，`runtime/` 零差异。未打标签、未动其它分支。
+- **推送：** 代码批次 `d2fbc68..731d4c5`（`OD-ARCH-081：首页小修复收尾`），随后的状态记录批次一并推送 `origin/main`。收尾后核对：本地 HEAD 与 `origin/main` 一致、工作区干净、`runtime/` 零差异。未打标签、未动其它分支。
+- **说明：** 状态记录本身会产生后续提交，因此本条不写死最终哈希；以 `git rev-parse origin/main` 与 `git status` 为准。
 
 ## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
 
