@@ -9,7 +9,6 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   host,
   invalidateEngineFactsCache,
-  onDshSettingsClosed,
   scheduler as schedulerApi,
   shell,
 } from "./api";
@@ -18,6 +17,7 @@ import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { refreshThreadCategories } from "./threadCategories";
 import type {
   AdmissionFacts,
+  CapabilityView,
   CategoryInitReceipt,
   LocalRootInfo,
   ModelCategory,
@@ -27,7 +27,9 @@ import type {
   ModelSettings,
   ModelSettingsView,
   ProviderSettings,
+  ProfileChoiceView,
   ProfileDeclPayload,
+  ProfileRulesView,
   SchedulerCadence,
   SchedulerConfig,
   SchedulerSnapshot,
@@ -41,11 +43,21 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 /** 设置分页（OD-ARCH-061 S2）。 */
-type SettingsTab = "model" | "categories" | "library" | "permissions" | "engine" | "about";
+type SettingsTab =
+  | "model"
+  | "categories"
+  | "rules"
+  | "capabilities"
+  | "library"
+  | "permissions"
+  | "engine"
+  | "about";
 
 const SETTINGS_TABS: Array<{ key: SettingsTab; label: string }> = [
   { key: "model", label: "模型与端点" },
   { key: "categories", label: "对话分类" },
+  { key: "rules", label: "规则资产" },
+  { key: "capabilities", label: "能力管理" },
   { key: "library", label: "成果与文档库" },
   { key: "permissions", label: "权限" },
   { key: "engine", label: "引擎诊断" },
@@ -87,20 +99,20 @@ const PERMISSION_ITEMS: Array<{
 }> = [
   {
     key: "local",
-    title: "本机模型（localhost / 127.0.0.1 回环地址）",
-    detail: "可就地判定：内容不经过本机以外的地址。仍只用于允许范围内的材料。",
+    title: "本机模型",
+    detail: "模型跑在你自己这台电脑上，内容不往外发。这一项最安全，可以放心开。",
   },
   {
     key: "private",
-    title: "非回环地址 · 私有 / 链路本地网段",
+    title: "局域网 / 单位内网",
     detail:
-      "该端点不是本机回环。地址范围只能说明它不是公网地址；无法据此判断它属于哪个组织、是否在你的单位网络内，也无法确认实际转发路径。请自行确认发布方的授权与数据去向后再开启。",
+      "地址不是本机，也不是公网，通常是单位内网或家里的局域网。但从地址看不出它到底属于谁、中途会不会转到别处，开之前请自己确认这个模型的授权和数据去向。",
   },
   {
     key: "public",
-    title: "非回环地址 · 公网",
+    title: "公网模型服务",
     detail:
-      "该端点不是本机回环，内容会发往本机以外的地址；是否离开你所在的组织无法从地址判断（也可能经过单位内代理）。请自行确认发布方的授权与数据去向后再开启。",
+      "指的是互联网上的模型服务（如各家云 API）。内容会发到你电脑以外，可能经过单位代理，也可能出境。开之前请自己确认这家服务商的授权和数据去向。",
   },
 ];
 
@@ -144,7 +156,15 @@ function CardHead({
 
 /** 新建配置时的空白档案（不预填任何真实端点或密钥）。 */
 function blankSettings(): ModelSettings {
-  return { schema: "omnidesk.model-settings.v2", providers: [], default: { provider: "", model: "" } };
+  return {
+    schema: "omnidesk.model-settings.v2",
+    providers: [],
+    default: { provider: "", model: "" },
+    // 旧版遗留字段：宿主已不再按秒数收尾，这里写入默认值只为保持旧配置结构完整。
+    task_timeout_seconds: 300,
+    // 旧版遗留字段：同上，不再参与任何超时判断。
+    search_task_timeout_seconds: 600,
+  };
 }
 
 /** 新加一个提供商的空白档案。 */
@@ -201,6 +221,21 @@ export default function SettingsPanel() {
   const [declNote, setDeclNote] = useState<string | null>(null);
   const [declError, setDeclError] = useState<string | null>(null);
 
+  // —— Profile 规则资产（OD-ARCH-068 S4）——
+  // 平台代码不内置行业规则：这里只是规则文件的编辑面。保存后下一轮提交即生效。
+  const [rules, setRules] = useState<ProfileRulesView | null>(null);
+  const [rulesText, setRulesText] = useState("");
+  const [rulesBusy, setRulesBusy] = useState(false);
+  const [rulesNote, setRulesNote] = useState<string | null>(null);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+
+  // —— 能力管理（OD-ARCH-072）：Skill 只读展示 + 插件（bundle）启停 ——
+  // 只在打开这一页时读一次；启停写的是隔离实例的 profile，重启后生效。
+  const [caps, setCaps] = useState<CapabilityView | null>(null);
+  const [capsBusy, setCapsBusy] = useState(false);
+  const [capsNote, setCapsNote] = useState<string | null>(null);
+  const [capsError, setCapsError] = useState<string | null>(null);
+
   // —— 对话分类管理（OD-ARCH-062 S1）——
   // 每行一份草稿：只有点“保存这一行”才写盘，避免输入过程中反复落盘。
   const [categories, setCategories] = useState<ThreadCategoryView[] | null>(null);
@@ -221,10 +256,10 @@ export default function SettingsPanel() {
   const [schedNote, setSchedNote] = useState<string | null>(null);
   const [pendingKey, setPendingKey] = useState(0);
 
-  // —— DSH 原生界面（诊断用，默认折叠）——
-  const [dshNote, setDshNote] = useState<string | null>(null);
-  const [dshError, setDshError] = useState<string | null>(null);
-  const [dshBusy, setDshBusy] = useState(false);
+  // —— 当前运行通道（OD-ARCH-075，只读）——
+  // 通道由启动参数 OMNIDESK_ENGINE_CHANNEL 决定，界面不提供切换。
+  const [channelView, setChannelView] = useState<ProfileChoiceView | null>(null);
+  const [channelError, setChannelError] = useState<string | null>(null);
 
   const refreshAdmission = useCallback(async () => {
     setFactsLoading(true);
@@ -274,6 +309,104 @@ export default function SettingsPanel() {
       setDeclError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  /**
+   * 读取规则资产（只读）。
+   *
+   * 三种状态必须分开显示：已加载 / 文件不存在（纯净底座）/ 文件损坏（提交会被拒绝）。
+   */
+  const refreshRules = useCallback(async () => {
+    try {
+      const r = await shell.profileRules();
+      setRules(r);
+      setRulesText(r.text ?? "");
+      setRulesError(r.error);
+      if (!r.text && r.loaded === false && !r.error) {
+        setRulesNote("当前没有规则文件（纯净底座：零关键词、零铁律）。可点「恢复默认规则包」安装一套。");
+      }
+    } catch (e) {
+      setRules(null);
+      setRulesError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  /** 读取能力清单（只读）。失败不清空上一份结果，但必须显式报错。 */
+  const refreshCaps = useCallback(async () => {
+    try {
+      const view = await shell.capabilities();
+      setCaps(view);
+      setCapsError(null);
+    } catch (e) {
+      setCapsError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const togglePlugin = useCallback(
+    async (name: string, enabled: boolean) => {
+      setCapsBusy(true);
+      setCapsNote(null);
+      setCapsError(null);
+      try {
+        const receipt = await shell.capabilitySetPlugin({ name, enabled });
+        setCapsNote(
+          receipt.note +
+            (receipt.backup ? `旧文件已备份为 ${receipt.backup.split("/").pop()}。` : ""),
+        );
+        await refreshCaps();
+      } catch (e) {
+        setCapsError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCapsBusy(false);
+      }
+    },
+    [refreshCaps],
+  );
+
+  const openSkillsDir = useCallback(async () => {
+    setCapsError(null);
+    try {
+      const r = await shell.capabilityOpenSkills();
+      setCapsNote(r.note);
+    } catch (e) {
+      setCapsError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const saveRules = useCallback(async () => {
+    setRulesBusy(true);
+    setRulesNote(null);
+    setRulesError(null);
+    try {
+      const r = await shell.profileRulesSave(rulesText);
+      setRulesNote(
+        `规则已保存（下一轮提交生效，无需重启）。` +
+          (r.backup ? `旧文件已备份为 ${r.backup.split("/").pop()}。` : ""),
+      );
+      await refreshRules();
+    } catch (e) {
+      setRulesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRulesBusy(false);
+    }
+  }, [refreshRules, rulesText]);
+
+  const restoreRules = useCallback(async () => {
+    setRulesBusy(true);
+    setRulesNote(null);
+    setRulesError(null);
+    try {
+      const r = await shell.profileRulesRestoreDefault();
+      setRulesNote(
+        `已写入出厂默认规则包。` +
+          (r.backup ? `原文件已备份为 ${r.backup.split("/").pop()}。` : ""),
+      );
+      await refreshRules();
+    } catch (e) {
+      setRulesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRulesBusy(false);
+    }
+  }, [refreshRules]);
 
   const refreshCategories = useCallback(async () => {
     setCatBusy(true);
@@ -417,25 +550,40 @@ export default function SettingsPanel() {
     void refreshDecl();
   }, [refresh, refreshAdmission, refreshScheduler, refreshModel, refreshDecl]);
 
-  // 诊断用的 DSH 窗口关闭后重读端点事实（窗口只可能从「关于」里打开）。
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    void onDshSettingsClosed(() => {
-      invalidateEngineFactsCache();
-      void refreshAdmission();
-      void refreshModel();
-    }).then((fn) => {
-      unlisten = fn;
-    });
-    return () => {
-      unlisten?.();
-    };
-  }, [refreshAdmission, refreshModel]);
-
   // 对话分类只在打开这一页时读一次，避免与其他分页的读盘互相干扰。
   useEffect(() => {
     if (tab === "categories" && categories === null) void refreshCategories();
   }, [tab, categories, refreshCategories]);
+
+  // OD-ARCH-075：通道只读事实，打开引擎诊断页时读一次。
+  // 读取失败必须显示失败原因，不能默认成 web-api 冒充事实。
+  const loadChannel = useCallback(() => {
+    setChannelError(null);
+    shell
+      .profileChoiceView()
+      .then((r) => {
+        setChannelView(r);
+        setChannelError(r.warning ?? null);
+      })
+      .catch((e) => {
+        setChannelView(null);
+        setChannelError(e instanceof Error ? e.message : String(e));
+      });
+  }, []);
+
+  useEffect(() => {
+    if (tab === "engine" && channelView === null && channelError === null) loadChannel();
+  }, [tab, channelView, channelError, loadChannel]);
+
+  // 规则资产同样只在打开该页时读取一次。
+  useEffect(() => {
+    if (tab === "rules" && rules === null) void refreshRules();
+  }, [tab, rules, refreshRules]);
+
+  // 能力管理同理：打开这一页才读，避免启动时多读一次磁盘。
+  useEffect(() => {
+    if (tab === "capabilities" && caps === null) void refreshCaps();
+  }, [tab, caps, refreshCaps]);
 
   const saveModel = useCallback(async () => {
     setModelBusy(true);
@@ -737,27 +885,6 @@ export default function SettingsPanel() {
     },
     [sched, refreshScheduler],
   );
-
-  const openDshSettings = useCallback(async () => {
-    setDshBusy(true);
-    setDshError(null);
-    setDshNote(null);
-    try {
-      const r = await shell.openDshSettings();
-      setDshNote(
-        r.note +
-          "\n实例端口：" +
-          r.port +
-          (r.reused ? "（复用已开的实例）" : "（本次新起）") +
-          "\n启动日志：" +
-          r.log_path,
-      );
-    } catch (e) {
-      setDshError(String(e));
-    } finally {
-      setDshBusy(false);
-    }
-  }, []);
 
   const cfg = sched?.config ?? null;
   const reviewStatus = cfg
@@ -1469,35 +1596,239 @@ export default function SettingsPanel() {
         {declNote ? <p className="hint">{declNote}</p> : null}
       </section>
 
+      {/* ============ 规则资产（行业规则包，可在此查看与编辑） ============ */}
+      <section className="pane" hidden={tab !== "rules"}>
+        <CardHead
+          title="规则资产"
+          status={
+            rules
+              ? rules.error
+                ? "文件损坏，提交会被拒绝"
+                : rules.loaded
+                  ? "已加载 · " + String(rules.rules?.profile ?? "")
+                  : "未加载（纯净底座）"
+              : rulesError
+                ? "读取失败"
+                : "读取中…"
+          }
+        >
+          <button className="ghost" onClick={() => void refreshRules()} disabled={rulesBusy}>
+            重新读取
+          </button>
+          <button
+            className="ghost"
+            onClick={() => void restoreRules()}
+            disabled={rulesBusy || !rules?.default_available}
+          >
+            恢复默认规则包
+          </button>
+        </CardHead>
+        <p className="hint">
+          这里放的是<strong>行业规则</strong>：算不能说的词、写作必须遵守的规矩、各场景的默认思考档，
+          以及身份证号和手机号是拦下还是脱敏后放行。OmniDesk 本体不含任何行业内容——
+          没有这份文件时就是一个干净底座。保存后下一轮提交立即生效，不用重启；旧文件会先备份。
+        </p>
+        {rulesError ? <div className="alert">规则资产：{rulesError}</div> : null}
+        {rules ? (
+          <div className="status-card">
+            <div className="status-row">
+              <span className="k">文件</span>
+              <span className="v mono">{rules.path}</span>
+            </div>
+            <div className="status-row">
+              <span className="k">指纹</span>
+              <span className="v mono">
+                {rules.content_sha256 ? rules.content_sha256.slice(0, 16) + "…" : "—"}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">红线词</span>
+              <span className="v">
+                {rules.rules ? String(rules.rules.global.redline_keywords.length) + " 个" : "—"}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">写作铁律</span>
+              <span className="v">
+                {rules.rules ? String(rules.rules.global.writing_rules.length) + " 条" : "—"}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">隐私处理</span>
+              <span className="v">
+                {rules.rules
+                  ? "身份证：" +
+                    (rules.rules.global.privacy.id_card === "mask" ? "自动脱敏" : "拒绝") +
+                    " / 手机号：" +
+                    (rules.rules.global.privacy.phone === "mask" ? "自动脱敏" : "拒绝")
+                  : "—"}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">场景</span>
+              <span className="v">
+                {rules.rules && Object.keys(rules.rules.scenes).length > 0
+                  ? Object.entries(rules.rules.scenes)
+                      .map(([key, scene]) => key + "（" + scene.thinking + "）")
+                      .join(" / ")
+                  : "—"}
+              </span>
+            </div>
+          </div>
+        ) : null}
+        <div className="field">
+          <label className="field-label">规则内容（JSON）</label>
+          <textarea
+            className="text-input mono"
+            rows={18}
+            spellCheck={false}
+            value={rulesText}
+            onChange={(e) => setRulesText(e.target.value)}
+            placeholder={"当前没有规则文件。点上方「恢复默认规则包」可写入一套出厂规则。"}
+          />
+        </div>
+        <div className="actions">
+          <button
+            className="primary"
+            onClick={() => void saveRules()}
+            disabled={rulesBusy || rulesText.trim().length === 0}
+          >
+            {rulesBusy ? "校验并保存中…" : "校验并保存"}
+          </button>
+        </div>
+        {rulesNote ? <p className="hint">{rulesNote}</p> : null}
+      </section>
+
       {/* ============ 3. 权限 ============ */}
+
+      {/* ============ 能力管理（OD-ARCH-072）============ */}
+      <section className="pane" hidden={tab !== "capabilities"}>
+        <CardHead
+          title="能力管理"
+          status={
+            caps
+              ? `${caps.skills.length} 个 Skill · ${caps.plugins.filter((p) => p.enabled).length} 个启用的插件`
+              : capsError
+                ? "读取失败"
+                : "读取中…"
+          }
+        >
+          <button className="ghost" onClick={() => void refreshCaps()} disabled={capsBusy}>
+            重新读取
+          </button>
+          <button className="ghost" onClick={() => void openSkillsDir()}>
+            打开 Skill 目录
+          </button>
+        </CardHead>
+        <p className="hint">
+          Skill 是“怎么做事”的说明文件，平时可以直接编辑，改完重启应用生效；新增 Skill
+          不在这里做，随 OmniDesk 整体升级发布。插件清单随 OmniDesk 版本固定，
+          这里只能查看和启停现有插件，新增插件同样走整体升级。插件开关只决定下次启动要不要加载它，
+          改完要<strong>重启应用</strong>才算数。
+        </p>
+        {capsError ? <div className="alert">能力清单：{capsError}</div> : null}
+        {capsNote ? <p className="hint">{capsNote}</p> : null}
+        {caps?.notes.length ? (
+          <div className="alert">{caps.notes.join("；")}</div>
+        ) : null}
+
+        <div className="provider-split">
+          <div className="provider-list" data-testid="skill-list">
+            <div className="provider-list-head">
+              <span>Skill（只读）</span>
+              <span className="sub">{caps ? caps.skills.length : "—"}</span>
+            </div>
+            {caps && caps.skills.length === 0 ? (
+              <p className="hint">这个实例还没有 Skill。目录：{caps.skills_dir}</p>
+            ) : null}
+            {caps?.skills.map((s) => (
+              <div className="provider-item" key={s.path}>
+                <span className="name">{s.name}</span>
+                <span className="sub">{s.description ?? "（没有说明）"}</span>
+                <span className="sub">
+                  {s.modified_at
+                    ? "最近修改 " + new Date(s.modified_at * 1000).toLocaleDateString()
+                    : "修改时间未知"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="provider-editor">
+            <div className="provider-list" data-testid="plugin-list">
+              <div className="provider-list-head">
+                <span>插件</span>
+                <span className="sub">
+                  {caps ? "配置：" + caps.manifest_path.split("/").slice(-3).join("/") : "—"}
+                </span>
+              </div>
+              {caps?.plugins.map((p) => (
+                <label className="check" key={p.name}>
+                  <input
+                    type="checkbox"
+                    checked={p.enabled}
+                    disabled={capsBusy || (!p.installed && !p.enabled)}
+                    onChange={(e) => void togglePlugin(p.name, e.target.checked)}
+                  />
+                  <span>
+                    <strong>{p.name}</strong>
+                    {p.version ? <span className="sub"> · {p.version}</span> : null}
+                    {p.builtin ? <span className="sub"> · 平台自带</span> : null}
+                    {!p.installed ? (
+                      <span className="sub"> · 未安装，暂不能启用</span>
+                    ) : null}
+                    <br />
+                    <span className="sub">
+                      {p.enabled ? "下次启动会加载" : "已停用（依赖记录还留着）"}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="provider-list">
+              <div className="provider-list-head">
+                <span>新增插件与 Skill</span>
+                <span className="sub">随版本升级</span>
+              </div>
+              <p className="hint" style={{ padding: "8px 12px" }}>
+                这个版本内置的插件和 Skill 已经定好，界面不提供在线安装或新增入口。
+                需要新能力时，通过升级整个 OmniDesk 版本获得，升级前会先在你的机器上验收。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="pane" hidden={tab !== "permissions"}>
         <CardHead
           title="模型权限"
           status={
             facts
               ? facts.allowed
-                ? "当前允许提交（至少一类已开启）"
-                : "当前拒绝提交（三类均关闭）"
-              : "默认全部关闭"
+                ? "可以使用（已开启至少一类）"
+                : "暂不能使用（三类都关着）"
+              : "默认关闭"
           }
         >
           <button className="ghost" onClick={() => void revokeAll()} disabled={permissionBusy}>
-            撤销全部模型权限
+            全部关闭
           </button>
         </CardHead>
         <p className="hint">
-          下面的事实由宿主从实际模型配置读出。只有你在这里开启对应类别后，使用模型的任务才会被放行。
-          无法确认位置的端点永远不会被放行。类别只能表达“是不是本机回环”，地址范围
-          <strong>不能</strong>证明端点属于哪个组织；请自行确认发布方的授权与数据去向。
+          这里只是“总开关”：哪一类没勾上，用这类模型的对话就发不出去。开关只管能不能用，
+          不代表已经获得授权。地址只能告诉你模型在哪，<strong>不能</strong>证明它归谁所有；
+          授权和数据去向需要你自己确认。
+          位置不明的模型永远不会被放行。
         </p>
 
         {blocked ? (
           <div className="alert">
             权限变更未完成：未能确认旧引擎已停止（{blocked}）。为避免旧引擎继续按变更前的权限处理新输入，
-            宿主已<strong>拒绝一切新的模型提交</strong>。
+            已<strong>暂停所有新的对话提交</strong>。
             <div className="actions">
               <button className="ghost" onClick={() => void stopEngine()} disabled={permissionBusy}>
-                停止引擎以恢复
+                停止引擎，恢复使用
               </button>
               <button
                 className="ghost"
@@ -1530,8 +1861,8 @@ export default function SettingsPanel() {
 
         {permissionNote ? <p className="hint">{permissionNote}</p> : null}
         <p className="hint">
-          开启某一类只代表你允许该位置的模型处理普通任务，不改变案件、线索和其他禁入材料的边界；
-          界面上的说明不构成授权，也不代表内容已经脱敏。
+          勾选只表示“允许这类模型做普通任务”。案件材料、案件线索和其他禁入内容，无论开关怎么设都不能处理；
+          这里写了什么也不等于你已获得授权，更不代表内容已经脱敏。
         </p>
       </section>
 
@@ -1832,21 +2163,44 @@ export default function SettingsPanel() {
           这里只读取引擎状态，不能发起任务，也不会把任何文本送给模型。诊断信息用于排查
           "任务没跑起来"这类问题；日常使用不需要打开。
         </p>
-        <EngineTechSlice embedded />
+        {/* OD-ARCH-075：当前运行通道是启动参数决定的只读事实，界面不提供切换。 */}
         <details className="tech" open>
-          <summary>DSH 原生界面（诊断用）</summary>
-          <p className="hint">
-            这里会打开<strong>完整的 DSH Web 应用</strong>，不是只打开设置页。日常配置模型请用本页上方的表单；
-            只有排查 DSH 自身问题、需要看 DSH 原生会话或插件状态时才用到它。
-          </p>
-          <div className="actions">
-            <button className="ghost" onClick={() => void openDshSettings()} disabled={dshBusy}>
-              {dshBusy ? "正在打开 DSH…" : "打开 DSH 原生界面（诊断用）"}
-            </button>
-          </div>
-          {dshNote ? <p className="hint mono">{dshNote}</p> : null}
-          {dshError ? <div className="alert">打不开 DSH：{dshError}</div> : null}
+          <summary>当前通道与能力差异</summary>
+          {channelView ? (
+            <>
+              <p>
+                当前通道：
+                <strong className="mono">{channelView.channel}</strong>
+                {"（由启动参数 OMNIDESK_ENGINE_CHANNEL 决定，界面不能切换）"}
+              </p>
+              <ul className="hint">
+                <li>
+                  <strong>Web API</strong>：支持在界面里逐条审批工具调用，也支持取消；取消后引擎会回报任务
+                  是否真的终止。
+                </li>
+                <li>
+                  <strong>ACP</strong>：当前不支持在界面里审批工具调用；发出取消只是请求，不代表底层已经确认
+                  停止，任务可能仍在运行。
+                </li>
+              </ul>
+              {channelError ? (
+                <div className="alert">引擎配置读取有误：{channelError}</div>
+              ) : null}
+            </>
+          ) : channelError ? (
+            <div className="alert">
+              读不到当前通道：{channelError}
+              <div className="actions">
+                <button className="ghost" onClick={loadChannel}>
+                  重新读取
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="hint">正在读取…</p>
+          )}
         </details>
+        <EngineTechSlice embedded />
       </section>
     </div>
   );

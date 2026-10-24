@@ -249,6 +249,43 @@
   overflow-x: auto;
 }
 
+/* 规则资产/声明这类原文编辑器：等宽、保留换行、可纵向拉伸。 */
+.settings-surface textarea.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-on-surface);
+  background: rgba(242, 243, 255, 0.85);
+  border: 1px solid rgba(199, 196, 216, 0.65);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  outline: none;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.settings-surface textarea.text-input::placeholder {
+  color: rgba(119, 117, 135, 0.75);
+}
+
+.settings-surface textarea.text-input:focus {
+  background: #ffffff;
+  border-color: rgba(53, 37, 205, 0.45);
+  box-shadow: 0 0 0 3px rgba(53, 37, 205, 0.15);
+}
+
+.settings-surface textarea.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .settings-surface textarea.prompt::placeholder,
 .settings-surface input.text-input::placeholder {
   color: rgba(119, 117, 135, 0.75);

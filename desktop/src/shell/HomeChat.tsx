@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, invalidateEngineFactsCache, onTaskEvent, shell } from "../api";
+import {
+  ATTACHMENT_MAX_FILES,
+  activeMentionQuery,
+  applyMentionPick,
+  attachmentScanText,
+  checkAttachments,
+  composeWithAttachments,
+  type AttachmentInput,
+} from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import {
@@ -9,14 +20,18 @@ import {
 } from "../engineCancelModel";
 import {
   TERMINAL_STATES,
+  type ApprovalRequest,
   type AdmissionFacts,
   type CancelOutcome,
+  type ReferenceCandidate,
+  type ReferenceRoot,
   type TaskState,
   type TaskStatus,
 } from "../types";
 import { Icon } from "../components/Icon";
 import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
+import { TurnRail } from "./TurnRail";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
@@ -45,6 +60,12 @@ export interface ChatPreset {
   rules: string | null;
   /** 期望输出章节（每行一个）。 */
   sections: string | null;
+  /** Profile 规则资产里的写作铁律；null/空 = 不输出该段（OD-ARCH-068）。 */
+  writingRules?: string[] | null;
+  /** 场景默认思考档；用户手动选档优先，且只在引擎空闲时应用。 */
+  thinking?: string | null;
+  /** 是否真的加载到 Profile 规则资产（false/undefined = 纯净底座）。 */
+  rulesLoaded?: boolean;
 }
 
 export interface ChatMessage {
@@ -59,6 +80,21 @@ export interface ChatMessage {
   notice?: string | null;
   /** 是否允许手动重新查询该任务。 */
   retryable?: boolean;
+  /**
+   * OD-ARCH-069：当前工具执行状态（「正在调用工具：x（y）」）。
+   * 只存展示用的工具名与状态，不存工具入参或结果；任务结束即清空。
+   */
+  toolNote?: string | null;
+  /** OD-ARCH-069：本轮用户输入的原文，仅用于「重发」。 */
+  sentText?: string | null;
+  /** OD-ARCH-078 S3：提交时刻与到达终态的时刻（毫秒），用于显示本轮耗时。 */
+  startedAtMs?: number | null;
+  endedAtMs?: number | null;
+  /**
+   * OD-ARCH-079：本轮 turn/end 的会话事件序号，DSH 原生 session/fork 的切点。
+   * 只有拿到真实序号才能分支；缺失时按钮禁用，不做本地重放冒充。
+   */
+  forkSeq?: number | null;
 }
 
 /** 重放进下一轮提示的上文上限（字符）。超出时保留最近的部分。 */
@@ -86,8 +122,6 @@ const CATEGORY_LABEL: Record<string, string> = {
 const POLL_INTERVAL_MS = 300;
 /** 连续失败多少次后停止自动轮询，避免界面永久停在「生成中」。 */
 const MAX_POLL_FAILURES = 5;
-/** 单个任务最长等待（毫秒）。超时不代表成功，也不代表已终止。 */
-const MAX_WAIT_MS = 10 * 60 * 1000;
 /** 终态后读取结果的重试次数。 */
 const RESULT_RETRIES = 3;
 
@@ -159,8 +193,52 @@ function AssistantText({
   return <StreamedText text={text} live={live} />;
 }
 
+/**
+ * 消息下方的操作条（OD-ARCH-078 S3）：低对比度小按钮，鼠标悬停才显出强调色。
+ * 引擎不支持的动作用 disabled + title 说明原因，不假装能点。
+ */
+function TipButton({
+  icon,
+  label,
+  title,
+  onClick,
+  disabled = false,
+}: {
+  icon: Parameters<typeof Icon>[0]["name"];
+  label: string;
+  title?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title ?? label}
+      aria-label={label}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] text-outline hover:text-primary hover:bg-surface-container transition-colors disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-outline"
+    >
+      <Icon name={icon} className="w-[13px] h-[13px]" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/** 本轮耗时：从提交到终态（毫秒）。缺任一端就不显示，不估算。 */
+function elapsedText(startedAtMs?: number | null, endedAtMs?: number | null): string | null {
+  if (!startedAtMs || !endedAtMs || endedAtMs < startedAtMs) return null;
+  const sec = (endedAtMs - startedAtMs) / 1000;
+  return sec < 60 ? `本轮 ${sec.toFixed(1)} 秒` : `本轮 ${Math.round(sec)} 秒`;
+}
+
 export interface HomeChatProps {
   onNavigate: (scene: Scene) => void;
+  /**
+   * 分支到新对话（OD-ARCH-079）：引擎侧已用 DSH 原生 session/fork 建好子会话，
+   * 回调只负责把截至切点的消息带到新线程，并保存子会话号。
+   */
+  onBranchNewThread?: (messages: ChatMessage[], childSessionId: string) => void;
   /**
    * 场景选择（OD-ARCH-057）：首页是唯一的对话入口，场景在这里选。
    * 传入即显示场景 chip；选项由 Profile 声明联动（隐藏的入口不出现）。
@@ -203,6 +281,7 @@ export function HomeChat({
   initialMessages = [],
   onMessagesChange,
   onTaskCreated,
+  onBranchNewThread,
   engineSessionId = null,
   onEngineSessionId,
 }: HomeChatProps) {
@@ -266,8 +345,40 @@ export function HomeChat({
   const [modelBusy, setModelBusy] = useState(false);
   /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
   const [modelEffort, setModelEffort] = useState("off");
+  /**
+   * 用户是否手动选过思考档（OD-ARCH-068）。
+   * 只有「没手动选过 + 引擎空闲」时才按场景默认切档；手动选档永远优先。
+   */
+  const effortTouchedRef = useRef(false);
+  /**
+   * 周记录场景的输入模式（OD-ARCH-068 S3）：
+   *   note = 随手记（一句整理指令，低负担、快）；report = 整理成周报（完整规则）。
+   */
+  const [noteMode, setNoteMode] = useState(false);
+  /**
+   * 本轮引用的文件（OD-ARCH-077 S1）：正文只在内存里，随这一轮提示词下发。
+   * 不写盘、不进日志；发送后清空，避免下一轮误带上一轮的文件。
+   */
+  const [attachments, setAttachments] = useState<AttachmentInput[]>([]);
+  /**
+   * 附件列表的同步镜像（OD-ARCH-077）。
+   * 拖拽一次会并发触发多个 addAttachment；只读 state 闭包会让每个调用都看到旧数组，
+   * 于是能突破 5 个上限或重复加入同一个文件。这里用 ref 作为当前事实，读写同一份。
+   */
+  const attachmentsRef = useRef<AttachmentInput[]>([]);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
+  /** 允许引用的根（成果目录 / 知识库），只用于把候选标成来源，不参与路径校验。 */
+  const [referenceRoots, setReferenceRoots] = useState<ReferenceRoot[]>([]);
+  /** @ 引用选择器：查询词 + 候选（只列宿主允许根内的白名单文本）。 */
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionItems, setMentionItems] = useState<ReferenceCandidate[]>([]);
+  const [mentionBusy, setMentionBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [voiceNote, setVoiceNote] = useState(false);
   /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
   const [sendNote, setSendNote] = useState<string | null>(null);
+  /** 消息操作条的一次性反馈（复制成功、朗读不可用、分支已建等），按消息 id 显示。 */
+  const [tipNote, setTipNote] = useState<{ id: string; text: string } | null>(null);
   /** 已提交到宿主、引擎尚未返回任务号（冷启动可能数秒）。 */
   const [starting, setStarting] = useState(false);
   /**
@@ -280,7 +391,24 @@ export function HomeChat({
   const [elapsed, setElapsed] = useState(0);
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
+  /**
+   * OD-ARCH-066：需要人工决定的工具审批。按任务号分组，只保存归一化字段
+   * （工具名/原因/编号），不保存工具参数正文。
+   */
+  const [approvals, setApprovals] = useState<Record<string, ApprovalRequest[]>>({});
+  /** 正在回传决定的审批编号，用于禁用按钮并显示等待。 */
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  /** OD-ARCH-079：分支请求进行中，防止连点建出多条子会话。 */
+  const [branchBusy, setBranchBusy] = useState(false);
+  const branchBusyRef = useRef(false);
+  /** OD-ARCH-066：任务台账里的首字延迟（秒），用于显示「首字 x.xs」。 */
+  const [ttfb, setTtfb] = useState<Record<string, number>>({});
+  /** 宿主报告的本任务待审批数量（与事件里的卡片互为佐证）。 */
+  const [pendingApprovals, setPendingApprovals] = useState<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** OD-ARCH-079：每条用户问句的锚点，供右侧索引条跳转与高亮。 */
+  const turnAnchors = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   /** 宿主拒绝准备工作目录时的真实原因（供提交失败时原样带出）。 */
   const workspaceNoteRef = useRef<string | null>(null);
 
@@ -337,6 +465,21 @@ export function HomeChat({
   useEffect(() => {
     void refreshAdmission();
   }, [refreshAdmission]);
+
+  // 可引用的来源根（只用于把候选标成「成果目录」或「知识库」）。
+  // 路径是否能读，仍由宿主逐次校验；这里不据此放行任何文件。
+  useEffect(() => {
+    shell
+      .referenceRoots()
+      .then((r) => setReferenceRoots(r.roots))
+      .catch(() => setReferenceRoots([]));
+  }, []);
+
+  const rootKindOf = useCallback(
+    (sourceRoot: string) =>
+      referenceRoots.find((r) => r.path === sourceRoot)?.label ?? "文件",
+    [referenceRoots],
+  );
 
   // 列出各 Profile 的模型候选（只取非机密字段）。
   const loadModelRoutes = useCallback(async () => {
@@ -439,9 +582,103 @@ export function HomeChat({
       if (event.type === "progress") {
         // 引擎上报的上下文用量（used / size tokens）。只显示宿主转发的真实数值，
         // 不自行估算或累加；未上报时界面显示「—」。
-        const p = event.payload as { kind?: unknown; used?: unknown; size?: unknown; text?: unknown };
+        const p = event.payload as {
+          kind?: unknown;
+          used?: unknown;
+          size?: unknown;
+          text?: unknown;
+          approval_id?: unknown;
+          tool_name?: unknown;
+          call_id?: unknown;
+          reason?: unknown;
+          event?: unknown;
+          note?: unknown;
+          idle_seconds?: unknown;
+        };
+        // OD-ARCH-069：引擎在等一项我们没识别出类型的确认。不上自动应答，
+        // 只把「它在等什么」如实说出来，免得看起来像死机。
+        if (p.kind === "engine_ask") {
+          const kind = typeof p.event === "string" && p.event ? p.event : "未命名事件";
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.taskId === event.omni_task_id
+                ? {
+                    ...m,
+                    notice:
+                      "引擎在等待一项未被识别的确认（" +
+                      kind +
+                      "），如长时间无响应请取消后重发。",
+                  }
+                : m,
+            ),
+          );
+          return;
+        }
+        // 审批请求（OD-ARCH-066）：工具需要人工决定时，把它挂到对应任务下。
+        if (p.kind === "approval_request" && typeof p.approval_id === "string") {
+          const approval: ApprovalRequest = {
+            approvalId: p.approval_id,
+            omniTaskId: event.omni_task_id,
+            toolName: typeof p.tool_name === "string" ? p.tool_name : "未知工具",
+            callId: typeof p.call_id === "string" ? p.call_id : "",
+            reason: typeof p.reason === "string" ? p.reason : "",
+            status: "pending",
+          };
+          setApprovals((prev) => {
+            const list = prev[event.omni_task_id] ?? [];
+            if (list.some((a) => a.approvalId === approval.approvalId)) return prev;
+            return { ...prev, [event.omni_task_id]: [...list, approval] };
+          });
+          return;
+        }
+        if (
+          (p.kind === "approval_decided" || p.kind === "approval_cancelled") &&
+          typeof p.approval_id === "string"
+        ) {
+          const decided = p.kind === "approval_decided";
+          const decision = (event.payload as { decision?: unknown }).decision;
+          setApprovals((prev) => {
+            const list = prev[event.omni_task_id];
+            if (!list) return prev;
+            return {
+              ...prev,
+              [event.omni_task_id]: list.map((a) =>
+                a.approvalId === p.approval_id
+                  ? {
+                      ...a,
+                      status: decided
+                        ? decision === "rejected"
+                          ? "rejected"
+                          : "allowed"
+                        : "cancelled",
+                    }
+                  : a,
+              ),
+            };
+          });
+          return;
+        }
         if (p.kind === "usage" && typeof p.used === "number" && typeof p.size === "number") {
           setUsage({ used: p.used, size: p.size });
+        }
+        // 长时间没有新帧时引擎只发提示、不结束任务（2026-10-23）。
+        // 用与工具活动同一行的实时状态显示，避免看起来像卡死，也不制造「失败」错觉。
+        if (p.kind === "still_running") {
+          const idle = typeof p.idle_seconds === "number" ? Math.round(p.idle_seconds) : 0;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.taskId === event.omni_task_id
+                ? {
+                    ...m,
+                    toolNote:
+                      "DSH 仍在运行" +
+                      (idle > 0 ? "（已静默 " + idle + " 秒）" : "") +
+                      " · 不会自动停止，需要时可点取消",
+                  }
+                : m,
+            ),
+          );
+          return;
         }
         // 思考过程（模型产出的思考，不计入最终结果）：按任务累积，单独展示。
         if (p.kind === "thought_delta" && typeof p.text === "string" && p.text) {
@@ -450,6 +687,21 @@ export function HomeChat({
             [event.omni_task_id]: (prev[event.omni_task_id] ?? "") + p.text,
           }));
         }
+        return;
+      }
+      // OD-ARCH-069：工具执行期间显示工具名与状态，让「在干活」和「卡住」可区分。
+      // 只显示工具名与状态字符串，不展示工具入参/结果。
+      if (event.type === "tool_activity") {
+        const tp = event.payload as { tool_name?: unknown; status?: unknown };
+        const tool = typeof tp.tool_name === "string" && tp.tool_name ? tp.tool_name : "未知工具";
+        const status = typeof tp.status === "string" && tp.status ? tp.status : "";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.taskId === event.omni_task_id
+              ? { ...m, toolNote: "正在调用工具：" + tool + (status ? "（" + status + "）" : "") }
+              : m,
+          ),
+        );
         return;
       }
       if (event.type !== "text_delta") return;
@@ -477,6 +729,40 @@ export function HomeChat({
     };
   }, []);
 
+  /**
+   * 回传审批决定（OD-ARCH-066）。
+   *
+   * 只有宿主确认送达才把卡片标为已决定；失败时保留待审批态并显示原因，
+   * 让用户可以重试——绝不先改界面再等结果。
+   */
+  const respondApproval = useCallback(
+    async (taskId: string, approvalId: string, allow: boolean) => {
+      setApprovalBusy(approvalId);
+      try {
+        await host.approvalRespond(taskId, approvalId, allow);
+        setApprovals((prev) => ({
+          ...prev,
+          [taskId]: (prev[taskId] ?? []).map((a) =>
+            a.approvalId === approvalId
+              ? { ...a, status: allow ? "allowed" : "rejected", error: undefined }
+              : a,
+          ),
+        }));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setApprovals((prev) => ({
+          ...prev,
+          [taskId]: (prev[taskId] ?? []).map((a) =>
+            a.approvalId === approvalId ? { ...a, status: "pending", error: message } : a,
+          ),
+        }));
+      } finally {
+        setApprovalBusy(null);
+      }
+    },
+    [],
+  );
+
   /** 终态后回读结果：有限重试；失败给出可见提示与重试入口。 */
   const loadResult = useCallback(async (taskId: string, state: TaskState) => {
     let lastError = "";
@@ -494,6 +780,8 @@ export function HomeChat({
                   text: m.text || (result.content || ""),
                   notice: partial ? "结果为部分结果（partial），可能不完整，请人工核对。" : null,
                   retryable: partial,
+                  // 终态时刻只记一次：重新查询不会把这轮耗时越算越长。
+                  endedAtMs: m.endedAtMs ?? Date.now(),
                 }
               : m,
           ),
@@ -512,6 +800,7 @@ export function HomeChat({
           ? {
               ...m,
               state,
+              endedAtMs: m.endedAtMs ?? Date.now(),
               notice:
                 "任务已结束（" +
                 STATE_LABEL[state] +
@@ -526,13 +815,14 @@ export function HomeChat({
     );
   }, []);
 
-  // 轮询终态：有界失败与有界等待，不静默吞错、不把未知状态写成成功。
+  // 轮询终态：有界失败、不静默吞错、不把未知状态写成成功。
+  // 2026-10-23：去掉墙钟上限——只要底座还在跑（含插件检索长达十几分钟），
+  // 界面就一直跟着真实状态；停止只由用户点「取消」或底座报错决定。
   useEffect(() => {
     if (!activeTaskId) return;
     const taskId = activeTaskId;
     let stopped = false;
     let failures = 0;
-    const startedAt = Date.now();
 
     const settle = () => {
       setActiveTaskId(null);
@@ -547,28 +837,86 @@ export function HomeChat({
 
     const timer = window.setInterval(async () => {
       if (stopped) return;
-      if (Date.now() - startedAt > MAX_WAIT_MS) {
-        settle();
-        markNotice(
-          "等待已超过 " +
-            Math.round(MAX_WAIT_MS / 60000) +
-            " 分钟：任务可能仍在后台运行，状态未确认。可点『重新查询』继续。",
-        );
-        return;
-      }
       try {
         const status = await host.taskStatus(taskId);
         if (stopped) return;
         failures = 0;
         setActiveTaskStatus(status.status);
+        if (typeof status.ttfb_seconds === "number") {
+          setTtfb((prev) =>
+            prev[taskId] === status.ttfb_seconds
+              ? prev
+              : { ...prev, [taskId]: status.ttfb_seconds as number },
+          );
+        }
+        if (typeof status.pending_approvals === "number") {
+          setPendingApprovals((prev) =>
+            prev[taskId] === status.pending_approvals
+              ? prev
+              : { ...prev, [taskId]: status.pending_approvals as number },
+          );
+        }
         setMessages((prev) =>
           prev.map((m) =>
-            m.taskId === taskId ? { ...m, state: status.status, stopReason: null } : m,
+            m.taskId === taskId
+              ? {
+                  ...m,
+                  state: status.status,
+                  stopReason: null,
+                  // OD-ARCH-079：记下真实切点序号（缺失就保持原值，不猜）。
+                  forkSeq:
+                    typeof status.engine_turn_end_seq === "number"
+                      ? status.engine_turn_end_seq
+                      : m.forkSeq,
+                  // 任务结束就不再显示「正在调用工具」，避免残留过期的进度。
+                  toolNote: TERMINAL_STATES.includes(status.status) ? null : m.toolNote,
+                }
+              : m,
           ),
         );
         if (TERMINAL_STATES.includes(status.status)) {
+          // 任务已终态：引擎不再需要这些审批。若没收到撤回收到的通知，
+          // 也要把仍挂着的卡片标为失效，避免界面一直显示「待决定」。
+          setApprovals((prev) => {
+            const list = prev[taskId];
+            if (!list || !list.some((a) => a.status === "pending")) return prev;
+            return {
+              ...prev,
+              [taskId]: list.map((a) =>
+                a.status === "pending"
+                  ? { ...a, status: "cancelled" as const, error: undefined }
+                  : a,
+              ),
+            };
+          });
           settle();
           await loadResult(taskId, status.status);
+          // OD-ARCH-069：超时（unknown）必须说清楚等了多少秒、没有自动重试，
+          // 并留出「重发」入口。引擎的 note 已带秒数；缺省时给一句保守文案。
+          if (status.status === "unknown") {
+            const note =
+              (status.note || "").trim() ||
+              "引擎未在等待上限内返回结果，本次未自动重试。可重发一次，或降低工具使用。";
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.taskId === taskId ? { ...m, notice: note, retryable: true, toolNote: null } : m,
+              ),
+            );
+          }
+          // OD-ARCH-070：上游模型网关的拒绝（如 HTTP 400 / 内容风险）必须显示
+          // 真实原因，不能只留一句「已失败」。引擎把原因放在 note 的 error= 段里。
+          if (status.status === "failed" || status.status === "interrupted") {
+            const note = (status.note || "").trim();
+            if (note) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? { ...m, notice: note, retryable: true, toolNote: null }
+                    : m,
+                ),
+              );
+            }
+          }
         }
       } catch (e) {
         failures += 1;
@@ -609,9 +957,9 @@ export function HomeChat({
   }, [activeTaskId]);
 
   const submitText = useCallback(
-    async (raw: string) => {
+    async (raw: string, picked: AttachmentInput[] = []): Promise<boolean> => {
       const text = raw.trim();
-      if (!text || busy) return;
+      if (!text || busy) return false;
       const decision = currentEngineSubmitDecision(text);
       if (!decision.allowed) {
         setMessages((prev) => [
@@ -619,12 +967,15 @@ export function HomeChat({
           { id: nextId(), role: "user", text },
           { id: nextId(), role: "assistant", text: "", error: decision.reason },
         ]);
-        return;
+        return false;
       }
       resetCancelState();
-      setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
+    // OD-ARCH-078 S3：记录提交时刻，完成后算「本轮耗时」。
+    const startedAtMs = Date.now();
+    setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
       setBusy(true);
       setStarting(true);
+    const turnStartedAtMs = startedAtMs;
       const token = { aborted: false, noteId: null as string | null };
       submitTokenRef.current = token;
       try {
@@ -654,8 +1005,11 @@ export function HomeChat({
         const promptText = composeConversationPrompt({
           preset,
           turns: messages.map((m) => ({ role: m.role, text: m.text })),
-          current: text,
+          // 附件正文进这一轮的用户输入：模型看到的正是用户勾选的文件原文。
+          current: composeWithAttachments(text, picked),
           continuation,
+          // 周记录场景默认随手记；用户点「整理成周报」才走完整组装（OD-ARCH-068 S3）。
+          mode: preset?.key === "weekly" && noteMode ? "note" : "report",
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
@@ -663,7 +1017,8 @@ export function HomeChat({
         const receipt = await host.submitTask({
           promptText,
           workspaceDir: dir,
-          userInputText: text,
+          // 红线扫描必须覆盖附件正文：只扫用户原话会让附件里的禁入内容绕过检查。
+          userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
           engineSessionId: effectiveEngineSessionId,
         });
         // 记住本线程的引擎会话号：下一轮据此续接同一会话（真多轮）。
@@ -690,12 +1045,20 @@ export function HomeChat({
                 String(e),
             );
           }
-          return;
+          return true;
         }
         // 续接失败被降级为新建会话时，这一轮**没有**继承旧会话的上文：
         // 下一轮补一次窗口化重放，把历史接回去（引擎侧此时已持有这一轮）。
         const degraded = receipt.session_mode === "degraded";
         setReplayNextTurn(degraded);
+        // OD-ARCH-068：宿主对出站文本做过隐私掩码时如实告知（只报类别与数量）。
+        const masked = receipt.privacy_masked;
+        const maskParts: string[] = [];
+        if (masked && masked.id_card > 0) maskParts.push(`身份证号 ${masked.id_card} 处`);
+        if (masked && masked.phone > 0) maskParts.push(`手机号 ${masked.phone} 处`);
+        const maskNotice = maskParts.length > 0
+          ? `已自动脱敏（${maskParts.join("、")}），原文只保留在本机对话里。`
+          : null;
         setMessages((prev) => [
           ...prev,
           {
@@ -704,15 +1067,23 @@ export function HomeChat({
             text: "",
             taskId: receipt.omni_task_id,
             state: receipt.status,
-            notice: degraded
-              ? "引擎会话已失效，这一轮改用新会话；下一轮会把上文补回去。"
-              : null,
+            startedAtMs: turnStartedAtMs,
+            endedAtMs: null,
+            // OD-ARCH-069：记住本轮原文，供超时后「重发」用（不额外落盘）。
+            sentText: text,
+            notice: [
+              degraded ? "引擎会话已失效，这一轮改用新会话；下一轮会把上文补回去。" : null,
+              maskNotice,
+            ]
+              .filter(Boolean)
+              .join(" ") || null,
           },
         ]);
         setActiveTaskId(receipt.omni_task_id);
         // 这一轮由引擎新建了一个 DSH 会话：把任务号报给上层，便于在工作台里关联到
         // 「项目与会话」里的引擎会话（引擎会话号从任务台账读，不改宿主协议）。
         onTaskCreated?.(receipt.omni_task_id);
+        return true;
       } catch (e) {
         setBusy(false);
         setMessages((prev) => [
@@ -723,16 +1094,19 @@ export function HomeChat({
         // 缓存可能还是旧的（权限刚变），先作废再读。
         invalidateEngineFactsCache();
         void refreshAdmission();
+        return false;
       } finally {
         setStarting(false);
       }
     },
-    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn],
+    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, noteMode, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn],
   );
 
   /** 切换思考等级：沿用当前 provider/model，只改 reasoningEffort。 */
   const selectEffort = useCallback(
-    async (effort: string) => {
+    async (effort: string, byUser = true) => {
+      // 用户主动选档：之后不再被场景默认覆盖（OD-ARCH-068）。
+      if (byUser) effortTouchedRef.current = true;
       if (!facts?.provider || !facts?.model) {
         setModelNote("当前端点尚未识别，先选一个模型再设思考等级。");
         return;
@@ -746,6 +1120,161 @@ export function HomeChat({
     [facts, modelRoutes, selectModel],
   );
 
+  /** 上一次按场景应用的思考档（场景键 + 档位），避免重复触发引擎重启。 */
+  const appliedSceneThinkingRef = useRef<string | null>(null);
+
+  /**
+   * 按场景应用默认思考档（OD-ARCH-068 S3）。
+   *
+   * 三条安全线：
+   *   1. 用户手动选过档就不再覆盖（effortTouchedRef）；
+   *   2. 只在引擎空闲时切换——切档要经 setModelRoute 重启引擎，生成中切换会把
+   *      正在跑的任务打断（OD-ARCH-048/059 的卡死教训）；
+   *   3. 同一场景同一档只应用一次，避免每次读端点事实都重启引擎。
+   */
+  useEffect(() => {
+    const wanted = (preset?.thinking ?? "").trim();
+    if (!wanted || wanted === "default") return;
+    if (effortTouchedRef.current) return;
+    if (busy || modelBusy || starting) return;
+    if (!facts?.provider || !facts?.model) return;
+    if (modelEffort === wanted) return;
+    const mark = `${preset?.key ?? ""}:${wanted}`;
+    if (appliedSceneThinkingRef.current === mark) return;
+    appliedSceneThinkingRef.current = mark;
+    setModelNote(`已按场景应用思考等级：${wanted}`);
+    void selectEffort(wanted, false);
+  }, [preset?.key, preset?.thinking, busy, modelBusy, starting, facts, modelEffort, selectEffort]);
+
+  /**
+   * 把一个文件加入本轮引用（OD-ARCH-077 S1）。
+   *
+   * 路径校验与正文读取都由宿主完成：越界、非白名单类型、超大、非 UTF-8 都在这里可见地失败，
+   * 不静默忽略，也不在前端放宽规则。
+   */
+  const addAttachment = useCallback(async (path: string, fromPicker = false) => {
+    setAttachNote(null);
+    const clean = path.trim();
+    if (!clean) return;
+    if (attachmentsRef.current.some((a) => a.path === clean)) {
+      setAttachNote(`${clean.split("/").pop()} 已经引用了。`);
+      return;
+    }
+    if (attachmentsRef.current.length >= ATTACHMENT_MAX_FILES) {
+      setAttachNote(`一次最多引用 ${ATTACHMENT_MAX_FILES} 个文件。`);
+      return;
+    }
+    try {
+      // 来源分两类（OD-ARCH-078 S1）：
+      //   * 文件框/拖拽挑来的：可能在数据根外（桌面、下载目录），走宿主附件读取；
+      //   * @ 引用挑来的：一定在成果根或知识库内，继续走允许根校验。
+      const read = fromPicker
+        ? await shell.readAttachment(clean)
+        : await shell.readReference(clean);
+      // 读取期间可能有别的文件先加进来：读完再按最新列表复核一次。
+      if (attachmentsRef.current.some((a) => a.path === read.path)) {
+        setAttachNote(`${read.file_name} 已经引用了。`);
+        return;
+      }
+      if (attachmentsRef.current.length >= ATTACHMENT_MAX_FILES) {
+        setAttachNote(`一次最多引用 ${ATTACHMENT_MAX_FILES} 个文件，${read.file_name} 没有加入。`);
+        return;
+      }
+      const next = [
+        ...attachmentsRef.current,
+        { path: read.path, fileName: read.file_name, sha256: read.sha256, content: read.content },
+      ];
+      attachmentsRef.current = next;
+      setAttachments(next);
+    } catch (e) {
+      setAttachNote(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const removeAttachment = useCallback((path: string) => {
+    const next = attachmentsRef.current.filter((a) => a.path !== path);
+    attachmentsRef.current = next;
+    setAttachments(next);
+    setAttachNote(null);
+  }, []);
+
+  /**
+   * 「+」号：打开系统文件选择框（可多选），挑中的文件逐个加入本轮引用。
+   *
+   * 取消选择什么都不做；选中的文件逐个读取，单个失败只影响它自己，
+   * 失败原因显示在输入框下方（不吞掉、不假装读到了）。
+   */
+  const pickAttachments = useCallback(async () => {
+    if (busy) return;
+    setAttachNote(null);
+    try {
+      const picked = await openFileDialog({
+        multiple: true,
+        title: "选择要引用的文件",
+      });
+      if (!picked) return;
+      const paths = Array.isArray(picked) ? picked : [picked];
+      for (const p of paths) await addAttachment(p, true);
+    } catch (e) {
+      setAttachNote(
+        "打不开文件选择框：" +
+          (e instanceof Error ? e.message : String(e)) +
+          "；可以改用拖拽，或输入 @ 引用成果目录与知识库里的文件。",
+      );
+    }
+  }, [addAttachment, busy]);
+
+  /** @ 查询：只问宿主允许根里的白名单文本文件。 */
+  const loadMentions = useCallback(async (query: string) => {
+    setMentionBusy(true);
+    try {
+      const r = await shell.listReferences(query, 30);
+      setMentionItems(r.items);
+    } catch (e) {
+      setMentionItems([]);
+      setAttachNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMentionBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mentionQuery === null) {
+      setMentionItems([]);
+      return;
+    }
+    const timer = window.setTimeout(() => void loadMentions(mentionQuery), 180);
+    return () => window.clearTimeout(timer);
+  }, [mentionQuery, loadMentions]);
+
+  // 拖拽：Tauri v2 的 HTML5 drop 被原生拖放接管，路径只能从 webview 事件拿。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          setDragging(true);
+        } else if (event.payload.type === "leave") {
+          setDragging(false);
+        } else if (event.payload.type === "drop") {
+          setDragging(false);
+          for (const path of event.payload.paths) void addAttachment(path, true);
+        }
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // 拿不到原生拖放事件不是致命问题：按钮与 @ 引用仍可用。
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [addAttachment]);
+
   const send = useCallback(() => {
     const text = input.trim();
     if (!text) return;
@@ -755,9 +1284,23 @@ export function HomeChat({
       return;
     }
     setSendNote(null);
+    // 附件在提交前统一校验：空文件、数量与总长超限都在这里挡住，不静默截断。
+    const check = checkAttachments(attachments);
+    if (!check.ok) {
+      setSendNote(check.reason);
+      return;
+    }
     setInput("");
-    void submitText(text);
-  }, [input, busy, submitText]);
+    setMentionQuery(null);
+    const picked = attachments;
+    // 附件等提交确认受理后再清空：被拒绝或提交失败时，本轮文件仍留在输入区，
+    // 用户改一下说法就能直接重发，不用重新挑选。
+    void submitText(text, picked).then((accepted) => {
+      if (!accepted) return;
+      attachmentsRef.current = [];
+      setAttachments([]);
+    });
+  }, [input, busy, attachments, submitText]);
 
   /** 手动重试：重新进入轮询（已终态的任务会立即走到结果回读）。 */
   const retryQuery = useCallback((taskId: string) => {
@@ -768,6 +1311,111 @@ export function HomeChat({
     setBusy(true);
     setActiveTaskId(taskId);
   }, []);
+
+  /**
+   * 重发（OD-ARCH-069）：把这一轮的原文重新提交一次。
+   *
+   * 只复用现有发送路径，不改写原文、不自动重试；重发是用户主动动作。
+   * 原文只存在于当前对话消息里，不额外落盘。
+   */
+  const resend = useCallback(
+    (text: string) => {
+      if (busy) {
+        setSendNote("还在生成中，等它结束或点「取消生成」后再重发。");
+        return;
+      }
+      setSendNote(null);
+      void submitText(text);
+    },
+    [busy, submitText],
+  );
+
+  /** 一次性提示：同一条消息的后续操作会覆盖上一条提示，避免堆成一片。 */
+  const flashTip = useCallback((id: string, text: string) => {
+    setTipNote({ id, text });
+    window.setTimeout(() => {
+      setTipNote((cur) => (cur && cur.id === id && cur.text === text ? null : cur));
+    }, 4000);
+  }, []);
+
+  /** 复制正文。剪贴板被系统拒绝时如实提示，不假装已复制。 */
+  const copyText = useCallback(
+    async (id: string, text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        flashTip(id, "已复制");
+      } catch (e) {
+        flashTip(id, "复制失败（系统未允许剪贴板）：" + String(e));
+      }
+    },
+    [flashTip],
+  );
+
+  /** 朗读正文。本机没有可用语音时明确说明，不静默失败。 */
+  const speakText = useCallback(
+    (id: string, text: string) => {
+      const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+      if (!synth || typeof window.SpeechSynthesisUtterance !== "function") {
+        flashTip(id, "本机没有可用的语音朗读能力。");
+        return;
+      }
+      if (synth.speaking) {
+        synth.cancel();
+        flashTip(id, "已停止朗读");
+        return;
+      }
+      const utter = new window.SpeechSynthesisUtterance(text);
+      utter.onerror = () => flashTip(id, "朗读失败：本机语音引擎没有开始播放。");
+      synth.speak(utter);
+      flashTip(id, "开始朗读（再点一次停止）");
+    },
+    [flashTip],
+  );
+
+  /**
+   * 分支到新对话（OD-ARCH-079）：与 DSH 原生一致，调用引擎的 session/fork，
+   * 以这条回复所在轮次的 turn/end 序号为切点建子会话；子会话已继承切点前的上下文，
+   * 新线程只保存消息用于展示，后续消息直接续接子会话，不再重放历史。
+   */
+  const branchToNewThread = useCallback(
+    async (id: string, upto: ChatMessage[], atSeq: number | null | undefined) => {
+      if (!onBranchNewThread) {
+        flashTip(id, "本页面没有接上「新对话」入口，无法分支。");
+        return;
+      }
+      if (busy) {
+        flashTip(id, "还在生成中，等这一轮结束再分支。");
+        return;
+      }
+      if (branchBusyRef.current) return;
+      if (!effectiveEngineSessionId) {
+        flashTip(id, "这条对话还没有引擎会话号，无法在引擎侧分支。");
+        return;
+      }
+      if (typeof atSeq !== "number") {
+        flashTip(id, "引擎没有返回本轮切点序号，暂时无法分支。");
+        return;
+      }
+      branchBusyRef.current = true;
+      setBranchBusy(true);
+      try {
+        const fork = await host.forkSession(effectiveEngineSessionId, atSeq);
+        if (!fork.engine_session_id) {
+          throw new Error("引擎没有返回子会话号");
+        }
+        branchBusyRef.current = false;
+        setBranchBusy(false);
+        onBranchNewThread(upto, fork.engine_session_id);
+      } catch (e) {
+        // 失败就留在原对话，把真实原因说清楚；不退回本地重放。
+        flashTip(id, "分支失败：" + String(e instanceof Error ? e.message : e));
+      } finally {
+        branchBusyRef.current = false;
+        setBranchBusy(false);
+      }
+    },
+    [busy, effectiveEngineSessionId, flashTip, onBranchNewThread],
+  );
 
   /** 放弃还没有任务号的提交：只撤销界面等待，拿到任务号后立即请求取消。 */
   const abandonStarting = useCallback(() => {
@@ -860,30 +1508,116 @@ export function HomeChat({
         : "正在读取宿主事实…") +
     " 本入口只承载公开或合成内容；不接收真实工作材料、案件材料、线索或未公开调查信息。";
 
+  /**
+   * 对话框落位（OD-ARCH-072）：没有历史时输入框垂直居中，出现历史后落到底部。
+   *
+   * 用可过渡的 flex-grow 撑开上方留白（WebKit 支持 flex-grow 过渡），
+   * 比按像素算位移稳，也不受窗口高度变化影响。200ms 与计划一致。
+   */
+  const empty = messages.length === 0;
+
+  /**
+   * 右侧轮次索引条（OD-ARCH-079，参考 DSH 原生对话索引）：
+   * 每个用户轮次一根刻度/Chat 圆点，点击跳到该轮开头；不新增依赖，也不影响消息本身。
+   */
+  const turns = useMemo(
+    () =>
+      messages
+        .map((m, index) => ({ m, index }))
+        .filter((item) => item.m.role === "user")
+        .map((item) => {
+          // 这一轮的回答 = 紧随其后的、在下一个问句之前的回答消息；没有就不编。
+          const nextUser = messages.findIndex(
+            (x, i) => i > item.index && x.role === "user",
+          );
+          const end = nextUser < 0 ? messages.length : nextUser;
+          const answer = messages
+            .slice(item.index + 1, end)
+            .find((x) => x.role === "assistant");
+          return {
+            m: item.m,
+            index: item.index,
+            answer: answer?.text ?? "",
+            answerTaskId: answer?.taskId ?? null,
+          };
+        }),
+    [messages],
+  );
+
+  /** 找到当前视口顶部（含少量余量）所在的那一轮，用于高亮。 */
+  const syncActiveTurn = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || turns.length === 0) return;
+    const top = scroller.getBoundingClientRect().top + 12;
+    let current = turns[0].m.id;
+    for (const { m } of turns) {
+      const el = turnAnchors.current[m.id];
+      if (!el) continue;
+      if (el.getBoundingClientRect().top <= top) current = m.id;
+      else break;
+    }
+    setActiveTurnId((prev) => (prev === current ? prev : current));
+  }, [turns]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    syncActiveTurn();
+    scroller.addEventListener("scroll", syncActiveTurn, { passive: true });
+    return () => scroller.removeEventListener("scroll", syncActiveTurn);
+  }, [syncActiveTurn, threadKey]);
+
+  const jumpToTurn = useCallback((id: string) => {
+    const scroller = scrollRef.current;
+    const el = turnAnchors.current[id];
+    if (!scroller || !el) return;
+    const target =
+      scroller.scrollTop +
+      el.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top -
+      8;
+    scroller.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, []);
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* 对话流（=对话历史） */}
+      {/* 空对话时的上方留白（有历史时收成 0，输入框自然落底） */}
+      <div
+        aria-hidden="true"
+        className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out"
+        style={{ flexGrow: empty ? 1 : 0, flexBasis: 0 }}
+      />
+
+      {/* 对话流（=对话历史）与右侧轮次索引条 */}
+      <div className="relative flex min-h-0 flex-col" style={{ flexGrow: empty ? 0 : 1, flexBasis: 0 }}>
       <div
         ref={scrollRef}
-        className="chat-fade-mask chat-scroll flex-1 min-h-0 overflow-y-auto pr-2 pb-3 space-y-3.5 flex flex-col"
+        className="chat-scroll min-h-0 flex-1 overflow-y-auto pr-5 pb-3 space-y-3.5 flex flex-col"
       >
-        {/* OD-ARCH-055 S2：没有任何消息时给一句引导，不留一整片空白。 */}
-        {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <p className="text-[13px] text-on-surface-variant">这里还没有对话。</p>
-            <p className="text-[11.5px] text-outline leading-relaxed max-w-[36ch]">
-              直接在下面输入要处理的事，或点下方的「新对话」开始一段新的。对话只保存在本机，不会自动上传。
-            </p>
-          </div>
-        ) : null}
-        {messages.map((m) =>
+        {messages.map((m, mi) =>
             m.role === "user" ? (
-              <div key={m.id} className="flex items-start justify-end space-x-3 max-w-[80%] ml-auto">
-                <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[13px] shadow-sm leading-relaxed whitespace-pre-wrap">
-                  {m.text}
+              <div
+                key={m.id}
+                ref={(el) => {
+                  turnAnchors.current[m.id] = el;
+                }}
+                className="flex flex-col items-end max-w-[80%] ml-auto"
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed whitespace-pre-wrap">
+                    {m.text}
+                  </div>
+                  <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+                    <Icon name="brand" className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
-                  <Icon name="brand" className="w-4 h-4" />
+                {/* 问句 tips：只保留实际可用的「复制」。撤回/修改需要引擎能删轮，
+                    当前适配器没有该接口，按用户要求先去掉，不做假动作。 */}
+                <div className="mt-1 flex items-center gap-0.5 pr-10" data-testid="user-message-tips">
+                  <TipButton icon="copy" label="复制" onClick={() => void copyText(m.id, m.text)} />
+                  {tipNote?.id === m.id ? (
+                    <span className="ml-1.5 text-[10.5px] text-outline">{tipNote.text}</span>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -891,16 +1625,83 @@ export function HomeChat({
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
                   <Icon name="bot" className="w-[15px] h-[15px]" />
                 </div>
-                <div className="plate-sculpted rounded-2xl rounded-tl-sm p-4 text-[13px] text-on-surface shadow-sm space-y-2.5 min-w-0">
+                <div className="plate-sculpted rounded-2xl rounded-tl-sm p-4 text-[15px] text-on-surface shadow-sm space-y-2.5 min-w-0">
                   <div className="flex items-center space-x-2 text-primary font-medium">
                     <Icon name="shield-check" className="w-[15px] h-[15px]" />
                     <span>
                       模型输出 · 未复核
                       {m.state ? " · " + STATE_LABEL[m.state] : ""}
+                      {m.taskId && (pendingApprovals[m.taskId] ?? 0) > 0 ? " · 等待审批中" : ""}
                       {m.taskId && activeTaskId === m.taskId && elapsed > 0 ? ` · 已等待 ${elapsed}s` : ""}
+                      {m.taskId && ttfb[m.taskId] !== undefined
+                        ? ` · 首字 ${ttfb[m.taskId].toFixed(1)}s`
+                        : ""}
                       {m.stopReason ? " · stop=" + m.stopReason : ""}
                     </span>
                   </div>
+
+                  {m.taskId && (approvals[m.taskId] ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      {(approvals[m.taskId] ?? []).map((a) => (
+                        <div
+                          key={a.approvalId}
+                          className="rounded-lg bg-surface-container px-3 py-2.5 space-y-2 text-[12px] leading-relaxed"
+                          data-testid="approval-card"
+                        >
+                          <div className="flex items-start space-x-2">
+                            <Icon name="shield-check" className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-on-surface font-medium">
+                                这一步需要你确认：{a.toolName || "未知工具"}
+                              </p>
+                              <p className="text-on-surface-variant">
+                                {a.reason || "引擎没有给出原因。"}
+                              </p>
+                              {a.callId ? (
+                                <p className="text-[10.5px] text-outline">请求编号 {a.callId}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                          {a.status === "pending" ? (
+                            <div className="flex items-center space-x-2">
+                              <button
+                                type="button"
+                                disabled={approvalBusy === a.approvalId}
+                                onClick={() => void respondApproval(m.taskId as string, a.approvalId, true)}
+                                className="px-3 py-1 rounded-full bg-primary text-on-primary text-[11.5px] font-medium disabled:opacity-50"
+                              >
+                                允许这一次
+                              </button>
+                              <button
+                                type="button"
+                                disabled={approvalBusy === a.approvalId}
+                                onClick={() => void respondApproval(m.taskId as string, a.approvalId, false)}
+                                className="px-3 py-1 rounded-full bg-surface-container-high text-on-surface text-[11.5px] font-medium disabled:opacity-50"
+                              >
+                                拒绝
+                              </button>
+                              {approvalBusy === a.approvalId ? (
+                                <span className="text-[11px] text-outline">正在回传…</span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-outline">
+                              {a.status === "allowed"
+                                ? "已允许这一次，任务继续。"
+                                : a.status === "rejected"
+                                  ? "已拒绝；引擎按自己的语义结束本轮。"
+                                  : "该请求已失效（引擎撤回了它）。"}
+                            </p>
+                          )}
+                          {a.error ? (
+                            <p className="text-[11px] text-error">
+                              回传失败，仍待决定：{a.error}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {m.taskId && thoughts[m.taskId] ? (
                     <details
@@ -943,16 +1744,83 @@ export function HomeChat({
                     <p className="text-outline leading-relaxed">正在生成…</p>
                   )}
 
+                  {m.toolNote ? (
+                    <p className="flex items-center space-x-1.5 text-[11.5px] text-outline">
+                      <Icon name="spark" className="w-3.5 h-3.5 animate-pulse" />
+                      <span>{m.toolNote}</span>
+                    </p>
+                  ) : null}
+
                   {m.notice ? (
                     <div className="rounded-lg bg-surface-container-low text-on-surface-variant px-3 py-2 text-[12px] leading-relaxed space-y-1.5">
                       <p>{m.notice}</p>
-                      {m.retryable && m.taskId ? (
-                        <button
-                          onClick={() => m.taskId && retryQuery(m.taskId)}
-                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-surface-container text-primary font-label-caps text-[10px] hover:bg-surface-container-high transition-colors"
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {m.retryable && m.taskId ? (
+                          <button
+                            onClick={() => m.taskId && retryQuery(m.taskId)}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-surface-container text-primary font-label-caps text-[10px] hover:bg-surface-container-high transition-colors"
+                          >
+                            <span>重新查询</span>
+                          </button>
+                        ) : null}
+                        {/* OD-ARCH-069：超时/中断后由用户主动重发，不自动重试。 */}
+                        {m.sentText && m.state === "unknown" ? (
+                          <button
+                            onClick={() => resend(m.sentText as string)}
+                            disabled={busy}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-caps text-[10px] disabled:opacity-50 hover:opacity-90 transition-opacity"
+                          >
+                            <span>重发</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  {/* 答句 tips（OD-ARCH-078 S3 / OD-ARCH-079）：贴在本条回复正文下方。
+                      分支走 DSH 原生 session/fork，没有切点序号时按钮禁用并说明原因。 */}
+                  {m.text ? (
+                    <div className="pt-0.5 flex flex-wrap items-center gap-0.5" data-testid="assistant-message-tips">
+                      <TipButton icon="copy" label="复制" onClick={() => void copyText(m.id, m.text)} />
+                      <TipButton icon="volume" label="朗读" onClick={() => speakText(m.id, m.text)} />
+                      <TipButton
+                        icon="refresh"
+                        label="重新生成"
+                        disabled={busy || !m.sentText}
+                        title={
+                          !m.sentText
+                            ? "这一轮没有留下用户原文，无法重新生成。"
+                            : busy
+                              ? "还有任务在生成中，结束后再重新生成。"
+                              : "用同一段用户原文重新提交一次（不自动重试）。"
+                        }
+                        onClick={() => m.sentText && resend(m.sentText)}
+                      />
+                      <TipButton
+                        icon="branch"
+                        label="分支到新对话"
+                        disabled={
+                          busy || branchBusy || !onBranchNewThread || typeof m.forkSeq !== "number" || !effectiveEngineSessionId
+                        }
+                        title={
+                          typeof m.forkSeq !== "number"
+                            ? "引擎没有返回本轮切点序号，暂时无法分支。"
+                            : !effectiveEngineSessionId
+                              ? "这条对话还没有引擎会话号，无法在引擎侧分支。"
+                              : "从这条回复分出一条新对话：引擎侧继承到这里为止的上下文，之后各自继续。"
+                        }
+                        onClick={() => void branchToNewThread(m.id, messages.slice(0, mi + 1), m.forkSeq)}
+                      />
+                      {elapsedText(m.startedAtMs, m.endedAtMs) ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-outline"
+                          title="从提交到本轮结束的实际等待时间，含排队、生成、工具调用和结果回读。"
                         >
-                          <span>重新查询</span>
-                        </button>
+                          <Icon name="clock" className="w-[13px] h-[13px]" />
+                          <span>{elapsedText(m.startedAtMs, m.endedAtMs)}</span>
+                        </span>
+                      ) : null}
+                      {tipNote?.id === m.id ? (
+                        <span className="ml-1 text-[10.5px] text-outline">{tipNote.text}</span>
                       ) : null}
                     </div>
                   ) : null}
@@ -961,12 +1829,72 @@ export function HomeChat({
           ),
         )}
       </div>
+        <TurnRail
+          items={turns.map(({ m, answer }) => ({ id: m.id, prompt: m.text, response: answer }))}
+          activeId={activeTurnId}
+          busyId={
+            busy
+              ? (turns.find(({ answerTaskId }) => answerTaskId && answerTaskId === activeTaskId)?.m
+                  .id ?? null)
+              : null
+          }
+          onJump={jumpToTurn}
+        />
+      </div>
 
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
       <div className="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white flex-shrink-0 rounded-xl">
+        {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
+            来源只有“成果目录”和“知识库”，越界路径根本不会出现在这里。 */}
+        {mentionQuery !== null ? (
+          <div
+            className="mb-2 rounded-lg border border-surface-variant/40 bg-surface-container-low p-1 max-h-56 overflow-y-auto"
+            data-testid="mention-list"
+          >
+            <p className="px-2 py-1 text-[10.5px] text-outline">
+              {mentionBusy
+                ? "正在查找文件…"
+                : mentionItems.length === 0
+                  ? `没有匹配“${mentionQuery}”的文本文件（只查成果目录与知识库，支持 md/txt/csv/tsv/json/yaml/log）`
+                  : "选择一个文件加入本轮引用（Esc 关闭）"}
+            </p>
+            {mentionItems.map((item) => (
+              <button
+                key={item.path}
+                onClick={() => {
+                  setInput(applyMentionPick(input, item.file_name));
+                  setMentionQuery(null);
+                  void addAttachment(item.path);
+                }}
+                className="w-full text-left px-2 py-1 rounded hover:bg-surface-container"
+                title={item.path}
+              >
+                <span className="text-[12px] text-on-surface">{item.file_name}</span>
+                <span className="ml-2 text-[10.5px] text-outline">
+                  {rootKindOf(item.source_root)} · {item.extension}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="flex items-center space-x-3 px-1">
           <Icon name="spark" className="w-5 h-5 text-primary flex-shrink-0" />
+          {/*
+            「+」附件入口（OD-ARCH-078 S1）：点开系统文件选择框，可多选；
+            与拖拽走同一条读取路径。只挑文件，不给前端文件系统读写权限。
+          */}
+          <button
+            type="button"
+            onClick={() => void pickAttachments()}
+            disabled={busy}
+            title={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/知识库`}
+            aria-label="添加文件"
+            data-testid="attachment-pick"
+            className="w-7 h-7 rounded-full plate-soft-inset text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Icon name="plus" className="w-[15px] h-[15px]" />
+          </button>
           <input
             className="w-full bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none"
             placeholder={
@@ -978,10 +1906,18 @@ export function HomeChat({
             }
             value={input}
             disabled={busy}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setMentionQuery(activeMentionQuery(e.target.value));
+            }}
             onFocus={() => reportInputFocus(true)}
             onBlur={() => reportInputFocus(false)}
             onKeyDown={(e) => {
+              if (mentionQuery !== null && e.key === "Escape") {
+                e.preventDefault();
+                setMentionQuery(null);
+                return;
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send();
@@ -989,6 +1925,49 @@ export function HomeChat({
             }}
           />
         </div>
+        {/* 附件 chip（OD-ARCH-077 S1）：排在输入框下方，可逐个移除；
+            只显示文件名，完整路径与哈希在悬停提示里。正文不落盘，仅随本轮发出。 */}
+        {attachments.length > 0 ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1" data-testid="attachment-chips">
+            {attachments.map((a) => (
+              <span
+                key={a.path}
+                className="inline-flex items-center gap-1 max-w-[240px] px-2 py-0.5 rounded-full bg-surface-container text-[11px] text-on-surface-variant"
+                title={`${a.path}\nsha256: ${a.sha256}\n${a.content.length} 字，随本轮发送，不单独存盘`}
+              >
+                <Icon name="note" className="w-[12px] h-[12px] flex-shrink-0" />
+                <span className="truncate">{a.fileName}</span>
+                <button
+                  onClick={() => removeAttachment(a.path)}
+                  disabled={busy}
+                  className="text-outline hover:text-error transition-colors disabled:opacity-40"
+                  title="移除这个附件"
+                  aria-label={`移除附件 ${a.fileName}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <span className="text-[10.5px] text-outline">
+              {attachments.length} 个文件，正文随本轮发送
+            </span>
+          </div>
+        ) : null}
+        {dragging ? (
+          <p className="mt-2 px-1 text-[11px] text-primary">
+            松开即可引用文件（{ATTACHMENT_MAX_FILES} 个以内，只收文本与表格）
+          </p>
+        ) : null}
+        {attachNote ? (
+          <p className="mt-2 px-1 text-[11px] text-error" data-testid="attachment-note">
+            {attachNote}
+          </p>
+        ) : null}
+        {voiceNote ? (
+          <p className="mt-2 px-1 text-[11px] text-outline" data-testid="voice-note">
+            语音输入需要配置语音模型端点，当前版本未开放。可以先用系统听写或文字输入。
+          </p>
+        ) : null}
         <div className="mt-2.5 pt-2 border-t border-surface-variant/30 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5">
             {/* 对话归类（OD-ARCH-063 S1）：单枚下拉胶囊（色点 + 当前分类 + 箭头），
@@ -1016,10 +1995,41 @@ export function HomeChat({
                 <span>新对话</span>
               </button>
             ) : null}
+            {/* 周记录场景：随手记 / 整理成周报（OD-ARCH-068 S3）。
+                随手记只发一句整理指令（快，先把事实留住）；整理成周报才带完整规则与章节。 */}
+            {preset?.key === "weekly" ? (
+              <div
+                className="inline-flex items-center rounded-full plate-soft-inset p-0.5 gap-0.5"
+                title="随手记：只整理要点，最快记录；整理成周报：按场景规则与章节生成周报"
+              >
+                {[
+                  { key: false, label: "随手记" },
+                  { key: true, label: "整理成周报" },
+                ].map((opt) => (
+                  <button
+                    key={String(opt.key)}
+                    onClick={() => setNoteMode(opt.key)}
+                    disabled={busy}
+                    className={
+                      "px-2 py-0.5 rounded-full font-label-caps text-[10.5px] transition-colors " +
+                      (noteMode === opt.key
+                        ? "bg-primary/12 text-primary"
+                        : "text-on-surface-variant hover:bg-surface-container")
+                    }
+                    aria-pressed={noteMode === opt.key}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
             <button
-              disabled
-              title="未实现"
-              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant/50 font-label-caps text-[11px] cursor-not-allowed"
+              onClick={() => setVoiceNote((v) => !v)}
+              title="语音输入尚未开放：需要先配置语音模型端点"
+              aria-expanded={voiceNote}
+              data-testid="voice-button"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
             >
               <Icon name="mic" className="w-[13px] h-[13px]" />
               <span>语音</span>
@@ -1110,6 +2120,15 @@ export function HomeChat({
               : "Token 上下文：—（引擎未上报）"}
           </span>
         </span>
+        {/* 没加载 Profile 规则 = 纯净底座：必须说清楚，不能让用户以为拦截还在（OD-ARCH-068）。 */}
+        {admission === "ready" && preset !== null ? (
+          <span
+            className="font-label-caps text-[10px] text-outline truncate"
+            title="规则资产来自应用数据根下的 profiles/discipline.rules.json；可在设置 →「规则资产」查看和修改。"
+          >
+            规则：{preset.rulesLoaded ? "已加载 Profile 规则" : "未加载（纯净底座）"}
+          </span>
+        ) : null}
         {engineCancel !== null ? (
           <span
             className="font-label-caps text-[10px] text-outline truncate"
@@ -1124,6 +2143,14 @@ export function HomeChat({
           </span>
         ) : null}
       </div>
+
+      {/* 空对话时的下方留白：与上方留白等分，输入区才真正落在竖直中部
+          （只留上方一条会把输入框顶到底部——OD-ARCH-072 首轮实测发现）。 */}
+      <div
+        aria-hidden="true"
+        className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out"
+        style={{ flexGrow: empty ? 1 : 0, flexBasis: 0 }}
+      />
     </div>
   );
 }

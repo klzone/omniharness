@@ -173,12 +173,104 @@
   );
 }
 
+/* OD-ARCH-078 S3：历史对话不再做顶部渐隐。
+   渐隐会让「往上翻着读」的那几行看起来像被抹掉，与 DSH 原生的清晰可读不一致。 */
+.chat-scroll {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
 .chat-scroll::-webkit-scrollbar {
   width: 4px;
 }
 .chat-scroll::-webkit-scrollbar-thumb {
   background: rgba(199, 196, 216, 0.5);
   border-radius: 9999px;
+}
+
+/* 对话轮次索引条（OD-ARCH-079）：条内自己滚动，不显示滚动条，两端可滚动时渐隐。 */
+.turn-rail-scroller {
+  scrollbar-width: none;
+}
+
+.turn-rail-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.turn-rail-fade-top {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 100%);
+}
+
+.turn-rail-fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 16px), transparent 100%);
+}
+
+.turn-rail-fade-top.turn-rail-fade-bottom {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+/* 刻度线与 DSH 原生一致：未选中短而淡，悬停变宽，当前轮最长最深。 */
+.turn-rail-tick {
+  background: rgba(199, 196, 216, 0.75);
+  transform: scaleX(0.6);
+  transform-origin: right center;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.turn-rail-mark:hover .turn-rail-tick,
+.turn-rail-mark:focus-visible .turn-rail-tick {
+  transform: scaleX(0.9);
+  background: rgba(120, 116, 140, 0.85);
+}
+
+.turn-rail-tick-active {
+  transform: scaleX(1);
+  background: var(--color-primary, #3525cd);
+}
+
+.turn-rail-mark:hover .turn-rail-tick-active,
+.turn-rail-mark:focus-visible .turn-rail-tick-active {
+  transform: scaleX(1);
+  background: var(--color-primary, #3525cd);
+}
+
+.turn-rail-tick-busy {
+  animation: turn-rail-busy 1s ease-in-out infinite;
+}
+
+.turn-rail-mark:focus-visible {
+  outline: none;
+}
+
+.turn-rail-mark:focus-visible .turn-rail-tick {
+  box-shadow: 0 0 0 1px var(--color-primary, #3525cd);
+}
+
+@keyframes turn-rail-busy {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-rail-tick {
+    transition: none;
+  }
+  .turn-rail-tick-busy {
+    animation: none;
+  }
 }
 
 /* 应用使用浅色设计系统；显式声明 color-scheme，避免 WebKitGTK 采用深色原生滚动条/控件。 */
