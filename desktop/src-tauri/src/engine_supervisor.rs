@@ -16,6 +16,14 @@ use std::time::Duration;
 
 use crate::engine_ipc::{EngineChannel, EngineRpcError};
 
+/// OD-ARCH-070：出厂自带的 web Profile 资产。
+///
+/// 只用于「运行时 profile 缺失时落盘」，绝不在已存在时覆盖用户改动。
+/// 与 `samples/profiles/discipline.rules.json` 同一模式：编译期嵌入，安装包自带。
+pub const DEFAULT_WEB_PROFILE_JSON: &str = include_str!("../../../samples/profiles/web.profile.json");
+pub const DEFAULT_WEB_PROFILE_PATCH: &str =
+    include_str!("../../../samples/profiles/web.profile.patch.yml");
+
 /// 引擎启动参数（全部由环境变量或显式配置决定，绝不猜测）。
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -123,6 +131,16 @@ impl EngineConfig {
             "OMNIDESK_DSH_PROFILE",
             if channel == "web-api" { "web" } else { "acp" },
         );
+        // 用户在顶栏 Profile 徽标里的选择（OD-ARCH-072）：只在没有显式环境变量时生效。
+        // 环境变量是开发/测试隔离用的最高优先级开关，不能被界面设置悄悄盖掉。
+        let profile = if std::env::var("OMNIDESK_DSH_PROFILE").map(|v| !v.trim().is_empty()).unwrap_or(false) {
+            profile
+        } else {
+            let saved = crate::settings::load(&app_root.join("config"))
+                .ok()
+                .and_then(|s| s.engine_profile);
+            crate::profile_choice::resolve(&dsh_home, &channel, saved.as_deref())?
+        };
         let mut patch_files = std::env::var("OMNIDESK_DSH_PATCHES")
             .ok()
             .map(|raw| {
@@ -191,6 +209,49 @@ impl EngineConfig {
             }
         }
         Ok(())
+    }
+
+    /// 运行时 Profile 缺失时，从出厂资产落盘（OD-ARCH-070）。
+    ///
+    /// 规则（全部是「只在缺失时写」）：
+    ///   * 只处理通道 `web-api`；ACP 通道不碰。
+    ///   * `profiles/<profile>/` 已存在且含 `package.json` 时，什么都不做。
+    ///   * 不创建 `node_modules`、不跑包管理器：插件安装仍由一条显式命令触发，
+    ///     避免启动时联网或改用户已装好的依赖。
+    ///   * 目标必须在隔离根内，且隔离根不能落在原版 DSH 数据根。
+    pub fn seed_profile_if_missing(&self) -> Result<bool, String> {
+        if self.channel != "web-api" {
+            return Ok(false);
+        }
+        let profile_dir = self.dsh_home.join("profiles").join(&self.profile);
+        let manifest = profile_dir.join("package.json");
+        if manifest.exists() {
+            return Ok(false);
+        }
+        let home_text = self.dsh_home.to_string_lossy().to_lowercase().replace('\\', "/");
+        for forbidden in ["/.dsh", "/.agents", "deepseek-harness"] {
+            if home_text.contains(forbidden) {
+                return Err(format!(
+                    "拒绝向被禁止的数据根写入 Profile：{}",
+                    self.dsh_home.display()
+                ));
+            }
+        }
+        std::fs::create_dir_all(&profile_dir).map_err(|e| {
+            format!(
+                "创建隔离 Profile 目录失败（{}）：{}",
+                profile_dir.display(),
+                e
+            )
+        })?;
+        std::fs::write(&manifest, DEFAULT_WEB_PROFILE_JSON)
+            .map_err(|e| format!("写入 Profile package.json 失败：{}", e))?;
+        let patch_path = profile_dir.join("cordis.patch.yml");
+        if !patch_path.exists() {
+            std::fs::write(&patch_path, DEFAULT_WEB_PROFILE_PATCH)
+                .map_err(|e| format!("写入 Profile cordis.patch.yml 失败：{}", e))?;
+        }
+        Ok(true)
     }
 
     /// 仓库根：优先环境变量，其次编译期 MANIFEST 的相对路径（仅开发构建可用）。
@@ -477,6 +538,137 @@ mod tests {
 
         restore_env(snapshot);
     }
+
+    // ---- OD-ARCH-070：出厂 web Profile 播种 ----
+
+    /// 播种专用夹具：只造目录，不启动任何进程、不读环境变量。
+    struct SeedFixture {
+        base: PathBuf,
+    }
+
+    impl SeedFixture {
+        fn new(tag: &str) -> Self {
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-seed-tests/{}-{}",
+                tag,
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            std::fs::create_dir_all(&base).expect("创建播种夹具目录");
+            Self { base }
+        }
+
+        fn config(&self, channel: &str) -> EngineConfig {
+            EngineConfig {
+                python: "python3".to_string(),
+                engine_dir: self.base.join("engine"),
+                dsh_cli: self.base.join("stub-dsh.js"),
+                dsh_home: self.base.join("dsh-home"),
+                agents_home: self.base.join("agents-home"),
+                engine_state_dir: self.base.join("app").join("engine-state"),
+                result_dir: self.base.join("app").join("engine-state").join("results"),
+                profile: "web".to_string(),
+                channel: channel.to_string(),
+                patch_files: vec![],
+            }
+        }
+
+        fn profile_dir(&self) -> PathBuf {
+            self.base.join("dsh-home").join("profiles").join("web")
+        }
+    }
+
+    impl Drop for SeedFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    /// 缺失时按出厂资产播种，内容是编译期嵌入的那两份文件原文。
+    #[test]
+    fn seed_profile_writes_factory_assets_when_missing() {
+        let fixture = SeedFixture::new("missing");
+        let config = fixture.config("web-api");
+        assert!(!fixture.profile_dir().exists(), "前置条件：Profile 目录不存在");
+
+        assert_eq!(
+            config.seed_profile_if_missing(),
+            Ok(true),
+            "缺失时应播种并返回 true"
+        );
+
+        let manifest = std::fs::read_to_string(fixture.profile_dir().join("package.json"))
+            .expect("应写入 package.json");
+        let patch = std::fs::read_to_string(fixture.profile_dir().join("cordis.patch.yml"))
+            .expect("应写入 cordis.patch.yml");
+        assert_eq!(manifest, DEFAULT_WEB_PROFILE_JSON);
+        assert_eq!(patch, DEFAULT_WEB_PROFILE_PATCH);
+        // 出厂清单必须真的登记了两个插件，否则播种等于没装。
+        assert!(manifest.contains("dsh-free-search"));
+        assert!(manifest.contains("dsh-cost-meter"));
+        // 资产里不得出现任何密钥值，只允许 apiKeyEnv 引用名。
+        assert!(patch.contains("apiKeyEnv"));
+    }
+
+    /// 已有 Profile 一律不覆盖：这是「用户可改」的边界。
+    #[test]
+    fn seed_profile_never_overwrites_existing_profile() {
+        let fixture = SeedFixture::new("existing");
+        let dir = fixture.profile_dir();
+        std::fs::create_dir_all(&dir).expect("建 Profile 目录");
+        let user_manifest = "{\n  \"name\": \"user-managed\"\n}\n";
+        let user_patch = "# 用户自己的补丁\n";
+        std::fs::write(dir.join("package.json"), user_manifest).expect("写用户清单");
+        std::fs::write(dir.join("cordis.patch.yml"), user_patch).expect("写用户补丁");
+
+        let config = fixture.config("web-api");
+        assert_eq!(
+            config.seed_profile_if_missing(),
+            Ok(false),
+            "已存在时不得播种"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("package.json")).unwrap(),
+            user_manifest,
+            "用户清单必须原样保留"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("cordis.patch.yml")).unwrap(),
+            user_patch,
+            "用户补丁必须原样保留"
+        );
+    }
+
+    /// 非 web-api 通道不播种（ACP 用的是另一个 Profile，不该被塞 web 插件）。
+    #[test]
+    fn seed_profile_skips_non_web_api_channel() {
+        let fixture = SeedFixture::new("acp");
+        let config = fixture.config("acp");
+        assert_eq!(config.seed_profile_if_missing(), Ok(false));
+        assert!(
+            !fixture.profile_dir().exists(),
+            "非 web-api 通道不得创建 Profile 目录"
+        );
+    }
+
+    /// 落在禁止数据根（原版 DSH / agents / runtime 源码）时拒绝写入且不落盘。
+    #[test]
+    fn seed_profile_refuses_forbidden_roots() {
+        for forbidden in [".dsh", ".agents", "deepseek-harness"] {
+            let fixture = SeedFixture::new(&format!("forbid-{}", forbidden));
+            let mut config = fixture.config("web-api");
+            config.dsh_home = fixture.base.join(forbidden).join("home");
+            let err = config
+                .seed_profile_if_missing()
+                .expect_err("禁止根必须报错");
+            assert!(err.contains("拒绝"), "错误应说明拒绝原因：{}", err);
+            assert!(
+                !config.dsh_home.exists(),
+                "拒绝时不得创建任何目录：{}",
+                config.dsh_home.display()
+            );
+        }
+    }
 }
 
 /// 引擎监督器：持有子进程通道，负责启动、健康检查与关闭。
@@ -531,6 +723,14 @@ impl EngineSupervisor {
             return Ok(());
         }
         self.config.validate()?;
+        self.config.seed_profile_if_missing()?;
+
+        // OD-ARCH-074：启动前只按 owner.json 核验并回收上一实例的遗留进程组。
+        // 身份核验不通过（或另一实例仍在使用同一数据根）时拒绝启动，绝不盲杀。
+        crate::process_owner::reclaim_before_start(
+            &self.config.engine_state_dir,
+            Duration::from_secs(5),
+        )?;
 
         let args = vec!["-m".to_string(), "omnidesk_engine".to_string()];
         let channel = EngineChannel::spawn(
@@ -628,7 +828,9 @@ impl EngineSupervisor {
     pub fn finish_stop(
         mut channel: EngineChannel,
         grace: Duration,
+        engine_state_dir: &Path,
     ) -> Result<(bool, Option<i32>), String> {
+        let engine_pid = channel.pid() as i32;
         let _ = channel.request(
             "omni.shutdown",
             serde_json::json!({ "mode": "graceful", "grace_period_seconds": grace.as_secs() }),
@@ -638,6 +840,14 @@ impl EngineSupervisor {
         let forced = channel
             .terminate(grace)
             .map_err(|e| format!("关闭引擎子进程失败：{}", e))?;
+        // 引擎若已被强杀，登记仍在：宿主侧按其可信 pid/pgid 兜底回收 DSH 子进程组。
+        if let Some(problem) = crate::process_owner::cleanup_engine_group(
+            engine_state_dir,
+            engine_pid,
+            Duration::from_secs(3),
+        ) {
+            eprintln!("[omnidesk] 引擎进程组兜底回收未完成：{}", problem);
+        }
         Ok((forced, channel.exit_code()))
     }
 
@@ -650,7 +860,7 @@ impl EngineSupervisor {
         let detached = self.begin_stop();
         let outcome = match detached {
             None => Ok((false, None)),
-            Some(channel) => Self::finish_stop(channel, grace),
+            Some(channel) => Self::finish_stop(channel, grace, &self.config.engine_state_dir),
         };
         self.end_stop();
         outcome
@@ -682,9 +892,15 @@ impl EngineSupervisor {
 
 impl Drop for EngineSupervisor {
     fn drop(&mut self) {
+        let state_dir = self.config.engine_state_dir.clone();
         if let Some(mut channel) = self.channel.take() {
             // 宿主退出时不留孤儿进程：先关 stdin，再给一个短超时，最后强杀。
             let _ = channel.terminate(Duration::from_secs(3));
+            let _ = crate::process_owner::cleanup_engine_group(
+                &state_dir,
+                channel.pid() as i32,
+                Duration::from_secs(3),
+            );
         }
     }
 }

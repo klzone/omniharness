@@ -151,32 +151,12 @@ pub fn explanation_rules() -> &'static str {
 // 红线扫描（启发式：仅降低误贴概率，不是合规控制）
 // ---------------------------------------------------------------------------
 
-/// 关键词清单。仅用于提示，命中重叠时计数可能重复累加。
-const RED_LINE_KEYWORDS: &[&str] = &[
-    "案件",
-    "案件线索",
-    "线索",
-    "立案",
-    "初核",
-    "审查调查",
-    "举报",
-    "信访",
-    "涉案",
-    "廉政档案",
-    "秘密",
-    "机密",
-    "内部资料",
-    "未公开",
-    "身份证",
-    "电话号码",
-];
-
 /// 一次红线命中。**只回显类别与计数，不回显命中原文**。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct RedLineHit {
-    pub kind: &'static str,
+    pub kind: String,
     pub count: u64,
-    pub label: &'static str,
+    pub label: String,
 }
 
 /// 统计数字串：返回 (疑似身份证号数量, 疑似手机号数量)。
@@ -219,33 +199,55 @@ fn scan_digit_runs(text: &str) -> (u64, u64) {
     (id_cards, phones)
 }
 
-/// 对文本做启发式红线扫描。返回值不含命中原文。
+/// 对文本做启发式红线扫描（**不带** Profile 规则：纯净底座口径）。返回值不含命中原文。
+///
+/// 纯净底座 = 零关键词、不按隐私类别拦截，行为与官方 DSH-desktop 无实质区别。
+/// 有 Profile 规则时由调用方用 `red_line_scan_with` 传入策略。
 pub fn red_line_scan(text: &str) -> Vec<RedLineHit> {
+    red_line_scan_with(text, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 按 Profile 规则做启发式扫描。返回值不含命中原文。
+///
+/// 隐私类数字串的处置由策略决定：mask = 不在扫描里报（改由提交前掩码），
+/// reject = 按原口径命中即拒，off = 完全不检查。
+pub fn red_line_scan_with(text: &str, policy: &crate::profile_rules::RulePolicy) -> Vec<RedLineHit> {
+    use crate::profile_rules::PrivacyMode;
     let mut hits = Vec::new();
     let (id_cards, phones) = scan_digit_runs(text);
-    if id_cards > 0 {
+    let id_action = policy.id_card_mode();
+    let phone_action = policy.phone_mode();
+    if id_cards > 0 && id_action != PrivacyMode::Off && id_action != PrivacyMode::Mask {
         hits.push(RedLineHit {
-            kind: "id_card",
+            kind: "id_card".to_string(),
             count: id_cards,
-            label: "疑似身份证号（18 位或 17 位+X 数字串）",
+            label: "疑似身份证号（18 位或 17 位+X 数字串）".to_string(),
         });
     }
-    if phones > 0 {
+    if phones > 0 && phone_action != PrivacyMode::Off && phone_action != PrivacyMode::Mask {
         hits.push(RedLineHit {
-            kind: "phone_number",
+            kind: "phone_number".to_string(),
             count: phones,
-            label: "疑似手机号（11 位、1 开头、第二位 3-9）",
+            label: "疑似手机号（11 位、1 开头、第二位 3-9）".to_string(),
         });
     }
     let mut keyword_total = 0u64;
-    for kw in RED_LINE_KEYWORDS {
-        keyword_total += text.matches(kw).count() as u64;
+    for kw in policy.reject_keywords() {
+        if !kw.is_empty() {
+            keyword_total += text.matches(kw.as_str()).count() as u64;
+        }
+    }
+    // 隐私类关键词：只在 privacy 设为 reject 时算作拒绝命中；mask 模式下它们只是掩码提示。
+    for kw in policy.privacy_keywords() {
+        if policy.privacy_keyword_rejects(kw) {
+            keyword_total += text.matches(kw).count() as u64;
+        }
     }
     if keyword_total > 0 {
         hits.push(RedLineHit {
-            kind: "case_keyword",
+            kind: "case_keyword".to_string(),
             count: keyword_total,
-            label: "疑似敏感关键词（命中清单见源码；不回显命中原文）",
+            label: "疑似敏感关键词（命中当前 Profile 规则词表；不回显命中原文）".to_string(),
         });
     }
     hits
@@ -259,9 +261,17 @@ pub fn scan_target<'a>(prompt_text: &'a str, user_input_text: Option<&'a str>) -
     user_input_text.unwrap_or(prompt_text)
 }
 
-/// 处理前的输入闸门。命中即拒绝处理，且不把命中原文写进错误信息。
+/// 处理前的输入闸门（纯净底座口径）。命中即拒绝处理，且不把命中原文写进错误信息。
 pub fn assert_input_allowed(text: &str) -> Result<(), String> {
-    let hits = red_line_scan(text);
+    assert_input_allowed_with(text, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 按 Profile 规则的处理前闸门。命中即拒绝处理，且不把命中原文写进错误信息。
+pub fn assert_input_allowed_with(
+    text: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<(), String> {
+    let hits = red_line_scan_with(text, policy);
     if hits.is_empty() {
         return Ok(());
     }
@@ -316,7 +326,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 /// 仓库根探测：优先环境变量，其次由 CARGO_MANIFEST_DIR（desktop/src-tauri）上溯两级。
-fn repo_root_hint() -> Result<PathBuf, String> {
+pub(crate) fn repo_root_hint() -> Result<PathBuf, String> {
     if let Some(raw) = std::env::var_os("OMNIDESK_REPO_ROOT") {
         if !raw.is_empty() {
             return Ok(PathBuf::from(raw));
@@ -378,6 +388,36 @@ fn assert_no_forbidden_path_fragment(path: &Path) -> Result<(), String> {
         if normalized.contains(fragment) {
             return Err(format!(
                 "拒绝把本地数据写入 {}：路径包含被禁止片段 {:?}（原版 DSH / agent / 仓库内）",
+                path.display(),
+                fragment
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// 附件读取专用的禁区：**不含**仓库目录片段。
+///
+/// 产物落盘仍受 `FORBIDDEN_PATH_FRAGMENTS` 与 `assert_outside_repo` 双重约束；
+/// 附件走的是用户在图选择框里显式点名的文件，仓库内的文档（例如 README、AGENTS.md、
+/// docs/ 下的合成材料）同样可以引用，不能因为仓库路径被一刀切拦下。
+/// DSH / agent / 原版运行时数据仍一律拒绝。
+const ATTACHMENT_FORBIDDEN_PATH_FRAGMENTS: &[&str] = &[
+    "/.dsh",
+    "/.agents",
+    "/.codex",
+    "/.config/dsh desktop",
+    "/.local/share/io.github.hairyf.deepseek-harness-desktop",
+    "deepseek-harness",
+    "omniharness",
+];
+
+fn assert_attachment_path_allowed(path: &Path) -> Result<(), String> {
+    let normalized = path.to_string_lossy().to_lowercase().replace('\\', "/");
+    for fragment in ATTACHMENT_FORBIDDEN_PATH_FRAGMENTS {
+        if normalized.contains(fragment) {
+            return Err(format!(
+                "拒绝读取 {}：路径包含被禁止片段 {:?}（原版 DSH / agent 数据）",
                 path.display(),
                 fragment
             ));
@@ -673,6 +713,21 @@ pub fn build_explanation_prompt(
     input_text: &str,
     expected_fingerprint: &str,
 ) -> Result<String, String> {
+    build_explanation_prompt_with(
+        task_type,
+        input_text,
+        expected_fingerprint,
+        &crate::profile_rules::RulePolicy::clean(),
+    )
+}
+
+/// 带 Profile 规则的提示词构造（闸门口径由规则资产决定）。
+pub fn build_explanation_prompt_with(
+    task_type: &str,
+    input_text: &str,
+    expected_fingerprint: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<String, String> {
     if !is_implemented(task_type) {
         return Err(format!(
             "任务类型 {:?} 尚未实现（reserved 类型不执行）",
@@ -680,7 +735,7 @@ pub fn build_explanation_prompt(
         ));
     }
     // 统一输入闸门：命中红线扫描就不产生提示词（与保存入口同一道闸门）。
-    assert_input_allowed(input_text)?;
+    assert_input_allowed_with(input_text, policy)?;
     let recomputed = deterministic_analysis(input_text)?;
     if recomputed.fingerprint != expected_fingerprint {
         return Err(
@@ -702,11 +757,27 @@ pub fn assert_analysis_input_allowed(input_text: &str) -> Result<(), String> {
     assert_input_allowed(input_text)
 }
 
+/// 带 Profile 规则的分析闸门。
+pub fn assert_analysis_input_allowed_with(
+    input_text: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<(), String> {
+    assert_input_allowed_with(input_text, policy)
+}
+
 /// 带输入闸门的确定性统计入口。
 ///
 /// 这是分析阶段**唯一**应被宿主与测试调用的入口：先过闸门，命中即不返回统计结果。
 pub fn analyze_input(input_text: &str) -> Result<AnalysisResult, String> {
-    assert_analysis_input_allowed(input_text)?;
+    analyze_input_with(input_text, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带 Profile 规则的确定性统计入口。
+pub fn analyze_input_with(
+    input_text: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<AnalysisResult, String> {
+    assert_analysis_input_allowed_with(input_text, policy)?;
     deterministic_analysis(input_text)
 }
 
@@ -757,6 +828,15 @@ pub fn save_artifact(
     request: &SaveArtifactRequest,
     now: f64,
 ) -> Result<SaveArtifactReceipt, String> {
+    save_artifact_with(request, now, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带 Profile 规则的产物保存。
+pub fn save_artifact_with(
+    request: &SaveArtifactRequest,
+    now: f64,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<SaveArtifactReceipt, String> {
     if !is_implemented(&request.task_type) {
         return Err(format!("任务类型 {:?} 尚未实现，拒绝保存", request.task_type));
     }
@@ -773,7 +853,7 @@ pub fn save_artifact(
             request.explanation_source
         ));
     }
-    assert_input_allowed(&request.input_text)?;
+    assert_input_allowed_with(&request.input_text, policy)?;
 
     let recomputed = deterministic_analysis(&request.input_text)?;
     if recomputed.fingerprint != request.fingerprint {
@@ -1190,7 +1270,15 @@ pub const WEEKLY_SCHEMA: &str = "omnidesk.weekly.v1";
 
 /// 每行格式：`日期 | 事项 | 状态`。字段缺失、日期非法、状态未知都按行号报错。
 pub fn summarize_week(input: &str) -> Result<WeeklySummary, String> {
-    assert_input_allowed(input)?;
+    summarize_week_with(input, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带 Profile 规则的周记录汇总。计算逻辑与 `summarize_week` 完全一致，只是闸门口径不同。
+pub fn summarize_week_with(
+    input: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<WeeklySummary, String> {
+    assert_input_allowed_with(input, policy)?;
     let mut items: Vec<WeeklyItem> = Vec::new();
     for (index, raw) in input.lines().enumerate() {
         let line_no = index + 1;
@@ -1333,10 +1421,27 @@ pub fn plan_writing(
     requirements: &str,
     facts: &str,
 ) -> Result<WritingPlan, String> {
-    assert_input_allowed(purpose)?;
-    assert_input_allowed(audience)?;
-    assert_input_allowed(requirements)?;
-    assert_input_allowed(facts)?;
+    plan_writing_with(
+        purpose,
+        audience,
+        requirements,
+        facts,
+        &crate::profile_rules::RulePolicy::clean(),
+    )
+}
+
+/// 带 Profile 规则的写作结构建议。
+pub fn plan_writing_with(
+    purpose: &str,
+    audience: &str,
+    requirements: &str,
+    facts: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<WritingPlan, String> {
+    assert_input_allowed_with(purpose, policy)?;
+    assert_input_allowed_with(audience, policy)?;
+    assert_input_allowed_with(requirements, policy)?;
+    assert_input_allowed_with(facts, policy)?;
 
     let purpose = purpose.trim();
     let audience = audience.trim();
@@ -1452,7 +1557,16 @@ pub const PROJECT_SCHEMA: &str = "omnidesk.project.v1";
 /// `today` 由调用方显式传入（YYYY-MM-DD），用于判定逾期；不读系统时钟，
 /// 保证同样的输入与日期得到同样的输出。
 pub fn summarize_project(input: &str, today: &str) -> Result<ProjectSummary, String> {
-    assert_input_allowed(input)?;
+    summarize_project_with(input, today, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带 Profile 规则的项目跟进汇总。
+pub fn summarize_project_with(
+    input: &str,
+    today: &str,
+    policy: &crate::profile_rules::RulePolicy,
+) -> Result<ProjectSummary, String> {
+    assert_input_allowed_with(input, policy)?;
     let today_date = parse_date(today)
         .ok_or_else(|| {
             "today 必须是存在的 YYYY-MM-DD 日期（按实际月份天数与闰年校验），用于判定逾期"
@@ -1618,7 +1732,16 @@ pub fn weekly_flow(input: &str) -> WeeklyFlowResponse {
 
 /// 带流程包的周报流程。计算不变，仅换展示文案。
 pub fn weekly_flow_with(input: &str, pack: &FlowPack) -> WeeklyFlowResponse {
-    match summarize_week(input) {
+    weekly_flow_with_policy(input, pack, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带流程包与 Profile 规则的周报流程。
+pub fn weekly_flow_with_policy(
+    input: &str,
+    pack: &FlowPack,
+    policy: &crate::profile_rules::RulePolicy,
+) -> WeeklyFlowResponse {
+    match summarize_week_with(input, policy) {
         Ok(summary) => WeeklyFlowResponse {
             ok: true,
             markdown: Some(render_weekly_markdown_with(&summary, pack)),
@@ -1669,7 +1792,26 @@ pub fn writing_flow_with(
     facts: &str,
     pack: &FlowPack,
 ) -> WritingFlowResponse {
-    match plan_writing(purpose, audience, requirements, facts) {
+    writing_flow_with_policy(
+        purpose,
+        audience,
+        requirements,
+        facts,
+        pack,
+        &crate::profile_rules::RulePolicy::clean(),
+    )
+}
+
+/// 带流程包与 Profile 规则的文案结构流程。
+pub fn writing_flow_with_policy(
+    purpose: &str,
+    audience: &str,
+    requirements: &str,
+    facts: &str,
+    pack: &FlowPack,
+    policy: &crate::profile_rules::RulePolicy,
+) -> WritingFlowResponse {
+    match plan_writing_with(purpose, audience, requirements, facts, policy) {
         Ok(plan) => WritingFlowResponse {
             ok: true,
             markdown: Some(render_writing_markdown_with(&plan, pack)),
@@ -1704,11 +1846,21 @@ pub fn project_flow(input: &str, today: Option<&str>) -> ProjectFlowResponse {
 
 /// 带流程包的项目跟进流程。
 pub fn project_flow_with(input: &str, today: Option<&str>, pack: &FlowPack) -> ProjectFlowResponse {
+    project_flow_with_policy(input, today, pack, &crate::profile_rules::RulePolicy::clean())
+}
+
+/// 带流程包与 Profile 规则的项目跟进流程。
+pub fn project_flow_with_policy(
+    input: &str,
+    today: Option<&str>,
+    pack: &FlowPack,
+    policy: &crate::profile_rules::RulePolicy,
+) -> ProjectFlowResponse {
     let resolved = match today {
         Some(value) if !value.trim().is_empty() => value.trim().to_string(),
         _ => utc_iso(now_secs())[..10].to_string(),
     };
-    match summarize_project(input, &resolved) {
+    match summarize_project_with(input, &resolved, policy) {
         Ok(summary) => ProjectFlowResponse {
             ok: true,
             markdown: Some(render_project_markdown_with(&summary, pack)),
@@ -2291,6 +2443,311 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
 }
 
 // ---------------------------------------------------------------------------
+// 对话附件与 @ 引用（OD-ARCH-077 S1）
+//
+// 边界：只允许**两个**来源根——当前成果根与个人知识库根（默认 ~/YvanAI/knowledge，
+// 可用 OMNIDESK_KNOWLEDGE_ROOT 覆盖）。列目录有深度、条数与扩展名上限；
+// 读取复用 read_material 的全部校验（绝对路径、禁区片段、仓库外、普通文件、
+// 白名单扩展名、大小上限、UTF-8）。这里不新造第二套读取规则。
+// ---------------------------------------------------------------------------
+
+/// 知识库根的默认位置。
+pub fn knowledge_root() -> Result<PathBuf, String> {
+    knowledge_root_from(
+        std::env::var_os("OMNIDESK_KNOWLEDGE_ROOT").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    )
+}
+
+/// `knowledge_root` 的纯函数形式：环境变量由调用方传入，便于确定性地测试。
+fn knowledge_root_from(
+    override_root: Option<&std::ffi::OsStr>,
+    home: Option<&std::ffi::OsStr>,
+) -> Result<PathBuf, String> {
+    if let Some(raw) = override_root {
+        if !raw.is_empty() {
+            let path = PathBuf::from(raw);
+            if !path.is_absolute() {
+                return Err("知识库根必须是绝对路径。".to_string());
+            }
+            return Ok(path);
+        }
+    }
+    let home = home.ok_or_else(|| "环境变量 HOME 缺失，无法确定默认知识库根。".to_string())?;
+    Ok(PathBuf::from(home).join("YvanAI").join("knowledge"))
+}
+
+/// 允许作为 @ 引用来源的根：当前成果根 + 知识库根。
+/// 不存在的根直接略过（不创建目录，不写入）。
+pub fn reference_roots(artifact_root: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![artifact_root.to_path_buf()];
+    if let Ok(knowledge) = knowledge_root() {
+        if knowledge != artifact_root {
+            roots.push(knowledge);
+        }
+    }
+    roots
+}
+
+/// 一个可引用的候选文件（只含元数据，不含正文）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ReferenceCandidate {
+    pub path: String,
+    pub file_name: String,
+    pub bytes: u64,
+    pub extension: String,
+    /// 该文件属于哪个来源根（展示用，便于用户分清成果与知识库）。
+    pub source_root: String,
+}
+
+/// 列表上限与遍历深度上限：防止一次把整棵知识库塞进界面。
+pub const REFERENCE_LIST_LIMIT: usize = 200;
+pub const REFERENCE_MAX_DEPTH: usize = 4;
+
+/// 把一个候选路径解析并确认它确实落在允许根之内。
+///
+/// 文本路径与解析后的真实落点都要在根内，避免软链接把外部文件伪装进来。
+pub fn assert_path_within_roots(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, String> {
+    if !path.is_absolute() {
+        return Err(format!("文件路径必须是绝对路径：{}", path.display()));
+    }
+    assert_no_forbidden_path_fragment(path)?;
+    let resolved = resolve_real_path(path)?;
+    assert_no_forbidden_path_fragment(&resolved)?;
+    let mut allowed = false;
+    for root in roots {
+        let Ok(root_real) = resolve_real_path(root) else {
+            continue;
+        };
+        if resolved.starts_with(&root_real) {
+            allowed = true;
+            break;
+        }
+    }
+    if !allowed {
+        return Err(format!(
+            "拒绝引用 {}：只允许当前成果目录与知识库目录里的文件。",
+            resolved.display()
+        ));
+    }
+    Ok(resolved)
+}
+
+/// 列出允许根内的文本文件候选（供 @ 选择器）。
+///
+/// 只做有界遍历：跳过隐藏目录、符号链接目录与已知的重目录；扩展名沿用
+/// MATERIAL_ALLOWED_EXTS；命中上限即停止，不为了“列全”而牺牲响应速度。
+pub fn list_reference_files(
+    roots: &[PathBuf],
+    query: Option<&str>,
+    limit: usize,
+) -> Result<Vec<ReferenceCandidate>, String> {
+    let limit = limit.clamp(1, REFERENCE_LIST_LIMIT);
+    let needle = query.map(|q| q.trim().to_lowercase()).unwrap_or_default();
+    let mut out: Vec<ReferenceCandidate> = Vec::new();
+    for root in roots {
+        let Ok(root_real) = resolve_real_path(root) else {
+            continue;
+        };
+        if !root_real.is_dir() {
+            continue;
+        }
+        let mut stack = vec![(root_real.clone(), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            if depth > REFERENCE_MAX_DEPTH || out.len() >= limit {
+                break;
+            }
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            let mut children: Vec<PathBuf> = Vec::new();
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                // 不跟随符号链接：目录不展开，文件也不收。
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    children.push(entry.path());
+                    continue;
+                }
+                if !file_type.is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                let extension = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_ascii_lowercase())
+                    .unwrap_or_default();
+                if !MATERIAL_ALLOWED_EXTS.contains(&extension.as_str()) {
+                    continue;
+                }
+                if !needle.is_empty() && !name.to_lowercase().contains(&needle) {
+                    continue;
+                }
+                let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if bytes > MATERIAL_MAX_BYTES {
+                    continue;
+                }
+                out.push(ReferenceCandidate {
+                    path: path.display().to_string(),
+                    file_name: name,
+                    bytes,
+                    extension,
+                    source_root: root_real.display().to_string(),
+                });
+                if out.len() >= limit {
+                    break;
+                }
+            }
+            for child in children {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    out.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    out.truncate(limit);
+    Ok(out)
+}
+
+/// 读取一个被引用的附件：先确认它在允许根内，再走与 read_material 完全相同的校验。
+pub fn read_reference_material(path_text: &str, roots: &[PathBuf]) -> Result<MaterialRead, String> {
+    let raw = path_text.trim();
+    if raw.is_empty() {
+        return Err("请提供要引用的文件路径。".to_string());
+    }
+    assert_path_within_roots(Path::new(raw), roots)?;
+    read_material(raw)
+}
+
+// ---------------------------------------------------------------------------
+// 对话附件：任意路径 + 开放类型（OD-ARCH-078 S1）
+//
+// 与 read_material 的差别只在**来源范围**：附件由用户在系统文件框里显式挑选，
+// 可以在数据根之外（桌面、下载目录等）。仍然强制：
+//   * 绝对路径；文本路径与解析后的真实落点都不得命中禁区（DSH / agent / 仓库）；
+//   * 不在仓库内；必须是已存在的普通文件；
+//   * 大小上限沿用 MATERIAL_MAX_BYTES；
+//   * 只有**真的解码成 UTF-8 文本**才当正文返回；其余一律如实报错，
+//     不猜内容、不生成假摘要、不把二进制塞进提示词。
+// ---------------------------------------------------------------------------
+
+/// 附件正文按文本处理时，超过这个体量就拒绝（避免把提示词撑爆）。
+///
+/// 与前端 `ATTACHMENT_TOTAL_MAX_CHARS` 配合：这里挡单文件，前端挡合计。
+pub const ATTACHMENT_MAX_BYTES: u64 = MATERIAL_MAX_BYTES;
+
+/// 明确可以按纯文本读取的扩展名。其余类型照样允许选择，
+/// 但只有在真实解码成功时才收下（见 `read_attachment`）。
+pub const ATTACHMENT_TEXT_EXTS: &[&str] = &[
+    "md", "markdown", "txt", "text", "csv", "tsv", "json", "yaml", "yml", "log", "xml",
+    "html", "htm", "srt", "vtt",
+];
+
+/// 按文本扩展开头的二进制类型：用于把「读不出来」说得具体一点，而不是笼统报错。
+fn attachment_format_hint(ext: &str) -> &'static str {
+    match ext {
+        "pdf" => "PDF",
+        "doc" | "docx" | "wps" | "odt" | "rtf" => "Word/WPS 文档",
+        "xls" | "xlsx" | "et" | "ods" => "Excel/表格工作簿",
+        "ppt" | "pptx" | "dps" | "odp" => "演示文稿",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "tif" | "tiff" => "图片",
+        "mp4" | "mov" | "mkv" | "avi" | "webm" | "mp3" | "wav" | "m4a" | "flac" => "音视频",
+        "zip" | "7z" | "rar" | "gz" | "tar" => "压缩包",
+        _ => "二进制",
+    }
+}
+
+/// 读取用户通过文件选择框显式给出的一个附件。
+///
+/// 成功时 `content` 就是文件正文（已确认是 UTF-8 文本）；失败时返回可读原因，
+/// 由界面原样展示给用户。绝不返回「假的摘要」冒充文件内容。
+pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
+    let raw = path_text.trim();
+    if raw.is_empty() {
+        return Err("请提供要引用的文件路径。".to_string());
+    }
+    let path = Path::new(raw);
+    if !path.is_absolute() {
+        return Err(format!("附件路径必须是绝对路径：{}", raw));
+    }
+    assert_attachment_path_allowed(path).map_err(|_| {
+        format!(
+            "拒绝读取 {}：该路径位于被禁止的目录（DSH / agent 数据）。",
+            path.display()
+        )
+    })?;
+    let resolved = resolve_real_path(path)?;
+    assert_attachment_path_allowed(&resolved).map_err(|_| {
+        format!(
+            "拒绝读取 {}：解析后的真实落点位于被禁止的目录（DSH / agent 数据）。",
+            resolved.display()
+        )
+    })?;
+
+    let meta = fs::metadata(&resolved)
+        .map_err(|e| format!("无法读取文件 {}：{}", resolved.display(), e))?;
+    if !meta.is_file() {
+        return Err(format!("{} 不是普通文件，没有可读取的正文。", resolved.display()));
+    }
+    let extension = resolved
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    let file_name = resolved
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| resolved.display().to_string());
+    if meta.len() > ATTACHMENT_MAX_BYTES {
+        return Err(format!(
+            "「{}」有 {} KB，超过单文件上限 {} KB。请压缩、拆分，或只把需要的段落贴进对话。",
+            file_name,
+            meta.len() / 1024,
+            ATTACHMENT_MAX_BYTES / 1024
+        ));
+    }
+    let bytes = fs::read(&resolved)
+        .map_err(|e| format!("无法读取文件 {}：{}", resolved.display(), e))?;
+    // 先看有没有 NUL 字节（压缩包/图片/文档容器的典型特征），再做严格 UTF-8 解码。
+    let has_nul = bytes.iter().take(8192).any(|b| *b == 0);
+    let content = match String::from_utf8(bytes) {
+        Ok(text) if !has_nul => text,
+        Ok(_) | Err(_) => {
+            let kind = attachment_format_hint(&extension);
+            let ext = if extension.is_empty() {
+                "无扩展名".to_string()
+            } else {
+                format!(".{}", extension)
+            };
+            return Err(format!(
+                "「{}」是{}（{}），本版本没有它的解析器，读不出正文。请另存为 txt/md/csv 后再引用，或直接把要点写进对话；我不会凭文件名猜内容。",
+                file_name, kind, ext
+            ));
+        }
+    };
+    if content.trim().is_empty() {
+        return Err(format!("「{}」没有可读的文字内容。", file_name));
+    }
+    Ok(MaterialRead {
+        path: resolved.display().to_string(),
+        file_name,
+        bytes: meta.len(),
+        chars: content.chars().count(),
+        extension,
+        sha256: sha256_hex(content.as_bytes()),
+        content,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // 打开 DSH Desktop（模型/凭据设置界面）
 // ---------------------------------------------------------------------------
 
@@ -2344,6 +2801,22 @@ mod tests {
 
     fn repo_dir() -> PathBuf {
         repo_root_hint().expect("仓库根可推断")
+    }
+
+    /// 出厂纪律规则包（privacy=mask）。OD-ARCH-068 起，规则不再硬编码在代码里。
+    fn discipline_policy() -> crate::profile_rules::RulePolicy {
+        let rules = crate::profile_rules::parse_rules(crate::profile_rules::DEFAULT_RULES_JSON)
+            .expect("出厂默认规则包必须能解析");
+        crate::profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    /// 同一套规则，但把身份证/手机号改回「命中即拒绝」，用于验证 mask 与 reject 两种口径。
+    fn reject_policy() -> crate::profile_rules::RulePolicy {
+        let mut rules = crate::profile_rules::parse_rules(crate::profile_rules::DEFAULT_RULES_JSON)
+            .expect("出厂默认规则包必须能解析");
+        rules.global.privacy.id_card = "reject".to_string();
+        rules.global.privacy.phone = "reject".to_string();
+        crate::profile_rules::RulePolicy::from_rules(&rules)
     }
 
     fn valid_request(input: &str, source: &str) -> SaveArtifactRequest {
@@ -2444,33 +2917,78 @@ mod tests {
 
     // --- 红线扫描 ---
 
+    /// OD-ARCH-068：纯净底座（无规则文件）对身份证/手机号是**零拦截**。
     #[test]
-    fn red_line_scan_flags_synthetic_patterns_without_echoing_content() {
+    fn clean_policy_never_flags_privacy_numbers() {
         let text = "联系人：110101199003077777，电话：13800138000";
-        let hits = red_line_scan(text);
+        assert!(red_line_scan(text).is_empty());
+        assert!(assert_input_allowed(text).is_ok());
+        assert!(analyze_input("类别,数值\n甲,110101199003077777\n").is_ok());
+    }
+
+    /// reject 口径（用户把 privacy 改回 reject）仍按原样拦截，且不回显原文。
+    #[test]
+    fn reject_policy_still_blocks_privacy_numbers_without_echoing() {
+        let policy = reject_policy();
+        let text = "联系人：110101199003077777，电话：13800138000";
+        let hits = red_line_scan_with(text, &policy);
         assert!(hits.iter().any(|h| h.kind == "id_card" && h.count == 1));
         assert!(hits.iter().any(|h| h.kind == "phone_number" && h.count == 1));
         for hit in &hits {
             assert!(!hit.label.contains("110101199003077777"));
             assert!(!hit.label.contains("13800138000"));
         }
-        let error = assert_input_allowed(text).unwrap_err();
+        let error = assert_input_allowed_with(text, &policy).unwrap_err();
         assert!(!error.contains("110101199003077777"));
         assert!(!error.contains("13800138000"));
         assert!(error.contains("启发式"));
     }
 
+    /// mask 口径（出厂默认）：不拦截隐私号码，改为出站前掩码。
+    #[test]
+    fn mask_policy_allows_privacy_numbers_and_masks_outbound_text() {
+        let policy = discipline_policy();
+        let text = "联系人：110101199003077777，电话：13800138000";
+        assert!(
+            red_line_scan_with(text, &policy).is_empty(),
+            "mask 模式不应把隐私号码算作拒绝命中"
+        );
+        assert!(assert_input_allowed_with(text, &policy).is_ok());
+        let (masked, counts) =
+            crate::profile_rules::mask_privacy(text, &policy);
+        assert_eq!(counts.id_card, 1);
+        assert_eq!(counts.phone, 1);
+        assert!(!masked.contains("110101199003077777"));
+        assert!(!masked.contains("13800138000"));
+        assert!(crate::profile_rules::masked_differs(text, &masked));
+    }
+
+    /// 纪律红线词只在加载了规则包时生效；纯净底座的词表是空的。
+    #[test]
+    fn redline_keywords_come_from_profile_rules_only() {
+        let text = "这是虚构的案件线索占位文本";
+        assert!(red_line_scan(text).is_empty(), "纯净底座不应内置任何红线词");
+        let policy = discipline_policy();
+        let hits = red_line_scan_with(text, &policy);
+        assert!(hits.iter().any(|h| h.kind == "case_keyword"));
+        assert!(assert_input_allowed_with(text, &policy).is_err());
+    }
+
     /// 边界规则正文本身包含「案件/线索/未公开」等词；扫描应以用户原文为准。
     #[test]
     fn prompt_rules_do_not_trip_red_line_scan() {
+        // OD-ARCH-068：红线词来自规则包，因此「会误判」这个前提只在加载了规则包时成立。
+        let policy = discipline_policy();
         assert!(
-            !red_line_scan(explanation_rules()).is_empty(),
+            !red_line_scan_with(explanation_rules(), &policy).is_empty(),
             "前提：规则正文含边界说明用词，直接扫描全文会误判正常提交"
         );
         assert!(
-            red_line_scan(samples()[0].content).is_empty(),
+            red_line_scan_with(samples()[0].content, &policy).is_empty(),
             "用户原始合成输入必须通过扫描"
         );
+        // 纯净底座连规则正文都不拦截（零词表）。
+        assert!(red_line_scan(explanation_rules()).is_empty());
     }
 
     #[test]
@@ -2478,12 +2996,19 @@ mod tests {
         let prompt = "规则说明：不处理案件、线索或未公开信息；素材：合成数据";
         assert_eq!(scan_target(prompt, Some("合成数据")), "合成数据");
         assert_eq!(scan_target(prompt, None), prompt);
-        assert!(assert_input_allowed(scan_target(prompt, Some("合成数据"))).is_ok());
-        assert!(assert_input_allowed(scan_target(prompt, Some("虚构案件占位"))).is_err());
+        let policy = discipline_policy();
+        assert!(assert_input_allowed_with(scan_target(prompt, Some("合成数据")), &policy).is_ok());
+        assert!(
+            assert_input_allowed_with(scan_target(prompt, Some("虚构案件占位")), &policy).is_err()
+        );
         // 场景预设自带这些词：只有把**用户原文**交上去扫描，规则本身才不会被误判成敏感内容；
         // 不给用户原文时（前端漏传）整条提示词会被扫描 → 规则里的词导致误拒。
-        assert!(assert_input_allowed(scan_target(prompt, Some("请把本周进展整理成周报"))).is_ok());
-        assert!(assert_input_allowed(scan_target(prompt, None)).is_err());
+        assert!(assert_input_allowed_with(
+            scan_target(prompt, Some("请把本周进展整理成周报")),
+            &policy
+        )
+        .is_ok());
+        assert!(assert_input_allowed_with(scan_target(prompt, None), &policy).is_err());
     }
 
     #[test]
@@ -2625,11 +3150,22 @@ mod tests {
 
     #[test]
     fn analysis_gate_blocks_flagged_input() {
-        let flagged = "类别,数值\n甲,110101199003077777\n";
-        let error = analyze_input(flagged).unwrap_err();
+        // OD-ARCH-068：出厂默认 privacy=mask，隐私号码不再触发分析闸门。
+        let masked_case = "类别,数值\n甲,110101199003077777\n";
+        assert!(analyze_input_with(masked_case, &discipline_policy()).is_ok());
+
+        // 用户把 privacy 改回 reject 时，闸门原样生效且不回显原文。
+        let policy = reject_policy();
+        let error = analyze_input_with(masked_case, &policy).unwrap_err();
         assert!(error.contains("红线扫描"), "应命中闸门：{}", error);
         assert!(!error.contains("110101199003077777"), "错误信息不得回显原文");
-        assert!(assert_analysis_input_allowed(flagged).is_err());
+        assert!(assert_analysis_input_allowed_with(masked_case, &policy).is_err());
+
+        // 业务红线词（不依赖 privacy 设置）在规则包加载时仍然拦截。
+        let flagged = "类别,数值\n甲,110101199003077777\n";
+        assert!(analyze_input_with(flagged, &discipline_policy()).is_ok());
+        let keyword_case = "类别,数值\n甲,1\n备注,虚构案件占位\n";
+        assert!(analyze_input_with(keyword_case, &discipline_policy()).is_err());
 
         // 干净合成输入不受影响，原有统计与指纹不回归。
         let clean = samples()[0].content;
@@ -2640,14 +3176,30 @@ mod tests {
     #[test]
     fn explanation_prompt_gate_blocks_flagged_input() {
         let flagged = "类别,数值\n甲,110101199003077777\n";
-        let error =
-            build_explanation_prompt("desensitized_analysis", flagged, &"0".repeat(64)).unwrap_err();
+        let policy = reject_policy();
+        let error = build_explanation_prompt_with(
+            "desensitized_analysis",
+            flagged,
+            &"0".repeat(64),
+            &policy,
+        )
+        .unwrap_err();
         assert!(
             error.contains("红线扫描"),
             "命中应优先于指纹校验：{}",
             error
         );
         assert!(!error.contains("110101199003077777"));
+
+        // 出厂默认（mask）下同一条输入可以正常构造提示词，进入指纹校验分支。
+        let masked_err = build_explanation_prompt_with(
+            "desensitized_analysis",
+            flagged,
+            &"0".repeat(64),
+            &discipline_policy(),
+        )
+        .unwrap_err();
+        assert!(masked_err.contains("指纹不一致"), "实际：{masked_err}");
     }
 
     // --- R4：符号链接指向禁区 / 仓库时必须拒绝 ---
@@ -3878,5 +4430,235 @@ mod material_tests {
         assert!(err.contains("拒绝读取"), "{}", err);
         assert!(err.contains("仓库内"), "{}", err);
         assert!(!err.contains("写入"), "{}", err);
+    }
+
+    // ------------------------------------------------------------------
+    // 对话附件与 @ 引用（OD-ARCH-077 S1）
+    // ------------------------------------------------------------------
+
+    fn os(value: &str) -> &std::ffi::OsStr {
+        std::ffi::OsStr::new(value)
+    }
+
+    #[test]
+    fn knowledge_root_uses_override_then_home_default() {
+        let overridden = knowledge_root_from(Some(os("/tmp/od-kb")), Some(os("/home/x"))).unwrap();
+        assert_eq!(overridden, PathBuf::from("/tmp/od-kb"));
+
+        let default = knowledge_root_from(None, Some(os("/home/x"))).unwrap();
+        assert_eq!(default, PathBuf::from("/home/x/YvanAI/knowledge"));
+
+        let err = knowledge_root_from(Some(os("relative/kb")), Some(os("/home/x"))).unwrap_err();
+        assert!(err.contains("绝对路径"), "{}", err);
+
+        let err = knowledge_root_from(None, None).unwrap_err();
+        assert!(err.contains("HOME"), "{}", err);
+    }
+
+    #[test]
+    fn reference_roots_contain_artifact_and_knowledge_once() {
+        let artifact = PathBuf::from("/tmp/od-artifacts");
+        let roots = reference_roots(&artifact);
+        assert!(roots.contains(&artifact));
+        // 不依赖真实 HOME：只要存在的知识库根不重复即可。
+        let mut unique = roots.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), roots.len(), "允许根不应重复：{:?}", roots);
+    }
+
+    #[test]
+    fn reads_reference_inside_allowed_root() {
+        let dir = material_dir("ref_ok");
+        let file = dir.join("notes.md");
+        fs::write(&file, "合成参考内容 REF-OK").unwrap();
+        let read = read_reference_material(file.to_str().unwrap(), &[dir.clone()]).unwrap();
+        assert!(read.content.contains("REF-OK"));
+        assert_eq!(read.sha256.len(), 64);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_reference_outside_allowed_roots() {
+        let allowed = material_dir("ref_allowed");
+        let outside = material_dir("ref_outside");
+        let file = outside.join("secret.md");
+        fs::write(&file, "不该被读到").unwrap();
+        let err = read_reference_material(file.to_str().unwrap(), &[allowed.clone()]).unwrap_err();
+        assert!(err.contains("只允许"), "{}", err);
+        // 兄弟目录前缀相近也不能被误放行。
+        let sibling = PathBuf::from(format!("{}-sibling", allowed.display()));
+        let err = assert_path_within_roots(&sibling, &[allowed.clone()]).unwrap_err();
+        assert!(err.contains("只允许") || err.contains("无法"), "{}", err);
+        let _ = fs::remove_dir_all(&allowed);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn rejects_reference_via_symlink_escape() {
+        let allowed = material_dir("ref_link_root");
+        let outside = material_dir("ref_link_out");
+        let target = outside.join("secret.md");
+        fs::write(&target, "外部文件").unwrap();
+        let link = allowed.join("link.md");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            let _ = fs::remove_dir_all(&allowed);
+            let _ = fs::remove_dir_all(&outside);
+            return;
+        }
+        let err = read_reference_material(link.to_str().unwrap(), &[allowed.clone()]).unwrap_err();
+        assert!(err.contains("只允许"), "{}", err);
+        let _ = fs::remove_dir_all(&allowed);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn rejects_reference_with_disallowed_extension() {
+        let dir = material_dir("ref_ext");
+        let bin = dir.join("payload.bin");
+        fs::write(&bin, b"PK\x03\x04").unwrap();
+        let err = read_reference_material(bin.to_str().unwrap(), &[dir.clone()]).unwrap_err();
+        assert!(err.contains("不支持的材料类型"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // --- 对话附件（OD-ARCH-078 S1）：任意路径 + 开放类型，文本才收正文 ---
+
+    #[test]
+    fn reads_attachment_outside_data_roots() {
+        // 数据根之外（等价于用户桌面的文件）也能读：附件由图选择框显式挑出。
+        let dir = material_dir("attach_outside");
+        let file = dir.join("desktop-note.md");
+        fs::write(&file, "合成桌面笔记 ATTACH-OK").unwrap();
+        let read = read_attachment(file.to_str().unwrap()).unwrap();
+        assert!(read.content.contains("ATTACH-OK"));
+        assert_eq!(read.sha256.len(), 64);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn accepts_any_text_extension_for_attachments() {
+        // 旧白名单之外的类型，只要是真的文本就收下（不再预判「不支持」）。
+        let dir = material_dir("attach_ext");
+        let file = dir.join("policy.html");
+        fs::write(&file, "<p>合成 HTML 制度条文</p>").unwrap();
+        let read = read_attachment(file.to_str().unwrap()).unwrap();
+        assert!(read.content.contains("合成 HTML"));
+        assert_eq!(read.extension, "html");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_binary_attachment_with_honest_hint() {
+        // 二进制不猜内容、不生成假摘要：明确说读不出并给出可行动的替代方式。
+        let dir = material_dir("attach_bin");
+        let pdf = dir.join("合成制度.pdf");
+        fs::write(&pdf, b"%PDF-1.7\x00\x01\x02binary").unwrap();
+        let err = read_attachment(pdf.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("PDF"), "{}", err);
+        assert!(err.contains("另存为"), "{}", err);
+
+        let docx = dir.join("材料.docx");
+        fs::write(&docx, b"PK\x03\x04\x00\x00docx").unwrap();
+        let err = read_attachment(docx.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("Word/WPS"), "{}", err);
+
+        let shot = dir.join("截图.png");
+        fs::write(&shot, b"\x89PNG\r\n\x1a\n\x00").unwrap();
+        let err = read_attachment(shot.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("图片"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_empty_attachment_text() {
+        let dir = material_dir("attach_empty");
+        let file = dir.join("blank.txt");
+        fs::write(&file, "   \n\n").unwrap();
+        let err = read_attachment(file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("没有可读的文字"), "{}", err);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn attachment_reads_repo_files_but_still_refuses_runtime_data() {
+        // 仓库内的文档可以当附件（用户从「+」显式选中即可），但 DSH / agent 数据仍拒绝。
+        let repo_file = repo_root_hint().unwrap().join("AGENTS.md");
+        if repo_file.is_file() {
+            let read = read_attachment(repo_file.to_str().unwrap()).unwrap();
+            assert!(read.content.contains("OmniDesk"), "仓库内文档应能读到正文");
+        }
+        let err = read_attachment("/home/someone/.dsh/notes.md").unwrap_err();
+        assert!(err.contains("禁止"), "{}", err);
+        let err = read_attachment("/home/someone/.codex/secret.md").unwrap_err();
+        assert!(err.contains("禁止"), "{}", err);
+        let err = read_attachment("relative/notes.md").unwrap_err();
+        assert!(err.contains("绝对路径"), "{}", err);
+    }
+
+    #[test]
+    fn artifact_paths_still_refuse_repo() {
+        // 附件放行不等于产物落盘放行：产物写在仓库内仍然必须被拒绝。
+        let repo = repo_root_hint().unwrap();
+        let err = assert_outside_repo(&repo.join("artifacts")).unwrap_err();
+        assert!(err.contains("仓库内"), "{}", err);
+    }
+
+    #[test]
+    fn lists_only_supported_visible_reference_files() {
+        let dir = material_dir("ref_list");
+        fs::write(dir.join("keep.md"), "# 保留").unwrap();
+        fs::write(dir.join("keep.txt"), "保留").unwrap();
+        fs::write(dir.join("skip.bin"), b"PK").unwrap();
+        fs::write(dir.join(".hidden.md"), "隐藏").unwrap();
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(dir.join(".git").join("inner.md"), "隐藏").unwrap();
+        fs::create_dir_all(dir.join("nested")).unwrap();
+        fs::write(dir.join("nested").join("deep.md"), "深层").unwrap();
+        fs::write(
+            dir.join("big.md"),
+            vec![b'a'; (MATERIAL_MAX_BYTES as usize) + 8],
+        )
+        .unwrap();
+
+        let items = list_reference_files(&[dir.clone()], None, 50).unwrap();
+        let names: Vec<&str> = items.iter().map(|i| i.file_name.as_str()).collect();
+        assert!(names.contains(&"keep.md"), "{:?}", names);
+        assert!(names.contains(&"keep.txt"), "{:?}", names);
+        assert!(names.contains(&"deep.md"), "{:?}", names);
+        assert!(!names.contains(&"skip.bin"), "{:?}", names);
+        assert!(!names.contains(&".hidden.md"), "{:?}", names);
+        assert!(!names.contains(&"inner.md"), "{:?}", names);
+        assert!(!names.contains(&"big.md"), "{:?}", names);
+        assert!(items.iter().all(|i| i.source_root == dir.display().to_string()));
+
+        // 查询词只按文件名过滤，大小写不敏感。
+        let filtered = list_reference_files(&[dir.clone()], Some("KEEP"), 50).unwrap();
+        assert_eq!(filtered.len(), 2, "{:?}", filtered);
+
+        // 不存在/非法的根不报错，只返回空列表。
+        let missing = dir.join("nope");
+        assert!(list_reference_files(&[missing], None, 5).unwrap().is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reference_list_respects_limit_and_skips_symlinked_dirs() {
+        let dir = material_dir("ref_limit");
+        for i in 0..6 {
+            fs::write(dir.join(format!("f{}.md", i)), "x").unwrap();
+        }
+        let items = list_reference_files(&[dir.clone()], None, 3).unwrap();
+        assert_eq!(items.len(), 3);
+
+        let outside = material_dir("ref_limit_out");
+        fs::write(outside.join("external.md"), "外部").unwrap();
+        let link = dir.join("linked");
+        if std::os::unix::fs::symlink(&outside, &link).is_ok() {
+            let items = list_reference_files(&[dir.clone()], Some("external"), 50).unwrap();
+            assert!(items.is_empty(), "符号链接目录不应被展开：{:?}", items);
+        }
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&outside);
     }
 }

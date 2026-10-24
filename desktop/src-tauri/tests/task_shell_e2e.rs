@@ -152,16 +152,35 @@ fn red_line_gate_and_confirmation_hold_at_the_shell_boundary() {
     let clean = task_shell::samples()[0].content.to_string();
 
     // R3：命中启发式闸门的输入不能产生统计结果，也不能产生解释提示词。
+    //
+    // OD-ARCH-068：平台代码不再内置任何关键词，闸门口径由 Profile 规则资产决定。
+    // 这里用「隐私设为 reject」的规则实例来验证闸门本身仍然有效。
+    let mut rules = omnidesk_desktop_lib::profile_rules::parse_rules(
+        omnidesk_desktop_lib::profile_rules::DEFAULT_RULES_JSON,
+    )
+    .expect("出厂规则包应可解析");
+    rules.global.privacy.id_card = "reject".to_string();
+    rules.global.privacy.phone = "reject".to_string();
+    let reject_policy = omnidesk_desktop_lib::profile_rules::RulePolicy::from_rules(&rules);
+
     let flagged = "类别,数值\n甲,110101199003077777\n";
     assert!(
-        task_shell::analyze_input(flagged).is_err(),
+        task_shell::analyze_input_with(flagged, &reject_policy).is_err(),
         "命中闸门的输入不得产出统计结果"
     );
     assert!(
-        task_shell::build_explanation_prompt("desensitized_analysis", flagged, &"0".repeat(64))
-            .is_err(),
+        task_shell::build_explanation_prompt_with(
+            "desensitized_analysis",
+            flagged,
+            &"0".repeat(64),
+            &reject_policy,
+        )
+        .is_err(),
         "命中闸门的输入不得产出解释提示词"
     );
+
+    // 同一输入在纯净底座（无规则文件）与 mask 口径下都可进入统计阶段。
+    assert!(task_shell::analyze_input(flagged).is_ok(), "纯净底座不拦截隐私号码");
 
     // 干净输入的统计与指纹不回归。
     let via_gate = task_shell::analyze_input(&clean).expect("干净输入应可分析");

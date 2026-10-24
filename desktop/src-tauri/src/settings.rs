@@ -48,6 +48,14 @@ pub struct Settings {
     /// 旧设置文件缺少该字段时按内置四类处理；不迁移、不改写旧文件。
     #[serde(default = "default_thread_categories")]
     pub thread_categories: Vec<ThreadCategory>,
+    /// 用户选择的 DSH Profile（OD-ARCH-072 首页改版）。
+    ///
+    /// None = 跟随通道标准模式（web-api → `web`，acp → `acp`）。
+    /// 只存 Profile **名字**，不存路径、不存凭证；启用前由宿主核对
+    /// `profiles/<name>/package.json` 是否真实存在。改这里不会立刻热切换：
+    /// 下一次引擎启动（或用户手动停止后再次提交任务）才生效。
+    #[serde(default)]
+    pub engine_profile: Option<String>,
 }
 
 /// 内置分类键。这四个是内部场景键，永不由用户新增；自定义分类一律带 `custom:` 前缀，
@@ -147,8 +155,38 @@ impl Default for Settings {
             artifact_root: None,
             model_permissions: ModelPermissions::default(),
             thread_categories: default_thread_categories(),
+            engine_profile: None,
         }
     }
+}
+
+/// Profile 名合法字符：小写字母、数字、连字符、下划线，长度 1–48。
+/// 这里只做**名字**校验；目录是否存在由调用方核对。
+pub fn is_valid_profile_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 48
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+/// 保存用户选择的 Profile（None = 回到标准模式）。只写设置文件，不重启引擎。
+pub fn set_engine_profile(config_dir: &Path, profile: Option<&str>) -> Result<(), String> {
+    let mut settings = load(config_dir)?;
+    settings.engine_profile = match profile {
+        None => None,
+        Some(name) => {
+            let trimmed = name.trim();
+            if !is_valid_profile_name(trimmed) {
+                return Err(format!(
+                    "Profile 名不合法：{:?}（只允许小写字母、数字、连字符、下划线，最多 48 字符）",
+                    name
+                ));
+            }
+            Some(trimmed.to_string())
+        }
+    };
+    write_settings(config_dir, &settings)
 }
 
 pub fn settings_path(config_dir: &Path) -> PathBuf {

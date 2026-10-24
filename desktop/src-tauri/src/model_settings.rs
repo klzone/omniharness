@@ -165,6 +165,26 @@ pub struct ModelSettings {
     pub schema: String,
     pub providers: Vec<ProviderSettings>,
     pub default: DefaultRoute,
+    /// 旧版遗留字段：任务等待上限（秒）。2026-10-23 起宿主不再向引擎下发任何
+    /// 等待上限（任务只在用户取消或底座报错时结束）。字段保留只为兼容已存在的
+    /// 配置文件（结构体是 deny_unknown_fields，直接删会让老文件读不出来），
+    /// 读取后不使用、也不再校验。
+    #[serde(default = "default_task_timeout_seconds")]
+    pub task_timeout_seconds: u64,
+    /// 旧版遗留字段：联网检索等待上限（秒）。同上，仅为兼容旧配置而保留。
+    #[serde(default = "default_search_task_timeout_seconds")]
+    pub search_task_timeout_seconds: u64,
+}
+
+pub const DEFAULT_TASK_TIMEOUT_SECONDS: u64 = 300;
+pub const DEFAULT_SEARCH_TASK_TIMEOUT_SECONDS: u64 = 600;
+
+fn default_task_timeout_seconds() -> u64 {
+    DEFAULT_TASK_TIMEOUT_SECONDS
+}
+
+fn default_search_task_timeout_seconds() -> u64 {
+    DEFAULT_SEARCH_TASK_TIMEOUT_SECONDS
 }
 
 impl ModelSettings {
@@ -176,6 +196,8 @@ impl ModelSettings {
                 provider: String::new(),
                 model: String::new(),
             },
+            task_timeout_seconds: DEFAULT_TASK_TIMEOUT_SECONDS,
+            search_task_timeout_seconds: DEFAULT_SEARCH_TASK_TIMEOUT_SECONDS,
         }
     }
 
@@ -477,6 +499,8 @@ impl LegacySettings {
                 provider: self.provider,
                 model: self.default_model,
             },
+            task_timeout_seconds: DEFAULT_TASK_TIMEOUT_SECONDS,
+            search_task_timeout_seconds: DEFAULT_SEARCH_TASK_TIMEOUT_SECONDS,
         })
     }
 }
