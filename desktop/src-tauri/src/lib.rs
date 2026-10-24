@@ -17,6 +17,7 @@ pub mod engine_bridge;
 pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
+pub mod external_open;
 pub mod flow_pack;
 mod local_http;
 pub mod model_settings;
@@ -1759,6 +1760,15 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
     Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
 }
 
+/// 在系统默认浏览器里打开正文中的 http(s) 链接（OD-ARCH-081）。
+///
+/// 只放行 `http` / `https`，其余 scheme 一律拒绝，避免由模型输出诱发本地协议跳转。
+#[tauri::command(async)]
+fn open_external_url(url: String) -> Result<serde_json::Value, String> {
+    let opened = external_open::open_in_browser(&url)?;
+    Ok(serde_json::json!({ "ok": true, "opened": opened }))
+}
+
 // ---------------------------------------------------------------------------
 // 能力管理（OD-ARCH-072）
 //
@@ -2828,6 +2838,7 @@ pub fn run() {
             task_local_root_info,
             task_set_artifact_root,
             task_open_artifact_root,
+            open_external_url,
             capability_view,
             capability_set_plugin,
             capability_open_skills,

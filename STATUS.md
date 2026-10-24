@@ -1,5 +1,67 @@
 # BUILDER 执行状态
 
+## OD-ARCH-081：首页三项小修复（2026-10-25，ARCHITECT 复核通过；已提交并推送）
+
+- **开工状态：** 分支 main，HEAD `d2fbc68`；既有未提交/未跟踪改动全部保留；`git status --porcelain runtime/` 为空。复核结论见 REVIEW.md 顶部。
+- **收尾：** 复核通过后对本轮改动做敏感信息扫描（凭证关键词 + 真实材料特征），零命中；按**单批次**提交并推送 `origin/main`。未打标签、未动其它分支。详见文末「收尾：扫描、提交与推送」。
+- **执行边界：** 未改 `runtime/`、`~/.dsh`、`~/.agents`、凭证、模型路由与真实材料；隔离验收使用一次性数据根 `/tmp/od081-home`（每次运行重建）。
+- **设计参考：** 直接对照 DSH 原生聊天正文的排版密度与代码块复制交互，未另造一套排版语言。
+
+### 已完成内容
+
+1. **S1 问候与待办常驻。** `SceneScaffold` 去掉「上部随指针/聚焦互斥显隐」与 5 秒静止恢复逻辑，改为固定上下两段：问候 + 待办条 `flex-shrink-0` 常驻顶部，对话区在其下方占满剩余高度；指针移入对话区、输入框聚焦、输入文字都不再改变其可见性或整体位移。`useChatInputFocus` 保留为空实现，仅作兼容。
+2. **S2 品牌标替换装饰图标。** 新增 `BrandMark`（O+D 环形渐变标，透明底、`aria-hidden`、无点击行为），替换输入区「+」前的单色 spark。
+3. **S3 Markdown 正文。** 新增 `MarkdownText`，助手回复与用户问句都按 Markdown 渲染（标题/有序与无序列表/粗体/行内代码/围栏代码块带复制/表格横向滚动/引用/链接）；不启用 `rehype-raw`，无 `dangerouslySetInnerHTML`，文本里的 HTML 按文字显示；`remark-breaks` 保留单换行，流式增量仍逐段呈现。正文中的 http(s) 链接经宿主 `open_external_url` 交系统浏览器打开，非 http(s) scheme 在宿主侧拒绝。
+4. **深色问句气泡可读性。** 修正问句气泡内列表圆点对比度过低（`.md-on-primary li::marker` 改为半透明白）。
+
+### 修改文件
+
+- 改：`desktop/src/shell/SceneScaffold.tsx`、`desktop/src/shell/HomeChat.tsx`、`desktop/src/main.tsx`、`desktop/src/api.ts`、`desktop/src-tauri/src/lib.rs`、`desktop/package.json`、`desktop/package-lock.json`、`PLANS.md`、`STATUS.md`
+- 新增：`desktop/src/components/BrandMark.tsx`、`desktop/src/shell/MarkdownText.tsx`、`desktop/src/markdown.css`、`desktop/src-tauri/src/external_open.rs`、`tests/verification/desktop/verify_home_fixes_081.py`、`tests/verification/desktop/evidence/od-arch-081/`（7 张截图 + `home-fixes-facts.json` + `README.md`）
+
+### 测试命令与结果（最终代码后实跑）
+
+| 命令 | 结果 |
+| --- | --- |
+| `desktop/node_modules/.bin/tsc --noEmit -p desktop/tsconfig.json` | exit 0 |
+| `npm run build`（desktop/） | 成功，built in 704ms（仅 chunk 体积警告） |
+| `cargo test --offline -q --lib` | **260 passed / 0 failed** |
+| `python3 -m pytest tests -q` | **75 passed，14 subtests** |
+| `git status --porcelain runtime/` | 0 行 |
+| `python3 tests/verification/desktop/verify_home_fixes_081.py` | **EXIT=0，passed=true，gate_errors=[]** |
+
+### 真实窗口证据（证据等级：真实桌面窗口 + 像素结构判定）
+
+证据目录 `tests/verification/desktop/evidence/od-arch-081/`：
+
+- 问候 + 待办：指针移入对话区、输入框聚焦并输入文字后，问候条带变化像素均为 **0**（`greeting_unchanged_on_pointer` / `greeting_unchanged_on_focus`）。
+- 品牌标：输入区渐变像素 37、旧单色 spark 像素 0；点击不打开新窗口、不改变上部布局。
+- Markdown 答句：表格边框线 ≥3 条、代码块底色面板 27375 像素、列表圆点 54 行。
+- 问句气泡：2 个独立列表圆点（`(1083,336)`、`(1083,365)`）。
+- 隔离边界：隔离运行根、`~/.dsh`、`~/.agents` 前后指纹一致（`5fc06d6f462643f3:1185`、`435315d6e3517d7a:4000`、`e3b0c44298fc1c14:0`）。
+
+### 未验证项与偏差
+
+- **未做 OCR**：排版判定基于像素结构（线数、色块面积、圆点数量）与静态源码核对，不含「截图上有字」这类主观结论。
+- Markdown 引用块（blockquote）样式未单独进入合成样例截图；仅代码静态核查。
+- 未做真实模型输出测试；截图中的「先配置一个模型端点」是隔离实例未配模型的正常提示，不是缺陷。
+- **计划偏差：** 计划只写新增 `react-markdown` + `remark-gfm`，实际另加 `remark-breaks`（保持原纯文本的单换行观感，避免模型短句被粘连）。三个依赖均为纯渲染库，无网络请求。
+
+### 建议 ARCHITECT 关注
+
+1. 品牌标为纯装饰，未接入「新会话」等动作——若后续要变成可点击入口，需单独立项。
+2. 外链现在走系统浏览器；若未来开放 `mailto:` 等其它 scheme，需要单独确认边界。
+
+### 收尾：扫描、提交与推送（2026-10-25）
+
+- **扫描范围：** 本轮全部 15 项改动（9 项已跟踪文件的 diff + 6 项新增文件，含 7 张 PNG 与 1 个 JSON）。
+- **凭证关键词：** 对已跟踪 diff 与全部未跟踪文件分别扫描 `sk-…`、`Bearer …`、`api_key=<长串>`、`ghp_…`、`AKIA…`、`-----BEGIN … PRIVATE KEY` —— **零命中**。
+- **真实材料特征：** 扫描 11 位手机号与 18 位身份证号正则 —— **零命中**；改动中只含合成占位串（`合成甲/合成乙`、`synthetic-code-line-*`）。
+- **图片元数据：** 对 7 张 PNG 的文本块做关键词检索（用户名、家目录、title/author/comment）—— **零命中**，未泄露本机路径或作者信息。
+- **仓库边界：** `git status --porcelain runtime/` 为 0；`knowledge/regulations`、`knowledge/reflections`、`.kb_extract/`、`.credentials.yaml` 仍在 .gitignore 内，未进入批次。
+- **提交：** 单批次 `OD-ARCH-081：首页小修复收尾`，含 15 项改动（PLANS.md、REVIEW.md、STATUS.md、desktop 源码 6 项、新增源码 4 项、验收脚本 1 项、证据目录 8 个文件）。
+- **推送：** `origin/main` 已同步，推送后工作区干净。未打标签、未动其它分支。
+
 ## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
 
 - **开工状态：** 分支 main，HEAD 3f8c3ba；126 项未提交/未跟踪改动（079 的 127 项减去已忽略的 `.kb_extract/`）。OD-ARCH-079 已复核通过。

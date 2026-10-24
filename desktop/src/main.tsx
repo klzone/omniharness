@@ -18,6 +18,7 @@ import "@fontsource/jetbrains-mono/latin-600.css";
 import "./theme.css";
 import "./styles.css";
 import "./settings-panel.css";
+import "./markdown.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

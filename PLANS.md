@@ -1,5 +1,25 @@
 # 当前实施计划
 
+### OD-ARCH-081：首页三项小修复（问候常驻 / 品牌标 / Markdown 正文）（已执行并复核通过，2026-10-25）
+
+**批准依据：** 用户明确提出三条小修复并委托执行。本计划不扩大范围。
+
+**目标：** ①「夜深了 · 欢迎回到 OmniDesk」与其后的待办条**常驻顶部**，不再因指针进入对话区而隐藏、也不再把对话整页上移；②输入框「+」左侧的装饰性 spark 图标换成 OmniDesk 品牌标（复用既有 O+D 标识，非交互、带无障碍标注）；③助手回复与用户问句的正文按 Markdown 渲染（标题、列表、表格、代码块、引用、链接），参照 DSH 原生正文的排版密度；流式增量仍逐段呈现、不丢字。
+
+**影响范围：** `desktop/src/shell/SceneScaffold.tsx`（去掉两层互斥与 5 秒静止恢复，改为固定上下两段）、`desktop/src/shell/HomeChat.tsx`（正文渲染入口、输入区图标）、新增 `desktop/src/components/BrandMark.tsx`、`desktop/src/shell/MarkdownText.tsx`、`desktop/src/markdown.css`、`desktop/src/main.tsx`（样式引入）、`desktop/package.json` + lock（新增 `react-markdown`、`remark-gfm`，见下）、本文件、STATUS.md。**不动** `runtime/`、DSH 数据根、凭证、模型路由、真实材料。
+
+**依赖理由：** 现有前端依赖中没有 Markdown 渲染能力，自研渲染器在表格、嵌套列表、代码块上易出错误，因此引入 `react-markdown` + `remark-gfm` 两个纯渲染依赖。不启用 `rehype-raw`，模型或用户文本中的 HTML 不会被执行或注入（无 `dangerouslySetInnerHTML`）。
+
+**步骤与验收：**
+
+1. S1 布局：问候 + 待办固定在对话上方，指针移动、输入框聚焦、静止等待都不改变其可见性；对话区在其下方自然占满剩余高度。
+2. S2 品牌标：输入区「+」前显示 OmniDesk 标识（纯装饰，`aria-hidden`），点击不承担动作。
+3. S3 Markdown：助手正文支持标题 / 无序与有序列表 / 粗体 / 行内代码 / 围栏代码块（带复制）/ 表格（横向滚动）/ 引用 / 链接；用户问句按 Markdown 渲染，但纯文本换行仍保留；流式输出时逐字显现与 Markdown 排版可共存、不出现乱码。
+4. S4 回归：`tsc --noEmit`、`npm run build`、`cargo test --offline -q --lib`（≥257）、`python3 -m pytest tests -q`（≥75）、`git status --porcelain runtime/` 为 0。
+5. S5 真实窗口证据：一次性 Xvfb 显示里截图确认问候与待办常驻（指针移入对话区前后均可见）、输入区显示品牌标、含表格/代码/列表的合成回复排版正确；证据存 `tests/verification/desktop/evidence/od-arch-081/`。不提交、不推送。
+
+**风险与停止条件：** 新增依赖导致构建或 CSP 失败 → 停并报告，不退回自研渲染器硬凑；布局改动引起对话区高度异常或输入框不可见 → 停并保留原骨架；真实窗口无法启动 → 记录为未验证，不把静态检查当运行证据。
+
 ### OD-ARCH-065：多提供商模型档案 + 探测沿用已存密钥（已批准并执行完毕，2026-10-22；ARCHITECT 复核通过见 REVIEW.md）
 
 > **批准依据：** 用户实测 064 通道时点「测试连接」得到 `https://amr-link.open-design.ai/v1/models answered 401`。排查结论（源码事实）：该端点无凭据直连必回 401；用已登记的 `opendesign_Key` 直连返回 200 与 12 个模型。问题不在密钥，而在探测请求没带凭据。用户同时要求：能长期维护多个提供商/模型及其地址与密钥，并明确不得泄露。

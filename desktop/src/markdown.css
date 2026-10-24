@@ -1,0 +1,268 @@
+/*
+ * 消息正文 Markdown 排版（OD-ARCH-081）。
+ *
+ * 参照 DSH 原生正文的密度：14/24 正文、相邻块 12–16px 间距、表格可横向滚动、
+ * 代码块带底色与复制按钮。只用设计令牌，不引外链资源。
+ */
+
+.md-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.md-body > :first-child {
+  margin-top: 0;
+}
+
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0.7em 0;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-family: var(--font-display, inherit);
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.1em 0 0.5em;
+  color: var(--color-on-surface);
+}
+
+.md-body h1 {
+  font-size: 1.32em;
+}
+
+.md-body h2 {
+  font-size: 1.2em;
+}
+
+.md-body h3 {
+  font-size: 1.08em;
+}
+
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-size: 1em;
+}
+
+.md-body strong {
+  font-weight: 600;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0.6em 0;
+  padding-left: 1.35em;
+}
+
+.md-body ul {
+  list-style: disc;
+}
+
+.md-body ul ul {
+  list-style: circle;
+}
+
+.md-body ol {
+  list-style: decimal;
+}
+
+.md-body li {
+  margin: 0.28em 0;
+}
+
+.md-body li > p {
+  margin: 0.2em 0;
+}
+
+.md-body li::marker {
+  color: var(--color-outline);
+}
+
+.md-body blockquote {
+  margin: 0.75em 0;
+  padding: 0.35em 0 0.35em 0.9em;
+  border-left: 3px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+  border-radius: 0 8px 8px 0;
+  color: var(--color-on-surface-variant);
+}
+
+.md-body blockquote > :first-child {
+  margin-top: 0;
+}
+
+.md-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body a {
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.md-body a:hover {
+  color: var(--color-primary-container);
+}
+
+/* 相对路径 / 锚点：不导航，按文字呈现，只保留悬停提示。 */
+.md-link-inert {
+  color: var(--color-on-surface-variant);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+.md-body code {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+  padding: 0.12em 0.38em;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  color: var(--color-on-surface);
+}
+
+.md-body hr {
+  margin: 1.1em 0;
+  border: 0;
+  border-top: 1px solid var(--color-outline-variant);
+}
+
+/* --- 代码块 --------------------------------------------------------------- */
+
+.md-pre-wrap {
+  position: relative;
+  margin: 0.8em 0;
+}
+
+.md-pre-wrap pre {
+  margin: 0;
+  padding: 0.85em 0.95em;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-on-surface) 5%, transparent);
+  border: 1px solid var(--color-outline-variant);
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.md-pre-wrap pre code {
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-outline-variant);
+  opacity: 0.9;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.md-code-copy:hover {
+  color: var(--color-primary);
+  background: var(--color-surface-container-high);
+}
+
+/* --- 表格 ----------------------------------------------------------------- */
+
+.md-table-scroll {
+  margin: 0.85em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 10px;
+}
+
+.md-table-scroll table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.md-table-scroll th,
+.md-table-scroll td {
+  padding: 0.5em 0.75em;
+  text-align: left;
+  border-bottom: 1px solid var(--color-outline-variant);
+  vertical-align: top;
+}
+
+.md-table-scroll th {
+  font-weight: 600;
+  background: var(--color-surface-container-low);
+  white-space: nowrap;
+}
+
+.md-table-scroll tr:last-child td {
+  border-bottom: 0;
+}
+
+/* --- 问句气泡里的紧凑版（深底、浅字） ------------------------------------- */
+
+.md-body.md-compact {
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.md-body.md-on-primary {
+  color: var(--color-on-primary);
+}
+
+.md-body.md-on-primary h1,
+.md-body.md-on-primary h2,
+.md-body.md-on-primary h3,
+.md-body.md-on-primary h4,
+.md-body.md-on-primary h5,
+.md-body.md-on-primary h6,
+.md-body.md-on-primary strong {
+  color: var(--color-on-primary);
+}
+
+.md-body.md-on-primary a {
+  color: var(--color-on-primary);
+  text-decoration-color: color-mix(in srgb, var(--color-on-primary) 65%, transparent);
+}
+
+.md-body.md-on-primary code {
+  background: color-mix(in srgb, #fff 18%, transparent);
+  color: var(--color-on-primary);
+}
+
+.md-body.md-on-primary blockquote {
+  border-left-color: color-mix(in srgb, #fff 70%, transparent);
+  background: color-mix(in srgb, #fff 12%, transparent);
+  color: var(--color-on-primary);
+}
+
+/* 深底气泡里的列表圆点：默认 marker 是浅色主题的灰，压在主色上几乎看不清，
+   换成与文字同色的半透明白，保持层级但可辨。 */
+.md-body.md-on-primary li::marker {
+  color: color-mix(in srgb, var(--color-on-primary) 72%, transparent);
+}
+
+.md-body.md-on-primary ol li::marker {
+  color: color-mix(in srgb, var(--color-on-primary) 82%, transparent);
+}
