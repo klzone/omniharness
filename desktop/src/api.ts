@@ -9,6 +9,8 @@ import type {
   AdmissionStatusResponse,
   AnalysisRunResponse,
   CancelOutcome,
+  CapabilityReceipt,
+  CapabilityView,
   CategoryInitReceipt,
   CategorySettingsPayload,
   EngineDescriptor,
@@ -19,9 +21,14 @@ import type {
   OfflineFlowResponse,
   ProjectSummary,
   ProfileDeclPayload,
+  ProfileRulesSaveReceipt,
+  ProfileRulesView,
+  ReferenceCandidate,
+  ReferenceRoot,
   SampleCatalog,
   SaveArtifactReceipt,
   SessionListing,
+  SessionFork,
   SessionRecovery,
   SubmitTaskReceipt,
   TaskEvent,
@@ -29,6 +36,7 @@ import type {
   TaskRecovery,
   TaskResult,
   TaskStatus,
+  ApprovalRespondReceipt,
   TaskTypeCatalog,
   OfflineArtifactContent,
   OfflineArtifactEntry,
@@ -54,6 +62,8 @@ import type {
   ModelSettingsView,
   ProfileDeclOpenReceipt,
   ProfileDeclSaveReceipt,
+  ProfileChoiceView,
+  ProfileChoiceReceipt,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -238,6 +248,21 @@ export const host = {
     });
   },
 
+  /** 回传审批决定（OD-ARCH-066）。失败时界面须保留待审批态。 */
+  approvalRespond(
+    omniTaskId: string,
+    approvalId: string,
+    allow: boolean,
+  ): Promise<ApprovalRespondReceipt> {
+    return invoke<ApprovalRespondReceipt>("engine_approval_respond", {
+      omniTaskId,
+      approvalId,
+      allow,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 会话清单（只含元数据）。需要启动引擎，宿主准入关闭时会直接拒绝。
    * 只读：不修改来源会话文件或注册表。
@@ -262,6 +287,20 @@ export const host = {
     return invoke<SessionRecovery>("engine_recover_session", {
       engineSessionId,
       workspaceToken,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 会话分支（DSH 原生 session/fork）：按精确轮次序号建一条子会话。
+   * `atSeq` 是本轮 turn/end 的会话事件序号；缺省时由引擎取最近一个完整轮次。
+   * 失败原样抛给界面，不退回本地重放。
+   */
+  forkSession(engineSessionId: string, atSeq?: number | null): Promise<SessionFork> {
+    return invoke<SessionFork>("engine_fork_session", {
+      engineSessionId,
+      atSeq: atSeq ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -381,6 +420,28 @@ export const shell = {
    */
   profileDeclDigest(): Promise<string | null> {
     return invoke<string | null>("profile_decl_digest").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：引擎 Profile 可选清单与本次启动实际使用的 Profile（OD-ARCH-072）。
+   *
+   * 只列隔离数据根里真实存在（含 package.json）的目录；标准 Profile 即使缺失也列出，
+   * 由界面按存在性说明。不会创建目录、不装依赖、不改配置。
+   */
+  profileChoiceView(): Promise<ProfileChoiceView> {
+    return invoke<ProfileChoiceView>("profile_choice_view").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 保存 Profile 选择（null = 回到标准模式）。只写应用数据根的设置文件，
+   * 不重启引擎、不改 Profile 内容；下次启动引擎时生效。
+   */
+  profileChoiceSet(profile: string | null): Promise<ProfileChoiceReceipt> {
+    return invoke<ProfileChoiceReceipt>("profile_choice_set", { profile }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -522,30 +583,6 @@ export const shell = {
   },
 
   /**
-   * 打开 DSH 自带的设置界面（模型提供方 / 默认模型 / 凭据登记）。
-   *
-   * OD-ARCH-050：宿主用临时端口起一个专用 `dsh web`（`--no-open`），再在应用内
-   * 打开独立窗口「DSH 设置」。URL 里的会话令牌只留在宿主内存，不经过前端。
-   */
-  openDshSettings(): Promise<{
-    ok: boolean;
-    port: number;
-    reused: boolean;
-    log_path: string;
-    note: string;
-  }> {
-    return invoke<{
-      ok: boolean;
-      port: number;
-      reused: boolean;
-      log_path: string;
-      note: string;
-    }>("task_open_dsh_settings").catch((e) => {
-      throw new Error(normalizeError(e));
-    });
-  },
-
-  /**
    * 改为「跟随 DSH 设置」（OD-ARCH-050 S5）。
    *
    * 把 OmniDesk 自己的模型覆盖文件归档到旁边（不删除），并停掉当前引擎：
@@ -626,6 +663,62 @@ export const shell = {
   /** 保存场景声明：宿主先校验，失败拒绝写；通过则备份旧文件后原子写。 */
   profileDeclSave(text: string): Promise<ProfileDeclSaveReceipt> {
     return invoke<ProfileDeclSaveReceipt>("profile_decl_save", { text }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：Profile 规则资产（OD-ARCH-068）。
+   *
+   * 文件不存在时 `loaded=false` 且无 error（纯净底座）；文件损坏时 `error` 有值，
+   * 此时提交会被宿主拒绝——界面必须显式提示，不能当作“没有规则”继续跑。
+   */
+  profileRules(): Promise<ProfileRulesView> {
+    return invoke<ProfileRulesView>("profile_rules_load").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存规则资产：宿主先完整校验，失败整次拒绝、旧文件保留；通过则备份并原子写。 */
+  profileRulesSave(text: string): Promise<ProfileRulesSaveReceipt> {
+    return invoke<ProfileRulesSaveReceipt>("profile_rules_save", { text }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 恢复出厂默认规则包（同样先备份旧文件）。 */
+  profileRulesRestoreDefault(): Promise<ProfileRulesSaveReceipt> {
+    return invoke<ProfileRulesSaveReceipt>("profile_rules_restore_default").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 能力管理（OD-ARCH-072）：只读读取 Skill 与插件清单。
+   *
+   * 读的是隔离实例自己的 `~/OmniDesk/runtime/dsh-home/`，不碰原版 DSH 数据根。
+   */
+  capabilities(): Promise<CapabilityView> {
+    return invoke<CapabilityView>("capability_view").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 插件启停：只改 profile 的 bundles，写前宿主自动备份；重启后生效。 */
+  capabilitySetPlugin(input: {
+    name: string;
+    enabled: boolean;
+  }): Promise<CapabilityReceipt> {
+    return invoke<CapabilityReceipt>("capability_set_plugin", input).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在系统文件管理器打开 Skill 目录（固定路径，无参数）。 */
+  capabilityOpenSkills(): Promise<{ ok: boolean; opened: string; note: string }> {
+    return invoke<{ ok: boolean; opened: string; note: string }>(
+      "capability_open_skills",
+    ).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -859,6 +952,43 @@ export const shell = {
       throw new Error(normalizeError(e));
     });
   },
+
+  /** 可引用来源根（成果目录 + 知识库）；由宿主解析，前端不指定根（OD-ARCH-077）。 */
+  referenceRoots(): Promise<{ roots: ReferenceRoot[] }> {
+    return invoke<{ roots: ReferenceRoot[] }>("task_reference_roots").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 列出可引用文件（有界遍历，只列宿主白名单内的文本类型）。 */
+  listReferences(
+    query?: string,
+    limit?: number,
+  ): Promise<{ items: ReferenceCandidate[]; limit: number; roots: string[] }> {
+    return invoke<{ items: ReferenceCandidate[]; limit: number; roots: string[] }>(
+      "task_list_references",
+      { query: query ?? null, limit: limit ?? null },
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取一个允许根内的附件正文；越界路径由宿主拒绝，不在此处放宽。 */
+  readReference(path: string): Promise<MaterialRead> {
+    return invoke<MaterialRead>("task_read_reference", { path }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 读取用户在系统文件框里显式挑出的附件（OD-ARCH-078 S1）。
+   * 来源不限数据根（桌面等也可以）；禁区、仓库内、大小与「是否真文本」仍由宿主判定。
+   */
+  readAttachment(path: string): Promise<MaterialRead> {
+    return invoke<MaterialRead>("task_read_attachment", { path }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
 };
 
 /**
@@ -973,14 +1103,3 @@ export function onTaskEvent(
   return listen<TaskEvent>("omni://task-event", (e) => handler(e.payload));
 }
 
-/**
- * 订阅「DSH 设置窗口已关闭」（OD-ARCH-050）。
- *
- * 用户可能在设置窗口里改了 provider / 默认模型：关闭后需要重新读端点事实与模型目录，
- * 否则界面会停留在旧结果。
- */
-export function onDshSettingsClosed(
-  handler: () => void,
-): Promise<UnlistenFn> {
-  return listen("omni://dsh-settings-closed", () => handler());
-}

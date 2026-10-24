@@ -23,6 +23,10 @@ export interface ConversationPreset {
   rules: string | null;
   /** 期望输出章节（每行一个）。 */
   sections: string | null;
+  /** Profile 规则资产里的写作铁律；null/空数组 = 不输出该段（纯净底座）。 */
+  writingRules?: string[] | null;
+  /** 场景默认思考档（由界面在空闲时应用，不在这里使用）。 */
+  thinking?: string | null;
 }
 
 /** 重放进下一轮提示的上文上限（字符）。 */
@@ -49,10 +53,17 @@ export function buildContext(turns: ConversationTurn[], current: string): string
   for (const t of picked) {
     parts.push((t.role === "user" ? "用户：" : "助手：") + t.text);
   }
-  parts.push("用户：" + current);
-  const joined = parts.join("\n");
-  if (joined.length <= CONTEXT_MAX_CHARS) return joined;
-  return "…（上文已按长度截断，只保留最近部分）\n" + joined.slice(-CONTEXT_MAX_CHARS);
+  // 只对**历史**做长度截断；本轮输入必须完整保留。
+  //
+  // 本轮输入里可能带着用户引用的文件原文（OD-ARCH-077）。如果和上文一起截断，
+  // 长附件会被削成尾部一小段，模型看不到完整依据，却仍然会“照着写”，
+  // 这比明确拒绝更危险。附件整体长度由界面在发送前单独校验（有明确上限）。
+  const history = parts.join("\n");
+  const trimmed =
+    history.length <= CONTEXT_MAX_CHARS
+      ? history
+      : "…（上文已按长度截断，只保留最近部分）\n" + history.slice(-CONTEXT_MAX_CHARS);
+  return (trimmed ? trimmed + "\n" : "") + "用户：" + current;
 }
 
 /**
@@ -68,12 +79,31 @@ export function composeConversationPrompt(input: {
   turns: ConversationTurn[];
   current: string;
   continuation?: boolean;
+  /**
+   * 本场景的输入模式（OD-ARCH-068 S3）：
+   *   report（默认）= 完整组装（场景规则 + 章节 + Profile 写作铁律）；
+   *   note = 随手记，只发一句整理指令。
+   *
+   * 随手记是「先记下来」的低负担入口：带铁律与章节会让首字明显变慢，
+   * 而用户此刻要的只是把事实留住。整理成周报仍走完整组装。
+   */
+  mode?: "note" | "report";
 }): string {
   const context = input.continuation
     ? "用户：" + input.current
     : buildContext(input.turns, input.current);
   const preset = input.preset;
   if (!preset) return context;
+  if (input.mode === "note") {
+    // 只保留事实、不改数据、不补造；不追加铁律、章节或归档条目。
+    return [
+      "你是 OmniDesk 工作台的随手记整理助手。",
+      "请把下面的记录整理成简洁要点，保留全部事实与数字，不补充、不推断、不改写口径。",
+      "信息不全时直接留空，不要编造。",
+      "",
+      context,
+    ].join("\n");
+  }
   return buildDraftPrompt({
     sceneLabel: preset.label,
     purpose: "按用户在本轮对话中的要求完成",
@@ -83,5 +113,6 @@ export function composeConversationPrompt(input: {
     materials: [],
     sceneRules: preset.rules,
     sceneSections: preset.sections,
+    writingRules: preset.writingRules ?? null,
   });
 }

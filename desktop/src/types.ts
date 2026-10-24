@@ -61,6 +61,39 @@ export interface TaskStatus {
   state_since: number;
   cancel_phase: CancelPhase;
   note: string;
+  /** OD-ARCH-066：提交到首个文本增量的秒数；未到达为 null。 */
+  ttfb_seconds?: number | null;
+  /** 等待人工审批的请求数；>0 时界面显示「等待审批中」。 */
+  pending_approvals?: number;
+  /** OD-ARCH-079：本轮 turn/end 的会话事件序号，DSH 原生 session/fork 的切点。 */
+  engine_turn_end_seq?: number | null;
+}
+
+/** OD-ARCH-079：DSH 原生 session/fork 的结果。 */
+export interface SessionFork {
+  parent_session_id: string;
+  engine_session_id: string;
+  at_seq: number | null;
+  note: string;
+}
+
+/** 审批请求（归一化自引擎事件，见 OD-ARCH-066）。 */
+export interface ApprovalRequest {
+  approvalId: string;
+  omniTaskId: string;
+  toolName: string;
+  callId: string;
+  reason: string;
+  /** pending=等待决定；allowed/rejected=已回传；cancelled=引擎撤回；error=回传失败。 */
+  status: "pending" | "allowed" | "rejected" | "cancelled" | "error";
+  error?: string;
+}
+
+export interface ApprovalRespondReceipt {
+  omni_task_id: string;
+  approval_id: string;
+  decision: "allowed" | "rejected";
+  pending_approvals: number;
 }
 
 export interface TaskResult {
@@ -88,6 +121,13 @@ export interface SubmitTaskReceipt {
    * resumed=重开已落盘会话；degraded=续接失败、已降级为新建会话（本轮没有继承旧上文）。
    */
   session_mode?: "new" | "continued" | "resumed" | "degraded" | string;
+  /**
+   * 本次出站文本被自动掩码的类别计数（OD-ARCH-068）；只回传数量，不回显原文。
+   * 本地线程仍保留用户原文，只有送往引擎的提示词被替换。
+   */
+  privacy_masked?: { id_card: number; phone: number } | null;
+  /** 本次提交是否加载了 Profile 规则（false = 纯净底座，零关键词零铁律）。 */
+  profile_rules_loaded?: boolean | null;
 }
 
 export interface CancelOutcome {
@@ -436,6 +476,23 @@ export interface MaterialRead {
   content: string;
 }
 
+/** 可作为 @ 引用的文件（只含元数据；OD-ARCH-077 S1）。 */
+export interface ReferenceCandidate {
+  path: string;
+  file_name: string;
+  bytes: number;
+  extension: string;
+  /** 该文件所属来源根（成果目录或知识库）。 */
+  source_root: string;
+}
+
+export interface ReferenceRoot {
+  kind: "artifacts" | "knowledge";
+  label: string;
+  path: string;
+  exists: boolean;
+}
+
 export interface OfflineFlowPack {
   schema: string;
   weekly: OfflineFlowCopy;
@@ -727,6 +784,102 @@ export interface ProfileDecl {
 }
 
 /** `profileDecl()` 的返回值：声明本体 + 落盘路径 + 是否首次创建 + 告警。 */
+// ---------------------------------------------------------------------------
+// Profile 规则资产（OD-ARCH-068）
+//
+// 平台代码不内置任何行业规则：红线词表、写作铁律、场景规则与思考档、隐私策略
+// 全部来自用户可编辑的 `<数据根>/profiles/discipline.rules.json`。
+// 结构必须与 Rust `profile_rules::ProfileRules` 对齐（schema 校验在宿主侧）。
+// ---------------------------------------------------------------------------
+
+/** 隐私处理方式：mask=掩码后放行；reject=命中即拒绝；off=不处理。 */
+export type PrivacyMode = "mask" | "reject" | "off";
+
+/** 场景默认思考档；default 表示不写该参数（跟随模型）。 */
+export type ThinkingLevel = "default" | "off" | "low" | "medium" | "high" | "max";
+
+export interface ProfileSceneRules {
+  /** 与 Rust `SceneRules` 对齐：多行文本，不是数组。 */
+  rules: string;
+  /** 期望输出章节（每行一个）；空串表示不强制章节。 */
+  sections: string;
+  thinking: ThinkingLevel;
+}
+
+export interface ProfileRules {
+  schema: string;
+  profile: string;
+  global: {
+    writing_rules: string[];
+    redline_keywords: string[];
+    privacy: { id_card: PrivacyMode; phone: PrivacyMode };
+    privacy_keywords: { id_card: string[]; phone: string[] };
+  };
+  scenes: Record<string, ProfileSceneRules>;
+}
+
+/**
+ * 一次读取规则资产的结果。
+ *
+ * `loaded=false` 有两种含义，靠 `error` 区分：
+ *   无 error  → 文件不存在（纯净底座，零规则）；
+ *   有 error  → 文件损坏（提交会被宿主拒绝，界面必须显式提示）。
+ */
+export interface ProfileRulesView {
+  loaded: boolean;
+  path: string;
+  text: string | null;
+  content_sha256: string | null;
+  rules: ProfileRules | null;
+  error: string | null;
+  default_available: boolean;
+}
+
+export interface ProfileRulesSaveReceipt {
+  ok: boolean;
+  path: string;
+  backup: string | null;
+  digest: string;
+  note: string;
+}
+
+/** 能力管理（OD-ARCH-072）：一个 Skill 的只读条目。 */
+export interface CapabilitySkill {
+  name: string;
+  description: string | null;
+  /** Unix 秒；null 表示读不到修改时间。 */
+  modified_at: number | null;
+  path: string;
+}
+
+/** 能力管理：一个插件（bundle）的当前状态。 */
+export interface CapabilityPlugin {
+  name: string;
+  version: string | null;
+  enabled: boolean;
+  builtin: boolean;
+  installed: boolean;
+}
+
+export interface CapabilityView {
+  profile_dir: string;
+  manifest_path: string;
+  skills_dir: string;
+  skills: CapabilitySkill[];
+  plugins: CapabilityPlugin[];
+  market_installed: boolean;
+  market_enabled: boolean;
+  market_version: string | null;
+  notes: string[];
+}
+
+export interface CapabilityReceipt {
+  ok: boolean;
+  path: string;
+  backup: string | null;
+  note: string;
+}
+
 export interface ProfileDeclPayload {
   decl: ProfileDecl;
   path: string;
@@ -774,6 +927,17 @@ export interface ModelSettings {
   schema: string;
   providers: ProviderSettings[];
   default: DefaultRoute;
+  /**
+   * 旧版遗留字段：任务等待上限（秒）。2026-10-23 起宿主不再向引擎下发等待上限，
+   * 任务只在正常完成、底座报错/断流或用户取消时结束。字段保留只为兼容旧配置，
+   * 仍需原样回传，否则保存会丢掉旧值。
+   */
+  task_timeout_seconds?: number;
+  /**
+   * 旧版遗留字段：联网检索等待上限（秒）。同 task_timeout_seconds，已不再参与
+   * 任何收尾判断，仅为兼容旧配置而保留。
+   */
+  search_task_timeout_seconds?: number;
 }
 
 /** 凭据状态。值永不下发，只有这三项事实。 */
@@ -855,5 +1019,37 @@ export interface ProfileDeclSaveReceipt {
   path: string;
   backup: string | null;
   digest: string;
+  note: string;
+}
+
+/** 顶栏 Profile 徽标（OD-ARCH-072）：一个可选的引擎 Profile。 */
+export interface ProfileChoiceOption {
+  /** 目录名，也是 DSH 的 profile 名。 */
+  name: string;
+  /** 界面显示名（优先取 package.json 的 name）。 */
+  label: string;
+  /** 是否当前通道的默认 Profile（「标准模式」）。 */
+  standard: boolean;
+}
+
+/** 只读视图：隔离数据根里真实存在的 Profile + 本次启动实际使用的那个。 */
+export interface ProfileChoiceView {
+  ok: boolean;
+  channel: string;
+  standard: string;
+  /** 用户上次保存的选择；null = 标准模式。 */
+  saved: string | null;
+  /** 本次启动实际生效的 Profile。 */
+  effective: string;
+  options: ProfileChoiceOption[];
+  /** 引擎配置读不出来时的原因；此时 effective 是推算值。 */
+  warning: string | null;
+  note: string;
+}
+
+export interface ProfileChoiceReceipt {
+  ok: boolean;
+  saved: string | null;
+  effective_next_start: string;
   note: string;
 }

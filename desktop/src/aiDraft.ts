@@ -44,6 +44,13 @@ export interface AiDraftInput {
   sceneRules?: string | null;
   /** 来自可编辑流程包的期望输出章节（每行一个）。 */
   sceneSections?: string | null;
+  /**
+   * Profile 规则资产里的写作铁律（OD-ARCH-068）。
+   *
+   * 平台本身不内置任何行业规则：没有加载 Profile 规则时不输出这一段；
+   * 传空数组同样不输出。规则文本只来自用户可编辑的规则文件。
+   */
+  writingRules?: string[] | null;
 }
 
 /**
@@ -94,14 +101,11 @@ export function buildDraftPrompt(input: AiDraftInput): string {
   }
 
   lines.push("");
-  lines.push("写作规则（流程包不可关闭）：");
-  lines.push("1. 先判断材料用途与受众，再决定结构；没有适配的固定格式时按用途组织内容，不硬套模板。");
-  lines.push("2. 区分事实、分析、判断和建议，不把推断写成事实。");
-  lines.push("3. 不得虚构数据、政策依据、文件名称、文号、工作成效或领导要求。");
-  lines.push("4. 关键信息缺失时单列「待确认」，不得自行补全或猜测。");
-  lines.push("5. 输入事实之间存在矛盾时明确指出冲突，不选一个当作正确。");
-  lines.push("6. 不处理案件材料、案件线索或未公开调查信息；如判断属于此类，停止并说明。");
-  lines.push("7. 语言简洁具体，不使用空洞套话；不使用表情符号。");
+  const writingRules = (input.writingRules ?? []).map((r) => r.trim()).filter((r) => r.length > 0);
+  if (writingRules.length > 0) {
+    lines.push("写作规则（来自当前 Profile 规则资产）：");
+    writingRules.forEach((rule, idx) => lines.push(`${idx + 1}. ${rule}`));
+  }
   lines.push("");
   lines.push(
     "输出：先给结构（章节列表），再给初稿正文；最后列出「待确认事项」和「事实来源」（含所用材料文件名）。",
@@ -231,14 +235,16 @@ export async function runAiDraftSubmission(
   effects: AiDraftEffects,
   options?: {
     intervalMs?: number;
-    timeoutMs?: number;
+    /** 等待上限（毫秒）。缺省不设上限：任务只按引擎终态收尾，用户取消是唯一主动终止。 */
+    timeoutMs?: number | null;
     wait?: (ms: number) => Promise<void>;
     /** 引擎工作目录（绝对路径）；缺省时交由宿主/引擎决定。 */
     workspaceDir?: string | null;
   },
 ): Promise<void> {
   const interval = options?.intervalMs ?? 1200;
-  const timeout = options?.timeoutMs ?? 180_000;
+  // 2026-10-23：缺省不再按墙钟放弃等待（底座跑八分钟以上属正常）。
+  const timeout = options?.timeoutMs ?? null;
   const wait = options?.wait ?? sleep;
   effects.onDraft(null);
   effects.onMessage(null);
@@ -272,14 +278,14 @@ export async function runAiDraftSubmission(
     return;
   }
 
-  const deadline = Date.now() + timeout;
+  const deadline = timeout === null ? null : Date.now() + timeout;
   let status = "";
   for (;;) {
     const snapshot = await host.taskStatus(taskId);
     status = snapshot.status;
     effects.onStatus(status);
     if (AI_TERMINAL_STATES.includes(status)) break;
-    if (Date.now() >= deadline) {
+    if (deadline !== null && Date.now() >= deadline) {
       effects.onPhase("failed");
       effects.onMessage(
         "等待终态超时（最近状态：" +

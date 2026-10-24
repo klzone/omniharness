@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { shell } from "../api";
+import { pendingWrites, shell } from "../api";
 import { Icon } from "../components/Icon";
 import { SCENES, isSceneKey } from "../scenes";
 import {
@@ -12,12 +12,16 @@ import {
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import type { OfflineFlowPack, ProfileSceneEntry } from "../types";
+import type {
+  OfflineFlowPack,
+  PendingWriteView,
+  ProfileRulesView,
+  ProfileSceneEntry,
+} from "../types";
 import { useThreadCategories, type ThreadCategory } from "../threadCategories";
 import type { Scene } from "./Dock";
-import { HomeChat, type ChatPreset } from "./HomeChat";
+import { HomeChat, type ChatMessage, type ChatPreset } from "./HomeChat";
 import { SceneScaffold } from "./SceneScaffold";
-import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 
 /**
  * 首页画布（OD-ARCH-026 首页版式回归：对话为主 + 顶部三模块）。
@@ -33,6 +37,111 @@ import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
  *   卡片也不用背景模糊；层次由半透明底色 + 描边 + 阴影表达。要加动效须另行批准。
  * - 不显示右上角的装饰性状态串（「OMNIDESK · LOCAL FIRST」等），此处只保留真实信息。
  */
+/**
+ * 规则资产里的场景规则是**多行文本**（与 Rust `SceneRules` 一致）。
+ * 这里仍容忍数组形态：早期草稿与本机已存在的规则文件可能是数组，
+ * 直接 .join 会在两者不一致时抛错并让整个首页白屏（OD-ARCH-068 回归）。
+ */
+function ruleText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? value : null;
+  }
+  if (Array.isArray(value)) {
+    const lines = value.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+    return lines.length > 0 ? lines.join("\n") : null;
+  }
+  return null;
+}
+
+/**
+ * 待办轮播（OD-ARCH-072）：问候语下方只显示**一条**真实待办，约 5 秒换下一条。
+ *
+ * 数据来自宿主登记的待确认写入（pending_write_list），只显示标题与所属场景，
+ * 不展示正文。一条都没有时不占位（高度为 0），也不编造演示待办。
+ * 窗口失焦/隐藏时暂停计时，避免后台无意义重渲染。
+ */
+const TODO_ROTATE_MS = 5000;
+
+function TodoTicker({
+  items,
+  error,
+  loading,
+  onOpen,
+}: {
+  items: PendingWriteView[];
+  error: string | null;
+  loading: boolean;
+  onOpen: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const [shown, setShown] = useState(true);
+
+  // 条数变化时回到第一条，避免索引越界显示空白。
+  useEffect(() => {
+    setIndex((prev) => (items.length === 0 ? 0 : Math.min(prev, items.length - 1)));
+  }, [items.length]);
+
+  useEffect(() => {
+    if (items.length <= 1) return;
+    let fadeTimer: number | null = null;
+    const rotate = () => {
+      if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+      setShown(false);
+      fadeTimer = window.setTimeout(() => {
+        setIndex((prev) => (prev + 1) % items.length);
+        setShown(true);
+      }, 180);
+    };
+    const timer = window.setInterval(rotate, TODO_ROTATE_MS);
+    return () => {
+      window.clearInterval(timer);
+      if (fadeTimer !== null) window.clearTimeout(fadeTimer);
+    };
+  }, [items.length]);
+
+  if (error) {
+    return (
+      <p className="text-[11.5px] text-error pb-2" role="status">
+        读取本机待办失败：{error}
+      </p>
+    );
+  }
+  if (loading) {
+    return <p className="text-[11.5px] text-outline pb-2">正在读取本机待办…</p>;
+  }
+  if (items.length === 0) return null;
+
+  const current = items[Math.min(index, items.length - 1)];
+  return (
+    <div className="pb-2 min-h-[22px] flex items-center gap-2" data-testid="home-todo-ticker">
+      <Icon name="checklist" className="w-[13px] h-[13px] text-primary/70 flex-shrink-0" />
+      <p
+        className={
+          "text-[12px] text-on-surface-variant truncate transition-opacity duration-150 " +
+          (shown ? "opacity-100" : "opacity-0")
+        }
+        title={current.title}
+      >
+        {current.title}
+        <span className="text-outline"> · {current.scenario || "未分类"}</span>
+      </p>
+      {items.length > 1 ? (
+        <span className="text-[10px] text-outline tabular-nums flex-shrink-0">
+          {index + 1}/{items.length}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="ml-auto text-[10.5px] text-primary hover:underline flex-shrink-0"
+      >
+        查看
+      </button>
+    </div>
+  );
+}
+
 function greeting(date: Date): string {
   const h = date.getHours();
   if (h < 6) return "夜深了";
@@ -76,31 +185,31 @@ export function HomeCanvas({
   const now = new Date();
 
   /**
-   * 「今日重点推进」的数据（OD-ARCH-060 S5）：跨场景待确认 + 逾期汇总。
-   * 来自宿主的 `scene_overview` 聚合命令（数已落盘记录），不调模型、不编造待办。
-   * 读取失败时如实显示失败原因，不当作「今天没有要处理的」。
+   * 待办（OD-ARCH-072）：问候语下方轮播的真实条目。
+   *
+   * 来源是宿主登记的待确认写入（只读列表，读不到正文），不调模型、不编造待办。
+   * 读取失败如实显示原因，不当作「没有待办」。
    */
-  const [today, setToday] = useState<{ pending: number; expired: number; broken: number } | null>(null);
-  const [todayError, setTodayError] = useState<string | null>(null);
+  const [todos, setTodos] = useState<PendingWriteView[]>([]);
+  const [todoLoading, setTodoLoading] = useState(true);
+  const [todoError, setTodoError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    shell
-      .sceneOverview()
+    pendingWrites
+      .list()
       .then((r) => {
         if (!alive) return;
-        const items = r.items ?? [];
-        setToday({
-          pending: items.reduce((n, i) => n + i.pending, 0),
-          expired: items.reduce((n, i) => n + i.pending_expired, 0),
-          broken: items.reduce((n, i) => n + i.pending_broken, 0),
-        });
-        setTodayError(null);
+        setTodos((r.items ?? []).filter((i) => i.status === "pending"));
+        setTodoError(null);
       })
       .catch((e) => {
         if (!alive) return;
-        setToday(null);
-        setTodayError(e instanceof Error ? e.message : String(e));
+        setTodos([]);
+        setTodoError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (alive) setTodoLoading(false);
       });
     return () => {
       alive = false;
@@ -117,6 +226,12 @@ export function HomeCanvas({
    */
   const [viewKey, setViewKey] = useState<string>(() => listThreads()[0]?.id ?? "new");
   const [pack, setPack] = useState<OfflineFlowPack | null>(null);
+  /**
+   * Profile 规则资产（OD-ARCH-068）：场景规则/章节/思考档与写作铁律的唯一来源。
+   * 没加载 = 纯净底座（不输出铁律、不套场景规则）；读取失败也要如实告知，
+   * 不能悄悄按“没有规则”使用。
+   */
+  const [rulesView, setRulesView] = useState<ProfileRulesView | null>(null);
   /** 已补建但还没进入 state 的线程号（同一 tick 内多次回调要用同一个）。 */
   const pendingIdRef = useRef<string | null>(null);
 
@@ -125,6 +240,22 @@ export function HomeCanvas({
       .offlineFlowPack()
       .then((r) => setPack(r.ok ? r.pack : null))
       .catch(() => setPack(null));
+  }, []);
+
+  // 每次回到首页都重读一次规则资产：设置页保存后无需重启，回来即生效。
+  useEffect(() => {
+    let alive = true;
+    shell
+      .profileRules()
+      .then((r) => {
+        if (alive) setRulesView(r);
+      })
+      .catch(() => {
+        if (alive) setRulesView(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const refresh = useCallback(() => setThreads(listThreads()), []);
@@ -156,13 +287,18 @@ export function HomeCanvas({
     if (!isSceneKey(effectiveTag)) return null;
     const def = SCENES[effectiveTag];
     const flow = pack ? pack[def.preset] : null;
+    // Profile 规则优先，流程包只作缺省回退（OD-ARCH-068）。
+    const scene = rulesView?.rules?.scenes?.[def.preset] ?? null;
     return {
       key: def.preset,
       label: def.label,
-      rules: flow?.draft?.rules ?? null,
-      sections: flow?.draft?.sections ?? null,
+      rules: scene ? ruleText(scene.rules) : flow?.draft?.rules ?? null,
+      sections: scene ? ruleText(scene.sections) : flow?.draft?.sections ?? null,
+      writingRules: rulesView?.rules?.global?.writing_rules ?? null,
+      thinking: scene?.thinking ?? null,
+      rulesLoaded: Boolean(rulesView?.loaded),
     };
-  }, [effectiveTag, pack]);
+  }, [effectiveTag, pack, rulesView]);
 
   const categories = useThreadCategories();
   const options = useMemo(
@@ -191,6 +327,24 @@ export function HomeCanvas({
     refresh();
   }, [activeTag, refresh]);
 
+  /**
+   * 分支到新对话（OD-ARCH-079）：引擎已在 DSH 侧建好子会话，这里新建一条同一场景的线程，
+   * 只把截至切点的消息带过去用于展示，并保存子会话号；后续消息直接续接子会话，不重放历史。
+   */
+  const branchThread = useCallback(
+    (carried: ChatMessage[], childSessionId: string) => {
+      const t = createThread({ tag: activeTag, preset: isSceneKey(activeTag) ? activeTag : "plain" });
+      saveThreadMessages(t.id, carried);
+      setThreadEngineSession(t.id, childSessionId);
+      // 先刷新线程列表，切过去时 active 能立刻带上子会话号与消息。
+      refresh();
+      setActiveId(t.id);
+      setViewKey(t.id);
+      pendingIdRef.current = null;
+    },
+    [activeTag, refresh],
+  );
+
   // 第一轮消息到达且还没有线程记录时补建一条，避免「聊完没进档案」。
   const ensureThread = useCallback(() => {
     if (activeId) return activeId;
@@ -206,9 +360,13 @@ export function HomeCanvas({
     <SceneScaffold
       upper={
         <>
-      {/* 上部：问候 + 一行三模块（收进悬停面板，把纵向空间让给对话） */}
+      {/*
+        上部（OD-ARCH-072）：只有问候 + 一条待办。
+        「今日重点推进」卡片与常驻日程卡已移除；日程改到顶栏日期悬浮卡，
+        待办改成问候语下方单条轮播，无待办时不占位。
+      */}
       <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
-        <div className="pb-3 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
+        <div className="pb-1 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
           <h1 className="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-tight">
             {greeting(now)}
             <span className="text-on-surface-variant font-light text-base ml-3 tracking-normal">
@@ -216,89 +374,20 @@ export function HomeCanvas({
             </span>
           </h1>
         </div>
-
-        <div className="relative flex flex-col lg:flex-row items-stretch gap-4">
-          {/* 左：机器人（本地透明背景资源），独立一列、底部对齐 */}
-          <div className="hidden lg:flex w-[112px] shrink-0 flex-col items-center justify-end">
-            <img
-              src="/mascot.png"
-              alt="OmniDesk 吉祥物"
-              className="w-[112px] h-auto drop-shadow-[0_16px_24px_rgba(79,70,229,0.18)]"
-            />
-          </div>
-
-          {/* 中：今日重点推进（诚实空态，保留版式） */}
-          <div className="flex-1 bg-white/80 p-5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px]">
-            <div className="flex items-center justify-between pb-2.5 border-b border-surface-variant/20">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                  <Icon name="checklist" className="w-[15px] h-[15px]" />
-                </div>
-                <h2 className="font-headline-md text-[13px] font-semibold text-on-surface">
-                  今日重点推进
-                </h2>
-                {today && today.pending + today.expired > 0 ? (
-                  <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-label-caps text-[9px]">
-                    {today.pending + today.expired} 条待处理
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 py-5">
-              <div className="w-11 h-11 rounded-full bg-surface-container-low flex items-center justify-center text-outline">
-                <Icon name="history" className="w-5 h-5" />
-              </div>
-              {todayError ? (
-                <p className="text-[13px] text-error max-w-md leading-relaxed">
-                  读取本机状态失败：{todayError}。这不等于「今天没有要处理的」。
-                </p>
-              ) : today === null ? (
-                <p className="text-[13px] text-outline max-w-md leading-relaxed">正在读取本机状态…</p>
-              ) : today.pending + today.expired === 0 ? (
-                <p className="text-[13px] text-on-surface-variant max-w-md leading-relaxed">
-                  今天没有要处理的。
-                  {today.broken > 0 ? `另有 ${today.broken} 条待确认记录无法解析（见场景页）。` : ""}
-                </p>
-              ) : (
-                <p className="text-[13px] text-on-surface-variant max-w-md leading-relaxed">
-                  有 {today.pending} 条待确认写入等你决定
-                  {today.expired > 0 ? `，${today.expired} 条已过期` : ""}。
-                  打开对应场景页，在顶部状态条点「待确认写入」查看。
-                </p>
-              )}
-              {/* 任务工作台已下线（OD-ARCH-061 S4）：同一份计数在场景页顶部状态条里可看。 */}
-            </div>
-          </div>
-
-          {/* 右：日程节律（三周日期骨架，不显示业务内容） */}
-          <div className="w-full lg:w-[330px] flex-shrink-0 bg-white/80 p-3.5 border border-white/90 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] rounded flex flex-col justify-between min-h-[220px]">
-            <div className="flex items-center justify-between pb-1.5 border-b border-surface-variant/20">
-              <div className="flex items-center space-x-1.5">
-                <div className="w-5 h-5 rounded-full bg-secondary-fixed/50 text-secondary flex items-center justify-center">
-                  <Icon name="calendar" className="w-[13px] h-[13px]" />
-                </div>
-                <span className="font-headline-md text-[12px] font-semibold text-on-surface">
-                  日程节律
-                </span>
-              </div>
-              <span
-                className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-surface-container text-outline font-label-caps text-[9px]"
-                title="日程同步未实现"
-              >
-                未同步
-              </span>
-            </div>
-
-            <div className="py-1.5 w-full">
-              <ThreeWeekCalendar now={now} />
-            </div>
-          </div>
-        </div>
+        <TodoTicker
+          items={todos}
+          error={todoError}
+          loading={todoLoading}
+          onOpen={() => onNavigate("sessions")}
+        />
       </section>
         </>
       }
       chat={
-        /* 下部：整幅对话（全宽），消息区顶部向上渐隐由 chat-fade-mask 提供 */
+        /* 下部：对话（全宽）。OD-ARCH-078 S2：去掉左侧吉祥物图片，
+           顶部「晚上好 · 欢迎回到 OmniDesk」已经是常驻问候，不必再放一张装饰图。 */
+        <div className="flex flex-1 min-h-0 gap-3">
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <HomeChat
           key={viewKey}
           onNavigate={onNavigate}
@@ -307,6 +396,7 @@ export function HomeCanvas({
           activeTag={effectiveTag}
           onChangeTag={changeTag}
           onNewThread={newThread}
+          onBranchNewThread={branchThread}
           threadKey={viewKey}
           initialMessages={active?.messages ?? []}
           engineSessionId={active?.engineSessionId ?? null}
@@ -323,6 +413,8 @@ export function HomeCanvas({
             refresh();
           }}
         />
+          </div>
+        </div>
       }
     />
   );

@@ -185,7 +185,6 @@ export default function App() {
       <TopNav
         engineHealthy={engineHealthy}
         engineLabel={engineLabel}
-        brandName={decl?.decl.display_name}
         onOpenSettings={() => setScene("settings")}
       />
 

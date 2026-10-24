@@ -33,7 +33,15 @@ export type IconName =
   | "folder"
   | "mic"
   | "trend-up"
-  | "lock";
+  | "lock"
+  /** OD-ARCH-078 S3：问答 tips 用到的动作图标。 */
+  | "copy"
+  | "volume"
+  | "refresh"
+  | "edit"
+  | "undo"
+  | "branch"
+  | "clock";
 
 const PATHS: Record<IconName, JSX.Element> = {
   brand: (
@@ -159,6 +167,50 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
       <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9" />
+    </>
+  ),
+  volume: (
+    <>
+      <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4Z" />
+      <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+      <path d="M20 4.5V10h-5.5" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4L19 9a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5Z" />
+      <path d="m14.5 6.5 3 3" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M4 9h9.5a5.5 5.5 0 0 1 0 11H8" />
+      <path d="m8 4.5-4 4 4 4" />
+    </>
+  ),
+  branch: (
+    <>
+      <circle cx="7" cy="5.5" r="2" />
+      <circle cx="7" cy="18.5" r="2" />
+      <circle cx="17" cy="9" r="2" />
+      <path d="M7 7.5v9M9 9.5h3.5A4.5 4.5 0 0 0 17 5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7.5V12l3 2" />
     </>
   ),
 };
