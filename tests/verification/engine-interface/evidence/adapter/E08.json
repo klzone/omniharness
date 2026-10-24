@@ -4,20 +4,20 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559267.353556,
+  "started_at": 1792759673.865219,
   "checks": [
     {
       "check": "session_id_captured",
       "pass": true,
-      "detail": "d1c35af9-1cb3-4185-9a6a-ee622faa0284"
+      "detail": "f4775c56-4ff0-4149-aa2e-826b7827e01e"
     },
     {
       "check": "recover_session_ok",
       "pass": true,
       "detail": {
-        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
+        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
         "resumed": true,
-        "workspace_token": "9da686f56e44a16d",
+        "workspace_token": "d16063cae21c929b",
         "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
@@ -28,9 +28,9 @@
       "check": "resumed_is_existing_session",
       "pass": true,
       "detail": {
-        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
+        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
         "resumed": true,
-        "workspace_token": "9da686f56e44a16d",
+        "workspace_token": "d16063cae21c929b",
         "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
@@ -57,16 +57,18 @@
       "check": "task_recovery_ok",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
+        "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
         "status": {
-          "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
+          "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
           "status": "succeeded",
           "evidence_source": "engine_terminal",
-          "since": 1792559269.089106,
+          "since": 1792759675.6218705,
           "last_event_seq": 4,
           "partial_output_size": 6,
-          "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
-          "note": "来自本地记录（前次运行取得的引擎终态证据）"
+          "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+          "note": "来自本地记录（前次运行取得的引擎终态证据）",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         },
         "replayed": false,
         "evidence": "engine_terminal",
@@ -80,7 +82,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e08_04halold",
+    "data_root": "/tmp/omni_p1s3_e08_xnbgmppx",
     "first_shutdown": {
       "mode": "graceful",
       "in_flight_before": [],
@@ -92,9 +94,9 @@
       "note": "优雅关闭"
     },
     "session_recovery": {
-      "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
+      "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
       "resumed": true,
-      "workspace_token": "9da686f56e44a16d",
+      "workspace_token": "d16063cae21c929b",
       "workspace_label": "",
       "config_option_count": 1,
       "evidence": "engine_terminal",
@@ -108,16 +110,18 @@
       "session/resume": 1
     },
     "task_recovery": {
-      "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
+      "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
       "status": {
-        "omni_task_id": "omni-a409ec74-a84f-4772-bdcc-7f1fe276956b",
+        "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792559269.089106,
+        "since": 1792759675.6218705,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "d1c35af9-1cb3-4185-9a6a-ee622faa0284",
-        "note": "来自本地记录（前次运行取得的引擎终态证据）"
+        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+        "note": "来自本地记录（前次运行取得的引擎终态证据）",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       },
       "replayed": false,
       "evidence": "engine_terminal",
@@ -136,5 +140,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559271.547285
+  "finished_at": 1792759678.074701
 }

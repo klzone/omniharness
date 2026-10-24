@@ -131,6 +131,28 @@ class SessionRecovery:
 
 
 @dataclass(frozen=True)
+class SessionFork:
+    """一次会话分支的结果（DSH 原生 session/fork）。
+
+    子会话在引擎侧继承切点前的完整事件前缀；OmniDesk 只保存新会话号，
+    后续续接该子会话，不再重放历史。
+    """
+
+    parent_session_id: str
+    engine_session_id: str
+    at_seq: Optional[int] = None
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "parent_session_id": self.parent_session_id,
+            "engine_session_id": self.engine_session_id,
+            "at_seq": self.at_seq,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
 class SessionSummary:
     """一个可发现会话的**元数据**。不包含任何消息正文。"""
 
@@ -184,6 +206,7 @@ class TaskRecordSummary:
     cancel_phase: str
     persistence: str
     session_mode: str = "new"
+    ttfb_seconds: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -195,6 +218,7 @@ class TaskRecordSummary:
             "cancel_phase": self.cancel_phase,
             "persistence": self.persistence,
             "session_mode": self.session_mode,
+            "ttfb_seconds": self.ttfb_seconds,
         }
 
 
@@ -288,6 +312,12 @@ class _TaskRecord:
     persist_error: Optional[str] = None
     persisted_at: Optional[float] = None
     timeouts: Mapping[str, float] = field(default_factory=dict)
+    # OD-ARCH-066：submit → 首个 text-delta 的秒数；以及待人工审批的请求。
+    ttfb_seconds: Optional[float] = None
+    submitted_monotonic: Optional[float] = None
+    pending_approvals: dict = field(default_factory=dict)
+    # 本轮 turn/end 的会话事件序号：会话分支（session/fork）的精确切点。
+    turn_end_seq: Optional[int] = None
 
 
 class TaskCoreBase:
@@ -296,9 +326,11 @@ class TaskCoreBase:
     # 子类覆盖：结果来源说明（不同通道的证据不同）。
     engine_kind = "unknown"
 
-    def __init__(self, *, state_dir: Optional[str] = None, default_timeout: float = 120.0) -> None:
+    def __init__(self, *, state_dir: Optional[str] = None,
+                 default_timeout: Optional[float] = 120.0) -> None:
         self._state_dir = state_dir
-        self._default_timeout = float(default_timeout)
+        # None = 不按墙钟自动收尾；具体通道自行解释（子类可覆盖为无上限）。
+        self._default_timeout = None if default_timeout is None else float(default_timeout)
         self._lock = threading.RLock()
         self._cond = threading.Condition(self._lock)
         self._tasks: dict = {}
@@ -430,6 +462,10 @@ class TaskCoreBase:
             "cancel_phase": record.cancel_phase.value,
             "truncated": record.truncated,
             "persisted_at": record.persisted_at,
+            # 只存耗时数字与审批计数，不存请求正文、命令或原因文本。
+            "ttfb_seconds": record.ttfb_seconds,
+            "pending_approvals": len(record.pending_approvals),
+            "turn_end_seq": record.turn_end_seq,
             "content": "".join(record.text_parts),
         }
 
@@ -467,10 +503,17 @@ class TaskCoreBase:
                 partial_output_size=record.text_len,
                 engine_session_id=record.engine_session_id,
                 note=self._status_note(record),
+                ttfb_seconds=record.ttfb_seconds,
+                pending_approvals=len(record.pending_approvals),
+                engine_turn_end_seq=record.turn_end_seq,
             )
 
     def _status_note(self, record: _TaskRecord) -> str:
         parts = []
+        # 终态任务的待审批计数不再当作「等待审批中」展示（请求可能已被引擎撤回）。
+        if record.pending_approvals and record.state not in TERMINAL_STATES:
+            tools = sorted({str(v.get("tool_name") or "?") for v in record.pending_approvals.values()})
+            parts.append("等待审批中：" + ", ".join(tools))
         if record.stop_reason:
             parts.append("stop_reason=" + str(record.stop_reason))
         if record.error_message:
@@ -651,6 +694,11 @@ class TaskCoreBase:
                     cancel_phase=str(data.get("cancel_phase") or "not_requested"),
                     persistence="recorded",
                     session_mode=str(data.get("session_mode") or "new"),
+                    ttfb_seconds=(
+                        float(data["ttfb_seconds"])
+                        if isinstance(data.get("ttfb_seconds"), (int, float))
+                        else None
+                    ),
                 )
             )
         records.sort(key=lambda r: r.created_at, reverse=True)

@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559406.4801025,
+  "started_at": 1792759856.6292505,
   "checks": [
     {
       "check": "three_or_more_deltas",
@@ -14,7 +14,7 @@
     {
       "check": "deltas_arrive_over_time",
       "pass": true,
-      "detail": 0.485
+      "detail": 0.48699999999999993
     },
     {
       "check": "all_deltas_marked_streamed",
@@ -23,17 +23,17 @@
         {
           "text": "TOK-A ",
           "streamed": true,
-          "at_s": 0.381
+          "at_s": 0.339
         },
         {
           "text": "TOK-B ",
           "streamed": true,
-          "at_s": 0.615
+          "at_s": 0.576
         },
         {
           "text": "TOK-C",
           "streamed": true,
-          "at_s": 0.866
+          "at_s": 0.826
         }
       ]
     },
@@ -61,34 +61,36 @@
       "check": "terminal_succeeded",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-148b4d01-587e-4af2-8f77-f5ae325c5123",
+        "omni_task_id": "omni-73d12f5a-c8ce-4631-a9a9-fff916b3affb",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792559410.0069258,
+        "since": 1792759859.9375472,
         "last_event_seq": 6,
         "partial_output_size": 17,
-        "engine_session_id": "session-1e218830-7ed8-4389-b7a5-87e41e2966e9",
-        "note": "stop_reason=stop"
+        "engine_session_id": "session-f23bd5f1-f7f7-46da-b420-14642797905e",
+        "note": "stop_reason=stop",
+        "ttfb_seconds": 0.339,
+        "pending_approvals": 0
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w02_h0gx2w49",
+    "data_root": "/tmp/omni_p1s3_w02_o93z155_",
     "delta_arrivals": [
       {
         "text": "TOK-A ",
         "streamed": true,
-        "at_s": 0.381
+        "at_s": 0.339
       },
       {
         "text": "TOK-B ",
         "streamed": true,
-        "at_s": 0.615
+        "at_s": 0.576
       },
       {
         "text": "TOK-C",
         "streamed": true,
-        "at_s": 0.866
+        "at_s": 0.826
       }
     ],
     "event_types": [
@@ -100,10 +102,10 @@
       "task_completed"
     ],
     "final_result": {
-      "omni_task_id": "omni-148b4d01-587e-4af2-8f77-f5ae325c5123",
+      "omni_task_id": "omni-73d12f5a-c8ce-4631-a9a9-fff916b3affb",
       "form": "complete",
       "content": "TOK-A TOK-B TOK-C",
-      "persisted_at": 1792559408.9202943,
+      "persisted_at": 1792759859.1634195,
       "integrity": "complete",
       "sources": [
         {
@@ -135,5 +137,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559410.7229104
+  "finished_at": 1792759860.6423967
 }

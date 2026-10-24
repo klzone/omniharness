@@ -1,0 +1,62 @@
+{
+  "display": ":96",
+  "root": "/tmp/od072-verify",
+  "source_fingerprint_before": "2e05500ff9b2a383:1287",
+  "user_dsh_before": "435315d6e3517d7a:4000",
+  "user_agents_before": "e3b0c44298fc1c14:0",
+  "bundles_before": [
+    "@deepseek-ai/dsh-base",
+    "@deepseek-ai/dsh-web-app",
+    "dsh-free-search",
+    "dsh-cost-meter"
+  ],
+  "dependencies_before": {
+    "dsh-cost-meter": "1.9.6",
+    "dsh-free-search": "0.9.5"
+  },
+  "skills_on_disk": [
+    "document-review",
+    "knowledge-agent",
+    "knowledge-search",
+    "material-writing",
+    "memory-agent",
+    "project-agent"
+  ],
+  "bundles_after_disable": [
+    "@deepseek-ai/dsh-base",
+    "@deepseek-ai/dsh-web-app",
+    "dsh-free-search"
+  ],
+  "dependencies_after_disable": {
+    "dsh-cost-meter": "1.9.6",
+    "dsh-free-search": "0.9.5"
+  },
+  "backups_after_disable": [
+    "package.json.bak-1792770764"
+  ],
+  "patch_sha": "79c1ce61abf19041",
+  "patch_sha_unchanged": true,
+  "bundles_after_enable": [
+    "@deepseek-ai/dsh-base",
+    "@deepseek-ai/dsh-web-app",
+    "dsh-free-search",
+    "dsh-cost-meter"
+  ],
+  "backups_total": [
+    "package.json.bak-1792770764",
+    "package.json.bak-1792770770"
+  ],
+  "market_manifest_unchanged": true,
+  "market_no_new_backup": true,
+  "alive": true,
+  "app_log_bytes": 134,
+  "app_log_has_error": false,
+  "engine_log_has_cost_meter": false,
+  "source_fingerprint_after": "2e05500ff9b2a383:1287",
+  "user_dsh_after": "435315d6e3517d7a:4000",
+  "user_agents_after": "e3b0c44298fc1c14:0",
+  "source_unchanged": true,
+  "user_dsh_unchanged": true,
+  "user_agents_unchanged": true,
+  "passed": true
+}

@@ -1,0 +1,72 @@
+{
+  "scenario": "W12",
+  "title": "W12 分支切点不合法时如实失败",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792857503.8795435,
+  "checks": [
+    {
+      "check": "bad_cut_rejected",
+      "pass": true
+    },
+    {
+      "check": "bad_cut_is_argument_error",
+      "pass": true,
+      "detail": "invalid_argument"
+    },
+    {
+      "check": "unknown_session_rejected",
+      "pass": true
+    },
+    {
+      "check": "unknown_session_mapped",
+      "pass": true,
+      "detail": "unknown_session"
+    },
+    {
+      "check": "no_task_created_by_failed_fork",
+      "pass": true,
+      "detail": {
+        "before": 1,
+        "after": 1
+      }
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w12_wbs9vtyu",
+    "bad_cut_error": {
+      "exception": "EngineError",
+      "engine_error_code": "invalid_argument",
+      "message": "[invalid_argument] event 999999 does not exist in session \"session-6110a63f-28ad-4c69-9d51-ac9b69651d48\" (last seq: 18)",
+      "detail": {
+        "channel": "web-api",
+        "method": "session/fork",
+        "rpc_code": "session/fork-unavailable"
+      }
+    },
+    "unknown_session_error": {
+      "exception": "EngineError",
+      "engine_error_code": "unknown_session",
+      "message": "[unknown_session] session \"session-does-not-exist\" not found",
+      "detail": {
+        "channel": "web-api",
+        "method": "session/fork",
+        "rpc_code": "session/not-found"
+      }
+    },
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792857507.026328
+}

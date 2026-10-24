@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559278.4713047,
+  "started_at": 1792759684.2823746,
   "checks": [
     {
       "check": "no_duplicate_seq",
@@ -44,12 +44,12 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e11_8elpnrge",
+    "data_root": "/tmp/omni_p1s3_e11_aa2m_7_d",
     "partial_before_reconnect": [
       {
-        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
+        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
         "seq": 1,
-        "occurred_at": 1792559280.005151,
+        "occurred_at": 1792759685.7546995,
         "type": "task_started",
         "payload": {
           "normalized": true,
@@ -59,22 +59,22 @@
         }
       },
       {
-        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
+        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
         "seq": 2,
-        "occurred_at": 1792559281.7249064,
+        "occurred_at": 1792759687.5152152,
         "type": "text_delta",
         "payload": {
           "text": "甲乙丙丁戊",
-          "message_id": "64ab1c16-2fce-43e0-9735-a7dadfe2bfc1",
+          "message_id": "ea0c1784-00f2-4653-85a4-2d61bb1378cd",
           "chars": 5
         }
       }
     ],
     "resumed_after_reconnect": [
       {
-        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
+        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
         "seq": 3,
-        "occurred_at": 1792559281.7269201,
+        "occurred_at": 1792759687.5166852,
         "type": "progress",
         "payload": {
           "kind": "usage",
@@ -83,9 +83,9 @@
         }
       },
       {
-        "omni_task_id": "omni-cafa6349-ac09-4fdc-946b-a55d2e8295e1",
+        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
         "seq": 4,
-        "occurred_at": 1792559281.7399797,
+        "occurred_at": 1792759687.5335338,
         "type": "task_completed",
         "payload": {
           "stop_reason": "end_turn",
@@ -109,5 +109,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559282.198216
+  "finished_at": 1792759687.9676557
 }

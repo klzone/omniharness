@@ -1,0 +1,91 @@
+{
+  "plan": "OD-ARCH-066",
+  "executed_at": "2026-10-23",
+  "evidence_levels": {
+    "file_fact": "源码与文档审阅",
+    "static_check": "tsc --noEmit / cargo build",
+    "script_run": "pytest + cargo test + 端到端场景脚本",
+    "real_model": "仅合成模型端点（_mock_model_server），未接真实模型"
+  },
+  "implemented": [
+    "引擎发出审批请求事件（waterfall: approval/request），归一化为 approval_request",
+    "适配层 respond_approval(omni_task_id, approval_id, allow) 走 $events/result",
+    "RPC 命令 omni.approval_respond + 桌面 Tauri engine_approval_respond",
+    "HomeChat 消息流内审批卡片：允许/拒绝/已决定/已失效",
+    "等待态：状态 note 显示「等待审批中：<工具>」，pending_approvals 计数",
+    "TTFB：首个 text-delta 时写入台账 ttfb_seconds，界面显示「首字 x.xs」",
+    "任务终态时前端把残留 pending 卡片标为已失效"
+  ],
+  "commands": [
+    {
+      "cmd": "python3 -m pytest tests -q",
+      "result": "37 passed",
+      "exit": 0
+    },
+    {
+      "cmd": "npx tsc --noEmit",
+      "result": "无类型错误",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run build",
+      "result": "built in 633ms",
+      "exit": 0
+    },
+    {
+      "cmd": "cargo test --offline",
+      "result": "231 passed across 7 binaries (212+2+13+3+1+0+0)",
+      "exit": 0
+    },
+    {
+      "cmd": "python3 run_approval_scenarios.py A01..A05",
+      "result": "5/5 pass",
+      "exit": 0
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "A01",
+      "title": "允许审批后任务继续并完成",
+      "pass": true,
+      "observed": "收到审批事件；note 含「等待审批中」；应答 allowed；终态 succeeded；ttfb=0.672s"
+    },
+    {
+      "id": "A02",
+      "title": "拒绝审批后按引擎语义落定",
+      "pass": true,
+      "observed": "应答 rejected 成功；终态 succeeded（非 failed）；pending 清零。计划中『拒绝大概率 failed』的预期被证伪，按实际语义记录"
+    },
+    {
+      "id": "A03",
+      "title": "等待时状态可见且台账不泄露正文",
+      "pass": true,
+      "observed": "pending_approvals=1；台账无命令文本、无原因原文"
+    },
+    {
+      "id": "A04",
+      "title": "伪造审批编号被拒绝且不消耗待办",
+      "pass": true,
+      "observed": "答复被拒（not pending）；pending 仍为 1"
+    },
+    {
+      "id": "A05",
+      "title": "首字延迟写入台账",
+      "pass": true,
+      "observed": "ttfb=0.328s，台账含 ttfb_seconds，文本增量存在"
+    }
+  ],
+  "deviations": [
+    "计划写 respond_approval(callId, allow)；实际协议用 eventId（审批编号）定位，callId 仅作展示",
+    "拒绝后终态为 succeeded 而非 failed，界面文案按实际语义「引擎按自己的语义结束本轮」"
+  ],
+  "tests_added": "test_web_api_unit.py::ApprovalChannelTests 11 例",
+  "unverified": [
+    "真实窗口点击允许/拒绝的界面验收（需用户操作）",
+    "真实模型端点下的审批行为（本次仅合成端点）",
+    "引擎进程崩溃后的审批恢复"
+  ],
+  "runtime_untouched": true,
+  "credentials_touched": false,
+  "raw_evidence": "tests/verification/engine-interface/evidence/web-api/approval-scenarios/scenarios.json"
+}

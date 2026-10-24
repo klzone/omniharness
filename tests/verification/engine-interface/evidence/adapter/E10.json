@@ -4,16 +4,16 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559273.555183,
+  "started_at": 1792759679.5808935,
   "checks": [
     {
       "check": "in_flight_client_started",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
-        "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
+        "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
+        "engine_session_id": "39bb7d99-ce04-4539-ab31-b532f68494c9",
         "status": "running",
-        "child_pid": 702231
+        "child_pid": 327162
       }
     },
     {
@@ -25,16 +25,18 @@
       "check": "recover_returns_state",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+        "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
         "status": {
-          "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+          "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
           "status": "unknown",
           "evidence_source": "process_state",
-          "since": 1792559275.2592187,
+          "since": 1792759681.1091363,
           "last_event_seq": 0,
           "partial_output_size": 0,
-          "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
-          "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
+          "engine_session_id": "39bb7d99-ce04-4539-ab31-b532f68494c9",
+          "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         },
         "replayed": false,
         "evidence": "process_state",
@@ -70,32 +72,34 @@
       "detail": {
         "exception": "EngineError",
         "engine_error_code": "unknown_task",
-        "message": "[unknown_task] unknown omni_task_id: omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+        "message": "[unknown_task] unknown omni_task_id: omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
         "detail": {
-          "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3"
+          "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7"
         }
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e10_j5idvre9",
+    "data_root": "/tmp/omni_p1s3_e10_qk220cls",
     "client_receipt": {
-      "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
-      "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
+      "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
+      "engine_session_id": "39bb7d99-ce04-4539-ab31-b532f68494c9",
       "status": "running",
-      "child_pid": 702231
+      "child_pid": 327162
     },
     "recover_interrupted": {
-      "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+      "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
       "status": {
-        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+        "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
         "status": "unknown",
         "evidence_source": "process_state",
-        "since": 1792559275.2592187,
+        "since": 1792759681.1091363,
         "last_event_seq": 0,
         "partial_output_size": 0,
-        "engine_session_id": "0ae5fab7-b39d-4a78-9c11-39f2e9685a7c",
-        "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）"
+        "engine_session_id": "39bb7d99-ce04-4539-ab31-b532f68494c9",
+        "note": "非终态记录：无引擎终态证据，标为 unknown，不自动重放；会话仍可 resume（说明会话存活，但不代表该轮有终态证据）",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       },
       "replayed": false,
       "evidence": "process_state",
@@ -108,9 +112,9 @@
     "result_lookup": {
       "exception": "EngineError",
       "engine_error_code": "unknown_task",
-      "message": "[unknown_task] unknown omni_task_id: omni-ad47b884-1e89-43e3-9df9-88b005bafcc3",
+      "message": "[unknown_task] unknown omni_task_id: omni-c5e42375-552f-4f67-bc6f-f201a51311c7",
       "detail": {
-        "omni_task_id": "omni-ad47b884-1e89-43e3-9df9-88b005bafcc3"
+        "omni_task_id": "omni-c5e42375-552f-4f67-bc6f-f201a51311c7"
       }
     },
     "restart_shutdown": {
@@ -128,5 +132,5 @@
     "中断任务不会被自动重放；也未生成任何替代结果，符合「不伪造结果」的验收标准。"
   ],
   "verdict": "pass",
-  "finished_at": 1792559278.468295
+  "finished_at": 1792759684.281098
 }

@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559421.3425195,
+  "started_at": 1792759755.859266,
   "checks": [
     {
       "check": "session_mode_continued",
@@ -15,8 +15,8 @@
       "check": "same_session_id",
       "pass": true,
       "detail": {
-        "first": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51",
-        "second": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51"
+        "first": "session-e2047774-9d28-4410-b1ef-e68a8b39061c",
+        "second": "session-e2047774-9d28-4410-b1ef-e68a8b39061c"
       }
     },
     {
@@ -31,12 +31,12 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w06_zm8pw6m_",
+    "data_root": "/tmp/omni_p1s3_w06_606jtb0n",
     "second_receipt": {
-      "omni_task_id": "omni-d30a3b0e-13fe-4ca0-8c98-f4a5e8ce38f6",
+      "omni_task_id": "omni-659264b3-ee15-4c49-a257-765d041e2d8f",
       "status": "running",
-      "accepted_at": 1792559424.086691,
-      "engine_session_id": "session-189f59c7-82d0-44d2-82ce-bcf80ecd8f51",
+      "accepted_at": 1792759758.5101554,
+      "engine_session_id": "session-e2047774-9d28-4410-b1ef-e68a8b39061c",
       "note": "已在同一引擎会话内继续本轮；等待引擎终态证据",
       "session_mode": "continued"
     },
@@ -50,7 +50,7 @@
       "in_flight_before": [],
       "cancelled": [],
       "still_running": [],
-      "connection_closed": false,
+      "connection_closed": true,
       "process_exit_code": 0,
       "forced_terminate": false,
       "note": "已关闭事件流并终止隔离的 DSH web 进程"
@@ -58,5 +58,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559424.6495087
+  "finished_at": 1792759759.07223
 }

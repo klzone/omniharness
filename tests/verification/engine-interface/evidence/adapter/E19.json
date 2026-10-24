@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559315.3923888,
+  "started_at": 1792759721.05368,
   "checks": [
     {
       "check": "arm_a_failed",
@@ -15,10 +15,10 @@
       "check": "arm_a_not_marked_complete",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-1278ef92-2efe-4075-97e3-e7f37fdcfd09",
+        "omni_task_id": "omni-0196d596-e922-4d8d-9cf1-d0a1afd99757",
         "form": "unrecoverable",
         "content": "",
-        "persisted_at": 1792559317.129845,
+        "persisted_at": 1792759723.118518,
         "integrity": "partial",
         "sources": [
           {
@@ -45,24 +45,26 @@
       "check": "arm_b_succeeded_but_truncated",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-0230ea4f-dc37-47be-816d-4ade86995c87",
+        "omni_task_id": "omni-fc0b1282-c749-4d18-ae48-3e110663b424",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792559319.4299078,
+        "since": 1792759725.2551346,
         "last_event_seq": 4,
         "partial_output_size": 8,
-        "engine_session_id": "89472d79-ef97-4b18-9e82-36bc86752c3f",
-        "note": "stop_reason=max_tokens"
+        "engine_session_id": "9bb35b63-65e9-4aee-8117-f4e147cc439b",
+        "note": "stop_reason=max_tokens",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       }
     },
     {
       "check": "arm_b_marked_partial",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-0230ea4f-dc37-47be-816d-4ade86995c87",
+        "omni_task_id": "omni-fc0b1282-c749-4d18-ae48-3e110663b424",
         "form": "partial",
         "content": "被截断的合成内容",
-        "persisted_at": 1792559319.43019,
+        "persisted_at": 1792759725.2553527,
         "integrity": "partial",
         "sources": [
           {
@@ -118,22 +120,24 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e19_yjvpeeu9",
+    "data_root": "/tmp/omni_p1s3_e19_8qkv9ebj",
     "arm_a_status": {
-      "omni_task_id": "omni-1278ef92-2efe-4075-97e3-e7f37fdcfd09",
+      "omni_task_id": "omni-0196d596-e922-4d8d-9cf1-d0a1afd99757",
       "status": "failed",
       "evidence_source": "engine_error",
-      "since": 1792559317.129428,
+      "since": 1792759723.118287,
       "last_event_seq": 2,
       "partial_output_size": 0,
-      "engine_session_id": "9f2bd71b-ef27-4c78-9d3d-35b313e2b6e1",
-      "note": "error=Internal error: turn failed: synthetic mid-stream failure"
+      "engine_session_id": "a847d5f0-bf72-4bcf-a958-531a53d0c531",
+      "note": "error=Internal error: turn failed: synthetic mid-stream failure",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
     },
     "arm_a_result": {
-      "omni_task_id": "omni-1278ef92-2efe-4075-97e3-e7f37fdcfd09",
+      "omni_task_id": "omni-0196d596-e922-4d8d-9cf1-d0a1afd99757",
       "form": "unrecoverable",
       "content": "",
-      "persisted_at": 1792559317.129845,
+      "persisted_at": 1792759723.118518,
       "integrity": "partial",
       "sources": [
         {
@@ -158,20 +162,22 @@
       "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
     },
     "arm_b_status": {
-      "omni_task_id": "omni-0230ea4f-dc37-47be-816d-4ade86995c87",
+      "omni_task_id": "omni-fc0b1282-c749-4d18-ae48-3e110663b424",
       "status": "succeeded",
       "evidence_source": "engine_terminal",
-      "since": 1792559319.4299078,
+      "since": 1792759725.2551346,
       "last_event_seq": 4,
       "partial_output_size": 8,
-      "engine_session_id": "89472d79-ef97-4b18-9e82-36bc86752c3f",
-      "note": "stop_reason=max_tokens"
+      "engine_session_id": "9bb35b63-65e9-4aee-8117-f4e147cc439b",
+      "note": "stop_reason=max_tokens",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
     },
     "arm_b_result": {
-      "omni_task_id": "omni-0230ea4f-dc37-47be-816d-4ade86995c87",
+      "omni_task_id": "omni-fc0b1282-c749-4d18-ae48-3e110663b424",
       "form": "partial",
       "content": "被截断的合成内容",
-      "persisted_at": 1792559319.43019,
+      "persisted_at": 1792759725.2553527,
       "integrity": "partial",
       "sources": [
         {
@@ -200,30 +206,34 @@
       "note": "优雅关闭"
     },
     "arm_c_status_before_error": {
-      "omni_task_id": "omni-3e2b98de-4a58-4c1f-8e78-5d132ac68735",
+      "omni_task_id": "omni-a3256271-275f-4b05-974f-2d79f7abe2d8",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792559321.4428298,
+      "since": 1792759727.089175,
       "last_event_seq": 3,
       "partial_output_size": 8,
-      "engine_session_id": "f433d970-60f8-4406-ac38-d7f69fe90345",
-      "note": ""
+      "engine_session_id": "564738b3-37f3-423b-837d-fab86958790f",
+      "note": "",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
     },
     "arm_c_status_after_error": {
-      "omni_task_id": "omni-3e2b98de-4a58-4c1f-8e78-5d132ac68735",
+      "omni_task_id": "omni-a3256271-275f-4b05-974f-2d79f7abe2d8",
       "status": "failed",
       "evidence_source": "engine_error",
-      "since": 1792559322.7435973,
+      "since": 1792759728.3905947,
       "last_event_seq": 4,
       "partial_output_size": 8,
-      "engine_session_id": "f433d970-60f8-4406-ac38-d7f69fe90345",
-      "note": "error=synthetic injected turn failure"
+      "engine_session_id": "564738b3-37f3-423b-837d-fab86958790f",
+      "note": "error=synthetic injected turn failure",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
     },
     "arm_c_result": {
-      "omni_task_id": "omni-3e2b98de-4a58-4c1f-8e78-5d132ac68735",
+      "omni_task_id": "omni-a3256271-275f-4b05-974f-2d79f7abe2d8",
       "form": "partial",
       "content": "已收到的部分输出",
-      "persisted_at": 1792559322.7444046,
+      "persisted_at": 1792759728.3915484,
       "integrity": "partial",
       "sources": [
         {
@@ -252,5 +262,5 @@
     "臂 C 为**桩级**（stub-level）验证，证据等级 script，用于覆盖适配层的结果整形分支；真实的失败场景见臂 A（流内错误会丢弃整轮输出 → unrecoverable）。"
   ],
   "verdict": "pass",
-  "finished_at": 1792559323.1269681
+  "finished_at": 1792759728.764881
 }

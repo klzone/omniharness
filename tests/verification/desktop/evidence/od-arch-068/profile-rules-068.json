@@ -1,0 +1,136 @@
+{
+  "compile_exit": 0,
+  "cases": 25,
+  "failed": 0,
+  "result": "pass",
+  "asset_cases": [
+    {
+      "name": "schema_is_v1",
+      "ok": true,
+      "detail": "omnidesk.profile-rules.v1"
+    },
+    {
+      "name": "profile_name",
+      "ok": true,
+      "detail": "discipline"
+    },
+    {
+      "name": "16_keywords",
+      "ok": true,
+      "detail": "16"
+    },
+    {
+      "name": "7_writing_rules",
+      "ok": true,
+      "detail": "7"
+    },
+    {
+      "name": "privacy_defaults_to_mask",
+      "ok": true,
+      "detail": "{\"id_card\": \"mask\", \"phone\": \"mask\"}"
+    },
+    {
+      "name": "scene_thinking_levels",
+      "ok": true,
+      "detail": "{\"weekly\": \"low\", \"writing\": \"low\", \"project\": \"off\"}"
+    },
+    {
+      "name": "scene_keys_match_flow_pack",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "scene_weekly_rules_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    },
+    {
+      "name": "scene_weekly_sections_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    },
+    {
+      "name": "scene_writing_rules_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    },
+    {
+      "name": "scene_writing_sections_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    },
+    {
+      "name": "scene_project_rules_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    },
+    {
+      "name": "scene_project_sections_migrated_verbatim",
+      "ok": true,
+      "detail": "与 offline-flows.v1 原文不一致"
+    }
+  ],
+  "runtime_cases": [
+    {
+      "name": "note_contains_current",
+      "ok": true,
+      "detail": "你是 OmniDesk 工作台的随手记整理助手。\n请把下面的记录整理成简洁要点，保留全部事实与数字，不补充、不推断、不改"
+    },
+    {
+      "name": "note_has_no_writing_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_has_no_scene_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_has_no_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_is_short",
+      "ok": true,
+      "detail": "112"
+    },
+    {
+      "name": "report_contains_writing_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_contains_scene_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_contains_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_contains_context",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_longer_than_note",
+      "ok": true,
+      "detail": "600 vs 112"
+    },
+    {
+      "name": "default_mode_is_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_writing_rules_argument_means_no_rules_section",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "failed_cases": []
+}

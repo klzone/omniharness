@@ -18,6 +18,8 @@ OmniDesk P1 第三步 —— 本机回环合成模型端点（纯标准库）。
   length             -> 返回文本但 finish_reason=length（用于 max_tokens 截断）
   error_400          -> 返回 HTTP 400 错误体（用于执行失败）
   partial_then_error -> 先发一块文本，再发一个流内错误事件（用于部分结果 + 断流）
+  tool_call          -> 首次请求返回一个 bash 工具调用（带 sandbox_permissions 升级，
+                        用于触发 DSH 审批）；请求里已含 tool 角色消息时返回普通文本
 """
 
 from __future__ import annotations
@@ -42,6 +44,16 @@ class MockController:
         # 只记录命中与否，不保存请求正文。
         self.probes: list = []
         self.lock = threading.Lock()
+        # tool_call 模式下发给模型的工具调用参数（纯合成，不含真实路径/命令）。
+        self.tool_call_id = "call-synth-1"
+        self.tool_call_name = "bash"
+        self.tool_call_arguments = {
+            "command": "echo synthetic-approval-probe",
+            "description": "synthetic approval probe",
+            "sandbox_permissions": "danger-full-access",
+            "justification": "synthetic approval probe, no real data",
+        }
+        self.tool_call_followup = ["合成", "已", "继续"]
 
     def set(self, **kwargs) -> None:
         with self.lock:
@@ -141,6 +153,10 @@ class _Handler(BaseHTTPRequestHandler):
             delay = ctl.delay
             hang_seconds = ctl.hang_seconds
             probes = list(ctl.probes)
+            tool_call_id = ctl.tool_call_id
+            tool_call_name = ctl.tool_call_name
+            tool_call_arguments = json.dumps(ctl.tool_call_arguments, ensure_ascii=False)
+            tool_call_followup = list(ctl.tool_call_followup)
             joined = _all_text(req)
             ctl.requests.append({
                 "path": self.path,
@@ -158,6 +174,9 @@ class _Handler(BaseHTTPRequestHandler):
                 # 只记录命中与否，不保存请求正文。
                 "body_probe_hits": [p for p in probes if p and p in raw_text],
                 "body_keys": sorted(str(k) for k in req.keys()),
+                "has_tool_message": any(
+                    isinstance(m, dict) and m.get("role") == "tool"
+                    for m in (req.get("messages") or [])),
             })
 
         if mode == "error_400":
@@ -167,6 +186,37 @@ class _Handler(BaseHTTPRequestHandler):
         if mode == "hang":
             time.sleep(float(hang_seconds))
             return
+
+        if mode == "tool_call" and not any(
+                isinstance(m, dict) and m.get("role") == "tool"
+                for m in (req.get("messages") or [])):
+            model = req.get("model") or "synthetic-model"
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                first = {"id": "cmpl-synthetic", "object": "chat.completion.chunk",
+                         "created": 0, "model": model,
+                         "choices": [{"index": 0, "delta": {"tool_calls": [{
+                             "index": 0, "id": tool_call_id, "type": "function",
+                             "function": {"name": tool_call_name,
+                                            "arguments": tool_call_arguments}}]},
+                                       "finish_reason": None}]}
+                self._sse(first)
+                final = {"id": "cmpl-synthetic", "object": "chat.completion.chunk",
+                         "created": 0, "model": model,
+                         "choices": [{"index": 0, "delta": {},
+                                       "finish_reason": "tool_calls"}]}
+                self._sse(final)
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+            except Exception:
+                self.close_connection = True
+            return
+
+        if mode == "tool_call":
+            chunks = tool_call_followup
 
         model = req.get("model") or "synthetic-model"
         try:

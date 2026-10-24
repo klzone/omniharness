@@ -1,0 +1,134 @@
+[
+  {
+    "scenario": "a01",
+    "title": "允许审批后任务继续并完成",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-f02fc7ba-051e-4750-8c2c-3896163a6475",
+    "approval_event_received": true,
+    "approval_event": {
+      "kind": "approval_request",
+      "tool_name": "bash",
+      "call_id": "call-synth-1"
+    },
+    "approval_reason_present": true,
+    "status_while_waiting": {
+      "status": "running",
+      "pending_approvals": 1,
+      "note": "等待审批中：bash"
+    },
+    "note_mentions_waiting": true,
+    "respond_ok": true,
+    "respond_error": null,
+    "final_status": {
+      "omni_task_id": "omni-f02fc7ba-051e-4750-8c2c-3896163a6475",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792724240.963911,
+      "last_event_seq": 11,
+      "partial_output_size": 5,
+      "engine_session_id": "session-ca1516b2-f66d-4801-8211-63c59de83cd7",
+      "note": "stop_reason=stop",
+      "ttfb_seconds": 0.672,
+      "pending_approvals": 0
+    },
+    "final_text": "合成已继续",
+    "ttfb_seconds": 0.672,
+    "decided_event_decision": "allowed",
+    "model_requests": [
+      {
+        "message_count": 4,
+        "has_tool_message": false
+      },
+      {
+        "message_count": 2,
+        "has_tool_message": false
+      },
+      {
+        "message_count": 6,
+        "has_tool_message": true
+      }
+    ],
+    "pass": true
+  },
+  {
+    "scenario": "a02",
+    "title": "拒绝审批后按引擎语义落定",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-1d7e817a-5751-46a5-add4-6c594bbc39d1",
+    "approval_event_received": true,
+    "respond_ok": true,
+    "respond_error": null,
+    "final_status": {
+      "omni_task_id": "omni-1d7e817a-5751-46a5-add4-6c594bbc39d1",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792724243.8164086,
+      "last_event_seq": 11,
+      "partial_output_size": 5,
+      "engine_session_id": "session-e2a77b54-3536-40ad-b336-0ea3da0f4e4c",
+      "note": "stop_reason=stop",
+      "ttfb_seconds": 0.405,
+      "pending_approvals": 0
+    },
+    "final_text": "合成已继续",
+    "pending_after": 0,
+    "pass": true
+  },
+  {
+    "scenario": "a03",
+    "title": "等待审批时状态可见且台账不泄露正文",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "approval_event_received": true,
+    "status": "running",
+    "pending_approvals": 1,
+    "note": "等待审批中：bash",
+    "ledger_has_pending_count": true,
+    "ledger_leaks_command_text": false,
+    "ledger_leaks_reason_text": false,
+    "pass": true
+  },
+  {
+    "scenario": "a04",
+    "title": "伪造审批编号被拒绝且不消耗待办",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "approval_event_received": true,
+    "bogus_approval_rejected": true,
+    "bogus_error": {
+      "exception": "EngineError",
+      "engine_error_code": "invalid_argument",
+      "message": "[invalid_argument] approval_id is not pending for this task",
+      "detail": {
+        "channel": "web-api"
+      }
+    },
+    "pending_after_bogus": 1,
+    "pass": true
+  },
+  {
+    "scenario": "a05",
+    "title": "首字延迟写入台账",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "final_status": {
+      "omni_task_id": "omni-68f1e95d-c91a-492d-984e-5cfd836bd275",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792724252.3073134,
+      "last_event_seq": 6,
+      "partial_output_size": 6,
+      "engine_session_id": "session-c1aee6b5-bbbd-4ec7-aa13-065268d1ca42",
+      "note": "stop_reason=stop",
+      "ttfb_seconds": 0.328,
+      "pending_approvals": 0
+    },
+    "ttfb_seconds": 0.328,
+    "delta_events": 3,
+    "ttfb_is_positive": true,
+    "ledger_has_ttfb": true,
+    "pass": true
+  }
+]

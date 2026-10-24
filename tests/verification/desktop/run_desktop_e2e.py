@@ -213,6 +213,9 @@ def initialize_params(root: dict, overlay: Path) -> dict:
         "dsh": {
             "cli_entry": str(DSH_BIN),
             "profile": "acp",
+            # 显式声明 ACP 通道：引擎默认通道已改为 web-api，而本脚本用 acp profile
+            # 且未传 --port；不声明会被 web-api 适配器注入 app 不认识的参数。
+            "channel": "acp",
             "dsh_home": str(root["dsh_home"]),
             "agents_home": str(root["agents"]),
             "patch_files": [str(overlay)],

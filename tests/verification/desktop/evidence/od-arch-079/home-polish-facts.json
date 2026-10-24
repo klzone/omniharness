@@ -1,0 +1,246 @@
+{
+  "plan": "OD-ARCH-079",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + 截图 + 本次 X 会话剪贴板）+ 数据根文件事实 + 静态源码核对",
+  "root": "/tmp/od079-home",
+  "source_home": "/home/kevin/OmniDesk/runtime/dsh-home",
+  "checks": {
+    "assistant_tips_rendered": true,
+    "elapsed_rendered": true,
+    "user_tips_rendered": true,
+    "copy_wrote_clipboard": true,
+    "copy_has_feedback": true,
+    "speak_has_feedback": true,
+    "file_dialog_opened": true,
+    "dialog_closed_by_escape": true,
+    "attachment_target_exists": true,
+    "repo_dialog_opened": true,
+    "repo_dialog_closed": true,
+    "attachment_chip_visible": true,
+    "attachment_not_rejected": true,
+    "branch_without_fork_seq_no_thread": true,
+    "rail_rendered": true,
+    "rail_jump_changed_view": true,
+    "rail_jump_back_changed_view": true,
+    "app_alive": true
+  },
+  "notes": [],
+  "source_before": "c78486d94c05e634:1182",
+  "user_dsh_before": "435315d6e3517d7a:4000",
+  "user_agents_before": "e3b0c44298fc1c14:0",
+  "dbus": "私有一次性会话总线（不连用户会话总线）",
+  "tips_rows": [
+    {
+      "y": 547,
+      "groups": [
+        [
+          257,
+          265
+        ],
+        [
+          273,
+          292
+        ],
+        [
+          309,
+          319
+        ],
+        [
+          326,
+          345
+        ],
+        [
+          363,
+          371
+        ],
+        [
+          379,
+          421
+        ],
+        [
+          439,
+          444
+        ],
+        [
+          455,
+          517
+        ],
+        [
+          535,
+          544
+        ],
+        [
+          551,
+          608
+        ]
+      ]
+    }
+  ],
+  "user_tips_rows": [
+    {
+      "y": 647,
+      "groups": [
+        [
+          1209,
+          1217
+        ],
+        [
+          1224,
+          1244
+        ]
+      ]
+    }
+  ],
+  "assistant_tips_row_y": 547,
+  "assistant_tips_groups": [
+    [
+      257,
+      265
+    ],
+    [
+      273,
+      292
+    ],
+    [
+      309,
+      319
+    ],
+    [
+      326,
+      345
+    ],
+    [
+      363,
+      371
+    ],
+    [
+      379,
+      421
+    ],
+    [
+      439,
+      444
+    ],
+    [
+      455,
+      517
+    ],
+    [
+      535,
+      544
+    ],
+    [
+      551,
+      608
+    ]
+  ],
+  "user_tips_groups": [
+    [
+      1209,
+      1217
+    ],
+    [
+      1224,
+      1244
+    ]
+  ],
+  "user_tips_row_y": 647,
+  "clipboard_before": "",
+  "copy": {
+    "clicks": 2,
+    "pos": [
+      274,
+      717
+    ],
+    "ink_before": 778,
+    "ink_after": 828,
+    "has_feedback": true
+  },
+  "clipboard_after_copy": "第三轮合成回复：已删去空泛表述。本条内容全部虚构，仅用于界面验收。",
+  "speak": {
+    "clicks": 2,
+    "pos": [
+      327,
+      717
+    ],
+    "ink_before": 805,
+    "ink_after": 956,
+    "has_feedback": true
+  },
+  "windows_before_pick": [
+    "OmniDesk Discipline"
+  ],
+  "windows_after_pick": [
+    "OmniDesk Discipline",
+    ""
+  ],
+  "new_windows": [
+    ""
+  ],
+  "dialog_sidebar_ink": 1124,
+  "attachment_target": "/mnt/data/Code/MyWorkStation/AGENTS.md",
+  "pick_button_pos": [
+    250,
+    786
+  ],
+  "new_windows_after_repo_pick": [],
+  "chip_region_ink": {
+    "before": 1527,
+    "after": 2082
+  },
+  "red_pixels": 0,
+  "branch_threads_before": 1,
+  "branch": {
+    "clicks": 2,
+    "pos": [
+      478,
+      717
+    ],
+    "ink_before": 799,
+    "ink_after": 799,
+    "has_feedback": false
+  },
+  "branch_new_threads": [],
+  "rail_ticks": [
+    479,
+    489,
+    499
+  ],
+  "rail_ticks_top": [
+    453,
+    463,
+    473
+  ],
+  "rail_active_top": 453,
+  "rail_ticks_after_last": [
+    453,
+    463,
+    473
+  ],
+  "rail_active_after_last": 463,
+  "rail_diff_after_last_jump": 0.21667132867132868,
+  "rail_active_after_first": 453,
+  "rail_diff_after_first_jump": 0.21577972027972028,
+  "source_checks": {
+    "chat_font_15px": true,
+    "chat_font_no_13px": true,
+    "no_fade_attribute": true,
+    "no_fade_css": true,
+    "tips_user": true,
+    "tips_assistant": true,
+    "picker_button": true,
+    "profile_badge_short": true,
+    "ipc_pill": true,
+    "no_avatar_block": true,
+    "no_mascot": true,
+    "dialog_plugin": true,
+    "dialog_capability": true
+  },
+  "source_after": "c78486d94c05e634:1182",
+  "user_dsh_after": "435315d6e3517d7a:4000",
+  "user_agents_after": "e3b0c44298fc1c14:0",
+  "source_unchanged": true,
+  "user_dsh_unchanged": true,
+  "user_agents_unchanged": true,
+  "gate_errors": [],
+  "passed": true
+}

@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559296.1028554,
+  "started_at": 1792759702.185921,
   "checks": [
     {
       "check": "forced_terminate_recorded",
@@ -12,11 +12,11 @@
       "detail": {
         "mode": "graceful",
         "in_flight_before": [
-          "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
+          "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
         ],
         "cancelled": [],
         "still_running": [
-          "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
+          "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
         ],
         "connection_closed": true,
         "process_exit_code": -9,
@@ -33,7 +33,7 @@
       "check": "still_running_or_unknown_recorded",
       "pass": true,
       "detail": [
-        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
+        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
       ]
     },
     {
@@ -43,15 +43,15 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e15_h4bwr4qy",
+    "data_root": "/tmp/omni_p1s3_e15_65klly4h",
     "shutdown_report": {
       "mode": "graceful",
       "in_flight_before": [
-        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
+        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3"
+        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
       ],
       "connection_closed": true,
       "process_exit_code": -9,
@@ -59,17 +59,19 @@
       "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
     },
     "status_after_force": {
-      "omni_task_id": "omni-5a06a6c5-f555-4068-acb4-39bb330ddac3",
+      "omni_task_id": "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792559297.6352317,
+      "since": 1792759703.7012122,
       "last_event_seq": 1,
       "partial_output_size": 0,
-      "engine_session_id": "968d87f3-da63-4cca-9090-39ea4faaa20b",
-      "note": ""
+      "engine_session_id": "6457a4bc-1c0f-4a40-9fdf-27f68f8c95c6",
+      "note": "",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
     }
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559298.8160276
+  "finished_at": 1792759704.8936388
 }

@@ -1,0 +1,138 @@
+{
+  "scenario": "W11",
+  "title": "W11 原生会话分支并续接子会话",
+  "channel": "web-api",
+  "evidence_level": "script",
+  "executed": true,
+  "started_at": 1792857500.4786105,
+  "checks": [
+    {
+      "check": "turn_end_seq_recorded",
+      "pass": true,
+      "detail": 17
+    },
+    {
+      "check": "fork_ok",
+      "pass": true,
+      "detail": {
+        "parent_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+        "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+        "at_seq": 17,
+        "note": "已在引擎侧按切点建立子会话；后续消息直接续接该会话，不重放历史"
+      }
+    },
+    {
+      "check": "child_session_is_new",
+      "pass": true,
+      "detail": {
+        "parent": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+        "child": "session-1268812c-b9fa-46ec-b967-e6fffa561664"
+      }
+    },
+    {
+      "check": "fork_cut_matches",
+      "pass": true,
+      "detail": {
+        "ask": 17,
+        "got": 17
+      }
+    },
+    {
+      "check": "child_submit_continued_same_session",
+      "pass": true,
+      "detail": {
+        "want": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+        "got": "session-1268812c-b9fa-46ec-b967-e6fffa561664"
+      }
+    },
+    {
+      "check": "child_not_degraded",
+      "pass": true,
+      "detail": "resumed"
+    },
+    {
+      "check": "child_turn_succeeded",
+      "pass": true,
+      "detail": "OMNI-W11-CHILD-MARKER"
+    },
+    {
+      "check": "child_request_carries_inherited_context",
+      "pass": true,
+      "detail": [
+        6
+      ]
+    },
+    {
+      "check": "parent_turn_text_present_in_child_request",
+      "pass": true,
+      "detail": [
+        [
+          "OMNI-W11-PARENT-MARKER",
+          "OMNI-W11-CHILD-MARKER"
+        ]
+      ]
+    },
+    {
+      "check": "parent_result_unchanged",
+      "pass": true,
+      "detail": "OMNI-W11-PARENT-MARKER"
+    }
+  ],
+  "artifacts": {
+    "data_root": "/tmp/omni_p1s3_w11_na2ghoqi",
+    "parent": {
+      "engine_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+      "turn_end_seq": 17,
+      "status": {
+        "omni_task_id": "omni-3ab3cc1b-a246-461c-a571-6b42ea7d00a3",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792857503.2655866,
+        "last_event_seq": 4,
+        "partial_output_size": 22,
+        "engine_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+        "note": "stop_reason=stop",
+        "ttfb_seconds": 0.445,
+        "pending_approvals": 0,
+        "engine_turn_end_seq": 17
+      }
+    },
+    "fork": {
+      "parent_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+      "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+      "at_seq": 17,
+      "note": "已在引擎侧按切点建立子会话；后续消息直接续接该会话，不重放历史"
+    },
+    "child_receipt": {
+      "omni_task_id": "omni-3ff7cf56-091a-46c2-9f0f-ea9c41984cdd",
+      "status": "running",
+      "accepted_at": 1792857503.3100002,
+      "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+      "note": "已重开既有引擎会话并提交；等待引擎终态证据",
+      "session_mode": "resumed"
+    },
+    "child_model_requests": [
+      {
+        "message_count": 6,
+        "text_chars": 6535,
+        "probe_hits": [
+          "OMNI-W11-PARENT-MARKER",
+          "OMNI-W11-CHILD-MARKER"
+        ]
+      }
+    ],
+    "shutdown": {
+      "mode": "graceful",
+      "in_flight_before": [],
+      "cancelled": [],
+      "still_running": [],
+      "connection_closed": true,
+      "process_exit_code": 0,
+      "forced_terminate": false,
+      "note": "已关闭事件流并终止隔离的 DSH web 进程"
+    }
+  },
+  "notes": [],
+  "verdict": "pass",
+  "finished_at": 1792857503.8766897
+}

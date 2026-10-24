@@ -1,0 +1,32 @@
+OD-ARCH-070 回归记录（2026-10-23，本机）
+
+[pytest 全量]
+命令：cd /mnt/data/Code/MyWorkStation && python3 -m pytest tests -q
+结果：57 passed，exit 0（原文见 pytest.txt）
+
+[适配器单元]
+命令：cd tests/verification/engine-interface/adapter && python3 -m pytest test_web_api_unit.py -q
+结果：57 passed，exit 0（原文见 pytest-adapter.txt）
+
+[cargo 全量]
+命令：cd desktop/src-tauri && cargo test --offline
+结果（原文见 regression-cargo.txt）：
+  lib 227 passed / 0 failed
+  main 0
+  admission_classification 2 / 0
+  host_integration 13 / 0
+  task_shell_e2e 3 / 0
+  thread_store_restart 1 / 0
+  doc-tests 0
+  合计 246 passed，0 failed
+
+[前 端]
+命令：cd desktop && npx tsc --noEmit  → exit 0
+命令：cd desktop && npm run build     → exit 0
+
+[Runtime 零差异]
+命令：git status --porcelain runtime/
+结果：0 行
+
+说明：本机 cargo 需注入 Tauri 依赖前缀（scripts/setup-desktop-toolchain.sh --print-env），
+这不是仓库缺失依赖；命令本身未改动仓库内容。

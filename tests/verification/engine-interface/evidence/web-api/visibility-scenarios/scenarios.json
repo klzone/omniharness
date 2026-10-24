@@ -1,0 +1,137 @@
+[
+  {
+    "scenario": "v01",
+    "title": "工具调用期间 tool_activity 带工具名",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-9d34d000-4c66-41a6-a482-b622226a9c7e",
+    "tool_activity_received": true,
+    "tool_event": {
+      "kind": "tool/call",
+      "tool_name": "bash",
+      "status": ""
+    },
+    "tool_name_present": true,
+    "tool_name_is_synthetic": true,
+    "final_status": {
+      "omni_task_id": "omni-9d34d000-4c66-41a6-a482-b622226a9c7e",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792758998.719041,
+      "last_event_seq": 11,
+      "partial_output_size": 5,
+      "engine_session_id": "session-89629d09-483e-4d6b-b714-f506abe25134",
+      "note": "stop_reason=stop",
+      "ttfb_seconds": 0.665,
+      "pending_approvals": 0
+    },
+    "pass": true
+  },
+  {
+    "scenario": "v02",
+    "title": "超时按配置生效且文案带秒数",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-31147039-ed79-4999-9588-f1594b60b91a",
+    "final_status": {
+      "omni_task_id": "omni-31147039-ed79-4999-9588-f1594b60b91a",
+      "status": "unknown",
+      "evidence_source": "timeout",
+      "since": 1792759009.6655712,
+      "last_event_seq": 2,
+      "partial_output_size": 0,
+      "engine_session_id": "session-fb73dcfb-f021-4397-ab37-5fbc1a4402ea",
+      "note": "error=引擎在 8 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
+    },
+    "elapsed_seconds": 8.2,
+    "policy_seconds": 8,
+    "note": "error=引擎在 8 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试",
+    "note_has_seconds": true,
+    "note_says_no_auto_retry": true,
+    "pass": true
+  },
+  {
+    "scenario": "v03",
+    "title": "未知 waterfall 询问只提示不应答",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-6724c856-a326-4c49-83a9-8cc10f763d23",
+    "channel_open": true,
+    "engine_ask_received": true,
+    "ask_event": {
+      "kind": "engine_ask",
+      "event": "synthetic/unknown-ask"
+    },
+    "ask_type_is_original": true,
+    "ask_payload_leaks_question": false,
+    "final_status": {
+      "status": "unknown",
+      "note": "error=引擎在 12 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试"
+    },
+    "still_waits_until_timeout": true,
+    "pass": true
+  },
+  {
+    "scenario": "v04",
+    "title": "台账不写入工具正文",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-8635df70-78f2-49a7-9d21-78893fd4770c",
+    "ledger_exists": true,
+    "ledger_has_tool_activity": false,
+    "ledger_leaks_command": false,
+    "ledger_leaks_reason": false,
+    "pass": true
+  },
+  {
+    "scenario": "v05",
+    "title": "默认无上限：静默只提示，用户取消仍生效",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "default_timeout": null,
+    "omni_task_id": "omni-4390f9cc-8f7a-4ccd-9b58-a12f0f052332",
+    "still_running_received": true,
+    "still_running_event": {
+      "kind": "still_running",
+      "idle_seconds": 2,
+      "note": "DSH 仍在运行（已静默 2 秒）；不会自动停止，需要时请手动取消"
+    },
+    "state_after_8s_silence": {
+      "omni_task_id": "omni-4390f9cc-8f7a-4ccd-9b58-a12f0f052332",
+      "status": "running",
+      "evidence_source": "operator_confirm",
+      "since": 1792759031.3460114,
+      "last_event_seq": 6,
+      "partial_output_size": 0,
+      "engine_session_id": "session-408e19d2-c13c-4e95-8e23-1c621736fd00",
+      "note": "",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
+    },
+    "cancel_elapsed_s": 0.049,
+    "cancel_outcome": {
+      "omni_task_id": "omni-4390f9cc-8f7a-4ccd-9b58-a12f0f052332",
+      "phase": "confirmed_cancelled",
+      "requested_at": 1792759041.5515654,
+      "settled_at": 1792759041.6009398,
+      "final_state": "cancelled",
+      "evidence": "engine_terminal",
+      "note": "引擎以 turn/end=aborted 落定"
+    },
+    "final_status": {
+      "omni_task_id": "omni-4390f9cc-8f7a-4ccd-9b58-a12f0f052332",
+      "status": "cancelled",
+      "evidence_source": "engine_terminal",
+      "since": 1792759041.5888615,
+      "last_event_seq": 8,
+      "partial_output_size": 0,
+      "engine_session_id": "session-408e19d2-c13c-4e95-8e23-1c621736fd00",
+      "note": "stop_reason=aborted",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
+    },
+    "pass": true
+  }
+]

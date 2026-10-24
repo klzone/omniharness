@@ -1,0 +1,109 @@
+{
+  "checks": [
+    {
+      "check": "A_initialize_ok",
+      "verdict": "pass",
+      "note": ""
+    },
+    {
+      "check": "B_owner_record_written",
+      "verdict": "pass",
+      "note": "pid=30317 pgid=30317 child_pid=30318 child_pgid=30318"
+    },
+    {
+      "check": "C_owner_file_mode_0600",
+      "verdict": "pass"
+    },
+    {
+      "check": "D_engine_pgid_is_own_session",
+      "verdict": "pass",
+      "note": "引擎自身为进程组组长"
+    },
+    {
+      "check": "E_dsh_child_group_live",
+      "verdict": "pass",
+      "note": "child_pgid=30318 members=[30318]"
+    },
+    {
+      "check": "F_second_instance_refused",
+      "verdict": "pass",
+      "note": "engine_unavailable"
+    },
+    {
+      "check": "G_first_engine_still_alive",
+      "verdict": "pass"
+    },
+    {
+      "check": "H_owner_record_removed_on_shutdown",
+      "verdict": "pass"
+    },
+    {
+      "check": "I_engine_group_drained",
+      "verdict": "pass",
+      "note": "pgid=30317 members=[]"
+    },
+    {
+      "check": "J_child_group_drained",
+      "verdict": "pass",
+      "note": "child_pgid=30318 members=[]"
+    },
+    {
+      "check": "K_second_boot_initialize_ok",
+      "verdict": "pass",
+      "note": ""
+    },
+    {
+      "check": "L_owner_record_survives_crash",
+      "verdict": "pass"
+    },
+    {
+      "check": "M_orphan_child_group_left_behind",
+      "verdict": "pass",
+      "note": "child_pgid=30333 members=[30333]"
+    },
+    {
+      "check": "N_crash_state_is_orphan_group",
+      "verdict": "pass",
+      "note": "inspect=orphan_group"
+    },
+    {
+      "check": "O_reclaim_outcome",
+      "verdict": "pass",
+      "action": "sigterm_group",
+      "note": "sigterm_group"
+    },
+    {
+      "check": "P_orphan_group_reclaimed",
+      "verdict": "pass",
+      "note": "child_pgid=30333 members=[]"
+    },
+    {
+      "check": "Q_engine_group_gone_after_crash",
+      "verdict": "pass"
+    },
+    {
+      "check": "R_record_removed_after_reclaim",
+      "verdict": "pass"
+    },
+    {
+      "check": "S_root_is_temp_only",
+      "verdict": "pass",
+      "note": "/tmp/od074-run-22ii7hb2"
+    },
+    {
+      "check": "T_no_original_dsh_paths",
+      "verdict": "pass"
+    },
+    {
+      "check": "U_engine_state_under_temp_root",
+      "verdict": "pass"
+    }
+  ],
+  "root": "/tmp/od074-run-22ii7hb2",
+  "limitations": [],
+  "summary": {
+    "total": 21,
+    "passed": 21,
+    "failed": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "display": ":88",
+  "root": "/tmp/od075-verify",
+  "source_before": "cc1e252b5160cf94:1287",
+  "user_dsh_before": "435315d6e3517d7a:4000",
+  "user_agents_before": "e3b0c44298fc1c14:0",
+  "engine_tab_shot": "02-engine-tab.png",
+  "settings_dom_checked": {
+    "has_channel_block": true,
+    "has_web_api_note": true,
+    "has_acp_note": true,
+    "no_dsh_native_entry": true,
+    "no_open_dsh_settings": true
+  },
+  "alive": true,
+  "app_log_bytes": 134,
+  "app_log_has_error": false,
+  "source_after": "cc1e252b5160cf94:1287",
+  "user_dsh_after": "435315d6e3517d7a:4000",
+  "user_agents_after": "e3b0c44298fc1c14:0",
+  "source_unchanged": true,
+  "user_dsh_unchanged": true,
+  "user_agents_unchanged": true,
+  "passed": true
+}

@@ -1,0 +1,88 @@
+[
+  {
+    "scenario": "v01",
+    "title": "工具调用期间 tool_activity 带工具名",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-aea3bb2e-3d80-426b-b149-5feded721e1d",
+    "tool_activity_received": true,
+    "tool_event": {
+      "kind": "tool/call",
+      "tool_name": "bash",
+      "status": ""
+    },
+    "tool_name_present": true,
+    "tool_name_is_synthetic": true,
+    "final_status": {
+      "omni_task_id": "omni-aea3bb2e-3d80-426b-b149-5feded721e1d",
+      "status": "succeeded",
+      "evidence_source": "engine_terminal",
+      "since": 1792748288.6356115,
+      "last_event_seq": 11,
+      "partial_output_size": 5,
+      "engine_session_id": "session-1d8fd724-caf6-4fc3-8257-250a6c70b9ed",
+      "note": "stop_reason=stop",
+      "ttfb_seconds": 0.653,
+      "pending_approvals": 0
+    },
+    "pass": true
+  },
+  {
+    "scenario": "v02",
+    "title": "超时按配置生效且文案带秒数",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-b729dc66-469e-43fc-860d-42767857b067",
+    "final_status": {
+      "omni_task_id": "omni-b729dc66-469e-43fc-860d-42767857b067",
+      "status": "unknown",
+      "evidence_source": "timeout",
+      "since": 1792748299.488798,
+      "last_event_seq": 2,
+      "partial_output_size": 0,
+      "engine_session_id": "session-c85cf7d1-a5b3-4cfb-9f3a-c6432934264c",
+      "note": "error=引擎在 8 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试",
+      "ttfb_seconds": null,
+      "pending_approvals": 0
+    },
+    "elapsed_seconds": 8.2,
+    "policy_seconds": 8,
+    "note": "error=引擎在 8 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试",
+    "note_has_seconds": true,
+    "note_says_no_auto_retry": true,
+    "pass": true
+  },
+  {
+    "scenario": "v03",
+    "title": "未知 waterfall 询问只提示不应答",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-169d4676-f466-4248-8508-58662da9bb54",
+    "channel_open": true,
+    "engine_ask_received": true,
+    "ask_event": {
+      "kind": "engine_ask",
+      "event": "synthetic/unknown-ask"
+    },
+    "ask_type_is_original": true,
+    "ask_payload_leaks_question": false,
+    "final_status": {
+      "status": "unknown",
+      "note": "error=引擎在 12 秒内未返回结果，本次未自动重试；可点「重发」或降低工具使用后重试"
+    },
+    "still_waits_until_timeout": true,
+    "pass": true
+  },
+  {
+    "scenario": "v04",
+    "title": "台账不写入工具正文",
+    "evidence_level": "script",
+    "initialize_ok": true,
+    "omni_task_id": "omni-e37255bd-fd7d-413a-8189-b40eda830c4f",
+    "ledger_exists": true,
+    "ledger_has_tool_activity": false,
+    "ledger_leaks_command": false,
+    "ledger_leaks_reason": false,
+    "pass": true
+  }
+]

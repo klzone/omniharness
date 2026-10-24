@@ -4,14 +4,16 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559431.036071,
+  "started_at": 1792759765.2084138,
   "checks": [
     {
       "check": "system_message_event_observed",
       "pass": true,
       "detail": [
         "assistant-stream",
+        "emit",
         "event",
+        "ready",
         "snapshot"
       ]
     },
@@ -37,10 +39,26 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w08_k2ut1sv0",
+    "data_root": "/tmp/omni_p1s3_w08_z0s9ecyl",
     "observed_frame_kinds": [
       {
+        "kind": "ready",
+        "event": null
+      },
+      {
+        "kind": "emit",
+        "event": null
+      },
+      {
+        "kind": "emit",
+        "event": null
+      },
+      {
         "kind": "snapshot",
+        "event": null
+      },
+      {
+        "kind": "emit",
         "event": null
       },
       {
@@ -58,6 +76,10 @@
       {
         "kind": "event",
         "event": "step/start"
+      },
+      {
+        "kind": "emit",
+        "event": null
       },
       {
         "kind": "event",
@@ -100,6 +122,10 @@
         "event": null
       },
       {
+        "kind": "emit",
+        "event": null
+      },
+      {
         "kind": "assistant-stream",
         "event": null
       },
@@ -133,10 +159,10 @@
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-52d1cfe4-0af6-4639-af6b-c636dc1d4d75",
+      "omni_task_id": "omni-934f79d4-94af-4325-a3e0-58a558f60bdb",
       "form": "complete",
       "content": "PUBLIC-ANSWER",
-      "persisted_at": 1792559433.3994818,
+      "persisted_at": 1792759767.6966193,
       "integrity": "complete",
       "sources": [
         {
@@ -196,5 +222,5 @@
     "personaPrefix 未出现在模型请求体中（整包探针也未命中）：该覆盖在 web 通道对模型请求没有可见效果。dump-config 生效只能证明配置被接受，不能证明模型收到。"
   ],
   "verdict": "pass",
-  "finished_at": 1792559434.1911862
+  "finished_at": 1792759768.1645818
 }

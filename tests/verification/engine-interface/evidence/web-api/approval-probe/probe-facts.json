@@ -1,0 +1,226 @@
+{
+  "plan": "OD-ARCH-066 S1",
+  "purpose": "确认 DSH web 审批事件结构与应答通道（合成端点、一次性数据根）",
+  "evidence_level": "script",
+  "executed_at": 1792723436.7039313,
+  "cases": [
+    {
+      "case": "allow",
+      "decision": "allowed-once",
+      "evidence_level": "script",
+      "initialize_ok": true,
+      "events_stream_ready": true,
+      "ready_frame_shape": {
+        "clientId": "892abfc4-ea96-4049-af6f-15b762094490",
+        "host": {
+          "home": "/home/kevin"
+        },
+        "type": "ready"
+      },
+      "omni_task_id": "omni-ad3fe59b-c4c8-42c1-b6a4-4e959d8a8ffd",
+      "engine_session_id": "session-00643299-aa90-443a-8491-f9d66ffa1096",
+      "approval_request_received": true,
+      "waterfall_shape": {
+        "agentId": "session-00643299-aa90-443a-8491-f9d66ffa1096",
+        "event": "approval/request",
+        "eventId": "6bda37ea-47ef-43a2-b57e-d2352ca5c7db",
+        "request": {
+          "callId": "call-synth-1",
+          "displayReason": {
+            "en": "Allow this opera…",
+            "zh": "允许本次操作使用 danger-…"
+          },
+          "reason": "escalate sandbox…",
+          "toolName": "bash"
+        },
+        "type": "waterfall"
+      },
+      "agent_id_equals_session_id": true,
+      "approval_request_fields": [
+        "callId",
+        "displayReason",
+        "reason",
+        "toolName"
+      ],
+      "approval_tool_name": "bash",
+      "approval_has_call_id": true,
+      "approval_has_reason": true,
+      "status_while_waiting": {
+        "omni_task_id": "omni-ad3fe59b-c4c8-42c1-b6a4-4e959d8a8ffd",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792723432.8550541,
+        "last_event_seq": 3,
+        "partial_output_size": 0,
+        "engine_session_id": "session-00643299-aa90-443a-8491-f9d66ffa1096",
+        "note": ""
+      },
+      "result_rpc_value": null,
+      "final_status": {
+        "omni_task_id": "omni-ad3fe59b-c4c8-42c1-b6a4-4e959d8a8ffd",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792723433.3114624,
+        "last_event_seq": 9,
+        "partial_output_size": 5,
+        "engine_session_id": "session-00643299-aa90-443a-8491-f9d66ffa1096",
+        "note": "stop_reason=stop"
+      },
+      "final_result": {
+        "form": "complete",
+        "content_len": 5,
+        "content": "合成已继续"
+      },
+      "model_requests": [
+        {
+          "message_count": 4,
+          "mode": "tool_call",
+          "has_tool_message": false
+        },
+        {
+          "message_count": 2,
+          "mode": "tool_call",
+          "has_tool_message": false
+        },
+        {
+          "message_count": 6,
+          "mode": "tool_call",
+          "has_tool_message": true
+        }
+      ],
+      "frames_after_decision": [
+        {
+          "clientId": "892abfc4-ea96-4049-af6f-15b762094490",
+          "host": {
+            "home": "/home/kevin"
+          },
+          "type": "ready"
+        },
+        {
+          "agentId": "session-00643299-aa90-443a-8491-f9d66ffa1096",
+          "event": "approval/request",
+          "eventId": "6bda37ea-47ef-43a2-b57e-d2352ca5c7db",
+          "request": {
+            "callId": "call-synth-1",
+            "displayReason": {
+              "en": "Allow this opera…",
+              "zh": "允许本次操作使用 danger-…"
+            },
+            "reason": "escalate sandbox…",
+            "toolName": "bash"
+          },
+          "type": "waterfall"
+        }
+      ]
+    },
+    {
+      "case": "reject",
+      "decision": "rejected",
+      "evidence_level": "script",
+      "initialize_ok": true,
+      "events_stream_ready": true,
+      "ready_frame_shape": {
+        "clientId": "5cbc0e51-052a-4f97-8b4a-1779a5395fb0",
+        "host": {
+          "home": "/home/kevin"
+        },
+        "type": "ready"
+      },
+      "omni_task_id": "omni-4e8737ab-a695-4acf-b19a-2a585d06bbb8",
+      "engine_session_id": "session-931aa017-0d2a-40d4-bd1b-883e259d14f5",
+      "approval_request_received": true,
+      "waterfall_shape": {
+        "agentId": "session-931aa017-0d2a-40d4-bd1b-883e259d14f5",
+        "event": "approval/request",
+        "eventId": "1ef2301c-f0b7-45e3-9553-aeed65fdda78",
+        "request": {
+          "callId": "call-synth-1",
+          "displayReason": {
+            "en": "Allow this opera…",
+            "zh": "允许本次操作使用 danger-…"
+          },
+          "reason": "escalate sandbox…",
+          "toolName": "bash"
+        },
+        "type": "waterfall"
+      },
+      "agent_id_equals_session_id": true,
+      "approval_request_fields": [
+        "callId",
+        "displayReason",
+        "reason",
+        "toolName"
+      ],
+      "approval_tool_name": "bash",
+      "approval_has_call_id": true,
+      "approval_has_reason": true,
+      "status_while_waiting": {
+        "omni_task_id": "omni-4e8737ab-a695-4acf-b19a-2a585d06bbb8",
+        "status": "running",
+        "evidence_source": "operator_confirm",
+        "since": 1792723435.8695428,
+        "last_event_seq": 3,
+        "partial_output_size": 0,
+        "engine_session_id": "session-931aa017-0d2a-40d4-bd1b-883e259d14f5",
+        "note": ""
+      },
+      "result_rpc_value": null,
+      "final_status": {
+        "omni_task_id": "omni-4e8737ab-a695-4acf-b19a-2a585d06bbb8",
+        "status": "succeeded",
+        "evidence_source": "engine_terminal",
+        "since": 1792723436.2142804,
+        "last_event_seq": 9,
+        "partial_output_size": 5,
+        "engine_session_id": "session-931aa017-0d2a-40d4-bd1b-883e259d14f5",
+        "note": "stop_reason=stop"
+      },
+      "final_result": {
+        "form": "complete",
+        "content_len": 5,
+        "content": "合成已继续"
+      },
+      "model_requests": [
+        {
+          "message_count": 4,
+          "mode": "tool_call",
+          "has_tool_message": false
+        },
+        {
+          "message_count": 2,
+          "mode": "tool_call",
+          "has_tool_message": false
+        },
+        {
+          "message_count": 6,
+          "mode": "tool_call",
+          "has_tool_message": true
+        }
+      ],
+      "frames_after_decision": [
+        {
+          "clientId": "5cbc0e51-052a-4f97-8b4a-1779a5395fb0",
+          "host": {
+            "home": "/home/kevin"
+          },
+          "type": "ready"
+        },
+        {
+          "agentId": "session-931aa017-0d2a-40d4-bd1b-883e259d14f5",
+          "event": "approval/request",
+          "eventId": "1ef2301c-f0b7-45e3-9553-aeed65fdda78",
+          "request": {
+            "callId": "call-synth-1",
+            "displayReason": {
+              "en": "Allow this opera…",
+              "zh": "允许本次操作使用 danger-…"
+            },
+            "reason": "escalate sandbox…",
+            "toolName": "bash"
+          },
+          "type": "waterfall"
+        }
+      ]
+    }
+  ]
+}

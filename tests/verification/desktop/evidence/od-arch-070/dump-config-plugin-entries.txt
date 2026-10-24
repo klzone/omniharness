@@ -1,0 +1,17 @@
+378:- id: web-search-deepseek
+379:  name: '@deepseek-ai/dsh-web-search-deepseek'
+380-  config:
+381-    apiKeyEnv: DEEPSEEK_API_KEY
+382-    maxUses: 20
+383-# == @deepseek-ai/dsh-base
+--
+1249:# == dsh-free-search
+1250-- id: web-search-free
+1251:  name: dsh-free-search
+1252-  config:
+1253-    provider: bing
+1254-    disabledEngines: []
+1255-    bingMarket: zh-CN
+1256:# == dsh-cost-meter
+1257:- id: cost-meter
+1258:  name: dsh-cost-meter

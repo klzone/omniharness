@@ -29,6 +29,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DESKTOP = HERE.parents[2] / "desktop"
 SOURCE = DESKTOP / "src" / "aiDraft.ts"
+RULES = HERE.parents[2] / "samples" / "profiles" / "discipline.rules.json"
 
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -65,7 +66,7 @@ def compile_and_probe() -> dict:
 
     probe = tmp / "probe.cjs"
     probe.write_text(PROBE_JS.replace("__MODULE__", json.dumps(str(compiled))), encoding="utf-8")
-    probe_result = run(["node", str(probe)], tmp)
+    probe_result = run(["node", str(probe), str(RULES)], tmp)
     try:
         cases = json.loads(probe_result.stdout) if probe_result.stdout else []
     except json.JSONDecodeError:
@@ -100,12 +101,17 @@ function collector() {
   };
 }
 
+// OD-ARCH-068：写作铁律已迁出平台代码，改由 Profile 规则资产提供。
+const RULES_FILE = process.argv[2];
+const writingRules = require(RULES_FILE).global.writing_rules;
+
 const input = {
   sceneLabel: '合成周报',
   purpose: '向合成受众汇报合成进度',
   audience: '合成评审组',
   requirements: '不超过两页，不含真实数据',
   material: '合成事项 A 已完成；合成事项 B 数据缺失。',
+  writingRules,
 };
 
 // 1. 提示词assembly
@@ -147,7 +153,7 @@ const input = {
     p.includes('按周报结构整理') && p.includes('本周概述') && p.includes('可在工作台流程包中调整'),
     'scene rules + sections', 'editable rules and sections present');
   record('prompt-keeps-hard-rules-with-custom-scene-rules',
-    ['写作规则（流程包不可关闭）', '不得虚构数据', '案件材料', '待确认'].every((r) => p.includes(r)),
+    ['写作规则（来自当前 Profile 规则资产）', '不得虚构数据', '案件材料', '待确认'].every((r) => p.includes(r)),
     'hard rules kept', 'hard rules cannot be disabled by the flow pack');
   record('prompt-uses-default-scene-rules-when-absent',
     m.buildDraftPrompt({ sceneLabel: 'x', purpose: '', audience: '', requirements: '', material: '' }).includes(m.DEFAULT_SCENE_RULES),
@@ -239,7 +245,7 @@ async function submission(name, host, expect, runOpts) {
       !captured.userInputText.includes('写作规则') &&
       captured.promptText.includes('合成材料正文标记') &&
       captured.promptText.includes('场景规则标记') &&
-      captured.promptText.includes('写作规则（流程包不可关闭）') &&
+      captured.promptText.includes('写作规则（来自当前 Profile 规则资产）') &&
       captured.workspaceDir === '/tmp/synthetic-workspace',
       (captured?.userInputText || '').slice(0, 50), 'material content scanned; rules and workspace wired');
   }

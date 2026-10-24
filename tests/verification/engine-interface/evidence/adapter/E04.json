@@ -4,20 +4,22 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559254.7181666,
+  "started_at": 1792759660.8420699,
   "checks": [
     {
       "check": "reached_failed",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "status": "failed",
         "evidence_source": "engine_error",
-        "since": 1792559256.5151849,
+        "since": 1792759662.663086,
         "last_event_seq": 2,
         "partial_output_size": 0,
-        "engine_session_id": "7d79abe3-dbce-487c-af74-dcfd552918c0",
-        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+        "engine_session_id": "69a4495a-6ade-4c9d-a93c-16f3f23c03ca",
+        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       }
     },
     {
@@ -29,10 +31,10 @@
       "check": "content_empty_so_unrecoverable",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "form": "unrecoverable",
         "content": "",
-        "persisted_at": 1792559256.515446,
+        "persisted_at": 1792759662.66334,
         "integrity": "partial",
         "sources": [
           {
@@ -66,54 +68,62 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e04_b_ggthl_",
+    "data_root": "/tmp/omni_p1s3_e04_6i__d7rd",
     "status_series": [
       {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792559256.2937124,
+        "since": 1792759662.4413245,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "7d79abe3-dbce-487c-af74-dcfd552918c0",
-        "note": ""
+        "engine_session_id": "69a4495a-6ade-4c9d-a93c-16f3f23c03ca",
+        "note": "",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       },
       {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792559256.2937124,
+        "since": 1792759662.4413245,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "7d79abe3-dbce-487c-af74-dcfd552918c0",
-        "note": ""
+        "engine_session_id": "69a4495a-6ade-4c9d-a93c-16f3f23c03ca",
+        "note": "",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       },
       {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792559256.2937124,
+        "since": 1792759662.4413245,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "7d79abe3-dbce-487c-af74-dcfd552918c0",
-        "note": ""
+        "engine_session_id": "69a4495a-6ade-4c9d-a93c-16f3f23c03ca",
+        "note": "",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       },
       {
-        "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+        "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
         "status": "failed",
         "evidence_source": "engine_error",
-        "since": 1792559256.5151849,
+        "since": 1792759662.663086,
         "last_event_seq": 2,
         "partial_output_size": 0,
-        "engine_session_id": "7d79abe3-dbce-487c-af74-dcfd552918c0",
-        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+        "engine_session_id": "69a4495a-6ade-4c9d-a93c-16f3f23c03ca",
+        "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}",
+        "ttfb_seconds": null,
+        "pending_approvals": 0
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-9fbf5227-ac5b-49af-8332-7827f95cb2ce",
+      "omni_task_id": "omni-e6c6b53f-de73-4755-9df7-f868cbe1530f",
       "form": "unrecoverable",
       "content": "",
-      "persisted_at": 1792559256.515446,
+      "persisted_at": 1792759662.66334,
       "integrity": "partial",
       "sources": [
         {
@@ -140,5 +150,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559256.9774241
+  "finished_at": 1792759663.1154401
 }

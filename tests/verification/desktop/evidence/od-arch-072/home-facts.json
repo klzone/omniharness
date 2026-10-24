@@ -1,0 +1,59 @@
+{
+  "plan": "OD-ARCH-072 Part C",
+  "evidence_level": "真实桌面窗口（一次性 Xvfb + 合成端点）+ 文件事实",
+  "root": "/tmp/od072-home",
+  "source_fingerprint_before": "6ca6329161e2f2ab:1287",
+  "user_dsh_before": "435315d6e3517d7a:4000",
+  "steps": {
+    "empty": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/10-home-empty.png",
+      "expect": "输入框在首页竖直中部；无「今日重点推进」卡片与常驻日程卡；无待办时不占位；机器人在对话区上方左侧",
+      "app_alive": true
+    },
+    "history": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/11-home-history.png",
+      "thread_file": "/tmp/od072-home/app-data/threads/plain/t072homelayout.json",
+      "expect": "两条合成消息可见，输入框落到底部（历史区在上）"
+    },
+    "calendar": {
+      "screenshots": [
+        "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/12-calendar-open.png",
+        "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/13-calendar-fading.png",
+        "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/14-calendar-closed.png"
+      ],
+      "expect": "点日期出现三周节律浮卡；移开 1 秒后淡出消失"
+    },
+    "profile_open": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/15-profile-popover.png",
+      "expect": "默认「无 · 标准模式」，列表来自隔离根真实 profile 目录"
+    },
+    "profile_confirm": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/16-profile-confirm.png",
+      "expect": "确认弹窗说明「下次启动引擎生效」，有 取消 / 确认"
+    },
+    "profile_saved": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-072/17-profile-saved.png",
+      "settings_path": "/tmp/od072-home/app-data/config/settings.v1.json",
+      "engine_profile_after": "yvan-work",
+      "expect": "设置文件 engine_profile 写入所选 Profile；界面出现回执"
+    }
+  },
+  "profiles_on_disk": [
+    "acp",
+    "headless",
+    "omnidesk-test",
+    "web",
+    "yvan-work"
+  ],
+  "settings_before": null,
+  "source_fingerprint_after": "9026685a0b7eb664:1287",
+  "user_dsh_after": "435315d6e3517d7a:4000",
+  "source_changed_files": [
+    "storages/cost-meter/ledger.json（(364055, 1792771329) -> (364055, 1792771422)）",
+    "storages/cost-meter/ledger.json.native-search-coverage.json（(260, 1792771326) -> (215, 1792771419)）"
+  ],
+  "user_dsh_changed_files": [],
+  "source_unchanged": false,
+  "user_dsh_unchanged": true,
+  "source_changed_attribution": "cost-meter 账本写入，来自同时运行的用户实例（脚本只操作 /tmp 副本）"
+}

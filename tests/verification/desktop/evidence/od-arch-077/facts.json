@@ -1,0 +1,64 @@
+{
+  "plan": "OD-ARCH-077 S1/S2 + D-030",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 文件事实 + 静态源码核对",
+  "root": "/tmp/od077d",
+  "knowledge_root": "/tmp/od077d/knowledge",
+  "source_home": "/home/kevin/OmniDesk/runtime/dsh-home",
+  "checks": {
+    "mention_list_opened": true,
+    "candidate_lists_sample": true,
+    "candidate_excludes_binary": true,
+    "candidate_excludes_hidden": true,
+    "attachment_chip": true,
+    "send_button": true,
+    "attachment_body_reached_model": true,
+    "input_shows_filename": true,
+    "source_file_intact": true,
+    "chip_cleared_after_send": true,
+    "voice_button": true,
+    "voice_note_visible": true,
+    "settings_gear": true,
+    "capability_tab": true,
+    "capability_freeze_copy": true,
+    "no_market_entry": true,
+    "no_capability_market_cmd": true,
+    "mention_ui": true,
+    "chip_ui": true,
+    "voice_copy": true,
+    "attachment_body_in_prompt": true,
+    "alive": true,
+    "source_unchanged": true,
+    "user_dsh_unchanged": true,
+    "user_agents_unchanged": true
+  },
+  "source_before": "cc1e252b5160cf94:1287",
+  "user_dsh_before": "435315d6e3517d7a:4000",
+  "user_agents_before": "e3b0c44298fc1c14:0",
+  "mock_request_count": 2,
+  "attachment_marker_hits": [
+    "SYNTHETIC-MARKER-077",
+    "SYNTHETIC-MARKER-077"
+  ],
+  "request_body_probe_hits": [
+    "SYNTHETIC-MARKER-077",
+    "SYNTHETIC-MARKER-077"
+  ],
+  "request_last_user_sample": [
+    "Time sampled while preparing turn 1, step 1: 2026-10-24T20:39:16+08:00[Asia/Shan",
+    "Generate the session title from this JSON array of human messages:\n[{\"seq\":8,\"te"
+  ],
+  "voice_note_ax_text": false,
+  "voice_note_pixel_diff": 0.00975,
+  "capability_ax_text": false,
+  "capability_labels_sample": [
+    "安装lemo-opuscar插件",
+    "打开 Skill 目录"
+  ],
+  "app_log_errors": 0,
+  "source_after": "cc1e252b5160cf94:1287",
+  "user_dsh_after": "435315d6e3517d7a:4000",
+  "user_agents_after": "e3b0c44298fc1c14:0",
+  "gate_errors": [],
+  "missing_checks": [],
+  "passed": true
+}

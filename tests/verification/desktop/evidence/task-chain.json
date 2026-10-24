@@ -1,12 +1,12 @@
 {
-  "generated_at": 1792424739.652822,
+  "generated_at": 1792760194.7624085,
   "evidence_level": "script（真实引擎+真实 DSH 进程 + 本机合成模型端点）",
   "channel": "IPC-2 stdio JSON-RPC（进程边界）",
   "dsh_cli": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
   "scenarios": {
     "success": {
       "scenario": "success",
-      "root": "/tmp/omni_p2desktop_ok_fmn8ob7l",
+      "root": "/tmp/omni_p2desktop_ok_rk008_2a",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -41,7 +41,7 @@
               "--profile",
               "acp",
               "--patch",
-              "/tmp/omni_p2desktop_ok_fmn8ob7l/synthetic-provider.yml"
+              "/tmp/omni_p2desktop_ok_rk008_2a/synthetic-provider.yml"
             ],
             "client_capabilities": {
               "fs": {
@@ -57,33 +57,50 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
+          "omni_task_id": "omni-e59984a3-65d2-4b46-a6f2-3fcd753278a9",
           "status": "running",
-          "accepted_at": 1792424741.0042355,
-          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
-          "note": "适配层已建立会话并提交；等待引擎终态证据"
+          "accepted_at": 1792760196.3763285,
+          "engine_session_id": "670a68d2-3cd6-462a-aac9-8d3919c059bc",
+          "note": "适配层已建立会话并提交；等待引擎终态证据",
+          "session_mode": "new"
         }
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
+          "omni_task_id": "omni-e59984a3-65d2-4b46-a6f2-3fcd753278a9",
           "status": "running",
           "evidence_source": "operator_confirm",
-          "since": 1792424741.045202,
+          "since": 1792760196.437314,
           "last_event_seq": 1,
           "partial_output_size": 0,
-          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
-          "note": ""
+          "engine_session_id": "670a68d2-3cd6-462a-aac9-8d3919c059bc",
+          "note": "",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         },
         {
-          "omni_task_id": "omni-3afdceef-dd43-4dcb-9255-92cd34762142",
+          "omni_task_id": "omni-e59984a3-65d2-4b46-a6f2-3fcd753278a9",
+          "status": "running",
+          "evidence_source": "operator_confirm",
+          "since": 1792760196.437314,
+          "last_event_seq": 3,
+          "partial_output_size": 6,
+          "engine_session_id": "670a68d2-3cd6-462a-aac9-8d3919c059bc",
+          "note": "",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
+        },
+        {
+          "omni_task_id": "omni-e59984a3-65d2-4b46-a6f2-3fcd753278a9",
           "status": "succeeded",
           "evidence_source": "engine_terminal",
-          "since": 1792424741.246669,
+          "since": 1792760196.6791043,
           "last_event_seq": 4,
           "partial_output_size": 6,
-          "engine_session_id": "538a5067-bdff-433a-b116-eabde9bf65b6",
-          "note": "stop_reason=end_turn"
+          "engine_session_id": "670a68d2-3cd6-462a-aac9-8d3919c059bc",
+          "note": "stop_reason=end_turn",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         }
       ],
       "final_status": "succeeded",
@@ -93,7 +110,7 @@
         "form": "complete",
         "integrity": "complete",
         "content": "合成材料草稿",
-        "persisted_at": 1792424741.2471192
+        "persisted_at": 1792760196.679604
       },
       "event_count": 4,
       "event_types": [
@@ -116,7 +133,7 @@
     },
     "failure": {
       "scenario": "failure",
-      "root": "/tmp/omni_p2desktop_fail_rdksz1_6",
+      "root": "/tmp/omni_p2desktop_fail_hy8f6um4",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -126,33 +143,38 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
+          "omni_task_id": "omni-a6b4ad41-6bbd-4b64-86d4-f59a29092622",
           "status": "running",
-          "accepted_at": 1792424743.1377497,
-          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
-          "note": "适配层已建立会话并提交；等待引擎终态证据"
+          "accepted_at": 1792760199.1441474,
+          "engine_session_id": "809fd893-919c-49a4-8ade-f6cdaec0fa96",
+          "note": "适配层已建立会话并提交；等待引擎终态证据",
+          "session_mode": "new"
         }
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
+          "omni_task_id": "omni-a6b4ad41-6bbd-4b64-86d4-f59a29092622",
           "status": "running",
           "evidence_source": "operator_confirm",
-          "since": 1792424743.1793993,
+          "since": 1792760199.2052891,
           "last_event_seq": 1,
           "partial_output_size": 0,
-          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
-          "note": ""
+          "engine_session_id": "809fd893-919c-49a4-8ade-f6cdaec0fa96",
+          "note": "",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         },
         {
-          "omni_task_id": "omni-6c2512c7-1d14-42b2-8ae1-84a9840e108e",
+          "omni_task_id": "omni-a6b4ad41-6bbd-4b64-86d4-f59a29092622",
           "status": "failed",
           "evidence_source": "engine_error",
-          "since": 1792424743.4016535,
+          "since": 1792760199.4269352,
           "last_event_seq": 2,
           "partial_output_size": 0,
-          "engine_session_id": "5532b7ab-3e9b-40df-bcbf-2da293bccd57",
-          "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}"
+          "engine_session_id": "809fd893-919c-49a4-8ade-f6cdaec0fa96",
+          "note": "error=Internal error: turn failed: 400: {\"message\":\"synthetic upstream failure\",\"type\":\"invalid_request_error\"}",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         }
       ],
       "final_status": "failed",
@@ -180,7 +202,7 @@
     },
     "cancel": {
       "scenario": "cancel",
-      "root": "/tmp/omni_p2desktop_cancel_0v3wx1fv",
+      "root": "/tmp/omni_p2desktop_cancel_5fw6a5zp",
       "isolation_problems": [],
       "initialize": {
         "ok": true,
@@ -190,11 +212,12 @@
         "ok": true,
         "error": null,
         "receipt": {
-          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
+          "omni_task_id": "omni-90d8185e-7518-4d4c-9c04-7ed9653262f8",
           "status": "running",
-          "accepted_at": 1792424745.277936,
-          "engine_session_id": "00b3eb74-5de8-4ac5-9ae5-27343691c4ed",
-          "note": "适配层已建立会话并提交；等待引擎终态证据"
+          "accepted_at": 1792760201.657683,
+          "engine_session_id": "60d928ff-6662-427e-b4dc-8e19301d6474",
+          "note": "适配层已建立会话并提交；等待引擎终态证据",
+          "session_mode": "new"
         }
       },
       "running_before_cancel": true,
@@ -202,10 +225,10 @@
         "ok": true,
         "error": null,
         "outcome": {
-          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
+          "omni_task_id": "omni-90d8185e-7518-4d4c-9c04-7ed9653262f8",
           "phase": "confirmed_cancelled",
-          "requested_at": 1792424745.3585706,
-          "settled_at": 1792424745.4089663,
+          "requested_at": 1792760201.7584145,
+          "settled_at": 1792760201.808728,
           "final_state": "cancelled",
           "evidence": "engine_terminal",
           "note": "引擎以 stopReason=cancelled 落定"
@@ -213,14 +236,16 @@
       },
       "status_snapshots": [
         {
-          "omni_task_id": "omni-be5080bb-2e40-4050-bda5-797e16826ee0",
+          "omni_task_id": "omni-90d8185e-7518-4d4c-9c04-7ed9653262f8",
           "status": "cancelled",
           "evidence_source": "engine_terminal",
-          "since": 1792424745.4089673,
+          "since": 1792760201.8087287,
           "last_event_seq": 3,
           "partial_output_size": 0,
-          "engine_session_id": "00b3eb74-5de8-4ac5-9ae5-27343691c4ed",
-          "note": "stop_reason=cancelled"
+          "engine_session_id": "60d928ff-6662-427e-b4dc-8e19301d6474",
+          "note": "stop_reason=cancelled",
+          "ttfb_seconds": null,
+          "pending_approvals": 0
         }
       ],
       "final_status": "cancelled",

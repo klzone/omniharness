@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559436.7227361,
+  "started_at": 1792759771.175766,
   "checks": [
     {
       "check": "models_non_empty",
@@ -49,7 +49,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w10_fmyuiv42",
+    "data_root": "/tmp/omni_p1s3_w10_0rldbcnv",
     "catalog": {
       "default": {
         "provider": "fake",
@@ -232,5 +232,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559439.7272944
+  "finished_at": 1792759773.6795406
 }

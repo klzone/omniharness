@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792559403.4718463,
+  "started_at": 1792759854.121397,
   "checks": [
     {
       "check": "initialize_ok",
@@ -78,7 +78,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w01_f1olzbmq",
+    "data_root": "/tmp/omni_p1s3_w01_pr0rputi",
     "descriptor": {
       "engine_kind": "dsh-web-api",
       "engine_version": "unknown",
@@ -123,7 +123,7 @@
       ],
       "failures": []
     },
-    "startup_tail_redacted": "dsh web: http://127.0.0.1:45735/?token=<redacted>",
+    "startup_tail_redacted": "dsh web: http://127.0.0.1:44785/?token=<redacted>",
     "shutdown": {
       "mode": "graceful",
       "in_flight_before": [],
@@ -137,5 +137,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792559406.4783053
+  "finished_at": 1792759856.627063
 }

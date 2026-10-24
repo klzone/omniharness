@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -39,6 +40,13 @@ if __package__ in (None, ""):  # 允许 python3 path/to/serve.py 直接跑
         WebApiAdapter,
     )
     from omnidesk_engine.contract import TERMINAL_STATES
+    from omnidesk_engine.process_owner import (
+        OwnerConflict,
+        claim_ownership,
+        ensure_process_group,
+        reclaim_owner,
+        release_ownership,
+    )
 else:
     from . import (
         AcpEngineAdapter,
@@ -49,6 +57,13 @@ else:
         WebApiAdapter,
     )
     from .contract import TERMINAL_STATES
+    from .process_owner import (
+        OwnerConflict,
+        claim_ownership,
+        ensure_process_group,
+        reclaim_owner,
+        release_ownership,
+    )
 
 PROTOCOL_VERSION = "omnidesk-engine/1"
 SERVER_NAME = "omnidesk-engine"
@@ -90,6 +105,9 @@ class EngineService:
         self._pump_lock = threading.Lock()
         # 结果落盘根（大文本按路径返回）
         self._result_dir: Optional[str] = None
+        # OD-ARCH-074：本进程独占的数据根（用于所有权登记与退出清理）。
+        self._state_dir: Optional[str] = None
+        self._owns_registration = False
 
     # -- 传输 ---------------------------------------------------------------
     def _send(self, obj: Mapping[str, Any]) -> None:
@@ -145,10 +163,22 @@ class EngineService:
 
         def run() -> None:
             try:
-                for event in adapter.stream_events(omni_task_id, timeout=3600.0):
-                    if stop.is_set():
-                        break
-                    self._notify("omni.event", event.to_dict())
+                # 2026-10-23：不再给事件泵设总时长。分段调用只为能响应停止信号；
+                # 只要任务没终态就一直转发，长任务不会被一小时上限截断。
+                last_seq = None
+                while not stop.is_set():
+                    for event in adapter.stream_events(
+                        omni_task_id, timeout=30.0, after_seq=last_seq
+                    ):
+                        if stop.is_set():
+                            return
+                        last_seq = event.seq
+                        self._notify("omni.event", event.to_dict())
+                    try:
+                        if adapter.get_task_status(omni_task_id).status in TERMINAL_STATES:
+                            return
+                    except EngineError:
+                        return
             except EngineError as error:
                 self._notify(
                     "omni.event",
@@ -222,6 +252,35 @@ class EngineService:
             self._reject(req_id, EngineErrorCode.INVALID_ARGUMENT, "params.cwd must be absolute")
             return
 
+        # OD-ARCH-074：同一数据根只允许一个活跃引擎。初始化之前先核验/回收，
+        # 失败时给出可读原因，而不是让两个引擎并写同一份台账。
+        state_dir = params.get("engine_state_dir")
+        if state_dir:
+            try:
+                same_root = (
+                    self._owns_registration
+                    and self._state_dir
+                    and os.path.abspath(self._state_dir) == os.path.abspath(str(state_dir))
+                )
+                if not same_root:
+                    # 引擎侧只回收「引擎已死、子进程组遗留」的登记；仍活跃的引擎一律不碰。
+                    self._release_owner()
+                    reclaim_owner(str(state_dir), grace=3.0)
+                    claim_ownership(
+                        str(state_dir), str(dsh.get("channel") or self.DEFAULT_CHANNEL)
+                    )
+            except OwnerConflict as exc:
+                self._reject(
+                    req_id,
+                    EngineErrorCode.ENGINE_UNAVAILABLE,
+                    "engine instance conflict: " + str(exc),
+                    reason=str(exc),
+                    state_dir=str(state_dir),
+                )
+                return
+            self._state_dir = str(state_dir)
+            self._owns_registration = True
+
         # 隔离根由宿主显式下发；本进程不猜测、不读取宿主环境里的 DSH_HOME。
         env = dict(os.environ)
         if dsh.get("dsh_home"):
@@ -270,6 +329,9 @@ class EngineService:
                 adapter.shutdown(mode="force", grace_period=2.0)
             except Exception:
                 pass
+            # 初始化失败也要释放所有权，否则同一引擎进程重试初始化会被自己
+            # 的登记判成「另一个实例」而永远起不来。
+            self._release_owner()
             self._fail(req_id, error)
             return
 
@@ -318,6 +380,37 @@ class EngineService:
             return
         self._result(req_id, status.to_dict())
 
+    def m_fork_session(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        """在引擎侧按精确切点分支会话（DSH 原生 session/fork）。
+
+        只有 Web API 通道提供该能力；ACP 通道如实返回 unsupported，
+        绝不退回本地重放冒充原生分叉。
+        """
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        fork = getattr(adapter, "fork_session", None)
+        if fork is None:
+            self._fail(
+                req_id,
+                EngineError(
+                    EngineErrorCode.UNSUPPORTED,
+                    "current engine channel does not support session fork",
+                    detail={"channel": self._channel},
+                ),
+            )
+            return
+        raw_seq = params.get("at_seq")
+        try:
+            result = fork(
+                str(params.get("engine_session_id") or ""),
+                at_seq=int(raw_seq) if raw_seq is not None else None,
+            )
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        self._result(req_id, result.to_dict())
+
     def m_stream_events(self, req_id: Any, params: Mapping[str, Any]) -> None:
         adapter = self._require_adapter(req_id)
         if adapter is None:
@@ -352,6 +445,29 @@ class EngineService:
             return
         self._stop_pump(str(params.get("omni_task_id") or ""))
         self._result(req_id, outcome.to_dict())
+
+    def m_approval_respond(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        allow = params.get("allow")
+        if not isinstance(allow, bool):
+            self._error(req_id, INVALID_PARAMS, "allow must be a boolean")
+            return
+        responder = getattr(adapter, "respond_approval", None)
+        if responder is None:
+            self._error(req_id, METHOD_NOT_FOUND, "active engine does not support approvals")
+            return
+        try:
+            receipt = responder(
+                str(params.get("omni_task_id") or ""),
+                str(params.get("approval_id") or ""),
+                allow,
+            )
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        self._result(req_id, dict(receipt))
 
     def m_get_task_result(self, req_id: Any, params: Mapping[str, Any]) -> None:
         adapter = self._require_adapter(req_id)
@@ -494,8 +610,10 @@ class EngineService:
         "omni.initialize": "m_initialize",
         "omni.submit_task": "m_submit_task",
         "omni.get_task_status": "m_get_task_status",
+        "omni.fork_session": "m_fork_session",
         "omni.stream_events": "m_stream_events",
         "omni.cancel_task": "m_cancel_task",
+        "omni.approval_respond": "m_approval_respond",
         "omni.get_task_result": "m_get_task_result",
         "omni.get_task_result_text": "m_get_task_result_text",
         "omni.recover_session": "m_recover_session",
@@ -546,6 +664,10 @@ class EngineService:
             if self._stop.is_set():
                 break
             self.handle(frame)
+            # omni.shutdown 已应答：立刻收尾退出，不再等下一条输入。
+            # 否则引擎会一直挂在读 stdin 上，所有权登记与子进程组都留着。
+            if self._stop.is_set():
+                break
         # stdin 关闭 => 宿主退出 => 本进程收尾
         self._finalize()
         return 0
@@ -561,11 +683,38 @@ class EngineService:
                 self._adapter.shutdown(mode="graceful", grace_period=5.0)
             except Exception as exc:
                 _log("shutdown on exit failed: " + type(exc).__name__ + ": " + str(exc))
+        self._release_owner()
+
+    def _release_owner(self) -> None:
+        if not self._owns_registration:
+            return
+        try:
+            release_ownership(self._state_dir)
+        finally:
+            self._owns_registration = False
 
 
 def main(argv: Optional[list] = None) -> int:
     _log("starting; pid=" + str(os.getpid()) + "; protocol=" + PROTOCOL_VERSION)
+    # OD-ARCH-074：引擎独占一个进程组。登记里的 pgid 必须是本进程组，
+    # 这样引擎被强杀后，宿主才能凭 owner.json 安全识别并回收整棵子树。
+    ensure_process_group()
     service = EngineService(stdin=sys.stdin, stdout=sys.stdout)
+
+    def _on_signal(signum, _frame):  # pragma: no cover - 真实信号路径
+        _log("signal " + str(signum) + "; shutting down")
+        service._stop.set()
+        # 关闭 stdin 让主循环及时退出；收尾统一在 run() 之后完成。
+        try:
+            sys.stdin.close()
+        except Exception:
+            pass
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(signum, _on_signal)
+        except (OSError, ValueError):
+            pass
     try:
         return service.run()
     except KeyboardInterrupt:  # pragma: no cover

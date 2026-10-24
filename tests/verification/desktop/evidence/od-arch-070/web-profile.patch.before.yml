@@ -1,0 +1,24 @@
+# Your patch layer for this dsh profile, applied after every bundle layer:
+# a top-level YAML array of loader patch entries (id-targeted config
+# overrides, disables, and insert lists; `!!js` expressions allowed).
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      agnescn:
+        displayName: agnescn
+        apiKeyEnv: AGNESCN_API_KEY
+        api: openai-completions
+        baseURL: https://api.agnes-ai.cn/v1
+        models:
+          - id: agnes-3.0-flash
+            name: agnes-3.0-flash
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: opendesign
+    model: deepseek-v4.1-flash

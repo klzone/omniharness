@@ -67,6 +67,7 @@ from .task_core import (
     _TaskRecord,
 )
 from .jsonrpc import JsonRpcPeer, PeerExit
+from .process_owner import record_child_group
 
 __all__ = [
     "ACP_PROTOCOL_VERSION",
@@ -154,7 +155,8 @@ class AcpEngineAdapter(TaskCoreBase):
         env: Optional[Mapping[str, str]] = None,
         state_dir: Optional[str] = None,
         permission_policy: str = "auto_reject_once",
-        default_timeout: float = 120.0,
+        # 默认不按墙钟收尾（None）。与 web-api 通道同一产品口径。
+        default_timeout: Optional[float] = None,
         session_timeout: float = 60.0,
         init_timeout: float = 30.0,
         engine_profile: Optional[str] = None,
@@ -274,6 +276,7 @@ class AcpEngineAdapter(TaskCoreBase):
                 self._spawn_error = err
                 raise err
             self._peer = peer
+            record_child_group(self._state_dir, peer.proc.pid)
             return peer
 
     def _next_id(self) -> str:
@@ -768,12 +771,25 @@ class AcpEngineAdapter(TaskCoreBase):
         worker = threading.Thread(target=self._prompt_worker, args=(record, rid), daemon=True)
         worker.start()
 
-    def _task_timeout(self, record: _TaskRecord) -> float:
+    def _task_timeout(self, record: _TaskRecord) -> Optional[float]:
+        """本轮等待预算；None 表示一直等到引擎给终态或子进程退出。
+
+        产品口径同 web-api（2026-10-23）：只有显式给出正整数才按秒收尾，
+        供测试与脚本模拟超时；缺省沿用构造参数（生产为 None）。
+        """
         policy = record.timeouts or {}
         total = policy.get("total_seconds")
-        if total is None:
+        if total in (None, ""):
             return self._default_timeout
-        return float(total)
+        if total == 0:
+            return None
+        try:
+            value = float(total)
+        except (TypeError, ValueError):
+            return None
+        if value <= 0:
+            return None
+        return value
 
     def _prompt_worker(self, record: _TaskRecord, rid: str) -> None:
         peer = self._peer
@@ -790,12 +806,20 @@ class AcpEngineAdapter(TaskCoreBase):
                     "process_state",
                     note="引擎进程在给出终态前退出（rc=" + str(code) + "）；未自动重放",
                 )
-            else:
+            elif timeout is not None:
                 self._settle(
                     record,
                     TaskState.UNKNOWN,
                     "timeout",
                     note="prompt 在 " + str(timeout) + "s 内未返回终态；未自动重放",
+                )
+            else:
+                # 无上限时 wait_response 只在收到响应或进程退出后返回，正常到不了这里。
+                self._settle(
+                    record,
+                    TaskState.INTERRUPTED,
+                    "process_state",
+                    note="等待引擎终态时对端连接消失；未自动重放",
                 )
             return
         if "error" in frame:
@@ -1192,8 +1216,13 @@ class AcpEngineAdapter(TaskCoreBase):
         forced = False
         if exit_code is None and mode == "graceful":
             forced = True
-            peer.proc.kill()
+            peer.kill_group(3.0)
+            if peer.proc.poll() is None:
+                peer.proc.kill()
             exit_code = peer.wait_exit(5.0)
+        elif exit_code is not None:
+            # 组长已退出但可能留下同组子进程：按可信组长回收空/残组。
+            peer.kill_group(1.0)
         if mode == "detach":
             peer.close_stdin()
         with self._lock:

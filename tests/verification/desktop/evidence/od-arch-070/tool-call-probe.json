@@ -1,0 +1,43 @@
+{
+  "evidence_level": "script+network",
+  "mock_mode": "tool_call",
+  "task_id": "omni-78c16822-81dc-4687-b21e-8368819a798e",
+  "final_status": {
+    "omni_task_id": "omni-78c16822-81dc-4687-b21e-8368819a798e",
+    "status": "succeeded",
+    "evidence_source": "engine_terminal",
+    "since": 1792756571.547889,
+    "last_event_seq": 10,
+    "partial_output_size": 9,
+    "engine_session_id": "session-283f557c-a01f-488e-a75b-e6ce0dec8300",
+    "note": "stop_reason=stop",
+    "ttfb_seconds": 0.582,
+    "pending_approvals": 0
+  },
+  "tool_events": [
+    {
+      "kind": "tool/call",
+      "tool": "web_search",
+      "status": ""
+    },
+    {
+      "kind": "tool/result",
+      "tool": "",
+      "status": ""
+    }
+  ],
+  "model_requests": [
+    {
+      "has_tool_message": false,
+      "text_chars": 8370
+    },
+    {
+      "has_tool_message": false,
+      "text_chars": 599
+    },
+    {
+      "has_tool_message": true,
+      "text_chars": 8432
+    }
+  ]
+}

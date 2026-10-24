@@ -1,0 +1,16 @@
+[
+  {
+    "engine": "bing",
+    "ok": true,
+    "status": 200,
+    "ms": 412,
+    "bytes": 102547,
+    "looksLikeResults": true
+  },
+  {
+    "engine": "ddg-html",
+    "ok": false,
+    "ms": 266,
+    "error": "TypeError: fetch failed"
+  }
+]

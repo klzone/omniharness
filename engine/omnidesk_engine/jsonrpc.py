@@ -17,6 +17,8 @@ import threading
 import time
 from typing import Any, Callable, Mapping, Optional, Sequence
 
+from .process_owner import terminate_group
+
 
 class PeerExit(RuntimeError):
     """引擎进程在预期之外退出（管道断开）。"""
@@ -52,6 +54,8 @@ class JsonRpcPeer:
             self.cmd,
             cwd=cwd,
             env=dict(env) if env is not None else None,
+            # OD-ARCH-074：DSH 独占进程组，崩溃后按登记的可信组长回收整棵树。
+            start_new_session=True,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -144,9 +148,16 @@ class JsonRpcPeer:
                     return f
         return None
 
-    def wait_response(self, req_id: Any, timeout: float) -> Optional[Mapping[str, Any]]:
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
+    def wait_response(
+        self, req_id: Any, timeout: Optional[float]
+    ) -> Optional[Mapping[str, Any]]:
+        """等响应帧。timeout=None 表示一直等到收到响应或子进程退出。
+
+        任务型调用（session/prompt）用 None：只要引擎还在跑就不能按墙钟放弃；
+        握手/列举这类有界调用仍传具体秒数。
+        """
+        end = None if timeout is None else time.monotonic() + float(timeout)
+        while end is None or time.monotonic() < end:
             found = self.find_response(req_id)
             if found is not None:
                 return found
@@ -190,19 +201,28 @@ class JsonRpcPeer:
         return code
 
     def terminate(self, grace: float = 5.0) -> Optional[int]:
-        """先关 stdin（请求优雅退出），超时后 kill。返回退出码或 None。"""
+        """先关 stdin（请求优雅退出），超时后按进程组 kill。返回退出码或 None。"""
         self.close_stdin()
         code = self.wait_exit(grace)
+        self.kill_group(grace)
         if code is None:
-            self.proc.kill()
             code = self.wait_exit(grace)
         self._mark_exited()
         return code
 
+    def kill_group(self, grace: float = 5.0) -> bool:
+        """回收子进程独占的进程组；身份不可核验时只跳过，不误杀。"""
+        try:
+            return terminate_group(self.proc.pid, grace=grace, trusted_leader=self.proc.pid)
+        except Exception:
+            return False
+
     def hard_kill(self) -> None:
         """模拟客户端强制退出：不给引擎任何收尾机会。"""
-        self.proc.kill()
-        self.proc.wait()
+        self.kill_group(0.5)
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
         with self._lock:
             self.exited = True
             self.exit_code = self.proc.returncode
