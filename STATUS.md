@@ -54,13 +54,13 @@
 
 ### 收尾：扫描、提交与推送（2026-10-25）
 
-- **扫描范围：** 本轮全部 15 项改动（9 项已跟踪文件的 diff + 6 项新增文件，含 7 张 PNG 与 1 个 JSON）。
+- **扫描范围：** `git status` 列出的 15 条记录，展开为 **24 个文件**（9 个已跟踪文件的 diff + 1 个未跟踪目录展开出的 8 个文件 + 5 个新增源码/脚本文件）。
 - **凭证关键词：** 对已跟踪 diff 与全部未跟踪文件分别扫描 `sk-…`、`Bearer …`、`api_key=<长串>`、`ghp_…`、`AKIA…`、`-----BEGIN … PRIVATE KEY` —— **零命中**。
 - **真实材料特征：** 扫描 11 位手机号与 18 位身份证号正则 —— **零命中**；改动中只含合成占位串（`合成甲/合成乙`、`synthetic-code-line-*`）。
 - **图片元数据：** 对 7 张 PNG 的文本块做关键词检索（用户名、家目录、title/author/comment）—— **零命中**，未泄露本机路径或作者信息。
 - **仓库边界：** `git status --porcelain runtime/` 为 0；`knowledge/regulations`、`knowledge/reflections`、`.kb_extract/`、`.credentials.yaml` 仍在 .gitignore 内，未进入批次。
 - **提交：** 单批次 `731d4c5`（`OD-ARCH-081：首页小修复收尾`），24 个文件：PLANS.md、REVIEW.md、STATUS.md、desktop 源码 7 项、新增源码 4 项、验收脚本 1 项、证据目录 8 个、lock 文件 1 项。
-- **推送：** `d2fbc68..731d4c5  main -> main` 已推送；`git fetch` 后本地 HEAD 与 `origin/main` 同为 `731d4c5`，工作区干净，`runtime/` 零差异。未打标签、未动其它分支。
+- **推送：** 代码批次 `d2fbc68..731d4c5`、随后本条状态更新 `731d4c5..8c453ae`，均已推送 `origin/main`。推送后本地 HEAD 与 `origin/main` 同为 `8c453ae`，工作区干净，`runtime/` 零差异。未打标签、未动其它分支。
 
 ## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
 
