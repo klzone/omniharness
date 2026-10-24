@@ -59,8 +59,8 @@
 - **真实材料特征：** 扫描 11 位手机号与 18 位身份证号正则 —— **零命中**；改动中只含合成占位串（`合成甲/合成乙`、`synthetic-code-line-*`）。
 - **图片元数据：** 对 7 张 PNG 的文本块做关键词检索（用户名、家目录、title/author/comment）—— **零命中**，未泄露本机路径或作者信息。
 - **仓库边界：** `git status --porcelain runtime/` 为 0；`knowledge/regulations`、`knowledge/reflections`、`.kb_extract/`、`.credentials.yaml` 仍在 .gitignore 内，未进入批次。
-- **提交：** 单批次 `OD-ARCH-081：首页小修复收尾`，含 15 项改动（PLANS.md、REVIEW.md、STATUS.md、desktop 源码 6 项、新增源码 4 项、验收脚本 1 项、证据目录 8 个文件）。
-- **推送：** `origin/main` 已同步，推送后工作区干净。未打标签、未动其它分支。
+- **提交：** 单批次 `731d4c5`（`OD-ARCH-081：首页小修复收尾`），24 个文件：PLANS.md、REVIEW.md、STATUS.md、desktop 源码 7 项、新增源码 4 项、验收脚本 1 项、证据目录 8 个、lock 文件 1 项。
+- **推送：** `d2fbc68..731d4c5  main -> main` 已推送；`git fetch` 后本地 HEAD 与 `origin/main` 同为 `731d4c5`，工作区干净，`runtime/` 零差异。未打标签、未动其它分支。
 
 ## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
 
