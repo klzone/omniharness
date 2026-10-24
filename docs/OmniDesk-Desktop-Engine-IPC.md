@@ -138,10 +138,11 @@ Step 3 要求至少定义**启动、任务提交、事件接收、取消、结�
         "intent": "material_writing",
         "workspace_dir": "/abs/path",
         "payload": { "prompt_text": "..." },
-        "input_ref": null,
-        "timeout_policy": { "total_seconds": 120 }
+        "input_ref": null
       }
     }
+
+`timeout_policy` 可省略；省略即不设等待上限，任务只在正常完成、底座报错/断流或用户取消时结束。字段仅保留给测试与脚本显式模拟超时。
 
 `[设计]` omni_task_id 由 **OmniDesk 生成**（宿主或 Engine 皆可，但必须稳定且可持久化）；同一 idempotency_key 重复提交不得导致同一任务重复执行。返回引擎契约 §4.2 的 SubmitTaskReceipt：
 

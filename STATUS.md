@@ -1,5 +1,564 @@
 # BUILDER 执行状态
 
+## OD-ARCH-079：四项实测修复（2026-10-25，ARCHITECT 复核通过，见 REVIEW.md 顶部）
+
+- **开工状态：** 分支 main，HEAD 3f8c3ba；既有 122 项未提交/未跟踪改动全部保留（收尾 127 项）；未提交、未推送、未打标签；`git status --porcelain runtime/` 为空。
+- **设计参考：** 直接对照 DSH 原生实现（`packages/client/ui-chat/src/client/chat/TurnNavigator.tsx` 与 `.module.css` 的节距/留白/刻度比例/预览卡，`packages/api/session-controller/src/{types,commands}.ts` 的 fork 入参与 `atSeq` 缺省语义），未另起一套样式或协议形状。
+
+### 已完成内容
+
+1. **S1 附件边界拆分。** 新增附件专用的禁止路径片段表（保留 `.dsh` / `.agents` / `.codex` / DSH Desktop 数据 / `deepseek-harness` / `omniharness`，去掉 `myworkstation`）；`read_attachment()` 改走该表，产物落盘 `assert_outside_repo` 与 `read_material` 的仓库内拒绝保持不变。
+2. **S2 问句操作条。** 问句下方只留「复制」；答句保留复制、朗读、重新生成、分支、本轮耗时。
+3. **S3 原生会话分支。** 任务结果新增 `engine_turn_end_seq`（只接受非负整数）；引擎适配器转发 `session/fork {sessionId, atSeq}`，失败如实抛错、继承原会话 cwd，`fork-unavailable` 映射为 `INVALID_ARGUMENT`；ACP 通道明确返回 `unsupported`，不退回本地重放。前端在无切点时禁用按钮并提示，`branchBusy` 防重复点击。
+4. **S4 轮次索引条。** 新增 `desktop/src/shell/TurnRail.tsx` 与 `.turn-rail-*` 样式：节距 10px、条内留白 6px、刻度 2×20px、按轮次远近缩放 0.6/0.9/1、生成中呼吸、两端渐隐、悬停/聚焦显示预览卡、`<lg` 隐藏、≥2 轮才出现。
+
+### 修改文件
+
+新增：`desktop/src/shell/TurnRail.tsx`、`tests/verification/desktop/evidence/od-arch-079/`（00–06d 截图与 `home-polish-facts.json`）。
+
+修改：`desktop/src-tauri/src/task_shell.rs`、`desktop/src-tauri/src/{engine_bridge.rs,lib.rs}`、`desktop/src/shell/{HomeChat.tsx,HomeCanvas.tsx}`、`desktop/src/{api.ts,types.ts,theme.css}`、`engine/omnidesk_engine/{contract.py,task_core.py,web_api_adapter.py,serve.py}`、`tests/verification/desktop/verify_home_polish_078.py`、`tests/verification/engine-interface/` 相关用例与证据、`PLANS.md`、`STATUS.md`。
+
+### 真实窗口逐项证据（`evidence/od-arch-079/home-polish-facts.json`，`passed: true`，`gate_errors: []`）
+
+| 场景 | 观测 | 判定 |
+| --- | --- | --- |
+| 问句操作条 | 问句下方识别到 2 个字块（「复制」），无撤回/修改 | 通过 |
+| 答句操作条 | 复制写入剪贴板且有反馈；朗读有反馈；分支按钮存在 | 通过 |
+| 附件：仓库内文件 | 文件框打开 → 选中 `AGENTS.md` → 框关闭，输入区墨迹 1527 → 2082，红色像素 0 | 通过 |
+| 分支（负向） | 预置线程无引擎切点，点击后未新建任何线程 | 通过 |
+| 索引条 | 3 个刻度对应 3 轮；点末/首刻度视图分别变化（diff 0.217 / 0.216） | 通过 |
+| 隔离 | `source_unchanged` / `user_dsh_unchanged` / `user_agents_unchanged` 均 true | 通过 |
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `desktop/node_modules/.bin/tsc --noEmit -p desktop/tsconfig.json` | exit 0 |
+| `npm run build`（desktop/） | 成功，built in 670ms |
+| `cargo test --offline -q --lib` | **257 passed / 0 failed** |
+| `python3 -m pytest tests -q` | **75 passed，14 subtests** |
+| `verify_home_polish_078.py --display :87 --root /tmp/od079-home --reuse-dev-server` | `passed: true`，18 项检查全绿 |
+| `git status --porcelain runtime/` | 0 行 |
+
+### 未验证项与偏差
+
+- 分支的**窗口内正向**流程未跑：界面预置线程没有引擎会话，正向证据来自接口级真实调用 `evidence/web-api/W11.json`（`turn/end seq=17`、子会话 `message_count=6`、父结果不变）与 `W12.json`（无效切点/会话如实报错）。
+- 索引条的悬停预览卡只做了源码对齐，未单独截图验证。
+- 全程未用真实模型，未接触真实业务材料；附件测试只读仓库内 `AGENTS.md`。
+- 与 Plan 无实质冲突；本轮把验收脚本里模拟输入路径的步骤改成点选列表行，原因是无窗口管理器的显示环境下 GTK 的 Ctrl+L 位置输入栏不出现（已存 `05d1-*` 证据）。
+
+## OD-ARCH-078：附件入口放开 + 首页顶栏与对话细节打磨（2026-10-24，ARCHITECT 复核通过，见 REVIEW.md 顶部）
+
+- **开工状态：** 分支 main，HEAD 3f8c3ba；既有未提交/未跟踪改动全部保留（收尾时 git status --porcelain 121 项，含本轮新增）；未提交、未推送、未打标签；runtime/ 零差异。
+- **设计参考（AGENTS.md / OD-ARCH-035）：** 未新调用设计灵感 MCP。操作条沿用本轮已选定的「正文下方小图标 + 文字」式，参照用户在同一对话里指向的 DSH 原生问答操作条；附件入口采用通行的「+ → 系统文件选择框，多选」形态。
+
+### 已完成内容
+
+1. **S1 附件入口放开。** 「+」接宿主系统文件选择框（tauri-plugin-dialog，多选），保留拖拽；读取不再限定数据根内、不再用扩展名白名单预判「不支持」（ATTACHMENT_TEXT_EXTS 只用于给格式提示语）；二进制/非 UTF-8 文件如实报错并提示改用文本格式，不假装摘要；空文件与超限仍拒绝；5 个 / 120k 字符上限保留；附件正文照旧拼进提示词并参与红线扫描。
+2. **S2 顶栏收敛。** Profile 徽标收窄为「专业 / 标准」（完整名称留在下拉里）；「LOCAL IPC ACTIVE」改为按真实状态变色的 IPC ON / IPC OFF 胶囊；删除顶栏人物头像占位；首页问候语常显；删除吉祥物图。
+3. **S3 对话区对齐。** 去掉历史对话的滚动渐隐；问句下加 tips（复制可用；撤回、修改置灰并写明原因）；答句下加 tips（复制 / 朗读 / 重新生成 / 分支到新对话 / 本轮耗时）；问答正文 13px → 15px。
+4. **分支语义照实。** 引擎没有会话级 fork，按钮走「本地新会话重放」：新建线程、带上截至该条的全部消息、切过去；按钮说明里明写不是引擎级分叉。
+
+### 修改文件
+
+新增：tests/verification/desktop/verify_home_polish_078.py、证据目录 tests/verification/desktop/evidence/od-arch-078/。
+
+修改：desktop/src-tauri/{Cargo.toml,Cargo.lock}、desktop/src-tauri/capabilities/default.json、desktop/src-tauri/src/{lib.rs,task_shell.rs,process_owner.rs}、desktop/package.json、desktop/package-lock.json、desktop/src/api.ts、desktop/src/components/Icon.tsx、desktop/src/shell/{HomeChat.tsx,HomeCanvas.tsx,TopNav.tsx}、desktop/src/theme.css、tests/verification/desktop/window_harness.py（复用已在运行的 dev server，只读）、STATUS.md。
+
+（process_owner.rs 属上一计划遗留的未跟踪文件，本轮只修了它那条不稳定测试夹具，见「测试」。）
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| node_modules/.bin/tsc --noEmit | exit 0 |
+| npm run build | 构建成功 |
+| cargo test --offline | **256 passed / 0 failed**（含 task_shell 附件新单测 5 条、process_owner 5 条） |
+| python3 -m pytest tests -q | 65 passed |
+| python3 tests/verification/desktop/verify_home_polish_078.py --display :88 --reuse-dev-server | passed: true，gate_errors: [] |
+| git status --porcelain runtime/ | 空 |
+
+**真实窗口验收（Xvfb + XTEST 点击 + 截图 + 本次 X 会话剪贴板 + 数据根文件事实）逐项结果：**
+
+| 项 | 判定 | 观察证据 |
+| --- | --- | --- |
+| 问句 tips（复制/撤回/修改）渲染 | 通过 | 稳定帧 00-home-tips.png 上该行 7 组墨迹，撤回/修改为灰态 |
+| 答句 tips 5 项渲染 | 通过 | 答句下 10 组墨迹，02-speak-result.png 可见「复制 朗读 重新生成 分支到新对话 本轮 61 秒」 |
+| 本轮耗时 | 通过 | 操作条第 5 组墨迹独立成组（elapsed_rendered） |
+| 复制 | 通过 | 剪贴板得到该条答句全文；点后即时截图出现「已复制」反馈（行内墨迹 +50） |
+| 朗读 | 通过 | 截图出现「本机没有可用的语音朗读能力。」（本机无 TTS，属如实反馈） |
+| 「+」系统文件选择框 | 通过 | 顶层窗口数 1→2、截图为真实 GTK 文件选择框（左栏 1124 墨迹像素）；Cancel 关闭后窗口数复原 |
+| 分支到新对话 | 通过 | 数据根新增 threads/_unassigned/tmvmihwz3wpef.json，带 2 条上文，标题取用户原文 |
+| 顶栏（专业徽标 / IPC ON / 无头像 / 无吉祥物） | 通过 | 截图 + 静态源码 13 项全部命中 |
+| 隔离 | 通过 | 源隔离根（除 sessions/ 实时写入）、~/.dsh、~/.agents 指纹前后一致 |
+
+证据等级：以上「渲染/点击/剪贴板」为**真实桌面窗口运行**；「分支落盘」为**数据根文件事实**；顶栏与字号为**静态源码 + 截图**。未做真实模型调用，本轮不涉及模型输出正确性。
+
+### 本轮发现并修复的问题
+
+1. **验收脚本误判（非产品缺陷）。** 原脚本把操作条钉在固定坐标、阈值 150 过低（把正文当按钮）、分支后只查 threads/plain/。已改为：整窗按阈值 205 扫描横带并按「图标 + 文字」对定位、问句条取最靠上那条、分支改为 threads/**/*.json 递归比对、反馈文字用「点击后 0.45 秒内即时截图 + 行内墨迹增量」判定，并在首次点击被首帧动画吞掉时重定位重点一次（如实记录点击次数）。
+2. **cargo test 唯一失败项修复。** process_owner::tests::live_instance_owned_by_another_host_is_refused 用 sleep 30 omnidesk_engine，GNU sleep 认为多参数非法、立即退出，导致夹具不稳定。改为 sh -c 常驻并等待 cmdline 真正切换；只改测试夹具，产品逻辑未动。修后全量 256 通过。
+3. **用户 dev server 占用 5273。** 验收脚本新增 --reuse-dev-server：只等端口就绪、只读复用同仓库同源码的前端服务，不启动也不终止用户进程。
+
+### 计划偏差与未验证项
+
+- **新增依赖 tauri-plugin-dialog**（宿主侧拉起系统文件选择框的必要条件，计划 S1 明写「接宿主文件选择对话框」，故按必要条件引入；未升级任何既有依赖）。
+- **二进制附件只报错不解析**：图片/PDF/视频本轮不进模型视觉通道，按计划「诚实处理」；真多模态注入需另立计划。
+- **撤回 / 修改置灰**：引擎当前无删轮接口，按计划不硬编、不假装。
+- **分支是本地新会话重放**，不是引擎级 fork；文案已在按钮说明里写清。
+- **AT-SPI 未使用**：本机 AT-SPI 直连用户桌面会话，会把断言读到用户自己的窗口甚至误点用户程序；本轮改用 XTest + 截图 + 剪贴板 + 文件事实。
+- **未验证**：Windows/macOS 上的文件选择框与朗读行为；接近 120k 上限的大附件在真实窗口下的滚动表现。
+
+### 建议 ARCHITECT 下一步关注
+
+1. 复核 S1 放开越界路径后红线扫描是否仍覆盖附件正文（当前逻辑：正文拼入提示词后统一扫描，见 attachmentPrompt.ts）。
+2. 撤回 / 修改若要真正可用，需要引擎侧「删除某轮 / 重发」能力，属新计划。
+3. 本机无 TTS 引擎，「朗读」在此环境只能验证到如实报错；如需可用，要评估接入系统语音服务。
+
+## OD-ARCH-075 / 076 / 077：通道说明 + 单实例 + 功能补齐批次（2026-10-24，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有未提交/未跟踪改动原样保留（114 项）；未提交、未推送、未打标签。
+- **设计参考（AGENTS.md / OD-ARCH-035）：** 对话附件参考 ChatGPT / Claude 的「输入框上方 `@` 候选列表 + 输入框内可逐个移除的附件 chip」；贴近输入框、不新开面板。
+
+### 已完成内容
+
+1. **075 通道能力说明（纯文案 + 只读展示）。** 设置 → 引擎诊断新增「当前通道与能力差异」区块：Web API —— 支持界面审批与引擎取消；ACP —— 当前不支持界面化审批，取消请求不代表底层已确认终止。附当前生效通道与角色说明。不改默认通道、不改协议。
+2. **076 单实例 + 移除 DSH 原生界面入口。** 引入 `tauri-plugin-single-instance 2.5.4` 并在 `lib.rs` 最先注册：第二次启动聚焦已有窗口后退出（实测 0.06s 退出、窗口数恒为 1、原窗口可聚焦）。删除设置页「DSH 原生界面（诊断用）」入口、Rust `task_open_dsh_settings` 命令/分支/注册、前端 `openDshSettings` / `onDshSettingsClosed`；`dsh_settings.rs` 与无头凭据 RPC 保留。
+3. **077 文件引用（S1）。** 新增 `desktop/src/attachmentPrompt.ts`：最多 5 个文件、空文件与超长拒绝、总量上限 120k 字符；发送时把附件绝对路径、文件名、SHA-256 与正文拼入本轮提示词。`@` 查询解析、候选列表、文件名替换、chip 展示与逐个移除；提交被拒时保留附件不丢失；并发拖放用 ref 防超限。Rust 侧新增 `task_reference_roots` / `task_list_references` / `task_read_reference`，复用只允许数据根内路径的校验，符号链接感知，限定扩展名，隐藏文件与二进制不进候选。
+4. **077 语音占位（S2）。** 按钮保留但改为非灰态，点击弹出「语音输入需要配置语音模型端点，当前版本未开放」。
+5. **077 插件冻结（S4 / D-030）。** 能力管理页去掉「接入 DSH 插件市场」开关与 `capabilityMarket`，文案改为「新增插件与 Skill / 随版本升级」；Rust `capability_market` 命令与注册一并移除；保留只读列表与启停。
+6. **托盘（S3）未实现**，按计划授权标记「推迟到打包阶段」。
+
+### 修改文件
+
+新增 `desktop/src/attachmentPrompt.ts`、`tests/verification/desktop/{accessibility.py,verify_channel_075.py,verify_single_instance_076.py,verify_attachments_077.py}`（`verify_references_077.py` 重写）；修改 `desktop/src/{SettingsPanel.tsx,api.ts,types.ts,conversationPrompt.ts}`、`desktop/src/shell/HomeChat.tsx`、`desktop/src-tauri/src/{lib.rs,task_shell.rs}`、`desktop/src-tauri/{Cargo.toml,Cargo.lock}`、`desktop/src-tauri/src/process_owner.rs`（测试竞态修正，见下）、`docs/decisions.md`（D-030）、`STATUS.md`。
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `python3 tests/verification/desktop/verify_attachments_077.py` | 25 项全通过 |
+| `python3 tests/verification/desktop/verify_conversation_prompt.py` | 26 passed |
+| `python3 tests/verification/desktop/verify_channel_075.py` | `passed: true`，证据 `evidence/od-arch-075/{01-settings-tabs,02-engine-tab}.png`、`facts.json` |
+| `python3 tests/verification/desktop/verify_single_instance_076.py` | `passed: true`（第二次启动 0.06s 退出、窗口 1 个、首实例存活且可聚焦），证据 `evidence/od-arch-076/` |
+| `python3 tests/verification/desktop/verify_references_077.py` | `passed: true`；`missing_checks: []`；`gate_errors: []`；`requests: 2`；证据 `evidence/od-arch-077/00-home.png`…`09-capabilities.png` + `facts.json` |
+| `cargo test --offline` | 251 + 0 + 2 + 1 + 13 + 3 + 1 = **271 passed, 0 failed** |
+| `python3 -m pytest tests -q` | 65 passed |
+| `npx tsc --noEmit` / `npm run build` | exit 0 / 构建成功 |
+| `git status --porcelain runtime/` | 空（runtime 零差异） |
+
+证据等级：075/076/077 均有**真实桌面窗口运行**（Xvfb + XTEST + AT-SPI，合成数据根 `/tmp/od07*`，合成端点不回真实内容）；附件链路结论为「附件正文确实进入模型请求」（`SYNTHETIC-MARKER-077` 命中 2 次），**不含**「模型理解了附件」的结论。源隔离根、`~/.dsh`、`~/.agents` 指纹检查前后一致。
+
+### 本轮发现并修复的问题
+
+1. **旧 `verify_references_077.py` 是假通过**（点空白处、候选未出现、截图几乎相同、第 5 步落在「关于」页）。已重写为按无障碍名称定位，并删除过期截图；此前记录的 S1/S2 结论作废，以本轮为准。
+2. **`cargo test --offline` 全量偶发失败**：`process_owner::tests::live_instance_owned_by_another_host_is_refused` 在子进程尚未 `exec` 时读到继承的 cmdline，落到「身份不符」分支。已在测试里等待子进程真正成为 `sleep` 再登记，仅改测试，未改产品逻辑。修后全量连续通过。
+
+### Plan 与实际差异
+
+1. 075 计划写「通道选择控件下方加说明」，实际界面**没有通道选择器**，通道由 `OMNIDESK_ENGINE_CHANNEL` 决定（默认 `web-api`）。因此说明落在引擎诊断页，并标出当前生效通道，行为未改。
+2. 077 计划写改 `desktop/src/HomeChat.tsx`，实际文件是 `desktop/src/shell/HomeChat.tsx`。
+3. 077 计划要求「附件信息放消息元数据、引擎侧读取注入」，实际**没有新增协议字段**：附件正文由前端拼进本轮提示词文本，历史仍按窗口裁剪、当前输入与附件正文保持完整。这样不改协议帧、不改引擎，代价是附件内容会留在该轮会话记录里。
+
+### 未解决问题 / 未验证项
+
+1. **未验证：** 原生拖放两个文件且超出上限时的界面反馈（单测覆盖上限判定，真实拖放未做）。
+2. **未验证：** 模型真正阅读附件后作答（合成端点返回固定文本，只能证明内容送达）。
+3. **未实现：** 系统托盘与全局快捷键，按计划推迟到打包阶段。
+4. 工作区仍有大量既有未提交改动，本轮未提交、未推送、未打标签。
+
+### 建议 ARCHITECT 关注
+
+- 附件走「拼进提示词」而非协议字段，是否符合数据边界预期（附件正文会进入会话记录与历史窗口裁剪之外的位置）。
+- 能力管理页仍保留只读的插件/Skill 列表与启停命令，与 D-030「冻结」的边界是否一致，需复核口径。
+
+## OD-ARCH-074：引擎进程生命周期修复（孤儿回收 + 所有权登记 + 同数据根互斥）（2026-10-24，ARCHITECT 复核通过）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有未提交/未跟踪改动原样保留（98 → 100 项）；未提交、未推送、未打标签。
+- **本次动机：** 072 报告第 7 条记录的 22 个孤儿引擎进程。
+
+### 已完成内容
+
+1. **新增 `engine/omnidesk_engine/process_owner.py`。** 唯一事实源是引擎状态目录下的 `owner.json`（0600，原子写）。回收前必须同时核验：pid 存活 + `/proc/<pid>/stat` 的 pgrp 与记录一致 + cmdline 完全一致 + boot_id 一致；任何一项不满足都不杀进程。三态判定 `active_engine` / `orphan_group` / `pid_reused`，另有 `unknown_live`（身份不明，拒绝启动）与 `invalid`（登记损坏，保留待人工检查）。引擎侧 `reclaim_owner(our_host_pid=None)` 永不抢占仍活跃的引擎。
+2. **`serve.py` 接入登记与互斥。** `main()` 先 `ensure_process_group()` 让引擎成为进程组组长；`m_initialize` 在拉起适配器前 `reclaim_owner` + `claim_ownership`，冲突时返回 `ENGINE_UNAVAILABLE` 并带 `reason`、`state_dir`；`_finalize` 释放登记；SIGTERM/SIGINT 走统一收尾。
+3. **子进程组登记与回收。** 适配器 Popen 设 `start_new_session=True`（DSH 独占进程组），spawn 后 `record_child_group` 把 pid/pgid 写进 owner.json；`_terminate_process` / `shutdown` / `JsonRpcPeer.terminate|hard_kill` 改为先 terminate、再按「可信组长」回收子进程组、必要时才 `kill`。可信组长判据：组长 pid == pgid、组长存活、且组长 cmdline 是 OmniDesk 引擎或 node bin.js。
+4. **新增宿主侧 `desktop/src-tauri/src/process_owner.rs`。** 无 libc，只用外部 `/bin/kill -s TERM|KILL -- -<pgid>`，发送前同样复核 pid/pgid/boot_id/cmdline。`engine_supervisor::start` 先 `reclaim_before_start`；`finish_stop` 与 `Drop` 结束时按登记 `cleanup_engine_group`。
+5. **修掉本轮实测发现的两个真实缺陷：**
+   - `omni.shutdown` 应答后引擎继续阻塞在读 stdin 上，进程不退出 → 登记与子进程组都遗留。现已在应答后立即跳出主循环。
+   - 模块直接运行分支（`python3 engine/omnidesk_engine/serve.py`）里 `from .process_owner import …` 会 ImportError；已改为与其余 import 一致的双分支写法。
+
+### 修改文件
+
+新增 `engine/omnidesk_engine/process_owner.py`、`desktop/src-tauri/src/process_owner.rs`、`tests/verification/engine-interface/adapter/test_process_owner_unit.py`、`tests/verification/desktop/verify_process_lifecycle_074.py`；修改 `engine/omnidesk_engine/{serve.py,web_api_adapter.py,jsonrpc.py,acp_adapter.py}`、`desktop/src-tauri/src/{lib.rs,engine_supervisor.rs,engine_bridge.rs}`。
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `python3 -m py_compile`（5 个引擎模块） | 通过 |
+| `python3 -m unittest -v test_process_owner_unit` | 10 passed |
+| `cargo test --offline --lib process_owner` | 5 passed |
+| `cargo test --offline`（全量） | 242 lib + 2 + 1 + 13 + 3 + 1 = **262 passed, 0 failed** |
+| `python3 -m pytest tests -q` | 65 passed |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run build` | exit 0 |
+| `git status --porcelain runtime/` | 空 |
+| `python3 tests/verification/desktop/verify_process_lifecycle_074.py` | **21/21 通过**，证据 `tests/verification/desktop/evidence/od-arch-074/process-lifecycle-074.json` |
+
+真实隔离运行验证（全部落在 `/tmp/od074-run-*`，合成 provider 指向 `127.0.0.1:9` 的不可达端口，零真实凭证）：初始化成功 → `owner.json` 0600 且 pid/pgid/child_pgid 正确 → 同根第二实例被拒且首实例仍活 → 优雅关闭后登记删除、引擎组与 DSH 子组均清空 → 再启一实例后 `kill -9` 引擎，登记留存、DSH 子组变孤儿、判定为 `orphan_group` → 宿主侧 `reclaim_owner` 按记录回收、无关进程存活、登记删除。边界自检：根在 `/tmp/`、不含 `/.dsh` 与 `/.agents`。
+
+### Plan 与实际差异 / 需 ARCHITECT 决定
+
+1. **进程组归属与计划字面不同。** 计划写「引擎 Popen node 时设 `start_new_session=True`」，实际落地是**引擎自身成组**（`serve.py` 启动时 `ensure_process_group`），DSH 子进程仍在适配器里另开独立组，因此 owner.json 额外记录 `child_pid`/`child_pgid`，用可信组长单独回收。原因：若只给 node 开会话而引擎自己不在可核验的组里，引擎被强杀后遗留 node 就失去归属，无法在不误杀的前提下回收。本轮未擅自改成「node 跟随引擎组」，那会牵动清理设计与全部验收，留待 ARCHITECT 决定。
+2. **Rust 侧无 libc，靠 `/bin/kill` 发信号**（Cargo 依赖未变）。若宿主环境缺这个路径，回收会静默失败，只打诊断。
+3. **未做**：跨重启的孤儿识别已由 boot_id 覆盖，但「引擎进程仍活、宿主已崩溃」在宿主侧会走回收路径（视为自己的上次登记）。
+4. 机器上原有 22 个历史孤儿进程本轮**未主动清理**——那是用户运行环境，需用户/ARCHITECT 单独授权。
+
+### 建议 ARCHITECT 关注
+
+- 是否同意沿用「引擎自身成组 + DSH 另组」的双组登记方案，或改为单组以简化 owner.json。
+- 历史 22 个孤儿的清理是否授权执行（可用本轮的 `reclaim_owner` 逐个安全回收，但需先确认它们确实属于本产品）。
+
+## OD-ARCH-072（合并版）Part B/C：release 重建 + 首页信息架构改版（2026-10-24，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有未提交/未跟踪改动原样保留（92 → 98 项）；未提交、未推送、未打标签。
+- **承接关系：** Part A（能力管理分页）见下方 2026-10-23 小节；本小节为同计划 Part B、Part C。
+- **设计参考（AGENTS.md / OD-ARCH-035）：** DSH 原版首页的空态/有历史两态切换与顶部胶囊控件；沿用既有 TopNav 布局，不新增页面。
+
+### 已完成内容
+
+1. **Part B 启动指向新构建。** `scripts/omnidesk.sh` 改为直接运行 `desktop/src-tauri/target/release/omnidesk-desktop`（前端内嵌，不再起 vite dev server）；新增 `needs_build()`，仅当 dist/前端源码/后端源码比二进制新时才重建；构建顺序 `npm run build` → `touch build.rs` → `cargo build --release --offline`（Tauri 前端资源经 build.rs 内嵌，cargo 不跟踪 dist，故需 touch）。`--status` 不再要求 vite 进程。
+2. **Part C-6 品牌与 Profile 分离。** TopNav 品牌固定「OmniDesk」；其后新增 Profile 徽标，默认「无 · 标准模式」，点击列出隔离根中真实存在的 Profile 目录（主行目录名、副行 package 名），选择后二次确认说明「下次启动引擎生效」，保存后回执。
+3. **Profile 选择落地。** 新增 `profile_choice.rs`（`ProfileOption` / `standard_profile` / `list` / `resolve`）、`Settings.engine_profile`、`is_valid_profile_name` / `set_engine_profile`；`engine_supervisor` 取 `OMNIDESK_DSH_PROFILE` 优先，其次读设置。CLI 缺失时返回按通道推算的标准模式并附 warning，不伪造。
+4. **Part C-7 日程悬浮。** ThreeWeekCalendar 从常驻布局移除，改为点击顶栏日期显示浮卡；移开 1 秒淡出，移回可取消，Esc/点外部直接关闭。数据源未改。
+5. **Part C-8 删除今日重点卡片。** HomeCanvas 移除卡片与常驻日程；待办改为欢迎语下方 `TodoTicker`，只显示 pending，单条 5 秒轮动，多条显示 `n/m` + 查看，无待办不占位，窗口失焦暂停。
+6. **Part C-9/10 机器人与对话框。** 机器人移到对话区上方左侧（104px 列）；无历史时输入区竖直居中，有历史落底，200ms 过渡。
+
+### 修改文件
+
+新增 `desktop/src-tauri/src/profile_choice.rs`、`tests/verification/desktop/verify_home_layout_072.py`；修改 `desktop/src-tauri/src/{settings.rs,engine_supervisor.rs,lib.rs,capabilities.rs}`、`desktop/src-tauri/tests/capabilities_plugin_toggle.rs`、`desktop/src/{types.ts,api.ts,App.tsx,theme.css}`、`desktop/src/shell/{TopNav.tsx,HomeCanvas.tsx,HomeChat.tsx}`、`scripts/omnidesk.sh`。
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test --offline --lib profile_choice` | 5 passed |
+| `cargo test --offline --lib settings` | 42 passed |
+| `cargo test --offline --lib engine_supervisor` | 6 passed |
+| `cargo test --offline`（全量） | 238 lib + 2 + 1 + 13 + 3 + 1 = **258 passed, 0 failed** |
+| `OMNIDESK_VERIFY_DSH_HOME=… cargo test --offline --test capabilities_plugin_toggle` | 1 passed（真实 DSH 启动日志核对） |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run build` | exit 0（`index-BRPNQdIa.js` 426.33 kB） |
+| `cargo build --release --offline` | exit 0 |
+| `python3 -m pytest tests -q` | 55 passed |
+| `python3 tests/verification/desktop/verify_home_layout_072.py` | 通过（一次性 Xvfb 真实窗口） |
+| `python3 tests/verification/desktop/verify_capabilities_072.py` | passed: true |
+| `git status --porcelain runtime/` | 空 |
+
+窗口证据在 `tests/verification/desktop/evidence/od-arch-072/`：`10-home-empty`（输入框居中、无今日卡、机器人左侧）、`11-home-history`（两条合成消息完整、输入区落底）、`12/13/14`（日历开/淡出/关）、`15/16/17`（Profile 弹层/确认/保存回执），`home-facts.json` 记录 `engine_profile="yvan-work"`、可用 Profile 列表 `acp/headless/omnidesk-test/web/yvan-work`、`~/.dsh` 前后无变化。
+
+### Plan 与实际差异 / 未解决限制
+
+1. **计划第 6 条与仓库不符：** 计划写「沿用现有 profile 切换链路」「当前已有：无/discipline」，实际仓库没有该链路，隔离根也没有 `discipline` 目录（真实为 `acp/headless/omnidesk-test/web/yvan-work`）。本轮按真实目录实现，标准模式 = `web`（web-api 通道）/ `acp`（acp 通道）。
+2. **语义差异：** Profile 选择是「保存 + 下次启动生效」，未做「确认后重启引擎」。
+3. **`dshmarket` 仍未安装**，计划中「开市场→重启→出现 dshmarket」无法验收，只验证了拒绝路径；需 ARCHITECT 决定是否授权安装及来源。
+4. **`capabilities_plugin_toggle.rs` 原测试有路径缺陷**（把 DSH_HOME 再拼一层 `dsh-home`），本轮修正为直接使用复制根后通过；此前该测试实际处于未运行状态。
+5. 顺带修了两处计划未列明的实际缺陷（均在 Part C 验收范围内）：空态输入框贴底、顶部渐隐把第一行消息吞掉。
+6. **验收脚本的「源目录未变」结论会被干扰：** 用户自己的 OmniDesk 实例同时在线，会正常改写 `storages/cost-meter/ledger.json` 及其覆盖率文件。脚本已改为点名列出变化文件并给出归属判定（`source_changed_attribution`）；本轮实测变化仅这两项、`~/.dsh` 无变化、无 profiles/skills/sessions 变化。
+7. **发现遗留进程问题（未处置，需决策）：** 机器上有 22 个早前测试留下的引擎子进程（父进程已退出，被 systemd 收养），各自监听回环端口并共享 `~/OmniDesk/runtime/dsh-home`，合计常驻内存约 3.5 GB；它们是上述账本变动的来源之一，也会干扰后续验收。本轮未擅自结束这些进程。
+
+### 建议 ARCHITECT 关注
+
+- Profile 切换的生效语义（是否需要「保存并重启引擎」）与 `discipline` Profile 是否另行创建。
+- 是否授权安装 dshmarket 及其来源，以完成市场开关验收。
+- 遗留引擎进程的清理策略，以及是否需要在宿主退出/测试收尾时加兜底（当前 `Drop` 与 `RunEvent::Exit` 只覆盖正常路径）。
+
+## OD-ARCH-072：设置页「能力管理」分页（2026-10-23，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有未提交/未跟踪改动原样保留；未提交、未推送、未打标签。
+- **设计参考（AGENTS.md / OD-ARCH-035）：** Acuity Scheduling 的设置页——左列表、右详情、分区清晰；沿用既有 provider-split 两栏布局。
+
+### 已完成内容
+
+1. **只读能力视图。** 新增 `capabilities.rs`：扫描隔离 DSH_HOME 下的 `skills/`，解析 frontmatter 的 name/description 与最后修改时间（不编造版本号）；插件从 profile `package.json` 的 `dsh.profile.bundles` 与 `dependencies` 读出。
+2. **受控插件开关。** `set_bundle()` 只增删 `bundles` 项，`dependencies` 原样保留；写前生成 `.bak-<epoch>`，以 0600 权限原子写入。
+3. **路径硬拒绝。** 非绝对路径、含 `/.dsh`、`/.agents`、`deepseek-harness` 或落在仓库内的路径一律拒绝；不允许写用户原版数据。
+4. **防止假装成功。** 未安装的包拒绝启用；`dshmarket` 在隔离实例中不存在时返回明确提示，不联网安装、不改文件。
+5. **前端「能力管理」页。** 位于「规则资产」之后：Skill 左列（只读，标注修改时间）、插件右列（版本、启动后生效）、市场开关；仅在打开该页时读取一次，另有「重新读取」「打开 Skill 目录」。
+
+### 修改文件
+
+新增 `desktop/src-tauri/src/capabilities.rs`、`desktop/src-tauri/tests/capabilities_plugin_toggle.rs`、`tests/verification/desktop/verify_capabilities_072.py`；修改 `desktop/src-tauri/src/lib.rs`（注册 4 个命令）、`desktop/src-tauri/src/task_shell.rs`（`repo_root_hint` 改 `pub(crate)`）、`desktop/src/types.ts`、`desktop/src/api.ts`、`desktop/src/SettingsPanel.tsx`。
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test --offline capabilities::` | 6 passed, 0 failed |
+| `cargo test --offline`（全量） | 233 lib + 2 + 1 + 13 + 3 + 1 + 0 = **253 passed, 0 failed** |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run build` | exit 0 |
+| `python3 -m pytest tests -q` | 55 passed |
+| `python3 tests/verification/desktop/verify_capabilities_072.py` | **passed: true**（真实窗口 + XTEST 点击） |
+| `git status --porcelain runtime/` | 空 |
+
+窗口验证证据在 `tests/verification/desktop/evidence/od-arch-072/`（9 张截图 + `facts.json`，无密钥）：停用 `dsh-cost-meter` 后 bundles 3 项、恢复后 4 项、`dependencies` 未变、2 个备份、`cordis.patch.yml` 摘要未变；点市场开关被拒绝且清单与备份均无变化；桌面进程存活、日志无 ERROR；源数据根、`~/.dsh`、`~/.agents` 指纹前后一致。
+
+### Plan 与实际差异 / 未解决限制
+
+- 计划写「只允许写 `profiles/web/` 下两个文件」，实际只写 `package.json`；`cordis.patch.yml` 未改动（已用摘要核对）。
+- **`dshmarket` 未安装在该隔离实例的 `profiles/web/node_modules`。** 计划未授权联网安装，因此「打开市场→重启→出现 dshmarket」无法验收；本轮只验证了「未安装时明确拒绝且不改文件」。需 ARCHITECT 决定是否批准安装及安装来源。
+- `capabilities_plugin_toggle.rs` 集成测试需设置 `OMNIDESK_VERIFY_DSH_HOME`、`OMNIDESK_VERIFY_DSH_CLI` 才会执行，本轮未提供环境变量，故未运行（未验证项）。
+
+## 用户直接指令：取消任务自动超时（2026-10-23，待 ARCHITECT 复核并编号）
+
+> 本节不是 ARCHITECT 下发的编号计划，而是用户当轮直接产品指令，**取代** OD-ARCH-069/070 中「普通任务 300 秒、检索任务 600 秒」的自动收尾设定。建议 ARCHITECT 复核时正式编号归档。
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有 50 项未提交/未跟踪改动原样保留；未提交、未推送、未打标签。`git status --porcelain runtime/` 为空。
+- **指令原文要点：**「如果 DSH 底座没返回错误，就不要设置这两个时间了……原版 DSH 搜索到任务完成都花了 8 分钟，只要系统还在运行和调用插件就不要停止他，除非用户自己停止。」
+
+### 已完成内容
+
+1. **引擎侧默认不再按墙钟收尾。** web-api 适配器 `default_timeout` 默认改为 `None`；`timeout_policy` 缺省、0、负数、非法值一律表示无上限，只有显式正整数才设截止（保留给测试/脚本模拟超时）。
+2. **删除检索识别与延时逻辑。** 不再按工具名判断“这是搜索”再延长预算，也不再发 `timeout_extended`。任务跑多久只看底座是否还在推进。
+3. **静默提示改为不终止。** 长时间无新帧时每 60 秒发一次 `progress/kind=still_running`（带 `idle_seconds`），只提示、不改状态、不收尾。
+4. **修一个真实缺陷：** `WsClient.recv` 在无上限时会继承握手阶段的 30 秒 socket 超时，导致长任务被误判为断流；现在无截止时显式 `settimeout(None)`。
+5. **ACP 备用通道同口径。** `AcpEngineAdapter` 默认 `default_timeout=None`；`JsonRpcPeer.wait_response` 支持 `None`（一直等到响应或子进程退出），握手/列举等有界调用仍传秒数。
+6. **宿主不再下发超时。** `lib.rs` 提交参数中移除 `timeout_policy`；`model_settings.rs` 两个字段保留为旧配置兼容（`deny_unknown_fields`），读取后不使用、不再做范围校验。
+7. **界面不再自行放弃。** 删除 `HomeChat` 轮询的 10 分钟上限；新增 `still_running` 分支显示「DSH 仍在运行（已静默 N 秒）· 不会自动停止，需要时可点取消」，不产生失败样式或 `retryable`。`aiDraft` 的等待上限缺省也改为无上限。
+8. **文档同步：** 用户测试清单第 4 步附、引擎接口契约 `timeout_policy` 行、桌面 IPC 示例已改为「省略即不设上限」。
+9. **事件泵不再一小时截断。** `serve.py` 原来用 `stream_events(timeout=3600)` 单次订阅，超一小时就停推事件、界面再也收不到进度。现改为分段续订（按 `after_seq` 续接、不重发），只在任务终态或停止信号时退出。
+
+### 修改文件
+
+`engine/omnidesk_engine/task_core.py`、`engine/omnidesk_engine/web_api_adapter.py`、`engine/omnidesk_engine/acp_adapter.py`、`engine/omnidesk_engine/jsonrpc.py`、`engine/omnidesk_engine/serve.py`、`desktop/src-tauri/src/lib.rs`、`desktop/src-tauri/src/model_settings.rs`、`desktop/src/shell/HomeChat.tsx`、`desktop/src/aiDraft.ts`、`desktop/src/types.ts`、`desktop/src/SettingsPanel.tsx`、`docs/user-testing-checklist.md`、`docs/OmniDesk-Engine-Interface-Contract.md`、`docs/OmniDesk-Desktop-Engine-IPC.md`、`tests/verification/engine-interface/adapter/test_web_api_unit.py`、`tests/verification/engine-interface/adapter/run_visibility_scenarios.py`、`tests/verification/engine-interface/evidence/web-api/visibility-scenarios/scenarios.json`、`tests/verification/engine-interface/evidence/web-api/W04.json`、`tests/verification/desktop/run_desktop_e2e.py`（只加一行 `channel: "acp"`）。
+
+### 测试命令与结果（实际运行）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop/src-tauri && cargo test --offline` | 227 + 2 + 13 + 3 + 1 = **246 passed, 0 failed** |
+| `cd desktop && npx tsc --noEmit` | exit 0 |
+| `cd desktop && npm run build` | exit 0 |
+| `python3 -m pytest tests -q` | **55 passed**（超时用例改写后净减 2） |
+| `python3 tests/verification/desktop/verify_ai_draft.py` | 27 cases, 0 failed, pass |
+| `run_visibility_scenarios.py V01–V05`（真实 DSH web 进程 + 合成端点） | **5/5 pass**，含新增 V05 |
+| `run_web_api_scenarios.py W01–W10` | **10/10 pass** |
+| `run_engine_adapter_scenarios.py E01–E20`（ACP 通道） | **20/20 pass** |
+| 事件泵改动后复跑 `run_web_api_scenarios.py W01 W02 W04` | **3/3 pass**（事件仍逐条推送、无重复、取消仍确认） |
+| `git status --porcelain runtime/` | 空 |
+
+新增 V05 证据（`tests/verification/engine-interface/evidence/web-api/visibility-scenarios/scenarios.json`）：不设上限 + hang 端点，2 秒静默后收到 `still_running`，静默 8 秒后状态仍非终态，随后 `cancel_task` 落为 `cancelled`——直接证明「不自动停 + 用户取消有效」。
+
+桌面端到端脚本（`tests/verification/desktop/run_desktop_e2e.py`）首轮复跑时三项全 fail，原因是既有脚本问题而非本次改动：引擎默认通道自 OD-ARCH-048 起为 `web-api`，而脚本传 `profile: "acp"` 且未声明通道，被注入了 ACP 侧不认识的 `--port`（`startup_tail: error: unknown option '--port'`）。补一行显式 `"channel": "acp"` 后重跑：
+
+| 命令 | 结果 |
+| --- | --- |
+| `python3 tests/verification/desktop/run_desktop_e2e.py` | chain **3/3 pass**（succeeded / failed / cancelled）、isolation **pass**（`unchanged=True, diffs=0`）、dual-instance **pass** |
+
+对应证据：`tests/verification/desktop/evidence/{task-chain,isolation-report,dual-instance-report}.json`（均为本次覆盖后的新结果，`verdict=pass`）。旧的 HEAD 版本证据可用 `git show HEAD:<path>` 取回。
+
+### 未解决问题与限制
+
+- **未做真实 8 分钟检索实测。** 现有证据只到合成端点与真实 DSH 进程层面；政治监督这类长检索是否全程不断、最终产出是否正常，需要你本人用真实模型跑一次确认。
+- 静默提示间隔固定 60 秒，未做成可配置。
+- 旧配置里的两个秒数字段仍留在文件中（只为兼容读取），界面不再展示其含义；彻底移除需一次配置结构升级。
+
+### Plan 与代码冲突
+
+- 与 OD-ARCH-069「超时可配置、默认 300 秒」和 OD-ARCH-070「检索 600 秒」直接冲突。按用户当轮明确指令，以上两项的超时设定作废；其错误透传、工具可见化等其余成果保留。已在上文标注取代关系，未改写历史小节。
+
+### 建议 ARCHITECT 关注
+
+- 本改动触及任务终态语义（什么情况下算结束），建议按架构变更复核并正式编号。
+- 是否需要为「底座长时间无任何事件但进程仍在」增加更强的存活校验（例如进程心跳），目前只靠事件流与进程退出判断。
+- 收尾时 `git status --porcelain` 共 **87** 项（含本条指令与既有未提交改动），`git status --porcelain runtime/` 仍为空；**未提交、未推送、未打标签**。
+
+## OD-ARCH-070：DSH 插件生态装载 + 上游错误透传（2026-10-23，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有 50 项未提交/未跟踪改动原样保留；未提交、未推送、未打标签。`git status --porcelain runtime/` 为空。
+- **完成内容：** ①隔离 web Profile 装上 `dsh-free-search@0.9.5` 与 `dsh-cost-meter@1.9.6`；②出厂资产 `samples/profiles/web.profile.{json,patch.yml}`，启动时仅在运行时 profile 缺失时播种，已有则绝不覆盖，且拒绝写入 `.dsh` / `.agents` / `deepseek-harness`；③上游 400 的 `upstream_error` 映射为 `task_failed` 并透传原因（截断 300 字），界面显示真实原因而非“已失败”；④搜索类任务等待上限默认 600 秒、其他任务 300 秒，触发搜索工具时只延长本次预算并发一次 `timeout_extended` 事件。
+- **修改文件：** `desktop/src-tauri/src/engine_supervisor.rs`（出厂资产 + 播种 + 4 个播种单测）、`desktop/src-tauri/src/model_settings.rs`（`search_task_timeout_seconds` 与迁移补全）、`desktop/src-tauri/src/lib.rs`（`timeout_policy` 下发）、`engine/omnidesk_engine/web_api_adapter.py`（错误映射、搜索识别、超时策略）、`desktop/src/types.ts`、`desktop/src/SettingsPanel.tsx`、`desktop/src/shell/HomeChat.tsx`、`samples/profiles/web.profile.json`、`samples/profiles/web.profile.patch.yml`、`tests/verification/engine-interface/adapter/test_web_api_unit.py`、`tests/verification/desktop/evidence/od-arch-070/**`。
+- **运行时落盘（仓库外）：** `~/OmniDesk/runtime/dsh-home/profiles/web/{package.json,cordis.patch.yml}`；改动前原件已备份到证据目录 `.before.*`，可原样回滚。
+
+### 测试命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd desktop/src-tauri && cargo test --offline` | 227 + 2 + 13 + 3 + 1 = **246 passed, 0 failed**（含本轮新增 4 个播种用例） |
+| `python3 -m pytest tests -q` | 57 passed |
+| `cd tests/verification/engine-interface/adapter && python3 -m pytest test_web_api_unit.py -q` | 57 passed |
+| `cd desktop && npx tsc --noEmit` | exit 0 |
+| `cd desktop && npm run build` | exit 0 |
+| `git status --porcelain runtime/` | 空 |
+
+补充说明：编译期先暴露一处真实缺陷——`LegacySettings::into_v2()` 未填新增字段 `search_task_timeout_seconds`（E0063）。已补齐默认值，属计划内的普通实现问题。
+
+### 真实运行证据（非静态）
+
+1. **插件在真实 DSH 中装载：** 以隔离 `DSH_HOME` 启动 `--profile web`，日志出现 `[dsh-cost-meter] 已加载`，web 服务在回环端口正常起服，无 error 级日志。
+2. **`--dump-config`：** `web-search-deepseek`、`web-search-free`、`cost-meter` 各出现一次。
+3. **`web_search` 端到端：** 在一次性 `/tmp` 根内用合成模型端点要求调用 `web_search`，真实 DSH 执行了该工具并回填约 8.4 KB 检索结果，任务 `succeeded`，`ttfb=0.582s`。当时环境无 `DEEPSEEK_API_KEY`，故走免费引擎（Bing 实测 200 / 467 ms）。
+
+### 未解决问题与限制
+
+- **未运行真实模型**：所有模型侧均为本机合成端点，未验证真实模型拿到检索结果后的作答质量；计划「验收后重跑政治监督沿革题」仍需用户实测。
+- 未在桌面窗口中由人肉眼确认工具活动行与超时提示。
+- 上游 400 透传仅有单测级证据，未在真实上游网关上复现。
+- 出厂播种不执行 `pnpm install`；新机器首次启动仍需联网装依赖（计划未要求离线可用）。
+- `dsh-free-search` 不新增工具名，而是接管核心 `web_search` provider；因此“已装载”只能靠真实调用成功来证明，不能靠工具列表。
+
+### Plan 与代码冲突
+
+- 未发现。插件由 replace 方式接管 `web_search`，与计划描述「模型可用 web_search」一致，未改架构、数据模型或安全机制。
+
+### 建议 ARCHITECT 关注
+
+- 是否需要一次真实模型的搜索题实测（会消耗额度）来闭环验收标准中的“搜索质量”部分。
+- 搜索超时延长逻辑按「工具名含 search / web_fetch」判断；若上游改名需同步调整，建议在下次插件升级时复核。
+
+## OD-ARCH-069：工具执行可见化 + 超时治理（2026-10-23，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有未提交改动原样保留，未提交、未推送、未打标签。`git status --porcelain runtime/` 为空。
+
+### 已完成内容
+
+1. 工具调用期间的事件现在带工具名与调用 ID，前端在回复下方显示「正在调用工具：X（状态）」；取不到名字时显示「未知工具」。
+2. 引擎发出非审批类询问时，不再静默丢弃，改为一条可见提示（保留原始事件类型，不含询问正文），且**绝不自动应答**。
+3. 等待上限改为可配置：默认 180→300 秒，范围 30–3600，从模型设置读 `task_timeout_seconds`；非法值回落默认。超时落 `unknown`，文案含秒数、「未自动重试」与重发指引；界面给「重新查询」和「重发」按钮，重发只在用户点击时发生。
+4. **修复两个本轮暴露的实现缺陷（计划内，非扩展）：**
+   - 心跳续期：DSH 每 2 秒发 ping，旧 `recv` 给每段读取重设 socket 超时，总超时永远触发不了（实测 60 秒仍 running，最终以「事件流异常中断」落定）。现按总截止时间重算剩余预算。
+   - 超时文案丢失：`_settle(note=…)` 只进事件，`get_task_status` 由 `stop_reason`/`error_message` 组装，界面拿到空串。现超时分支同时写 `error_code`/`error_message`。
+
+### 修改文件
+
+- `engine/omnidesk_engine/web_api_adapter.py`（waterfall 可见化、超时策略与文案、工具名提取、recv 总预算）
+- `desktop/src-tauri/src/model_settings.rs`、`desktop/src-tauri/src/lib.rs`（`task_timeout_seconds` 字段、校验、注入 `timeout_policy`）
+- `desktop/src/types.ts`、`desktop/src/SettingsPanel.tsx`、`desktop/src/shell/HomeChat.tsx`（类型、默认值、工具活动行、unknown 文案与「重发」）
+- `tests/verification/engine-interface/adapter/test_web_api_unit.py`（新增 `EngineAskTests`、`TimeoutPolicyTests`、心跳预算回归）
+- `tests/verification/engine-interface/adapter/run_visibility_scenarios.py`（新增，V01–V04）
+- `docs/user-testing-checklist.md`（新增「第 4 步附：需要联网检索时看什么」）
+- `tests/verification/desktop/evidence/od-arch-069/`（证据摘要 + 场景 JSON）
+
+### 测试命令与结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd tests/verification/engine-interface/adapter && python3 run_visibility_scenarios.py` | 4/4 通过（V01 工具名可见、V02 8 秒超时且文案带秒、V03 未知询问只提示不应答、V04 台账不含工具正文）；证据 `tests/verification/engine-interface/evidence/web-api/visibility-scenarios/scenarios.json` |
+| `python3 -m unittest test_web_api_unit -v` | 50 tests OK |
+| `python3 -m pytest tests -q` | 50 passed |
+| `cd desktop && npx tsc --noEmit` | 通过 |
+| `cd desktop && npm run build` | 成功 |
+| `cargo test --offline` | lib 223 / admission 2 / host_integration 13 / task_shell_e2e 3 / thread_store_restart 1，0 失败 |
+| `git status --porcelain runtime/` | 空（DSH Runtime 零改动） |
+
+### 证据等级说明
+
+- 场景 V01–V04 属**脚本运行**：真实 DSH web 进程 + 本机回环合成端点，一次性 `/tmp` 数据根，零真实凭证、零真实数据。
+- V03 的未知询问帧由测试注入，不代表生产中已观测到该事件类型。
+- **界面呈现未由我肉眼验收**：同 PID 可访问性树检查通过（49 节点，含「系统偏好设置 / 引擎技术切片」），锁屏状态下截图不可用。需用户在实际窗口中确认。
+- **未运行真实模型写作任务**，本轮不据此宣称业务效果。
+
+### 未解决问题
+
+- 用户界面上的工具活动行、超时文案、重发按钮的表现，需由用户点击确认。
+- 若上游把心跳改成更频繁或新增询问类型，仍需保持「显式提示、绝不自动应答」策略，未做前向兼容测试。
+
+### Plan 与代码冲突
+
+- 未发现。两处修复均属计划第 3、4 步要实现的语义（超时可配置 + unknown 态可恢复），原实现有缺陷，按「普通实现问题可自主解决」处理，未改契约、数据模型或安全机制。
+
+### 建议 ARCHITECT 关注
+
+- 超时后是否应主动向引擎发送 cancel，目前只落 `unknown` 并保留“可能仍在跑”的诚实状态；如要强杀需另立计划。
+
+## 设置页「模型权限」文案改口语（2026-10-23，待 ARCHITECT 复核）
+
+- 改动：仅 `desktop/src/SettingsPanel.tsx` 的展示文案，无逻辑、无契约、无权限语义变化。
+  - 三个类别标题改为「本机模型」「局域网 / 单位内网」「公网模型服务」，说明改为各一句人话。
+  - 卡片状态改为「可以使用（已开启至少一类）」「暂不能使用（三类都关着）」「默认关闭」；按钮改为「全部关闭」。
+  - 顶部与底部说明压缩成“总开关 / 不构成授权 / 禁入材料仍然禁入”三层意思，保留原有边界含义。
+- 未改：`ModelPermissions` 类型、三类 key、宿主写入与准入判定、`route_classifier.rs`。
+- 验证：`npx tsc --noEmit` 通过；`npm run build` 通过；热更新后同 PID 可访问性树节点 93→97，页面未崩。
+- 未验证：肉眼排版观感（长句已缩短，但仍建议用户过一眼换行是否合适）。
+- 注意：`tests/verification/desktop/evidence/od-arch-030/**` 里留有旧文案，属历史留档，未改。
+
+## 启动黑屏自检修复（2026-10-23，待 ARCHITECT 复核）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`；既有 39 项未提交改动原样保留，未重置、未提交、未推送。
+- **现象：** 运行 `scripts/omnidesk.sh` 后窗口整屏黑、终端随即退出。
+- **根因（脚本运行证据）：** 前端运行时报错 `TypeError: scene.rules.join is not a function`（`desktop/src/shell/HomeCanvas.tsx:186`），React 整棵树崩溃，只剩窗口底色。原因是同批改动里 `ProfileSceneRules.rules/sections` 在 Rust `SceneRules` 与 `samples/profiles/discipline.rules.json` 中是**多行字符串**，而 TS 类型与首页按数组调用 `.join`。属普通实现缺陷。
+- **修复：**
+  1. `desktop/src/types.ts`：`ProfileSceneRules.rules/sections` 改为 `string`，与 Rust 契约对齐。
+  2. `desktop/src/shell/HomeCanvas.tsx`：新增 `ruleText()`，字符串与数组两种形态都能安全读取，规则为空时回落流程包默认，不再抛错。
+  3. `scripts/omnidesk.sh`：补上 `dev-ui.sh` 已有的 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 本机渲染规避（此前只有 dev 脚本有）；启动时向 `app.log` 写时间戳表头（区分历史崩溃日志）；输出中说明脚本把 App 放后台后即返回、关闭终端不影响 App，并给出仍黑屏时的 XWayland 备用命令。
+- **验证：**
+  - `cd desktop && npx tsc --noEmit` 通过；`npm run build` 通过。
+  - `cargo test --offline` 通过：lib 223、admission_classification 2、host_integration 13、task_shell_e2e 3、thread_store_restart 1，0 失败。
+  - `python3 -m pytest tests -q`：37 passed。
+  - `git status --porcelain runtime/` 为空，DSH Runtime 零改动。
+  - 真实窗口实测：`scripts/omnidesk.sh --no-build` 启动后按 PID 读 AT-SPI 可访问性树，节点数 93，含 `button:系统偏好设置 / 引擎技术切片` 等首页元素；修复前同条件只有 6 个节点（frame/document，即空白页）。`vite.log` 中不再出现该 TypeError。
+- **关于“终端退出”：** 脚本用 `setsid` 把 App 放后台后立即返回 exit 0，终端随脚本结束而关闭，App 实际仍在运行（`scripts/omnidesk.sh --status` 可查）。本轮只补充了提示文案，未改变其行为。
+- **未验证：** 用户解锁状态下的肉眼观感；Wayland 下截图取证不可靠（会话锁屏，截图为单色），故以可访问性树为判据。
+- **排查残留：** 已结束本轮自建的 `Xvfb :91/:92` 与临时数据根；`/tmp` 下部分排查脚本与临时目录保留待清理，不影响仓库。
+
+## OD-ARCH-066：审批请求可见与应答 + 首字延迟（S1–S4 完成，待 ARCHITECT 复核，2026-10-23）
+
+- **开工状态：** 分支 `main`，HEAD `3f8c3ba`。既有未提交改动（`PLANS.md`/`README.md`/`REVIEW.md`/`audit/product-direction-review/` 及本计划涉及文件）原样保留，未重置、未提交。
+- **UI 参考（OD-ARCH-035）：** 参照 DSH 原生审批的呈现方式——卡片嵌在消息流内跟随对话上下文，而非全屏弹窗；容器色区分于正文气泡，两个操作按钮并排且主次分明。等待时在消息标题行直接写「等待审批中」，不让用户去别处找。
+
+### 已完成内容
+
+| 步骤 | 内容 |
+| --- | --- |
+| S1 | 引擎 `waterfall: approval/request` 事件经 `_ApprovalChannel` 归一化为 `approval_request`，按 `agentId` 归属到 OmniDesk 任务；`approval/cancelled`、`waterfall ready` 同步处理；非本任务事件不归属。任务终态时清空该任务 pending 与索引。状态 `note` 仅在非终态时显示「等待审批中：<工具名>」。前端在助手消息内渲染审批卡片：工具名、原因、请求编号、允许这一次/拒绝；已决定与已失效分别有独立文案，回传失败保留待决定并显示原因。 |
+| S2 | 适配层 `respond_approval(omni_task_id, approval_id, allow)`：校验任务归属、审批编号必须在 pending 列表中、`allow` 必须为 bool；走 `$events/result` 的 `outcome.value = allowed-once | rejected`，失败不改本地 pending。RPC 命令 `omni.approval_respond`（`serve.py`，参数非法返回 INVALID_ARGUMENT，适配器不支持返回 METHOD_NOT_FOUND）；桌面 `engine_bridge.rs::approval_respond()` + `engine_approval_respond` 命令（30s 超时）已注册。 |
+| S3 | `submit_task()` 记录 `submitted_monotonic`，第一个 `text-delta` 时算出 `ttfb_seconds`（保留 3 位）写入任务台账；状态与界面均可读，消息标题显示「首字 x.xs」。无文本增量时保持为空，不填 0。 |
+| S4 | 新增 `run_approval_scenarios.py`（A01–A05，真实 DSH web 进程 + 回环合成端点 + 一次性 /tmp 数据根）与 `test_web_api_unit.py::ApprovalChannelTests`（11 例）。证据写入 `tests/verification/engine-interface/evidence/web-api/approval-scenarios/scenarios.json` 与 `tests/verification/desktop/evidence/od-arch-066/facts.json`。 |
+
+### 修改文件
+
+- 引擎：`engine/omnidesk_engine/web_api_adapter.py`、`task_core.py`、`serve.py`、`contract.py`
+- 桌面 Rust：`desktop/src-tauri/src/engine_bridge.rs`、`lib.rs`
+- 桌面前端：`desktop/src/types.ts`、`api.ts`、`shell/HomeChat.tsx`
+- 测试：`tests/verification/engine-interface/adapter/test_web_api_unit.py`、`run_approval_scenarios.py`（新）、`_mock_model_server.py`、`probe_approval_channel.py`（新）
+- 文档：`STATUS.md`（本节）
+- 未修改：`runtime/`（零差异）、凭证、模型路由、`~/.dsh`、`~/.agents`、真实用户数据
+
+### 实际运行的验证
+
+| 证据等级 | 命令 | 结果 |
+| --- | --- | --- |
+| 脚本/运行 | `python3 -m pytest tests -q` | **37 passed**（改动前基线 26） |
+| 脚本/运行（端到端） | `python3 run_approval_scenarios.py`（A01–A05） | **5/5 pass**，退出码 0 |
+| 静态检查 | `cd desktop && npx tsc --noEmit` | 0 错误 |
+| 脚本/构建 | `cd desktop && npm run build` | 成功（633ms） |
+| 脚本/运行 | `cargo test --offline` | 212 / 2 / 13 / 3 / 1 / 0 / 0 passed，**0 failed**（合计 231） |
+| 文件事实 | `git status --porcelain runtime/` | 空（DSH Runtime 零差异） |
+
+场景实测要点（全部为合成模型端点，未接真实模型）：
+
+- A01 允许：收到审批事件，note 含「等待审批中」，`allowed` 应答成功，终态 `succeeded`，`ttfb_seconds = 0.672`。
+- A02 拒绝：`rejected` 应答成功，终态 `succeeded`，`pending_approvals = 0`。
+- A03 等待态：`pending_approvals = 1`；台账含计数，**不含**命令正文与原因原文。
+- A04 伪造编号：答复被拒（`not pending`），pending 仍为 1，未误改任务状态。
+- A05 首字延迟：`ttfb_seconds = 0.328`，台账含该字段，文本增量存在。
+
+### 未解决问题 / 偏差
+
+- **计划口径偏差（已知）**：Plan 写 `respond_approval(callId, allow)`；实际协议用 `eventId`（审批编号）定位请求，`callId` 只作展示。按实际协议实现，未改契约语义。
+- **计划预期被证伪**：Plan 推测拒绝后「大概率 blocked→failed」；实测拒绝后 turn 仍 `succeeded`。界面文案已按实际语义写「引擎按自己的语义结束本轮」，A02 通过标准改为「到达终态且 pending 清零」。
+- **测试脚本缺陷（已修）**：轮询辅助函数原先用 `stream_events(until_terminal=False)` 读快照，该参数是「持续等待新事件」语义，会永久阻塞；改为 `timeout=0.0`。这是测试代码问题，产品代码未受影响。
+- **真实窗口验收未做**：需要用户在实际窗口中点一次允许/拒绝确认交互与观感。
+- **真实模型端点未验证**：本轮审批链路全部走回环合成端点，未接真实模型，也未改路由或凭证。
+- **引擎崩溃恢复未验证**：进程意外中断后 pending 审批的恢复语义未测。
+
+### 建议 ARCHITECT 关注
+
+1. 终态时后端清空 pending、前端把残留卡片标为「已失效」，两处语义是否要统一成一个显式 `approval_cancelled` 事件。
+2. 拒绝后仍 `succeeded`——后续若要做「拒绝即中止本轮」，需要引擎侧能力，属跨层改动，需单独决策。
+3. 审批卡片目前只展示工具名与原因，是否需要在卡片里展开工具参数摘要（涉及正文落盘边界，需先定策略）。
+
 ## OD-ARCH-065：多提供商模型档案 + 探测沿用已存密钥（S1–S6 完成，待 ARCHITECT 复核，2026-10-23）
 
 - **开工状态：** 分支 `main`，HEAD `8bd3512`。ARCHITECT 的 `M PLANS.md` 原样保留，随本批入库，未改动其内容。
@@ -2546,6 +3105,40 @@ Rust 测试前需 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"
 - 本记录不构成端点隔离、真实用途授权或产品化批准；也不扩大用户已提供的答复摘要范围。
 
 ## 最近完成任务
+
+- **OD-ARCH-068 平台中立规则资产化（本轮实施，未提交）**
+
+  - 已完成内容：红线词表（14 个业务红线 + 2 个隐私归类）与 7 条写作铁律从 Rust/TS 代码迁出，写入 Profile 规则资产 `<应用数据根>/profiles/discipline.rules.json`（仓库内出厂副本 `samples/profiles/discipline.rules.json`，编译期嵌入，**首次启动不自动创建**）。没有规则文件 = 纯净底座（零关键词、零铁律、不掩码），行为与官方 DSH-desktop 无实质区别；文件损坏 = 提交被拒并报 `profile_rules_invalid`，不静默退回纯净底座。
+  - 隐私策略：身份证 / 手机号由「拒绝」改为「掩码后放行」（保留前 3 后 2，长度不变），掩码作用在**出站 prompt_text** 上，本地会话原文不动；回执带 `privacy_masked`，界面提示「已自动脱敏」。用户可在规则文件里把 `privacy.id_card/phone` 改回 `reject`。业务红线词命中仍拒绝。
+  - 随手记轻装：工作记录场景新增「随手记 / 整理成周报」切换；随手记只发一句整理指令（不带铁律、章节、归档条目），整理成周报仍走完整组装。
+  - 场景思考档：规则资产为 weekly=low、writing=low、project=off；用户手动选档优先，场景默认只在引擎空闲且用户未手动选档时应用一次（任务级思考档需经 `setModelRoute` 生效，会重启引擎，故不在生成中切换）。
+  - 设置页新增「规则资产」分页：显示文件路径、指纹、红线词数、铁律数、隐私处理、场景思考档；可编辑原始 JSON 并保存（写入前校验 + `.bak-<epoch>` 备份，无需重启），可「恢复默认规则包」。
+  - 实况配置清理（仅作用于隔离数据根 `~/OmniDesk`，均已先备份 `.bak-od068`）：删除 `omnidesk.model-settings.v2.json` 中 opendesign 的 `reasoning_effort: high`；删除 `omnidesk-model.yml` 中 acp 块的 `reasoningEffort: high`；写入 `profiles/discipline.rules.json` 出厂规则包。
+
+  - 修改文件：`desktop/src-tauri/src/profile_rules.rs`（新增）、`desktop/src-tauri/src/{lib.rs,scheduler.rs,task_shell.rs}`、`desktop/src-tauri/tests/task_shell_e2e.rs`、`desktop/src/{aiDraft.ts,conversationPrompt.ts,types.ts,api.ts,SettingsPanel.tsx,settings-panel.css}`、`desktop/src/shell/{HomeCanvas.tsx,HomeChat.tsx}`、`samples/profiles/discipline.rules.json`（新增）、`tests/verification/desktop/verify_profile_rules_068.py`（新增）、`tests/verification/desktop/evidence/od-arch-068/profile-rules-068.json`（新增）、本文件。
+
+  - 测试命令与结果（本轮实测）：
+
+    | 命令 | 结果 | 证据等级 |
+    | --- | --- | --- |
+    | `cd desktop/src-tauri && cargo test --offline`（先 `eval "$(bash ../../scripts/setup-desktop-toolchain.sh --print-env)"`） | **223 lib + 2 admission + 13 host_integration + 3 task_shell_e2e + 1 doc = 全通过 / 0 失败**；唯一警告是既有的 `local_http::header` dead_code | 脚本/运行（Rust 测试） |
+    | `cd desktop && npx tsc --noEmit` / `npm run build` | 通过；dist 413.39 kB JS / 74.28 kB CSS | 静态检查 |
+    | `python3 -m pytest tests -q` | **37 passed**（与基线一致，未新增 Python 用例） | 脚本/运行 |
+    | `python3 tests/verification/desktop/verify_profile_rules_068.py --json tests/verification/desktop/evidence/od-arch-068/profile-rules-068.json` | **25 cases / 0 failed**：规则资产结构（schema、16 词条、7 铁律、隐私 mask、三场景思考档、场景键与流程包一致、三场景 rules/sections 与 offline-flows.v1 逐字一致）+ 编译真实 `conversationPrompt.ts` 后验证随手记轻装、周报完整组装、默认模式为 report、未传 writingRules 时无铁律段 | 脚本/运行（TS 源码编译 + Node 执行，无网络、无凭证） |
+    | `python3 tests/verification/desktop/verify_ai_draft.py` | **27 cases / 0 failed**：写作铁律改从 `samples/profiles/discipline.rules.json` 的 `global.writing_rules` 注入，断言标题改为「写作规则（来自当前 Profile 规则资产）」 | 脚本/运行（TS 源码编译 + Node 执行，无网络、无凭证） |
+    | `python3 tests/verification/desktop/verify_conversation_prompt.py` | **26 cases / 0 failed**：新增 2 项纯净底座断言（不传 writingRules → 无写作规则段，但场景规则仍在）；原「预设保留禁入案件材料」两条改为传入规则资产后断言；续接路径不重放上文保持不变 | 脚本/运行（TS 源码编译 + Node 执行，无网络、无凭证） |
+    | `git status --porcelain runtime/` | 空（0 项） | 静态检查 |
+
+  - 未验证 / 未运行事项：**未运行真实模型**——没有在真实窗口里用真实端点跑过随手记与周报，因此 ttfb 对比（计划验收第 3 条）**未取证**；「设置页改一条红线词 → 保存 → 下一任务生效」「移走规则文件 → 重启 → 零拦截」两条验收**只做了代码与单测层面的验证，未做窗口级实测**；未做跨平台（Windows/macOS）验证。
+
+  - 是否发现 Plan 与实际代码存在冲突：
+    1. 计划写 `offline-flows.v2.json` / `omnidesk.model.yml`，实际文件是 `offline-flows.v1.json` / `omnidesk-model.yml`。按既定边界未改 flow pack schema 与文件名，规则资产里的场景 rules/sections 与 v1 原文逐字一致（脚本已比对）。
+    2. 计划证据目录写 `od-arch-067`，实际用 `od-arch-068`。
+    3. 计划称「掩码在引擎层执行」，实际在宿主（Rust）出站 prompt_text 上执行。引擎侧不改动即可满足「本地原文不动、出站被替换」，且避免改动 `engine/`；如需引擎侧也掩码，属计划外改动，未做。
+    4. 场景默认思考档只能通过 `setModelRoute`（重启引擎）生效，故实现为「引擎空闲且用户未手动选档时应用一次」，与计划的「场景默认」语义一致但有时机限制。
+    5. 计划要求「16 词行为不变」——迁移后 14 个业务红线词行为不变；另 2 个词（身份证 / 电话号码）按本轮定调从「拒绝」改为「掩码提示」，这是计划本身要求的变更，已在 asset 层单独分组（`privacy_keywords`）避免与 mask 自相矛盾。
+
+  - 建议 ARCHITECT 下一步关注：真实端点下的 ttfb 与随手记体验是否真的变快；设置页改规则后是否需要显式「重新加载」按钮（当前下一轮提交即生效，但界面没有回显「已生效」的确认）；规则资产与 `offline-flows.v1.json` 的双份场景 rules/sections 长期如何避免漂移（当前靠脚本比对，无自动检测）。
 
 - **OD-ARCH-005 与 OD-UI-002（OpenCode worktree）**：BUILDER 报告完成；ARCHITECT 在各自计划范围内复核通过。准入脚本 11/11、启动器身份测试和 diff 检查独立通过；工作台截图已审阅。端点隔离未确认，Rust 提交入口尚未 fail-closed；主工作区与 OpenCode worktree 的未提交改动不一致，不得整体合并。独立结论和证据位置见 [REVIEW.md](REVIEW.md) 顶部。
 

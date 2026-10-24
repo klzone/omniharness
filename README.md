@@ -1,36 +1,57 @@
 # OmniDesk Discipline
 
-OmniDesk Discipline 是面向个人专业工作的独立 AI 工作台。它拥有自己的任务体验、领域规则、数据组织和成果管理；DSH 只是当前可替换的执行引擎，不是产品 UI，也不是 OmniDesk 的业务边界。
+以对话为中枢、场景工作流为骨架、成果档案为沉淀的个人 AI 工作台。首个场景：纪检综合岗位的周报、材料写作与项目跟进。DSH（DeepSeek Harness）是当前锁定版本的可替换执行引擎，不修改其核心，不把它当作产品边界。
+
+## 解决什么问题
+
+专业文字工作需要明确的状态、可回溯的依据、人工复核和成果归档。通用聊天工具一问一答，留不下这些；OmniDesk 把每项工作组织成有状态、有版本、有复核的任务流，并且数据全部存在你自己的本地目录，随时可迁移。
+
+## 核心特征
+
+1. **对话即工作**：任务从对话开始，生成稿、修改、定稿都在同一会话线程上，不丢上下文。
+2. **场景工作流**：周报、文案、项目跟进各自有入口、模板和检查规则，不靠记提示词。
+3. **写确认制**：AI 产生的文件写入前经宿主终检确认，敏感路径默认拒绝，不靠提示词约束。
+4. **数据自主**：会话、成果、配置全部在 `~/OmniDesk` 本地目录，仓库里只有代码与文档。
+5. **权限可控**：本地 / 内网 / 外部模型分区授权，由你在设置里自行决定开放范围。
 
 ## 当前状态
 
-- 当前仓库包含自有 Tauri/React/Rust 桌面技术切片和个人 MVP 纵向试点。它们证明了部分技术链路，不代表正式桌面产品已获批准。
-- ARCHITECT 已独立复验 **OD-BUILD-002 通过（计划范围）**，桌面数据根拒绝仓库内落点的遗漏已关闭；这不等于完整 MVP 已验收。见 [REVIEW.md](REVIEW.md)。
-- OD-BUILD-003/004 已完成实现并经 ARCHITECT 独立复核通过（计划范围）：cwd 规范化、宿主默认 Profile 链（acp）与非 ACP Profile 的可读错误均已证实。下一项待批准计划为 OD-BUILD-005（把引擎链路接进任务流程），见 [PLANS.md](PLANS.md)。真实 Tauri 窗口内的完整任务路径与真实模型输出质量仍未验证。
-- 当前仅使用合成数据及明确许可范围内的公开数据。用户转述许可只覆盖满足指定脱敏要求、个人数据分析与生态研判且不得分发；不能推定其他任务、模型服务商、工具、设备或运行环境已获准。
+- 桌面应用（Tauri 2 + React + Rust 宿主 + Python 适配层）可运行，作者实测中。
+- 已实现：首页对话中枢、场景分页（工作记录 / 文案写作 / 项目跟进 / 历史会话）、模型设置、线程管理、写确认终检。
+- 未实现 / 未验证：数据分析模块（暂缓）、同事试用与分发、安装包打包、真实模型长跑稳定性。
+- 合规边界：真实业务材料不入库、不进入未授权模型。当前开发与测试仅使用合成数据与公开材料。
 
-## 共享项目状态
+## 快速开始
 
-- [AGENTS.md](AGENTS.md)：长期协作规则与硬边界
-- [GOALS.md](GOALS.md)：产品目标、当前阶段和范围
-- [PLANS.md](PLANS.md)：唯一当前实施计划及审批状态
-- [STATUS.md](STATUS.md)：BUILDER 执行记录
-- [REVIEW.md](REVIEW.md)：ARCHITECT 独立审查与验收结论
-- [docs/decisions.md](docs/decisions.md)：已定架构决策与未决事项
+```bash
+git clone https://github.com/klzone/omniharness.git
+cd omniharness && scripts/setup.sh
+scripts/omnidesk-dev.sh
+```
 
-详细工程契约、数据布局、审计报告和测试证据保留在 docs/、tests/reports/、tests/verification/。历史规划和路线材料归档在 docs/archive/。
+需要自行配置模型端点（OpenAI 兼容接口）；未配置时应用可启动，模型相关功能不可用。
 
-## 关键架构边界
+## 架构
 
-- 不修改 runtime/deepseek-harness/；不把 DSH 内部格式当作 OmniDesk 产品契约。
-- 共用任务外壳可服务相似的周报、材料撰写和日常项目管理，但每种能力仍需独立规则、权限与评测；目前仅有脱敏数据分析与生态研判试点。
-- 文件优先；只有出现可观察的并发冲突、状态查询瓶颈或文件检索评测不达标时，才评估 SQLite。
-- 不建设通用 Agent 平台、工作流编辑器、Registry、插件市场、微服务或复杂模型路由层，除非后续证据和单独批准支持。
-- 作者个人试用不以 20% 节时为门槛；扩展到同事或启动产品化需另行评估价值、质量、授权和具体产品痛点。
+| 层 | 技术 | 职责 |
+| --- | --- | --- |
+| 桌面壳 | Tauri 2 + React + TypeScript | 窗口、场景页、对话 UI |
+| 宿主 | Rust | 任务生命周期、写确认终检、权限判定 |
+| 适配层 | Python | DSH Web-API/ACP 通道、事件归一化、会话恢复 |
+| 执行引擎 | DSH（锁定版本，不改核心） | 模型调用、工具执行、会话 |
 
-## 验证入口
+数据根 `~/OmniDesk`（会话线程 / 成果 / 配置 / 日志），仓库不存任何用户数据。
 
-- 桌面 MVP 审查与限制：[REVIEW.md](REVIEW.md)
-- 桌面架构与运行边界：[docs/OmniDesk-Desktop-Architecture.md](docs/OmniDesk-Desktop-Architecture.md)、[docs/OmniDesk-Desktop-Data-Layout.md](docs/OmniDesk-Desktop-Data-Layout.md)、[docs/OmniDesk-Desktop-Engine-IPC.md](docs/OmniDesk-Desktop-Engine-IPC.md)
-- 阶段和适配器证据：[tests/reports/](tests/reports/)
-- DSH 隔离运行引导：[scripts/setup.sh](scripts/setup.sh)
+## 项目边界
+
+- 不修改 `runtime/` 下的 DSH Runtime；升级 DSH 先在副本跑回归。
+- 真实业务材料、凭证、会话日志一律不进 Git；提交前有红线扫描。
+- 不建设通用 Agent 平台、插件市场、微服务；按真实使用证据逐步扩展。
+
+## 项目状态入口
+
+- [AGENTS.md](AGENTS.md)：协作规则　[GOALS.md](GOALS.md)：目标　[PLANS.md](PLANS.md)：计划　[STATUS.md](STATUS.md)：执行状态　[REVIEW.md](REVIEW.md)：验收结论　[docs/decisions.md](docs/decisions.md)：架构决策
+
+## License
+
+Apache-2.0
