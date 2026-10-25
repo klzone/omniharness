@@ -883,6 +883,10 @@ fn profile_choice_view(state: State<'_, SharedHost>) -> Result<serde_json::Value
     let saved = crate::settings::load(&app_root.join("config"))
         .ok()
         .and_then(|s| s.engine_profile);
+    let saved_out_of_whitelist = saved
+        .as_deref()
+        .map(|s| !profile_choice::is_whitelisted(&channel, s))
+        .unwrap_or(false);
     // 「本次启动实际生效」只认引擎配置；引擎配置读不出来时退回按已保存选择推算，
     // 并显式带上 warning，不把推算值当成事实。
     let (effective, warning) = match engine_supervisor::EngineConfig::from_env(&app_root) {
@@ -898,6 +902,7 @@ fn profile_choice_view(state: State<'_, SharedHost>) -> Result<serde_json::Value
         "channel": channel,
         "standard": profile_choice::standard_profile(&channel),
         "saved": saved,
+        "saved_out_of_whitelist": saved_out_of_whitelist,
         "effective": effective,
         "options": profile_choice::list(&dsh_home, &channel),
         "warning": warning,
@@ -963,7 +968,36 @@ fn profile_rules_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
 /// 读取规则资产（只读；不创建文件）。
 #[tauri::command(async)]
 fn profile_rules_load(state: State<'_, SharedHost>) -> profile_rules::RulesView {
-    profile_rules::load_rules(&profile_rules_dir(&state))
+    let mut view = profile_rules::load_rules(&profile_rules_dir(&state));
+    if view.loaded {
+        let dsh_home = {
+            let host = state.lock().unwrap();
+            host.bridge.supervisor().lock().unwrap().config().dsh_home.clone()
+        };
+        let repo_skills = crate::task_shell::repo_root_hint().map(|r| r.join("skills")).ok();
+        if let Some(rules) = &view.rules {
+            for binding in rules.skill_bindings.values() {
+                for skill_id in &binding.skills {
+                    if view.skill_contents.contains_key(skill_id) {
+                        continue;
+                    }
+                    let dsh_path = dsh_home.join("skills").join(skill_id).join("SKILL.md");
+                    let content = if dsh_path.is_file() {
+                        std::fs::read_to_string(&dsh_path).ok()
+                    } else if let Some(repo_dir) = &repo_skills {
+                        let repo_path = repo_dir.join(skill_id).join("SKILL.md");
+                        std::fs::read_to_string(&repo_path).ok()
+                    } else {
+                        None
+                    };
+                    if let Some(c) = content {
+                        view.skill_contents.insert(skill_id.clone(), c);
+                    }
+                }
+            }
+        }
+    }
+    view
 }
 
 /// 保存规则资产：先完整解析校验，通过才备份并原子写。

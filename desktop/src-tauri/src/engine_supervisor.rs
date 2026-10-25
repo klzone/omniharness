@@ -461,8 +461,8 @@ mod tests {
             "不设 OMNIDESK_ENGINE_CHANNEL 时默认通道必须是 web-api"
         );
         assert_eq!(
-            default_config.profile, "web",
-            "web-api 通道的默认 Profile 是 web"
+            default_config.profile, "omnidesk-base",
+            "web-api 通道的默认 Profile 是 omnidesk-base"
         );
         assert_eq!(
             child_env_value(&default_config, "OMNIDESK_ENGINE_CHANNEL").as_deref(),
@@ -471,12 +471,12 @@ mod tests {
         );
         assert_eq!(
             child_env_value(&default_config, "OMNIDESK_DSH_PROFILE").as_deref(),
-            Some("web"),
+            Some("omnidesk-base"),
             "child_env() 必须把默认 Profile 传给引擎子进程"
         );
         assert_eq!(
             default_config.initialize_params()["dsh"]["profile"],
-            serde_json::json!("web"),
+            serde_json::json!("omnidesk-base"),
             "initialize_params() 必须把默认 Profile 传给引擎子进程"
         );
         assert_eq!(
@@ -508,10 +508,10 @@ mod tests {
         // 纯空白覆盖不得被当作有效值，否则会把 Profile 名澄成空字符串。
         std::env::set_var("OMNIDESK_DSH_PROFILE", "   ");
         let blank = EngineConfig::from_env(&fixture.app_root()).expect("空白覆盖应回退默认值");
-        assert_eq!(blank.profile, "web", "空白覆盖应回退到通道默认值");
+        assert_eq!(blank.profile, "omnidesk-base", "空白覆盖应回退到通道默认值");
         assert_eq!(
             child_env_value(&blank, "OMNIDESK_DSH_PROFILE").as_deref(),
-            Some("web")
+            Some("omnidesk-base")
         );
 
         // 一键切回 ACP（OD-ARCH-048 的回退路径）：通道与 Profile 默认值一起回到 acp。
