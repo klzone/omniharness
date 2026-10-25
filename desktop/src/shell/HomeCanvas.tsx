@@ -175,13 +175,21 @@ function sceneOptions(
     .map((c) => ({ key: c.key, label: c.label }));
 }
 
+export interface HomeCanvasProps {
+  onNavigate: (scene: Scene) => void;
+  declaredScenes?: ProfileSceneEntry[] | null;
+  searchQuery?: string;
+  searchCurrentIndex?: number;
+  onSearchMatchesChange?: (count: number) => void;
+}
+
 export function HomeCanvas({
   onNavigate,
   declaredScenes = null,
-}: {
-  onNavigate: (scene: Scene) => void;
-  declaredScenes?: ProfileSceneEntry[] | null;
-}) {
+  searchQuery = "",
+  searchCurrentIndex = 0,
+  onSearchMatchesChange,
+}: HomeCanvasProps) {
   const now = new Date();
 
   /**
@@ -289,6 +297,13 @@ export function HomeCanvas({
     const flow = pack ? pack[def.preset] : null;
     // Profile 规则优先，流程包只作缺省回退（OD-ARCH-068）。
     const scene = rulesView?.rules?.scenes?.[def.preset] ?? null;
+    const bound = rulesView?.rules?.skill_bindings?.[def.preset];
+    const maxInjected = bound?.max_injected ?? 3;
+    const boundSkillIds = (bound?.skills ?? []).slice(0, maxInjected);
+    const boundSkills = boundSkillIds
+      .map((id) => ({ id, content: rulesView?.skill_contents?.[id] ?? "" }))
+      .filter((s) => Boolean(s.content));
+
     return {
       key: def.preset,
       label: def.label,
@@ -297,6 +312,7 @@ export function HomeCanvas({
       writingRules: rulesView?.rules?.global?.writing_rules ?? null,
       thinking: scene?.thinking ?? null,
       rulesLoaded: Boolean(rulesView?.loaded),
+      skills: boundSkills.length > 0 ? boundSkills : null,
     };
   }, [effectiveTag, pack, rulesView]);
 
@@ -412,6 +428,9 @@ export function HomeCanvas({
             saveThreadMessages(id, messages);
             refresh();
           }}
+          searchQuery={searchQuery}
+          searchCurrentIndex={searchCurrentIndex}
+          onSearchMatchesChange={onSearchMatchesChange}
         />
           </div>
         </div>

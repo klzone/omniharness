@@ -51,6 +51,11 @@ export interface AiDraftInput {
    * 传空数组同样不输出。规则文本只来自用户可编辑的规则文件。
    */
   writingRules?: string[] | null;
+  /**
+   * 当前场景绑定的 Skill 正文（OD-ARCH-082 S4 注入链路）。
+   * 为空或未传时不注入此段。
+   */
+  skills?: Array<{ id: string; content: string }> | null;
 }
 
 /**
@@ -106,6 +111,20 @@ export function buildDraftPrompt(input: AiDraftInput): string {
     lines.push("写作规则（来自当前 Profile 规则资产）：");
     writingRules.forEach((rule, idx) => lines.push(`${idx + 1}. ${rule}`));
   }
+
+  const skills = (input.skills ?? []).filter((s) => s.content.trim().length > 0);
+  if (skills.length > 0) {
+    lines.push("");
+    lines.push("配套技能指引（来自当前 Profile 场景绑定）：");
+    for (const s of skills) {
+      const raw = s.content.trim();
+      const trimmed = raw.length <= 2500 ? raw : raw.slice(0, 2500) + "\n…（技能说明已按长度截断）";
+      lines.push(`--- 技能：${s.id} ---`);
+      lines.push(trimmed);
+      lines.push("--- 技能结束 ---");
+    }
+  }
+
   lines.push("");
   lines.push(
     "输出：先给结构（章节列表），再给初稿正文；最后列出「待确认事项」和「事实来源」（含所用材料文件名）。",

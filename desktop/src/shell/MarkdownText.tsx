@@ -52,16 +52,48 @@ function isExternal(href: string | undefined): boolean {
   return !!href && /^https?:\/\//i.test(href);
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^$\{\}()|[\]\\]/g, "\$&");
+}
+
+function highlightTextChildren(node: ReactNode, query: string): ReactNode {
+  if (!query.trim()) return node;
+  if (typeof node === "string") {
+    const escaped = escapeRegex(query.trim());
+    const regex = new RegExp(`(${escaped})`, "gi");
+    const parts = node.split(regex);
+    if (parts.length <= 1) return node;
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.trim().toLowerCase() ? (
+        <mark key={i} className="bg-amber-300 text-stone-900 rounded-xs px-0.5 font-medium">
+          {part}
+        </mark>
+      ) : (
+        part
+      ),
+    );
+  }
+  if (Array.isArray(node)) {
+    return node.map((item, idx) => (
+      <span key={idx}>{highlightTextChildren(item, query)}</span>
+    ));
+  }
+  return node;
+}
+
 /**
  * @param tone `onPrimary` 用于深底问句气泡：字色与代码/引用底色换成浅色系，
  *   其余场景沿用正文配色。
+ * @param highlightQuery OD-ARCH-082 S8 当前会话搜索高亮词
  */
 export function MarkdownText({
   text,
   tone = "default",
+  highlightQuery,
 }: {
   text: string;
   tone?: "default" | "onPrimary";
+  highlightQuery?: string;
 }) {
   const cls = tone === "onPrimary" ? "md-body md-compact md-on-primary" : "md-body";
   return (
@@ -97,6 +129,12 @@ export function MarkdownText({
               <CopyCodeButton text={textOf(children)} />
               <pre>{children}</pre>
             </div>
+          ),
+          p: ({ children }) => (
+            <p>{highlightQuery ? highlightTextChildren(children, highlightQuery) : children}</p>
+          ),
+          li: ({ children }) => (
+            <li>{highlightQuery ? highlightTextChildren(children, highlightQuery) : children}</li>
           ),
           table: ({ children }) => (
             <div className="md-table-scroll">

@@ -126,7 +126,7 @@ export function TurnRail({ items, activeId, busyId, onJump }: TurnRailProps) {
                     type="button"
                     aria-label={`跳到第 ${index + 1} 轮：${oneLine(item.prompt, 24) || "未命名"}`}
                     aria-current={active ? "true" : undefined}
-                    title={`第 ${index + 1} 轮 · ${oneLine(item.prompt, 20)}`}
+                    aria-describedby={preview?.index === index ? `turn-rail-tooltip-${item.id}` : undefined}
                     onClick={() => onJump(item.id)}
                     onPointerEnter={() => showPreview(index)}
                     onFocus={() => showPreview(index)}
@@ -152,10 +152,16 @@ export function TurnRail({ items, activeId, busyId, onJump }: TurnRailProps) {
           </div>
           {shown ? (
             <div
+              id={`turn-rail-tooltip-${shown.id}`}
               role="tooltip"
-              className="pointer-events-none absolute right-6 w-[300px] max-w-[70vw] overflow-hidden rounded-xl border border-surface-variant/40 bg-surface-container-lowest px-3 py-2.5 shadow-lg"
+              className="turn-rail-tooltip pointer-events-none absolute right-6 w-[300px] max-w-[70vw] overflow-hidden border border-outline-variant/60 bg-surface-container-lowest px-3 py-2.5 shadow-md"
               style={{ top: preview!.top }}
             >
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="font-label-caps text-[9.5px] font-mono tracking-wider text-primary bg-surface-container-low px-1.5 py-0.5 border border-primary/20">
+                  第 {preview!.index + 1} 轮
+                </span>
+              </div>
               <p className="line-clamp-1 text-[12px] font-medium text-on-surface">
                 {oneLine(shown.prompt, 60) || `第 ${preview!.index + 1} 轮`}
               </p>
