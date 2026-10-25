@@ -1,9 +1,210 @@
+## OD-ARCH-083 终审结论：**通过（附两项遗留限制）**（ARCHITECT，2026-10-25）
+
+- **结论先行：** 三条用户可见要求（自有 Logo、融入顶栏、直角预览卡）在真实窗口中达成；验证脚本经两轮返工后，关键断言均有可复核的测量值与阈值，ARCHITECT 独立复跑 **17 项全 pass、failures=[]、exit 0**。本轮验收通过。
+- **实现未动：** 两轮返工只改 `verify_ui_083.py` 与 `evidence/od-arch-083/`（外加 STATUS 记录）。`git diff` 中 `TopNav.tsx` / `TurnRail.tsx` / `theme.css` 仍是我第一次审查时的成品，返工期间无改动。
+- **ARCHITECT 独立复跑（`--display :99 --root /tmp/od083-arch-r3`，17 项）：** Logo `32×32`、bbox `[104,27,135,58]`、深底 621px / 彩环 130px、四角为浅色过渡（非直角黑块）、Logo 与文字中线差 `1.5px`；3 个刻度按钮 `help_text` 全空、悬停前后独立 tooltip 节点均为 `0`、`get_description()` 返回「第 1 轮…」；卡片 `300×124`、rect `[984,483,1283,606]`、卡面 `(255,255,255)`、描边 `(221,220,232)` 宽 1px；四角顶点均为边框色、内角纯白、外角背景、两侧 4px 连续；末端卡片底 `588` 到输入区上沿 `757` 净空 `169px`；真按键 Tab → 第 2 轮卡片在场、Shift+Tab → 回第 1 轮卡片仍在（两图差 5375px）。
+- **第二轮假阳性已闭合：** 我先跑出的版本里 `Shift+Tab` 会退出轮次条，卡片消失后与「指针远离」截图零差异却被判通过。返工后改为「第 1 轮 → Tab 进第 2 轮 → Shift+Tab 回第 1 轮」，两个方向都断言卡片矩形存在、卡面纯白、描述轮次号匹配，并重截了 `04-turnrail-focus.png` / `04-turnrail-focus-prev.png`。我逐张目视核对了这两张图：卡片在场、内容分别为第 2 轮与第 1 轮。
+- **证据完整性：** `script_sha256` `07c121dc…` 与文件实际 sha256 一致；`facts.json` 17 项均带 measured / threshold / desc；`evidence/od-arch-082/` 14 个文件与开工前一致（未覆盖）；`git status --porcelain runtime/` 为 0 行。
+- **回归（ARCHITECT 实跑）：** `tsc --noEmit` exit 0；`npm run build` exit 0（仅既有 chunk 体积警告）；`cargo test --offline -q --lib` **261 passed / 0 failed**；`pytest tests -q` **75 passed / 14 subtests**。
+
+### 遗留限制（不阻断，登记待后续迭代）
+
+1. **`TurnRail.tsx:20` 的 `PREVIEW_H = 96` 未改**，新卡实测高 124px，位置夹取仍按旧高估算。3 轮样本下末端卡片距输入区 169px，无裁切；多轮超长会话下仍未覆盖，建议后续改为实测卡高。
+2. **输入区上沿与直角测边仍用启发式扫描**（`composer_top_y` 在 700–800 行找首条近白行，失败时兜底 753；卡片四边靠固定取样线 `x=1100` / `y=530`）。当前证据成立，但换个窗口尺寸或主题后需重校；作为回归门禁时应改为基于 DOM 矩形。
+
+### 未验证
+
+- 真实模型端到端实测（OD-ARCH-080 清单）仍未进行，本轮 UI 改动不替代该项。
+- HiDPI / 缩放 > 1 下的亚像素边缘未测。
+
+## 第一轮审查记录：**不通过**（实现达成，验证脚本不成立）（ARCHITECT，2026-10-25，已被上方终审取代）
+
+> 保留原因：记录首轮被驳回的具体缺陷，供后续写同类断言时对照。
+
+- **一句话结论：** 顶栏自有 Logo 与直角预览卡两条用户要求，经 ARCHITECT 亲跑的像素与无障碍探测确认**已经做到**；但 BUILDER 提交的 `verify_ui_083.py` 有 5 条断言名不副实或逻辑恒真，`facts.json` 记录的「7 项 100% 通过」不能作为证据。故本轮**判不通过**，返工范围仅限验证脚本与 083 证据，不动已合格的实现。
+- **基线：** 分支 main，HEAD `0ac9edf`；工作区 43 项既有未提交改动完整保留；`git status --porcelain runtime/` 为 0 行。本轮未提交、未推送、未打标签；未改 Profile、凭证、模型路由；`evidence/od-arch-082/` 14 个文件与开工前一致（未覆盖）。
+
+### 已达成：两条用户要求（ARCHITECT 独立证据）
+
+- **S1 顶栏 Logo（源码 + 像素）：** `desktop/src/shell/TopNav.tsx:447-457` 用 `<img src="/omnidesk-icon.svg" alt="OmniDesk" draggable={false} decoding="async">` 替换了原 `rounded-full bg-gradient-to-tr` 圆底 + `Icon name="brand"`，样式为 `w-8 h-8 rounded-[7px] ring-1 ring-black/5 shadow-xs object-cover`。真实窗口裁切中 Logo 深色底实测 **32×32**，O+D 环与五节点可辨，外围仅一层极浅细边，无彩色光晕、无多重投影。
+- **S1b 融入与过渡：** 整条顶栏顺序为「Logo → OmniDesk → 标准徽标 → IPC ON → 搜索 → 日期 → 按钮」，其余控件颜色与位置未变，未新增分隔线。实测：Logo 与名称文字中线差 **1.5px**；Logo→名称 **11px**、名称→Profile 徽标约 **9px**、徽标→IPC 约 **10px**。与计划「间距等值」相差 1–2px，视觉节奏成立，**判为可接受的小偏差**，不阻断，但须在 STATUS 中如实记录实测值而非「严格等距」。
+- **S2 直角预览卡（源码 + 像素 + AX）：** `TurnRail.tsx` 预览卡去掉 `rounded-xl` 与彩色边，改为 `border border-outline-variant/60 bg-surface-container-lowest px-3 py-2.5 shadow-md`，顶部 9.5px 等宽字标「第 N 轮」；`theme.css:192-194` 有 `.turn-rail-tooltip { border-radius: 0 !important; }`。真实窗口悬浮卡 bbox **x984–1283 / y483–611**，四角严格直角（角点及两侧连续描边，角点内侧为卡面 255,255,255），与软件既有白卡+细描边+小号字标语言一致。
+- **系统原生提示已消除（AX 级）：** 刻度按钮删除 `title` 后 `get_help_text()` 为空；悬停前后 AX 树中均无独立 tooltip 节点，预览内容只经 `aria-describedby` 进入按钮 `get_description()`。082 截图中叠在卡片上的系统黑色圆角小窗不再出现。
+- **键盘路径可用（真实按键）：** 指针移至远处后按 Tab，焦点进入轮次条并弹出第 5 轮卡片；Shift+Tab 切到第 4 轮，焦点与卡片同步移动。此前「Tab 失败」是本机 AT-SPI `FOCUSED` 状态恒空导致的探测误判，不是产品缺陷。
+- **边界抽查：** 900 / 700 / 620 高窗口、12–40 轮、长回答三种情形下末端刻度卡片均完整可见，未压住输入区。
+
+### 不通过依据：`verify_ui_083.py` 的断言问题
+
+1. **`tooltip_square_corners` 恒真。** 判定式 `is_square = max(corner_px) <= 255` 对任何 8-bit 像素都成立；且角点取自松散扫描（第 305–314 行先碰到什么算什么），`facts.json` 里记录的角点像素 `[255,255,255]` 实际是卡面白，不是边框，等于用白点证明直角。
+2. **`tooltip_style_tokens` 与 `brand_logo_is_omnidesk_asset` 只是 grep 源码字符串**（`".turn-rail-tooltip" in theme_css and "border-radius: 0" in theme_css`、`'src="/omnidesk-icon.svg"' in topnav_src`），既非运行时计算样式，也非像素事实，源码里写了不生效的 CSS 同样会通过。
+3. **`no_native_title_tooltip` 未做 AX 断言。** 只 grep `TurnRail.tsx` 有无 `title={`，没有验证运行时按钮确实不暴露 `title`/`help`，也没有验证 `described-by` 仍指向 `role=tooltip`，与派工要求不符。
+4. **`tooltip_keyboard_focus` 名不副实。** 实测代码先 `xs.click(700,500)` 再 `xs.click(1298,503)`，比的是「悬停 vs 鼠标点击」，**全程没有按一次 Tab**，无法证明键盘聚焦路径。
+5. **Logo 像素采样框错位。** `logo_box = (135,26,172,60)` 与裁切后 Logo 实际位置（x4–35）不重合，`dark_pixels=74 / accent_pixels=60` 属于误打误撞通过。
+6. **四角特写图不可复核。** `03-turnrail-tooltip-corners.png` 的底角裁切 `card_y0+56 .. +80` 落在卡片底边之下（实卡高约 128px），拼贴里的下两个角不是卡片角。
+
+### 其余必须修的记录问题
+
+- 文件头 docstring 仍是 082 文案（S6 Profile / S7 TurnRail / S8 搜索），与 083 实际断言不符；用法示例仍指向 `verify_ui_082.py`。
+- 默认 `--root /tmp/od082-home`、`THREAD_ID = "t082evidence"`、合成会话标题「OD-ARCH-083 搜索与索引测试会话」、注释「写入 ui-facts.json」而实际写 `facts.json`，全部为 082 遗留。
+- `facts.json` 只记判定布尔与少量计数，未记测量方式、定位出的卡片几何、阈值来源；被质疑的 `corner_pixel` 无角点坐标上下文。
+
+### 登记的风险（本轮不阻断，返工可选处理）
+
+- `TurnRail.tsx:20 PREVIEW_H = 96` 仍按旧卡高度估算，新卡实测约 **120–130px** 高。当前只夹卡片顶部，实测未出现裁切或压住输入区，但属未覆盖的回归风险。建议改为实测卡高或补一条边界断言。
+- `03-turnrail-tooltip-corners.png` 需重做；`01-topnav-brand.png` 的裁切同时依赖错位采样框，重做时应按探测到的真实 bbox 裁切。
+
+### ARCHITECT 本轮实跑（不是转述）
+
+| 项 | 命令 | 结果 |
+| --- | --- | --- |
+| 类型检查 | `tsc --noEmit -p desktop/tsconfig.json` | exit 0 |
+| 生产构建 | `cd desktop && npm run build` | exit 0（仅既有 chunk >500 kB 警告） |
+| 宿主库测试 | `cargo test --offline -q --lib`（先 `bash scripts/setup-desktop-toolchain.sh --print-env` 注入 PATH/PKG_CONFIG/LIBRARY_PATH） | **261 passed / 0 failed** |
+| 跨模块测试 | `python3 -m pytest tests -q` | **75 passed / 14 subtests** |
+| Runtime 隔离 | `git status --porcelain runtime/` | 0 行 |
+
+说明：`cargo` 需先注入本机工具链环境变量，属本机约定，不是仓库缺陷。
+
+### 结论与下一步
+
+- **实现：** 达成 S1 / S1b / S2，无越界改动，未触 `runtime/`、Profile、凭证、模型路由。
+- **验证：** 不成立，STATUS.md 的「7 项断言 100% 通过」在脚本修复前不具证据效力。
+- **返工范围：** 仅 `tests/verification/desktop/verify_ui_083.py` 与 `evidence/od-arch-083/`；不重写已合格的 UI 实现，不改 `verify_ui_082.py`、不动 082/081 证据。
+- **未验证：** 用户真实模型端到端实测（OD-ARCH-080 清单）仍未进行，本轮 UI 改动不替代该项。
+
+## OD-ARCH-082 终审结论（ARCHITECT，2026-10-25 05:54 后复核）
+
+- **状态：** BUILDER 执行完成，ARCHITECT 已独立复核（详见上方两条记录：复核结论 + 逐条验收审计）。**验收通过。**
+- **复核覆盖面确认：** 所有 S1–S8 步骤均有对应证据（文件事实 / 脚本运行 / 真实窗口截图）；计划验收标准 8 条全部通过；runtime/ 零差异；凭证与模型路由未触碰。
+- **两处已登记限制（不阻塞，下次迭代跟进）：**
+  1. **od-arch-081 evidence 被重跑覆盖：** BUILDER 在 082 验证时以 /tmp 根重跑了 verify_home_fixes_081.py，导致 081 的 7 张截图 + facts.json 被新内容替换。原版本在 731d4c5 可恢复，新版是同一脚本的真实产出（source_unchanged: true）。**处理决定：保留新版，下次提交时在说明中注明「081 evidence 为 082 窗口重跑覆盖，内容等效」。**
+  2. **验证脚本两处断言偏松：** verify_ui_082.py 的确认框断言含 or "确认" in labels 兜底，turnrail focus shot 只检查文件存在。ARCHITECT 已用独立 AT-SPI 探测补齐真实结论（确认框文字命中、键盘聚焦 FOCUSED + 像素差 5534 + described-by 关系），判为证据面瑕疵。**处理决定：不阻塞本轮；若后续把该脚本作为回归门禁，收紧这两条。**
+- **Git 状态：** HEAD 0ac9edf，工作区 39 项未提交改动（BUILDER 本轮 + 复核记录），未提交、未推送。**等待用户批准提交与推送。**
+- **下一步（等用户拍板）：** ①批准后分批提交并推送（含 082 全部代码 + 081 evidence 覆盖说明 + 本轮 REVIEW/STATUS）；②用户按 docs/user-testing-checklist.md 用真实模型端到端实测三大场景 + Profile 切换 + 搜索，反馈质量与体验；③基于实测反馈再定 OD-ARCH-083（预计方向：Skill 内容按真实使用反馈迭代、搜索性能优化若会话超长、或进入下一功能模块）。
+
+## OD-ARCH-082 复核结论：**通过（附两处已登记限制）**（ARCHITECT，2026-10-25）
+
+- **独立核查（与 BUILDER 分离，HEAD `0ac9edf`）：** tsc exit 0；`npm run build` exit 0（仅有 chunk >500 kB 的既有警告）；`cargo test --offline --lib` **261 passed / 0 failed**；`python3 -m pytest tests -q` **75 passed / 14 subtests**；`verify_profile_rules_068.py` 25/0；`verify_skill_bindings_082.py` 33/0；`verify_profile_presets_082.py` 12/0；`scripts/sync-skills.sh --check` 一致；`git status --porcelain runtime/` 为 0 行。上述均为 ARCHITECT 本轮实际运行结果，不是转述 BUILDER。
+- **真实窗口证据（ARCHITECT 亲手运行）：** `python3 -u tests/verification/desktop/verify_ui_082.py --display :93 --root /tmp/od082-arch-final` **exit 0，17 项断言全 pass、failures=[]**；`ui-facts.json` 记录命中计数 `1/2 → 2/2`、无结果 `0/0`、琥珀高亮 3265 像素、跳转位移 33396、Esc 后高亮 0、悬停卡区域差 12549。截图 `profile-discipline.png`（确认框「切换到「纪检专业」？」）与 `search-match.png`（1/2、两处高亮 + 琥珀环、徽标「专业」）经目视核对与断言一致。
+- **S6 白名单与友好标签（源码 + 单测 + 真实窗口）：** `profile_choice.rs` 的 `list()` 改为按白名单返回固定友好名（基础标准 / 纪检专业 / ACP 协议通道），不再读 `package.json.name`；`resolve()` 对白名单外的已保存值回落默认而不报错、不改写设置；`saved_out_of_whitelist` 驱动弹层黄色提示。`TopNav.tsx` 列表主标题用 `o.label`、副标题用技术名，确认框带 `role="alertdialog"` 与友好名。`scripts/omnidesk.sh` 不再无条件注入 `OMNIDESK_DSH_PROFILE`。单测断言 label 不含 `dsh-profile-`。
+- **S6 白名单外保存值（082 窗口脚本未覆盖，ARCHITECT 单独补测）：** 在隔离根 `/tmp/od082-whitelist-probe` 写入 `engine_profile: "yvan-work"` 后启动真实窗口，弹层显示「不在清单（已回落默认）· YVAN-WORK」与提示条「当前保存的 Profile 不在可选清单，本次使用默认。」，可选项只有基础标准 / 纪检专业，实际使用 `omnidesk-base`；弹层关闭后 `settings.v1.json` 仍为 `yvan-work`。截图 `/tmp/od082-arch/whitelist-popover.png`（本轮临时证据，未入仓库）。这条正是计划验收标准④、且原脚本只测了白名单内切换。
+- **S7 TurnRail（源码 + 真实窗口 + 无障碍关系）：** 组件只补 `border-primary/30` 与 `aria-describedby`，未重写布局。除脚本的悬停断言外，ARCHITECT 补做「指针移至 (700,700) 后由 AT-SPI 聚焦第 1 轮刻度」：`grab_focus` 返回 true、`FOCUSED` 状态为真、预览卡区域差 5534 像素，且无障碍关系为 `described-by → tool tip`。由此确认键盘聚焦可见与 ARIA 关联均真实生效。
+- **S6 两态差异（facts 复核）：** `profile-base.json` / `profile-discipline.json` / `profile-compare.json` 记录两份 `--dump-config` 的 sha256、各 31 个插件条目、50 行差异，`preset-standard` 中 `skill-filesystem` 与 `tool-skill` 在 base 为 `disabled: true`、discipline 为启用。ARCHITECT 首轮已独立展开两份 dump 核对（仅 18 行实质差异），本轮复核 facts 与之一致。
+- **S4 注入链路（源码复核）：** `HomeCanvas` 按 `skill_bindings[scene]` 取 `max_injected` 截断并只注入有正文的 Skill；`composeConversationPrompt` 的 note 分支最多 1 个、与既有 2500 字符上限共用截断；`aiDraft` 在完整组装中按 2500 字符截断；无绑定或无规则包时 `skills` 为 null，提示词保持原状。33 项断言覆盖三场景差异、续答每轮注入与无绑定逐字一致。
+- **验证脚本的断言质量裁定：** `verify_ui_082.py` 仍有两处偏松：确认框断言含 `or "确认" in labels_confirm` 兜底；`turnrail_card_focus_shot` 只检查截图文件存在。本轮已用独立探测补齐这两项的真实结论（确认框文字经 AT-SPI 命中并目视截图；键盘聚焦经 FOCUSED 状态 + 像素差 + described-by 关系确认），因此**判为证据面瑕疵、不阻塞验收**。若后续复用该脚本作回归门禁，建议收紧这两条断言。
+- **数据与边界：** 未改 `runtime/`；未读写凭证与模型路由；真实窗口均用 `/tmp` 隔离数据根与合成对话，未触碰用户会话、成果与规则文件；`~/.dsh`、`~/.agents` 未动。未提交、未推送、未打标签。
+- **计划外差异（已登记，不影响 082 功能结论）：** 工作区中 `tests/verification/desktop/evidence/od-arch-081/` 的 7 张截图与 `home-fixes-facts.json` 被重跑覆盖（时间 04:54–04:55，内容为 `verify_home_fixes_081.py` 以 `/tmp/od081-test` 重跑的新证据）。082 计划未授权改写 081 证据。影响：081 原证据快照被替换，但新文件仍是同一脚本的真实运行结果且 `source_unchanged: true`；081 已在 `731d4c5` 提交，历史版本可从 Git 恢复。**要求：** 后续提交时要么保留这版重跑证据并在提交说明里注明，要么 `git checkout 731d4c5 -- <081 evidence>` 恢复原快照；不得把两者混为一次「082 新证据」。
+- **已知限制（不阻塞本轮）：** ①两态隔离只覆盖 `preset-standard`；`preset-ptc` / `preset-minimal` / `preset-cordis` 内 Skill 仍启用，默认路径安全，但换 preset 后隔离不成立；②搜索高亮只处理 `p` / `li` 的字符串子节点，标题、表格、代码块不参与高亮，匹配计数仍按原文计数；③会话搜索为全量线性扫描，数千轮时可能卡顿；④Skill 正文注入受 2500 字符上限，超长说明会被截断并带提示；⑤真实模型对 Skill 的实际遵循度未验证（本轮全部为合成数据与合成端点）。
+- **真实模型输出：** 本轮无。所有结论止于文件事实、静态检查、脚本运行与真实窗口交互；模型质量、审批链路、真实端点下的场景效果留待用户按 OD-ARCH-080 实测清单反馈。
+- **结论：OD-ARCH-082 验收通过（附上列限制与 081 证据覆盖的收尾要求）。** 六 Skill 盘点与绑定契约、三场景差异化注入、两态 Profile 白名单与友好标签、TurnRail 边与无障碍、当前会话搜索均达到计划口径。下一步停下，等用户真实模型端到端实测反馈后再定后续计划。
+
+## OD-ARCH-082 完成审计（ARCHITECT 逐条复核验收标准，2026-10-25）
+
+> 性质：对目标「批准执行 OD-ARCH-082」的完成性审计。**不新增实现、不改代码与 Profile、不提交推送**；只用当前工作区重跑证据，并补齐此前只靠源码或临时证据支撑的两条。HEAD `0ac9edf`，`git status --porcelain runtime/` 为 0。
+
+| 验收标准 | 当前证据 | 判定 |
+| --- | --- | --- |
+| ① 六 Skill 盘点有文件事实；绑定契约 v1 可读、v2 校验生效 | `verify_profile_rules_068.py` **25/0 pass**（本轮实跑）；`profile_rules.rs` 的 v1/v2 双 schema、六项白名单与上限校验有单测覆盖 | 通过 |
+| ② 三场景注入不同、随手记轻装、续答每轮注入 | `verify_skill_bindings_082.py` **33/0 pass**（本轮实跑，证据 `evidence/od-arch-082/scene-injection.json`） | 通过 |
+| ③ 两态 `--dump-config` 差异可复现；**校验脚本能发现漂移** | `verify_profile_presets_082.py` **12/0 pass**；本轮补做负向测试：把补丁副本顶层两项 `- id:` 顺序互换后，脚本 **exit 1、failed 2** 并逐项打印期望/实际序列 | 通过（漂移检测本轮首次实跑验证） |
+| ④ 下拉只两项；`yvan-work` 原样保留且**有显式提示** | 隔离根真实窗口截图本轮复跑（`/tmp/od082-arch/whitelist-popover.png`）目视确认：标题「下次启动使用 · 当前：**不在清单（已回落默认） · YVAN-WORK**」、黄色提示条「当前保存的 Profile 不在可选清单，本次使用默认。」、列表仅「基础标准 / 纪检专业」、页脚「本次启动实际使用：omnidesk-base（web-api 通道）」；弹层关闭后设置仍为 `yvan-work` | 通过（此前“提示条未验证”已由截图闭合） |
+| ⑤ TurnRail 仅补边与 aria；悬停/聚焦均可见 | `verify_ui_082.py` 本轮复跑 `turnrail_hover_card_appears: 12549` 像素差、`turnrail_card_focus_shot: True` | 通过 |
+| ⑥ 搜索命中、跳转、计数、`0/0` 可用 | 同上脚本复跑：`search_count_1_of_2`、高亮 3265 像素、回车后 `2/2`、跳转位移 33396、`0/0`、Esc 清空后高亮 0 | 通过 |
+| ⑦ tsc 0、build 成功、cargo lib 全绿、pytest 全绿、`sync-skills --check`、`runtime/` 零差异 | 本轮实跑：tsc **exit 0**；`npm run build` **exit 0**；`cargo test --offline --lib` **261 passed / 0 failed**；`pytest tests -q` **75 passed / 14 subtests**；`sync-skills.sh --check` exit 0；`git status --porcelain runtime/` **0 行** | 通过 |
+| ⑧ evidence 目录含两态 facts、三场景事实与 S6/S7/S8 截图 | `evidence/od-arch-082/` 14 个文件齐全：`profile-base.json` / `profile-discipline.json` / `profile-compare.json` / `scene-injection.json` / `ui-facts.json` + `profile-base.png` / `profile-discipline.png` / `turnrail-card.png` / `turnrail-card-focus.png` / `search-match.png` / `search-match-second.png` / `search-empty.png` / `00-rail-before.png` / `00-search-escaped.png` | 通过 |
+
+- **真实窗口审计：** `python3 -u tests/verification/desktop/verify_ui_082.py --display :96 --root /tmp/od082-completion-audit` **exit 0，17 项断言全 pass、failures=[]**，并重写 `ui-facts.json`（05:50，root 为该临时隔离根）与 9 张截图（05:50–05:51）。这是 082 证据目录内文件的一次正常刷新，不是越界改动；`git status` 仍为 43 项，未新增或删除仓库文件。
+- **未纳入本轮修复的项（不属 082 范围，保持原判）：** 复核后复检 G 项的检索/用量插件缺口（082 定案明确“不复制 web 的 free-search / cost-meter”）、预检 A/B（上下文窗口声明、思考等级未落地）、清单第 1 步过期文案、081 证据被重跑覆盖的收尾选择。
+- **真实模型输出：** 本轮仍无。082 的功能口径已全部由文件事实、脚本运行与真实窗口证明；模型质量与真实端点行为留给用户的端到端实测。
+- **结论：** OD-ARCH-082 的 8 项验收标准逐条有当前可复现证据，目标达成，无遗留必做项。工作区 43 项改动仍待用户决定提交口径（含 081 证据恢复或保留的选择），本轮未提交、未推送。
+
+## 082 复核后 · 实测前置复检（ARCHITECT，2026-10-25，未验收）
+
+> 性质：**用户真实模型实测开始前的复核记录**，不是用户实测结果，也不是任何新计划的批准或验收结论。本轮未改代码、未改 Profile、未改模型路由、未改实测清单文案、未提交推送；HEAD 仍为 `0ac9edf`，`git status --porcelain runtime/` 为 0。证据分「文件事实」「命令运行」「未验证」三类，逐条标注。
+
+### E. 实测窗口曾指向 082 之前的二进制（已由 ARCHITECT 处理）
+
+- **文件事实：** 原运行实例（pid 293231，04:09 启动）所用 release 二进制早于 082 的最后改动（`desktop/src-tauri/src/profile_choice.rs` 04:36、`desktop/src/shell/TopNav.tsx` 05:06）。按该实例实测会拿到旧界面，无法验证 082。
+- **命令运行：** 执行 `scripts/omnidesk.sh --stop` 后重新执行 `scripts/omnidesk.sh` 重建，`npm run build` exit 0、`cargo` release 构建 exit 0（约 2m18s）。新实例：app pid 331990、engine pid 332200、DSH 子进程 332210（参数含 `--profile omnidesk-base --patch ~/OmniDesk/app/config/omnidesk-model.yml`），设置服务 332080（端口 45135，端口记录在 `~/OmniDesk/app/engine-state/dsh-settings.json`）。二进制时间 05:27，`find dist/src src-tauri/src -newer <二进制>` 无输出，即当前运行的构建不旧于 082 源码。
+- **未验证：** 该窗口的整窗截图在当前 X11 会话为全黑（1280×857 与 1600×900 根窗口均 RGB 全 0），无法用像素证据确认视觉效果；本轮改用 AT-SPI 无障碍树取证。**用户实际看到的外观仍以用户本人观察为准。**
+
+### F. 082 界面在真实窗口中的表现（AT-SPI 实测）
+
+- **命令运行（`DISPLAY=:0` 连到运行中的正式实例，只读遍历无障碍树）：**
+  - 命中「当前会话内查找」输入框（082 的 S8 检索入口确实已渲染）；
+  - 顶栏 Profile 徽标为 combo box，名称「标准」；
+  - 首页问候「夜深了· 欢迎回到 OmniDesk」可见。
+- **命令运行（点击徽标后遍历弹层子树）：** 弹层为 dialog「选择引擎 Profile」，其子节点为 2 个 section、1 个 list box「可选 Profile」（2 个子项）和 1 个 paragraph；list box 两项分别为「基础标准 通道默认 (omnidesk-base)」与「纪检专业 discipline」。可选项只有这两项，未出现 `dsh-profile-` 技术包名，符合 S6 的白名单与友好名口径。
+- **文件事实（源码）：** `TopNav.tsx:220-228` 在 `saved_out_of_whitelist` 为真时把 `currentLabel` 拼成「不在清单（已回落默认） · <saved>」，`:329-333` 渲染黄底提示条「当前保存的 Profile 不在可选清单，本次使用默认。」；`lib.rs:886-889` 由保存值与白名单比对得出该标志。当前保存值 `~/OmniDesk/app/config/settings.v1.json` 的 `engine_profile` 仍为 `yvan-work`，因此本次启动应回落 `omnidesk-base`（进程参数已证实）。
+- **未验证：** 本次点击后，AT-SPI 的 list box 两项状态均为 `ENABLED`（无 `SELECTED`），与「回落默认、无选中项」一致；但弹层里的 `section`/`paragraph` 节点名与文本均为空，**「不在清单」标题与黄底提示条的文案没有出现在无障碍树里**。所以本次只能确认「保存值未改写 + 实际用 omnidesk-base + 白名单两项」，提示条是否可见未取得独立证据。082 隔离根补测（`/tmp/od082-arch/whitelist-popover.png`）中该提示曾出现，说明渲染路径存在；本轮不把它判为回归，也不据此判为通过。
+
+### G. P1 缺陷：新默认 Profile 丢了联网检索与用量统计（建议单独立项修复，本记录不修）
+
+- **命令运行（真实 `--dump-config`）：** `omnidesk-base` 与 `discipline` 两份展开结果中 `web-search-free` 出现 0 次、`cost-meter` 出现 0 次；`web` 的展开结果 `web-search-free` 1 次、`cost-meter` 在列（`maxUses: 20`）。相关产物 `/tmp/od082-dump-base.yml`（05:29）、`/tmp/od082-dump-web.yml`（05:31）。
+- **命令运行（凭据布尔，只读、不打印密钥）：** 以 `omnidesk-base` 临时起 `dsh --port 0 --no-open`，走官方 `credentials/describe` 查询，`OPENDESIGN_API_KEY` configured **true**，`DEEPSEEK_API_KEY` / `AGNES_API_KEY` / `AGNESCOM_API_KEY` 均 **false**；`/proc/332210/environ` 与 `/proc/332200/environ` 中均无 `DEEPSEEK_API_KEY`。另以 `grep -c` 在 `.credentials.yaml` 中只统计键名出现次数（不读取值）：`OPENDESIGN_API_KEY` 1、其余 3 个为 0，与上述布尔一致。
+- **文件事实（成因）：** 082 定案要求两态 bundles 只有 `dsh-base` + `dsh-web-app`，故 `omnidesk-base`/`discipline` 的 `package.json` bundles 不含 `dsh-free-search` 与 `dsh-cost-meter`；而 web 的 `dsh-base` 自带 `web` 行的 `searchProvider: deepseek-official` 与 `web-search-deepseek`（`apiKeyEnv: DEEPSEEK_API_KEY`）。`dsh-free-search/lib/index.js:4041-4062` 只在 `searchProvider` 未设或仍为出厂默认 `deepseek-official` 时于运行时接管，因此**装上 free-search 即可恢复无密钥检索**；本机 web Profile 的 `node_modules/dsh-free-search`、`node_modules/dsh-cost-meter` 均已存在，无需联网安装。
+- **影响（需用户按已知问题对待，不当作新 bug）：** 默认「基础标准」与「纪检专业」下，「第 4 步附」的联网检索预计直接失败（`WEB_PROVIDER_CREDENTIAL_MISSING`），因为当前没有 `DEEPSEEK_API_KEY`；用量/费用统计组件也不在，界面上不会显示 cost-meter 的额度与费用信息。`token-meter` 属 `dsh-base`，上下文用量上报不受影响。
+- **未验证：** 未实际发起检索请求去触发该报错（避免真实端点消耗与外部调用）；上述为配置展开与凭据布尔推出的预期，需在修复后用真实检索验证。
+
+### H. 预检 A/B 两项在当前配置下仍成立（不变）
+
+- **命令运行：** 以当前覆盖文件展开 `omnidesk-base`，`contextWindow` 计数 **0**；`reasoningEffort` 只出现在模型能力表（`reasoningEfforts`）里，覆盖文件第 64 行的 `reasoningEffort: medium` 挂在 `- id: acp` 下，stderr 报 `patch: entry "acp" not found`；展开后 `agent-default-model` 仅 `provider: opendesign` + `model: deepseek-v4.1-flash`，无思考等级。
+- **文件事实：** `docs/user-testing-checklist.md:54` 仍写「5 模型均声明 1M 上下文、思考等级 high」，与该覆盖文件不符。清单文案本轮**未改**（改动需新计划）。
+
+### 复检边界与下一步
+
+- 本轮只做了只读核查与一次「停旧实例、按当前源码重建并启动正式实例」的运行准备；未提交、未推送、未打标签；未读写凭证值；未改动 `~/.dsh`、`~/.agents`。
+- 081 证据被重跑覆盖的收尾要求仍然有效，本轮未处理。
+- **下一步：** 由用户按 `docs/user-testing-checklist.md` 在已就绪的正式实例上实测；G 项检索缺口作为已知限制记录，不属于用户实测要复现的新缺陷。实测反馈到达前不新立计划、不改 Profile。
+
+## 2026-10-25 真实模型实测前置预检（ARCHITECT，未验收）
+
+> 性质：**实测前的只读核查记录，不是用户实测结果，也不是任何计划的验收结论。** 本轮未改代码、配置、用户数据或既有文档，未提交推送。证据分「文件事实」「命令运行」「未验证」三类。
+
+### A. 首页切模型后覆盖文件丢失 1M 上下文声明（建议 P1）
+
+- **文件事实：** `~/OmniDesk/app/config/omnidesk-model.yml`（10-23 21:01）中 `contextWindow` 计数为 0；备份 `.bak-od068` 有 5 处，均为 `1048576`。`omnidesk.model-settings.v2.json` 的 5 个模型仍都声明 `contextWindow: 1048576`。
+- **命令运行：** 以当前覆盖文件展开 `yvan-work`（`dsh lib/bin.js --profile yvan-work --patch <覆盖文件> --dump-config`）exit 0，产物 `contextWindow` 计数 0；用当前 `desktop/src-tauri/scripts/model-routes.mjs` 以 `--write-overlay --provider opendesign --model deepseek-v4.1-flash --reasoning-effort high` 重新生成，同样计数 0（`ok:true`）。
+- **成因（源码）：** `model-routes.mjs:212` 只从 `--dump-config` 的模型条目取能力字段，`:225-237` 写出模型时不读 v2 设置 JSON；补丁层对 `config` 整体替换，而 Profile 本身未声明 `contextWindow`，声明因此消失。`model_settings.rs::render_provider`（约 332-378 行）走的是另一条路径，会保留该字段，对应单测在 919/936/960 行附近。
+- **影响边界：** 影响容量上报、`request/context` 记录与溢出判定；引擎回落值为 262144（`runtime/deepseek-harness/packages/llm/llm-pi-ai/src/config.ts:65`）。当前 `yvan-work` 与 `web` 的 `compaction-basic`、`command-compact` 均为 `disabled: true`，**不能**据此断言「长对话会被自动截断在 262k」，真实长上下文行为仍未验证。
+
+### B. 思考等级未进入实际默认选择（建议 P1）
+
+- **文件事实：** 实际覆盖文件把 `reasoningEffort: medium` 写在 `- id: acp` 下；但 `~/OmniDesk/runtime/dsh-home/profiles/yvan-work/package.json` 的 bundles 只有 `dsh-base`、`dsh-web-app`、`dsh-experimental-inspector-profile`，`web` 的 bundles 也只有 `dsh-base`、`dsh-web-app`、`dsh-free-search`、`dsh-cost-meter`；只有 `profiles/acp` 含 `@deepseek-ai/dsh-acp-app`。
+- **命令运行：** 用当前覆盖文件展开 `yvan-work` 与 `web`，stderr 各出现一次 `patch: entry "acp" not found`；展开后的 `agent-default-model` 只有 `provider` 与 `model`，无 `reasoningEffort`。用 `--reasoning-effort high` 重新生成覆盖文件后，该字段仍只出现在 `acp` 块，`agent-default-model` 仍无。
+- **成因（源码）：** `runtime/deepseek-harness/packages/core/agent-default-model/src/index.ts` 的 schema 与 `currentSelection()` 支持该字段（24-31、51-55、67-72 行）；`model-routes.mjs:251-255` 与 `model_settings.rs:274-293` 都只写 `acp`，不写 `agent-default-model`。`engine/omnidesk_engine/web_api_adapter.py:1156-1183` 的 `select_model` 支持显式传 `reasoningEffort`，但首页普通提交依赖覆盖文件里的默认选择。
+- **影响边界：** 手动选档与场景预设（`samples/profiles/discipline.rules.json` 的 low/low/off）都会经 `selectModel`/`selectEffort` 写覆盖文件，但当前同样不生效。首页默认值为 `off`（`desktop/src/shell/HomeChat.tsx:358`）。**「默认应为 high」属产品口径，需用户确认，不把现状直接判为缺陷。**
+
+### C. 正式启动脚本用 `web` 覆盖设置中的 `yvan-work`（建议 P1 口径问题）
+
+- **文件事实：** `~/OmniDesk/app/config/settings.v1.json` 的 `engine_profile` 为 `yvan-work`；`scripts/omnidesk.sh:172-184` 在子进程里无条件执行 `export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-web}"`（未 unset 该变量，外部显式值仍优先）。`desktop/src-tauri/src/engine_supervisor.rs:130-143` 明确环境变量优先，只有变量为空才读取保存的 `engine_profile`。
+- **影响：** 按 `docs/user-testing-checklist.md` 的默认方式启动，实际加载的是 `web` 而非设置里的 `yvan-work`；`web` 同样有 `opendesign` 路由与档位映射，因此可以测通模型，但 Profile 资产（Skill、插件、规则）相关的结论不能外推。本轮 App 未运行，未取得真实进程参数。
+
+### D. 实测清单的现状描述已过期（建议 P2，不阻塞）
+
+- `docs/user-testing-checklist.md:54` 仍写「opendesign 5 模型均声明 1M、思考等级 high」，与 A/B 的实际覆盖文件不符。本轮未改该文件。索引条两张截图顺序写反（实际 `06c-rail-jumped-last.png`、`06d-rail-jumped-first.png`）已登记在 080 复核，不阻塞。
+
+### 预检未覆盖
+
+- 未启动 App、未跑真实端点、未重跑 tsc/cargo/pytest（本轮只读）；`scripts/omnidesk.sh --status` 显示 App 未运行，存在陈旧 `vite.pid` 记录，未清理。release 二进制（10-25 01:51）新于前端与 Rust 源码，按 080 结论对应当前 081 代码。
+- 修复 A/B/C 需要改动源码与用户数据根下的覆盖文件，均未获批准，本轮未动。
+
 ## OD-ARCH-081 复核结论：**通过**（ARCHITECT，2026-10-25）
 
-- **独立核查（与 BUILDER 分离）：** tsc exit 0；pytest 75 passed / 14 subtests（本机独立重跑）；cargo --lib 260 passed（BUILDER 报告数字，本轮 Rust 侧仅 external_open.rs 新增，抽查其单测覆盖 http/https 白名单判定）；git status --porcelain runtime/ 零差异；未提交改动 15 项保留未提交未推送。
+- **独立核查（与 BUILDER 分离）：** tsc exit 0；pytest 75 passed / 14 subtests（本机独立重跑）；cargo --lib 260 passed（BUILDER 报告数字，本轮 Rust 侧仅 external_open.rs 新增，抽查其单测覆盖 http/https 白名单判定）；git status --porcelain runtime/ 零差异；当时 15 项未提交改动已在收尾批次 731d4c5 提交并推送。
 - **代码抽查属实：** ①MarkdownText.tsx 无 dangerouslySetInnerHTML、无 rehype-raw，HTML 按文字显示；②external_open.rs 只放行 http/https 绝对地址交系统浏览器，其余拒绝，带单测；③SceneScaffold 问候+待办常驻，指针/聚焦不再改变可见性；④BrandMark 为纯展示 aria-hidden 元素；⑤evidence/od-arch-081/home-fixes-facts.json passed=true、gate_errors=[]（问候条在三场景像素变化均为 0；品牌标渐变像素 37、旧 spark 0；表格/代码块/列表渲染齐备；三根隔离指纹一致）。
 - **结论：081 验收通过。** 首页问候常驻、品牌标、Markdown 正文渲染三项修复均落地，安全边界（无 HTML 注入、外链白名单）符合要求。
-- **遗留备查：** 15 项未提交改动（含 081 本轮）等下一批推送；分支窗口内正向流程验证仍开放（079 遗留）。
+- **遗留备查（2026-10-25 校正）：** 081 本轮 24 个文件已由 BUILDER 单批次提交 731d4c5 并推送，状态记录随后推送至 0ac9edf，本地与 origin/main 一致、工作区干净；原「15 项未提交改动等下一批推送」的表述已失效。分支窗口内正向流程验证仍开放（079 遗留）。
+
+## OD-ARCH-080 复核结论：**通过（仅 Git 整理与文档，无功能代码）**（ARCHITECT，2026-10-25）
+
+- **独立核查（与 BUILDER 分离）：** 本地 HEAD 与 origin/main 同为 0ac9edf，工作区 0 项改动，git status --porcelain runtime/ 为 0；3f8c3ba..0ac9edf 的 runtime/ 差异为 0。回归基于当前 HEAD 独立重跑：tsc exit 0；python3 -m pytest tests -q 75 passed / 14 subtests；cargo test --offline --lib 260 passed / 0 failed（BUILDER 080 记录为 257，081 新增 external_open 单测后升到 260，属正常增量）。
+- **分批事实核对：** 四批文件数与记录一致（4f8c578 20 项文档与配置基线、a4327ee 17 项 Rust 宿主、bd6afd8 16 项前端、328a498 155 项引擎与验证证据），合计 208 项改动路径，可分界回滚；四批的全路径集合与 3f8c3ba..328a498 完全对应，无计划外文件。
+- **边界核对：** 3f8c3ba..328a498 内无 knowledge/、data-template/、.kb_extract/、.codegraph/、.credentials.yaml 路径，无 pdf/docx/xlsx/zip/sqlite 等业务二进制附件；凭证模式（sk- 前缀密钥、Bearer 令牌、api_key 赋值）扫描零命中；git tag --points-at HEAD 为空，其它分支 feat/desktop-ui 未被触碰。
+- **实测清单核对：** docs/user-testing-checklist.md 标题为 OD-ARCH-080 校准版，含「第 4 步附二」六条（附件/问句条/答句条/分支/索引条/窄屏隐藏）并把真实模型端到端标为本轮重点；清单引用的证据逐个存在（od-arch-079/home-polish-facts.json、05e-after-repo-pick.png、06c-rail-jumped-last.png、06d-rail-jumped-first.png、web-api/W11.json、od-arch-064/00-omnidesk-launch.png）。
+- **实测前置核对（文件事实）：** scripts/omnidesk.sh 走 release 二进制且 needs_build 以 dist、src、src-tauri/src 比二进制新为触发条件；当前 desktop/src-tauri/target/release/omnidesk-desktop（10-25 01:51）比全部前端与 Rust 源码新（find -newer 检查 0 个文件），因此实测跑的是 081 已验收代码，不会因旧二进制得到过期结论。
+- **清单小瑕疵（不阻塞）：** 实测清单正文把两张索引条截图写作 06c/06d-rail-jumped-*.png 并与「点首/末」对应，实际文件为 06c-rail-jumped-last.png 与 06d-rail-jumped-first.png（顺序相反但两张都在）。仅记录，不改文件。
+- **结论：080 通过。** 该计划只做 Git 整理与实测入口准备，四批提交完整、边界干净、回归全绿；真实模型端到端本身仍未验证，按计划移交用户本人执行。
 ## OD-ARCH-078 + OD-ARCH-079 复核结论：**通过**（ARCHITECT，2026-10-25）
 
 - **独立核查（与 BUILDER 分离）：** 全量 cargo test --lib 257 passed / 0 failed（本机独立重跑）；pytest 75 passed / 14 subtests；git status --porcelain runtime/ 零差异；未提交改动 127 项全部保留未提交未推送。

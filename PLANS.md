@@ -1,5 +1,123 @@
 # 当前实施计划
 
+### OD-ARCH-084：会话内搜索的命中定位、逐处切换与焦点保持（待批准，2026-10-25）
+
+> **当前状态：待用户批准。** 本节为计划，未动任何代码。批准后按 `docs/BUILDER-Task-Instruction-Template.md` 派 BUILDER。
+
+**需求来源：** 用户 2026-10-25 实测反馈「搜索功能没法自动聚焦到已搜索到的词上，而且点上下箭头时切换得不顺」，要求先参考 DSH 原生搜索、再结合当前设计综合分析后修复。分类：**缺陷修复 + 交互打磨**（082 S8 的实现未达可用标准）。
+
+**开工基线：** 分支 main，HEAD `0ac9edf`，工作区 48 项既有未提交/未跟踪改动（081/082/083 成果）全部保留；`git status --porcelain runtime/` 为 0。本计划不含提交、推送、打标签、改 Profile、改模型路由。
+
+#### 已核实事实（分级）
+
+**文件事实（读码）：**
+
+- `desktop/src/shell/HomeChat.tsx:317-330`：`searchMatches` 只记 `{ messageId, index }`，**不记命中词在消息内的位置**。
+- `HomeChat.tsx:336-344`：滚动目标是整条消息容器 `#chat-message-<id>`，`scrollIntoView({ block: "center" })`。同一消息内多个命中共享同一目标 → 切换时滚动是幂等操作。
+- `HomeChat.tsx:1654 / 1687`：当前命中只给**整条消息**套 `ring-2 ring-amber-400`。长消息里这条环表现为左右两条竖线，命中词毫无标识。
+- `desktop/src/shell/MarkdownText.tsx:63-100`：`highlightTextChildren` 只处理 `p`/`li` 的**直接字符串子节点**，所有 `<mark>` 同一外观、无 id / data 属性，无法区分「当前项」与「其余项」，也无法被查询定位。标题、表格单元格、引用、行内代码不参与高亮。
+- `desktop/src/shell/TopNav.tsx:512-540`：上一处/下一处/清空按钮只有 `onClick`，**没有 `onMouseDown` 阻止默认行为**，点一下焦点即离开输入框；三个按钮还带原生 `title`（WebKitGTK 另弹系统提示框，与 083 已消除的同类问题同源）。
+- `desktop/src/App.tsx:197-205`：`searchCurrentIndex` 只在改查询时归零；`searchMatchCount` 变化时不做夹取。
+
+**脚本运行（真实 Tauri 窗口，Xvfb 一次性显示，合成数据，非真实模型）：**
+
+| 探针 | 场景 | 观察结果 |
+| --- | --- | --- |
+| `:104` 探针 1 | 长消息内唯一命中词位于末尾 | 计数 `1/1`；视口内琥珀连通块只有一个 1×505px 竖条，即整条消息的右侧描边；命中词在视口外，看不见 |
+| `:104` 探针 1 | 同一长消息内 8 处命中 | 连按回车 4 次计数 `1/10→5/10`；视口内命中块 y 只在 329/475/622 三点间 ±1px 摆动，等于在两个「整条消息居中」位置之间抖动，**没有逐处推进**；同屏 3 个 mark 外观完全一致 |
+| `:107` 探针 4 | 用 AT-SPI 取按钮真实外接矩形后点击「下一个」 | 1/60 → **2/60**（按钮本身工作正常；探针 2 的「点一下跳到 60/60」是坐标点偏，作废）；随后按 Enter → 3/60；**再键入 `x`，计数仍是 3/60** → 焦点已被按钮接管，键盘输入丢失 |
+
+**读码推断（未单独复现，随修复一并消除）：** 计数按原文统计、高亮只覆盖 `p`/`li` 的部分子节点，因此标题/表格/代码块里的词会出现「计数有、正文没有」；连续 `smooth` 滚动会互相打断。
+
+**结论（三条根因，均有上面证据支撑）：** ①滚动目标是消息而非命中词；②同一消息内所有命中共享同一目标，切换必然幂等；③当前项没有独立视觉标识，且焦点会被箭头按钮抢走。
+
+#### 定案方案
+
+1. **命中项成为可定位的实体。** `MarkdownText` 的高亮从「只认 `p`/`li` 直接字符串」改为**递归遍历文本子节点**，覆盖标题、段落、列表、引用、表格单元格、行内代码；每个 `<mark>` 输出 `data-search-hit`（消息内从 0 递增，单次渲染内局部计数，不跨组件共享），并统一 class `md-search-hit`。围栏代码块（`pre`）不参与高亮，并在计数中一致排除，避免「计到但看不到」。
+2. **计数以渲染结果为准。** `HomeChat` 用 `useLayoutEffect`（依赖 query / currentIndex / messages）在 `.chat-scroll` 内按 DOM 顺序查询 `[data-search-hit]`，以此作为全局命中序列并上报长度。计数与可见高亮由此天然一致（含 Markdown 结构调整、流式增长）。`App` 侧在 `searchMatchCount` 变化时夹取 `searchCurrentIndex`，杜绝 `3/2` 这类越界。
+3. **当前项两级视觉。** 当前命中独占 `data-search-active`（在 `useLayoutEffect` 中标注，先于绘制，重渲染后立即重标）：当前项用琥珀 300/400 系实底（蓝通道 < 120，保持 082 脚本既有判据的含义），其余命中降为更浅的琥珀 200 系。**删除整条消息的 `ring-2`**，长消息不再出现两条竖线。
+4. **滚动换成按命中词定位。** 以 `.chat-scroll` 容器为基准（沿用 `HomeChat.tsx:1627-1636` `jumpToTurn` 的几何写法）计算目标 `scrollTop + markRect.top - containerRect.top - (可视高 × 0.32 - 半行高)`，把命中词放到视口约 1/3 高度，留 ≥24px 安全边。命中已在安全区内时不动，避免来回抖。切换时先 `behavior:"instant"` 落位取消上一次动画，再按需 `smooth`；`prefers-reduced-motion` 下全程 instant。
+5. **一次短强调，可被用户打断。** 滚动停稳（`scrollend`，或 150ms 无滚动）后给当前项加一次约 700ms 的单次动画（底色/描边过渡，不改布局宽度），随后撤除；`wheel`/`touchstart`/`pointerdown`/方向键任一发生即取消。参考 DSH `experimental/session-inspector/.../reveal.ts`：先精确滚动、停稳再闪、不向内容节点插元素、减少动画时直接到位。
+6. **焦点不再被箭头抢走。** 上一处/下一处/清空三个按钮加 `onMouseDown={(e) => e.preventDefault()}`，点击后光标仍留在输入框可继续键入；移除这三个按钮的原生 `title`，改用 `aria-label`，消除系统圆角提示框。Enter = 下一处、Shift+Enter = 上一处，循环方向与按钮一致。0 命中时按钮 `disabled`，按钮与 Enter 均为空操作。
+
+#### 影响范围（预计）
+
+`desktop/src/shell/MarkdownText.tsx`、`desktop/src/shell/HomeChat.tsx`、`desktop/src/shell/TopNav.tsx`、`desktop/src/App.tsx`、`desktop/src/shell/HomeCanvas.tsx`（仅透传，如无需要不动）、`desktop/src/markdown.css` 与 `desktop/src/theme.css`（新增命中两级与短强调样式）、新增 `tests/verification/desktop/verify_ui_084.py`、`tests/verification/desktop/evidence/od-arch-084/`、`STATUS.md`、本文件、`REVIEW.md`。
+
+**不做：** 不改 `runtime/`、Profile、凭证、模型路由、DSH 数据根；不改 `verify_ui_082.py`/`verify_ui_083.py`，不覆盖 081/082/083 证据；不新增依赖；不重做顶栏布局与配色；不引入查找面板/侧栏等新容器。
+
+#### 验收标准（每项都要有测量值与阈值）
+
+1. **唯一命中可见：** 长消息内唯一命中词位于末尾时，搜索后当前命中块的像素矩形完整落在 `.chat-scroll` 视口内（上下各留 ≥24px），中心 y 位于可视区 25%–45%；截图为证。
+2. **逐处推进：** 同一长消息 8 处命中，连按「下一处」7 次，当前命中块中心 y 单调递增，每次位移 > 单行高（~24px）；计数严格 `1/N…8/N`。反向连按「上一处」对称。
+3. **循环与边界：** 末项按下一处回到首项，首项按上一处到末项；0 命中显示 `0/0` 且两个箭头按钮 `disabled`。
+4. **焦点保持：** 用 AT-SPI 取「下一个」真实外接矩形后点击，计数 `k→k+1`；随后键入 `zzz`，计数变为 `0/0`（证明字符进入输入框）。
+5. **两级可辨、无竖线：** 同屏 ≥3 命中时，像素扫描同时存在当前项色族（蓝通道 < 120）与非当前项浅色族；且不存在任一 x 列上跨度 >300px 的琥珀像素柱（整条消息描边已去除）。
+6. **计数与高亮一致：** 同一个词分别出现在标题、表格单元格、行内代码中，计数与可定位命中数一致，两处不同命中能把视口滚到不同位置。
+7. **Esc 清空：** 高亮像素归零。
+8. **回归：** `tsc --noEmit` exit 0；`npm run build` exit 0；`cargo test --offline -q --lib` ≥261 passed；`python3 -m pytest tests -q` 全绿；`verify_ui_082.py` 全部断言仍通过（其琥珀阈值含义不变）；`verify_ui_083.py` 通过；`git status --porcelain runtime/` 为 0 行。
+
+#### 设计参考（OD-ARCH-035 要求，已用 `screenshots-design-inspiration` 检索）
+
+关键词 `developer tool text editor find bar`、`document reader in-page search highlight`；参考 Warp（密集工具条里的等宽小计数 + 上下箭头，不抢正文）、Claude Design（对话流里用底色深浅区分当前项）、Condens（文档型阅读区的留白与单色 mark）。
+
+**借鉴要点（≤2 句）：** 查找状态收进顶栏同一个控件里，计数用等宽小字、当前项只比其余命中深一档，不额外加浮层；滚动先把命中词带到视口安全区，停稳后只做一次短强调，用户一滚动就让位。
+
+#### 风险与停止条件
+
+- 若 DOM 计数在流式渲染中与视觉出现跳变，改为在滚动容器附近加 `aria-live="polite"` 的稳定计数并记录差异，不靠放宽断言掩盖。
+- 若按命中词定位在 WebKitGTK 下出现连续切换抖动，保留「instant 落位」为默认并记录 `smooth` 的实测差异，不退回整条消息居中。
+- 若两级配色在深色问句气泡上对比不足，仅调整该 tone 下的 mark 配色，不改气泡底色与布局。
+- 发现需要改 `runtime/`、Profile、凭证或模型路由才能解决时，停止并回报，不自行扩范围。
+### OD-ARCH-083：顶栏品牌标换成 OmniDesk 自有 Logo + 轮次预览卡改直角并统一视觉（已执行并复核通过，2026-10-25）
+
+> **当前状态：** 已验收通过（REVIEW.md 顶部终审）。自有 Logo 32×32 入顶栏并做细边过渡、整条顶栏节奏未变；轮次预览卡四角直角、白底细描边小字号，系统原生圆角小窗已消除，键盘 Tab / Shift+Tab 均能驱动卡片。验证脚本经两轮返工，17 项断言有可复核的测量值与阈值。两项遗留限制（`PREVIEW_H` 仍为 96、几何扫描为启发式）登记在 REVIEW，不阻断本轮。本节保留原批准口径与验收标准，作为该计划的存档。
+
+**批准依据：** 用户 2026-10-25 提出两条 UI 小改动，同日在看到 A/B 两版视觉对照后明确答复「A 款」，并追加要求：**要考虑新 Logo 如何融入、过渡到导航条其它内容，保持整体美观**。该追加要求属本计划内的视觉融合约束，不扩大文件范围。**开工状态：** 分支 main，HEAD `0ac9edf`，工作区 43 项既有未提交改动全部保留，`git status --porcelain runtime/` 为 0。本计划不含提交、推送、打标签、改 Profile、改模型路由。
+
+**目标：**
+
+1. 顶栏左侧现有的通用 spark 图标（`Icon name="brand"` 套渐变圆底）换成 OmniDesk 自己的 logo。
+2. 右侧轮次索引条的悬停预览文本框：**四角直角**（`border-radius: 0`），视觉语言与软件既有卡片一致（白底、细描边、同一套字号与灰阶），不再出现圆角。
+
+**已核实的代码事实（本计划前提）：**
+
+- `desktop/src/shell/TopNav.tsx:447-449`：顶栏品牌图标是 `w-8 h-8 rounded-full bg-gradient-to-tr` 底 + `Icon name="brand"`（通用四圆点放射符号）。品牌文字「OmniDesk」在 450-452 行。
+- `desktop/public/omnidesk-icon.svg` 与 `desktop/public/omnidesk-monomark.svg` **sha256 完全相同**（`7a5b7e01…`），都是 512×512、深色圆角方底（`#0B0F17`, rx=116）+ O+D 环 + 五节点；`desktop/src-tauri/icons/icon.png` / `128x128.png` 是同一标识的 Dock/窗口图标。
+- `desktop/src/components/BrandMark.tsx` 是同一 O+D 标识的**去掉深色底**版本（透明描边），当前用于输入区「+」左侧（`HomeChat.tsx:1949`，22px）。
+- `desktop/src/shell/TurnRail.tsx:154-170` 预览卡：`rounded-xl` + `border-primary/30` + `bg-surface-container-lowest` + `shadow-lg`，内含标题一行（12px）与回答摘要（11.5px，最多 3 行）。
+- `TurnRail.tsx:129` 刻度按钮上还有原生 `title` 属性。WebKitGTK 会另外弹一个系统绘制的小提示框（自带圆角、单行），与自定义卡片**同时出现**，这正是「看起来是圆角小文本框」的来源之一。
+- `HomeChat.tsx:1671` 用户问句旁的 28px 小头像也用 `Icon name="brand"`。
+- 回归脚本 `tests/verification/desktop/verify_ui_082.py` 的 `turnrail_hover_card_appears` 以区域 (950,420)-(1290,580) 像素差 >1500 判定卡片浮现；`turnrail_card_focus_shot` 只检查截图存在。改样式后像素差会变，但阈值是下界，预计仍成立；本条须实跑确认。
+
+**影响范围（预计）：** `desktop/src/shell/TopNav.tsx`（品牌区）、`desktop/src/shell/TurnRail.tsx`（预览卡 JSX 与原生 `title`）、`desktop/src/theme.css`（如需要可新增 `turn-rail-tooltip` 类承载直角与描边，避免把视觉细节散在 className 里）、新增 `tests/verification/desktop/verify_ui_083.py`、`tests/verification/desktop/evidence/od-arch-083/`、本文件、STATUS.md。**不动** `runtime/`、Profile、凭证、模型路由、DSH 数据根。
+
+**定案口径：**
+
+1. **品牌标（已定方案 A）：** 顶栏改用 `public/omnidesk-icon.svg`（与 Dock/窗口图标同一份资产，深色圆角方底），以 `<img>` 呈现，基准尺寸 30–32px，保留 `alt="OmniDesk"`；去掉渐变圆底包裹，因为图标自身已带底。不新画 logo、不新增第三方资产、不改 SVG 源文件。**方案 B 已由用户否决，不实施。**
+   **融入与过渡（用户追加要求，必做，不可省）：** 图标自身的深色方底与白色胶囊顶栏之间存在明显的明度落差，直接贴上去会像一块外来补丁。实现须让它成为导航条色阶的一部分，而不是孤立的色块：
+   - 形状呼应：外轮廓的圆角半径与胶囊/徽标（现有 `rounded-full` 圆底、`plate-soft` 徽标）保持同一套圆角语言；图标 12% 的圆角在 32px 下不宜再加外框，避免出现「方中套方」。
+   - 尺寸与光学对齐：图标视觉中线与「OmniDesk」文字的字面中线对齐（不是与行高盒对齐），与右侧 Profile 徽标同处一条水平基线上；图标与文字的间距与「徽标到徽标」的间距同值，保持等距节奏。
+   - 明暗过渡：允许在图标周围加一圈极浅的中性缓冲（例如 `ring-1 ring-black/5` 或 1px 同色描边），使深底与白顶栏的硬边变成有层次的一条细边；**不得**加彩色光晕、渐变外框或投影堆叠。
+   - 全条一致性：改完后顶栏依次为「深色圆底 Logo → 名称 → Profile 徽标 → IPC 胶囊 → 搜索框 → 日期 → 按钮」。Logo 是全条唯一的深色元素，须由它承担视觉起点，其余控件保持既有浅色 plate 体系，不因这次改动重新调色、不新增分隔线、不改顶栏高度与圆角。
+   - 尺寸兜底：若 32px 下 O+D 细节（五节点、中央缝）糊成一团，可降到 28px 或改用图标内留白较紧的裁切方式；以真实窗口截图为判据，不以推测为准。
+2. **预览卡：** 直角（无圆角），采用与设置弹层/板卡同一套 tokens：`bg-surface-container-lowest` 白底、1px `outline-variant` 级细描边、克制的投影、`font-label-caps` 小号等宽字标「第 N 轮」、正文 12px / 摘要 11.5px 沿用现有灰阶与行高。宽度与定位（`right-6`、`top` 夹取）不变，避免影响导航可用性。
+3. **去重原生提示：** 删掉刻度按钮的 `title`，只保留自定义卡片 + `aria-label`，避免系统圆角提示框叠在卡片上；`aria-describedby` → `role="tooltip"` 关系保持。
+4. **不改的范围：** 家聊天区用户头像（`HomeChat.tsx:1671`）与输入区 `BrandMark` 保持不变；刻度节距、滚动、跳转、无障碍键盘聚焦行为不变。若用户希望头像同步换成新 logo，需另行批准。
+
+**步骤与验收：**
+
+1. **S1 品牌标：** 顶栏左侧显示 OmniDesk 自有 logo，30–32px 下 O+D 环清晰可辨、与相邻「OmniDesk」文字基线对齐，深浅背景下不发虚、不被 `rounded-full` 裁切。
+2. **S2 预览卡：** 悬停与键盘 Tab 聚焦均可看到预览卡；四角为直角，样式与软件其余卡片同源；不再出现系统原生圆角提示框。
+3. **S3 回归：** `tsc --noEmit` exit 0；`npm run build` exit 0；`cargo test --offline -q --lib` ≥261 passed；`python3 -m pytest tests -q` 全绿；`verify_ui_082.py` 17 项仍全 pass（若仅像素差数值变化，记录新值，不降低判定标准）；`git status --porcelain runtime/` 为 0。
+   **S1b 融合验收（用户追加要求）：** 顶栏整体截图 1:1 裁切后目视确认——Logo 与名称、Profile 徽标、IPC 胶囊在一条基线上；Logo 与名称间距等于徽标间距；深色底与白胶囊之间只有一层细边过渡，无光晕/重投影；顶栏高度、圆角、其余控件位置相对 082 截图无位移（用 082 顶栏裁切做逐像素对照，允许像素差异仅出现在 Logo 与预览卡两块区域）。若 28px 后仍不清晰，记录实际尺寸与裁切参数，不靠放大顶栏解决。
+4. **S4 真实窗口证据：** 一次性 Xvfb 显示里截图「顶栏品牌标（改后）」「悬停预览卡（含四角特写裁切）」「键盘聚焦预览卡」，落 `tests/verification/desktop/evidence/od-arch-083/`，并写 `facts.json` 记录实际像素数值与断言结果。改前对照可引用 `evidence/od-arch-082/turnrail-card.png` 与 `00-rail-before.png`，不覆盖 082 证据。
+5. **S5 新增 `verify_ui_083.py`：** 断言 ①顶栏品牌位渲染的是自有 logo（DOM 属性 / 截图裁切像素非空且非纯渐变圆底）；②悬停后卡片浮现；③卡片四角像素与背景交界处为直角（对角点采样，圆形化会在角上留下背景色三角）；④AX 树中刻度不再暴露原生 `title` 文案作为独立提示，`described-by` 仍指向 `role=tooltip`。不修改 082 脚本的既有断言，避免改动 082 证据口径。
+
+**设计参考（OD-ARCH-035 要求，`screenshots-design-inspiration` 检索）：** 关键词 `chat turn navigator`、`sidebar tooltip preview card`；参考 ChatGPT Web（对话轨 + 悬浮摘要，弱化边框只留一层浅描边）、Aside（侧栏驱动的窄条导航 + 贴近指针的说明卡）、Condens（极简侧栏、小字号等宽标签）。借鉴要点：**预览卡靠留白与小字号等宽标签分层，不用大圆角和大阴影抢注意力；贴边浮动卡保持单层细描边、与宿主卡片同一套表面色。**
+
+**风险与停止条件：** ①图标换成深色方底后与圆角胶囊顶栏不协调 → 先按上面的「明暗过渡 / 光学对齐」收敛一轮（细边、尺寸、间距），仍不协调则在 STATUS 记录实际截图与偏差，停回报 ARCHITECT，**不自行改回方案 B、不改顶栏形状**；②直角卡片在浅色对话背景上边界不清 → 加细描边补偿，不加回圆角；③改样式导致 `verify_ui_082.py` 悬停断言跌破阈值 → 停并按实际像素差调整采样区域，保留判定严格性，不直接降阈值；④真实窗口无法启动 → 记录为未验证，不拿静态检查冒充运行证据；⑤为「融入」而改动顶栏高度、胶囊圆角、其他控件配色或新增装饰元素 → 越界，停手并写 STATUS 等裁定。
+
 ### OD-ARCH-081：首页三项小修复（问候常驻 / 品牌标 / Markdown 正文）（已执行并复核通过，2026-10-25）
 
 **批准依据：** 用户明确提出三条小修复并委托执行。本计划不扩大范围。
@@ -446,7 +564,50 @@
 
 ## 当前待批准计划与最近复核
 
-### OD-ARCH-080：真实模型端到端实测准备 + 未提交改动分批推送（已执行并推送，2026-10-25，待 ARCHITECT 复核）
+### OD-ARCH-082：三大场景 Skill 深化 + Profile 资产绑定（用户已批准 2026-10-25，已执行、ARCHITECT 复核通过）
+
+> **批准依据：** 用户 2026-10-25 明确「批准执行 OD-ARCH-082」。本节经 ARCHITECT 修订三处已过期前提后为唯一实施口径；批准不放宽范围，未列入本节的事项不属于本轮。
+>
+> **修订说明（ARCHITECT，2026-10-25，均为文件事实）：** ①数据根 `~/OmniDesk/runtime/dsh-home/profiles/` 实际只有 acp / headless / omnidesk-test / web / yvan-work，**没有 discipline Profile**；仓库里 `samples/profiles/discipline.yml` 是 `omnidesk.profile-decl.v1` 的 Dock 场景声明，不是 DSH Profile。②`TurnRail.tsx` 的 tooltip **已有完整视觉样式**（圆角、边框、阴影、最大宽度、问句一行/回复三行截断），真实缺口只有主题色边与 `aria-describedby`。③`TopNav.tsx` 搜索框当前是 `disabled` 的诚实占位（「全局检索（未实现）」）。
+>
+> **派工前定案（四条口径，实施不得自行更改）：**
+> 1. **两态 Profile 组成：** web-api 通道白名单为 `omnidesk-base`（默认）与 `discipline`。两者 bundles 均为 `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app`；web-app 是本地 Web API 与前端托管的**运行基础设施**，不算业务插件。不复制 web Profile 的第三方插件（free-search / cost-meter），不复制 yvan-work 的 inspector。acp 通道保持单一 `acp`，不受白名单影响。
+> 2. **Skill 可见性由 agent preset 决定，不由 Profile 顶层补丁决定（已实跑验证）：** web-app bundle 在 preset 层挂载 `skill-filesystem` / `tool-skill`，默认 preset 是 `standard`；Profile 顶层 `- id: skill-filesystem` 的 `disabled` 只作用于宿主层，**拦不住 preset 内的那一份**（`--dump-config` 实测：顶层已 disabled，preset-standard 内两条仍在）。因此 `omnidesk-base` 的补丁必须覆盖 `preset-standard` 的 `config.plugins`（补丁层对 `config` 是整体替换），保留上游条目与顺序、把 `skill-filesystem` 与 `tool-skill` 标记 `disabled: true`。该覆盖有漂移风险，必须配一个校验脚本比对上游 `web-app/presets/standard.patch.yml` 的条目 id 序列。
+> 3. **安全底线不随 Profile 关闭：** 红线词表与隐私掩码仍由「规则包是否安装」唯一决定，**本轮不改** `RulePolicy` 的加载语义。因此「默认模式」的准确表述是：不挂业务插件、不注入任何 Skill 正文、不使用场景 Skill 绑定；若用户装过规则包，红线与掩码照常生效。界面文案必须按此如实显示，不得宣传成「等同全新 DSH」。
+> 4. **已有保存值不静默改写：** 当前 `settings.v1.json` 的 `engine_profile` 是 `yvan-work`，不在新白名单内。解析时**保留保存值原样**，本次启动回落默认 `omnidesk-base` 并在徽标/弹层显式说明「当前保存的 Profile 不在可选清单，本次使用默认」；不得自动写回、不得删除该目录。
+>
+> **正式启动路径的既有缺陷（本轮 S6 必须一并修，属 S6 前置）：** `scripts/omnidesk.sh` 在子进程里无条件 `export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-web}"`，而宿主 `engine_supervisor.rs` 以环境变量为最高优先级，导致设置里的 Profile 在正式启动时永远不生效。改为：脚本不再注入该变量（外部显式设置仍优先），由宿主读取 settings；acp 通道的默认仍为 acp。
+
+**背景（用户定调）：** 桌面体验已达到类 DSH-desktop 水平，进入「场景 + 配套 Skill + 必要插件」阶段。OmniDesk 有了定制的 profile 后才是真正的 DSH 二开作品。当前 6 个 Skill 已存在于隔离数据根（material-writing / knowledge-search / knowledge-agent / document-review / memory-agent / project-agent），但质量与场景绑定深度不足，且 Discipline Profile 的规则资产与 Skill 之间缺一次系统性对齐。
+
+**目标：** ①把三大场景（工作记录/文案写作/项目跟踪）的 Skill 内容按真实工作流深化到可用水平；②Skill 与 Profile 规则资产显式绑定（每个场景启动时加载哪些 Skill、哪些规则段），不再靠隐式发现；③每个 Skill 带合成评测用例，回归可跑。
+
+**影响范围：** 数据根内 skills/ 目录内容（受 .omnidesk-managed 管理）、samples/profiles/ 模板、设置页规则资产分页展示、engine/ 侧 skill 注入链路（如需）；不改 runtime/、不改协议、不碰凭证。
+
+**步骤：**
+1. **S1 Skill 现状盘点（只读）：** 逐个读 6 个 skill 的 `SKILL.md`，记录触发条件、输入输出、当前与场景的绑定方式、质量缺口。只按文件事实，不按记忆判断。盘点简表写入 STATUS.md。
+2. **S2 场景-Skill 绑定契约（schema v1 → v2，向后兼容）：** 在 `discipline.rules.json` 增加 `skill_bindings`：每个场景声明 `skills`（skill id 数组，允许空数组）与可选的注入上限。同步改 Rust `profile_rules.rs`（结构仍 `deny_unknown_fields`）、TS `types.ts`、`SettingsPanel` 规则资产分页、`verify_profile_rules_068.py`。校验：id 必须在六项清单内、同场景不得重复、单场景上限 3 个。**v1 文件必须原样可加载**（无绑定即不注入），不得自动改写用户已装规则文件。
+3. **S3 三场景 Skill 深化 + 合成用例：** 按已确认工作流（工作记录=随手记轻装+快速整理；文案写作=素材收集+结构生成+多轮打磨；项目跟踪=事项登记+进度汇总+逾期提醒）重写对应 `SKILL.md`，含触发词、输入要求、输出结构、质量自检、数据边界引用规则包。顺带修正 `memory-agent`、`project-agent` 里残留的「Yvan AI Workbench」与 `~/YvanAI/...` 路径（改为 OmniDesk 事实）。每个 Skill 附不依赖模型的合成评测用例（输入样例 + 期望行为要点），固化为可跑回归。
+4. **S4 注入链路（前端提示词组装，不动 runtime）：** 注入点在 `desktop/src/conversationPrompt.ts`（`composeConversationPrompt`）、`desktop/src/aiDraft.ts`（`buildDraftPrompt`）与 `HomeChat` 的组装处。按「当前 Profile + 当前场景绑定」把对应 Skill 正文拼入提示词，受 S2 上限与既有 `CONTEXT_MAX_CHARS` 约束；随手记分支保持轻装（最多一个绑定 Skill）。校验：切换场景后注入内容确实不同；续答（continuation）每轮重新注入并有用例覆盖；无规则包/无绑定时提示词与现状一致。
+5. **S5 回归与三场景证据：** 三场景各用一条合成输入走真实窗口，落提示词组装事实（含命中的 Skill id 与片段），不依赖真实模型；全量回归见验收。
+6. **S6 两态 Profile（可运行，create-new-only）：**
+   - 新建 `omnidesk-base`（默认）与 `discipline` 两个 Profile 目录，bundles 均为 `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app`；**只允许新建**，不得覆盖或删除既有 `acp` / `headless` / `omnidesk-test` / `web` / `yvan-work`。
+   - `omnidesk-base` 补丁覆盖 `preset-standard` 的 `config.plugins`，保留上游条目与顺序，仅把 `skill-filesystem`、`tool-skill` 标 `disabled: true`；配校验脚本比对上游 `web-app/presets/standard.patch.yml` 的条目 id 序列，漂移即失败。
+   - `profile_choice.rs` 加白名单：web-api 通道只出 `omnidesk-base` 与 `discipline`（默认前者），acp 通道仍 `acp`；保存值 `yvan-work` 保留原样，本次回落默认并在徽标/弹层显示「当前保存的 Profile 不在可选清单，本次使用默认」。
+   - 修 `scripts/omnidesk.sh`：去掉无条件 `export OMNIDESK_DSH_PROFILE` 默认值，改为由宿主读 settings（外部显式设置仍优先）。
+   - 徽标与 plate-soft 视觉体系统一，不新造视觉语言。
+   - 证据：两态各启动一次引擎并用 `--dump-config` 比对插件与 skill 可见性差异（合成端点即可），落 `evidence/od-arch-082/` 的 facts JSON 与截图。
+7. **S7 TurnRail 悬停卡（只补缺口）：** tooltip 已有形状、底色、阴影、宽度与截断，**只加主题色边与 `aria-describedby` 关联**，保持现有 plate / surface token，不重写组件、不改布局。验收：悬停与键盘聚焦都出现该卡，截图一张。
+8. **S8 顶栏当前会话搜索：** TopNav 搜索框去掉禁用态，改为「当前会话内查找」：查询态由 App 持有，同时传给 TopNav 与 HomeChat（两者是兄弟组件，需该最小通道）；按消息轮次/段落文本匹配，命中高亮、上/下跳转、计数 `n/m`，无命中显示 `0/0`，Esc 退出。不解析 HTML、不做跨会话检索、不做虚拟化。验收：多轮合成会话命中并跳转、计数正确；命中态与无结果态各一张截图。
+
+**明确不做（本轮范围外）：** REVIEW.md 顶部预检 A/B/C/D 列举的修复事项（另立计划）；修改 `runtime/` 内 DSH Runtime；改动凭证、模型路由或真实业务材料；跨会话全局检索；重写 TurnRail 或 TopNav 其余部分；删除/迁移数据根已有 Profile 目录；提交、推送、打标签。
+
+**过夜批次（用户批准一次跑完、不需逐步审核）：** 按顺序执行 S1→S8；S1 盘点、S6 两态差异、S8 搜索口径都写进 STATUS.md；S3 用例与 S6/S7/S8 证据落 `tests/verification/desktop/evidence/od-arch-082/`；S8 完成后统一跑全量回归；完成后在 STATUS.md 写完整记录并停下等 ARCHITECT 复核。遇阻塞（skill 发现机制与注入方式冲突、白名单影响已有用户配置）按 AGENTS.md 停止规则处理：记录、不硬编、不扩大范围——涉及 `runtime/`、凭证、模型路由或数据根破坏性操作则立即停。
+
+**验收标准（合并后）：** ①六 Skill 盘点有文件事实依据，绑定契约 v1 可读、v2 校验生效；②三场景注入内容确实不同，随手记保持轻装，续答每轮注入；③`omnidesk-base` 与 `discipline` 两态 `--dump-config` 差异可复现，preset 校验脚本能发现漂移；④下拉只出现两个选项，已保存的 `yvan-work` 原样保留且有显式提示；⑤TurnRail 卡片仅补边与 aria，悬停/聚焦均可见；⑥顶栏搜索命中、跳转、计数、无结果 0/0 均可用；⑦tsc 0、npm build 成功、cargo lib 全绿、pytest 全绿、`sync-skills.sh --check` 通过、`runtime/` 零差异；⑧evidence 目录含两态 facts、三场景提示词事实与 S6/S7/S8 截图。
+
+**风险与限制（合并后）：** ①preset 覆盖属对上游结构的复制，升级 DSH 后可能漂移——由校验脚本兜住，漂移时停下报告而非静默放宽；②skill 全局发现仍存在：本轮以绑定注入为主，`discipline` 下模型仍可能自行发现未绑定的 Skill，不承诺强制隔离；③规则包可能仍生效：默认模式只是「不挂业务插件、不注入 Skill 正文、不用场景绑定」，装过规则包时红线与掩码照常；④会话搜索在数千轮时可能卡顿，本轮标注已知限制；⑤S8 命中定位以段落/轮次文本为主，不做 HTML 解析，Markdown 富文本内的跨节点命中可能漏配，需在 STATUS 如实记录。
+### OD-ARCH-080：真实模型端到端实测准备 + 未提交改动分批推送（已执行并推送，2026-10-25，ARCHITECT 复核通过）
 
 **执行结果：** 127 项改动按 4 批提交并推送（`4f8c578` 文档与状态 → `a4327ee` Rust 宿主 → `bd6afd8` 前端 → `328a498` 引擎与验证证据），`origin/main` = `328a498`，工作区干净。提交前把本地真实制度抽取目录 `.kb_extract/` 加入忽略并移出暂存，凭证模式扫描零命中。推送前全量回归：tsc 0、npm build 成功、cargo 257 passed、pytest 75 passed、`runtime/` 零差异。详见 STATUS.md 同编号条目。
 

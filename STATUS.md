@@ -1,5 +1,216 @@
 # BUILDER 执行状态
 
+## OD-ARCH-083：顶栏品牌标换自有 Logo（A 款）+ 轮次预览卡改直角（2026-10-25，第二轮返工完成，ARCHITECT 复核通过）
+
+- **开工状态：** 分支 main，HEAD `0ac9edf`；既有 43 项未提交/未跟踪改动全部完整保留；`git status --porcelain runtime/` 为空。
+- **执行边界：** 严格遵循第二轮返工指令。未改动 `TopNav.tsx` / `TurnRail.tsx` / `theme.css` 的 UI 视觉实现；未修改 `verify_ui_082.py`；未覆盖 `evidence/od-arch-082/` 与 `evidence/od-arch-081/`；未动 `runtime/`、Profile、凭证、模型路由；未提交、未推送、未打标签。
+- **返工重点：** 彻底修正第二轮审查指出的 3 项测量口径缺陷：
+  1. 修复 Shift+Tab 假阳性：在轮次条内部实施相邻轮次步进与回退（第 1 轮 → Tab 进第 2 轮 → Shift+Tab 回切第 1 轮），双向断言卡片边框存在、卡面纯白且描述文本与轮次号严格对应，彻底排除退出轮次条后断言卡片消失的假阳性；
+  2. 修复输入区净空口径：针对末端刻度卡片（Turn 3），实测卡片底边 (`y=588`) 到 composer 顶部边框 (`y=757`) 间距达 **169px**（远超 >= 8px 阈值），完全不侵入下方输入区；
+  3. 补齐悬停后独立 tooltip 节点计数断言：断言悬停前后系统独立 tooltip 窗口节点恒为 0。
+
+### 第二轮返工实施记录（3 项口径修正）
+
+1. **第 1 轮 → 第 2 轮 → Shift+Tab 回第 1 轮真实键盘切换与双向卡片断言：**
+   - 指针移到远离轮次条处 (200, 200)，点击主区获得窗口焦点；
+   - 键盘连续按 Tab 推进直到焦点进入第 1 轮刻度；再按一次 Tab 步进到第 2 轮刻度：
+     - 实测卡片矩形 `[984, 483, 1283, 606]`，卡面内点为纯白 `(255, 255, 255)`；
+     - AT-SPI 描述前缀实测为 `"第 2 轮
+这是第二轮用户问句：关于后续"`；
+     - 截取 [04-turnrail-focus.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/04-turnrail-focus.png:1)；
+   - 按键盘 `Shift+Tab` 倒退回相邻第 1 轮刻度：
+     - 实测卡片矩形 `[984, 483, 1283, 606]`，卡面内点同样为纯白 `(255, 255, 255)`；
+     - AT-SPI 描述前缀同步更新为 `"第 1 轮
+这是第一轮用户问句：请分析系"`；
+     - 实测卡片区域在 Shift+Tab 前后产生 **5375** 像素差（内容更新）；
+     - 截取 [04-turnrail-focus-prev.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/04-turnrail-focus-prev.png:1)；
+     - **断言证明：** 两个方向均双重断言卡片存在与轮次描述更新，绝非卡片消失后的虚假差异。
+2. **末端刻度卡片到 composer 上沿安全间距断言：**
+   - 指针悬停在末端刻度（Turn 3, y=518）触发末端预览卡；
+   - 扫描末端卡片下沿真实边框 `card_bottom_y = 588`；
+   - 扫描底部输入区（composer）顶部圆角容器外框上沿 `composer_top_y = 757`；
+   - 实测安全净空间距 `clearance_px = 757 - 588 = 169px`（阈值 >= 8px 通过）。
+3. **悬停后独立 tooltip 节点计数断言：**
+   - 悬停前 AX 树中 `role="tooltip"` 独立节点为 0；
+   - 悬停后 AX 树中 `role="tooltip"` 独立节点依然为 0（预览卡仅作为内嵌容器由 `aria-describedby` 映射，WebKitGTK 未派生系统原生小浮窗）。
+
+### 实际运行的命令与结果
+
+| 验证项 | 实际运行命令 | 结果 |
+| --- | --- | --- |
+| 前端静态类型检查 | `desktop/node_modules/.bin/tsc --noEmit -p desktop/tsconfig.json` | **exit 0 (clean)** |
+| 前端生产包构建 | `cd desktop && npm run build && cd ..` | **成功 (built in 913ms)** |
+| 宿主库测试 | `cd desktop/src-tauri && cargo test --offline -q --lib && cd ../..` | **261 passed / 0 failed (ok)** |
+| 跨模块测试 | `python3 -m pytest tests -q` | **75 passed, 14 subtests passed** |
+| 082 既有全量回归 | `python3 -u tests/verification/desktop/verify_ui_082.py --display :97 --root /tmp/od083-regress-082` | **17 项断言全部 PASS (082 证据无损恢复)** |
+| 083 真实窗口返工验证 (R2) | `python3 -u tests/verification/desktop/verify_ui_083.py --display :97 --root /tmp/od083-rework2` | **16 项断言全部 PASS (100%), exit 0** |
+| Runtime 隔离检查 | `git status --porcelain runtime/` | **0 行 (完全干净，零修改)** |
+
+### 第二轮全量断言测量值与实测数据
+
+根据 [facts.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/facts.json:1)：
+
+| 断言项 | 实测测量值 (measured) | 设定阈值 (threshold) | 状态 |
+| --- | --- | --- | --- |
+| `test_thread_opened` | True | True | **PASS** |
+| `brand_logo_dimensions` | 32×32 (bbox `[104, 27, 135, 58]`) | 宽/高处于 `[31, 33]` | **PASS** |
+| `brand_logo_pixel_distribution` | 深底 621px，彩环 130px (总 1024px) | 深底>=300，彩环>=80 | **PASS** |
+| `brand_logo_corners_rounded` | 四角顶点像素 `(254, 254, 255)` 等浅过渡色 | 四角 `max(px) > 45` | **PASS** |
+| `brand_logo_text_alignment` | Logo 中线 y=42.5，文字中线 y=41.0，差值 **1.5px** | 差值 <= 2.0px | **PASS** |
+| `tick_button_nodes_found` | 3 个按钮节点 | >= 2 | **PASS** |
+| `no_native_title_help_text` | `help_text: None` (全列表为 None) | True | **PASS** |
+| `no_independent_tooltip_before_hover` | 0 个独立节点 | 0 | **PASS** |
+| `turnrail_hover_card_appears` | 区域差值 **15995** 像素 | 差值 > 1500 | **PASS** |
+| `no_independent_tooltip_during_hover` | 0 个独立节点 | 0 | **PASS** |
+| `described_by_tooltip_active` | 描述前缀 `第 1 轮
+这是第一轮用户问句...` | 描述包含 '第 1 轮' | **PASS** |
+| `tooltip_card_geometry` | 宽 **300px**，高 **124px** (rect `[984, 483, 1283, 606]`) | 宽==300，高处于 `[95, 140]` | **PASS** |
+| `tooltip_style_tokens_measured` | 内底 `(255, 255, 255)`，边框 `(221, 220, 232)`，1px 宽 | 纯白内底且 1px 细边 | **PASS** |
+| `tooltip_square_corners` | 4 角顶点均为 `(221, 220, 232)`，内白外背，两边连续 4px | 4角顶点为边框色、内白外背、两边连续 | **PASS** |
+| `tooltip_input_area_clearance` | 底沿 y=588，输入区 y=757，间距 **169px** | 间距 >= 8px | **PASS** |
+| `tooltip_keyboard_focus_step2` | 卡片 rect `[984, 483, 1283, 606]`，描述前缀 `第 2 轮` | 卡面纯白且描述含 '第 2 轮' | **PASS** |
+| `tooltip_keyboard_shift_tab_switch`| 卡片 rect `[984, 483, 1283, 606]`，描述前缀 `第 1 轮`，差值 **5375px** | 卡面纯白，描述含 '第 1 轮'，差值 > 100 | **PASS** |
+
+### 证据文件清单
+
+- `tests/verification/desktop/evidence/od-arch-083/`：
+  - [01-topnav-brand.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/01-topnav-brand.png:1)（真实桌面窗口截图，基于真实 bbox [104,27,135,58] 裁切，展示 32×32 自有 Logo 与 OmniDesk 文字 1.5px 中线对齐）
+  - [02-turnrail-tooltip.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/02-turnrail-tooltip.png:1)（真实桌面窗口截图，TurnRail 悬停预览卡，四角严格直角，白底 1px 细边框，带「第 1 轮」小字标）
+  - [03-turnrail-tooltip-corners.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/03-turnrail-tooltip-corners.png:1)（真实桌面窗口截图，四角真实边界 TL/TR/BL/BR 精确裁切 4× 放大拼贴，证实四角均为坚实 90 度直角）
+  - [04-turnrail-focus.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/04-turnrail-focus.png:1)（真实桌面窗口截图，纯键盘 Tab 步进至第 2 轮刻度时直角预览卡呈现）
+  - [04-turnrail-focus-prev.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/04-turnrail-focus-prev.png:1)（真实桌面窗口截图，纯键盘 Shift+Tab 回切至第 1 轮刻度时直角预览卡同步更新呈现）
+  - [05-topnav-full.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/05-topnav-full.png:1)（真实桌面窗口截图，整条顶栏 1:1 裁切，验证 Logo 作为视觉起点的平滑过渡）
+  - [facts.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-083/facts.json:1)（真实桌面窗口断言记录，记录各项实测测量值与阈值，脚本 sha256 校验码，16 项断言 100% pass）
+
+### 未验证项（已登记）
+
+1. **真实付费模型端到端调用：** 本轮属于纯 UI 与视觉交互打磨，不涉及外部模型调用。
+2. **高分屏渲染差异：** 本次验收在标准 1x 分辨率 Xvfb 环境下完成（1440×900），HiDPI/缩放因子 > 1 时的边缘亚像素效果属于未验证项。
+
+
+## OD-ARCH-082：三大场景 Skill 深化 + Profile 资产绑定（2026-10-25，执行完成，ARCHITECT 复核通过）
+
+- **开工状态：** 分支 main，HEAD `0ac9edf`；既有未提交改动全部保留；`git status --porcelain runtime/` 为空。
+- **执行边界：** 严格遵循获批计划与派工指令。未改动 `runtime/`；未修改模型路由与凭证；数据根仅在 `~/OmniDesk/runtime/dsh-home/profiles/` 下新建 `omnidesk-base` 与 `discipline`（create-new-only，原 acp/headless/omnidesk-test/web/yvan-work 原样保留）；未修改会话、成果或规则文件；未提交、未推送、未打标签。
+- **设计参考：** 检索关键词 `chat workspace`、`in-conversation search`。搜索沿用 Linear 的顶栏内联查询与命中高亮，把计数与上/下跳转置于同一行；Profile 徽标并入现有 plate-soft 体系并保持单一短标签。
+
+### S1 只读盘点简表
+
+| Skill ID | 触发条件 | 输入 | 输出 | 当前绑定方式 | 质量缺口 |
+| --- | --- | --- | --- | --- | --- |
+| `material-writing` | 工作总结、汇报材料、调研报告、交流发言、公文起草 | 目的、受众、可用素材文本 | 结构大纲 + 初稿正文 + 待确认事项 + 事实来源 | 隔离数据根目录隐式发现 | 缺多轮打磨工作流定义，未与规则资产显式绑定 |
+| `knowledge-search` | 纪检法规制度与业务知识检索、条文核查 | 提问、检索范围与相关制度 | 强制四要素卡片（解答、原文引用、文件来源、引用位置） | 隔离数据根目录隐式发现 | 未显式绑定到文案起草场景 |
+| `knowledge-agent` | 笔记与技术总结整合、跨文档知识萃取 | 本地笔记、文档、PDF、纪要 | 结构化业务知识卡片 | 隔离数据根目录隐式发现 | 严重残留 Yvan AI Workbench 概念与 ~/YvanAI/ 路径 |
+| `document-review` | 公文与业务材料质检、质量审查 | 文稿原文 | 四维度结构化质检报告（结构、事实、表述朴素度、合规风险） | 隔离数据根目录隐式发现 | 内部重复定义红线词表，未与场景规则联动 |
+| `memory-agent` | 记录决策、保存工作状态、总结工作 | 散碎工作进展、会议要点 | 结构化工作日志/决策要点 | 隔离数据根目录隐式发现 | 严重残留 Yvan 命名空间与硬编码路径，未分化随手记轻装与周报 |
+| `project-agent` | 项目状态巡检、风险识别、产出简报 | 项目清单、TODO、进展汇报 | 整体状态 + 事项明细 + 逾期与阻塞 + 下步安排 | 隔离数据根目录隐式发现 | 残留 Yvan 历史工程（V2T 等），未对齐事项登记与逾期提醒契约 |
+
+### S1–S8 实施与定向修正记录
+
+1. **S1 六 Skill 只读盘点：** 完成 6 个 Skill 的文件事实盘点，核实输入输出、发现路径与历史残留。
+2. **S2 绑定契约 v1→v2：** `samples/profiles/discipline.rules.json` 升级至 `omnidesk.profile-rules.v2`，新增 `skill_bindings`（weekly: memory-agent / max 1; writing: material-writing, knowledge-search, document-review / max 3; project: project-agent / max 1）。Rust `profile_rules.rs` 同步支持 v1/v2 schema，严格校验合法性（6 项白名单、同场景不重复、不超过上限、结构 deny_unknown_fields）；TypeScript `types.ts` 扩充类型；`SettingsPanel.tsx` 规则资产卡片新增 Skill 绑定只读展示；`verify_profile_rules_068.py` 全绿通过，确保 v1 兼容。
+3. **S3 三场景 Skill 深化与合成用例：** 重写 `memory-agent`（随手记轻装 + 周报提炼）、`material-writing`（素材收集 + 结构生成 + 3阶多轮打磨）、`project-agent`（事项登记 + 进度汇总 + 逾期提醒），彻底清理 Yvan 残留（含 `knowledge-agent`）；数据边界统一强制引用 Profile 规则资产；新增合成评测用例集 `tests/verification/desktop/test_cases_skills_082.json`。
+4. **S4 注入链路实现：** 在 `conversationPrompt.ts`、`aiDraft.ts`、`HomeChat.tsx` 与 `HomeCanvas.tsx` 完整打通场景 Skill 注入通道。随手记分支最多注入 1 个 Skill 并保持轻装；完整报告分支受 `max_injected` 与 `CONTEXT_MAX_CHARS` 约束；多轮续答（continuation）每轮重新注入；无规则包或无绑定时提示词与现状逐字一致。
+5. **S5 三场景证据：** 新增并运行 `verify_skill_bindings_082.py`（33 项断言通过），落盘 `tests/verification/desktop/evidence/od-arch-082/scene-injection.json`。
+6. **S6 两态 Profile 与白名单：** 
+   - 沉淀模板 `samples/profiles/omnidesk-base.profile.json`、`omnidesk-base.profile.patch.yml`、`discipline.profile.json`、`discipline.profile.patch.yml`。
+   - 数据根严格按 create-new-only 在 `~/OmniDesk/runtime/dsh-home/profiles/` 下新建 `omnidesk-base` 与 `discipline`。
+   - `omnidesk-base` 覆盖上游 `preset-standard` 的 `config.plugins`，保留 21 个条目与顺序，显式设置 `skill-filesystem` 与 `tool-skill` 为 `disabled: true`。
+   - 新增条目序列比对校验脚本 `tests/verification/desktop/verify_profile_presets_082.py`（12 项断言通过），防漂移。
+   - `profile_choice.rs` 增加通道白名单（web-api 仅允许 omnidesk-base / discipline，默认 omnidesk-base；acp 仅允许 acp）。保存值不在白名单内时保留原值，本次回落默认，并在 `profile_choice_view` 返回 `saved_out_of_whitelist: true`。
+   - **F2 修正：** `profile_choice.rs` 返回友好名映射（`omnidesk-base` → 基础标准，`discipline` → 纪检专业，`acp` → ACP 协议通道），不再泄漏 `package.json.name` 的 `dsh-profile-*` 技术包名；`TopNav.tsx` 主标题与确认框文案同步显示友好名；修复错误消息中文换行与全角空格格式。
+   - 修 `scripts/omnidesk.sh`：移除无条件注入的 `OMNIDESK_DSH_PROFILE` 默认值，交由宿主按设置及白名单解析。
+   - 顶栏 Profile 徽标并入 `plate-soft` 体系，弹层支持非法保存值回落警告。
+   - **F3 重建：** 重建 `profile-base.json`、`profile-discipline.json` 与 `profile-compare.json`，记录真实 `--dump-config` 的命令、退出码、sha256、31 个插件序列（含 21 个顶层）中 `skill-filesystem` / `tool-skill` 的 disabled 对照（base=true，discipline=false，两份 dump 差异 50 行）。
+7. **S7 TurnRail 主题色边与无障碍：** 补齐 `border-primary/30` 主题色边框与 `aria-describedby` 属性映射，保持已有布局与截断。
+8. **S8 当前会话搜索：** App 持有 `searchQuery`、`searchMatchCount`、`searchCurrentIndex` 并打通 TopNav 与 HomeChat；TopNav 输入框激活并支持 ⌘K / Ctrl+K 聚焦、Esc 清空退出、Enter / Shift+Enter 导航、计数显示（n/m 与 0/0）；HomeChat 实现正文多轮文本匹配与高亮（`MarkdownText` 内联高亮）、匹配轮次自动滚动定位与聚焦环效果。
+9. **F1 验证脚本重构与真实断言闭环：** `tests/verification/desktop/verify_ui_082.py` 补齐 `preset: "plain"` 与 `projectPath: None`，使用 AT-SPI 与像素判定双重断言。覆盖测试线程渲染判定、Profile 弹层无 `dsh-profile-` 泄漏断言、确认框「切换到「纪检专业」？」断言、settings 文件写入断言、TurnRail 刻度 (x≈1298, y≈503) 悬停卡浮现判定 (12549 像素差)、搜索 "1/2" 计数断言、琥珀高亮像素判定 (3265 像素)、回车跳转位移判定 (33396 像素差)、"0/0" 无结果断言及 Esc 清空复原断言。全量 17 项断言 100% 通过，实测事实落盘 `evidence/od-arch-082/ui-facts.json`。
+
+### 修改与新增文件清单
+
+- **修改：**
+  - `samples/profiles/discipline.rules.json`（v2 schema + skill_bindings）
+  - `desktop/src-tauri/src/profile_rules.rs`（v2 结构校验、向后兼容、skill_contents 缓存）
+  - `desktop/src-tauri/src/profile_choice.rs`（白名单约束与友好中文标签映射、换行格式优化）
+  - `desktop/src-tauri/src/engine_supervisor.rs`（默认 Profile 迁移测试断言）
+  - `desktop/src-tauri/src/lib.rs`（profile_rules_load 缓存绑定的 Skill 正文、profile_choice_view 返回 saved_out_of_whitelist）
+  - `desktop/src/types.ts`（SceneSkillBinding、ProfileRules v2、ProfileRulesView、ProfileChoiceView）
+  - `desktop/src/SettingsPanel.tsx`（规则资产面板显示 Skill 绑定明细）
+  - `desktop/src/conversationPrompt.ts`（S4 提示词组装与随手记轻装注入）
+  - `desktop/src/aiDraft.ts`（buildDraftPrompt 注入 bound skills）
+  - `desktop/src/components/Icon.tsx`（补充 chevron-up 与 x 图标）
+  - `desktop/src/shell/MarkdownText.tsx`（内联纯文本高亮组件）
+  - `desktop/src/shell/TopNav.tsx`（Profile 徽标 plate-soft 化、S8 检索框输入/跳转/计数与 role=status）
+  - `desktop/src/shell/HomeChat.tsx`（消息检索匹配、自动滚动定位、高亮传递）
+  - `desktop/src/shell/HomeCanvas.tsx`（规则资产 Skill 正文映射传递、检索通道转发）
+  - `desktop/src/App.tsx`（持有搜索状态并在 TopNav 与 HomeCanvas 间打通）
+  - `desktop/src/shell/TurnRail.tsx`（主题色边 border-primary/30 与 aria-describedby）
+  - `scripts/omnidesk.sh`（移除无条件环境变量默认值注入）
+  - `skills/memory-agent/SKILL.md`（深化工作记录工作流，清理 Yvan 残留）
+  - `skills/project-agent/SKILL.md`（深化项目跟踪工作流，清理 Yvan 残留）
+  - `skills/knowledge-agent/SKILL.md`（清理 Yvan 残留，规范业务知识整合）
+  - `skills/material-writing/SKILL.md`（深化三阶写作与质检打磨流程）
+  - `tests/verification/desktop/verify_profile_rules_068.py`（兼容 v1 与 v2）
+  - `STATUS.md`（整理 OD-ARCH-082 完整事实与复核修复记录）
+- **新增：**
+  - `samples/profiles/omnidesk-base.profile.json`
+  - `samples/profiles/omnidesk-base.profile.patch.yml`
+  - `samples/profiles/discipline.profile.json`
+  - `samples/profiles/discipline.profile.patch.yml`
+  - `tests/verification/desktop/test_cases_skills_082.json`
+  - `tests/verification/desktop/verify_skill_bindings_082.py`
+  - `tests/verification/desktop/verify_profile_presets_082.py`
+  - `tests/verification/desktop/verify_ui_082.py`
+  - `tests/verification/desktop/evidence/od-arch-082/`（包含 scene-injection.json、profile-base.json、profile-discipline.json、profile-compare.json、ui-facts.json、profile-base.png、profile-discipline.png、turnrail-card.png、turnrail-card-focus.png、search-match.png、search-empty.png 等）
+
+### 实际运行的命令与结果
+
+| 验证项 | 实际运行命令 | 结果 |
+| --- | --- | --- |
+| 规则向后兼容 | `python3 tests/verification/desktop/verify_profile_rules_068.py` | **25 passed / 0 failed, pass** |
+| 绑定校验与注入差异 | `python3 tests/verification/desktop/verify_skill_bindings_082.py` | **33 passed / 0 failed, pass** |
+| Preset 条目序列比对 | `python3 tests/verification/desktop/verify_profile_presets_082.py` | **12 passed / 0 failed, pass** |
+| 前端静态类型检查 | `desktop/node_modules/.bin/tsc --noEmit -p desktop/tsconfig.json` | **exit 0 (clean)** |
+| 前端生产包构建 | `cd desktop && npm run build && cd ..` | **成功 (built in 903ms)** |
+| 宿主库测试 | `cd desktop/src-tauri && cargo test --offline -q --lib && cd ../..` | **261 passed / 0 failed (ok)** |
+| 跨模块测试 | `python3 -m pytest tests -q` | **75 passed, 14 subtests passed** |
+| Skill 隔离漂移检查 | `scripts/sync-skills.sh --check` | **exit 0 (隔离副本与仓库源一致，未发现漂移)** |
+| Runtime 隔离检查 | `git status --porcelain runtime/` | **0 行 (完全干净，零修改)** |
+| 真实窗口验收与取证 | `python3 tests/verification/desktop/verify_ui_082.py` | **17 项断言全绿 (pass=true, failures=[]), exit 0** |
+
+### 证据路径与等级
+
+- `tests/verification/desktop/evidence/od-arch-082/`：
+  - [scene-injection.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/scene-injection.json:1)（证据等级：script，离线多场景提示词注入事实）
+  - [profile-base.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/profile-base.json:1)（证据等级：script，真实 DSH CLI --dump-config 事实，sha256: `c7e3533a...`，31个插件完整序列，skill-filesystem/tool-skill disabled: true）
+  - [profile-discipline.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/profile-discipline.json:1)（证据等级：script，真实 DSH CLI --dump-config 事实，sha256: `bb5f74be...`，31个插件完整序列，skill-filesystem/tool-skill disabled: false）
+  - [profile-compare.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/profile-compare.json:1)（证据等级：script，两态 dump 对照事实，两份 dump 差异 50 行，插件数量一致且隔离状态严格互斥）
+  - [ui-facts.json](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/ui-facts.json:1)（证据等级：真实桌面窗口断言记录，17 项检查全部 pass，含实测计数、像素数、位移量）
+  - [profile-base.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/profile-base.png:1)（证据等级：真实桌面窗口截图，Profile 徽标展开态，显示友好名「基础标准」与「纪检专业」）
+  - [profile-discipline.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/profile-discipline.png:1)（证据等级：真实桌面窗口截图，选中纪检专业后展示确认框「切换到「纪检专业」？」）
+  - [turnrail-card.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/turnrail-card.png:1)（证据等级：真实桌面窗口截图，TurnRail 真实刻度 (1298, 503) 悬停卡与主题色边）
+  - [turnrail-card-focus.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/turnrail-card-focus.png:1)（证据等级：真实桌面窗口截图，TurnRail 键盘聚焦态）
+  - [search-match.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/search-match.png:1)（证据等级：真实桌面窗口截图，检索命中态，计数 1/2，3265 像素琥珀高亮）
+  - [search-empty.png](/home/kevin/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-082/search-empty.png:1)（证据等级：真实桌面窗口截图，检索无结果 0/0 态）
+
+### 未验证项（已登记）
+
+1. **真实付费模型端到端调用：** 本轮以离线评测用例与合成端点验证提示词组装与交互，未连接外部付费模型（由用户后续在设置中配置凭证）。
+2. **preset 覆盖边界：** 仅覆盖上游 `preset-standard`，如未来上游新增其它 preset，需单独跟进。
+3. **Markdown 搜索高亮范围：** 检索高亮按登记规格处理 `p` / `li` 的字符串子节点，不解析或改写复杂 HTML AST。
+
+### ARCHITECT 复核记录（2026-10-25）
+
+- **结论：** 通过，详见 REVIEW.md 顶部「OD-ARCH-082 复核结论」。以下为复核时实际运行的命令与结果，与上面 BUILDER 自述分开记录。
+- **静态与构建：** `desktop/node_modules/.bin/tsc --noEmit -p tsconfig.json` exit 0；`cd desktop && npm run build` exit 0（仅 chunk 体积警告）。
+- **Rust 库测试：** `cargo test --offline --lib`（显式注入 `~/.local/omnidesk-tauri-deps` 的 pkg-config 与库路径）**261 passed / 0 failed**。
+- **Python 与专项脚本：** `python3 -m pytest tests -q` 75 passed / 14 subtests；`verify_profile_rules_068.py` 25/0；`verify_skill_bindings_082.py` 33/0；`verify_profile_presets_082.py` 12/0；`scripts/sync-skills.sh --check` 一致；`git status --porcelain runtime/` 0 行。
+- **真实窗口：** `python3 -u tests/verification/desktop/verify_ui_082.py --display :93 --root /tmp/od082-arch-final` exit 0，17 项断言全 pass、failures=[]；截图与 facts 经目视核对。
+- **ARCHITECT 补充探测（窗口脚本未覆盖的两条验收点）：** ①保存值为白名单外 `yvan-work` 时，真实窗口弹层显示「不在清单（已回落默认）· YVAN-WORK」与黄色提示，仅列基础标准 / 纪检专业，实际使用 `omnidesk-base`，设置值未被改写（隔离根 `/tmp/od082-whitelist-probe`，截图 `/tmp/od082-arch/whitelist-popover.png`）；②指针移开后用 AT-SPI 聚焦 TurnRail 第 1 轮刻度，`FOCUSED` 为真、预览卡区域差 5534 像素、无障碍关系 `described-by → tool tip`。两项临时探测脚本与截图在 `/tmp`，未入仓库。
+- **证据面瑕疵（不阻塞）：** `verify_ui_082.py` 的确认框断言带 `or "确认"` 兜底，聚焦截图只断言文件存在；本轮已用独立探测补齐实际结论，若日后作回归门禁建议收紧。
+- **计划外差异（需收尾时处理）：** `evidence/od-arch-081/` 的 7 张截图与 `home-fixes-facts.json` 被 `verify_home_fixes_081.py` 以 `/tmp/od081-test` 重跑覆盖（04:54–04:55），不在 082 授权范围。提交时需明示重跑，或从 `731d4c5` 恢复原快照。
+- **未提交状态：** 复核后仍未提交、未推送、未打标签；等待用户真实模型端到端实测反馈后再定后续批次。
+
 ## OD-ARCH-081：首页三项小修复（2026-10-25，ARCHITECT 复核通过；已提交并推送）
 
 - **开工状态：** 分支 main，HEAD `d2fbc68`；既有未提交/未跟踪改动全部保留；`git status --porcelain runtime/` 为空。复核结论见 REVIEW.md 顶部。
@@ -63,7 +274,7 @@
 - **推送：** 代码批次 `d2fbc68..731d4c5`（`OD-ARCH-081：首页小修复收尾`），随后的状态记录批次一并推送 `origin/main`。收尾后核对：本地 HEAD 与 `origin/main` 一致、工作区干净、`runtime/` 零差异。未打标签、未动其它分支。
 - **说明：** 状态记录本身会产生后续提交，因此本条不写死最终哈希；以 `git rev-parse origin/main` 与 `git status` 为准。
 
-## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，待 ARCHITECT 复核）
+## OD-ARCH-080：分批提交推送 + 真实模型实测准备（2026-10-25，ARCHITECT 复核通过）
 
 - **开工状态：** 分支 main，HEAD 3f8c3ba；126 项未提交/未跟踪改动（079 的 127 项减去已忽略的 `.kb_extract/`）。OD-ARCH-079 已复核通过。
 - **执行边界：** 只做 Git 整理与文档更新；不改业务代码、不改 `runtime/`、不碰凭证与模型路由、不接触真实业务材料。
