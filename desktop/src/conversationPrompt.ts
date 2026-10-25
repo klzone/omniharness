@@ -27,6 +27,8 @@ export interface ConversationPreset {
   writingRules?: string[] | null;
   /** 场景默认思考档（由界面在空闲时应用，不在这里使用）。 */
   thinking?: string | null;
+  /** 场景绑定的 Skill 清单（OD-ARCH-082 S4 注入链路）。 */
+  skills?: Array<{ id: string; content: string }> | null;
 }
 
 /** 重放进下一轮提示的上文上限（字符）。 */
@@ -96,11 +98,24 @@ export function composeConversationPrompt(input: {
   if (!preset) return context;
   if (input.mode === "note") {
     // 只保留事实、不改数据、不补造；不追加铁律、章节或归档条目。
+    // OD-ARCH-082 S4：随手记分支保持轻装，最多注入一个绑定 Skill。
+    const noteSkills = (preset.skills ?? []).filter((s) => s.content.trim().length > 0).slice(0, 1);
+    const noteSkillLines: string[] = [];
+    if (noteSkills.length > 0) {
+      const s = noteSkills[0];
+      const raw = s.content.trim();
+      const trimmed =
+        raw.length <= CONTEXT_MAX_CHARS ? raw : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
+      noteSkillLines.push("配套技能指引（" + s.id + "）：");
+      noteSkillLines.push(trimmed);
+      noteSkillLines.push("");
+    }
     return [
       "你是 OmniDesk 工作台的随手记整理助手。",
       "请把下面的记录整理成简洁要点，保留全部事实与数字，不补充、不推断、不改写口径。",
       "信息不全时直接留空，不要编造。",
       "",
+      ...noteSkillLines,
       context,
     ].join("\n");
   }
@@ -114,5 +129,6 @@ export function composeConversationPrompt(input: {
     sceneRules: preset.rules,
     sceneSections: preset.sections,
     writingRules: preset.writingRules ?? null,
+    skills: preset.skills ?? null,
   });
 }

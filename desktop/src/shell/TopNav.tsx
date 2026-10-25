@@ -219,18 +219,24 @@ function ProfileBadge() {
 
   const currentLabel = (() => {
     if (!view) return "读取中…";
-    if (!view.saved) return "无 · 标准模式";
-    const hit = view.options.find((o) => o.name === view.saved);
-    return hit ? hit.label + " · " + hit.name : view.saved;
+    if (view.saved_out_of_whitelist) {
+      return "不在清单（已回落默认） · " + String(view.saved);
+    }
+    const activeName = view.saved ?? view.standard;
+    const hit = view.options.find((o) => o.name === activeName);
+    return hit ? `${hit.label} (${hit.name})` : activeName;
   })();
 
   /**
-   * 徽标上只显示一个短标签（OD-ARCH-078 S2）：顶栏宽度要留给搜索框，
-   * 具体的 Profile 名与「本次生效」信息放进下拉里，不在按钮上铺开。
+   * 徽标上只显示一个短标签（OD-ARCH-078 S2 / OD-ARCH-082 S6）：
+   * 并入 plate-soft 体系，不在按钮上铺开长文本。
    */
   const badgeLabel = (() => {
     if (!view) return "读取中";
-    return view.saved ? "专业" : "标准";
+    if (view.saved_out_of_whitelist) return "标准";
+    if (!view.saved || view.saved === "omnidesk-base") return "标准";
+    if (view.saved === "discipline") return "专业";
+    return view.saved;
   })();
 
   const confirm = () => {
@@ -262,7 +268,7 @@ function ProfileBadge() {
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="topnav-profile-badge"
-        className="inline-flex items-center space-x-1 px-2 py-1 rounded-full border border-primary/30 bg-primary/6 text-primary hover:bg-primary/10 transition-colors"
+        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft text-primary hover:bg-surface-container transition-colors shadow-sm"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-primary/70 flex-shrink-0" />
         <span className="font-label-caps text-[10.5px] tracking-wide whitespace-nowrap">
@@ -282,8 +288,12 @@ function ProfileBadge() {
           className="absolute left-0 top-full mt-2 w-[300px] rounded-2xl bg-white/97 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2.5 z-50"
         >
           {pending ? (
-            <div className="space-y-2.5 p-1">
-              <p className="text-[12px] text-on-surface font-medium">
+            <div
+              role="alertdialog"
+              aria-label={`切换到「${pending.label}」？`}
+              className="space-y-2.5 p-1"
+            >
+              <p className="text-[12px] text-on-surface font-medium" data-testid="topnav-profile-confirm-title">
                 切换到「{pending.label}」？
               </p>
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
@@ -316,6 +326,11 @@ function ProfileBadge() {
               <div className="px-1.5 pb-1.5 text-[10px] uppercase tracking-wide text-outline">
                 下次启动使用 · 当前：{currentLabel}
               </div>
+              {view?.saved_out_of_whitelist ? (
+                <div className="mx-1 mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 leading-relaxed">
+                  当前保存的 Profile 不在可选清单，本次使用默认。
+                </div>
+              ) : null}
               {view === null ? (
                 <p className="px-1.5 py-2 text-[11.5px] text-error leading-relaxed">
                   {error ?? "正在读取 Profile 清单…"}
@@ -341,14 +356,10 @@ function ProfileBadge() {
                         >
                           <span className="flex-1 min-w-0">
                             <span className="block text-[11.5px] font-medium truncate">
-                              {o.standard ? "无 · 标准模式" : o.name}
+                              {o.label}
                             </span>
-                            <span className="block text-[10px] text-outline truncate">
-                              {o.standard
-                                ? "通道内置模板（" + o.name + "）"
-                                : o.label === o.name
-                                  ? o.name
-                                  : o.label}
+                            <span className="block text-[10px] text-outline truncate font-mono">
+                              {o.standard ? `通道默认 (${o.name})` : o.name}
                             </span>
                           </span>
                           {on ? <Icon name="check" className="w-[13px] h-[13px] flex-shrink-0" /> : null}
@@ -383,15 +394,44 @@ function ProfileBadge() {
   );
 }
 
+export interface TopNavProps {
+  engineHealthy: boolean | null;
+  engineLabel: string;
+  onOpenSettings: () => void;
+  searchQuery?: string;
+  onSearchQueryChange?: (q: string) => void;
+  searchMatchCount?: number;
+  searchCurrentIndex?: number;
+  onSearchPrev?: () => void;
+  onSearchNext?: () => void;
+  onSearchClear?: () => void;
+}
+
 export function TopNav({
   engineHealthy,
   engineLabel,
   onOpenSettings,
-}: {
-  engineHealthy: boolean | null;
-  engineLabel: string;
-  onOpenSettings: () => void;
-}) {
+  searchQuery = "",
+  onSearchQueryChange,
+  searchMatchCount = 0,
+  searchCurrentIndex = 0,
+  onSearchPrev,
+  onSearchNext,
+  onSearchClear,
+}: TopNavProps) {
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const onGlobalKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    document.addEventListener("keydown", onGlobalKey);
+    return () => document.removeEventListener("keydown", onGlobalKey);
+  }, []);
   // 时钟与日期共用一个刷新源；只在 lg 以上显示，与旧版一致。
   const now = useNow(30_000);
 
@@ -404,9 +444,13 @@ export function TopNav({
         {/* 品牌（固定软件名） + Profile 徽标 + 本地 IPC 状态 */}
         <div className="flex items-center space-x-3 shrink-0" data-tauri-drag-region>
           <div className="flex items-center space-x-2.5 text-on-surface tracking-tight">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-primary-container flex items-center justify-center text-on-primary shadow-sm">
-              <Icon name="brand" className="w-[18px] h-[18px]" />
-            </div>
+            <img
+              src="/omnidesk-icon.svg"
+              alt="OmniDesk"
+              draggable={false}
+              decoding="async"
+              className="w-8 h-8 rounded-[7px] ring-1 ring-black/5 shadow-xs object-cover flex-shrink-0"
+            />
             <span className="font-headline-md text-[17px] font-semibold tracking-tight text-on-surface hidden sm:inline">
               OmniDesk
             </span>
@@ -433,22 +477,76 @@ export function TopNav({
           </span>
         </div>
 
-        {/* 全局搜索：未实现 —— 禁用态，不做假入口 */}
+        {/* 当前会话内查找（OD-ARCH-082 S8） */}
         <div className="flex-1 max-w-md mx-6 hidden sm:block">
-          <div
-            className="flex items-center plate-soft-inset rounded-full px-4 py-1.5 opacity-60 cursor-not-allowed"
-            title="未实现：全局检索"
-          >
-            <Icon name="search" className="w-[18px] h-[18px] text-outline mr-2.5" />
+          <div className="flex items-center plate-soft-inset rounded-full px-3.5 py-1 text-on-surface transition-all focus-within:ring-1 focus-within:ring-primary/40">
+            <Icon name="search" className="w-[16px] h-[16px] text-outline mr-2 shrink-0" />
             <input
-              disabled
-              className="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none w-full cursor-not-allowed"
-              placeholder="全局检索（未实现）"
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (e.shiftKey) {
+                    onSearchPrev?.();
+                  } else {
+                    onSearchNext?.();
+                  }
+                } else if (e.key === "Escape") {
+                  onSearchClear?.();
+                  searchInputRef.current?.blur();
+                }
+              }}
+              className="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none w-full"
+              placeholder="当前会话内查找"
               type="text"
+              aria-label="当前会话内查找"
+              data-testid="topnav-search-input"
             />
-            <kbd className="font-label-caps text-[10px] text-outline bg-white/80 px-2 py-0.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-surface-container ml-2">
-              ⌘K
-            </kbd>
+            {searchQuery.trim() ? (
+              <div className="flex items-center space-x-1 pl-2 text-[11px] text-on-surface-variant font-mono shrink-0 select-none">
+                <span
+                  role="status"
+                  aria-label={`搜索计数 ${searchMatchCount > 0 ? `${searchCurrentIndex + 1}/${searchMatchCount}` : "0/0"}`}
+                  data-testid="topnav-search-count"
+                >
+                  {searchMatchCount > 0 ? `${searchCurrentIndex + 1}/${searchMatchCount}` : "0/0"}
+                </span>
+                <button
+                  type="button"
+                  onClick={onSearchPrev}
+                  disabled={searchMatchCount === 0}
+                  title="上一个 (Shift+Enter / N)"
+                  data-testid="topnav-search-prev"
+                  className="p-0.5 hover:text-on-surface disabled:opacity-30 transition-opacity"
+                >
+                  <Icon name="chevron-up" className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onSearchNext}
+                  disabled={searchMatchCount === 0}
+                  title="下一个 (Enter / M)"
+                  data-testid="topnav-search-next"
+                  className="p-0.5 hover:text-on-surface disabled:opacity-30 transition-opacity"
+                >
+                  <Icon name="chevron-down" className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onSearchClear}
+                  title="清空并退出 (Esc)"
+                  data-testid="topnav-search-clear"
+                  className="p-0.5 hover:text-on-surface text-outline hover:text-on-surface transition-colors"
+                >
+                  <Icon name="x" className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <kbd className="font-label-caps text-[10px] text-outline bg-white/80 px-2 py-0.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-surface-container ml-2 shrink-0">
+                ⌘K
+              </kbd>
+            )}
           </div>
         </div>
 

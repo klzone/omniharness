@@ -68,6 +68,8 @@ export interface ChatPreset {
   thinking?: string | null;
   /** 是否真的加载到 Profile 规则资产（false/undefined = 纯净底座）。 */
   rulesLoaded?: boolean;
+  /** 场景绑定的 Skill 清单（OD-ARCH-082 S4 注入链路）。 */
+  skills?: Array<{ id: string; content: string }> | null;
 }
 
 export interface ChatMessage {
@@ -188,20 +190,26 @@ function AssistantText({
   text,
   live,
   streamed,
+  highlightQuery,
 }: {
   text: string;
   live: boolean;
   streamed: boolean;
+  highlightQuery?: string;
 }) {
   if (streamed) {
     return (
       <>
-        <MarkdownText text={text} />
+        <MarkdownText text={text} highlightQuery={highlightQuery} />
         {live ? <Caret /> : null}
       </>
     );
   }
-  return <StreamedMarkdown text={text} live={live} />;
+  return highlightQuery ? (
+    <MarkdownText text={text} highlightQuery={highlightQuery} />
+  ) : (
+    <StreamedMarkdown text={text} live={live} />
+  );
 }
 
 /**
@@ -278,11 +286,18 @@ export interface HomeChatProps {
   engineSessionId?: string | null;
   /** 拿到（新建或续接后的）引擎会话号时回调，供上层按线程持久化。 */
   onEngineSessionId?: (engineSessionId: string) => void;
+  /** 当前会话搜索（OD-ARCH-082 S8） */
+  searchQuery?: string;
+  searchCurrentIndex?: number;
+  onSearchMatchesChange?: (count: number) => void;
 }
 
 export function HomeChat({
   onNavigate,
   preset = null,
+  searchQuery = "",
+  searchCurrentIndex = 0,
+  onSearchMatchesChange,
   sceneOptions = null,
   activeTag = "plain",
   onChangeTag,
@@ -297,6 +312,36 @@ export function HomeChat({
   onEngineSessionId,
 }: HomeChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+
+  // OD-ARCH-082 S8：当前会话内文本检索
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const list: Array<{ messageId: string; index: number }> = [];
+    for (const m of messages) {
+      const lower = m.text.toLowerCase();
+      let pos = lower.indexOf(q);
+      while (pos !== -1) {
+        list.push({ messageId: m.id, index: list.length });
+        pos = lower.indexOf(q, pos + q.length);
+      }
+    }
+    return list;
+  }, [messages, searchQuery]);
+
+  useEffect(() => {
+    onSearchMatchesChange?.(searchMatches.length);
+  }, [searchMatches.length, onSearchMatchesChange]);
+
+  useEffect(() => {
+    if (searchMatches.length > 0 && searchCurrentIndex >= 0 && searchCurrentIndex < searchMatches.length) {
+      const target = searchMatches[searchCurrentIndex];
+      const el = document.getElementById(`chat-message-${target.messageId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+  }, [searchCurrentIndex, searchMatches]);
   // 没有上层按线程传入时（例如首页），本组件自己持有本轮运行内的会话号。
   const [localEngineSessionId, setLocalEngineSessionId] = useState<string | null>(null);
   // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
@@ -1605,20 +1650,22 @@ export function HomeChat({
         ref={scrollRef}
         className="chat-scroll min-h-0 flex-1 overflow-y-auto pr-5 pb-3 space-y-3.5 flex flex-col"
       >
-        {messages.map((m, mi) =>
-            m.role === "user" ? (
+        {messages.map((m, mi) => {
+            const isActiveUserMatch = searchMatches[searchCurrentIndex]?.messageId === m.id;
+            return m.role === "user" ? (
               <div
                 key={m.id}
+                id={`chat-message-${m.id}`}
                 ref={(el) => {
                   turnAnchors.current[m.id] = el;
                 }}
-                className="flex flex-col items-end max-w-[80%] ml-auto"
+                className={`flex flex-col items-end max-w-[80%] ml-auto transition-all ${isActiveUserMatch ? "ring-2 ring-amber-400 rounded-2xl p-0.5" : ""}`}
               >
                 <div className="flex items-start space-x-3">
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
                       remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
                   <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
-                    <MarkdownText text={m.text} tone="onPrimary" />
+                    <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
                   </div>
                   <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
                     <Icon name="brand" className="w-4 h-4" />
@@ -1634,7 +1681,11 @@ export function HomeChat({
                 </div>
               </div>
             ) : (
-              <div key={m.id} className="flex items-start space-x-3 max-w-[80%]">
+              <div
+                key={m.id}
+                id={`chat-message-${m.id}`}
+                className={`flex items-start space-x-3 max-w-[80%] transition-all ${searchMatches[searchCurrentIndex]?.messageId === m.id ? "ring-2 ring-amber-400 rounded-2xl p-1 bg-amber-50/20" : ""}`}
+              >
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
                   <Icon name="bot" className="w-[15px] h-[15px]" />
                 </div>
@@ -1749,6 +1800,7 @@ export function HomeChat({
                         text={m.text}
                         live={!!m.taskId && !(TERMINAL_STATES as string[]).includes(String(m.state ?? ""))}
                         streamed={!!m.taskId && streamedTasksRef.current.has(m.taskId)}
+                        highlightQuery={searchQuery}
                       />
                   </div>
                   ) : m.notice ? (
@@ -1839,8 +1891,8 @@ export function HomeChat({
                   ) : null}
                 </div>
               </div>
-          ),
-        )}
+          );
+        })}
       </div>
         <TurnRail
           items={turns.map(({ m, answer }) => ({ id: m.id, prompt: m.text, response: answer }))}

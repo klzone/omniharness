@@ -798,6 +798,11 @@ export type PrivacyMode = "mask" | "reject" | "off";
 /** 场景默认思考档；default 表示不写该参数（跟随模型）。 */
 export type ThinkingLevel = "default" | "off" | "low" | "medium" | "high" | "max";
 
+export interface SceneSkillBinding {
+  skills: string[];
+  max_injected?: number;
+}
+
 export interface ProfileSceneRules {
   /** 与 Rust `SceneRules` 对齐：多行文本，不是数组。 */
   rules: string;
@@ -816,6 +821,7 @@ export interface ProfileRules {
     privacy_keywords: { id_card: string[]; phone: string[] };
   };
   scenes: Record<string, ProfileSceneRules>;
+  skill_bindings?: Record<string, SceneSkillBinding>;
 }
 
 /**
@@ -833,6 +839,7 @@ export interface ProfileRulesView {
   rules: ProfileRules | null;
   error: string | null;
   default_available: boolean;
+  skill_contents?: Record<string, string>;
 }
 
 export interface ProfileRulesSaveReceipt {
@@ -1039,6 +1046,8 @@ export interface ProfileChoiceView {
   standard: string;
   /** 用户上次保存的选择；null = 标准模式。 */
   saved: string | null;
+  /** 保存值是否在白名单之外（OD-ARCH-082 S6：不在白名单时本次回落默认）。 */
+  saved_out_of_whitelist?: boolean;
   /** 本次启动实际生效的 Profile。 */
   effective: string;
   options: ProfileChoiceOption[];

@@ -177,10 +177,10 @@ setsid bash -c '
   export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
   # OD-ARCH-048：默认 web-api 通道；`OMNIDESK_ENGINE_CHANNEL=acp` 一键回退。
   export OMNIDESK_ENGINE_CHANNEL="${OMNIDESK_ENGINE_CHANNEL:-web-api}"
-  if [ "$OMNIDESK_ENGINE_CHANNEL" = "acp" ]; then
-    export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-acp}"
-  else
-    export OMNIDESK_DSH_PROFILE="${OMNIDESK_DSH_PROFILE:-web}"
+  # OD-ARCH-082 S6：不再无条件注入 OMNIDESK_DSH_PROFILE 默认值，交由宿主根据 settings 与白名单解析；
+  # 若外部显式设置了环境变量，则保留生效。
+  if [ -n "${OMNIDESK_DSH_PROFILE:-}" ]; then
+    export OMNIDESK_DSH_PROFILE
   fi
   cd "$1"
   exec "$2"

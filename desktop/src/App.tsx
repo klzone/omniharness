@@ -38,6 +38,11 @@ export default function App() {
   // 已有配置（包括用户手写的覆盖文件）一律不打扰；读取失败也不猜。
   const [firstRun, setFirstRun] = useState(false);
 
+  // 当前会话内检索状态（OD-ARCH-082 S8）
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchCurrentIndex, setSearchCurrentIndex] = useState(0);
+  const [searchMatchCount, setSearchMatchCount] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     shell
@@ -186,6 +191,28 @@ export default function App() {
         engineHealthy={engineHealthy}
         engineLabel={engineLabel}
         onOpenSettings={() => setScene("settings")}
+        searchQuery={searchQuery}
+        onSearchQueryChange={(q: string) => {
+          setSearchQuery(q);
+          setSearchCurrentIndex(0);
+        }}
+        searchMatchCount={searchMatchCount}
+        searchCurrentIndex={searchCurrentIndex}
+        onSearchPrev={() => {
+          if (searchMatchCount > 0) {
+            setSearchCurrentIndex((prev) => (prev - 1 + searchMatchCount) % searchMatchCount);
+          }
+        }}
+        onSearchNext={() => {
+          if (searchMatchCount > 0) {
+            setSearchCurrentIndex((prev) => (prev + 1) % searchMatchCount);
+          }
+        }}
+        onSearchClear={() => {
+          setSearchQuery("");
+          setSearchCurrentIndex(0);
+          setSearchMatchCount(0);
+        }}
       />
 
       {/* frameless 窗口的边缘缩放热区（最大化时自动隐藏） */}
@@ -243,7 +270,13 @@ export default function App() {
             <p className="text-[11.5px] text-outline">正在从本机数据目录恢复对话记录…</p>
           </div>
         ) : scene === "home" ? (
-          <HomeCanvas onNavigate={selectScene} declaredScenes={decl?.decl.scenes ?? null} />
+          <HomeCanvas
+            onNavigate={selectScene}
+            declaredScenes={decl?.decl.scenes ?? null}
+            searchQuery={searchQuery}
+            searchCurrentIndex={searchCurrentIndex}
+            onSearchMatchesChange={setSearchMatchCount}
+          />
         ) : scene === "report" || scene === "writing" || scene === "project" ? (
           <ScenePage
             scene={scene === "report" ? "weekly" : scene === "writing" ? "writing" : "project"}

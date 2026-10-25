@@ -188,6 +188,11 @@
   border-radius: 9999px;
 }
 
+/* 对话轮次索引条悬停预览卡（OD-ARCH-083）：四角直角，与既有卡片同源。 */
+.turn-rail-tooltip {
+  border-radius: 0 !important;
+}
+
 /* 对话轮次索引条（OD-ARCH-079）：条内自己滚动，不显示滚动条，两端可滚动时渐隐。 */
 .turn-rail-scroller {
   scrollbar-width: none;

@@ -1674,6 +1674,16 @@ export default function SettingsPanel() {
                   : "—"}
               </span>
             </div>
+            <div className="status-row">
+              <span className="k">Skill 绑定</span>
+              <span className="v">
+                {rules.rules?.skill_bindings && Object.keys(rules.rules.skill_bindings).length > 0
+                  ? Object.entries(rules.rules.skill_bindings)
+                      .map(([key, b]) => key + "（" + (b.skills.join(", ") || "无") + "）")
+                      .join(" / ")
+                  : "—"}
+              </span>
+            </div>
           </div>
         ) : null}
         <div className="field">
