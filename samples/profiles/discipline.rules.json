@@ -1,5 +1,5 @@
 {
-  "schema": "omnidesk.profile-rules.v1",
+  "schema": "omnidesk.profile-rules.v2",
   "profile": "discipline",
   "global": {
     "writing_rules": [
@@ -32,8 +32,12 @@
       "phone": "mask"
     },
     "privacy_keywords": {
-      "id_card": ["身份证"],
-      "phone": ["电话号码"]
+      "id_card": [
+        "身份证"
+      ],
+      "phone": [
+        "电话号码"
+      ]
     }
   },
   "scenes": {
@@ -51,6 +55,28 @@
       "rules": "把事项清单整理成项目跟进汇总：说明整体状态、逐项进展、逾期与阻塞、下一步动作；负责人只写用户给出的代号；日期与逾期判定以代码计算为准，不得改写或补造。",
       "sections": "整体状态\n事项明细\n逾期与阻塞\n下步安排\n待确认事项",
       "thinking": "off"
+    }
+  },
+  "skill_bindings": {
+    "weekly": {
+      "skills": [
+        "memory-agent"
+      ],
+      "max_injected": 1
+    },
+    "writing": {
+      "skills": [
+        "material-writing",
+        "knowledge-search",
+        "document-review"
+      ],
+      "max_injected": 3
+    },
+    "project": {
+      "skills": [
+        "project-agent"
+      ],
+      "max_injected": 1
     }
   }
 }

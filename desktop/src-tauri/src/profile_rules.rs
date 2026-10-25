@@ -19,8 +19,22 @@ use std::path::{Path, PathBuf};
 
 use crate::sha256::sha256_hex;
 
-/// 规则资产 schema 标识。版本不符一律拒绝。
-pub const PROFILE_RULES_SCHEMA: &str = "omnidesk.profile-rules.v1";
+/// 规则资产 schema 标识（OD-ARCH-068 v1，OD-ARCH-082 v2）。
+pub const PROFILE_RULES_SCHEMA_V1: &str = "omnidesk.profile-rules.v1";
+pub const PROFILE_RULES_SCHEMA_V2: &str = "omnidesk.profile-rules.v2";
+/// 当前默认/出厂 schema。
+pub const PROFILE_RULES_SCHEMA: &str = PROFILE_RULES_SCHEMA_V2;
+
+/// 允许绑定的六项 Skill 清单（OD-ARCH-082 S2）。
+pub const ALLOWED_SKILLS: &[&str] = &[
+    "material-writing",
+    "knowledge-search",
+    "knowledge-agent",
+    "document-review",
+    "memory-agent",
+    "project-agent",
+];
+pub const MAX_SKILL_BINDINGS_PER_SCENE: usize = 3;
 /// 规则资产文件名（位于应用数据根下的 profiles/ 下）。
 pub const PROFILE_RULES_FILE: &str = "discipline.rules.json";
 /// 仓库内出厂默认规则包。编译期嵌入，仅由用户显式「安装/恢复默认」时写出。
@@ -111,6 +125,20 @@ fn default_thinking() -> String {
     "low".to_string()
 }
 
+fn default_max_injected() -> usize {
+    3
+}
+
+/// 单个场景的 Skill 绑定声明（OD-ARCH-082 S2）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SceneSkillBinding {
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default = "default_max_injected")]
+    pub max_injected: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfileRules {
@@ -120,14 +148,16 @@ pub struct ProfileRules {
     pub global: GlobalRules,
     #[serde(default)]
     pub scenes: BTreeMap<String, SceneRules>,
+    #[serde(default)]
+    pub skill_bindings: BTreeMap<String, SceneSkillBinding>,
 }
 
 impl ProfileRules {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != PROFILE_RULES_SCHEMA {
+        if self.schema != PROFILE_RULES_SCHEMA_V1 && self.schema != PROFILE_RULES_SCHEMA_V2 {
             return Err(format!(
-                "schema 必须是 {}，实际是 {}",
-                PROFILE_RULES_SCHEMA, self.schema
+                "schema 必须是 {} 或 {}，实际是 {}",
+                PROFILE_RULES_SCHEMA_V1, PROFILE_RULES_SCHEMA_V2, self.schema
             ));
         }
         if self.profile.trim().is_empty() {
@@ -190,6 +220,29 @@ impl ProfileRules {
                 ));
             }
         }
+        if self.skill_bindings.len() > 12 {
+            return Err("skill_bindings 最多 12 个场景".to_string());
+        }
+        for (key, binding) in &self.skill_bindings {
+            if key.trim().is_empty() {
+                return Err("skill_bindings 场景键不能为空".to_string());
+            }
+            if binding.max_injected == 0 || binding.max_injected > MAX_SKILL_BINDINGS_PER_SCENE {
+                return Err(format!("场景 {key} 的 max_injected 必须在 1..={MAX_SKILL_BINDINGS_PER_SCENE} 之间"));
+            }
+            if binding.skills.len() > binding.max_injected {
+                return Err(format!("场景 {key} 绑定的技能数（{}）超过上限 {}", binding.skills.len(), binding.max_injected));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for s in &binding.skills {
+                if !ALLOWED_SKILLS.contains(&s.as_str()) {
+                    return Err(format!("场景 {key} 绑定的技能 {s:?} 不在六项合法清单内"));
+                }
+                if !seen.insert(s) {
+                    return Err(format!("场景 {key} 绑定的技能 {s:?} 重复"));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -213,6 +266,9 @@ pub struct RulesView {
     pub error: Option<String>,
     /// 出厂默认规则的摘要，供设置页提示「可安装默认规则包」。
     pub default_available: bool,
+    /// 已绑定 Skill 的正文缓存（OD-ARCH-082 S4 注入链路）。
+    #[serde(default)]
+    pub skill_contents: BTreeMap<String, String>,
 }
 
 pub fn rules_path(profiles_dir: &Path) -> PathBuf {
@@ -241,6 +297,7 @@ pub fn load_rules(profiles_dir: &Path) -> RulesView {
                 rules: None,
                 error: None,
                 default_available: true,
+            skill_contents: BTreeMap::new(),
             }
         }
         Err(e) => {
@@ -252,6 +309,7 @@ pub fn load_rules(profiles_dir: &Path) -> RulesView {
                 rules: None,
                 error: Some(format!("读取规则文件失败：{}", e)),
                 default_available: true,
+            skill_contents: BTreeMap::new(),
             }
         }
     };
@@ -264,6 +322,7 @@ pub fn load_rules(profiles_dir: &Path) -> RulesView {
             rules: None,
             error: Some(format!("规则文件过大（上限 {} KB）", MAX_FILE_BYTES / 1024)),
             default_available: true,
+            skill_contents: BTreeMap::new(),
         };
     }
     let text = String::from_utf8_lossy(&raw).to_string();
@@ -277,6 +336,7 @@ pub fn load_rules(profiles_dir: &Path) -> RulesView {
             rules: Some(rules),
             error: None,
             default_available: true,
+            skill_contents: BTreeMap::new(),
         },
         Err(error) => RulesView {
             loaded: false,
@@ -286,6 +346,7 @@ pub fn load_rules(profiles_dir: &Path) -> RulesView {
             rules: None,
             error: Some(error),
             default_available: true,
+            skill_contents: BTreeMap::new(),
         },
     }
 }
@@ -301,6 +362,7 @@ pub struct RulePolicy {
     phone_mode: PrivacyMode,
     pub writing_rules: Vec<String>,
     pub scenes: BTreeMap<String, SceneRules>,
+    pub skill_bindings: BTreeMap<String, SceneSkillBinding>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -335,6 +397,7 @@ impl RulePolicy {
             phone_mode: parse_mode(&rules.global.privacy.phone),
             writing_rules: rules.global.writing_rules.clone(),
             scenes: rules.scenes.clone(),
+            skill_bindings: rules.skill_bindings.clone(),
         }
     }
 
@@ -542,6 +605,15 @@ mod tests {
         let mut wrong = discipline();
         wrong.schema = "omnidesk.profile-rules.v0".to_string();
         assert!(wrong.validate().is_err());
+        let mut bad_skill = discipline();
+        bad_skill.skill_bindings.insert(
+            "weekly".to_string(),
+            SceneSkillBinding {
+                skills: vec!["unknown-skill".to_string()],
+                max_injected: 3,
+            },
+        );
+        assert!(bad_skill.validate().is_err());
         let mut bad_mode = discipline();
         bad_mode.global.privacy.phone = "ignore".to_string();
         assert!(bad_mode.validate().is_err());
@@ -573,5 +645,20 @@ mod tests {
         assert!(view.error.is_some());
         assert!(view.text.is_some());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn v1_rules_without_skill_bindings_parses_and_validates() {
+        let v1_json = r#"{
+            "schema": "omnidesk.profile-rules.v1",
+            "profile": "discipline",
+            "global": {},
+            "scenes": {}
+        }"#;
+        let parsed = parse_rules(v1_json).expect("v1 规则必须原样可解析");
+        assert_eq!(parsed.schema, PROFILE_RULES_SCHEMA_V1);
+        assert!(parsed.skill_bindings.is_empty());
+        let policy = RulePolicy::from_rules(&parsed);
+        assert!(policy.skill_bindings.is_empty());
     }
 }
