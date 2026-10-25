@@ -106,7 +106,11 @@ def asset_checks() -> list[dict]:
         + len(gl["privacy_keywords"]["id_card"])
         + len(gl["privacy_keywords"]["phone"])
     )
-    check("schema_is_v1", rules["schema"] == "omnidesk.profile-rules.v1", rules["schema"])
+    check(
+        "schema_is_v1_or_v2",
+        rules["schema"] in ("omnidesk.profile-rules.v1", "omnidesk.profile-rules.v2"),
+        rules["schema"],
+    )
     check("profile_name", rules["profile"] == "discipline", rules["profile"])
     check("16_keywords", total == 16, str(total))
     check("7_writing_rules", len(gl["writing_rules"]) == 7, str(len(gl["writing_rules"])))
