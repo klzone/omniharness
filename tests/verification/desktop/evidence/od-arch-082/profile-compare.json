@@ -1,0 +1,20 @@
+{
+  "verified_at": "2026-10-25 04:37:27",
+  "evidence_level": "script",
+  "dump_base_sha256": "c7e3533ad3248cc11ec81663716b7d11fd400c2d3375d292a44838f4a76bd055",
+  "dump_discipline_sha256": "bb5f74bef21e02df2d052d7f1d75702d000c5d3854b30d1f1543d9eea3dd7529",
+  "diff_line_count": 50,
+  "plugins_count_base": 31,
+  "plugins_count_discipline": 31,
+  "counts_match": true,
+  "skill_filesystem": {
+    "omnidesk_base_disabled": true,
+    "discipline_disabled": false,
+    "isolated_properly": true
+  },
+  "tool_skill": {
+    "omnidesk_base_disabled": true,
+    "discipline_disabled": false,
+    "isolated_properly": true
+  }
+}

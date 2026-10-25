@@ -1,0 +1,136 @@
+{
+  "profile": "discipline",
+  "verified_at": "2026-10-25 04:37:27",
+  "evidence_level": "script",
+  "command": "DSH_HOME=/home/kevin/OmniDesk/runtime/dsh-home node runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js --profile discipline --dump-config",
+  "exit_code": 0,
+  "dump_sha256": "bb5f74bef21e02df2d052d7f1d75702d000c5d3854b30d1f1543d9eea3dd7529",
+  "expected": "skill-filesystem/tool-skill = enabled (not disabled)",
+  "preset_standard_plugins_count": 31,
+  "preset_standard_plugins": [
+    {
+      "id": "persona",
+      "disabled": false
+    },
+    {
+      "id": "agent-instructions",
+      "disabled": false
+    },
+    {
+      "id": "time-context",
+      "disabled": false
+    },
+    {
+      "id": "tool-bash",
+      "disabled": false
+    },
+    {
+      "id": "tool-pwsh",
+      "disabled": false
+    },
+    {
+      "id": "tool-fs",
+      "disabled": false
+    },
+    {
+      "id": "tool-fs-search",
+      "disabled": false
+    },
+    {
+      "id": "tool-jobs",
+      "disabled": false
+    },
+    {
+      "id": "tool-schedule",
+      "disabled": false
+    },
+    {
+      "id": "skill-filesystem",
+      "disabled": false
+    },
+    {
+      "id": "tool-skill",
+      "disabled": false
+    },
+    {
+      "id": "command-goal",
+      "disabled": false
+    },
+    {
+      "id": "tool-goal",
+      "disabled": false
+    },
+    {
+      "id": "planning",
+      "disabled": false
+    },
+    {
+      "id": "plan-mode",
+      "disabled": false
+    },
+    {
+      "id": "compaction",
+      "disabled": false
+    },
+    {
+      "id": "compaction-basic",
+      "disabled": false
+    },
+    {
+      "id": "command-compact",
+      "disabled": false
+    },
+    {
+      "id": "tool-result-pruner",
+      "disabled": false
+    },
+    {
+      "id": "delegation",
+      "disabled": false
+    },
+    {
+      "id": "tool-subagent-control",
+      "disabled": false
+    },
+    {
+      "id": "tool-subagent-list-agents",
+      "disabled": false
+    },
+    {
+      "id": "tool-subagent",
+      "disabled": false
+    },
+    {
+      "id": "tool-subagent-fork",
+      "disabled": false
+    },
+    {
+      "id": "workflow-ptc",
+      "disabled": false
+    },
+    {
+      "id": "tool-workflow",
+      "disabled": false
+    },
+    {
+      "id": "tool-ask-user",
+      "disabled": false
+    },
+    {
+      "id": "tool-todo",
+      "disabled": false
+    },
+    {
+      "id": "tool-web",
+      "disabled": false
+    },
+    {
+      "id": "present",
+      "disabled": false
+    },
+    {
+      "id": "tool-plugin-manager",
+      "disabled": true
+    }
+  ]
+}

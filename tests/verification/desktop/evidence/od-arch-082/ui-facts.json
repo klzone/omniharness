@@ -1,0 +1,93 @@
+{
+  "verified_at": "2026-10-25 05:50:27",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI + 像素判定）",
+  "root": "/tmp/od082-completion-audit",
+  "checks": {
+    "test_thread_opened": {
+      "pass": true,
+      "measured": true,
+      "desc": "测试线程在主界面成功渲染"
+    },
+    "profile_popover_opened": {
+      "pass": true,
+      "measured": true,
+      "desc": "Profile 选择弹层成功展开"
+    },
+    "no_dsh_profile_prefix_in_popover": {
+      "pass": true,
+      "measured": true,
+      "desc": "弹层文本不含 dsh-profile-"
+    },
+    "effective_is_omnidesk_base": {
+      "pass": true,
+      "measured": true,
+      "desc": "本次启动实际生效显示为 omnidesk-base"
+    },
+    "confirm_box_friendly_title": {
+      "pass": true,
+      "measured": true,
+      "desc": "确认框包含「切换到「纪检专业」？」"
+    },
+    "no_dsh_profile_in_confirm_box": {
+      "pass": true,
+      "measured": true,
+      "desc": "确认框不含 dsh-profile-"
+    },
+    "settings_saved_discipline": {
+      "pass": true,
+      "measured": "discipline",
+      "desc": "配置已成功保存为 discipline"
+    },
+    "reopened_shows_discipline_scheduled": {
+      "pass": true,
+      "measured": true,
+      "desc": "弹层显示下次启动生效为纪检专业"
+    },
+    "turnrail_hover_card_appears": {
+      "pass": true,
+      "measured": 12549,
+      "desc": "TurnRail 悬停卡片成功浮现"
+    },
+    "turnrail_card_focus_shot": {
+      "pass": true,
+      "measured": true,
+      "desc": "完成键盘聚焦截图"
+    },
+    "search_count_1_of_2": {
+      "pass": true,
+      "measured": true,
+      "desc": "初次命中计数显示为 1/2"
+    },
+    "search_highlight_mark_pixels": {
+      "pass": true,
+      "measured": 3265,
+      "desc": "对话区命中词出现琥珀高亮背景"
+    },
+    "search_count_2_of_2_after_enter": {
+      "pass": true,
+      "measured": true,
+      "desc": "回车后跳转至第 2 项，计数显示为 2/2"
+    },
+    "search_jump_scroll_delta": {
+      "pass": true,
+      "measured": 33396,
+      "desc": "回车前后对话区发生跳转定位变化"
+    },
+    "search_count_0_of_0": {
+      "pass": true,
+      "measured": true,
+      "desc": "无匹配内容时计数显示为 0/0"
+    },
+    "search_cleared_on_esc": {
+      "pass": true,
+      "measured": true,
+      "desc": "按 Esc 退出后搜索计数条已隐藏"
+    },
+    "no_highlight_after_esc": {
+      "pass": true,
+      "measured": 0,
+      "desc": "按 Esc 退出后高亮完全消除"
+    }
+  },
+  "failures": []
+}
