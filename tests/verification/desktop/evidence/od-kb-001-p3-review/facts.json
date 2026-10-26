@@ -1,0 +1,430 @@
+{
+  "plan": "OD-KB-001 P3",
+  "verified_at": "2026-10-27 00:10:42",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 单元/宿主测试实测",
+  "root": "/tmp/odkb-p3-review",
+  "synthetic_vault": "/tmp/odkb-p3-review/synth-vault",
+  "app_build": {
+    "built": true,
+    "exit_code": 0,
+    "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.43s",
+    "binary_mtime": 1793027607.42443
+  },
+  "host_tests": {
+    "results": [
+      {
+        "command": "cargo test --offline --lib vault_link",
+        "exit_code": 0,
+        "passed": 12,
+        "failed": 0
+      },
+      {
+        "command": "cargo test --offline --lib vault_index",
+        "exit_code": 0,
+        "passed": 17,
+        "failed": 0
+      },
+      {
+        "command": "cargo test --offline --test knowledge_vault_index_host",
+        "exit_code": 0,
+        "passed": 5,
+        "failed": 0
+      }
+    ],
+    "all_ok": true,
+    "log": "tests/verification/desktop/evidence/od-kb-001-p3-review/host-test.log"
+  },
+  "environment": {
+    "platform": "Linux",
+    "machine": "x86_64",
+    "python": "3.14.4"
+  },
+  "checks": {
+    "app_binary_built": {
+      "pass": true,
+      "measured": {
+        "built": true,
+        "exit_code": 0,
+        "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.43s",
+        "binary_mtime": 1793027607.42443
+      },
+      "threshold": {
+        "built": true,
+        "binary_mtime": "present"
+      },
+      "desc": "按当前工作区源码构建 debug 二进制，窗口运行的是本次代码"
+    },
+    "host_tests_pass": {
+      "pass": true,
+      "measured": {
+        "results": [
+          {
+            "command": "cargo test --offline --lib vault_link",
+            "exit_code": 0,
+            "passed": 12,
+            "failed": 0
+          },
+          {
+            "command": "cargo test --offline --lib vault_index",
+            "exit_code": 0,
+            "passed": 17,
+            "failed": 0
+          },
+          {
+            "command": "cargo test --offline --test knowledge_vault_index_host",
+            "exit_code": 0,
+            "passed": 5,
+            "failed": 0
+          }
+        ]
+      },
+      "threshold": {
+        "all_exit_code": 0,
+        "all_failed": 0
+      },
+      "desc": "P3 解析、索引、宿主集成测试"
+    },
+    "parser_tests_pass": {
+      "pass": true,
+      "measured": {
+        "command": "cargo test --offline --lib vault_link",
+        "exit_code": 0,
+        "passed": 12,
+        "failed": 0
+      },
+      "threshold": {
+        "passed": ">=12"
+      },
+      "desc": "解析器含不支持语法用例"
+    },
+    "index_tests_pass": {
+      "pass": true,
+      "measured": {
+        "command": "cargo test --offline --lib vault_index",
+        "exit_code": 0,
+        "passed": 17,
+        "failed": 0
+      },
+      "threshold": {
+        "passed": ">=17"
+      },
+      "desc": "索引含预算/重建/原文保真用例"
+    },
+    "host_index_tests_pass": {
+      "pass": true,
+      "measured": {
+        "command": "cargo test --offline --test knowledge_vault_index_host",
+        "exit_code": 0,
+        "passed": 5,
+        "failed": 0
+      },
+      "threshold": {
+        "passed": ">=5"
+      },
+      "desc": "宿主关系查询与零写入"
+    },
+    "no_relations_before_build": {
+      "pass": true,
+      "measured": {
+        "placeholder": true,
+        "stats": null,
+        "outgoing": []
+      },
+      "threshold": {
+        "placeholder": true,
+        "stats": null,
+        "outgoing": []
+      },
+      "desc": "未构建前不展示任何关系事实"
+    },
+    "initial_index_stats": {
+      "pass": true,
+      "measured": {
+        "stats": "关系索引：7 篇笔记；10 条已解析；1 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 1
+      },
+      "threshold": {
+        "stats": "关系索引：7 篇笔记；10 条已解析；1 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 1
+      },
+      "desc": "7 篇笔记 / 10 resolved / 1 unresolved / 1 ambiguous / 2 孤立 / 完整"
+    },
+    "unsupported_issue_visible": {
+      "pass": true,
+      "measured": {
+        "issue": "索引问题：共 4 条，.obsidian：扫描跳过该条目（hidden）；.trash：扫描跳过该条目（hidden）；node_modules：扫描跳过该条目（excluded）；Home.md：第 18 行：引用式链接 `[文字][标签]` 暂不支持；原文保持不变"
+      },
+      "threshold": {
+        "path": "Home.md",
+        "line": 18,
+        "kind": "引用式链接"
+      },
+      "desc": "Home 第 18 行不支持语法显式可见，未被静默忽略"
+    },
+    "outgoing_statuses": {
+      "pass": true,
+      "measured": {
+        "labels": [
+          "外部链接：web · https://example.com/x；第 17 行",
+          "已解析：Launch；第 12 行",
+          "已解析：notes/Alpha；第 10 行",
+          "已解析：notes/Alpha；第 15 行",
+          "已解析：notes/Alpha；第 8 行",
+          "已解析：notes/Alpha；第 9 行",
+          "已解析：shown-name · Beta；第 11 行",
+          "未解析：MissingNote；第 14 行",
+          "歧义：Duplicated；第 13 行",
+          "附件：assets/diagram.png；第 16 行"
+        ],
+        "missing": [],
+        "extra": []
+      },
+      "threshold": {
+        "exact_set": [
+          "外部链接：web · https://example.com/x；第 17 行",
+          "已解析：Launch；第 12 行",
+          "已解析：notes/Alpha；第 10 行",
+          "已解析：notes/Alpha；第 15 行",
+          "已解析：notes/Alpha；第 8 行",
+          "已解析：notes/Alpha；第 9 行",
+          "已解析：shown-name · Beta；第 11 行",
+          "未解析：MissingNote；第 14 行",
+          "歧义：Duplicated；第 13 行",
+          "附件：assets/diagram.png；第 16 行"
+        ]
+      },
+      "desc": "10 条正链状态与行号逐项匹配"
+    },
+    "missing_anchor_marked": {
+      "pass": true,
+      "measured": {
+        "visible": [
+          "锚点回退：第 15 行的标题锚点不存在，已回退到目标笔记顶部"
+        ]
+      },
+      "threshold": {
+        "contains": "标题锚点不存在"
+      },
+      "desc": "失效锚点在关系面板显式说明"
+    },
+    "orphans_match_index": {
+      "pass": true,
+      "measured": {
+        "orphans": [
+          "孤立笔记：Duplicated.md",
+          "孤立笔记：notes/Duplicated.md"
+        ]
+      },
+      "threshold": {
+        "exact_set": [
+          "孤立笔记：Duplicated.md",
+          "孤立笔记：notes/Duplicated.md"
+        ]
+      },
+      "desc": "孤立清单与索引一致，被 Starter 引用的 Orphan 不在其中"
+    },
+    "title_anchor_jumps_to_line": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 3 行。"
+      },
+      "threshold": {
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 3 行。"
+      },
+      "desc": "标题锚点跳到目标笔记第 3 行"
+    },
+    "alpha_backlinks_listed": {
+      "pass": true,
+      "measured": {
+        "backlinks": [
+          "来自 Beta.md 第 1 行：[[notes/Alpha#Details]]",
+          "来自 Home.md 第 10 行：[[notes/Alpha#^blk-7]]",
+          "来自 Home.md 第 15 行：[[notes/Alpha#NoSuchHeading]]",
+          "来自 Home.md 第 8 行：[[notes/Alpha]]",
+          "来自 Home.md 第 9 行：[[notes/Alpha#Details]]"
+        ]
+      },
+      "threshold": {
+        "count": 5,
+        "from_home": 4,
+        "from_beta": true
+      },
+      "desc": "Alpha 的 5 条反链来自 Home 4 条与 Beta 1 条"
+    },
+    "block_anchor_jumps_to_line": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 7 行。"
+      },
+      "threshold": {
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 7 行。"
+      },
+      "desc": "块锚点 ^blk-7 跳到第 7 行"
+    },
+    "missing_anchor_falls_back_to_note_top": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "notes/Alpha.md",
+        "notice": "已打开目标笔记顶部，但链接里的标题或块锚点不存在。"
+      },
+      "threshold": {
+        "note": "notes/Alpha.md",
+        "notice": "顶部回退提示"
+      },
+      "desc": "失效锚点只回退到目标笔记顶部，不打开错误笔记"
+    },
+    "backlink_jumps_to_source_line": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 9 行。",
+        "backlinks": [
+          "来自 Beta.md 第 1 行：[[notes/Alpha#Details]]",
+          "来自 Home.md 第 10 行：[[notes/Alpha#^blk-7]]",
+          "来自 Home.md 第 15 行：[[notes/Alpha#NoSuchHeading]]",
+          "来自 Home.md 第 8 行：[[notes/Alpha]]",
+          "来自 Home.md 第 9 行：[[notes/Alpha#Details]]"
+        ]
+      },
+      "threshold": {
+        "note": "notes/Alpha.md",
+        "notice": "已定位到第 9 行。"
+      },
+      "desc": "反向链接跳到来源笔记 Alpha 的引用行，而不是目标 Home"
+    },
+    "alias_resolves_to_note": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "Starter.md"
+      },
+      "threshold": {
+        "note": "Starter.md"
+      },
+      "desc": "别名 Launch 解析到 Starter.md"
+    },
+    "ambiguous_does_not_jump": {
+      "pass": true,
+      "measured": {
+        "note": "Home.md"
+      },
+      "threshold": {
+        "note": "Home.md"
+      },
+      "desc": "歧义条目不生成错误跳转"
+    },
+    "unresolved_does_not_jump": {
+      "pass": true,
+      "measured": {
+        "note": "Home.md"
+      },
+      "threshold": {
+        "note": "Home.md"
+      },
+      "desc": "未解析条目不生成错误跳转"
+    },
+    "scan_refresh_lists_new_note_without_reindex": {
+      "pass": true,
+      "measured": {
+        "extra_listed": true,
+        "stats": "关系索引：7 篇笔记；10 条已解析；1 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 1
+      },
+      "threshold": {
+        "extra_listed": true,
+        "stats": "关系索引：7 篇笔记；10 条已解析；1 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 1
+      },
+      "desc": "刷新扫描看到 Extra，但关系索引仍保持旧 generation"
+    },
+    "rebuild_updates_stats_and_generation": {
+      "pass": true,
+      "measured": {
+        "stats": "关系索引：8 篇笔记；13 条已解析；0 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 2
+      },
+      "threshold": {
+        "stats": "关系索引：8 篇笔记；13 条已解析；0 条未解析；1 条歧义；2 篇孤立；完整",
+        "generation": 2
+      },
+      "desc": "外部增删改后重建：8 篇 / 13 resolved / 0 unresolved / 2 孤立 / 完整"
+    },
+    "rebuild_updates_relations": {
+      "pass": true,
+      "measured": {
+        "labels": [
+          "外部链接：web · https://example.com/x；第 17 行",
+          "已解析：Launch；第 12 行",
+          "已解析：Orphan；第 14 行",
+          "已解析：notes/Alpha；第 10 行",
+          "已解析：notes/Alpha；第 15 行",
+          "已解析：notes/Alpha；第 8 行",
+          "已解析：notes/Alpha；第 9 行",
+          "已解析：shown-name · Beta；第 11 行",
+          "歧义：Duplicated；第 13 行",
+          "附件：assets/diagram.png；第 16 行"
+        ]
+      },
+      "threshold": {
+        "has": "已解析：Orphan；第 14 行",
+        "count": 10
+      },
+      "desc": "Home 第 14 行从未解析变为已解析 Orphan"
+    },
+    "untouched_entries_intact": {
+      "pass": true,
+      "measured": {
+        "changed": []
+      },
+      "threshold": [],
+      "desc": "未编辑笔记、附件、Obsidian 配置、回收站与排除目录字节不变"
+    },
+    "only_expected_files_written": {
+      "pass": true,
+      "measured": {
+        "changed": [
+          "Home.md",
+          "Orphan.md",
+          "Starter.md"
+        ],
+        "added": [
+          "notes/Extra.md"
+        ],
+        "removed": []
+      },
+      "threshold": {
+        "changed": [
+          "Home.md",
+          "Orphan.md",
+          "Starter.md"
+        ],
+        "added": [
+          "notes/Extra.md"
+        ]
+      },
+      "desc": "脚本自身只改/增明确列出的合成文件，应用没有写入知识库"
+    }
+  },
+  "failures": [],
+  "screenshots": [
+    "00-before-index.png",
+    "01-index-built.png",
+    "02-home-relations.png",
+    "03-title-anchor.png",
+    "04-block-anchor.png",
+    "05-missing-anchor-fallback.png",
+    "06-backlink-jump.png",
+    "07-alias-target.png",
+    "08-ambiguous-no-jump.png",
+    "09-rescanned-before-rebuild.png",
+    "10-rebuilt.png"
+  ]
+}

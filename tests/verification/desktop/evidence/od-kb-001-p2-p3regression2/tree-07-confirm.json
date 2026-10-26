@@ -1,0 +1,206 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": "",
+    "box": null
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": 149,
+      "w": 864,
+      "h": 38
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 360,
+      "w": 264,
+      "h": 162
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 429,
+      "y": 397,
+      "w": 634,
+      "h": 352
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1085,
+      "w": 284,
+      "h": 36
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1144,
+      "w": 284,
+      "h": 37
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1204,
+      "w": 139,
+      "h": 36
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1248,
+      "y": 1204,
+      "w": 139,
+      "h": 36
+    }
+  },
+  {
+    "role": "alert",
+    "name": "放弃未保存的修改？",
+    "text": "",
+    "box": {
+      "x": 496,
+      "y": 385,
+      "w": 448,
+      "h": 130
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 516,
+      "y": 401,
+      "w": 408,
+      "h": 23
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 516,
+      "y": 431,
+      "w": 408,
+      "h": 20
+    }
+  },
+  {
+    "role": "button",
+    "name": "取消",
+    "text": "",
+    "box": {
+      "x": 794,
+      "y": 466,
+      "w": 50,
+      "h": 33
+    }
+  },
+  {
+    "role": "button",
+    "name": "确认放弃",
+    "text": "",
+    "box": {
+      "x": 852,
+      "y": 467,
+      "w": 72,
+      "h": 31
+    }
+  }
+]

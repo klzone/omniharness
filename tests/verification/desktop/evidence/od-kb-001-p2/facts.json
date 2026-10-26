@@ -1,12 +1,12 @@
 {
   "plan": "OD-KB-001 P2",
-  "verified_at": "2026-10-26 18:44:41",
+  "verified_at": "2026-10-26 23:02:18",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 宿主测试实测",
-  "root": "/tmp/odkb-p2-ui-20261026a",
-  "synthetic_vault": "/tmp/odkb-p2-ui-20261026a/synth-vault",
+  "root": "/tmp/odkb-p2-ui",
+  "synthetic_vault": "/tmp/odkb-p2-ui/synth-vault",
   "host_tests": {
     "write_exit_code": 0,
-    "write_passed": 7,
+    "write_passed": 10,
     "search_exit_code": 0,
     "search_metric": {
       "notes": 1200,
@@ -16,11 +16,11 @@
       "budget_exhausted": false,
       "hits": 16,
       "runs_ms": [
-        3617.867,
-        3568.113,
-        3660.429
+        3628.073,
+        3631.344,
+        3600.086
       ],
-      "median_ms": 3617.867,
+      "median_ms": 3628.073,
       "platform": "linux x86_64",
       "profile": "debug"
     },
@@ -36,7 +36,7 @@
       "pass": true,
       "measured": {
         "exit_code": 0,
-        "passed": 7
+        "passed": 10
       },
       "threshold": {
         "exit_code": 0,
@@ -54,11 +54,11 @@
         "budget_exhausted": false,
         "hits": 16,
         "runs_ms": [
-          3617.867,
-          3568.113,
-          3660.429
+          3628.073,
+          3631.344,
+          3600.086
         ],
-        "median_ms": 3617.867,
+        "median_ms": 3628.073,
         "platform": "linux x86_64",
         "profile": "debug"
       },
@@ -308,7 +308,7 @@
     "attachment_opened_on_click": {
       "pass": true,
       "measured": {
-        "marker": "/tmp/odkb-p2-ui-20261026a/synth-vault/assets/diagram.png",
+        "marker": "/tmp/odkb-p2-ui/synth-vault/assets/diagram.png",
         "attachment_listed": false
       },
       "threshold": {

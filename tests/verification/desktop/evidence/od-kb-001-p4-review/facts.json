@@ -1,0 +1,750 @@
+{
+  "plan": "OD-KB-001 P4",
+  "verified_at": "2026-10-27 00:16:05",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 纯函数单测 + 合成基准实测",
+  "root": "/tmp/odkb-p4-review",
+  "synthetic_vault": "/tmp/odkb-p4-review/synth-vault",
+  "large_vault": "/tmp/odkb-p4-review/large-vault",
+  "large_notes": 2000,
+  "app_build": {
+    "built": true,
+    "exit_code": 0,
+    "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.51s",
+    "binary_mtime": 1793027607.42443
+  },
+  "host_tests": {
+    "results": [
+      {
+        "command": "cargo test --offline --lib vault_link",
+        "exit_code": 0,
+        "passed": 12,
+        "failed": 0
+      },
+      {
+        "command": "cargo test --offline --lib vault_index",
+        "exit_code": 0,
+        "passed": 17,
+        "failed": 0
+      },
+      {
+        "command": "cargo test --offline --test knowledge_vault_index_host",
+        "exit_code": 0,
+        "passed": 5,
+        "failed": 0
+      }
+    ],
+    "all_ok": true,
+    "log": "tests/verification/desktop/evidence/od-kb-001-p4-review/host-test.log"
+  },
+  "unit_tests": {
+    "results": [
+      {
+        "command": "node --experimental-strip-types --test knowledgeGraph.test.mjs",
+        "exit_code": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0
+      },
+      {
+        "command": "node --experimental-strip-types --test knowledgeGraphLayout.test.mjs",
+        "exit_code": 0,
+        "tests": 16,
+        "passed": 16,
+        "failed": 0
+      }
+    ],
+    "all_ok": true
+  },
+  "benchmark": {
+    "exit_code": 0,
+    "cases": [
+      {
+        "case": "200notes",
+        "notes": 200,
+        "edges": 500,
+        "convertMs": 1.2,
+        "filterMs": 0.3,
+        "layoutMs": 48.2,
+        "firstViewMs": 49.6,
+        "relayoutMs": 47.5,
+        "localViewMs": 0.8,
+        "localNodes": 4,
+        "iterations": 220,
+        "placed": 200,
+        "simplified": false,
+        "folded": 0,
+        "stable": true,
+        "graphStats": {
+          "notes": 200,
+          "placeholders": 0,
+          "resolvedEdges": 500,
+          "placeholderEdges": 0,
+          "orphans": 0,
+          "unresolved": 0,
+          "ambiguous": 0,
+          "danglingResolved": 0,
+          "danglingSource": 0
+        },
+        "edgeCount": 500
+      },
+      {
+        "case": "1000notes",
+        "notes": 1000,
+        "edges": 2500,
+        "convertMs": 4.4,
+        "filterMs": 1.4,
+        "layoutMs": 84.4,
+        "firstViewMs": 90.1,
+        "relayoutMs": 78.8,
+        "localViewMs": 1.7,
+        "localNodes": 5,
+        "iterations": 90,
+        "placed": 600,
+        "simplified": true,
+        "folded": 400,
+        "stable": true,
+        "graphStats": {
+          "notes": 1000,
+          "placeholders": 0,
+          "resolvedEdges": 2500,
+          "placeholderEdges": 0,
+          "orphans": 0,
+          "unresolved": 0,
+          "ambiguous": 0,
+          "danglingResolved": 0,
+          "danglingSource": 0
+        },
+        "edgeCount": 2500
+      },
+      {
+        "case": "2000notes",
+        "notes": 2000,
+        "edges": 5000,
+        "convertMs": 10.6,
+        "filterMs": 2.1,
+        "layoutMs": 67.7,
+        "firstViewMs": 80.4,
+        "relayoutMs": 83.5,
+        "localViewMs": 2.9,
+        "localNodes": 5,
+        "iterations": 90,
+        "placed": 600,
+        "simplified": true,
+        "folded": 1400,
+        "stable": true,
+        "graphStats": {
+          "notes": 2000,
+          "placeholders": 0,
+          "resolvedEdges": 5000,
+          "placeholderEdges": 0,
+          "orphans": 0,
+          "unresolved": 0,
+          "ambiguous": 0,
+          "danglingResolved": 0,
+          "danglingSource": 0
+        },
+        "edgeCount": 5000
+      }
+    ]
+  },
+  "thresholds": {
+    "first_view_ms": 400.0,
+    "filter_ms": 120.0,
+    "local_ms": 150.0
+  },
+  "environment": {
+    "platform": "Linux",
+    "machine": "x86_64",
+    "python": "3.14.4"
+  },
+  "checks": {
+    "app_binary_built": {
+      "pass": true,
+      "measured": {
+        "built": true,
+        "exit_code": 0,
+        "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.51s",
+        "binary_mtime": 1793027607.42443
+      },
+      "threshold": {
+        "built": true,
+        "binary_mtime": "present"
+      },
+      "desc": "按当前工作区源码构建 debug 二进制，窗口运行的是本次代码"
+    },
+    "host_tests_pass": {
+      "pass": true,
+      "measured": {
+        "results": [
+          {
+            "command": "cargo test --offline --lib vault_link",
+            "exit_code": 0,
+            "passed": 12,
+            "failed": 0
+          },
+          {
+            "command": "cargo test --offline --lib vault_index",
+            "exit_code": 0,
+            "passed": 17,
+            "failed": 0
+          },
+          {
+            "command": "cargo test --offline --test knowledge_vault_index_host",
+            "exit_code": 0,
+            "passed": 5,
+            "failed": 0
+          }
+        ]
+      },
+      "threshold": {
+        "all_exit_code": 0,
+        "all_failed": 0
+      },
+      "desc": "P3 解析/索引/宿主测试作为 P4 回归"
+    },
+    "unit_tests_pass": {
+      "pass": true,
+      "measured": {
+        "results": [
+          {
+            "command": "node --experimental-strip-types --test knowledgeGraph.test.mjs",
+            "exit_code": 0,
+            "tests": 26,
+            "passed": 26,
+            "failed": 0
+          },
+          {
+            "command": "node --experimental-strip-types --test knowledgeGraphLayout.test.mjs",
+            "exit_code": 0,
+            "tests": 16,
+            "passed": 16,
+            "failed": 0
+          }
+        ]
+      },
+      "threshold": {
+        "all_failed": 0,
+        "passed": ">0"
+      },
+      "desc": "P4 图数据转换与布局纯函数单测"
+    },
+    "benchmark_cases_present": {
+      "pass": true,
+      "measured": {
+        "cases": [
+          "1000notes",
+          "2000notes",
+          "200notes"
+        ]
+      },
+      "threshold": {
+        "count": ">=3"
+      },
+      "desc": "200/1000/2000 三档合成规模都完成实测"
+    },
+    "large_first_view_within_budget": {
+      "pass": true,
+      "measured": 80.4,
+      "threshold": {
+        "max_ms": 400.0
+      },
+      "desc": "2000 篇规模：转换 + 筛选 + 首次布局总耗时"
+    },
+    "large_layout_simplified": {
+      "pass": true,
+      "measured": {
+        "simplified": true,
+        "folded": 1400
+      },
+      "threshold": {
+        "simplified": true,
+        "folded": ">0"
+      },
+      "desc": "超过 600 节点阈值时降级为简化布局，界面可据此提示"
+    },
+    "layout_is_deterministic": {
+      "pass": true,
+      "measured": {
+        "stable": true
+      },
+      "threshold": {
+        "stable": true
+      },
+      "desc": "同输入重排坐标完全一致（无随机数）"
+    },
+    "graph_stats_match_index": {
+      "pass": true,
+      "measured": {
+        "notes": 2000,
+        "placeholders": 0,
+        "resolvedEdges": 5000,
+        "placeholderEdges": 0,
+        "orphans": 0,
+        "unresolved": 0,
+        "ambiguous": 0,
+        "danglingResolved": 0,
+        "danglingSource": 0
+      },
+      "threshold": {
+        "notes": 2000,
+        "resolved": 5000,
+        "dangling": 0
+      },
+      "desc": "转换后的节点/边数与索引统计一致"
+    },
+    "small_first_view_within_budget": {
+      "pass": true,
+      "measured": 49.6,
+      "threshold": {
+        "max_ms": 400.0
+      },
+      "desc": "200 篇规模首次视图耗时"
+    },
+    "small_layout_not_simplified": {
+      "pass": true,
+      "measured": {
+        "simplified": false,
+        "placed": 200
+      },
+      "threshold": {
+        "simplified": false,
+        "placed": 200
+      },
+      "desc": "阈值内不降级，全部节点参与布局"
+    },
+    "graph_guides_without_index": {
+      "pass": true,
+      "measured": {
+        "graph_view": true,
+        "nodes": 0
+      },
+      "threshold": {
+        "guide": true,
+        "nodes": 0
+      },
+      "desc": "未建索引时给出引导，不画空图"
+    },
+    "graph_counts_match_index": {
+      "pass": true,
+      "measured": {
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "notes": 7,
+        "edges": 10,
+        "placeholders": 2
+      },
+      "desc": "7 篇笔记 / 8 条已解析边 + 2 条虚边 / 未解析+歧义各一条"
+    },
+    "placeholder_nodes_distinguishable": {
+      "pass": true,
+      "measured": {
+        "labels": [
+          "未解析引用：MissingNote",
+          "歧义引用：Duplicated",
+          "笔记：Beta.md；入链 2；高连接度",
+          "笔记：Duplicated.md；入链 0；孤立",
+          "笔记：Home.md；入链 2；高连接度",
+          "笔记：Orphan.md；入链 0；孤立",
+          "笔记：notes/Alpha.md；入链 2；高连接度",
+          "笔记：notes/Duplicated.md；入链 0；孤立",
+          "笔记：notes/Gamma.md；入链 2；高连接度"
+        ]
+      },
+      "threshold": {
+        "unresolved": "MissingNote",
+        "ambiguous": "Duplicated"
+      },
+      "desc": "未解析与歧义在图里各自成为带状态的虚节点"
+    },
+    "note_nodes_carry_link_counts": {
+      "pass": true,
+      "measured": {
+        "labels": [
+          "未解析引用：MissingNote",
+          "歧义引用：Duplicated",
+          "笔记：Beta.md；入链 2；高连接度",
+          "笔记：Duplicated.md；入链 0；孤立",
+          "笔记：Home.md；入链 2；高连接度",
+          "笔记：Orphan.md；入链 0；孤立",
+          "笔记：notes/Alpha.md；入链 2；高连接度",
+          "笔记：notes/Duplicated.md；入链 0；孤立",
+          "笔记：notes/Gamma.md；入链 2；高连接度"
+        ]
+      },
+      "threshold": {
+        "alpha": "入链 2",
+        "orphan": true
+      },
+      "desc": "笔记节点的入链数（Home 两条指向 Alpha）与孤立标记来自索引"
+    },
+    "nodes_laid_out_inside_canvas": {
+      "pass": true,
+      "measured": {
+        "canvas": [
+          395,
+          351,
+          1004,
+          500
+        ],
+        "outside": [],
+        "count": 0
+      },
+      "threshold": {
+        "outside": 0
+      },
+      "desc": "布局按画布实测尺寸计算，所有节点都在可视画布内"
+    },
+    "root_directory_filter_is_distinct": {
+      "pass": true,
+      "measured": {
+        "selected": true,
+        "raw": "图谱视图：4 篇笔记；2 个未解析或歧义；4 条连线；筛选隐藏 6 条连线",
+        "notes": 4,
+        "placeholders": 2,
+        "edges": 4,
+        "hidden": 6
+      },
+      "threshold": {
+        "notes": 4,
+        "edges": 4,
+        "placeholders": 2,
+        "hidden": 6
+      },
+      "desc": "选择「（根目录）」只留根目录笔记，不退回全部目录"
+    },
+    "node_accessibility_action_opens_note": {
+      "pass": true,
+      "measured": {
+        "do_action": true,
+        "note": "Orphan.md"
+      },
+      "threshold": {
+        "note": "Orphan.md"
+      },
+      "desc": "读屏/无障碍动作可直接激活节点打开笔记（不依赖指针坐标）"
+    },
+    "a11y_activation_keeps_index": {
+      "pass": true,
+      "measured": {
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "notes": 7,
+        "edges": 10
+      },
+      "desc": "从笔记返回图谱后索引与视图事实不变"
+    },
+    "directory_filter_converges_view": {
+      "pass": true,
+      "measured": {
+        "applied": true,
+        "raw": "图谱视图：3 篇笔记；0 个未解析或歧义；0 条连线；筛选隐藏 10 条连线",
+        "notes": 3,
+        "placeholders": 0,
+        "edges": 0,
+        "hidden": 10
+      },
+      "threshold": {
+        "notes": 3,
+        "edges": 0
+      },
+      "desc": "目录筛选只留 notes/ 的 Alpha、Gamma 与 Duplicated；跨目录边随之收敛"
+    },
+    "node_click_opens_note": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "note": "notes/Alpha.md"
+      },
+      "threshold": {
+        "note": "notes/Alpha.md"
+      },
+      "desc": "点击图谱节点打开对应笔记"
+    },
+    "view_switch_keeps_index": {
+      "pass": true,
+      "measured": {
+        "generation": "第 1 代",
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "generation": "第 1 代",
+        "notes": 7
+      },
+      "desc": "切换视图不重建索引；重进图谱为完整视图（筛选是视图本地状态）"
+    },
+    "clear_filters_restores": {
+      "pass": true,
+      "measured": {
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "notes": 7,
+        "edges": 10
+      },
+      "desc": "清空筛选恢复完整视图"
+    },
+    "local_scope_centered_on_note": {
+      "pass": true,
+      "measured": {
+        "center": true,
+        "raw": "图谱视图：2 篇笔记；0 个未解析或歧义；3 条连线；筛选隐藏 0 条连线",
+        "notes": 2,
+        "placeholders": 0,
+        "edges": 3,
+        "hidden": 0
+      },
+      "threshold": {
+        "notes": 2,
+        "edges": 3,
+        "placeholders": 0,
+        "center": "notes/Alpha.md"
+      },
+      "desc": "局部图谱以当前笔记为中心，1 度只含 Home"
+    },
+    "depth_expands_neighborhood": {
+      "pass": true,
+      "measured": {
+        "depth1": {
+          "notes": 2,
+          "edges": 3
+        },
+        "depth3": {
+          "raw": "图谱视图：4 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+          "notes": 4,
+          "placeholders": 2,
+          "edges": 10,
+          "hidden": 0
+        }
+      },
+      "threshold": {
+        "notes": 4,
+        "edges": 10,
+        "placeholders": 2
+      },
+      "desc": "度数从 1 加到 3 后纳入 Beta、Gamma 及 Home 的两条虚引用边"
+    },
+    "orphan_filter_matches_index": {
+      "pass": true,
+      "measured": {
+        "clicked": true
+      },
+      "threshold": {
+        "clicked": true
+      },
+      "desc": "孤立筛选控件可操作（结果在下一个断言核对）"
+    },
+    "orphan_filter_result": {
+      "pass": true,
+      "measured": {
+        "counts": {
+          "raw": "图谱视图：3 篇笔记；0 个未解析或歧义；0 条连线；筛选隐藏 10 条连线",
+          "notes": 3,
+          "placeholders": 0,
+          "edges": 0,
+          "hidden": 10
+        },
+        "labels": [
+          "笔记：Duplicated.md；入链 0；孤立",
+          "笔记：Orphan.md；入链 0；孤立",
+          "笔记：notes/Duplicated.md；入链 0；孤立"
+        ]
+      },
+      "threshold": {
+        "notes": 3,
+        "edges": 0,
+        "notes_list": [
+          "Duplicated.md",
+          "Orphan.md",
+          "notes/Duplicated.md"
+        ]
+      },
+      "desc": "孤立筛选与索引 orphans 逐条一致（歧义引用不产生入链）"
+    },
+    "node_drag_moves_without_opening": {
+      "pass": true,
+      "measured": {
+        "before": [
+          431,
+          387
+        ],
+        "after": [
+          521,
+          447
+        ],
+        "still_on_graph": true,
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "moved_by": [
+          90,
+          60
+        ],
+        "notes": 7,
+        "opened_note": false
+      },
+      "desc": "拖动节点只改视图坐标，不触发打开笔记、不丢其他节点"
+    },
+    "zoom_changes_scale_only": {
+      "pass": true,
+      "measured": {
+        "before": "缩放 100%",
+        "after": "缩放 120%",
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "scale_changed": true,
+        "notes": 7,
+        "edges": 10
+      },
+      "desc": "缩放只改视图比例，节点/连线事实不变"
+    },
+    "local_scope_reports_missing_center": {
+      "pass": true,
+      "measured": {
+        "created": true,
+        "index_generation_unchanged": true,
+        "banner": true,
+        "raw": "图谱视图：0 篇笔记；0 个未解析或歧义；0 条连线；筛选隐藏 0 条连线",
+        "notes": 0,
+        "placeholders": 0,
+        "edges": 0,
+        "hidden": 0,
+        "nodes": 0
+      },
+      "threshold": {
+        "banner": true,
+        "notes": 0,
+        "edges": 0,
+        "nodes": 0
+      },
+      "desc": "中心不在索引时给出提示并画空图，不退回全局 7 篇笔记"
+    },
+    "large_vault_renders_simplified": {
+      "pass": true,
+      "measured": {
+        "simplified": true,
+        "wall_seconds": 4.0,
+        "numbers": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 600 个节点，另有 1400 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 600,
+          "folded": 1400
+        },
+        "raw": "图谱视图：2000 篇笔记；0 个未解析或歧义；4000 条连线；筛选隐藏 0 条连线",
+        "notes": 2000,
+        "placeholders": 0,
+        "edges": 4000,
+        "hidden": 0
+      },
+      "threshold": {
+        "simplified": true,
+        "notes": 2000,
+        "placed": 600,
+        "folded": 1400
+      },
+      "desc": "2000 篇合成 Vault 初始只布局 600 个核心节点，其余折叠并计数"
+    },
+    "large_vault_expands_progressively": {
+      "pass": true,
+      "measured": {
+        "before": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 600 个节点，另有 1400 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 600,
+          "folded": 1400
+        },
+        "after": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 1200 个节点，另有 800 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 1200,
+          "folded": 800
+        },
+        "raw": "图谱视图：2000 篇笔记；0 个未解析或歧义；4000 条连线；筛选隐藏 0 条连线",
+        "notes": 2000,
+        "placeholders": 0,
+        "edges": 4000,
+        "hidden": 0
+      },
+      "threshold": {
+        "placed": "increases",
+        "folded": "decreases",
+        "notes": 2000
+      },
+      "desc": "大图可手动展开更多节点，不会一次布局全部 2000 个"
+    },
+    "large_vault_node_opens_note": {
+      "pass": true,
+      "measured": {
+        "clicked": true,
+        "clicked_label": "笔记：d1/note-0877.md；入链 2；高连接度",
+        "note": "d1/note-0877.md"
+      },
+      "threshold": {
+        "note": "d1/note-0877.md"
+      },
+      "desc": "降级视图里节点仍可打开笔记"
+    },
+    "synthetic_vault_untouched": {
+      "pass": true,
+      "measured": {
+        "changed": []
+      },
+      "threshold": [],
+      "desc": "P4 全程没有写入合成 Vault（含附件、Obsidian 配置与排除目录）"
+    },
+    "large_vault_untouched": {
+      "pass": true,
+      "measured": {
+        "changed": [],
+        "count": 0
+      },
+      "threshold": [],
+      "desc": "2000 篇合成 Vault 在索引与图谱操作后字节不变"
+    }
+  },
+  "failures": [],
+  "screenshots": [
+    "00-graph-no-index.png",
+    "01-graph-built.png",
+    "02a-graph-root-directory.png",
+    "02b-graph-a11y-activate.png",
+    "02-graph-directory-filter.png",
+    "03-node-opens-note.png",
+    "04-graph-local.png",
+    "05-graph-depth-3.png",
+    "06-graph-orphans.png",
+    "07-graph-dragged.png",
+    "08-graph-zoomed.png",
+    "09-graph-center-missing.png",
+    "07-graph-large.png",
+    "07a-graph-large-expanded.png",
+    "08-large-opens-note.png"
+  ],
+  "large_first_view_wall_seconds": 4.0
+}

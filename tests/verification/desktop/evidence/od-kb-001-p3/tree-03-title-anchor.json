@@ -1,0 +1,1317 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": "",
+    "box": null
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": -135,
+      "w": 960,
+      "h": 800
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 816,
+      "y": 405,
+      "w": 768,
+      "h": 768
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 115,
+      "y": 408,
+      "w": 673,
+      "h": 672
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 69
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 80,
+      "y": 16,
+      "w": 1280,
+      "h": 53
+    }
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": "",
+    "box": {
+      "x": 104,
+      "y": 26,
+      "w": 32,
+      "h": 33
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 246,
+      "y": 29,
+      "w": 68,
+      "h": 27
+    }
+  },
+  {
+    "role": "combo box",
+    "name": "标准",
+    "text": "",
+    "box": {
+      "x": 246,
+      "y": 31,
+      "w": 68,
+      "h": 25
+    }
+  },
+  {
+    "role": "entry",
+    "name": "当前会话内查找",
+    "text": "",
+    "box": {
+      "x": 478,
+      "y": 32,
+      "w": 359,
+      "h": 22
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 844,
+      "y": 31,
+      "w": 31,
+      "h": 23
+    }
+  },
+  {
+    "role": "button",
+    "name": "日期与三周节律，今天 10月26日星期一",
+    "text": "",
+    "box": {
+      "x": 933,
+      "y": 26,
+      "w": 202,
+      "h": 33
+    }
+  },
+  {
+    "role": "button",
+    "name": "系统偏好设置",
+    "text": "",
+    "box": {
+      "x": 1147,
+      "y": 26,
+      "w": 32,
+      "h": 33
+    }
+  },
+  {
+    "role": "button",
+    "name": "未实现：通知与待办",
+    "text": "",
+    "box": {
+      "x": 1191,
+      "y": 26,
+      "w": 32,
+      "h": 33
+    }
+  },
+  {
+    "role": "button",
+    "name": "最小化",
+    "text": "",
+    "box": {
+      "x": 1248,
+      "y": 28,
+      "w": 28,
+      "h": 29
+    }
+  },
+  {
+    "role": "button",
+    "name": "最大化",
+    "text": "",
+    "box": {
+      "x": 1278,
+      "y": 28,
+      "w": 28,
+      "h": 29
+    }
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": "",
+    "box": {
+      "x": 1308,
+      "y": 28,
+      "w": 28,
+      "h": 29
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 20,
+      "y": 148,
+      "w": 56,
+      "h": 459
+    }
+  },
+  {
+    "role": "button",
+    "name": "工作台首页",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 305,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "button",
+    "name": "工作记录（模型起草）",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 355,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "button",
+    "name": "文案写作（模型起草）",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 405,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "button",
+    "name": "项目跟踪（模型起草）",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 455,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "button",
+    "name": "历史会话（引擎会话 · 本机对话）",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 505,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "button",
+    "name": "知识库（本机 Markdown）",
+    "text": "",
+    "box": {
+      "x": 28,
+      "y": 555,
+      "w": 40,
+      "h": 40
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": 89,
+      "w": 864,
+      "h": 20
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": 113,
+      "w": 864,
+      "h": 36
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": 149,
+      "w": 864,
+      "h": 38
+    }
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": "",
+    "box": {
+      "x": 288,
+      "y": 157,
+      "w": 60,
+      "h": 30
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 0,
+      "y": 199,
+      "w": 1440,
+      "h": 701
+    }
+  },
+  {
+    "role": "header",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 112,
+      "y": 199,
+      "w": 1288,
+      "h": 101
+    }
+  },
+  {
+    "role": "heading",
+    "name": "知识库",
+    "text": "",
+    "box": {
+      "x": 129,
+      "y": 215,
+      "w": 48,
+      "h": 26
+    }
+  },
+  {
+    "role": "panel",
+    "name": "知识库视图",
+    "text": "",
+    "box": {
+      "x": 333,
+      "y": 213,
+      "w": 90,
+      "h": 30
+    }
+  },
+  {
+    "role": "toggle button",
+    "name": "笔记",
+    "text": "",
+    "box": {
+      "x": 335,
+      "y": 215,
+      "w": 42,
+      "h": 26
+    }
+  },
+  {
+    "role": "toggle button",
+    "name": "图谱",
+    "text": "",
+    "box": {
+      "x": 379,
+      "y": 215,
+      "w": 42,
+      "h": 26
+    }
+  },
+  {
+    "role": "button",
+    "name": "新建笔记",
+    "text": "",
+    "box": {
+      "x": 1029,
+      "y": 212,
+      "w": 74,
+      "h": 32
+    }
+  },
+  {
+    "role": "button",
+    "name": "刷新扫描",
+    "text": "",
+    "box": {
+      "x": 1111,
+      "y": 212,
+      "w": 74,
+      "h": 32
+    }
+  },
+  {
+    "role": "button",
+    "name": "重建关系索引",
+    "text": "",
+    "box": {
+      "x": 1193,
+      "y": 212,
+      "w": 98,
+      "h": 32
+    }
+  },
+  {
+    "role": "button",
+    "name": "知识库设置",
+    "text": "",
+    "box": {
+      "x": 1299,
+      "y": 213,
+      "w": 84,
+      "h": 30
+    }
+  },
+  {
+    "role": "status bar",
+    "name": "知识库根 /tmp/odkb-p3-ui/synth-vault；已配置",
+    "text": "",
+    "box": {
+      "x": 129,
+      "y": 252,
+      "w": 1254,
+      "h": 35
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 112,
+      "y": 310,
+      "w": 290,
+      "h": 570
+    }
+  },
+  {
+    "role": "heading",
+    "name": "笔记",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 323,
+      "w": 26,
+      "h": 20
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 360,
+      "w": 264,
+      "h": 378
+    }
+  },
+  {
+    "role": "button",
+    "name": "Beta.md Beta.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 360,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Duplicated.md Duplicated.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 414,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Home.md Home.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 468,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Orphan.md Orphan.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 522,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Starter.md Starter.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 576,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Alpha.md notes/Alpha.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 630,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "button",
+    "name": "Duplicated.md notes/Duplicated.md",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 684,
+      "w": 264,
+      "h": 50
+    }
+  },
+  {
+    "role": "heading",
+    "name": "附件",
+    "text": "",
+    "box": {
+      "x": 125,
+      "y": 800,
+      "w": 26,
+      "h": 20
+    }
+  },
+  {
+    "role": "button",
+    "name": "打开",
+    "text": "",
+    "box": {
+      "x": 355,
+      "y": 841,
+      "w": 34,
+      "h": 22
+    }
+  },
+  {
+    "role": "heading",
+    "name": "notes/Alpha.md",
+    "text": "",
+    "box": {
+      "x": 427,
+      "y": 321,
+      "w": 108,
+      "h": 20
+    }
+  },
+  {
+    "role": "button",
+    "name": "编辑",
+    "text": "",
+    "box": {
+      "x": 427,
+      "y": 349,
+      "w": 38,
+      "h": 24
+    }
+  },
+  {
+    "role": "button",
+    "name": "预览",
+    "text": "",
+    "box": {
+      "x": 469,
+      "y": 349,
+      "w": 38,
+      "h": 24
+    }
+  },
+  {
+    "role": "button",
+    "name": "原文",
+    "text": "",
+    "box": {
+      "x": 511,
+      "y": 349,
+      "w": 38,
+      "h": 24
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 413,
+      "y": 384,
+      "w": 666,
+      "h": 446
+    }
+  },
+  {
+    "role": "entry",
+    "name": "笔记草稿（包含 Frontmatter 原始文本）",
+    "text": "",
+    "box": {
+      "x": 429,
+      "y": 396,
+      "w": 634,
+      "h": 422
+    }
+  },
+  {
+    "role": "button",
+    "name": "保存",
+    "text": "",
+    "box": {
+      "x": 427,
+      "y": 840,
+      "w": 48,
+      "h": 30
+    }
+  },
+  {
+    "role": "button",
+    "name": "放弃修改",
+    "text": "",
+    "box": {
+      "x": 483,
+      "y": 839,
+      "w": 74,
+      "h": 32
+    }
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1090,
+      "y": 310,
+      "w": 310,
+      "h": 570
+    }
+  },
+  {
+    "role": "heading",
+    "name": "链接关系",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 323,
+      "w": 52,
+      "h": 20
+    }
+  },
+  {
+    "role": "status bar",
+    "name": "关系索引第 1 代",
+    "text": "",
+    "box": {
+      "x": 1163,
+      "y": 327,
+      "w": 38,
+      "h": 16
+    }
+  },
+  {
+    "role": "status bar",
+    "name": "关系索引：7 篇笔记；10 条已解析；1 条未解析；1 条歧义；2 篇孤立；完整",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 360,
+      "w": 284,
+      "h": 17
+    }
+  },
+  {
+    "role": "status bar",
+    "name": "已定位到第 3 行。",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 385,
+      "w": 284,
+      "h": 24
+    }
+  },
+  {
+    "role": "heading",
+    "name": "指向别处 1",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 417,
+      "w": 284,
+      "h": 16
+    }
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 437,
+      "w": 284,
+      "h": 28
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 437,
+      "w": 284,
+      "h": 28
+    }
+  },
+  {
+    "role": "button",
+    "name": "已解析：Home；第 9 行",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 437,
+      "w": 284,
+      "h": 28
+    }
+  },
+  {
+    "role": "heading",
+    "name": "反向链接 5",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 473,
+      "w": 284,
+      "h": 16
+    }
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 493,
+      "w": 284,
+      "h": 241
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 493,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "button",
+    "name": "来自 Beta.md 第 1 行：[[notes/Alpha#Details]]",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 493,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 542,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "button",
+    "name": "来自 Home.md 第 8 行：[[notes/Alpha]]",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 542,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 591,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "button",
+    "name": "来自 Home.md 第 9 行：[[notes/Alpha#Details]]",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 591,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 640,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "button",
+    "name": "来自 Home.md 第 10 行：[[notes/Alpha#^blk-7]]",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 640,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 689,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "button",
+    "name": "来自 Home.md 第 15 行：[[notes/Alpha#NoSuchHeading]]",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 689,
+      "w": 284,
+      "h": 45
+    }
+  },
+  {
+    "role": "heading",
+    "name": "孤立笔记 2",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 742,
+      "w": 284,
+      "h": 16
+    }
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 762,
+      "w": 284,
+      "h": 54
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 762,
+      "w": 284,
+      "h": 25
+    }
+  },
+  {
+    "role": "button",
+    "name": "孤立笔记：Duplicated.md",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 764,
+      "w": 284,
+      "h": 23
+    }
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 791,
+      "w": 284,
+      "h": 25
+    }
+  },
+  {
+    "role": "button",
+    "name": "孤立笔记：notes/Duplicated.md",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 793,
+      "w": 284,
+      "h": 23
+    }
+  },
+  {
+    "role": "heading",
+    "name": "属性",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 852,
+      "w": 26,
+      "h": 20
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 881,
+      "w": 284,
+      "h": 25
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "属性来源：notes/Alpha.md",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 914,
+      "w": 284,
+      "h": 15
+    }
+  },
+  {
+    "role": "heading",
+    "name": "标签与别名",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 965,
+      "w": 284,
+      "h": 20
+    }
+  },
+  {
+    "role": "section",
+    "name": "标签：无；别名：无",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 985,
+      "w": 284,
+      "h": 25
+    }
+  },
+  {
+    "role": "heading",
+    "name": "解析警告",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1046,
+      "w": 52,
+      "h": 20
+    }
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1075,
+      "w": 284,
+      "h": 25
+    }
+  },
+  {
+    "role": "heading",
+    "name": "搜索与筛选",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1136,
+      "w": 284,
+      "h": 20
+    }
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1164,
+      "w": 284,
+      "h": 16
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1180,
+      "w": 284,
+      "h": 36
+    }
+  },
+  {
+    "role": "entry",
+    "name": "关键词（字面子串，不区分大小写）",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1184,
+      "w": 284,
+      "h": 32
+    }
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1223,
+      "w": 284,
+      "h": 17
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1239,
+      "w": 284,
+      "h": 37
+    }
+  },
+  {
+    "role": "entry",
+    "name": "标签（逗号分隔，父标签含下级）",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1243,
+      "w": 284,
+      "h": 33
+    }
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1283,
+      "w": 139,
+      "h": 17
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1299,
+      "w": 139,
+      "h": 36
+    }
+  },
+  {
+    "role": "entry",
+    "name": "属性键",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1303,
+      "w": 139,
+      "h": 32
+    }
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1248,
+      "y": 1283,
+      "w": 139,
+      "h": 17
+    }
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1248,
+      "y": 1299,
+      "w": 139,
+      "h": 36
+    }
+  },
+  {
+    "role": "entry",
+    "name": "属性值（可空）",
+    "text": "",
+    "box": {
+      "x": 1248,
+      "y": 1303,
+      "w": 139,
+      "h": 32
+    }
+  },
+  {
+    "role": "button",
+    "name": "搜索",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1341,
+      "w": 46,
+      "h": 30
+    }
+  },
+  {
+    "role": "button",
+    "name": "清空",
+    "text": "",
+    "box": {
+      "x": 1157,
+      "y": 1348,
+      "w": 22,
+      "h": 17
+    }
+  },
+  {
+    "role": "heading",
+    "name": "扫描明细",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1406,
+      "w": 284,
+      "h": 21
+    }
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1432,
+      "w": 284,
+      "h": 57
+    }
+  },
+  {
+    "role": "list item",
+    "name": ".obsidian：hidden",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1432,
+      "w": 284,
+      "h": 17
+    }
+  },
+  {
+    "role": "list item",
+    "name": ".trash：hidden",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1452,
+      "w": 284,
+      "h": 17
+    }
+  },
+  {
+    "role": "list item",
+    "name": "node_modules：excluded",
+    "text": "",
+    "box": {
+      "x": 1103,
+      "y": 1472,
+      "w": 284,
+      "h": 17
+    }
+  }
+]

@@ -1,3 +1,79 @@
+## OD-KB-001 P4 独立验收结论（ARCHITECT，2026-10-27）——通过
+
+**结论：P4 通过，OD-KB-001 首期 MVP（P1–P4）完成。** 图谱数据层、全局/局部视图、筛选与聚焦、性能降级与窗口验证均符合已批准计划 P4-S01～S05；本轮由我本人独立重跑全部检查、逐项读取实际源码与 diff，未发现阻断性或需返工的问题。P5 及之后的 AI 建议关联、主题聚类、持久图谱数据仍未开始，需用户单独批准。
+
+**独立复核范围：** 当前 HEAD `72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`（`main`，远端 `git@github.com:klzone/omniharness.git`）；未提交改动全部保留，未 reset、未 clean、未提交、未推送、未打标签；终了 `git status --porcelain=v1 -uall` 共 268 项（44 修改、224 未跟踪）。逐行读取了 `knowledgeGraph.ts`（457 行）、`knowledgeGraphLayout.ts`（346 行）、`KnowledgeGraphView.tsx`（829 行）、两个 `*.test.mjs`、`bench/knowledge-graph-p4.mjs`（168 行）、`verify_knowledge_vault_p4.py`（1289 行）与 `KnowledgeVaultPage.tsx` / `window_harness.py` 的 diff；`git diff --check` 通过；`runtime/` 零差异。全部夹具在 `/tmp` 合成目录；未读取真实 Vault、Obsidian 库、正式资料或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `verify_knowledge_vault_p4.py`（真实窗口，`/tmp/odkb-p4-review`） | **34 checks / 0 failures** |
+| P3 回归 | **24 checks / 0 failures** |
+| P2 回归 | **33 checks / 0 failures** |
+| P1 回归 | **14 checks / 0 failures** |
+| 图数据 / 布局单测 | **42 / 42**（26 + 16） |
+| `cargo test --offline` | **397 passed / 0 failed** |
+| `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| `npx tsc --noEmit` / `npm run build` | 均通过；仅既有 >500 kB chunk 提示 |
+
+**证据：** `tests/verification/desktop/evidence/od-kb-001-p4-review/facts.json`（2026-10-27 00:16:05），含 15 张截图、9 份 AX 树快照与 build/host/unit/bench/window 日志。P1–P3 独立回归证据分别在 `evidence/od-kb-001-p{1,2,3}-review/`。
+
+**关键实测事实：**
+
+1. **一致性与范围。** 7 篇合成笔记的节点、实边、虚节点与索引 stats 逐项一致；`external`/`attachment` 不入图；未解析与歧义虚节点可区分且永不提供跳转；筛选与局部范围只改视图，切换视图后索引 generation 不变。
+2. **导航。** 鼠标点击、Enter/空格与 AT-SPI `do_action` 三条路径都能打开对应笔记；拖动只改坐标、不打开笔记；缩放只改比例。
+3. **筛选与聚焦。** 目录筛选收敛，根目录筛选项独立生效（4 篇 / 4 边 / 2 虚节点 / 隐藏 6 边）；孤立筛选与 `orphans` 一致；局部 1 度 2 篇 3 边、3 度 4 篇 10 边；中心笔记不在索引时明确提示并画空图，不静默退回全局图。
+4. **规模与降级。** 2000 篇合成 Vault 初始只布局入链最多的 600 个节点、折叠 1400 并提示；「展开更多」升至 1200 / 折叠 800；折叠状态下仍可打开笔记；真实窗口从切换到图谱到降级提示可见约 4.0 s。纯函数基准：2000 篇首次视图 **80.4 ms**（阈值 400 ms）、筛选 2.1 ms（120 ms）、局部 2.9 ms（150 ms），三档布局均确定性一致。
+5. **画布适配。** 修复后按实测画布尺寸布局，小图全部节点落在画布 `[395, 351, 1004, 500]` 内，越界 0。
+6. **无副作用。** 两个合成 Vault 全程字节不变（`changed: []`）；不新增文件写入、持久图谱数据或图数据库。
+
+**本轮修复（8 项，已在源码中逐项核实）：** ① 为 AT-SPI `do_action` 增加 `onClick`（仅 `event.detail === 0`）；② 局部中心缺失返回空视图并置 `centerMissing`；③ 折叠计数改用 `foldedNodeIds` 只算当前视图；④ 新增 `layoutBudget` 与「展开更多」（600 → 1200）；⑤ 补根目录筛选的窗口级断言；⑥ `opened` 改 `useMemo`、筛选变化重置预算，消除拖动时的布局重算；⑦ 中心缺失提示补 `role="status"` 与 `aria-label`；⑧ 画布尺寸 effect 依赖 `[graph]` 并挂 `ResizeObserver`，消除节点被裁到画布外。
+
+**设计取舍确认：** SVG + 绝对定位按钮节点而非 Canvas，保证 AT-SPI 可测且在 600 节点预算内性能达标；图数据每次从 P3 快照现算、不落盘，符合「索引是可重建派生数据」；未引入图库、后端布局服务或持久化，符合「无真实触发不加基础设施」。
+
+**未验证边界（如实登记，不构成阻断）：** 未在 Windows/macOS 实机验证；未测高分屏缩放、触屏拖动与键盘 Tab 遍历全图；交互走 XTEST 合成输入，真实鼠标/触控板手感未验证；滚轮缩放只有按钮路径的窗口断言，滚轮事件本身未单独断言；性能基准是纯函数耗时，未覆盖真实浏览器绘制与合成开销，也未测超过 2000 篇或超密边；视觉细节只做截图目视检查，未做像素级规范对照。
+
+**已知遗留（属 P3 语义，不在 P4 范围）：** `vault_index::resolve_target` 在源笔记位于子目录、目标写成嵌套全路径且省略 `.md` 时无法解析（如 `d0/note-0000.md` 中的 `[[d0/note-0001]]`）。P4 夹具使用完整 `.md` 路径绕开，**不能据此宣称短路径已支持**。是否需要修复计划由用户决定。
+
+**阶段决定：P4 验收通过，首期 MVP（P1–P4）完成。** 进入 P5 需用户对 AI 范围与材料授权单独批准；本轮不制定、不实施 P5。当前改动仍未提交、未推送。
+
+---
+
+
+## OD-KB-001 P3 独立验收结论（ARCHITECT，2026-10-26）——通过，开放 P4 计划审查
+
+**结论：P3 通过。** 双链解析、可重建内存索引与关系导航均符合已批准计划与语法矩阵；独立重跑全部通过，未发现阻断或需修复的问题。P4（图谱可视化）计划可制定，实施仍需用户单独批准。
+
+**独立复核范围：** 当前 HEAD `72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`（main，与 origin/main 同步），实施未提交改动全部保留。逐行审查了 `vault_link.rs`（569 行）、`vault_index.rs`（900 行）与 `vault_index/tests.rs`（420 行）、宿主集成测试、`lib.rs` 三个新命令接线、前端关系面板 diff、`docs/knowledge-vault-link-matrix.md` 与 P3/P2 验证脚本；`runtime/` 零差异，`git diff --check` 通过。未读取真实 Vault、业务资料或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `cargo test --offline`（全量） | **397 passed / 0 failed**（356 lib + 2 + 1 + 13 + 6 + 5 + 10 + 3 + 1，与实施自述逐套件一致） |
+| `npx tsc --noEmit` / `npm run build` | 均通过；仅既有 >500 kB chunk 提示 |
+| `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| `verify_knowledge_vault_p3.py`（真实窗口，重建应用二进制，`/tmp/odkb-p3-review`） | **24 checks / 0 failures**，`facts.json` 由本轮重跑刷新（21:23） |
+| P1 回归 `verify_knowledge_vault_p1.py` | **14 checks / 0 failures**（含 1200 篇冷扫中位 8.685 ms） |
+| P2 回归 `verify_knowledge_vault_p2.py` | **33 checks / 0 failures**（含滚动修正后的关键词/标签/属性搜索三项） |
+
+**关键设计点已逐项核实：**
+
+1. **解析层纯函数、不改原文。** 代码围栏/行内代码先等长掩码再匹配（字节偏移不漂移）；Frontmatter 不参与；不支持语法（引用式链接、脚注、HTML 链接、未闭合、超 512 字符目标）逐行去重产出 issue、原文保留；矩阵文档声明与代码行为一致。
+2. **目标解析确定性。** 固定九级优先级（路径 → 带扩展名 → 相对来源目录 → 后缀 → 主干 → 别名 → 大小写兜底 → 附件 → unresolved）；同级多候选一律 `ambiguous` 并按字典序列出，绝不任选；附件不作笔记节点。
+3. **快照完整性与并发保护。** 索引只在内存；扫描前后两次元数据核对（长度 + 秒级 mtime），不一致即整快照 `incomplete` 并给原因，不发布半成品；读取预算只允许收紧（`.min(32 MiB)`）；单篇 512 KiB / 2000 篇 / 20000 条引用上限；构建在宿主锁外完成后整体原子替换，读命令只见完整快照；换根后不复用旧 generation。
+4. **正反链同源一致。** 出链数、反链数、孤立标记均由同一 `links` 集合双向计算；宿主测试断言构建前后知识库目录树字节不变。
+5. **跳转规则正确。** 正链定位目标锚点行；回链定位来源笔记的引用行（不是目标）；锚点缺失只回退目标顶部并解释；`unresolved/ambiguous/external/attachment` 不产生跳转——窗口验证均实测通过。
+
+**独立复跑中确认的两个脚本事实（非产品缺陷）：** ① 本轮窗口验证期间 5273 端口的 Vite 进程经核实来自本仓库工作区（`/mnt/data/Code/MyWorkStation/desktop`），`reuse_running_dev_server=True` 未引入跨 worktree 前端风险，但该参数仍依赖端口占用者身份，多 worktree 场景的隐患维持既有登记不变；② 窗口脚本离屏点击回退到 AT-SPI action 触发，行为合理。
+
+**未验证边界（如实登记）：** 索引一致性与窗口证据均来自合成 Vault，未在真实 Obsidian 库抽样；未测 Windows/macOS、大小写不敏感文件系统与网络盘；秒级 mtime 精度下同秒同长度改写无法靠元数据识别（代码注释已披露，指纹供后续复核）；未做大规模性能压测（索引构建无耗时指标，留给 P4 图谱基准一并考虑）；重命名/移动等文件操作与索引构建并发未专项验证。
+
+**阶段决定：P3 验收通过。** 首期 MVP（P1–P4）仅剩图谱可视化；P4 详细计划制定中，获批前不实施。
+
+---
+
 ## OD-ARCH-092 复核结论（ARCHITECT 独立复核，2026-10-26）——窗口级通过，待真模型实测
 
 **结论先行：通过。** 工作记录页按用户四点要求改完了：本周时间线与成果文档库同屏两栏、历史归档与会话历史两栏、时间线字号 +2、自动复盘入口移除。我用一次性 Xvfb 打开真实窗口截了图并逐张看过，也自己复跑了全量 Rust、前端构建、三条窗口脚本与两条离线验证。真实模型端到端仍属 OD-ARCH-080 实测清单，不在本轮范围。
@@ -2214,6 +2290,51 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 **不阻断本阶段的未验证边界：** 没有在 Windows/macOS、网络盘或大小写不敏感文件系统上测试；没有压力测试超大规模 Vault；没有实测扫描与外部修改/删除并发发生时的完整一致性行为。上述场景不改变当前单机 Linux 合成目录的通过证据，后续阶段应继续以冲突检测和可恢复行为为边界，不得默认为跨平台已验证。
 
 **阶段决定：P1 验收通过。** P2 仍需单独小计划并经用户批准后方可实施；本结论只开放 P2 规划。
+## OD-KB-001 P2 修复复验（ARCHITECT，2026-10-26）——发现额外竞态，P2 未通过，P3 暂停
+
+**结论：P2 暂不通过，暂不制定 P3 计划。** P2-F01/F02 的主要修复符合原验收意图，但复核有界文件读取时发现一个确定性可达的并发边界：读到 EOF 后、读取句柄元数据前，文件增长到仍小于读取上限时，当前实现只检查最终长度是否超过 cap，没有检查已读字节数是否等于最终文件长度，因此可能把较短内容误作完整笔记并纳入搜索。该情况违反 P2-F01「部分读取不得误报完整」标准。
+
+**本次证据范围：** HEAD `72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`，分支 `main`；最初工作区干净、与 `origin/main` 同步；修复仓库期间工作区差异，终了检查已恢复到干净状态。未读取真实 Vault、业务资料或凭证；未访问 `runtime/`。P2 所有原有证据文件均在本次窗口复验前备份并恢复，Git 最终无差异。
+
+**独立复核：**
+
+- F01 的剩余预算按每次有界读取传入，实际读取量被 `take(cap)` 限制，搜索按 `bytes_read` 记账；文件超过 cap 时不返回正文，并把该文件及后续文件记为未检查。扫描后增长的 65 文件合成测试覆盖恰好用尽 32 MiB 的情况。
+- F02 以 `VAULT_WRITE_EXTS = [md, markdown]` 独立限制创建/保存，`.txt` 保持可读/可搜索；宿主测试确认拒绝创建与覆盖且磁盘内容不变。
+- 宿主侧搜索与写入测试、全量 Rust、TypeScript、生产构建、pytest 的此前实测结果见 STATUS.md；本轮未重复这些低风险重复项。
+- 有界读取 EOF 竞态的确定性分类回归 `bounded_read_completeness_rejects_growth_after_eof` 实跑 **1/1 通过**，覆盖读取长度与最终句柄长度不一致但仍在 cap 内、越过 cap、以及长度相同三种情况。
+- 窗口验证脚本 `verify_knowledge_vault_p2.py` 本轮尝试两次，但运行至 UI/AX 交互阶段未继续推进，均由我中断；不能把此前执行者记录的 33/33 当作本轮独立窗口复验。原始 `tests/verification/desktop/evidence/od-kb-001-p2/` 文件已恢复，未以部分运行生成物替换；故窗口级复验仍未完成。
+- 最终 `git status --short --branch` 为 `## main...origin/main`；`git diff --check HEAD^ HEAD` 通过；`runtime/` 工作区差异为空。
+
+**本轮最小修正：** 在 `read_vault_note_within` 把有界读取结果分类为完整、预算超限、读取期间变化；只有 `bytes_read == actual_len` 且 `actual_len <= cap` 才返回正文。新增回归测试使用确定性纯函数验证 EOF 后文件增长仍不被视为完整内容，无需制造不稳定的文件系统竞态。该改动仅用于保证已批准 P2-F01 契约，不引入 P3 范围。
+
+**剩余门槛：** 需先排查并修复/解释窗口脚本在本机 AX 阶段停滞的原因，重新独立完成 P2 33 项窗口验证，再检查证据目录和 Git 状态；通过后方可将 P2 标为通过并规划 P3。P3 仍暂停。
+
+## OD-KB-001 P2 补验与阶段验收（ARCHITECT，2026-10-26）——通过
+
+**结论：P2 通过，开放 P3 计划审查。** 先前复验发现的 EOF 后文件增长问题已加入 `classify_bounded_read` 完整性分类；只有本次读取字节数等于最终句柄长度且不超过 cap 才返回正文。完整 P2 窗口流程现已独立重跑成功，确认修复后的实际界面与宿主行为仍满足批准验收条件。
+
+**范围与保护：** HEAD `72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`，分支 `main`。原 `od-kb-001-p2/` 证据在运行前备份，结束后逐文件恢复并与备份递归比对一致；新一轮证据保存于 `tests/verification/desktop/evidence/od-kb-001-p2-recheck/`。窗口使用 `/tmp/odkb-p2-ui-final` 合成 Vault，未读取真实 Vault、业务资料或凭证；`runtime/` 无差异。仅保留当前任务新增的 Rust 回归、P2 窗口脚本服务复用改动和独立复验证据，其他工作区差异均保留。
+
+**独立实跑结果：**
+
+| 验证 | 实际结果 |
+| --- | --- |
+| P2 桌面窗口验证 | **33/33 通过，0 失败；21 张截图**，证据 `tests/verification/desktop/evidence/od-kb-001-p2-recheck/facts.json` |
+| 有界读取 EOF 增长回归 | **1/1 通过**，覆盖完整、超预算、读取期间文件变化 |
+| `cargo test --offline vault_search::tests` | **9/9 通过**，含 32 MiB 实际累计预算与 1200 篇规模搜索 |
+| `cargo test --offline --test knowledge_vault_write_host` | **10/10 通过** |
+| `cargo test --offline` | **357 项通过，0 失败**（库 327、分类 2、能力 1、宿主 13、知识库只读 6、知识库写入 10、任务壳 3、线程重启 1） |
+| `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| `npx tsc --noEmit` 与 `npm run build` | 均通过；构建保留既有的大 chunk 提示 |
+| `python3 -m py_compile tests/verification/desktop/verify_knowledge_vault_p2.py` | 通过 |
+| `git diff --check`；原 P2 证据恢复比对 | 均通过；旧目录与备份无差异 |
+
+**独立代码审查：** 搜索将剩余预算传入有界读取并按实际字节计账；无法返回完整内容的文件不会作为命中参与结果，并产生跳过/预算状态。写入扩展名单独限定为 `.md` / `.markdown`，`.txt` 仍可只读搜索。新增 EOF 后增长分类避免把短读内容误作完整正文。窗口验证显示配置提示、Frontmatter/属性、预览与原文、创建和保存、外部修改冲突保护、标签/属性筛选、附件显式打开、刷新增删可见性、草稿离开/重启保护均符合契约；Obsidian 配置与合成 Vault 其他未触碰文件保持完整。
+
+**验证边界：** 1200 篇合成搜索读取 24,937,046 字节（32 MiB 预算内），三次中位约 3,459 ms，是 Linux x86_64 debug 环境观测，不是性能承诺。未测试 Windows/macOS、网络盘或真实大 Vault；未验证跨进程写入与最终替换之间无法由普通文件 API 消除的竞态。全量 Cargo 输出有一个既有 `worklog::AppendReceipt::failure` dead-code 警告；生产构建有既有超过 500 kB chunk 警告。
+
+**阶段决定：P2 验收通过。** 可开始审查 P3 详细计划；P3 实施仍需用户单独批准。
+
 ## OD-KB-001 P2 独立验收结论（ARCHITECT，2026-10-26）——未通过，P3 暂停
 
 **结论：P2 暂不通过。** 核心读写与浏览功能的独立定向测试通过，但发现两处违反已批准 P2 验收标准的边界问题：搜索的总读取预算根据过期扫描元数据预判，不能保证按实际读取量封顶；Markdown 写入接口允许创建或保存 `.txt`。据阶段门槛，不能进入 P3。已在 PLANS.md 加入最小修复计划 P2-F01～F03，待用户批准后实施。

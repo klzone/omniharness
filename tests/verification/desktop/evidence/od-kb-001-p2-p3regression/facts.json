@@ -1,0 +1,409 @@
+{
+  "plan": "OD-KB-001 P2",
+  "verified_at": "2026-10-26 21:26:18",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 宿主测试实测",
+  "root": "/tmp/odkb-p2-reg-ui",
+  "synthetic_vault": "/tmp/odkb-p2-reg-ui/synth-vault",
+  "host_tests": {
+    "write_exit_code": 0,
+    "write_passed": 10,
+    "search_exit_code": 0,
+    "search_metric": {
+      "notes": 1200,
+      "total_bytes": 24937046,
+      "bytes_read": 24937046,
+      "budget_bytes": 33554432,
+      "budget_exhausted": false,
+      "hits": 16,
+      "runs_ms": [
+        4333.057,
+        4822.957,
+        5319.548
+      ],
+      "median_ms": 4822.957,
+      "platform": "linux x86_64",
+      "profile": "debug"
+    },
+    "log": "tests/verification/desktop/evidence/od-kb-001-p2-p3regression/host-test.log"
+  },
+  "environment": {
+    "platform": "Linux",
+    "machine": "x86_64",
+    "python": "3.14.4"
+  },
+  "checks": {
+    "host_write_tests_pass": {
+      "pass": true,
+      "measured": {
+        "exit_code": 0,
+        "passed": 10
+      },
+      "threshold": {
+        "exit_code": 0,
+        "passed": ">=7"
+      },
+      "desc": "宿主创建/保存/冲突/失败清理/附件边界集成测试"
+    },
+    "search_metric_collected": {
+      "pass": true,
+      "measured": {
+        "notes": 1200,
+        "total_bytes": 24937046,
+        "bytes_read": 24937046,
+        "budget_bytes": 33554432,
+        "budget_exhausted": false,
+        "hits": 16,
+        "runs_ms": [
+          4333.057,
+          4822.957,
+          5319.548
+        ],
+        "median_ms": 4822.957,
+        "platform": "linux x86_64",
+        "profile": "debug"
+      },
+      "threshold": {
+        "exit_code": 0,
+        "notes": 1200,
+        "budget_bytes": 33554432
+      },
+      "desc": "1200 篇合成笔记的关键词搜索实测（含读取预算与耗时）"
+    },
+    "unset_root_guidance": {
+      "pass": true,
+      "measured": {
+        "has_guidance": true
+      },
+      "threshold": true,
+      "desc": "未设置根时有明确设置引导"
+    },
+    "no_write_before_open": {
+      "pass": true,
+      "measured": {
+        "marker_exists": false
+      },
+      "threshold": false,
+      "desc": "附件未被点击前不得调用打开器"
+    },
+    "dock_entry_and_three_columns": {
+      "pass": true,
+      "measured": {
+        "notes_heading": true,
+        "properties_heading": true,
+        "attachments_heading": true
+      },
+      "threshold": true,
+      "desc": "从 Dock 进入知识库，列表/正文/属性三栏与附件面板同屏"
+    },
+    "scan_listed_notes": {
+      "pass": true,
+      "measured": {
+        "note_count_hint": "3 expected"
+      },
+      "threshold": true,
+      "desc": "三篇合成笔记进入列表"
+    },
+    "hidden_paths_not_listed": {
+      "pass": true,
+      "measured": {
+        "obsidian": false,
+        "trash": false,
+        "excluded": false
+      },
+      "threshold": {
+        "obsidian": false,
+        "trash": false,
+        "excluded": false
+      },
+      "desc": "隐藏/回收站/排除目录不进列表"
+    },
+    "properties_and_source": {
+      "pass": true,
+      "measured": {
+        "properties": "属性列表：aliases=jia、Alpha；code=alpha42；status=进行中；tags=project/alpha、todo；title=合成阿尔法；unknown_key=保留原样",
+        "tags": "标签：project/alpha、todo；别名：jia、Alpha",
+        "source": true
+      },
+      "threshold": true,
+      "desc": "Frontmatter 属性、标签与来源路径可定位"
+    },
+    "unknown_key_preserved": {
+      "pass": true,
+      "measured": {
+        "unknown_key_visible": true
+      },
+      "threshold": true,
+      "desc": "未知键保留并展示，未被静默丢弃"
+    },
+    "preview_renders_body": {
+      "pass": true,
+      "measured": {
+        "preview": "预览正文： # 阿尔法 银河计划是合成夹具里的关键词 milkyway。"
+      },
+      "threshold": true,
+      "desc": "预览渲染正文，属性面板保持可定位"
+    },
+    "raw_keeps_frontmatter": {
+      "pass": true,
+      "measured": {
+        "raw": "原文：--- title: 合成阿尔法 status: 进行中 tags: - project/alpha - todo aliases: [jia, Alpha] unknown_key: 保留原样 code: alpha42 --- # 阿尔法 银河计划是合成夹具里的关键词 milkyway。"
+      },
+      "threshold": true,
+      "desc": "原文模式保留 Frontmatter 原始文本"
+    },
+    "save_writes_and_rereads": {
+      "pass": true,
+      "measured": {
+        "mark_in_disk": true,
+        "mark_in_editor": true,
+        "unsaved_badge": false
+      },
+      "threshold": {
+        "mark_in_disk": true,
+        "mark_in_editor": true,
+        "unsaved_badge": false
+      },
+      "desc": "保存落盘并由宿主重新读取后显示"
+    },
+    "dirty_badge_before_save": {
+      "pass": true,
+      "measured": {
+        "unsaved_badge": true
+      },
+      "threshold": true,
+      "desc": "编辑后显示未保存草稿标记"
+    },
+    "external_conflict_rejected": {
+      "pass": true,
+      "measured": {
+        "disk_unchanged": true,
+        "conflict_message": true,
+        "draft_kept": true
+      },
+      "threshold": {
+        "disk_unchanged": true,
+        "conflict_message": true,
+        "draft_kept": true
+      },
+      "desc": "哈希冲突不写盘，草稿保留在内存"
+    },
+    "discard_confirm_visible": {
+      "pass": true,
+      "measured": {
+        "dialog": true
+      },
+      "threshold": true,
+      "desc": "放弃修改先弹出应用内确认"
+    },
+    "discard_cancel_keeps_draft": {
+      "pass": true,
+      "measured": {
+        "draft_kept": true,
+        "dialog": false
+      },
+      "threshold": {
+        "draft_kept": true,
+        "dialog": false
+      },
+      "desc": "取消放弃后草稿完整保留"
+    },
+    "switch_confirm_visible": {
+      "pass": true,
+      "measured": {
+        "dialog": true
+      },
+      "threshold": true,
+      "desc": "切换笔记前确认"
+    },
+    "switch_cancel_keeps_note": {
+      "pass": true,
+      "measured": {
+        "draft_kept": true
+      },
+      "threshold": true,
+      "desc": "取消切换仍停留在原笔记草稿"
+    },
+    "discard_accept_reverts": {
+      "pass": true,
+      "measured": {
+        "editor_matches_disk": true,
+        "unsaved_badge": false
+      },
+      "threshold": {
+        "editor_matches_disk": true,
+        "unsaved_badge": false
+      },
+      "desc": "确认放弃后恢复磁盘内容"
+    },
+    "create_note_persists": {
+      "pass": true,
+      "measured": {
+        "file_exists": true,
+        "content_on_disk": true
+      },
+      "threshold": true,
+      "desc": "新建笔记落盘并切换到该笔记"
+    },
+    "create_existing_rejected": {
+      "pass": true,
+      "measured": {
+        "error_visible": true,
+        "disk_unchanged": true
+      },
+      "threshold": {
+        "error_visible": true,
+        "disk_unchanged": true
+      },
+      "desc": "新建已存在目标被拒绝且原文件不变"
+    },
+    "keyword_search_hits_body": {
+      "pass": false,
+      "measured": {
+        "hits": {},
+        "alpha_areas": null
+      },
+      "threshold": true,
+      "desc": "正文关键词命中并标明文件与命中区域"
+    },
+    "tag_filter_parent_match": {
+      "pass": false,
+      "measured": {
+        "hits": {},
+        "alpha_hit": false,
+        "gamma_excluded": true
+      },
+      "threshold": {
+        "alpha_hit": true,
+        "gamma_excluded": true
+      },
+      "desc": "标签筛选支持父标签包含下级"
+    },
+    "property_filter_matches": {
+      "pass": false,
+      "measured": {
+        "hits": {},
+        "alpha_hit": false,
+        "gamma_excluded": true
+      },
+      "threshold": {
+        "alpha_hit": true,
+        "gamma_excluded": true
+      },
+      "desc": "属性键与值同时匹配"
+    },
+    "attachment_not_opened_yet": {
+      "pass": true,
+      "measured": {
+        "marker_exists": false
+      },
+      "threshold": false,
+      "desc": "浏览/搜索过程中附件未被打开"
+    },
+    "attachment_opened_on_click": {
+      "pass": true,
+      "measured": {
+        "marker": "/tmp/odkb-p2-reg-ui/synth-vault/assets/diagram.png",
+        "attachment_listed": false
+      },
+      "threshold": {
+        "vault_path": true,
+        "file": "assets/diagram.png"
+      },
+      "desc": "附件由固定 xdg-open 以独立参数打开，未走 shell 拼接"
+    },
+    "attachment_body_not_read": {
+      "pass": true,
+      "measured": {
+        "body_leaked": false
+      },
+      "threshold": false,
+      "desc": "界面不回传附件正文"
+    },
+    "refresh_sees_add_and_delete": {
+      "pass": true,
+      "measured": {
+        "delta_listed": true,
+        "beta_listed": false
+      },
+      "threshold": {
+        "delta_listed": true,
+        "beta_listed": false
+      },
+      "desc": "刷新扫描反映外部增删"
+    },
+    "leave_confirm_visible": {
+      "pass": true,
+      "measured": {
+        "dialog": true
+      },
+      "threshold": true,
+      "desc": "离开分页前确认，不静默丢弃草稿"
+    },
+    "leave_cancel_stays": {
+      "pass": true,
+      "measured": {
+        "draft_kept": true,
+        "still_vault": true
+      },
+      "threshold": {
+        "draft_kept": true,
+        "still_vault": true
+      },
+      "desc": "取消离开后停留且草稿保留"
+    },
+    "restart_drops_unsaved_draft": {
+      "pass": true,
+      "measured": {
+        "draft_gone": true,
+        "disk_content_shown": true
+      },
+      "threshold": {
+        "draft_gone": true,
+        "disk_content_shown": true
+      },
+      "desc": "重启后草稿不恢复，显示磁盘版本"
+    },
+    "untouched_entries_intact": {
+      "pass": true,
+      "measured": {
+        "changed": []
+      },
+      "threshold": [],
+      "desc": "Obsidian 配置、回收站、排除目录与附件内容均未被改写"
+    },
+    "obsidian_config_unchanged": {
+      "pass": true,
+      "measured": "{\"legacyEditor\": false}",
+      "threshold": "原样保留",
+      "desc": ""
+    }
+  },
+  "failures": [
+    "keyword_search_hits_body: measured={'hits': {}, 'alpha_areas': None}, threshold=True (正文关键词命中并标明文件与命中区域)",
+    "tag_filter_parent_match: measured={'hits': {}, 'alpha_hit': False, 'gamma_excluded': True}, threshold={'alpha_hit': True, 'gamma_excluded': True} (标签筛选支持父标签包含下级)",
+    "property_filter_matches: measured={'hits': {}, 'alpha_hit': False, 'gamma_excluded': True}, threshold={'alpha_hit': True, 'gamma_excluded': True} (属性键与值同时匹配)"
+  ],
+  "screenshots": [
+    "00-vault-unset.png",
+    "01-vault-list.png",
+    "02-note-properties.png",
+    "03-preview.png",
+    "04-raw.png",
+    "05-saved.png",
+    "06-conflict.png",
+    "07-confirm-discard.png",
+    "08-confirm-cancelled.png",
+    "09-confirm-switch.png",
+    "10-discarded.png",
+    "11-new-form.png",
+    "12-created.png",
+    "13-create-exists.png",
+    "14-search-keyword.png",
+    "15-search-tag.png",
+    "16-search-property.png",
+    "17-attachment-opened.png",
+    "18-refreshed.png",
+    "19-leave-confirm.png",
+    "20-restarted.png"
+  ]
+}
