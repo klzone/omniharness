@@ -18,6 +18,8 @@ import type {
   ExplanationSource,
   LibraryRootInfo,
   KnowledgeVaultNote,
+  KnowledgeVaultIndex,
+  KnowledgeVaultNoteLinks,
   KnowledgeVaultParsedNote,
   KnowledgeVaultRootStatus,
   KnowledgeVaultSaveOutcome,
@@ -658,6 +660,29 @@ export const shell = {
   /** 用系统处理程序打开已校验的根内附件；不读取附件正文。 */
   knowledgeVaultOpenAttachment(relativePath: string): Promise<string> {
     return invoke<string>("knowledge_vault_open_attachment", {
+      relativePath,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 显式重建内存链接索引（P3-S04）；不写知识库、不启动后台监听。 */
+  knowledgeVaultRebuildIndex(): Promise<KnowledgeVaultIndex> {
+    return invoke<KnowledgeVaultIndex>("knowledge_vault_rebuild_index").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取当前已发布索引；没有索引时为 null，不触发重建。 */
+  knowledgeVaultIndexStatus(): Promise<KnowledgeVaultIndex | null> {
+    return invoke<KnowledgeVaultIndex | null>("knowledge_vault_index_status").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只读当前索引里一篇笔记的正向链接与反向链接。 */
+  knowledgeVaultNoteLinks(relativePath: string): Promise<KnowledgeVaultNoteLinks> {
+    return invoke<KnowledgeVaultNoteLinks>("knowledge_vault_note_links", {
       relativePath,
     }).catch((e) => {
       throw new Error(normalizeError(e));

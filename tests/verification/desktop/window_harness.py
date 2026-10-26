@@ -321,6 +321,25 @@ class XSession:
             time.sleep(0.18)
         time.sleep(settle)
 
+    def drag(self, x1: int, y1: int, x2: int, y2: int, steps: int = 12, settle: float = 0.6) -> None:
+        """按住左键从 (x1,y1) 拖到 (x2,y2) 再松开。
+
+        WebKit 的 pointer 事件依赖真实的 press/move/release 序列；单次跳转移动不会产生
+        pointermove，因此这里分步移动并逐点 sync。
+        """
+        self._sweep_to(x1, y1)
+        time.sleep(0.12)
+        self._xtest.fake_input(self.d, self._X.ButtonPress, 1)
+        self.d.sync()
+        time.sleep(0.08)
+        for i in range(1, steps + 1):
+            self.move(x1 + (x2 - x1) * i // steps, y1 + (y2 - y1) * i // steps)
+            time.sleep(0.02)
+        time.sleep(0.08)
+        self._xtest.fake_input(self.d, self._X.ButtonRelease, 1)
+        self.d.sync()
+        time.sleep(settle)
+
     def _keycode(self, keysym_name: str) -> tuple[int, bool]:
         ks = self._XK.string_to_keysym(keysym_name)
         if ks == 0:
