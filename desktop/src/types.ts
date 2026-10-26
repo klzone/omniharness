@@ -444,6 +444,98 @@ export interface KnowledgeVaultNote {
   content: string;
 }
 
+/** P2-S01：Frontmatter 属性值。数字保留 YAML 原文形态，避免展示时变形。 */
+export type KnowledgeVaultPropertyValue =
+  | { kind: "text" | "number"; value: string }
+  | { kind: "bool"; value: boolean }
+  | { kind: "null" }
+  | { kind: "list"; value: string[] };
+
+export interface KnowledgeVaultProperty {
+  key: string;
+  value: KnowledgeVaultPropertyValue;
+}
+
+export interface KnowledgeVaultParseWarning {
+  code: string;
+  message: string;
+  key?: string | null;
+}
+
+export interface KnowledgeVaultFrontmatterSlice {
+  raw: string;
+  start_byte: number;
+  end_byte: number;
+  start_line: number;
+  end_line: number;
+  status: string;
+}
+
+/** 一篇笔记的只读解析结果；`raw` 与 `body` 都是原文切片，不做规范化。 */
+export interface KnowledgeVaultParsedNote {
+  raw: string;
+  has_frontmatter: boolean;
+  frontmatter: KnowledgeVaultFrontmatterSlice | null;
+  body: string;
+  body_start_byte: number;
+  body_start_line: number;
+  properties: KnowledgeVaultProperty[];
+  tags: string[];
+  aliases: string[];
+  warnings: KnowledgeVaultParseWarning[];
+}
+
+export interface KnowledgeVaultSaveOutcome {
+  relative_path: string;
+  bytes: number;
+  sha256: string;
+  content: string;
+  race_window: string;
+}
+
+export interface KnowledgeVaultPropertyFilter {
+  key: string;
+  value: string;
+}
+
+export interface KnowledgeVaultSearchQuery {
+  keyword: string;
+  tags: string[];
+  properties: KnowledgeVaultPropertyFilter[];
+}
+
+export interface KnowledgeVaultSearchHit {
+  relative_path: string;
+  file_name: string;
+  bytes: number;
+  sha256: string;
+  match_areas: string[];
+  tags: string[];
+  property_count: number;
+  warning_count: number;
+  snippet: string | null;
+  /** 原文件行号（1 起），包含 Frontmatter 占用的行数。 */
+  snippet_line: number | null;
+  keyword_hits: number;
+}
+
+export interface KnowledgeVaultSearchSkip {
+  relative_path: string;
+  reason: string;
+}
+
+export interface KnowledgeVaultSearchResponse {
+  hits: KnowledgeVaultSearchHit[];
+  notes_available: number;
+  notes_examined: number;
+  bytes_read: number;
+  budget_bytes: number;
+  budget_exhausted: boolean;
+  hits_truncated: boolean;
+  skipped: KnowledgeVaultSearchSkip[];
+  query: KnowledgeVaultSearchQuery;
+}
+
 /** 库根信息（OD-ARCH-086）：周报、工作记录与 @ 引用的共同根。
  *  知识库另由独立的 knowledge_vault_root 配置（OD-KB-001 P1）。 */
 export interface LibraryRootInfo {

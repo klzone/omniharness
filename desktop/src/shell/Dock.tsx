@@ -13,6 +13,7 @@ export type Scene =
   | "writing"
   | "project"
   | "sessions"
+  | "knowledge"
   | "settings";
 
 interface DockItem {
@@ -37,6 +38,18 @@ export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
 ];
 
 /**
+ * 知识库是应用内置入口（OD-KB-001 P2-S04），不写入用户 Profile 声明：
+ * 声明只描述模型整理的三个业务场景与历史会话，知识库由宿主文件边界直接支撑。
+ * 追加在声明入口之后，既有入口顺序与声明语义保持不变。
+ */
+export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
+  scene: "knowledge",
+  icon: "book",
+  label: "知识库",
+  note: "本机 Markdown",
+};
+
+/**
  * Dock 只放业务入口（OD-ARCH-061）：设置与引擎诊断都在顶栏设置页里，
  * 任务工作台已下线，不再有「基础设施」图标占位。
  */
@@ -51,7 +64,7 @@ export function Dock({
   /** 声明文件里的业务场景；null/undefined 表示用内置默认（调用方负责提示原因）。 */
   declared?: ProfileSceneEntry[] | null;
 }) {
-  const business: DockItem[] =
+  const declaredItems: DockItem[] =
     declared && declared.length > 0
       ? declared.map((s) => ({
           scene: s.id as Scene,
@@ -60,7 +73,10 @@ export function Dock({
           note: s.note || undefined,
         }))
       : DEFAULT_BUSINESS_ITEMS;
-  const items = business;
+  // 声明里即使手工写了 knowledge 也不重复；声明校验另有允许场景列表，本条只是兜底。
+  const items = declaredItems.some((item) => item.scene === "knowledge")
+    ? declaredItems
+    : [...declaredItems, BUILTIN_KNOWLEDGE_ITEM];
 
   return (
     <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center bg-surface-container-lowest/95 ring-1 ring-white/95 rounded-full py-3 px-2 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] space-y-2.5">

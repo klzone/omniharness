@@ -1,14 +1,21 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { host, shell } from "./api";
 import { hydrateThreads } from "./sceneThreads";
 import SettingsPanel from "./SettingsPanel";
 import { Dock, type Scene } from "./shell/Dock";
 import { HomeCanvas } from "./shell/HomeCanvas";
+import { ConfirmDialog } from "./shell/ConfirmDialog";
 import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
 import { WindowResizeHandles } from "./shell/WindowChrome";
 import type { EngineDescriptor, ProfileDeclPayload } from "./types";
+
+// 知识库分页只在用户第一次点进来时才加载（OD-KB-001 P2-S04）：它是目前最大的
+// 单个页面模块，静态引入会让每次启动都多解析一遍。首次进入时才拉取，不进首屏。
+const KnowledgeVaultPage = lazy(() =>
+  import("./shell/KnowledgeVaultPage").then((m) => ({ default: m.KnowledgeVaultPage })),
+);
 
 /**
  * 应用外壳（OD-ARCH-026）。
@@ -42,6 +49,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchCurrentIndex, setSearchCurrentIndex] = useState(0);
   const [searchMatchCount, setSearchMatchCount] = useState(0);
+  // 知识库的草稿只存在于分页组件内存里（OD-KB-001 P2-S04）：
+  // 离开分页会丢弃它，因此切换入口前必须先明确确认。
+  const [knowledgeDirty, setKnowledgeDirty] = useState(false);
+  // 离开知识库前必须确认；用应用内对话框而不是 window.confirm（实测不阻塞）。
+  const [pendingScene, setPendingScene] = useState<Scene | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +187,10 @@ export default function App() {
       : "正在检测引擎…";
 
   const selectScene = (next: Scene) => {
+    if (scene === "knowledge" && next !== "knowledge" && knowledgeDirty) {
+      setPendingScene(next);
+      return;
+    }
     setScene(next);
   };
 
@@ -190,7 +206,7 @@ export default function App() {
       <TopNav
         engineHealthy={engineHealthy}
         engineLabel={engineLabel}
-        onOpenSettings={() => setScene("settings")}
+        onOpenSettings={() => selectScene("settings")}
         searchQuery={searchQuery}
         onSearchQueryChange={(q: string) => {
           setSearchQuery(q);
@@ -257,7 +273,7 @@ export default function App() {
           </p>
           <button
             className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-[11.5px] text-on-primary"
-            onClick={() => setScene("settings")}
+            onClick={() => selectScene("settings")}
           >
             去设置
           </button>
@@ -294,6 +310,19 @@ export default function App() {
           <div className="flex-1 min-h-0 overflow-hidden">
             <Workspace onNavigate={selectScene} />
           </div>
+        ) : scene === "knowledge" ? (
+          <Suspense
+            fallback={
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
+                <p className="text-[12px] text-on-surface-variant">正在打开知识库…</p>
+              </div>
+            }
+          >
+            <KnowledgeVaultPage
+              onOpenSettings={() => selectScene("settings")}
+              onDirtyChange={setKnowledgeDirty}
+            />
+          </Suspense>
         ) : scene === "settings" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
             <SettingsPanel />
@@ -303,13 +332,28 @@ export default function App() {
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
             <p className="text-[12px] text-on-surface-variant">
               这个入口还没有对应页面。
-              <button className="ml-1 text-primary hover:underline" onClick={() => setScene("home")}>
+              <button className="ml-1 text-primary hover:underline" onClick={() => selectScene("home")}>
                 回首页
               </button>
             </p>
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingScene !== null}
+        title="离开知识库？"
+        description="知识库里有未保存的修改。离开这个页面会丢弃草稿，但不会改动磁盘文件。"
+        confirmLabel="离开并丢弃"
+        onCancel={() => setPendingScene(null)}
+        onConfirm={() => {
+          const next = pendingScene;
+          setPendingScene(null);
+          setKnowledgeDirty(false);
+          if (next) setScene(next);
+        }}
+        testId="knowledge-leave-confirm"
+      />
     </div>
   );
 }

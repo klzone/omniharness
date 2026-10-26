@@ -211,6 +211,48 @@ class XSession:
         self.d.sync()
         time.sleep(settle)
 
+    def wait_rendered(self, win, timeout: float = 90.0, min_colors: int = 12) -> bool:
+        """等首屏真正画出内容，返回是否等到。
+
+        为什么需要它：本仓库根的 `desktop/src-tauri/target` 有几十万文件，Vite 冷启动
+        在开发态要 8 秒上下（实测 HEAD 与当前工作区一致，属环境因素，不是某次改动）。
+        固定 sleep 会在 WebKit 还只有一层纯色底的时候抓图、读文件，于是出现「空白截图」
+        和「声明文件还没被创建」这类假失败。这里按**像素多样性**判断渲染完成：空白
+        WebKit 窗口只有一种底色，渲染完才有文字与卡片的多色内容。
+
+        这只放宽「什么时候看」，不放宽断言本身：超时仍返回 False，由调用方失败。
+        """
+        import gi
+
+        gi.require_version("Gdk", "3.0")
+        from gi.repository import Gdk
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            geo = self.geometry(win)
+            root = Gdk.get_default_root_window()
+            pb = Gdk.pixbuf_get_from_window(root, geo.x, geo.y, geo.w, geo.h)
+            if pb is not None:
+                pixels = pb.get_pixels()
+                channels = pb.get_n_channels()
+                rowstride = pb.get_rowstride()
+                colors = set()
+                # 每 8 像素采一个点即可区分「纯色底」与「有内容」。
+                for y in range(0, pb.get_height(), 8):
+                    row = y * rowstride
+                    for x in range(0, pb.get_width(), 8):
+                        off = row + x * channels
+                        colors.add(pixels[off:off + 3])
+                        if len(colors) > min_colors:
+                            break
+                    if len(colors) > min_colors:
+                        break
+                if len(colors) > min_colors:
+                    time.sleep(0.6)
+                    return True
+            time.sleep(0.4)
+        return False
+
     def place(self, win, x: int, y: int, w: int, h: int, settle: float = 2.0) -> None:
         """同时设置窗口位置与尺寸（无窗口管理器时需自行摆放）。"""
         win.configure(x=x, y=y, width=w, height=h)
