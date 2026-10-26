@@ -25,14 +25,16 @@ pub const PROFILE_RULES_SCHEMA_V2: &str = "omnidesk.profile-rules.v2";
 /// 当前默认/出厂 schema。
 pub const PROFILE_RULES_SCHEMA: &str = PROFILE_RULES_SCHEMA_V2;
 
-/// 允许绑定的六项 Skill 清单（OD-ARCH-082 S2）。
+/// 允许绑定的八项 Skill 清单（OD-ARCH-082 S2，086 加入 anysearch，089 加入 memory-report）。
 pub const ALLOWED_SKILLS: &[&str] = &[
     "material-writing",
     "knowledge-search",
     "knowledge-agent",
     "document-review",
     "memory-agent",
+    "memory-report",
     "project-agent",
+    "anysearch",
 ];
 pub const MAX_SKILL_BINDINGS_PER_SCENE: usize = 3;
 /// 规则资产文件名（位于应用数据根下的 profiles/ 下）。
@@ -236,7 +238,7 @@ impl ProfileRules {
             let mut seen = std::collections::BTreeSet::new();
             for s in &binding.skills {
                 if !ALLOWED_SKILLS.contains(&s.as_str()) {
-                    return Err(format!("场景 {key} 绑定的技能 {s:?} 不在六项合法清单内"));
+                    return Err(format!("场景 {key} 绑定的技能 {s:?} 不在合法技能清单内"));
                 }
                 if !seen.insert(s) {
                     return Err(format!("场景 {key} 绑定的技能 {s:?} 重复"));
@@ -548,6 +550,16 @@ mod tests {
         assert_eq!(rules.scene("writing").unwrap().thinking, "low");
         assert_eq!(rules.scene("project").unwrap().thinking, "off");
         assert!(!rules.scene("weekly").unwrap().sections.is_empty());
+        // OD-ARCH-089：weekly 拆成随手记 + 周报两个技能，anysearch 移出预注入但仍在白名单。
+        assert!(ALLOWED_SKILLS.contains(&"anysearch"));
+        assert!(ALLOWED_SKILLS.contains(&"memory-report"));
+        let weekly = rules.skill_bindings.get("weekly").expect("weekly 必须有绑定");
+        assert_eq!(weekly.skills.len(), 3);
+        assert_eq!(
+            weekly.skills,
+            vec!["memory-agent", "memory-report", "knowledge-search"]
+        );
+        assert!(weekly.skills.len() <= weekly.max_injected);
     }
 
     #[test]

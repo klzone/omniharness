@@ -54,6 +54,8 @@ class MockController:
             "justification": "synthetic approval probe, no real data",
         }
         self.tool_call_followup = ["合成", "已", "继续"]
+        # 空 = 仅首个请求触发；设置某标记后，最后一条用户消息含它即触发。
+        self.tool_call_trigger = ""
 
     def set(self, **kwargs) -> None:
         with self.lock:
@@ -74,16 +76,19 @@ class MockController:
 CTL = MockController()
 
 
-def _last_user_text(req: dict) -> str:
+def _last_user_text(req: dict, limit: int | None = None) -> str:
+    # limit 只用于记录日志；判定触发词必须看全文——OD-ARCH-089 之后场景提示词
+    # 把规则写在前面、用户原话落在消息末尾，按 200 字符截断会漏掉本轮指令。
     messages = req.get("messages") or []
     for msg in reversed(messages):
         if isinstance(msg, dict) and msg.get("role") == "user":
             content = msg.get("content")
             if isinstance(content, str):
-                return content[:200]
+                return content if limit is None else content[:limit]
             if isinstance(content, list):
                 parts = [c.get("text", "") for c in content if isinstance(c, dict)]
-                return ("".join(parts))[:200]
+                joined = "".join(parts)
+                return joined if limit is None else joined[:limit]
     return ""
 
 
@@ -157,6 +162,7 @@ class _Handler(BaseHTTPRequestHandler):
             tool_call_name = ctl.tool_call_name
             tool_call_arguments = json.dumps(ctl.tool_call_arguments, ensure_ascii=False)
             tool_call_followup = list(ctl.tool_call_followup)
+            tool_call_trigger = ctl.tool_call_trigger
             joined = _all_text(req)
             ctl.requests.append({
                 "path": self.path,
@@ -166,7 +172,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # 模型侧实际收到的文本长度（字符数）。用于对比「每轮重放」与「续接会话」
                 # 两种前端的输入量，不保存正文。
                 "text_chars": len(joined),
-                "last_user": _last_user_text(req),
+                "last_user": _last_user_text(req, limit=200),
                 "mode": mode,
                 "probe_hits": [p for p in probes if p and p in joined],
                 "probe_misses": [p for p in probes if p and p not in joined],
@@ -187,9 +193,13 @@ class _Handler(BaseHTTPRequestHandler):
             time.sleep(float(hang_seconds))
             return
 
-        if mode == "tool_call" and not any(
-                isinstance(m, dict) and m.get("role") == "tool"
-                for m in (req.get("messages") or [])):
+        # 默认只在首个请求（还没有工具结果）时发工具调用。验收脚本可显式设置
+        # `tool_call_trigger`：只要最后一条用户消息含该标记，即使会话里已有工具
+        # 结果也再发一次提问——用于同一会话里的第二轮合成提问。标记只用于测试。
+        if mode == "tool_call" and (
+                tool_call_trigger and tool_call_trigger in _last_user_text(req)
+                or not any(isinstance(m, dict) and m.get("role") == "tool"
+                           for m in (req.get("messages") or []))):
             model = req.get("model") or "synthetic-model"
             try:
                 self.send_response(200)

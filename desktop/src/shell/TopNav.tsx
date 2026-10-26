@@ -487,6 +487,7 @@ export function TopNav({
               onChange={(e) => onSearchQueryChange?.(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
+                  if (searchMatchCount === 0) return; // 0 命中时为空操作
                   if (e.shiftKey) {
                     onSearchPrev?.();
                   } else {
@@ -514,9 +515,10 @@ export function TopNav({
                 </span>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={onSearchPrev}
                   disabled={searchMatchCount === 0}
-                  title="上一个 (Shift+Enter / N)"
+                  aria-label="上一处匹配 (Shift+Enter)"
                   data-testid="topnav-search-prev"
                   className="p-0.5 hover:text-on-surface disabled:opacity-30 transition-opacity"
                 >
@@ -524,9 +526,10 @@ export function TopNav({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={onSearchNext}
                   disabled={searchMatchCount === 0}
-                  title="下一个 (Enter / M)"
+                  aria-label="下一处匹配 (Enter)"
                   data-testid="topnav-search-next"
                   className="p-0.5 hover:text-on-surface disabled:opacity-30 transition-opacity"
                 >
@@ -534,8 +537,9 @@ export function TopNav({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={onSearchClear}
-                  title="清空并退出 (Esc)"
+                  aria-label="清空并退出搜索 (Esc)"
                   data-testid="topnav-search-clear"
                   className="p-0.5 hover:text-on-surface text-outline hover:text-on-surface transition-colors"
                 >

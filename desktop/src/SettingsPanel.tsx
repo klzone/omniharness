@@ -6,6 +6,7 @@
 // 密钥是单向输入：保存后立刻清空输入框，界面只显示“已配置 / 来源”。
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import {
   host,
   invalidateEngineFactsCache,
@@ -19,6 +20,9 @@ import type {
   AdmissionFacts,
   CapabilityView,
   CategoryInitReceipt,
+  KnowledgeVaultRootStatus,
+  KnowledgeVaultScan,
+  LibraryRootInfo,
   LocalRootInfo,
   ModelCategory,
   ModelEntry,
@@ -30,7 +34,6 @@ import type {
   ProfileChoiceView,
   ProfileDeclPayload,
   ProfileRulesView,
-  SchedulerCadence,
   SchedulerConfig,
   SchedulerSnapshot,
   ThreadCategoryView,
@@ -70,12 +73,6 @@ const CATEGORY_LABEL: Record<ModelCategory, string> = {
   private: "非回环 · 私有/链路本地地址",
   public: "非回环 · 公网地址",
   unknown: "无法确认",
-};
-
-const CADENCE_LABEL: Record<SchedulerCadence, string> = {
-  daily: "每天",
-  weekly: "每周一",
-  once: "仅一次",
 };
 
 const API_CHOICES: Array<{ value: string; label: string }> = [
@@ -191,6 +188,41 @@ export default function SettingsPanel() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // —— 库根（OD-ARCH-086）——
+  const [libraryInfo, setLibraryInfo] = useState<LibraryRootInfo | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [libraryInput, setLibraryInput] = useState("");
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
+  const [librarySaveError, setLibrarySaveError] = useState<string | null>(null);
+
+  // —— 知识库根（OD-KB-001 P1）：只读，独立于库根 ——
+  const [vaultStatus, setVaultStatus] = useState<KnowledgeVaultRootStatus | null>(null);
+  const [vaultScan, setVaultScan] = useState<KnowledgeVaultScan | null>(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultMessage, setVaultMessage] = useState<string | null>(null);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const vaultSkipped = vaultScan
+    ? vaultScan.stats.skipped_hidden +
+      vaultScan.stats.skipped_excluded +
+      vaultScan.stats.skipped_symlink +
+      vaultScan.stats.skipped_non_file +
+      vaultScan.stats.skipped_depth
+    : 0;
+  // WebKit 不把状态行的纯文本节点暴露给无障碍树；扫描摘要同时写进状态组的
+  // aria-label，窗口级验收才能读到实测统计，而不是只看截图。
+  const vaultAria = `知识库状态：${
+    vaultStatus?.configured
+      ? `已选择 ${vaultStatus.root ?? "不可用"}；${
+          vaultStatus.error ? `校验失败 ${vaultStatus.error}` : "目录可用"
+        }`
+      : "未设置"
+  }；${
+    vaultScan
+      ? `扫描结果 ${vaultScan.stats.files} 个文件（笔记 ${vaultScan.stats.notes}、附件 ${vaultScan.stats.attachments}），跳过 ${vaultSkipped} 项，错误 ${vaultScan.stats.errors} 项`
+      : "尚未扫描"
+  }`;
 
   // —— 端点事实 / 权限 ——
   const [facts, setFacts] = useState<AdmissionFacts | null>(null);
@@ -442,6 +474,93 @@ export default function SettingsPanel() {
     }
   }, []);
 
+  const refreshLibrary = useCallback(async () => {
+    try {
+      const r = await shell.libraryRootInfo();
+      setLibraryInfo(r);
+      setLibraryError(r.resolved ? null : r.error);
+    } catch (e) {
+      setLibraryInfo(null);
+      setLibraryError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const refreshVault = useCallback(async () => {
+    try {
+      const r = await shell.knowledgeVaultStatus();
+      setVaultStatus(r);
+      setVaultError(r.error);
+      return r;
+    } catch (e) {
+      setVaultStatus(null);
+      setVaultError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, []);
+
+  const scanVault = useCallback(async () => {
+    setVaultBusy(true);
+    setVaultError(null);
+    setVaultMessage(null);
+    try {
+      const r = await shell.knowledgeVaultScan();
+      setVaultScan(r);
+      setVaultMessage(
+        `扫描完成：${r.stats.files} 个文件（笔记 ${r.stats.notes}、附件 ${r.stats.attachments}），` +
+          `跳过 ${r.stats.skipped_hidden + r.stats.skipped_excluded + r.stats.skipped_symlink + r.stats.skipped_non_file + r.stats.skipped_depth} 项，` +
+          `错误 ${r.stats.errors} 项。` +
+          (r.stats.truncated ? " 已达到扫描上限，结果不完整。" : ""),
+      );
+    } catch (e) {
+      setVaultScan(null);
+      setVaultError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVaultBusy(false);
+    }
+  }, []);
+
+  /** 用系统目录选择框挑一个已有目录；选完立即保存，再自动扫一次。 */
+  const pickVaultDirectory = useCallback(async () => {
+    setVaultBusy(true);
+    setVaultError(null);
+    setVaultMessage(null);
+    try {
+      const picked = await openDirectoryDialog({
+        directory: true,
+        multiple: false,
+        title: "选择知识库目录（只读）",
+      });
+      if (typeof picked !== "string" || picked.length === 0) {
+        return;
+      }
+      const r = await shell.setKnowledgeVaultRoot(picked);
+      setVaultMessage(r.note + " 当前知识库：" + r.knowledge_vault_root);
+      await refreshVault();
+      const scan = await shell.knowledgeVaultScan();
+      setVaultScan(scan);
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVaultBusy(false);
+    }
+  }, [refreshVault]);
+
+  const clearVault = useCallback(async () => {
+    setVaultBusy(true);
+    setVaultError(null);
+    setVaultMessage(null);
+    try {
+      await shell.clearKnowledgeVaultRoot();
+      setVaultScan(null);
+      setVaultMessage("已取消知识库选择；知识库内文件没有改动。");
+      await refreshVault();
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVaultBusy(false);
+    }
+  }, [refreshVault]);
+
   const refreshScheduler = useCallback(async () => {
     try {
       const r = await schedulerApi.getConfig();
@@ -544,11 +663,17 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     void refresh();
+    void refreshLibrary();
     void refreshAdmission();
     void refreshScheduler();
     void refreshModel();
     void refreshDecl();
-  }, [refresh, refreshAdmission, refreshScheduler, refreshModel, refreshDecl]);
+  }, [refresh, refreshLibrary, refreshAdmission, refreshScheduler, refreshModel, refreshDecl]);
+
+  // 知识库根只在打开成果页时读一次状态；扫描必须由用户手动触发。
+  useEffect(() => {
+    if (tab === "library") void refreshVault();
+  }, [tab, refreshVault]);
 
   // 对话分类只在打开这一页时读一次，避免与其他分页的读盘互相干扰。
   useEffect(() => {
@@ -854,6 +979,22 @@ export default function SettingsPanel() {
     }
   }, [input, refresh]);
 
+  const saveLibraryRoot = useCallback(async () => {
+    setLibraryBusy(true);
+    setLibrarySaveError(null);
+    setLibraryMessage(null);
+    try {
+      const r = await shell.setLibraryRoot(libraryInput);
+      setLibraryMessage(r.note + " 当前库根：" + r.library_root);
+      setLibraryInput("");
+      await refreshLibrary();
+    } catch (e) {
+      setLibrarySaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }, [libraryInput, refreshLibrary]);
+
   const openArtifacts = useCallback(async () => {
     setError(null);
     setMessage(null);
@@ -887,11 +1028,6 @@ export default function SettingsPanel() {
   );
 
   const cfg = sched?.config ?? null;
-  const reviewStatus = cfg
-    ? cfg.review_enabled
-      ? "每" + CADENCE_LABEL[cfg.cadence] + " " + String(cfg.hour) + ":00"
-      : "关闭"
-    : null;
   const heartbeatStatus = cfg
     ? cfg.heartbeat_enabled
       ? "每 " + String(cfg.heartbeat_minutes) + " 分钟"
@@ -1629,6 +1765,22 @@ export default function SettingsPanel() {
           没有这份文件时就是一个干净底座。保存后下一轮提交立即生效，不用重启；旧文件会先备份。
         </p>
         {rulesError ? <div className="alert">规则资产：{rulesError}</div> : null}
+        {/* OD-ARCH-088：旧版（v1）规则包没有场景 Skill 绑定。只提示、不改写文件；
+            是否启用出厂绑定由用户显式点「恢复默认规则包」决定。 */}
+        {rules?.loaded &&
+        rules.rules &&
+        Object.keys(rules.rules.skill_bindings ?? {}).length === 0 ? (
+          <p
+            className="hint"
+            role="note"
+            aria-label="当前规则包是旧版，未声明场景 Skill 绑定，因此场景技能不会预注入。模型仍可按需自行加载技能——这不代表技能不可用。"
+            data-testid="rules-skill-bindings-missing"
+          >
+            当前规则包是旧版，未声明场景 Skill 绑定，因此场景技能不会预注入。
+            模型仍可按需自行加载技能——这不等于技能不可用。
+            出厂规则包包含场景 Skill 绑定；需要启用时点上方「恢复默认规则包」（会先备份现有文件）。
+          </p>
+        ) : null}
         {rules ? (
           <div className="status-card">
             <div className="status-row">
@@ -1878,69 +2030,22 @@ export default function SettingsPanel() {
 
       {/* ============ 4. 关于：定时与提醒 ============ */}
       <section className="pane" hidden={tab !== "about"}>
-        <CardHead title="定时与提醒" status={cfg ? `复盘 ${reviewStatus ?? "—"} · 心跳 ${heartbeatStatus ?? "—"}` : "读取中…"} />
+        <CardHead title="提醒" status={cfg ? `心跳 ${heartbeatStatus ?? "—"}` : "读取中…"} />
         <p className="hint">
-          定时与心跳只在应用运行期间触发，关掉应用就不会执行；改动会影响之后的运行行为。
+          心跳只在应用运行期间触发，关掉应用就不会执行；改动会影响之后的运行行为。
         </p>
 
         <details className="tech" open>
-          <summary>定时与提醒</summary>
+          <summary>心跳与规则提醒</summary>
           <p className="hint">
-            定时与心跳只在<strong>应用运行期间</strong>触发：关掉应用就不会执行，错过的时间点会在下次打开时补跑一次。
-            心跳只做本地规则扫描（逾期 / 超期），不调模型、不写文件。AI 复盘会调用一次模型，产出先登记为待确认写入，
-            <strong>你点确认之后才会存成文件</strong>。
+            心跳只在<strong>应用运行期间</strong>触发：关掉应用就不会执行，错过的时间点会在下次打开时补跑一次。
+            它只做本地规则扫描（逾期 / 超期）来刷新场景页的规则提醒，不调模型、不写文件、不花 token。
+            OD-ARCH-092 起自动复盘已从界面移除：工作记录现在是「随手记直接落盘，明确说整理成周报才生成」，
+            不再需要另一条定时调用模型的路径。
           </p>
           {schedError ? <div className="alert">无法读取调度配置：{schedError}</div> : null}
           {cfg ? (
             <>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={cfg.review_enabled}
-                  disabled={schedBusy}
-                  onChange={(e) => void patchScheduler({ review_enabled: e.target.checked })}
-                />
-                <span>
-                  <strong>启用定时 AI 复盘</strong>
-                  <br />
-                  默认关闭。开启后按频率调用一次模型；模型不可用或权限关闭时不执行、不产模板。
-                </span>
-              </label>
-
-              <div className="field">
-                <label className="field-label">复盘频率</label>
-                <select
-                  className="text-input"
-                  value={cfg.cadence}
-                  disabled={schedBusy}
-                  onChange={(e) =>
-                    void patchScheduler({ cadence: e.target.value as SchedulerCadence })
-                  }
-                >
-                  <option value="daily">每天</option>
-                  <option value="weekly">每周一</option>
-                  <option value="once">仅一次（到点后不再重复）</option>
-                </select>
-              </div>
-
-              <div className="field">
-                <label className="field-label">触发小时（本地时间，0–23）</label>
-                <input
-                  className="text-input"
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={cfg.hour}
-                  disabled={schedBusy}
-                  onChange={(e) => {
-                    const hour = Number(e.target.value);
-                    if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
-                      void patchScheduler({ hour });
-                    }
-                  }}
-                />
-              </div>
-
               <label className="check">
                 <input
                   type="checkbox"
@@ -1977,22 +2082,12 @@ export default function SettingsPanel() {
 
               <div className="status-card">
                 <div className="status-row">
-                  <span className="k">复盘 / 心跳</span>
-                  <span className="v mono">
-                    {reviewStatus ?? "—"} · {heartbeatStatus ?? "—"}
-                  </span>
+                  <span className="k">心跳</span>
+                  <span className="v mono">{heartbeatStatus ?? "—"}</span>
                 </div>
                 <div className="status-row">
                   <span className="k">下次判定</span>
                   <span className="v">{sched?.hint ?? "—"}</span>
-                </div>
-                <div className="status-row">
-                  <span className="k">上次复盘</span>
-                  <span className="v mono">
-                    {cfg.last_review_at > 0
-                      ? new Date(cfg.last_review_at * 1000).toLocaleString()
-                      : "从未执行"}
-                  </span>
                 </div>
                 <div className="status-row">
                   <span className="k">上次心跳</span>
@@ -2110,6 +2205,180 @@ export default function SettingsPanel() {
           </div>
           <p className="hint">
             「含下级目录」是按场景分别设置的开关，在各场景页的成果档案栏里切换，默认只看最外层。
+          </p>
+        </details>
+
+        <details className="tech">
+          <summary>库根（工作记录、周报与 @ 引用）</summary>
+          <p className="hint">
+            库根是工作记录、周报与 <code>@</code> 引用的共同根，默认
+            <span className="mono"> {libraryInfo?.default_root ?? "~/OmniDesk/库"}</span>。
+            这里改的是<strong>之后的 @ 引用</strong>指向哪里；技能文件仍写入数据根的
+            <span className="mono"> 库/</span> 目录。知识库使用下方单独的
+            <strong>「知识库（只读）」</strong>根，与本库根互不影响。
+          </p>
+          {libraryError ? <div className="alert">当前库根不可用：{libraryError}</div> : null}
+          {libraryInfo && libraryInfo.resolved ? (
+            <div
+              className="status-card"
+              role="group"
+              aria-label={`库根状态：当前生效 ${libraryInfo.library_root ?? "不可用"}；来源 ${
+                libraryInfo.source
+                  ? SOURCE_LABEL[libraryInfo.source] ?? libraryInfo.source
+                  : "未知"
+              }；已保存的选择 ${libraryInfo.configured_root ?? "未设置（使用默认）"}`}
+            >
+              <div className="status-row">
+                <span className="k">当前生效</span>
+                <span className="v mono">{libraryInfo.library_root ?? "不可用"}</span>
+              </div>
+              <div className="status-row">
+                <span className="k">来源</span>
+                <span className="v">
+                  {libraryInfo.source
+                    ? SOURCE_LABEL[libraryInfo.source] ?? libraryInfo.source
+                    : "未知"}
+                </span>
+              </div>
+              <div className="status-row">
+                <span className="k">已保存的选择</span>
+                <span className="v mono">{libraryInfo.configured_root ?? "未设置（使用默认）"}</span>
+              </div>
+            </div>
+          ) : null}
+          {libraryInfo?.source === "env_override" ? (
+            <div className="alert">
+              库根被环境变量 OMNIDESK_KNOWLEDGE_ROOT 覆盖为
+              {libraryInfo.env_override ?? "（未知）"}，此处保存的选择要等该变量取消后才会生效。
+            </div>
+          ) : null}
+          <div className="field">
+            <label className="field-label">改为新的绝对路径（例如 /home/you/OmniDesk/库）</label>
+            <input
+              className="text-input"
+              value={libraryInput}
+              onChange={(e) => setLibraryInput(e.target.value)}
+              placeholder="/home/you/OmniDesk/库"
+              aria-label="库根绝对路径"
+            />
+            <p className="hint">
+              会被拒绝：仓库内、原版 DSH / agent / Codex 的私有目录、应用自身数据目录、非绝对路径，
+              以及指向这些位置的软链接。保存前会在目标目录做一次写入探针并立即清理。
+              旧路径下的文件不迁移、不覆盖、不删除。
+            </p>
+          </div>
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => void saveLibraryRoot()}
+              disabled={libraryBusy || libraryInput.trim().length === 0}
+            >
+              {libraryBusy ? "校验并保存中…" : "校验并保存"}
+            </button>
+            <button className="ghost" onClick={() => void refreshLibrary()}>
+              刷新状态
+            </button>
+          </div>
+          {libraryMessage ? (
+            <p className="hint" role="status" aria-live="polite">
+              {libraryMessage}
+            </p>
+          ) : null}
+          {librarySaveError ? <div className="alert">{librarySaveError}</div> : null}
+          <p className="hint">
+            环境变量 <span className="mono">OMNIDESK_KNOWLEDGE_ROOT</span> 优先级高于这里的设置，
+            用于开发/测试隔离；取消该变量后，这里的保存选择才会生效。
+          </p>
+        </details>
+
+        <details className="tech">
+          <summary>知识库（只读）</summary>
+          <p className="hint">
+            这里选一个<strong>已有的</strong> Obsidian 或 Markdown 目录作为知识库。OmniDesk
+            只列出文件和读取笔记正文，不写入、不移动、不删除，也不改动
+            <span className="mono"> .obsidian/</span> 配置。知识库根独立于上面的库根，
+            两边互不迁移、互不覆盖。
+          </p>
+          <div
+            className="status-card"
+            role="group"
+            aria-label={vaultAria}
+          >
+            <div className="status-row">
+              <span className="k">当前知识库</span>
+              <span className="v mono">
+                {vaultStatus?.configured ? vaultStatus.root ?? "不可用" : "未设置"}
+              </span>
+            </div>
+            <div className="status-row">
+              <span className="k">目录状态</span>
+              <span className="v">
+                {vaultStatus === null
+                  ? "读取中…"
+                  : !vaultStatus.configured
+                    ? "尚未选择目录"
+                    : vaultStatus.error
+                      ? `不可用：${vaultStatus.error}`
+                      : vaultStatus.is_dir
+                        ? "可读取"
+                        : "不是目录"}
+              </span>
+            </div>
+            {vaultScan ? (
+              <>
+                <div className="status-row">
+                  <span className="k">扫描结果</span>
+                  <span className="v">
+                    {vaultScan.stats.files} 个文件（笔记 {vaultScan.stats.notes}、附件{" "}
+                    {vaultScan.stats.attachments}），共{" "}
+                    {(vaultScan.stats.total_bytes / 1024).toFixed(1)} KiB
+                  </span>
+                </div>
+                <div className="status-row">
+                  <span className="k">跳过 / 错误</span>
+                  <span className="v">
+                    跳过 {vaultSkipped}{" "}
+                    项，错误 {vaultScan.stats.errors} 项
+                    {vaultScan.stats.truncated ? "（达到扫描上限，结果不完整）" : ""}
+                  </span>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => void pickVaultDirectory()}
+              disabled={vaultBusy}
+            >
+              {vaultBusy ? "处理中…" : "选择知识库目录"}
+            </button>
+            <button
+              className="ghost"
+              onClick={() => void scanVault()}
+              disabled={vaultBusy || !vaultStatus?.configured || !!vaultStatus?.error}
+            >
+              扫描刷新
+            </button>
+            <button
+              className="ghost"
+              onClick={() => void clearVault()}
+              disabled={vaultBusy || !vaultStatus?.configured}
+            >
+              取消选择
+            </button>
+          </div>
+          {vaultMessage ? (
+            <p className="hint" role="status" aria-live="polite">
+              {vaultMessage}
+            </p>
+          ) : null}
+          {vaultError ? <div className="alert">{vaultError}</div> : null}
+          <p className="hint">
+            只支持 <span className="mono">.md</span> / <span className="mono">.markdown</span> /{" "}
+            <span className="mono">.txt</span> 正文；其他文件只列名称和大小。隐藏目录、
+            <span className="mono"> .obsidian/</span>、<span className="mono">node_modules</span>{" "}
+            等整棵跳过，符号链接不跟随。取消选择只清除设置，知识库内文件保持原样。
           </p>
         </details>
       </section>

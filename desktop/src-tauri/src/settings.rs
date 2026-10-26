@@ -1,14 +1,14 @@
 //! 桌面应用设置（omnidesk.settings.v1）。
 //!
-//! 保存两项：用户选择的“新成果保存目录”，以及按端点类别划分的模型权限。
+//! 保存用户选择的新成果目录、库根，以及按端点类别划分的模型权限。
 //!
 //! 模型权限默认全部关闭（OD-ARCH-021）：本机 / 单位内部 / 外部三类各自独立，
 //! 由用户显式开启并可随时撤销；未知类别没有开关，宿主一律拒绝。
 //!
 //! 硬边界：
 //!   * 设置文件位于应用数据根的 `config/` 下，与成果目录分开；
-//!   * 成果目录必须是绝对路径，不得落在仓库、原版 DSH / agent / Codex 私有目录，
-//!     也不得落在应用自身数据根内；
+//!   * 成果目录与库根必须是绝对路径，不得落在仓库、原版 DSH / agent / Codex
+//!     私有目录，也不得落在应用自身数据根内；
 //!   * 校验通过后才创建目录，写入用一次性探针并清理；
 //!   * 改动只影响之后新写入的成果，不迁移、不覆盖、不删除既有文件。
 //!
@@ -23,7 +23,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app_paths::AppPaths;
-use crate::task_shell::{assert_local_root_allowed, assert_outside_repo};
+use crate::task_shell::{
+    assert_local_root_allowed, assert_outside_repo, DEFAULT_LIBRARY_SUBDIR, KNOWLEDGE_ROOT_ENV,
+};
 
 pub const SETTINGS_SCHEMA: &str = "omnidesk.settings.v1";
 pub const SETTINGS_FILE: &str = "settings.v1.json";
@@ -41,6 +43,18 @@ pub struct Settings {
     /// 用户显式选择的成果目录；None 表示使用默认目录。
     #[serde(default)]
     pub artifact_root: Option<String>,
+    /// 库根：周报、工作记录与 @ 引用的共同根（OD-ARCH-086）。
+    /// None 表示使用默认 `~/OmniDesk/库`；旧设置文件缺少该字段时同样按默认处理。
+    /// 知识库另由 `knowledge_vault_root` 独立配置（OD-KB-001 P1），两者不互相覆盖。
+    #[serde(default)]
+    pub library_root: Option<String>,
+    /// 知识库根（OD-KB-001 P1）：用户显式选择的只读知识库目录。
+    ///
+    /// None 表示未选择，此时不提供知识库浏览入口。与 `library_root` 完全独立：
+    /// 不参与工作记录、周报、成果与 @ 引用的路径解析，也不受
+    /// `OMNIDESK_KNOWLEDGE_ROOT` 影响（该变量只覆盖 `library_root`）。
+    #[serde(default)]
+    pub knowledge_vault_root: Option<String>,
     /// 按端点类别授予的模型权限。旧设置文件缺少该字段时按“全部关闭”处理。
     #[serde(default)]
     pub model_permissions: ModelPermissions,
@@ -153,6 +167,8 @@ impl Default for Settings {
         Self {
             schema: SETTINGS_SCHEMA.to_string(),
             artifact_root: None,
+            library_root: None,
+            knowledge_vault_root: None,
             model_permissions: ModelPermissions::default(),
             thread_categories: default_thread_categories(),
             engine_profile: None,
@@ -230,6 +246,22 @@ pub fn load(config_dir: &Path) -> Result<Settings, String> {
         }
         if root.trim().is_empty() {
             return Err("成果目录为空，拒绝使用；请删除该设置项或填写绝对路径".to_string());
+        }
+    }
+    if let Some(root) = settings.library_root.as_deref() {
+        if root.chars().count() > MAX_PATH_CHARS {
+            return Err("库根路径过长，拒绝使用".to_string());
+        }
+        if root.trim().is_empty() {
+            return Err("库根为空，拒绝使用；请删除该设置项或填写绝对路径".to_string());
+        }
+    }
+    if let Some(root) = settings.knowledge_vault_root.as_deref() {
+        if root.chars().count() > MAX_PATH_CHARS {
+            return Err("知识库根路径过长，拒绝使用".to_string());
+        }
+        if root.trim().is_empty() {
+            return Err("知识库根为空，拒绝使用；请删除该设置项或填写绝对路径".to_string());
         }
     }
     validate_categories(&settings.thread_categories)?;
@@ -319,6 +351,67 @@ pub fn configured_root(config_dir: &Path) -> Result<Option<PathBuf>, String> {
     Ok(load(config_dir)?.artifact_root.map(PathBuf::from))
 }
 
+/// 用户显式配置的库根（未配置时为 None）。
+pub fn configured_library_root(config_dir: &Path) -> Result<Option<PathBuf>, String> {
+    Ok(load(config_dir)?.library_root.map(PathBuf::from))
+}
+
+/// 默认库根：`$HOME/OmniDesk/库`。
+fn default_library_root() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认库根".to_string())?;
+    Ok(PathBuf::from(home).join(DEFAULT_LIBRARY_SUBDIR))
+}
+
+/// 库根的环境变量覆盖（沿用既有 `OMNIDESK_KNOWLEDGE_ROOT`，优先级最高）。
+fn library_env_override() -> Option<PathBuf> {
+    match std::env::var_os(KNOWLEDGE_ROOT_ENV) {
+        Some(raw) if !raw.is_empty() => Some(PathBuf::from(raw)),
+        _ => None,
+    }
+}
+
+/// 当前实际生效的库根及其来源（OD-ARCH-086）。
+///
+/// 优先级：`OMNIDESK_KNOWLEDGE_ROOT` > 用户设置 > 默认 `~/OmniDesk/库`。
+/// 用户设置与默认目录沿用成果目录的边界校验；环境变量是既有开发/测试入口，
+/// 保持原有「只要求绝对路径」的语义，不因新增设置而收紧。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EffectiveLibraryRoot {
+    /// env_override / user / default
+    pub source: &'static str,
+    pub root: PathBuf,
+    pub configured_root: Option<PathBuf>,
+    pub env_override: Option<PathBuf>,
+}
+
+pub fn effective_library_root(config_dir: &Path) -> Result<EffectiveLibraryRoot, String> {
+    let env = library_env_override();
+    if let Some(env) = env.clone() {
+        if !env.is_absolute() {
+            return Err(format!("库根必须是绝对路径：{}", env.display()));
+        }
+        return Ok(EffectiveLibraryRoot {
+            source: "env_override",
+            root: env.clone(),
+            configured_root: configured_library_root(config_dir).ok().flatten(),
+            env_override: Some(env),
+        });
+    }
+    let configured = configured_library_root(config_dir)?;
+    let root = match configured.clone() {
+        Some(user) => user,
+        None => default_library_root()?,
+    };
+    assert_artifact_root_allowed(&root, config_dir.parent())?;
+    Ok(EffectiveLibraryRoot {
+        source: if configured.is_some() { "user" } else { "default" },
+        root,
+        configured_root: configured,
+        env_override: None,
+    })
+}
+
 /// 开发/测试隔离覆盖是否生效。
 pub fn env_override() -> Option<PathBuf> {
     match std::env::var_os(LOCAL_ROOT_ENV) {
@@ -333,7 +426,8 @@ fn default_root() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(DEFAULT_ARTIFACT_SUBDIR))
 }
 
-/// 校验一个候选成果目录：绝对路径、无禁止片段、真实落点在允许范围、不在仓库或应用数据根内。
+/// 校验一个候选数据根（成果目录、库根）：绝对路径、无禁止片段、真实落点在允许范围、
+/// 不在仓库或应用数据根内。错误文案保持中性，避免库根报错时误称“成果目录”。
 pub fn assert_artifact_root_allowed(path: &Path, app_root: Option<&Path>) -> Result<(), String> {
     assert_local_root_allowed(path)?;
     assert_outside_repo(path)?;
@@ -342,7 +436,7 @@ pub fn assert_artifact_root_allowed(path: &Path, app_root: Option<&Path>) -> Res
         let path_norm = crate::app_paths::resolve_real_path(path)?;
         if path_norm.starts_with(&app_norm) {
             return Err(format!(
-                "成果目录不能放在应用自身数据目录内：{}（应用数据根 {}）",
+                "目标目录不能放在应用自身数据目录内：{}（应用数据根 {}）",
                 path.display(),
                 app_root.display()
             ));
@@ -482,6 +576,71 @@ pub fn set_artifact_root(paths: &AppPaths, raw: &str) -> Result<PathBuf, String>
     settings.artifact_root = Some(candidate.display().to_string());
     write_settings(&paths.config, &settings)?;
     Ok(candidate)
+}
+
+/// 应用并持久化新的库根：校验 → 创建 → 再次校验 → 探针 → 写入设置。
+///
+/// 与成果目录同一套边界（绝对路径、仓库外、非 DSH/agent/Codex 私有目录、
+/// 不在应用数据根内）。只影响之后的 @ 引用与 Skill 写入；既有文件不迁移、
+/// 不覆盖、不删除。写入时保留同一文件中的其他设置。
+pub fn set_library_root(paths: &AppPaths, raw: &str) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("请输入绝对路径，例如 /home/you/OmniDesk/库".to_string());
+    }
+    if trimmed.chars().count() > MAX_PATH_CHARS {
+        return Err("路径过长，拒绝使用".to_string());
+    }
+    let candidate = PathBuf::from(trimmed);
+    if !candidate.is_absolute() {
+        return Err(format!("必须是绝对路径：{}", candidate.display()));
+    }
+    assert_artifact_root_allowed(&candidate, Some(&paths.root))?;
+    fs::create_dir_all(&candidate)
+        .map_err(|e| format!("创建库根目录失败（{}）：{}", candidate.display(), e))?;
+    // 创建后再次校验真实落点，防止符号链接把目录引到禁区。
+    assert_artifact_root_allowed(&candidate, Some(&paths.root))?;
+    probe_writable(&candidate)?;
+    // 设置文件损坏时整次拒绝，避免在用户不知情时重置其他设置。
+    let mut settings = load(&paths.config)?;
+    settings.library_root = Some(candidate.display().to_string());
+    write_settings(&paths.config, &settings)?;
+    Ok(candidate)
+}
+
+/// 用户显式选择的知识库根（未配置时为 None）。
+///
+/// 与 `library_root` 独立：不受 `OMNIDESK_KNOWLEDGE_ROOT` 影响，也不参与
+/// 工作记录、周报、成果与 @ 引用的解析。
+pub fn configured_knowledge_vault_root(config_dir: &Path) -> Result<Option<PathBuf>, String> {
+    Ok(load(config_dir)?.knowledge_vault_root.map(PathBuf::from))
+}
+
+/// 应用并持久化知识库根：只读边界校验 → 写入设置。**不创建、不迁移目录**。
+///
+/// 与成果目录、库根不同，这里不做写入探针：知识库只读，创建目录或试写都会
+/// 越出 P1 的授权范围。目标目录必须已存在且是目录。
+pub fn set_knowledge_vault_root(paths: &AppPaths, raw: &str) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("请输入知识库的绝对路径，例如 /home/you/Documents/Vault".to_string());
+    }
+    if trimmed.chars().count() > MAX_PATH_CHARS {
+        return Err("路径过长，拒绝使用".to_string());
+    }
+    let candidate = PathBuf::from(trimmed);
+    let resolved = crate::knowledge_vault::assert_vault_root_allowed(&candidate, Some(&paths.root))?;
+    let mut settings = load(&paths.config)?;
+    settings.knowledge_vault_root = Some(resolved.display().to_string());
+    write_settings(&paths.config, &settings)?;
+    Ok(resolved)
+}
+
+/// 清除知识库根选择（回到“未设置”）。只改设置字段，不动任何文件。
+pub fn clear_knowledge_vault_root(paths: &AppPaths) -> Result<(), String> {
+    let mut settings = load(&paths.config)?;
+    settings.knowledge_vault_root = None;
+    write_settings(&paths.config, &settings)
 }
 
 /// 设置单个类别（local / private / public）的模型权限并持久化。
@@ -692,6 +851,252 @@ mod tests {
             assert_eq!(eff.source, "default");
             assert!(eff.root.ends_with("OmniDesk/workspace/artifacts"));
         });
+    }
+
+    /// OD-ARCH-086：未配置时库根默认指向 ~/OmniDesk/库，来源为 default。
+    #[test]
+    fn library_defaults_to_home_library_root() {
+        with_no_env(|| {
+            let app = temp_app("library-default");
+            let eff = effective_library_root(&app.config).unwrap();
+            assert_eq!(eff.source, "default");
+            assert!(eff.root.ends_with("OmniDesk/库"), "{}", eff.root.display());
+            assert!(eff.configured_root.is_none());
+        });
+    }
+
+    /// 旧设置文件没有 library_root 字段，必须照常加载，且库根按默认解析。
+    #[test]
+    fn legacy_settings_without_library_root_still_load() {
+        with_no_env(|| {
+            let app = temp_app("library-legacy");
+            fs::write(
+                settings_path(&app.config),
+                r#"{"schema":"omnidesk.settings.v1","artifact_root":null,"model_permissions":{"local":true,"private":false,"public":false}}"#,
+            )
+            .unwrap();
+            let loaded = load(&app.config).unwrap();
+            assert!(loaded.library_root.is_none(), "旧文件缺字段应按 None 处理");
+            assert!(loaded.model_permissions.local, "旧字段不得丢失");
+            let eff = effective_library_root(&app.config).unwrap();
+            assert_eq!(eff.source, "default");
+            assert!(eff.root.ends_with("OmniDesk/库"));
+        });
+    }
+
+    /// 保存库根后重新加载仍在，且成果目录、模型权限、分类不被重置。
+    #[test]
+    fn set_library_root_persists_and_preserves_other_settings() {
+        with_no_env(|| {
+            let app = temp_app("library-persist");
+            set_model_permission(&app.config, "private", true).unwrap();
+            let artifacts = std::env::temp_dir()
+                .join(format!("omnidesk-library-artifacts-{}", std::process::id()));
+            let library = std::env::temp_dir()
+                .join(format!("omnidesk-library-root-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&artifacts);
+            let _ = fs::remove_dir_all(&library);
+            set_artifact_root(&app, artifacts.to_str().unwrap()).unwrap();
+
+            set_library_root(&app, library.to_str().unwrap()).unwrap();
+            assert!(library.is_dir(), "库根目录应被创建");
+            let leftovers: Vec<_> = fs::read_dir(&library)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with(".omnidesk-write-probe"))
+                .collect();
+            assert!(leftovers.is_empty(), "探针文件必须清理干净");
+
+            let settings = load(&app.config).unwrap();
+            assert_eq!(settings.library_root.as_deref(), library.to_str());
+            assert_eq!(settings.artifact_root.as_deref(), artifacts.to_str());
+            assert!(settings.model_permissions.private, "改库根不得重置模型权限");
+            assert_eq!(settings.thread_categories, default_thread_categories());
+
+            let eff = effective_library_root(&app.config).unwrap();
+            assert_eq!(eff.source, "user");
+            assert_eq!(eff.root, library);
+
+            let _ = fs::remove_dir_all(&artifacts);
+            let _ = fs::remove_dir_all(&library);
+        });
+    }
+
+    /// 库根沿用成果目录的边界；越界时既不写设置，也不留下目录。
+    #[test]
+    fn set_library_root_rejects_out_of_bounds_paths() {
+        with_no_env(|| {
+            let app = temp_app("library-reject");
+            assert!(set_library_root(&app, "relative/dir").is_err());
+            assert!(set_library_root(&app, "/home/example/.dsh/library").is_err());
+            assert!(set_library_root(&app, "/home/example/.agents/library").is_err());
+            assert!(set_library_root(&app, "/home/example/.codex/library").is_err());
+            let inside_app = app.root.join("library");
+            assert!(set_library_root(&app, inside_app.to_str().unwrap()).is_err());
+            assert!(!inside_app.exists(), "被拒绝的路径不得被创建");
+            assert!(!settings_path(&app.config).exists(), "失败不得写入设置文件");
+        });
+    }
+
+    /// 环境变量覆盖优先级最高，且设置页能读到被覆盖的事实。
+    #[test]
+    fn knowledge_env_override_wins_for_library_root() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = temp_app("library-env");
+        let env_root = std::env::temp_dir()
+            .join(format!("omnidesk-library-env-{}", std::process::id()));
+        let previous = std::env::var_os(KNOWLEDGE_ROOT_ENV);
+        std::env::set_var(KNOWLEDGE_ROOT_ENV, &env_root);
+        let eff = effective_library_root(&app.config).unwrap();
+        assert_eq!(eff.source, "env_override");
+        assert_eq!(eff.root, env_root);
+        match previous {
+            Some(v) => std::env::set_var(KNOWLEDGE_ROOT_ENV, v),
+            None => std::env::remove_var(KNOWLEDGE_ROOT_ENV),
+        }
+    }
+
+    /// OD-KB-001 P1：知识库根与库根互不影响，可单独保存与清除。
+    #[test]
+    fn knowledge_vault_root_is_independent_of_library_root() {
+        with_no_env(|| {
+            let app = temp_app("vault-independent");
+            let base = std::env::temp_dir()
+                .join(format!("omnidesk-vault-independent-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&base);
+            let library = base.join("library");
+            let vault = base.join("vault");
+            fs::create_dir_all(&library).unwrap();
+            fs::create_dir_all(&vault).unwrap();
+
+            set_library_root(&app, library.to_str().unwrap()).unwrap();
+            let resolved = set_knowledge_vault_root(&app, vault.to_str().unwrap()).unwrap();
+            assert_eq!(resolved, fs::canonicalize(&vault).unwrap());
+            let settings = load(&app.config).unwrap();
+            assert_eq!(settings.library_root.as_deref(), library.to_str());
+            assert_eq!(
+                configured_knowledge_vault_root(&app.config).unwrap(),
+                Some(fs::canonicalize(&vault).unwrap())
+            );
+
+            // 改库根不得顺带改写知识库根。
+            let other_library = base.join("library-2");
+            fs::create_dir_all(&other_library).unwrap();
+            set_library_root(&app, other_library.to_str().unwrap()).unwrap();
+            assert_eq!(
+                configured_knowledge_vault_root(&app.config).unwrap(),
+                Some(fs::canonicalize(&vault).unwrap())
+            );
+
+            clear_knowledge_vault_root(&app).unwrap();
+            assert!(configured_knowledge_vault_root(&app.config).unwrap().is_none());
+            assert_eq!(
+                load(&app.config).unwrap().library_root.as_deref(),
+                other_library.to_str(),
+                "清除知识库根不得动库根"
+            );
+            let _ = fs::remove_dir_all(&base);
+        });
+    }
+
+    /// 旧设置文件没有 knowledge_vault_root 字段，必须按“未选择”加载。
+    #[test]
+    fn legacy_settings_without_knowledge_vault_root_still_load() {
+        with_no_env(|| {
+            let app = temp_app("vault-legacy");
+            fs::write(
+                settings_path(&app.config),
+                r#"{"schema":"omnidesk.settings.v1","artifact_root":null,"library_root":"/tmp/legacy-library","model_permissions":{"local":true,"private":false,"public":false}}"#,
+            )
+            .unwrap();
+            let loaded = load(&app.config).unwrap();
+            assert!(loaded.knowledge_vault_root.is_none());
+            assert_eq!(loaded.library_root.as_deref(), Some("/tmp/legacy-library"));
+            assert!(loaded.model_permissions.local, "旧字段不得丢失");
+            assert!(configured_knowledge_vault_root(&app.config).unwrap().is_none());
+        });
+    }
+
+    /// 知识库根校验：拒绝相对路径、不存在目录、禁区、应用数据根内与符号链接；
+    /// 失败不创建目录、不写设置文件、不留下探针。
+    #[test]
+    fn set_knowledge_vault_root_rejects_invalid_paths_without_side_effects() {
+        with_no_env(|| {
+            let app = temp_app("vault-reject");
+            let base = std::env::temp_dir()
+                .join(format!("omnidesk-vault-reject-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&base);
+            fs::create_dir_all(&base).unwrap();
+
+            assert!(set_knowledge_vault_root(&app, "relative/vault").is_err());
+            let missing = base.join("missing");
+            assert!(set_knowledge_vault_root(&app, missing.to_str().unwrap()).is_err());
+            assert!(!missing.exists(), "被拒绝的路径不得被创建");
+            assert!(set_knowledge_vault_root(&app, "/home/u/.dsh/vault").is_err());
+            assert!(set_knowledge_vault_root(&app, "/home/u/.agents/vault").is_err());
+            assert!(set_knowledge_vault_root(&app, "/home/u/.codex/vault").is_err());
+            let inside_app = app.root.join("vault");
+            fs::create_dir_all(&inside_app).unwrap();
+            assert!(set_knowledge_vault_root(&app, inside_app.to_str().unwrap()).is_err());
+            let file = base.join("not-a-dir.md");
+            fs::write(&file, "x").unwrap();
+            assert!(set_knowledge_vault_root(&app, file.to_str().unwrap()).is_err());
+            assert!(!settings_path(&app.config).exists(), "失败不得写入设置文件");
+
+            #[cfg(unix)]
+            {
+                let real = base.join("real");
+                fs::create_dir_all(&real).unwrap();
+                let link = base.join("link");
+                std::os::unix::fs::symlink(&real, &link).unwrap();
+                let err = set_knowledge_vault_root(&app, link.to_str().unwrap()).unwrap_err();
+                assert!(err.contains("符号链接"), "{err}");
+            }
+
+            // 合法目录只写设置，不做写入探针。
+            let good = base.join("good");
+            fs::create_dir_all(&good).unwrap();
+            fs::write(good.join("note.md"), "# 合成").unwrap();
+            set_knowledge_vault_root(&app, good.to_str().unwrap()).unwrap();
+            let leftovers: Vec<_> = fs::read_dir(&good)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            assert_eq!(leftovers, vec!["note.md".to_string()], "不得写入探针或索引");
+            let _ = fs::remove_dir_all(&base);
+        });
+    }
+
+    /// 既有开发/测试变量只覆盖 library_root，不得影响知识库根。
+    #[test]
+    fn knowledge_env_override_does_not_touch_vault_root() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = temp_app("vault-env");
+        let base = std::env::temp_dir()
+            .join(format!("omnidesk-vault-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let vault = base.join("vault");
+        fs::create_dir_all(&vault).unwrap();
+        set_knowledge_vault_root(&app, vault.to_str().unwrap()).unwrap();
+        let saved = configured_knowledge_vault_root(&app.config).unwrap();
+
+        let env_root = base.join("library-env");
+        let previous = std::env::var_os(KNOWLEDGE_ROOT_ENV);
+        std::env::set_var(KNOWLEDGE_ROOT_ENV, &env_root);
+        let eff = effective_library_root(&app.config).unwrap();
+        assert_eq!(eff.source, "env_override");
+        assert_eq!(eff.root, env_root);
+        assert_eq!(
+            configured_knowledge_vault_root(&app.config).unwrap(),
+            saved,
+            "环境变量不得改写知识库根"
+        );
+        match previous {
+            Some(v) => std::env::set_var(KNOWLEDGE_ROOT_ENV, v),
+            None => std::env::remove_var(KNOWLEDGE_ROOT_ENV),
+        }
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

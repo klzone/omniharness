@@ -40,6 +40,11 @@ APPDIR="$REPO/desktop"
 # 用户桌面快捷方式若指向旧二进制还会出现「Command not found」（能力清单即如此）。
 # 开发态热更新请用 scripts/dev-ui.sh（隔离合成环境 + debug 二进制 + dev server）。
 BIN="$APPDIR/src-tauri/target/release/omnidesk-desktop"
+# 记录这份 release 二进制按什么特性构建。Tauri 只看 custom-protocol 特性判断生产/开发
+# 模式：不带它的 release 包会去连 devUrl(127.0.0.1:5273) 而不是内嵌资源；正式启动器
+# 不起 dev server，窗口就会报 Connection refused。
+BUILD_MARK="$APPDIR/src-tauri/target/release/.build-features"
+BUILD_FEATURES="custom-protocol"
 DEV_PORT=5273
 RUNDIR="${OMNIDESK_LIVE_ROOT:-$HOME/.local/state/omnidesk}/live"
 PID_DIR="$RUNDIR/pids"
@@ -146,6 +151,8 @@ echo
 # 1) 二进制（前端产物内嵌在 release 二进制里，所以必须先 npm build 再 cargo build）
 needs_build() {
   [ -x "$BIN" ] || return 0
+  # 旧二进制或换过构建方式时，标记缺失即视为需要重建。
+  [ "$(cat "$BUILD_MARK" 2>/dev/null || true)" = "$BUILD_FEATURES" ] || return 0
   # 任一前端产物或 Rust 源码比二进制新 → 需要重建
   local newer
   newer="$(find "$APPDIR/dist" "$APPDIR/src" "$APPDIR/src-tauri/src" \
@@ -160,9 +167,15 @@ if [ "$NO_BUILD" -eq 0 ] && needs_build; then
   # 不碰 build.rs 的话，改完前端再 cargo build 会「秒过」并继续用旧界面。
   touch "$APPDIR/src-tauri/build.rs"
   ( cd "$REPO" && eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)" \
-    && cd desktop/src-tauri && cargo build --release --offline )
+    && cd desktop/src-tauri && cargo build --release --offline --features custom-protocol )
+  printf '%s' "$BUILD_FEATURES" >"$BUILD_MARK"
 fi
 [ -x "$BIN" ] || { echo "构建后仍找不到二进制：$BIN" >&2; exit 1; }
+if [ "$(cat "$BUILD_MARK" 2>/dev/null || true)" != "$BUILD_FEATURES" ]; then
+  echo "现有二进制不是生产构建（缺少 $BUILD_FEATURES），窗口会去连 127.0.0.1:$DEV_PORT。" >&2
+  echo "去掉 --no-build 重新构建即可：scripts/omnidesk.sh" >&2
+  exit 1
+fi
 
 # 2) 桌面 App：正式数据根（不设置任何隔离变量）
 #    release 二进制自带前端资源，不需要 dev server，也没有「端口被占」问题。

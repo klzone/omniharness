@@ -275,7 +275,15 @@ export default function App() {
             declaredScenes={decl?.decl.scenes ?? null}
             searchQuery={searchQuery}
             searchCurrentIndex={searchCurrentIndex}
-            onSearchMatchesChange={setSearchMatchCount}
+            onSearchMatchesChange={(count) => {
+              setSearchMatchCount(count);
+              setSearchCurrentIndex((prev) => {
+                if (count === 0) return 0;
+                if (prev >= count) return count - 1;
+                if (prev < 0) return 0;
+                return prev;
+              });
+            }}
           />
         ) : scene === "report" || scene === "writing" || scene === "project" ? (
           <ScenePage

@@ -369,6 +369,11 @@ class _ApprovalChannel:
             return
         if frame_type == "waterfall":
             if str(value.get("event") or "") != "approval/request":
+                # OD-ARCH-088：结构化提问单独登记为可答项；其余 waterfall
+                # （钩子等）仍只上报、不自动应答。
+                if str(value.get("event") or "") == "user-questions/request":
+                    if self._adapter._on_question_request(value):
+                        return
                 # OD-ARCH-069：其它 waterfall（提问、钩子等）仍不自动应答，
                 # 但必须让界面看得见「引擎在等人回答」，否则表现为卡死。
                 self._adapter._on_engine_ask(value)
@@ -376,7 +381,10 @@ class _ApprovalChannel:
             self._adapter._on_approval_request(value)
             return
         if frame_type == "cancel":
-            self._adapter._on_approval_cancel(str(value.get("eventId") or ""))
+            event_id = str(value.get("eventId") or "")
+            # 同一个 cancel 帧只对应一个 eventId；两处清理互不影响。
+            self._adapter._on_question_cancel(event_id)
+            self._adapter._on_approval_cancel(event_id)
             return
         if frame_type == "error":
             self.last_error = "event_stream_error"
@@ -404,6 +412,12 @@ class WebApiAdapter(TaskCoreBase):
 
     # 无等待上限时，静默多久发一次「仍在运行」提示（只提示，不收尾）。
     _IDLE_NOTE_SECONDS = 60.0
+    # OD-ARCH-088：提问题面/选项边界（超限只登记为不可答，不截断）。
+    _MAX_QUESTIONS = 8
+    _MAX_QUESTION_CHARS = 2000
+    _MAX_OPTIONS = 12
+    _MAX_OPTION_LABEL_CHARS = 200
+    _MAX_CUSTOM_CHARS = 4000
 
     def __init__(
         self,
@@ -452,6 +466,10 @@ class WebApiAdapter(TaskCoreBase):
         # OD-ARCH-066：审批通道与待办索引（只存归一化字段与本任务归属）。
         self._approval_channel: Optional[_ApprovalChannel] = None
         self._approval_index: dict = {}
+        # OD-ARCH-088：结构化提问索引（只在内存；题干/答案不落状态文件）。
+        # event_id -> 归一化待答项；task_id -> {event_id: 待答项}
+        self._question_index: dict = {}
+        self._questions_by_task: dict = {}
         # OD-ARCH-069：已上报过的「引擎在等人回答」事件 id（只用于去重，不存内容）。
         self._engine_ask_seen: dict = {}
         # 会话读回时用到的展示映射（只存不透明 token，与 ACP 通道一致）。
@@ -1328,6 +1346,7 @@ class WebApiAdapter(TaskCoreBase):
         **kwargs: Any,
     ) -> bool:
         """终态落定时清掉待审批索引：引擎已结束，旧请求不应再挂在界面上。"""
+        closed_questions: list = []
         if state in TERMINAL_STATES:
             with self._lock:
                 stale = list(record.pending_approvals)
@@ -1339,6 +1358,24 @@ class WebApiAdapter(TaskCoreBase):
                 # 终态后同一个任务不会再收到询问：顺手清掉去重键，避免无限增长。
                 for key in [k for k in self._engine_ask_seen if k[0] == record.omni_task_id]:
                     self._engine_ask_seen.pop(key, None)
+                # OD-ARCH-088：终态时把仍在等答的提问逐条标记为已关闭。
+                pending_questions = self._questions_by_task.pop(record.omni_task_id, {})
+                for question_id in list(pending_questions):
+                    entry = self._question_index.get(question_id)
+                    if entry is not None and entry.get("omni_task_id") == record.omni_task_id:
+                        self._question_index.pop(question_id, None)
+                    closed_questions.append(question_id)
+        for question_id in closed_questions:
+            self._emit(
+                record,
+                EventType.PROGRESS,
+                {
+                    "kind": "question_closed",
+                    "question_id": question_id,
+                    "reason": "task_terminal",
+                    "note": "任务已结束，提问不再可答",
+                },
+            )
         return super()._settle(record, state, evidence, **kwargs)
 
     def _task_timeout(self, record: _TaskRecord) -> Optional[float]:
@@ -1809,6 +1846,313 @@ class WebApiAdapter(TaskCoreBase):
             },
         )
         self._persist(record)
+
+    # -- 结构化提问（OD-ARCH-088）------------------------------------------
+    def _on_question_request(self, value: Mapping[str, Any]) -> bool:
+        """登记 `user-questions/request` 的待答项并下发 `question_request`。
+
+        返回 True 表示这是已识别的结构化提问（无论能否回答都不再退回通用
+        engine_ask 提示）；返回 False 表示题目结构无法解析，交给调用方按未知
+        waterfall 如实提示。题干与答案**只留在内存事件流**，不写状态文件或日志。
+        """
+        event_id = str(value.get("eventId") or "")
+        request = value.get("request")
+        if not event_id or not isinstance(request, Mapping):
+            return False
+        raw_questions = request.get("questions")
+        if not isinstance(raw_questions, list) or not raw_questions:
+            return False
+        questions: list = []
+        violations: list = []
+        seen_ids: set = set()
+        for raw in raw_questions:
+            if not isinstance(raw, Mapping):
+                return False
+            question_id = raw.get("id")
+            text = raw.get("question")
+            if not isinstance(question_id, str) or not question_id or not isinstance(text, str):
+                return False
+            if question_id in seen_ids:
+                # 同一次请求里 id 重复，答案无法无歧义回填：按未知询问提示。
+                return False
+            seen_ids.add(question_id)
+            options: list = []
+            raw_options = raw.get("options")
+            if raw_options is not None:
+                if not isinstance(raw_options, list):
+                    violations.append("options_not_a_list")
+                else:
+                    for option in raw_options:
+                        if not isinstance(option, Mapping):
+                            violations.append("option_not_an_object")
+                            continue
+                        label = option.get("label")
+                        if not isinstance(label, str) or not label:
+                            violations.append("option_label_missing")
+                            continue
+                        description = option.get("description")
+                        if description is not None and not isinstance(description, str):
+                            violations.append("option_description_not_text")
+                            description = None
+                        item = {"label": label}
+                        if description is not None:
+                            item["description"] = description
+                        options.append(item)
+            multi_raw = raw.get("multi_select", raw.get("multiSelect", False))
+            multi = multi_raw is True
+            header = raw.get("header")
+            detail = raw.get("detail")
+            if header is not None and not isinstance(header, str):
+                violations.append("header_not_text")
+                header = None
+            if detail is not None and not isinstance(detail, str):
+                violations.append("detail_not_text")
+                detail = None
+            normalized = {
+                "id": question_id,
+                "question": text,
+                "multi_select": multi,
+                "options": options,
+            }
+            if header is not None:
+                normalized["header"] = header
+            if detail is not None:
+                normalized["detail"] = detail
+            questions.append(normalized)
+            if len(text) > self._MAX_QUESTION_CHARS:
+                violations.append("question_too_long")
+            if detail is not None and len(detail) > self._MAX_QUESTION_CHARS:
+                violations.append("detail_too_long")
+            if len(options) > self._MAX_OPTIONS:
+                violations.append("too_many_options")
+            if any(len(o["label"]) > self._MAX_OPTION_LABEL_CHARS for o in options):
+                violations.append("option_label_too_long")
+        if len(questions) > self._MAX_QUESTIONS:
+            violations.append("too_many_questions")
+        violations = list(dict.fromkeys(violations))
+        agent_id = str(value.get("agentId") or "")
+        wait = request.get("wait")
+        call_id = ""
+        if isinstance(wait, Mapping):
+            call_id = str(wait.get("callId") or "")
+        with self._lock:
+            record = self._sessions.get(agent_id)
+            if record is not None and record.state in TERMINAL_STATES:
+                record = None
+            if event_id in self._question_index:
+                return True
+            entry = {
+                "omni_task_id": record.omni_task_id if record is not None else None,
+                "session_id": agent_id,
+                "call_id": call_id,
+                "questions": questions,
+                "answerable": not violations,
+                "violations": violations,
+            }
+            self._question_index[event_id] = entry
+            if record is not None:
+                self._questions_by_task.setdefault(record.omni_task_id, {})[event_id] = entry
+        if record is None:
+            return True
+        note = (
+            "引擎在等待回答；请选择后提交"
+            if not violations
+            else "题目超出可答边界，本卡不可提交；请取消本次任务或让引擎改用更短的提问"
+        )
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "question_request",
+                "question_id": event_id,
+                "call_id": call_id,
+                "session_id": agent_id,
+                "questions": questions,
+                "answerable": not violations,
+                "violations": violations,
+                "note": note,
+            },
+        )
+        self._persist(record)
+        return True
+
+    def _on_question_cancel(self, question_id: str) -> None:
+        if not question_id:
+            return
+        with self._lock:
+            entry = self._question_index.pop(question_id, None)
+            record = self._sessions.get(str((entry or {}).get("session_id") or ""))
+            if entry is not None and entry.get("omni_task_id"):
+                self._questions_by_task.get(str(entry["omni_task_id"]), {}).pop(question_id, None)
+        if record is None or entry is None:
+            return
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "question_closed",
+                "question_id": question_id,
+                "reason": "cancelled",
+                "note": "引擎已撤回该提问（可能已超时）；未提交任何答案",
+            },
+        )
+        self._persist(record)
+
+    @staticmethod
+    def _question_answer_error(message: str, **detail: Any) -> EngineError:
+        return EngineError(
+            EngineErrorCode.INVALID_ARGUMENT,
+            message,
+            detail={"channel": "web-api", **detail},
+        )
+
+    def _validate_question_answers(self, entry: Mapping[str, Any], answers: Any) -> list:
+        """校验并归一化答案批次；非法一律报错，不静默修正。"""
+        if not isinstance(answers, list):
+            raise self._question_answer_error("answers must be a list")
+        if entry.get("violations"):
+            raise self._question_answer_error(
+                "question request exceeds answerable limits",
+                violations=list(entry.get("violations") or []),
+            )
+        questions = list(entry.get("questions") or [])
+        by_id = {str(q.get("id") or ""): q for q in questions}
+        seen: set = set()
+        normalized: list = []
+        for raw in answers:
+            if not isinstance(raw, Mapping):
+                raise self._question_answer_error("each answer must be an object")
+            extra = set(raw.keys()) - {"id", "selected", "custom"}
+            if extra:
+                raise self._question_answer_error(
+                    "answer contains unknown fields", fields=sorted(str(k) for k in extra)
+                )
+            answer_id = raw.get("id")
+            if not isinstance(answer_id, str) or not answer_id:
+                raise self._question_answer_error("answer id is required")
+            if answer_id not in by_id:
+                raise self._question_answer_error("answer id does not belong to this question")
+            if answer_id in seen:
+                raise self._question_answer_error("answer id is repeated")
+            seen.add(answer_id)
+            selected = raw.get("selected")
+            if not isinstance(selected, list) or not all(isinstance(v, str) for v in selected):
+                raise self._question_answer_error("selected must be a list of strings")
+            question = by_id[answer_id]
+            labels = [str(o.get("label") or "") for o in question.get("options") or []]
+            allowed = set(labels)
+            for value in selected:
+                if value not in allowed:
+                    raise self._question_answer_error(
+                        "selected value is not one of this question's options",
+                        question_id=answer_id,
+                    )
+            if len(set(selected)) != len(selected):
+                raise self._question_answer_error("selected contains duplicate values",
+                                                  question_id=answer_id)
+            if not question.get("multi_select") and len(selected) > 1:
+                raise self._question_answer_error(
+                    "single-select question accepts at most one selected value",
+                    question_id=answer_id,
+                )
+            custom = raw.get("custom")
+            if custom is not None:
+                if not isinstance(custom, str):
+                    raise self._question_answer_error("custom must be text", question_id=answer_id)
+                if len(custom) > self._MAX_CUSTOM_CHARS:
+                    raise self._question_answer_error(
+                        "custom answer is too long",
+                        question_id=answer_id,
+                        limit=self._MAX_CUSTOM_CHARS,
+                    )
+            if not selected and not (isinstance(custom, str) and custom.strip()):
+                raise self._question_answer_error(
+                    "each question needs a selected option or custom text",
+                    question_id=answer_id,
+                )
+            item: dict = {"id": answer_id, "selected": list(selected)}
+            if isinstance(custom, str):
+                item["custom"] = custom
+            normalized.append(item)
+        if len(normalized) != len(questions) or seen != set(by_id):
+            raise self._question_answer_error(
+                "answers must name each question of this request exactly once"
+            )
+        return normalized
+
+    def respond_question(
+        self, omni_task_id: str, question_id: str, answers: Any
+    ) -> Mapping[str, Any]:
+        """回传用户对结构化提问的答案；只有宿主确认送达才出队。"""
+        record = self._require_task(omni_task_id)
+        with self._lock:
+            if record.state in TERMINAL_STATES:
+                raise EngineError(
+                    EngineErrorCode.INVALID_ARGUMENT,
+                    "task is already terminal; question can no longer be answered",
+                    omni_task_id=omni_task_id,
+                )
+            entry = self._question_index.get(question_id)
+            if entry is None or entry.get("omni_task_id") != omni_task_id:
+                raise EngineError(
+                    EngineErrorCode.INVALID_ARGUMENT,
+                    "question_id is not pending for this task",
+                    detail={"channel": "web-api"},
+                    omni_task_id=omni_task_id,
+                )
+            snapshot = dict(entry)
+        normalized = self._validate_question_answers(snapshot, answers)
+        channel = self._ensure_approval_channel()
+        if channel is None:
+            raise EngineError(
+                EngineErrorCode.ENGINE_UNAVAILABLE,
+                "question channel is not available",
+                detail={"channel": "web-api", "last_error": str(
+                    self._approval_channel.last_error if self._approval_channel else ""
+                )},
+                omni_task_id=omni_task_id,
+            )
+        try:
+            client_id = channel.ensure_started()
+            self._rpc(
+                "$events/result",
+                {
+                    "clientId": client_id,
+                    "eventId": question_id,
+                    "outcome": {"kind": "result", "value": {"answers": normalized}},
+                },
+                self._session_timeout,
+                omni_task_id=omni_task_id,
+            )
+        except EngineError:
+            # 保留待答：界面不得假装已送达，用户可以重试。
+            raise
+        with self._lock:
+            current = self._question_index.get(question_id)
+            if current is not None and current.get("omni_task_id") == omni_task_id:
+                self._question_index.pop(question_id, None)
+            pending_map = self._questions_by_task.get(omni_task_id) or {}
+            pending_map.pop(question_id, None)
+            pending = len(pending_map)
+            if not pending_map:
+                self._questions_by_task.pop(omni_task_id, None)
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "question_answered",
+                "question_id": question_id,
+                "pending_questions": pending,
+                "note": "答案已送达引擎；等待引擎继续本轮",
+            },
+        )
+        self._persist(record)
+        return {
+            "omni_task_id": omni_task_id,
+            "question_id": question_id,
+            "answered_at": now(),
+            "pending_questions": pending,
+        }
 
     def _on_approval_cancel(self, event_id: str) -> None:
         if not event_id:
@@ -2291,6 +2635,9 @@ class WebApiAdapter(TaskCoreBase):
             approval_channel = self._approval_channel
             self._approval_channel = None
             self._approval_index.clear()
+            # OD-ARCH-088：关停时丢弃内存里的待答提问（正文不落盘）。
+            self._question_index.clear()
+            self._questions_by_task.clear()
             proc = self._proc
         for task_id in remaining:
             if task_id not in still_running:

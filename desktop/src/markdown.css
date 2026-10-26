@@ -266,3 +266,53 @@
 .md-body.md-on-primary ol li::marker {
   color: color-mix(in srgb, var(--color-on-primary) 82%, transparent);
 }
+
+/* --- 会话内搜索命中高亮（OD-ARCH-084 S3） -------------------------------- */
+
+mark.md-search-hit {
+  background-color: #fde68a; /* 浅琥珀 200 系，非当前命中项 */
+  color: #1c1917;
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 140ms ease, outline 140ms ease;
+}
+
+mark.md-search-hit[data-search-active="true"] {
+  background-color: #fbbf24; /* 饱和琥珀 400 系 (rgb 251,191,36)，同时满足 g>=190, b<120 与两级可辨 */
+  color: #000000;
+  font-weight: 600;
+  outline: 2px solid #d97706;
+  outline-offset: 1px;
+  z-index: 1;
+}
+
+/* 深色问句气泡内的两级高亮 */
+.md-body.md-on-primary mark.md-search-hit {
+  background-color: rgba(253, 230, 138, 0.35);
+  color: #ffffff;
+}
+
+.md-body.md-on-primary mark.md-search-hit[data-search-active="true"] {
+  background-color: #fbbf24;
+  color: #000000;
+  font-weight: 600;
+  outline: 2px solid #fef08a;
+}
+
+/* 一次性短强调动画（OD-ARCH-084 S5）：不改布局宽度，700ms 单次 */
+mark.md-search-hit[data-search-flash="true"] {
+  animation: md-search-hit-flash 700ms ease-out forwards;
+}
+
+@keyframes md-search-hit-flash {
+  0% {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.65);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}

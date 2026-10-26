@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,16 +34,28 @@ SOURCE_CP = DESKTOP / "src" / "conversationPrompt.ts"
 SOURCE_AD = DESKTOP / "src" / "aiDraft.ts"
 RULES = REPO / "samples" / "profiles" / "discipline.rules.json"
 SKILLS_DIR = REPO / "skills"
-EVIDENCE_DIR = HERE / "evidence" / "od-arch-082"
+# OD-ARCH-089 改了注入内容（拆 skill、去 anysearch 预注入），本脚本重跑时
+# 证据改落到 089 目录，避免改写 082 的历史证据。
+EVIDENCE_DIR = HERE / "evidence" / "od-arch-089"
 
-ALLOWED_SKILLS = {
-    "material-writing",
-    "knowledge-search",
-    "knowledge-agent",
-    "document-review",
-    "memory-agent",
-    "project-agent",
-}
+PROFILE_RULES_SRC = DESKTOP / "src-tauri" / "src" / "profile_rules.rs"
+
+
+def load_allowed_skills() -> set[str]:
+    """从宿主源码读白名单，避免脚本里再抄一份而过期（OD-ARCH-086 扩容）。"""
+    src = PROFILE_RULES_SRC.read_text(encoding="utf-8")
+    block = re.search(
+        r"pub const ALLOWED_SKILLS: &\[&str\] = &\[(.*?)\];", src, re.S
+    )
+    if block is None:
+        raise SystemExit(f"未能从 {PROFILE_RULES_SRC} 定位 ALLOWED_SKILLS")
+    names = set(re.findall(r'"([a-z0-9-]+)"', block.group(1)))
+    if not names:
+        raise SystemExit("ALLOWED_SKILLS 解析结果为空")
+    return names
+
+
+ALLOWED_SKILLS = load_allowed_skills()
 
 PROBE_082 = r"""
 const cp = require(process.argv[2]);
@@ -100,7 +113,9 @@ const notePrompt = cp.composeConversationPrompt({
 });
 check("note_injects_first_skill", notePrompt.includes("配套技能指引（memory-agent）："), notePrompt.slice(0, 100));
 check("note_does_not_inject_second_skill", !notePrompt.includes("knowledge-agent"), "");
-check("note_contains_clean_directive", notePrompt.includes("请把下面的记录整理成简洁要点"), "");
+// OD-ARCH-089：随手记不再「整理成要点」（写盘由宿主完成），只做缺项追问。
+check("note_contains_clean_directive", notePrompt.includes("这六项") || notePrompt.includes("六要素"), "");
+check("note_has_no_report_sections", !notePrompt.includes("本周概述"), "");
 
 // 3. Weekly 报告模式 (report mode)
 const reportWeeklyPrompt = cp.composeConversationPrompt({
@@ -235,6 +250,30 @@ def test_rule_bindings_asset() -> list[dict]:
         check(f"{scene}_skills_within_max", len(skills) <= max_injected, f"{len(skills)} <= {max_injected}")
         check(f"{scene}_all_skills_allowed", all(s in ALLOWED_SKILLS for s in skills), str(skills))
         check(f"{scene}_no_duplicate_skills", len(skills) == len(set(skills)), str(skills))
+
+    # OD-ARCH-089：weekly 拆成 memory-agent（随手记）+ memory-report（周报），
+    # anysearch 移出预注入——仍在白名单、Skill 文件仍随安装同步，运行时按需加载。
+    weekly = bindings.get("weekly", {})
+    check(
+        "weekly_does_not_preinject_anysearch",
+        "anysearch" not in weekly.get("skills", []),
+        str(weekly.get("skills", [])),
+    )
+    check(
+        "weekly_binds_memory_report",
+        "memory-report" in weekly.get("skills", []),
+        str(weekly.get("skills", [])),
+    )
+    check(
+        "weekly_anysearch_skill_file_present",
+        (SKILLS_DIR / "anysearch" / "SKILL.md").is_file(),
+        str(SKILLS_DIR / "anysearch" / "SKILL.md"),
+    )
+    check(
+        "weekly_memory_report_skill_file_present",
+        (SKILLS_DIR / "memory-report" / "SKILL.md").is_file(),
+        str(SKILLS_DIR / "memory-report" / "SKILL.md"),
+    )
 
     return cases
 

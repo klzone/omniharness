@@ -269,6 +269,8 @@ export function HomeCanvas({
   const refresh = useCallback(() => setThreads(listThreads()), []);
 
   // 从场景页「去对话」过来：一次性请求槽决定是打开旧对话还是新建。
+  // OD-ARCH-091：请求可以带一句预填草稿（例如「整理成周报」），只放进输入框，不自动发送。
+  const [initialInput, setInitialInput] = useState<string>("");
   useEffect(() => {
     const req = takePendingThreadRequest();
     if (req.open) {
@@ -277,12 +279,14 @@ export function HomeCanvas({
         setActiveId(t.id);
         setActiveTag(t.tag);
         setViewKey(t.id);
+        setInitialInput("");
       }
     } else if (req.create) {
       const t = createThread({ tag: req.create, preset: req.create });
       setActiveId(t.id);
       setActiveTag(req.create);
       setViewKey(t.id);
+      setInitialInput(req.prompt ?? "");
     }
     refresh();
   }, [refresh]);
@@ -339,6 +343,8 @@ export function HomeCanvas({
     const t = createThread({ tag: activeTag, preset: isSceneKey(activeTag) ? activeTag : "plain" });
     setActiveId(t.id);
     setViewKey(t.id);
+    // 手动新开对话不带任何预填草稿（OD-ARCH-091）。
+    setInitialInput("");
     pendingIdRef.current = null;
     refresh();
   }, [activeTag, refresh]);
@@ -356,6 +362,7 @@ export function HomeCanvas({
       refresh();
       setActiveId(t.id);
       setViewKey(t.id);
+      setInitialInput("");
       pendingIdRef.current = null;
     },
     [activeTag, refresh],
@@ -415,6 +422,7 @@ export function HomeCanvas({
           onBranchNewThread={branchThread}
           threadKey={viewKey}
           initialMessages={active?.messages ?? []}
+          initialInput={initialInput}
           engineSessionId={active?.engineSessionId ?? null}
           onEngineSessionId={(sid) => {
             const id = ensureThread();
