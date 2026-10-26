@@ -36,6 +36,8 @@ pub mod sha256;
 pub mod task_shell;
 pub mod thread_store;
 pub mod vault_note;
+pub mod vault_link;
+pub mod vault_index;
 pub mod vault_open;
 pub mod vault_search;
 pub mod vault_write;
@@ -64,6 +66,11 @@ struct HostState {
     /// 「准入 → 启动引擎 → 动作」；权限变更则独占同一把锁。这样就不存在
     /// “先取旧准入结果、撤权完成后再启动引擎”的窗口。
     lifecycle: Arc<EngineLifecycle>,
+    /// 知识库链接索引快照（OD-KB-001 P3-S04）。
+    ///
+    /// 只在内存：显式刷新时整体替换；读命令只读取完整快照，绝不暴露构建中的
+    /// 半成品。每次构建都重新校验设置里的根，不跨根复用旧快照。
+    vault_index: Arc<Mutex<Option<vault_index::LinkIndex>>>,
 }
 
 type SharedHost = Arc<Mutex<HostState>>;
@@ -1793,6 +1800,39 @@ pub fn knowledge_vault_open_attachment_for(
     vault_open::open_attachment(&root, relative_path)
 }
 
+/// 显式重建链接索引（P3-S04）。扫描与读取都在发布前完成；任一步失败或快照
+/// 不完整都如实返回，不写知识库、不写设置、不启动后台 watcher。
+pub fn knowledge_vault_rebuild_index_for(
+    paths: &crate::app_paths::AppPaths,
+    previous: Option<&vault_index::LinkIndex>,
+) -> Result<vault_index::LinkIndex, String> {
+    let root = configured_vault_root(paths)?;
+    let scan = knowledge_vault::scan_vault(&root, Some(&paths.root))?;
+    let options = vault_index::IndexBuildOptions {
+        previous_generation: previous.map(|index| index.generation).unwrap_or(0),
+        ..Default::default()
+    };
+    Ok(vault_index::build_from_scan(
+        &root,
+        &scan,
+        options,
+        task_shell::now_secs() as u64,
+    ))
+}
+
+/// 读取一篇笔记的关系视图。只读已发布的完整快照，不触发磁盘读取或重建。
+pub fn knowledge_vault_note_links_for(
+    index: &vault_index::LinkIndex,
+    root: &std::path::Path,
+    relative_path: &str,
+) -> Result<vault_index::NoteLinks, String> {
+    if index.root != root.display().to_string() {
+        return Err("当前链接索引属于另一个知识库目录；请先刷新索引。".to_string());
+    }
+    vault_index::note_links(index, relative_path)
+        .ok_or_else(|| format!("链接索引里没有这篇笔记：{}", relative_path))
+}
+
 #[tauri::command(async)]
 fn knowledge_vault_status(state: State<'_, SharedHost>) -> knowledge_vault::VaultRootStatus {
     let paths = {
@@ -1916,6 +1956,64 @@ fn knowledge_vault_open_attachment(
         host.paths.clone()
     };
     knowledge_vault_open_attachment_for(&paths, &relative_path)
+}
+
+/// 显式重建并原子发布链接索引。构建在锁外完成，只有完整快照才替换旧快照。
+#[tauri::command(async)]
+fn knowledge_vault_rebuild_index(
+    state: State<'_, SharedHost>,
+) -> Result<vault_index::LinkIndex, String> {
+    let (paths, cache) = {
+        let host = state.lock().unwrap();
+        (host.paths.clone(), host.vault_index.clone())
+    };
+    let previous = {
+        let guard = cache.lock().unwrap();
+        guard.clone()
+    };
+    // 重新核对当前设置里的根：换根后不复用旧目录的 generation 或内容。
+    let root = configured_vault_root(&paths)?;
+    let same_root = previous
+        .as_ref()
+        .is_some_and(|index| index.root == root.display().to_string());
+    let previous = previous.filter(|_| same_root);
+    let index = knowledge_vault_rebuild_index_for(&paths, previous.as_ref())?;
+    {
+        let mut guard = cache.lock().unwrap();
+        *guard = Some(index.clone());
+    }
+    Ok(index)
+}
+
+/// 读取当前已发布索引的元信息（不触发重建）。没有索引时返回 null。
+#[tauri::command(async)]
+fn knowledge_vault_index_status(
+    state: State<'_, SharedHost>,
+) -> Result<Option<vault_index::LinkIndex>, String> {
+    let cache = {
+        let host = state.lock().unwrap();
+        host.vault_index.clone()
+    };
+    let snapshot = cache.lock().unwrap().clone();
+    Ok(snapshot)
+}
+
+/// 按笔记读取正向链接与反向链接；只读当前快照，不访问磁盘。
+#[tauri::command(async)]
+fn knowledge_vault_note_links(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+) -> Result<vault_index::NoteLinks, String> {
+    let snapshot = {
+        let host = state.lock().unwrap();
+        let paths = host.paths.clone();
+        let snapshot = host.vault_index.lock().unwrap().clone();
+        (paths, snapshot)
+    };
+    let (paths, snapshot) = snapshot;
+    let index = snapshot.ok_or_else(|| "还没有构建链接索引；请先刷新索引。".to_string())?;
+    let root = configured_vault_root(&paths)?;
+    knowledge_vault_note_links_for(&index, &root, &relative_path)
 }
 
 // ---------------------------------------------------------------------------
@@ -3379,6 +3477,7 @@ fn build_state() -> Result<HostState, String> {
         bridge: EngineBridge::new(Arc::new(Mutex::new(supervisor))),
         paths,
         lifecycle: Arc::new(EngineLifecycle::new()),
+        vault_index: Arc::new(Mutex::new(None)),
     })
 }
 
@@ -3504,6 +3603,9 @@ pub fn run() {
             knowledge_vault_save_note,
             knowledge_vault_search,
             knowledge_vault_open_attachment,
+            knowledge_vault_rebuild_index,
+            knowledge_vault_index_status,
+            knowledge_vault_note_links,
             thread_store_load,
             thread_store_save,
             thread_store_delete,
@@ -3687,6 +3789,7 @@ mod host_wrapper_tests {
                 paths: self.paths(),
                 bridge: EngineBridge::new(Arc::new(Mutex::new(supervisor))),
                 lifecycle: Arc::new(EngineLifecycle::new()),
+                vault_index: Arc::new(Mutex::new(None)),
             }))
         }
 

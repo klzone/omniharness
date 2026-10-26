@@ -453,6 +453,23 @@ impl BoundedNoteRead {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum BoundedReadCompleteness {
+    Complete,
+    BudgetExceeded,
+    ChangedDuringRead,
+}
+
+fn classify_bounded_read(bytes_read: u64, actual_len: u64, cap: u64) -> BoundedReadCompleteness {
+    if actual_len > cap {
+        BoundedReadCompleteness::BudgetExceeded
+    } else if bytes_read != actual_len {
+        BoundedReadCompleteness::ChangedDuringRead
+    } else {
+        BoundedReadCompleteness::Complete
+    }
+}
+
 /// 只读读取一个根内笔记文件。附件（非 Markdown/纯文本）不允许按正文读取。
 pub fn read_vault_note(root: &Path, relative: &str) -> Result<VaultNote, String> {
     read_vault_note_within(root, relative, VAULT_MAX_NOTE_BYTES).note
@@ -549,15 +566,28 @@ pub fn read_vault_note_within(root: &Path, relative: &str, budget: u64) -> Bound
             VAULT_MAX_NOTE_BYTES
         ), bytes_read, false);
     }
-    if actual_len > cap {
-        return BoundedNoteRead::failed(
-            format!(
-                "文件 {} 字节，超过本次搜索剩余读取预算 {} 字节；未读入部分内容。",
-                actual_len, cap
-            ),
-            bytes_read,
-            true,
-        );
+    match classify_bounded_read(bytes_read, actual_len, cap) {
+        BoundedReadCompleteness::BudgetExceeded => {
+            return BoundedNoteRead::failed(
+                format!(
+                    "文件 {} 字节，超过本次搜索剩余读取预算 {} 字节；未读入部分内容。",
+                    actual_len, cap
+                ),
+                bytes_read,
+                true,
+            );
+        }
+        BoundedReadCompleteness::ChangedDuringRead => {
+            return BoundedNoteRead::failed(
+                format!(
+                    "文件在读取期间发生变化（已读入 {} 字节，当前长度 {} 字节）；未返回部分内容。",
+                    bytes_read, actual_len
+                ),
+                bytes_read,
+                false,
+            );
+        }
+        BoundedReadCompleteness::Complete => {}
     }
     let content = match String::from_utf8(bytes) {
         Ok(content) => content,
@@ -595,6 +625,23 @@ pub fn read_vault_note_within(root: &Path, relative: &str, budget: u64) -> Bound
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn bounded_read_completeness_rejects_growth_after_eof() {
+        assert_eq!(
+            classify_bounded_read(100, 120, 200),
+            BoundedReadCompleteness::ChangedDuringRead,
+            "EOF 后文件增长但仍在预算内时，也不能把旧内容当完整正文"
+        );
+        assert_eq!(
+            classify_bounded_read(100, 201, 200),
+            BoundedReadCompleteness::BudgetExceeded
+        );
+        assert_eq!(
+            classify_bounded_read(100, 100, 200),
+            BoundedReadCompleteness::Complete
+        );
+    }
 
     struct Fixture {
         base: PathBuf,
