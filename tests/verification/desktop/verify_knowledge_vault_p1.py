@@ -233,7 +233,18 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--display", default=":123")
     ap.add_argument("--root", default="/tmp/odkb-p1-ui")
+    ap.add_argument(
+        "--evidence-dir",
+        default=None,
+        help="证据输出目录；回归请指向独立目录，避免覆盖原始证据",
+    )
     args = ap.parse_args(argv[1:])
+
+    global EVID
+    EVID = Path(args.evidence_dir).resolve() if args.evidence_dir else EVID
+    allowed_evidence = (HERE / "evidence").resolve()
+    if allowed_evidence not in EVID.parents:
+        raise SystemExit(f"证据目录必须在 {allowed_evidence} 之下：{EVID}")
 
     root = Path(args.root).resolve()
     if Path("/tmp") not in root.parents:

@@ -536,6 +536,97 @@ export interface KnowledgeVaultSearchResponse {
   query: KnowledgeVaultSearchQuery;
 }
 
+/** P3-S02：索引里的一个笔记节点。orphan = 没有其他笔记指向它。 */
+export interface KnowledgeVaultIndexNote {
+  relative_path: string;
+  file_name: string;
+  sha256: string;
+  bytes: number;
+  backlink_count: number;
+  outlink_count: number;
+  orphan: boolean;
+  lines: number;
+  /** Frontmatter 标签（小写、去重）；P4 图谱按标签筛选使用。 */
+  tags: string[];
+  /** Frontmatter 别名（保留原始大小写）。 */
+  aliases: string[];
+}
+
+/** 一条引用的解析状态。只有 resolved 且 target_path 非空时才能跳转。 */
+export type KnowledgeVaultLinkStatus =
+  | "resolved"
+  | "unresolved"
+  | "ambiguous"
+  | "external"
+  | "attachment";
+
+export type KnowledgeVaultAnchorStatus = "exact" | "unlocated";
+
+export interface KnowledgeVaultIndexLink {
+  id: string;
+  source_path: string;
+  /** wikilink / embed / markdown_link / markdown_image / autolink */
+  kind: string;
+  target_raw: string;
+  display: string | null;
+  anchor: string | null;
+  block_anchor: boolean;
+  status: KnowledgeVaultLinkStatus;
+  /** 只有 resolved 时有值；其余状态不得作为跳转目标。 */
+  target_path: string | null;
+  /** attachment 时的根内路径；仅用于说明，不打开正文。 */
+  attachment_path: string | null;
+  candidates: string[];
+  start_byte: number;
+  end_byte: number;
+  line: number;
+  context: string;
+  anchor_status: KnowledgeVaultAnchorStatus | null;
+  anchor_line: number | null;
+}
+
+export interface KnowledgeVaultIndexIssue {
+  relative_path: string;
+  code: string;
+  message: string;
+}
+
+export interface KnowledgeVaultIndexStats {
+  notes: number;
+  notes_scanned: number;
+  bytes_read: number;
+  budget_bytes: number;
+  links: number;
+  resolved: number;
+  unresolved: number;
+  ambiguous: number;
+  external: number;
+  attachments: number;
+  orphans: number;
+  warnings: number;
+}
+
+/** 内存索引快照；complete=false 时界面必须显式提示不完整。 */
+export interface KnowledgeVaultIndex {
+  generation: number;
+  built_at: number;
+  root: string;
+  complete: boolean;
+  incomplete_reason: string | null;
+  notes: KnowledgeVaultIndexNote[];
+  links: KnowledgeVaultIndexLink[];
+  issues: KnowledgeVaultIndexIssue[];
+  stats: KnowledgeVaultIndexStats;
+  fingerprint: string;
+}
+
+export interface KnowledgeVaultNoteLinks {
+  generation: number;
+  note: KnowledgeVaultIndexNote;
+  outgoing: KnowledgeVaultIndexLink[];
+  backlinks: KnowledgeVaultIndexLink[];
+}
+
 /** 库根信息（OD-ARCH-086）：周报、工作记录与 @ 引用的共同根。
  *  知识库另由独立的 knowledge_vault_root 配置（OD-KB-001 P1）。 */
 export interface LibraryRootInfo {

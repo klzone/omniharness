@@ -268,7 +268,18 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--display", default=":134")
     ap.add_argument("--root", default="/tmp/odkb-p2-ui")
+    ap.add_argument(
+        "--evidence-dir",
+        default=None,
+        help="证据输出目录；回归请指向独立目录，避免覆盖原始证据",
+    )
     args = ap.parse_args(argv[1:])
+
+    global EVID
+    EVID = Path(args.evidence_dir).resolve() if args.evidence_dir else EVID
+    allowed_evidence = (HERE / "evidence").resolve()
+    if allowed_evidence not in EVID.parents:
+        raise SystemExit(f"证据目录必须在 {allowed_evidence} 之下：{EVID}")
 
     root = Path(args.root).resolve()
     if Path("/tmp") not in root.parents:
@@ -352,7 +363,7 @@ def main(argv: list[str]) -> int:
         root=root,
         display=args.display,
         artifact_override=True,
-        reuse_running_dev_server=False,
+        reuse_running_dev_server=True,
         env_extra={
             "DBUS_SESSION_BUS_ADDRESS": bus_addr,
             "OMNIDESK_DSH_PROFILE": "",
@@ -382,6 +393,41 @@ def main(argv: list[str]) -> int:
 
     def click_named(name: str, role: str = "button", contains: bool = True, settle: float = 0.8) -> bool:
         return click(find(nodes(), name, role=role, contains=contains), settle=settle)
+
+    def scroll_until_visible(
+        name: str, role: str | None = None, contains: bool = True
+    ) -> ax.Node | None:
+        """把目标滚进可视区再返回它。
+
+        P3 新增的「链接关系」卡片会把右栏内容推到首屏之外；AT-SPI 给的是屏幕绝对
+        坐标，直接点窗口外的点不会产生任何事件。这里滚动到目标可见位置后再交给
+        调用方点击。
+        """
+        for _ in range(14):
+            node = find(nodes(), name, role=role, contains=contains)
+            if node is None:
+                return None
+            e = extents(node)
+            if e.width > 0 and e.height > 0 and e.y >= 0 and e.y + e.height <= SCREEN_H - 12:
+                return node
+            if xs is None:
+                return None
+            xs.scroll(1120, SCREEN_H // 2, 3, up=e.y < 0, settle=0.5)
+            time.sleep(0.3)
+        return None
+
+    def click_scrolled(
+        name: str, role: str = "button", contains: bool = True, settle: float = 0.8
+    ) -> bool:
+        return click(scroll_until_visible(name, role=role, contains=contains), settle=settle)
+
+    def focus_entry(name: str, contains: bool = True) -> bool:
+        node = scroll_until_visible(name, role="entry", contains=contains)
+        if node is None or xs is None:
+            return False
+        e = extents(node)
+        xs.click(e.x + e.width // 2, e.y + e.height // 2, settle=0.4)
+        return True
 
     def editor_node() -> ax.Node | None:
         return next((n for n in nodes() if n.role == "entry" and "草稿" in n.name), None)
@@ -444,6 +490,21 @@ def main(argv: list[str]) -> int:
                 path, _, area = body.partition("；区域：")
                 out[path.strip()] = area.strip()
         return out
+
+    def search_hits_after_scroll() -> dict[str, str]:
+        """结果列表在右栏折叠区里，可能要滚动后才会进入无障碍树。"""
+        for _ in range(8):
+            hits = search_hits()
+            if hits:
+                return hits
+            stats = [n for n in nodes() if (n.name or "").startswith("搜索统计：")]
+            if stats and "0 条命中" in (stats[0].name or ""):
+                return hits
+            if xs is None:
+                return hits
+            xs.scroll(1120, SCREEN_H // 2, 3, settle=0.5)
+            time.sleep(0.4)
+        return search_hits()
 
     try:
         session.prepare()
@@ -812,16 +873,13 @@ def main(argv: list[str]) -> int:
         )
 
         # 搜索：关键词、标签、属性。
-        keyword_entry = find(nodes(), "关键词（字面子串，不区分大小写）", role="entry")
-        if keyword_entry is not None and xs is not None:
-            e = extents(keyword_entry)
-            xs.click(e.x + e.width // 2, e.y + e.height // 2, settle=0.4)
+        if xs is not None and focus_entry("关键词（字面子串，不区分大小写）"):
             xs.select_all_and_clear()
             xs.type_ascii("milkyway")
-        click_named("搜索", role="button", contains=False, settle=1.2)
+        click_scrolled("搜索", role="button", contains=False, settle=1.2)
         time.sleep(3.0)
         shot("14-search-keyword.png")
-        hits = search_hits()
+        hits = search_hits_after_scroll()
         check(
             "keyword_search_hits_body",
             "notes/alpha.md" in hits and "body" in hits.get("notes/alpha.md", ""),
@@ -831,17 +889,14 @@ def main(argv: list[str]) -> int:
         )
 
         # 清空后按标签筛选。
-        click_named("清空", role="button", contains=False, settle=0.8)
+        click_scrolled("清空", role="button", contains=False, settle=0.8)
         time.sleep(0.8)
-        tag_entry = find(nodes(), "标签（逗号分隔", role="entry")
-        if tag_entry is not None and xs is not None:
-            e = extents(tag_entry)
-            xs.click(e.x + e.width // 2, e.y + e.height // 2, settle=0.4)
+        if xs is not None and focus_entry("标签（逗号分隔"):
             xs.type_ascii("project")
-        click_named("搜索", role="button", contains=False, settle=1.2)
+        click_scrolled("搜索", role="button", contains=False, settle=1.2)
         time.sleep(2.5)
         shot("15-search-tag.png")
-        hits = search_hits()
+        hits = search_hits_after_scroll()
         check(
             "tag_filter_parent_match",
             "notes/alpha.md" in hits and "notes/gamma.md" not in hits,
@@ -855,24 +910,18 @@ def main(argv: list[str]) -> int:
         )
 
         # 属性筛选：code=alpha42（ASCII，便于合成键盘注入；中文值由宿主测试覆盖）。
-        click_named("清空", role="button", contains=False, settle=0.8)
+        click_scrolled("清空", role="button", contains=False, settle=0.8)
         time.sleep(0.8)
-        key_entry = find(nodes(), "属性键", role="entry")
-        if key_entry is not None and xs is not None:
-            e = extents(key_entry)
-            xs.click(e.x + e.width // 2, e.y + e.height // 2, settle=0.4)
+        if xs is not None and focus_entry("属性键"):
             xs.select_all_and_clear()
             xs.type_ascii("code")
-        value_entry = find(nodes(), "属性值（可空）")
-        if value_entry is not None and xs is not None:
-            e = extents(value_entry)
-            xs.click(e.x + e.width // 2, e.y + e.height // 2, settle=0.4)
+        if xs is not None and focus_entry("属性值（可空）"):
             xs.select_all_and_clear()
             xs.type_ascii("alpha42")
-        click_named("搜索", role="button", contains=False, settle=1.2)
+        click_scrolled("搜索", role="button", contains=False, settle=1.2)
         time.sleep(2.5)
         shot("16-search-property.png")
-        hits = search_hits()
+        hits = search_hits_after_scroll()
         check(
             "property_filter_matches",
             "notes/alpha.md" in hits and "notes/gamma.md" not in hits,
