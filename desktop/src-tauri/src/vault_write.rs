@@ -20,10 +20,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::Serialize;
 
 use crate::app_paths::resolve_real_path;
-use crate::knowledge_vault::{
-    resolve_vault_file, VaultNote, VAULT_MAX_NOTE_BYTES, VAULT_NOTE_EXTS,
-};
+use crate::knowledge_vault::{resolve_vault_file, VaultNote, VAULT_MAX_NOTE_BYTES};
 use crate::sha256::sha256_hex;
+
+/// 允许通过 Markdown 写入接口创建或保存的扩展名。
+///
+/// 刻意与 P1 的 `VAULT_NOTE_EXTS` 分开：`.txt` 等纯文本仍可作为笔记只读浏览与
+/// 搜索，但不能经由本模块新建或覆盖（P2-S02 只批准 Markdown 目标）。
+pub const VAULT_WRITE_EXTS: &[&str] = &["md", "markdown"];
 
 /// 冲突错误固定前缀。界面据此区分「文件被外部改动」与普通失败，绝不能在
 /// 冲突时提示保存成功。
@@ -84,10 +88,10 @@ fn check_target_shape(relative: &str) -> Result<PathBuf, String> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
-    if !VAULT_NOTE_EXTS.contains(&extension.as_str()) {
+    if !VAULT_WRITE_EXTS.contains(&extension.as_str()) {
         return Err(format!(
             "只能新建或保存 {} 文件：{raw}",
-            VAULT_NOTE_EXTS.join(" / ")
+            VAULT_WRITE_EXTS.join(" / ")
         ));
     }
     Ok(path.to_path_buf())

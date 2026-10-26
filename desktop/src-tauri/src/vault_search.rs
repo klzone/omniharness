@@ -19,7 +19,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::knowledge_vault::{read_vault_note, scan_vault, VaultFile};
+use crate::knowledge_vault::{read_vault_note_within, scan_vault, VaultFile};
 use crate::vault_note::{parse_note, ParsedNote, Property, PropertyValue};
 
 /// 单次查询最多读取的笔记正文字节数（32 MiB）。
@@ -263,16 +263,34 @@ pub fn search_scanned(
         skipped: Vec::new(),
         query: query.clone(),
     };
-    for file in notes {
-        if response.bytes_read.saturating_add(file.bytes) > SEARCH_MAX_BYTES {
-            response.budget_exhausted = true;
+    let mark_remaining_budget = |response: &mut SearchResponse, from: usize| {
+        for rest in notes.iter().skip(from) {
             response.skipped.push(SearchSkip {
-                relative_path: file.relative_path.clone(),
+                relative_path: rest.relative_path.clone(),
                 reason: "budget".to_string(),
             });
-            continue;
         }
-        let note = match read_vault_note(root, &file.relative_path) {
+    };
+    for (index, file) in notes.iter().enumerate() {
+        // 扫描元数据只能作为提示：预算必须按实际读入字节强制执行，因为文件可能
+        // 在扫描后增长。读取前用剩余额度做上限，读取后按实际读入量记账。
+        let remaining = SEARCH_MAX_BYTES.saturating_sub(response.bytes_read);
+        // 保守快路径：扫描元数据已经超出剩余额度时直接跳过，不再发起读取。
+        // 它只会少读，不能把过期的小值当成读取许可。
+        if file.bytes > remaining {
+            response.budget_exhausted = true;
+            mark_remaining_budget(&mut response, index);
+            break;
+        }
+        let read = read_vault_note_within(root, &file.relative_path, remaining);
+        response.bytes_read = response.bytes_read.saturating_add(read.bytes_read);
+        if read.budget_exhausted {
+            response.budget_exhausted = true;
+            // 超预算的文件没有返回任何正文；它和它后面的文件都算未检查。
+            mark_remaining_budget(&mut response, index);
+            break;
+        }
+        let note = match read.note {
             Ok(note) => note,
             Err(e) => {
                 response.skipped.push(SearchSkip {
@@ -282,7 +300,6 @@ pub fn search_scanned(
                 continue;
             }
         };
-        response.bytes_read = response.bytes_read.saturating_add(note.bytes);
         response.notes_examined += 1;
         let doc = parse_note(&note.content);
         if let Some(hit) = evaluate(file, &doc, &query) {
@@ -491,6 +508,64 @@ mod tests {
         assert_eq!(r.notes_examined, 0);
         assert_eq!(r.skipped.len(), 1);
         assert_eq!(r.skipped[0].reason, "budget");
+    }
+
+    /// 扫描之后文件增长时，预算必须按实际读入量生效，而不是相信过期的
+    /// `VaultFile.bytes`。70 篇各 512 KiB（单篇上限）共 35 MiB，必须在恰好
+    /// 读满 32 MiB 后停止，且剩余文件明确列为未检查，绝不返回部分正文。
+    #[test]
+    fn grown_files_are_capped_by_actual_bytes_read() {
+        let fx = Fixture::new("grown-budget");
+        // 最后一篇保持很小：预算耗尽后即使后续文件放得下，也必须停止，避免用
+        // “跳过超预算文件”的方式拼出超出契约的部分结果集。
+        let notes = 65usize;
+        for i in 0..notes {
+            fx.write(&format!("notes/n{i:03}.md"), "seed");
+        }
+        // 扫描发生在文件增长之前：元数据严重低估实际大小。
+        let scan = scan_vault(&fx.root, None).unwrap();
+        assert_eq!(scan.stats.notes, notes);
+        let filler = "a".repeat(crate::knowledge_vault::VAULT_MAX_NOTE_BYTES as usize);
+        for i in 0..(notes - 1) {
+            fx.write(&format!("notes/n{i:03}.md"), &filler);
+        }
+        fx.write(&format!("notes/n{:03}.md", notes - 1), "tiny");
+
+        let r = search_scanned(&fx.root, &scan.files, &SearchQuery::default());
+        assert!(r.bytes_read <= r.budget_bytes, "{} > {}", r.bytes_read, r.budget_bytes);
+        assert_eq!(r.bytes_read, SEARCH_MAX_BYTES, "应恰好用满预算后停止");
+        assert!(r.budget_exhausted);
+        assert_eq!(r.notes_examined, 64, "32 MiB / 512 KiB");
+        assert_eq!(r.hits.len(), r.notes_examined, "已检查的文件都应完整返回");
+        let bottom = r
+            .skipped
+            .iter()
+            .filter(|s| s.reason == "budget")
+            .count();
+        assert_eq!(bottom, 1, "预算耗尽后剩余文件必须全部列出");
+        assert_eq!(r.skipped[0].relative_path, format!("notes/n{:03}.md", notes - 1));
+        assert_eq!(
+            r.notes_examined + bottom,
+            r.notes_available,
+            "已检查与未检查之和必须覆盖全部可用笔记"
+        );
+    }
+
+    /// 单篇读取也必须有硬上限：剩余额度小于文件大小时不返回任何正文字节，
+    /// 并把已读入量如实带回调用方记账。
+    #[test]
+    fn bounded_read_never_returns_partial_content() {
+        let fx = Fixture::new("bounded");
+        fx.write("notes/a.md", &"x".repeat(100));
+        let read = read_vault_note_within(&fx.root, "notes/a.md", 40);
+        assert!(read.budget_exhausted);
+        assert!(read.note.is_err());
+        assert_eq!(read.bytes_read, 0, "超预算时不应读入部分正文");
+
+        let exact = read_vault_note_within(&fx.root, "notes/a.md", 100);
+        assert!(!exact.budget_exhausted);
+        assert_eq!(exact.bytes_read, 100);
+        assert_eq!(exact.note.unwrap().content.len(), 100);
     }
 
     /// P2-S05 合成规模实测：1200 篇笔记，在 32 MiB 读取预算内查询三次并打印中位数。

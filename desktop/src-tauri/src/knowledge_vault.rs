@@ -121,6 +121,7 @@ pub struct VaultScan {
 pub struct VaultNote {
     pub relative_path: String,
     pub file_name: String,
+    /// 实际读入并解析的字节数；不采用可能过期的扫描或元数据长度。
     pub bytes: u64,
     pub chars: usize,
     pub extension: String,
@@ -434,63 +435,160 @@ pub fn resolve_vault_file(root: &Path, relative: &str) -> Result<PathBuf, String
     Ok(resolved)
 }
 
+/// 一次有界读取的结果。失败时也带回已经实际读入的字节数，供调用方记账。
+pub struct BoundedNoteRead {
+    pub note: Result<VaultNote, String>,
+    pub bytes_read: u64,
+    /// 文件内容超过本次读取预算时为 true；预算外不会返回部分正文。
+    pub budget_exhausted: bool,
+}
+
+impl BoundedNoteRead {
+    fn failed(message: String, bytes_read: u64, budget_exhausted: bool) -> Self {
+        Self {
+            note: Err(message),
+            bytes_read,
+            budget_exhausted,
+        }
+    }
+}
+
 /// 只读读取一个根内笔记文件。附件（非 Markdown/纯文本）不允许按正文读取。
 pub fn read_vault_note(root: &Path, relative: &str) -> Result<VaultNote, String> {
-    let resolved = resolve_vault_file(root, relative)?;
+    read_vault_note_within(root, relative, VAULT_MAX_NOTE_BYTES).note
+}
+
+/// 在调用方给定的剩余预算内读取一篇笔记，最多读入 `budget` 字节。
+///
+/// 单篇 512 KiB 上限仍然生效，读取上限取两者较小值。文件超过预算时返回
+/// `budget_exhausted = true`，绝不把截断内容当成完整正文；失败结果也带上实际
+/// 读入字节数，避免调用方按扫描元数据误记预算。
+pub fn read_vault_note_within(root: &Path, relative: &str, budget: u64) -> BoundedNoteRead {
+    let resolved = match resolve_vault_file(root, relative) {
+        Ok(path) => path,
+        Err(e) => return BoundedNoteRead::failed(e, 0, false),
+    };
     let extension = resolved
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .unwrap_or_default();
     if !VAULT_NOTE_EXTS.contains(&extension.as_str()) {
-        return Err(format!(
+        return BoundedNoteRead::failed(format!(
             "只支持按正文读取 {}；{} 属于附件，只能查看元数据。",
             VAULT_NOTE_EXTS.join(" / "),
             extension
-        ));
+        ), 0, false);
     }
-    let meta = fs::metadata(&resolved)
-        .map_err(|e| format!("无法读取文件信息：{}（{}）", resolved.display(), e))?;
+    let meta = match fs::metadata(&resolved) {
+        Ok(meta) => meta,
+        Err(e) => {
+            return BoundedNoteRead::failed(
+                format!("无法读取文件信息：{}（{}）", resolved.display(), e),
+                0,
+                false,
+            )
+        }
+    };
     if meta.len() > VAULT_MAX_NOTE_BYTES {
-        return Err(format!(
+        return BoundedNoteRead::failed(format!(
             "文件 {} 字节，超过单文件上限 {} 字节；请自行拆分后再打开。",
             meta.len(),
             VAULT_MAX_NOTE_BYTES
-        ));
+        ), 0, false);
+    }
+    if meta.len() > budget {
+        return BoundedNoteRead::failed(
+            format!(
+                "文件 {} 字节，超过本次搜索剩余读取预算 {} 字节；未读入部分内容。",
+                meta.len(),
+                budget
+            ),
+            0,
+            true,
+        );
     }
     // 不依赖前面的 metadata 长度作为唯一上限：文件可能在检查后增长。
-    // 最多读取上限 + 1 字节，以便在增长竞态下仍有硬内存/读取上界。
-    let file = fs::File::open(&resolved)
-        .map_err(|e| format!("无法读取文件：{}（{}）", resolved.display(), e))?;
-    let mut bytes = Vec::with_capacity((VAULT_MAX_NOTE_BYTES as usize).saturating_add(1));
-    file.take(VAULT_MAX_NOTE_BYTES.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("无法读取文件：{}（{}）", resolved.display(), e))?;
-    if bytes.len() as u64 > VAULT_MAX_NOTE_BYTES {
-        return Err(format!(
+    // 最多读取 min(预算, 单篇上限) 字节；随后用已打开文件的元数据判断是否被
+    // 截断，不额外多读 1 字节，因此实际读入量不会越过预算。
+    let mut file = match fs::File::open(&resolved) {
+        Ok(file) => file,
+        Err(e) => {
+            return BoundedNoteRead::failed(
+                format!("无法读取文件：{}（{}）", resolved.display(), e),
+                0,
+                false,
+            )
+        }
+    };
+    let cap = budget.min(VAULT_MAX_NOTE_BYTES);
+    let capacity = meta.len().min(cap) as usize;
+    let mut bytes = Vec::with_capacity(capacity);
+    if let Err(e) = file.by_ref().take(cap).read_to_end(&mut bytes) {
+        return BoundedNoteRead::failed(
+            format!("无法读取文件：{}（{}）", resolved.display(), e),
+            bytes.len() as u64,
+            false,
+        );
+    }
+    let bytes_read = bytes.len() as u64;
+    // 用已打开文件句柄的元数据判断是否被截断，避免路径在打开后被替换。
+    let actual_len = match file.metadata() {
+        Ok(meta) => meta.len(),
+        Err(e) => {
+            return BoundedNoteRead::failed(
+                format!("无法读取文件信息：{}（{}）", resolved.display(), e),
+                bytes_read,
+                false,
+            )
+        }
+    };
+    if actual_len > VAULT_MAX_NOTE_BYTES {
+        return BoundedNoteRead::failed(format!(
             "文件超过单文件上限 {} 字节；请自行拆分后再打开。",
             VAULT_MAX_NOTE_BYTES
-        ));
+        ), bytes_read, false);
     }
-    let content = String::from_utf8(bytes).map_err(|_| {
-        format!(
-            "文件不是合法 UTF-8 文本，拒绝按正文读取：{}",
-            resolved.display()
-        )
-    })?;
+    if actual_len > cap {
+        return BoundedNoteRead::failed(
+            format!(
+                "文件 {} 字节，超过本次搜索剩余读取预算 {} 字节；未读入部分内容。",
+                actual_len, cap
+            ),
+            bytes_read,
+            true,
+        );
+    }
+    let content = match String::from_utf8(bytes) {
+        Ok(content) => content,
+        Err(_) => {
+            return BoundedNoteRead::failed(
+                format!(
+                    "文件不是合法 UTF-8 文本，拒绝按正文读取：{}",
+                    resolved.display()
+                ),
+                bytes_read,
+                false,
+            )
+        }
+    };
     let file_name = resolved
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved.display().to_string());
-    Ok(VaultNote {
-        relative_path: relative_posix(root, &resolved),
-        file_name,
-        bytes: meta.len(),
-        chars: content.chars().count(),
-        extension,
-        sha256: crate::sha256::sha256_hex(content.as_bytes()),
-        content,
-    })
+    BoundedNoteRead {
+        note: Ok(VaultNote {
+            relative_path: relative_posix(root, &resolved),
+            file_name,
+            bytes: bytes_read,
+            chars: content.chars().count(),
+            extension,
+            sha256: crate::sha256::sha256_hex(content.as_bytes()),
+            content,
+        }),
+        bytes_read,
+        budget_exhausted: false,
+    }
 }
 
 #[cfg(test)]

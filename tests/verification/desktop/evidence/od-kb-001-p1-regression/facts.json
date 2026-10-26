@@ -1,0 +1,157 @@
+{
+  "plan": "OD-KB-001 P1",
+  "verified_at": "2026-10-26 19:38:42",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 宿主集成测试实测",
+  "root": "/tmp/odkb-p1-ui",
+  "synthetic_vault": "/tmp/odkb-p1-ui/synth-vault",
+  "host_tests": {
+    "exit_code": 0,
+    "passed": 6,
+    "metric": {
+      "median_ms": 9.116,
+      "runs_ms": [
+        9.116,
+        7.765,
+        9.424
+      ],
+      "synthetic_dirs": 60,
+      "synthetic_files": 1201,
+      "synthetic_notes": 1200
+    },
+    "log": "tests/verification/desktop/evidence/od-kb-001-p1/host-test.log"
+  },
+  "environment": {
+    "platform": "Linux",
+    "machine": "x86_64",
+    "python": "3.14.4"
+  },
+  "checks": {
+    "host_integration_tests_pass": {
+      "pass": true,
+      "measured": {
+        "exit_code": 0,
+        "passed": 6
+      },
+      "threshold": {
+        "exit_code": 0,
+        "passed": ">=6"
+      },
+      "desc": "宿主只读接口集成测试（含设置→扫描→读取与边界拒绝）"
+    },
+    "cold_scan_metric_collected": {
+      "pass": true,
+      "measured": {
+        "median_ms": 9.116,
+        "runs_ms": [
+          9.116,
+          7.765,
+          9.424
+        ],
+        "synthetic_dirs": 60,
+        "synthetic_files": 1201,
+        "synthetic_notes": 1200
+      },
+      "threshold": {
+        "synthetic_files": 1201,
+        "runs": 3
+      },
+      "desc": "冷扫描规模/耗时为实测值"
+    },
+    "unset_state_visible": {
+      "pass": true,
+      "measured": {
+        "has_card": true,
+        "label": "知识库状态：未设置；尚未扫描"
+      },
+      "threshold": true,
+      "desc": "未设置时状态清晰"
+    },
+    "vault_card_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "shows_vault_root": {
+      "pass": true,
+      "measured": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；尚未扫描",
+      "threshold": true,
+      "desc": "显示已保存的知识库根"
+    },
+    "shows_directory_readable": {
+      "pass": true,
+      "measured": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；尚未扫描",
+      "threshold": true,
+      "desc": "目录状态为可读取"
+    },
+    "scan_button_found": {
+      "pass": true,
+      "measured": 1,
+      "threshold": 1,
+      "desc": ""
+    },
+    "scan_button_in_viewport": {
+      "pass": true,
+      "measured": {
+        "y": 771,
+        "h": 33
+      },
+      "threshold": "y+h <= 900",
+      "desc": ""
+    },
+    "scan_reports_counts": {
+      "pass": true,
+      "measured": {
+        "label": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；扫描结果 5 个文件（笔记 4、附件 1），跳过 3 项，错误 0 项",
+        "has_message": false
+      },
+      "threshold": {
+        "files": 5,
+        "notes": 4,
+        "attachments": 1,
+        "skipped": 3,
+        "errors": 0
+      },
+      "desc": "合成根共 5 个可展示文件（4 笔记 + 1 附件）"
+    },
+    "hides_obsidian_detail": {
+      "pass": true,
+      "measured": {
+        "app_json_listed": false,
+        "trash_listed": false
+      },
+      "threshold": {
+        "app_json_listed": false,
+        "trash_listed": false
+      },
+      "desc": ".obsidian 与 .trash 不进结果"
+    },
+    "vault_tree_unchanged": {
+      "pass": true,
+      "measured": {
+        "changed_entries": []
+      },
+      "threshold": [],
+      "desc": "扫描/读取前后内容、大小与 mtime 完全一致"
+    },
+    "obsidian_config_intact": {
+      "pass": true,
+      "measured": "{\"legacyEditor\": false, \"newFileLocation\": \"folder\"}",
+      "threshold": "原样保留",
+      "desc": "不改 Obsidian 配置"
+    },
+    "library_root_not_rewritten": {
+      "pass": true,
+      "measured": "/tmp/odkb-p1-ui/unused-library",
+      "threshold": "/tmp/odkb-p1-ui/unused-library",
+      "desc": "知识库使用不改写库根"
+    },
+    "vault_setting_persisted": {
+      "pass": true,
+      "measured": "/tmp/odkb-p1-ui/synth-vault",
+      "threshold": "/tmp/odkb-p1-ui/synth-vault",
+      "desc": ""
+    }
+  },
+  "failures": []
+}

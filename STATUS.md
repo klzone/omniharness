@@ -93,7 +93,7 @@
 - `.dsh` / `.agents` / `.codex` 等禁用片段按小写路径字符串匹配，未覆盖所有可能的别名挂载路径；根的真实落点另有仓库与应用数据根校验。
 - ARCHITECT 于 2026-10-26 独立验收通过；复核修复及重跑证据见 REVIEW.md 顶部。此状态不代表 P2 实施获批。
 
-## OD-KB-001 P2：笔记浏览、属性、关键词搜索与安全编辑（2026-10-26，实施完成，待 ARCHITECT 独立验收）
+## OD-KB-001 P2：笔记浏览、属性、关键词搜索与安全编辑（2026-10-26，实施完成，首轮独立验收未通过，已按 P2-F01～F03 修复，待复验）
 
 > 本文件是执行记录，**不是验收结论**；REVIEW.md 本轮未改动，P2 未标为通过。
 > 本轮由本助手亲自实施与验证，未派子代理；按用户 2026-10-26 授权提交并推送本轮 P2 差异。
@@ -194,7 +194,81 @@
 - 单篇 512 KiB、单次搜索 32 MiB、命中 500 条为当前固定上限；超限行为有单测覆盖，但未在大库上做端到端体验验证。
 - P3 及之后的双链、持久索引、图谱、重命名/移动/删除、批量操作、附件内容提取均未开始。
 
-**P2 实施完成，待 ARCHITECT 独立验收。未标为通过，验收通过前不进入 P3。**
+**P2 首轮实施完成但独立验收未通过；F01/F02 已修复、F03 回归已执行，见下一节。P2 仍未标为通过，复验通过前不进入 P3。**
+
+## OD-KB-001 P2 修复：实际读取预算与 Markdown 写入类型（2026-10-26，F01～F03 执行完成，待 ARCHITECT 独立复验）
+
+> 本文件是执行记录，**不是验收结论**；P2 是否通过仍以 REVIEW.md 的独立复验为准。
+> 授权来源：用户 2026-10-26 批准 P2 最小修复计划 P2-F01～F03。范围严格限于该三项，未扩展到 P3。
+> 修复前 HEAD：adc049ddb8e667f2b2fe236670e4a70deb96632e（main，与 origin/main 同步）。工作区修复前有 6 项已跟踪改动（PLANS.md、REVIEW.md 的验收记录及 P2 源码/宿主测试的既有未提交改动），全部保留，未 reset、未 clean、未覆盖。
+> 未读取任何真实知识库、Obsidian vault 或正式资料；夹具全部位于 /tmp 合成目录。runtime/ 零差异。
+
+### 阻断问题的定位复核
+
+修复前先按 REVIEW.md 的结论回到源码确认两处偏差，均属实：
+
+1. vault_search.rs::search_scanned 只在读取**前**用扫描得到的 VaultFile.bytes 判断预算，读后再按 note.bytes 累计。若文件在扫描后增长，读取本身就可能越过 32 MiB，超额只在后续条目比较时才被观察到。
+2. vault_write.rs::check_target_shape 直接复用 P1 的 VAULT_NOTE_EXTS（含 txt）作为写入白名单，于是 create_note / save_note 可新建或覆盖 .txt，超出 P2-S02「根内 Markdown 路径」的范围。
+
+### P2-F01 搜索预算按实际读入字节强制
+
+knowledge_vault.rs 新增 read_vault_note_within(root, relative, budget) -> BoundedNoteRead：上限取 min(剩余预算, 单文件 512 KiB)，用 File::take(cap) 限制实际读入量，随后用**已打开句柄**的 metadata().len() 判断是否被截断。超预算时不返回任何部分正文（budget_exhausted = true），并带回实际读入字节数供调用方记账；错误结果同样携带 bytes_read，避免失败路径漏记。read_vault_note 改为以单篇上限调用它，P1 只读语义不变。
+
+vault_search.rs 的 search_scanned 改为：
+
+- 每篇读取前以 SEARCH_MAX_BYTES - bytes_read 作为本次硬上限传给 read_vault_note_within，因此读取动作本身可证明不会越过总预算；
+- bytes_read 按实际读入量累加，不再采用扫描元数据；
+- 扫描元数据仅用于「明显超额就少读一次」的快路径，它只会让结果更保守，过期的小值不会变成读取许可；
+- 一旦某篇因预算未读完，置 budget_exhausted，停止继续读取，并把该篇及其后所有笔记逐条列入 skipped（reason = budget），不把部分读取当成完整检索的结果。
+
+VaultNote.bytes 改注为实际读入字节数，与 bytes_read 口径一致。
+
+新增单测：
+
+- grown_files_are_capped_by_actual_bytes_read：65 篇笔记先以 seed 扫描（元数据严重低估），随后前 64 篇各增长到 512 KiB、末篇仍很小。断言 bytes_read == SEARCH_MAX_BYTES、notes_examined == 64、已检查项全部完整返回、剩余 1 篇列为预算跳过，且「已检查 + 未检查 == 可用总数」。这直接覆盖「扫描后多个文件增长导致累计超预算」的场景。
+- bounded_read_never_returns_partial_content：剩余额度 40 字节时读 100 字节文件，返回 budget_exhausted 且不返回部分正文、bytes_read == 0；额度正好 100 字节时正常完整读入。
+
+原有 budget_exhaustion_is_reported_not_hidden 保留，继续覆盖「扫描元数据本身就超额」的读取前拒绝路径。
+
+### P2-F02 写入白名单收敛为 Markdown
+
+vault_write.rs 新增 VAULT_WRITE_EXTS = [md, markdown]，check_target_shape 用它替代 P1 的 VAULT_NOTE_EXTS；错误文案随之只列 md / markdown。两套常量分开是刻意的：P1 的 VAULT_NOTE_EXTS 仍含 txt，.txt 的只读浏览、扫描归类与关键词搜索不受影响。create_note / save_note 是唯一写入通道，均先过 check_target_shape，因此宿主层已无绕过路径。
+
+宿主集成测试由 7 项增至 10 项，新增：
+
+- create_rejects_plain_text_target_without_side_effects：新建 .txt 被拒，目标不存在，目录内无残留 .tmp。
+- save_rejects_plain_text_target_and_keeps_read_only_support：已有 .txt 保存被拒、内容逐字节不变、无临时文件；同一文件仍被扫描为 note，关键词搜索（大写 NEEDLE）命中正文并标出 body。
+- create_and_save_still_accept_both_markdown_extensions：.md 与 .markdown 的创建、保存、回读仍正常。
+
+### P2-F03 回归与证据
+
+修复后实际运行的命令与结果（本机，Linux x86_64）：
+
+| # | 命令 | 结果 |
+| --- | --- | --- |
+| 1 | cargo test --offline vault_search::tests | **9 passed / 0 failed**（含新增 2 项） |
+| 2 | cargo test --offline --test knowledge_vault_write_host --test knowledge_vault_host | **10 + 6 passed / 0 failed** |
+| 3 | cargo test --offline（全量） | **362 passed / 0 failed**（库 326、分类 2、能力 1、宿主集成 13、知识库宿主 6、写入宿主 10、任务壳 3、线程 1） |
+| 4 | cd desktop && npx tsc --noEmit | exit 0 |
+| 5 | cd desktop && npm run build | 通过（built in 976ms；仅既有 chunk >500 kB 提示） |
+| 6 | python3 -m pytest tests -q | 89 passed, 30 subtests passed |
+| 7 | verify_knowledge_vault_p2.py --display :140 | **checks=33 failures=0** |
+| 8 | verify_knowledge_vault_p1.py --display :141 | **checks=14 failures=0**；冷扫描中位 9.116 ms（1201 文件） |
+| 9 | git diff --check | 通过 |
+| 10 | git status --porcelain runtime/ | 空 |
+
+窗口验证中的搜索指标（1200 篇合成笔记、debug 构建）：总字节 24,937,046，bytes_read = 24937046，budget_bytes = 33554432，budget_exhausted = false，命中 16 条；三次 [3670.742, 3645.212, 3680.570] ms，中位 3670.742 ms。P2 窗口脚本其余 33 项（浏览、属性、保存后回读、冲突、四类确认、新建、筛选、附件点击前不打开、刷新、重启丢弃草稿、.obsidian 不变）同样全过，说明写入白名单与读取方案改动未破坏既有行为。
+
+证据落位：本次窗口运行把产物写入新目录 tests/verification/desktop/evidence/od-kb-001-p2-fix/（21 张截图、facts.json、host-test.log、AX 树快照）；P1 复跑产物另存于 evidence/od-kb-001-p1-regression/。脚本默认仍指向 od-kb-001-p2/，运行时会覆盖首轮证据，故本次先另存、随后用 Git 恢复首轮目录，历史证据未被改写。
+
+### 未验证事项与边界
+
+- 未读取任何真实知识库或正式资料；未运行真实模型。
+- 预算修复保证的是单进程内「读取动作不超过剩余额度」。read_vault_note_within 先用路径 metadata() 预判，再用打开句柄的 metadata() 复核是否截断；若文件在两次取长之间变化，最坏结果是该篇被判为超预算而跳过（budget_exhausted），不会读入超过 cap 的字节，也不会把截断内容当作完整正文。
+- 未在 Windows / macOS、网络盘或大小写不敏感文件系统上验证；跨进程保存竞态窗口仍按 P2 已批准计划如实保留，未宣称消除。
+- 搜索规模指标为 1200 篇合成库、debug 构建的本机观测值，不是性能承诺。
+
+**P2 修复执行完成，待 ARCHITECT 独立复验。P2 未标为通过；复验通过前不启动 P3。**
 
 ## OD-ARCH-092：工作记录页版式重构（两栏 + 指标带 + 复盘入口收起）（2026-10-26，实施完成待验收）
 
