@@ -1,4 +1,189 @@
-# BUILDER 执行状态
+# 执行状态
+
+> 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
+
+## OD-KB-001 P4：全局/局部知识图谱与关系导航（2026-10-26～27，实施完成；已由 ARCHITECT 独立验收通过）
+
+> 本文件是执行记录，**不是验收结论**。P4 的通过结论来自 REVIEW.md 顶部的独立验收记录（ARCHITECT，2026-10-27）；本节记录实施与本轮独立复跑的实际数据。
+> 本轮由本助手亲自实施与验证，未派子代理；未提交、未推送、未打标签。
+> 实施前 HEAD：`72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`（`main`，远端 `git@github.com:klzone/omniharness.git`）。工作区原有未提交/未跟踪改动（OD-ARCH 系列与 P1/P2/P3 知识库成果）全部原样保留，未 reset、未 clean、未覆盖、未删除；本轮结束时 `git status --porcelain=v1 -uall` 共 268 项（44 项修改、224 项未跟踪，含 P4 新增文件与证据）。
+> `runtime/` 零差异：`git status --porcelain=v1 -uall -- runtime/` 为空。
+> 范围只含 P4-S01～S05。P5 之后的 AI 建议关联、主题聚类、持久图谱数据均未开始。全部夹具位于 `/tmp` 一次性合成目录；**未读取任何真实知识库、Obsidian vault 或正式资料**。
+
+设计借鉴（screenshots-design-inspiration MCP，2026-10-26）：Miro/Lucidchart 把缩放与视图控制做成画布内的浮动工具条；Algolia/FactSet 把筛选与计数收在同一窄栏，先给数字再给图。落点：画布右上角只放缩放与「适应窗口」，左窄栏按「范围 → 目录 → 标签 → 高连接度 → 状态勾选」自上而下排列，计数行放在最上方。
+
+### P4-S01 图数据纯转换层
+
+新增 `desktop/src/shell/knowledgeGraph.ts`（457 行）。只吃 P3 `KnowledgeVaultIndex` 快照，不做任何 I/O：笔记节点与索引 `notes` 一一对应（路径、目录、标签、别名、入链/出链数、孤立标记）；`resolved` 且目标在索引内的引用成为实边并保留方向、锚点、块标记与行号；`unresolved` / `ambiguous` 生成带状态的虚节点与虚边（歧义虚节点保留候选列表，且永不提供跳转）；`external` / `attachment` 不入图。`selectGraphView` 负责目录/标签/孤立/未解析-歧义/高连接度入链阈值筛选、局部 N 度邻域与虚节点修剪；`graphMatchesIndex` 用 stats 自检转换是否与索引一致。
+
+固定夹具单测 `desktop/src/shell/knowledgeGraph.test.mjs`，26 项全过（节点/边计数与 stats 逐项一致、虚节点状态可区分、孤立与 `orphans` 一致、筛选不改索引事实、局部邻域与虚节点修剪）。
+
+### P4-S02 全局图谱视图
+
+新增 `desktop/src/shell/knowledgeGraphLayout.ts`（346 行）与 `desktop/src/shell/KnowledgeGraphView.tsx`（829 行）。布局是确定性纯函数：FNV-1a 散列决定初始同心圆位置，力导向用 3×3 格点近似斥力（每轮近似线性而非 O(n²)），迭代上限按节点数收紧（≤250 → 220、≤450 → 150、其余 90）。视图为 SVG 连线 + 绝对定位按钮节点，支持拖动（`pointerdown` 起跟踪，位移 >2 px 才算拖动，因此拖动不会误触发打开）、缩放（滚轮 + 按钮，0.35–2.6）、平移与「适应窗口」，节点点击/Enter/空格打开笔记。无索引时给出引导而非空画布。
+
+`desktop/src/shell/KnowledgeVaultPage.tsx` 新增 `vaultMode: "notes" | "graph"` 与「笔记 / 图谱」切换（`aria-pressed`，WebKit 暴露为 toggle button）；点开节点后切回笔记并 `loadNote`，未保存草稿仍走既有确认流程。
+
+单测 `desktop/src/shell/knowledgeGraphLayout.test.mjs` 16 项全过（确定性、迭代上限、降级阈值与折叠数、坐标夹取、单节点/空图边界）。
+
+### P4-S03 筛选与聚焦
+
+筛选控件：目录（含根目录）、标签、高连接度入链阈值、只看孤立、只看未解析/歧义、显示虚节点开关，附「清空筛选」；范围控件在「全局 / 当前笔记」间切换，度为 1–3（默认 1）。筛选与局部范围都只作用于视图派生，不触碰索引快照；计数行同时给出可见笔记、虚节点、连线与被筛掉连线数。中心笔记被筛选条件排除或不在索引内时显示明确提示（不再静默退回全局图）。
+
+### P4-S04 性能基准与降级
+
+新增 `desktop/bench/knowledge-graph-p4.mjs`（168 行），合成 200 / 1000 / 2000 篇三档。本轮独立复跑实测（`evidence/od-kb-001-p4-review/facts.json`，2026-10-27 00:16:05）：
+
+| 规模 | 节点 | 边 | 转换 | 筛选 | 布局 | 首次视图 | 迭代 | 布局节点 | 折叠 | 确定性 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 200 篇 | 200 | 500 | 1.2 ms | 0.3 ms | 48.2 ms | **49.6 ms** | 220 | 200 | 0 | 一致 |
+| 1000 篇 | 1000 | 2500 | 4.4 ms | 1.4 ms | 84.4 ms | **90.1 ms** | 90 | 600 | 400 | 一致 |
+| 2000 篇 | 2000 | 5000 | 10.6 ms | 2.1 ms | 67.7 ms | **80.4 ms** | 90 | 600 | 1400 | 一致 |
+
+登记阈值（首次视图 ≤ 400 ms、筛选 ≤ 120 ms、局部 ≤ 150 ms）全部满足；2000 篇首次视图实测 80.4 ms，真实窗口从切到「图谱」到降级提示可见约 4.0 s（含首发渲染与 AT-SPI 读取，非纯布局耗时）。降级策略：节点超过 `MAX_FULL_LAYOUT_NODES = 600` 时只布局入链最多的 600 个核心节点，其余折叠到外围并在界面明确提示；「展开更多」按同一预算翻倍（600 → 1200），折叠节点不渲染按钮，因此大图不会一次产生 2000 个可交互元素。
+
+### P4-S05 窗口验证与回归
+
+新增 `tests/verification/desktop/verify_knowledge_vault_p4.py`（1289 行）与 `tests/verification/desktop/evidence/od-kb-001-p4-review/`（15 张截图、9 份 AX 树快照、`facts.json`、`app-build.log`、`host-test.log`、`unit-test.log`、`bench.log`、`window-run.log`），未覆盖 p1/p2/p2-recheck/p3 任何既有目录。`window_harness.py` 新增 `XSession.drag()`，用真实 press → 分步 move → release 序列驱动 pointer 拖动。
+
+本轮实际运行的命令与结果：
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| 窗口主验证 | `python3 tests/verification/desktop/verify_knowledge_vault_p4.py --no-build --display :145 --root /tmp/odkb-p4-review` | **34 checks / 0 failures** |
+| P3 回归 | `verify_knowledge_vault_p3.py --no-build --display :146 --root /tmp/odkb-p3-ui` | **24 checks / 0 failures** |
+| P2 回归 | `verify_knowledge_vault_p2.py --display :150 --root /tmp/odkb-p2-ui` | **33 checks / 0 failures** |
+| P1 回归 | `verify_knowledge_vault_p1.py --display :149 --root /tmp/odkb-p1-ui` | **14 checks / 0 failures** |
+| Python 测试 | `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| Rust 全量 | `cargo test --offline` | **397 passed / 0 failed** |
+| 类型检查 | `cd desktop && npx tsc --noEmit` | 通过 |
+| 前端构建 | `cd desktop && npm run build` | exit 0；仅既有 >500 kB chunk 提示 |
+| 图数据与布局单测 | `node --experimental-strip-types --test src/shell/knowledgeGraph.test.mjs src/shell/knowledgeGraphLayout.test.mjs` | **42 / 42**（26 + 16） |
+
+窗口验证覆盖：无索引引导不画空图；7 篇笔记 / 8 条已解析边 + 2 条虚边 = 10 条连线、2 个虚节点与索引 stats 逐项一致；未解析与歧义虚节点可区分；入链数与孤立标记正确；目录筛选收敛；**根目录筛选 4 篇 / 4 条连线 / 2 个虚节点 / 隐藏 6 条连线**；清空筛选恢复 7 篇 10 边；孤立筛选恰为 3 篇 0 边；切视图不重建索引（仍为第 1 代）；局部 1 度 2 篇 3 边、3 度 4 篇 10 边 2 虚节点；中心不在索引时给出提示并画空图；节点拖动只改坐标不打开笔记；缩放只改比例；鼠标点击与 AT-SPI `do_action` 均能打开正确笔记；2000 篇折叠为 600 并提示，点「展开更多」到 1200，折叠节点打开笔记正常；小图全部节点落在实测画布内（画布 `[395, 351, 1004, 500]`，越界 0）；两个合成 Vault 全程字节不变（`changed: []`）。
+
+### 本轮修复的 8 项问题
+
+1. **读屏无法打开节点（产品缺陷，已修）**：AT-SPI `do_action` 触发的是无指针细节的 click，原节点只挂 `onPointerUp`。新增 `onClick`，仅在 `event.detail === 0` 时打开，避免与拖动后的指针点击重复触发。
+2. **中心缺失静默退回全局图（产品缺陷，已修）**：局部中心不在索引时原逻辑返回全局视图。改为返回空视图并置 `centerMissing`，画布显示「中心笔记不在当前索引」提示。
+3. **折叠提示按全图计算（产品缺陷，已修）**：原提示拿全图节点数比布局节点数，筛选后显示错误的折叠数。新增 `foldedNodeIds`，只从当前视图节点计算。
+4. **大图无法逐步展开（产品缺陷，已修）**：600 个核心节点之外没有出口。新增 `layoutBudget` 状态与「展开更多」按钮，每次翻倍上限，筛选/范围/索引变化时重置。
+5. **根目录筛选缺少窗口断言（验证缺陷，已补）**：目录下拉「全部目录」与「（根目录）」的空串歧义此前只在脚本层覆盖，本轮补 4 篇 / 4 边 / 隐藏 6 条连线的窗口级断言。
+6. **拖动时布局重复计算（性能缺陷，已修）**：`opened` 原为每次渲染新建对象，拖动会触发整套力导向重算。改为 `useMemo`，依赖收敛到索引与筛选。
+7. **中心缺失提示读屏不可达（可访问性缺陷，已修）**：补 `role="status"` 与 `aria-label`，AT-SPI 树可读到提示文案。
+8. **节点被裁到画布外（布局缺陷，已修）**：画布尺寸测量 effect 原只跑一次，索引出现后仍按默认 880×620 布局。改为依赖 `[graph]`，每次重新测量并挂 `ResizeObserver`。
+
+### 观察到的 P3 语义边界（未在 P4 改动，留待后续计划判断）
+
+`vault_index::resolve_target` 在源笔记位于子目录、目标写成「嵌套目录全路径且省略 `.md`」时（例：`d0/note-0000.md` 里写 `[[d0/note-0001]]`）解析不了：第 1 层要求与路径完全相等（缺扩展名），第 3 层会拼成 `d0/d0/note-0001`，第 3 层的后缀匹配又只对带扩展名路径成立。`[[notes/Alpha]]` 能解析只是因为来源在根目录、`source_dir` 为空。P4 不改解析语义（属 P3 已验收范围），本轮以夹具改用完整路径绕开，并把该边界登记在此。**不应据此宣称短路径已支持。**
+
+### 源码与差异核对
+
+逐个读取实际源码与实际 `git diff`：新增 `knowledgeGraph.ts`（457 行）、`knowledgeGraphLayout.ts`（346 行）、`KnowledgeGraphView.tsx`（829 行）、两个 `*.test.mjs`、`bench/knowledge-graph-p4.mjs`、`verify_knowledge_vault_p4.py` 与 P4 证据目录；修改 `KnowledgeVaultPage.tsx`（图谱视图接入与节点跳转）与 `window_harness.py`（新增 `drag()`）。`git diff --check` 无空白错误；`runtime/` 零差异。
+
+### 未验证事项与边界
+
+- 未在 Windows/macOS 实机验证；未测高分屏缩放、触屏拖动与键盘 Tab 遍历全图。
+- 交互验证走 AT-SPI 与 XTEST 合成输入，未验证真实鼠标/触控板手感；滚轮缩放仍未单独做窗口事件断言（按钮路径已实测）。
+- 性能基准是合成索引快照上的纯函数耗时，未覆盖真实浏览器绘制与合成开销，也未测超过 2000 篇或超密边（每节点数十条出链）的极端数据。
+- 视觉细节（配色、节点大小层级、标签截断、1200 px 以下窄屏堆叠）只做截图目视检查，未做像素级或设计规范对照。
+- 嵌套目录「全路径省略扩展名」解析边界见上节，属 P3 语义，P4 未修改。
+- 未提交、未推送、未打标签；`runtime/` 零差异。
+
+## OD-KB-001 P3：双链解析、可重建索引与关系导航（2026-10-26，实施完成；已由 ARCHITECT 独立验收通过）
+
+> 本文件是执行记录，**不是验收结论**。P3 的通过结论来自 REVIEW.md 顶部的独立验收记录；本节保留当时的实施与实跑数据原文。
+> 本轮由本助手亲自实施与验证，未派子代理；未提交、未推送、未打标签。
+> 实施前 HEAD：`72e7b05db40bdf4047b7839be9b0cb6abd4bbe32`（`main`，远端 `git@github.com:klzone/omniharness.git`）。工作区原有未提交/未跟踪改动（OD-ARCH 系列与 P1/P2 知识库成果）全部原样保留，未 reset、未 clean、未覆盖、未删除。
+> `runtime/` 零差异：`git status --porcelain=v1 -uall -- runtime/` 为空、`git diff --stat -- runtime/` 为空。
+> 范围只含 P3-S01～S06。P4 图谱可视化、P5 之后的持久索引/后台监听等均未开始。全部夹具位于 `/tmp` 一次性合成目录；**未读取任何真实知识库、Obsidian vault 或正式资料**。
+
+### P3-S01 链接语法解析与矩阵
+
+新增 `desktop/src-tauri/src/vault_link.rs`（569 行，纯解析、无 I/O）。`parse_links_report` 接收 P2 `ParsedNote` 的 `body` / `body_start_byte` / `body_start_line`，为每条引用保留原文区间（`start_byte` / `end_byte`，相对原始文件字节偏移）、来源行号与上下文。
+
+已识别：`[[目标]]`、`[[目标|显示名]]`、`[[目标#标题]]`、`[[目标#^块标识]]`、`![[附件或笔记]]`、标准 Markdown 链接 `[文字](目标)`、图片 `![说明](目标)`、autolink `<https://…>`。引用类与嵌入类保留为不同 `kind`，标题锚点与块锚点分别带 `anchor` 与 `block_anchor`，不改写原文。
+
+不误判边界：Frontmatter 不参与（只解析 P2 已切出的 `body`）；代码围栏与行内代码先做屏蔽再匹配（`mask_inline_code` 只替换为等长空白，保证字节偏移不漂移）。不支持/不完整语法保留原文并产出显式 `LinkParseIssue`：引用式链接 `[文字][标签]`、脚注、HTML `<a>`、未闭合的 `[[` 与未闭合 Markdown 链接，按行去重。
+
+语法矩阵与支持边界固定在 `docs/knowledge-vault-link-matrix.md`（89 行），新增黄金夹具用例 12 项，`cargo test --offline --lib vault_link` **12 passed / 0 failed**。
+
+### P3-S02 可重建内存索引与目标解析
+
+新增 `desktop/src-tauri/src/vault_index.rs`（900 行）与 `vault_index/tests.rs`（420 行）。索引完全由当前 Vault Markdown 原文重建，仅存在于宿主内存，不落盘、不写 `.obsidian`、不写设置、不启动后台 watcher。
+
+目标解析按固定优先级：路径限定目标与带扩展名目标 → 同级/相对路径 → 精确文件名 → 精确标题/别名；出现多个同分候选时标为 `ambiguous` 并列出 `candidates`，不任选目标。引用状态分 `resolved` / `unresolved` / `ambiguous` / `external` / `attachment`，附件只记路径，不作为笔记节点。
+
+`LinkIndex` 包含 `generation`、`built_at`、`root`、`complete` / `incomplete_reason`、`notes`、`links`、`issues`、`stats` 与 `fingerprint`（只由路径与内容 sha256 决定，同内容重建得到同一指纹）。`note_links` 提供单篇正/反链，`orphans` 提供孤立清单；正反链由同一 `links` 集合双向计算，不会互相矛盾。
+
+构建预算：`INDEX_MAX_BYTES = 32 MiB`，`byte_budget` **只允许收紧**（`.min(INDEX_MAX_BYTES)`）；`INDEX_MAX_NOTES = 2_000`。扫描的跳过项、错误、明细截断、笔记数超限与读取失败都进入 `issues`，并使 `complete=false` 并带原因，不把不完整结果冒充完整索引。扫描与读取之间文件元数据不一致时，该次文件不纳入并记问题（`metadata_matches_scan`）。
+
+`cargo test --offline --lib vault_index` **17 passed / 0 failed**。
+
+### P3-S03 标题与块锚点定位
+
+`heading_anchors` / `slugify` / `block_anchors` / `resolve_anchor` 为纯函数。ATX 标题按文档顺序生成 slug，重复标题按出现次数追加消歧序号，保证结果可复现；显式块 ID `^blk-xxx` 精确匹配。`resolve_anchor` 返回 `exact` 与实际行号或 `unlocated`，调用方据此回退到笔记顶部并解释原因，绝不打开其他笔记或错误段落。定位只读取 Markdown，不修改原文。
+
+锚点大小写、标点与 Unicode 规则、重复标题、块 ID 与缺失回退均有固定夹具，包含在 `vault_index` 17 项测试内。
+
+### P3-S04 宿主命令与原子发布
+
+`lib.rs` 新增 `vault_index` 字段与三个只读/显式重建命令，并注册进 `generate_handler!`：
+
+| 命令 | 行为 |
+| --- | --- |
+| `knowledge_vault_rebuild_index` | 重新核对设置中的根 → 重新扫描 → 在锁外完整构建 → 完整快照整体替换旧快照；换根不复用旧 generation 或内容。 |
+| `knowledge_vault_index_status` | 只读当前已发布快照，没有则返回 `null`，不触发磁盘读取或重建。 |
+| `knowledge_vault_note_links` | 只读当前快照里一篇笔记的正/反链；索引属于另一根时明确报错要求刷新。 |
+
+构建期间读命令只看到上一份完整快照，不会暴露半成品。新增 `desktop/src-tauri/tests/knowledge_vault_index_host.rs`（173 行，5 项）覆盖重建、只读读取、换根后不复用旧快照、未建索引报错与读取预算收紧；`cargo test --offline --test knowledge_vault_index_host` **5 passed / 0 failed**。
+
+`desktop/src/types.ts` / `api.ts` 新增 `KnowledgeVaultIndex`、`KnowledgeVaultIndexNote`、`KnowledgeVaultIndexLink`、`KnowledgeVaultIndexIssue`、`KnowledgeVaultIndexStats`、`KnowledgeVaultNoteLinks` 类型与 3 个 API 封装。
+
+### P3-S05 关系面板与跳转
+
+`desktop/src/shell/KnowledgeVaultPage.tsx` 新增「链接关系」卡片：索引状态与代次、完整/不完整提示、索引问题清单（含行号）、孤立笔记清单、当前笔记的正向链接与反向链接（来源文件 + 来源行 + 上下文）、锚点失效汇总。
+
+跳转规则：已解析的正链打开目标笔记并定位到标题/块锚点行；回链打开**来源笔记并定位到引用所在行**；`unresolved` / `ambiguous` / `external` 条目不产生跨笔记跳转；锚点不存在时打开目标笔记顶部并显示“已打开目标笔记顶部，但链接里的标题或块锚点不存在”。刷新扫描不自动重建索引，界面明确提示外部改动需手动重建，符合 P3 不做后台监听的范围。
+
+验证过程中补充了 AT-SPI 可访问名称（空态、代次、跳转提示、锚点失效汇总），仅用于让无障碍树可读，同时改善读屏可用性。未实现 P4 图谱画布。
+
+### P3-S06 隔离验证与回归
+
+| # | 命令（实际执行） | 结果 |
+| --- | --- | --- |
+| 1 | `cargo test --offline --lib vault_link` | **12 passed / 0 failed** |
+| 2 | `cargo test --offline --lib vault_index` | **17 passed / 0 failed** |
+| 3 | `cargo test --offline --test knowledge_vault_index_host` | **5 passed / 0 failed** |
+| 4 | `cargo test --offline`（全量，日志 `/tmp/odkb-p3-cargo-test.log`） | **397 passed / 0 failed**（356 + 2 + 1 + 13 + 6 + 5 + 10 + 3 + 1） |
+| 5 | `cd desktop && npx tsc --noEmit` | exit 0，0 错 |
+| 6 | `cd desktop && npm run build` | 通过（`✓ built in 1.23s`；仅既有 >500 kB chunk 提示） |
+| 7 | `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| 8 | `python3 tests/verification/desktop/verify_knowledge_vault_p3.py --display :135 --root /tmp/odkb-p3-ui`（含构建） | **24 checks / 0 failures** |
+| 9 | P1 回归 `verify_knowledge_vault_p1.py --display :136` | **14 checks / 0 failures** |
+| 10 | P2 回归 `verify_knowledge_vault_p2.py --display :134` | **33 checks / 0 failures** |
+
+P3 窗口实测（合成 Vault，Linux x86_64，Xvfb + XTEST + AT-SPI 真实窗口）：初始索引 7 篇笔记、10 resolved、1 unresolved、1 ambiguous、2 孤立、完整、generation 1；标题锚点跳 Alpha 第 3 行、块锚点跳第 7 行、回链跳来源引用行（Alpha 第 9 行）；别名 `Launch` 打开 Starter.md；歧义与未解析均不跳转；外部新增笔记后刷新扫描仍显示旧索引 generation 1，重建后 8 篇、13 resolved、0 unresolved、2 孤立、完整、generation 2；除测试自身写入的 3 个文件与新增 `notes/Extra.md` 外，其余笔记、附件与 `.obsidian` 字节不变。
+
+证据：`tests/verification/desktop/evidence/od-kb-001-p3/`（11 张截图、7 份 AX 树快照、`facts.json`、`host-test.log`、`app-build.log`；`facts.json` 记录 `app_build.exit_code=0` 与二进制 mtime）。回归证据另存 `od-kb-001-p1-p3regression/`、`od-kb-001-p2-p3regression2/`，**未覆盖**已入库的 `od-kb-001-p1/`、`od-kb-001-p2/`、`od-kb-001-p2-recheck/`。
+
+### 验证过程中发现并修正的脚本问题（非产品缺陷）
+
+首次 P2 回归出现 3 项搜索失败（关键词/标签/属性命中为空）。截图与 AX 树显示搜索**实际返回 1 条命中**，但 P3 新增的「链接关系」卡片把右栏内容推到 1440×900 首屏之下，脚本按 AT-SPI 屏幕绝对坐标点击“搜索”时落在窗口外的空白处，事件未触发。已在 `verify_knowledge_vault_p2.py` 增加 `scroll_until_visible` / `click_scrolled` / `search_hits_after_scroll`，先把目标滚入可视区再点击与读取；重跑 **33/33 通过**。产品源码未为此改动。另：`window_harness.ensure_app_binary()` 解析工具链环境时会把 `PATH` 写成字面量 `$PATH` 导致 pkg-config 失败，P3 脚本改用 `build_app_binary()` 经 `bash -c 'eval "$(... --print-env)"'` 构建，实际构建成功。
+
+### 源码与差异核对
+
+逐项核对实际源码与 `git diff`：新增 `vault_link.rs`、`vault_index.rs`、`vault_index/tests.rs`、`knowledge_vault_index_host.rs`、`docs/knowledge-vault-link-matrix.md`、`verify_knowledge_vault_p3.py`；修改 `lib.rs`（模块、状态字段、三个命令、注册）、`types.ts` / `api.ts`（P3 类型与封装）、`KnowledgeVaultPage.tsx`（关系面板与跳转）、`knowledge_vault.rs`（P2-F01 完整性分类，属既有修复）、`verify_knowledge_vault_p2.py`（上述滚动修正）。`PLANS.md` 仅改 P3 标题与批准说明；`REVIEW.md` 本轮**未改动**，其现有差异来自此前 P2 复验记录。
+
+### 未验证事项与边界
+
+- **P3 尚未经 ARCHITECT 独立审查**；本记录不构成通过结论，阶段门槛要求独立验收通过前不进入 P4。
+- 未读取任何真实知识库、Obsidian vault、业务资料或凭证；全部证据来自 `/tmp` 合成目录。
+- 未在 Windows/macOS 实机验证；未测试网络盘、大小写不敏感文件系统。
+- 未做大库性能压测；索引构建未记录规模化耗时指标，只有功能与预算边界证据。
+- 扫描与索引构建之间、以及重命名/移动等文件操作并发发生时的行为未专门验证。
+- 链接语法支持边界以 `docs/knowledge-vault-link-matrix.md` 为准；引用式链接、脚注、HTML 链接、Obsidian 块嵌入的显示效果等未支持形式只报问题、不改原文。
+- 未提交、未推送、未打标签；`runtime/` 零差异。
 
 ## OD-KB-001 P1：单库根目录与只读访问边界（2026-10-26，ARCHITECT 独立验收通过）
 
@@ -195,6 +380,8 @@
 - P3 及之后的双链、持久索引、图谱、重命名/移动/删除、批量操作、附件内容提取均未开始。
 
 **P2 首轮实施完成但独立验收未通过；F01/F02 已修复、F03 回归已执行，见下一节。P2 仍未标为通过，复验通过前不进入 P3。**
+
+> 后续状态（2026-10-26，ARCHITECT 独立复验）：P2 已通过独立验收，结论见 REVIEW.md「OD-KB-001 P2 补验与阶段验收」。以上段落保留初验时的原文，未回改。
 
 ## OD-KB-001 P2 修复：实际读取预算与 Markdown 写入类型（2026-10-26，F01～F03 执行完成，待 ARCHITECT 独立复验）
 
