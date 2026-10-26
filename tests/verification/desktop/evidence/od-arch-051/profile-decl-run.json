@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-051 S3",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
-  "display": ":97",
+  "display": ":174",
   "rounds": {
     "default": {
       "title": "OmniDesk Discipline",

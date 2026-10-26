@@ -3,7 +3,7 @@
 
 只使用一次性数据根 + 回环合成模型端点 + 一次性 Xvfb 显示：
 
-  1. 首次启动：宿主在 `<数据根>/profiles/discipline.yml` 创建默认声明，Dock 显示 5 个业务入口；
+  1. 首次启动：宿主在 `<数据根>/profiles/discipline.yml` 创建默认声明，Dock 显示 5 个声明入口 + 内置知识库（共 6 个）；
   2. 改声明（去掉「文案写作」）后重启：Dock 上该入口消失，名称随之变化；
   3. 声明写坏后重启：界面显示错误提示并回退内置入口（不静默）。
 
@@ -49,6 +49,10 @@ def run_round(session: AppSession, xs: XSession, shot: Path, settle: float = 6.0
     win = xs.find_window("OmniDesk", timeout=90)
     if win is None:
         raise RuntimeError("未找到 OmniDesk 主窗口")
+    # 开发态 Vite 冷启动受仓库根 src-tauri/target 影响要 8 秒左右（环境因素）。
+    # 先等首屏画出内容再看，避免在纯色空白窗口上截图与读文件。
+    if not xs.wait_rendered(win, timeout=120):
+        raise RuntimeError("OmniDesk 首屏在 120 秒内未渲染出内容")
     time.sleep(settle)
     geo = xs.shot(shot)
     return {
@@ -98,7 +102,12 @@ def main(argv: list[str]) -> int:
         report["rounds"]["default"] = run_round(session, xs, SHOTS / "01-default.png")
         decl_path = session.app_data / "profiles" / "discipline.yml"
         report["rounds"]["default"]["decl_path"] = str(decl_path)
+        deadline = time.monotonic() + 30.0
+        while not decl_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
         report["rounds"]["default"]["decl_created"] = decl_path.exists()
+        if not decl_path.exists():
+            raise RuntimeError(f"宿主未创建默认 Profile 声明：{decl_path}")
         if decl_path.exists():
             report["rounds"]["default"]["decl_matches_sample"] = (
                 decl_path.read_text(encoding="utf-8") == DEFAULT_DECL

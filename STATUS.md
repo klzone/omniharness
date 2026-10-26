@@ -2,7 +2,7 @@
 
 ## OD-KB-001 P1：单库根目录与只读访问边界（2026-10-26，ARCHITECT 独立验收通过）
 
-> 本文件记录实施和复核运行数据；独立验收结论见 REVIEW.md 顶部。P1 已通过，P2 尚未获准实施。
+> 本文件记录实施和复核运行数据；独立验收结论见 REVIEW.md 顶部。P1 已通过；P2 已实施完成，待 ARCHITECT 独立验收。
 > 本轮由本助手亲自实施，未派子代理；未提交、未推送、未打标签。
 > 实施前 HEAD：`0d17b1f04f9a9c575643dce855f32db114da516b`。工作区原有大量未暂存与未跟踪改动（OD-ARCH-086/089/091/092 等）全部原样保留，本轮只在其上增量修改。
 > `runtime/` 零差异：`git status --short runtime/` 为空、`git diff --stat runtime/` 为空。
@@ -86,12 +86,115 @@
 ### 未验证事项与边界
 
 - **未读取任何真实知识库、Obsidian vault 或正式资料**；全部证据来自 `/tmp` 合成目录。
-- 未运行真实模型、未调用知识库相关的 AI 整理；P2 的笔记浏览/编辑、持久索引、双链与图谱**均未开始**。
+- 未运行真实模型、未调用知识库相关的 AI 整理；**P1 验收时** P2 尚未开始（P2 的当前状态见本文件顶部 P2 章节）。持久索引、双链与图谱仍未开始。
 - 未做大规模真实库性能测试；1201 文件的耗时只代表本机合成样本。
 - 未验证网络文件系统、大小写不敏感文件系统与扫描期间文件被并发修改/删除的竞态。
 - 未在 Windows/macOS 实机验证符号链接与权限行为。
 - `.dsh` / `.agents` / `.codex` 等禁用片段按小写路径字符串匹配，未覆盖所有可能的别名挂载路径；根的真实落点另有仓库与应用数据根校验。
 - ARCHITECT 于 2026-10-26 独立验收通过；复核修复及重跑证据见 REVIEW.md 顶部。此状态不代表 P2 实施获批。
+
+## OD-KB-001 P2：笔记浏览、属性、关键词搜索与安全编辑（2026-10-26，实施完成，待 ARCHITECT 独立验收）
+
+> 本文件是执行记录，**不是验收结论**；REVIEW.md 本轮未改动，P2 未标为通过。
+> 本轮由本助手亲自实施与验证，未派子代理；按用户 2026-10-26 授权提交并推送本轮 P2 差异。
+> 实施前 HEAD：`5ad89bcf330807eb4ecec485f338ad019a77dcb0`（`main`），远程 `origin` 同步、无落后提交。工作区实施前已有 53 项未提交/未跟踪差异（OD-ARCH-051/055/086 证据、OD-ARCH-092 等），全部原样保留，未 reset、未 clean、未覆盖。
+> `runtime/` 零差异：`git status --short runtime/` 为空、`git diff --stat runtime/` 为空。
+> 范围只含 P2（P2-S01～S06）。P3 的双链、持久索引、图谱、重命名/移动/删除、批量操作、附件内容提取与 AI/向量均未开始。
+> 全部夹具位于 `/tmp` 一次性合成目录；**未读取任何真实知识库、Obsidian vault 或正式资料**。
+
+### P2-S01 Frontmatter / 属性只读解析
+
+新增 `desktop/src-tauri/src/vault_note.rs`（纯解析，无 I/O）。契约：`raw` 是原文完整切片，`frontmatter.raw` / `body` 是按字节偏移切出的原样片段，`body_start_line` 记录正文起始行；解析层从不回写、不规范化、不重排 YAML。
+
+可识别结构：顶层标量（文本、数字保留 YAML 原文形态、布尔、null）、字符串列表与块列表、`tags` / `tag`、`aliases` / `alias`，以及未知键（作为属性保留并展示）。无法识别的嵌套结构只给警告并保留原文；无效 YAML、未闭合 Frontmatter 均保留全文并记警告，未闭合时整篇按正文处理。tags 额外从正文抽取，但跳过代码围栏与行内代码；标签做规范化并去重。
+
+解析依赖为 `serde_yaml = "0.9"`：原先是 dev-dependency，本轮提升为生产依赖。该 crate 已在 `Cargo.lock` 中，未引入新 crate，离线构建可用。
+
+对应单测 13 项：`parses_scalars_lists_tags_and_aliases`、`raw_text_is_never_altered`、`plain_note_without_frontmatter_keeps_whole_body`、`invalid_yaml_keeps_text_and_warns`、`unterminated_frontmatter_treated_as_body`、`separator_inside_body_is_not_a_frontmatter_close`、`crlf_is_preserved_and_body_offset_is_exact`、`nested_values_are_skipped_with_warning_but_kept_raw`、`tags_ignore_fences_and_inline_code`、`tags_are_normalized_but_deduplicated`、`scalar_tag_string_supports_comma_and_space`、`unknown_keys_are_kept_as_properties`、`empty_and_whitespace_notes_do_not_panic`。
+
+### P2-S02 单篇创建与安全保存
+
+新增 `desktop/src-tauri/src/vault_write.rs`。目标路径先经 P1 `resolve_vault_file` 同口径校验：拒绝相对越界、`..`、隐藏/排除目录（复用新增的 `knowledge_vault::is_excluded_dir_name`，避免两套排除规则漂移）、符号链接、根外真实落点、非 `md`/`markdown`/`txt` 目标；正文超过 P1 的 512 KiB 上限即拒绝。新建目标已存在时报错且不覆盖。
+
+写入方式：同目录临时文件 + 原子 rename，失败时清理临时文件并保持原文件不动；保存沿用原文件权限位。保存请求带打开时读取的 `expected_sha256`，宿主在写入前重新读取并比对，不匹配返回 `[conflict]` 前缀错误且**不写入**。
+
+竞态边界如实暴露而非宣称消除：`SaveOutcome.race_window` 固定文案为「已重新读取校验后写入；读取与替换之间的跨进程改写窗口仍存在，未被消除」。普通文件 API 没有原子比较交换，该窗口是已知限制。
+
+宿主集成测试 `desktop/src-tauri/tests/knowledge_vault_write_host.rs` 7 项全过：`create_then_read_and_parse_roundtrip`、`create_rejects_unsafe_targets_and_oversize_content`、`save_writes_and_preserves_unknown_or_invalid_frontmatter_verbatim`、`save_conflict_does_not_touch_the_file`、`failed_temp_write_leaves_original_intact`、`attachment_open_rejects_everything_unvalidated`、`host_write_paths_resolve_to_config`。
+
+### P2-S03 附件安全打开
+
+新增 `desktop/src-tauri/src/vault_open.rs`。先经 `resolve_vault_file` 完整校验，再由固定打开器 `xdg-open`，回退 `gio open`；文件路径作为独立参数传入，不拼 shell 字符串、不接受调用方提供的 URL 或命令。不返回附件正文，不提取 PDF/DOCX 内容。打开器缺失或失败时错误可见，其余知识库功能不受影响。测试 `opens_only_validated_attachment`、`invalid_paths_never_reach_the_opener`、`opener_failure_is_visible_and_does_not_pretend_success` 覆盖三类行为。
+
+### P2-S04 知识库分页与编辑工作区
+
+设计借鉴（screenshots-design-inspiration MCP，2026-10-26）：Evernote 的左侧列表—中间正文—右侧辅助信息三栏；Notion 的轻量页面树与低装饰行内操作。
+
+新增 `desktop/src/shell/KnowledgeVaultPage.tsx` 与 `ConfirmDialog.tsx`，`Dock.tsx` 追加**内置**知识库入口（不写入用户 Profile 声明，声明里手写 `knowledge` 时也不重复），`App.tsx` 接分页与离开确认。`types.ts` 补解析结果、属性/警告、创建/保存结果与搜索响应类型；`api.ts` 在 P1 的 5 个封装之外新增 `knowledgeVaultParseNote` / `knowledgeVaultCreateNote` / `knowledgeVaultSaveNote` / `knowledgeVaultSearch` / `knowledgeVaultOpenAttachment` 共 5 个，合计 10 个知识库封装。
+
+关键行为：三种模式原文/预览/编辑；预览走既有 `MarkdownText` 安全渲染；属性面板显示值、标签、别名与来源路径；草稿只在组件内存中，切换笔记、新建、离开分页都有应用内确认对话框，取消不动源文件；保存成功后**重新读取宿主文件**再刷新界面，不用本地草稿冒充落盘内容；冲突时保留草稿并提示，不覆盖磁盘；重启不恢复未保存草稿。
+
+`App.tsx` 的知识库分页改为按需加载（`lazy` + `Suspense`，首屏 fallback 为「正在打开知识库…」）。发布构建确认拆出独立 chunk `KnowledgeVaultPage-*.js`（29.29 kB），主包 642.46 kB；既有 >500 kB 提示仍在，本轮未处理该既有体积问题。
+
+### P2-S05 筛选与关键词搜索
+
+新增 `desktop/src-tauri/src/vault_search.rs`，不建持久索引、不写缓存，每次请求重扫并重新读取。固定规则：关键词大小写不敏感，命中区域分 `path` / `body` / `property` / `tag`，正文返回行号（换算为原文件行号）与 120 字符上下文；标签筛选为「相等或属于其下级」（如 `project` 命中 `project/alpha`）；多标签、多属性条件为 AND。
+
+资源边界：单篇仍受 512 KiB；单次搜索总读取预算 32 MiB（`SEARCH_MAX_BYTES`），超出时停止读取并置 `budget_exhausted` 且逐项列出跳过的文件；命中上限 500 条（`hits_truncated` 与预算耗尽分开报告）。
+
+合成规模实测（1200 篇、24,937,046 字节，Linux x86_64、debug）：三次 `[3617.867, 3568.113, 3660.429] ms`，中位 **3617.867 ms**，`bytes_read = 24937046`，未触及 32 MiB 预算，命中 16 条。这是本机样本观测值，不是性能承诺。
+
+**样本规模修正：** 初次构造的合成样本为每篇 700 行，总量约 38.7 MB，超过 32 MiB 预算导致 `budget_exhausted=true`；改为每篇 450 行后总量 24.9 MB，预算内完成。记录这一点是为了说明指标来源，搜索代码的预算行为本身有独立单测 `budget_exhaustion_is_reported_not_hidden` 覆盖。
+
+搜索单测：`keyword_is_case_insensitive_and_reports_body_location`、`tag_filter_matches_descendants_and_requires_all_tags`、`property_filter_and_keyword_combine_with_and_semantics`、`keyword_reports_property_tag_and_path_areas`、`empty_query_lists_all_notes_only`、`budget_exhaustion_is_reported_not_hidden`、`synthetic_scale_search_metric`。
+
+### P2-S06 窗口验证、回归与竞态修复
+
+新增 `tests/verification/desktop/verify_knowledge_vault_p2.py`：一次性 Xvfb + XTEST + AT-SPI 驱动真实桌面窗口，`PATH` 注入合成 `xdg-open` 记录打开动作，不调用真实处理程序。本轮实跑 `--display :173 --root /tmp/odkb-p2-ui-20261026a`：**checks=33 failures=0**。覆盖：Dock 进入与三栏布局、未设置引导、属性与来源、原文保真、预览渲染、脏标记、保存后回读、外部修改冲突不覆盖、放弃/切换/新建/离开四类确认的取消与确认、新建持久化、已存在拒绝、关键词/标签/属性筛选、附件点击前不打开且不读正文、刷新反映外部增删、重启丢弃草稿、未触碰文件与 `.obsidian` 配置不变。
+
+验证脚本竞态修复（同一轮实测确认的既有缺陷，不是 P2 功能回归）：
+
+- `window_harness.py` 新增 `XSession.wait_rendered(win, timeout, min_colors=12)`，按像素多样性等待首屏真正画出内容；超时仍返回 False 由调用方判失败，只放宽「何时看」，不放宽断言。
+- `verify_profile_decl.py` 改用 `wait_rendered`，并在读取声明前最多轮询 30 秒等宿主创建 `profiles/discipline.yml`；缺文件时给出明确错误，不再抛 `FileNotFoundError`。
+- `verify_scene_decl_linkage_055.py` 的 `mount_window` 用 `wait_rendered` 取代固定 `sleep(2)`。
+
+根因已用二分实测定位：仓库根 `desktop/src-tauri/target` 体量巨大，开发态 Vite 冷启动约 8.3 秒；HEAD 版前端同样 8.6 秒，把前端副本放到无 `target` 的 `/tmp` 只需 4.9–5.4 秒。固定等待会在 WebKit 还只有纯色底时抓图、读文件，产生空白截图与「声明文件尚未创建」这类假失败。该差异**不是 P2 代码引入**，修复落在验证脚本的等待方式上。
+
+### 实际运行结果
+
+| # | 命令 | 结果 |
+| --- | --- | --- |
+| 1 | `cd desktop/src-tauri && cargo test --offline`（先加载 `scripts/setup-desktop-toolchain.sh --print-env`） | **357 passed / 0 failed**（库单测 324 + 2 + 1 + 13 + 6 + 7 + 3 + 1） |
+| 2 | `cd desktop && npx tsc --noEmit` | exit 0，0 错 |
+| 3 | `cd desktop && npm run build` | 通过（`✓ built in 829ms`；仅既有 chunk >500 kB 提示） |
+| 4 | `python3 -m pytest tests -q` | `89 passed, 30 subtests passed` |
+| 5 | `python3 tests/verification/desktop/verify_knowledge_vault_p2.py --display :173 --root /tmp/odkb-p2-ui-20261026a` | `checks=33 failures=0` |
+| 6 | `python3 tests/verification/desktop/verify_knowledge_vault_p1.py --display :176` | `checks=14 failures=0`；冷扫描中位 8.529 ms（1201 文件） |
+| 7 | `python3 tests/verification/desktop/verify_profile_decl.py --display :174` | 通过；声明创建、与 samples 一致、写坏后未被覆盖 |
+| 8 | `python3 tests/verification/desktop/verify_scene_decl_linkage_055.py --display :175` | 通过；声明 sha256 前后一致 `22eec238…bec4ad`，`decl_restored_identical=true` |
+| 9 | `python3 tests/verification/desktop/verify_library_root_086.py --display :178` | `checks=22 failures=0`（需先在常驻会话启动 5273 dev server；跑完已停止，端口已释放） |
+
+证据目录 `tests/verification/desktop/evidence/od-kb-001-p2/`：21 张窗口截图、`facts.json`（33 项检查明细与搜索指标）、`host-test.log`、7 份 AX 树快照。截图已人工核对，均渲染出真实界面，无空白帧。
+
+回归过程中同时刷新了 `evidence/od-arch-051/`、`od-arch-055/`、`od-arch-086/`、`od-kb-001-p1/` 的截图为真实渲染帧，属同一桌面回归的等待方式修复结果，已随本轮一并提交。
+
+### 源码与 diff 复查
+
+`git diff --check` 通过（无空白错误）。逐项核对实际源码：`vault_note.rs` 的切片与警告路径、`vault_write.rs` 的路径校验/临时文件/冲突比对/竞态文案、`vault_search.rs` 的匹配规则与预算、`vault_open.rs` 的固定打开器、`lib.rs` 的 10 个知识库命令与 `generate_handler!` 注册、`KnowledgeVaultPage.tsx` 的草稿与确认流程、`App.tsx` 的按需加载与离开确认，均与上述记录一致。
+
+凭证与真实路径扫描：命中仅 `/etc/passwd`（路径边界测试用例）与 `HOME` 相关测试变量；证据 JSON 与截图中只有 `/tmp/odkb-p2-ui-…`、`/tmp/odkb-p1-ui/…` 等合成路径，无真实 vault 或业务资料路径。
+
+### 未验证事项与边界
+
+- **未读取任何真实知识库、Obsidian vault 或正式资料**；未运行真实模型或 AI 整理。
+- 未验证网络文件系统、大小写不敏感文件系统；扫描/保存期间文件被并发修改或删除的竞态未系统实测。
+- **跨进程「重新读取→rename」竞态窗口仍然存在**，代码与返回值均如实声明，未宣称消除。
+- 未在 Windows / macOS 实机验证符号链接、权限与默认打开器行为；附件打开仅在 Linux 用合成打开器验证。
+- 搜索指标为 1200 篇合成笔记、debug 构建的本机观测值，不代表真实库规模下的性能。
+- 单篇 512 KiB、单次搜索 32 MiB、命中 500 条为当前固定上限；超限行为有单测覆盖，但未在大库上做端到端体验验证。
+- P3 及之后的双链、持久索引、图谱、重命名/移动/删除、批量操作、附件内容提取均未开始。
+
+**P2 实施完成，待 ARCHITECT 独立验收。未标为通过，验收通过前不进入 P3。**
 
 ## OD-ARCH-092：工作记录页版式重构（两栏 + 指标带 + 复盘入口收起）（2026-10-26，实施完成待验收）
 

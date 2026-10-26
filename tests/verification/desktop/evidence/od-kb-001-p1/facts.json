@@ -1,6 +1,6 @@
 {
   "plan": "OD-KB-001 P1",
-  "verified_at": "2026-10-26 16:22:28",
+  "verified_at": "2026-10-26 18:50:39",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 宿主集成测试实测",
   "root": "/tmp/odkb-p1-ui",
   "synthetic_vault": "/tmp/odkb-p1-ui/synth-vault",
@@ -8,11 +8,11 @@
     "exit_code": 0,
     "passed": 6,
     "metric": {
-      "median_ms": 7.962,
+      "median_ms": 8.529,
       "runs_ms": [
-        8.769,
-        7.958,
-        7.962
+        9.55,
+        8.529,
+        8.329
       ],
       "synthetic_dirs": 60,
       "synthetic_files": 1201,
@@ -41,11 +41,11 @@
     "cold_scan_metric_collected": {
       "pass": true,
       "measured": {
-        "median_ms": 7.962,
+        "median_ms": 8.529,
         "runs_ms": [
-          8.769,
-          7.958,
-          7.962
+          9.55,
+          8.529,
+          8.329
         ],
         "synthetic_dirs": 60,
         "synthetic_files": 1201,

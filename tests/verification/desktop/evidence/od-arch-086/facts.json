@@ -1,6 +1,6 @@
 {
   "plan": "OD-ARCH-086",
-  "verified_at": "2026-10-26 14:56:06",
+  "verified_at": "2026-10-26 18:53:54",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 隔离设置文件事实",
   "root": "/tmp/od086-ui",
   "old_library": "/tmp/od086-ui/library-old",
@@ -151,7 +151,7 @@
   },
   "failures": [],
   "input_pixel_diff": {
-    "cleared_ratio": 0.001235,
+    "cleared_ratio": 0.001262,
     "typed_ratio": 0.00337
   }
 }

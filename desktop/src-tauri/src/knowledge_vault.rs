@@ -202,6 +202,11 @@ fn excluded_dir_name(name: &str) -> Option<&'static str> {
     None
 }
 
+/// 供写入通道复用同一条排除口径：名字是否属于隐藏或明确排除的目录。
+pub fn is_excluded_dir_name(name: &str) -> bool {
+    excluded_dir_name(name).is_some()
+}
+
 /// 相对路径（POSIX 分隔符）；只用于展示与作为读取键。
 fn relative_posix(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)

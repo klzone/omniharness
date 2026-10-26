@@ -35,6 +35,10 @@ pub mod settings;
 pub mod sha256;
 pub mod task_shell;
 pub mod thread_store;
+pub mod vault_note;
+pub mod vault_open;
+pub mod vault_search;
+pub mod vault_write;
 pub mod worklog;
 
 use std::sync::{Arc, Mutex};
@@ -1741,6 +1745,54 @@ pub fn knowledge_vault_read_note_for(
     knowledge_vault::read_vault_note(&root, relative_path)
 }
 
+/// 解析一篇笔记的 Frontmatter 与正文（只读，P2-S01）。
+pub fn knowledge_vault_parse_note_for(
+    paths: &crate::app_paths::AppPaths,
+    relative_path: &str,
+) -> Result<vault_note::ParsedNote, String> {
+    let note = knowledge_vault_read_note_for(paths, relative_path)?;
+    Ok(vault_note::parse_note(&note.content))
+}
+
+/// 新建一篇根内笔记（P2-S02）。根在每次调用时重新校验。
+pub fn knowledge_vault_create_note_for(
+    paths: &crate::app_paths::AppPaths,
+    relative_path: &str,
+    content: &str,
+) -> Result<knowledge_vault::VaultNote, String> {
+    let root = configured_vault_root(paths)?;
+    vault_write::create_note(&root, relative_path, content)
+}
+
+/// 保存一篇已有笔记，必须以打开时读到的版本哈希做冲突检查（P2-S02）。
+pub fn knowledge_vault_save_note_for(
+    paths: &crate::app_paths::AppPaths,
+    relative_path: &str,
+    content: &str,
+    expected_sha256: &str,
+) -> Result<vault_write::SaveOutcome, String> {
+    let root = configured_vault_root(paths)?;
+    vault_write::save_note(&root, relative_path, content, expected_sha256)
+}
+
+/// 扫描并在内存中搜索笔记（P2-S05）；不建立持久索引。
+pub fn knowledge_vault_search_for(
+    paths: &crate::app_paths::AppPaths,
+    query: &vault_search::SearchQuery,
+) -> Result<vault_search::SearchResponse, String> {
+    let root = configured_vault_root(paths)?;
+    vault_search::search_vault(&root, query)
+}
+
+/// 用系统处理程序打开根内附件（P2-S03），不读取附件正文。
+pub fn knowledge_vault_open_attachment_for(
+    paths: &crate::app_paths::AppPaths,
+    relative_path: &str,
+) -> Result<String, String> {
+    let root = configured_vault_root(paths)?;
+    vault_open::open_attachment(&root, relative_path)
+}
+
 #[tauri::command(async)]
 fn knowledge_vault_status(state: State<'_, SharedHost>) -> knowledge_vault::VaultRootStatus {
     let paths = {
@@ -1801,6 +1853,69 @@ fn knowledge_vault_read_note(
         host.paths.clone()
     };
     knowledge_vault_read_note_for(&paths, &relative_path)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_parse_note(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+) -> Result<vault_note::ParsedNote, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_parse_note_for(&paths, &relative_path)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_create_note(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+    content: String,
+) -> Result<knowledge_vault::VaultNote, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_create_note_for(&paths, &relative_path, &content)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_save_note(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+    content: String,
+    expected_sha256: String,
+) -> Result<vault_write::SaveOutcome, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_save_note_for(&paths, &relative_path, &content, &expected_sha256)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_search(
+    state: State<'_, SharedHost>,
+    query: vault_search::SearchQuery,
+) -> Result<vault_search::SearchResponse, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_search_for(&paths, &query)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_open_attachment(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+) -> Result<String, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_open_attachment_for(&paths, &relative_path)
 }
 
 // ---------------------------------------------------------------------------
@@ -3384,6 +3499,11 @@ pub fn run() {
             knowledge_vault_clear_root,
             knowledge_vault_scan,
             knowledge_vault_read_note,
+            knowledge_vault_parse_note,
+            knowledge_vault_create_note,
+            knowledge_vault_save_note,
+            knowledge_vault_search,
+            knowledge_vault_open_attachment,
             thread_store_load,
             thread_store_save,
             thread_store_delete,

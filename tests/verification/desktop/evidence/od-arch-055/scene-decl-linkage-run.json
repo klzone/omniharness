@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-055 S3",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（sha256）",
-  "display": ":94",
+  "display": ":175",
   "root": "/tmp/od055-s3",
   "rounds": {
     "default": {
@@ -23,15 +23,16 @@
       "decl_path": "/tmp/od055-s3/app-data/profiles/discipline.yml",
       "decl_matches_sample": true,
       "dock_centers": [
-        309,
-        359,
-        409,
-        459,
-        509
+        284,
+        334,
+        384,
+        434,
+        484,
+        534
       ],
       "click_point": [
         127,
-        449
+        424
       ],
       "click_slot3": {
         "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/02-default-slot3-writing.png",
@@ -70,14 +71,15 @@
       "decl_sha256": "7e5ecf81dd03e9e777b3f1dba15b51e3c4ed9967a8f7b943f29549d7f5caa12c",
       "decl_byte_identical_to_edit": true,
       "dock_centers": [
-        334,
-        384,
-        434,
-        484
+        309,
+        359,
+        409,
+        459,
+        509
       ],
       "click_point": [
         127,
-        474
+        449
       ],
       "click_old_writing_slot": {
         "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-055/shots/04-hidden-slot3-project.png",

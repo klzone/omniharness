@@ -18,8 +18,12 @@ import type {
   ExplanationSource,
   LibraryRootInfo,
   KnowledgeVaultNote,
+  KnowledgeVaultParsedNote,
   KnowledgeVaultRootStatus,
+  KnowledgeVaultSaveOutcome,
   KnowledgeVaultScan,
+  KnowledgeVaultSearchQuery,
+  KnowledgeVaultSearchResponse,
   LocalRootInfo,
   MaterialRead,
   OfflineFlowResponse,
@@ -595,6 +599,65 @@ export const shell = {
   /** 读取知识库内一篇 Markdown/纯文本笔记；附件只列元数据，不读正文。 */
   knowledgeVaultReadNote(relativePath: string): Promise<KnowledgeVaultNote> {
     return invoke<KnowledgeVaultNote>("knowledge_vault_read_note", {
+      relativePath,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 解析 Frontmatter、标签与正文边界（只读）。 */
+  knowledgeVaultParseNote(
+    relativePath: string,
+  ): Promise<KnowledgeVaultParsedNote> {
+    return invoke<KnowledgeVaultParsedNote>("knowledge_vault_parse_note", {
+      relativePath,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 新建一篇根内 Markdown 笔记；目标已存在时宿主拒绝，绝不覆盖。 */
+  knowledgeVaultCreateNote(
+    relativePath: string,
+    content: string,
+  ): Promise<KnowledgeVaultNote> {
+    return invoke<KnowledgeVaultNote>("knowledge_vault_create_note", {
+      relativePath,
+      content,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存已有笔记；expectedSha256 来自打开时读取，冲突时宿主不写入。 */
+  knowledgeVaultSaveNote(
+    relativePath: string,
+    content: string,
+    expectedSha256: string,
+  ): Promise<KnowledgeVaultSaveOutcome> {
+    return invoke<KnowledgeVaultSaveOutcome>("knowledge_vault_save_note", {
+      relativePath,
+      content,
+      expectedSha256,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在已扫描笔记上按关键词、标签与属性筛选；不建立持久索引。 */
+  knowledgeVaultSearch(
+    query: KnowledgeVaultSearchQuery,
+  ): Promise<KnowledgeVaultSearchResponse> {
+    return invoke<KnowledgeVaultSearchResponse>("knowledge_vault_search", {
+      query,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用系统处理程序打开已校验的根内附件；不读取附件正文。 */
+  knowledgeVaultOpenAttachment(relativePath: string): Promise<string> {
+    return invoke<string>("knowledge_vault_open_attachment", {
       relativePath,
     }).catch((e) => {
       throw new Error(normalizeError(e));
