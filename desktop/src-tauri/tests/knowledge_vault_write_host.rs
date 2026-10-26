@@ -125,6 +125,82 @@ fn create_rejects_unsafe_targets_and_oversize_content() {
     assert!(!outside.join("note.md").exists());
 }
 
+/// P2-F02：`.txt` 仍是只读笔记，但不能经由 Markdown 写入接口创建。
+#[test]
+fn create_rejects_plain_text_target_without_side_effects() {
+    let fx = Fixture::new("txt-create");
+    let err = knowledge_vault_create_note_for(&fx.app, "notes/纯文本.txt", "不应写入")
+        .unwrap_err();
+    assert!(err.contains("md / markdown"), "写入白名单必须只列 Markdown：{err}");
+    assert!(!fx.vault.join("notes/纯文本.txt").exists());
+    assert!(fs::read_dir(fx.vault.join("notes"))
+        .unwrap()
+        .all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".tmp")));
+}
+
+/// P2-F02：已有 `.txt` 不能被保存覆盖；同时它仍作为笔记可读取、可搜索。
+#[test]
+fn save_rejects_plain_text_target_and_keeps_read_only_support() {
+    let fx = Fixture::new("txt-save");
+    let original = "纯文本原文，关键词 needle。\n";
+    fx.write("notes/readme.txt", original.as_bytes());
+    let before = fs::read(fx.vault.join("notes/readme.txt")).unwrap();
+    let opened = knowledge_vault_read_note_for(&fx.app, "notes/readme.txt").unwrap();
+    assert_eq!(opened.content, original);
+
+    let err = knowledge_vault_save_note_for(&fx.app, "notes/readme.txt", "改写", &opened.sha256)
+        .unwrap_err();
+    assert!(err.contains("md / markdown"), "写入白名单必须只列 Markdown：{err}");
+    assert_eq!(
+        fs::read(fx.vault.join("notes/readme.txt")).unwrap(),
+        before,
+        "被拒绝的保存不得改目标"
+    );
+    assert!(fs::read_dir(fx.vault.join("notes"))
+        .unwrap()
+        .all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".tmp")));
+
+    // `.txt` 仍是 P1 的只读笔记：扫描归类为 note，搜索能命中正文。
+    let scan = knowledge_vault::scan_vault(&fx.vault, None).unwrap();
+    assert!(scan
+        .files
+        .iter()
+        .any(|f| f.relative_path == "notes/readme.txt" && f.kind == "note"));
+    let result = omnidesk_desktop_lib::vault_search::search_scanned(
+        &fx.vault,
+        &scan.files,
+        &omnidesk_desktop_lib::vault_search::SearchQuery {
+            keyword: "NEEDLE".into(),
+            ..Default::default()
+        },
+    );
+    assert_eq!(result.notes_examined, 1);
+    assert_eq!(result.hits.len(), 1, "{:?}", result.hits);
+    assert_eq!(result.hits[0].relative_path, "notes/readme.txt");
+    assert_eq!(result.hits[0].match_areas, vec!["body"]);
+}
+
+/// P2-F02：`.md` 与 `.markdown` 仍然是可用的写入目标。
+#[test]
+fn create_and_save_still_accept_both_markdown_extensions() {
+    let fx = Fixture::new("markdown-exts");
+    for (path, content) in [
+        ("notes/a.md", "# A\n"),
+        ("notes/b.markdown", "# B\n"),
+    ] {
+        let created = knowledge_vault_create_note_for(&fx.app, path, content).unwrap();
+        assert_eq!(created.content, content);
+        let saved = knowledge_vault_save_note_for(
+            &fx.app,
+            path,
+            &format!("{content}追加\n"),
+            &created.sha256,
+        )
+        .unwrap();
+        assert_eq!(saved.content, format!("{content}追加\n"));
+    }
+}
+
 #[test]
 fn save_writes_and_preserves_unknown_or_invalid_frontmatter_verbatim() {
     let fx = Fixture::new("save");
