@@ -19,6 +19,7 @@ pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod external_open;
 pub mod flow_pack;
+pub mod knowledge_vault;
 mod local_http;
 pub mod model_settings;
 pub mod model_routes;
@@ -34,6 +35,7 @@ pub mod settings;
 pub mod sha256;
 pub mod task_shell;
 pub mod thread_store;
+pub mod worklog;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -530,6 +532,21 @@ fn approval_respond_impl(
     host.bridge.approval_respond(omni_task_id, approval_id, allow)
 }
 
+/// 回传用户对结构化一次性提问的答案（OD-ARCH-088）。
+///
+/// 与审批同属收尾动作：不启动引擎；是否送达由引擎当前待答集合判定，失败时
+/// 界面保留提问卡并显示真实错误，不假装已回答。
+fn question_answer_impl(
+    state: &SharedHost,
+    omni_task_id: &str,
+    question_id: &str,
+    answers: serde_json::Value,
+) -> Result<serde_json::Value, serde_json::Value> {
+    let mut host = state.lock().unwrap();
+    host.bridge
+        .question_answer(omni_task_id, question_id, answers)
+}
+
 #[tauri::command(async)]
 fn engine_task_status(
     state: State<'_, SharedHost>,
@@ -563,6 +580,16 @@ fn engine_approval_respond(
     allow: bool,
 ) -> Result<serde_json::Value, serde_json::Value> {
     approval_respond_impl(state.inner(), &omni_task_id, &approval_id, allow)
+}
+
+#[tauri::command(async)]
+fn engine_question_answer(
+    state: State<'_, SharedHost>,
+    omni_task_id: String,
+    question_id: String,
+    answers: serde_json::Value,
+) -> Result<serde_json::Value, serde_json::Value> {
+    question_answer_impl(state.inner(), &omni_task_id, &question_id, answers)
 }
 
 #[tauri::command(async)]
@@ -1598,6 +1625,446 @@ fn task_local_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
     }
 }
 
+/// 库根信息（OD-ARCH-086）：当前生效路径、来源、已保存选择。
+/// 与成果目录分开读，避免一次命令失败同时抹掉两块状态。
+#[tauri::command(async)]
+fn task_library_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    match settings::effective_library_root(&config_dir) {
+        Ok(eff) => serde_json::json!({
+            "resolved": true,
+            "library_root": eff.root.display().to_string(),
+            "source": eff.source,
+            "configured_root": eff.configured_root.as_ref().map(|p| p.display().to_string()),
+            "env_override": eff.env_override.as_ref().map(|p| p.display().to_string()),
+            "default_root": default_library_root_display(),
+            "settings_path": settings::settings_path(&config_dir).display().to_string(),
+            "error": null,
+        }),
+        Err(message) => serde_json::json!({
+            "resolved": false,
+            "library_root": null,
+            "source": null,
+            "configured_root": null,
+            "env_override": null,
+            "default_root": default_library_root_display(),
+            "settings_path": settings::settings_path(&config_dir).display().to_string(),
+            "error": message,
+        }),
+    }
+}
+
+fn default_library_root_display() -> Option<String> {
+    std::env::var_os("HOME").map(|home| {
+        std::path::PathBuf::from(home)
+            .join(task_shell::DEFAULT_LIBRARY_SUBDIR)
+            .display()
+            .to_string()
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 知识库只读访问（OD-KB-001 P1）
+//
+// 四个命令只覆盖：读状态、选根、清除选择、扫描、读一篇笔记。没有写入、删除、
+// 批量改写或索引命令。根与每个读取路径都在宿主侧重新校验；界面传入的相对路径
+// 不作为信任边界。
+// ---------------------------------------------------------------------------
+
+/// 知识库根状态：已保存选择是否存在、当前是否可用。不扫描、不读文件内容。
+pub fn knowledge_vault_status_for(paths: &crate::app_paths::AppPaths) -> knowledge_vault::VaultRootStatus {
+    match settings::configured_knowledge_vault_root(&paths.config) {
+        Ok(None) => knowledge_vault::VaultRootStatus {
+            configured: false,
+            root: None,
+            exists: false,
+            is_dir: false,
+            error: None,
+        },
+        Ok(Some(root)) => {
+            let root_text = root.display().to_string();
+            match knowledge_vault::assert_vault_root_allowed(&root, Some(&paths.root)) {
+                Ok(_) => knowledge_vault::VaultRootStatus {
+                    configured: true,
+                    root: Some(root_text),
+                    exists: true,
+                    is_dir: true,
+                    error: None,
+                },
+                Err(message) => knowledge_vault::VaultRootStatus {
+                    configured: true,
+                    root: Some(root_text),
+                    exists: root.exists(),
+                    is_dir: root.is_dir(),
+                    error: Some(message),
+                },
+            }
+        }
+        Err(message) => knowledge_vault::VaultRootStatus {
+            configured: false,
+            root: None,
+            exists: false,
+            is_dir: false,
+            error: Some(message),
+        },
+    }
+}
+
+/// 读取已保存且仍通过边界校验的知识库根。
+///
+/// 每次扫描/读取都重新走一遍校验：设置文件被手改、根被换成符号链接或目录被移走
+/// 时，宿主如实报错，而不是继续使用过期路径。
+pub fn configured_vault_root(paths: &crate::app_paths::AppPaths) -> Result<std::path::PathBuf, String> {
+    match settings::configured_knowledge_vault_root(&paths.config)? {
+        Some(root) => knowledge_vault::assert_vault_root_allowed(&root, Some(&paths.root)),
+        None => Err("还没有选择知识库目录；请先在设置里选择一个已有的 Markdown 目录。".to_string()),
+    }
+}
+
+/// 扫描已保存的知识库根（刷新与首次扫描走同一条只读路径）。
+pub fn knowledge_vault_scan_for(
+    paths: &crate::app_paths::AppPaths,
+) -> Result<knowledge_vault::VaultScan, String> {
+    let root = configured_vault_root(paths)?;
+    knowledge_vault::scan_vault(&root, Some(&paths.root))
+}
+
+/// 读取根内一篇笔记正文；根与相对路径都在宿主侧重校验。
+pub fn knowledge_vault_read_note_for(
+    paths: &crate::app_paths::AppPaths,
+    relative_path: &str,
+) -> Result<knowledge_vault::VaultNote, String> {
+    let root = configured_vault_root(paths)?;
+    knowledge_vault::read_vault_note(&root, relative_path)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_status(state: State<'_, SharedHost>) -> knowledge_vault::VaultRootStatus {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_status_for(&paths)
+}
+
+/// 保存知识库根。只写设置文件；不创建目录、不做写入探针、不迁移任何文件。
+#[tauri::command(async)]
+fn knowledge_vault_set_root(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = settings::set_knowledge_vault_root(&paths, &path)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "knowledge_vault_root": root.display().to_string(),
+        "note": "知识库只读：OmniDesk 只列出并读取你选择的文件，不会写入、移动或删除。",
+    }))
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_clear_root(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    settings::clear_knowledge_vault_root(&paths)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_scan(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_vault::VaultScan, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_scan_for(&paths)
+}
+
+#[tauri::command(async)]
+fn knowledge_vault_read_note(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+) -> Result<knowledge_vault::VaultNote, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    knowledge_vault_read_note_for(&paths, &relative_path)
+}
+
+// ---------------------------------------------------------------------------
+// 工作记录确定性落盘（OD-ARCH-089 S2）
+//
+// 界面在收到随手记时**先调这里写盘，成功后才叫模型做缺项分析**。
+// 这样模型调用失败、超时或被取消时，用户的事实已经留在库里。
+// ---------------------------------------------------------------------------
+
+/// 本地时区偏移（分钟）：复用调度配置里的 `utc_offset_minutes`，缺省东八区。
+fn worklog_offset_minutes(state: &State<'_, SharedHost>) -> i32 {
+    let dir = scheduler_config_dir(state);
+    scheduler::load(&dir)
+        .map(|config| config.utc_offset_minutes)
+        .unwrap_or(scheduler::DEFAULT_UTC_OFFSET_MINUTES)
+}
+
+fn worklog_library_root(state: &State<'_, SharedHost>) -> Result<std::path::PathBuf, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    settings::effective_library_root(&config_dir).map(|eff| eff.root)
+}
+
+/// 追加一条随手记。返回结构化回执，失败原因原样带回，不假装已记录。
+#[tauri::command(async)]
+fn worklog_append(
+    state: State<'_, SharedHost>,
+    text: String,
+    destination: Option<String>,
+) -> serde_json::Value {
+    let offset = worklog_offset_minutes(&state);
+    let now = task_shell::now_secs();
+    let week = worklog::week_label(now, offset);
+    let date = worklog::date_label(now, offset);
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "date": date,
+                "appended": false,
+                "was_new_file": false,
+                "continued": false,
+                "masked": false,
+                "masked_id_card": 0,
+                "masked_phone": 0,
+                "error": message,
+            })
+        }
+    };
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "date": date,
+                "appended": false,
+                "was_new_file": false,
+                "continued": false,
+                "masked": false,
+                "masked_id_card": 0,
+                "masked_phone": 0,
+                "error": message,
+            })
+        }
+    };
+    // 红线：命中即拒绝，不静默落盘。错误里不回显命中原文。
+    let hits = task_shell::red_line_scan_with(&text, &policy);
+    if !hits.is_empty() {
+        let mut detail = String::new();
+        for hit in &hits {
+            detail.push_str(&format!("{}（{} 处）；", hit.label, hit.count));
+        }
+        return serde_json::json!({
+            "ok": false,
+            "path": null,
+            "week": week,
+            "date": date,
+            "appended": false,
+            "was_new_file": false,
+            "continued": false,
+            "masked": false,
+            "masked_id_card": 0,
+            "masked_phone": 0,
+            "error": format!(
+                "本次内容命中红线扫描，已拒绝写入工作记录：{}。该扫描仅为启发式，不代表合规判断。",
+                detail
+            ),
+        });
+    }
+    let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
+    let dest = destination
+        .as_deref()
+        .map(|d| d.trim())
+        .filter(|d| !d.is_empty())
+        .unwrap_or(worklog::DEFAULT_DESTINATION);
+    match worklog::append_entry(&root, &week, &date, &masked_text, dest) {
+        Ok((mut receipt, _payload)) => {
+            receipt.masked = counts.any();
+            receipt.masked_id_card = counts.id_card;
+            receipt.masked_phone = counts.phone;
+            serde_json::json!(receipt)
+        }
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "path": worklog::week_path(&root, &week).display().to_string(),
+            "week": week,
+            "date": date,
+            "appended": false,
+            "was_new_file": false,
+            "continued": false,
+            "masked": counts.any(),
+            "masked_id_card": counts.id_card,
+            "masked_phone": counts.phone,
+            "error": message,
+        }),
+    }
+}
+
+/// 读当周工作记录（周报「有米」用）。只读，不建文件、不改文件。
+#[tauri::command(async)]
+fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serde_json::Value {
+    let offset = worklog_offset_minutes(&state);
+    let resolved_week = match week.as_deref().map(str::trim).filter(|w| !w.is_empty()) {
+        Some(w) => w.to_string(),
+        None => worklog::week_label(task_shell::now_secs(), offset),
+    };
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "exists": false,
+                "week": resolved_week,
+                "path": null,
+                "content": "",
+                "error": message,
+            })
+        }
+    };
+    match worklog::read_week(&root, &resolved_week) {
+        Ok((exists, content, path)) => serde_json::json!({
+            "ok": true,
+            "exists": exists,
+            "week": resolved_week,
+            "path": path.display().to_string(),
+            "content": content,
+            "error": null,
+        }),
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "exists": false,
+            "week": resolved_week,
+            "path": worklog::week_path(&root, &resolved_week).display().to_string(),
+            "content": "",
+            "error": message,
+        }),
+    }
+}
+
+/// 列工作记录与周报归档（OD-ARCH-091）。只读文件系统元数据，不读正文、不调模型。
+#[tauri::command(async)]
+fn worklog_archive_list(state: State<'_, SharedHost>) -> serde_json::Value {
+    let offset = worklog_offset_minutes(&state);
+    let current = worklog::week_label(task_shell::now_secs(), offset);
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "library_root": null,
+                "current_week": current,
+                "weeks": [],
+                "reports": [],
+                "skipped": 0,
+                "error": message,
+            })
+        }
+    };
+    match (worklog::list_weeks(&root), worklog::list_reports(&root)) {
+        (Ok((weeks, skipped_weeks)), Ok((reports, skipped_reports))) => serde_json::json!({
+            "ok": true,
+            "library_root": root.display().to_string(),
+            "current_week": current,
+            "weeks": weeks,
+            "reports": reports,
+            "skipped": skipped_weeks + skipped_reports,
+            "error": null,
+        }),
+        (Err(message), _) | (_, Err(message)) => serde_json::json!({
+            "ok": false,
+            "library_root": root.display().to_string(),
+            "current_week": current,
+            "weeks": [],
+            "reports": [],
+            "skipped": 0,
+            "error": message,
+        }),
+    }
+}
+
+/// 读一份周报正文。`file_name` 必须形如 `2026-W44-周报.md`（可带 `-2`），否则拒绝。
+#[tauri::command(async)]
+fn worklog_read_report(
+    state: State<'_, SharedHost>,
+    file_name: String,
+) -> serde_json::Value {
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "exists": false,
+                "file_name": file_name,
+                "path": null,
+                "content": "",
+                "error": message,
+            })
+        }
+    };
+    match worklog::read_report(&root, &file_name) {
+        Ok((exists, content, path)) => serde_json::json!({
+            "ok": true,
+            "exists": exists,
+            "file_name": file_name,
+            "path": path.display().to_string(),
+            "content": content,
+            "error": null,
+        }),
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "exists": false,
+            "file_name": file_name,
+            "path": null,
+            "content": "",
+            "error": message,
+        }),
+    }
+}
+
+/// 保存新的库根。只影响之后的 @ 引用：不迁移、不覆盖、不删除旧文件。
+#[tauri::command(async)]
+fn task_set_library_root(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = settings::set_library_root(&paths, &path)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "library_root": root.display().to_string(),
+        "note": "仅影响之后的 @ 引用；既有文件不会移动、覆盖或删除。",
+    }))
+}
+
 /// 保存用户选择的成果目录。只影响之后新写入的成果：不迁移、不覆盖、不删除旧文件。
 ///
 /// 校验顺序：绝对路径 → 仓库/DSH/应用数据根边界 → 创建目录 → 再次校验真实落点
@@ -2418,11 +2885,11 @@ fn task_read_material(path: String) -> Result<serde_json::Value, String> {
 // ---------------------------------------------------------------------------
 // 对话附件与 @ 引用（OD-ARCH-077 S1）
 //
-// 只允许两个来源根：当前成果根与个人知识库根。根路径由宿主解析并校验，
+// 只允许两个来源根：当前成果根与库根（OD-ARCH-086）。根路径由宿主解析并校验，
 // 不接受前端指定根；列表有上限，读取复用 read_material 的全部校验。
 // ---------------------------------------------------------------------------
 
-/// 当前允许引用的来源根（成果根 + 知识库根），不存在的不列出。
+/// 当前允许引用的来源根（成果根 + 库根），不存在的不列出。
 #[tauri::command(async)]
 fn task_reference_roots(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
     let config_dir = {
@@ -2430,20 +2897,22 @@ fn task_reference_roots(state: State<'_, SharedHost>) -> Result<serde_json::Valu
         host.paths.config.clone()
     };
     let artifact_root = settings::effective_root(&config_dir)?.root;
-    let knowledge = task_shell::knowledge_root().ok();
+    let library = settings::effective_library_root(&config_dir).ok().map(|e| e.root);
     let mut roots = vec![serde_json::json!({
         "kind": "artifacts",
         "label": "成果目录",
         "path": artifact_root.display().to_string(),
         "exists": artifact_root.is_dir(),
     })];
-    if let Some(knowledge) = knowledge {
-        roots.push(serde_json::json!({
-            "kind": "knowledge",
-            "label": "知识库",
-            "path": knowledge.display().to_string(),
-            "exists": knowledge.is_dir(),
-        }));
+    if let Some(library) = library {
+        if library != artifact_root {
+            roots.push(serde_json::json!({
+                "kind": "library",
+                "label": "库根",
+                "path": library.display().to_string(),
+                "exists": library.is_dir(),
+            }));
+        }
     }
     Ok(serde_json::json!({ "roots": roots }))
 }
@@ -2460,7 +2929,8 @@ fn task_list_references(
         host.paths.config.clone()
     };
     let artifact_root = settings::effective_root(&config_dir)?.root;
-    let roots = task_shell::reference_roots(&artifact_root);
+    let library_root = settings::effective_library_root(&config_dir)?.root;
+    let roots = task_shell::reference_roots(&artifact_root, Some(&library_root));
     let items = task_shell::list_reference_files(
         &roots,
         query.as_deref(),
@@ -2484,7 +2954,8 @@ fn task_read_reference(
         host.paths.config.clone()
     };
     let artifact_root = settings::effective_root(&config_dir)?.root;
-    let roots = task_shell::reference_roots(&artifact_root);
+    let library_root = settings::effective_library_root(&config_dir)?.root;
+    let roots = task_shell::reference_roots(&artifact_root, Some(&library_root));
     task_shell::read_reference_material(&path, &roots).map(|item| serde_json::json!(item))
 }
 
@@ -2843,6 +3314,7 @@ pub fn run() {
             engine_task_result,
             engine_cancel_task,
             engine_approval_respond,
+            engine_question_answer,
             engine_shutdown,
             engine_list_sessions,
             engine_recover_session,
@@ -2871,6 +3343,8 @@ pub fn run() {
             task_explanation_rules,
             task_local_root_info,
             task_set_artifact_root,
+            task_library_root_info,
+            task_set_library_root,
             task_open_artifact_root,
             open_external_url,
             capability_view,
@@ -2905,6 +3379,11 @@ pub fn run() {
             task_list_references,
             task_read_reference,
             task_read_attachment,
+            knowledge_vault_status,
+            knowledge_vault_set_root,
+            knowledge_vault_clear_root,
+            knowledge_vault_scan,
+            knowledge_vault_read_note,
             thread_store_load,
             thread_store_save,
             thread_store_delete,
@@ -2919,6 +3398,10 @@ pub fn run() {
             scheduler_mark_reviewed,
             scheduler_mark_heartbeat,
             scheduler_heartbeat_scan,
+            worklog_append,
+            worklog_read_week,
+            worklog_archive_list,
+            worklog_read_report,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。

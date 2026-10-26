@@ -371,20 +371,39 @@ export function normalizeTag(value: string | null | undefined): ThreadTag {
  */
 let pendingOpenThreadId: string | null = null;
 let pendingNewThreadTag: ThreadTag | null = null;
+/** 一次性预填文本（OD-ARCH-091）：新建对话时把这句话放进输入框，不自动发送。 */
+let pendingNewThreadPrompt: string | null = null;
 
 export function requestOpenThread(id: string): void {
   pendingOpenThreadId = id;
   pendingNewThreadTag = null;
+  pendingNewThreadPrompt = null;
 }
 
-export function requestNewThread(tag: ThreadTag): void {
+/**
+ * 请求首页新开一段对话。
+ *
+ * `prompt` 只是预填到输入框的草稿，**不自动提交**——用户还要自己按发送。
+ * 这样「转周报」按钮不会替用户花掉一次模型调用。
+ */
+export function requestNewThread(tag: ThreadTag, prompt?: string): void {
   pendingOpenThreadId = null;
   pendingNewThreadTag = tag;
+  pendingNewThreadPrompt = prompt?.trim() ? prompt : null;
 }
 
-export function takePendingThreadRequest(): { open: string | null; create: ThreadTag | null } {
-  const out = { open: pendingOpenThreadId, create: pendingNewThreadTag };
+export function takePendingThreadRequest(): {
+  open: string | null;
+  create: ThreadTag | null;
+  prompt: string | null;
+} {
+  const out = {
+    open: pendingOpenThreadId,
+    create: pendingNewThreadTag,
+    prompt: pendingNewThreadPrompt,
+  };
   pendingOpenThreadId = null;
   pendingNewThreadTag = null;
+  pendingNewThreadPrompt = null;
   return out;
 }

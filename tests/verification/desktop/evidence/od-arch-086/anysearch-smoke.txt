@@ -1,0 +1,20 @@
+OD-ARCH-086 anysearch 冒烟记录（2026-10-25）
+
+调用方式：仓库 Skill 指定的薄包装命令
+  python3 "${ANYSEARCH_SKILL_DIR:-$HOME/.codex/skills/anysearch}/scripts/anysearch_cli.py" search ... --max_results N
+证据边界：只记录查询、返回条数与 request_id；未读取、未打印 .env 或任何密钥。
+
+[1] query: OpenAI Codex CLI
+    rc=0  results=3  request_id=11c61d4e-6ae6-4bd9-857c-aed42239f759
+
+[2] query: OmniDesk Tauri Rust
+    rc=0  results=2  request_id=58e0ec29-bed3-4a60-9ecc-c0cf44626a9e
+    首条结果：https://www.reddit.com/r/rust/comments/1rekooi/we_built_a_desktop_app_with_tauri_v2_and_it_was_a/
+    次条结果：https://evilmartians.com/chronicles/making-desktop-apps-with-revved-up-potential-rust-tauri-sidecar
+
+[3] query: Tauri settings panel file chooser UX
+    rc=0  results=3  request_id=d60c6cd5-978e-45f6-a162-0deb228b65f4
+    首条结果：https://v2.tauri.app/reference/config/
+
+结论：anysearch CLI 可执行并有真实联网返回（匿名额度）。此为 CLI 直调证据，
+不等于「真实 DSH 模型会话中发现并调用该 Skill」的端到端验证。

@@ -60,9 +60,11 @@
   "skill_bindings": {
     "weekly": {
       "skills": [
-        "memory-agent"
+        "memory-agent",
+        "memory-report",
+        "knowledge-search"
       ],
-      "max_injected": 1
+      "max_injected": 3
     },
     "writing": {
       "skills": [

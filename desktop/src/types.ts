@@ -96,6 +96,57 @@ export interface ApprovalRespondReceipt {
   pending_approvals: number;
 }
 
+/** 提问选项（OD-ARCH-088）：label 是回传值，description 只用于展示。 */
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** 一道可问作答的题目；multi_select 为 true 时可多选。 */
+export interface QuestionItem {
+  id: string;
+  question: string;
+  detail?: string;
+  header?: string;
+  options?: QuestionOption[];
+  multi_select: boolean;
+}
+
+/**
+ * 待答提问卡（归一化自 `PROGRESS kind="question_request"`）。
+ * pending=等待作答；submitting=已提交待宿主确认；answered=宿主确认送达；
+ * failed=回传失败可重试；closed=引擎撤回/超时或任务已终态，不可再答。
+ */
+export interface QuestionRequest {
+  questionId: string;
+  omniTaskId: string;
+  callId: string;
+  questions: QuestionItem[];
+  answerable: boolean;
+  violations: string[];
+  status: "pending" | "submitting" | "answered" | "failed" | "closed";
+  /** closed 的原因：cancelled（引擎撤回/超时）或 task_terminal（任务已结束）。 */
+  closedReason?: "cancelled" | "task_terminal" | string;
+  error?: string;
+  /** 取消任务请求本身的失败原因（提问仍在等，不代表已关闭）。 */
+  cancelError?: string;
+  note?: string;
+}
+
+/** 一条答案；selected 为选项 label，custom 为自定义补充文本。 */
+export interface QuestionAnswerItem {
+  id: string;
+  selected: string[];
+  custom?: string;
+}
+
+export interface QuestionAnswerReceipt {
+  omni_task_id: string;
+  question_id: string;
+  answered_at: number;
+  pending_questions: number;
+}
+
 export interface TaskResult {
   omni_task_id: string;
   form: ResultForm;
@@ -326,6 +377,155 @@ export interface LocalRootInfo {
   error: string | null;
 }
 
+/** 知识库根状态（OD-KB-001 P1）：只描述已保存的选择与目录是否可用，不含文件内容。 */
+export interface KnowledgeVaultRootStatus {
+  configured: boolean;
+  root: string | null;
+  exists: boolean;
+  is_dir: boolean;
+  error: string | null;
+}
+
+/** 知识库内一个文件的元数据。note = 可读正文；attachment = 只列元数据。 */
+export interface KnowledgeVaultFile {
+  relative_path: string;
+  file_name: string;
+  extension: string;
+  bytes: number;
+  modified: number | null;
+  kind: "note" | "attachment";
+}
+
+export interface KnowledgeVaultSkipped {
+  relative_path: string;
+  reason: string;
+}
+
+export interface KnowledgeVaultError {
+  relative_path: string;
+  message: string;
+}
+
+/** 一次只读扫描的统计。每次扫描都在内存里，不落盘、不建索引。 */
+export interface KnowledgeVaultScanStats {
+  visited_entries: number;
+  visited_dirs: number;
+  files: number;
+  notes: number;
+  attachments: number;
+  total_bytes: number;
+  skipped_hidden: number;
+  skipped_excluded: number;
+  skipped_symlink: number;
+  skipped_non_file: number;
+  /** 超过深度上限而跳过的目录子树（只跳过该子树）。 */
+  skipped_depth: number;
+  errors: number;
+  truncated: boolean;
+  details_truncated: boolean;
+}
+
+export interface KnowledgeVaultScan {
+  root: string;
+  files: KnowledgeVaultFile[];
+  skipped: KnowledgeVaultSkipped[];
+  errors: KnowledgeVaultError[];
+  stats: KnowledgeVaultScanStats;
+}
+
+/** 单篇笔记正文（只读）。sha256 供界面显示来源事实，不保存副本。 */
+export interface KnowledgeVaultNote {
+  relative_path: string;
+  file_name: string;
+  bytes: number;
+  chars: number;
+  extension: string;
+  sha256: string;
+  content: string;
+}
+
+/** 库根信息（OD-ARCH-086）：周报、工作记录与 @ 引用的共同根。
+ *  知识库另由独立的 knowledge_vault_root 配置（OD-KB-001 P1）。 */
+export interface LibraryRootInfo {
+  resolved: boolean;
+  library_root: string | null;
+  /** env_override = 环境变量覆盖；user = 设置里选的；default = 默认 ~/OmniDesk/库 */
+  source: "env_override" | "user" | "default" | null;
+  configured_root: string | null;
+  env_override: string | null;
+  default_root: string | null;
+  settings_path: string;
+  error: string | null;
+}
+
+/**
+ * 随手记追加回执（OD-ARCH-089 S2）。
+ *
+ * 写入由宿主确定性完成，界面按回执显示真实结果：`ok=false` 时不能假装已记录。
+ * `masked` 只报类别与数量，不回显原文。
+ */
+export interface WorklogAppendReceipt {
+  ok: boolean;
+  path: string | null;
+  week: string;
+  date: string;
+  appended: boolean;
+  was_new_file: boolean;
+  continued: boolean;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+  error: string | null;
+}
+
+/** 读当周工作记录（周报「有米」用）。文件不存在时 `exists=false`、`content` 为空。 */
+export interface WorklogWeekRead {
+  ok: boolean;
+  exists: boolean;
+  week: string;
+  path: string | null;
+  content: string;
+  error: string | null;
+}
+
+/**
+ * 一份周文件 / 周报文件的元数据（OD-ARCH-091 W3）。
+ *
+ * 只有宿主扫描目录得出的事实：文件名、字节数、修改时间。文件名不合约定的一律跳过，
+ * 由宿主统计进 `skipped`，前端不猜、不改名。
+ */
+export interface WorklogWeekFile {
+  /** 归一后的 ISO 周，形如 `2026-W44`。 */
+  week: string;
+  file_name: string;
+  path: string;
+  bytes: number;
+  modified_at: number;
+}
+
+/** 归档清单（OD-ARCH-091 W3）：周记录与周报两份文件列表，均按周倒序、新在前。 */
+export interface WorklogArchiveList {
+  ok: boolean;
+  library_root: string | null;
+  /** 宿主按当前时区与偏移算出的当周标签。 */
+  current_week: string;
+  weeks: WorklogWeekFile[];
+  reports: WorklogWeekFile[];
+  /** 因文件名不合约定而被跳过的文件数（两份目录合计）。 */
+  skipped: number;
+  error: string | null;
+}
+
+/** 读一份周报正文（OD-ARCH-091）。文件名必须是 `2026-W44-周报.md` 形状。 */
+export interface WorklogReportRead {
+  ok: boolean;
+  exists: boolean;
+  file_name: string;
+  path: string | null;
+  content: string;
+  error: string | null;
+}
+
 /**
  * 对话分类（OD-ARCH-062 S1）：由宿主 `settings.v1` 持久化，界面只读这份列表。
  *
@@ -487,7 +687,7 @@ export interface ReferenceCandidate {
 }
 
 export interface ReferenceRoot {
-  kind: "artifacts" | "knowledge";
+  kind: "artifacts" | "library" | "knowledge";
   label: string;
   path: string;
   exists: boolean;

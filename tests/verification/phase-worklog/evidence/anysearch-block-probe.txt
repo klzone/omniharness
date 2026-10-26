@@ -1,0 +1,6 @@
+OD-ARCH-085 anysearch 绑定可行性实测
+方法：临时把 weekly 绑定改为 [memory-agent, knowledge-search, anysearch]，用 cargo test 跑 profile_rules::default_pack_is_valid_and_has_expected_shape，随后原样恢复。
+说明：该失败是**刻意触发**的阻断证据，不是当前状态。
+
+出厂默认规则包必须能解析: "场景 weekly 绑定的技能 \"anysearch\" 不在六项合法清单内"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 260 filtered out; finished in 0.00s

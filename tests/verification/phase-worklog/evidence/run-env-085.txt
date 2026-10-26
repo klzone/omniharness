@@ -1,0 +1,3 @@
+cases=22 passed=22 failed=0 obstacles=2
+evidence: /mnt/data/Code/MyWorkStation/tests/verification/phase-worklog/evidence/env.json
+exit=0

@@ -284,6 +284,25 @@ impl EngineBridge {
         )
     }
 
+    /// 回传用户对结构化一次性提问的答案（OD-ARCH-088）。
+    /// 答案只走本次 IPC；宿主不落盘，也不写日志。
+    pub fn question_answer(
+        &mut self,
+        omni_task_id: &str,
+        question_id: &str,
+        answers: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        self.rpc(
+            "omni.question_answer",
+            serde_json::json!({
+                "omni_task_id": omni_task_id,
+                "question_id": question_id,
+                "answers": answers,
+            }),
+            Duration::from_secs(30),
+        )
+    }
+
     /// 列出引擎已持久化的会话元数据（不返回正文）。
     pub fn list_sessions(
         &mut self,

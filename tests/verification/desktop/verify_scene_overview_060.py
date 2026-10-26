@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from window_harness import AppSession, XSession  # noqa: E402
+import accessibility as ax  # noqa: E402
 
 EVIDENCE = HERE / "evidence" / "od-arch-060"
 SCREEN_W, SCREEN_H = 1440, 900
@@ -32,6 +34,12 @@ DOCK_DX = 47
 DOCK_WEEKLY_DY = 400
 DOCK_WRITING_DY = 450
 DOCK_PROJECT_DY = 500
+
+# 成果库控件坐标（1440×900，OD-ARCH-092 两栏版式复标定：成果库移到右栏，
+# 搜索框与视图切换随之右移、上移；待确认写入是指标带里的第 4 格）。
+ARTIFACT_FILTER = (1030, 351)
+ARTIFACT_LIST_VIEW = (1300, 343)
+PENDING_METRIC = (1100, 240)
 
 NOW = time.time()
 WEEK_FILES = [
@@ -53,6 +61,18 @@ def start_xvfb(display: str) -> subprocess.Popen:
     )
     time.sleep(2.0)
     return proc
+
+
+def start_dbus() -> tuple[str, subprocess.Popen]:
+    """一次性会话总线：AT-SPI 与 WebKit 都需要，且不能连用户真实会话。"""
+    proc = subprocess.Popen(
+        ["dbus-daemon", "--session", "--print-address", "--nofork"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert proc.stdout is not None
+    return proc.stdout.readline().strip(), proc
 
 
 def seed_artifacts(local_data: Path) -> list[str]:
@@ -152,6 +172,33 @@ def tap(xs: XSession, win, dx: int, dy: int, settle: float = 1.2) -> None:
     xs.click(*point, settle=settle)
 
 
+def app_nodes(pid: int | None) -> list:
+    """只读本次 App 进程的无障碍树，避免命中宿主桌面上同名的 release 实例。"""
+    from gi.repository import Atspi
+
+    desktop = Atspi.get_desktop(0)
+    for i in range(desktop.get_child_count()):
+        app = desktop.get_child_at_index(i)
+        try:
+            if app.get_process_id() != pid:
+                continue
+        except Exception:
+            continue
+        raw: list = []
+        ax._collect(app, raw)
+        return [ax._node(n) for n in raw]
+    return []
+
+
+def find_node(nodes: list, name: str, role: str | None = None):
+    for node in nodes:
+        if role is not None and node.role != role:
+            continue
+        if name in (node.name or "") or name in (node.text or ""):
+            return node
+    return None
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--display", default=":97")
@@ -168,7 +215,25 @@ def main(argv: list[str]) -> int:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
 
     xvfb = start_xvfb(args.display)
-    session = AppSession(root=root, display=args.display, artifact_override=True)
+    bus_addr, bus_proc = start_dbus()
+    os.environ["DISPLAY"] = args.display
+    os.environ["DBUS_SESSION_BUS_ADDRESS"] = bus_addr
+    if "AT_SPI_BUS_ADDRESS" not in os.environ and os.path.exists("/run/user/1000/at-spi/bus"):
+        os.environ["AT_SPI_BUS_ADDRESS"] = "unix:path=/run/user/1000/at-spi/bus"
+    # 5273 上通常已有本仓库的 dev server（0.1.0 前端源码相同），复用它；
+    # 自起会因端口占用直接失败，导致窗口起不来。
+    session = AppSession(
+        root=root,
+        display=args.display,
+        artifact_override=True,
+        reuse_running_dev_server=True,
+        # 工作记录正文读的是库根（OD-ARCH-086 起独立于成果目录）。验收窗口必须指到
+        # 一次性目录，否则时间线会读到用户真实工作记录。
+        env_extra={
+            "DBUS_SESSION_BUS_ADDRESS": bus_addr,
+            "OMNIDESK_KNOWLEDGE_ROOT": str(root / "local-data"),
+        },
+    )
     facts: dict = {
         "plan": "OD-ARCH-060",
         "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实",
@@ -199,9 +264,9 @@ def main(argv: list[str]) -> int:
                 xs.shot(EVIDENCE / f"99-probe-{i}.png")
             facts["app_alive_at_end"] = session.alive()
         else:
-            # 回工作记录页，先做筛选（此时页面版式未展开，搜索框在 y=507）。
+            # 回工作记录页，先在右栏成果库做筛选。
             click(xs, win, DOCK_DX, DOCK_WEEKLY_DY, settle=2.5)
-            click(xs, win, 180, 507, settle=0.8)
+            click(xs, win, *ARTIFACT_FILTER, settle=0.8)
             xs.select_all_and_clear()
             xs.type_ascii("20261021", settle=0.05)
             time.sleep(1.5)
@@ -213,18 +278,25 @@ def main(argv: list[str]) -> int:
             }
 
             # 清空过滤，再切到列表视图（旧文件仍按文件名显示）。
-            click(xs, win, 180, 507, settle=0.6)
+            click(xs, win, *ARTIFACT_FILTER, settle=0.6)
             xs.select_all_and_clear()
             time.sleep(1.0)
-            click(xs, win, 1275, 507, settle=1.5)
+            # 视图切换按无障碍按钮名定位：坐标点击在窄排按钮上容易落到相邻的「卡片」。
+            ax.init()
+            list_btn = find_node(app_nodes(session.proc.pid if session.proc else None), "列表", role="button")
+            switched = ax.invoke(list_btn) if list_btn is not None else False
+            if not switched:
+                tap(xs, win, *ARTIFACT_LIST_VIEW, settle=1.5)
+            time.sleep(1.5)
             xs.shot(EVIDENCE / "04-list-view.png")
             facts["steps"]["list_view"] = {
                 "screenshot": str(EVIDENCE / "04-list-view.png"),
                 "expect": "列表视图列出全部 2 份本场景成果，日期与字节数可见",
+                "switched_via_ax": switched,
             }
 
             # 最后展开待确认面板（展开会把下方内容整体下推，所以放在最后一步）。
-            tap(xs, win, 300, 240, settle=2.5)
+            tap(xs, win, *PENDING_METRIC, settle=2.5)
             xs.shot(EVIDENCE / "02-pending-panel.png")
             facts["steps"]["pending_panel"] = {
                 "screenshot": str(EVIDENCE / "02-pending-panel.png"),
@@ -234,6 +306,7 @@ def main(argv: list[str]) -> int:
     finally:
         session.stop_all()
         xvfb.terminate()
+        bus_proc.terminate()
         try:
             xvfb.wait(timeout=10)
         except Exception:

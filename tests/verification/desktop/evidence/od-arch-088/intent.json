@@ -1,0 +1,161 @@
+{
+  "verified_at": "2026-10-26 07:57:01",
+  "evidence_level": "静态代码检查 + 脚本运行（编译真实 scenes.ts 并在 Node 中执行）",
+  "repo_head": "0d17b1f04f9a9c575643dce855f32db114da516b",
+  "files": {
+    "home_chat": "desktop/src/shell/HomeChat.tsx",
+    "home_canvas": "desktop/src/shell/HomeCanvas.tsx",
+    "api": "desktop/src/api.ts",
+    "scenes": "desktop/src/scenes.ts"
+  },
+  "cases": 22,
+  "passed": 22,
+  "failed": 0,
+  "failures": [],
+  "checks": [
+    {
+      "name": "submit_task_call_present",
+      "ok": true,
+      "detail": 48253,
+      "desc": "HomeChat 找到 submitTask 调用点"
+    },
+    {
+      "name": "submit_task_passes_intent",
+      "ok": true,
+      "detail": true,
+      "desc": "submitTask 参数含 intent"
+    },
+    {
+      "name": "intent_uses_scene_scenario",
+      "ok": true,
+      "detail": true,
+      "desc": "intent 取当前生效场景的 scenario"
+    },
+    {
+      "name": "intent_guarded_by_is_scene_key",
+      "ok": true,
+      "detail": true,
+      "desc": "非场景不传 intent（保持既有默认值）"
+    },
+    {
+      "name": "scenes_imported_in_home_chat",
+      "ok": true,
+      "detail": true,
+      "desc": "HomeChat 从 scenes.ts 导入场景表"
+    },
+    {
+      "name": "api_default_intent_material_writing",
+      "ok": true,
+      "detail": true,
+      "desc": "api 层缺省仍为 material_writing"
+    },
+    {
+      "name": "api_intent_optional",
+      "ok": true,
+      "detail": true,
+      "desc": "intent 为可选字段，旧调用方不受影响"
+    },
+    {
+      "name": "canvas_passes_effective_tag",
+      "ok": true,
+      "detail": true,
+      "desc": "HomeChat 收到的是生效场景，而不是初始分类"
+    },
+    {
+      "name": "canvas_effective_tag_prefers_active_thread",
+      "ok": true,
+      "detail": true,
+      "desc": "已打开会话以会话自身的 tag 为准"
+    },
+    {
+      "name": "scenes_compiled",
+      "ok": true,
+      "detail": {
+        "exit": 0,
+        "stderr": ""
+      },
+      "desc": "tsc 编译 scenes.ts"
+    },
+    {
+      "name": "scenes_probe_exit",
+      "ok": true,
+      "detail": 0,
+      "desc": "Node 执行映射断言"
+    },
+    {
+      "name": "scenario_mapping_weekly",
+      "ok": true,
+      "detail": {
+        "actual": "weekly_report",
+        "expected": "weekly_report"
+      },
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "scenario_mapping_writing",
+      "ok": true,
+      "detail": {
+        "actual": "material_writing",
+        "expected": "material_writing"
+      },
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "scenario_mapping_project",
+      "ok": true,
+      "detail": {
+        "actual": "project_management",
+        "expected": "project_management"
+      },
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_weekly",
+      "ok": true,
+      "detail": "weekly_report",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_writing",
+      "ok": true,
+      "detail": "material_writing",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_project",
+      "ok": true,
+      "detail": "project_management",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_plain_is_undefined",
+      "ok": true,
+      "detail": "undefined",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_custom_is_undefined",
+      "ok": true,
+      "detail": "undefined",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "intent_empty_is_undefined",
+      "ok": true,
+      "detail": "undefined",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "api_fallback_undefined",
+      "ok": true,
+      "detail": "material_writing",
+      "desc": "scenes.ts 运行时断言"
+    },
+    {
+      "name": "api_keeps_explicit",
+      "ok": true,
+      "detail": "weekly_report",
+      "desc": "scenes.ts 运行时断言"
+    }
+  ]
+}

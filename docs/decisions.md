@@ -275,3 +275,12 @@
 - **实现落点：** `desktop/src/SettingsPanel.tsx`（能力管理页只保留查看/启停/更新提示，新增「新增插件与 Skill / 随版本升级」说明）；`desktop/src-tauri/src/lib.rs` 移除 `capability_market` 命令及其注册；`desktop/src/{api.ts,types.ts}` 同步去掉 `capabilityMarket`；保留只读的插件/Skill 列表与启停命令。
 - **证据：** 真实窗口截图 `tests/verification/desktop/evidence/od-arch-077/09-capabilities.png` 显示冻结文案且无市场开关；`tests/verification/desktop/evidence/od-arch-077/facts.json` 中 `capability_freeze_copy` / `no_market_entry` / `no_capability_market_cmd` 均为 true（`passed: true`，`missing_checks: []`，`gate_errors: []`）；源码事实见上述文件；用户 2026-10-24 指令「对照 DSH 官方桌面，把除了插件与 skill 外的功能都开发出来……插件定制好后不再新增……skill 平时可以修改但不能随意增加」。
 - **复审触发：** ①出现真实的高价值插件/Skill 需求且冻结带来明显不便时，评估「受控新增」（签名包/白名单）而非放开自由安装；②用户开始分发给同事（打包阶段）时，需补版本升级的用户侧体验设计。
+
+### D-031（2026-10-26，OD-KB-001 P1 已实施，待独立审查）：知识库使用独立的只读根
+- **状态：** 已按 P1 实施，等待 ARCHITECT 独立审查；审查通过前不视为已确定的产品契约。
+- **决策：** 新增独立设置字段 `knowledge_vault_root`（单选一个根），不复用 `library_root`，也不让 `OMNIDESK_KNOWLEDGE_ROOT` 作用于它。`library_root` 继续承担工作记录、周报、技能文件与 `@` 引用的写入语义。
+- **理由：** 消费者核查（P1-S01）显示 `library_root` 是产品自身写盘目录，工作记录与周报都会在其下创建文件；把用户只读笔记库合并进去，会让“只读”与“可写”落在同一路径，且 `@` 引用、技能写入、Obsidian 外部整理会相互干扰。分类归档绑定 `thread_categories[].vault` 是成果写入目标，同样不能当作读取根。
+- **影响：** ①知识库只提供状态、选根、清除、扫描、读单篇笔记五个命令，无写入/删除/批量改写；②每次状态、扫描、读取都重走根准入与逐层符号链接校验，不信任已保存的旧路径；③旧的 `library_root` 设置与已有目录不迁移、不合并、不改名；④`knowledge_vault_root` 缺失时按“未选择”处理，不创建默认知识库目录。
+- **边界：** 扫描只保留内存结果，不建持久索引；不读写 `.obsidian/` 配置；隐藏目录与常见依赖目录整棵跳过。
+- **证据：** `desktop/src-tauri/src/knowledge_vault.rs`、`desktop/src-tauri/tests/knowledge_vault_host.rs`、`tests/verification/desktop/verify_knowledge_vault_p1.py`（14/14，`evidence/od-kb-001-p1/`）；执行记录见 STATUS.md 的 OD-KB-001 P1 段。
+- **复审触发：** ①用户需要多个知识库根或跨根统一搜索；②需要把某个分类的知识库与成果归档指向同一目录；③真实库实测显示排除名单不足或扫描超时；④决定引入持久索引或 watcher 时，重新评估读取路径与失效竞态。

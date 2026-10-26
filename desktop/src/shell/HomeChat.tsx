@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, invalidateEngineFactsCache, onTaskEvent, shell } from "../api";
@@ -13,6 +13,7 @@ import {
 } from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
+import { describeWorkIntent, detectWorkIntent, type WorkIntent } from "../workIntent";
 import {
   describeEngineCancelOutcome,
   engineCancelButtonState,
@@ -23,6 +24,8 @@ import {
   type ApprovalRequest,
   type AdmissionFacts,
   type CancelOutcome,
+  type QuestionAnswerItem,
+  type QuestionRequest,
   type ReferenceCandidate,
   type ReferenceRoot,
   type TaskState,
@@ -34,6 +37,8 @@ import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
 import { MarkdownText } from "./MarkdownText";
+import { QuestionCard } from "./QuestionCard";
+import { SCENES, isSceneKey } from "../scenes";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
@@ -290,6 +295,11 @@ export interface HomeChatProps {
   searchQuery?: string;
   searchCurrentIndex?: number;
   onSearchMatchesChange?: (count: number) => void;
+  /**
+   * 预填到输入框的草稿（OD-ARCH-091）：从场景页「转周报」过来时带上，
+   * 只填不发，用户仍要自己按发送。
+   */
+  initialInput?: string;
 }
 
 export function HomeChat({
@@ -310,38 +320,142 @@ export function HomeChat({
   onBranchNewThread,
   engineSessionId = null,
   onEngineSessionId,
+  initialInput = "",
 }: HomeChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
 
-  // OD-ARCH-082 S8：当前会话内文本检索
-  const searchMatches = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    const list: Array<{ messageId: string; index: number }> = [];
-    for (const m of messages) {
-      const lower = m.text.toLowerCase();
-      let pos = lower.indexOf(q);
-      while (pos !== -1) {
-        list.push({ messageId: m.id, index: list.length });
-        pos = lower.indexOf(q, pos + q.length);
+  // 记录上一次真正触发滚动的检索目标 (query + index) 与上一次查询词，避免流式输出时反复抢视口
+  const lastScrollTargetRef = useRef<{ query: string; index: number }>({ query: "", index: -1 });
+  const lastSearchQueryRef = useRef("");
+
+  // OD-ARCH-084 S2, S3：DOM 命中计数与活跃命中项标注（messages 变化时只重算，不触发视口滚动）
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const q = searchQuery.trim();
+    if (!q) {
+      onSearchMatchesChange?.(0);
+      const activeHits = scroller.querySelectorAll<HTMLElement>("[data-search-active]");
+      activeHits.forEach((el) => {
+        el.removeAttribute("data-search-active");
+        el.removeAttribute("data-search-flash");
+      });
+      return;
+    }
+
+    const hits = Array.from(scroller.querySelectorAll<HTMLElement>("[data-search-hit]"));
+    const count = hits.length;
+    onSearchMatchesChange?.(count);
+
+    if (count === 0) return;
+
+    const activeIdx = Math.max(0, Math.min(searchCurrentIndex, count - 1));
+
+    // S3: 标记当前活跃项独占 data-search-active；其余非当前项必须清空，严格保证 [data-search-active=true] 恒为 1
+    hits.forEach((el, idx) => {
+      if (idx === activeIdx) {
+        el.setAttribute("data-search-active", "true");
+      } else {
+        el.removeAttribute("data-search-active");
+        el.removeAttribute("data-search-flash");
+      }
+    });
+  }, [searchQuery, searchCurrentIndex, messages, onSearchMatchesChange]);
+
+  // OD-ARCH-084 S4, S5：命中词滚动定位与短强调（仅在 searchQuery 或 searchCurrentIndex 变化时触发，与 messages 隔离）
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const q = searchQuery.trim();
+    if (!q) {
+      lastScrollTargetRef.current = { query: "", index: -1 };
+      lastSearchQueryRef.current = "";
+      return;
+    }
+
+    const hits = Array.from(scroller.querySelectorAll<HTMLElement>("[data-search-hit]"));
+    const count = hits.length;
+    if (count === 0) return;
+
+    const activeIdx = Math.max(0, Math.min(searchCurrentIndex, count - 1));
+    const activeHit = hits[activeIdx];
+    if (!activeHit) return;
+
+    const lastTarget = lastScrollTargetRef.current;
+    // 只有当查询词或索引真正改变时才执行滚动判断与定位
+    const isNewQuery = lastSearchQueryRef.current !== q;
+    const isTargetChanged = lastTarget.query !== q || lastTarget.index !== activeIdx;
+    if (!isTargetChanged && !isNewQuery) return;
+
+    lastSearchQueryRef.current = q;
+    lastScrollTargetRef.current = { query: q, index: activeIdx };
+
+    const cRect = scroller.getBoundingClientRect();
+    const mRect = activeHit.getBoundingClientRect();
+    const vH = scroller.clientHeight;
+
+    const inSafeZone =
+      mRect.top >= cRect.top + 24 &&
+      mRect.bottom <= cRect.bottom - 24;
+
+    // 新检索词必须将首个命中词滚动至 32% 阅读舒适区；后续逐处切换（按键/点击）若超出安全区则平滑滚入 32%
+    if (isNewQuery || !inSafeZone) {
+      const targetScrollTop =
+        scroller.scrollTop +
+        (mRect.top - cRect.top) -
+        (vH * 0.32 - mRect.height / 2);
+      const clampedScroll = Math.max(
+        0,
+        Math.min(targetScrollTop, scroller.scrollHeight - scroller.clientHeight)
+      );
+
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      scroller.scrollTo({ top: scroller.scrollTop, behavior: "instant" });
+      if (prefersReduced) {
+        scroller.scrollTo({ top: clampedScroll, behavior: "instant" });
+      } else {
+        scroller.scrollTo({ top: clampedScroll, behavior: "smooth" });
       }
     }
-    return list;
-  }, [messages, searchQuery]);
 
-  useEffect(() => {
-    onSearchMatchesChange?.(searchMatches.length);
-  }, [searchMatches.length, onSearchMatchesChange]);
+    // S5: 滚动停稳后给予约 700ms 单次强调，可被用户交互即刻打断
+    let flashTimer: number | undefined;
 
-  useEffect(() => {
-    if (searchMatches.length > 0 && searchCurrentIndex >= 0 && searchCurrentIndex < searchMatches.length) {
-      const target = searchMatches[searchCurrentIndex];
-      const el = document.getElementById(`chat-message-${target.messageId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }
-  }, [searchCurrentIndex, searchMatches]);
+    const triggerFlash = () => {
+      activeHit.setAttribute("data-search-flash", "true");
+      flashTimer = window.setTimeout(() => {
+        activeHit.removeAttribute("data-search-flash");
+      }, 700);
+    };
+
+    let scrollSettleTimer = window.setTimeout(triggerFlash, 150);
+    const onScroll = () => {
+      window.clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = window.setTimeout(triggerFlash, 150);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+
+    const cancelFlash = () => {
+      window.clearTimeout(scrollSettleTimer);
+      window.clearTimeout(flashTimer);
+      activeHit.removeAttribute("data-search-flash");
+    };
+
+    const userInterruptEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+    userInterruptEvents.forEach((evt) =>
+      scroller.addEventListener(evt, cancelFlash, { passive: true, once: true })
+    );
+
+    return () => {
+      cancelFlash();
+      scroller.removeEventListener("scroll", onScroll);
+      userInterruptEvents.forEach((evt) =>
+        scroller.removeEventListener(evt, cancelFlash)
+      );
+    };
+  }, [searchQuery, searchCurrentIndex]);
   // 没有上层按线程传入时（例如首页），本组件自己持有本轮运行内的会话号。
   const [localEngineSessionId, setLocalEngineSessionId] = useState<string | null>(null);
   // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
@@ -349,7 +463,7 @@ export function HomeChat({
   const effectiveEngineSessionId = engineSessionId ?? localEngineSessionId;
   // 输入框是否有焦点：上报给骨架（输入框有焦点时不把顶部卡片放回来，OD-ARCH-042）。
   const reportInputFocus = useChatInputFocus();
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput);
   const [busy, setBusy] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   /**
@@ -407,11 +521,6 @@ export function HomeChat({
    */
   const effortTouchedRef = useRef(false);
   /**
-   * 周记录场景的输入模式（OD-ARCH-068 S3）：
-   *   note = 随手记（一句整理指令，低负担、快）；report = 整理成周报（完整规则）。
-   */
-  const [noteMode, setNoteMode] = useState(false);
-  /**
    * 本轮引用的文件（OD-ARCH-077 S1）：正文只在内存里，随这一轮提示词下发。
    * 不写盘、不进日志；发送后清空，避免下一轮误带上一轮的文件。
    */
@@ -423,7 +532,7 @@ export function HomeChat({
    */
   const attachmentsRef = useRef<AttachmentInput[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
-  /** 允许引用的根（成果目录 / 知识库），只用于把候选标成来源，不参与路径校验。 */
+  /** 允许引用的根（成果目录 / 库根），只用于把候选标成来源，不参与路径校验。 */
   const [referenceRoots, setReferenceRoots] = useState<ReferenceRoot[]>([]);
   /** @ 引用选择器：查询词 + 候选（只列宿主允许根内的白名单文本）。 */
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -454,6 +563,16 @@ export function HomeChat({
   const [approvals, setApprovals] = useState<Record<string, ApprovalRequest[]>>({});
   /** 正在回传决定的审批编号，用于禁用按钮并显示等待。 */
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  /**
+   * OD-ARCH-088：引擎的结构化提问，按任务号分组。题干与答案只在本机内存与界面，
+   * 不写任务状态文件、不进日志。
+   */
+  const [questions, setQuestions] = useState<Record<string, QuestionRequest[]>>({});
+  /** 已发出取消请求的提问编号（只表示请求已发出，等引擎确认关闭）。 */
+  const [questionCancelRequested, setQuestionCancelRequested] = useState<Record<string, boolean>>({});
+  /** 本会话已经提示过「技能未预注入」的场景键，避免反复刷屏。 */
+  const skillHintShownRef = useRef<Set<string>>(new Set());
+  const [skillHint, setSkillHint] = useState<string | null>(null);
   /** OD-ARCH-079：分支请求进行中，防止连点建出多条子会话。 */
   const [branchBusy, setBranchBusy] = useState(false);
   const branchBusyRef = useRef(false);
@@ -471,8 +590,26 @@ export function HomeChat({
   // 切换会话（threadKey 变化）时载入该会话的消息。
   useEffect(() => {
     setMessages(initialMessages);
+    setSkillHint(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
+
+  /**
+   * OD-ARCH-088 S4：场景规则已加载、但该场景没有可注入的 Skill 时，如实说明
+   * 「未预注入」不等于「技能不可用」。同一会话只提示一次，不弹窗、不刷屏。
+   * 没有规则资产（纯净底座）时不提示——那不是旧版规则包的绑定缺失。
+   */
+  useEffect(() => {
+    if (!preset || !preset.rulesLoaded) return;
+    if (preset.skills !== null) return;
+    const key = threadKey + ":" + preset.key;
+    if (skillHintShownRef.current.has(key)) return;
+    skillHintShownRef.current.add(key);
+    setSkillHint(
+      "本场景的技能未预注入（规则包未声明场景 Skill 绑定，可能是旧版规则包）。" +
+        "模型仍可按需自行加载技能——这不代表技能不可用；可在设置 →「规则资产」点「恢复默认规则包」启用。",
+    );
+  }, [preset, threadKey]);
 
   // 消息变化回传给工作区（本地持久化）。
   useEffect(() => {
@@ -522,7 +659,7 @@ export function HomeChat({
     void refreshAdmission();
   }, [refreshAdmission]);
 
-  // 可引用的来源根（只用于把候选标成「成果目录」或「知识库」）。
+  // 可引用的来源根（只用于把候选标成「成果目录」或「库根」）。
   // 路径是否能读，仍由宿主逐次校验；这里不据此放行任何文件。
   useEffect(() => {
     shell
@@ -644,6 +781,10 @@ export function HomeChat({
           size?: unknown;
           text?: unknown;
           approval_id?: unknown;
+          question_id?: unknown;
+          questions?: unknown;
+          answerable?: unknown;
+          violations?: unknown;
           tool_name?: unknown;
           call_id?: unknown;
           reason?: unknown;
@@ -709,6 +850,103 @@ export function HomeChat({
                         : "cancelled",
                     }
                   : a,
+              ),
+            };
+          });
+          return;
+        }
+        /** OD-ARCH-088：结构化提问到达 —— 登记为可答卡片（同 id 不重复）。 */
+        if (p.kind === "question_request" && typeof p.question_id === "string") {
+          const rawQuestions = Array.isArray(p.questions) ? p.questions : [];
+          const parsed = rawQuestions
+            .map((raw) => {
+              if (!raw || typeof raw !== "object") return null;
+              const item = raw as Record<string, unknown>;
+              if (typeof item.id !== "string" || typeof item.question !== "string") return null;
+              const options = Array.isArray(item.options)
+                ? item.options
+                    .map((o) => {
+                      if (!o || typeof o !== "object") return null;
+                      const opt = o as Record<string, unknown>;
+                      if (typeof opt.label !== "string") return null;
+                      return {
+                        label: opt.label,
+                        description:
+                          typeof opt.description === "string" ? opt.description : undefined,
+                      };
+                    })
+                    .filter(
+                      (o): o is { label: string; description: string | undefined } => o !== null,
+                    )
+                : [];
+              return {
+                id: item.id,
+                question: item.question,
+                multi_select: item.multi_select === true,
+                options,
+                ...(typeof item.header === "string" ? { header: item.header } : {}),
+                ...(typeof item.detail === "string" ? { detail: item.detail } : {}),
+              };
+            })
+            .filter((q): q is NonNullable<typeof q> => q !== null);
+          if (parsed.length === 0) {
+            // 题目结构不可解析：如实提示，不伪造一张空卡。
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.taskId === event.omni_task_id
+                  ? { ...m, notice: "引擎发来一条无法解析的提问，未显示选项；如长时间无响应请取消后重发。" }
+                  : m,
+              ),
+            );
+            return;
+          }
+          const request: QuestionRequest = {
+            questionId: p.question_id,
+            omniTaskId: event.omni_task_id,
+            callId: typeof p.call_id === "string" ? p.call_id : "",
+            questions: parsed,
+            answerable: p.answerable !== false,
+            violations: Array.isArray(p.violations)
+              ? p.violations.filter((v): v is string => typeof v === "string")
+              : [],
+            status: "pending",
+            note: typeof p.note === "string" ? p.note : undefined,
+          };
+          setQuestions((prev) => {
+            const list = prev[event.omni_task_id] ?? [];
+            if (list.some((q) => q.questionId === request.questionId)) return prev;
+            return { ...prev, [event.omni_task_id]: [...list, request] };
+          });
+          return;
+        }
+        if (p.kind === "question_answered" && typeof p.question_id === "string") {
+          const answeredId = p.question_id;
+          setQuestions((prev) => {
+            const list = prev[event.omni_task_id];
+            if (!list) return prev;
+            return {
+              ...prev,
+              [event.omni_task_id]: list.map((q) =>
+                q.questionId === answeredId
+                  ? { ...q, status: "answered" as const, error: undefined }
+                  : q,
+              ),
+            };
+          });
+          return;
+        }
+        if (p.kind === "question_closed" && typeof p.question_id === "string") {
+          const closedId = p.question_id;
+          const reason = typeof p.reason === "string" && p.reason ? p.reason : "cancelled";
+          setQuestions((prev) => {
+            const list = prev[event.omni_task_id];
+            if (!list) return prev;
+            return {
+              ...prev,
+              [event.omni_task_id]: list.map((q) =>
+                q.questionId === closedId && q.status !== "answered"
+                  ? { ...q, status: "closed" as const, closedReason: reason }
+                  : q,
               ),
             };
           });
@@ -814,6 +1052,57 @@ export function HomeChat({
         }));
       } finally {
         setApprovalBusy(null);
+      }
+    },
+    [],
+  );
+
+  /**
+   * 回传结构化提问的答案（OD-ARCH-088）。
+   *
+   * 先把卡片置 submitting（禁用交互），只有宿主返回收据才置 answered；任何失败都
+   * 保留待答并写真实原因。不在这里替用户补默认选项，也不在失败后假装已送达。
+   */
+  const respondQuestion = useCallback(
+    async (taskId: string, questionId: string, answers: QuestionAnswerItem[]) => {
+      setQuestions((prev) => {
+        const list = prev[taskId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [taskId]: list.map((q) =>
+            q.questionId === questionId ? { ...q, status: "submitting" as const, error: undefined } : q,
+          ),
+        };
+      });
+      try {
+        await host.questionAnswer(taskId, questionId, answers);
+        setQuestions((prev) => {
+          const list = prev[taskId];
+          if (!list) return prev;
+          return {
+            ...prev,
+            [taskId]: list.map((q) =>
+              q.questionId === questionId
+                ? { ...q, status: "answered" as const, error: undefined }
+                : q,
+            ),
+          };
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setQuestions((prev) => {
+          const list = prev[taskId];
+          if (!list) return prev;
+          return {
+            ...prev,
+            [taskId]: list.map((q) =>
+              q.questionId === questionId
+                ? { ...q, status: "failed" as const, error: message }
+                : q,
+            ),
+          };
+        });
       }
     },
     [],
@@ -945,6 +1234,21 @@ export function HomeChat({
               ),
             };
           });
+          // OD-ARCH-088：任务已终态，仍未答的提问不再可答；取消请求已发出的也算取消。
+          setQuestions((prev) => {
+            const list = prev[taskId];
+            if (!list) return prev;
+            if (!list.some((q) => q.status !== "answered" && q.status !== "closed")) return prev;
+            const reason = status.status === "cancelled" ? "cancelled" : "task_terminal";
+            return {
+              ...prev,
+              [taskId]: list.map((q) =>
+                q.status === "answered" || q.status === "closed"
+                  ? q
+                  : { ...q, status: "closed" as const, closedReason: reason },
+              ),
+            };
+          });
           settle();
           await loadResult(taskId, status.status);
           // OD-ARCH-069：超时（unknown）必须说清楚等了多少秒、没有自动重试，
@@ -1034,7 +1338,55 @@ export function HomeChat({
     const turnStartedAtMs = startedAtMs;
       const token = { aborted: false, noteId: null as string | null };
       submitTokenRef.current = token;
+      // 工作记录场景（OD-ARCH-089）：意图由本轮输入判定，不再有手动开关。
+      // 声明在 try 之外，失败分支要能把「已落盘」和「模型失败」两件事分开说。
+      const weeklyScene = preset?.key === "weekly";
+      const intent: WorkIntent | null = weeklyScene ? detectWorkIntent(text) : null;
+      let worklogNotice: string | null = null;
       try {
+        // note = 先由宿主确定性落盘，再让模型只做缺项追问；
+        // report = 先把当周记录读出来，模型才有米下锅。
+        // 其它场景与普通对话不进入这套流程，行为不变。
+        let worklog: { week: string; exists: boolean; content: string } | null = null;
+        if (intent === "note") {
+          const receipt = await shell.worklogAppend(text);
+          if (!receipt.ok || !receipt.appended) {
+            // 落盘失败必须停下来说清楚：此时**没有**记下任何东西。
+            setBusy(false);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "assistant",
+                text: "",
+                error:
+                  "这条没有记下来：" +
+                  (receipt.error || "工作台没有确认写入结果。") +
+                  "。请处理后重发，我不会假装已经记录。",
+              },
+            ]);
+            return false;
+          }
+          const maskNote = receipt.masked
+            ? `已自动脱敏（身份证号 ${receipt.masked_id_card} 处、手机号 ${receipt.masked_phone} 处）。`
+            : "";
+          worklogNotice =
+            `已写入 ${receipt.path ?? receipt.week}` +
+            (receipt.continued ? "（续）" : "") +
+            "。" +
+            maskNote;
+        } else if (intent === "report") {
+          try {
+            const week = await shell.worklogReadWeek();
+            worklog = { week: week.week, exists: week.exists, content: week.content };
+            worklogNotice = week.exists
+              ? `已带上 ${week.week} 的工作记录（${week.content.length} 字符）。`
+              : `${week.week} 还没有工作记录，周报只能如实说明这一点。`;
+          } catch (e) {
+            // 读不到就说读不到：不拿空材料冒充「本周没做事」。
+            worklogNotice = "读取当周工作记录失败：" + String(e) + "；本次周报不会包含本周记录。";
+          }
+        }
         let dir = workspaceDir;
         if (!dir && projectDir) {
           dir = projectDir;
@@ -1064,8 +1416,10 @@ export function HomeChat({
           // 附件正文进这一轮的用户输入：模型看到的正是用户勾选的文件原文。
           current: composeWithAttachments(text, picked),
           continuation,
-          // 周记录场景默认随手记；用户点「整理成周报」才走完整组装（OD-ARCH-068 S3）。
-          mode: preset?.key === "weekly" && noteMode ? "note" : "report",
+          // 意图来自本轮输入（OD-ARCH-089 S1）；其它场景恒为完整组装。
+          mode: intent ?? "report",
+          // 周报模式带上当周记录（OD-ARCH-089 S2）；随手记不需要。
+          worklog,
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
@@ -1073,6 +1427,9 @@ export function HomeChat({
         const receipt = await host.submitTask({
           promptText,
           workspaceDir: dir,
+          // OD-ARCH-088：把当前生效场景的 scenario 透传给宿主；无场景时保持既有默认值
+          // （不传 intent，由 api 层回落 material_writing）。
+          intent: isSceneKey(activeTag) ? SCENES[activeTag].scenario : undefined,
           // 红线扫描必须覆盖附件正文：只扫用户原话会让附件里的禁入内容绕过检查。
           userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
           engineSessionId: effectiveEngineSessionId,
@@ -1129,6 +1486,9 @@ export function HomeChat({
             sentText: text,
             notice: [
               degraded ? "引擎会话已失效，这一轮改用新会话；下一轮会把上文补回去。" : null,
+              // OD-ARCH-089：把本轮走的路与落盘结果说清楚，用户不必猜标签去哪了。
+              intent ? describeWorkIntent(intent) + "。" : null,
+              worklogNotice,
               maskNotice,
             ]
               .filter(Boolean)
@@ -1144,7 +1504,15 @@ export function HomeChat({
         setBusy(false);
         setMessages((prev) => [
           ...prev,
-          { id: nextId(), role: "assistant", text: "", error: String(e) },
+          {
+            id: nextId(),
+            role: "assistant",
+            text: "",
+            // OD-ARCH-089：随手记先落盘再叫模型。模型这一步失败时，记录**已经写进去了**，
+            // 必须把这两件事分开说，否则用户会以为没记上又重发一遍。
+            error:
+              (intent === "note" && worklogNotice ? worklogNotice + " " : "") + String(e),
+          },
         ]);
         // 提交被拒绝常常意味着权限/准入发生了变化：重新读一遍宿主事实。
         // 缓存可能还是旧的（权限刚变），先作废再读。
@@ -1155,7 +1523,7 @@ export function HomeChat({
         setStarting(false);
       }
     },
-    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, noteMode, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn],
+    [busy, workspaceDir, resolveWorkspaceDir, refreshAdmission, messages, preset, projectDir, onTaskCreated, effectiveEngineSessionId, onEngineSessionId, replayNextTurn, activeTag],
   );
 
   /** 切换思考等级：沿用当前 provider/model，只改 reasoningEffort。 */
@@ -1223,7 +1591,7 @@ export function HomeChat({
     try {
       // 来源分两类（OD-ARCH-078 S1）：
       //   * 文件框/拖拽挑来的：可能在数据根外（桌面、下载目录），走宿主附件读取；
-      //   * @ 引用挑来的：一定在成果根或知识库内，继续走允许根校验。
+      //   * @ 引用挑来的：一定在成果根或库根内，继续走允许根校验。
       const read = fromPicker
         ? await shell.readAttachment(clean)
         : await shell.readReference(clean);
@@ -1275,7 +1643,7 @@ export function HomeChat({
       setAttachNote(
         "打不开文件选择框：" +
           (e instanceof Error ? e.message : String(e)) +
-          "；可以改用拖拽，或输入 @ 引用成果目录与知识库里的文件。",
+          "；可以改用拖拽，或输入 @ 引用成果目录与库根里的文件。",
       );
     }
   }, [addAttachment, busy]);
@@ -1536,6 +1904,49 @@ export function HomeChat({
     );
   }, [activeTaskId, activeTaskStatus, cancelBusy, engineCancel, cancelRequested, abandonStarting]);
 
+  /**
+   * 从提问卡取消本次任务（OD-ARCH-088）。
+   *
+   * 只发出取消请求并标记「已发送」；提问的最终状态等引擎的 question_closed
+   * 或任务终态确认，绝不在这里先写「已取消」。
+   */
+  const cancelTaskFromQuestion = useCallback(
+    async (taskId: string) => {
+      setQuestionCancelRequested((prev) => ({ ...prev, [taskId]: true }));
+      setQuestions((prev) => {
+        const list = prev[taskId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [taskId]: list.map((q) =>
+            q.status === "closed" || q.status === "answered" ? q : { ...q, cancelError: undefined },
+          ),
+        };
+      });
+      try {
+        if (taskId === activeTaskId) {
+          await cancel();
+        } else {
+          await host.cancelTask(taskId);
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setQuestionCancelRequested((prev) => ({ ...prev, [taskId]: false }));
+        setQuestions((prev) => {
+          const list = prev[taskId];
+          if (!list) return prev;
+          return {
+            ...prev,
+            [taskId]: list.map((q) =>
+              q.status === "closed" || q.status === "answered" ? q : { ...q, cancelError: message },
+            ),
+          };
+        });
+      }
+    },
+    [activeTaskId, cancel],
+  );
+
   const engineCancelView = engineCancelButtonState({
     hasTask: !!activeTaskId,
     status: activeTaskStatus,
@@ -1648,18 +2059,17 @@ export function HomeChat({
       <div className="relative flex min-h-0 flex-col" style={{ flexGrow: empty ? 0 : 1, flexBasis: 0 }}>
       <div
         ref={scrollRef}
-        className="chat-scroll min-h-0 flex-1 overflow-y-auto pr-5 pb-3 space-y-3.5 flex flex-col"
+        className="chat-scroll min-h-0 flex-1 overflow-y-auto pr-5 pb-3 space-y-3.5 flex flex-col" style={{ paddingBottom: searchQuery.trim() ? "35vh" : undefined }}
       >
-        {messages.map((m, mi) => {
-            const isActiveUserMatch = searchMatches[searchCurrentIndex]?.messageId === m.id;
-            return m.role === "user" ? (
+        {messages.map((m, mi) =>
+            m.role === "user" ? (
               <div
                 key={m.id}
                 id={`chat-message-${m.id}`}
                 ref={(el) => {
                   turnAnchors.current[m.id] = el;
                 }}
-                className={`flex flex-col items-end max-w-[80%] ml-auto transition-all ${isActiveUserMatch ? "ring-2 ring-amber-400 rounded-2xl p-0.5" : ""}`}
+                className="flex flex-col items-end max-w-[80%] ml-auto"
               >
                 <div className="flex items-start space-x-3">
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
@@ -1684,7 +2094,7 @@ export function HomeChat({
               <div
                 key={m.id}
                 id={`chat-message-${m.id}`}
-                className={`flex items-start space-x-3 max-w-[80%] transition-all ${searchMatches[searchCurrentIndex]?.messageId === m.id ? "ring-2 ring-amber-400 rounded-2xl p-1 bg-amber-50/20" : ""}`}
+                className="flex items-start space-x-3 max-w-[80%]"
               >
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
                   <Icon name="bot" className="w-[15px] h-[15px]" />
@@ -1765,6 +2175,20 @@ export function HomeChat({
                         </div>
                       ))}
                     </div>
+                  ) : null}
+
+                  {m.taskId ? (
+                    (questions[m.taskId] ?? []).map((q) => (
+                      <QuestionCard
+                        key={q.questionId}
+                        request={q}
+                        onSubmit={(taskId, questionId, answers) =>
+                          void respondQuestion(taskId, questionId, answers)
+                        }
+                        onCancelTask={(taskId) => void cancelTaskFromQuestion(taskId)}
+                        cancelRequested={questionCancelRequested[q.omniTaskId] === true}
+                      />
+                    ))
                   ) : null}
 
                   {m.taskId && thoughts[m.taskId] ? (
@@ -1891,8 +2315,8 @@ export function HomeChat({
                   ) : null}
                 </div>
               </div>
-          );
-        })}
+            )
+        )}
       </div>
         <TurnRail
           items={turns.map(({ m, answer }) => ({ id: m.id, prompt: m.text, response: answer }))}
@@ -1911,7 +2335,7 @@ export function HomeChat({
       {/* 输入框（对话框） */}
       <div className="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white flex-shrink-0 rounded-xl">
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
-            来源只有“成果目录”和“知识库”，越界路径根本不会出现在这里。 */}
+            来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (
           <div
             className="mb-2 rounded-lg border border-surface-variant/40 bg-surface-container-low p-1 max-h-56 overflow-y-auto"
@@ -1921,7 +2345,7 @@ export function HomeChat({
               {mentionBusy
                 ? "正在查找文件…"
                 : mentionItems.length === 0
-                  ? `没有匹配“${mentionQuery}”的文本文件（只查成果目录与知识库，支持 md/txt/csv/tsv/json/yaml/log）`
+                  ? `没有匹配“${mentionQuery}”的文本文件（只查成果目录与库根，支持 md/txt/csv/tsv/json/yaml/log）`
                   : "选择一个文件加入本轮引用（Esc 关闭）"}
             </p>
             {mentionItems.map((item) => (
@@ -1955,7 +2379,7 @@ export function HomeChat({
             type="button"
             onClick={() => void pickAttachments()}
             disabled={busy}
-            title={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/知识库`}
+            title={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/库根`}
             aria-label="添加文件"
             data-testid="attachment-pick"
             className="w-7 h-7 rounded-full plate-soft-inset text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2062,34 +2486,6 @@ export function HomeChat({
                 <span>新对话</span>
               </button>
             ) : null}
-            {/* 周记录场景：随手记 / 整理成周报（OD-ARCH-068 S3）。
-                随手记只发一句整理指令（快，先把事实留住）；整理成周报才带完整规则与章节。 */}
-            {preset?.key === "weekly" ? (
-              <div
-                className="inline-flex items-center rounded-full plate-soft-inset p-0.5 gap-0.5"
-                title="随手记：只整理要点，最快记录；整理成周报：按场景规则与章节生成周报"
-              >
-                {[
-                  { key: false, label: "随手记" },
-                  { key: true, label: "整理成周报" },
-                ].map((opt) => (
-                  <button
-                    key={String(opt.key)}
-                    onClick={() => setNoteMode(opt.key)}
-                    disabled={busy}
-                    className={
-                      "px-2 py-0.5 rounded-full font-label-caps text-[10.5px] transition-colors " +
-                      (noteMode === opt.key
-                        ? "bg-primary/12 text-primary"
-                        : "text-on-surface-variant hover:bg-surface-container")
-                    }
-                    aria-pressed={noteMode === opt.key}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
             {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
             <button
               onClick={() => setVoiceNote((v) => !v)}
@@ -2149,6 +2545,18 @@ export function HomeChat({
       {starting ? (
         <p className="text-[10.5px] text-outline pb-1">
           正在启动引擎并提交（首次启动可能要几秒）…
+        </p>
+      ) : null}
+
+      {/* OD-ARCH-088 S4：Skill 未预注入的低干扰说明（同一会话只出现一次）。 */}
+      {skillHint ? (
+        <p
+          className="text-[10.5px] text-outline pb-1"
+          role="status"
+          aria-label={skillHint}
+          data-testid="skill-not-injected-hint"
+        >
+          {skillHint}
         </p>
       ) : null}
 

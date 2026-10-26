@@ -6,6 +6,14 @@ rust-version = "1.77"
 description = "OmniDesk 独立桌面外壳（P1-Desktop Phase 2 最小技术切片）"
 default-run = "omnidesk-desktop"
 
+[features]
+# OD-ARCH-087：Tauri 用这个特性判定"生产模式"。
+# 缺了它，即使是 --release 构建，Tauri 仍按开发模式加载 build.devUrl
+# （http://127.0.0.1:5273），而正式启动器不起 dev server → 窗口报 Connection refused。
+# 因此 release 构建必须显式带上它；debug 构建（dev-ui.sh）保持不带，才能连 dev server。
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+
 # Rust 只负责：桌面宿主、进程生命周期、IPC。AI 逻辑在 Python Engine，执行引擎是 DSH。
 [lib]
 name = "omnidesk_desktop_lib"

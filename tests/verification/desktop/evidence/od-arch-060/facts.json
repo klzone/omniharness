@@ -22,7 +22,8 @@
     },
     "list_view": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/04-list-view.png",
-      "expect": "列表视图列出全部 2 份本场景成果，日期与字节数可见"
+      "expect": "列表视图列出全部 2 份本场景成果，日期与字节数可见",
+      "switched_via_ax": true
     },
     "pending_panel": {
       "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/02-pending-panel.png",

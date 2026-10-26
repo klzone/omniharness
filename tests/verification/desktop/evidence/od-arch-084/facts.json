@@ -1,0 +1,255 @@
+{
+  "verified_at": "2026-10-26 08:27:40",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI + 像素与几何测量）",
+  "script_sha256": "b09a127a67924917874d284c50d99ec3459bc26edc64a90d2f5e3d9bc021e1c1",
+  "root": "/tmp/od084-test",
+  "checks": {
+    "test_thread_opened": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "测试长会话成功加载呈现"
+    },
+    "unsearched_bottom_clearance_compact": {
+      "pass": true,
+      "measured": {
+        "last_msg_bottom_y": 689,
+        "composer_top_y": 700,
+        "clearance_px": 11
+      },
+      "threshold": "clearance_px < 60px (no permanent 35vh)",
+      "desc": "未搜索状态下最后一条消息底边与输入区顶部间距紧凑小于 60px，无常驻 35vh 巨大空白"
+    },
+    "unique_tail_target_visible": {
+      "pass": true,
+      "measured": {
+        "bbox": [
+          579,
+          404,
+          723,
+          422
+        ],
+        "scroller_bounds": [
+          240,
+          755
+        ],
+        "top_clearance_px": 164,
+        "bottom_clearance_px": 333,
+        "viewport_ratio": 0.336
+      },
+      "threshold": "clearance >= 24px and ratio in [0.25, 0.45]",
+      "desc": "长消息尾端唯一命中词被精准置于视口 25%–45% 安全区内，上下均留有安全裕量"
+    },
+    "search_count_step_item_initial": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "step-item 初始计数显示为 1/8"
+    },
+    "counts_sequence_1_to_8": {
+      "pass": true,
+      "measured": [
+        "1/8",
+        "2/8",
+        "3/8",
+        "4/8",
+        "5/8",
+        "6/8",
+        "7/8",
+        "8/8"
+      ],
+      "threshold": [
+        "1/8",
+        "2/8",
+        "3/8",
+        "4/8",
+        "5/8",
+        "6/8",
+        "7/8",
+        "8/8"
+      ],
+      "desc": "连续按下一处，计数严格呈现 1/8 到 8/8"
+    },
+    "step_items_monotonic_advancement": {
+      "pass": true,
+      "measured": {
+        "y_coords": [
+          413.0,
+          449.0,
+          486.0,
+          522.0,
+          559.0,
+          595.0,
+          632.0,
+          668.0
+        ],
+        "increments": [
+          36.0,
+          37.0,
+          36.0,
+          37.0,
+          36.0,
+          37.0,
+          36.0
+        ]
+      },
+      "threshold": "all increments >= 20px (line height)",
+      "desc": "同一长消息内多处命中按命中词逐处精准推进，位移严格大于单行高"
+    },
+    "cyclic_wrap_next_to_first": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "在末项按下一处循环回到首项 1/8"
+    },
+    "cyclic_wrap_prev_to_last": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "在首项按上一处循环回到末项 8/8"
+    },
+    "search_count_empty_0_of_0": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "无匹配项时计数显示 0/0"
+    },
+    "arrows_disabled_on_zero_match": {
+      "pass": true,
+      "measured": {
+        "next_sensitive": false,
+        "prev_sensitive": false,
+        "next_enabled": false,
+        "prev_enabled": false
+      },
+      "threshold": "sensitive=False and enabled=False",
+      "desc": "0 命中时经 AT-SPI 真实判定上一处/下一处按钮状态处于 disabled (SENSITIVE/ENABLED 为 False)"
+    },
+    "click_next_arrow_advances_count": {
+      "pass": true,
+      "measured": {
+        "button_extents": [
+          831,
+          33,
+          19,
+          19
+        ],
+        "click_center": [
+          840,
+          42
+        ],
+        "count_after_click": "2/8"
+      },
+      "threshold": "count advances from 1/8 to 2/8",
+      "desc": "用 AT-SPI 取『下一处匹配』真实屏幕矩形后点击其中心，计数严格递增至 2/8"
+    },
+    "focus_retained_in_input_after_button_click": {
+      "pass": true,
+      "measured": {
+        "input_focused_before": true,
+        "input_focused_after": true,
+        "typing_updated_count": true
+      },
+      "threshold": {
+        "input_focused_after": true,
+        "typing_updated_count": true
+      },
+      "desc": "点击箭头按钮前后输入框均保持 Atspi.StateType.FOCUSED 焦点位，直接键入新字符实时过滤检索"
+    },
+    "two_level_highlight_colors_coexist": {
+      "pass": true,
+      "measured": {
+        "active_amber_pixels": 1138,
+        "passive_amber_pixels": 7770
+      },
+      "threshold": "active >= 20 and passive >= 50",
+      "desc": "同屏存在显著区分的两级高亮：当前项饱和深琥珀独占，其余项浅淡琥珀底"
+    },
+    "single_active_highlight_exclusive": {
+      "pass": true,
+      "measured": {
+        "active_boxes_count": 1,
+        "boxes": [
+          {
+            "bbox": [
+              339,
+              404,
+              420,
+              422
+            ],
+            "pixel_count": 1114
+          }
+        ]
+      },
+      "threshold": {
+        "active_boxes_count": 1
+      },
+      "desc": "旧项在切换后立刻回落为浅淡色，全屏严格只存在 1 个当前活跃高亮块，无多个 active 并存"
+    },
+    "no_long_vertical_message_ring": {
+      "pass": true,
+      "measured": {
+        "has_vertical_line_over_150px": false
+      },
+      "threshold": false,
+      "desc": "整条消息的竖线描边已彻底去除，长消息内无贯穿性描边线"
+    },
+    "markdown_elements_count_consistent": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "跨标题、表格与行内代码精准统计，围栏代码块成功排除，计数严格为 1/3"
+    },
+    "markdown_targets_scroll_different_positions": {
+      "pass": true,
+      "measured": 11029,
+      "threshold": "> 100 px",
+      "desc": "标题与表格单元格内的不同命中项能精准滚动到不同位置"
+    },
+    "esc_clears_search_and_highlights": {
+      "pass": true,
+      "measured": {
+        "count_hidden": true,
+        "amber_pixels_remaining": 0
+      },
+      "threshold": {
+        "count_hidden": true,
+        "amber_pixels_remaining": 0
+      },
+      "desc": "按 Esc 退出后搜索计数隐藏且正文高亮像素完全归零"
+    },
+    "special_char_paren_no_crash_or_blackout": {
+      "pass": true,
+      "measured": {
+        "mean_brightness": 244.4,
+        "has_body_text": true
+      },
+      "threshold": {
+        "mean_brightness_threshold": "> 200",
+        "has_body_text": true
+      },
+      "desc": "键入正则元字符 ( 后应用渲染树完好不黑屏崩溃，正文区域平均亮度正常且内容清晰可见"
+    },
+    "special_char_literal_dot_match": {
+      "pass": true,
+      "measured": {
+        "count_text": "搜索计数 1/1"
+      },
+      "threshold": "搜索计数 1/1",
+      "desc": "键入 a.b 时为严格字面量检索恰好命中 1 处，点号不作为正则通配误判 axb"
+    },
+    "special_char_esc_restores_clean_state": {
+      "pass": true,
+      "measured": {
+        "count_hidden": true,
+        "amber_pixels_remaining": 0
+      },
+      "threshold": {
+        "count_hidden": true,
+        "amber_pixels_remaining": 0
+      },
+      "desc": "特殊字符检索后按 Esc 退出，顶栏计数条与高亮干净退出复原"
+    }
+  },
+  "failures": []
+}

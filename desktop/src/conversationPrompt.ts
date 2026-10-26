@@ -82,14 +82,19 @@ export function composeConversationPrompt(input: {
   current: string;
   continuation?: boolean;
   /**
-   * 本场景的输入模式（OD-ARCH-068 S3）：
+   * 本场景的输入模式（OD-ARCH-068 S3，OD-ARCH-089 改为按输入判定）：
    *   report（默认）= 完整组装（场景规则 + 章节 + Profile 写作铁律）；
-   *   note = 随手记，只发一句整理指令。
+   *   note = 随手记：写盘已由宿主完成，这里只带一句缺项追问指令。
    *
    * 随手记是「先记下来」的低负担入口：带铁律与章节会让首字明显变慢，
-   * 而用户此刻要的只是把事实留住。整理成周报仍走完整组装。
+   * 而用户此刻要的只是把事实留住、顺带补上缺的要素。周报仍走完整组装。
    */
   mode?: "note" | "report";
+  /**
+   * 当周工作记录（OD-ARCH-089 S2）：report 模式由界面先读出来传进来，
+   * 模型不必猜「这周做了什么」。null = 没读（非周记录场景）。
+   */
+  worklog?: { week: string; exists: boolean; content: string } | null;
 }): string {
   const context = input.continuation
     ? "用户：" + input.current
@@ -111,20 +116,39 @@ export function composeConversationPrompt(input: {
       noteSkillLines.push("");
     }
     return [
-      "你是 OmniDesk 工作台的随手记整理助手。",
-      "请把下面的记录整理成简洁要点，保留全部事实与数字，不补充、不推断、不改写口径。",
-      "信息不全时直接留空，不要编造。",
+      "你是 OmniDesk 工作台的随手记助手。这条记录已经由工作台追加进当周工作记录文件，",
+      "你不需要、也不允许再写文件或改写已有条目。",
+      "",
+      "只做一件事（OD-ARCH-089）：",
+      "对照 时间 / 地点 / 人物 / 事件 / 影响 / 感受 这六项，看这条缺哪几项，用一句话问用户要不要补。",
+      "不要复述原文，不要扩写，不要下结论，不要生成周报，不要列清单。",
+      "六项都不缺、或这条本身已足够完整时，只回「已记录」。",
       "",
       ...noteSkillLines,
       context,
     ].join("\n");
   }
+  const material = input.worklog
+    ? (input.worklog.exists
+        ? [
+            context,
+            "",
+            `本周工作记录（${input.worklog.week}，原样提供，只取去向为「本周报引用」的条目）：`,
+            input.worklog.content.trim(),
+          ].join("\n")
+        : [
+            context,
+            "",
+            `本周工作记录（${input.worklog.week}）：当周文件还不存在，本周没有记录。`,
+            "没有记录就如实说明「本周还没有记录」，不得虚构事项。",
+          ].join("\n"))
+    : context;
   return buildDraftPrompt({
     sceneLabel: preset.label,
     purpose: "按用户在本轮对话中的要求完成",
     audience: "（由用户在对话中说明）",
     requirements: "",
-    material: context,
+    material,
     materials: [],
     sceneRules: preset.rules,
     sceneSections: preset.sections,

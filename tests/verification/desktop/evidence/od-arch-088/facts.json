@@ -1,0 +1,238 @@
+{
+  "verified_at": "2026-10-26 08:25:25",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 合成模型端点（非真实模型）",
+  "script_sha256": "492c4df47d3c41a326af68bd8c3ee1ddd84646ecd618d36a9068c5ee3757f4f4",
+  "root": "/tmp/od088-ui",
+  "checks": {
+    "scene_page_reached": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "进入工作记录场景页"
+    },
+    "skill_not_injected_hint_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "对话区显示 Skill 未预注入说明，并区分「技能不可用」"
+    },
+    "legacy_rules_loaded": {
+      "pass": true,
+      "measured": "/tmp/od088-ui/app-data/profiles/discipline.rules.json",
+      "threshold": "v1 规则包写入隔离根",
+      "desc": "隔离根规则包为 schema v1（无 skill_bindings）"
+    },
+    "prompt_sent": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "在合成对话里提交一条指令"
+    },
+    "question_card_visible": {
+      "pass": true,
+      "measured": 1,
+      "threshold": ">=1",
+      "desc": "提问卡出现在对话流"
+    },
+    "question_text_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "题干显示"
+    },
+    "question_header_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "题目 header 显示"
+    },
+    "option_a_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "选项甲显示"
+    },
+    "option_b_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "选项乙显示"
+    },
+    "card_shows_not_auto": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "卡片明确说明需要用户选择后提交，不自动选择"
+    },
+    "submit_disabled_without_choice": {
+      "pass": true,
+      "measured": {
+        "enabled": false,
+        "sensitive": false
+      },
+      "threshold": false,
+      "desc": "未选择时提交按钮禁用（AT-SPI SENSITIVE 状态）"
+    },
+    "option_clickable": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "找到可选中的选项甲"
+    },
+    "select_does_not_auto_submit": {
+      "pass": true,
+      "measured": false,
+      "threshold": false,
+      "desc": "点选项只改变本地选择"
+    },
+    "submit_button_present": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "提交回答按钮存在"
+    },
+    "card_answered": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "宿主确认后卡片变已答"
+    },
+    "answer_reached_engine": {
+      "pass": true,
+      "measured": 1,
+      "threshold": ">=1",
+      "desc": "第二次模型请求携带 tool 消息（答案已作为工具结果回到引擎）"
+    },
+    "intent_weekly_report": {
+      "pass": true,
+      "measured": {
+        "omni-8d4194cc-fce0-4192-8bef-61ab43c967f2": "weekly_report",
+        "null": null
+      },
+      "threshold": "weekly_report",
+      "desc": "工作记录场景提交的任务 intent 为 weekly_report"
+    },
+    "second_prompt_sent": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "新对话里再提交一条合成指令"
+    },
+    "second_question_visible": {
+      "pass": true,
+      "measured": 1,
+      "threshold": ">=1 且带提交按钮",
+      "desc": "第二次提问卡出现且可答"
+    },
+    "cancel_button_present": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "卡片提供取消出口"
+    },
+    "question_closed_after_cancel": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "取消后卡片落成已失效"
+    },
+    "closed_card_not_answerable": {
+      "pass": true,
+      "measured": false,
+      "threshold": false,
+      "desc": "已关闭的卡片不再可答"
+    },
+    "no_question_text_in_state_or_logs": {
+      "pass": true,
+      "measured": [],
+      "threshold": [],
+      "desc": "任务状态 JSON 与 app.log 不含题干 / 选项 / 答案正文"
+    },
+    "state_files_scanned": {
+      "pass": true,
+      "measured": 3,
+      "threshold": ">=1",
+      "desc": "至少有一个任务状态文件参与隐私扫描"
+    },
+    "settings_entry_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "顶栏设置入口可见"
+    },
+    "rules_tab_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "设置页存在「规则资产」分页"
+    },
+    "legacy_rules_notice_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "v1 规则包下设置页明确提示未启用场景 Skill 预注入"
+    },
+    "legacy_notice_keeps_skills_available_copy": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "提示明确技能仍可按需加载，不等同技能不可用"
+    },
+    "legacy_rules_file_unchanged_by_ui": {
+      "pass": true,
+      "measured": "{\n  \"schema\": \"omnidesk.profile-rules.v1\",\n  \"profile\": \"discipline\",\n  \"global\": {},\n  \"scenes\": {}\n}\n",
+      "threshold": "schema=omnidesk.profile-rules.v1",
+      "desc": "查看提示不会静默改写用户规则包"
+    },
+    "app_alive_at_end": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "验收结束时 App 仍在运行"
+    }
+  },
+  "failures": [],
+  "detail_delivered_by_runtime": false,
+  "detail_note": "DSH tool-ask-user 两套 schema 都不转发 detail；窗口证据只能验证 header/题干，detail 渲染由适配层单测与组件代码覆盖。",
+  "mock_requests": [
+    {
+      "has_tool_message": false,
+      "text_chars": 6649
+    },
+    {
+      "has_tool_message": false,
+      "text_chars": 821
+    },
+    {
+      "has_tool_message": true,
+      "text_chars": 6694
+    }
+  ],
+  "state_intents": {
+    "omni-8d4194cc-fce0-4192-8bef-61ab43c967f2": "weekly_report",
+    "null": null
+  },
+  "closed_copy": "该提问已失效",
+  "privacy": {
+    "scanned": [
+      "app-data/engine-state/omni-11640c6e-0ff5-4bca-9023-d209ab013499.json",
+      "app-data/engine-state/omni-8d4194cc-fce0-4192-8bef-61ab43c967f2.json",
+      "app-data/engine-state/owner.json",
+      "logs/app.log",
+      "logs/vite.log"
+    ],
+    "leaks": [],
+    "markers": [
+      "合成测试：是否落盘？",
+      "合成补充说明",
+      "先追加",
+      "合成选项甲",
+      "稍后",
+      "合成选项乙"
+    ]
+  },
+  "rules_file_after_ui": "{\n  \"schema\": \"omnidesk.profile-rules.v1\",\n  \"profile\": \"discipline\",\n  \"global\": {},\n  \"scenes\": {}\n}\n",
+  "checks_passed": 30,
+  "checks_total": 30,
+  "result": "pass"
+}

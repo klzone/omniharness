@@ -23,6 +23,8 @@ pub const SCHEDULER_FILE: &str = "scheduler.v1.json";
 pub const DEFAULT_HEARTBEAT_MINUTES: u32 = 120;
 pub const MIN_HEARTBEAT_MINUTES: u32 = 5;
 pub const MAX_HEARTBEAT_MINUTES: u32 = 24 * 60;
+/// 缺省时区偏移（分钟）：东八区。工作记录按此换算本地日期与 ISO 周。
+pub const DEFAULT_UTC_OFFSET_MINUTES: i32 = 480;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -78,7 +80,7 @@ impl Default for SchedulerConfig {
             cadence: default_cadence(),
             hour: default_hour(),
             once_at: None,
-            utc_offset_minutes: 480,
+            utc_offset_minutes: DEFAULT_UTC_OFFSET_MINUTES,
             heartbeat_enabled: true,
             heartbeat_minutes: DEFAULT_HEARTBEAT_MINUTES,
             last_review_at: 0.0,

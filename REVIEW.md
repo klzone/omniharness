@@ -1,3 +1,283 @@
+## OD-ARCH-092 复核结论（ARCHITECT 独立复核，2026-10-26）——窗口级通过，待真模型实测
+
+**结论先行：通过。** 工作记录页按用户四点要求改完了：本周时间线与成果文档库同屏两栏、历史归档与会话历史两栏、时间线字号 +2、自动复盘入口移除。我用一次性 Xvfb 打开真实窗口截了图并逐张看过，也自己复跑了全量 Rust、前端构建、三条窗口脚本与两条离线验证。真实模型端到端仍属 OD-ARCH-080 实测清单，不在本轮范围。
+
+**四条需求的落点与我的核查方式：**
+
+| 需求 | 落地位置 | 我的核查方式 |
+| --- | --- | --- |
+| 1. 时间线与成果库左右两栏，时间线字号 +2 | `ScenePage.tsx` weekly 分支 `lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]`；`WeeklyTimeline.tsx` 条目 13.5px / 日期 12px | 真实窗口 `01-weekly-two-column.png`：左 1.6 份宽时间线、右 1 份成果库，5 条记录分落 10/26–10/31，1280 窄窗无横向溢出（`03-narrow-1280.png`） |
+| 2. 自动复盘在当前工作流是否还有用 | 无用，已移除界面入口；心跳与规则提醒保留 | 读码：`AnnouncementBar` 的复盘开关 / 频率 / 立即复盘 / 建议行与 `runReview` 调用链已删；`SettingsPanel` 复盘分组已删。`verify_weekly_092.py` 的 `no_review_cadence_ui` / `heartbeat_kept` / `rule_reminder_kept` / `backend_review_contract_kept` 四项均通过 |
+| 3. 四个模块按设计规范重设 | 指标带（`SceneStatusStrip`）+ 时间线 + 周报状态行 + 成果库，统一 `bg-white/80 border-white/90 rounded-2xl` 卡体系 | 截图逐项对照：指标为一列「小标题 + 数字 + 灰字」，动作按钮只在周报项出现，异常项才着色 |
+| 4. 历史归档与会话历史两栏 | `ScenePage.tsx` `lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]`，归档在左、会话在右 | 截图：两卡同排，会话仍默认收起，展开在自身卡内滚动（`max-h` 限制），不下推整页 |
+
+**指标口径是这轮最容易被做错的地方，我单独核对了。** 「本期工作记录」原来的数据源是 `overview.artifacts_this_week`（成果文件数），用合成 5 条记录时它会显示 0，与用户「我记了几条」的直觉不符。现在改为时间线解析出的 `entryCount`，`verify_weekly_092.py` 的 `entry_count_five` / `metric_matches_timeline` / `empty_entry_count_zero` / `undated_lines_not_counted` 四项覆盖了 5 条、空文件、无日期行三种情形。截图实测显示「5 条」，与左栏 `2026-W44 · 5 条` 一致。
+
+**我独立复跑的结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 实际结果 |
+| --- | --- |
+| `npx tsc --noEmit` | exit 0，0 错 |
+| `npm run build` | 通过 |
+| `cargo test --offline`（全量） | 299 passed / 0 failed |
+| `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| `verify_weekly_091.py` | 67/67 |
+| `verify_weekly_092.py` | 29/29 |
+| `verify_ui_088.py`（真实窗口） | 30/30 |
+| `verify_ui_084.py`（真实窗口） | 全通过 |
+| `verify_scene_overview_060.py`（真实窗口） | 通过 |
+| `preview_weekly_092.py`（真实窗口） | 三帧落 `evidence/od-arch-092/` |
+
+**审查中改掉的两个真实缺陷（我自己动手，未派工）：**
+
+1. **指标带右侧重叠。** 首版截图 `evidence/od-arch-088/02-scene.png` 里「本期工作记录」独占整行，右侧「本周周报 未生成」与「去生成 / 逾期 0 条」压在一起。根因是 `Metric` 自带 `flex-1` 但没有等宽外层，第一个子项把剩余宽度全吃掉。改法是每项外包 `div.flex-1 min-w-0`、动作按钮从标签行下沉到说明行右端、分隔线从 `/25` 提到 `/70`，重截确认三列等宽。
+2. **已验收入口文案被我改掉。** `threadsSection` 的「去对话 · 新开」一度改成「新开对话」，`verify_ui_088.py` 靠 `find(nodes, "去对话")` 进场景页，于是 4 项连锁失败。恢复原文案后 30/30。这条说明：已验收脚本里的可见文案断言等于契约，改版要绕开它。
+
+**顺带修好的验证脚本环境缺陷（不是本轮功能引入，但会挡住任何窗口复验）：**
+
+- `verify_scene_overview_060.py` 缺一次性 `dbus-daemon`，窗口根本起不来（`app.log` 为空、`find_window` 超时）。
+- 同一脚本自起 vite，5273 被占时直接崩在 `Port 5273 is already in use`；改为 `reuse_running_dev_server=True`。
+- 同一脚本没隔离 `OMNIDESK_KNOWLEDGE_ROOT`，会读到用户真实工作记录；已补指向一次性根（091 的教训）。
+- 列表视图切换用坐标点击会落到相邻「卡片」按钮上，改为按 AX 名称「列表」定位后再点击，`facts.json` 记 `switched_via_ax=true`。
+
+**代码审查要点：**
+
+1. `ScenePage.tsx` 的 `tab` 收窄成 `"progress" | "artifacts"`，weekly 分支不再读写它，两个读取 effect 的依赖也去掉了 `tab`。少这一处，切换场景会把 weekly 的页签状态带进项目页。
+2. 「待确认写入」从常驻卡降级为有记录才出现的窄条，但 `PendingWriteCard` 展开逻辑与后端 `pending_writes.rs` 的 24 小时过期、确认/放弃语义完全没动。界面收起来，安全契约还在。
+3. 时间线等解析仍是「认不出的行原样保留」，不因版式改动丢用户记录。
+
+**未覆盖的事项：** 真实模型端到端（OD-ARCH-080 清单）待用户实测；`preview_weekly_092.py` 的「展开待确认」帧因 AX 未命中「待确认写入」而未取到（同一交互在 060 里已用坐标点击实测通过，2 条 pending / 1 条过期）。
+
+---
+
+## OD-ARCH-091 复核结论（ARCHITECT 独立复核，2026-10-26）——脚本级与窗口级通过，待真模型实测
+
+**结论先行：** 周报分页的三块都做出来了：本周按天时间线替代了原来的碎片胶囊，报告状态卡置顶，历史周报按月归档。我自己复跑了 Rust 全量与离线验证，也用一次性 Xvfb 打开真实窗口截了图，**通过**。真实模型端到端仍属 OD-ARCH-080 实测清单，未在本轮范围内。
+
+**用户四条需求的落点：**
+
+| 需求 | 落地位置 | 我的核查方式 |
+| --- | --- | --- |
+| 分页里能看到本周记了什么 | `weekTimeline.ts` 解析周文件 → `WeeklyTimeline.tsx` 按日铺排 | 真实窗口截图 `01-weekly-timeline.png`：5 条合成记录分落 10/26–10/31，空日显示灰点占位 |
+| 周报状态不再要去首页猜 | `WeeklyReportStatus` 三态（未生成 / 草稿 / 已归档），确定性文件检查 | 读码 + `verify_weekly_091.py` 状态判定用例；窗口里观察到「本周还没生成周报」态 |
+| 历史周报按周归档 | `worklog.rs::list_reports` + `WeeklyArchive` 按月分组 | 真实窗口截图 `02-weekly-history.png`：历史归档 2 份周报，W43 / W42 |
+| 「转周报」不替用户花模型调用 | `requestNewThread(tag, prompt)` 只预填输入框，不自动发送 | 读码：`HomeChat` 用 `useState(initialInput)` 预填；发送只能由用户触发 |
+
+**我独立复跑的结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 实际结果 |
+| --- | --- |
+| `cargo test --offline`（全量） | exit 0，主套 279 passed / 0 failed，其余套件 20 passed / 0 failed |
+| `npx tsc --noEmit` | exit 0，0 错 |
+| `verify_weekly_091.py` | `cases=65 passed=65 failed=0` |
+| `python3 -m pytest tests -q` | `89 passed, 30 subtests passed` |
+| `verify_ui_088.py`（真实窗口） | `checks=30 passed=30 failed=0` |
+| `preview_weekly_091.py`（真实窗口） | 两帧截图落 `evidence/od-arch-091/` |
+
+**088 那 3 项失败的判定：不是 091 引入，是验证脚本的既有缺陷。** 三处失败全在第二次提问：合成端点用 `tool_call_trigger` 决定是否返回提问，但它只在「最后一条用户消息的前 200 字符」里找触发词；089 把场景提示词改成「规则在前、用户原话在末尾」之后，`OD088-2` 落在 200 字符之外，端点就当成普通对话直接回了「合成继续完成」。截图与请求记录都印证这一点：第二次请求 `has_tool_message=true`、`text_chars=6963`，内容是随手记缺项提示词。修法是给 `_last_user_text` 加可选 `limit`，判定用全文、日志仍截断，原样重跑即 30/30。**该改动只影响测试用合成端点，未触及产品代码。**
+
+**审查中发现的一处严重问题（已修，需用户知情）：** `verify_ui_088.py` 与我的预览脚本一开始只隔离了成果目录，没隔离库根。工作记录写的是库根，所以跑 088 时合成指令真的被 `worklog_append` 写进了 `~/OmniDesk/库/工作记录/2026-W44.md`，累计 8 条 `synthetic …` 条目。发现于预览截图：时间线里出现了这些合成行。处理过程：
+
+1. 立刻把那张含真实内容的截图移出仓库（`/tmp/od091-leaky-shot.png`），不进证据目录；
+2. 备份原文件到 `/tmp/od-w44-backup-20261026022816.md`，按「只删合成块、保留用户原记录」定点清理，清理后只剩用户那条「明天下午专题课…」；
+3. 给 `verify_ui_088.py` 与 `preview_weekly_091.py` 都补 `OMNIDESK_KNOWLEDGE_ROOT` 指向一次性根；
+4. 复跑 088 与预览，并核对真实工作记录文件哈希复跑前后一致（`32c54910…`）。
+
+这条教训要留住：**任何会触发 `worklog_append` 的窗口脚本都必须隔离库根，只设成果目录不够。**
+
+**代码审查要点：**
+
+1. 时间线解析对认不出的行只做「原样保留」（`raw` 数组）而不丢弃。少显示一条用户写下的记录，比显示得难看严重得多。
+2. `list_reports` / `read_report` 都先校验文件名形状（`YYYY-Www-周报[-N].md`）；`read_report` 对 `../../etc/passwd` 直接拒绝且单测覆盖，前端只传文件名、不拼路径。
+3. `WeeklyTimeline` 与两个面板的按钮都只做跳转，不写文件；「去生成周报」只预填输入框，符合「不替用户花掉一次模型调用」的既有口径。
+4. 状态卡三态来自文件检查而不是模型自述，模型不可用时仍能显示真实状态。
+
+**证据等级：** 文件事实（逐文件读码）+ 静态检查（tsc / build / 源码断言）+ 脚本运行（cargo 279、pytest 89、四个验证脚本）+ 真实窗口（一次性 Xvfb 两帧截图）+ 真实文件系统行为（隔离临时目录、合成文本）。
+
+**未验证事项：**
+
+1. **真实模型端到端未跑**：周报生成质量、缺项追问措辞、以及对话里说「生成周报」的实际表现，仍待用户按 OD-ARCH-080 清单实测。
+2. **三态切换只认证了一态**：窗口里看到的是「未生成」；「草稿已存在」「已归档」两态只有离线脚本与代码证据。
+3. **真实库根下的时间线渲染未看**：预览用的是合成周文件；真实文件的条目长度、多行续文在界面里的观感未观测。
+4. **跨周记录（`outOfWeek`）未在窗口中出现**：只有解析器用例覆盖。
+
+**工作区状态：** HEAD 仍为 `0d17b1f`；`runtime/` 零差异；未提交、未推送、未打标签；084–090 既有改动原样保留。
+
+## OD-ARCH-089 复核结论（ARCHITECT 独立复核，2026-10-26）——脚本级通过，待真模型实测验收
+
+**结论先行：** 用户要求的三件事都落地了：认不认周报由输入决定、「随手记」先写进文件再问缺项、Skill 拆成随手记和周报两个。脚本级验证 61 项全过，Rust 全量 294 项 0 失败，前端构建通过，防覆盖机制在单测里被证死。**但真实窗口和真实模型本轮都没跑**，所以这是「代码与脚本级通过」，不是最终验收。
+
+**用户四条需求的落点：**
+
+| 需求 | 落地位置 | 我的核查方式 |
+| --- | --- | --- |
+| 没有明确要周报就不进周报流程 | `workIntent.ts`：只认「周报」二字，或「本周/这周/上周 + 总结/汇总/小结/回顾/梳理」同时出现 | 编译真实 TS 跑 7 条 report 输入与 8 条 note 输入，含全角、空格、标点混写 |
+| 平时输入一律按随手记逐条增量追加 | `HomeChat.tsx` 先调 `worklog_append` 再叫模型；`worklog.rs` 只用 `append(true)` | 读码 + 单测：连写两条旧字节前缀不变；同日第二次另起「（续）」段 |
+| 只分析缺时间/地点/人物/事件/影响/感受 | `conversationPrompt.ts` note 分支 + `memory-agent` 的「零、缺项六要素」 | 断言六要素齐全、五段周报章节一个不出现、写作铁律不出现 |
+| 去掉两个标签、用关键词当指令 | `HomeChat.tsx` 删 `noteMode` 与按钮块 | 源码断言无 `noteMode`、无两个按钮文案 |
+
+**Skill 拆分的实际账（我亲测 `len()`）：** memory-agent 1432、memory-report 988、knowledge-search 2133、anysearch 1487。周报注入从 5154 降到 4553，省 601 字符；随手记注入从 1534 降到 1432，省 102 字符，但多背了六要素追问的职责。**计划里原估「随手记 1150、周报 3845」偏乐观**，实际两侧都补了必要小节（六要素、确认门、命名、自检），这点已在 PLANS.md 更正。
+
+**anysearch 的处理正确。** 它移出 weekly 预注入，但仍在 `ALLOWED_SKILLS` 白名单、仍随 `sync-skills.sh` 装进隔离副本、仍在引擎 `available_skills` 里。这符合 OD-ARCH-088 已确认的口径：未预注入不等于不可用。我专门加断言守这一条，防止以后有人把它从白名单里也删掉。
+
+**我在复核中发现并修掉的一处问题：** `verify_skill_bindings_082.py` 每跑一次都会重写 `evidence/od-arch-082/scene-injection.json`，本轮复跑已经把它改脏了。这违反「不改写历史证据」的项目规则。处理方式是把证据落点改到 `evidence/od-arch-089/`，再用 `git checkout --` 把 082 那份还原（`git status` 已确认它回到 HEAD 版本）。082 脚本本身对 089 配置的断言改的是「当前配置」而不是「历史事实」，属于跟随配置变更，认可。
+
+**我独立复跑的结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 实际结果 |
+| --- | --- |
+| `cargo test --offline`（全量） | exit 0；主套 274 passed 0 failed，其余 7 套件 20 passed 0 failed，合计 294 passed |
+| `npm run build` | exit 0，`built in 898ms`，仅既有 chunk 体积警告 |
+| `python3 -m pytest tests -q` | exit 0，`89 passed, 30 subtests passed` |
+| `verify_worklog_089.py` | exit 0，`61/61` |
+| `verify_skill_bindings_082.py` | exit 0，`38/38` |
+| `verify_profile_rules_068.py` | exit 0，`25/25` |
+| `verify_intent_088.py` | exit 0，`22/22` |
+| `verify_worklog_085.py` | exit 0，`122/122` |
+| `verify_env_085.py` | exit 0，`24 passed / 1 obstacle`（本机无 obsidian_cli，既有） |
+| `sync-skills.sh --check` | exit 0，无漂移 |
+| `git status --porcelain runtime/` | 0 行 |
+
+**代码审查要点：**
+
+1. `worklog.rs` 的防覆盖不是口头承诺：写入后读回文件，断言旧内容仍是新内容的前缀、且新长度等于旧长加新增长度，不等就报错。这个自证比只用一个 flag 可靠。周标签用 `YYYY-Www` 严格校验且周次限 01–53，路径拼接前就挡住了穿越。
+2. 落盘失败时的用户可见文案是「这条没有记下来 …不会假装已经记录」，并且在 `return false` 之前就置了非忙碌态——不会出现按钮卡死的状态。模型调用失败但已落盘时，界面把「已写入路径」和失败原因分开说。这两条正是上一轮「卡死」事故的直接教训。
+3. 红线扫描在掩码之前、对用户原文做，命中即拒绝且错误信息只回标签与次数、不回显原文。与既有 `save_offline_artifact` 口径一致。
+4. 意图判定偏保守：多记一条随手记不会丢事实，误进周报流程会污染材料，所以词表只收「周报」本身与带周范围限定的总结措辞，「总结一下这次会议」仍是随手记。判定结果在回复上方写明，误判用户当场能看见。
+5. `MAX_SKILL_BINDINGS_PER_SCENE`（3）与 `max_injected`（3）都没动，weekly 正好三个绑定，没有靠调大上限来塞新 Skill。
+
+**证据等级：** 文件事实（逐文件对照读码）+ 静态检查（build/tsc、源码断言）+ 脚本运行（cargo 294、pytest 89、五个验证脚本）+ Rust 单测的真实文件系统行为（隔离临时目录，合成文本）。
+
+**未验证事项（如实登记）：**
+
+1. **真实桌面窗口未跑**：两个标签在真实界面里是否确实消失、场景切换/发送/附件是否受影响，只有源码断言。验收标准第 2 条缺窗口证据。
+2. **真实模型输出未跑**：模型拿到新提示词后是否稳定只问缺项、不复述不扩写，以及说「生成周报」时周报质量如何，均未观测。这是 OD-ARCH-080 实测清单的一部分，需用户实测。
+3. **真实窗口落盘未跑**：连写两条随手记只有 Rust 单测证据，没有窗口级证据；「（续）」段在真实界面里的呈现也未看过。
+4. **空周报路径未观测**：本周无记录时指令要求如实说明「本周还没有记录」，但只有提示词断言，模型是否照做未验证。
+
+**工作区状态：** HEAD 仍为 `0d17b1f`；`runtime/` 零差异；本轮未提交、未推送、未打标签；084–088 的既有改动原样保留。
+
+
+## OD-ARCH-088 复核结论（ARCHITECT 独立复核，2026-10-25）——通过
+
+**结论先行：** 用户报告的「工作记录场景卡死」不是死锁，而是模型发起了一条结构化提问（`user-questions/request`）、外壳没有回答通道，界面只能停在「生成中」。本轮把提问→回答→继续→取消/终态整条链路接通，同时补上场景 intent 透传与 Skill 绑定可见性提示。三项验收标准全部达成，**通过**。
+
+**根因（ARCHITECT 独立查证，非采信 BUILDER 自述）：**
+
+1. 任务状态文件 `~/OmniDesk/app/engine-state/omni-b80f4367-*.json` 实测 `intent=material_writing`、`state=interrupted`；会话日志 `session-949cefc3-*.jsonl.zstd` 共 32 行，seq19 模型用 `skill` 工具加载 `memory-agent` 成功，seq29 调用 `ask_user_question`（“初稿是否先追加到 库/工作记录/2026-W43.md？”），此后事件流无新帧——任务在等一个没人能答的提问。
+2. 旧 `web_api_adapter.py` 除 `approval/request` 外所有 waterfall 一律走 `_on_engine_ask()`，只发 `PROGRESS kind=engine_ask`、注释写明「不自动应答」；前端渲染成「未被识别的确认」。应答协议本身已存在（`$events/result` + `{answers:[{id,selected,custom?}]}`），缺的是接线。
+3. **三个 Skill 不是「没绑上就不可用」。** 用户实盘 `~/OmniDesk/app/profiles/discipline.rules.json` 是 `omnidesk.profile-rules.v1`、无 `skill_bindings`；出厂包 `samples/profiles/discipline.rules.json` 才是 v2（weekly 绑 memory-agent / knowledge-search / anysearch，`max_injected: 3`）。技能始终在引擎 `available_skills` 清单里，本次就是模型自行加载的——**未预注入 ≠ 不可用**。
+4. 附带真实缺陷：`submitTask()` 未传 intent，工作记录任务被记成 `material_writing`。
+
+**实现审查（已逐文件读 diff）：**
+
+- `engine/omnidesk_engine/web_api_adapter.py`：新增内存索引 `_question_index` / `_questions_by_task`（不落盘）；`user-questions/request` 走 `_on_question_request()` 发 `PROGRESS kind=question_request`（含 `question_id/questions/answerable/violations/note`），其余未知 waterfall 仍走 `_on_engine_ask()`；`respond_question()` 复用既有 `_ApprovalChannel` 与 `$events/result`，`outcome={"kind":"result","value":{"answers":[...]}}`；`multi_select` 与 `multiSelect` 双拼写兼容；非法/超限抛 `INVALID_ARGUMENT` 并**保留**待答项；`cancel` 帧与任务终态各发一条 `question_closed`（`cancelled` / `task_terminal`）；关闭时清空索引。上限 8 题 / 题面与详情 2000 / 选项 12 且标签 200 / 自定义 4000，超限整条不可答、不静默截断。
+- `engine/omnidesk_engine/serve.py`：新增 `omni.question_answer`；适配器无 `respond_question` 时返回 `METHOD_NOT_FOUND`，与审批同口径。
+- `desktop/src-tauri/src/engine_bridge.rs`、`lib.rs`：新增桥调用与 `engine_question_answer` 命令并注册，错误沿用既有 `engine_error` 归一化。
+- `desktop/src/shell/QuestionCard.tsx`（新增）：pending → submitting → answered / failed / closed 状态机；点选项只改本地选择，必须点「提交回答」；失败保留卡片并显示真实原因；`role="group"` + `aria-label` 兼容 WebKitGTK；Enter 提交、Esc 不提交。
+- `desktop/src/shell/HomeChat.tsx`：订阅三种进度事件、按任务分组渲染；`respondQuestion()` 只有宿主返回收据才置 answered；`submitTask()` 补 `intent: isSceneKey(activeTag) ? SCENES[activeTag].scenario : undefined`；Skill 未预注入提示每会话一次。
+- `desktop/src/SettingsPanel.tsx`：规则资产页在 `skill_bindings` 为空时显示 v1 提示，只提示、不自动改写规则文件。
+- 协议已对照 runtime 核实：`gateway/src/index.ts` 的 `outcome.kind==='result'` → `settleRemoteEvent`；答案 schema `projection.ts` 为 `.strict()`；线上题目字段是 snake_case `multi_select`，投影后才是 `multiSelect`。
+
+**ARCHITECT 独立复跑（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 实际结果 |
+| --- | --- |
+| `python3 -m pytest tests -q` | exit 0，`89 passed, 30 subtests passed` |
+| `tsc --noEmit` | exit 0，无输出 |
+| `npm run build` | exit 0，`✓ built in 824ms`（仅既有 chunk 体积警告） |
+| `cargo test --offline`（全量） | 主套 267 passed / 0 failed，其余套件 0 failed，`FAILED` 计数 0 |
+| `verify_intent_088.py` | 22/22，exit 0 |
+| `verify_ui_088.py --display :139 --root /tmp/od088-arch` | **30/30，failures=[]，exit 0** |
+| `verify_skill_bindings_082.py` | 35/35 |
+| `bash scripts/sync-skills.sh --check` | exit 0，7 个 Skill 无漂移 |
+| `git status --porcelain runtime/` | 0 行 |
+| `git diff --check` | 无输出 |
+
+**窗口 30 项覆盖（隔离数据根 + 合成模型端点，真实 Tauri 窗口）：** 提问卡出现 → 未选时提交按钮 `SENSITIVE=False` → 点选项不自动提交 → 提交后卡片显示已答 → 第二轮请求 `has_tool_message=true`（答案确实回到引擎）→ 任务状态 `intent=weekly_report` → 取消后卡片关闭且不可再答 → 状态文件与 `app.log` 无题干/选项/答案 → 设置页 v1 提示且规则文件未被改写 → 结束时应用存活。`facts.json` 30 项 `result=pass`。
+
+**证据等级：** 文件事实（读码对照 diff）+ 静态检查（tsc/build）+ 脚本运行（pytest、cargo、三个验证脚本）+ 真实桌面窗口与合成端点。**真实模型输出本轮未做**——OD-ARCH-080 清单的端到端实测仍待用户执行。
+
+**我在复核中改动的文件（仅测试基线，未碰产品代码）：** `verify_worklog_085.py` 与 `verify_env_085.py` 原先把整个 `engine/` 写死为冻结，与 088 获批解冻冲突（曾 117/119、21/22）。改为**声明式白名单**：只放行 088 获批的 `serve.py` 与 `web_api_adapter.py`，其余 `engine/` 仍冻结，`desktop/src` 侧只增 `QuestionCard.tsx`。改后复跑 `verify_worklog_085.py` 119/119 exit 0、`verify_env_085.py` 22/22 failed=0（唯一 obstacle 是本机无 `obsidian_cli`，属预期降级事实）。这是收紧而非放水的等价改动。
+
+**待用户裁定的新问题（本轮未擅自改）：** 当前 Profile 的 `tool-ask-user` 没有配 `mode: timed`，DSH 默认走 `legacy`，**legacy 模式没有超时自动继续**（只有 `timed` 才有）。用户看到的「静默 120 秒」是外壳提示阈值，不是引擎超时。088 已保证用户能回答或点「取消本次任务」脱身、终态时卡片落成不可答；是否改成 `timed` 让超时后模型自动继续，属于产品决策，需另立计划并获批。
+
+**未验证事项（如实登记）：** ①`detail` 字段 DSH 两套 schema 均不转发（runtime 既有行为），窗口只能验 header/题干，`detail` 渲染仅由适配层单测与组件代码覆盖；②timed 模式的超时帧未实测；③多题、多选、自定义文本在真实窗口中未逐项实操（单测覆盖）。
+
+**工作区状态：** HEAD 仍为 `0d17b1f`；`runtime/` 零差异；本轮未提交、未推送、未打标签；084/085/086/087 遗留改动原样保留。
+
+## OD-ARCH-086 复核结论（ARCHITECT 独立复核，2026-10-25）——通过
+
+**独立复跑证据**（本复核者亲跑，非采信 STATUS.md）：
+
+- cargo 全量：passed=287 failed=0（desktop/src-tauri，含 toolchain env）。
+- npm run build：通过（仅既有的 chunk 体积警告）。
+- sync-skills.sh --check：无漂移；隔离根 skills 目录已含 anysearch 薄包装。
+- 回归复跑：082=35/35 pass、068=25/25 pass、085 环境探测=22/22 pass。
+- runtime/、engine/ 零差异：git status 实测 0 行。
+- 旧 YvanAI 路径零接触：find newer PLANS.md 无结果。
+- 库根目录骨架存在（~/OmniDesk/库/{知识库/概念,inbox}）。
+
+**代码审查要点**：
+
+1. 白名单七项 + weekly 三绑定（=上限3），diff 干净，测试断言到位。
+2. settings.rs：library_root 带 #[serde(default)]，向后兼容有专项单测（旧文件加载、其他设置不被重置）；set_library_root 沿用成果目录同一套边界校验（绝对路径、仓库外、禁区、创建后复核真实落点、写探针），无自造第二套校验。
+3. task_shell.rs：knowledge_root 默认切到 ~/OmniDesk/库（env 覆盖优先级不变）；reference_roots 去重、顺序稳定；lib.rs 三个 @ 引用命令均改用生效库根。
+4. 082 验证脚本改为从 profile_rules.rs 源码解析白名单（消除手抄清单过期问题），并新增 anysearch 断言——是加强而非删测试，认可。
+5. anysearch 薄包装 54 行：不复制上游脚本、凭据红线与敏感主题禁检索写入正文、不可用时如实回报；冒烟证据 3 次真实联网返回（匿名额度）。
+6. 设置页 UI 有 screenshots-design-inspiration 参考记录（design-reference.md），符合 AGENTS.md 派工附加要求。
+
+**限制与未验证项**（如实记录）：
+
+- L1 库根目前只接入 @ 引用；成果档案列表仍只读成果根；Skill 写入路径不跟随库根改动。设置页文案已如实注明。后续按需求再定是否打通。
+- L2 086 真实窗口验收（22 项）为 BUILDER 环境证据（facts.json 20:58 全过，含截图与无障碍树）；ARCHITECT 复跑该脚本因显示环境未复现成功（找不到设置入口），后端逻辑已用单测与回归独立覆盖，此项按 BUILDER 证据采信并标注。
+- L3 anysearch 仅验证 CLI 直调与同步发现，真实 DSH 模型会话中自动调用未验证——待用户实测工作记录场景时观察。
+- L4 流程偏差：086 主体实现在派工前已在工作区，本轮 BUILDER 的工作是核对、补测试与重跑验证，未按模板另派工。验证充分，验收不受影响；登记为流程记录，不要求返工。
+
+**验收结论：通过。** PLANS.md 状态改为「已验收通过」。
+
+## OD-ARCH-085 独立复核（2026-10-25，ARCHITECT）
+
+**结论：通过（附两项待用户裁定事项，不阻塞本轮验收）。**
+
+**独立验证（本人复跑，非采信自述）：**
+
+- verify_worklog_085.py 复跑 119/119 pass，exit 0；verify_env_085.py 复跑 22/22 pass，exit 0（含 2 项受阻事实记录）。
+- sync-skills.sh --check：仓库 Skill 与数据根副本一致，无漂移。
+- Git：HEAD 0d17b1f 未动；runtime/ desktop/src-tauri/ engine/ 复查 0 行差异；工作区 16 项 = 开工前 12 项 + 本轮 4 项（memory-agent/knowledge-search SKILL.md、discipline.rules.json、phase-worklog 目录），范围与获批计划一致。
+- 数据根 ~/OmniDesk/库/ 骨架实测存在（工作记录/周报/知识库/概念/方法/inbox + 131 字节索引头），未迁移未覆盖任何既有文件。
+
+**实现质量抽查（文件事实）：**
+
+- memory-agent：只追加/禁重写为硬约束条款；提炼强度按输入形状分档（一句话不硬扩）；去向四选一自定；周报 Report Mode 明确「全文展示→用户确认→才落盘」，同名不覆盖。符合六条定调。
+- knowledge-search：两跳检索写成硬约束（禁 ls/glob/find/整目录读）；无命中如实拒答；逐字引用回 sources 原文；卡片 ≤300 字、frontmatter 带 sources/date、写卡同步索引。符合索引卡+两跳设计。
+
+**两项裁定（留待用户，BUILDER 处理正确未越权）：**
+
+1. anysearch 未绑定：宿主 profile_rules.rs 六项技能白名单是编译期固定清单，含 anysearch 会被整份规则包判非法（BUILDER 以刻意触发测试留证）。选项：A) 下轮解冻 src-tauri/ 扩白名单并全量回归；B) 接受不绑定（websearch 已可用）。
+2. 库根与宿主双根不一致：Skill 写死 ~/OmniDesk/库/，宿主成果根仍是 workspace/artifacts、知识 @ 引用根仍指向 ~/YvanAI/knowledge，且设置无库根字段——模型写入不会自动出现在应用成果列表/引用里。需下轮做库根绑定（设置字段或环境变量）。
+
+**遗留未验证**：真实模型提炼/周报草稿质量；真机 Obsidian CLI（本机无 Obsidian，降级路径为实测路径）；实盘规则包升级（用户需在设置页恢复一次默认规则包，新绑定才生效）；084 界面回归未重跑。
+
+## OD-ARCH-084 终审结论：**通过（附两项遗留限制）**（ARCHITECT，2026-10-25）
+
+- **结论先行：** 用户反馈的三个问题（搜不到时视口不跟随命中词、上下箭头切换不顺、搜索框无法保持焦点）在真实 Tauri 窗口里均已修复；ARCHITECT 独立复跑 `verify_ui_084.py` **21 项全 pass、failures=[]、exit 0**，并逐张目视核对了关键截图。本轮验收通过。
+- **根因（ARCHITECT 用真实窗口探针定位，非采信 BUILDER 自述）：** ①旧实现只记到消息级、滚动目标是整条消息，长消息末尾命中看不见；②同一消息内多处命中共享同一滚动目标，切换是幂等操作；③当前项无独立标识，且箭头按钮抢焦点，键入丢失。三条均在本轮消除。
+- **实现（已读码核对）：** `MarkdownText.tsx` 改为递归文本高亮并输出 `data-search-hit` / `data-search-ordinal`，围栏代码块排除；`HomeChat.tsx` 拆成「计数与活跃项标注」与「滚动与短强调」两个 `useLayoutEffect`，滚动目标是命中词本身（视口 32%、≥24px 安全边），并删除整条消息的 ring；`TopNav.tsx` 三按钮 `onMouseDown` 阻止默认行为、改 `aria-label`、0 命中 disabled；`App.tsx` 对 index 做 clamp。
+- **审查中我退回并要求修复的两项（均已闭环）：**
+  1. **阻塞级：键入正则元字符整窗黑屏。** `escapeRegex` 的替换串写成 `"\\$&"`，JS 里等价于 `$&`，等于没转义；`(`、`[`、`*`、`\\` 会让 `new RegExp` 抛错，React 整棵树卸载。我在 `:135` 复现：亮度 247.4 → 16.3，按 Esc 也不恢复。BUILDER 改为纯 `indexOf` 字面量切分（`splitLiteralMatches`），我另用 node 独立验证 `a.b` 只命字面量、不匹配 `axb`，`(`/`[`/`*`/`\\` 均正常。
+  2. **回归级：未搜索态常驻 35vh 空白。** `chat-scroll` 的 `paddingBottom: "35vh"` 无条件生效，而消息更新会把视口贴到 `scrollHeight`，导致正常对话最后一条下方恒有大片空白。已改为 `searchQuery.trim() ? "35vh" : undefined`，并新增实测断言：未搜索态最后一条消息底边 `y=689` 与输入区顶边 `y=700` 间距 **11px**（< 60px）。
+- **ARCHITECT 独立复跑（`--display :150 --root /tmp/od084-arch4`，21 项全 pass）：** 唯一命中 `bbox [579,404,723,422]`、视口比例 `0.336`、上下净空 164/333px；8 处命中 y 依次 `413/449/486/522/559/595/632/668`（增量 36–37px）；循环 8→1、1→8 正确；0/0 时两箭头 `SENSITIVE/ENABLED` 均为 False；点 AT-SPI 实测按钮 `[831,33,19,19]` 后计数 1/8→2/8，焦点前/后 `FOCUSED` 均 True，键入 `zzz` 使计数归 0/0；两级像素 1138（当前）/7770（其余）、活跃块严格 1 个、无 >150px 竖线；标题/表格/行内代码命中一致（`1/3`）、围栏排除、两目标滚动差 10745；Esc 后高亮 0；键入 `(` 后区域平均亮度 **244.4**、正文可见；键入 `a.b` 计数 `1/1`；特殊字符后 Esc 干净退出。
+- **截图目视核对：** `05-two-level-highlights.png` 当前项饱和琥珀带描边、其余浅琥珀，无竖线；`01-unique-tail-target.png` 长消息尾端命中落在视口内；`06-markdown-target-2.png` 标题与表格命中位置正确；`07-escaped.png` 退出后无高亮。`08-special-paren.png` 键入 `(` 后界面完整。
+- **回归（ARCHITECT 实跑）：** `tsc --noEmit` exit 0；`npm run build` exit 0（仅既有 chunk 体积警告）；`pytest tests -q` **75 passed / 14 subtests**；`cargo test --offline -q --lib` **261 passed / 0 failed**；`verify_ui_082.py` **17/17 pass**（`search_highlight_mark_pixels`=1588）；`verify_ui_083.py` **17/17 pass**。082/083 证据目录已用 `git checkout --` 恢复，未留存覆盖；`git diff --check` 干净，`git status --porcelain runtime/` 为 0 行。
+- **过程问题（已记录，避免复发）：** 我曾与 BUILDER 并行跑 084，两者写同一 `evidence/od-arch-084/facts.json`，出现过一次因文件被另一进程覆盖而产生的假 FAIL（`special_char_esc_restores_clean_state`）。此后改为独占复跑，结论以上面的 21/21 那次为准。并行运行的中间产物不作为验收依据。
+- **未验证事项：** 本轮全部证据来自 Xvfb + 合成数据 + `fake / synthetic-model`，**没有做真实模型端到端实测**（OD-ARCH-080 清单仍未执行）；本轮未提交、未推送、未打标签。
+
+### 遗留限制（不阻断，登记待后续）
+
+1. `verify_ui_082.py` 有两处断言偏松（确认框判据含「确认」兜底、focus 截图只校验文件存在），属既有问题，本轮未改，不影响 084 结论。
+2. `TurnRail.tsx` 的 `PREVIEW_H = 96` 与实际卡高（约 120–130px）仍不一致，属 083 遗留，本轮未触碰。
+
 ## OD-ARCH-083 终审结论：**通过（附两项遗留限制）**（ARCHITECT，2026-10-25）
 
 - **结论先行：** 三条用户可见要求（自有 Logo、融入顶栏、直角预览卡）在真实窗口中达成；验证脚本经两轮返工后，关键断言均有可复核的测量值与阈值，ARCHITECT 独立复跑 **17 项全 pass、failures=[]、exit 0**。本轮验收通过。
@@ -342,6 +622,7 @@
 - **遗留登记：** personaPrefix 探针未命中——待真实模型联调时以模型可见输出侧证；真实窗口流式体验待用户实测。
 
 # ARCHITECT 审查记录
+
 
 ## 2026-10-21 独立复核：OD-ARCH-045（ARCHITECT，047 第 1 步补做）
 
@@ -1908,3 +2189,29 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 2. **多实例并发写风险属实：** 无实例互斥与所有权登记（live/pids 只有 app.pid/vite.pid，且只记宿主）。多个引擎共享 ~/OmniDesk/runtime/dsh-home 时 cost-meter 账本等确实可能并发写——072 验收时已实测到该干扰。
 3. **当前系统现状：** 复核时遗留进程已不在（用户重启过机器或自行清理），但泄漏机制仍在，随时会再累积。
 4. **Luna 提出的六条回收原则全部合理**（只回收自有进程、身份核验防 PID 复用、温和终止优先、保护合法实例、身份不明宁可停启、可重复测试），写进 074 计划。
+## OD-KB-001 P1 独立验收（ARCHITECT，2026-10-26）——通过
+
+**结论：P1 通过，可以开始规划 P2；这不等于批准实施 P2。** 本次只验收 P1「单库根目录与只读访问边界」，未审查其他并行工作区差异，也未读取真实 Vault、正式资料或凭证。HEAD 为 `0d17b1f04f9a9c575643dce855f32db114da516b`；工作区既有暂存、未暂存和未跟踪改动均予保留；`runtime/` 无差异。
+
+**验收要点：**
+
+- 独立的 `knowledge_vault_root` 与 `library_root` 解耦；`OMNIDESK_KNOWLEDGE_ROOT` 仍只影响既有 `library_root`。根准入和后续状态、扫描、读取均在宿主侧重新校验；扫描与读取接口不提供写入能力。
+- 扫描对深度、条目、文件数、明细和单篇正文有界；隐藏/排除目录、符号链接、越界路径、非普通文件和不支持正文格式均有明确拒绝或跳过行为，附件只列元数据。
+- 审计发现 `read_vault_note` 原先只在读取前检查文件大小，检查后文件若增长会令 `fs::read` 无界读取。我将其改为最多读取上限加 1 字节并拒绝超限，随后重跑相关验证；此改动保持 P1 的只读契约，没有扩展功能范围。
+- 设置界面由用户显式选择并手动扫描；对合成 Obsidian 风格目录的扫描前后快照一致，`.obsidian` 内容未被更改，普通 Markdown 根也通过宿主集成测试。
+
+**ARCHITECT 独立运行结果：**
+
+| 检查 | 实际结果 |
+| --- | --- |
+| `cargo test --offline`（经仓库工具链环境脚本加载） | **323 passed / 0 failed**：库 297、分类 2、能力 1、宿主集成 13 + 知识库宿主 6、任务壳 3、线程存储 1 |
+| `cd desktop && npx tsc --noEmit` | exit 0 |
+| `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| `verify_knowledge_vault_p1.py --display :129` | **14/14 通过**；1201 个合成文件的三次扫描中位数 7.962 ms |
+| `git diff --check`（知识库相关已跟踪差异） | 通过 |
+| `runtime/` 工作区差异 | 空 |
+
+**不阻断本阶段的未验证边界：** 没有在 Windows/macOS、网络盘或大小写不敏感文件系统上测试；没有压力测试超大规模 Vault；没有实测扫描与外部修改/删除并发发生时的完整一致性行为。上述场景不改变当前单机 Linux 合成目录的通过证据，后续阶段应继续以冲突检测和可恢复行为为边界，不得默认为跨平台已验证。
+
+**阶段决定：P1 验收通过。** P2 仍需单独小计划并经用户批准后方可实施；本结论只开放 P2 规划。
+

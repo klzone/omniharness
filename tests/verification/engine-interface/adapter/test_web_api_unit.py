@@ -14,6 +14,9 @@ import time
 import unittest
 import socket
 import threading
+import shutil
+import tempfile
+from pathlib import Path
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
 
@@ -21,6 +24,7 @@ from omnidesk_engine import TaskState
 from omnidesk_engine.contract import EventType
 from omnidesk_engine.task_core import _TaskRecord
 from omnidesk_engine.web_api_adapter import WebApiAdapter
+from omnidesk_engine.web_api_adapter import _ApprovalChannel
 
 
 def make_adapter(tmp_state="/tmp/od048-unit-state", **kwargs):
@@ -533,6 +537,229 @@ class EngineAskTests(unittest.TestCase):
         self.adapter._rpc = lambda method, args, timeout, **kw: calls.append(method)
         self.adapter._on_engine_ask(self.ask_frame())
         self.assertEqual(calls, [])
+
+
+class UserQuestionTests(unittest.TestCase):
+    """OD-ARCH-088：结构化提问登记、回答帧与清理（纯单元，合成文本）。
+
+    只走 `_ApprovalChannel._on_frame` 的公开分发路径；`_rpc` 用替身，不启动引擎。
+    """
+
+    def setUp(self):
+        self.state_dir = tempfile.mkdtemp(prefix="od088-unit-")
+        self.adapter = make_adapter(tmp_state=self.state_dir)
+        self.record = make_record()
+        self.record.engine_session_id = "sess-q"
+        self.adapter._sessions["sess-q"] = self.record
+        self.adapter._tasks[self.record.omni_task_id] = self.record
+        self.channel = _ApprovalChannel(self.adapter)
+        self.rpc_calls = []
+        self.adapter._rpc = lambda method, args, timeout, **kw: self.rpc_calls.append(
+            (method, dict(args))
+        )
+        self.adapter._ensure_approval_channel = lambda: type(
+            "C", (), {"ensure_started": lambda self_: "client-q"}
+        )()
+
+    def tearDown(self):
+        shutil.rmtree(self.state_dir, ignore_errors=True)
+
+    def question_frame(self, *, multi=None, options=None, event_id="q-1", agent_id="sess-q"):
+        question = {
+            "id": "q-1-a",
+            "question": "合成测试：这一步是否继续？",
+            "detail": "合成详情，不含真实材料",
+            "header": "合成标题",
+            "options": options if options is not None else [
+                {"label": "继续", "description": "合成说明"},
+                {"label": "停止"},
+            ],
+        }
+        if multi is not None:
+            question[multi[0]] = multi[1]
+        return {
+            "type": "waterfall",
+            "event": "user-questions/request",
+            "eventId": event_id,
+            "agentId": agent_id,
+            "request": {
+                "questions": [question],
+                "wait": {"callId": "call-synth-q", "timed": True},
+            },
+        }
+
+    def kinds(self):
+        return [e.payload.get("kind") for e in self.record.events]
+
+    def test_frame_becomes_question_request_not_engine_ask(self):
+        self.channel._on_frame(self.question_frame())
+        self.assertEqual(self.kinds(), ["question_request"])
+        payload = self.record.events[-1].payload
+        self.assertEqual(payload["question_id"], "q-1")
+        self.assertEqual(payload["call_id"], "call-synth-q")
+        self.assertTrue(payload["answerable"])
+        question = payload["questions"][0]
+        self.assertEqual(question["id"], "q-1-a")
+        self.assertEqual(question["multi_select"], False)
+        self.assertEqual(question["options"], [
+            {"label": "继续", "description": "合成说明"}, {"label": "停止"},
+        ])
+        self.assertNotIn("engine_ask", self.kinds())
+
+    def test_multi_select_accepts_wire_and_projected_spellings(self):
+        for spelling, value in (("multi_select", True), ("multiSelect", True),
+                                ("multi_select", False), ("multiSelect", False)):
+            with self.subTest(spelling=spelling, value=value):
+                adapter = make_adapter(tmp_state=None)
+                adapter._sessions["sess-q"] = self.record
+                channel = _ApprovalChannel(adapter)
+                before = len(self.record.events)
+                channel._on_frame(self.question_frame(multi=(spelling, value),
+                                                      event_id="q-" + spelling + str(value)))
+                payload = self.record.events[before].payload
+                self.assertEqual(payload["questions"][0]["multi_select"], value)
+
+    def test_payload_text_not_written_to_state_file(self):
+        self.channel._on_frame(self.question_frame())
+        path = Path(self.state_dir) / (self.record.omni_task_id + ".json")
+        saved = path.read_text(encoding="utf-8")
+        self.assertNotIn("合成测试：这一步是否继续？", saved)
+        self.assertNotIn("合成详情", saved)
+        self.assertNotIn("继续", saved)
+
+    def test_duplicate_request_is_ignored(self):
+        self.channel._on_frame(self.question_frame())
+        before = len(self.record.events)
+        self.channel._on_frame(self.question_frame())
+        self.assertEqual(len(self.record.events), before)
+        self.assertEqual(len(self.adapter._questions_by_task[self.record.omni_task_id]), 1)
+
+    def test_unknown_session_is_indexed_but_not_emitted(self):
+        self.channel._on_frame(self.question_frame(agent_id="other"))
+        self.assertEqual(len(self.record.events), 0)
+        self.assertIn("q-1", self.adapter._question_index)
+
+    def test_answer_frame_uses_shared_client_and_answer_value(self):
+        self.channel._on_frame(self.question_frame())
+        receipt = self.adapter.respond_question(
+            self.record.omni_task_id, "q-1", [{"id": "q-1-a", "selected": ["继续"],
+                                               "custom": "合成补充"}]
+        )
+        method, args = self.rpc_calls[-1]
+        self.assertEqual(method, "$events/result")
+        self.assertEqual(args["clientId"], "client-q")
+        self.assertEqual(args["eventId"], "q-1")
+        self.assertEqual(args["outcome"], {"kind": "result", "value": {"answers": [
+            {"id": "q-1-a", "selected": ["继续"], "custom": "合成补充"},
+        ]}})
+        self.assertEqual(receipt["pending_questions"], 0)
+        self.assertIn("question_answered", self.kinds())
+        answered = [e for e in self.record.events if e.payload.get("kind") == "question_answered"]
+        self.assertNotIn("合成补充", str(answered[0].payload))
+        self.assertNotIn("合成补充", (Path(self.state_dir) /
+                                      (self.record.omni_task_id + ".json")).read_text("utf-8"))
+
+    def test_multi_select_allows_multiple_values(self):
+        self.channel._on_frame(self.question_frame(multi=("multi_select", True)))
+        self.rpc_calls.clear()
+        self.adapter.respond_question(
+            self.record.omni_task_id, "q-1",
+            [{"id": "q-1-a", "selected": ["继续", "停止"]}],
+        )
+        self.assertEqual(
+            self.rpc_calls[-1][1]["outcome"]["value"]["answers"][0]["selected"],
+            ["继续", "停止"],
+        )
+
+    def assert_rejected(self, answers, *, fragment=""):
+        with self.assertRaises(Exception) as ctx:
+            self.adapter.respond_question(self.record.omni_task_id, "q-1", answers)
+        self.assertIn(fragment, str(ctx.exception))
+        self.assertEqual(self.rpc_calls, [], "非法答案不得发出 $events/result")
+        self.assertIn("q-1", self.adapter._question_index, "失败后必须保留待答项")
+
+    def test_invalid_answers_are_rejected_and_kept_pending(self):
+        self.channel._on_frame(self.question_frame())
+        cases = [
+            ([], "exactly once"),
+            ([{"id": "q-1-a", "selected": ["继续"]},
+              {"id": "q-1-a", "selected": ["继续"]}], "repeated"),
+            ([{"id": "other", "selected": ["继续"]}], "does not belong"),
+            ([{"id": "q-1-a", "selected": ["不存在的选项"]}], "not one of"),
+            ([{"id": "q-1-a", "selected": ["继续", "停止"]}], "at most one"),
+            ([{"id": "q-1-a", "selected": []}], "needs a selected option"),
+            ([{"id": "q-1-a", "selected": "继续"}], "list of strings"),
+            ([{"id": "q-1-a", "selected": ["继续"], "extra": 1}], "unknown fields"),
+            ([{"id": "q-1-a", "selected": ["继续"], "custom": "x" * 4001}],
+             "custom answer is too long"),
+            ("not-a-list", "must be a list"),
+        ]
+        for answers, fragment in cases:
+            with self.subTest(fragment=fragment):
+                self.assert_rejected(answers, fragment=fragment)
+
+    def test_oversized_question_is_registered_but_unanswerable(self):
+        frame = self.question_frame()
+        frame["request"]["questions"][0]["question"] = "合" * 2001
+        self.channel._on_frame(frame)
+        payload = self.record.events[-1].payload
+        self.assertFalse(payload["answerable"])
+        self.assertIn("question_too_long", payload["violations"])
+        self.assertEqual(len(payload["questions"][0]["question"]), 2001, "不得静默截断")
+        self.assert_rejected([{"id": "q-1-a", "selected": ["继续"]}],
+                             fragment="exceeds answerable limits")
+
+    def test_option_count_and_label_limits(self):
+        for options, violation in (
+            ([{"label": "o" + str(i)} for i in range(13)], "too_many_options"),
+            ([{"label": "合" * 201}], "option_label_too_long"),
+        ):
+            with self.subTest(violation=violation):
+                self.record.events.clear()
+                self.channel._on_frame(self.question_frame(
+                    options=options, event_id="q-" + violation))
+                payload = self.record.events[-1].payload
+                self.assertIn(violation, payload["violations"])
+                self.assertFalse(payload["answerable"])
+
+    def test_cancel_frame_clears_question_and_emits_closed(self):
+        self.channel._on_frame(self.question_frame())
+        self.channel._on_frame({"type": "cancel", "eventId": "q-1"})
+        self.assertNotIn("q-1", self.adapter._question_index)
+        self.assertEqual(self.adapter._questions_by_task.get(self.record.omni_task_id), {})
+        self.assertEqual(self.record.events[-1].payload["kind"], "question_closed")
+        self.assertEqual(self.record.events[-1].payload["reason"], "cancelled")
+
+    def test_terminal_settle_closes_pending_questions(self):
+        self.channel._on_frame(self.question_frame())
+        self.adapter._settle(self.record, TaskState.CANCELLED, "engine_terminal")
+        self.assertNotIn("q-1", self.adapter._question_index)
+        self.assertEqual(self.adapter._questions_by_task.get(self.record.omni_task_id), None)
+        closed = [e for e in self.record.events
+                  if e.payload.get("kind") == "question_closed"]
+        self.assertEqual(closed[-1].payload["reason"], "task_terminal")
+        with self.assertRaises(Exception):
+            self.adapter.respond_question(self.record.omni_task_id, "q-1",
+                                          [{"id": "q-1-a", "selected": ["继续"]}])
+        self.assertEqual(self.rpc_calls, [])
+
+    def test_failed_rpc_keeps_pending(self):
+        self.channel._on_frame(self.question_frame())
+
+        def boom(method, args, timeout, **kw):
+            raise RuntimeError("synthetic rpc down")
+
+        self.adapter._rpc = boom
+        with self.assertRaises(RuntimeError):
+            self.adapter.respond_question(self.record.omni_task_id, "q-1",
+                                          [{"id": "q-1-a", "selected": ["继续"]}])
+        self.assertIn("q-1", self.adapter._question_index)
+        self.assertNotIn("question_answered", self.kinds())
+
+    def test_other_waterfall_still_reported_as_engine_ask(self):
+        self.channel._on_frame({"type": "waterfall", "event": "hook/question",
+                                "eventId": "ask-1", "agentId": "sess-q"})
+        self.assertEqual(self.kinds(), ["engine_ask"])
 
 
 class TimeoutPolicyTests(unittest.TestCase):

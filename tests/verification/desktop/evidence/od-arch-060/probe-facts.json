@@ -1,0 +1,31 @@
+{
+  "plan": "OD-ARCH-060",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实",
+  "root": "/tmp/od060-verify",
+  "steps": {
+    "scene_weekly": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-weekly.png",
+      "dock_dy": 400
+    },
+    "scene_writing": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-writing.png",
+      "dock_dy": 450
+    },
+    "scene_project": {
+      "screenshot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-060/01-scene-project.png",
+      "dock_dy": 500
+    }
+  },
+  "artifacts_seeded": [
+    "offline-weekly-report-20261020-090000.md",
+    "offline-weekly-report-20261021-140000.md",
+    "offline-material-writing-20261022-100000.md",
+    "offline-project-management-20261019-160000.md",
+    "offline-project-management-20250105-080000.md"
+  ],
+  "pending_seeded": [
+    "verify060-pending",
+    "verify060-expired"
+  ],
+  "app_alive_at_end": true
+}

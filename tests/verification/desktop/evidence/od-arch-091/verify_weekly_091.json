@@ -1,0 +1,340 @@
+{
+  "cases": [
+    {
+      "name": "cmd_archive_registered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "cmd_read_report_registered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rs_has_list_weeks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rs_has_list_reports",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rs_has_traversal_guard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chips_removed",
+      "ok": true,
+      "detail": "old chips block should be gone"
+    },
+    {
+      "name": "chips_token_removed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "timeline_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "status_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "weekly_no_timeline_tab",
+      "ok": true,
+      "detail": "weekly tab should be gone in 092"
+    },
+    {
+      "name": "weekly_two_columns",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_threads_two_columns",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "progress_tab_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifacts_tab_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "threads_section_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "announcement_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prefill_slot_added",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prefill_returned",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_chat_initial_input",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_chat_prefills_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_canvas_passes_prompt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_archive_list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_read_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "weekTimeline_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "week_header",
+      "ok": true,
+      "detail": "2026-W44"
+    },
+    {
+      "name": "day_count_merges_suffix",
+      "ok": true,
+      "detail": "2026-10-26,2026-10-27"
+    },
+    {
+      "name": "entry_count",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "name": "entry_text_exact",
+      "ok": true,
+      "detail": "上午在合成会场听课，主题是合成标记甲"
+    },
+    {
+      "name": "entry_destination",
+      "ok": true,
+      "detail": "本周报引用"
+    },
+    {
+      "name": "continued_same_day",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "continued_order_kept",
+      "ok": true,
+      "detail": "合成标记乙：把材料交到合成窗口 | 合成标记丙"
+    },
+    {
+      "name": "continued_flag",
+      "ok": true,
+      "detail": "true"
+    },
+    {
+      "name": "first_day_not_continued",
+      "ok": true,
+      "detail": "false"
+    },
+    {
+      "name": "no_raw_when_clean",
+      "ok": true,
+      "detail": "[[],[]]"
+    },
+    {
+      "name": "multiline_single_entry",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "multiline_text",
+      "ok": true,
+      "detail": "第一行合成文本\n第二行合成文本"
+    },
+    {
+      "name": "multiline_destination",
+      "ok": true,
+      "detail": "inbox"
+    },
+    {
+      "name": "preamble_kept",
+      "ok": true,
+      "detail": "[\"这是一行没有日期归属的合成文本\"]"
+    },
+    {
+      "name": "bad_line_kept_in_day",
+      "ok": true,
+      "detail": "[\"没有前缀的一行合成文本\",\"### 更深的标题也认不出\"]"
+    },
+    {
+      "name": "bad_line_text_intact",
+      "ok": true,
+      "detail": "没有前缀的一行合成文本"
+    },
+    {
+      "name": "entry_count_zero_when_broken",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "empty_ok",
+      "ok": true,
+      "detail": "{\"week\":null,\"days\":[],\"preamble\":[],\"entryCount\":0}"
+    },
+    {
+      "name": "empty_day_ok",
+      "ok": true,
+      "detail": "[{\"date\":\"2026-10-26\",\"entries\":[],\"raw\":[],\"continued\":false}]"
+    },
+    {
+      "name": "week_dates_len",
+      "ok": true,
+      "detail": "7"
+    },
+    {
+      "name": "week_start_monday",
+      "ok": true,
+      "detail": "2026-10-26"
+    },
+    {
+      "name": "week_end_sunday",
+      "ok": true,
+      "detail": "2026-11-01"
+    },
+    {
+      "name": "week01_monday",
+      "ok": true,
+      "detail": "2025-12-29"
+    },
+    {
+      "name": "bad_week_label",
+      "ok": true,
+      "detail": "should be empty"
+    },
+    {
+      "name": "bad_week_shape",
+      "ok": true,
+      "detail": "should be empty"
+    },
+    {
+      "name": "weekday_label",
+      "ok": true,
+      "detail": "周一"
+    },
+    {
+      "name": "weekday_label_sunday",
+      "ok": true,
+      "detail": "周日"
+    },
+    {
+      "name": "short_date",
+      "ok": true,
+      "detail": "10/26"
+    },
+    {
+      "name": "timeline_has_seven_plus",
+      "ok": true,
+      "detail": "8"
+    },
+    {
+      "name": "timeline_placeholder_days",
+      "ok": true,
+      "detail": "[1,0,0,0,0,0,0]"
+    },
+    {
+      "name": "out_of_week_kept",
+      "ok": true,
+      "detail": "true"
+    },
+    {
+      "name": "out_of_week_has_entry",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "empty_timeline_true",
+      "ok": true,
+      "detail": "no days = empty"
+    },
+    {
+      "name": "empty_timeline_false",
+      "ok": true,
+      "detail": "has days with entries"
+    },
+    {
+      "name": "state_missing",
+      "ok": true,
+      "detail": "empty -> missing"
+    },
+    {
+      "name": "state_draft",
+      "ok": true,
+      "detail": "draft"
+    },
+    {
+      "name": "state_draft_files",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "state_archived",
+      "ok": true,
+      "detail": "past week"
+    },
+    {
+      "name": "state_dup_count",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "state_ignores_other_week",
+      "ok": true,
+      "detail": "should be missing"
+    },
+    {
+      "name": "week_month",
+      "ok": true,
+      "detail": "2026-10"
+    },
+    {
+      "name": "week_month_bad",
+      "ok": true,
+      "detail": "null"
+    }
+  ],
+  "failed": 0
+}

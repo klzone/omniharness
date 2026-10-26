@@ -1,0 +1,157 @@
+{
+  "plan": "OD-ARCH-086",
+  "verified_at": "2026-10-26 14:56:06",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 隔离设置文件事实",
+  "root": "/tmp/od086-ui",
+  "old_library": "/tmp/od086-ui/library-old",
+  "new_library": "/tmp/od086-ui/library-new",
+  "checks": {
+    "settings_entry_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "library_tab_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "library_card_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "shows_effective_old_root": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "展开后显示当前生效库根"
+    },
+    "shows_source_label": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "来源标为已保存的用户设置"
+    },
+    "library_input_visible": {
+      "pass": true,
+      "measured": 1,
+      "threshold": ">=1",
+      "desc": ""
+    },
+    "input_only_changed": {
+      "pass": true,
+      "measured": 0.00337,
+      "threshold": "< 0.01",
+      "desc": "键入没有造成整页选中/重排"
+    },
+    "input_typing_changed_pixels": {
+      "pass": true,
+      "measured": 0.00337,
+      "threshold": "> 0.0002",
+      "desc": "输入框内容确实变化"
+    },
+    "two_save_buttons_found": {
+      "pass": true,
+      "measured": 2,
+      "threshold": ">=2",
+      "desc": ""
+    },
+    "library_save_button_in_viewport": {
+      "pass": true,
+      "measured": {
+        "y": 740,
+        "h": 33
+      },
+      "threshold": "y+h <= 900",
+      "desc": ""
+    },
+    "saved_root_shown": {
+      "pass": true,
+      "measured": {
+        "state_hint": true,
+        "alerts": []
+      },
+      "threshold": true,
+      "desc": "保存后状态行显示新库根"
+    },
+    "save_note_scope_truthful_static": {
+      "pass": true,
+      "measured": "静态源码文案口径一致（截图 02 可视核对）",
+      "threshold": true,
+      "desc": "提示只声称 @ 引用范围，不虚称技能写入跟随"
+    },
+    "settings_persisted_library_root": {
+      "pass": true,
+      "measured": "/tmp/od086-ui/library-new",
+      "threshold": "/tmp/od086-ui/library-new",
+      "desc": ""
+    },
+    "settings_preserve_model_permissions": {
+      "pass": true,
+      "measured": {
+        "local": true,
+        "private": false,
+        "public": false
+      },
+      "threshold": "local=true 保留",
+      "desc": ""
+    },
+    "new_root_created": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "write_probe_cleaned": {
+      "pass": true,
+      "measured": [],
+      "threshold": "[]",
+      "desc": ""
+    },
+    "old_root_files_untouched": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "旧库不迁移、不覆盖、不删除"
+    },
+    "old_root_still_exists": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "home_entry_visible": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": ""
+    },
+    "home_input_visible": {
+      "pass": true,
+      "measured": 1,
+      "threshold": 1,
+      "desc": ""
+    },
+    "mention_lists_new_library_file": {
+      "pass": true,
+      "measured": true,
+      "threshold": true,
+      "desc": "@ 引用来自新库根"
+    },
+    "mention_excludes_old_library_file": {
+      "pass": true,
+      "measured": false,
+      "threshold": false,
+      "desc": "切换后不再列旧库根"
+    }
+  },
+  "failures": [],
+  "input_pixel_diff": {
+    "cleared_ratio": 0.001235,
+    "typed_ratio": 0.00337
+  }
+}

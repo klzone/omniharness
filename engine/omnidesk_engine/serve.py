@@ -469,6 +469,31 @@ class EngineService:
             return
         self._result(req_id, dict(receipt))
 
+    def m_question_answer(self, req_id: Any, params: Mapping[str, Any]) -> None:
+        """OD-ARCH-088：回传用户对结构化提问的答案（复用 $events/result）。"""
+        adapter = self._require_adapter(req_id)
+        if adapter is None:
+            return
+        answers = params.get("answers")
+        if not isinstance(answers, list):
+            self._error(req_id, INVALID_PARAMS, "answers must be a list")
+            return
+        responder = getattr(adapter, "respond_question", None)
+        if responder is None:
+            self._error(req_id, METHOD_NOT_FOUND,
+                        "active engine does not support user questions")
+            return
+        try:
+            receipt = responder(
+                str(params.get("omni_task_id") or ""),
+                str(params.get("question_id") or ""),
+                answers,
+            )
+        except EngineError as error:
+            self._fail(req_id, error)
+            return
+        self._result(req_id, dict(receipt))
+
     def m_get_task_result(self, req_id: Any, params: Mapping[str, Any]) -> None:
         adapter = self._require_adapter(req_id)
         if adapter is None:
@@ -614,6 +639,7 @@ class EngineService:
         "omni.stream_events": "m_stream_events",
         "omni.cancel_task": "m_cancel_task",
         "omni.approval_respond": "m_approval_respond",
+        "omni.question_answer": "m_question_answer",
         "omni.get_task_result": "m_get_task_result",
         "omni.get_task_result_text": "m_get_task_result_text",
         "omni.recover_session": "m_recover_session",

@@ -2445,16 +2445,21 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
 // ---------------------------------------------------------------------------
 // 对话附件与 @ 引用（OD-ARCH-077 S1）
 //
-// 边界：只允许**两个**来源根——当前成果根与个人知识库根（默认 ~/YvanAI/knowledge，
+// 边界：只允许**两个**来源根——当前成果根与库根（默认 ~/OmniDesk/库，
 // 可用 OMNIDESK_KNOWLEDGE_ROOT 覆盖）。列目录有深度、条数与扩展名上限；
 // 读取复用 read_material 的全部校验（绝对路径、禁区片段、仓库外、普通文件、
 // 白名单扩展名、大小上限、UTF-8）。这里不新造第二套读取规则。
 // ---------------------------------------------------------------------------
 
-/// 知识库根的默认位置。
+/// 知识库根的默认位置（相对 $HOME）：库根是同一目录。
+pub const DEFAULT_LIBRARY_SUBDIR: &str = "OmniDesk/库";
+/// 库根/知识库根的环境变量覆盖名（优先级最高）。
+pub const KNOWLEDGE_ROOT_ENV: &str = "OMNIDESK_KNOWLEDGE_ROOT";
+
+/// 知识库根的默认位置（环境变量 > 默认库根）。
 pub fn knowledge_root() -> Result<PathBuf, String> {
     knowledge_root_from(
-        std::env::var_os("OMNIDESK_KNOWLEDGE_ROOT").as_deref(),
+        std::env::var_os(KNOWLEDGE_ROOT_ENV).as_deref(),
         std::env::var_os("HOME").as_deref(),
     )
 }
@@ -2473,17 +2478,17 @@ fn knowledge_root_from(
             return Ok(path);
         }
     }
-    let home = home.ok_or_else(|| "环境变量 HOME 缺失，无法确定默认知识库根。".to_string())?;
-    Ok(PathBuf::from(home).join("YvanAI").join("knowledge"))
+    let home = home.ok_or_else(|| "环境变量 HOME 缺失，无法确定默认库根。".to_string())?;
+    Ok(PathBuf::from(home).join(DEFAULT_LIBRARY_SUBDIR))
 }
 
-/// 允许作为 @ 引用来源的根：当前成果根 + 知识库根。
-/// 不存在的根直接略过（不创建目录，不写入）。
-pub fn reference_roots(artifact_root: &Path) -> Vec<PathBuf> {
+/// 允许作为 @ 引用来源的根：当前成果根 + 库根（去重，顺序稳定）。
+/// 库根由调用方解析（环境变量 > 用户设置 > 默认）；不创建目录，不写入。
+pub fn reference_roots(artifact_root: &Path, library_root: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = vec![artifact_root.to_path_buf()];
-    if let Ok(knowledge) = knowledge_root() {
-        if knowledge != artifact_root {
-            roots.push(knowledge);
+    if let Some(library) = library_root {
+        if library != artifact_root && !roots.iter().any(|p| p == library) {
+            roots.push(library.to_path_buf());
         }
     }
     roots
@@ -2496,7 +2501,7 @@ pub struct ReferenceCandidate {
     pub file_name: String,
     pub bytes: u64,
     pub extension: String,
-    /// 该文件属于哪个来源根（展示用，便于用户分清成果与知识库）。
+    /// 该文件属于哪个来源根（展示用，便于用户分清成果与库根）。
     pub source_root: String,
 }
 
@@ -4446,7 +4451,7 @@ mod material_tests {
         assert_eq!(overridden, PathBuf::from("/tmp/od-kb"));
 
         let default = knowledge_root_from(None, Some(os("/home/x"))).unwrap();
-        assert_eq!(default, PathBuf::from("/home/x/YvanAI/knowledge"));
+        assert_eq!(default, PathBuf::from("/home/x/OmniDesk/库"));
 
         let err = knowledge_root_from(Some(os("relative/kb")), Some(os("/home/x"))).unwrap_err();
         assert!(err.contains("绝对路径"), "{}", err);
@@ -4456,15 +4461,41 @@ mod material_tests {
     }
 
     #[test]
-    fn reference_roots_contain_artifact_and_knowledge_once() {
+    fn reference_roots_contain_artifact_and_library_once() {
         let artifact = PathBuf::from("/tmp/od-artifacts");
-        let roots = reference_roots(&artifact);
+        let library = PathBuf::from("/tmp/od-library");
+        let roots = reference_roots(&artifact, Some(&library));
         assert!(roots.contains(&artifact));
-        // 不依赖真实 HOME：只要存在的知识库根不重复即可。
+        assert!(roots.contains(&library));
+        // 库根与成果根相同时只保留一份。
+        let same = reference_roots(&artifact, Some(&artifact));
+        assert_eq!(same, vec![artifact.clone()]);
         let mut unique = roots.clone();
         unique.sort();
         unique.dedup();
         assert_eq!(unique.len(), roots.len(), "允许根不应重复：{:?}", roots);
+    }
+
+    /// OD-ARCH-086：库根内的文件必须出现在 @ 引用列表中，并标明来源根。
+    #[test]
+    fn library_root_files_are_listed_as_references() {
+        let base = material_dir("library_ref");
+        let artifact = base.join("artifacts");
+        let library = base.join("library");
+        fs::create_dir_all(artifact.join("out")).unwrap();
+        fs::create_dir_all(library.join("知识库")).unwrap();
+        fs::write(artifact.join("out/成果.md"), "合成成果").unwrap();
+        fs::write(library.join("知识库/索引.md"), "合成索引").unwrap();
+
+        let roots = reference_roots(&artifact, Some(&library));
+        let items = list_reference_files(&roots, None, 50).unwrap();
+        let names: Vec<&str> = items.iter().map(|i| i.file_name.as_str()).collect();
+        assert!(names.contains(&"成果.md"), "成果应可引用：{:?}", names);
+        assert!(names.contains(&"索引.md"), "库根文件应可引用：{:?}", names);
+        let card = items.iter().find(|i| i.file_name == "索引.md").unwrap();
+        assert_eq!(PathBuf::from(&card.source_root), library.canonicalize().unwrap());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

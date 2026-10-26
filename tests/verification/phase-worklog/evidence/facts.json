@@ -1,0 +1,638 @@
+{
+  "task": "OD-ARCH-085",
+  "generated_at": "2026-10-26T00:55:09",
+  "isolation": "全部数据根为 /tmp 一次性副本，未读写 ~/OmniDesk 真实数据",
+  "cases_total": 122,
+  "cases_passed": 122,
+  "cases_failed": 0,
+  "result": "pass",
+  "repo_scope": {
+    "runtime": [],
+    "frozen_backend": [],
+    "desktop_src": [
+      "desktop/src/App.tsx",
+      "desktop/src/SettingsPanel.tsx",
+      "desktop/src/api.ts",
+      "desktop/src/conversationPrompt.ts",
+      "desktop/src/markdown.css",
+      "desktop/src/shell/HomeChat.tsx",
+      "desktop/src/shell/MarkdownText.tsx",
+      "desktop/src/shell/QuestionCard.tsx",
+      "desktop/src/shell/TopNav.tsx",
+      "desktop/src/types.ts",
+      "desktop/src/workIntent.ts"
+    ]
+  },
+  "cases": [
+    {
+      "name": "ma_mentions_iso_week_file",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_forbids_rewrite",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_append_only_stated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_destinations_all_four",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_no_hard_expand",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_discussion_shape",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_long_text_points",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_report_confirm_gate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_report_naming",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_report_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_no_overwrite_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_has_no_report_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_notes_report_moved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_index_first",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_two_hops",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_forbids_dir_scan",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_one_or_two_cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_card_300",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_frontmatter",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_wikilink",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_pending_verify_tag",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_dedupe_before_write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_index_sync_after_write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_obsidian_two_paths",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ks_one_card_one_concept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "memory-agent_fits_injection_budget",
+      "ok": true,
+      "detail": "1432 字符"
+    },
+    {
+      "name": "memory-report_fits_injection_budget",
+      "ok": true,
+      "detail": "988 字符"
+    },
+    {
+      "name": "knowledge-search_fits_injection_budget",
+      "ok": true,
+      "detail": "2133 字符"
+    },
+    {
+      "name": "one_liner_file_is_weekly",
+      "ok": true,
+      "detail": "2026-W43.md"
+    },
+    {
+      "name": "one_liner_text_verbatim",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one_liner_single_bullet",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "one_liner_has_no_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one_liner_has_destination",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one_liner_rejects_expansion",
+      "ok": true,
+      "detail": "一句话记录被扩写：'下午跟三组核对了材料清单，还差两份。，体现了扎实的工作作风，为下一步打牢基础。' 与原始句子不一致"
+    },
+    {
+      "name": "entry_requires_destination",
+      "ok": true,
+      "detail": "条目缺少合法去向（本周报引用/知识卡/inbox/归档）：''"
+    },
+    {
+      "name": "entry_rejects_bad_destination",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_same_file",
+      "ok": true,
+      "detail": "2026-W44.md"
+    },
+    {
+      "name": "append_keeps_prefix_bytes",
+      "ok": true,
+      "detail": "87 -> 165"
+    },
+    {
+      "name": "append_only_grew",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_old_digest_prefix_stable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_two_date_sections",
+      "ok": true,
+      "detail": "## 2026-10-26\n\n- **事**：上午审了两份表格。\n  **去向**：本周报引用\n\n## 2026-10-27\n\n- **事**：下午对接了系统方。\n  **去向**：归档\n\n"
+    },
+    {
+      "name": "append_third_time_prefix",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_same_day_marks_continuation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_dates_not_duplicated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_entries_all_present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "discussion_has_question",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "discussion_has_conclusion",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "discussion_has_destination",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "discussion_is_compact",
+      "ok": true,
+      "detail": "6 行"
+    },
+    {
+      "name": "discussion_drops_procedure",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "discussion_requires_conclusion",
+      "ok": true,
+      "detail": "多轮讨论必须提炼「问题 → 结论」两项"
+    },
+    {
+      "name": "long_text_keeps_numbers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "long_text_is_shorter",
+      "ok": true,
+      "detail": "47 vs 167"
+    },
+    {
+      "name": "long_text_no_verbatim_copy",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "long_text_preserves_deadline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "long_text_rejects_too_many_points",
+      "ok": true,
+      "detail": "长文只记要点，条目超过 6 条要点"
+    },
+    {
+      "name": "long_text_rejects_verbatim_paragraph",
+      "ok": true,
+      "detail": "长文要点过长（>60 字），疑似复述原文：这次检查工作覆盖面广、组织严密、推进有序"
+    },
+    {
+      "name": "report_draft_has_all_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_draft_only_referenced_items",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_draft_excludes_other_destinations",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_draft_includes_discussion",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_draft_writes_nothing",
+      "ok": true,
+      "detail": "[] -> []"
+    },
+    {
+      "name": "report_unconfirmed_not_written",
+      "ok": true,
+      "detail": "{'written': False, 'reason': '用户未确认，未落盘', 'path': None}"
+    },
+    {
+      "name": "report_dir_still_empty_after_reject",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "report_written_after_confirm",
+      "ok": true,
+      "detail": "{'written': True, 'path': '/tmp/od085-report-b_2a96ff/周报/2026-W43-周报.md', 'name': '2026-W43-周报.md'}"
+    },
+    {
+      "name": "report_name_fixed_rule",
+      "ok": true,
+      "detail": "2026-W43-周报.md"
+    },
+    {
+      "name": "report_in_reports_dir",
+      "ok": true,
+      "detail": "/tmp/od085-report-b_2a96ff/周报"
+    },
+    {
+      "name": "report_content_matches_draft",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_no_overwrite_second_write",
+      "ok": true,
+      "detail": "2026-W43-周报-2.md"
+    },
+    {
+      "name": "report_first_file_intact",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_created",
+      "ok": true,
+      "detail": "created"
+    },
+    {
+      "name": "card_file_exists",
+      "ok": true,
+      "detail": "/tmp/od085-card-vdo0vgkq/知识库/概念/专项检查频次.md"
+    },
+    {
+      "name": "card_dedupe_same_title",
+      "ok": true,
+      "detail": "updated"
+    },
+    {
+      "name": "card_dedupe_keeps_one_file",
+      "ok": true,
+      "detail": "['专项检查频次.md']"
+    },
+    {
+      "name": "index_single_row_after_dedupe",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "index_row_updated_summary",
+      "ok": true,
+      "detail": "一类单位每季度不少于一次（二类每半年）。"
+    },
+    {
+      "name": "card_dedupe_same_summary",
+      "ok": true,
+      "detail": "updated"
+    },
+    {
+      "name": "card_count_still_one",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index_grew_with_new_card",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "index_has_both_kinds",
+      "ok": true,
+      "detail": "['概念/专项检查频次.md', '方法/专项检查方式.md']"
+    },
+    {
+      "name": "card_has_wikilinks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index_matches_cards",
+      "ok": true,
+      "detail": "2 张卡与索引一致"
+    },
+    {
+      "name": "index_one_line_per_card",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_has_frontmatter",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_has_sources",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_body_within_300",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_rejects_over_300",
+      "ok": true,
+      "detail": "卡片正文 301 字超过 300 字上限，说明一张卡装了两个概念"
+    },
+    {
+      "name": "card_rejects_long_summary",
+      "ok": true,
+      "detail": "索引摘要超过 40 字，会撑大第一步读取成本"
+    },
+    {
+      "name": "index_detects_orphan_card",
+      "ok": true,
+      "detail": "索引多出 []，文件多出 ['概念/未登记卡.md']"
+    },
+    {
+      "name": "index_clean_after_orphan_removed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search_hits_expected_card",
+      "ok": true,
+      "detail": "['专项检查频次', '专项检查方式']"
+    },
+    {
+      "name": "search_max_two_cards",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "search_first_read_is_index",
+      "ok": true,
+      "detail": "['索引.md', '专项检查频次.md', '专项检查方式.md']"
+    },
+    {
+      "name": "search_read_count_equals_hits_plus_index",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "name": "search_no_dir_scan",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "search_loads_body",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search_miss_returns_empty",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "search_miss_no_dir_scan",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "search_miss_only_read_index",
+      "ok": true,
+      "detail": "['索引.md']"
+    },
+    {
+      "name": "search_by_tag_or_title",
+      "ok": true,
+      "detail": "['线索处置时限']"
+    },
+    {
+      "name": "two_hop_guard_catches_scan",
+      "ok": true,
+      "detail": "检索发生了目录枚举（整库扫描）：/tmp/od085-twohop-00xjisly/知识库/概念"
+    },
+    {
+      "name": "two_hop_guard_catches_out_of_scope_read",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skeleton_created_all",
+      "ok": true,
+      "detail": "{'工作记录': '本次新建', '周报': '本次新建', '知识库': '本次新建', '概念': '本次新建', '方法': '本次新建', 'inbox': '本次新建', '索引.md': '本次新建'}"
+    },
+    {
+      "name": "skeleton_index_is_empty_head",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skeleton_is_idempotent",
+      "ok": true,
+      "detail": "{'工作记录': '已存在，未改动', '周报': '已存在，未改动', '知识库': '已存在，未改动', '概念': '已存在，未改动', '方法': '已存在，未改动', 'inbox': '已存在，未改动', '索引.md': '已存在，未改动'}"
+    },
+    {
+      "name": "skeleton_preserves_user_file",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skeleton_no_migration",
+      "ok": true,
+      "detail": "['2026-W40.md']"
+    },
+    {
+      "name": "obsidian_fallback_backend",
+      "ok": true,
+      "detail": "files"
+    },
+    {
+      "name": "obsidian_fallback_creates_card",
+      "ok": true,
+      "detail": "files"
+    },
+    {
+      "name": "obsidian_fallback_moves_card",
+      "ok": true,
+      "detail": "files"
+    },
+    {
+      "name": "obsidian_fallback_link_check_degrades",
+      "ok": true,
+      "detail": "{'backend': 'files', 'ok': True, 'detail': '缺失链接目标：[]', 'links': ['降级建卡']}"
+    },
+    {
+      "name": "obsidian_fallback_lists_inbox",
+      "ok": true,
+      "detail": "['降级建卡.md']"
+    },
+    {
+      "name": "obsidian_cli_detected",
+      "ok": true,
+      "detail": "cli"
+    },
+    {
+      "name": "obsidian_cli_creates_card",
+      "ok": true,
+      "detail": "cli"
+    },
+    {
+      "name": "obsidian_cli_checks_links",
+      "ok": true,
+      "detail": "{'backend': 'cli', 'ok': True, 'detail': 'ok'}"
+    },
+    {
+      "name": "obsidian_cli_moves_card",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "obsidian_cli_lists_inbox",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "obsidian_cli_invoked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "obsidian_probe_reports_backend",
+      "ok": true,
+      "detail": "files"
+    },
+    {
+      "name": "runtime_zero_diff",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "frozen_engine_zero_diff",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "desktop_src_matches_registered_baseline",
+      "ok": true,
+      "detail": "current=['desktop/src/App.tsx', 'desktop/src/SettingsPanel.tsx', 'desktop/src/api.ts', 'desktop/src/conversationPrompt.ts', 'desktop/src/markdown.css', 'desktop/src/shell/HomeChat.tsx', 'desktop/src/shell/MarkdownText.tsx', 'desktop/src/shell/QuestionCard.tsx', 'desktop/src/shell/TopNav.tsx', 'desktop/src/types.ts', 'desktop/src/workIntent.ts'] baseline=['desktop/src/App.tsx', 'desktop/src/SettingsPanel.tsx', 'desktop/src/api.ts', 'desktop/src/conversationPrompt.ts', 'desktop/src/markdown.css', 'desktop/src/shell/HomeChat.tsx', 'desktop/src/shell/MarkdownText.tsx', 'desktop/src/shell/QuestionCard.tsx', 'desktop/src/shell/TopNav.tsx', 'desktop/src/types.ts', 'desktop/src/workIntent.ts']"
+    }
+  ]
+}

@@ -1,12 +1,521 @@
 # 当前实施计划
 
-### OD-ARCH-084：会话内搜索的命中定位、逐处切换与焦点保持（待批准，2026-10-25）
+### OD-KB-001：OmniDesk 知识库总体规划基线（已批准，2026-10-26）
 
-> **当前状态：待用户批准。** 本节为计划，未动任何代码。批准后按 `docs/BUILDER-Task-Instruction-Template.md` 派 BUILDER。
+> 分类：产品设计与架构规划。现状审计和分阶段方案见 [docs/OmniDesk-Knowledge-Base-Plan.md](docs/OmniDesk-Knowledge-Base-Plan.md)。本项批准的是知识库规划基线；任何实现仍须按阶段形成具体范围、验收条件和实施记录，并经对应阶段计划批准后开始。P1 已经独立验收通过；P2 仅待 GLM-5.3-FLASH 草拟详细计划并由 ARCHITECT 审核，用户批准前不得实施。全程未读取真实知识资产、未运行模型；知识库测试只使用 `/tmp` 合成目录。
+
+**批准记录：** 用户于 2026-10-26 批准 OD-KB-001，并指定本助手负责总体规划及 P0–P7 阶段性检查，GLM-5.3-FLASH 负责逐阶段制定小计划。P0 定向审计完成，证据与复用边界见总体规划第 2、8 节。P1 已于 2026-10-26 通过独立审查。当前只规划 P2；P3–P7 不在本轮规划范围内。详细阶段计划由本助手审核，须经用户批准后方可实施。既有 OD-ARCH 计划及工作区改动保持原状。
+
+#### P1 小计划：单库根目录和只读访问边界（已批准，实施并通过 ARCHITECT 独立验收，2026-10-26）
+
+本计划由 GLM-5.3-FLASH 提供草案，经 ARCHITECT 对照源码和总体基线收敛；用户于 2026-10-26 批准执行，实施由本助手亲自完成，执行与独立验收记录分别见 STATUS.md、REVIEW.md 顶部。各任务严格限于下列五项字段。P1 不实现笔记编辑、持久索引、链接解析或知识图谱。
+
+**P1-S01**
+
+1. Step ID：P1-S01
+2. 单一动作描述：静态核查 library_root、OMNIDESK_KNOWLEDGE_ROOT、thread_categories[].vault、artifact_root 与现有文件引用/工作记录接口的全部消费者，记录语义、配置优先级及受影响边界。
+3. 输入来源：desktop/src-tauri/src/settings.rs、task_shell.rs、lib.rs、worklog.rs、desktop/src/SettingsPanel.tsx、desktop/src/api.ts、全仓引用检索结果及总体规划第 2–3 节。
+4. 输出目标：P1 消费者核查记录，列出源码位置、实际行为和待核实项；作为 STATUS.md 的 P1 执行证据。
+5. 验收标准：消费者及已有配置覆盖关系逐项有源码依据；尤其核实 OMNIDESK_KNOWLEDGE_ROOT 对 library_root 的影响；不能静态确认的行为明确标待核实；本步骤不改功能代码。
+
+**P1-S02**
+
+1. Step ID：P1-S02
+2. 单一动作描述：在既有设置体系中增加一个可选的知识库根配置及对应读写/校验能力，同时保持现有 library_root、环境变量覆盖和其他消费者行为不变。
+3. 输入来源：P1-S01 核查记录、settings.rs 的 Settings/schema/持久化/路径校验实现，以及 task_library_root_info、task_set_library_root 命令模式。
+4. 输出目标：独立的可选知识库根设置字段及 Rust 单元测试；字段命名和环境变量交互须由 S01 证据决定并在实施记录中说明。
+5. 验收标准：旧设置缺少新字段仍可加载；配置、读取、清除（如支持）均有测试；根路径校验拒绝相对路径、越界路径及总体基线定义的禁用位置；旧消费者回归测试证明语义未改变；不迁移、创建或改写用户知识文件。
+
+**P1-S03**
+
+1. Step ID：P1-S03
+2. 单一动作描述：新增只读扫描核心，遍历所选根并返回可展示的文件条目、扫描统计、跳过项和逐项错误。
+3. 输入来源：P1-S01 核查记录、task_shell.rs 现有有界遍历/符号链接处理先例，以及总体规划 P1 的文件访问边界。
+4. 输出目标：Rust 扫描模块和纯合成临时目录单测；排除规则、可读文件类型、深度/数量/单文件大小限制及符号链接策略在实现前以证据确定并固定在契约中。
+5. 验收标准：测试覆盖缺失/不可读根、路径穿越、根内及根外符号链接、非普通文件、隐藏或明确排除目录、受支持文件和大小边界；每个被跳过或失败条目都有可解释统计/错误；扫描只读、不建立持久索引。具体界限须基于现有能力和合成基线记录，不能无依据臆定。
+
+**P1-S04**
+
+1. Step ID：P1-S04
+2. 单一动作描述：通过 Tauri 宿主命令暴露根目录设置、扫描/刷新状态、根内文件枚举与单文件只读读取，并统一进行宿主侧路径和类型复核。
+3. 输入来源：P1-S02 设置能力、P1-S03 扫描核心、lib.rs 既有命令及 generate_handler! 注册模式。
+4. 输出目标：Rust 宿主命令与集成测试，返回结构化扫描状态、文件元数据和错误；附件内容按已批准类型安全打开或读取。
+5. 验收标准：隔离配置与合成根的集成测试覆盖设置→扫描→刷新→读取；根外/穿越/符号链接/非普通文件/超限请求在宿主被拒绝；应用接口不包含写入、删除或批量改写能力；错误不泄漏文件内容。
+
+**P1-S05**
+
+1. Step ID：P1-S05
+2. 单一动作描述：在现有设置界面提供知识库根目录选择/状态查看与手动扫描刷新入口，不新增知识库分页或编辑流程。
+3. 输入来源：P1-S04 宿主命令、SettingsPanel.tsx 与 api.ts 现有目录配置模式、已安装的 Tauri dialog 插件；按 AGENTS.md 在界面实施前通过 screenshots-design-inspiration MCP 检索 2–3 个同类布局，并在 STATUS.md 记录不超过两句的借鉴要点。
+4. 输出目标：设置面板、API 类型/封装和必要 UI 验证；显示根路径、扫描状态、文件数、跳过数和错误摘要。
+5. 验收标准：用户可选已有目录；未设置、扫描中、成功、有错误各状态清晰；设置页不触发未授权路径访问；不新增依赖、不改 Obsidian 配置、不添加知识库分页。
+
+**P1-S06**
+
+1. Step ID：P1-S06
+2. 单一动作描述：构造隔离的 Obsidian 风格与普通 Markdown 合成根，并执行 Rust、宿主及窗口级只读访问验证和冷扫描测量。
+3. 输入来源：P1-S02 至 P1-S05、现有 desktop/src-tauri/tests/ 集成测试和 tests/verification/desktop/verify_*.py 隔离验证模式。
+4. 输出目标：可重复的合成测试夹具/脚本及新建的 tests/verification/desktop/evidence/ 阶段证据，记录扫描规模、环境和实测耗时；不覆盖旧证据。
+5. 验收标准：Obsidian 风格目录中的 .obsidian 配置不被读取或修改；两类根均可扫描；路径边界验收矩阵逐项通过；冷扫描结果来自重复实测并报告样本规模/环境，不将未测得数据写成目标；所有访问限定在临时合成目录。
+
+**P1-S07**
+
+1. Step ID：P1-S07
+2. 单一动作描述：完成 P1 回归与阶段记录，供 ARCHITECT 独立验收。
+3. 输入来源：P1-S01 至 P1-S06 的源码差异、测试输出、证据文件和实施前记录的 Git 状态/HEAD。
+4. 输出目标：STATUS.md 中的执行记录及 REVIEW.md 中的独立审查结论；更新本计划状态前先确认实际工作区差异。
+5. 验收标准：相关 Rust/TypeScript/构建和隔离窗口测试结果如实记录；runtime/ 零差异；既有暂存、未暂存、未跟踪改动均保留；源码与 Git diff 经检查；任何失败或未验证项均阻止 P2 开始。
+
+**依赖关系：** P1-S01 → P1-S02/P1-S03（可并行）；P1-S03 → P1-S04；P1-S02/P1-S04 → P1-S05；P1-S02 至 P1-S05 → P1-S06 → P1-S07。
+
+**实施后的对应结论：** 新根为独立字段 `knowledge_vault_root`，`OMNIDESK_KNOWLEDGE_ROOT` 只影响 `library_root`（settings.rs `effective_library_root`）。路径在每次状态、扫描与读取时重走 `assert_vault_root_allowed`，逐层拒绝符号链接与根外落点；文件类型、512 KiB 单文件上限、深度 12/条目 20,000/文件 2,000/明细 200 的边界已固定在 `knowledge_vault.rs` 并有合成目录实测。目录选择经 Tauri dialog 插件在窗口级验证（`verify_knowledge_vault_p1.py`，14/14）。
+
+### OD-ARCH-092：工作记录页版式重构（两栏 + 指标带 + 复盘入口收起）（实施完成待验收，2026-10-26）
+
+> 触发：用户 2026-10-26 四点改版要求（时间线与成果库两栏、自动复盘去留、四个模块重设计、归档与会话两栏）。设计借鉴（screenshots-design-inspiration MCP，2026-10-26）：Kairn（左主内容 + 右窄栏归档的列表/详情分栏）、Timely（周视图按日分段、弱化装饰、单色轴）、Teamweek（时间线作主阅读区）。借鉴要点：①左主右辅约 1.6:1，右栏自成一个可滚动卡片；②指标不做等宽大卡，改为一行「小标题 + 数字 + 一句灰字」，只有异常项着色。
+
+#### 一、现状问题（读码事实）
+
+1. weekly 分页仍是页签切换：`ScenePage.tsx` 的 `tab` 三态里 timeline 与 artifacts 互斥，看时间线时看不到成果库。
+2. 三张状态卡等宽（`SceneStatusStrip.tsx`：17px 数字 + 10px 标签 + 三列通栏），密度低；且「本期工作记录」数的是 `overview.artifacts_this_week`（成果文件数），不是本周随手记条数，与用户预期不符。
+3. 自动复盘默认关闭（`scheduler.rs` `review_enabled = false`），用户机无 `~/OmniDesk/config/scheduler.v1.json`（全默认）。它占 `AnnouncementBar` 一整行（开关 + 频率 + 立即复盘 + 建议行），并且是 `pendingWrites.create` 的唯一调用点 —— 复盘关掉后「待确认写入」恒为 0。
+4. 历史归档与会话历史各占一条通栏，纵向浪费。
+
+#### 二、自动复盘去留（用户已裁定：移除界面，保留心跳与规则提醒，2026-10-26）
+
+**用户裁定：移除自动复盘的界面入口，保留心跳与规则提醒。** 移除范围 = 场景页那行开关 / 频率 / 立即复盘 / AI 复盘建议行 + 设置页「定时与提醒」里的复盘分组。依据：工作流已是「随手记逐条落盘 → 明确说整理周报才生成周报」，复盘是第三条重复路径且输入材料与周报重叠；默认关闭且从未启用。
+
+配套：`pending_writes.rs` / `scheduler.rs` 的字段与单测**保留**（安全契约与回退能力），只收前端入口；「待确认写入」从常驻卡降级为**有记录才出现的窄条**（pending + expired > 0 时渲染）；`AnnouncementBar` 瘦身为一行提醒，规则文本为空时整行不渲染。
+
+#### 三、改版方案
+
+**R1 指标带（替代三张卡）**：`SceneStatusStrip` 改为一行紧凑指标（小标题 + 数字 + 一句灰字）。weekly 四项：本期工作记录（本周时间线 `entryCount` 条，不再是成果文件数）、本周周报（未生成/草稿/已归档，复用 `reportState`）、逾期（`pending_expired`）、待确认写入（仅 >0 时出现，点击展开 `PendingWriteCard`）。project/writing 保持原字段语义，仅换样式。
+
+**R2 左右两栏主区**：weekly 取消页签，`lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]`，左「本周时间线」（周报状态收进卡片头作为动作行），右「成果文档库」（卡片内独立滚动）；`lg` 以下堆叠单列。
+
+**R3 时间线字号 +2**：条目 11.5→13.5px，日期 10→12px，星期 10→11.5px，去向小标 9.5→11px，空日占位 10.5→12px；行距与左轨位置同步微调。
+
+**R4 历史归档 + 会话历史两栏**：`lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]`，归档在左、会话在右；会话仍默认收起，展开后在自身栏内滚动，不再下推整页。
+
+**R5 卡片体系统一**：沿用 `bg-white/80 border border-white/90 rounded-2xl` 与既有阴影，栏内分块用分隔线 + 留白，不新增颜色变量、不引依赖。
+
+#### 四、实施步骤
+
+S1 `SceneStatusStrip.tsx` 重写为指标带（props 增 `weekEntries` / `reportLabel` / `onRequestReport`；pending 为 0 不渲染该项）。
+S2 `ScenePage.tsx` weekly 去掉 tab 改两栏；`tab` 仅保留给 project/writing；归档与会话历史合为一个两栏 section。
+S3 `WeeklyTimeline.tsx` 调字号，卡片头合并周报状态动作行（`WeeklyReportStatus` 收为紧凑行组件）。
+S4 `AnnouncementBar.tsx` 收为一行提醒（移除复盘 UI 与 `runReview` 调用链）；`SettingsPanel.tsx` 移除复盘开关组，保留心跳组与状态行。
+S5 测试同步：`verify_weekly_091.py` 的 `timeline_is_default_tab` 等页签断言改为两栏断言；新增 `verify_weekly_092.py` 覆盖字号值、无页签、指标来源、两栏结构；`verify_scene_overview_060.py` 先用 `--probe` 校准新坐标再更新点击点。
+S6 窗口级：`preview_weekly_092.py`（隔离 `OMNIDESK_KNOWLEDGE_ROOT` + 一次性 Xvfb）抓三帧（默认态、展开待确认、1280 窄窗）。
+
+#### 五、验收标准
+
+- weekly 页时间线与成果文档库同屏两栏、页签消失；栏宽比 1.6:1 ±0.1；`1280×820` 无横向溢出与文字截断。
+- 「本期工作记录」显示本周记录条数，与时间线 `entryCount` 一致（合成 5 条即 5）。
+- 时间线条目 ≥13.5px、日期 ≥12px。
+- 自动复盘在场景页与设置页均不可见；心跳与规则提醒仍在；`pending_writes` / `scheduler` 单测保持通过。
+- 历史归档与会话历史同屏两栏；会话展开不下推整页。
+- `npx tsc --noEmit` 0 错、`npm run build` 通过、`cargo test --offline` 全绿、`pytest tests -q` 全绿、`verify_ui_084/088` 与更新后的 091 及新增 092 全过。
+- `runtime/` 零差异；不提交、不推送、不打标签。
+
+#### 六、风险
+
+- 版式改动会让 `verify_scene_overview_060.py` 的固定坐标点击失效，必须重新校准；坐标不稳则改按 AX 名称定位。
+- 复盘入口移除属功能删减，需用户明确同意；后端字段保留，可随时恢复入口。
+- 真实模型端到端（OD-ARCH-080 清单）不在本轮范围。
+
+#### 七、实施结果（2026-10-26，ARCHITECT 自行实施并复验）
+
+S1–S6 全部落地：`SceneStatusStrip` 改为一行紧凑指标（weekly 四项、weekly 以外两项，待确认写入仅 >0 时出现）；`ScenePage` weekly 取消页签，改 `minmax(0,1.6fr)/minmax(0,1fr)` 两栏，归档与会话历史也并列两栏；`tab` 收窄为 `"progress" \| "artifacts"`，weekly 不再读写它；`WeeklyTimeline` 字号整体 +2；`AnnouncementBar` 与设置页的复盘入口全部移除，心跳与规则提醒保留，`pending_writes` / `scheduler` 后端契约未动。
+
+实施中修正的两个真实缺陷：①「去对话」按钮文案被误改成「新开对话」，恢复为「去对话 · 新开」，否则 `verify_ui_088.py` 的入口断言失效；②指标带里 `Metric` 自身是 `flex-1`，未被等宽容器包裹时第一项吃掉剩余宽度，「去生成」压在「逾期」上——改为外层 `div.flex-1` 等宽包裹、动作移到说明行右端、分隔线提高到 `surface-variant/70`。
+
+验证（本人执行）：`npx tsc --noEmit` 0 错；`npm run build` 通过；`pytest tests -q` 89 passed / 30 subtests；`cargo test --offline` 299 passed；`verify_weekly_091.py` 67/67；`verify_weekly_092.py` 29/29；`verify_ui_088.py` 30/30（真实窗口）；`verify_ui_084.py` 全通过（真实窗口）；`verify_scene_overview_060.py` 重新标定坐标后通过，列表视图改用 AX 定位；`preview_weekly_092.py` 三帧落 `tests/verification/desktop/evidence/od-arch-092/`。`runtime/` 零差异；未提交、未推送、未打标签。
+
+`verify_scene_overview_060.py` 顺带修好两处早已失效的环境问题：补一次性 `dbus-daemon`（缺它窗口起不来）、改 `reuse_running_dev_server=True` 并隔离 `OMNIDESK_KNOWLEDGE_ROOT`（原来自起 vite 会因 5273 被占直接失败，且没隔离库根）。
+### OD-ARCH-089：工作记录改为意图自动判定 + 随手记确定性落盘（实施完成待验收，2026-10-26）
+### OD-ARCH-091：周报分页改版（时间线 + 报告状态 + 历史归档）（实施完成待验收，2026-10-26）
+
+> **背景：** 089 已由用户实测通过（N2 关闭）。用户要求改造周报场景分页设计，参考最新设计趋势。设计借鉴（来源 screenshots-design-inspiration MCP，代理故障仅取得标签）：Feedly 的分组列表 + 弱化装饰、日历/日志类应用的时间线流；要点：按日分组的时间线替代碎片胶囊、报告状态卡置顶。
+
+#### 一、现状问题（读码事实）
+
+1. weekly 分页现状 = 状态条 + 公告栏 + 「本期记录碎片」胶囊 chips + 成果文档库。chips 只显示保存的成果文件，不含随手记原始记录（记录落在库根 工作记录/，不在 artifacts 列表里），用户在分页里看不到本周记了什么。
+2. 周报本身的状态（本周是否已生成、草稿在哪）无处可查，要回首页对话才知道。
+3. 历史周报混在成果文档库里，没有按周归档视图。
+
+#### 二、改版方案（三块，只改 weekly 分页，其他场景不动）
+
+**W1：本周记录时间线（替代 chips 区）**
+
+- 左主栏顶部新增「本周记录」时间线：按天分组（周一~周日），每天下方按时间列出随手记条目。
+- 数据源：宿主已有 worklog_read_week 命令读当周 md 文件，按条目分隔渲染；当天无记录显示灰点占位。
+- 每条右侧放「转周报素材」「打开原文」两个轻操作（前者=打开首页对话框并预填「整理成周报」，后者=打开 md 原文定位）。
+- 新增宿主命令 worklog_list_weeks（列库根 工作记录/ 下全部周文件，纯文件系统读，不调模型），供 W3 用。
+
+**W2：本期周报状态卡**
+
+- 时间线下方一张卡：本周周报状态（未生成 / 草稿已存在 / 已归档）+ 主按钮「去生成周报」（跳首页预填 report 意图）+ 次按钮「查看草稿」。
+- 状态判定为确定性文件检查（库根对应路径是否存在当周周报文件），不调模型。
+
+**W3：历史周报归档栏（右栏或下方，按空间取舍）**
+
+- 按月分组列出历史周报文件（来自 W1 的 worklog_list_weeks 成果侧），点击预览。
+- 成果文档库保留但降为页签，默认显示时间线视图。
+
+#### 三、实施步骤
+
+- S1 Rust：新增 worklog_list_weeks 命令（复用 worklog.rs 路径解析与库根逻辑），单元测试覆盖空目录/多文件/非法文件名。
+- S2 前端：新建 WeeklyTimeline 组件；ScenePage.tsx weekly 分支重排为「状态卡 + 时间线 + 归档」；chips 区删除；成果库改页签。样式沿用现有 surface 体系，不引新依赖。
+- S3 验证：tsc 0 错、npm build 通过、cargo test 相关模块通过、verify_ui_084/088 不回归、新增 verify_weekly_091.py（离线验证组件渲染逻辑 + 命令行为）。证据落 evidence/od-arch-091/（新目录）。
+- S4 窗口级 Xvfb 截图一帧（时间线有合成数据态），供用户上机前预览。
+
+#### 四、验收标准
+
+> **实施结果（2026-10-26）：** S1–S3 完成，脚本级全过：cargo 279 passed / 0 failed，`npx tsc --noEmit` 0 错，`npm run build` 通过，`verify_weekly_091.py` 65/65，`verify_worklog_089.py` 61/61，`verify_ui_084.py` 全项 PASS，`verify_ui_088.py` 30/30。
+>
+> S4 已完成：`tests/verification/desktop/preview_weekly_091.py` 在隔离根的合成数据上抓了两帧，`evidence/od-arch-091/01-weekly-timeline.png`（本周时间线 5 条）与 `02-weekly-history.png`（历史归档 W43/W42）。
+>
+> **过程中发现并修掉一处验证隔离缺陷（非 091 代码问题）：** `verify_ui_088.py` 与预览脚本此前只隔离了成果目录，没隔离库根（`OMNIDESK_KNOWLEDGE_ROOT`），导致合成指令经 `worklog_append` 写进用户真实 `~/OmniDesk/库/工作记录/2026-W44.md`，共 8 条合成条目。已按数据保护规则定点删除这 8 条、保留用户原记录（备份 `/tmp/od-w44-backup-20261026022816.md`），并给两个脚本补上库根隔离，复跑后真实文件哈希未变。另修 `_mock_model_server.py` 的触发词匹配：089 之后用户原话落在提示词末尾，原先只读前 200 字符会漏判。
+
+- weekly 分页可见：本周按天时间线、周报状态卡、历史归档；随手记当天记录 5 分钟内出现在时间线（复用现有落盘，不新增写入路径）。
+- 其他场景分页零改动；runtime/ 零差异；不提交不推送。
+
+#### 五、风险
+
+- worklog md 的条目格式由 Skill 约定而非机器 schema，时间线解析按现有追加格式做容错，解析失败的行原样显示不丢弃。
+- worklog_list_weeks 需要库根读权限，已有 worklog_read_week 同级先例，风险低。
+
+### OD-ARCH-090：夜间无人值守收尾批次（待批准，2026-10-26）
+
+> **目标：** 在无人值守条件下完成三项可自动化收尾（087 验收、089 窗口级验证、未提交改动安全扫描），并把状态文档与现状对齐。真实模型输出验证不属于无人值守范围，留给用户实测。用户批准后由本助手亲自执行，不派子代理。
+
+#### 范围与执行顺序
+
+**N1：OD-ARCH-087 验收收尾（release 启动器）**
+
+- 步骤：eval 工具链环境后，在 desktop/src-tauri 跑 release 构建（或复用已有产物做冒烟），隔离环境（独立数据根 + 合成端点）启动 release 二进制，确认窗口出现、进程退出后无遗留引擎进程、无遗留假引擎。结论写入 REVIEW.md（087 条目）。
+- 验收：启动成功、退出干净、证据落 tests/verification/desktop/evidence/od-arch-087/（新文件，不覆盖旧证据）。
+- 失败处理：连续两轮修复未解决则记录根因并停止该项，不阻塞 N2。
+
+**N2：OD-ARCH-089 窗口级自动化验证（Xvfb）**
+
+- 步骤：Xvfb 启动应用（合成模型端点），验证：① weekly 场景输入「随手记一句」→ 提示「按随手记记录」且工作记录文件追加「（续）」段；② 输入「整理成周报」→ 提示「按周报生成」且注入含周报 Skill；③ 空周报路径：库内无当周记录时生成周报不报错、给出缺项说明；④ 现有窗口回归 verify_ui_084/088 不回归。
+- 证据落 tests/verification/desktop/evidence/od-arch-090/（新目录）。
+- 验收：四项全过则 089 的窗口级缺口关闭，仅剩真实模型实测留给用户；任何一项失败记录现象与根因，不改产品逻辑（除非是一行级明显接线错误且修复不改架构）。
+
+**N3：47 项未提交改动安全扫描（只读，不提交）**
+
+- 步骤：对全部未提交/未跟踪文件做红线扫描（身份证号模式、密钥模式、真实姓名高频词、绝对路径泄漏）；输出清单到 audit/workspace-scan-20261026.md，标注每项「可安全提交 / 需人工确认 / 不应提交」。不执行 git add/commit/push。
+- 验收：扫描覆盖 47 项、每项有标注、零写入 Git。
+
+**N4：状态文档对齐（小步）**
+
+- GOALS.md：仅把「模型端点准入保持关闭」等与 088/089 后现状（用户已在设置页自助开启外部模型）不符的一两处表述改为「模型权限由用户在设置页自助管理，默认从严」；不重写其他段落。
+- STATUS.md：追加 N1–N3 执行记录。
+- 验收：diff 仅限上述两文件的小段落。
+
+#### 全局约束
+
+- 不改 runtime/；不碰凭证与模型路由；不提交、不推送、不打标签；既有 47 项改动一律保留。
+- 所有验证脚本复跑前先确认证据落点不覆盖历史证据（082 教训）。
+- 单项失败不滚动放大：记录后继续下一项，最终汇总报告。
+- 总量控制：每项一次性完成，不重复规划、不长篇自检。
+
+#### 风险
+
+- Xvfb 下 release 构建可能与开发模式行为差异（N1 已隔离验证过 dev 模式，风险低）。
+- 窗口级验证依赖合成端点时序，偶发超时重试一次后仍失败即记录为未验证，不伪造通过。
+
+
+> **状态：代码与文档改动已完成，ARCHITECT 脚本级复核通过；待用户真实模型实测验收。** 触发来源：用户 2026-10-26 三条新需求（取消手动开关、由关键词判定意图、随手记逐条增量落盘、只做缺项分析），追加第四项（anysearch 移出预注入、周报与随手记拆两个 Skill）。本计划取代同日早先「只修按钮初值」的草案。用户已批准执行（OD-ARCH-089）。
+>
+> **实施结果摘要（2026-10-26）：** S1 意图判定 `desktop/src/workIntent.ts`；S2 宿主确定性落盘 `desktop/src-tauri/src/worklog.rs` 与 `worklog_append` / `worklog_read_week` 两个命令；S3 提示词瘦身并把 Skill 拆分：`memory-agent` = 随手记（1432 字符），`memory-report` = 周报（988 字符）。weekly 绑定改为 `[memory-agent, memory-report, knowledge-search]`；anysearch 移出预注入，但仍随安装同步、仍在白名单、运行时按需加载。实测注入字符数：随手记 1684、周报 5627；改造前同条件为 1534 与 5154，周报多出的部分是当周工作记录正文（合成样本 300 字符）。脚本级验收项全部通过，窗口级与真实模型级结论见 REVIEW.md 顶部。
+
+#### 一、已核实事实（分级）
+
+**文件事实（读码）：**
+
+1. **手动开关接线反了。** `HomeChat.tsx:520` `noteMode` 初值 `false`；`:1370` 判 `preset.key === "weekly" && noteMode ? "note" : "report"`；`:2434` 选项数组把 `false` 标为「随手记」。界面高亮「随手记」→ 实际发 `report`；点「整理成周报」→ 也是 `report`。两个按钮同一条路。
+2. **产品代码里没有任何一处写 `库/工作记录/`。** `desktop/src-tauri/src/` 全量检索：追加写入能力只有 `append_usage_record`（task_shell.rs:1039，写 usage.jsonl）、`pending_writes`（待确认写入）、`save_offline_artifact`（`create_new`，且拒绝覆盖）。工作记录目录的创建与追加只存在于 `tests/verification/phase-worklog/worklog_store.py`（测试参考实现）与 Skill 文字说明中。**即当前落盘完全依赖模型自行调工具，产品层无保证。**
+3. **随手记注入的 Skill 含周报规则。** `conversationPrompt.ts:99-121` 的 note 分支会注入第 1 个绑定 Skill 全文（最多 2500 字符）。weekly 第一个绑定是 `memory-agent`，全文含「四、周报（Report Mode）」四步，因此随手记也带着周报流程。
+4. **report 模式不读本周记录。** `HomeChat.tsx:1370` 调 `composeConversationPrompt` 时 `material` 只有 `buildContext(turns, current)`，没有任何读 `库/工作记录/2026-Wxx.md` 的路径。用户说「整理本周工作」时，模型手里没有本周记录。
+5. **无本地时区换算。** 宿主只有 `utc_parts/civil_from_days`（task_shell.rs:1132-1170，纯 UTC，不引入 chrono）；ISO 周计算只存在于测试脚本 `worklog_store.py:iso_week`。scheduler.rs 有 `utc_offset_minutes`（默认 480）可复用。
+6. **库根已可解析。** `settings::effective_library_root`（settings.rs:371，优先级 env > 用户设置 > `~/OmniDesk/库`），已注册为 `task_library_root_info` 命令。工作记录应落在库根下，而不是 `prepare_workspace_dir` 返回的成果目录（后者是 `~/OmniDesk/workspace/artifacts`）。
+7. **现有测试只测组装函数，不测界面默认态。** `verify_profile_rules_068.py:58/66` 与 `verify_skill_bindings_082.py:92` 都直接传 `mode`，因此接线错反仍全绿；`verify_profile_rules_068.py:82` 还断言「不传 mode = report」，改默认后该断言必须同步改。
+8. `verify_ui_088.py`/`verify_ui_084.py` 不引用「随手记/整理成周报」文案，移除标签不会破坏这两个窗口测试；但 `tests/verification/desktop/evidence/od-arch-088/*.json` 的 AX 快照含这两个按钮名，属历史证据，按规则**不覆盖不改写**。
+
+#### 二、方案（三步，对应用户三条需求）
+
+**S1 意图判定：改由输入关键词决定，取消手动开关。**
+
+- 新增 `desktop/src/workIntent.ts`（纯函数、无依赖，便于离线验证）：`detectWorkIntent(text)` → `"report" | "note"`。
+- report 触发词按用户口径收敛为「明确要求生成周报或总结本周工作」：`生成周报`/`整理成周报`/`写周报`/`出周报`/`本周周报`/`总结本周`/`本周总结`/`汇总本周`/`本周汇总`/`这周总结`/`本周工作小结` 等，匹配前统一去空白并全角转半角。其余一律 `note`。
+- 只在 `preset.key === "weekly"` 时启用；其它场景与普通对话不进入该判定，行为不变。
+- 判定结果在发送时算一次，并作为可见提示显示在回复上方（例如「按随手记记录」/「按周报生成」），让用户知道这次走了哪条路，不需要标签。
+- **删除** `HomeChat.tsx` 的 `noteMode` 状态、两按钮块（:2428-2450）、`noteMode` 依赖项，以及判断表达式里的开关。
+
+**S2 随手记确定性落盘：宿主提供追加写入，模型只做缺项分析。**
+
+- 宿主新增 `worklog_append`（`desktop/src-tauri/src/worklog.rs` + lib.rs 注册）：
+  - 落点 = `effective_library_root()/工作记录/<ISO年>-W<周次>.md`，周次按本地时区（复用 `utc_offset_minutes`，默认 +480）计算 ISO 周。
+  - 行为：文件不存在则建（含 `# 2026-Wxx` 标题 + 当日 `## YYYY-MM-DD` 段）；已存在则**只 `OpenOptions::append(true)` 追加**，绝不 truncate/重写；同日再记另起 `## YYYY-MM-DD（续）`。
+  - 条目格式沿用现有文件既有约定：`- **事**：<原文>` + `  **去向**：本周报引用|inbox`（去向由前端按本轮判定给默认值，用户不需要回答）。
+  - 写入前过红线扫描与隐私掩码（复用 `red_line_scan_with` + `mask_privacy`），命中红线则拒绝并返回原因，不静默落盘。
+  - 返回结构化回执：`{ ok, path, week, date, appended: bool, was_new_file, masked: boolean, error }`。
+- 前端 note 分支流程改为：
+  1. 先调 `worklog_append`（原文，不经过模型）；
+  2. 落盘成功后才调模型，提示词是**极短**的缺项分析指令（见 S3），注入的 Skill 只保留「记录与缺项」部分；
+  3. 界面显示「已写入 库/工作记录/2026-Wxx.md」+ 模型对缺项的追问；
+  4. 用户补充的下一条输入，同样先追加一条新条目再分析——天然是「逐条增量」。
+- 落盘失败时**明确报错并停止**，不假装已记录（避免用户以为记下了其实没有）。
+
+**S3 提示词拆分：note 不再携带周报规则。**
+
+- `conversationPrompt.ts` 的 note 分支指令改为用户表述的语义：「已记录。只判断时间/地点/人物/事件/影响/感受里缺哪几项，一句话问用户是否补充；不要复述、不要扩写、不要生成周报。」不注入章节、铁律、周报流程。
+- **实现方式：拆成两个 Skill 文件，不做运行时按标题切分。**（2026-10-26 用户问「拆文件 vs 代码按节裁剪哪个省 token」，实测后定为拆文件，理由见下「S3 取舍」。）
+  - `skills/memory-agent/SKILL.md` 保留随手记职责：「一、记录」+ 样例 + 「二、提炼强度」+ 「三、去向怎么定」+ 新增「缺项六要素」（时间/地点/人物/事件/影响/感受，只问缺项）+ 「五、数据边界」+ 「六、自检」。删掉原「四、周报（Report Mode）」。
+  - 新增 `skills/memory-report/SKILL.md`：只装周报职责（读当周记录、只取 `本周报引用`、五段模板、全文展示待确认、确认后才落盘 `库/周报/`、同名不覆盖）。
+  - `samples/profiles/discipline.rules.json` 的 weekly 绑定改为 `["memory-agent", "memory-report", "knowledge-search"]`，`max_injected` 仍为 3。**anysearch 移出 weekly 预注入**，但仍随 `scripts/sync-skills.sh` 安装、仍在引擎 `available_skills` 清单里，模型需要联网核对时仍可自行加载（「未预注入 ≠ 不可用」，见 OD-ARCH-088 审查记录）。
+  - `profile_rules.rs` 的 `ALLOWED_SKILLS` 增加 `memory-report`（该清单是白名单，不加则整份规则文件被拒）。`MAX_SKILL_BINDINGS_PER_SCENE` 与 `default_max_injected()` 不动。
+  - `conversationPrompt.ts` 的 note 分支保持「只注入第 1 个绑定 Skill」不变（现在第 1 个是 memory-agent，正好是随手记部分）；report 分支注入全部 3 个，正好是 memory-agent + memory-report + knowledge-search。**不需要任何标题切分或多模式声明代码**——拆分放在数据层，注入规则一行不改。
+  - 同步更新两处当前配置断言（属跟随配置变更，不是放宽）：`verify_skill_bindings_082.py` 的 `weekly_binds_anysearch` 改为断言「anysearch 已安装且在白名单内、但不在 weekly 预注入中」，`verify_env_085.py:130` 同理。历史证据 `tests/verification/**/evidence/*.json` 一律不改写。
+- report 分支补上本周记录来源：前端在发送前按 `worklog_append` 同源逻辑读当周文件（新增只读命令 `worklog_read_week`），把内容作为 `material` 传入，模型不再空手写周报。
+
+**S3 取舍（实测字符数，2026-10-26 ARCHITECT 脚本核实）：**
+
+现状 `memory-agent/SKILL.md` 共 1534 字符，按节：头部 178、一·记录 200、日期样例 113、二·提炼强度 247、三·去向 246、**四·周报 384**、五·数据边界 104、六·自检 62。weekly 三个绑定字符数为 memory-agent 1534 + knowledge-search 2133 + anysearch 1487 = 5154。
+
+| 做法 | 随手记注入 | 周报注入 | 额外代价 |
+|---|---|---|---|
+| 现状（单文件全文） | 1534 | 5154 | — |
+| 代码按标题切分 | 1150 | **5154（一分不省）** | 切分代码约 40 行；标题改名即静默失配，须同步改代码并加断言 |
+| **拆两个文件（选定）** | **1150** | **3845** | weekly 3 槽位重新分配；两处配置断言随改 |
+
+（拆分后：随手记文件 1150 = 现有内容去掉「四、周报」；周报文件 562 = 头部 + 四。周报注入 1150+562+2133 = 3845。**1150 尚未含待新增的「六要素缺项」小节**，该节控制在 150 字符内，则随手记实际约 1300，仍比现状 1534 少约 230；周报侧不受影响。）
+
+结论：**按节裁剪只对随手记有用，周报一分不省，还要背上标题耦合**；拆文件是两条路径同时省，且把复杂度留在数据层而不是代码里。所以拆。
+
+**实施后的真实字数（2026-10-26 ARCHITECT 亲测，`len(SKILL.md)`）：** memory-agent 1432、memory-report 988、knowledge-search 2133、anysearch 1487。周报侧注入从 5154 降到 4553（−601）；随手记侧从 1534 变为 1432（−102），但多了「六要素只问缺项」这一职责。上文预算表里「随手记 1150 / 周报 3845」是拆分设计时的估算，实际写出来比估算多：随手记多了六要素整节，周报多了确认门、命名、数据边界与自检。以实施后实测为准。
+
+另一条可选（此处不选）：随手记在 S2 之后由宿主确定性落盘，模型只剩「问缺哪几项」，理论上随手记可以不注入任何 Skill（省下 1432），weekly 绑定变成 `[memory-report, knowledge-search]` 再加运行时加载。不选的理由是那样必须把「不硬扩／去向／六要素」搬进代码里的提示词，用户就没法再像现在这样直接改 Skill 文本调行为，与用户「我想自己修改反馈逻辑和 Skill 内容」的意图相反。若实测发现随手记质量下降，再回来评估这条。
+
+#### 三、影响范围（实际）
+
+`desktop/src/workIntent.ts`（新增）、`desktop/src/composerIntent.ts` 或并入 conversationPrompt、`desktop/src/conversationPrompt.ts`、`desktop/src/shell/HomeChat.tsx`、`desktop/src/api.ts`（两个新命令的类型与封装）、`desktop/src-tauri/src/worklog.rs`（新增）、`desktop/src-tauri/src/lib.rs`（注册）、`desktop/src-tauri/src/profile_rules.rs`（白名单加 `memory-report`）、`samples/profiles/discipline.rules.json`（weekly 绑定）、`skills/memory-agent/SKILL.md`（删周报节、补六要素缺项）、`skills/memory-report/SKILL.md`（新增）、`tests/verification/desktop/verify_worklog_089.py`（新增）、`tests/verification/desktop/verify_profile_rules_068.py`（同步默认断言）、`tests/verification/desktop/verify_skill_bindings_082.py` 与 `tests/verification/phase-worklog/verify_env_085.py`（anysearch 绑定断言随配置更新）、`STATUS.md`、`PLANS.md`、`REVIEW.md`。
+
+**不做：** 不改 runtime/（零差异）；不改模型路由与凭证；不改 `MAX_SKILL_BINDINGS_PER_SCENE`（仍 3）与 `max_injected`；不迁移/覆盖 `~/OmniDesk/库` 既有任何文件（测试只用 `/tmp` 隔离根）；不改动 `tests/verification/**/evidence/` 下历史证据；不新增依赖（Rust 侧不引入 chrono，时区换算沿用现有算法）；不新增第四种输入模式声明（weekly 绑定本身即模式区分）。
+
+#### 四、验收标准
+
+1. **意图判定（脚本级，合成文本）：** 「生成周报」「帮我总结本周工作」「本周工作汇总一下」→ `report`；「下午在古田听课，题目是古田会议」「今天开了个会」「记一下：周三交材料」→ `note`。全角/空格/中英标点混写不影响判定。
+2. **界面无标签：** 工作记录场景输入区 AX 树中不存在「随手记」「整理成周报」两个按钮（真实窗口 AT-SPI 断言）；场景切换、发送、附件、语音等既有按钮不受影响。
+3. **落盘正确（真实窗口 + 隔离库根）：** 连续输入两条随手记 → `2026-Wxx.md` 出现两条独立 `- **事**` 条目，文件只增长、旧字节不变（前后字节比对）；第二条不覆盖第一条；同日第二次记录使用「（续）」段。
+4. **跨周跨日：** 注入不同日期/时区 → 文件名与文件内日期按本地时间正确分周分日。
+5. **note 提示词瘦身：** 汇编后的 note 提示词不含「本周概述/事项进展/问题与风险/下步计划/待确认事项」任一章节名，不含 7 条写作铁律，不含「Report Mode」四步；长度较改造前同输入显著下降（给出实测字符数）。
+6. **缺项分析行为：** note 回复只问缺失要素，不复述原文、不扩写；用户补充后再记一条新条目（不是改原条目）。
+7. **report 有米：** 当周文件存在时，report 提示词包含本周记录内容；文件不存在时如实说明「本周还没有记录」，不虚构。
+8. **红线与隐私：** 含红线词输入 → 拒绝落盘并说明原因；身份证/手机号 → 落盘时为掩码形态，回执标注已掩码。
+9. **回归：** tsc 0；`verify_profile_rules_068.py`、`verify_skill_bindings_082.py`、`verify_intent_088.py` 全绿（068 的「默认=report」断言按新语义改为「不传 mode 时 note 组装仍不含周报章节」）；cargo 全量 0 failed；`cargo test worklog` 覆盖追加不覆盖、同日续段、跨周命名。
+10. **Skill 拆分（字符级）：** 随手记提示词不含 `Report Mode`、`本周概述`、`事项进展`；周报提示词含两者之一且不含 six-element 追问句；`memory-agent` 与 `memory-report` 各自 ≤ 2500 字符截断线（断言沿用 `verify_worklog_085.py` 的 budget 检查）；weekly 绑定 = `[memory-agent, memory-report, knowledge-search]`，三者均在 `ALLOWED_SKILLS` 内，anysearch 仍在白名单但不在 weekly 预注入。
+
+#### 五、风险与取舍
+
+- 关键词判定会有误判边界（例如「总结一下这次会议」算不算周报）。计划采用保守口径：只有明确指向「周报/本周」的措辞才进 report，其余都当随手记；判定结果在回复上方明示，误判用户可当场看出。若实测仍有误判，可按证据调整词表，不改架构。
+- 随手记改为「先落盘再分析」，意味着模型调用失败时记录仍已在库里（这正是「先把事实留住」的设计意图），界面需明确区分「已记录，分析失败」这两种状态。
+- 落盘由宿主做，模型不再直接写文件，行为与 `memory-agent` 原文「由模型追加」不同；Skill 需同步说明「写入由工作台完成，你只做缺项分析」，否则模型可能重复写一次。这是本轮必须同步改 Skill 的原因。
+- 报告模式的「本周记录来源」只读当周一个文件，不做跨周汇总；跨周需求另行立项。
+
+#### 六、验收进度（2026-10-26 ARCHITECT 自测）
+
+| 验收项 | 状态 | 证据 |
+|---|---|---|
+| 1 意图判定 | 通过 | `verify_worklog_089.py` 编译真实 `workIntent.ts`，61/61 |
+| 2 界面无两标签 | 待真实窗口实测 | 静态断言已无 `noteMode` 与按钮文案；AT-SPI 实测未做 |
+| 3 落盘只增长不覆盖 | 脚本级通过，窗口级待实测 | `worklog.rs` 单测：追加不覆盖、字节前缀自证 |
+| 4 跨周跨日 | 通过（单测） | ISO 周已知值、跨周分文件、跨日续段 |
+| 5 note 提示词瘦身 | 通过 | 不含五段章节与写作铁律；随手记 1684 / 周报 5627 |
+| 6 缺项分析行为 | 待真实模型实测 | 提示词与 Skill 已约束，模型输出未验证 |
+| 7 report 有米 | 脚本级通过，真模型待实测 | 当周记录并入 material；无记录时要求如实说明 |
+| 8 红线与隐私 | 通过（单测 + 读码） | 命中红线拒绝且不回显原文；落盘前 `mask_privacy` |
+| 9 回归 | 通过 | tsc 0、build 0、pytest 89 passed、cargo 294 passed 0 failed |
+| 10 Skill 拆分 | 通过 | 双向断言、字符数实测、weekly 三绑定、anysearch 仍在白名单 |
+
+### OD-ARCH-087：正式启动器 release 包误判开发模式（Connection refused，已修复待验收，2026-10-25）
+
+> **状态：代码已修复并在隔离显示环境实测启动成功；未提交、未推送、未验收。** 本条目在排查用户实测卡死问题时补记。
+
+**症状**：scripts/omnidesk.sh 启动后窗口报 Could not connect to 127.0.0.1: Connection refused。
+
+**根因（文件事实）**：desktop/src-tauri/Cargo.toml 没有声明 Tauri 的 custom-protocol 特性。Tauri 只按该特性判定生产模式，因此即使 cargo build --release，生成的二进制仍按开发模式加载 build.devUrl（http://127.0.0.1:5273）；正式启动器不起 dev server，连接必然被拒。
+
+**修复**：Cargo.toml 增加 [features] default=[] 与 custom-protocol=["tauri/custom-protocol"]；scripts/omnidesk.sh 的 release 构建带 --features custom-protocol，并写 target/release/.build-features 标记；--no-build 遇到标记不符的旧二进制明确报错退出，避免静默复用坏包。
+
+**已验证**：构建日志 cargo:dev=false；二进制内嵌前端资源；Xvfb 真实窗口截图 /tmp/odverify-shots/boot.png 界面完整渲染（无 dev server 也能显示）；正式启动器可正常启动。
+
+**未做**：未改 runtime/，未动模型路由与凭证；未提交推送。
+
+### OD-ARCH-088：场景提问卡闭环 + 场景 intent 透传 + Skill 绑定可见性（已验收通过，2026-10-25）
+
+> **状态：已验收通过（REVIEW.md 顶部，2026-10-25）。** ARCHITECT 独立复跑全部通过：pytest 89/30、tsc 0、npm build、cargo 全量 0 failed、verify_intent_088 22/22、verify_ui_088 真实窗口 30/30、082 绑定 35/35、085 119/119 与 085 环境 22/22。触发来源：用户实测「工作记录」场景时界面停在「生成中」，提示「引擎在等待一项未被识别的确认（user-questions/request）」。**开工基线：** main，HEAD 0d17b1f，工作区既有未提交/未跟踪改动全部保留；冻结 runtime/；desktop/ 与 engine/omnidesk_engine/ 解冻。**遗留决策：** Profile 的 tool-ask-user 仍是 legacy 模式（无超时自动继续），是否改 timed 需另立计划获批。
+
+#### 一、实测问题的定性（ARCHITECT 独立查证，2026-10-25）
+
+1. **不是窗口卡死，是任务在等一个没人能回答的提问。** 任务状态文件 ~/OmniDesk/app/engine-state/omni-b80f4367-xxxx.json：intent=material_writing、state=interrupted。会话日志 session-949cefc3-xxxx 显示模型先以 skill 工具加载 memory-agent 成功，随后调用 ask_user_question，问「初稿是否要先追加到 库/工作记录/2026-W43.md？」，给出两个选项。
+2. **外壳没有回答通道。** engine/omnidesk_engine/web_api_adapter.py:370-375：除 approval/request 外的所有 waterfall 一律走 _on_engine_ask()；该方法（约 :1739-1770）只发一条 PROGRESS kind=engine_ask，注释写明「不自动应答」。前端 desktop/src/shell/HomeChat.tsx:759 把它渲染成「未被识别的确认」。
+3. **应答协议已存在，缺的只是接线。** 审批走 $events/result（respond_approval()，约 :1830 起），payload 为 {clientId, eventId, outcome:{kind:"result", value}}；提问的答案结构见 runtime/deepseek-harness/packages/interaction/user-questions/src/types.ts:56-69：{answers:[{id, selected:[...], custom?}]}。同一 $events/result 通道即可回答提问。
+4. **三个 Skill 没有「默认绑定」，原因是用户实盘规则包仍是 v1。** 用户文件 ~/OmniDesk/app/profiles/discipline.rules.json：schema=omnidesk.profile-rules.v1，**无 skill_bindings**（mtime 10-23 13:10）；出厂包 samples/profiles/discipline.rules.json 才把 weekly 绑到 memory-agent / knowledge-search / anysearch。注入逻辑见 desktop/src/shell/HomeCanvas.tsx:300-315：只有 skill_bindings[preset] 存在，才会把 SKILL.md 正文预拼进提示词。**但技能仍出现在引擎的 available_skills 清单里，模型可自行加载——本次就是它自己加载了 memory-agent。「未预注入」不等于「不可用」。**
+5. **另一个真实缺陷（不导致卡死）：场景 intent 未透传。** HomeChat.tsx:1176 调 submitTask() 未传 intent，desktop/src/api.ts:221 与宿主 desktop/src-tauri/src/lib.rs:426 双双默认成 material_writing；因此工作记录任务在台账与成果归类里被记成「文案写作」。
+
+#### 二、目标与范围（三项，缺一不可）
+
+**A. 提问卡闭环（核心）**
+
+1. 适配层解析 user-questions/request 的 request.questions，把提问登记为该任务的待答项，并把结构化题目（id / header / question / detail / options 的 label 与 description / multiSelect）随进度事件下发给界面。
+2. 新增回答命令，逐条链路：前端 → Tauri 命令 → 引擎 JSON-RPC（omni.question_answer）→ 适配层 → $events/result，value 为 {answers:[{id, selected, custom?}]}。
+3. 前端渲染提问卡：题干、选项按钮（multiSelect 时多选）、可选自定义文本、提交按钮；提交中禁用，失败保留卡片并显示真实原因（沿用审批卡「宿主确认送达才改状态」的口径）。同时保留「取消本次任务」出口。
+4. **不自动选择默认项、不自动跳过、不伪造已答。** 引擎侧超时或取消时，卡片必须落成可见的「已超时/已取消」，不能一直显示可答。
+5. **隐私边界**：题干与答案只留在本机内存与界面；任务状态文件 _record_payload 只存类型、id 与计数（沿用既有「不存请求正文」口径）；app.log 不写题干与答案正文。题面、选项、自定义文本均设上限（题面与详情 ≤ 2,000 字符，选项 ≤ 12 个且标签 ≤ 200 字符，自定义 ≤ 4,000 字符），超限如实报错，不静默截断。
+6. 非提问类未知 waterfall 仍走既有 engine_ask 提示，不回归成静默。
+
+**B. 场景 intent 透传**
+
+HomeChat 提交任务时按当前生效场景传 intent = SCENES[effectiveTag].scenario；无场景（未分类或自定义）时维持既有默认值。附带一条断言：工作记录场景提交的 intent 为 weekly_report。
+
+**C. Skill 绑定可见性与启用**
+
+1. 设置页「规则资产」在规则包为 v1（无 skill_bindings）时明确提示：出厂规则包含场景 Skill 绑定，当前规则包为旧版，未启用预注入；模型仍可按需自行加载技能。点「恢复默认规则包」可启用。
+2. 恢复动作**仍由用户显式点击**，走既有 profileRulesRestoreDefault（已有备份机制）；**不做静默迁移、不自动改写用户规则文件**。
+3. 对话区在场景预设存在但未注入绑定 Skill 时，如实说明「本场景技能未预注入（规则包为旧版），模型可按需加载」，让用户能分辨「没绑定」与「技能不可用」。
+
+#### 三、实施步骤
+
+- Step 1：读 web_api_adapter.py 的 waterfall 分发与 $events/result 调用形态，读 user-questions 契约，确认回答 value 的精确形状；写适配层单测（合成 waterfall 帧 → 待答项登记 → 回答帧 payload 断言 → 超时与取消清理）。
+- Step 2：加 serve.py 的 omni.question_answer、Rust 桥命令与 Tauri 命令注册，逐层测试。
+- Step 3：前端提问卡（组件、事件订阅、提交态、失败态），沿用现有审批卡的视觉语言与状态口径。
+- Step 4：HomeChat 传场景 intent；设置页规则资产提示与对话区未注入说明。
+- Step 5：回归 cargo test、npm run build、tsc --noEmit、pytest tests、既有 desktop 验证脚本；真实窗口跑一次提问卡端到端（隔离数据根加合成提问，不使用真实业务材料）。
+
+#### 四、验收标准
+
+1. 合成提问到达后界面出现可操作提问卡；提交后引擎收到 $events/result，任务继续至终态（脚本级证据，含帧断言）。
+2. 不提交而放任超时或取消时，卡片与任务状态一致落成「超时/已取消」，不留永久「生成中」。
+3. 状态文件与 app.log 中无题干、选项、答案正文（以文件内容断言为证）。
+4. 超长题面、选项、自定义文本被明确拒绝，不静默截断。
+5. 工作记录场景提交的 intent 为 weekly_report（单测或集成断言）。
+6. v1 规则包下设置页出现旧版提示；恢复出厂包后 weekly 三项绑定生效（沿用 082 注入验证脚本）。
+7. runtime/ 零差异；cargo test、npm run build、tsc、pytest 全过；STATUS.md 记录实测命令与结果；不提交、不推送。
+
+#### 五、风险与边界
+
+- $events/result 的 value 形状依赖 runtime 版本；若与探针不符，适配层必须报错并在 STATUS 如实记录，不得猜测或伪造「已答」。
+- 提问卡引入新的 IPC 命令，需与既有审批通道共用 _ApprovalChannel 的连接与生命周期，避免第二套事件流。
+- 前端新增卡片涉及界面，动工前必须用 screenshots-design-inspiration 搜 2–3 个同类问答卡参考，借鉴要点不超过 2 句写入任务记录（OD-ARCH-035）。
+- 真实业务材料不进测试、不进仓库、不进日志；端到端验证一律用合成提问文本。
+
+### OD-ARCH-086：anysearch 白名单扩容 + 库根绑定（两项，2026-10-25，已验收通过）
+
+> **状态：已验收通过（REVIEW.md，2026-10-25）。** 用户已确认「两项都做」。批准后派 OpenDesign/deepseek-v4.1-flash（high）子代理执行。**开工基线：** main，HEAD 0d17b1f，工作区既有未提交改动一律保留；不修改 runtime/。src-tauri/ 本轮解冻。
+
+#### 一、目标
+
+1. 将 anysearch 纳入白名单并绑定到 discipline 的 weekly 场景，使工作记录场景具备联网检索能力。
+2. 建立库根绑定：库根 = ~/OmniDesk/库，使 Skill 写入库的文件可被应用成果列表与 @ 引用读取；默认知识库根从 ~/YvanAI/knowledge 切换到库根（旧路径不迁移、不覆盖、不删除）。
+
+#### 二、已核实事实（ARCHITECT 复核，2026-10-25）
+
+1. desktop/src-tauri/src/profile_rules.rs:29 ALLOWED_SKILLS 为六项编译期固定清单，校验失败整份规则包判非法（:238-239）；MAX_SKILL_BINDINGS_PER_SCENE=3（:38），weekly 加 anysearch 后为 3 个，不超限。
+2. anysearch 实体在 ~/.codex/skills/anysearch/（JSON-RPC 2.0 单端点 CLI，runtime.conf 指向 python3 scripts/anysearch_cli.py），不在本仓 skills/ 六目录中，也未被 sync-skills.sh 同步。DSH 靠隔离数据根的 skills 目录发现技能。
+3. task_shell.rs:2455 knowledge_root() 默认返回 $HOME/YvanAI/knowledge（:2469）；reference_roots()（:2474）= 成果根 + 知识库根，是 @ 引用的来源。
+4. settings.rs 已有 artifact_root（成果根）与 ThreadCategory.vault（对话分类 vault 绑定）机制；settings schema omnidesk.settings.v1 且 deny_unknown_fields，新字段必须 #[serde(default)] 向后兼容。
+5. 数据根已有 ~/OmniDesk/库/{工作记录,周报,知识库/{概念,方法},inbox} 及索引头（085 建成）。
+
+#### 三、实施步骤
+
+- Step 1（anysearch 发现机制）：在仓库 skills/ 下新建薄包装 skills/anysearch-wrapper/（或按 BUILDER 判断的更合规方式），SKILL.md 转发调用到本机 ~/.codex/skills/anysearch 的 CLI（路径可在包装层读环境变量或配置，不得复制其全部脚本进仓）；验证 DSH 隔离根经 sync-skills.sh 同步后能发现并执行一次 search 冒烟调用。若 DSH 发现机制不支持该方式，如实记录并回退为「anysearch 不入 weekly 绑定」，不得改 runtime/。
+- Step 2（白名单）：profile_rules.rs ALLOWED_SKILLS 增加 "anysearch"（若 Step 1 用包装名则加包装名）；samples/profiles/discipline.rules.json weekly 绑定加 anysearch（共 3 个）。
+- Step 3（库根绑定）：Settings 增加 library_root: Option<String>（#[serde(default)]），默认解析为 ~/OmniDesk/库；沿用 artifact_root 的 assert_artifact_root_allowed 同等边界校验（绝对路径、拒绝 ~/.dsh 等保护路径）。knowledge_root() 默认值改为库根（环境变量 OMNIDESK_KNOWLEDGE_ROOT 覆盖优先级不变）；reference_roots() 追加库根（去重）。设置页增加库根显示与修改入口（desktop/src/，样式随现设置页）。
+- Step 4（回归）：cargo test 全量（先 eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"）；npm run build；sync-skills.sh --check 无漂移；旧 settings 文件（无 library_root 字段）可正常加载；写一条集成测试覆盖「库根内文件出现在 reference_roots」。
+
+#### 四、验收标准
+
+1. cargo 全量通过（含新增测试）；npm build 通过；sync-skills.sh --check 无漂移。
+2. 出厂默认规则包解析通过且 weekly 含 anysearch；anysearch 冒烟 search 有真实返回或如实记录不可用原因（无 API key 匿名限流可接受）。
+3. 设置页可见并修改库根；修改后 @ 引用可列出库根内文件；旧 YvanAI 路径零改动。
+4. STATUS.md 记录实测命令与结果；不提交、不推送。
+
+#### 五、风险
+
+- anysearch 经 DSH 发现机制的真实可用性未验证——Step 1 允许回退。
+- knowledge_root 默认值切换影响 @ 引用来源——旧数据不删不迁，仅指向变化，风险低但需在 STATUS 说明。
+- 设置 schema 兼容——必须 #[serde(default)]，验收含旧文件加载测试。
+
+### OD-ARCH-085：工作记录场景全链路——读/存/取/输出与知识库省 token 联动（已验收通过，2026-10-25）
+
+> **状态：已验收通过（REVIEW.md 顶部，2026-10-25）。两处裁定待用户决定：anysearch 白名单、库根绑定。** 设计已与用户逐条确认（索引卡+两跳检索可行；零碎条目 AI 三选一处理不需用户确认；周报复核后落盘；专项写作归文案场景）。批准后派 OpenDesign/deepseek-v4.1-flash 子代理执行。**开工基线：** main，HEAD 0d17b1f，工作区 12 项未提交改动一律保留；runtime/ 无差异为前提。
+
+#### 用户定调（六条，均为硬约束）
+
+1. 知识库是给 AI 读的，不是给人看的——省 token 优先，采用**索引卡 + 两跳检索**。
+2. 读/存/取要快、少打扰；**审核只发生在输出（周报落盘）一处**。
+3. 工作记录**每周一个 md 文件追加**，不拆散；工作记录不进知识库，**只有复核后的周报才进**。
+4. 周报名称/模板/记录文档规则**写死在 Skill 文件里**，改文件即升级，不改代码。
+5. 发言稿、简报等专项写作归文案写作场景，本场景不做。
+6. 零碎记录 AI 三选一处理（成知识卡 / 进 inbox / 归档），**不需要用户确认**。
+
+#### 存储结构（Obsidian 兼容，绑定用户 vault；数据根内为默认路径）
+
+- 库/工作记录/2026-W43.md ← 每周一个文件，只追加
+- 库/周报/2026-W43-周报.md ← 用户复核后落盘，此后可被知识库检索
+- 库/知识库/索引.md ← 全库卡片目录，AI 第一步只读这一个文件
+- 库/知识库/概念/ 与 库/知识库/方法/ ← 知识卡片
+- 库/inbox/ ← 静默放入，不打扰
+
+**索引卡规则（省 token 核心）：** 索引.md 只记「标题 + 标签 + 一句话摘要」，每张卡一行。模型读取顺序：索引 → 按标签定位 → 只加载命中的 1–2 张卡 → 禁止整目录扫描/整库加载。卡片为机器阅读优化：一卡一概念、正文 ≤300 字、自包含、用双链关联相关卡。卡片结构：frontmatter（tags/sources/date）+ 一句话定义 + 展开 + 相关链接；外部依据附来源，自判断标「待核实」；写卡必须同步更新索引.md；写卡前先查索引防重复建卡。
+
+#### 三个 Skill（改数据根 ~/OmniDesk/runtime/dsh-home/skills/ 下现有文件，改文件即生效）
+
+1. **memory-agent（条目整理，重写现有文件）**：会话 → 条目，追加进当周 md。一句话记录不硬扩；多轮讨论提炼「问题 → 结论」；长文只记要点。每条标记去向（本周报引用 / 知识卡 / inbox / 归档）。只追加、按行合并，禁止整文件重写。
+2. **knowledge-search（知识卡片，改造现有文件）**：按上述索引卡规则重写，含卡片格式、索引维护、防重复、两跳检索顺序。
+3. **周报生成（memory-agent 的 Report Mode 或独立文件，由 BUILDER 按 082 已有绑定契约决定，不新增绑定槽位）**：写死规则 = 读当周 md + 模板 → 起草 → 界面展示全文 → 用户确认后才落盘到 周报/。模板命名规则改 Skill 文件即可升级。
+
+#### 两个集成（按官方手册核实过的结论）
+
+- **Obsidian CLI**：是 Obsidian 官方桌面版 1.12+ 内置 CLI（设置中开启），不是 DSH npm 插件。用途：建卡、移动文件、双链存在性检查、列 inbox。未装 Obsidian 时降级为普通文件读写，功能不受阻。不进 D-030 冻结的 npm 插件清单。
+- **anysearch**：本机已存在完整 Skill 包（/home/kevin/.codex/skills/anysearch/，SKILL.md v2.1.0 + scripts，JSON-RPC 2.0 单端点 CLI，无 key 可匿名低限额）。以 Skill 方式集成进 Discipline Profile，不进 npm 插件清单。websearch 已有（profile 内 web-search-deepseek），不重复装。
+
+#### 实施步骤
+
+1. 重写 memory-agent、knowledge-search 两个 Skill 文件；按绑定契约落实周报生成（Report Mode 或独立 Skill 文件）。
+2. 在数据根初始化目录骨架（工作记录/周报/知识库/概念/方法/inbox）与空的 知识库/索引.md；不迁移、不覆盖任何已有用户数据。
+3. 把 anysearch 以 Skill 方式挂入 Discipline Profile 的 Skill 注入机制（走 082 的 skill_bindings 契约，遵守每场景 ≤3 的上限；若上限冲突，本场景优先 knowledge-search / memory-agent / anysearch，周报生成并入 memory-agent）。
+4. Obsidian CLI 做能力探测：可用则走 CLI，不可用则降级普通文件读写；两种路径都要有行为。
+5. 写合成评测用例：一句话记录、多轮讨论记录、长文要点、周报起草→确认→落盘、建卡防重复、索引同步、两跳检索命中、无 Obsidian 降级。副本隔离数据根上全流程跑通。
+
+#### 验收标准
+
+- [ ] 当周 md 只追加不重写（含「两次追加后文件为纯追加结果」断言）。
+- [ ] 索引.md 与卡片集始终一致（建卡/改卡后索引条目与卡片数对应）。
+- [ ] 两跳检索：模型第一步只读索引，第二步只加载命中卡；评测断言未发生整目录读取（以读取记录为证）。
+- [ ] 周报未经用户确认不落盘；确认后文件出现在 周报/ 且命名符合写死规则。
+- [ ] 零碎条目三选一去向无需用户确认即完成。
+- [ ] 无 Obsidian 环境下全流程降级可用。
+- [ ] runtime/ 无差异；不提交不推送；STATUS.md 记录实测命令与结果。
+
+#### 风险与边界
+
+- Skill 注入受 082 每场景 ≤3 绑定上限约束，anysearch 挤占名额是设计取舍，用户已知情。
+- Obsidian CLI 依赖用户本机 Obsidian ≥1.12 并手动开启 CLI；未开启不阻塞功能，只损失双链校验等增强。
+- 真实模型端到端质量（提炼好坏、卡面质量）不在本轮验收内，待用户实测反馈迭代。
+
+
+### OD-ARCH-084：会话内搜索的命中定位、逐处切换与焦点保持（已验收通过，2026-10-25）
+
+> **当前状态：已验收通过（见 REVIEW.md 顶部终审）。** 用户 2026-10-25 批复「批准执行084」，BUILDER 按 `docs/BUILDER-Task-Instruction-Template.md` 完成后，ARCHITECT 独立复跑 `verify_ui_084.py` 21 项全 pass、failures=[]、exit 0，并回归 082（17/17）、083（17/17）、tsc/build/pytest 75/cargo 261。审查中退回修复两项：正则元字符致整窗黑屏（改为 `indexOf` 字面量切分）、未搜索态常驻 35vh 空白（改为检索态条件生效）。**尚未做真实模型端到端实测（OD-ARCH-080 清单），本轮未提交、未推送。** 以下原批准口径与验收标准保留作存档。
 
 **需求来源：** 用户 2026-10-25 实测反馈「搜索功能没法自动聚焦到已搜索到的词上，而且点上下箭头时切换得不顺」，要求先参考 DSH 原生搜索、再结合当前设计综合分析后修复。分类：**缺陷修复 + 交互打磨**（082 S8 的实现未达可用标准）。
 
-**开工基线：** 分支 main，HEAD `0ac9edf`，工作区 48 项既有未提交/未跟踪改动（081/082/083 成果）全部保留；`git status --porcelain runtime/` 为 0。本计划不含提交、推送、打标签、改 Profile、改模型路由。
+**开工基线：** 分支 main，HEAD `0d17b1f`，工作区干净（081/082/083 已分批提交并推送至 `origin/main`）；`git status --porcelain runtime/` 为 0。本计划不含提交、推送、打标签、改 Profile、改模型路由。
 
 #### 已核实事实（分级）
 

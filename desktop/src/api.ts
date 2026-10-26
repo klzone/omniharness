@@ -16,6 +16,10 @@ import type {
   EngineDescriptor,
   EngineHealth,
   ExplanationSource,
+  LibraryRootInfo,
+  KnowledgeVaultNote,
+  KnowledgeVaultRootStatus,
+  KnowledgeVaultScan,
   LocalRootInfo,
   MaterialRead,
   OfflineFlowResponse,
@@ -37,6 +41,8 @@ import type {
   TaskResult,
   TaskStatus,
   ApprovalRespondReceipt,
+  QuestionAnswerReceipt,
+  QuestionAnswerItem,
   TaskTypeCatalog,
   OfflineArtifactContent,
   OfflineArtifactEntry,
@@ -54,6 +60,10 @@ import type {
   UsageRecord,
   WeeklySummary,
   WorkflowSample,
+  WorklogAppendReceipt,
+  WorklogWeekRead,
+  WorklogArchiveList,
+  WorklogReportRead,
   ModelRouteListing,
   EngineModelCatalog,
   ModelSettings,
@@ -264,6 +274,24 @@ export const host = {
   },
 
   /**
+   * 回传用户对结构化一次性提问的答案（OD-ARCH-088）。
+   * 只有宿主返回收据才表示送达；失败时界面保留卡片供重试。
+   */
+  questionAnswer(
+    omniTaskId: string,
+    questionId: string,
+    answers: QuestionAnswerItem[],
+  ): Promise<QuestionAnswerReceipt> {
+    return invoke<QuestionAnswerReceipt>("engine_question_answer", {
+      omniTaskId,
+      questionId,
+      answers,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
    * 会话清单（只含元数据）。需要启动引擎，宿主准入关闭时会直接拒绝。
    * 只读：不修改来源会话文件或注册表。
    */
@@ -351,6 +379,60 @@ export const shell = {
 
   localRootInfo(): Promise<LocalRootInfo> {
     return invoke<LocalRootInfo>("task_local_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 库根信息（OD-ARCH-086）：当前生效路径、来源与已保存选择。 */
+  libraryRootInfo(): Promise<LibraryRootInfo> {
+    return invoke<LibraryRootInfo>("task_library_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 追加一条随手记（OD-ARCH-089 S2）。
+   *
+   * 写盘由宿主确定性完成（只追加、不重写），模型只负责缺项追问。
+   * 回执里 `ok=false` 必须原样呈现给用户，不能假装已记录。
+   */
+  worklogAppend(text: string, destination?: string): Promise<WorklogAppendReceipt> {
+    return invoke<WorklogAppendReceipt>("worklog_append", {
+      text,
+      destination: destination ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读当周工作记录（周报用）。只读：不存在时 `exists=false`，不建文件。 */
+  worklogReadWeek(week?: string): Promise<WorklogWeekRead> {
+    return invoke<WorklogWeekRead>("worklog_read_week", { week: week ?? null }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 列周记录与周报归档（OD-ARCH-091 W3）。
+   *
+   * 只扫文件系统元数据，不读正文、不调模型。目录不存在返回空列表而不是错误；
+   * 文件名不合约定（`2026-W99.md`、`随手记.md`……）由宿主跳过并在 `skipped` 计数，
+   * 界面照实说明，不改名、不猜测。
+   */
+  worklogArchiveList(): Promise<WorklogArchiveList> {
+    return invoke<WorklogArchiveList>("worklog_archive_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 读一份周报正文（OD-ARCH-091）。
+   *
+   * `fileName` 形如 `2026-W44-周报.md`；宿主先校验文件名再拼接路径，
+   * 所以这里不拼路径、不做字符串清洗，交出去的只能是文件名。
+   */
+  worklogReadReport(fileName: string): Promise<WorklogReportRead> {
+    return invoke<WorklogReportRead>("worklog_read_report", { fileName }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -456,6 +538,65 @@ export const shell = {
       "task_set_artifact_root",
       { path },
     ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存新的库根。只影响之后的 @ 引用与技能写入，不迁移、不覆盖既有文件。 */
+  setLibraryRoot(path: string): Promise<{
+    ok: boolean;
+    library_root: string;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; library_root: string; note: string }>(
+      "task_set_library_root",
+      { path },
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在系统文件管理器中打开当前成果目录（只读）。 */
+  /** 知识库根状态（OD-KB-001 P1）：只读，不扫描、不读正文。 */
+  knowledgeVaultStatus(): Promise<KnowledgeVaultRootStatus> {
+    return invoke<KnowledgeVaultRootStatus>("knowledge_vault_status").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存知识库根。宿主只写设置文件，不创建目录、不做写入探针。 */
+  setKnowledgeVaultRoot(path: string): Promise<{
+    ok: boolean;
+    knowledge_vault_root: string;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; knowledge_vault_root: string; note: string }>(
+      "knowledge_vault_set_root",
+      { path },
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 清除知识库根选择；不动知识库内任何文件。 */
+  clearKnowledgeVaultRoot(): Promise<{ ok: boolean }> {
+    return invoke<{ ok: boolean }>("knowledge_vault_clear_root").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只读扫描或刷新已保存的知识库根；结果只在内存，不建立索引。 */
+  knowledgeVaultScan(): Promise<KnowledgeVaultScan> {
+    return invoke<KnowledgeVaultScan>("knowledge_vault_scan").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取知识库内一篇 Markdown/纯文本笔记；附件只列元数据，不读正文。 */
+  knowledgeVaultReadNote(relativePath: string): Promise<KnowledgeVaultNote> {
+    return invoke<KnowledgeVaultNote>("knowledge_vault_read_note", {
+      relativePath,
+    }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
