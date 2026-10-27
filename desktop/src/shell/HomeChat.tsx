@@ -503,6 +503,12 @@ export function HomeChat({
       providers: Array<{ id: string; models: string[]; baseURL: string | null }>;
     }>
   >([]);
+  /**
+   * 引擎当前实际加载的 Profile（OD-ARCH-095 S02）。
+   * 模型目录是按 provider 分组的，目录 id 是 provider 而不是 Profile；
+   * 切换时必须用这个真实 Profile 作为写入来源，否则 DSH 会以「profile 不存在」退出码 1 失败。
+   */
+  const [engineProfile, setEngineProfile] = useState("");
   const [modelNote, setModelNote] = useState<string | null>(null);
   /**
    * OD-ARCH-048：web-api 通道直读的模型目录。
@@ -688,8 +694,10 @@ export function HomeChat({
     }
     if (routes.status === "fulfilled") {
       setModelRoutes(routes.value.profiles ?? []);
+      setEngineProfile(routes.value.engine_profile ?? "");
     } else {
       setModelRoutes([]);
+      setEngineProfile("");
     }
   }, []);
 
@@ -699,14 +707,32 @@ export function HomeChat({
 
   /** 切换模型：写 OmniDesk 自己的覆盖文件 → 引擎重启 → 端点重新判定。 */
   const selectModel = useCallback(
-    async (profile: string, provider: string, model: string, effort?: string) => {
+    async (
+      profile: string,
+      provider: string,
+      model: string,
+      effort?: string,
+      byUser = true,
+    ): Promise<boolean> => {
+      // OD-ARCH-095 S03：没有真实 Profile 就不发切换请求。
+      // 之前候选为空时这里会带空串调用宿主，被空值校验拦下，登录后立刻弹出一条失败；
+      // 目录分支则把 provider id 当 Profile 传下去，得到「退出码 1」。两者都在前端收口。
+      const sourceProfile = (profile ?? "").trim() || engineProfile.trim();
+      if (!sourceProfile || !provider.trim() || !model.trim()) {
+        // 用户主动点选却说不出该用哪个 Profile，才值得提示；自动应用失败时保持安静，
+        // 否则就又回到「一登录就报错」——候选会在下次读取后自然就绪。
+        if (byUser) {
+          setModelNote("还没有读到可用的 Profile，暂时无法切换模型；候选读取完成后可重试。");
+        }
+        return false;
+      }
       setModelBusy(true);
       setModelNote(null);
       try {
         // 改选模型后，路由与端点事实都会变：先让缓存作废（OD-ARCH-041）。
         invalidateEngineFactsCache();
         const r = await shell.setModelRoute({
-          sourceProfile: profile,
+          sourceProfile,
           provider,
           model,
           reasoningEffort: effort ?? modelEffort,
@@ -717,13 +743,15 @@ export function HomeChat({
             `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
         );
         await refreshAdmission();
+        return true;
       } catch (e) {
         setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)));
+        return false;
       } finally {
         setModelBusy(false);
       }
     },
-    [modelEffort, refreshAdmission],
+    [engineProfile, modelEffort, refreshAdmission],
   );
 
   /**
@@ -1532,14 +1560,17 @@ export function HomeChat({
       // 用户主动选档：之后不再被场景默认覆盖（OD-ARCH-068）。
       if (byUser) effortTouchedRef.current = true;
       if (!facts?.provider || !facts?.model) {
-        setModelNote("当前端点尚未识别，先选一个模型再设思考等级。");
-        return;
+        // 自动应用时端点还没识别属于启动过程中的正常状态，不打扰用户。
+        if (byUser) setModelNote("当前端点尚未识别，先选一个模型再设思考等级。");
+        return false;
       }
       const route = modelRoutes.find((g) =>
         g.providers.some((p) => p.id === facts.provider && p.models.includes(facts.model!)),
       );
+      // OD-ARCH-095 S03：候选里找不到这条路由时，不要退回空 Profile 去调用宿主。
+      // `selectModel` 会再用引擎当前 Profile 兜底；两处都没有才真正放弃。
       setModelEffort(effort);
-      await selectModel(route?.profile ?? "", facts.provider, facts.model, effort);
+      return selectModel(route?.profile ?? "", facts.provider, facts.model, effort, byUser);
     },
     [facts, modelRoutes, selectModel],
   );
@@ -1555,6 +1586,8 @@ export function HomeChat({
    *   2. 只在引擎空闲时切换——切档要经 setModelRoute 重启引擎，生成中切换会把
    *      正在跑的任务打断（OD-ARCH-048/059 的卡死教训）；
    *   3. 同一场景同一档只应用一次，避免每次读端点事实都重启引擎。
+   *   4. 候选与 Profile 就绪后才应用（OD-ARCH-095 S03）：启动瞬间候选为空，
+   *      此时切档必然失败；等下一轮 state 更新再试，而不是留下一条失败提示。
    */
   useEffect(() => {
     const wanted = (preset?.thinking ?? "").trim();
@@ -1562,13 +1595,31 @@ export function HomeChat({
     if (effortTouchedRef.current) return;
     if (busy || modelBusy || starting) return;
     if (!facts?.provider || !facts?.model) return;
+    if (!engineProfile) return;
     if (modelEffort === wanted) return;
     const mark = `${preset?.key ?? ""}:${wanted}`;
     if (appliedSceneThinkingRef.current === mark) return;
     appliedSceneThinkingRef.current = mark;
     setModelNote(`已按场景应用思考等级：${wanted}`);
-    void selectEffort(wanted, false);
-  }, [preset?.key, preset?.thinking, busy, modelBusy, starting, facts, modelEffort, selectEffort]);
+    void selectEffort(wanted, false).then((ok) => {
+      // 失败（例如端点刚变、候选还没跟上）时撤销「已应用」标记，让下一轮可以重试；
+      // 否则一次失败会让这个场景永久停在旧档位上（OD-ARCH-095 S03）。
+      if (!ok && appliedSceneThinkingRef.current === mark) {
+        appliedSceneThinkingRef.current = null;
+        setModelNote(null);
+      }
+    });
+  }, [
+    preset?.key,
+    preset?.thinking,
+    busy,
+    modelBusy,
+    starting,
+    facts,
+    modelEffort,
+    engineProfile,
+    selectEffort,
+  ]);
 
   /**
    * 把一个文件加入本轮引用（OD-ARCH-077 S1）。
@@ -2505,6 +2556,7 @@ export function HomeChat({
               currentModel={facts?.model ?? null}
               groups={modelRoutes}
               catalog={modelCatalog}
+              engineProfile={engineProfile}
               effort={modelEffort}
               busy={modelBusy || busy}
               loading={factsLoading && !facts}

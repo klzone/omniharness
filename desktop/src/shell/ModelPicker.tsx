@@ -32,6 +32,7 @@ export function ModelPicker({
   currentModel,
   groups,
   catalog = null,
+  engineProfile = "",
   effort,
   busy,
   loading = false,
@@ -44,6 +45,12 @@ export function ModelPicker({
   groups: ModelRouteGroup[];
   /** OD-ARCH-048：web-api 通道直读的模型目录；为空或不可用时回退到 groups。 */
   catalog?: EngineModelCatalog | null;
+  /**
+   * 引擎当前实际加载的 Profile（OD-ARCH-095 S02）。
+   * 目录分组的 id 是 provider，不是 Profile——用它写覆盖文件会让 DSH 以
+   * 「profile 不存在」失败。目录分支统一回落到这个真实 Profile。
+   */
+  engineProfile?: string;
   effort: string;
   busy: boolean;
   /** OD-ARCH-050：首次读取事实期间显示「读取中」，而不是「未识别」。 */
@@ -169,7 +176,7 @@ export function ModelPicker({
                         key={g.id + "|" + m.id}
                         type="button"
                         onClick={() => {
-                          onSelectModel(g.id, m.provider, m.id);
+                          onSelectModel(engineProfile, m.provider, m.id);
                           setOpen(false);
                         }}
                         className={

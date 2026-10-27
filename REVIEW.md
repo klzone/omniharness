@@ -1,3 +1,89 @@
+## OD-ARCH-093 S10 审查结论（ARCHITECT，2026-10-27）——通过
+
+**结论：通过。** 用户第五次反馈的四项改动（待确认入口并入逾期卡、弹窗条目方形底色、分类下拉不被裁切、删除按钮前置）与源码一致，我本人独立复核 diff 并重跑了静态校验与真实窗口预览，未发现阻断问题。
+
+**独立复核范围：** HEAD `b109b18`，改动未提交。逐文件核对 `SceneStatusStrip.tsx`（逾期卡内 `action` 新增「待确认 N」按钮、删除四卡下方独立触发条、`expiredHint` 三态文案）、`PendingWriteCard.tsx`（条目与按钮由 `rounded-xl`/`rounded-md` 去圆角、新增 `SCENARIO_LABEL` 把场景键渲染成中文）、`CategoryPicker.tsx`（portal + fixed 定位）、`ScenePage.tsx`（删除按钮前置）的差异。`runtime/` 零差异。窗口预览只用 `/tmp/od093-s10-arch` 的合成数据（1 条合成待确认写入、3 段合成对话），未读真实工作记录、成果目录或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `verify_weekly_093.py`（静态 + 纯函数编译断言） | **105 / 105 通过** |
+| 窗口 `preview_weekly_093_s10.py`（`:216`，/tmp/od093-s10-arch） | 全部 facts 与我独立核对一致 |
+
+**窗口关键 facts（我重跑得到，与既有证据一致）：** 逾期卡内出现「待确认 1」入口（`pending_trigger_pos` 落在逾期卡范围 x=1285 / 卡 x=1100 宽 276 内），四卡下方不再有独立触发条；待确认弹窗可打开，条目含确认 / 放弃两个动作；历史对话展开后 3 条删除按钮 x=181 均在标题 x=209 左侧；3 个分类下拉各 4 个选项全部落在视口内（y 629–753，无裁切）。
+
+**目视复核：** 截图 `06-pending-dialog.png` 显示弹窗内条目为方形底片、按钮无圆角、场景标签渲染为「工作记录」，四张指标卡与导航条同轴，视觉与既有紫青体系一致。
+
+**已知限制（不构成阻断）：** ① 未在用户实际显示器与真实数据上复核，本轮为 Xvfb 合成数据。② 「待确认写入」当前只有复盘这一个写入入口且复盘界面已按 OD-ARCH-092 移除，因此该入口在正常使用中通常不出现——这是既定设计，不是缺陷；本次验证靠合成数据触发。③ 分类下拉的视口夹取只在 1600×980 与既有 1000px 窄窗下验证过，更极端的缩放未覆盖。
+
+**阶段决定：OD-ARCH-093 S10 验收通过。** 至此 093 的 S01–S10 全部审查完毕。
+
+---
+
+## OD-ARCH-095 审查结论（ARCHITECT，2026-10-27）——通过
+
+**结论：通过。** 两个报错的根因都在补丁集合与 Profile 的传递上，修复与计划一致，且我本人重跑了全部验证，未发现阻断性问题。用户现场的两个现象（登录即「请选择要使用的 Profile、provider 与模型」、切换模型「DSH 配置转储失败（退出码 1）」）在源码层面都已收口，并在真实窗口里复现过修复前、验证过修复后。
+
+**独立复核范围：** HEAD `b109b18`，改动未提交。逐文件核对 `model_routes.rs`（`list_payload` / `select_payload` / `stderr_tail` / `run_script` 的 stderr 管道与线程 join）、`model-routes.mjs`（`redactSecrets` / `describeFailure` / `dumpConfig`）、`ModelPicker.tsx`（`engineProfile` prop 与目录分支）、`HomeChat.tsx`（`engineProfile` state、`selectModel` 守卫、场景思考档 useEffect）。`runtime/` 零差异（`git status runtime/` 为空）。窗口验证只用 `/tmp` 一次性根、合成回环端点与 `/tmp/od095-knowledge`，未读真实成果或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `cargo test`（含本轮新增 6 项） | **405 passed，0 failed**（lib 363 + 集成 2+13+6+5+10+3+1） |
+| `tsc --noEmit` / `vite build` | 均通过 |
+| `pytest tests -q` | 89 passed，30 subtests |
+| `verify_profile_rules_068.py` | 25/25 |
+| 窗口 `verify_model_providers_065.py`（`:65`） | 保存/沿用密钥/错密钥/双 provider 全部符合预期 |
+| 窗口 `verify_home_fixes_081.py`（`:87`） | `passed: true` |
+| 窗口 `verify_model_route_095.py`（`:95`） | `passed: true` |
+
+**关键证据：** 窗口里预置的覆盖文件只含 `od095-only` / `od095-decoy` 两个合成 provider，Profile 自身没有它们——这与用户现场「`opendesign` 只定义在 `~/OmniDesk/app/config/omnidesk-model.yml`」同构。修复后冷启动无任何失败文案；下拉能列出该 provider；点选后覆盖文件被重写，`acp` 与 `agent-default-model` 都指向所选模型，另一个 provider 保留；不存在 Profile 时错误文案包含 Profile 名与「应改用当前引擎实际加载的 Profile」的中文指引，长度 212 字。真实配置的只读转储也确认 `opendesign` 与 5 个模型现在能被枚举（修复前为空）。
+
+**审查中发现并已处理的问题：** 第一版窗口脚本的断言过宽（覆盖文件本来就含目标 model，`overlay_rewritten` 不足以证明写入发生），且真实窗口暴露了计划内未尽之处——`select_route` 写覆盖文件时同样没带补丁，导致候选可见但点选失败。两处都已修正：断言改为「文件被重写 + 选中项写入 acp/agent-default-model + 另一 provider 保留」，代码补上 `patches` 并新增单元测试锁定。这是审查过程中发现的真实缺陷，不属于计划外扩围。
+
+**只读核对说明：** 我对用户真实数据根跑过一次 `model-routes.mjs` 转储（`DSH_HOME=~/OmniDesk/runtime/dsh-home`，补丁指向 `~/OmniDesk/app/config/omnidesk-model.yml`），只输出 provider 名、模型 id 与「apiKeyEnv 是否存在」，未读取或打印任何密钥值，未启动、重启或停止引擎，未修改任何文件。
+
+**已知限制（不构成阻断）：** ① 未对真实供应商发起联网切换（会消耗用户额度并重启用户引擎），因此「真实模型能否成功应答」仍未验证；本次证明的是候选枚举、Profile 传递、覆盖文件写入与错误文案这条链路。② 未在用户实际显示器的 release 实例上复核，本轮用 debug 二进制 + 一次性数据根。③ stderr 的凭证剔除是形态匹配，不是安全承诺。
+
+**范围外改动登记：** 工作区仍有 OD-ARCH-093 S10 与 OD-ARCH-094 的未提交改动，属独立工作项，本轮原样保留；本轮全部验证在包含它们的树上通过。`evidence/od-arch-065/` 与 `evidence/od-arch-081/` 下的截图与 `facts.json` 变化来自重跑既有窗口脚本的自动覆写，属预期副作用，非人工编辑。
+
+**阶段决定：OD-ARCH-095 验收通过。** 未提交、未推送，由用户决定。
+
+---
+
+## OD-ARCH-094 审查结论（ARCHITECT，2026-10-27）——通过
+
+**结论：通过。** 文案写作页改版（创作管线与灵感架，S01–S06）与已实施源码一致：指标四卡、三栏结构、状态分组与 90 天回顾筛选、灵感架回首页跳转、窄窗单列降级均按计划落地；宿主侧 frontmatter 只读解析边界清楚，未越界做编辑器、AI 复用或新存储。本轮由我本人独立重跑全部验证并逐文件核对提交 diff，未发现阻断性或需返工的问题。
+
+**独立复核范围：** 实施改动已由用户侧整理为提交 `7ee80fc`（writing studio + 093 四象限 + 计划/状态/审查文档）与 `b109b18`（周报页控件精修）并推送 origin/main，本轮在 HEAD `b109b18`（与远端同步）上复核，`git diff cffff6d..b109b18` 逐文件核对 `task_shell.rs`、`writingStudio.ts`、`WritingStudio.tsx`、`ScenePage.tsx`、`SceneStatusStrip.tsx`、`ArtifactExplorer.tsx`、`scenes.ts`、`types.ts`、`scene_overview.rs` 的差异；`runtime/` 零差异。窗口验证全程只用 /tmp 一次性合成数据（本人在 `/tmp/od094-review4b`、display `:194` 重跑），未读取真实成果、知识库或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `verify_writing_094.py` | **98 / 98 通过** |
+| 窗口验证 `preview_writing_094.py`（`:194`，/tmp/od094-review4b） | **passed: true**，全部 21 项 facts 通过 |
+| 回归 `verify_weekly_091/092/093.py` | **67/67、29/29、105/105**（093 含 S10 新增 6 项） |
+| `tsc --noEmit` / `npm run build` | 均通过（仅既有 >500 kB chunk 提示） |
+| `pytest tests -q` | **89 passed，30 subtests passed** |
+| `cargo test --offline`（本轮早前在 20:04–20:05 跑完，日志 /tmp/od094-cargo.log） | **lib 358 passed**（含 frontmatter 新增 2 项）+ 集成 2+13+6+5+10+3+1 全通过，0 failed |
+
+**窗口验证关键 facts：** 三组阶段计数 草稿 1 / 成文 4 / 已发布 1，合计 6 = 成果总数（含无 frontmatter、非法值两个确定性缺省样本）；类型标签（AI 知识 / blog / 网站内容 / 学习心得 / 未分类）齐全；「继续创作」取 frontmatter 标题；90 天提醒与徽标出现且点击后只留超期条目；草稿筛选只留草稿；灵感架点击回首页并选中对应会话；窄窗 1000px 单列顺序 继续创作→灵感架→状态管线→成果文档库，无横向溢出。宽窗与窄窗截图人工目视复核：暖纸底 + 墨色正文 + 青绿强调，与周报页的紫青配色区分明显，骨架与 093 体系统一，符合用户授权口径「区别于周报分页但整体统一」。
+
+**逐文件核对要点：** `task_shell.rs` 只对 `material-writing` 场景解析 frontmatter，仅读文件前 16 KiB，状态缺省/非法→finished、类型非法→uncategorized，读失败不报错不丢条目，不缓存不回写（含「列表解析不能改文件一个字节」的只读断言测试）；`writingStudio.ts` 为纯函数，缺省口径常量化（`STATUS_DEFAULT_NOTE`），时间判断由调用方注入保证确定性；`WritingStudio.tsx` 不承载编辑器与对话，打开成果只读宿主文件；`ArtifactExplorer.tsx` 的 `showTypeLabels`/`stalePaths`/`accent` 均为可选参数，weekly/project 默认行为不变；`SceneStatusStrip.tsx` 写作四卡只在 writing 分支渲染，读不到数据显示「—」而不写 0。
+
+**授权与计划文字不一致的裁定：** STATUS.md 记录的用户授权原文「授权执行 OD-ARCH-094，UI 视觉设计要区别于周报分页，颜色配色等有差异，但整体要有统一性」明确且在先；PLANS.md 标题「计划草案，待用户批准」属文档滞后，本轮已同步修正为「已批准实施，审查通过」。实施未超出计划范围（未做编辑器、创作统计图表、AI 复用建议、灵感持久化格式、素材回链）。
+
+**已知限制（如实登记，不构成阻断）：** ① frontmatter 解析是本项目自用的小集合解析，不是通用 YAML，嵌套结构不支持；超过 16 KiB 按「无 frontmatter」缺省处理。② 视觉验证仅截图人工查看，未做深色主题截图与像素级对照；建议用户在实际显示器上打开写作页做一次主观确认。③ 灵感架是场景会话列表的展示层，没有独立的「待用」标记格式。④ 90 天判定基于文件 mtime，外部编辑工具触碰文件会刷新时间。
+
+**范围外改动登记：** 工作区当前还有一批未提交的 OD-ARCH-093 S10 改动（待确认入口并入逾期卡、分类下拉 portal 定位等，STATUS 已记录为已实施待审查），属 094 之外的独立工作项，本轮原样保留未动；本轮回归（091/092/093、tsc、build、pytest、`:194` 窗口验证）均在包含该批改动的树上通过，说明两者共存无回归。S10 的正式审查另行进行。
+
+**阶段决定：OD-ARCH-094 验收通过。** 本轮新增的窗口证据（`:194` /tmp/od094-review4b）与静态断言证据已刷新到 `evidence/od-arch-094/`；文档标题同步修正；不提交、不推送，由用户决定。
+
+---
+
 ## OD-KB-001 P4 独立验收结论（ARCHITECT，2026-10-27）——通过
 ## OD-ARCH-093 审查结论（ARCHITECT，2026-10-27）——通过
 

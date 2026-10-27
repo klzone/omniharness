@@ -15,6 +15,16 @@ const SOURCE_LABEL: Record<string, string> = {
   scheduler: "定时任务发起",
 };
 
+/** 场景键 → 中文名。界面统一中文，英文副标题只出现在页面小标题里。 */
+const SCENARIO_LABEL: Record<string, string> = {
+  weekly_report: "工作记录",
+  weekly: "工作记录",
+  material_writing: "文案写作",
+  writing: "文案写作",
+  project_management: "项目跟进",
+  project: "项目跟进",
+};
+
 function clock(secs: number): string {
   if (!Number.isFinite(secs) || secs <= 0) return "—";
   const d = new Date(secs * 1000);
@@ -75,7 +85,8 @@ export function PendingWriteCard({
   return (
     <div
       className={
-        "rounded-xl border px-3 py-2.5 " +
+        // 2026-10-27：用户要求弹窗内的条目用方形底色，不再用圆角底片。
+        "border px-3.5 py-3 " +
         (expired
           ? "border-surface-variant/40 bg-surface-container/60"
           : "border-primary/25 bg-primary/5")
@@ -87,8 +98,8 @@ export function PendingWriteCard({
             <span className="text-[12px] uppercase tracking-wide text-outline">
               {SOURCE_LABEL[item.source] ?? item.source}
             </span>
-            <span className="text-[12px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
-              {item.scenario}
+            <span className="text-[12px] px-1.5 py-0.5 bg-surface-container text-on-surface-variant">
+              {SCENARIO_LABEL[item.scenario] ?? item.scenario}
             </span>
             <span className="text-[12px] font-medium text-on-surface truncate">{item.title}</span>
           </div>
@@ -108,14 +119,14 @@ export function PendingWriteCard({
         {item.status === "pending" && !path ? (
           <div className="flex items-center gap-1.5 shrink-0">
             <button
-              className="text-[12px] px-2 py-1 rounded-md bg-primary text-on-primary disabled:opacity-50"
+              className="text-[12px] px-2 py-1 bg-primary text-on-primary disabled:opacity-50"
               onClick={() => void confirm()}
               disabled={busy}
             >
               {busy ? "处理中…" : "确认写入"}
             </button>
             <button
-              className="text-[12px] px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high disabled:opacity-50"
+              className="text-[12px] px-2 py-1 bg-surface-container hover:bg-surface-container-high disabled:opacity-50"
               onClick={() => void reject()}
               disabled={busy}
             >
@@ -192,7 +203,7 @@ export function PendingWritePanel({ refreshKey = 0 }: { refreshKey?: number }) {
       {receipts.map(({ item, path }) => (
         <div
           key={"done-" + item.id}
-          className="rounded-xl border border-surface-variant/40 bg-surface-container/60 px-3 py-2"
+          className="border border-surface-variant/40 bg-surface-container/60 px-3.5 py-2.5"
         >
           <p className="text-[12px] text-on-surface-variant">
             已写入：<span className="break-all">{path}</span>

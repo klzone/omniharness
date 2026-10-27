@@ -57,6 +57,20 @@ pub fn discover_profiles(dsh_home: &Path, engine_profile: &str) -> Vec<String> {
     out
 }
 
+/// 取 stderr 的有界尾部（OD-ARCH-095 S04）。
+///
+/// 只用于让失败可诊断：最多 3 条非空行、总长 ≤ 600 字符，与脚本侧口径一致。
+/// 返回空串表示没有可用线索，调用方据此退回原有文案。
+fn stderr_tail(raw: &str) -> String {
+    let lines: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let start = lines.len().saturating_sub(3);
+    lines[start..].join(" | ").chars().take(600).collect()
+}
+
 fn run_script(payload: Value) -> Result<Value, String> {
     let node = std::env::var("OMNIDESK_NODE")
         .ok()
@@ -68,7 +82,9 @@ fn run_script(payload: Value) -> Result<Value, String> {
         .env("OMNIDESK_ROUTE_ARGS", payload.to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        // OD-ARCH-095 S04：stderr 不再丢弃。脚本自身会把 DSH 的失败原因附在错误消息里，
+        // 但脚本崩在 `main()` 之外（语法/依赖问题）时不会有 JSON，唯一线索就在 stderr。
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("无法启动模型路由脚本（{}）：{}", node, e))?;
 
@@ -93,6 +109,16 @@ fn run_script(payload: Value) -> Result<Value, String> {
         buffer
     });
 
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "模型路由脚本 stderr 不可用".to_string())?;
+    let err_reader = thread::spawn(move || {
+        let mut buffer = String::new();
+        let _ = stderr.read_to_string(&mut buffer);
+        buffer
+    });
+
     let deadline = Instant::now() + SCRIPT_TIMEOUT;
     loop {
         match child.try_wait() {
@@ -102,12 +128,14 @@ fn run_script(payload: Value) -> Result<Value, String> {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = reader.join();
+                let _ = err_reader.join();
                 return Err("模型路由脚本超时（DSH 配置转储未在 90 秒内完成）".to_string());
             }
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = reader.join();
+                let _ = err_reader.join();
                 return Err(format!("等待模型路由脚本失败：{}", e));
             }
         }
@@ -116,10 +144,18 @@ fn run_script(payload: Value) -> Result<Value, String> {
     let text = reader
         .join()
         .map_err(|_| "模型路由脚本输出读取失败".to_string())?;
+    let err_text = err_reader.join().unwrap_or_default();
     let line = text
         .lines()
         .find(|l| l.trim_start().starts_with('{'))
-        .ok_or_else(|| "模型路由脚本没有输出可解析的 JSON".to_string())?;
+        .ok_or_else(|| {
+            let tail = stderr_tail(&err_text);
+            if tail.is_empty() {
+                "模型路由脚本没有输出可解析的 JSON".to_string()
+            } else {
+                format!("模型路由脚本没有输出可解析的 JSON：{}", tail)
+            }
+        })?;
     let value: Value = serde_json::from_str(line.trim())
         .map_err(|e| format!("模型路由脚本输出不是合法 JSON：{}", e))?;
     if value.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -133,12 +169,27 @@ fn run_script(payload: Value) -> Result<Value, String> {
 }
 
 /// 列出各 Profile 生效的 provider / model。
+///
+/// OD-ARCH-095 S01：必须带上引擎实际加载的补丁集合（含 OmniDesk 自己的覆盖文件）。
+/// 之前只传了 profile 名，导致只在覆盖文件里定义的 provider 在候选里完全消失；
+/// 界面拿到空候选后，场景思考档又用空 Profile 发起切换，于是登录即报错。
+/// 这里与 `base_routes` 的差别是**要**包含覆盖文件：列表要展示的正是「引擎此刻会走的路由」。
 pub fn list_routes(config: &EngineConfig, profiles: &[String]) -> Result<Value, String> {
-    run_script(json!({
+    run_script(list_payload(config, profiles))
+}
+
+/// 候选枚举的请求体（抽出来便于断言：OD-ARCH-095 S01 的补丁集合就在这份 payload 里）。
+fn list_payload(config: &EngineConfig, profiles: &[String]) -> Value {
+    json!({
         "dshCli": config.dsh_cli.display().to_string(),
         "dshHome": config.dsh_home.display().to_string(),
         "profiles": profiles,
-    }))
+        "patches": config
+            .patch_files
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>(),
+    })
 }
 
 /// 只读：引擎 Profile 当前生效的**非机密**路由集合（OD-ARCH-065 S3）。
@@ -208,16 +259,120 @@ pub fn select_route(
     if source_profile.trim().is_empty() || provider.trim().is_empty() || model.trim().is_empty() {
         return Err("请选择要使用的 Profile、provider 与模型。".to_string());
     }
-    let mut payload = json!({
-        "dshCli": config.dsh_cli.display().to_string(),
-        "dshHome": config.dsh_home.display().to_string(),
-        "profiles": [source_profile],
-        "writeOverlay": overlay.display().to_string(),
-        "provider": provider,
-        "model": model,
-    });
+    let mut payload = select_payload(config, overlay, source_profile, provider, model);
     if let Some(effort) = reasoning_effort {
         payload["reasoningEffort"] = Value::String(effort.to_string());
     }
     run_script(payload)
+}
+
+/// 写覆盖文件的请求体（抽出来便于断言：OD-ARCH-095 的补丁集合必须在这里）。
+///
+/// 与 `base_routes` 不同，这里**包含** OmniDesk 自己的覆盖文件：用户在下拉里看到的
+/// 候选就来自「Profile + 全部补丁」，若写的时候少读一份补丁，只在覆盖文件里定义的
+/// provider 就会被判成「该 Profile 里没有这个 provider」，选中随即失败。
+fn select_payload(
+    config: &EngineConfig,
+    overlay: &Path,
+    source_profile: &str,
+    provider: &str,
+    model: &str,
+) -> Value {
+    json!({
+        "dshCli": config.dsh_cli.display().to_string(),
+        "dshHome": config.dsh_home.display().to_string(),
+        "profiles": [source_profile],
+        "patches": config
+            .patch_files
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>(),
+        "writeOverlay": overlay.display().to_string(),
+        "provider": provider,
+        "model": model,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// OD-ARCH-095 S04：失败线索只取有界尾部，避免把大段栈信息带回界面。
+    #[test]
+    fn stderr_tail_keeps_only_last_three_lines() {
+        let raw = "a\n\nb\nc\nd\n";
+        assert_eq!(stderr_tail(raw), "b | c | d");
+    }
+
+    #[test]
+    fn stderr_tail_is_empty_for_blank_output() {
+        assert_eq!(stderr_tail("\n  \n"), "");
+    }
+
+    #[test]
+    fn stderr_tail_caps_total_length() {
+        let long = "x".repeat(2000);
+        assert!(stderr_tail(&long).chars().count() <= 600);
+    }
+
+    /// OD-ARCH-095 S01：枚举候选的 payload 必须带上引擎实际加载的补丁集合。
+    /// 这条断言防的是「覆盖文件里的 provider 在候选里消失」再次发生。
+    #[test]
+    fn list_payload_includes_engine_patches() {
+        let config = test_config();
+        let payload = list_payload(&config, &["web".to_string()]);
+        let patches = payload
+            .get("patches")
+            .and_then(Value::as_array)
+            .expect("候选枚举必须传 patches");
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].as_str(), Some("/data/config/omnidesk-model.yml"));
+    }
+
+    /// OD-ARCH-095：写覆盖文件时也必须带补丁集合。
+    ///
+    /// 窗口实测踩到过：候选能列出只存在于覆盖文件里的 provider，但写的时候不带补丁，
+    /// 于是 DSH 转储里看不到它，选中即报「该 Profile 里没有这个 provider」。
+    #[test]
+    fn select_payload_includes_engine_patches() {
+        let config = test_config();
+        let payload = select_payload(
+            &config,
+            Path::new("/data/config/omnidesk-model.yml"),
+            "web",
+            "p",
+            "m",
+        );
+        let patches = payload
+            .get("patches")
+            .and_then(Value::as_array)
+            .expect("写覆盖文件必须传 patches");
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].as_str(), Some("/data/config/omnidesk-model.yml"));
+        assert_eq!(payload.get("provider").and_then(Value::as_str), Some("p"));
+    }
+
+    /// OD-ARCH-095 S02/S03：空 Profile 在宿主侧仍被拒绝（前端守卫是第一道，不是唯一一道）。
+    #[test]
+    fn select_route_rejects_blank_profile() {
+        let config = test_config();
+        let err = select_route(&config, Path::new("/data/config/omnidesk-model.yml"), "  ", "p", "m", None)
+            .expect_err("空 Profile 必须被拒绝");
+        assert!(err.contains("请选择要使用的 Profile"));
+    }
+
+    fn test_config() -> EngineConfig {
+        EngineConfig {
+            python: "/usr/bin/python3".to_string(),
+            engine_dir: PathBuf::from("/data/engine"),
+            dsh_cli: PathBuf::from("/data/dsh/bin.js"),
+            dsh_home: PathBuf::from("/data/dsh-home"),
+            agents_home: PathBuf::from("/data/agents-home"),
+            result_dir: PathBuf::from("/data/engine-state/results"),
+            engine_state_dir: PathBuf::from("/data/engine-state"),
+            profile: "web".to_string(),
+            channel: "web-api".to_string(),
+            patch_files: vec![PathBuf::from("/data/config/omnidesk-model.yml")],
+        }
+    }
 }

@@ -292,6 +292,30 @@ def main() -> int:
           "text-[12px]" in strip_tsx and "text-[12px]" in quad_tsx and "text-[12px]" in tl_tsx,
           "周报页主要小字至少 12px")
 
+    # ---- S10 待确认并入逾期卡 / 方形底 / 分类浮层 / 删除位置（2026-10-27 第五次反馈）----
+    weekly_band = strip_tsx.split('scene.key === "weekly" ?')[1].split('scene.key === "writing" ?')[0]
+    check("pending_merged_into_overdue_card",
+          "待确认 {waiting}" in weekly_band and "label=\"逾期\"" in weekly_band,
+          "待确认入口是第四张「逾期」卡内的动作，不再另起模块")
+    check("pending_trigger_bar_removed",
+          "条等待决定" not in strip_tsx,
+          "四卡下方的独立触发条已删除")
+    pending_card = (SRC / "shell" / "PendingWriteCard.tsx").read_text(encoding="utf-8")
+    check("pending_card_square_backdrop",
+          "rounded-xl" not in pending_card and "rounded-md" not in pending_card,
+          "弹窗条目底色与按钮改为方形")
+    cat_tsx = (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8")
+    check("category_menu_ported_to_body",
+          "createPortal" in cat_tsx and "document.body" in cat_tsx and "fixed" in cat_tsx,
+          "分类下拉挂到 body，不受滚动容器裁剪")
+    check("category_menu_flips_to_fit_viewport",
+          "window.innerHeight" in cat_tsx and "menuRef.current" in cat_tsx,
+          "按真实高度上下翻转并夹在视口内")
+    check("thread_delete_before_title",
+          'aria-label={`删除对话：${t.title}`}' in scene_tsx
+          and scene_tsx.index('aria-label={`删除对话：${t.title}`}') < scene_tsx.index("onClick={() => openThread(t.id)}"),
+          "删除按钮排在单条对话标题之前")
+
     # ---- S07 留白与字号（用户二次反馈）----
     check("wider_column_gaps", "gap-4 lg:gap-5" in scene_tsx, "栏间距放大")
     check("roomier_card_padding", "px-4 py-4 lg:px-5 lg:py-5" in scene_tsx, "卡片内边距放大")
