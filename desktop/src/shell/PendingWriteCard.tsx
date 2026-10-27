@@ -84,38 +84,38 @@ export function PendingWriteCard({
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-outline">
+            <span className="text-[12px] uppercase tracking-wide text-outline">
               {SOURCE_LABEL[item.source] ?? item.source}
             </span>
-            <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
+            <span className="text-[12px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
               {item.scenario}
             </span>
-            <span className="text-[11.5px] font-medium text-on-surface truncate">{item.title}</span>
+            <span className="text-[12px] font-medium text-on-surface truncate">{item.title}</span>
           </div>
-          <p className="text-[11px] text-on-surface-variant mt-1">{item.summary}</p>
-          <p className="text-[10.5px] text-outline mt-0.5">{item.impact}</p>
-          <p className="text-[10px] text-outline mt-0.5">
+          <p className="text-[12px] text-on-surface-variant mt-1">{item.summary}</p>
+          <p className="text-[12px] text-outline mt-0.5">{item.impact}</p>
+          <p className="text-[12px] text-outline mt-0.5">
             {item.chars} 字 · 登记 {clock(item.created_at)} · 有效至 {clock(item.expires_at)}
             {expired ? " · 已过期，不能再执行" : ""}
           </p>
           {path ? (
-            <p className="text-[10.5px] text-on-surface-variant mt-1 break-all">
+            <p className="text-[12px] text-on-surface-variant mt-1 break-all">
               已写入：{path}
             </p>
           ) : null}
-          {error ? <p className="text-[10.5px] text-error mt-1">{error}</p> : null}
+          {error ? <p className="text-[12px] text-error mt-1">{error}</p> : null}
         </div>
         {item.status === "pending" && !path ? (
           <div className="flex items-center gap-1.5 shrink-0">
             <button
-              className="text-[10.5px] px-2 py-1 rounded-md bg-primary text-on-primary disabled:opacity-50"
+              className="text-[12px] px-2 py-1 rounded-md bg-primary text-on-primary disabled:opacity-50"
               onClick={() => void confirm()}
               disabled={busy}
             >
               {busy ? "处理中…" : "确认写入"}
             </button>
             <button
-              className="text-[10.5px] px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high disabled:opacity-50"
+              className="text-[12px] px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high disabled:opacity-50"
               onClick={() => void reject()}
               disabled={busy}
             >
@@ -166,7 +166,7 @@ export function PendingWritePanel({ refreshKey = 0 }: { refreshKey?: number }) {
 
   const visible = items.filter((i) => i.status === "pending" || i.status === "expired");
   if (error) {
-    return <p className="text-[10.5px] text-outline">读取待确认记录失败：{error}</p>;
+    return <p className="text-[12px] text-outline">读取待确认记录失败：{error}</p>;
   }
   const receipts = Object.values(justConfirmed).filter((r) => !visible.some((v) => v.id === r.item.id));
 
@@ -175,8 +175,8 @@ export function PendingWritePanel({ refreshKey = 0 }: { refreshKey?: number }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-outline">待确认写入</span>
-        <span className="text-[10.5px] text-outline">
+        <span className="text-[12px] uppercase tracking-wide text-outline">待确认写入</span>
+        <span className="text-[12px] text-outline">
           {visible.filter((i) => i.status === "pending").length} 条待你决定
           {broken > 0 ? ` · ${broken} 条记录损坏` : ""}
         </span>
@@ -194,10 +194,10 @@ export function PendingWritePanel({ refreshKey = 0 }: { refreshKey?: number }) {
           key={"done-" + item.id}
           className="rounded-xl border border-surface-variant/40 bg-surface-container/60 px-3 py-2"
         >
-          <p className="text-[11.5px] text-on-surface-variant">
+          <p className="text-[12px] text-on-surface-variant">
             已写入：<span className="break-all">{path}</span>
           </p>
-          <p className="text-[10px] text-outline mt-0.5">{item.summary}（这条记录已结束，不再出现在待确认列表里）</p>
+          <p className="text-[12px] text-outline mt-0.5">{item.summary}（这条记录已结束，不再出现在待确认列表里）</p>
         </div>
       ))}
     </div>

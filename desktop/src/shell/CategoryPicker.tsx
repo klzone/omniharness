@@ -107,7 +107,7 @@ export function CategoryPicker({
         aria-label={`本次对话归到哪一类，当前：${currentLabel}`}
         data-testid="scene-category-picker"
         data-tag={value}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[12px] hover:bg-surface-container transition-colors disabled:opacity-60"
         title="归类只改这段对话的组织方式，不改模型与路由；可选分类在设置页维护"
       >
         <span
@@ -127,7 +127,7 @@ export function CategoryPicker({
           className="absolute left-0 bottom-full mb-2 w-[240px] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2 z-50"
           data-testid="scene-chips"
         >
-          <div className="px-1.5 pb-1.5 text-[10px] uppercase tracking-wide text-outline">
+          <div className="px-1.5 pb-1.5 text-[12px] uppercase tracking-wide text-outline">
             归类到
           </div>
           <ul
@@ -174,7 +174,7 @@ export function CategoryPicker({
                       }
                     }}
                     className={
-                      "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[11.5px] transition-colors " +
+                      "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[12px] transition-colors " +
                       (on
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-on-surface-variant hover:bg-surface-container")
@@ -197,7 +197,7 @@ export function CategoryPicker({
               );
             })}
           </ul>
-          <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[10px] text-outline leading-relaxed">
+          <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[12px] text-outline leading-relaxed">
             分类可在设置里改名或新增；这里只决定这段对话怎么归类。
           </p>
         </div>

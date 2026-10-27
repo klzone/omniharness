@@ -160,17 +160,17 @@ def main() -> int:
     check("entry_font_13_5", "text-[13.5px] text-on-surface-variant leading-[1.7]" in tl_tsx,
           "entries >= 13.5px（093 修订把行距从 leading-relaxed 提到 1.7）")
     check("date_font_12", "mono text-[12px] tracking-wide" in tl_tsx, "date >= 12px")
-    check("weekday_font_11_5", "text-[11.5px]" in tl_tsx, "")
+    check("weekday_font_12", "text-[12px]" in tl_tsx, "")
     check("font_floor_sane", entry_px >= 13.5 and date_px >= 12.0,
           f"entry={entry_px} date={date_px}")
 
-    # ---- 复盘界面移除，心跳与规则提醒保留 ----
+    # ---- 复盘界面移除，心跳保留，规则提醒展示层移除（OD-ARCH-095） ----
     check("no_review_ui_in_bar", "review_enabled" not in bar_tsx and "runReview" not in bar_tsx, "")
     check("no_review_ui_in_settings", "review_enabled" not in settings_tsx, "")
     check("no_review_cadence_ui", "复盘频率" not in bar_tsx and "立即复盘" not in settings_tsx, "")
     check("heartbeat_kept", "scheduler.tick()" in bar_tsx and "markHeartbeat" in bar_tsx, "")
-    check("rule_reminder_kept", "规则提醒" in bar_tsx, "")
-    check("bar_hides_when_empty", "if (!text) return null;" in bar_tsx, "no empty placeholder row")
+    check("rule_reminder_ui_removed", "<section" not in bar_tsx and "确定性汇总没有产出" not in bar_tsx, "")
+    check("heartbeat_bridge_has_no_visual_module", "return null;" in bar_tsx, "heartbeat remains non-visual")
     check("backend_review_contract_kept",
           "review_enabled" in (SRC / "types.ts").read_text(encoding="utf-8"),
           "scheduler/pending_writes contract untouched")

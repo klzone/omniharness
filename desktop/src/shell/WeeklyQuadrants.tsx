@@ -4,9 +4,7 @@
  * 版式参考用户给出的效率看板：2×2 矩阵，每格一个大编号 + 中文动作名 + 该格条目预览。
  * 配色只用 `theme.css` 既有令牌，按「先做 → 排期 → 回看 → 可缓」由主色向 surface 递减。
  *
- * 诚实性：格子里的分法是**规则推导**，不是模型判断。格下方的口径说明必须与
- * `weeklyQuadrants.ts::classifyWorklog` 的实际逻辑一致；没有「去向」的条目单列
- * 「待归类」，不硬塞进四格。
+ * 诚实性：格子里的分法是**规则推导**，不是模型判断；没有「去向」的条目不硬塞进四格。
  */
 
 import { useMemo } from "react";
@@ -58,15 +56,15 @@ export function WeeklyQuadrants({
           事项四象限
         </h2>
         {subtitle ? (
-          <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
+          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
         ) : null}
-        <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
+        <span className="mono text-[12px] text-outline ml-auto shrink-0">
           {classified.items.length} 条
         </span>
       </div>
 
       {error ? (
-        <p className="text-[11.5px] text-error leading-relaxed pt-3 pb-1">
+        <p className="text-[12px] text-error leading-relaxed pt-3 pb-1">
           读取本周记录失败：{error}。这里不把读不到当成「没有事项」。
         </p>
       ) : null}
@@ -94,22 +92,22 @@ export function WeeklyQuadrants({
                 <span className="text-[14px] font-semibold tracking-tight">{q.title}</span>
                 <span className={"ml-auto mono text-[14px] " + CELL_COUNT_STYLE[q.key]}>{count}</span>
               </div>
-              <div className="text-[10px] leading-relaxed opacity-70 pt-1.5">{q.action}</div>
+              <div className="text-[12px] leading-relaxed opacity-70 pt-1.5">{q.action}</div>
               <ul className="pt-2.5 flex flex-col gap-1 min-w-0">
                 {items.slice(0, 2).map((i) => (
                   <li
                     key={i.id}
-                    className="text-[11.5px] leading-relaxed truncate opacity-85"
+                    className="text-[12px] leading-relaxed truncate opacity-85"
                     title={i.text}
                   >
                     · {i.text}
                   </li>
                 ))}
                 {count > 2 ? (
-                  <li className="text-[10.5px] opacity-65">还有 {count - 2} 条</li>
+                  <li className="text-[12px] opacity-65">还有 {count - 2} 条</li>
                 ) : null}
                 {count === 0 ? (
-                  <li className="text-[10.5px] opacity-60">暂无</li>
+                  <li className="text-[12px] opacity-60">暂无</li>
                 ) : null}
               </ul>
             </button>
@@ -117,21 +115,11 @@ export function WeeklyQuadrants({
         })}
       </div>
 
-      <div className="pt-3.5 mt-3.5 border-t border-surface-variant/20 text-[10px] leading-[1.7] text-outline">
-        {loading && empty
-          ? "正在读取本周记录…"
-          : empty
-            ? "本周还没有可归类记录。"
-            : null}
-        {classified.unclassified > 0 ? (
-          <span className="text-on-surface-variant">
-            待归类 {classified.unclassified} 条（没写「去向」，不猜重要性）。
-          </span>
-        ) : null}
-        <span className="block pt-1">
-          口径：已过日期 = 先做/回看；去向为「本周报引用」= 进周报。按日期与去向确定性归类，不调用模型。
-        </span>
-      </div>
+      {loading && empty ? (
+        <p className="pt-3.5 mt-3.5 border-t border-surface-variant/20 text-[12px] leading-[1.7] text-outline">
+          正在读取本周记录…
+        </p>
+      ) : null}
     </section>
   );
 }

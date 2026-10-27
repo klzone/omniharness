@@ -2,6 +2,35 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-093 S09：周报页展示层清理与可读性修订（2026-10-27；已实施，待 ARCHITECT 独立审查）
+
+> 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
+> 触发：用户直接提出周报页的 7 项展示层修订并明确授权执行。范围按 PLANS.md 的 OD-ARCH-093 S09 记录，不扩展到 P2/P3/P4 新功能。
+> 设计借鉴：`screenshots-design-inspiration` 搜索到 Jumprun、Mixpanel、AlphaSights 与 Flow 等生产力/任务后台参考；借鉴两点：把搜索与视图/范围控制分成独立行，减少拥挤；把待处理动作放进聚焦式对话框，避免常驻说明条挤占主区。
+> 起点：HEAD `7ee80fcf6eb3c6abbbade8c3189f28bd90233380`（main）；起点工作区干净。本轮保留所有现有内容，未 reset、未 clean、未覆盖、未打标签；当前差异 24 项，均为本轮源码、计划/状态、验证脚本与刷新后的合成证据。
+> 边界：本助手亲自实施，未派子代理；未读取真实知识库、真实成果文档或凭证；未修改 `runtime/`；窗口验证只使用 `/tmp` 合成数据。
+
+### 实际改动
+
+- `AnnouncementBar.tsx`：删除“规则提醒”可见横条及其确定性汇总展示，保留宿主 scheduler tick、心跳记录与待确认刷新桥接。
+- `SceneStatusStrip.tsx` / `PendingWriteCard.tsx`：待确认写入改为四卡下的触发条，点击打开 `w-[80vw]`、`role=dialog`、支持关闭与 Escape 的页面内弹窗；保留确认、放弃、过期与写入回执。
+- `WeeklyQuadrants.tsx`：删除口径说明及其底部说明模块；四象限数据与筛选逻辑不变。
+- `ArtifactExplorer.tsx`：删除右栏成果计数、归档并入说明及 Obsidian 提示；搜索行自适应并加搜索图标，卡片/列表与“含子目录”在第二行，精简模式仍固定近 30 天但恢复含子目录开关。
+- `ScenePage.tsx` / `CategoryPicker.tsx`：历史对话分类由原生 select 改为 OmniDesk 胶囊 + 浮层选择器；weekly 相关元信息与错误/操作文字提高到 12px；weekly 子目录偏好恢复为可切换。
+- 验证脚本同步改写为检查规则提醒/口径说明移除、弹窗、两行工具栏、含子目录恢复与 12px 可读性下限。
+
+### 已运行与待审查
+
+- `cd desktop && npx --no-install tsc --noEmit`：通过。
+- `cd desktop && npm run build`：通过；仅有既有大 chunk 警告。
+- `python3 tests/verification/desktop/verify_weekly_091.py`：67/67 通过。
+- `python3 tests/verification/desktop/verify_weekly_092.py`：29/29 通过；旧的“规则提醒保留”和 11.5px 字号断言已按本轮用户要求改为“可见模块移除、心跳保留、12px 字号”。
+- `python3 tests/verification/desktop/verify_weekly_093.py`：99/99 通过；新增弹窗、两行成果库工具栏、含子目录恢复、展示说明移除与 12px 可读性断言。
+- `python3 -m pytest tests -q`：89 passed，30 subtests passed。
+- `python3 tests/verification/desktop/preview_weekly_093.py --display :205 --root /tmp/od093-s09-preview-final`：窗口验证通过；宽窗三栏与窄窗单列可读，四象限筛选、归档徽标、列表视图与无横向溢出事实均为 true。截图与 AX 证据刷新到 `tests/verification/desktop/evidence/od-arch-093/`。
+- `git diff --check`：通过；`git status --porcelain -- runtime/`：空。
+- 待审查：实际源码、Git diff、测试结果与证据由 ARCHITECT 独立复核后再写入 REVIEW.md；当前不标为通过。
+
 
 
 ## OD-ARCH-094：文案写作页改版——创作管线与灵感架（2026-10-27；已实施，待 ARCHITECT 独立审查）

@@ -14,6 +14,7 @@ import type { OfflineArtifactEntry, SceneOverview } from "../types";
 import { useThreadCategories } from "../threadCategories";
 import { AnnouncementBar } from "./AnnouncementBar";
 import { ArtifactExplorer, type ArtifactArchiveEntry } from "./ArtifactExplorer";
+import { CategoryPicker } from "./CategoryPicker";
 import type { Scene } from "./Dock";
 import { SceneStatusStrip } from "./SceneStatusStrip";
 import { WeeklyTimeline } from "./WeeklyTimeline";
@@ -38,11 +39,12 @@ import {
 /** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
 const SUBDIRS_KEY_PREFIX = "omnidesk.scene.include-subdirs.";
 
-function readSubdirsPref(scene: SceneKey): boolean {
+function readSubdirsPref(scene: SceneKey, fallback = false): boolean {
   try {
-    return window.localStorage.getItem(SUBDIRS_KEY_PREFIX + scene) === "1";
+    const stored = window.localStorage.getItem(SUBDIRS_KEY_PREFIX + scene);
+    return stored === null ? fallback : stored === "1";
   } catch {
-    return false;
+    return fallback;
   }
 }
 
@@ -55,11 +57,10 @@ function writeSubdirsPref(scene: SceneKey, value: boolean) {
 }
 
 /**
- * 是否连子目录一起列：工作记录页固定包含，写作页同样固定包含（OD-ARCH-094 S02），
- * 其它场景沿用本机偏好。写作页不提供勾选，所以这里直接给 true。
+ * 是否连子目录一起列：写作页固定包含，工作记录页恢复为可切换偏好；其它场景沿用本机偏好。
  */
 function fixedSubdirs(scene: SceneKey): boolean {
-  const byPreference = scene === "weekly" ? true : readSubdirsPref(scene);
+  const byPreference = readSubdirsPref(scene, scene === "weekly");
   return scene === "writing" ? true : byPreference;
 }
 
@@ -103,7 +104,7 @@ function filterSceneArtifacts(
 /**
  * 场景页 v2（OD-ARCH-060）。
  *
- * 版式自上而下：规则提醒（AnnouncementBar，046 的降级规则保留）→ 指标带 →
+ * 版式自上而下：场景心跳桥接（AnnouncementBar，046 的降级规则保留）→ 指标带 →
  * 本周时间线 ＋ 成果文档库两栏（项目跟进保留「进度」页签）→ 折叠会话历史（默认收起）。
  *
  * 场景页仍是**档案页**（OD-ARCH-057）：自己不承载对话框，要接着说事点「去对话」回首页。
@@ -146,8 +147,7 @@ export function ScenePage({
   const [archive, setArchive] = useState<WorklogArchiveList | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   /**
-   * 工作记录页固定连子目录一起列（OD-ARCH-093 四次修订）：右栏不再提供勾选，
-   * 所以这里直接按 true 初始化，其余场景仍沿用本机偏好。
+   * 工作记录页的右栏提供「含子目录」开关；写作页继续固定包含，其余场景沿用本机偏好。
    */
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() =>
     fixedSubdirs(scene),
@@ -532,23 +532,23 @@ export function ScenePage({
           历史对话
         </h2>
         {def.subtitles?.history ? (
-          <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
+          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">
             {def.subtitles.history}
           </span>
         ) : null}
-        <span className="mono text-[10.5px] text-outline ml-auto shrink-0">{threads.length} 条</span>
+        <span className="mono text-[12px] text-outline ml-auto shrink-0">{threads.length} 条</span>
       </div>
       <div className="flex items-center gap-2 pt-3.5">
         <button
-          className="text-[11.5px] text-on-surface-variant hover:text-primary shrink-0"
+          className="text-[12px] text-on-surface-variant hover:text-primary shrink-0"
           onClick={() => setShowThreads((v) => !v)}
           aria-expanded={showThreads}
         >
           {showThreads ? "▾" : "▸"} {showThreads ? "收起" : "展开"}对话列表
         </button>
-        <span className="text-[10px] text-outline truncate">对话只在首页发生</span>
+        <span className="text-[12px] text-outline truncate">对话只在首页发生</span>
         <button
-          className="ml-auto text-[11px] text-primary hover:underline shrink-0"
+          className="ml-auto text-[12px] text-primary hover:underline shrink-0"
           onClick={newThread}
           title="回首页，按本场景开一段新对话"
         >
@@ -558,7 +558,7 @@ export function ScenePage({
       {showThreads ? (
         <div className="pt-3.5 flex flex-col gap-1.5 max-h-[200px] overflow-y-auto">
           {threads.length === 0 ? (
-            <p className="text-[11.5px] text-outline leading-relaxed">
+            <p className="text-[12px] text-outline leading-relaxed">
               还没有这个场景的对话。去首页对话，场景选「{def.label}」即可。
             </p>
           ) : (
@@ -566,25 +566,18 @@ export function ScenePage({
               <div key={t.id} className="flex items-center gap-1">
                 <button
                   onClick={() => openThread(t.id)}
-                  className="flex-1 text-left px-2.5 py-2 rounded-lg text-[11.5px] truncate text-on-surface-variant hover:bg-surface-container"
+                  className="flex-1 text-left px-2.5 py-2 rounded-lg text-[12px] truncate text-on-surface-variant hover:bg-surface-container"
                   title={t.title}
                 >
                   {t.title}
                 </button>
-                <select
-                  className="text-[10px] px-1 py-0.5 rounded border border-surface-variant/30 bg-surface-container-lowest/60"
+                <CategoryPicker
+                  options={tagOptions}
                   value={t.tag}
-                  onChange={(e) => retag(t.id, e.target.value as ThreadTag)}
-                  title="改挂到别的场景"
-                >
-                  {tagOptions.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(tag) => retag(t.id, tag as ThreadTag)}
+                />
                 <button
-                  className="text-[10px] text-outline hover:text-error px-1"
+                  className="text-[12px] text-outline hover:text-error px-1"
                   onClick={() => {
                     removeThread(t.id);
                     refreshThreads();
@@ -617,7 +610,7 @@ export function ScenePage({
         writingNow={writingNow}
         onRequestWriting={scene === "writing" ? newWritingThread : undefined}
       />
-      <AnnouncementBar scene={def} itemsText={itemsText} onPendingChanged={bumpPending} />
+      <AnnouncementBar onPendingChanged={bumpPending} />
 
       {scene === "writing" ? (
         /*
@@ -788,17 +781,17 @@ export function ScenePage({
                 成果文档库
               </h2>
               {def.subtitles?.artifacts ? (
-                <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
+                <span className="text-[12px] uppercase tracking-[0.16em] text-outline">
                   {def.subtitles.artifacts}
                 </span>
               ) : null}
-              <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
+              <span className="mono text-[12px] text-outline ml-auto shrink-0">
                 {artifacts.filter((f) => !f.is_dir).length + archiveEntries.length} 条
               </span>
             </div>
             <div className="pt-3.5 flex-1 flex flex-col min-h-0 overflow-y-auto">
               {artifactsError ? (
-                <p className="text-[11.5px] text-error leading-relaxed pb-2">
+                <p className="text-[12px] text-error leading-relaxed pb-2">
                   读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
                 </p>
               ) : null}

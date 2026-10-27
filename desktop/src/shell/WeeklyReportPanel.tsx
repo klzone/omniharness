@@ -50,24 +50,24 @@ export function WeeklyReportStatus({
         : "");
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px]">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[12px]">
       <span className={state === "missing" ? "text-outline" : "text-on-surface-variant"}>
         本周周报 · {state === "missing" ? "未生成" : state === "draft" ? "草稿" : "已归档"}
       </span>
-      <span className="text-[10px] text-outline truncate" title={hint}>
+      <span className="text-[12px] text-outline truncate" title={hint}>
         {hint}
       </span>
       <span className="ml-auto flex items-center gap-1.5 shrink-0">
         {latest ? (
           <button
-            className="px-2 py-0.5 text-[10.5px] text-on-surface-variant hover:text-primary hover:underline"
+            className="px-2 py-0.5 text-[12px] text-on-surface-variant hover:text-primary hover:underline"
             onClick={() => onOpenReport(latest)}
           >
             查看
           </button>
         ) : null}
         <button
-          className="px-2.5 py-0.5 text-[10.5px] bg-primary text-on-primary hover:opacity-90"
+          className="px-2.5 py-0.5 text-[12px] bg-primary text-on-primary hover:opacity-90"
           onClick={onRequestReport}
           title="回首页对话，带上本周记录起草周报"
         >
