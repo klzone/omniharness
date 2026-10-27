@@ -122,9 +122,12 @@ def main() -> int:
     check("weekly_three_column_grid",
           "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]" in scene_tsx,
           "093: left 1 / center 1.4 / right 1")
-    check("weekly_no_timeline_tab_token", '\"timeline\"' not in scene_tsx, "")
-    check("tab_state_two_valued",
-          'useState<\"progress\" | \"artifacts\">' in scene_tsx, "weekly dropped from tab state")
+    # OD-ARCH-098 把 project 的页签换成 ProjectBoard 右栏视图后，「timeline」一词由
+    # projectRightView 承载；weekly 侧要守住的是「没有自己的 progress/artifacts 页签」。
+    check("weekly_no_legacy_tab_state",
+          'useState<"progress" | "artifacts">' not in scene_tsx, "weekly dropped from tab state")
+    check("project_view_state_two_valued",
+          'useState<"timeline" | "artifacts">' in scene_tsx, "project keeps timeline/artifacts views")
     check("weekly_grid_guarded",
           'scene === \"weekly\" ?' in scene_tsx and "WeeklyTimeline" in scene_tsx, "")
     check("timeline_and_library_same_grid",

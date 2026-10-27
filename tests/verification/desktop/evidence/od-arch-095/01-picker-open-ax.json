@@ -91,7 +91,7 @@
   },
   {
     "role": "button",
-    "name": "日期与三周节律，今天 10月27日星期二",
+    "name": "日期与三周节律，今天 10月28日星期三",
     "text": ""
   },
   {
@@ -161,7 +161,7 @@
   },
   {
     "role": "heading",
-    "name": "晚上好· 欢迎回到 OmniDesk",
+    "name": "夜深了· 欢迎回到 OmniDesk",
     "text": ""
   },
   {
@@ -266,12 +266,12 @@
   },
   {
     "role": "button",
-    "name": "od095-only / od095-synthetic-model http://127.0.0.1:33543/v1",
+    "name": "od095-only / od095-synthetic-model http://127.0.0.1:40527/v1",
     "text": ""
   },
   {
     "role": "button",
-    "name": "od095-decoy / od095-decoy-model http://127.0.0.1:33543/v1",
+    "name": "od095-decoy / od095-decoy-model http://127.0.0.1:40527/v1",
     "text": ""
   },
   {

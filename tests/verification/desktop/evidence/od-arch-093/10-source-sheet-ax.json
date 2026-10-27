@@ -1,0 +1,72 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": ""
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "dialog",
+    "name": "/tmp/od093-preview/local-data/工作记录/2026-W44.md",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "/tmp/od093-preview/local-data/工作记录/2026-W44.md",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭预览",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  }
+]

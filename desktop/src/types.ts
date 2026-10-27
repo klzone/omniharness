@@ -793,6 +793,8 @@ export interface ProjectItem {
   item: string;
   owner: string;
   due: string;
+  /** 可选开始日期（OD-ARCH-098）。旧式五列行没有这一列，宿主返回 null。 */
+  start: string | null;
   status: "not_started" | "in_progress" | "blocked" | "done";
   next_step: string;
   overdue: boolean;

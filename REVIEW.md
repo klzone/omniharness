@@ -1,3 +1,39 @@
+## OD-ARCH-098 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 项目跟进页从旧版「进度 / 阶段成果」页签换成了左项目卡列表 + 右甘特两栏，数据仍来自既有的确定性汇总命令，页面不调模型；参考图里的百分比进度没有数据来源，因此没有虚构，改为状态色与里程碑。
+
+**独立复核范围：** HEAD `e1e4f2d` + 本轮改动（未提交时审查）。逐文件核对 `task_shell.rs`（`summarize_project` 五列行为不变、六列新增可选开始日期、`ProjectItem.start: Option<String>`）、`types.ts`、`projectGantt.ts`（全部纯函数、`today` 由外部注入）、`ProjectBoard.tsx`（左栏卡 + 右栏甘特、窄窗单列、「时间线 / 阶段成果」切换）、`ScenePage.tsx` 接线。`runtime/` 零差异。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：** `npx --no-install tsc --noEmit` 通过；`npm run build` 通过；`cargo test --offline` 全绿；`verify_project_098.py` **35 / 35**；窗口 `preview_project_098.py`（`:165`）facts 为 7 张卡、5 个里程碑、2 个区间、搜索 1 条命中、选中联动 true、窄窗两栏 true。
+
+**目视复核：** `evidence/od-arch-098/01-project-two-column.png` 显示左栏 7 张事项卡（状态徽标、负责人、期限、下一步、逾期标）与右栏甘特（日期轴、今日竖线、菱形里程碑、两条区间条、图例）对齐；卡片状态色与既有紫青体系一致，未出现百分比数字。
+
+**已知限制（不构成阻断）：** ① 窗口证据为 Xvfb 1600×980 与 1000px 窄窗的合成数据，未在用户真实显示器与真实事项上复核。② 事项行只有期限一个日期，没有真实进度来源，因此卡片用状态色带而非进度百分比——这是刻意的诚实呈现，不是缺项。③ 甘特的日/周粒度切换在 30 天阈值两侧各有单测，未做超长跨度（>180 天）的可视复核。
+
+**阶段决定：OD-ARCH-098 验收通过。**
+
+---
+
+## OD-ARCH-097 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 用户五点改版全部落地：四象限的 URGENT / IMPORTANT 轴标移到框外、格内只剩序号标题与至多两条、时间线删掉「转周报」并把去向标签移到正文左侧、「打开本周原文」改成贴底弹出卡片、成果库只显示标题与时间。
+
+**独立复核范围：** 逐文件核对 `WeeklyQuadrants.tsx`（轴标布局、`q.action` 与计数只保留在 `title`/`aria-label`、条目 `slice(0, 2)`）、`WeeklyTimeline.tsx`（按钮删除、胶囊前置）、`SourcePeekSheet.tsx`（portal、fixed 遮罩、方角、Esc/关闭/遮罩、焦点归还、dialog 语义）、`ScenePage.tsx`（页面流区块删除、浮层接入）、`ArtifactExplorer.tsx`（卡片与列表只留标题 + 日期、搜索 haystack 不变、路径退到 `title`）。`runtime/` 零差异。
+
+**独立实跑结果（本人执行）：** `verify_weekly_097.py` **34 / 34**；`verify_weekly_093.py` **105 / 105**；窗口 `preview_weekly_093.py`（`:164`）`axes_urgent=true`、`axes_important=true`、`quadrant_action_text_gone=true`、`source_sheet_opened/closed=true`、`main_area_height_stable=true`、窄窗 1000 单列正常。
+
+**审查中发现并已由实施方修正的三处真实问题：** ① 四象限格子的 `rounded-xl` 在本项目令牌里是 3rem，112px 格子被渲染成胶囊形，已改为 `rounded-[8px]`；② 轴标是排版文本，WebKit 不把它暴露到无障碍树，补 `role="group"` + `aria-label` 后可读；③ 预览脚本用「原文预览」字样判浮层，而浮层的无障碍名是文件路径，改为按 dialog / 关闭按钮判定。
+
+**回归影响：** 098 替换了 project 的页签结构后，091 与 092 里 5 条断言过期（它们仍在断言已删除的 `tab === "artifacts"` 源码），已按新契约同步为「weekly 无自有页签 / project 保留两视图」，两条脚本恢复 67/67 与 29/29。084 窗口回归首次复跑误读宿主机 GNOME 无障碍树（脚本指向系统 at-spi 总线），改为私有总线后 **21 / 21** 通过，同一修正同步到 095、060 与三个预览脚本。
+
+**目视复核：** `evidence/od-arch-093/01-weekly-three-column.png` 与 `11-quadrant-axes.png` 显示两行一列轴标在框外、格内无说明文字与统计数字、每格至多两条；`10-source-sheet.png` 显示原文浮层贴底、方角、不推动三栏；`12-artifact-rows-ax.json` 与 `04-artifact-list.png` 显示成果行只剩标题 + 日期。097 的新增抓帧落在 093 的证据目录下（脚本共用同一 `EVID`），归档时已注明。
+
+**已知限制（不构成阻断）：** ① 未在用户真实显示器与真实周记录上复核，窗口证据为 Xvfb + `/tmp` 合成数据。② 时间线「本周报引用」等去向标签来自记录文件的「去向」字段，字段缺失时左侧直接起正文，属既定行为。③ 1000px 以下的更窄视口未单独验证。
+
+**阶段决定：OD-ARCH-097 验收通过。** 按用户长期偏好，本轮改动已一并提交并推送 GitHub。
+
+---
+
 ## OD-ARCH-096 审查结论（ARCHITECT，2026-10-27）——通过
 
 **结论：通过。** 构建里那条 `AppendReceipt::failure` 告警确实是死代码，删掉后归零；模型切换的结果提示已从输入框下方的小字挪到右下角方角提示条，60 秒自动关闭、可手动关闭，位置与形态都符合用户要求。

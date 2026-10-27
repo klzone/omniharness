@@ -132,8 +132,10 @@ def main() -> int:
     bus_addr, bus_proc = start_private_dbus()
     os.environ["DBUS_SESSION_BUS_ADDRESS"] = bus_addr
     os.environ["DISPLAY"] = args.display
-    if "AT_SPI_BUS_ADDRESS" not in os.environ and os.path.exists("/run/user/1000/at-spi/bus"):
-        os.environ["AT_SPI_BUS_ADDRESS"] = "unix:path=/run/user/1000/at-spi/bus"
+    # 不要指向宿主机桌面的 at-spi 总线：那会把 GNOME 等系统应用混进无障碍树，
+    # 使 ax.has_text/ax.find 命中测试窗口之外的元素。让 at-spi 跟随上面新建的
+    # 私有 session bus 自动拉起隔离的 registry。
+    os.environ.pop("AT_SPI_BUS_ADDRESS", None)
     session = AppSession(root=root, display=args.display, artifact_override=True, reuse_running_dev_server=True, env_extra={"DBUS_SESSION_BUS_ADDRESS": bus_addr, "OMNIDESK_DSH_PROFILE": ""})
     facts = {"verified_at": time.strftime("%Y-%m-%d %H:%M:%S"), "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI + 像素与几何测量）", "script_sha256": script_sha256, "root": str(root), "checks": {}, "failures": []}
     def check(name: str, ok: bool, measured: object, threshold: object, desc: str = ""):

@@ -31,7 +31,7 @@ export interface SceneDef {
    * 键：priority（四象限）/ log（本周记录）/ artifacts（成果文档库）/ history（会话历史）/
    * records / weekly（顶部前两项指标）/ report / overdue（周报状态与逾期）；
    * 写作场景另有 studio / overview / recent / continue / inspiration / pipeline / stale /
-   * draft / finished / published（OD-ARCH-094）。
+   * draft / finished / published（OD-ARCH-094）；项目跟进另有 projects / timeline（OD-ARCH-098）。
    */
   subtitles?: Partial<
     Record<
@@ -52,7 +52,9 @@ export interface SceneDef {
       | "stale"
       | "draft"
       | "finished"
-      | "published",
+      | "published"
+      | "projects"
+      | "timeline",
       string
     >
   >;
@@ -112,7 +114,12 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     preset: "project",
     hasProgress: true,
     summary: "project",
-    emptyHint: "本场景还没有保存的成果。进度页签的数字来自既有的确定性汇总，不是模型算的。",
+    emptyHint:
+      "本场景还没有保存的成果。左侧卡片与右侧时间线都来自既有的确定性汇总，不是模型算的。",
+    subtitles: {
+      projects: "PROJECTS",
+      timeline: "TIMELINE",
+    },
   },
 };
 

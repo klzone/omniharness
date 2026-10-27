@@ -1,0 +1,20 @@
+{
+  "display": ":165",
+  "root": "/tmp/od098-preview",
+  "today": "2026-10-28",
+  "items": 7,
+  "milestones": 5,
+  "ranges": 2,
+  "artifacts": 2,
+  "ax_projects_heading": true,
+  "ax_timeline_heading": true,
+  "ax_cards": 7,
+  "ax_today_line": true,
+  "ax_milestone_rows": 0,
+  "search_cards": 1,
+  "search_kept_match": true,
+  "linked_selected": true,
+  "artifacts_visible": true,
+  "narrow_width": 1000,
+  "narrow_cards_and_gantt": true
+}

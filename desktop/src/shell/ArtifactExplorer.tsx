@@ -343,10 +343,20 @@ export function ArtifactExplorer({
           </div>
         ) : null}
         <div className="flex items-center justify-end gap-1.5 pt-2">
-          <button className={chip(view === "cards")} onClick={() => setView("cards")}>
+          <button
+            className={chip(view === "cards")}
+            onClick={() => setView("cards")}
+            aria-pressed={view === "cards"}
+            data-artifact-view="cards"
+          >
             卡片
           </button>
-          <button className={chip(view === "list")} onClick={() => setView("list")}>
+          <button
+            className={chip(view === "list")}
+            onClick={() => setView("list")}
+            aria-pressed={view === "list"}
+            data-artifact-view="list"
+          >
             列表
           </button>
           <label
@@ -407,9 +417,12 @@ export function ArtifactExplorer({
                           归档
                         </span>
                       </span>
+                      {/*
+                       * 只留标题与时间（OD-ARCH-097 S04）：文件名与标题常常同名，
+                       * 并排显示就是重复。完整路径仍在 title 悬浮提示里。
+                       */}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
-                        <span className="truncate max-w-full">{r.file_name}</span>
-                        <span>· {dateText(r.modified_at)}</span>
+                        <span>{dateText(r.modified_at)}</span>
                       </span>
                     </span>
                   </button>
@@ -439,10 +452,10 @@ export function ArtifactExplorer({
                     <span className="block text-[13.5px] font-medium text-on-surface line-clamp-2 leading-[1.55] break-words">
                       {m ? m.title ?? r.file_name : "正在读取标题…"}
                     </span>
+                    {/* 只留标题与时间（OD-ARCH-097 S04）：文件名退到 title 悬浮提示，
+                        字数/字节这类次要信息不再占版面。 */}
                     <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
-                      <span className="truncate max-w-full">{r.file_name}</span>
-                      <span>· {dateText(r.modified_at)}</span>
-                      {m?.chars != null ? <span>· {m.chars} 字</span> : null}
+                      <span>{dateText(r.modified_at)}</span>
                       {showTypeLabels ? (
                         <span
                           className="px-1.5 py-[1px] rounded-full text-[12px] text-secondary bg-secondary/10"
@@ -463,7 +476,7 @@ export function ArtifactExplorer({
             })}
           </div>
         ) : (
-          <ul className="flex flex-col divide-y divide-surface-variant/20">
+          <ul className="flex flex-col divide-y divide-surface-variant/20" data-artifact-list="">
             {visible.map((r) => {
               const m = r.kind === "artifact" ? meta[r.relative_path] : undefined;
               const stale = r.kind === "artifact" && (stalePaths?.has(r.relative_path) ?? false);
@@ -488,9 +501,6 @@ export function ArtifactExplorer({
                     <span className="block text-[12.5px] text-on-surface truncate group-hover:text-primary">
                       {primary}
                     </span>
-                    <span className="mt-0.5 block mono text-[12px] text-outline truncate">
-                      {r.file_name}
-                    </span>
                   </button>
                   <span className="text-[12px] text-outline shrink-0 whitespace-nowrap">
                     {dateText(r.modified_at)}
@@ -505,9 +515,6 @@ export function ArtifactExplorer({
                       {stale ? (
                         <span className="text-[12px] text-amber-700 shrink-0 whitespace-nowrap">90 天未动</span>
                       ) : null}
-                      <span className="text-[12px] text-outline shrink-0 whitespace-nowrap">
-                        {r.bytes} 字节
-                      </span>
                     </>
                   ) : null}
                 </li>

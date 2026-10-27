@@ -204,8 +204,8 @@ def main() -> int:
     bus_addr, bus_proc = start_dbus()
     os.environ["DISPLAY"] = args.display
     os.environ["DBUS_SESSION_BUS_ADDRESS"] = bus_addr
-    if "AT_SPI_BUS_ADDRESS" not in os.environ and os.path.exists("/run/user/1000/at-spi/bus"):
-        os.environ["AT_SPI_BUS_ADDRESS"] = "unix:path=/run/user/1000/at-spi/bus"
+    # 走私有 session bus 上自动拉起的 at-spi registry，避免读到宿主机桌面应用。
+    os.environ.pop("AT_SPI_BUS_ADDRESS", None)
 
     session = AppSession(
         root=root,

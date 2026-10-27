@@ -1,8 +1,8 @@
 {
-  "verified_at": "2026-10-26 08:27:40",
+  "verified_at": "2026-10-28 01:33:04",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI + 像素与几何测量）",
-  "script_sha256": "b09a127a67924917874d284c50d99ec3459bc26edc64a90d2f5e3d9bc021e1c1",
-  "root": "/tmp/od084-test",
+  "script_sha256": "da9ea8e84586fa1365dd24bfef6586d2f64467cfbad6185b6a5c548052ba888e",
+  "root": "/tmp/od084-arch5",
   "checks": {
     "test_thread_opened": {
       "pass": true,

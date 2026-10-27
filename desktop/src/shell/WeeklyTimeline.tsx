@@ -198,29 +198,27 @@ export function WeeklyTimeline({
                           " hover:bg-surface-container-low"
                         }
                       >
+                        {/*
+                         * 去向标签挪到行首（OD-ARCH-097 S02）：它是这条记录的属性，
+                         * 放在正文前面读起来像「这条归到哪儿」，也不切断正文的换行。
+                         * 没有去向的条目不占位，正文直接从行首开始。
+                         */}
+                        {entry.destination ? (
+                          <span
+                            className="shrink-0 mt-[4px] px-1.5 py-[1px] rounded-full text-[12px] text-outline border border-outline-variant/50"
+                            title="这条记录的归处（写在记录文件里）"
+                          >
+                            {entry.destination}
+                          </span>
+                        ) : null}
                         {/* 正文最多两行（OD-ARCH-093 S04）：截断只为版式，全文仍可通过
-                            title 悬浮提示与「打开本周原文」读到，原文一律不改。 */}
+                            title 悬浮提示与「查看本周原文」读到，原文一律不改。 */}
                         <p
                           className="flex-1 min-w-0 text-[13.5px] text-on-surface-variant leading-[1.7] line-clamp-2 break-words"
                           title={entry.text}
                         >
                           {entry.text}
                         </p>
-                        {entry.destination ? (
-                          <span
-                            className="shrink-0 mt-[3px] px-1.5 py-[1px] rounded-full text-[12px] text-outline border border-outline-variant/50"
-                            title="这条记录的归处（写在记录文件里）"
-                          >
-                            {entry.destination}
-                          </span>
-                        ) : null}
-                        <button
-                            className="shrink-0 mt-[3px] text-[12px] text-outline opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary"
-                          onClick={onRequestReport}
-                          title="回首页，把记录整理成周报"
-                        >
-                          转周报
-                        </button>
                       </li>
                     ))}
                     {day.raw.map((line, i) => (

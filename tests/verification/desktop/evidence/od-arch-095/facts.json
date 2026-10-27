@@ -39,7 +39,7 @@
       "profile_missing_note": false,
       "inline_note_only_in_toast": true,
       "toast_text_present": true,
-      "toast_text_head": "已切到 od095-only / od095-synthetic-model，端点 http://127.0.0.1:33543/v1（类别 local）。引擎",
+      "toast_text_head": "已切到 od095-only / od095-synthetic-model，端点 http://127.0.0.1:40527/v1（类别 local）。引擎",
       "toast_close_button_present": true,
       "toast_rect": {
         "x": 864,
@@ -51,7 +51,7 @@
       },
       "toast_hugging_bottom_right": true,
       "toast_flat": true,
-      "overlay_after_tail": "dsh-llm-pi-ai\"\n  config:\n    providers:\n      od095-only:\n        displayName: Synthetic 095\n        api: openai-completions\n        baseURL: http://127.0.0.1:33543/v1\n        models:\n          - id: od095-synthetic-model\n            name: od095-synthetic-model\n        apiKeyEnv: OMNIDESK_ROUTE_095_KEY\n      od095-decoy:\n        displayName: Synthetic 095 decoy\n        api: openai-completions\n        baseURL: http://127.0.0.1:33543/v1\n        models:\n          - id: od095-decoy-model\n            name: od095-decoy-model\n- id: acp\n  name: \"@deepseek-ai/dsh-acp\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n    reasoningEffort: off\n- id: agent-default-model\n  name: \"@deepseek-ai/dsh-agent-default-model\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n"
+      "overlay_after_tail": "dsh-llm-pi-ai\"\n  config:\n    providers:\n      od095-only:\n        displayName: Synthetic 095\n        api: openai-completions\n        baseURL: http://127.0.0.1:40527/v1\n        models:\n          - id: od095-synthetic-model\n            name: od095-synthetic-model\n        apiKeyEnv: OMNIDESK_ROUTE_095_KEY\n      od095-decoy:\n        displayName: Synthetic 095 decoy\n        api: openai-completions\n        baseURL: http://127.0.0.1:40527/v1\n        models:\n          - id: od095-decoy-model\n            name: od095-decoy-model\n- id: acp\n  name: \"@deepseek-ai/dsh-acp\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n    reasoningEffort: off\n- id: agent-default-model\n  name: \"@deepseek-ai/dsh-agent-default-model\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n"
     },
     "toast_dismiss": {
       "no_success_text": true,
@@ -59,7 +59,7 @@
     },
     "toast_auto_dismiss": {
       "raised": true,
-      "gone_after_s": 60.5,
+      "gone_after_s": 60.4,
       "auto_dismissed": true
     },
     "failure_message": {
@@ -71,9 +71,9 @@
     }
   },
   "seeded_overlay": "/tmp/od095/app-data/config/omnidesk-model.yml",
-  "seeded_overlay_sha": "-6851050558240860321",
-  "toast_seen_t": 2.7,
-  "toast_shot_t": 2.7,
+  "seeded_overlay_sha": "4035972930185389584",
+  "toast_seen_t": 2.8,
+  "toast_shot_t": 2.8,
   "passed": true,
   "app_alive": true,
   "shots": [

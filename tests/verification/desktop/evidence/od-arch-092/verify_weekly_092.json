@@ -6,14 +6,14 @@
       "detail": "093: left 1 / center 1.4 / right 1"
     },
     {
-      "name": "weekly_no_timeline_tab_token",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "tab_state_two_valued",
+      "name": "weekly_no_legacy_tab_state",
       "ok": true,
       "detail": "weekly dropped from tab state"
+    },
+    {
+      "name": "project_view_state_two_valued",
+      "ok": true,
+      "detail": "project keeps timeline/artifacts views"
     },
     {
       "name": "weekly_grid_guarded",

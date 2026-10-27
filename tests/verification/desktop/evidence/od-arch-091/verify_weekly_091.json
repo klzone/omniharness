@@ -51,9 +51,9 @@
       "detail": ""
     },
     {
-      "name": "weekly_no_timeline_tab",
+      "name": "weekly_no_legacy_tab_state",
       "ok": true,
-      "detail": "weekly tab should be gone in 092"
+      "detail": "weekly has no progress/artifacts tab any more"
     },
     {
       "name": "weekly_three_columns",
@@ -66,12 +66,12 @@
       "detail": "history in the left column"
     },
     {
-      "name": "progress_tab_kept",
+      "name": "progress_view_kept",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "artifacts_tab_kept",
+      "name": "artifacts_view_kept",
       "ok": true,
       "detail": ""
     },

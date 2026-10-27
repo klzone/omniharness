@@ -205,14 +205,16 @@ def main() -> int:
           'scene.key === "project" ? "本月阶段成果" : "本周产出"' in strip_tsx, "")
 
     # ---- S02 四象限 ----
-    check("quadrant_component_exists", quad_tsx.count("itemsIn(classified, q.key)") == 1, "")
+    # OD-ARCH-097 S01 把格子渲染改成按 key 取条目（轴标在框外后不再有 q 变量），
+    # 断言随实现同步，语义仍是「每格条目只来自一次 itemsIn 调用」。
+    check("quadrant_component_exists", quad_tsx.count("itemsIn(classified, key)") == 1, "")
     for title in ("先做", "排期", "回看", "可缓"):
         check("quadrant_title_" + title, f'title: "{title}"' in (SRC / "weeklyQuadrants.ts").read_text(encoding="utf-8"), "")
     check("quadrant_rule_removed_from_screen", "口径：" not in quad_tsx and "不调用模型" not in quad_tsx, "")
     check("quadrant_preview_single_line",
           "truncate opacity-85" in quad_tsx and "title={i.text}" in quad_tsx,
           "单行截断，悬浮可读全文")
-    check("quadrant_click_filters", "onSelect(q.key)" in quad_tsx and "aria-pressed" in quad_tsx, "")
+    check("quadrant_click_filters", "onSelect(key)" in quad_tsx and "aria-pressed" in quad_tsx, "")
     check("quadrant_state_in_page",
           "useState<QuadrantKey | null>(null)" in scene_tsx and
           "setQuadrant((prev) => (prev === key ? null : key))" in scene_tsx,
@@ -332,7 +334,10 @@ def main() -> int:
     check("subtitle_tracking",
           "tracking-[0.16em]" in quad_tsx and "tracking-[0.16em]" in tl_tsx,
           "英文副标题拉开字距")
-    check("quadrant_roomier", "min-h-[128px]" in quad_tsx and "gap-2.5 pt-3.5" in quad_tsx, "四象限留白")
+    # OD-ARCH-097 S01 去掉格内说明行后格子自然变矮（128px → 112px），轴标占用了列间距。
+    check("quadrant_roomier",
+          "min-h-[112px]" in quad_tsx and "gap-2.5" in quad_tsx and "pt-3.5" in quad_tsx,
+          "四象限留白")
     check("timeline_roomier", "gap-2.5" in tl_tsx and "leading-[1.7]" in tl_tsx, "条目行距")
 
     # ---- 英文副标题可配置、缺省不渲染 ----
