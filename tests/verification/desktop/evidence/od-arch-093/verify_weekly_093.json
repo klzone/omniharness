@@ -1,0 +1,485 @@
+{
+  "cases": [
+    {
+      "name": "band_four_metrics",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "band_iconnote",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_iconchecklist",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_iconclock",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_icontrend-up",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_has_subtitle_slot",
+      "ok": true,
+      "detail": "optional english subtitle"
+    },
+    {
+      "name": "band_ratio_hidden_without_data",
+      "ok": true,
+      "detail": "no progress bar without numerator/denominator"
+    },
+    {
+      "name": "band_unknown_is_dash",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_cards_are_separate",
+      "ok": true,
+      "detail": "四张独立卡片：手机单列、中窗两列、宽窗四列"
+    },
+    {
+      "name": "band_narrower_than_nav",
+      "ok": true,
+      "detail": "整排 1152px，比导航 1280px 略窄"
+    },
+    {
+      "name": "band_gap_between_cards",
+      "ok": true,
+      "detail": "卡与卡之间留白"
+    },
+    {
+      "name": "band_gap_under_nav",
+      "ok": true,
+      "detail": "与顶部导航留空"
+    },
+    {
+      "name": "band_centered_with_nav",
+      "ok": true,
+      "detail": "主区左内边距比导航外壳多 32px，位移后与导航同轴"
+    },
+    {
+      "name": "band_card_is_horizontal",
+      "ok": true,
+      "detail": "横向长方形：左侧图标标题、右侧数字，底行说明"
+    },
+    {
+      "name": "band_card_compact_height",
+      "ok": true,
+      "detail": "内边距与柔光斑收紧，卡高约 100px"
+    },
+    {
+      "name": "board_matches_nav_width",
+      "ok": true,
+      "detail": "三栏与顶部导航同宽并同轴"
+    },
+    {
+      "name": "artifact_toolbar_compact",
+      "ok": true,
+      "detail": "工作记录页用精简工具栏"
+    },
+    {
+      "name": "artifact_range_hidden_in_compact",
+      "ok": true,
+      "detail": "时间范围与含子目录勾选都不显示"
+    },
+    {
+      "name": "artifact_fixed_recent_month",
+      "ok": true,
+      "detail": "固定近 30 天"
+    },
+    {
+      "name": "artifact_subdirs_forced_for_weekly",
+      "ok": true,
+      "detail": "工作记录页默认并固定包含子目录"
+    },
+    {
+      "name": "artifact_search_kept_in_compact",
+      "ok": true,
+      "detail": "搜索框保留"
+    },
+    {
+      "name": "artifact_compact_window_stated",
+      "ok": true,
+      "detail": "精简模式把固定窗口写在计数行，用户看不到时间筛选也知道范围"
+    },
+    {
+      "name": "band_no_vertical_dividers",
+      "ok": true,
+      "detail": "独立卡片不再用竖分隔线"
+    },
+    {
+      "name": "band_four_distinct_tones",
+      "ok": true,
+      "detail": "四张卡各一色"
+    },
+    {
+      "name": "band_index_numbers",
+      "ok": true,
+      "detail": "卡序号 01–04"
+    },
+    {
+      "name": "other_scenes_unchanged_metrics",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_component_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_title_先做",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_title_排期",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_title_回看",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_title_可缓",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_rule_written_on_screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_unclassified_shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_preview_single_line",
+      "ok": true,
+      "detail": "单行截断，悬浮可读全文"
+    },
+    {
+      "name": "quadrant_click_filters",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_state_in_page",
+      "ok": true,
+      "detail": "再点取消"
+    },
+    {
+      "name": "quadrant_reset_on_scene_change",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "three_column_grid",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "grid_areas_declared",
+      "ok": true,
+      "detail": "wide window only"
+    },
+    {
+      "name": "narrow_single_column",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_in_left_column",
+      "ok": true,
+      "detail": "quadrant first"
+    },
+    {
+      "name": "threads_inside_board",
+      "ok": true,
+      "detail": "history directly under the quadrants in the left column"
+    },
+    {
+      "name": "threads_not_duplicated",
+      "ok": true,
+      "detail": "once in weekly board, once for other scenes"
+    },
+    {
+      "name": "threads_immediately_after_quadrants",
+      "ok": true,
+      "detail": "quadrants -> history in the left column"
+    },
+    {
+      "name": "standalone_archive_card_removed",
+      "ok": true,
+      "detail": "archive is not a separate card any more"
+    },
+    {
+      "name": "narrow_order_is_quadrant_log_artifacts_history",
+      "ok": true,
+      "detail": "single column: quadrants -> log -> artifacts -> history"
+    },
+    {
+      "name": "columns_scroll_independently",
+      "ok": true,
+      "detail": "left column and timeline scroll on their own"
+    },
+    {
+      "name": "timeline_no_nested_scroll_when_narrow",
+      "ok": true,
+      "detail": "single column page does not nest a scrolling timeline"
+    },
+    {
+      "name": "history_heading_chinese",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "threads_actions_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "entry_line_clamp_two",
+      "ok": true,
+      "detail": "全文仍可读"
+    },
+    {
+      "name": "entry_card_style",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "timeline_keeps_rail",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_numbered_card",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_filters_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_list_view_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_entries_channel",
+      "ok": true,
+      "detail": "成果库接收归档条目"
+    },
+    {
+      "name": "archive_badge_rendered",
+      "ok": true,
+      "detail": "归档项带徽标"
+    },
+    {
+      "name": "archive_searchable",
+      "ok": true,
+      "detail": "搜索覆盖周报/周记录"
+    },
+    {
+      "name": "archive_open_kept",
+      "ok": true,
+      "detail": "归档仍能打开周报与周记录"
+    },
+    {
+      "name": "archive_merged_from_host_list",
+      "ok": true,
+      "detail": "周报与周记录都进同一列表"
+    },
+    {
+      "name": "archive_error_not_silent",
+      "ok": true,
+      "detail": "读取失败如实显示"
+    },
+    {
+      "name": "wider_column_gaps",
+      "ok": true,
+      "detail": "栏间距放大"
+    },
+    {
+      "name": "roomier_card_padding",
+      "ok": true,
+      "detail": "卡片内边距放大"
+    },
+    {
+      "name": "band_larger_digits",
+      "ok": true,
+      "detail": "数字卡 30px"
+    },
+    {
+      "name": "band_long_value_shrinks",
+      "ok": true,
+      "detail": "长状态值自动降字号，不挤压标题与副标题"
+    },
+    {
+      "name": "band_value_no_wrap",
+      "ok": true,
+      "detail": "数值区不折行"
+    },
+    {
+      "name": "band_larger_icon",
+      "ok": true,
+      "detail": "图标座 36px"
+    },
+    {
+      "name": "section_title_hierarchy",
+      "ok": true,
+      "detail": "区块标题三级层级中的一级"
+    },
+    {
+      "name": "subtitle_tracking",
+      "ok": true,
+      "detail": "英文副标题拉开字距"
+    },
+    {
+      "name": "quadrant_roomier",
+      "ok": true,
+      "detail": "四象限留白"
+    },
+    {
+      "name": "timeline_roomier",
+      "ok": true,
+      "detail": "条目行距"
+    },
+    {
+      "name": "subtitle_configurable",
+      "ok": true,
+      "detail": "scene config field"
+    },
+    {
+      "name": "subtitle_optional_render",
+      "ok": true,
+      "detail": "empty subtitle leaves no row"
+    },
+    {
+      "name": "band_subtitles_from_scene_config",
+      "ok": true,
+      "detail": "four band subtitles are configurable, not hard-coded"
+    },
+    {
+      "name": "band_metric_ax_group",
+      "ok": true,
+      "detail": "WebKit 不单列四栏段落，用 group + aria-label 合成可读节点"
+    },
+    {
+      "name": "timeline_ax_count_label",
+      "ok": true,
+      "detail": "卡片头用 aria-label 暴露可见/总数"
+    },
+    {
+      "name": "subtitle_defaults",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_module_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "entry_count_seven",
+      "ok": true,
+      "detail": "7"
+    },
+    {
+      "name": "past_report_is_one",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "past_other_is_one",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "future_report_is_two",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "future_other_is_two",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "unclassified_is_one",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "quadrant_sum_equals_entries",
+      "ok": true,
+      "detail": "7 vs 7"
+    },
+    {
+      "name": "ids_unique",
+      "ok": true,
+      "detail": "7"
+    },
+    {
+      "name": "ids_match_timeline_shape",
+      "ok": true,
+      "detail": "2026-10-26#0"
+    },
+    {
+      "name": "empty_week_all_zero",
+      "ok": true,
+      "detail": "empty"
+    },
+    {
+      "name": "invalid_date_not_overdue",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "visible_ids_match_cell",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "visible_ids_null_when_cleared",
+      "ok": true,
+      "detail": "null"
+    },
+    {
+      "name": "items_in_matches_count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "quadrant_titles_chinese",
+      "ok": true,
+      "detail": "先做/排期/回看/可缓"
+    },
+    {
+      "name": "quadrant_indexes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_destination_literal",
+      "ok": true,
+      "detail": "本周报引用"
+    }
+  ],
+  "failed": 0
+}

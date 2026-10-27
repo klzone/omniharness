@@ -133,6 +133,8 @@ mod tests {
             scenario: scenario.to_string(),
             is_dir: false,
             depth: 0,
+            status: None,
+            artifact_type: None,
         }
     }
 

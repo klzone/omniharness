@@ -1,0 +1,487 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": ""
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "标准",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "当前会话内查找",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "日期与三周节律，今天 10月27日星期二",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "系统偏好设置",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "未实现：通知与待办",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最小化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最大化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作台首页",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作记录（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "文案写作（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "项目跟踪（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "历史会话（引擎会话 · 本机对话）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "知识库（本机 Markdown）",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "本月成文 FINISHED：5 份，本自然月保存的写作成果",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "进行中草稿 DRAFTS：1 份，frontmatter 标为草稿的成果",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "灵感待用 INSPIRATION：2 段，本场景最近的对话，可随时接着写",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去写",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "最近更新 RECENT：1 天前，最近一份成果的修改时间",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "继续创作",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "继续创作",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "offline-material-writing-20261026-090000.md",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "offline-material-writing-20261026-090000.md",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "打开这一稿",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "继续对话",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "灵感架",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "灵感架",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "01 合成灵感：一句没写完的话\n刚刚 继续对话 →",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "02 合成灵感：旧结构还能怎么拆\n2 天前 继续对话 →",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "状态管线",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "状态管线",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "1 份 草稿 DRAFTS",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "4 份 成文 FINISHED",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "1 份 已发布 PUBLISHED",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "全部 6",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "未标注状态的成果按「成文」显示",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "REVISIT1 篇超过 90 天未动",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "01 合成旧文：三个月前写下的观察 成文\n学习心得 2026-06-29 90 天未动 打开",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "成果文档库",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "成果文档库",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "按文件名搜索成果与归档",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "全部",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "本周",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "本月",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "卡片",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "列表",
+    "text": ""
+  },
+  {
+    "role": "label",
+    "name": "打开后连子目录里的成果一起列；关闭只看最外层",
+    "text": ""
+  },
+  {
+    "role": "check box",
+    "name": "含子目录",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "01 合成草稿：关于创造力的三种开场 offline-material-writing-20261026-090000.md · 2026-10-26 · 35 字 AI 知识",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "02 合成成文：我为什么每周留两小时空白 offline-material-writing-20261024-090137.md · 2026-10-24 · 37 字 blog",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "03 合成已发布：给新读者的一封信 offline-material-writing-20261021-090274.md · 2026-10-21 · 34 字 网站内容",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "04 offline-material-writing-20261018-090411.md offline-material-writing-20261018-090411.md · 2026-10-18 · 30 字 未分类 无元数据",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "05 合成旧文：合法性边界检查 offline-material-writing-20261015-090548.md · 2026-10-15 · 32 字 未分类",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "06 合成旧文：三个月前写下的观察 offline-material-writing-20261015-090685.md · 2026-06-29 · 34 字 学习心得 · 90 天未动",
+    "text": ""
+  }
+]

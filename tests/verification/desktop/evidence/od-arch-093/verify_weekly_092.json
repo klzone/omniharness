@@ -1,0 +1,150 @@
+{
+  "cases": [
+    {
+      "name": "weekly_three_column_grid",
+      "ok": true,
+      "detail": "093: left 1 / center 1.4 / right 1"
+    },
+    {
+      "name": "weekly_no_timeline_tab_token",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_state_two_valued",
+      "ok": true,
+      "detail": "weekly dropped from tab state"
+    },
+    {
+      "name": "weekly_grid_guarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "timeline_and_library_same_grid",
+      "ok": true,
+      "detail": "left timeline, right library"
+    },
+    {
+      "name": "archive_threads_same_left_column",
+      "ok": true,
+      "detail": "archive then threads in the left column"
+    },
+    {
+      "name": "archive_left_column",
+      "ok": true,
+      "detail": "archive then threads"
+    },
+    {
+      "name": "threads_self_scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_uses_entry_count",
+      "ok": true,
+      "detail": "not artifacts_this_week"
+    },
+    {
+      "name": "weekly_metric_not_artifact_count",
+      "ok": true,
+      "detail": "weekly entries must not be file count"
+    },
+    {
+      "name": "pending_hidden_when_zero",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pending_panel_kept",
+      "ok": true,
+      "detail": "click to expand still works"
+    },
+    {
+      "name": "report_label_from_report_state",
+      "ok": true,
+      "detail": "deterministic file check"
+    },
+    {
+      "name": "entry_font_13_5",
+      "ok": true,
+      "detail": "entries >= 13.5px"
+    },
+    {
+      "name": "date_font_12",
+      "ok": true,
+      "detail": "date >= 12px"
+    },
+    {
+      "name": "weekday_font_11_5",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "font_floor_sane",
+      "ok": true,
+      "detail": "entry=13.5 date=12.0"
+    },
+    {
+      "name": "no_review_ui_in_bar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_review_ui_in_settings",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_review_cadence_ui",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "heartbeat_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rule_reminder_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "bar_hides_when_empty",
+      "ok": true,
+      "detail": "no empty placeholder row"
+    },
+    {
+      "name": "backend_review_contract_kept",
+      "ok": true,
+      "detail": "scheduler/pending_writes contract untouched"
+    },
+    {
+      "name": "weekTimeline_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "entry_count_five",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "metric_matches_timeline",
+      "ok": true,
+      "detail": "5 vs 5"
+    },
+    {
+      "name": "empty_entry_count_zero",
+      "ok": true,
+      "detail": "empty week"
+    },
+    {
+      "name": "undated_lines_not_counted",
+      "ok": true,
+      "detail": "free text is not an entry"
+    }
+  ],
+  "failed": 0
+}

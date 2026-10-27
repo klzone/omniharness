@@ -1,9 +1,9 @@
 {
   "cases": [
     {
-      "name": "weekly_two_column_grid",
+      "name": "weekly_three_column_grid",
       "ok": true,
-      "detail": "1.6:1 split"
+      "detail": "093: left 1 / center 1.4 / right 1"
     },
     {
       "name": "weekly_no_timeline_tab_token",
@@ -26,14 +26,14 @@
       "detail": "left timeline, right library"
     },
     {
-      "name": "archive_threads_two_column",
+      "name": "threads_in_left_column",
       "ok": true,
-      "detail": ""
+      "detail": "history under the quadrants"
     },
     {
-      "name": "archive_left_column",
+      "name": "archive_merged_not_standalone",
       "ok": true,
-      "detail": "archive then threads"
+      "detail": "archive lives in the artifact library"
     },
     {
       "name": "threads_self_scroll",
@@ -68,7 +68,7 @@
     {
       "name": "entry_font_13_5",
       "ok": true,
-      "detail": "entries >= 13.5px"
+      "detail": "entries >= 13.5px（093 修订把行距从 leading-relaxed 提到 1.7）"
     },
     {
       "name": "date_font_12",

@@ -1,0 +1,495 @@
+{
+  "cases": [
+    {
+      "name": "host_entry_has_status_type",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_prefix_limit_16k",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_reads_only_writing_scenario",
+      "ok": true,
+      "detail": "其它场景不解析"
+    },
+    {
+      "name": "host_defaults_are_deterministic",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_never_writes_back",
+      "ok": true,
+      "detail": "解析区间内没有写文件"
+    },
+    {
+      "name": "host_no_persistent_cache",
+      "ok": true,
+      "detail": "不新增缓存"
+    },
+    {
+      "name": "ts_types_optional",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "band_four_writing_metrics",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "metric_本月成文",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_进行中草稿",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_灵感待用",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_最近更新",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_icon_book",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_icon_edit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_icon_spark",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_icon_clock",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_this_month_from_overview",
+      "ok": true,
+      "detail": "宿主聚合"
+    },
+    {
+      "name": "metric_draft_from_artifact_meta",
+      "ok": true,
+      "detail": "未读到显 —"
+    },
+    {
+      "name": "metric_inspiration_from_threads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_recent_from_latest_artifact",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "metric_distinct_from_weekly_tones",
+      "ok": true,
+      "detail": "写作页用墨色/青绿/琥珀，不复用周报的紫青靛"
+    },
+    {
+      "name": "metric_warm_paper_surface",
+      "ok": true,
+      "detail": "暖纸底"
+    },
+    {
+      "name": "metric_no_zero_before_load",
+      "ok": true,
+      "detail": "成果未读到时给 null 而不是 0"
+    },
+    {
+      "name": "metric_load_state_tracked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "writing_board_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "writing_three_columns",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "writing_board_nav_width",
+      "ok": true,
+      "detail": "与工作记录页同宽"
+    },
+    {
+      "name": "writing_narrow_order",
+      "ok": true,
+      "detail": "窄窗 左 → 中 → 右"
+    },
+    {
+      "name": "writing_continue_and_shelf_in_left",
+      "ok": true,
+      "detail": "左栏上继续创作、下灵感架"
+    },
+    {
+      "name": "writing_page_has_no_extra_thread_block",
+      "ok": true,
+      "detail": "写作页不在底部重复渲染会话历史"
+    },
+    {
+      "name": "inspiration_opens_thread_home",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "inspiration_no_new_storage",
+      "ok": true,
+      "detail": "不新增存储格式"
+    },
+    {
+      "name": "writing_no_editor",
+      "ok": true,
+      "detail": "本页不承载编辑器"
+    },
+    {
+      "name": "pipeline_three_groups",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pipeline_groups_clickable",
+      "ok": true,
+      "detail": "再点取消"
+    },
+    {
+      "name": "pipeline_default_note_on_screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pipeline_directory_rows_excluded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pipeline_two_line_titles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stale_filter_present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stale_filter_does_not_mutate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_type_labels_opt_in",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_type_from_host_first",
+      "ok": true,
+      "detail": "宿主字段优先"
+    },
+    {
+      "name": "artifact_accent_secondary",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_stale_marker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "artifact_writing_keeps_toolbar",
+      "ok": true,
+      "detail": "写作页保留时间筛选（固定近一月的规则只属于工作记录页）"
+    },
+    {
+      "name": "subtitle_key_studio",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_overview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_recent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_continue",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_inspiration",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_pipeline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_stale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_draft",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_finished",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_key_published",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_continue_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_inspiration_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_pipeline_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "subtitle_recent_used_by_card4",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_hardcoded_english_subtitles",
+      "ok": true,
+      "detail": "组件里的英文小标都来自场景配置"
+    },
+    {
+      "name": "subtitle_optional_in_studio",
+      "ok": true,
+      "detail": "缺省不渲染"
+    },
+    {
+      "name": "writing_module_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "status_draft",
+      "ok": true,
+      "detail": "draft"
+    },
+    {
+      "name": "status_chinese_draft",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "status_published",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "status_missing_is_finished",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "status_invalid_is_finished",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "type_insight",
+      "ok": true,
+      "detail": "学习心得"
+    },
+    {
+      "name": "type_ai",
+      "ok": true,
+      "detail": "AI 知识"
+    },
+    {
+      "name": "type_blog",
+      "ok": true,
+      "detail": "blog"
+    },
+    {
+      "name": "type_website",
+      "ok": true,
+      "detail": "网站内容"
+    },
+    {
+      "name": "type_null",
+      "ok": true,
+      "detail": "未分类"
+    },
+    {
+      "name": "type_乱写",
+      "ok": true,
+      "detail": "未分类"
+    },
+    {
+      "name": "counts_draft",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "counts_published",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "counts_finished_includes_default",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "counts_sum_equals_files",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "dirs_excluded",
+      "ok": true,
+      "detail": "4"
+    },
+    {
+      "name": "stale_only_finished_published",
+      "ok": true,
+      "detail": "[\"b.md\",\"c.md\"]"
+    },
+    {
+      "name": "old_draft_not_stale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "missing_time_not_stale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "exactly_90_days_not_stale",
+      "ok": true,
+      "detail": "7776000"
+    },
+    {
+      "name": "continue_skips_published",
+      "ok": true,
+      "detail": "d.md"
+    },
+    {
+      "name": "continue_null_when_all_published",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "continue_null_when_empty",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_just_now",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_minutes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_hours",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_days",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_missing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "relative_zero",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "short_date_missing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "title_from_frontmatter",
+      "ok": true,
+      "detail": "合成标题"
+    },
+    {
+      "name": "title_missing_is_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "title_empty_field_is_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fallback_title_is_not_body_title",
+      "ok": true,
+      "detail": "2026-10-20 09:00 的稿件"
+    },
+    {
+      "name": "default_note_mentions_finished",
+      "ok": true,
+      "detail": "未标注状态的成果按「成文」显示"
+    },
+    {
+      "name": "stale_days_90",
+      "ok": true,
+      "detail": "90"
+    }
+  ],
+  "failed": 0
+}

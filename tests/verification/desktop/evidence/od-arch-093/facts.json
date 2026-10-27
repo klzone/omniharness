@@ -1,0 +1,83 @@
+{
+  "display": ":148",
+  "root": "/tmp/od093-review3",
+  "week": "2026-W44",
+  "entries": 7,
+  "today": "2026-10-27",
+  "artifacts": 3,
+  "ax_width_ready": true,
+  "ax_quadrant_present": true,
+  "ax_history_present": true,
+  "ax_artifacts_present": true,
+  "ax_archive_badge_present": true,
+  "ax_standalone_archive_absent": true,
+  "ax_entries": 18,
+  "filter_applied": true,
+  "filter_entries": 8,
+  "filter_visible": 2,
+  "filter_total": 7,
+  "narrow_width": 1000,
+  "narrow_order": [
+    "事项四象限",
+    "本周记录",
+    "成果文档库",
+    "历史对话"
+  ],
+  "narrow_positions": {
+    "事项四象限": [
+      97,
+      449,
+      78
+    ],
+    "本周记录": [
+      97,
+      886,
+      62
+    ],
+    "成果文档库": [
+      97,
+      1720,
+      78
+    ],
+    "历史对话": [
+      97,
+      2423,
+      62
+    ]
+  },
+  "narrow_columns": 4,
+  "narrow_left_spread": 0,
+  "narrow_block_count": 4,
+  "narrow_blocks": {
+    "事项四象限": [
+      79,
+      432,
+      841,
+      421
+    ],
+    "本周记录": [
+      65,
+      869,
+      855,
+      818
+    ],
+    "成果文档库": [
+      65,
+      1703,
+      855,
+      687
+    ],
+    "历史对话": [
+      80,
+      2406,
+      840,
+      107
+    ]
+  },
+  "narrow_max_right": 920,
+  "narrow_overflow_basis": "section",
+  "narrow_overflow": false,
+  "narrow_single_column": true,
+  "list_view_clicked": true,
+  "list_view_confirmed": true
+}

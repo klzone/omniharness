@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -2110,6 +2110,12 @@ pub struct OfflineArtifactEntry {
     pub is_dir: bool,
     /// 相对数据根的层级（顶层为 0）。
     pub depth: usize,
+    /// 写作成果的创作状态（OD-ARCH-094 S03）。只对 `material-writing` 解析 frontmatter，
+    /// 取归一后的 `draft` / `finished` / `published`；其它场景为 `None`。
+    pub status: Option<String>,
+    /// 写作成果的内容类型，归一为 `insight` / `ai` / `blog` / `website` / `uncategorized`；
+    /// 其它场景为 `None`。
+    pub artifact_type: Option<String>,
 }
 
 /// 读取一条已保存成果的正文，供用户重新打开确认。
@@ -2155,6 +2161,95 @@ fn split_offline_artifact_name(name: &str) -> Option<(&str, &str)> {
 /// 成果树的最大深度（不含数据根）与最大条数，防止异常目录拖垮界面。
 const ARTIFACT_TREE_MAX_DEPTH: usize = 4;
 const ARTIFACT_TREE_MAX_ENTRIES: usize = 500;
+
+/// 只读 frontmatter 时最多读文件前 16 KiB（OD-ARCH-094 S03）。
+///
+/// 成果列表是只读视图：解析元数据不能为了一个 `status:` 把整篇正文读进内存，
+/// 也不做缓存、不回写文件。超过上限就按「没有 frontmatter」处理（确定性缺省）。
+const ARTIFACT_FRONTMATTER_MAX_BYTES: u64 = 16 * 1024;
+
+/// 写作成果的创作状态归一（OD-ARCH-094 S03）。
+///
+/// 文件是事实来源，只认三个值；缺字段、非法值、没有 frontmatter 都由调用方落到
+/// `finished`，界面必须写明这条缺省口径，解析结果不回写文件。
+fn normalize_writing_status(raw: &str) -> &'static str {
+    match raw.trim().to_lowercase().as_str() {
+        "draft" | "草稿" => "draft",
+        "published" | "已发布" => "published",
+        _ => "finished",
+    }
+}
+
+/// 写作成果的内容类型归一（OD-ARCH-094 S03）；未知值一律「未分类」。
+fn normalize_writing_type(raw: &str) -> &'static str {
+    match raw.trim().to_lowercase().as_str() {
+        "insight" | "学习心得" => "insight",
+        "ai" | "ai知识" | "ai-knowledge" => "ai",
+        "blog" | "博客" => "blog",
+        "website" | "网站内容" => "website",
+        _ => "uncategorized",
+    }
+}
+
+/// 从文件前部取 frontmatter 里的一个标量字段；只解析本项目自己的小集合，不做通用 YAML。
+fn frontmatter_field(meta: &str, key: &str) -> Option<String> {
+    for line in meta.lines() {
+        let line = line.trim_end_matches('\r');
+        let Some(at) = line.find(':') else { continue };
+        if at == 0 || line[..at].trim() != key {
+            continue;
+        }
+        let mut value = line[at + 1..].trim();
+        if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+            value = &value[1..value.len() - 1];
+        } else if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
+            value = &value[1..value.len() - 1];
+        }
+        if value.is_empty() {
+            return None;
+        }
+        return Some(value.to_string());
+    }
+    None
+}
+
+/// 解析一段 frontmatter 文本，返回归一后的 `(status, type)`。
+fn parse_writing_frontmatter(text: &str) -> (String, String) {
+    let body = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n"));
+    let Some(body) = body else {
+        return ("finished".to_string(), "uncategorized".to_string());
+    };
+    let Some(end) = body.find("\n---") else {
+        return ("finished".to_string(), "uncategorized".to_string());
+    };
+    let meta = &body[..end];
+    let status = frontmatter_field(meta, "status")
+        .map(|v| normalize_writing_status(&v))
+        .unwrap_or("finished");
+    let kind = frontmatter_field(meta, "type")
+        .map(|v| normalize_writing_type(&v))
+        .unwrap_or("uncategorized");
+    (status.to_string(), kind.to_string())
+}
+
+/// 只读一份写作成果的文件前部，得到 `(status, type)`。
+///
+/// 读失败（权限、瞬时 IO、超限）不报错也不猜：直接落确定性缺省，列表照常列出文件。
+fn read_writing_frontmatter(path: &Path) -> (String, String) {
+    let fallback = ("finished".to_string(), "uncategorized".to_string());
+    let Ok(file) = fs::File::open(path) else {
+        return fallback;
+    };
+    let mut buf = Vec::new();
+    if file
+        .take(ARTIFACT_FRONTMATTER_MAX_BYTES)
+        .read_to_end(&mut buf)
+        .is_err()
+    {
+        return fallback;
+    }
+    parse_writing_frontmatter(&String::from_utf8_lossy(&buf))
+}
 
 /// 只接受数据根内的普通相对路径：无绝对路径、无 `..`、无空段、层级有界。
 fn offline_relative_path_parts(relative: &str) -> Option<Vec<&str>> {
@@ -2272,8 +2367,18 @@ fn collect_offline_artifacts(
                 scenario: String::new(),
                 is_dir: true,
                 depth: i - 1,
+                status: None,
+                artifact_type: None,
             });
         }
+        // 写作成果多读一次文件前部拿 status/type（OD-ARCH-094 S03）：只读、有上限、
+        // 不缓存、不回写；其它场景不解析，字段保持 None，行为与 093 一致。
+        let (status, artifact_type) = if scenario == "material-writing" {
+            let (s, t) = read_writing_frontmatter(&item.path());
+            (Some(s), Some(t))
+        } else {
+            (None, None)
+        };
         out.push(OfflineArtifactEntry {
             relative_path: relative,
             file_name: name,
@@ -2282,6 +2387,8 @@ fn collect_offline_artifacts(
             scenario,
             is_dir: false,
             depth,
+            status,
+            artifact_type,
         });
     }
     dirs.sort();
@@ -4096,6 +4203,97 @@ mod tests {
             assert_eq!(listed.len(), 1, "只应保留一个合法成果");
             assert_eq!(listed[0].file_name, "offline-material-writing-20251016-000000.md");
             assert_eq!(listed[0].scenario, "material-writing");
+        });
+    }
+
+    #[test]
+    fn writing_frontmatter_defaults_and_normalization_are_deterministic() {
+        // 无 frontmatter：status=finished、type=uncategorized。
+        assert_eq!(
+            parse_writing_frontmatter("# 没有元数据的旧文件\n\n正文\n"),
+            ("finished".to_string(), "uncategorized".to_string())
+        );
+        // frontmatter 里缺字段：两项都走缺省。
+        assert_eq!(
+            parse_writing_frontmatter("---\nscenario: material_writing\n---\n正文\n"),
+            ("finished".to_string(), "uncategorized".to_string())
+        );
+        // 关闭的 frontmatter 也按缺省处理，不猜正文。
+        assert_eq!(
+            parse_writing_frontmatter("---\nstatus: draft\n\n正文\n"),
+            ("finished".to_string(), "uncategorized".to_string())
+        );
+        // 合法值：大小写与中文写法都归一。
+        assert_eq!(
+            parse_writing_frontmatter("---\nstatus: Draft\ntype: AI\n---\n正文\n"),
+            ("draft".to_string(), "ai".to_string())
+        );
+        assert_eq!(
+            parse_writing_frontmatter("---\nstatus: 已发布\ntype: 网站内容\n---\n正文\n"),
+            ("published".to_string(), "website".to_string())
+        );
+        // 非法值：status 回成文、type 回未分类，不报错、不丢条目。
+        assert_eq!(
+            parse_writing_frontmatter("---\nstatus: 随便写\ntype: 随便写\n---\n正文\n"),
+            ("finished".to_string(), "uncategorized".to_string())
+        );
+        // 带引号的值与 CRLF 行尾同样可读。
+        assert_eq!(
+            parse_writing_frontmatter("---\r\nstatus: \"draft\"\r\ntype: \"blog\"\r\n---\r\n"),
+            ("draft".to_string(), "blog".to_string())
+        );
+    }
+
+    #[test]
+    fn offline_artifact_list_reads_writing_status_only_within_prefix_limit() {
+        with_env_root("artifact-writing-meta", |root| {
+            // 三份写作成果：显式状态、无 frontmatter、超大正文（status 仍在前缀内）。
+            fs::write(
+                root.join("offline-material-writing-20261020-090000.md"),
+                "---\nscenario: material_writing\ntitle: \"合成草稿\"\nstatus: draft\ntype: ai\n---\n正文\n",
+            )
+            .expect("写入合成草稿");
+            fs::write(
+                root.join("offline-material-writing-20261021-090000.md"),
+                "# 旧文件\n\n没有 frontmatter。\n",
+            )
+            .expect("写入旧文件");
+            let mut big = String::from("---\nstatus: published\ntype: blog\n---\n");
+            big.push_str(&"合成正文".repeat(20_000));
+            fs::write(root.join("offline-material-writing-20261022-090000.md"), &big)
+                .expect("写入大文件");
+            // 非写作场景即使带同样的字段也不解析，保持 093 的行为。
+            fs::write(
+                root.join("offline-weekly-report-20261023-090000.md"),
+                "---\nstatus: draft\ntype: blog\n---\n正文\n",
+            )
+            .expect("写入周报");
+
+            let listed = list_offline_artifacts().expect("应可列出成果");
+            let find = |name: &str| {
+                listed
+                    .iter()
+                    .find(|e| e.file_name == name)
+                    .unwrap_or_else(|| panic!("缺少 {name}"))
+            };
+            let draft = find("offline-material-writing-20261020-090000.md");
+            assert_eq!(draft.status.as_deref(), Some("draft"));
+            assert_eq!(draft.artifact_type.as_deref(), Some("ai"));
+            let old = find("offline-material-writing-20261021-090000.md");
+            assert_eq!(old.status.as_deref(), Some("finished"));
+            assert_eq!(old.artifact_type.as_deref(), Some("uncategorized"));
+            let huge = find("offline-material-writing-20261022-090000.md");
+            assert_eq!(huge.status.as_deref(), Some("published"));
+            assert_eq!(huge.artifact_type.as_deref(), Some("blog"));
+            let weekly = find("offline-weekly-report-20261023-090000.md");
+            assert_eq!(weekly.status, None, "非写作场景不解析状态");
+            assert_eq!(weekly.artifact_type, None, "非写作场景不解析类型");
+
+            // 只读验证：解析列表不能改文件一个字节。
+            let path = root.join("offline-material-writing-20261020-090000.md");
+            let before = fs::read(&path).expect("读前");
+            list_offline_artifacts().expect("再列一次");
+            assert_eq!(before, fs::read(&path).expect("读后"), "列表解析必须只读");
         });
     }
 

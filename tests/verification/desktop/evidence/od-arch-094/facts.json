@@ -1,0 +1,113 @@
+{
+  "display": ":191",
+  "root": "/tmp/od094-review",
+  "artifacts": {
+    "count": 6,
+    "items": [
+      {
+        "file": "offline-material-writing-20261026-090000.md",
+        "status": "draft",
+        "type": "ai",
+        "age_days": 1.0
+      },
+      {
+        "file": "offline-material-writing-20261024-090137.md",
+        "status": "finished",
+        "type": "blog",
+        "age_days": 3.0
+      },
+      {
+        "file": "offline-material-writing-20261021-090274.md",
+        "status": "published",
+        "type": "website",
+        "age_days": 6.0
+      },
+      {
+        "file": "offline-material-writing-20261018-090411.md",
+        "status": null,
+        "type": null,
+        "age_days": 9.0
+      },
+      {
+        "file": "offline-material-writing-20261015-090548.md",
+        "status": "unknown-status",
+        "type": "乱写类型",
+        "age_days": 12.0
+      },
+      {
+        "file": "offline-material-writing-20261015-090685.md",
+        "status": "finished",
+        "type": "insight",
+        "age_days": 120.0
+      }
+    ]
+  },
+  "threads": [
+    {
+      "id": "t094inspiration01",
+      "tag": "writing",
+      "projectPath": null,
+      "title": "合成灵感：一句没写完的话",
+      "preset": "writing",
+      "messages": [],
+      "createdAt": 1793084807,
+      "updatedAt": 1793091407,
+      "version": 1
+    },
+    {
+      "id": "t094inspiration02",
+      "tag": "writing",
+      "projectPath": null,
+      "title": "合成灵感：旧结构还能怎么拆",
+      "preset": "writing",
+      "messages": [],
+      "createdAt": 1792832807,
+      "updatedAt": 1792919207,
+      "version": 1
+    }
+  ],
+  "metrics_present": {
+    "本月成文": true,
+    "进行中草稿": true,
+    "灵感待用": true,
+    "最近更新": true
+  },
+  "board_present": true,
+  "default_note_present": true,
+  "stage_counts": {
+    "草稿": 1,
+    "成文": 4,
+    "已发布": 1
+  },
+  "stage_sum": 6,
+  "artifact_total": 6,
+  "stage_sum_ok": true,
+  "type_labels_present": true,
+  "continue_title_from_frontmatter": true,
+  "stale_reminder_present": true,
+  "stale_badge_present": true,
+  "inspiration_present": true,
+  "draft_filter_kept_only_draft": true,
+  "draft_filter_applied": true,
+  "stale_filter_applied": true,
+  "stale_filter_kept_only_stale": true,
+  "inspiration_navigated_home": true,
+  "inspiration_thread_selected": true,
+  "narrow_order": [
+    "继续创作",
+    "灵感架",
+    "状态管线",
+    "成果文档库"
+  ],
+  "narrow_left_spread": 15,
+  "narrow_left_edges": {
+    "继续创作": 80,
+    "灵感架": 65,
+    "状态管线": 65,
+    "成果文档库": 65
+  },
+  "narrow_max_right": 920,
+  "narrow_overflow": false,
+  "narrow_single_column": true,
+  "passed": true
+}

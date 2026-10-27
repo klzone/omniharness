@@ -1,15 +1,16 @@
 {
   "plan": "OD-KB-001 P4",
-  "verified_at": "2026-10-26 22:55:55",
+  "verified_at": "2026-10-27 08:07:30",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 纯函数单测 + 合成基准实测",
-  "root": "/tmp/odkb-p4-ui",
-  "synthetic_vault": "/tmp/odkb-p4-ui/synth-vault",
-  "large_vault": "/tmp/odkb-p4-ui/large-vault",
+  "root": "/tmp/odkb-p4-review2",
+  "synthetic_vault": "/tmp/odkb-p4-review2/synth-vault",
+  "large_vault": "/tmp/odkb-p4-review2/large-vault",
   "large_notes": 2000,
   "app_build": {
-    "skipped": true,
     "built": true,
-    "binary_mtime": 1793025126.0074527
+    "exit_code": 0,
+    "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s",
+    "binary_mtime": 1793027607.42443
   },
   "host_tests": {
     "results": [
@@ -40,15 +41,15 @@
       {
         "command": "node --experimental-strip-types --test knowledgeGraph.test.mjs",
         "exit_code": 0,
-        "tests": 25,
-        "passed": 25,
+        "tests": 26,
+        "passed": 26,
         "failed": 0
       },
       {
         "command": "node --experimental-strip-types --test knowledgeGraphLayout.test.mjs",
         "exit_code": 0,
-        "tests": 14,
-        "passed": 14,
+        "tests": 16,
+        "passed": 16,
         "failed": 0
       }
     ],
@@ -61,11 +62,11 @@
         "case": "200notes",
         "notes": 200,
         "edges": 500,
-        "convertMs": 1.1,
-        "filterMs": 0.7,
-        "layoutMs": 44,
-        "firstViewMs": 45.8,
-        "relayoutMs": 41.9,
+        "convertMs": 1.2,
+        "filterMs": 0.3,
+        "layoutMs": 45.7,
+        "firstViewMs": 47.2,
+        "relayoutMs": 46.5,
         "localViewMs": 0.8,
         "localNodes": 4,
         "iterations": 220,
@@ -90,11 +91,11 @@
         "case": "1000notes",
         "notes": 1000,
         "edges": 2500,
-        "convertMs": 3.6,
+        "convertMs": 3.8,
         "filterMs": 1.1,
-        "layoutMs": 82.1,
-        "firstViewMs": 86.9,
-        "relayoutMs": 66.9,
+        "layoutMs": 88.3,
+        "firstViewMs": 93.2,
+        "relayoutMs": 70.6,
         "localViewMs": 1.6,
         "localNodes": 5,
         "iterations": 90,
@@ -119,12 +120,12 @@
         "case": "2000notes",
         "notes": 2000,
         "edges": 5000,
-        "convertMs": 5.9,
-        "filterMs": 2,
-        "layoutMs": 63.3,
-        "firstViewMs": 71.2,
-        "relayoutMs": 59,
-        "localViewMs": 2.5,
+        "convertMs": 14.3,
+        "filterMs": 3.8,
+        "layoutMs": 71.2,
+        "firstViewMs": 89.3,
+        "relayoutMs": 62.4,
+        "localViewMs": 3,
         "localNodes": 5,
         "iterations": 90,
         "placed": 600,
@@ -160,9 +161,10 @@
     "app_binary_built": {
       "pass": true,
       "measured": {
-        "skipped": true,
         "built": true,
-        "binary_mtime": 1793025126.0074527
+        "exit_code": 0,
+        "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s",
+        "binary_mtime": 1793027607.42443
       },
       "threshold": {
         "built": true,
@@ -207,15 +209,15 @@
           {
             "command": "node --experimental-strip-types --test knowledgeGraph.test.mjs",
             "exit_code": 0,
-            "tests": 25,
-            "passed": 25,
+            "tests": 26,
+            "passed": 26,
             "failed": 0
           },
           {
             "command": "node --experimental-strip-types --test knowledgeGraphLayout.test.mjs",
             "exit_code": 0,
-            "tests": 14,
-            "passed": 14,
+            "tests": 16,
+            "passed": 16,
             "failed": 0
           }
         ]
@@ -242,7 +244,7 @@
     },
     "large_first_view_within_budget": {
       "pass": true,
-      "measured": 71.2,
+      "measured": 89.3,
       "threshold": {
         "max_ms": 400.0
       },
@@ -292,7 +294,7 @@
     },
     "small_first_view_within_budget": {
       "pass": true,
-      "measured": 45.8,
+      "measured": 47.2,
       "threshold": {
         "max_ms": 400.0
       },
@@ -379,6 +381,67 @@
         "orphan": true
       },
       "desc": "笔记节点的入链数（Home 两条指向 Alpha）与孤立标记来自索引"
+    },
+    "nodes_laid_out_inside_canvas": {
+      "pass": true,
+      "measured": {
+        "canvas": [
+          395,
+          351,
+          1004,
+          500
+        ],
+        "outside": [],
+        "count": 0
+      },
+      "threshold": {
+        "outside": 0
+      },
+      "desc": "布局按画布实测尺寸计算，所有节点都在可视画布内"
+    },
+    "root_directory_filter_is_distinct": {
+      "pass": true,
+      "measured": {
+        "selected": true,
+        "raw": "图谱视图：4 篇笔记；2 个未解析或歧义；4 条连线；筛选隐藏 6 条连线",
+        "notes": 4,
+        "placeholders": 2,
+        "edges": 4,
+        "hidden": 6
+      },
+      "threshold": {
+        "notes": 4,
+        "edges": 4,
+        "placeholders": 2,
+        "hidden": 6
+      },
+      "desc": "选择「（根目录）」只留根目录笔记，不退回全部目录"
+    },
+    "node_accessibility_action_opens_note": {
+      "pass": true,
+      "measured": {
+        "do_action": true,
+        "note": "Orphan.md"
+      },
+      "threshold": {
+        "note": "Orphan.md"
+      },
+      "desc": "读屏/无障碍动作可直接激活节点打开笔记（不依赖指针坐标）"
+    },
+    "a11y_activation_keeps_index": {
+      "pass": true,
+      "measured": {
+        "raw": "图谱视图：7 篇笔记；2 个未解析或歧义；10 条连线；筛选隐藏 0 条连线",
+        "notes": 7,
+        "placeholders": 2,
+        "edges": 10,
+        "hidden": 0
+      },
+      "threshold": {
+        "notes": 7,
+        "edges": 10
+      },
+      "desc": "从笔记返回图谱后索引与视图事实不变"
     },
     "directory_filter_converges_view": {
       "pass": true,
@@ -561,11 +624,38 @@
       },
       "desc": "缩放只改视图比例，节点/连线事实不变"
     },
+    "local_scope_reports_missing_center": {
+      "pass": true,
+      "measured": {
+        "created": true,
+        "index_generation_unchanged": true,
+        "banner": true,
+        "raw": "图谱视图：0 篇笔记；0 个未解析或歧义；0 条连线；筛选隐藏 0 条连线",
+        "notes": 0,
+        "placeholders": 0,
+        "edges": 0,
+        "hidden": 0,
+        "nodes": 0
+      },
+      "threshold": {
+        "banner": true,
+        "notes": 0,
+        "edges": 0,
+        "nodes": 0
+      },
+      "desc": "中心不在索引时给出提示并画空图，不退回全局 7 篇笔记"
+    },
     "large_vault_renders_simplified": {
       "pass": true,
       "measured": {
         "simplified": true,
-        "wall_seconds": 3.6,
+        "wall_seconds": 3.9,
+        "numbers": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 600 个节点，另有 1400 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 600,
+          "folded": 1400
+        },
         "raw": "图谱视图：2000 篇笔记；0 个未解析或歧义；4000 条连线；筛选隐藏 0 条连线",
         "notes": 2000,
         "placeholders": 0,
@@ -574,19 +664,49 @@
       },
       "threshold": {
         "simplified": true,
+        "notes": 2000,
+        "placed": 600,
+        "folded": 1400
+      },
+      "desc": "2000 篇合成 Vault 初始只布局 600 个核心节点，其余折叠并计数"
+    },
+    "large_vault_expands_progressively": {
+      "pass": true,
+      "measured": {
+        "before": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 600 个节点，另有 1400 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 600,
+          "folded": 1400
+        },
+        "after": {
+          "text": "已简化显示：当前视图共 2000 个节点，只布局入链最多的 1200 个节点，另有 800 个未展开。可缩小范围、加筛选，或按需展开。",
+          "total": 2000,
+          "placed": 1200,
+          "folded": 800
+        },
+        "raw": "图谱视图：2000 篇笔记；0 个未解析或歧义；4000 条连线；筛选隐藏 0 条连线",
+        "notes": 2000,
+        "placeholders": 0,
+        "edges": 4000,
+        "hidden": 0
+      },
+      "threshold": {
+        "placed": "increases",
+        "folded": "decreases",
         "notes": 2000
       },
-      "desc": "2000 篇合成 Vault 降级为简化布局，仍渲染全部笔记节点"
+      "desc": "大图可手动展开更多节点，不会一次布局全部 2000 个"
     },
     "large_vault_node_opens_note": {
       "pass": true,
       "measured": {
         "clicked": true,
-        "clicked_label": "笔记：d0/note-0240.md；入链 2；高连接度",
-        "note": "d0/note-0240.md"
+        "clicked_label": "笔记：d1/note-0877.md；入链 2；高连接度",
+        "note": "d1/note-0877.md"
       },
       "threshold": {
-        "note": "d0/note-0240.md"
+        "note": "d1/note-0877.md"
       },
       "desc": "降级视图里节点仍可打开笔记"
     },
@@ -612,6 +732,8 @@
   "screenshots": [
     "00-graph-no-index.png",
     "01-graph-built.png",
+    "02a-graph-root-directory.png",
+    "02b-graph-a11y-activate.png",
     "02-graph-directory-filter.png",
     "03-node-opens-note.png",
     "04-graph-local.png",
@@ -619,8 +741,10 @@
     "06-graph-orphans.png",
     "07-graph-dragged.png",
     "08-graph-zoomed.png",
+    "09-graph-center-missing.png",
     "07-graph-large.png",
+    "07a-graph-large-expanded.png",
     "08-large-opens-note.png"
   ],
-  "large_first_view_wall_seconds": 3.6
+  "large_first_view_wall_seconds": 3.91
 }

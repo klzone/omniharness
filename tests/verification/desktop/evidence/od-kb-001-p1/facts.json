@@ -1,18 +1,18 @@
 {
   "plan": "OD-KB-001 P1",
-  "verified_at": "2026-10-26 23:01:01",
+  "verified_at": "2026-10-27 08:11:28",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 宿主集成测试实测",
-  "root": "/tmp/odkb-p1-ui",
-  "synthetic_vault": "/tmp/odkb-p1-ui/synth-vault",
+  "root": "/tmp/odkb-p1-review2",
+  "synthetic_vault": "/tmp/odkb-p1-review2/synth-vault",
   "host_tests": {
     "exit_code": 0,
     "passed": 6,
     "metric": {
-      "median_ms": 13.319,
+      "median_ms": 8.297,
       "runs_ms": [
-        8.43,
-        13.319,
-        18.236
+        8.15,
+        8.922,
+        8.297
       ],
       "synthetic_dirs": 60,
       "synthetic_files": 1201,
@@ -41,11 +41,11 @@
     "cold_scan_metric_collected": {
       "pass": true,
       "measured": {
-        "median_ms": 13.319,
+        "median_ms": 8.297,
         "runs_ms": [
-          8.43,
-          13.319,
-          18.236
+          8.15,
+          8.922,
+          8.297
         ],
         "synthetic_dirs": 60,
         "synthetic_files": 1201,
@@ -74,13 +74,13 @@
     },
     "shows_vault_root": {
       "pass": true,
-      "measured": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；尚未扫描",
+      "measured": "知识库状态：已选择 /tmp/odkb-p1-review2/synth-vault；目录可用；尚未扫描",
       "threshold": true,
       "desc": "显示已保存的知识库根"
     },
     "shows_directory_readable": {
       "pass": true,
-      "measured": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；尚未扫描",
+      "measured": "知识库状态：已选择 /tmp/odkb-p1-review2/synth-vault；目录可用；尚未扫描",
       "threshold": true,
       "desc": "目录状态为可读取"
     },
@@ -102,7 +102,7 @@
     "scan_reports_counts": {
       "pass": true,
       "measured": {
-        "label": "知识库状态：已选择 /tmp/odkb-p1-ui/synth-vault；目录可用；扫描结果 5 个文件（笔记 4、附件 1），跳过 3 项，错误 0 项",
+        "label": "知识库状态：已选择 /tmp/odkb-p1-review2/synth-vault；目录可用；扫描结果 5 个文件（笔记 4、附件 1），跳过 3 项，错误 0 项",
         "has_message": false
       },
       "threshold": {
@@ -142,14 +142,14 @@
     },
     "library_root_not_rewritten": {
       "pass": true,
-      "measured": "/tmp/odkb-p1-ui/unused-library",
-      "threshold": "/tmp/odkb-p1-ui/unused-library",
+      "measured": "/tmp/odkb-p1-review2/unused-library",
+      "threshold": "/tmp/odkb-p1-review2/unused-library",
       "desc": "知识库使用不改写库根"
     },
     "vault_setting_persisted": {
       "pass": true,
-      "measured": "/tmp/odkb-p1-ui/synth-vault",
-      "threshold": "/tmp/odkb-p1-ui/synth-vault",
+      "measured": "/tmp/odkb-p1-review2/synth-vault",
+      "threshold": "/tmp/odkb-p1-review2/synth-vault",
       "desc": ""
     }
   },

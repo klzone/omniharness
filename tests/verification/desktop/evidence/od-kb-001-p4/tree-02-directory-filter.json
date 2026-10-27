@@ -194,7 +194,7 @@
   },
   {
     "role": "button",
-    "name": "日期与三周节律，今天 10月26日星期一",
+    "name": "日期与三周节律，今天 10月27日星期二",
     "text": "",
     "box": {
       "x": 933,
@@ -491,7 +491,7 @@
   },
   {
     "role": "status bar",
-    "name": "知识库根 /tmp/odkb-p4-ui/synth-vault；已配置",
+    "name": "知识库根 /tmp/odkb-p4-review2/synth-vault；已配置",
     "text": "",
     "box": {
       "x": 129,
@@ -1066,7 +1066,7 @@
     "name": "笔记：notes/Alpha.md；入链 2；高连接度",
     "text": "",
     "box": {
-      "x": 1228,
+      "x": 1352,
       "y": 376,
       "w": 22,
       "h": 22
@@ -1077,8 +1077,8 @@
     "name": "笔记：notes/Duplicated.md；入链 0；孤立",
     "text": "",
     "box": {
-      "x": 779,
-      "y": 928,
+      "x": 829,
+      "y": 808,
       "w": 15,
       "h": 14
     }

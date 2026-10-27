@@ -903,6 +903,13 @@ export interface OfflineArtifactEntry {
   is_dir: boolean;
   /** 相对数据根的层级，顶层为 0。 */
   depth: number;
+  /**
+   * 写作成果的创作状态（OD-ARCH-094 S03）：`draft` / `finished` / `published`。
+   * 只有 `material-writing` 场景会由宿主解析 frontmatter；其它场景为 null。
+   */
+  status?: string | null;
+  /** 写作成果的内容类型：`insight` / `ai` / `blog` / `website` / `uncategorized`。 */
+  artifact_type?: string | null;
 }
 
 export interface OfflineArtifactContent {

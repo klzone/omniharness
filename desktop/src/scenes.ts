@@ -26,6 +26,36 @@ export interface SceneDef {
   summary: "weekly" | "project" | null;
   /** 右栏空态的一句话说明（诚实描述当前有哪些数据）。 */
   emptyHint: string;
+  /**
+   * 可选的英文副标题（OD-ARCH-093）。缺省或空串时整个副标题不渲染，不留空行。
+   * 键：priority（四象限）/ log（本周记录）/ artifacts（成果文档库）/ history（会话历史）/
+   * records / weekly（顶部前两项指标）/ report / overdue（周报状态与逾期）；
+   * 写作场景另有 studio / overview / recent / continue / inspiration / pipeline / stale /
+   * draft / finished / published（OD-ARCH-094）。
+   */
+  subtitles?: Partial<
+    Record<
+      | "priority"
+      | "log"
+      | "artifacts"
+      | "history"
+      | "records"
+      | "weekly"
+      | "report"
+      | "overdue"
+      | "studio"
+      | "overview"
+      | "recent"
+      | "continue"
+      | "inspiration"
+      | "pipeline"
+      | "stale"
+      | "draft"
+      | "finished"
+      | "published",
+      string
+    >
+  >;
 }
 
 export const SCENES: Record<SceneKey, SceneDef> = {
@@ -39,6 +69,16 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     summary: "weekly",
     emptyHint:
       "本场景还没有保存的成果。成果档案只列本场景自己保存的文件（成果目录下的平铺文件），不读你其它目录的内容。",
+    subtitles: {
+      priority: "PRIORITY",
+      log: "WEEKLY LOG",
+      artifacts: "ARTIFACTS",
+      history: "HISTORY",
+      records: "RECORDS",
+      weekly: "FOR WEEKLY",
+      report: "WEEKLY REPORT",
+      overdue: "OVERDUE",
+    },
   },
   writing: {
     key: "writing",
@@ -49,7 +89,20 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     hasProgress: false,
     summary: null,
     emptyHint:
-      "本场景还没有保存的成果。趋势热点一类需要外部数据源的能力未开放，这里不会用假数据填充。",
+      "还没有写作成果。在首页开一段「文案写作」对话，把想法聊成形，保存后就会出现在这里；本页只读成果文件，不在这里编辑。",
+    subtitles: {
+      studio: "WRITING STUDIO",
+      overview: "OVERVIEW",
+      recent: "RECENT",
+      continue: "CONTINUE",
+      inspiration: "INSPIRATION",
+      pipeline: "PIPELINE",
+      artifacts: "ARTIFACTS",
+      stale: "REVISIT",
+      draft: "DRAFTS",
+      finished: "FINISHED",
+      published: "PUBLISHED",
+    },
   },
   project: {
     key: "project",

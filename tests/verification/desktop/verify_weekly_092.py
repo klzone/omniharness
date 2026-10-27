@@ -118,9 +118,10 @@ def main() -> int:
     bar_tsx = (SRC / "shell" / "AnnouncementBar.tsx").read_text(encoding="utf-8")
     settings_tsx = (SRC / "SettingsPanel.tsx").read_text(encoding="utf-8")
 
-    # ---- R2 两栏主区 + weekly 无页签 ----
-    check("weekly_two_column_grid",
-          "lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" in scene_tsx, "1.6:1 split")
+    # ---- R2 主区同屏 + weekly 无页签（OD-ARCH-093 起由两栏扩为三栏）----
+    check("weekly_three_column_grid",
+          "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]" in scene_tsx,
+          "093: left 1 / center 1.4 / right 1")
     check("weekly_no_timeline_tab_token", '\"timeline\"' not in scene_tsx, "")
     check("tab_state_two_valued",
           'useState<\"progress\" | \"artifacts\">' in scene_tsx, "weekly dropped from tab state")
@@ -129,11 +130,15 @@ def main() -> int:
     check("timeline_and_library_same_grid",
           scene_tsx.index("WeeklyTimeline") < scene_tsx.index("成果文档库"), "left timeline, right library")
 
-    # ---- R4 归档 + 会话历史两栏 ----
-    check("archive_threads_two_column", "lg:grid-cols-2 gap-2 items-start" in scene_tsx, "")
-    check("archive_left_column",
-          "WeeklyArchive" in scene_tsx and scene_tsx.index("WeeklyArchive") < scene_tsx.index("threadsSection}", scene_tsx.index("<div className=\"mt-2 grid grid-cols-1 lg:grid-cols-2")),
-          "archive then threads")
+    # ---- R4 归档 + 会话历史同屏（093 修订后：归档并入成果库，只剩历史对话在左栏）----
+    # R4 原语义是「归档与会话历史不再各占一条通栏」。093 首版把两者都放进左栏；
+    # 2026-10-27 用户要求归档并入成果库，因此这里只保留「历史对话在左栏、独立滚动」的事实，
+    # 归档合并由 verify_weekly_093.py 覆盖。
+    check("threads_in_left_column",
+          "max-lg:order-4" in scene_tsx, "history under the quadrants")
+    check("archive_merged_not_standalone",
+          "<WeeklyArchive" not in scene_tsx and "archiveEntries" in scene_tsx,
+          "archive lives in the artifact library")
     check("threads_self_scroll", "max-h-[200px] overflow-y-auto" in scene_tsx, "")
 
     # ---- R1 指标带：口径与「有记录才出现」----
@@ -152,8 +157,8 @@ def main() -> int:
     # ---- R3 字号下限 ----
     entry_px = px("text-[13.5px]")
     date_px = px("text-[12px]")
-    check("entry_font_13_5", "text-[13.5px] text-on-surface-variant leading-relaxed" in tl_tsx,
-          "entries >= 13.5px")
+    check("entry_font_13_5", "text-[13.5px] text-on-surface-variant leading-[1.7]" in tl_tsx,
+          "entries >= 13.5px（093 修订把行距从 leading-relaxed 提到 1.7）")
     check("date_font_12", "mono text-[12px] tracking-wide" in tl_tsx, "date >= 12px")
     check("weekday_font_11_5", "text-[11.5px]" in tl_tsx, "")
     check("font_floor_sane", entry_px >= 13.5 and date_px >= 12.0,

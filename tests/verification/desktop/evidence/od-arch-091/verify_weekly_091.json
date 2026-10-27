@@ -56,14 +56,14 @@
       "detail": "weekly tab should be gone in 092"
     },
     {
-      "name": "weekly_two_columns",
+      "name": "weekly_three_columns",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "archive_threads_two_columns",
+      "name": "archive_threads_in_left_column",
       "ok": true,
-      "detail": ""
+      "detail": "history in the left column"
     },
     {
       "name": "progress_tab_kept",

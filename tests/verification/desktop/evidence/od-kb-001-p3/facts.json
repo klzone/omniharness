@@ -1,13 +1,14 @@
 {
   "plan": "OD-KB-001 P3",
-  "verified_at": "2026-10-26 22:58:21",
+  "verified_at": "2026-10-27 08:13:39",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ Rust 单元/宿主测试实测",
-  "root": "/tmp/odkb-p3-ui",
-  "synthetic_vault": "/tmp/odkb-p3-ui/synth-vault",
+  "root": "/tmp/odkb-p3-review2",
+  "synthetic_vault": "/tmp/odkb-p3-review2/synth-vault",
   "app_build": {
-    "skipped": true,
     "built": true,
-    "binary_mtime": 1793025126.0074527
+    "exit_code": 0,
+    "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s",
+    "binary_mtime": 1793027607.42443
   },
   "host_tests": {
     "results": [
@@ -42,9 +43,10 @@
     "app_binary_built": {
       "pass": true,
       "measured": {
-        "skipped": true,
         "built": true,
-        "binary_mtime": 1793025126.0074527
+        "exit_code": 0,
+        "log_tail": "   | ------------------ associated function in this implementation\n55 |     fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {\n   |        ^^^^^^^\n   |\n   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 1 warning\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s",
+        "binary_mtime": 1793027607.42443
       },
       "threshold": {
         "built": true,

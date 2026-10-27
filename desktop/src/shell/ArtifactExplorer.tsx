@@ -14,12 +14,55 @@ import type { OfflineArtifactEntry } from "../types";
 const PAGE_SIZE = 24;
 const HARD_CAP = 500;
 
+/**
+ * 归档条目（OD-ARCH-093 修订）：历史周报 / 历史周记录不再单独占一张卡，
+ * 而是并入成果文档库的同一个列表，用「归档」徽标区分。
+ *
+ * 归档只带元数据与一个只读打开动作：预览仍由调用方走各自宿主的只读命令，
+ * 这里不拼内容、不猜标题。
+ */
+export interface ArtifactArchiveEntry {
+  /** 列表键：`report:2026-W43-周报.md` / `week:2026-W43.md`，与成果路径不会撞。 */
+  key: string;
+  /** 来源类型，原样显示：周报 / 周记录。 */
+  kindLabel: string;
+  week: string;
+  file_name: string;
+  path: string;
+  modified_at: number;
+  onOpen: () => void;
+}
+
+/** 成果与归档共用一行；归档没有正文元数据，标题按周标签生成。 */
+type Row =
+  | {
+      kind: "artifact";
+      key: string;
+      file_name: string;
+      relative_path: string;
+      modified_at: number;
+      bytes: number;
+      /** 宿主已解析的内容类型（写作页用）；未标注为 null。 */
+      artifact_type: string | null;
+      onOpen: () => void;
+    }
+  | {
+      kind: "archive";
+      key: string;
+      file_name: string;
+      relative_path: string;
+      modified_at: number;
+      archive: ArtifactArchiveEntry;
+    };
+
 interface ArtifactMeta {
   title: string | null;
   /** 正文字数（不含空白与 frontmatter）；未读到正文时为 null。 */
   chars: number | null;
   /** frontmatter 里声明的场景标签；老文件没有。 */
   tag: string | null;
+  /** frontmatter 里的内容类型（写作页用于类型标签）；老文件没有。 */
+  type: string | null;
   /** 读取失败的原因（例如文件被用户在 Obsidian 里删掉）。 */
   error: string | null;
 }
@@ -70,15 +113,42 @@ function windows(now: Date): { week: number; month: number } {
 
 export function ArtifactExplorer({
   files,
+  archiveEntries = [],
+  archiveError = null,
+  archiveSkipped = 0,
   emptyHint,
   includeSubdirs,
   onToggleSubdirs,
+  compactToolbar = false,
+  showTypeLabels = false,
+  stalePaths,
+  accent = "primary",
   onOpen,
 }: {
   files: OfflineArtifactEntry[];
+  /** 历史周报 / 周记录（OD-ARCH-093 修订：与成果合并为一个列表）。 */
+  archiveEntries?: ArtifactArchiveEntry[];
+  /** 归档目录读取失败的原因；与成果错误分开显示，不混成「没有成果」。 */
+  archiveError?: string | null;
+  /** 文件名不合约定、被宿主跳过的归档文件数（原「历史归档」卡的尾部提示）。 */
+  archiveSkipped?: number;
   emptyHint: string;
   includeSubdirs: boolean;
   onToggleSubdirs: (next: boolean) => void;
+  /**
+   * 精简工具栏（OD-ARCH-093 四次修订，仅工作记录页的右栏用）：不显示时间范围筛选与
+   * 「含子目录」勾选，固定看最近 30 天、固定包含子目录，只留搜索与卡片/列表切换。
+   */
+  compactToolbar?: boolean;
+  /**
+   * 显示内容类型标签（OD-ARCH-094 S04，仅写作页）：类型由宿主解析 frontmatter 得到，
+   * 缺省「未分类」。其它场景保持原样，不额外增加一行元信息。
+   */
+  showTypeLabels?: boolean;
+  /** 超过 90 天未动的成果路径（写作页）：只做视觉标记，筛选由调用方处理。 */
+  stalePaths?: Set<string>;
+  /** 强调色（写作页用青绿，避免与工作记录页的紫完全一样）。 */
+  accent?: "primary" | "secondary";
   onOpen: (relativePath: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -91,24 +161,66 @@ export function ArtifactExplorer({
   const now = useMemo(() => new Date(), []);
   const since = useMemo(() => windows(now), [now]);
 
+  /** 成果与归档并成同一个列表：用户要的是「成果展」，归档只是其中一个标记。 */
+  const rows = useMemo<Row[]>(() => {
+    const artifacts: Row[] = files
+      .filter((f) => !f.is_dir)
+      .map((f) => ({
+        kind: "artifact" as const,
+        key: "file:" + f.relative_path,
+        file_name: f.file_name,
+        relative_path: f.relative_path,
+        modified_at: f.modified_at,
+        bytes: f.bytes,
+        artifact_type: f.artifact_type ?? null,
+        onOpen: () => onOpen(f.relative_path),
+      }));
+    const archived: Row[] = archiveEntries.map((a) => ({
+      kind: "archive" as const,
+      key: a.key,
+      file_name: a.file_name,
+      relative_path: a.path || a.file_name,
+      modified_at: a.modified_at,
+      archive: a,
+    }));
+    return [...artifacts, ...archived].sort((a, b) => b.modified_at - a.modified_at);
+  }, [files, archiveEntries, onOpen]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const from = range === "week" ? since.week : range === "month" ? since.month : 0;
-    return files
-      .filter((f) => !f.is_dir)
-      .filter((f) => (from > 0 ? f.modified_at >= from : true))
-      .filter((f) => (q ? f.file_name.toLowerCase().includes(q) || f.relative_path.toLowerCase().includes(q) : true))
-      .sort((a, b) => b.modified_at - a.modified_at);
-  }, [files, query, range, since]);
+    // 精简模式固定「近一个月」：按 30 天滚动窗口，不是自然月。
+    const from = compactToolbar
+      ? now.getTime() / 1000 - 30 * 24 * 60 * 60
+      : range === "week"
+        ? since.week
+        : range === "month"
+          ? since.month
+          : 0;
+    return rows
+      .filter((r) => (from > 0 ? r.modified_at >= from : true))
+      .filter((r) => {
+        if (!q) return true;
+        const hay =
+          r.kind === "archive"
+            ? `${r.file_name} ${r.relative_path} ${r.archive.kindLabel} ${r.archive.week} 归档`
+            : `${r.file_name} ${r.relative_path}`;
+        return hay.toLowerCase().includes(q);
+      });
+  }, [rows, query, range, since, compactToolbar, now]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const capped = filtered.slice(0, HARD_CAP);
+  const pageCount = Math.max(1, Math.ceil(capped.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
-  const visible = filtered.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+  const visible = capped.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+  const archiveCount = archiveEntries.length;
+  const currentKey = visible.map((v) => v.key).join("|");
 
   // 标题/字数只给当前页的条目读；已经读过的条目不再重复读。
   useEffect(() => {
     let alive = true;
-    const todo = visible.filter((v) => !meta[v.relative_path] && !loadingRef.current.has(v.relative_path));
+    const todo = visible
+      .filter((v) => v.kind === "artifact")
+      .filter((v) => !meta[v.relative_path] && !loadingRef.current.has(v.relative_path));
     if (todo.length === 0) return;
     const run = async () => {
       for (const item of todo) {
@@ -124,6 +236,7 @@ export function ArtifactExplorer({
               title: field(fm, "title"),
               chars: countChars(rest),
               tag: field(fm, "scenario"),
+              type: field(fm, "type"),
               error: null,
             },
           }));
@@ -135,6 +248,7 @@ export function ArtifactExplorer({
               title: null,
               chars: null,
               tag: null,
+              type: null,
               error: e instanceof Error ? e.message : String(e),
             },
           }));
@@ -149,105 +263,241 @@ export function ArtifactExplorer({
     };
     // meta 变化不再触发整体重读：只依赖当前页与过滤结果。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible.map((v) => v.relative_path).join("|")]);
+  }, [currentKey]);
 
   useEffect(() => {
     setPage(0);
   }, [query, range]);
 
   const chip = (active: boolean) =>
-    "px-2 py-0.5 rounded-full text-[10.5px] " +
-    (active ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high");
+    "px-3 py-1 rounded-full text-[11px] leading-none transition " +
+    (active
+      ? accent === "secondary"
+        ? "bg-secondary text-on-secondary shadow-[0_1px_2px_rgba(0,104,122,0.25)]"
+        : "bg-primary text-on-primary shadow-[0_1px_2px_rgba(53,37,205,0.25)]"
+      : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high");
+
+  const focusRing = accent === "secondary" ? "focus:ring-secondary/25" : "focus:ring-primary/25";
+  const typeLabel = (value: string | null | undefined): string => {
+    switch ((value ?? "").trim().toLowerCase()) {
+      case "insight":
+      case "学习心得":
+        return "学习心得";
+      case "ai":
+      case "ai知识":
+      case "ai-knowledge":
+        return "AI 知识";
+      case "blog":
+      case "博客":
+        return "blog";
+      case "website":
+      case "网站内容":
+        return "网站内容";
+      default:
+        return "未分类";
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="flex flex-wrap items-center gap-1.5 pb-1.5 border-b border-surface-variant/10">
+      <div className="flex flex-wrap items-center gap-2 pb-3.5 border-b border-surface-variant/25">
         <input
-          className="px-2 py-1 rounded-md border border-surface-variant/30 bg-surface-container-lowest/70 text-[11px] w-[180px]"
-          placeholder="搜文件名"
+          className={"px-3 py-1.5 rounded-full border border-surface-variant/50 bg-surface-container-lowest/80 text-[12px] w-[190px] placeholder:text-outline/80 focus:outline-none focus:ring-2 " + focusRing}
+          placeholder="搜索成果或归档"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="按文件名搜索成果"
+          aria-label="按文件名搜索成果与归档"
         />
-        <button className={chip(range === "all")} onClick={() => setRange("all")}>
-          全部
-        </button>
-        <button className={chip(range === "week")} onClick={() => setRange("week")}>
-          本周
-        </button>
-        <button className={chip(range === "month")} onClick={() => setRange("month")}>
-          本月
-        </button>
-        <div className="ml-auto flex items-center gap-1">
+        {compactToolbar ? null : (
+          <>
+            <button className={chip(range === "all")} onClick={() => setRange("all")}>
+              全部
+            </button>
+            <button className={chip(range === "week")} onClick={() => setRange("week")}>
+              本周
+            </button>
+            <button className={chip(range === "month")} onClick={() => setRange("month")}>
+              本月
+            </button>
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
           <button className={chip(view === "cards")} onClick={() => setView("cards")}>
             卡片
           </button>
           <button className={chip(view === "list")} onClick={() => setView("list")}>
             列表
           </button>
-          <label
-            className="ml-1 flex items-center gap-1 text-[10.5px] text-on-surface-variant cursor-pointer select-none"
-            title="打开后连子目录里的成果一起列；关闭只看最外层"
-          >
-            <input
-              type="checkbox"
-              className="accent-current"
-              checked={includeSubdirs}
-              onChange={(e) => onToggleSubdirs(e.target.checked)}
-            />
-            含子目录
-          </label>
+          {compactToolbar ? null : (
+            <label
+              className="ml-2 flex items-center gap-1.5 text-[11px] text-on-surface-variant cursor-pointer select-none"
+              title="打开后连子目录里的成果一起列；关闭只看最外层"
+            >
+              <input
+                type="checkbox"
+                className="accent-current"
+                checked={includeSubdirs}
+                onChange={(e) => onToggleSubdirs(e.target.checked)}
+              />
+              含子目录
+            </label>
+          )}
         </div>
       </div>
 
-      <p className="pt-1.5 text-[10px] text-outline leading-relaxed">
-        只列本场景保存的成果，共 {filtered.length} 份
-        {filtered.length > HARD_CAP ? `（只显示前 ${HARD_CAP} 份）` : ""}。
-        成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览。
-      </p>
+      <div className="pt-3 pb-3 space-y-1">
+        <p className="text-[11px] text-outline leading-relaxed">
+          本场景成果共 {files.filter((f) => !f.is_dir).length} 份
+          {archiveCount > 0 ? `，归档 ${archiveCount} 条已并入同一列表` : ""}
+          {/* 精简模式的固定窗口要说出来：用户看不到时间筛选，就得知道列表只覆盖近 30 天。 */}
+          {compactToolbar ? `；当前只列近 30 天（共 ${filtered.length} 条）` : ""}
+          {filtered.length > HARD_CAP ? `；只显示前 ${HARD_CAP} 条` : ""}。
+        </p>
+        <p className="text-[10.5px] text-outline/80 leading-relaxed" title="成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览">
+          标准 Markdown，可直接在 Obsidian 打开所在目录浏览。
+        </p>
+        {archiveError ? (
+          <p className="text-[11px] text-error leading-relaxed">读取历史归档失败：{archiveError}</p>
+        ) : null}
+        {archiveSkipped > 0 ? (
+          <p className="text-[10.5px] text-outline/80 leading-relaxed">
+            另有 {archiveSkipped} 个归档文件名不符合约定，未列入、也未改动。
+          </p>
+        ) : null}
+      </div>
 
-      <div className="pt-1.5 min-h-0 overflow-y-auto flex-1">
+      <div className="min-h-0 overflow-y-auto flex-1 pb-1">
         {filtered.length === 0 ? (
-          <p className="text-[11px] text-outline leading-relaxed">{emptyHint}</p>
+          <p className="text-[11.5px] text-outline leading-relaxed pt-1">{emptyHint}</p>
         ) : view === "cards" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-            {visible.map((f) => {
-              const m = meta[f.relative_path];
+          <div className="flex flex-col gap-2.5">
+            {visible.map((r, i) => {
+              const number = String(current * PAGE_SIZE + i + 1).padStart(2, "0");
+              if (r.kind === "archive") {
+                return (
+                  <button
+                    key={r.key}
+                    onClick={r.archive.onOpen}
+                    data-artifact-card=""
+                    data-artifact-archive=""
+                    className="group text-left rounded-2xl border border-surface-variant/25 bg-surface-container-low/45 hover:bg-surface-container-low hover:border-primary/25 px-4 py-3.5 flex items-start gap-3.5 min-w-0 transition"
+                    title={r.relative_path}
+                  >
+                    <span className="mono shrink-0 w-9 text-[15px] leading-none pt-0.5 text-outline group-hover:text-primary">
+                      {number}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2 min-w-0">
+                        <span className="text-[13.5px] font-medium text-on-surface truncate">
+                          {r.archive.week} {r.archive.kindLabel}
+                        </span>
+                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[10px] text-on-surface-variant bg-surface-container-high">
+                          归档
+                        </span>
+                      </span>
+                      <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-outline">
+                        <span className="truncate max-w-full">{r.file_name}</span>
+                        <span>· {dateText(r.modified_at)}</span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              }
+              const m = meta[r.relative_path];
+              const stale = stalePaths?.has(r.relative_path) ?? false;
               return (
                 <button
-                  key={f.relative_path}
-                  onClick={() => onOpen(f.relative_path)}
-                  className="text-left rounded-xl border border-surface-variant/30 bg-white/70 hover:bg-white px-3 py-2 flex flex-col gap-1 min-h-[86px]"
-                  title={f.relative_path}
+                  key={r.key}
+                  onClick={r.onOpen}
+                  data-artifact-card=""
+                  className={
+                    "group text-left rounded-2xl border px-4 py-3.5 flex items-start gap-3.5 min-w-0 transition " +
+                    (stale
+                      ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
+                      : "border-transparent bg-surface-container-low/55 hover:bg-surface-container-low hover:border-surface-variant/30")
+                  }
+                  title={r.relative_path}
+                  data-artifact-stale={stale ? "" : undefined}
                 >
-                  <span className="text-[12px] text-on-surface line-clamp-2 leading-snug">
-                    {m ? m.title ?? f.file_name : "正在读取标题…"}
+                  {/* 编号卡（OD-ARCH-093 S04）：大号序号 + 标题 + 文件名/时间，和参考图右栏一致。 */}
+                  <span className="mono shrink-0 w-9 text-[15px] leading-none pt-0.5 text-outline group-hover:text-primary">
+                    {number}
                   </span>
-                  <span className="text-[10px] text-outline truncate">{f.file_name}</span>
-                  <span className="mt-auto flex items-center gap-1.5 text-[10px] text-outline">
-                    <span>{dateText(f.modified_at)}</span>
-                    {m?.chars != null ? <span>· {m.chars} 字</span> : null}
-                    {m?.error ? <span className="text-error truncate">· 读取失败</span> : null}
-                    {m && !m.tag ? <span className="px-1 rounded bg-surface-container">无元数据</span> : null}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13.5px] font-medium text-on-surface line-clamp-2 leading-[1.55] break-words">
+                      {m ? m.title ?? r.file_name : "正在读取标题…"}
+                    </span>
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-outline">
+                      <span className="truncate max-w-full">{r.file_name}</span>
+                      <span>· {dateText(r.modified_at)}</span>
+                      {m?.chars != null ? <span>· {m.chars} 字</span> : null}
+                      {showTypeLabels ? (
+                        <span
+                          className="px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10"
+                          data-artifact-type={typeLabel(r.artifact_type ?? m?.type ?? null)}
+                        >
+                          {typeLabel(r.artifact_type ?? m?.type ?? null)}
+                        </span>
+                      ) : null}
+                      {stale ? <span className="text-amber-700">· 90 天未动</span> : null}
+                      {m?.error ? <span className="text-error">· 读取失败</span> : null}
+                      {m && !m.tag ? (
+                        <span className="px-1.5 py-[1px] rounded-full bg-surface-container">无元数据</span>
+                      ) : null}
+                    </span>
                   </span>
                 </button>
               );
             })}
           </div>
         ) : (
-          <ul className="flex flex-col gap-0.5">
-            {visible.map((f) => {
+          <ul className="flex flex-col divide-y divide-surface-variant/20">
+            {visible.map((r) => {
+              const m = r.kind === "artifact" ? meta[r.relative_path] : undefined;
+              const stale = r.kind === "artifact" && (stalePaths?.has(r.relative_path) ?? false);
+              const primary =
+                r.kind === "archive"
+                  ? `${r.archive.week} ${r.archive.kindLabel}`
+                  : m
+                    ? m.title ?? r.file_name
+                    : "正在读取标题…";
               return (
-                <li key={f.relative_path} className="flex items-center gap-2">
+                <li key={r.key} className="flex items-center gap-3 py-2.5 first:pt-0 min-w-0">
+                  {r.kind === "archive" ? (
+                    <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[10px] text-on-surface-variant bg-surface-container-high">
+                      归档
+                    </span>
+                  ) : null}
                   <button
-                    className="mono text-[11px] text-on-surface-variant truncate text-left hover:text-primary"
-                    title={f.relative_path}
-                    onClick={() => onOpen(f.relative_path)}
+                    className="min-w-0 flex-1 text-left group"
+                    title={r.relative_path}
+                    onClick={r.kind === "archive" ? r.archive.onOpen : r.onOpen}
                   >
-                    {f.file_name}
+                    <span className="block text-[12.5px] text-on-surface truncate group-hover:text-primary">
+                      {primary}
+                    </span>
+                    <span className="mt-0.5 block mono text-[10px] text-outline truncate">
+                      {r.file_name}
+                    </span>
                   </button>
-                  <span className="text-[10px] text-outline shrink-0">{dateText(f.modified_at)}</span>
-                  <span className="text-[10px] text-outline shrink-0">{f.bytes} 字节</span>
+                  <span className="text-[10.5px] text-outline shrink-0 whitespace-nowrap">
+                    {dateText(r.modified_at)}
+                  </span>
+                  {r.kind === "artifact" ? (
+                    <>
+                      {showTypeLabels ? (
+                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10">
+                          {typeLabel(r.artifact_type ?? m?.type ?? null)}
+                        </span>
+                      ) : null}
+                      {stale ? (
+                        <span className="text-[10px] text-amber-700 shrink-0 whitespace-nowrap">90 天未动</span>
+                      ) : null}
+                      <span className="text-[10.5px] text-outline shrink-0 whitespace-nowrap">
+                        {r.bytes} 字节
+                      </span>
+                    </>
+                  ) : null}
                 </li>
               );
             })}
@@ -255,19 +505,19 @@ export function ArtifactExplorer({
         )}
 
         {pageCount > 1 ? (
-          <div className="flex items-center gap-2 pt-2">
+          <div className="flex items-center gap-2.5 pt-3.5">
             <button
-              className="text-[10.5px] px-2 py-0.5 rounded bg-surface-container disabled:opacity-40"
+              className="text-[11px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
               disabled={current === 0}
               onClick={() => setPage(current - 1)}
             >
               上一页
             </button>
-            <span className="text-[10px] text-outline">
+            <span className="text-[10.5px] text-outline">
               第 {current + 1} / {pageCount} 页
             </span>
             <button
-              className="text-[10.5px] px-2 py-0.5 rounded bg-surface-container disabled:opacity-40"
+              className="text-[11px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
               disabled={current >= pageCount - 1}
               onClick={() => setPage(current + 1)}
             >

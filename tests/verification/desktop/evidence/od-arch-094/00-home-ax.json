@@ -1,0 +1,247 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": ""
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "标准",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "当前会话内查找",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "日期与三周节律，今天 10月27日星期二",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "系统偏好设置",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "未实现：通知与待办",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最小化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最大化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作台首页",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作记录（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "文案写作（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "项目跟踪（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "历史会话（引擎会话 · 本机对话）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "知识库（本机 Markdown）",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "下午好· 欢迎回到 OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "添加文件",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "模型权限未开启：可在设置中确认端点后启用",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "本次对话归到哪一类，当前：文案写作",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "新对话",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "语音",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "模型：未识别 ▼",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "发送指令",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": ""
+  }
+]

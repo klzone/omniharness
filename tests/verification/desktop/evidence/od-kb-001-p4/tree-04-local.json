@@ -194,7 +194,7 @@
   },
   {
     "role": "button",
-    "name": "日期与三周节律，今天 10月26日星期一",
+    "name": "日期与三周节律，今天 10月27日星期二",
     "text": "",
     "box": {
       "x": 933,
@@ -491,7 +491,7 @@
   },
   {
     "role": "status bar",
-    "name": "知识库根 /tmp/odkb-p4-ui/synth-vault；已配置",
+    "name": "知识库根 /tmp/odkb-p4-review2/synth-vault；已配置",
     "text": "",
     "box": {
       "x": 129,
