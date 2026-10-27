@@ -38,6 +38,7 @@ import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
 import { MarkdownText } from "./MarkdownText";
 import { QuestionCard } from "./QuestionCard";
+import { StatusToast, type StatusToastMessage, type StatusToastTone } from "./StatusToast";
 import { SCENES, isSceneKey } from "../scenes";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
@@ -509,7 +510,20 @@ export function HomeChat({
    * 切换时必须用这个真实 Profile 作为写入来源，否则 DSH 会以「profile 不存在」退出码 1 失败。
    */
   const [engineProfile, setEngineProfile] = useState("");
-  const [modelNote, setModelNote] = useState<string | null>(null);
+  /**
+   * 模型路由的提示（OD-ARCH-096）：原先常驻在输入框下方，切完模型一直挂着。
+   * 现在改成右下角提示条，60 秒自动消失、可手动关闭；tone 决定配色与读屏语义。
+   */
+  const [modelNote, setModelNoteRaw] = useState<StatusToastMessage | null>(null);
+  const modelNoteSeqRef = useRef(0);
+  const setModelNote = useCallback((next: string | null, tone: StatusToastTone = "info") => {
+    if (next === null) {
+      setModelNoteRaw(null);
+      return;
+    }
+    modelNoteSeqRef.current += 1;
+    setModelNoteRaw({ key: modelNoteSeqRef.current, text: next, tone });
+  }, []);
   /**
    * OD-ARCH-048：web-api 通道直读的模型目录。
    * 取得真实目录时用它渲染选择器；ACP 或读取失败时回退到 Profile 候选（groups）。
@@ -722,12 +736,17 @@ export function HomeChat({
         // 用户主动点选却说不出该用哪个 Profile，才值得提示；自动应用失败时保持安静，
         // 否则就又回到「一登录就报错」——候选会在下次读取后自然就绪。
         if (byUser) {
-          setModelNote("还没有读到可用的 Profile，暂时无法切换模型；候选读取完成后可重试。");
+          setModelNote(
+            "还没有读到可用的 Profile，暂时无法切换模型；候选读取完成后可重试。",
+            "error",
+          );
         }
         return false;
       }
       setModelBusy(true);
-      setModelNote(null);
+      // 只清用户可见的提示条：切场景时自动套用思考档也会走这里（byUser=false），
+      // 它若跟着清屏，会把用户刚看到的「已切到 …」在同一个渲染批次里抹掉（OD-ARCH-096 实测）。
+      if (byUser) setModelNote(null);
       try {
         // 改选模型后，路由与端点事实都会变：先让缓存作废（OD-ARCH-041）。
         invalidateEngineFactsCache();
@@ -737,15 +756,22 @@ export function HomeChat({
           model,
           reasoningEffort: effort ?? modelEffort,
         });
-        setModelNote(
-          `已切到 ${provider} / ${model}` +
-            (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
-            `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
-        );
+        // 只有用户自己点的那次切换才弹提示条；切场景自动套档走的是同一个函数，
+        // 它若也写提示，会盖住用户刚看到的成功文案（OD-ARCH-096 窗口实测）。
+        if (byUser) {
+          setModelNote(
+            `已切到 ${provider} / ${model}` +
+              (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
+              `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
+            "success",
+          );
+        }
         await refreshAdmission();
         return true;
       } catch (e) {
-        setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)));
+        if (byUser) {
+          setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)), "error");
+        }
         return false;
       } finally {
         setModelBusy(false);
@@ -760,14 +786,13 @@ export function HomeChat({
    */
   const followDsh = useCallback(async () => {
     setModelBusy(true);
-    setModelNote(null);
     try {
       const r = await shell.clearModelRoute();
-      setModelNote(r.note);
+      setModelNote(r.note, "success");
       invalidateEngineFactsCache();
       await Promise.all([refreshAdmission(), loadModelRoutes()]);
     } catch (e) {
-      setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)));
+      setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)), "error");
     } finally {
       setModelBusy(false);
     }
@@ -1561,7 +1586,7 @@ export function HomeChat({
       if (byUser) effortTouchedRef.current = true;
       if (!facts?.provider || !facts?.model) {
         // 自动应用时端点还没识别属于启动过程中的正常状态，不打扰用户。
-        if (byUser) setModelNote("当前端点尚未识别，先选一个模型再设思考等级。");
+        if (byUser) setModelNote("当前端点尚未识别，先选一个模型再设思考等级。", "error");
         return false;
       }
       const route = modelRoutes.find((g) =>
@@ -1600,13 +1625,13 @@ export function HomeChat({
     const mark = `${preset?.key ?? ""}:${wanted}`;
     if (appliedSceneThinkingRef.current === mark) return;
     appliedSceneThinkingRef.current = mark;
-    setModelNote(`已按场景应用思考等级：${wanted}`);
+    // OD-ARCH-096：这一档是切场景时自动套用的，用户没点任何按钮。
+    // 不再弹 60 秒提示条，只在失败时留一条（下面 selectEffort 的 byUser=false 分支保持安静）。
     void selectEffort(wanted, false).then((ok) => {
       // 失败（例如端点刚变、候选还没跟上）时撤销「已应用」标记，让下一轮可以重试；
       // 否则一次失败会让这个场景永久停在旧档位上（OD-ARCH-095 S03）。
       if (!ok && appliedSceneThinkingRef.current === mark) {
         appliedSceneThinkingRef.current = null;
-        setModelNote(null);
       }
     });
   }, [
@@ -2592,7 +2617,8 @@ export function HomeChat({
         </div>
       </div>
 
-      {modelNote ? <p className="text-[10.5px] text-outline pb-1">{modelNote}</p> : null}
+      {/* OD-ARCH-096：模型切换结果改走右下角提示条（60 秒自动关闭、可手动关闭）。 */}
+      <StatusToast message={modelNote} onDismiss={() => setModelNote(null)} />
       {sendNote ? <p className="text-[10.5px] text-outline pb-1">{sendNote}</p> : null}
       {starting ? (
         <p className="text-[10.5px] text-outline pb-1">

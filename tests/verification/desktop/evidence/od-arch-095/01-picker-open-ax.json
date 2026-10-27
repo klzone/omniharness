@@ -266,12 +266,12 @@
   },
   {
     "role": "button",
-    "name": "od095-only / od095-synthetic-model http://127.0.0.1:35923/v1",
+    "name": "od095-only / od095-synthetic-model http://127.0.0.1:33543/v1",
     "text": ""
   },
   {
     "role": "button",
-    "name": "od095-decoy / od095-decoy-model http://127.0.0.1:35923/v1",
+    "name": "od095-decoy / od095-decoy-model http://127.0.0.1:33543/v1",
     "text": ""
   },
   {

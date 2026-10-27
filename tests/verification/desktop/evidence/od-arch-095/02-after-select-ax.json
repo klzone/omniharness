@@ -215,11 +215,6 @@
     "text": ""
   },
   {
-    "role": "paragraph",
-    "name": "",
-    "text": ""
-  },
-  {
     "role": "section",
     "name": "",
     "text": ""
@@ -227,6 +222,21 @@
   {
     "role": "button",
     "name": "去设置",
+    "text": ""
+  },
+  {
+    "role": "status bar",
+    "name": "已切到 od095-only / od095-synthetic-model，端点 http://127.0.0.1:33543/v1（类别 local）。引擎已按新路由重启。",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭提示",
     "text": ""
   }
 ]

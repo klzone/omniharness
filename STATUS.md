@@ -2,6 +2,43 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-096：构建警告清理与模型切换提示条（2026-10-27；已实施，ARCHITECT 审查通过）
+
+> 状态：**已实施；ARCHITECT 独立审查通过（结论见 REVIEW.md 顶部）。本节是执行记录。**
+> 触发：用户指出构建里的 AppendReceipt::failure 告警要不要修，并要求模型切换的结果提示改成右下角矮平长方形、60 秒自动关闭、可手动关闭，不要一直挂着。
+> 起点：HEAD 5dce7d4。边界：本助手亲自实施，未派子代理；runtime/ 零差异；未读凭证；窗口验证只用 /tmp 一次性根与合成端点。
+
+### 改动
+
+1. **S01 死代码**：删除 desktop/src-tauri/src/worklog.rs 中从未被调用的 impl AppendReceipt { fn failure(...) }（原 54–72 行）。结构体字段与 worklog_append 的 JSON 形状未动。
+2. **S02 提示条**：新增 desktop/src/shell/StatusToast.tsx——createPortal 到 body、fixed bottom-4 right-4、z-110、四角直角（borderRadius: 0，无 rounded 类）、细边框 + 浅投影 + 左侧 3px 色条、右侧关闭按钮；STATUS_TOAST_MS = 60_000，新提示替换旧提示并重新计时。
+3. **接线**：HomeChat.tsx 的 modelNote 由纯字符串改为 {key, text, tone}，成功/失败分别标 success/error；删掉输入框下方那行常驻小字，改为渲染 StatusToast。场景思考档自动套用改为静默（byUser=false 分支不写提示、不清屏）。
+4. **可读屏**：提示条容器加 aria-label={message.text}。窗口实测发现 WebKit 不会把容器内段落元素的文字暴露成可访问文本（AT-SPI 里只有空 paragraph，仅关闭按钮有名字），屏幕阅读器读不到正文。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline | 405 passed / 0 failed，warning 计数为 0（告警已消除） |
+| npx tsc --noEmit | 通过 |
+| npm run build | 通过（仅既有 chunk 体积提示） |
+| pytest tests -q | 89 passed + 30 subtests |
+| verify_status_toast_096.py（静态） | 19 / 19 通过 |
+| verify_model_route_095.py（真实窗口，:104） | passed: true |
+
+窗口事实（evidence/od-arch-095/facts.json，含 ARCHITECT 复跑一轮，自动关闭测得 60.5 秒）：提示条 2.7 秒出现；矩形 x=864, y=936, 560x48，右边距 16、下边距 16（右下角、矮平）；关闭按钮存在且可点；点击后文字与按钮一起消失；不理会它时 59.6～60.5 秒自动关闭（两秒一次采样）；输入框下方不再有常驻小字。截图 02a-toast.png（出现）、03-toast-dismissed.png（手动关闭后）、04-after-auto-dismiss.png（自动关闭后）。
+
+### 过程中如实登记的问题
+
+1. **三轮“提示条不出现”是验证脚本的误判，不是功能缺陷。** 旧脚本要轮询满 180 秒才截图取树，而提示条 60 秒就自动关闭，所以拍到的永远是关闭后的界面。改为“覆盖文件一被改写就立刻取证”后，第一张截图即证明提示条正常渲染。
+2. **提示条文字原先对读屏不可见。** 同一轮取证里 AT-SPI 只看到空 paragraph 与关闭按钮，按文字匹配永远不中；补 aria-label 后恢复正常。
+3. **两处脚本断言写错并已修正**：“正文不常驻”误按全局文字判（提示条自身文案就含“引擎已按新路由重启”），改为只允许出现在提示条节点里；二次选择的自动关闭用例把“模型：…▼”按钮当成下拉项点掉，加前缀排除后才真正触发第二次切换。
+4. **证据文件为自动覆写。** 每次跑窗口脚本都会重写 tests/verification/desktop/evidence/od-arch-095/ 下的截图与 facts.json（095 时期的同名证据），这是脚本既定行为。
+
+### 限制
+
+Gone_after_s = 59.6 / 60.5 是两秒一次采样的窗口实测值，与 60 秒常量的差异来自采样粒度。未在用户实际显示器上复核（本轮为 Xvfb 一次性显示）；已按用户指示随本轮提交并推送。
+
 ## OD-ARCH-095：模型切换两处报错的修复与诊断可见性（2026-10-27；已实施，待 ARCHITECT 独立审查）
 
 > 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
