@@ -2,6 +2,118 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+
+
+## OD-ARCH-094：文案写作页改版——创作管线与灵感架（2026-10-27；已实施，待 ARCHITECT 独立审查）
+
+> 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
+> 授权与计划文字不一致（如实记录）：用户明确下达「授权执行 OD-ARCH-094，UI 视觉设计要区别于周报分页，颜色配色等有差异，但整体要有统一性」；PLANS.md 中 OD-ARCH-094 标题仍写「计划草案，待用户批准」。本轮按用户直接指令范围（S01～S06）实施，不主张该计划已获正式批准，也未扩展到计划范围外（不做编辑器、创作统计图表、AI 复用建议、灵感持久化格式、素材回链）。
+> 起点：HEAD `cffff6d08f9912637867ccd6ef527e7aed757ada`（main）；本轮开始时 `git status --porcelain` 共 102 项未提交/未跟踪差异，全部保留；未 reset、未 clean、未覆盖、未提交、未推送、未打标签。收尾时共 113 项（含本轮新增）。
+> 边界：本助手亲自实施，未派子代理；未读取任何真实知识库、真实成果文档或凭证；窗口验证只用 /tmp 下一次性合成夹具；`git status --porcelain -- runtime/` 为空（runtime/ 零差异）。
+
+### 设计借鉴（如实记录）
+
+计划既有借鉴为 Ghost / Notion / SubStack（统计卡 + 按状态分组的列表）。本轮 `screenshots-design-inspiration` 查询一次无结果、一次仅返回通用 dashboard，未得到更贴近写作后台的新参考；不伪称看过未提供的图。落点沿用 093 的骨架（四卡带 + max-w-7xl 三栏 1 / 1.4 / 1 + 窄窗单列），气质区别于周报：暖纸底（#fbf9f4）、墨色正文、青绿（secondary）主强调、琥珀仅用于草稿与久未修改提醒；周报页保持原有紫 / 青 / 靛 / 琥珀。
+
+### 实际改动
+
+- 宿主 `desktop/src-tauri/src/task_shell.rs`：`OfflineArtifactEntry` 新增 `status`、`artifact_type`；仅对 `material-writing` 成果读文件前 16 KiB 的 frontmatter（只读、有上限、不缓存、不回写）；状态归一 draft / finished / published（缺省与非法 → finished），类型归一 insight / ai / blog / website / uncategorized；新增 2 个单测。`scene_overview.rs` 仅补测试构造字段。
+- 前端：`types.ts`、`scenes.ts`（writing 英文副标题配置键 studio / overview / recent / continue / inspiration / pipeline / stale / draft / finished / published，缺省不渲染）、新增 `writingStudio.ts`（纯函数）、新增 `shell/WritingStudio.tsx`（继续创作卡、灵感架、状态管线、栏目说明）、`ScenePage.tsx`（writing 专属三栏分支，窄窗 左 → 中 → 右；不再在页底重复渲染会话历史）、`SceneStatusStrip.tsx`（写作页四卡：本月成文、进行中草稿、灵感待用、最近更新）、`ArtifactExplorer.tsx`（可选 showTypeLabels / stalePaths / accent，weekly 与 project 默认行为不变）。
+- 灵感架 = 既有 writing 会话，不新增存储；点击经 `requestOpenThread` 回首页载入该会话。
+- 加载态：成果元数据未读到时草稿数为 null 显示「—」，不写 0。
+
+### 实际运行的命令与结果
+
+- `cd desktop && npx --no-install tsc --noEmit`：通过，无输出。
+- `cd desktop && npm run build`：通过（约 0.9 s）；仅既有 >500 kB chunk 警告。
+- `python3 tests/verification/desktop/verify_writing_094.py`：cases=98 passed=98 failed=0（静态断言 + 编译真实 writingStudio.ts 的合成 probe）。首次运行 1 项失败（metric_no_zero_before_load），原因是断言按旧变量名 writingDraftCount === null 查找，而实现通过 writingCounts 在 artifactsLoaded 前给 null；已改断言为检查真实语义，产品源码未为过测试而改动。
+- `python3 tests/verification/desktop/preview_writing_094.py`（一次性 Xvfb 真实窗口，合成夹具：6 份成果含草稿 / 成文 / 已发布 / 无 frontmatter / 非法值 / 120 天未动，2 条合成写作会话）：facts.json `passed: true`——四卡在 AX 树可读；三组计数 草稿 1 / 成文 4 / 已发布 1，合计 6 = 成果总数；缺省口径文案在屏；类型标签（AI 知识 / blog / 网站内容 / 学习心得 / 未分类）可见；继续创作卡标题取自 frontmatter；90 天提醒与条目标记出现，点击后管线只剩 1 条久未动成文；点草稿组后管线只剩 1 条草稿；点灵感架条目回首页且归类显示「文案写作」；窄窗 1000 px 顺序 继续创作 → 灵感架 → 状态管线 → 成果文档库，无横向溢出。证据：`tests/verification/desktop/evidence/od-arch-094/`（01～05 截图、AX JSON、facts.json）。
+- 窗口脚本调试记录（如实）：首轮 facts 中筛选与回首页断言为 false，经读 AX 树确认是定位口径问题（阶段卡 / 提醒是 toggle button；首页不显示会话标题；灵感架按钮与管线条目同样以「01 合成」开头被误计），均为脚本修正，筛选与跳转行为本身在截图与 AX 中已生效。窄窗单列判定把左缘差容忍度放宽到 40 px（标题内边距造成 15 px 差，不是双列）。
+- 回归：`verify_weekly_091.py` 67/67、`verify_weekly_092.py` 29/29、`verify_weekly_093.py` 96/96 通过；`verify_scene_overview_060.py` 第一次与其它 Xvfb 脚本并行时 Xlib 连接断开，单独重跑 EXIT=0。
+- `cd desktop/src-tauri && cargo test --offline`（带本机 tauri 依赖环境变量）：358 passed, 0 failed（含新增 2 项），其余测试目标全部 ok。
+- `python3 -m pytest tests -q`：89 passed, 30 subtests passed。
+- `git diff --check`：无输出；`git status --porcelain -- runtime/`：空。
+
+### 已知限制与未验证项
+
+- 视觉区分度（暖纸色 + 青绿 vs 周报紫青）只做了窗口截图人工查看，没有用户侧偏好验证；未做深色主题与 1440 以下宽窗的专门截图。
+- frontmatter 解析只认简单的 `key: value` 行，不做通用 YAML；超过 16 KiB 的 frontmatter 按「无 frontmatter」处理。
+- 写作页灵感架只读本机已有会话，「待用」没有独立标记。
+- 本节不含 ARCHITECT 审查结论；REVIEW.md 未改动。
+
+### 继续任务补验（2026-10-27）
+
+- 独立重跑 `python3 tests/verification/desktop/verify_writing_094.py`：98/98 通过；`verify_weekly_093.py`：96/96；`verify_weekly_092.py`：29/29；`python3 -m pytest tests -q`：89 passed、30 subtests passed。
+- 独立重跑 `cd desktop && npm run build`：通过，仅保留既有大 chunk 警告。使用项目配置的 Tauri 依赖环境重跑 `~/.cargo/bin/cargo test --offline`：358 passed、0 failed；包含本轮写作成果 frontmatter 的新增测试。
+- 新建 `/tmp/od094-review` 合成根并以一次性 Xvfb `:191` 重跑 `preview_writing_094.py`：`facts.json` 为 `passed: true`；6 份成果按 1 草稿 / 4 成文 / 1 已发布归类，草稿与 90 天提醒筛选、灵感架回首页、1000px 单列及无横向溢出均实测通过。证据刷新在 `tests/verification/desktop/evidence/od-arch-094/`。
+- 本补验仍只使用 `/tmp` 合成数据，未读取真实知识库或正式资料；`runtime/` 仍零差异。REVIEW.md 未改动，本节仍等待 ARCHITECT 独立审查。
+
+## OD-ARCH-093：工作记录页按参考图重排版式（2026-10-27，含四次设计修订；已实施，2026-10-27 审查通过）
+
+> 状态：**已实施，ARCHITECT 独立审查通过（2026-10-27）**。验收结论与证据见 REVIEW.md 顶部 OD-ARCH-093 章节；本节仍为执行记录。
+> 触发：用户在 PLANS.md 的 OD-ARCH-093 仍是「计划草案待用户批准」时直接下发了实施指令，并按参考图 `/mnt/data/Desktop/zhoubao.png` 提出版式要求。**本轮不主张该计划已获正式批准**，只按用户直接指令范围实施；PLANS.md 已同步标注这一事实。
+> 起点 HEAD：`cffff6d`（main，与 origin/main 同步）。工作区在本轮开始前已有 80 项差异（73 修改、7 未跟踪），全部为 P1/P2/P4 窗口重跑刷新的证据文件与 REVIEW.md 的一条提交后补记，无源码变更；本轮原样保留，未 reset、未 clean、未覆盖、未删除；**未提交、未推送、未打标签**。
+> `runtime/` 零差异：`git status --porcelain -- runtime/` 为空。本轮由本助手亲自实施与验证，未派子代理；**未读取任何真实工作记录、真实成果文档、知识库或凭证**，窗口预览与验证只用 `/tmp` 下的一次性合成夹具。
+
+### 调研到的三条源码事实（均影响计划范围）
+
+1. **四象限在当前源码中不存在。** `ScenePage.tsx`、`WeeklyTimeline.tsx`、`WeeklyReportPanel.tsx`、`SceneStatusStrip.tsx` 均无象限区块；全仓 `rg '象限|四象限|quadrant|PriorityMatrix|艾森豪'` 无命中（仅 `runtime/` 内 DSH 自带无关测试含 quadrant 字样，未改动）；`git log --all -S'四象限'` 无结果；091 与 092 两版窗口截图也只有「指标带 + 时间线 + 成果库」。用户说的「保留四象限」在源码上对应的是**新增**。
+2. **四象限的两个维度没有数据。** 现有确定性汇总是一维状态：`WeeklySummary` 为 `total/done/pending/blocked`，`ProjectSummary` 为 `not_started/in_progress/blocked/done/overdue`；周记录格式固定为「`- **事**：…` / `**去向**：…`」，没有重要度、紧急度字段。
+3. **顶部四栏的原图指标无数据源。** FOCUS SCORE、FOCUS TIME 需要评分与专注计时数据，OmniDesk 没有；可直接使用的有来源指标是本周记录条数、完成/总事项、周报状态、逾期条数与成果份数。
+
+### 实施内容与实际改动
+
+改动文件（`git diff --stat -- desktop/src`）：`desktop/src/scenes.ts`、`desktop/src/shell/ScenePage.tsx`、`desktop/src/shell/SceneStatusStrip.tsx`、`desktop/src/shell/WeeklyTimeline.tsx`、`desktop/src/shell/ArtifactExplorer.tsx`、`desktop/src/shell/WeeklyReportPanel.tsx`（删除独立 `WeeklyArchive` 组件与 `monthLabel`，文件只保留 `WeeklyReportStatus`）；新增 `desktop/src/shell/WeeklyQuadrants.tsx`（135 行）与 `desktop/src/weeklyQuadrants.ts`（111 行）。未改 `runtime/`，未改宿主 Rust 与 `task_shell.rs` 数据契约。
+
+1. **顶部四栏（S01，`SceneStatusStrip.tsx`；含 2026-10-27 第四次修订）**：weekly 分支为**四张独立横向长方卡**，容器为 `mt-4 mb-4 max-w-6xl mx-auto grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4`：整排 1152px，比顶部导航的 `max-w-7xl`（1280px）略窄并居中；主区左内边距比导航外壳多 32px，故加 `md:-translate-x-8` 让整排与导航同轴，与上方导航区留 16px、卡与卡之间留 12–16px；窄窗两列、手机单列，竖分隔线已删除。四张卡各一组 OmniDesk 色：本期工作记录紫（`primary`）、进周报条目青（`secondary`）、本周周报靛（`tertiary`）、逾期琥珀（amber；真有过期记录时整张转 `error` 玫红），配色按用户第四次反馈原样保留。卡内版式改为横向 KPI 结构：左侧 36px 方形图标座 + 13px 中文标题 + 8.5px 等宽序号 01–04 与英文副标题，右侧大号数字与单位，底行说明与动作，最底部 4px 细进度轨；`px-4 py-3`、`mt-1.5` 与 `pt-2` 收紧后实测卡高约 90px（截图 215–305 像素行），比上一版竖长构图明显更矮。数字字号随长度收缩（≤2 字 30px、3 字 24px、≥4 字 20px）并 `whitespace-nowrap`，使「未生成」这类状态值与并列数字卡都能完整显示、不挤压标题与英文副标题；四条英文副标题（RECORDS / FOR WEEKLY / WEEKLY REPORT / OVERDUE）在窗口截图中均完整可见，无截断。英文副标题缺省时不渲染空行。进度条只在分子分母都真实读到且分母大于 0 时绘制，否则整条不渲染；读不到显示 `—`，不写 0。项目与写作两个场景的指标渲染保持原样。
+2. **四象限（S02，新增 `weeklyQuadrants.ts` + `WeeklyQuadrants.tsx`）**：2×2 中文矩阵「先做 / 排期 / 回看 / 可缓」，每格有大编号、中文标题、计数和最多一条预览。归类是确定性规则而非模型判断：已过日期 = 记录日期早于今天；进周报 = 去向恰为「本周报引用」；没有去向的行计入「待归类」并显示条数，不硬塞进四格，因此四格计数之和 + 待归类 = 本周记录条数。口径说明写在格下方。点击某格把中栏过滤到该象限，再点同一格或「取消筛选」恢复；筛选只改视图派生，不写任何文件。
+3. **三栏布局（S03，`ScenePage.tsx`）**：weekly 主区改为 `lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]` 三栏，容器为 `max-w-7xl mx-auto md:-translate-x-8` 并带 `data-board-width="nav"`，与顶部导航同宽同轴（第四次修订按用户要求把三栏整体宽度对齐导航条）；左栏按用户点名的顺序为 四象限 → 历史对话（整列独立滚动，`max-h-[70vh]`），中栏为本周记录，右栏为成果文档库，各栏独立滚动。窄窗（`lg` 以下）用 `display: contents` 拆开左栏，实测单列顺序为 四象限 → 本周记录 → 成果文档库 → 历史对话。
+4. **中栏与右栏样式（S04、S06、S07、S08）**：中栏条目改为浅底圆角条（今日条目主色左缘），正文 `line-clamp-2` 最多两行，`title` 保留全文，「去向」标签、转周报、打开原文动作不变。右栏成果库改为编号卡（`01/02…` + 文件名 + 类型/时间/大小）。**第四次修订（S08）按用户要求精简工具栏**：新增可选 `compactToolbar` 属性，工作记录页启用后不再渲染「全部/本周/本月」三个时间筛选与「含子目录」勾选，固定按近 30 天滚动窗口（`now - 30 * 24 * 60 * 60`）并固定包含子目录（`ScenePage` 中 weekly 的 `includeSubdirs` 恒为 `true`，切场景时同步重置）；工具栏只保留搜索框与「卡片/列表」切换，计数行显式写明「当前只列近 30 天（共 N 条）」，让看不到筛选的用户知道当前范围。项目跟进与文案写作两个场景未传该属性，仍保留原有时间筛选、子目录勾选与自然周/自然月口径。按用户二次反馈，往期周报与往期周记录通过 `ArtifactArchiveEntry` 通道并入同一列表，按 `modified_at` 倒序，带「归档」徽标与「周报/周记录」来源标签，搜索与两种视图都覆盖归档；独立历史归档卡已删除，打开仍分别走 `worklogReadReport` / `worklogReadWeek` 只读命令，归档读取失败与宿主跳过文件数如实显示。主区与卡片内边距、标题/副标题/正文/元信息字号层级按 S07 放大。
+5. **中文与英文副标题**：正文全中文；英文副标题集中在 `scenes.ts` 的 `subtitles` 配置（`priority / log / artifacts / history / records / weekly / report / overdue`），缺省或空串时整块不渲染，不留空行。`SceneDef` 只新增一个可选字段，没有为版式新增数据结构。
+6. **配色**：只使用 `theme.css` 既有令牌（`--color-primary`、`surface-container-*`、`primary-fixed`、`error-container` 等），未照搬参考图的深蓝灰数值，未新增色值。四象限按「先做 → 排期 → 回看 → 可缓」由主色向 surface 递减。
+7. **无障碍**：给顶部四栏每一格、本周记录、成果文档库、历史对话、四象限补了 `aria-label` / `role="group"` 与可读计数文案，便于 AX 树窗口断言。
+
+### 与计划的偏差（如实记录）
+
+1. **四象限是新增，不是保留。** 改版前源码与全历史都没有该区块（见上节第 1 条），本轮按新增实现；用户原话的「保留四象限」在源码上没有对应物。
+2. **顶部四栏没有复刻 FOCUS SCORE / TASKS COMPLETED / FOCUS TIME / PRODUCTIVITY。** OmniDesk 没有专注计时、效率评分与「完成/总事项」的现成来源；照抄数字会变成假数据。改用四项有宿主来源的指标。
+3. **S01 原写「已完成/总事项」，实现为「进周报条目」。** 现有 `WeeklySummary` / `ProjectSummary` 不提供与本周记录逐条对应的完成分母，只有「去向 = 本周报引用」能确定性算出。该指标的进度条分母是本周记录条数，语义已在界面标注为「进周报条目」。
+4. **历史归档并入成果库（按用户二次反馈修正）。** 第一版实现曾把归档作为左栏独立卡放在历史对话下方；用户 2026-10-27 明确要求「历史归档和成果展合并，归档的就给个标记」，本轮据此删除独立 `WeeklyArchive` 卡，把往期周报/周记录并入右栏成果库并加「归档」徽标。左栏最终只保留 四象限 → 历史对话，窄窗单列为 四象限 → 本周记录 → 成果库 → 历史对话。该调整同步改写了 091/092 中关于左栏归档顺序的旧断言，092 其余断言未动。
+5. **四象限预览从两行改为单行截断。** 两行会在小卡片里与底部口径说明重叠，窗口截图中可见文字重叠；改为单行 + `title` 保留全文后不再重叠。中栏的两行截断要求不受影响。
+6. **成果列表视图的截图脚本一度误报。** 首轮 `preview_weekly_093.py` 用包含匹配找「列表」按钮，命中了左栏「展开对话列表」，抓到的 04 帧其实是对话展开态，而 `facts.json` 仍写了 `list_view_clicked: true`。人工看图复核发现后，改为按按钮名精确匹配，并新增 `list_view_confirmed`（以列表视图独有的「字节」列作为切换成功的证据）；当前 `list_view_confirmed: true` 来自重跑后的真实列表视图。同时把列表行的主标题改为成果标题 / 周标签、文件名降为次要行，并禁止日期与字节数换行。
+
+### 本轮实际运行的命令与结果
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| 类型检查 | `cd desktop && npx --no-install tsc --noEmit` | **exit 0** |
+| 093 静态与纯函数检查 | `python3 tests/verification/desktop/verify_weekly_093.py` | **96 checks / 0 failures**（第四次修订新增：卡片横向两区结构、`py-3` 紧凑高度、长状态值降字号、数值不折行、三栏带 `data-board-width="nav"`、精简工具栏隐藏两组控件、固定近 30 天、weekly 强制含子目录、搜索框保留、计数行写明固定窗口，共 10 项；并改写旧的横向结构断言） |
+| 091 回归 | `python3 tests/verification/desktop/verify_weekly_091.py` | **67 checks / 0 failures** |
+| 092 回归 | `python3 tests/verification/desktop/verify_weekly_092.py` | **29 checks / 0 failures**（左栏改为 `threads_in_left_column` + `archive_merged_not_standalone`） |
+| Python 测试 | `python3 -m pytest tests -q` | **89 passed，30 subtests passed** |
+| 前端构建 | `cd desktop && npm run build` | exit 0；仅既有 >500 kB chunk 提示 |
+| Rust 全量 | `cargo test --offline`（`~/.cargo/bin/cargo` + 用户级 Tauri 依赖的 `PKG_CONFIG_PATH` / `PKG_CONFIG_SYSROOT_DIR` / `LIBRARY_PATH`） | **397 passed / 0 failed**（356 + 2 + 1 + 13 + 6 + 5 + 10 + 3 + 1；另 doc-test 0 项） |
+| diff 完整性 | `git diff --check` | exit 0，无空白错误 |
+| 范围核对 | `git status --porcelain -- runtime/` | 空，`runtime/` 零差异 |
+
+窗口验证（`verify_weekly_093.py` / `preview_weekly_093.py`，合成 7 条记录与 3 份成果，`/tmp/od093-preview8` 一次性夹具）的关键事实：顶部四栏在 AX 树中可读且宽度已就绪（`ax_width_ready: true`）；第四次修订后重跑，宽窗截图中四张卡为紫 / 青 / 靛 / 琥珀四色横向长方卡，卡高约 90px，整排左右边界 220/1379，窄于导航胶囊 159/1440 并在其下居中，卡间与导航区下沿都留白；三栏容器左右边界实测 160/1439，与导航 159/1440 相差 1px，即同宽同轴（第四次修订要求）；窄窗 1000px 截图中四卡改为 2×2 两列、间距一致，未出现横向溢出；四象限计数自洽；点击「先做」后中栏为 `filter_visible: 2 / filter_total: 7`，`filter_applied: true`（本轮把脚本的判据从「只读一次节点」改为轮询「只看/取消筛选」控件出现，修正了上一轮因 AX 树重建较慢导致的 `false` 误报，并新增 `02-quadrant-ax.json` 作为该步证据）；成果库内 `ax_archive_badge_present: true` 且 `ax_standalone_archive_absent: true`；窄窗 1000px 时 `narrow_single_column: true`、`narrow_left_spread: 0`、`narrow_block_count: 4`、`narrow_max_right: 920`、`narrow_overflow: false`，顺序为 `["事项四象限","本周记录","成果文档库","历史对话"]`；成果库列表视图 `list_view_clicked: true`、`list_view_confirmed: true`（以列表独有的「字节」列确认，不只是点了按钮）。右栏工具栏在 AX 树中只剩搜索框（`按文件名搜索成果与归档`）与「卡片」「列表」两个按钮，不含「全部/本周/本月」与「含子目录」；计数行显示「本场景成果共 3 份，归档 3 条已并入同一列表；当前只列近 30 天（共 6 条）」。宽窗三栏比例、左栏顺序、中栏两行截断、列表视图与窄窗单列均已人工看图复核（宽窗截图里左栏自上而下是 四象限 → 历史对话，成果库内出现带「归档」徽标的往期条目，四象限卡片内不再出现文字重叠；列表视图里归档行同时显示「归档」标记与周标签；四条英文副标题完整无截断）。
+
+### 证据位置
+
+`tests/verification/desktop/evidence/od-arch-093/`：`01-weekly-three-column.png`（宽窗三栏）、`02-quadrant-filter.png`（四象限筛选联动）、`03-narrow-1000.png`（窄窗单列）、`04-artifact-list.png`（成果列表视图，含归档条目）、`01-weekly-ax.json`、`02-quadrant-ax.json` 与 `03-narrow-ax.json`（AX 树）、`facts.json`（版式实测事实，含 `list_view_confirmed`）、`verify_weekly_093.json`（**96 项断言，0 失败**）。新增脚本 `tests/verification/desktop/verify_weekly_093.py` 与 `tests/verification/desktop/preview_weekly_093.py`。该目录为本轮新建，未覆盖 091/092 既有证据。
+
+> 目录里的 `verify_weekly_092.json` 是早期一次 092 回归误用 `--json` 写到本目录产生的重复文件，内容与 `evidence/od-arch-092/verify_weekly_092.json` 的用例名一致且全部通过；按工作区保护规则原样保留，正式 092 证据仍以 `od-arch-092/` 为准。
+
+### 待审查事项
+
+- 版式是否符合参考图意图、四象限归类口径是否可接受（尤其是「已过日期 = 紧急」这一可解释但不等同于人工重要度的近似），由 ARCHITECT 独立判断。
+- 归档并入成果库后的信息密度是否合适，「归档」徽标与「周报/周记录」来源标签是否足够清晰，是否仍需分层或弱化历史条目。
+- 顶部四栏放弃 FOCUS SCORE / FOCUS TIME 的取舍是否认可；若要求真实数据，需另立计划新增专注计时或评分数据源。
+- 宽窗三栏下每栏 `max-h-[70vh]` 的独立滚动体验是否合适。
+- 第四次修订的三项验收点：①顶部四卡是否已足够「横向长方形」且卡高合适（实测约 90px，宽窗整排 1152px、窄于导航并在其下居中）；②三栏整体是否与顶部导航同宽（实测边界 160/1439 对导航 159/1440，差 1px）；③右栏精简后只留搜索框与卡片/列表、固定近 30 天且默认含子目录，是否满足用户对「固定显示近一个月」的意图（当前按 30 天滚动窗口而非自然月，需要 ARCHITECT 确认口径）。
+- 审查通过前，本页不得在 REVIEW.md 或其它文档中标记为通过。
+
+
 ## OD-KB-001 P4：全局/局部知识图谱与关系导航（2026-10-26～27，实施完成；已由 ARCHITECT 独立验收通过）
 
 > 本文件是执行记录，**不是验收结论**。P4 的通过结论来自 REVIEW.md 顶部的独立验收记录（ARCHITECT，2026-10-27）；本节记录实施与本轮独立复跑的实际数据。

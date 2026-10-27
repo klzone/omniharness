@@ -218,11 +218,13 @@ def main() -> int:
     check("chips_token_removed", "weekFragments" not in scene_tsx, "")
     check("timeline_wired", "WeeklyTimeline" in scene_tsx, "")
     check("status_wired", "WeeklyReportStatus" in scene_tsx, "")
-    check("archive_wired", "WeeklyArchive" in scene_tsx, "")
-    # OD-ARCH-092：weekly 取消页签，时间线与成果库同屏两栏；页签只剩 project/writing 用。
+    # 091 的「历史归档」在 093 修订后并入成果库，不再有独立 WeeklyArchive 组件；
+    # 归档能力本身（worklog_archive_list、往期周报/周记录可打开）仍是 091 的契约。
+    check("archive_wired", "archiveEntries" in scene_tsx and "worklogArchiveList" in scene_tsx, "")
+    # OD-ARCH-092 取消 weekly 页签；OD-ARCH-093 扩为三栏同屏，页签只剩 project/writing 用。
     check("weekly_no_timeline_tab", '"timeline"' not in scene_tsx, "weekly tab should be gone in 092")
-    check("weekly_two_columns", "lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" in scene_tsx, "")
-    check("archive_threads_two_columns", "lg:grid-cols-2 gap-2 items-start" in scene_tsx, "")
+    check("weekly_three_columns", "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]" in scene_tsx, "")
+    check("archive_threads_in_left_column", "max-lg:order-4" in scene_tsx, "history in the left column")
     # 其他两个场景的既有区块必须原样保留。
     check("progress_tab_kept", "def.hasProgress ? (" in scene_tsx, "")
     check("artifacts_tab_kept", 'tab === "artifacts"' in scene_tsx, "")

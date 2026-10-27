@@ -13,13 +13,27 @@ import {
 import type { OfflineArtifactEntry, SceneOverview } from "../types";
 import { useThreadCategories } from "../threadCategories";
 import { AnnouncementBar } from "./AnnouncementBar";
-import { ArtifactExplorer } from "./ArtifactExplorer";
+import { ArtifactExplorer, type ArtifactArchiveEntry } from "./ArtifactExplorer";
 import type { Scene } from "./Dock";
 import { SceneStatusStrip } from "./SceneStatusStrip";
 import { WeeklyTimeline } from "./WeeklyTimeline";
-import { WeeklyArchive, WeeklyReportStatus } from "./WeeklyReportPanel";
+import { WeeklyQuadrants } from "./WeeklyQuadrants";
+import { WeeklyReportStatus } from "./WeeklyReportPanel";
+import {
+  WritingContinueCard,
+  WritingInspirationShelf,
+  WritingPipeline,
+  WritingStudioHead,
+} from "./WritingStudio";
+import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
 import type { WorklogArchiveList, WorklogWeekFile } from "../types";
-import { parseWorklog, reportState } from "../weekTimeline";
+import { localToday, parseWorklog, reportState } from "../weekTimeline";
+import {
+  QUADRANTS,
+  classifyWorklog,
+  visibleIdsFor,
+  type QuadrantKey,
+} from "../weeklyQuadrants";
 
 /** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
 const SUBDIRS_KEY_PREFIX = "omnidesk.scene.include-subdirs.";
@@ -38,6 +52,15 @@ function writeSubdirsPref(scene: SceneKey, value: boolean) {
   } catch {
     // 缓存写不进去时只影响下次默认值，不影响本次结果。
   }
+}
+
+/**
+ * 是否连子目录一起列：工作记录页固定包含，写作页同样固定包含（OD-ARCH-094 S02），
+ * 其它场景沿用本机偏好。写作页不提供勾选，所以这里直接给 true。
+ */
+function fixedSubdirs(scene: SceneKey): boolean {
+  const byPreference = scene === "weekly" ? true : readSubdirsPref(scene);
+  return scene === "writing" ? true : byPreference;
 }
 
 /**
@@ -111,6 +134,8 @@ export function ScenePage({
   );
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
+  /** 成果元数据是否已读到（OD-ARCH-094 S01：没读到不能把草稿数写成 0）。 */
+  const [artifactsLoaded, setArtifactsLoaded] = useState(false);
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
   /** 本周记录原文与归档清单（OD-ARCH-091）：都是宿主只读命令，不调模型。 */
   const [weekContent, setWeekContent] = useState<string>("");
@@ -120,7 +145,13 @@ export function ScenePage({
   const [weekError, setWeekError] = useState<string | null>(null);
   const [archive, setArchive] = useState<WorklogArchiveList | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
-  const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() => readSubdirsPref(scene));
+  /**
+   * 工作记录页固定连子目录一起列（OD-ARCH-093 四次修订）：右栏不再提供勾选，
+   * 所以这里直接按 true 初始化，其余场景仍沿用本机偏好。
+   */
+  const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() =>
+    fixedSubdirs(scene),
+  );
   const [progress, setProgress] = useState<string | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
   const [overview, setOverview] = useState<SceneOverview | null>(null);
@@ -129,6 +160,13 @@ export function ScenePage({
   const [pendingTick, setPendingTick] = useState(0);
   /** 会话历史默认收起（OD-ARCH-060 S3）。 */
   const [showThreads, setShowThreads] = useState(false);
+  /** 四象限选中格（OD-ARCH-093 S03）：只影响中栏显示，不写任何文件。 */
+  const [quadrant, setQuadrant] = useState<QuadrantKey | null>(null);
+  /** 写作页（OD-ARCH-094）：状态管线筛选与 90 天提醒筛选，都只改视图。 */
+  const [writingStatusFilter, setWritingStatusFilter] = useState<WritingStatus | null>(null);
+  const [writingStaleOnly, setWritingStaleOnly] = useState(false);
+  /** 写作页的「现在」：一次渲染内固定，避免相对时间在每次重绘时抖动。 */
+  const writingNow = useMemo(() => Math.floor(Date.now() / 1000), []);
 
   const refreshThreads = useCallback(() => {
     setThreads(listThreadsByTag(scene));
@@ -148,23 +186,30 @@ export function ScenePage({
   useEffect(() => {
     setTab(def.hasProgress ? "progress" : "artifacts");
     setOpened(null);
+    setQuadrant(null);
+    setWritingStatusFilter(null);
+    setWritingStaleOnly(false);
+    setIncludeSubdirs(fixedSubdirs(scene));
   }, [scene, def.hasProgress]);
 
   // 成果档案：只列本场景自己保存的成果。开关决定是否含下级目录。
   useEffect(() => {
     let alive = true;
+    setArtifactsLoaded(false);
     shell
       .offlineArtifacts(includeSubdirs)
       .then((r) => {
         if (!alive) return;
         setArtifacts(filterSceneArtifacts(r.items, def.scenario, includeSubdirs));
         setArtifactsError(null);
+        setArtifactsLoaded(true);
       })
       .catch((e) => {
         if (!alive) return;
         // 读不到就如实报错，不能显示成「零成果」。
         setArtifacts([]);
         setArtifactsError(e instanceof Error ? e.message : String(e));
+        setArtifactsLoaded(false);
       });
     return () => {
       alive = false;
@@ -361,6 +406,32 @@ export function ScenePage({
 
   const bumpPending = useCallback(() => setPendingTick((n) => n + 1), []);
 
+  /** 回首页开一段写作对话（写作页「继续创作 / 去写点什么 / 去写」共用）。 */
+  const newWritingThread = useCallback(() => {
+    requestNewThread("writing");
+    onNavigate("home");
+  }, [onNavigate]);
+
+  /** 写作页最近的写作对话：灵感架「继续对话」与「继续创作」的对话入口。 */
+  const latestWritingThread = useMemo(
+    () => [...threads].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+    [threads],
+  );
+  const continueWritingThread = useCallback(() => {
+    if (latestWritingThread) openThread(latestWritingThread.id);
+    else newWritingThread();
+  }, [latestWritingThread, openThread, newWritingThread]);
+
+  /** 写作页指标：草稿数来自已读取的成果元数据；还没读到就是 null，界面显示「—」。 */
+  const writingCounts = useMemo(
+    () => (scene === "writing" && artifactsLoaded && !artifactsError ? statusCounts(artifacts) : null),
+    [scene, artifacts, artifactsError, artifactsLoaded],
+  );
+  const writingStalePaths = useMemo(() => {
+    if (scene !== "writing") return undefined;
+    return new Set(staleFiles(artifacts, writingNow).map((f) => f.relative_path));
+  }, [scene, artifacts, writingNow]);
+
   /** 本周周报状态（确定性文件检查，不调模型）。 */
   const reports = useMemo(() => archive?.reports ?? [], [archive]);
   const reportNow = useMemo(() => {
@@ -390,18 +461,90 @@ export function ScenePage({
   }, [scene, archive, archiveError, reportNow]);
 
   /**
+   * 四象限归类（OD-ARCH-093 S02）：与时间线共用同一份解析结果，避免两边数字打架。
+   * 归类只用「日期是否已过」与「去向是否为本周报引用」，不调模型、不新增字段。
+   */
+  const classified = useMemo(
+    () => classifyWorklog(parseWorklog(weekContent), localToday()),
+    [weekContent],
+  );
+
+  /** 进周报条数：四象限里「去向 = 本周报引用」的两格之和。 */
+  const weekReportEntries = useMemo(
+    () => (scene === "weekly" ? classified.counts["past-report"] + classified.counts["future-report"] : null),
+    [scene, classified],
+  );
+
+  const quadrantName = useMemo(
+    () => QUADRANTS.find((q) => q.key === quadrant)?.title ?? null,
+    [quadrant],
+  );
+
+  /**
+   * 历史归档并入成果库（OD-ARCH-093 修订，用户 2026-10-27 要求）：
+   * 往期周报与「还没有周报的往期周记录」都变成成果列表里的条目，只加一个「归档」徽标，
+   * 不再单独占一张卡片。当周记录仍在中栏，不重复塞进成果库。
+   */
+  const archiveEntries = useMemo<ArtifactArchiveEntry[]>(() => {
+    if (scene !== "weekly" || !archive) return [];
+    const current = archive.current_week;
+    const reports = archive.reports
+      .filter((f) => f.week !== current)
+      .map<ArtifactArchiveEntry>((f) => ({
+        key: "report:" + f.file_name,
+        kindLabel: "周报",
+        week: f.week,
+        file_name: f.file_name,
+        path: f.path,
+        modified_at: f.modified_at,
+        onOpen: () => void openReport(f),
+      }));
+    const reportWeeks = new Set(archive.reports.map((f) => f.week));
+    const weekSources = archive.weeks
+      .filter((f) => f.week !== current && !reportWeeks.has(f.week))
+      .map<ArtifactArchiveEntry>((f) => ({
+        key: "week:" + f.file_name,
+        kindLabel: "周记录",
+        week: f.week,
+        file_name: f.file_name,
+        path: f.path,
+        modified_at: f.modified_at,
+        onOpen: () => void openWeekSource(f.week),
+      }));
+    return [...reports, ...weekSources];
+  }, [scene, archive, openReport, openWeekSource]);
+
+  const selectQuadrant = useCallback((key: QuadrantKey) => {
+    setQuadrant((prev) => (prev === key ? null : key));
+  }, []);
+
+  /**
    * 会话历史（OD-ARCH-060 S3，默认收起；OD-ARCH-092 可放进两栏的右栏）。
    * 展开后在自己的卡片里滚动，不再把下面整页推下去。
    */
   const threadsSection = (
-    <section className="bg-white/70 border border-white/90 rounded-2xl px-3 py-2 min-w-0">
-      <div className="flex items-center gap-2">
+    <section
+      aria-label="历史对话"
+      className="bg-white/85 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
+    >
+      <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
+        <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
+          历史对话
+        </h2>
+        {def.subtitles?.history ? (
+          <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
+            {def.subtitles.history}
+          </span>
+        ) : null}
+        <span className="mono text-[10.5px] text-outline ml-auto shrink-0">{threads.length} 条</span>
+      </div>
+      <div className="flex items-center gap-2 pt-3.5">
         <button
           className="text-[11.5px] text-on-surface-variant hover:text-primary shrink-0"
           onClick={() => setShowThreads((v) => !v)}
           aria-expanded={showThreads}
         >
-          {showThreads ? "▾" : "▸"} 会话历史（{threads.length} 条）
+          {showThreads ? "▾" : "▸"} {showThreads ? "收起" : "展开"}对话列表
         </button>
         <span className="text-[10px] text-outline truncate">对话只在首页发生</span>
         <button
@@ -413,9 +556,9 @@ export function ScenePage({
         </button>
       </div>
       {showThreads ? (
-        <div className="pt-2 flex flex-col gap-1 max-h-[200px] overflow-y-auto">
+        <div className="pt-3.5 flex flex-col gap-1.5 max-h-[200px] overflow-y-auto">
           {threads.length === 0 ? (
-            <p className="text-[11px] text-outline leading-relaxed">
+            <p className="text-[11.5px] text-outline leading-relaxed">
               还没有这个场景的对话。去首页对话，场景选「{def.label}」即可。
             </p>
           ) : (
@@ -423,7 +566,7 @@ export function ScenePage({
               <div key={t.id} className="flex items-center gap-1">
                 <button
                   onClick={() => openThread(t.id)}
-                  className="flex-1 text-left px-2 py-1.5 rounded-lg text-[11.5px] truncate text-on-surface-variant hover:bg-surface-container"
+                  className="flex-1 text-left px-2.5 py-2 rounded-lg text-[11.5px] truncate text-on-surface-variant hover:bg-surface-container"
                   title={t.title}
                 >
                   {t.title}
@@ -466,52 +609,208 @@ export function ScenePage({
         overviewError={overviewError}
         refreshKey={pendingTick}
         weekEntries={weekEntries}
+        weekReportEntries={weekReportEntries}
         reportLabel={reportLabel}
         onRequestReport={requestWeeklyReport}
+        writingDraftCount={writingCounts ? writingCounts.draft : null}
+        writingInspirationCount={scene === "writing" ? threads.length : null}
+        writingNow={writingNow}
+        onRequestWriting={scene === "writing" ? newWritingThread : undefined}
       />
       <AnnouncementBar scene={def} itemsText={itemsText} onPendingChanged={bumpPending} />
 
-      {scene === "weekly" ? (
+      {scene === "writing" ? (
         /*
-         * 工作记录主区（OD-ARCH-092 R2）：取消页签，左主右辅两栏同屏。
-         * 左边看这一周记了什么，右边就是本场景的成果库——原来两者互斥，
-         * 想看成果必须先切走时间线。窄窗（lg 以下）自动堆成单列。
+         * 文案写作主区（OD-ARCH-094 S02）：三栏同屏——左「继续创作 + 灵感架」、
+         * 中「状态管线」、右「成果文档库」。窄窗按 左 → 中 → 右 单列堆叠。
+         * 与工作记录页共享栏宽、圆角与间距，但用暖纸色 / 青绿强调区分气质。
          */
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-2 items-start">
-          <WeeklyTimeline
-            week={currentWeek}
-            content={weekContent}
-            error={weekError}
-            loading={weekLoading}
-            onOpenSource={() => void openWeekSource()}
-            onRequestReport={requestWeeklyReport}
-            statusRow={
-              <WeeklyReportStatus
-                state={reportNow.state}
-                files={reportNow.files}
-                error={archiveError}
-                onRequestReport={requestWeeklyReport}
-                onOpenReport={(f) => void openReport(f)}
-              />
+        <>
+          <WritingStudioHead subtitle={def.subtitles?.studio} />
+          <div
+            className={
+              "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
+              "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] " +
+              "lg:[grid-template-areas:'left_pipeline_artifacts']"
             }
-          />
-
-          <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-3 py-3 flex flex-col min-w-0 max-h-[70vh]">
-            <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
-              <h2 className="font-headline-md text-[12.5px] font-semibold text-on-surface">成果文档库</h2>
-              <span className="mono text-[10px] text-outline">{artifacts.length} 份</span>
+            data-writing-board=""
+            data-board-width="nav"
+          >
+            <div className="min-w-0 flex flex-col gap-4 max-lg:order-1 lg:[grid-area:left] lg:max-h-[70vh] lg:overflow-y-auto">
+              <WritingContinueCard
+                files={artifacts.filter((f) => !f.is_dir)}
+                nowSeconds={writingNow}
+                loading={!artifactsLoaded && !artifactsError}
+                subtitle={def.subtitles?.continue}
+                onOpen={(p) => void openArtifact(p)}
+                onContinueThread={continueWritingThread}
+                onNewThread={newWritingThread}
+              />
+              <WritingInspirationShelf
+                threads={threads}
+                nowSeconds={writingNow}
+                subtitle={def.subtitles?.inspiration}
+                onOpenThread={openThread}
+                onNewThread={newWritingThread}
+              />
             </div>
-            <div className="pt-2 flex-1 flex flex-col min-h-0 overflow-y-auto">
+
+            <div className="min-w-0 max-lg:order-2 lg:[grid-area:pipeline]">
               {artifactsError ? (
-                <p className="text-[11px] text-error leading-relaxed pb-1">
+                <section
+                  aria-label="状态管线"
+                  className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-5 py-6"
+                >
+                  <p className="text-[11.5px] text-error leading-relaxed">
+                    读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
+                  </p>
+                </section>
+              ) : (
+                <WritingPipeline
+                  files={artifacts}
+                  nowSeconds={writingNow}
+                  metadataLoading={!artifactsLoaded && !artifactsError}
+                  subtitle={def.subtitles?.pipeline}
+                  staleSubtitle={def.subtitles?.stale}
+                  statusFilter={writingStatusFilter}
+                  staleOnly={writingStaleOnly}
+                  onStatusFilter={setWritingStatusFilter}
+                  onStaleToggle={() => setWritingStaleOnly((v) => !v)}
+                  onOpen={(p) => void openArtifact(p)}
+                />
+              )}
+            </div>
+
+            <section
+              aria-label="成果文档库"
+              className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
+            >
+              <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
+                <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
+                  成果文档库
+                </h2>
+                {def.subtitles?.artifacts ? (
+                  <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
+                    {def.subtitles.artifacts}
+                  </span>
+                ) : null}
+                <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
+                  {artifacts.filter((f) => !f.is_dir).length} 条
+                </span>
+              </div>
+              <div className="pt-3.5 flex-1 flex flex-col min-h-0 overflow-y-auto">
+                {artifactsError ? (
+                  <p className="text-[11.5px] text-error leading-relaxed pb-2">
+                    读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
+                  </p>
+                ) : null}
+                <ArtifactExplorer
+                  files={artifacts}
+                  emptyHint={def.emptyHint}
+                  includeSubdirs={includeSubdirs}
+                  onToggleSubdirs={toggleSubdirs}
+                  showTypeLabels
+                  stalePaths={writingStalePaths}
+                  accent="secondary"
+                  onOpen={(p) => void openArtifact(p)}
+                />
+              </div>
+            </section>
+          </div>
+        </>
+      ) : scene === "weekly" ? (
+        /*
+         * 工作记录主区（OD-ARCH-093 S03；2026-10-27 修订）：三栏同屏——左「四象限 + 历史对话」、
+         * 中「本周记录」、右「成果文档库」。历史归档并入成果库，只留「归档」徽标。
+         * 窄窗（lg 以下）按 四象限 → 本周记录 → 成果库 → 历史 的单列顺序堆叠。
+         * 栏间距与卡片内边距按参考图放大，避免信息挤在一起（用户二次反馈）。
+         */
+        <div
+          className={
+            "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
+            "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] " +
+            "lg:[grid-template-areas:'left_log_artifacts']"
+          }
+          data-weekly-board=""
+          data-board-width="nav"
+        >
+          {/*
+           * 左栏滚动列（OD-ARCH-093 S03）：四象限 → 历史对话。归档已并入右栏成果库，
+           * 这里不再单独成卡。窄窗用 `display: contents` 拆开，保证
+           * 四象限 → 本周记录 → 成果库 → 历史 的阅读顺序。
+           */}
+          <div className="min-w-0 max-lg:contents lg:flex lg:flex-col lg:gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:[grid-area:left]">
+          <div className="min-w-0 max-lg:order-1">
+            <WeeklyQuadrants
+              classified={classified}
+              active={quadrant}
+              onSelect={selectQuadrant}
+              subtitle={def.subtitles?.priority}
+              loading={weekLoading}
+              error={weekError}
+            />
+          </div>
+
+          {/* 四象限正下方就是历史对话（用户点名顺序）。 */}
+          <div className="min-w-0 max-lg:order-4">{threadsSection}</div>
+          </div>
+
+          <div className="min-w-0 max-lg:order-2 lg:[grid-area:log]">
+            <WeeklyTimeline
+              week={currentWeek}
+              content={weekContent}
+              error={weekError}
+              loading={weekLoading}
+              onOpenSource={() => void openWeekSource()}
+              onRequestReport={requestWeeklyReport}
+              subtitle={def.subtitles?.log}
+              visibleIds={visibleIdsFor(classified, quadrant)}
+              filterLabel={quadrantName}
+              onClearFilter={() => setQuadrant(null)}
+              statusRow={
+                <WeeklyReportStatus
+                  state={reportNow.state}
+                  files={reportNow.files}
+                  error={archiveError}
+                  onRequestReport={requestWeeklyReport}
+                  onOpenReport={(f) => void openReport(f)}
+                />
+              }
+            />
+          </div>
+
+          <section
+            aria-label="成果文档库"
+            className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
+          >
+            <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
+              <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
+                成果文档库
+              </h2>
+              {def.subtitles?.artifacts ? (
+                <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
+                  {def.subtitles.artifacts}
+                </span>
+              ) : null}
+              <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
+                {artifacts.filter((f) => !f.is_dir).length + archiveEntries.length} 条
+              </span>
+            </div>
+            <div className="pt-3.5 flex-1 flex flex-col min-h-0 overflow-y-auto">
+              {artifactsError ? (
+                <p className="text-[11.5px] text-error leading-relaxed pb-2">
                   读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
                 </p>
               ) : null}
               <ArtifactExplorer
                 files={artifacts}
+                archiveEntries={archiveEntries}
+                archiveError={archiveError}
+                archiveSkipped={archive?.skipped ?? 0}
                 emptyHint={def.emptyHint}
                 includeSubdirs={includeSubdirs}
                 onToggleSubdirs={toggleSubdirs}
+                compactToolbar
                 onOpen={(p) => void openArtifact(p)}
               />
             </div>
@@ -597,23 +896,10 @@ export function ScenePage({
       ) : null}
 
       {/*
-       * 归档 + 会话历史（OD-ARCH-092 R4）：原来两块各占一条通栏，纵向浪费；
-       * 现在并排两栏，各自在栏内滚动，会话展开也不再下推整页。
+       * 归档 + 会话历史：weekly 已在三栏里（左栏四象限下方，OD-ARCH-093 S03）；
+       * 其它场景仍在页面底部一条通栏，布局与原来一致。
        */}
-      {scene === "weekly" ? (
-        <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-2 items-start">
-          <WeeklyArchive
-            reports={reports}
-            weeks={archive?.weeks ?? []}
-            skipped={archive?.skipped ?? 0}
-            currentWeek={currentWeek}
-            error={archiveError}
-            onOpenReport={(f) => void openReport(f)}
-            onOpenSource={(w) => void openWeekSource(w)}
-          />
-          {threadsSection}
-        </div>
-      ) : (
+      {scene === "weekly" || scene === "writing" ? null : (
         <div className="mt-2">{threadsSection}</div>
       )}
     </main>
