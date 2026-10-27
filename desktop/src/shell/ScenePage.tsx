@@ -34,6 +34,7 @@ import type { WorklogArchiveList, WorklogWeekFile } from "../types";
 import { localToday, parseWorklog, reportState } from "../weekTimeline";
 import {
   QUADRANTS,
+  REPORT_DESTINATION,
   classifyWorklog,
   visibleIdsFor,
   type QuadrantKey,
@@ -299,6 +300,25 @@ export function ScenePage({
    */
   const currentWeek = archive?.current_week || weekLabel;
 
+  /**
+   * 重读当周记录（OD-ARCH-099 S03）：改完一条去向之后，统计卡、四象限与时间线
+   * 都从这一份新内容重新算，不各自维护一套计数。
+   */
+  const reloadWeek = useCallback(async () => {
+    setWeekLoading(true);
+    try {
+      const r = await shell.worklogReadWeek();
+      setWeekContent(r.content ?? "");
+      if (r.week) setWeekLabel(r.week);
+      setWeekError(r.ok ? null : (r.error ?? "读不到本周记录"));
+    } catch (e) {
+      setWeekContent("");
+      setWeekError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWeekLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (scene !== "weekly") return;
     let alive = true;
@@ -522,6 +542,35 @@ export function ScenePage({
   const selectQuadrant = useCallback((key: QuadrantKey) => {
     setQuadrant((prev) => (prev === key ? null : key));
   }, []);
+
+  /**
+   * 点选某条记录「进周报 / 不进周报」（OD-ARCH-099 S03）。
+   *
+   * 只改这条记录在周文件里的去向字段，随后重读整个周文件——统计卡第 2 格、四象限
+   * 两格与时间线开关都从这一份新内容重新算，不各维护一套计数。不写周报正文。
+   * 失败时把宿主原因抛回时间线就地显示，勾选停在服务端真实值。
+   */
+  const toggleDestination = useCallback(
+    async (args: {
+      date: string;
+      index: number;
+      entry: { text: string; destination: string | null };
+      next: boolean;
+    }) => {
+      const week = weekLabel || archive?.current_week;
+      if (!week) throw new Error("还没读到当周标签，稍后再试");
+      const receipt = await shell.worklogSetDestination({
+        week,
+        date: args.date,
+        index: args.index,
+        destination: args.next ? REPORT_DESTINATION : "仅记录",
+        expectText: args.entry.text,
+      });
+      if (!receipt.ok) throw new Error(receipt.error ?? "改动未生效");
+      await reloadWeek();
+    },
+    [archive, reloadWeek, weekLabel],
+  );
 
   /**
    * 会话历史（OD-ARCH-060 S3，默认收起；OD-ARCH-092 可放进两栏的右栏）。
@@ -770,6 +819,7 @@ export function ScenePage({
               visibleIds={visibleIdsFor(classified, quadrant)}
               filterLabel={quadrantName}
               onClearFilter={() => setQuadrant(null)}
+              onToggleDestination={toggleDestination}
               statusRow={
                 <WeeklyReportStatus
                   state={reportNow.state}

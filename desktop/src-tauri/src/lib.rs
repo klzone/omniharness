@@ -2139,6 +2139,52 @@ fn worklog_append(
     }
 }
 
+/// 改一条记录的「去向」（OD-ARCH-099 S02）。
+///
+/// 界面上的点选只做两件事：改这条记录在周文件里的去向字段，以及让周报上下文随之
+/// 取到或不取到它。这里不写周报、不碰别的条目；正文由界面带回用于一致性校验。
+#[tauri::command(async)]
+fn worklog_set_destination(
+    state: State<'_, SharedHost>,
+    week: String,
+    date: String,
+    index: usize,
+    destination: String,
+    expect_text: String,
+) -> serde_json::Value {
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "date": date,
+                "index": index,
+                "destination": destination,
+                "previous": null,
+                "backup": null,
+                "error": message,
+            })
+        }
+    };
+    match worklog::set_destination(&root, &week, &date, index, &destination, &expect_text) {
+        Ok(receipt) => serde_json::json!(receipt),
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "path": worklog::week_path(&root, &week).display().to_string(),
+            "week": week,
+            "date": date,
+            "index": index,
+            "destination": destination,
+            "previous": null,
+            "backup": null,
+            "error": message,
+        }),
+    }
+}
+
+
 /// 读当周工作记录（周报「有米」用）。只读，不建文件、不改文件。
 #[tauri::command(async)]
 fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serde_json::Value {
@@ -3621,6 +3667,7 @@ pub fn run() {
             scheduler_mark_heartbeat,
             scheduler_heartbeat_scan,
             worklog_append,
+            worklog_set_destination,
             worklog_read_week,
             worklog_archive_list,
             worklog_read_report,

@@ -50,7 +50,7 @@ export function SourcePeekSheet({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-on-surface/25 px-4 pb-0 pt-6 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/25 px-4 py-8 backdrop-blur-[2px]"
       role="presentation"
       data-testid="source-peek"
       onMouseDown={(event) => {
@@ -63,17 +63,18 @@ export function SourcePeekSheet({
         aria-label={title}
         data-source-peek-card=""
         className={
-          "flex max-h-[70vh] w-full max-w-4xl flex-col overflow-hidden " +
+          "flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden " +
           // 方角（OD-ARCH-097 S03）：与本产品的方角提示条、工具提示同一套语言，不用圆角气泡。
-          "rounded-none border border-b-0 border-outline-variant/60 bg-surface-container-lowest " +
-          "shadow-[0_-12px_48px_-24px_rgba(15,23,42,0.45)]"
+          // 居中（OD-ARCH-099 S04）：四边都有边框与投影，不再带「贴底抽屉」的下方开口。
+          "rounded-none border border-outline-variant/60 bg-surface-container-lowest " +
+          "shadow-[0_18px_60px_-24px_rgba(15,23,42,0.45)]"
         }
       >
         <div className="flex items-start gap-3 border-b border-surface-variant/30 px-4 py-3">
-          {/* 顶部一道短横线：暗示这是可以往下拖走的浮层，与底部贴合。 */}
+          {/* 左上角一道短竖线：方角卡片的编辑式标记，代替原先「可下拉抽屉」的横杆。 */}
           <span
             aria-hidden="true"
-            className="mt-[2px] h-[3px] w-8 shrink-0 self-center bg-outline-variant/70"
+            className="mt-[2px] h-8 w-[3px] shrink-0 self-center bg-outline-variant/70"
           />
           <div className="min-w-0 flex-1">
             <p className="text-[12px] uppercase tracking-[0.16em] text-outline">原文预览</p>

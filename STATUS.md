@@ -2,6 +2,48 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-099：周报页四项微调（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**
+> 触发：用户四点要求——①顶部指标卡图标放大、独占左侧、图标下无内容，文字右移；②时间线「本周报引用」改为方形点选按钮，点选即进周报统计与上下文；③成果卡 01–05 序号居中放大、序号区底色更深、文件名单行；④点文件名弹出的预览卡改为居中。用户随后澄清「点选即进周报」只是改去向，让第 2 张卡统计与 AI 写周报时的上下文跟着变，不直接写周报正文。
+> 起点：HEAD `eca8926`。边界：本助手亲自实施，未派子代理；`runtime/` 零差异；未读凭证；窗口验证只用 `/tmp` 合成数据。
+
+### 改动
+
+1. `SceneStatusStrip.tsx`：`BandMetric` 改为两列——左侧 `w-14` 图标列（图标座 56×56、图标 28px），图标下不渲染任何文字；右侧内容列自上而下放标题、序号+英文副标题、数字+单位、hint/action 与进度轨。外层 `items-stretch` 保持四卡等高。`WritingMetric` 与其它场景的 `grid` 分支零改动。
+2. `worklog.rs`：新增 `set_destination(week, date, index, destination, expect_text)`，只改目标条目的那一行 `**去向**：`。定位靠「日期段（含「（续）」段）里第 N 个 `- **事**` 条目」，并用 `expect_text` 校验正文；找不到/越界/正文不符/无去向行/取值非法一律拒绝且不写文件。写前备份 `YYYY-Www.md.bak-<millis>`，写入走临时文件 + `sync_all` + `rename`，写后自证（内容等于预期、行数不变、除目标行外逐行相同），失败用备份原子回滚；保留 CRLF，混用换行直接拒绝。`DESTINATIONS` 新增 `仅记录`（留在本周记录、不进周报统计与上下文）。补 9 个单测。
+3. `lib.rs` / `api.ts` / `types.ts`：注册 `worklog_set_destination`、加前端方法与 `WorklogDestinationReceipt` 类型。
+4. `WeeklyTimeline.tsx`：去向胶囊换成方形点选开关（`role="switch"`、`aria-checked`、`data-entry-index`、焦点环、primary 紫选中态、旁注「进周报」、就地显示失败原因）；筛选状态下用 `entryIndexes` 保留原始下标；无去向行显示静态「无去向」，不提供点选。
+5. `ScenePage.tsx`：新增 `reloadWeek` 与 `toggleDestination`，点选后重读当周文件，统计卡、四象限、时间线共用同一份新内容。
+6. `ArtifactExplorer.tsx`：卡片与归档两条分支的序号块改为 48×48 方角（`rounded-[8px]`）、`bg-surface-container-highest/80` 深一档底、22px 居中；标题由两行改单行 `truncate`，完整标题仍在 `title`。列表视图未动。
+7. `SourcePeekSheet.tsx`：外层 `items-end` 改 `items-center` + `py-8`，内卡 `max-h-[80vh] w-full max-w-3xl`、四边补齐边框、方角与阴影保留；Esc / 关闭按钮 / 点遮罩 / 焦点归还全部保留。
+8. `skills/memory-agent/SKILL.md`：去向补一句「界面可点选切换，模型仍只写默认的 `本周报引用`」。
+9. `verify_weekly_093.py` / `verify_weekly_097.py`：按新结构修订过期断言；新增 `verify_weekly_099.py`（40 项）与 `preview_weekly_099.py`。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npx --no-install tsc --noEmit`（desktop） | 通过 |
+| `npm run build`（desktop） | 通过（仅既有 chunk 体积提示） |
+| `cargo test --offline --lib worklog` | 21 / 21 |
+| `cargo test --offline`（全量） | 全绿（含 task_shell / thread_store / e2e） |
+| `verify_weekly_099.py` | 40 / 40 |
+| `verify_weekly_093.py` | 105 / 105 |
+| `verify_weekly_097.py` | 34 / 34 |
+| `verify_weekly_091.py` / `092.py` | 67 / 67、29 / 29 |
+| `verify_worklog_089.py` / `verify_writing_094.py` | 61 / 61、98 / 98 |
+| 窗口 `preview_weekly_099.py`（`:129`） | 见下表 |
+
+窗口 facts 关键读数：`band_cards_present=true`；`switch_nodes=7`、`switch_toggled=true`；点选后工作记录文件只有第 11 行变化、`**去向**：仅记录`、行数不变、留下 1 份 `.md.bak-*`；成果卡预览浮层几何 `[416,285,768,410]`，左右间距同为 416px、上下同为 285px，`sheet_centered=true`；窄窗 1000 正常；`runtime_touched=false`。
+
+证据：`tests/verification/desktop/evidence/od-arch-099/`（01 宽窗、02 指标卡特写、03/03b/04 去向开关、05 居中浮层、06 窄窗 1000、facts.json、AX 快照）。
+
+### 未做/未验证
+
+- 未在用户真实显示器与真实工作记录上复核，窗口证据为 Xvfb 1600×980 / 1000×2740 + `/tmp` 合成数据。
+- 点选只改文件里的去向字段并重读；没在真实模型会话里跑一次「整理成周报」，因此「上下文确实只带选中的条目」仍属未验证。
+
 ## OD-ARCH-097 / 098：周报页重绘与项目跟进两栏（2026-10-28；已实施，ARCHITECT 审查通过）
 
 > 状态：**已实施；ARCHITECT 审查通过（结论见 REVIEW.md 顶部）。本节是执行记录。**

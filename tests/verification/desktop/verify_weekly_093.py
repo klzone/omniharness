@@ -161,10 +161,12 @@ def main() -> int:
     check("band_gap_under_nav", "mt-4 mb-4 max-w-6xl" in strip_tsx, "与顶部导航留空")
     check("band_centered_with_nav", "md:-translate-x-8" in strip_tsx,
           "主区左内边距比导航外壳多 32px，位移后与导航同轴")
+    # OD-ARCH-099 S01：图标独占左列，右侧内容列自成一组；横排关系不变。
     check("band_card_is_horizontal",
-          "relative flex items-start justify-between gap-3 min-w-0" in strip_tsx
+          "flex items-stretch gap-3.5" in strip_tsx
+          and "relative flex-1 min-w-0 flex flex-col" in strip_tsx
           and "relative mt-auto pt-2 flex items-center" in strip_tsx,
-          "横向长方形：左侧图标标题、右侧数字，底行说明")
+          "横向长方形：左侧图标列、右侧内容列，底行说明")
     check("band_card_compact_height",
           "rounded-2xl border px-4 py-3 " in strip_tsx
           and "relative mt-1.5 h-[4px]" in strip_tsx,
@@ -327,7 +329,9 @@ def main() -> int:
           "长状态值自动降字号，不挤压标题与副标题")
     check("band_value_no_wrap", "tabular-nums whitespace-nowrap" in strip_tsx,
           "数值区不折行")
-    check("band_larger_icon", "w-9 h-9 rounded-xl" in strip_tsx, "图标座 36px")
+    # OD-ARCH-099 S01：图标座放大到 56px，图标 28px，独占一列。
+    check("band_larger_icon", "w-14 h-14 rounded-2xl" in strip_tsx and "w-7 h-7" in strip_tsx,
+          "图标座 56px、图标 28px")
     check("section_title_hierarchy",
           all("text-[16px] font-semibold tracking-tight" in t for t in (quad_tsx, tl_tsx, scene_tsx)),
           "区块标题三级层级中的一级")

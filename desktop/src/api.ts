@@ -67,6 +67,7 @@ import type {
   WeeklySummary,
   WorkflowSample,
   WorklogAppendReceipt,
+  WorklogDestinationReceipt,
   WorklogWeekRead,
   WorklogArchiveList,
   WorklogReportRead,
@@ -406,6 +407,30 @@ export const shell = {
     return invoke<WorklogAppendReceipt>("worklog_append", {
       text,
       destination: destination ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 改一条记录的「去向」（OD-ARCH-099 S02）。
+   *
+   * 只改周文件里属于这条记录的那一行。`expectText` 是界面读到的正文，宿主用它
+   * 校验定位，对不上就拒绝并原样返回原因；`ok=false` 时文件没有变化。
+   */
+  worklogSetDestination(args: {
+    week: string;
+    date: string;
+    index: number;
+    destination: string;
+    expectText: string;
+  }): Promise<WorklogDestinationReceipt> {
+    return invoke<WorklogDestinationReceipt>("worklog_set_destination", {
+      week: args.week,
+      date: args.date,
+      index: args.index,
+      destination: args.destination,
+      expectText: args.expectText,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });

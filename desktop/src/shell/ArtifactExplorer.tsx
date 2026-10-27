@@ -402,15 +402,19 @@ export function ArtifactExplorer({
                     onClick={r.archive.onOpen}
                     data-artifact-card=""
                     data-artifact-archive=""
-                    className="group text-left rounded-2xl border border-surface-variant/25 bg-surface-container-low/45 hover:bg-surface-container-low hover:border-primary/25 px-4 py-3.5 flex items-start gap-3.5 min-w-0 transition"
+                    className="group text-left rounded-2xl border border-surface-variant/25 bg-surface-container-low/45 hover:bg-surface-container-low hover:border-primary/25 px-4 py-3.5 flex items-center gap-3.5 min-w-0 transition"
                     title={r.relative_path}
                   >
-                    <span className="mono shrink-0 w-9 text-[15px] leading-none pt-0.5 text-outline group-hover:text-primary">
+                    {/* 序号块（OD-ARCH-099 S04）：48×48 方角、深一档底色，序号居中放大。 */}
+                    <span
+                      data-artifact-number=""
+                      className="mono shrink-0 w-12 h-12 rounded-[8px] bg-surface-container-highest/80 flex items-center justify-center text-[22px] leading-none text-on-surface-variant group-hover:text-primary"
+                    >
                       {number}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2 min-w-0">
-                        <span className="text-[13.5px] font-medium text-on-surface truncate">
+                        <span className="min-w-0 text-[13.5px] font-medium text-on-surface truncate">
                           {r.archive.week} {r.archive.kindLabel}
                         </span>
                         <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[12px] text-on-surface-variant bg-surface-container-high">
@@ -436,7 +440,7 @@ export function ArtifactExplorer({
                   onClick={r.onOpen}
                   data-artifact-card=""
                   className={
-                    "group text-left rounded-2xl border px-4 py-3.5 flex items-start gap-3.5 min-w-0 transition " +
+                    "group text-left rounded-2xl border px-4 py-3.5 flex items-center gap-3.5 min-w-0 transition " +
                     (stale
                       ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
                       : "border-transparent bg-surface-container-low/55 hover:bg-surface-container-low hover:border-surface-variant/30")
@@ -444,12 +448,20 @@ export function ArtifactExplorer({
                   title={r.relative_path}
                   data-artifact-stale={stale ? "" : undefined}
                 >
-                  {/* 编号卡（OD-ARCH-093 S04）：大号序号 + 标题 + 文件名/时间，和参考图右栏一致。 */}
-                  <span className="mono shrink-0 w-9 text-[15px] leading-none pt-0.5 text-outline group-hover:text-primary">
+                  {/* 编号块（OD-ARCH-099 S04）：48×48 方角、深一档底色，序号居中放大。 */}
+                  <span
+                    data-artifact-number=""
+                    className="mono shrink-0 w-12 h-12 rounded-[8px] bg-surface-container-highest/80 flex items-center justify-center text-[22px] leading-none text-on-surface-variant group-hover:text-primary"
+                  >
                     {number}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13.5px] font-medium text-on-surface line-clamp-2 leading-[1.55] break-words">
+                    {/* 标题单行（OD-ARCH-099 S04）：卡片是索引，不承载整段标题；
+                        完整文件名仍在 title 悬浮提示里。 */}
+                    <span
+                      className="block text-[13.5px] font-medium text-on-surface truncate leading-[1.55]"
+                      title={m ? m.title ?? r.file_name : undefined}
+                    >
                       {m ? m.title ?? r.file_name : "正在读取标题…"}
                     </span>
                     {/* 只留标题与时间（OD-ARCH-097 S04）：文件名退到 title 悬浮提示，

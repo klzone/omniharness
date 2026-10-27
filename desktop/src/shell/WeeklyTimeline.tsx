@@ -14,7 +14,7 @@
  * 11.5/10 的一档在这台机器的 1280 宽窗口里偏小，用户要求整体加两号。
  */
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   buildTimeline,
   isEmptyTimeline,
@@ -23,6 +23,104 @@ import {
   shortDate,
   weekdayLabel,
 } from "../weekTimeline";
+import { REPORT_DESTINATION } from "../weeklyQuadrants";
+
+
+/**
+ * 一条记录的去向开关（OD-ARCH-099 S03）。
+ *
+ * 方形点选、primary 紫、方角，与提示条和四象限同一套语言；右侧一句文字说明当前状态，
+ * 不靠颜色单独表达。键盘 Space/Enter 可切换，失败时显示宿主返回的原因。
+ */
+function DestinationSwitch({
+  index,
+  destination,
+  text,
+  disabled,
+  onToggle,
+}: {
+  index: number;
+  destination: string | null;
+  text: string;
+  disabled: boolean;
+  onToggle: (next: boolean) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  // 没有去向行：不给可点控件，避免为它凭空插入一行改变既有结构。
+  if (!destination) {
+    return (
+      <span
+        className="shrink-0 mt-[3px] px-1.5 py-[2px] text-[11.5px] text-outline/70 border border-dashed border-outline-variant/60"
+        title="这条记录在文件里没有「去向」行，可在原文补一行之后再来点选"
+      >
+        无去向
+      </span>
+    );
+  }
+  const checked = destination.trim() === REPORT_DESTINATION;
+  return (
+    <div className="shrink-0 flex flex-col items-start gap-1" data-destination-switch="">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={(checked ? "已进周报：" : "不进周报：") + text.slice(0, 20)}
+        data-entry-index={index}
+        disabled={busy || disabled}
+        onClick={async () => {
+          setFailure(null);
+          setBusy(true);
+          try {
+            await onToggle(!checked);
+          } catch (e) {
+            setFailure(e instanceof Error ? e.message : String(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        title={
+          checked
+            ? "已进周报：计入「进周报条目」，整理周报时作为上下文。点一下改为不进。"
+            : "不进周报：仍留在本周记录里。点一下改为进周报。"
+        }
+        className={
+          "inline-flex items-center gap-1.5 px-1.5 py-[3px] rounded-none border transition-colors duration-150 disabled:opacity-60 " +
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1 " +
+          (checked
+            ? "border-primary bg-primary text-white hover:bg-primary/90"
+            : "border-outline-variant/70 bg-white text-on-surface-variant hover:border-primary/50 hover:text-primary")
+        }
+      >
+        <span
+          aria-hidden
+          className={
+            "w-[13px] h-[13px] flex items-center justify-center border " +
+            (checked ? "border-white/70 bg-white/15" : "border-outline-variant/80 bg-transparent")
+          }
+        >
+          {checked ? (
+            <svg viewBox="0 0 12 12" className="w-[9px] h-[9px]" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M2 6.2 4.6 8.8 10 3.4" strokeLinecap="square" />
+            </svg>
+          ) : null}
+        </span>
+        <span className="text-[11.5px] leading-none whitespace-nowrap">
+          {busy ? "保存中…" : "进周报"}
+        </span>
+      </button>
+      {!checked && destination.trim() !== "仅记录" ? (
+        <span className="text-[10.5px] text-outline/80 max-w-[80px] truncate" title={destination}>
+          {destination}
+        </span>
+      ) : null}
+      {failure ? (
+        <span className="text-[10.5px] text-error max-w-[160px] leading-snug">{failure}</span>
+      ) : null}
+    </div>
+  );
+}
+
 
 export function WeeklyTimeline({
   week,
@@ -36,6 +134,7 @@ export function WeeklyTimeline({
   visibleIds,
   filterLabel,
   onClearFilter,
+  onToggleDestination,
 }: {
   week: string;
   content: string;
@@ -52,6 +151,19 @@ export function WeeklyTimeline({
   /** 当前筛选的中文说明，仅在筛选时显示。 */
   filterLabel?: string | null;
   onClearFilter?: () => void;
+  /**
+   * 点选「进周报」开关（OD-ARCH-099 S03）。
+   *
+   * 只改这条记录在周文件里的去向字段：选中写 本周报引用，取消写 仅记录。
+   * 成功后由上层重读当周文件，统计卡与四象限随之更新。失败时抛出可读原因，
+   * 这里只显示它，**不做**本地乐观改写，所以勾选状态天然停在服务端真实值。
+   */
+  onToggleDestination?: (args: {
+    date: string;
+    index: number;
+    entry: { text: string; destination: string | null };
+    next: boolean;
+  }) => Promise<void>;
 }) {
   const parsed = useMemo(() => parseWorklog(content), [content]);
   const rows = useMemo(() => buildTimeline(parsed, week), [parsed, week]);
@@ -60,13 +172,23 @@ export function WeeklyTimeline({
   const filtered = visibleIds != null;
   /** 筛选后仍然显示的空日期行：不在筛选结果里就不占位置，避免大半屏空点。 */
   const shownRows = useMemo(() => {
-    if (!filtered) return rows;
+    if (!filtered) {
+      return rows.map((day) => ({ ...day, entryIndexes: null as number[] | null }));
+    }
     return rows
-      .map((day) => ({
-        ...day,
-        entries: day.entries.filter((_, i) => visibleIds!.has(`${day.date}#${i}`)),
-        raw: [],
-      }))
+      .map((day) => {
+        // 保留原始下标：去向开关要按「这条是该日段内第几条」定位，筛选后不能重编号。
+        const keep: number[] = [];
+        day.entries.forEach((_, i) => {
+          if (visibleIds!.has(`${day.date}#${i}`)) keep.push(i);
+        });
+        return {
+          ...day,
+          entries: keep.map((i) => day.entries[i]),
+          entryIndexes: keep,
+          raw: [],
+        };
+      })
       .filter((day) => day.entries.length > 0);
   }, [rows, filtered, visibleIds]);
   const filteredCount = shownRows.reduce((n, d) => n + d.entries.length, 0);
@@ -186,9 +308,12 @@ export function WeeklyTimeline({
 
                 {hasContent ? (
                   <ul className="mt-2 flex flex-col gap-2.5">
-                    {day.entries.map((entry, i) => (
+                    {day.entries.map((entry, i) => {
+                      // 筛选时保留原始下标：去向开关按「该日段内第几条」定位。
+                      const sourceIndex = day.entryIndexes ? day.entryIndexes[i] : i;
+                      return (
                       <li
-                        key={i}
+                        key={sourceIndex}
                         data-weekly-entry=""
                         className={
                           "group flex items-start gap-2.5 rounded-2xl px-3.5 py-2.5 border-l-2 " +
@@ -199,18 +324,21 @@ export function WeeklyTimeline({
                         }
                       >
                         {/*
-                         * 去向标签挪到行首（OD-ARCH-097 S02）：它是这条记录的属性，
-                         * 放在正文前面读起来像「这条归到哪儿」，也不切断正文的换行。
-                         * 没有去向的条目不占位，正文直接从行首开始。
+                         * 去向开关（OD-ARCH-099 S03）：由只读胶囊改成方形点选。选中 =
+                         * 本条的「去向」是 本周报引用（计入第 2 张卡、进周报上下文），
+                         * 未选 = 仅记录。这里只改那一行，不写周报正文。
                          */}
-                        {entry.destination ? (
-                          <span
-                            className="shrink-0 mt-[4px] px-1.5 py-[1px] rounded-full text-[12px] text-outline border border-outline-variant/50"
-                            title="这条记录的归处（写在记录文件里）"
-                          >
-                            {entry.destination}
-                          </span>
-                        ) : null}
+                        <DestinationSwitch
+                          index={sourceIndex}
+                          destination={entry.destination}
+                          text={entry.text}
+                          disabled={loading}
+                          onToggle={(next) =>
+                            onToggleDestination
+                              ? onToggleDestination({ date: day.date, index: sourceIndex, entry, next })
+                              : Promise.reject(new Error("当前页面没有接上改去向的命令"))
+                          }
+                        />
                         {/* 正文最多两行（OD-ARCH-093 S04）：截断只为版式，全文仍可通过
                             title 悬浮提示与「查看本周原文」读到，原文一律不改。 */}
                         <p
@@ -220,7 +348,8 @@ export function WeeklyTimeline({
                           {entry.text}
                         </p>
                       </li>
-                    ))}
+                      );
+                    })}
                     {day.raw.map((line, i) => (
                       <li
                         key={"raw" + i}
