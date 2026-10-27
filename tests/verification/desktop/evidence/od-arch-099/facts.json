@@ -1,0 +1,52 @@
+{
+  "display": ":129",
+  "root": "/tmp/od099-preview",
+  "week": "2026-W44",
+  "entries": 7,
+  "today": "2026-10-28",
+  "worklog": "/tmp/od099-preview/local-data/工作记录/2026-W44.md",
+  "artifacts": 3,
+  "band_cards_present": true,
+  "band_crop": [
+    184,
+    191,
+    476,
+    150
+  ],
+  "switch_nodes": 7,
+  "switch_toggled": true,
+  "artifact_card_pos": [
+    1096,
+    689,
+    324,
+    79
+  ],
+  "sheet_centered_geom": [
+    416,
+    285,
+    768,
+    410
+  ],
+  "sheet_horizontal_gap": [
+    416,
+    416
+  ],
+  "sheet_vertical_gap": [
+    285,
+    285
+  ],
+  "sheet_centered": true,
+  "sheet_has_close": true,
+  "narrow_band_present": true,
+  "worklog_line_count_same": true,
+  "worklog_changed_lines": [
+    10
+  ],
+  "worklog_changed_text": [
+    "  **去向**：仅记录"
+  ],
+  "worklog_backups": [
+    "2026-W44.md.bak-1793142370558"
+  ],
+  "runtime_touched": false
+}

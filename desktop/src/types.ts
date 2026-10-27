@@ -661,6 +661,24 @@ export interface WorklogAppendReceipt {
   error: string | null;
 }
 
+/**
+ * 改去向回执（OD-ARCH-099 S02）。
+ *
+ * 界面点选「进周报」只改这一条记录在周文件里的去向字段；不写周报正文。
+ * 失败时 `ok=false` 且文件一字未动，`error` 原样显示给用户。
+ */
+export interface WorklogDestinationReceipt {
+  ok: boolean;
+  path: string | null;
+  week: string;
+  date: string;
+  index: number;
+  destination: string;
+  previous: string | null;
+  backup: string | null;
+  error: string | null;
+}
+
 /** 读当周工作记录（周报「有米」用）。文件不存在时 `exists=false`、`content` 为空。 */
 export interface WorklogWeekRead {
   ok: boolean;

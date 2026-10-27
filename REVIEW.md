@@ -1,3 +1,23 @@
+## OD-ARCH-099 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 用户四点要求全部落地。第 2 点在实现上严格按用户澄清的语义：点选只改这条记录在周文件里的「去向」字段，不写周报正文；改完后重读整周文件，顶部第 2 张卡「进周报条目」的统计与四象限两格随之变动，周报 Skill 取数口径（只取 `本周报引用`）不变，因此选中条目会进入模型写周报时的上下文。
+
+**独立复核范围：** HEAD `eca8926` + 本轮改动。逐文件核对 `SceneStatusStrip.tsx`（`BandMetric` 两列结构、`data-band-icon-column`、56px 图标座与 28px 图标、图标列内无文字、`items-stretch`；`WritingMetric` 与其它 grid 分支未动）、`worklog.rs`（`set_destination` 只改目标行、`expect_text` 校验、`.md.bak-` 备份、临时文件 + `sync_all` + `rename`、写后逐行自证、失败备份回滚、CRLF 保留、`DESTINATIONS` 新增 `仅记录`、9 个单测）、`lib.rs`（命令注册）、`api.ts` / `types.ts`、`WeeklyTimeline.tsx`（`role="switch"`、`aria-checked`、`data-entry-index`、`entryIndexes` 原始下标、无去向静态标记、失败原因就地显示）、`ScenePage.tsx`（`reloadWeek` / `toggleDestination`）、`ArtifactExplorer.tsx`（48×48 方角序号块、`bg-surface-container-highest/80`、22px、标题单行）、`SourcePeekSheet.tsx`（`items-center`、`max-h-[80vh]`、四边边框）、`skills/memory-agent/SKILL.md`。`runtime/` 零差异。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：** `npx --no-install tsc --noEmit` 通过；`npm run build` 通过；`cargo test --offline` 全绿（`worklog` 21 / 21）；`verify_weekly_099.py` **40 / 40**；`verify_weekly_093.py` **105 / 105**；`verify_weekly_097.py` **34 / 34**；`verify_weekly_091.py` / `092.py` **67 / 67**、**29 / 29**；`verify_worklog_089.py` **61 / 61**；`verify_writing_094.py` **98 / 98**；窗口 `preview_weekly_099.py`（`:129`）全部读数符合预期。
+
+**审查中发现并已修正的一处真实问题：** 序号块初版用 `bg-surface-container-high/70`，与卡片正文底 `surface-container-low` 只差一档又叠了 70% 透明，截图上肉眼几乎分不出「深色序号区」。改为 `bg-surface-container-highest/80` 后重跑窗口，序号块与正文区的分界清楚，断言同步改为新 token。
+
+**目视复核：** `evidence/od-arch-099/01-weekly-wide.png` 显示四张指标卡图标独占左列、其下无文字，标题/序号/数字整体右移；`02-band-icon-column.png` 特写确认图标 28px、卡高一致；`03b-switch-detail.png` 与 `04-destination-switch-after.png` 显示方形「进周报」开关的选中/未选中两态；`05-artifact-sheet-centered.png` 显示预览卡在窗口正中、四边有边框、方角、正文自己滚动；`06-narrow-1000.png` 显示 1000px 下单列页面正常。
+
+**数据写入证据（`/tmp` 合成周文件）：** 点选一次后 `worklog_changed_lines=[10]`、`worklog_changed_text=["  **去向**：仅记录"]`、`worklog_line_count_same=true`、`worklog_backups=["2026-W44.md.bak-1793142370558"]`——除目标行外文件未变，行数不变，备份存在。统计卡从 4 变为 3，与取消一条「进周报」吻合。
+
+**已知限制（不构成阻断）：** ① 窗口证据为 Xvfb 1600×980 / 1000×2740 + `/tmp` 合成数据，未在用户真实显示器与真实记录上复核。② 「点选后模型确实只带选中条目进上下文」未经真实模型实跑，只有取数口径与文件字段的静态一致性证据。③ 无去向行的旧条目只能显示静态「无去向」，需在原文补一行后才能点选——这是为避免凭空插入行改变既有结构。④ 1000px 以下更窄视口未单独验证。
+
+**阶段决定：OD-ARCH-099 验收通过。** 按用户长期偏好，本轮改动已一并提交并推送 GitHub。
+
+---
+
 ## OD-ARCH-098 审查结论（ARCHITECT，2026-10-28）——通过
 
 **结论：通过。** 项目跟进页从旧版「进度 / 阶段成果」页签换成了左项目卡列表 + 右甘特两栏，数据仍来自既有的确定性汇总命令，页面不调模型；参考图里的百分比进度没有数据来源，因此没有虚构，改为状态色与里程碑。

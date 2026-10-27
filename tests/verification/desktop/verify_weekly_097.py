@@ -74,10 +74,11 @@ def main() -> int:
 
     # --- S02 时间线：删掉「转周报」，去向标签挪到正文前 ---
     check("timeline_request_report_button_removed", "转周报" not in timeline)
-    dest_at = timeline.find("{entry.destination}")
+    # OD-ARCH-099 S03：原去向胶囊换成方形点选开关，仍排在正文左侧。
+    dest_at = timeline.find("<DestinationSwitch")
     text_at = timeline.find("{entry.text}")
-    check("destination_before_text", dest_at > 0 and text_at > dest_at, "标签在正文左侧")
-    check("destination_absent_no_placeholder", "entry.destination ?" in timeline)
+    check("destination_before_text", dest_at > 0 and text_at > dest_at, "开关在正文左侧")
+    check("destination_absent_no_placeholder", "if (!destination)" in timeline and "无去向" in timeline)
     check("timeline_keeps_entry_interaction", "data-weekly-entry" in timeline and "line-clamp-2" in timeline)
     check(
         "report_entry_kept_for_card_head",
@@ -88,9 +89,9 @@ def main() -> int:
     # --- S03 原文浮层 ---
     check("sheet_component_exists", sheet_path.is_file())
     check("sheet_portal_to_body", "createPortal" in sheet and "document.body" in sheet)
-    check("sheet_fixed_overlay", "fixed inset-0" in sheet and "items-end" in sheet)
+    check("sheet_fixed_overlay", "fixed inset-0" in sheet and "items-center" in sheet, "OD-ARCH-099 S04 改居中")
     check("sheet_square_corners", "rounded-none" in sheet and "rounded-t-2xl" not in sheet)
-    check("sheet_own_scroll", "overflow-y-auto" in sheet and "max-h-[70vh]" in sheet)
+    check("sheet_own_scroll", "overflow-y-auto" in sheet and "max-h-[80vh]" in sheet)
     check("sheet_escape_closes", 'event.key === "Escape"' in sheet)
     check("sheet_backdrop_closes", "onMouseDown" in sheet and "event.target === event.currentTarget" in sheet)
     check("sheet_restores_focus", "returnFocusRef" in sheet)

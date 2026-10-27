@@ -132,9 +132,9 @@ const BAND_ALERT = {
 };
 
 /**
- * 指标带一格（OD-ARCH-093 四次修订）：横向长方卡——左侧图标座 + 中文标题 + 英文副标题，
- * 右侧大号数字与单位，底行说明与动作，最底部一条细进度轨。相比上一版把「图标在上、
- * 数字居中、说明在下」的竖长构图压成两行，卡高约 100px，扫读时视线只横向移动一次。
+ * 指标带一格（OD-ARCH-099 S01）：左侧图标独占一列，右侧内容列自上而下放标题、
+ * 英文副标题与序号、数字与单位、底行提示与进度轨。图标下方不再叠任何文字，
+ * 四张卡等高，扫读时先认色块再读数值。
  * 进度条只在分子分母都真实存在时绘制，否则整条隐藏——不拿 0 或满格假装有数据。
  */
 function BandMetric({
@@ -183,25 +183,28 @@ function BandMetric({
       data-band-card={color}
       className={
         "relative overflow-hidden min-w-0 rounded-2xl border px-4 py-3 " +
-        "flex flex-col shadow-[0_8px_22px_-18px_rgba(35,32,80,0.5)] " + skin.shell
+        "flex items-stretch gap-3.5 shadow-[0_8px_22px_-18px_rgba(35,32,80,0.5)] " + skin.shell
       }
     >
-      {/* 右上角的柔光斑：只做低对比的氛围，不抢数字。 */}
       <span
         aria-hidden="true"
         className={"pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full blur-2xl " + skin.glow}
       />
-      {/* 主行：左「图标 + 标题」，右「数字 + 单位」，横向一次读完。 */}
-      <div className="relative flex items-start justify-between gap-3 min-w-0">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <span
-            className={
-              "shrink-0 w-9 h-9 rounded-xl flex items-center justify-center shadow-[0_2px_8px_-4px_rgba(30,27,75,0.35)] " +
-              skin.chip
-            }
-          >
-            <Icon name={icon} className="w-[18px] h-[18px]" />
-          </span>
+      <div
+        data-band-icon-column
+        className="relative shrink-0 w-14 flex flex-col items-center justify-start"
+      >
+        <span
+          className={
+            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-[0_2px_10px_-5px_rgba(30,27,75,0.4)] " +
+            skin.chip
+          }
+        >
+          <Icon name={icon} className="w-7 h-7" />
+        </span>
+      </div>
+      <div className="relative flex-1 min-w-0 flex flex-col">
+        <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0 flex-1">
             <div
               className="text-[13px] font-semibold leading-tight tracking-tight text-on-surface truncate"
@@ -209,7 +212,6 @@ function BandMetric({
             >
               {label}
             </div>
-            {/* 副标题可缺省；序号固定保留，缺副标题时不渲染空文本行。 */}
             <div className="mt-1 flex items-baseline gap-1.5 min-w-0">
               <span className="mono shrink-0 text-[12px] tracking-[0.12em] text-on-surface-variant/40">
                 {index}
@@ -226,41 +228,41 @@ function BandMetric({
               ) : null}
             </div>
           </div>
+          <div className="shrink-0 flex items-baseline justify-end gap-1 text-right pl-1">
+            <span
+              className={
+                "font-headline-lg font-semibold tracking-tight tabular-nums whitespace-nowrap " +
+                valueSize +
+                " " +
+                skin.number
+              }
+            >
+              {value}
+            </span>
+            {unit ? (
+              <span className="text-[12px] text-on-surface-variant/70">{unit}</span>
+            ) : null}
+          </div>
         </div>
-        <div className="shrink-0 flex items-baseline justify-end gap-1 text-right pl-1">
-          <span
-            className={
-              "font-headline-lg font-semibold tracking-tight tabular-nums whitespace-nowrap " +
-              valueSize +
-              " " +
-              skin.number
-            }
-          >
-            {value}
+        <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0">
+          <span className="text-[12px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
+            {hint}
           </span>
-          {unit ? (
-            <span className="text-[12px] text-on-surface-variant/70">{unit}</span>
-          ) : null}
+          {action ? <span className="ml-auto shrink-0">{action}</span> : null}
         </div>
+        {width === null ? null : (
+          <div className={"relative mt-1.5 h-[4px] w-full rounded-full overflow-hidden " + skin.track}>
+            <div
+              className={"h-full rounded-full " + skin.bar}
+              style={{ width: `${Math.round(width * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
-      {/* 底行：说明贴底、动作靠右；进度轨在它下面，缺数据时整条不出现、不留空槽。 */}
-      <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0">
-        <span className="text-[12px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
-          {hint}
-        </span>
-        {action ? <span className="ml-auto shrink-0">{action}</span> : null}
-      </div>
-      {width === null ? null : (
-        <div className={"relative mt-1.5 h-[4px] w-full rounded-full overflow-hidden " + skin.track}>
-          <div
-            className={"h-full rounded-full " + skin.bar}
-            style={{ width: `${Math.round(width * 100)}%` }}
-          />
-        </div>
-      )}
     </article>
   );
 }
+
 
 /**
  * 写作页专属指标卡（OD-ARCH-094 S01）。

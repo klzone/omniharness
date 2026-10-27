@@ -68,7 +68,7 @@
     {
       "name": "band_card_is_horizontal",
       "ok": true,
-      "detail": "横向长方形：左侧图标标题、右侧数字，底行说明"
+      "detail": "横向长方形：左侧图标列、右侧内容列，底行说明"
     },
     {
       "name": "band_card_compact_height",
@@ -383,7 +383,7 @@
     {
       "name": "band_larger_icon",
       "ok": true,
-      "detail": "图标座 36px"
+      "detail": "图标座 56px、图标 28px"
     },
     {
       "name": "section_title_hierarchy",
