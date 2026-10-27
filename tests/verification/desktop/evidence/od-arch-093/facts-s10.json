@@ -1,0 +1,121 @@
+{
+  "display": ":216",
+  "root": "/tmp/od093-s10-arch",
+  "week": "2026-W44",
+  "entries": 3,
+  "today": "2026-10-27",
+  "pending_seeded": 1,
+  "threads_seeded": 3,
+  "home_category_pickers": 1,
+  "home_category_option_count": 4,
+  "home_category_options": [
+    "未分类",
+    "工作记录",
+    "文案写作",
+    "项目跟进"
+  ],
+  "home_category_all_visible": true,
+  "pending_trigger_present": true,
+  "pending_trigger_role": "combo box",
+  "pending_trigger_pos": [
+    1285,
+    276,
+    74,
+    25
+  ],
+  "overdue_pos": [
+    1100,
+    215,
+    276,
+    99
+  ],
+  "pending_dialog_open": true,
+  "pending_dialog_item_actions": 1,
+  "pending_dialog_reject_actions": 1,
+  "pending_dialog_item_evidence": "button-pair + screenshot",
+  "history_toggle_present": true,
+  "history_titles": 6,
+  "delete_buttons": 3,
+  "delete_positions": [
+    [
+      181,
+      821,
+      24,
+      25
+    ],
+    [
+      181,
+      862,
+      24,
+      25
+    ],
+    [
+      181,
+      903,
+      24,
+      25
+    ]
+  ],
+  "title_positions": [
+    [
+      209,
+      816,
+      188,
+      35
+    ],
+    [
+      209,
+      857,
+      188,
+      35
+    ],
+    [
+      209,
+      898,
+      188,
+      35
+    ]
+  ],
+  "delete_left_of_title": true,
+  "category_pickers": 3,
+  "category_option_count": 4,
+  "category_options": [
+    {
+      "name": "未分类",
+      "pos": [
+        408,
+        629,
+        265,
+        31
+      ]
+    },
+    {
+      "name": "工作记录",
+      "pos": [
+        408,
+        660,
+        265,
+        31
+      ]
+    },
+    {
+      "name": "文案写作",
+      "pos": [
+        408,
+        691,
+        265,
+        31
+      ]
+    },
+    {
+      "name": "项目跟进",
+      "pos": [
+        408,
+        722,
+        265,
+        31
+      ]
+    }
+  ],
+  "category_options_all_visible": true
+}

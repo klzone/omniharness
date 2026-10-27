@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../components/Icon";
 
 /**
@@ -47,7 +48,15 @@ export function CategoryPicker({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  /**
+   * 浮层用 portal 挂到 body 并 `position: fixed`（2026-10-27 用户第五次反馈）。
+   * 原先绝对定位在卡片里，会被「历史对话」列表的 `overflow-y-auto` 与左栏滚动容器
+   * 一起裁掉，只露出第一两项。fixed + body 不受任何祖先裁剪，再按真实高度上下翻转并
+   * 夹在视口内，保证下拉内容完整可见。
+   */
+  const [anchor, setAnchor] = useState<{ left: number; top: number; width: number } | null>(null);
 
   const current = options.find((o) => o.key === value);
   const currentLabel = current?.label ?? (value ? value : "未分类");
@@ -57,11 +66,60 @@ export function CategoryPicker({
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
+
+  /** 按触发按钮的真实位置与浮层高度算 fixed 坐标：优先向下，空间不够则向上，再夹进视口。 */
+  const place = useCallback(() => {
+    const btn = buttonRef.current;
+    const menu = menuRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const margin = 8;
+    const gap = 6;
+    const width = Math.max(220, Math.min(280, window.innerWidth - margin * 2));
+    const measured = menu?.offsetHeight ?? 0;
+    const estimated = measured || 64 + Math.min(options.length, 8) * 32;
+    const below = window.innerHeight - rect.bottom - gap - margin;
+    const above = rect.top - gap - margin;
+    let top: number;
+    if (below >= estimated || below >= above) {
+      top = rect.bottom + gap;
+    } else {
+      top = rect.top - gap - Math.min(estimated, above);
+    }
+    top = Math.max(margin, Math.min(top, window.innerHeight - margin - Math.min(estimated, window.innerHeight - margin * 2)));
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - margin - width));
+    setAnchor({ left, top, width });
+  }, [options.length]);
+
+  // 打开后测量真实高度再定位一次，避免预估高度导致浮层底部被视口截断。
+  useLayoutEffect(() => {
+    if (!open) {
+      setAnchor(null);
+      return;
+    }
+    place();
+    const frame = window.requestAnimationFrame(place);
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, place]);
+
+  // 页面/栏内滚动或窗口尺寸变化时跟着按钮走，浮层不会飘在原地。
+  useEffect(() => {
+    if (!open) return;
+    const onScrollOrResize = () => place();
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [open, place]);
 
   // 打开后把焦点放到当前项，键盘用户可以直接上下移动。
   useEffect(() => {
@@ -122,9 +180,12 @@ export function CategoryPicker({
         />
       </button>
 
-      {open ? (
+      {open && anchor
+        ? createPortal(
         <div
-          className="absolute left-0 bottom-full mb-2 w-[240px] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2 z-50"
+          ref={menuRef}
+          style={{ left: anchor.left, top: anchor.top, width: anchor.width }}
+          className="fixed z-[95] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2"
           data-testid="scene-chips"
         >
           <div className="px-1.5 pb-1.5 text-[12px] uppercase tracking-wide text-outline">
@@ -200,8 +261,10 @@ export function CategoryPicker({
           <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[12px] text-outline leading-relaxed">
             分类可在设置里改名或新增；这里只决定这段对话怎么归类。
           </p>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+        : null}
     </div>
   );
 }

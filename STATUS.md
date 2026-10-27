@@ -2,6 +2,115 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-095：模型切换两处报错的修复与诊断可见性（2026-10-27；已实施，待 ARCHITECT 独立审查）
+
+> 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
+> 触发：用户报告登录后对话框底部立即显示「切换失败：请选择要使用的 Profile、provider 与模型」，手动切换模型显示「切换失败：DSH 配置转储失败（退出码 1）」，并已批准执行 OD-ARCH-095。
+> 起点：HEAD `b109b18`；工作区原本就有 OD-ARCH-093 S10 与 OD-ARCH-094 的未提交改动，全部原样保留，未 reset/clean/checkout/stash，未提交、未推送、未打标签。
+> 边界：本助手亲自实施，未派子代理；未改动 `runtime/`（`git status runtime/` 为空）；未读凭证值；未改用户的 DSH Profile；窗口验证只使用 `/tmp` 一次性根与合成端点。
+
+### 根因（本机真实配置复现，不是推测）
+
+1. **候选枚举漏传补丁（报错①的直接原因）。** `model_routes.rs::list_routes` 只把 `dshCli` / `dshHome` / `profiles` 交给脚本，没传 `config.patch_files`；而引擎启动时一定会附加 `~/OmniDesk/app/config/omnidesk-model.yml`。实测同一 Profile：不带补丁 → `providers: []`、默认 `deepseek-official/deepseek-flash`；带补丁 → 正确列出 `opendesign` 与 5 个模型。界面拿到空候选。
+2. **空候选时前端仍以空 Profile 触发切换（报错①的可见文案）。** `HomeChat.tsx` 场景思考档应用走 `route?.profile ?? ""`，把空串交给 `selectModel`，被 `model_routes.rs::select_route` 的空值校验拦下；该路径在登录后场景加载时自动触发。
+3. **目录分支把 provider 当成 Profile（报错②的直接原因）。** `ModelPicker.tsx` 目录分支调用 `onSelectModel(g.id, ...)`，`g.id` 是 provider 分组 id（如 `opendesign`）。实测 `--profile opendesign --dump-config` 退出码 1，stderr 为 `profile "opendesign" does not exist`。
+4. **写覆盖文件同样漏传补丁（窗口验证新发现，同属报错②类别）。** 候选修好后，从下拉点选只在覆盖文件里定义的 provider 会报「该 Profile 里没有这个 provider」：`select_route` 的 payload 也没带 `patches`。真实窗口第一轮实测复现了这条（界面文案「切换失败：该 Profile 里没有这个 provider：od095-only（已尝试 Profile：web）」，覆盖文件未被重写）；补上后同一脚本重跑通过。`evidence/od-arch-095/` 中保留的是修复后通过的证据，第一轮的失败截图已被同名新截图覆盖，此处以文字如实登记。
+5. **诊断信息被整条链路丢弃。** `model-routes.mjs::dumpConfig` 不捕获 stderr；宿主 `run_script` 用 `Stdio::null()`。
+
+### 实际改动
+
+- `desktop/src-tauri/src/model_routes.rs`：`list_routes` 改走新增的 `list_payload`，payload 带 `config.patch_files` 全量（含 OmniDesk 覆盖文件）；`select_route` 改走新增的 `select_payload`，同样带补丁集合（这是窗口验证后补的）；新增 `stderr_tail`（最多 3 条非空行、总长 ≤ 600 字符）；`run_script` 由 `Stdio::null()` 改为 `stderr(Stdio::piped())`，新增 stderr 读取线程，超时与错误分支都 join 回收，JSON 解析失败时把尾部并入错误；新增 6 条单元测试（含 `list_payload_includes_engine_patches`、`select_payload_includes_engine_patches`、`select_route_rejects_blank_profile`、3 条 `stderr_tail`）。
+- `desktop/src-tauri/scripts/model-routes.mjs`：新增 `redactSecrets`（Bearer/Token/Authorization、`sk|key|secret|token|password` 长串、40+ 长串 → `***`）与 `describeFailure`（剔除 `at`/`file://`/Node 版本/源码行等噪声，优先取 `Error|dsh|does not exist`，最多 3 行 600 字；命中 profile 不存在时给出中文可操作提示）；`dumpConfig` 失败分支改为带原因的消息。
+- `desktop/src/shell/ModelPicker.tsx`：新增可选 prop `engineProfile`（默认 `""`），目录分支由 `onSelectModel(g.id, …)` 改为 `onSelectModel(engineProfile, …)`，带注释说明目录分组 id 是 provider 不是 Profile；下拉版式与信息层级未改。
+- `desktop/src/shell/HomeChat.tsx`：新增 `engineProfile` state，`loadModelRoutes` 成功时写入、失败时置空；`selectModel` 增加 `sourceProfile = profile || engineProfile` 兜底与空值前置守卫，空值时只有用户主动点选才提示，成功/失败返回布尔；`selectEffort` 在端点未识别与空 Profile 时按 `byUser` 决定是否提示；场景思考档 useEffect 增加 `if (!engineProfile) return`，失败时撤销已应用标记以便重试；`ModelPicker` 调用处传入 `engineProfile`。
+- 新增验证脚本 `tests/verification/desktop/verify_model_route_095.py` 与证据目录 `evidence/od-arch-095/`。
+
+### 已运行命令与结果
+
+| 命令 | 结果 | 性质 |
+| --- | --- | --- |
+| `cd desktop && npx --no-install tsc --noEmit` | 通过，无输出 | 静态检查 |
+| `cd desktop && npx --no-install vite build` | 通过（约 1.0 s），仅有既有 chunk 体积提示 | 本地构建 |
+| `cd desktop/src-tauri && cargo test`（按 `scripts/setup-desktop-toolchain.sh --print-env` 设置环境） | **405 项全通过，0 failed**（lib 363，含本轮新增 6 项；集成 2+13+6+5+10+3+1） | 脚本/运行（Rust） |
+| `python3 -m pytest tests -q` | 89 passed，30 subtests passed | 脚本/运行 |
+| `python3 tests/verification/desktop/verify_profile_rules_068.py` | 25/25 通过 | 脚本/运行（静态断言） |
+| `python3 tests/verification/desktop/verify_model_providers_065.py --display :65 --root /tmp/od065` | 窗口验证通过：保存落盘、沿用已存密钥（`authorized_delta=1`）、错误密钥被拒、两 provider 并存、覆盖文件无明文密钥 | 脚本/运行（窗口级） |
+| `python3 tests/verification/desktop/verify_home_fixes_081.py --display :87 --root /tmp/od081-home` | `passed: true`（问候带、品牌渐变标、Markdown 结构） | 脚本/运行（窗口级） |
+| `python3 tests/verification/desktop/verify_model_route_095.py --display :95 --root /tmp/od095` | `passed: true`，见下 | 脚本/运行（窗口级） |
+
+### 窗口验证事实（`tests/verification/desktop/evidence/od-arch-095/`）
+
+一次性 Xvfb + AT-SPI + 合成回环端点；覆盖文件预置在 `<app-data>/config/omnidesk-model.yml`，只含两个合成 provider（`od095-only`、`od095-decoy`），Profile 本身没有它们，等价于用户现场「`opendesign` 只在覆盖文件里」。`OMNIDESK_KNOWLEDGE_ROOT` 指向 `/tmp/od095-knowledge`。
+
+- `00-cold-start.png` / `00-cold-start-ax.json`：冷启动界面无「切换失败」、无「请选择要使用的 Profile」、无「DSH 配置转储失败」。
+- `01-picker-open.png` / `01-picker-open-ax.json`：下拉里出现 `od095-only / od095-synthetic-model`，`no_candidates_note=false`，证明补丁被枚举进候选。
+- `02-after-select.png` / `02-after-select-ax.json`：选中后界面显示「已切到 od095-only / od095-synthetic-model，端点 http://127.0.0.1:35987/v1（类别 local）。引擎已按新路由重启。」；覆盖文件被重写，`acp` 与 `agent-default-model` 两处都写着所选 provider/model；`od095-decoy` 仍保留（浅合并没有抹掉路由）；无「在 DSH 里不存在」、无「配置转储失败」。
+- `facts.json` 的 `failure_message`：不存在 Profile 时脚本返回「DSH 配置转储失败（退出码 1）：Profile「od095-not-a-profile」在 DSH 里不存在；应改用当前引擎实际加载的 Profile。原始信息：Error: dsh: profile … does not exist …」，长 212 字，含 Profile 名与可操作指引。
+
+### 真实配置只读核对（未改动任何文件）
+
+用仓库内 `model-routes.mjs` 对用户真实数据根做一次只读转储（`DSH_HOME=~/OmniDesk/runtime/dsh-home`，补丁 `~/OmniDesk/app/config/omnidesk-model.yml`，未连接、未重启引擎）：Profile `web` 下正确列出 `opendesign` 与 5 个模型（claude-haiku-5.5 / deepseek-v4.1-flash / glm-5.3-flashx / gpt-6-luna / glm-5.3-flash），默认 `opendesign / glm-5.3-flash`。修复前该场景返回空 `providers`。仅输出 provider 名、模型 id 与「apiKeyEnv 是否存在」，未读取或打印任何密钥值。
+
+### 未验证事项
+
+- **真实模型联网切换未执行**：本次没有对真实 provider 发起请求（会消耗用户额度并重启用户引擎）。窗口验证用的是回环合成端点，证明的是「候选枚举、Profile 传递、覆盖文件写入、错误文案」这条链路，不代表真实供应商返回是否成功。
+- 未在用户实际显示器上的 release 实例里复核（本轮用 debug 二进制 + 一次性数据根）。
+
+### 工作区副作用登记
+
+- 重跑 065、081 两个既有窗口脚本时，它们会按设计把本次截图与 `facts.json` 写回 `evidence/od-arch-065/`、`evidence/od-arch-081/`，因此在 `git status` 里表现为这些证据文件被修改。内容为同脚本同断言的本次运行结果，未做人工编辑。
+- 本轮未提交、未推送、未打标签；`runtime/` 零差异；OD-ARCH-093 S10 与 OD-ARCH-094 的既有未提交改动全部保持原样。
+
+---
+
+## OD-ARCH-093 S10：待确认入口并入逾期卡与历史对话操作修订（2026-10-27；已实施，ARCHITECT 已审查通过）
+
+> 状态：**已实施；ARCHITECT 已独立复核源码、diff 与测试并判定通过（见 REVIEW.md 顶部 S10 章节）。本节是执行记录。**
+> 触发：用户第五次反馈周报分页四项小改，并直接授权执行。范围按 PLANS.md 的 OD-ARCH-093 S10，不扩展到 P2 及之后阶段，也不动 OD-ARCH-094 的写作页。
+> 起点：HEAD `b109b1806d8e1846cd3825065d054824db2815f0`（main）；起点工作区干净。未 reset、未 clean、未覆盖、未提交、未推送、未打标签；既有改动全部保留。
+> 边界：本助手亲自实施，未派子代理；未读取真实知识库、成果目录或凭证；未修改 `runtime/`；窗口验证只使用 `/tmp` 下的一次性合成数据。
+> 设计借鉴（本轮补做）：`screenshots-design-inspiration` 检索到 Maze、Flow 等后台产品截图。两点借鉴：①把待处理动作收进它所属的指标卡，避免在主内容上方再挂一条横幅；②弹出层脱离滚动容器独立定位，长列表里的次级菜单不再被裁切。
+
+### 实际改动
+
+- `SceneStatusStrip.tsx`：逾期卡新增「待确认 N」动作按钮，`waiting > 0` 才出现，点击打开原有页面内弹窗；删除四卡下方的独立触发条；无逾期但有待确认时提示改为「没有逾期 · N 条待确认写入」。
+- `PendingWriteCard.tsx`：条目容器与确认 / 放弃按钮、回执卡去圆角，保留边框与底色；场景标签由 `weekly_report` 等键名改为中文名（工作记录 / 文案写作 / 项目跟进）。
+- `CategoryPicker.tsx`：浮层改用 `createPortal` 挂到 `body` 并 `position: fixed`，按触发按钮真实位置与浮层实测高度上下翻转、夹在视口内；滚动与窗口尺寸变化时重新定位；外部点击判定同时包含按钮与浮层。
+- `ScenePage.tsx`：历史对话每行改为「删除按钮 → 标题 → 分类胶囊」，删除按钮带 `aria-label` 并在悬停时转红；行容器加 `min-w-0 pr-1` 避免被滚动条压住。
+- 验证脚本：`verify_weekly_093.py` 新增 6 项断言（105 项）；新增 `preview_weekly_093_s10.py` 做窗口级验证。
+
+### 已运行命令与结果
+
+| 命令 | 结果 | 性质 |
+| --- | --- | --- |
+| `cd desktop && npx --no-install tsc --noEmit` | 通过，无输出 | 静态检查 |
+| `cd desktop && npm run build` | 通过（约 0.8 s），仅有既有 >500 kB chunk 警告 | 本地构建 |
+| `python3 tests/verification/desktop/verify_weekly_091.py` | 67/67 通过 | 脚本/运行（静态断言） |
+| `python3 tests/verification/desktop/verify_weekly_092.py` | 29/29 通过 | 脚本/运行（静态断言） |
+| `python3 tests/verification/desktop/verify_weekly_093.py` | 105/105 通过（含本轮新增 6 项 S10 断言） | 脚本/运行（静态断言） |
+| `python3 -m pytest tests -q` | 89 passed，30 subtests passed | 脚本/运行 |
+| `cd desktop/src-tauri && cargo test --offline`（先 `scripts/setup-desktop-toolchain.sh --print-env`） | 399 项全通过：lib 358、admission 2、host 相关 13 + 6 + 5、knowledge_vault_write_host 10、task_shell_e2e 3、thread_store_restart 1、doc 0 | 脚本/运行（Rust 离线） |
+| `python3 tests/verification/desktop/preview_weekly_093_s10.py --display :211 --root /tmp/od093-s10f` | 窗口验证通过，事实见 `evidence/od-arch-093/facts-s10.json` | 脚本/运行（窗口级） |
+
+> 2026-10-27 审查阶段由 ARCHITECT 用 `--display :216 --root /tmp/od093-s10-arch` 重跑同一脚本，facts 与上表一致；`facts-s10.json` 现为这次重跑的产物（内容逐项相同）。
+
+### 窗口验证事实（`tests/verification/desktop/evidence/od-arch-093/`）
+
+- `05-overdue-pending-card.png`：逾期卡内出现「待确认 1」，四卡下方不再有任何独立触发条。
+- `06-pending-dialog.png`：弹窗打开；条目底色为方形，场景显示为「工作记录」；`pending_dialog_item_actions=1`、`pending_dialog_reject_actions=1`。
+- `07-history-thread-rows.png` / `07-history-ax.json`：3 条对话；删除按钮横坐标 181，标题 209，`delete_left_of_title=true`。
+- `08-category-menu.png` / `08-category-ax.json`：4 个分类全部在视口内（`category_options_all_visible=true`），浮层越过历史列表边界仍完整显示。
+- `09-home-category-menu.png` / `09-home-category-ax.json`：首页共用组件的下拉同样 4 项全可见（`home_category_all_visible=true`），portal 改动未让首页回归。
+
+### 已知限制与未验证项
+
+- 弹窗**外壳**仍是圆角卡片；本轮只按用户反馈去掉弹窗内条目底色与按钮的圆角。若也要方角外壳，需要用户再确认。
+- 分类浮层内部保留 `max-h-[240px]` 滚动上限：当前 4 个内置分类不会触发；用户若增加到十余个分类，菜单会在自身内部滚动（不会被页面容器裁切）。
+- `CategoryPicker` 由周报页与首页共用；两处都已做窗口验证，但未覆盖自定义分类数量很多、窗口极窄等极端情形。
+- WebKit 不把弹窗条目正文暴露成独立无障碍节点，条目存在性以「确认 / 放弃按钮成对出现 + 截图」为证；文案本身以截图为证。
+- 真实模型运行本轮未执行；待确认记录与对话均为 `/tmp` 下合成数据。
+- ARCHITECT 已独立复核实际源码、Git diff 与测试结果，结论写入 REVIEW.md 顶部 S10 章节（通过）。
+
 ## OD-ARCH-093 S09：周报页展示层清理与可读性修订（2026-10-27；已实施，待 ARCHITECT 独立审查）
 
 > 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
@@ -33,9 +142,9 @@
 
 
 
-## OD-ARCH-094：文案写作页改版——创作管线与灵感架（2026-10-27；已实施，待 ARCHITECT 独立审查）
+## OD-ARCH-094：文案写作页改版——创作管线与灵感架（2026-10-27；已实施，审查通过）
 
-> 状态：**已实施，待 ARCHITECT 独立审查；本节是执行记录，不是验收结论，未标为通过。**
+> 状态：**已实施，2026-10-27 ARCHITECT 独立审查通过（结论见 REVIEW.md 顶部 094 章节）。** 审查人独立重跑窗口验证（`:194` /tmp/od094-review4b，passed: true）、98 项静态断言、091/092/093 回归、tsc/build/pytest，并逐文件核对提交 diff；cargo 全量 358+集成在本轮早前 20:04–20:05 通过（/tmp/od094-cargo.log）。
 > 授权与计划文字不一致（如实记录）：用户明确下达「授权执行 OD-ARCH-094，UI 视觉设计要区别于周报分页，颜色配色等有差异，但整体要有统一性」；PLANS.md 中 OD-ARCH-094 标题仍写「计划草案，待用户批准」。本轮按用户直接指令范围（S01～S06）实施，不主张该计划已获正式批准，也未扩展到计划范围外（不做编辑器、创作统计图表、AI 复用建议、灵感持久化格式、素材回链）。
 > 起点：HEAD `cffff6d08f9912637867ccd6ef527e7aed757ada`（main）；本轮开始时 `git status --porcelain` 共 102 项未提交/未跟踪差异，全部保留；未 reset、未 clean、未覆盖、未提交、未推送、未打标签。收尾时共 113 项（含本轮新增）。
 > 边界：本助手亲自实施，未派子代理；未读取任何真实知识库、真实成果文档或凭证；窗口验证只用 /tmp 下一次性合成夹具；`git status --porcelain -- runtime/` 为空（runtime/ 零差异）。

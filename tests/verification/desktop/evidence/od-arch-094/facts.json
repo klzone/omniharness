@@ -1,6 +1,6 @@
 {
-  "display": ":191",
-  "root": "/tmp/od094-review",
+  "display": ":194",
+  "root": "/tmp/od094-review4b",
   "artifacts": {
     "count": 6,
     "items": [
@@ -50,8 +50,8 @@
       "title": "合成灵感：一句没写完的话",
       "preset": "writing",
       "messages": [],
-      "createdAt": 1793084807,
-      "updatedAt": 1793091407,
+      "createdAt": 1793098928,
+      "updatedAt": 1793105528,
       "version": 1
     },
     {
@@ -61,8 +61,8 @@
       "title": "合成灵感：旧结构还能怎么拆",
       "preset": "writing",
       "messages": [],
-      "createdAt": 1792832807,
-      "updatedAt": 1792919207,
+      "createdAt": 1792846928,
+      "updatedAt": 1792933328,
       "version": 1
     }
   ],

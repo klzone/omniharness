@@ -12,6 +12,7 @@ import {
 } from "../sceneThreads";
 import type { OfflineArtifactEntry, SceneOverview } from "../types";
 import { useThreadCategories } from "../threadCategories";
+import { Icon } from "../components/Icon";
 import { AnnouncementBar } from "./AnnouncementBar";
 import { ArtifactExplorer, type ArtifactArchiveEntry } from "./ArtifactExplorer";
 import { CategoryPicker } from "./CategoryPicker";
@@ -563,10 +564,25 @@ export function ScenePage({
             </p>
           ) : (
             threads.map((t) => (
-              <div key={t.id} className="flex items-center gap-1">
+              /*
+               * 删除按钮放到单条对话最前面（2026-10-27 用户第五次反馈）。
+               * 原先在行尾，被列表的纵向滚动条压住，点不到。
+               */
+              <div key={t.id} className="flex items-center gap-1 min-w-0 pr-1">
+                <button
+                  className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md text-outline hover:bg-error/10 hover:text-error"
+                  onClick={() => {
+                    removeThread(t.id);
+                    refreshThreads();
+                  }}
+                  title="删除这条本机对话记录"
+                  aria-label={`删除对话：${t.title}`}
+                >
+                  <Icon name="x" className="h-3.5 w-3.5" />
+                </button>
                 <button
                   onClick={() => openThread(t.id)}
-                  className="flex-1 text-left px-2.5 py-2 rounded-lg text-[12px] truncate text-on-surface-variant hover:bg-surface-container"
+                  className="min-w-0 flex-1 text-left px-2 py-2 rounded-lg text-[12px] truncate text-on-surface-variant hover:bg-surface-container"
                   title={t.title}
                 >
                   {t.title}
@@ -576,16 +592,6 @@ export function ScenePage({
                   value={t.tag}
                   onChange={(tag) => retag(t.id, tag as ThreadTag)}
                 />
-                <button
-                  className="text-[12px] text-outline hover:text-error px-1"
-                  onClick={() => {
-                    removeThread(t.id);
-                    refreshThreads();
-                  }}
-                  title="删除这条本机对话记录"
-                >
-                  ×
-                </button>
               </div>
             ))
           )}

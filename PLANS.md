@@ -1,5 +1,67 @@
 # 当前实施计划
 
+### OD-ARCH-095：模型切换两处报错的修复与诊断可见性（已批准并实施完成，待 ARCHITECT 独立审查，2026-10-27）
+
+> 分类：功能修复（缺陷 + 可观测性）。用户报告两个真实运行现象：①登录后对话框底部立即显示「切换失败：请选择要使用的 Profile、provider 与模型。」；②手动切换模型显示「切换失败：DSH 配置转储失败（退出码 1）」。
+> **现状为只读排查，未改任何源码。** 以下根因由本机真实配置复现得出（脚本运行证据），不是推测。
+
+#### 已复现的根因（只读排查，2026-10-27）
+
+1. **候选枚举漏了实际生效的覆盖文件（导致报错①）。** `desktop/src-tauri/src/model_routes.rs::list_routes` 只把 `dshCli` / `dshHome` / `profiles` 交给脚本，**没有传 `config.patch_files`**；而引擎启动时一定会附加 `~/OmniDesk/app/config/omnidesk-model.yml`。实测同一 Profile：不带补丁转储 → `providers: []`、默认 `deepseek-official/deepseek-flash`；带补丁转储 → 正确列出 `opendesign` 与五个模型。界面因此拿到空候选。
+2. **候选为空时前端仍以空 Profile 触发切换（导致报错①的可见文案）。** `desktop/src/shell/HomeChat.tsx` 的场景思考档自动应用（`selectEffort`，约 `:1538`）在 `modelRoutes` 里找不到当前 provider 时执行 `route?.profile ?? ""`，把空串交给 `selectModel`，被 `model_routes.rs:209` 的空值校验拦下。该路径在登录后场景加载时自动触发，所以用户什么都没点就看到报错。
+3. **目录分支把 provider 当成 Profile 传下去（导致报错②）。** `desktop/src/shell/ModelPicker.tsx` 在模型目录可用时调用 `onSelectModel(g.id, m.provider, m.id)`，其中 `g.id` 是 **provider 分组 id**（如 `opendesign`），却被 `task_set_model_route` 当作 `source_profile`。实测 `--profile opendesign --dump-config` 退出码 1（stderr：`profile "opendesign" does not exist`）；该文本不含「没有这个 provider」，因此不会走其它 Profile 的回退，直接原样抛给界面。
+4. **诊断信息被整条链路丢弃。** `desktop/src-tauri/scripts/model-routes.mjs::dumpConfig` 未捕获 stderr，只留「退出码 N」；宿主 `model_routes.rs::run_script` 又把 node 的 stderr 设为 `Stdio::null()`。同仓 `dump-model-route.mjs:268-290` 已捕获 stderr 并附在错误里，可作参照。
+
+#### 修复范围
+
+**S01（OD-ARCH-095-S01）**
+
+1. Step ID：OD-ARCH-095-S01
+2. 单一动作描述：候选枚举带上引擎实际加载的补丁集合，使界面候选与引擎真实路由一致。
+3. 输入来源：`model_routes.rs::list_routes` 与 `base_routes` 的现有 payload 构造、`EngineConfig.patch_files`。
+4. 输出目标：`list_routes` 传入 `config.patch_files`（含 OmniDesk 覆盖文件）的改动与注释；不改写任何 Profile 文件。
+5. 验收标准：同一 Profile 在「有覆盖文件」场景下列出覆盖后的 provider 与模型；无覆盖文件时行为不变；改动不读取凭据值。
+
+**S02（OD-ARCH-095-S02）**
+
+1. Step ID：OD-ARCH-095-S02
+2. 单一动作描述：修正目录分支把 provider 当作 Profile 传参的缺陷，让选择项带上正确的来源 Profile。
+3. 输入来源：`ModelPicker.tsx` 目录分支、`ModelRouteListing.engine_profile`、`HomeChat.tsx` 的 `selectModel`。
+4. 输出目标：目录分支改用引擎当前 Profile；`ModelPicker` 新增显式入参（如 `engineProfile`）并由 `HomeChat` 传入；不改下拉的版式与信息层级。
+5. 验收标准：从目录切换任一模型，宿主收到的 `source_profile` 是真实存在的 Profile；`--dump-config` 不再以 provider 名作为 Profile 执行。
+
+**S03（OD-ARCH-095-S03）**
+
+1. Step ID：OD-ARCH-095-S03
+2. 单一动作描述：为「没有可用 Profile 就发起切换」加前置守卫，杜绝空值调用与登录即报错。
+3. 输入来源：`HomeChat.tsx` 的 `selectModel` / `selectEffort` / 场景思考档 useEffect；`model_routes.rs::select_route` 空值校验。
+4. 输出目标：`selectModel` 入口对空 profile 直接给出可操作文案并返回，不调用宿主；场景思考档在候选未就绪时**不自动切换**，候选就绪后仅在满足既有三条安全线时应用一次；重新载入候选后允许重试。
+5. 验收标准：冷启动（候选为空）不产生任何切换请求与失败文案；候选就绪后才按场景应用思考档；手动选档行为不变；`appliedSceneThinkingRef` 不会因一次失败而永久锁死。
+
+**S04（OD-ARCH-095-S04）**
+
+1. Step ID：OD-ARCH-095-S04
+2. 单一动作描述：补齐诊断链路与可读错误，把「退出码 1」换成能指引下一步的原因。
+3. 输入来源：`model-routes.mjs::dumpConfig`、`model_routes.rs::run_script`、`dump-model-route.mjs` 的既有做法、DSH 的 profile 不存在报错文本。
+4. 输出目标：脚本捕获 stderr 并附**有界尾部**（限长、去重、剔除疑似令牌）到错误消息；宿主不再吞 stderr，失败时把尾部并入返回错误；对「profile 不存在」给出中文可操作提示（指明是哪个 Profile、应改用哪个）。错误文本不写入日志文件，不落盘。
+5. 验收标准：构造不存在的 Profile 时错误信息包含真实原因而非裸退出码；超长 stderr 被截断且总长度有上限；成功路径的返回结构不变。
+
+**S05（OD-ARCH-095-S05）**
+
+1. Step ID：OD-ARCH-095-S05
+2. 单一动作描述：执行回归与真实窗口验证，落盘证据供 ARCHITECT 独立审查。
+3. 输入来源：S01–S04 差异；`desktop/src-tauri` 单测、`tests/verification/desktop/` 既有窗口脚本与一次性 Xvfb 模式。
+4. 输出目标：针对 S01/S03/S04 的 Rust 与脚本单测；`verify_model_route_095.py` 与 `evidence/od-arch-095/`（冷启动无失败文案、候选数量、目录切换）；STATUS.md 执行记录。
+5. 验收标准：cargo test、tsc、前端 build、既有窗口回归全过；`runtime/` 零差异；验证脚本若触发工作记录写入必须指向临时 `OMNIDESK_KNOWLEDGE_ROOT`；真实模型切换的联网结果如实报告（成功与否都记录）。
+
+**依赖关系：** S01 → S03（候选就绪的判断依赖 S01 的候选来源）；S02 独立；S04 独立；S01–S04 → S05。
+
+**不做的事：** 不改 `runtime/` 内 DSH；不改用户的 DSH Profile 与凭证；不重做模型下拉的版式；不因本次修复调整场景思考档的默认值；不动工作区里 OD-ARCH-093/094 的未提交改动。
+
+**实施记录（2026-10-27）：** 用户批准执行。S01、S02、S03、S04、S05 已全部实施；真实窗口验证暴露并补上了一个计划内未尽之处——**写覆盖文件（`select_route`）此前也没有带补丁集合**，导致只存在于覆盖文件里的 provider 在候选中可见、点选却报「该 Profile 里没有这个 provider」。该修正仍属 S01「候选与引擎真实路由一致」的范围。执行详情见 STATUS.md 顶部；待 ARCHITECT 独立审查，未标为通过。
+
+**阶段门槛：** 本计划须经用户明确批准后才实施；范围外需求另行立项（本轮已获批，范围未扩大）。
+
 ### OD-KB-001：OmniDesk 知识库总体规划基线（已批准，2026-10-26）
 
 > 分类：产品设计与架构规划。现状审计和分阶段方案见 [docs/OmniDesk-Knowledge-Base-Plan.md](docs/OmniDesk-Knowledge-Base-Plan.md)。本项批准的是知识库规划基线；任何实现仍须按阶段形成具体范围、验收条件和实施记录，并经对应阶段计划批准后开始。P1 已经独立验收通过；P2 详细计划已由 GLM-5.3-FLASH 草拟并经 ARCHITECT 审核，用户于 2026-10-26 批准由 DeepSeek-V4.1-Flash 执行，ARCHITECT 负责独立验收。全程未读取真实知识资产；知识库测试只使用合成目录。
@@ -263,7 +325,7 @@
 **关键取舍说明：** ① SVG 而非 Canvas：2000 节点级 SVG 可控且 DOM 可测（AT-SPI 窗口断言依赖可访问性树），Canvas 性能更好但窗口验证困难；基准不达标时先做按需加载/虚拟化，而不是立即换库。② 图数据每次从当前快照现算、不落盘：符合「索引是可重建派生数据」原则，2000 篇级转换成本由 P4-S04 基准实测。③ 不做布局持久化与后端计算：首期规模不需要，引入即违反「无真实触发不加基础设施」。
 
 **阶段门槛：** P4 已通过独立验收（2026-10-27），首期 MVP（P1–P4）完成。进入 P5 需用户对 AI 范围与材料授权单独批准；本轮不实施 P5。
-### OD-ARCH-094：文案写作页改版——创作管线与灵感架（计划草案，待用户批准；2026-10-27）
+### OD-ARCH-094：文案写作页改版——创作管线与灵感架（已批准实施，2026-10-27 审查通过）
 
 > 分类：产品设计 + 界面实现。定位改写：文案写作页从「与周报同构的档案页」改为「创作控制台」。用户的内容主要在首页与 AI 对话中产生，到本页的诉求是**回顾已有作品**与**找可续写的灵感**；本页不做编辑器、不承载对话（OD-ARCH-057 档案页原则不变，「去对话」回首页的跳转不变）。
 > 设计借鉴（screenshots-design-inspiration MCP，2026-10-27，实际查看 Ghost / Notion / SubStack 截图）：Ghost 发布后台用「顶部统计卡 + 按状态分组的内容列表」组织稿件，状态即导航；Notion 数据库看板用属性分组让同一批内容切换视角；SubStack 仪表盘以「统计卡 + 最近文章」突出最近动作。落点：指标卡换创作口径、中栏按状态管线分组、左栏把既有会话历史重新定位为灵感架；三栏骨架与卡片体系复用 OD-ARCH-093 成果，不新增依赖与色值。
@@ -459,9 +521,19 @@
 
 **依赖关系：** S01 与 S02 可并行；S02 → S03；S03 → S04；S01～S04 → S05；S06 依赖 S03 的左栏结构与 `WorklogArchiveList`；S07 覆盖 S01/S02/S04 的样式参数，与 S06 同轮实施；S08 覆盖 S01 的指标卡版式、S03 的容器宽度与 S04 的右栏工具栏，依赖 S01/S03/S04 已实现；S09 基于 S01～S08 的现有页面，仅做展示层清理、控件恢复与可读性修订。
 
+#### OD-ARCH-093 S10 待确认入口并入逾期卡与历史对话操作修订（2026-10-27，用户直接指令，已授权执行，审查通过）
+
+1. Step ID：OD-ARCH-093-S10
+2. 单一动作描述：按用户第五次反馈，把「待确认写入」入口并入第四张「逾期」卡并删除四卡下方的独立触发条；弹窗内条目底色改为方形；历史对话的分类下拉改为不被容器裁切、可完整显示；单条对话的删除按钮移到标题之前；页面可见小字保持至少 12px。
+3. 范围：`SceneStatusStrip.tsx`（逾期卡内动作 + 删除独立触发条 + 提示文案）、`PendingWriteCard.tsx`（条目与按钮去圆角、场景中文名）、`CategoryPicker.tsx`（portal + fixed 定位 + 上下翻转 + 视口夹取）、`ScenePage.tsx`（删除按钮前置）；验证脚本与合成窗口证据同步。
+4. 不改：待确认的安全链路与字段契约、场景聚合口径、四象限归类规则、宿主命令与数据格式、`runtime/`。
+5. 验收标准：待确认入口只出现在逾期卡内，弹窗仍保留确认 / 放弃 / 过期 / 回执语义；弹窗条目底色为方形；历史对话分类下拉全部选项在视口内可见；删除按钮位于每条标题左侧且可点击；首页输入区的分类下拉不回归；类型检查、前端构建、091/092/093 校验、pytest、Rust 离线测试与合成窗口验证通过；`runtime/` 零差异；STATUS.md 如实记录，结论等待 ARCHITECT 独立审查。
+
+**S10 依赖：** 基于 S08 的四卡版式与 S09 的待确认弹窗、分类胶囊控件；只改这些既有部件的展示与定位，不新增数据源。
+
 **关键取舍：** ① 四象限按可解释规则归类，不引入「重要度」新字段、不调模型——现有记录格式无法承载人工标注，硬造评分会违反「数字必须有来源」；若用户要真正的人工四象限，需要在记录格式里新增字段，那是另一项计划。② 顶部四栏不强行复刻 FOCUS SCORE / FOCUS TIME，因为无数据源；改用有来源的四项。③ 条目「最多两行」用 CSS `line-clamp` 截断显示，原文不丢失，点击仍可全文查看。
 
-**阶段门槛：** S01～S08 实现已完成，等待 ARCHITECT 独立复跑并写 REVIEW.md；未审查前 STATUS.md 不得标为通过。S01～S08 之外的改动（P5、真实数据源、记录格式新增重要度字段）均未开始，需要单独计划与批准。
+**阶段门槛：** S01～S10 均已由 ARCHITECT 独立审查通过（见 REVIEW.md）。S10 之外的改动（P5、真实数据源、记录格式新增重要度字段）均未开始，需要单独计划与批准。
 
 
 ### OD-ARCH-092：工作记录页版式重构（两栏 + 指标带 + 复盘入口收起）（实施完成待验收，2026-10-26）

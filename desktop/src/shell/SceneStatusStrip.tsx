@@ -7,8 +7,8 @@
 // 版式：四张独立卡片（OD-ARCH-093 三次修订，2026-10-27）：整排略窄于顶部导航栏、
 // 与导航留出空隙、卡与卡之间留白；每张卡一组 OmniDesk 色调（紫 / 青 / 靛 / 琥珀，
 // 逾期时转玫红），卡内是方形图标座 + 中文标题 + 等宽英文副标题 + 大号数字 + 说明。
-// 待确认写入平时是 0 条（复盘移除后没有别的写入入口），因此**有记录才出现**，
-// 不再常驻占一整格。
+// 待确认写入平时是 0 条（复盘移除后没有别的写入入口），因此**有记录才出现**。
+// 2026-10-27 用户第五次反馈：入口并入第四张「逾期」卡，取消四卡下方的独立触发条。
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
@@ -448,7 +448,9 @@ export function SceneStatusStrip({
   const expiredHint = overview
     ? expired > 0
       ? "过了 24 小时有效期，只能放弃"
-      : "没有过期记录"
+      : waiting > 0
+        ? `没有逾期 · ${waiting} 条待确认写入`
+        : "没有过期或待确认记录"
     : overviewError ?? "正在读取…";
 
   /** 进周报的比例：只在本周条数与进周报条数都真实读到、且条数大于 0 时成立。 */
@@ -525,6 +527,21 @@ export function SceneStatusStrip({
               unit={overview ? "条" : undefined}
               hint={expiredHint}
               tone={expired > 0 ? "alert" : "normal"}
+              action={
+                waiting > 0 ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-white/70 px-1.5 py-0.5 text-[12px] font-medium text-primary hover:border-primary/40 hover:bg-primary/5"
+                    onClick={() => setShowPending(true)}
+                    aria-expanded={showPending}
+                    aria-haspopup="dialog"
+                    title="模型或定时任务想写成果时，先登记在这里等你决定"
+                  >
+                    <Icon name="shield-check" className="h-3.5 w-3.5" />
+                    待确认 {waiting}
+                  </button>
+                ) : undefined
+              }
             />
           </>
         ) : scene.key === "writing" ? (
@@ -631,31 +648,6 @@ export function SceneStatusStrip({
         )}
 
       </div>
-
-      {waiting > 0 ? (
-        <div className="max-w-6xl mx-auto md:-translate-x-8 w-full -mt-1 mb-3">
-          <button
-            className="w-full rounded-xl border border-primary/15 bg-white/80 px-3.5 py-2.5 text-left shadow-[0_4px_18px_-12px_rgba(53,37,205,0.35)] hover:border-primary/30 hover:bg-primary/5 transition"
-            onClick={() => setShowPending(true)}
-            aria-expanded={showPending}
-            aria-haspopup="dialog"
-            title="模型或定时任务想写成果时，先登记在这里等你决定"
-          >
-            <span className="flex items-center gap-2.5 min-w-0">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Icon name="shield-check" className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[12px] font-semibold text-on-surface">待确认写入</span>
-                <span className="block text-[12px] text-on-surface-variant truncate">
-                  {waiting} 条等待决定{expired > 0 ? ` · ${expired} 条已过期` : ""}
-                </span>
-              </span>
-              <span className="shrink-0 text-[12px] font-medium text-primary">查看</span>
-            </span>
-          </button>
-        </div>
-      ) : null}
 
       {showPending && waiting > 0 ? (
         <div

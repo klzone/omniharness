@@ -1,0 +1,52 @@
+{
+  "plan": "OD-ARCH-095",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + AT-SPI + 合成端点）+ 文件事实",
+  "synthetic_provider": "od095-only",
+  "synthetic_model": "od095-synthetic-model",
+  "credentials_read": false,
+  "cases": {
+    "cold_start": {
+      "picker_label": "模型：未识别 ▼\n",
+      "failure_note_present": false,
+      "empty_profile_note_present": false,
+      "dump_failure_present": false
+    },
+    "picker_open": {
+      "synthetic_provider_listed": true,
+      "synthetic_model_listed": true,
+      "no_candidates_note": false
+    },
+    "picker_item": {
+      "found": true
+    },
+    "select_from_catalog": {
+      "overlay_rewritten": true,
+      "overlay_contains_provider": true,
+      "overlay_contains_model": true,
+      "overlay_selected_model_written": true,
+      "decoy_provider_preserved": true,
+      "provider_used_as_profile": false,
+      "dump_failure_note": false,
+      "profile_missing_note": false,
+      "success_note_present": false,
+      "note_after": [],
+      "overlay_after_tail": "dsh-llm-pi-ai\"\n  config:\n    providers:\n      od095-only:\n        displayName: Synthetic 095\n        api: openai-completions\n        baseURL: http://127.0.0.1:35923/v1\n        models:\n          - id: od095-synthetic-model\n            name: od095-synthetic-model\n        apiKeyEnv: OMNIDESK_ROUTE_095_KEY\n      od095-decoy:\n        displayName: Synthetic 095 decoy\n        api: openai-completions\n        baseURL: http://127.0.0.1:35923/v1\n        models:\n          - id: od095-decoy-model\n            name: od095-decoy-model\n- id: acp\n  name: \"@deepseek-ai/dsh-acp\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n    reasoningEffort: off\n- id: agent-default-model\n  name: \"@deepseek-ai/dsh-agent-default-model\"\n  config:\n    provider: od095-only\n    model: od095-synthetic-model\n"
+    },
+    "failure_message": {
+      "exit_code": 2,
+      "message": "DSH 配置转储失败（退出码 1）：Profile「od095-not-a-profile」在 DSH 里不存在；应改用当前引擎实际加载的 Profile。原始信息：Error: dsh: profile \"od095-not-a-profile\" does not exist; create it with 'dsh plugin --profile od095-not-a-profile add <package>'",
+      "mentions_profile": true,
+      "has_reason_not_just_exit_code": true,
+      "raw_length": 212
+    }
+  },
+  "seeded_overlay": "/tmp/od095-push3/app-data/config/omnidesk-model.yml",
+  "seeded_overlay_sha": "5598595015322392067",
+  "passed": true,
+  "app_alive": true,
+  "shots": [
+    "00-cold-start.png",
+    "01-picker-open.png",
+    "02-after-select.png"
+  ]
+}

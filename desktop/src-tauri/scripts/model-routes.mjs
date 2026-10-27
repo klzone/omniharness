@@ -59,6 +59,60 @@ function loadYaml(dshCli) {
   }
 }
 
+/**
+ * 把转储失败的 stderr 变成一句可操作的原因（OD-ARCH-095 S04）。
+ *
+ * 之前只回「退出码 1」，用户无从判断是 Profile 不存在、补丁坏掉还是别的；
+ * 而宿主又把 stderr 设成了丢弃，所以真正的报错在整条链路上都看不到。
+ *
+ * 这里的要求：
+ *   * 只取有界尾部（最多 3 条非空行、总长 <= 600 字），避免把大段栈信息带回界面；
+ *   * 去重，DSH 有时会把同一条告警打两遍；
+ *   * 剔除疑似凭证片段（Bearer/长随机串/Key 赋值），错误消息不承担转发秘密的责任；
+ *   * 命中「profile 不存在」时直接给出中文可操作提示，而不是把 Node 栈原样抛给用户。
+ */
+function describeFailure(stderr, profile) {
+  const raw = String(stderr ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const seen = new Set();
+  const lines = [];
+  for (const line of raw) {
+    const clean = redactSecrets(line);
+    if (seen.has(clean)) continue;
+    seen.add(clean);
+    lines.push(clean);
+  }
+  // 只取「最后一行的堆栈」会只剩 `at runCli (...)` 和 Node 版本号，用户看不出原因；
+  // 直接取倒数三行又会把抛错处的源码行带进来。分三档挑：真正的错误描述 → 其它非噪声 → 全部。
+  const noise = (line) =>
+    /^at\s/.test(line) ||
+    /^file:\/\//.test(line) ||
+    /^Node\.js v\d/.test(line) ||
+    /^\^+$/.test(line) ||
+    // 抛错语句的源码行：`if (...) throw new Error(...)`、`}` 之类，对用户没有信息量。
+    /\bthrow new Error\b/.test(line) ||
+    /^[}{)]+[;,)]*$/.test(line);
+  const clean = lines.filter((line) => !noise(line));
+  const errors = clean.filter((line) => /^(\w*Error|dsh)\b/.test(line) || /does not exist/i.test(line));
+  const picked = (errors.length > 0 ? errors : clean.length > 0 ? clean : lines).slice(-3);
+  const tail = picked.join(" | ").slice(0, 600);
+  if (!tail) return "DSH 没有输出错误详情";
+  if (/profile\b[^|]*does not exist/i.test(tail)) {
+    return "Profile「" + profile + "」在 DSH 里不存在；应改用当前引擎实际加载的 Profile。原始信息：" + tail;
+  }
+  return tail;
+}
+
+/** 粗粒度剔除疑似凭证片段：只挡明显形态，不做安全承诺。 */
+function redactSecrets(line) {
+  return line
+    .replace(/\b(Bearer|Token|Authorization)\s+[^\s,;|]+/gi, "$1 ***")
+    .replace(/\b(sk|key|secret|token|password)[-_]?[A-Za-z0-9]{12,}\b/gi, "***")
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "***");
+}
+
 function dumpConfig({ dshCli, dshHome, profile, patches }) {
   const childEnv = {
     PATH: process.env.PATH ?? "",
@@ -78,7 +132,10 @@ function dumpConfig({ dshCli, dshHome, profile, patches }) {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (result.error) throw new Error("无法运行 DSH 配置转储：" + result.error.message);
-  if (result.status !== 0) throw new Error("DSH 配置转储失败（退出码 " + result.status + "）");
+  if (result.status !== 0) {
+    const tail = describeFailure(result.stderr, profile);
+    throw new Error("DSH 配置转储失败（退出码 " + result.status + "）：" + tail);
+  }
   return result.stdout;
 }
 

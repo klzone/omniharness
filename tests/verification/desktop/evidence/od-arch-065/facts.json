@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-065",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 回环合成端点）+ 文件事实",
-  "synthetic_endpoint": "http://127.0.0.1:45735/v1",
+  "synthetic_endpoint": "http://127.0.0.1:35887/v1",
   "credentials_read": false,
   "cases": {
     "save": {
@@ -11,7 +11,7 @@
       "context_window_1m_in_overlay": true,
       "base_route_kept": true,
       "overlay_has_plaintext_key": false,
-      "evidence": "/tmp/od065-run6/app-data/config/omnidesk.model-settings.v2.json"
+      "evidence": "/tmp/od065/app-data/config/omnidesk.model-settings.v2.json"
     },
     "probe_stored_key": {
       "expected": "连接成功，使用已保存密钥",

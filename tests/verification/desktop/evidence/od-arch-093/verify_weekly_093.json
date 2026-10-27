@@ -326,6 +326,36 @@
       "detail": "周报页主要小字至少 12px"
     },
     {
+      "name": "pending_merged_into_overdue_card",
+      "ok": true,
+      "detail": "待确认入口是第四张「逾期」卡内的动作，不再另起模块"
+    },
+    {
+      "name": "pending_trigger_bar_removed",
+      "ok": true,
+      "detail": "四卡下方的独立触发条已删除"
+    },
+    {
+      "name": "pending_card_square_backdrop",
+      "ok": true,
+      "detail": "弹窗条目底色与按钮改为方形"
+    },
+    {
+      "name": "category_menu_ported_to_body",
+      "ok": true,
+      "detail": "分类下拉挂到 body，不受滚动容器裁剪"
+    },
+    {
+      "name": "category_menu_flips_to_fit_viewport",
+      "ok": true,
+      "detail": "按真实高度上下翻转并夹在视口内"
+    },
+    {
+      "name": "thread_delete_before_title",
+      "ok": true,
+      "detail": "删除按钮排在单条对话标题之前"
+    },
+    {
       "name": "wider_column_gaps",
       "ok": true,
       "detail": "栏间距放大"

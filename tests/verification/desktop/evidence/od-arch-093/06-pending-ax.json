@@ -1,0 +1,592 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": ""
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "标准",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "当前会话内查找",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "日期与三周节律，今天 10月27日星期二",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "系统偏好设置",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "未实现：通知与待办",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最小化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最大化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作台首页",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作记录（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "文案写作（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "项目跟踪（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "历史会话（引擎会话 · 本机对话）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "知识库（本机 Markdown）",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "本期工作记录 RECORDS：3 条，本周 10-26–10-30",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "进周报条目 FOR WEEKLY：2 条，占全部记录的 67%",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "本周周报 WEEKLY REPORT：未生成，说「整理成周报」才会生成",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去生成",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "逾期 OVERDUE：0 条，没有逾期 · 1 条待确认写入",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "待确认 1",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "dialog",
+    "name": "待确认写入",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "待确认写入",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "确认写入",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "放弃",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "事项四象限",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "事项四象限",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "1 先做 1 已过日期 · 进周报 · 合成记录：整理上周遗留的两项核对，补上结论与出处。",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "2 排期 1 今天及以后 · 进周报 · 合成记录：今天要确定周报的五个小节标题。",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "3 回看 0 已过日期 · 其它去向 暂无",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "4 可缓 1 今天及以后 · 其它去向 · 合成记录：明天把初稿交给协作方看一眼。",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "历史对话",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "历史对话",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "▸ 展开对话列表",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去对话 · 新开",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "本周记录 2026-W44 · 3 条",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "本周记录",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "打开本周原文",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去生成周报",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/26 周一",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "合成记录：整理上周遗留的两项核对，补上结论与出处。 本周报引用",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "合成记录：整理上周遗留的两项核对，补上结论与出处。",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "转周报",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/27 周二 · 今天",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "合成记录：今天要确定周报的五个小节标题。 本周报引用",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "合成记录：今天要确定周报的五个小节标题。",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "转周报",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/28 周三",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "合成记录：明天把初稿交给协作方看一眼。 归档",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "合成记录：明天把初稿交给协作方看一眼。",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "转周报",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/29 周四 —",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/30 周五 —",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "10/31 周六 —",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "list item",
+    "name": "11/01 周日 —",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "成果文档库",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "成果文档库",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "按文件名搜索成果与归档",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "卡片",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "列表",
+    "text": ""
+  },
+  {
+    "role": "label",
+    "name": "打开后连子目录里的成果一起列；关闭只看最外层",
+    "text": ""
+  },
+  {
+    "role": "check box",
+    "name": "含子目录",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  }
+]

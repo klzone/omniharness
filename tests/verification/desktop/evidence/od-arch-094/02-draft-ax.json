@@ -400,6 +400,11 @@
     "text": ""
   },
   {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
     "role": "entry",
     "name": "按文件名搜索成果与归档",
     "text": ""
@@ -445,13 +450,8 @@
     "text": ""
   },
   {
-    "role": "paragraph",
+    "role": "section",
     "name": "",
-    "text": ""
-  },
-  {
-    "role": "paragraph",
-    "name": "成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览",
     "text": ""
   },
   {
