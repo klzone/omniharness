@@ -1,3 +1,30 @@
+## OD-ARCH-096 审查结论（ARCHITECT，2026-10-27）——通过
+
+**结论：通过。** 构建里那条 `AppendReceipt::failure` 告警确实是死代码，删掉后归零；模型切换的结果提示已从输入框下方的小字挪到右下角方角提示条，60 秒自动关闭、可手动关闭，位置与形态都符合用户要求。
+
+**独立复核范围：** HEAD `5dce7d4` + 本轮未提交改动。逐行核对 `worklog.rs`（删掉整个 `impl AppendReceipt` 块；结构体字段、`worklog_append` 的 JSON 形状与失败分支语义未变）、`StatusToast.tsx`（`createPortal` 到 `body`、`fixed bottom-4 right-4`、`z-[110]`、内联 `borderRadius: 0` 且无 `rounded-*` 类、`STATUS_TOAST_MS = 60_000`、关闭按钮 `aria-label`）、`HomeChat.tsx`（`modelNote` 由字符串改为 `{key, text, tone}`、六处写入点按 `success`/`error` 归类、删掉输入框下常驻渲染、`byUser=false` 的自动套档不写提示）。`runtime/` 零差异。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `cargo test --offline` | 405 passed / 0 failed |
+| `cargo build --offline` 的 `warning:` 计数 | **0**（告警已消除） |
+| `tsc --noEmit` | 通过 |
+| `npm run build` | 通过（仅既有 chunk 体积提示） |
+| `verify_status_toast_096.py`（静态） | **19 / 19 通过** |
+| 窗口 `verify_model_route_095.py`（`:104`） | `passed: true` |
+
+**窗口关键 facts（我重跑得到）：** 提示条 rect `x=864, y=936, 560×48`，右边距 16、下边距 16，确实贴右下角且矮平（宽高比 > 1、高度 ≤ 120）；关闭按钮存在；点击后提示条文字与按钮一起消失（`toast_text_present` 由 true 转 false）；不理会它时 **60.5 秒**自动关闭；输入框下方不再有常驻小字（`inline_note_only_in_toast: true`）。失败路径仍给出可读原因（含 Profile 名与原始 stderr），未退化成裸退出码。
+
+**目视复核：** `evidence/od-arch-095/02a-toast.png` 显示提示条为方角长条、左侧青色细标识 + 勾选图标，压在右下角、不挤压输入区；两行折行是因为合成 provider 名与端点较长，`max-w-[min(560px,calc(100vw-2rem))]` 的夹取生效，与既有卡片体系同源。
+
+**已知限制（不构成阻断）：** ① 自动关闭的 60.5 秒来自两秒一次采样的窗口实测，与 60 秒常量的差异属采样粒度。② 未在用户实际显示器上复核，本轮为 Xvfb 一次性显示。③ 上一轮审查已登记的一处小瑕疵仍在：PLANS 里 OD-ARCH-096 的正文写「未提交、不推送」，本轮按你的指示一并提交推送，以本节为准。
+
+**阶段决定：OD-ARCH-096 验收通过。**
+
+---
+
 ## OD-ARCH-093 S10 审查结论（ARCHITECT，2026-10-27）——通过
 
 **结论：通过。** 用户第五次反馈的四项改动（待确认入口并入逾期卡、弹窗条目方形底色、分类下拉不被裁切、删除按钮前置）与源码一致，我本人独立复核 diff 并重跑了静态校验与真实窗口预览，未发现阻断问题。

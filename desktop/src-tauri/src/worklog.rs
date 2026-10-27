@@ -51,24 +51,6 @@ pub struct AppendReceipt {
     pub error: Option<String>,
 }
 
-impl AppendReceipt {
-    fn failure(path: &Path, week: &str, date: &str, error: String) -> Self {
-        Self {
-            ok: false,
-            path: path.display().to_string(),
-            week: week.to_string(),
-            date: date.to_string(),
-            appended: false,
-            was_new_file: false,
-            continued: false,
-            masked: false,
-            masked_id_card: 0,
-            masked_phone: 0,
-            error: Some(error),
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 日期与 ISO 周（不引入 chrono；沿用 task_shell 的 Hinnant 口径）
 // ---------------------------------------------------------------------------

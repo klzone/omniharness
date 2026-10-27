@@ -1,6 +1,63 @@
 # 当前实施计划
 
-### OD-ARCH-095：模型切换两处报错的修复与诊断可见性（已批准并实施完成，待 ARCHITECT 独立审查，2026-10-27）
+### OD-ARCH-096：构建警告清理与模型切换提示条（已批准实施，2026-10-27 审查通过）
+
+> 分类：构建清洁 + 界面微调。用户本轮提两点：①构建输出里的 `AppendReceipt::failure` dead_code 警告要不要修；②模型切换「成功/失败」那句话现在常驻在输入框下方，改为右下角矮平长方形提示条，60 秒自动关闭、可手动关闭。
+> **状态：用户已批准执行（2026-10-27）；S01–S03 已实施并审查通过，结论见 REVIEW.md 顶部。**
+
+#### 已查清的事实（只读排查，2026-10-27）
+
+1. **`AppendReceipt::failure` 是死代码，不是构建错误。** `desktop/src-tauri/src/worklog.rs:54-72` 的该函数全仓零调用（`rg AppendReceipt` 仅命中结构体定义、`impl` 与 `worklog.rs:259` 一处内联构造）。失败回执由 `lib.rs::worklog_append` 的错误分支用 `serde_json::json!({ "ok": false, … })` 内联构造。该函数自 `c1e823f` 起即存在且未被使用；cargo 只报 `warning: associated function … is never used`，不影响编译产物与运行。
+2. **提示文案常驻的原因**：`HomeChat.tsx:512` 的 `modelNote` state 只在「下一次切换动作」时被 `setModelNote(null)` 覆盖，渲染在 `:2595` 的输入框下方小字（`text-[10.5px] text-outline`）。因此成功/失败文案会一直挂着，直到用户再操作一次。
+3. **`modelNote` 现有 6 个写入点**：空 Profile 提示（`:725`，仅用户主动触发）、成功文案（`:740`）、失败文案（`:748`、`:770`）、端点未识别（`:1564`，仅用户主动触发）、场景思考档自动应用（`:1603`，**自动触发**）。
+4. **`SettingsPanel.tsx` 有一套独立的同名 `modelNote`**（`:242`、`:745`、`:1438`），与首页互不影响，本轮不动。
+
+#### 实施步骤
+
+**S01（OD-ARCH-096-S01）**
+
+1. Step ID：OD-ARCH-096-S01
+2. 单一动作描述：删除 `AppendReceipt::failure` 死代码，消除该条 `dead_code` 警告。
+3. 输入来源：`desktop/src-tauri/src/worklog.rs:54-72`；`lib.rs` 与 `worklog.rs:259` 的既有回执构造方式。
+4. 输出目标：删除该 `impl` 块；不改 `AppendReceipt` 字段、不改 `worklog_append` 的 JSON 形状、不改失败分支语义。
+5. 验收标准：`cargo test --offline` 仍全绿且**不再出现**该 warning；回执 JSON 字段与现有断言不变（若未来需要统一失败回执口径，另开计划）。
+
+**S02（OD-ARCH-096-S02）**
+
+1. Step ID：OD-ARCH-096-S02
+2. 单一动作描述：新增一个可复用的「右下角方角提示条」组件，把模型切换的结果文案从输入框下方的常驻小字迁进去。
+3. 输入来源：`HomeChat.tsx` 的 `modelNote` 六处写入点；`theme.css` 现有色彩令牌（`--color-primary`、`--color-error`、`surface-container-lowest` 等）；项目既有方角先例 `.turn-rail-tooltip { border-radius: 0 !important; }`（OD-ARCH-083）与 `CategoryPicker.tsx` 的 `createPortal` 定位写法。
+4. 输出目标：
+   - 新文件 `desktop/src/shell/StatusToast.tsx`：`createPortal` 挂 `body`，`position: fixed` 右下角，单行矮平长方形，四角直角、细边框 + 浅投影、品牌色左侧细标识；成功用 `secondary`/`primary` 系、失败用 `error` 系；右侧显式关闭按钮（`aria-label="关闭提示"`，键盘可聚焦）。
+   - 60 秒后自动关闭；新提示替换旧提示并重置 60 秒计时；可手动关闭。`role="status"`（成功）/ `role="alert"`（失败）。
+   - `HomeChat.tsx` 删掉 `:2595` 那行常驻渲染，改为渲染该组件；状态改带级别（`success`/`error`），六处写入点按性质归类。
+   - **自动触发不打扰**：`:1603` 场景思考档自动应用不再弹 60 秒横幅（静默，或仅保留在设置/状态行可查），只有用户主动操作才弹条。
+   - `sendNote`、`starting`、`skillHint` 相邻块不动。
+5. 验收标准：切换成功/失败文案出现在右下角方角长条内、不占输入框位置；60 秒自动消失；点击关闭立即消失；用户不做任何操作时自动触发的场景思考档不再弹条；`npx --no-install tsc --noEmit` 与 `npm run build` 通过。
+
+**S03（OD-ARCH-096-S03）**
+
+1. Step ID：OD-ARCH-096-S03
+2. 单一动作描述：同步更新验证脚本并补齐本轮证据。
+3. 输入来源：`tests/verification/desktop/verify_model_route_095.py:303`（等待 `重启` 文案）、`:320`（`success_note_present` 断言）、`:321`（`note_after` 收集）。
+4. 输出目标：窗口脚本改为断言提示条存在（含关闭按钮）、文案仍在、点击关闭后消失；新增静态断言锁定 60 秒时长与方角样式（`border-radius` 为 0 的类或 CSS）；`evidence/` 增补提示条截图与 AX 快照。
+5. 验收标准：`verify_model_route_095.py` 全绿；自动关闭的长延时以静态断言 + 手动关闭的窗口实测共同佐证，并在 STATUS 中如实写明「60 秒自动关闭未在窗口里等满实测」。
+
+**依赖关系：** S01 独立；S02 → S03。
+
+**影响范围：** `desktop/src-tauri/src/worklog.rs`、`desktop/src/shell/StatusToast.tsx`（新增）、`desktop/src/shell/HomeChat.tsx`、`tests/verification/desktop/verify_model_route_095.py` 与其证据、PLANS/STATUS/REVIEW。
+
+**不做的事：** 不改 `SettingsPanel` 的独立提示；不改模型下拉版式与切换逻辑本身；不重构 `sendNote`/`skillHint`；不改 `runtime/`；不读凭证；不因本轮调整场景思考档默认值；不提交、不推送（等用户指示）。
+
+**预计规模：** 一个小批次，本助手亲自实施。
+
+**设计借鉴（OD-ARCH-035 要求）：** 已用 `screenshots-design-inspiration` 检索 `toast notification bottom right corner` 与 Toast 标签（Demio、Additor 等后台产品截图）。两点借鉴：①提示条压在右下角、不挤占主内容与输入区，单行短句即可读完；②方角 + 细边框 + 轻投影，与工作台的卡片体系同源，不用圆角气泡。
+
+**实施记录（2026-10-27）：** 用户批准执行。S01（删除 `AppendReceipt::failure` 死代码）、S02（新增 `StatusToast.tsx` 并接线 `HomeChat.tsx`）、S03（静态校验脚本 + 窗口证据）已全部完成。范围未扩大：未动 `SettingsPanel` 的同名提示、未改模型切换逻辑、未改 `runtime/`。执行详情见 STATUS.md 顶部，审查结论见 REVIEW.md 顶部。
+
+**阶段决定：OD-ARCH-096 审查通过。**
+
+### OD-ARCH-095：模型切换两处报错的修复与诊断可见性（已验收并推送，2026-10-27；提交 `5dce7d4`）
 
 > 分类：功能修复（缺陷 + 可观测性）。用户报告两个真实运行现象：①登录后对话框底部立即显示「切换失败：请选择要使用的 Profile、provider 与模型。」；②手动切换模型显示「切换失败：DSH 配置转储失败（退出码 1）」。
 > **现状为只读排查，未改任何源码。** 以下根因由本机真实配置复现得出（脚本运行证据），不是推测。

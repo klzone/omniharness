@@ -41,6 +41,9 @@ SCREEN_W, SCREEN_H = 1440, 1000
 # 只存在于 OmniDesk 覆盖文件里的合成 provider（Profile 本身没有它）。
 SYNTH_PROVIDER = "od095-only"
 SYNTH_MODEL = "od095-synthetic-model"
+# 成功提示条的稳定片段：文案是「已切到 <provider> / <model>，端点 …，引擎已按新路由重启。」
+# 这里只认「已切到」，避免把失败文案里的「重启」误判成成功。
+TOAST_MARK = "已切到 " + SYNTH_PROVIDER
 # 第二个合成 provider：写覆盖文件时必须一并保留（补丁层是浅合并）。
 DECOY_PROVIDER = "od095-decoy"
 DECOY_MODEL = "od095-decoy-model"
@@ -294,18 +297,85 @@ def main() -> int:
         deadline = time.monotonic() + 180
         after: list = []
         changed = False
+        # OD-ARCH-096 的取证口径：
+        #   成功提示只在右下角提示条里停留 60 秒。旧写法轮询满 180 秒才抓图/抓树，
+        #   拍到的永远是「提示条已自动关闭」之后的样子，看起来像它从未渲染。
+        #   现在改成：覆盖文件一被改写就立刻抓一张图与一份无障碍树（02a-*），
+        #   再继续轮询到 60 秒内看到文字或出现关闭按钮为止；超时后的 02-* 保留为对照。
+        samples: list[dict] = []
+        started = time.monotonic()
+        toast_nodes: list = []
+        toast_seen_t: float | None = None
+        toast_shot_t: float | None = None
         while time.monotonic() < deadline:
-            time.sleep(3.0)
+            time.sleep(0.5)
             current = overlay.read_text(encoding="utf-8")
+            changed = current != overlay_before and SYNTH_MODEL in current
             after = app_nodes(pid)
             text = all_text(after)
-            changed = current != overlay_before and SYNTH_MODEL in current
-            if changed and "重启" in text:
+            has_toast = TOAST_MARK in text
+            samples.append(
+                {
+                    "t": round(time.monotonic() - started, 1),
+                    "overlay_changed": changed,
+                    "has_toast_text": has_toast,
+                    "has_close_button": "关闭提示" in text,
+                    "nodes": len(after),
+                }
+            )
+            if changed and toast_shot_t is None:
+                # 覆盖文件已改写：留一点时间让这次渲染落地，然后立刻取证。
+                # 提示条 60 秒后自动消失，所以这张图必须早于那一刻。
+                time.sleep(1.5)
+                after = app_nodes(pid)
+                text = all_text(after)
+                xs.shot(EVID / "02a-toast.png")
+                dump(after, EVID / "02a-toast-ax.json")
+                toast_shot_t = round(time.monotonic() - started, 1)
+                has_toast = TOAST_MARK in text
+            if has_toast:
+                toast_seen_t = round(time.monotonic() - started, 1)
+                toast_nodes = after
                 break
+            if toast_shot_t is not None and time.monotonic() - started > 75:
+                # 60 秒上限已过还没看到：把最后一帧留作失败证据，不再空等 180 秒。
+                toast_nodes = after
+                break
+        facts["cases"]["select_poll_samples"] = samples[:24]
+        facts["toast_seen_t"] = toast_seen_t
+        facts["toast_shot_t"] = toast_shot_t
         xs.shot(EVID / "02-after-select.png")
         dump(after, EVID / "02-after-select-ax.json")
         after_text = all_text(after)
         overlay_after = overlay.read_text(encoding="utf-8")
+
+        # OD-ARCH-096：切换结果只出现在右下角提示条里，判定必须用提示条那一刻的树，
+        # 而不是轮询末尾（那时它可能已自动关闭）。
+        toast_texts = [blob(n) for n in toast_nodes if TOAST_MARK in blob(n)]
+        toast_close_button = None
+        for node in toast_nodes:
+            if "关闭提示" in blob(node) and node.role in ("push button", "button", "toggle button"):
+                toast_close_button = node
+                break
+        toast_rect = None
+        for node in toast_nodes:
+            if TOAST_MARK not in blob(node):
+                continue
+            try:
+                from gi.repository import Atspi
+
+                ext = node.accessible.get_component().get_extents(Atspi.CoordType.SCREEN)
+                toast_rect = {
+                    "x": ext.x,
+                    "y": ext.y,
+                    "width": ext.width,
+                    "height": ext.height,
+                    "right_gap": SCREEN_W - (ext.x + ext.width),
+                    "bottom_gap": SCREEN_H - (ext.y + ext.height),
+                }
+            except Exception:
+                toast_rect = None
+            break
         facts["cases"]["select_from_catalog"] = {
             "overlay_rewritten": overlay_after != overlay_before,
             "overlay_contains_provider": SYNTH_PROVIDER in overlay_after,
@@ -317,15 +387,102 @@ def main() -> int:
             "provider_used_as_profile": "Profile「" + SYNTH_PROVIDER + "」在 DSH 里不存在" in after_text,
             "dump_failure_note": "DSH 配置转储失败" in after_text,
             "profile_missing_note": "在 DSH 里不存在" in after_text,
-            "success_note_present": ("已切到" in after_text) or ("重启" in after_text),
-            "note_after": [
-                blob(n) for n in after if "切换" in blob(n) or "已切到" in blob(n)
-            ][:4],
+            # 提示条文案本身就以「引擎已按新路由重启。」结尾，所以这个短语允许出现，
+            # 但必须只出现在带「已切到」的提示条节点里；若还有独立的常驻小字，
+            # 它会有自己的节点而不带「已切到」。
+            "inline_note_only_in_toast": all(
+                "已切到" in blob(n)
+                for n in after
+                if "引擎已按新路由重启" in blob(n)
+            ),
+            "toast_text_present": len(toast_texts) > 0,
+            "toast_text_head": (toast_texts[0][:80] if toast_texts else ""),
+            "toast_close_button_present": toast_close_button is not None,
+            "toast_rect": toast_rect,
+            "toast_hugging_bottom_right": bool(
+                toast_rect
+                and toast_rect["right_gap"] <= 48
+                and toast_rect["bottom_gap"] <= 48
+            ),
+            "toast_flat": bool(
+                toast_rect and toast_rect["width"] > toast_rect["height"] and toast_rect["height"] <= 120
+            ),
         }
         facts["cases"]["select_from_catalog"]["overlay_after_tail"] = overlay_after[-800:]
 
+        # --- S03 手动关闭：点关闭后文字与按钮一起消失 ---
+        if toast_close_button is not None:
+            ax.invoke(toast_close_button)
+            time.sleep(1.5)
+            closed = app_nodes(pid)
+            closed_text = all_text(closed)
+            xs.shot(EVID / "03-toast-dismissed.png")
+            dump(closed, EVID / "03-toast-dismissed-ax.json")
+            facts["cases"]["toast_dismiss"] = {
+                "no_success_text": TOAST_MARK not in closed_text,
+                "close_button_gone": not any("关闭提示" in blob(n) for n in closed),
+            }
+        else:
+            facts["cases"]["toast_dismiss"] = {
+                "no_success_text": False,
+                "close_button_gone": False,
+            }
+
+        # --- 60 秒自动关闭：再切一次同一模型，新的提示条后不碰它，等它自己走 ---
+        auto: dict = {"raised": False, "gone_after_s": None, "auto_dismissed": False}
+        picker2 = find(app_nodes(pid), "模型：")
+        if picker2 is not None:
+            ax.invoke(picker2)
+            time.sleep(2.0)
+            item2 = None
+            for node in app_nodes(pid):
+                if (
+                    node.role in ("push button", "button", "toggle button", "list item")
+                    and SYNTH_MODEL in blob(node)
+                    and DECOY_MODEL not in blob(node)
+                    # 排除「模型：…▼」这个按钮本身：上一轮实测里它排在新列表最前，
+                    # 被当成下拉项又点了一次，等于把下拉收起，提示条根本没机会出现。
+                    and not (node.name or "").startswith("模型：")
+                ):
+                    item2 = node
+                    break
+            if item2 is not None:
+                ax.invoke(item2)
+                raised_at: float | None = None
+                t0 = time.monotonic()
+                while time.monotonic() - t0 < 95:
+                    time.sleep(2.0)
+                    present = TOAST_MARK in all_text(app_nodes(pid))
+                    if present and raised_at is None:
+                        raised_at = time.monotonic()
+                        auto["raised"] = True
+                    elif raised_at is not None and not present:
+                        auto["gone_after_s"] = round(time.monotonic() - raised_at, 1)
+                        auto["auto_dismissed"] = True
+                        break
+                xs.shot(EVID / "04-after-auto-dismiss.png")
+        facts["cases"]["toast_auto_dismiss"] = auto
+
         # --- S04 脚本层：不存在的 Profile 给出可读原因 ---
         facts["cases"]["failure_message"] = script_failure_probe(repo, session)
+
+        # --- S03 提示条可手动关闭：点关闭后文字消失 ---
+        if toast_close_button is not None:
+            ax.invoke(toast_close_button)
+            time.sleep(1.5)
+            closed = app_nodes(pid)
+            closed_text = all_text(closed)
+            xs.shot(EVID / "03-toast-dismissed.png")
+            dump(closed, EVID / "03-toast-dismissed-ax.json")
+            facts["cases"]["toast_dismiss"] = {
+                "no_success_text": "引擎已按新路由重启" not in closed_text,
+                "close_button_gone": not any("关闭提示" in blob(n) for n in closed),
+            }
+        else:
+            facts["cases"]["toast_dismiss"] = {
+                "no_success_text": False,
+                "close_button_gone": False,
+            }
 
         ok = (
             not facts["cases"]["cold_start"]["failure_note_present"]
@@ -338,6 +495,16 @@ def main() -> int:
             and not facts["cases"]["select_from_catalog"]["dump_failure_note"]
             and not facts["cases"]["select_from_catalog"]["provider_used_as_profile"]
             and facts["cases"]["failure_message"]["has_reason_not_just_exit_code"]
+            and facts["cases"]["select_from_catalog"]["toast_text_present"]
+            and facts["cases"]["select_from_catalog"]["toast_close_button_present"]
+            and facts["cases"]["select_from_catalog"]["toast_hugging_bottom_right"]
+            and facts["cases"]["select_from_catalog"]["toast_flat"]
+            and facts["cases"]["select_from_catalog"]["inline_note_only_in_toast"]
+            and facts["cases"]["toast_dismiss"]["no_success_text"]
+            and facts["cases"]["toast_dismiss"]["close_button_gone"]
+            # 60 秒自动关闭：窗口实测关掉的时间要在 55–75 秒之间（采样 2 秒一次）。
+            and facts["cases"]["toast_auto_dismiss"]["auto_dismissed"]
+            and 50 <= (facts["cases"]["toast_auto_dismiss"]["gone_after_s"] or 0) <= 80
         )
         facts["passed"] = bool(ok)
         return 0 if ok else 1
