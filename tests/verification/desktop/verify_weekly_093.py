@@ -178,19 +178,19 @@ def main() -> int:
           and scene_tsx.count("compactToolbar") >= 1,
           "工作记录页用精简工具栏")
     check("artifact_range_hidden_in_compact",
-          "compactToolbar ? null : (" in art_tsx
-          and art_tsx.count("compactToolbar ? null : (") == 2,
-          "时间范围与含子目录勾选都不显示")
+          "compactToolbar ? null : (" in art_tsx,
+          "精简模式隐藏时间范围")
     check("artifact_fixed_recent_month",
           "30 * 24 * 60 * 60" in art_tsx, "固定近 30 天")
-    check("artifact_subdirs_forced_for_weekly",
-          'scene === "weekly" ? true : readSubdirsPref(scene)' in scene_tsx,
-          "工作记录页默认并固定包含子目录")
+    check("artifact_subdirs_toggle_restored",
+          'checked={includeSubdirs}' in art_tsx and 'onToggleSubdirs(e.target.checked)' in art_tsx
+          and 'readSubdirsPref(scene, scene === "weekly")' in scene_tsx,
+          "工作记录页恢复含子目录开关且默认打开")
     check("artifact_search_kept_in_compact",
           'placeholder="搜索成果或归档"' in art_tsx, "搜索框保留")
-    check("artifact_compact_window_stated",
-          "当前只列近 30 天" in art_tsx and "compactToolbar ? `；当前只列近 30 天" in art_tsx,
-          "精简模式把固定窗口写在计数行，用户看不到时间筛选也知道范围")
+    check("artifact_compact_window_not_stated",
+          "本场景成果共" not in art_tsx and "标准 Markdown，可直接在 Obsidian" not in art_tsx,
+          "移除右栏说明性计数与 Obsidian 提示")
     check("band_no_vertical_dividers",
           "w-px shrink-0 self-stretch bg-surface-variant/70" not in weekly_branch,
           "独立卡片不再用竖分隔线")
@@ -208,8 +208,7 @@ def main() -> int:
     check("quadrant_component_exists", quad_tsx.count("itemsIn(classified, q.key)") == 1, "")
     for title in ("先做", "排期", "回看", "可缓"):
         check("quadrant_title_" + title, f'title: "{title}"' in (SRC / "weeklyQuadrants.ts").read_text(encoding="utf-8"), "")
-    check("quadrant_rule_written_on_screen", "口径：" in quad_tsx and "不调用模型" in quad_tsx, "")
-    check("quadrant_unclassified_shown", "待归类" in quad_tsx, "")
+    check("quadrant_rule_removed_from_screen", "口径：" not in quad_tsx and "不调用模型" not in quad_tsx, "")
     check("quadrant_preview_single_line",
           "truncate opacity-85" in quad_tsx and "title={i.text}" in quad_tsx,
           "单行截断，悬浮可读全文")
@@ -248,7 +247,8 @@ def main() -> int:
           "max-h-[70vh] max-lg:max-h-none" in tl_tsx,
           "single column page does not nest a scrolling timeline")
     check("history_heading_chinese", "历史对话" in scene_tsx, "")
-    check("threads_actions_kept", "去对话 · 新开" in scene_tsx and "改挂到别的场景" in scene_tsx, "")
+    check("threads_actions_kept", "去对话 · 新开" in scene_tsx and "scene-category-picker" in (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8"), "")
+    check("history_category_picker_styled", "<CategoryPicker" in scene_tsx and "scene-category-picker" in (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8"), "")
 
     # ---- S04 中栏两行截断 + 右栏编号卡 ----
     check("entry_line_clamp_two",
@@ -279,6 +279,18 @@ def main() -> int:
           "周报与周记录都进同一列表")
     check("archive_error_not_silent",
           "archiveError" in scene_tsx and "archiveError" in art_tsx, "读取失败如实显示")
+
+    # ---- S08 展示层清理与可读性（OD-ARCH-095） ----
+    check("pending_write_modal",
+          'role="dialog"' in strip_tsx and 'w-[80vw]' in strip_tsx and 'aria-modal="true"' in strip_tsx,
+          "待确认写入改为页面内 80% 宽弹窗")
+    check("artifact_toolbar_two_rows",
+          "placeholder=\"搜索成果或归档\"" in art_tsx and "items-center justify-end gap-1.5 pt-2" in art_tsx
+          and "name=\"search\"" in art_tsx,
+          "搜索行与视图/目录控制行分开")
+    check("weekly_small_text_floor",
+          "text-[12px]" in strip_tsx and "text-[12px]" in quad_tsx and "text-[12px]" in tl_tsx,
+          "周报页主要小字至少 12px")
 
     # ---- S07 留白与字号（用户二次反馈）----
     check("wider_column_gaps", "gap-4 lg:gap-5" in scene_tsx, "栏间距放大")

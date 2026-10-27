@@ -10,7 +10,7 @@
 // 待确认写入平时是 0 条（复盘移除后没有别的写入入口），因此**有记录才出现**，
 // 不再常驻占一整格。
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
 import type { SceneDef } from "../scenes";
 import type { SceneOverview } from "../types";
@@ -211,14 +211,14 @@ function BandMetric({
             </div>
             {/* 副标题可缺省；序号固定保留，缺副标题时不渲染空文本行。 */}
             <div className="mt-1 flex items-baseline gap-1.5 min-w-0">
-              <span className="mono shrink-0 text-[8.5px] tracking-[0.12em] text-on-surface-variant/40">
+              <span className="mono shrink-0 text-[12px] tracking-[0.12em] text-on-surface-variant/40">
                 {index}
               </span>
               {subtitle ? (
                 <span
                   title={subtitle}
                   className={
-                    "mono text-[8.5px] uppercase tracking-[0.12em] truncate " + skin.subtitle
+                    "mono text-[12px] uppercase tracking-[0.12em] truncate " + skin.subtitle
                   }
                 >
                   {subtitle}
@@ -239,13 +239,13 @@ function BandMetric({
             {value}
           </span>
           {unit ? (
-            <span className="text-[10px] text-on-surface-variant/70">{unit}</span>
+            <span className="text-[12px] text-on-surface-variant/70">{unit}</span>
           ) : null}
         </div>
       </div>
       {/* 底行：说明贴底、动作靠右；进度轨在它下面，缺数据时整条不出现、不留空槽。 */}
       <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0">
-        <span className="text-[10.5px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
+        <span className="text-[12px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
           {hint}
         </span>
         {action ? <span className="ml-auto shrink-0">{action}</span> : null}
@@ -404,6 +404,15 @@ export function SceneStatusStrip({
   const expired = overview?.pending_expired ?? 0;
   const waiting = pending + expired;
 
+  useEffect(() => {
+    if (!showPending) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowPending(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showPending]);
+
   const grid =
     "mb-2 bg-white/80 border border-white/90 rounded-2xl " +
     "shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] py-2.5 " +
@@ -497,7 +506,7 @@ export function SceneStatusStrip({
               action={
                 onRequestReport ? (
                   <button
-                    className="text-[10px] text-primary hover:underline"
+                    className="text-[12px] text-primary hover:underline"
                     onClick={onRequestReport}
                     title="回首页对话，带上本周记录起草周报"
                   >
@@ -621,42 +630,68 @@ export function SceneStatusStrip({
           </>
         )}
 
-        {/* 待确认写入：没有记录就整格不出现，避免一个永远为 0 的常驻模块。 */}
-        {waiting > 0 ? (
-          <div className={divider + " flex-1 min-w-0"}>
-            <button
-              className="w-full text-left px-3"
-              onClick={() => setShowPending((v) => !v)}
-              aria-expanded={showPending}
-              title="模型或定时任务想写成果时，先登记在这里等你决定"
-            >
-              <div className="flex items-baseline gap-1">
-                <span className="text-[10px] uppercase tracking-wide text-outline">待确认写入</span>
-                <span className="ml-auto shrink-0 text-[10px] text-outline">
-                  {showPending ? "收起" : "点开"}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <span
-                  className={
-                    "text-[15px] font-semibold leading-tight " +
-                    (expired > 0 ? "text-error" : "text-on-surface")
-                  }
-                >
-                  {waiting}
-                </span>
-                <span className="text-[10.5px] text-outline">条</span>
-              </div>
-              <div className="text-[10px] text-outline truncate">
-                {expired > 0 ? "其中 " + expired + " 条已过期" : "等你决定"}
-              </div>
-            </button>
-          </div>
-        ) : null}
       </div>
+
+      {waiting > 0 ? (
+        <div className="max-w-6xl mx-auto md:-translate-x-8 w-full -mt-1 mb-3">
+          <button
+            className="w-full rounded-xl border border-primary/15 bg-white/80 px-3.5 py-2.5 text-left shadow-[0_4px_18px_-12px_rgba(53,37,205,0.35)] hover:border-primary/30 hover:bg-primary/5 transition"
+            onClick={() => setShowPending(true)}
+            aria-expanded={showPending}
+            aria-haspopup="dialog"
+            title="模型或定时任务想写成果时，先登记在这里等你决定"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Icon name="shield-check" className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-semibold text-on-surface">待确认写入</span>
+                <span className="block text-[12px] text-on-surface-variant truncate">
+                  {waiting} 条等待决定{expired > 0 ? ` · ${expired} 条已过期` : ""}
+                </span>
+              </span>
+              <span className="shrink-0 text-[12px] font-medium text-primary">查看</span>
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       {showPending && waiting > 0 ? (
-        <div className="mb-2">
-          <PendingWritePanel refreshKey={refreshKey} />
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-on-surface/25 px-4 py-6 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowPending(false);
+          }}
+        >
+          <section
+            className="flex max-h-[80vh] w-[80vw] max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-surface-container-lowest shadow-[0_24px_80px_-28px_rgba(15,23,42,0.45)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pending-write-dialog-title"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-surface-variant/25 px-5 py-4">
+              <div className="min-w-0">
+                <h2 id="pending-write-dialog-title" className="text-[17px] font-semibold tracking-tight text-on-surface">
+                  待确认写入
+                </h2>
+                <p className="mt-1 text-[12px] text-on-surface-variant">
+                  逐条确认后才会写入成果目录，已过期记录只能放弃。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-full bg-surface-container px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-high"
+                onClick={() => setShowPending(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto px-5 py-4">
+              <PendingWritePanel refreshKey={refreshKey} />
+            </div>
+          </section>
         </div>
       ) : null}
     </div>

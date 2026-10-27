@@ -76,7 +76,7 @@
       "detail": "date >= 12px"
     },
     {
-      "name": "weekday_font_11_5",
+      "name": "weekday_font_12",
       "ok": true,
       "detail": ""
     },
@@ -106,14 +106,14 @@
       "detail": ""
     },
     {
-      "name": "rule_reminder_kept",
+      "name": "rule_reminder_ui_removed",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "bar_hides_when_empty",
+      "name": "heartbeat_bridge_has_no_visual_module",
       "ok": true,
-      "detail": "no empty placeholder row"
+      "detail": "heartbeat remains non-visual"
     },
     {
       "name": "backend_review_contract_kept",

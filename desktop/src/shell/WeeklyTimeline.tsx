@@ -86,14 +86,14 @@ export function WeeklyTimeline({
           本周记录
         </h2>
         {subtitle ? (
-          <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
+          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
         ) : null}
-        <span className="mono text-[10.5px] text-outline">
+        <span className="mono text-[12px] text-outline">
           {week}
           {empty ? "" : filtered ? ` · ${filteredCount}/${parsed.entryCount} 条` : ` · ${parsed.entryCount} 条`}
         </span>
         <button
-          className="ml-auto text-[11px] text-outline hover:text-primary hover:underline shrink-0"
+          className="ml-auto text-[12px] text-outline hover:text-primary hover:underline shrink-0"
           onClick={onOpenSource}
           disabled={empty && !content}
           title="在工作记录文件里看原文"
@@ -110,11 +110,11 @@ export function WeeklyTimeline({
 
       {filtered && filterLabel ? (
         <div className="pb-3 -mt-1 flex items-center gap-2">
-          <span className="px-2 py-0.5 rounded-full text-[10.5px] bg-primary-fixed text-on-primary-fixed-variant">
+          <span className="px-2 py-0.5 rounded-full text-[12px] bg-primary-fixed text-on-primary-fixed-variant">
             只看 {filterLabel}
           </span>
           {onClearFilter ? (
-            <button className="text-[10px] text-outline hover:text-primary" onClick={onClearFilter}>
+            <button className="text-[12px] text-outline hover:text-primary" onClick={onClearFilter}>
               取消筛选
             </button>
           ) : null}
@@ -135,7 +135,7 @@ export function WeeklyTimeline({
             本周还没有记录。在首页对话框直接写下做了什么，会自动落到{week}这一周。
           </p>
           <button
-            className="mt-2 px-2.5 py-1 text-[11px] bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
+            className="mt-2 px-2.5 py-1 text-[12px] bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
             onClick={onRequestReport}
           >
             去写一条记录
@@ -177,7 +177,7 @@ export function WeeklyTimeline({
                   >
                     {shortDate(day.date)}
                   </span>
-                  <span className={"text-[11.5px] " + (isToday ? "text-primary" : "text-outline")}>
+                  <span className={"text-[12px] " + (isToday ? "text-primary" : "text-outline")}>
                     {weekdayLabel(day.date)}
                     {isToday ? " · 今天" : ""}
                     {day.outOfWeek ? " · 不在本周" : ""}
@@ -208,14 +208,14 @@ export function WeeklyTimeline({
                         </p>
                         {entry.destination ? (
                           <span
-                            className="shrink-0 mt-[3px] px-1.5 py-[1px] rounded-full text-[10.5px] text-outline border border-outline-variant/50"
+                            className="shrink-0 mt-[3px] px-1.5 py-[1px] rounded-full text-[12px] text-outline border border-outline-variant/50"
                             title="这条记录的归处（写在记录文件里）"
                           >
                             {entry.destination}
                           </span>
                         ) : null}
                         <button
-                          className="shrink-0 mt-[3px] text-[10.5px] text-outline opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary"
+                            className="shrink-0 mt-[3px] text-[12px] text-outline opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary"
                           onClick={onRequestReport}
                           title="回首页，把记录整理成周报"
                         >
@@ -244,8 +244,8 @@ export function WeeklyTimeline({
 
       {parsed.preamble.length > 0 ? (
         <div className="mt-2 border-t border-surface-variant/25 pt-1.5">
-          <p className="text-[11px] text-outline pb-1">文件里这些内容不在任何日期下，原样显示：</p>
-          <pre className="mono text-[11.5px] text-outline whitespace-pre-wrap leading-relaxed">
+          <p className="text-[12px] text-outline pb-1">文件里这些内容不在任何日期下，原样显示：</p>
+          <pre className="mono text-[12px] text-outline whitespace-pre-wrap leading-relaxed">
             {parsed.preamble.join("\n")}
           </pre>
         </div>

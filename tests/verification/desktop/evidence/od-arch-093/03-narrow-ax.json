@@ -305,11 +305,6 @@
     "text": ""
   },
   {
-    "role": "section",
-    "name": "",
-    "text": ""
-  },
-  {
     "role": "landmark",
     "name": "历史对话",
     "text": ""
@@ -575,6 +570,11 @@
     "text": ""
   },
   {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
     "role": "entry",
     "name": "按文件名搜索成果与归档",
     "text": ""
@@ -590,13 +590,23 @@
     "text": ""
   },
   {
-    "role": "paragraph",
+    "role": "label",
+    "name": "打开后连子目录里的成果一起列；关闭只看最外层",
+    "text": ""
+  },
+  {
+    "role": "check box",
+    "name": "含子目录",
+    "text": ""
+  },
+  {
+    "role": "section",
     "name": "",
     "text": ""
   },
   {
-    "role": "paragraph",
-    "name": "成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览",
+    "role": "section",
+    "name": "",
     "text": ""
   },
   {

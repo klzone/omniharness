@@ -88,7 +88,7 @@
     {
       "name": "artifact_range_hidden_in_compact",
       "ok": true,
-      "detail": "时间范围与含子目录勾选都不显示"
+      "detail": "精简模式隐藏时间范围"
     },
     {
       "name": "artifact_fixed_recent_month",
@@ -96,9 +96,9 @@
       "detail": "固定近 30 天"
     },
     {
-      "name": "artifact_subdirs_forced_for_weekly",
+      "name": "artifact_subdirs_toggle_restored",
       "ok": true,
-      "detail": "工作记录页默认并固定包含子目录"
+      "detail": "工作记录页恢复含子目录开关且默认打开"
     },
     {
       "name": "artifact_search_kept_in_compact",
@@ -106,9 +106,9 @@
       "detail": "搜索框保留"
     },
     {
-      "name": "artifact_compact_window_stated",
+      "name": "artifact_compact_window_not_stated",
       "ok": true,
-      "detail": "精简模式把固定窗口写在计数行，用户看不到时间筛选也知道范围"
+      "detail": "移除右栏说明性计数与 Obsidian 提示"
     },
     {
       "name": "band_no_vertical_dividers",
@@ -156,12 +156,7 @@
       "detail": ""
     },
     {
-      "name": "quadrant_rule_written_on_screen",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "quadrant_unclassified_shown",
+      "name": "quadrant_rule_removed_from_screen",
       "ok": true,
       "detail": ""
     },
@@ -251,6 +246,11 @@
       "detail": ""
     },
     {
+      "name": "history_category_picker_styled",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "name": "entry_line_clamp_two",
       "ok": true,
       "detail": "全文仍可读"
@@ -309,6 +309,21 @@
       "name": "archive_error_not_silent",
       "ok": true,
       "detail": "读取失败如实显示"
+    },
+    {
+      "name": "pending_write_modal",
+      "ok": true,
+      "detail": "待确认写入改为页面内 80% 宽弹窗"
+    },
+    {
+      "name": "artifact_toolbar_two_rows",
+      "ok": true,
+      "detail": "搜索行与视图/目录控制行分开"
+    },
+    {
+      "name": "weekly_small_text_floor",
+      "ok": true,
+      "detail": "周报页主要小字至少 12px"
     },
     {
       "name": "wider_column_gaps",

@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
+import { Icon } from "../components/Icon";
 import type { OfflineArtifactEntry } from "../types";
 
 const PAGE_SIZE = 24;
@@ -136,8 +137,8 @@ export function ArtifactExplorer({
   includeSubdirs: boolean;
   onToggleSubdirs: (next: boolean) => void;
   /**
-   * 精简工具栏（OD-ARCH-093 四次修订，仅工作记录页的右栏用）：不显示时间范围筛选与
-   * 「含子目录」勾选，固定看最近 30 天、固定包含子目录，只留搜索与卡片/列表切换。
+   * 精简工具栏（OD-ARCH-095，仅工作记录页的右栏用）：不显示时间范围筛选，固定看最近
+   * 30 天；搜索、卡片/列表和「含子目录」仍保留，避免把目录范围藏成不可见状态。
    */
   compactToolbar?: boolean;
   /**
@@ -212,7 +213,6 @@ export function ArtifactExplorer({
   const pageCount = Math.max(1, Math.ceil(capped.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
   const visible = capped.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
-  const archiveCount = archiveEntries.length;
   const currentKey = visible.map((v) => v.key).join("|");
 
   // 标题/字数只给当前页的条目读；已经读过的条目不再重复读。
@@ -270,7 +270,7 @@ export function ArtifactExplorer({
   }, [query, range]);
 
   const chip = (active: boolean) =>
-    "px-3 py-1 rounded-full text-[11px] leading-none transition " +
+    "px-3 py-1.5 rounded-full text-[12px] leading-none transition " +
     (active
       ? accent === "secondary"
         ? "bg-secondary text-on-secondary shadow-[0_1px_2px_rgba(0,104,122,0.25)]"
@@ -300,16 +300,37 @@ export function ArtifactExplorer({
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="flex flex-wrap items-center gap-2 pb-3.5 border-b border-surface-variant/25">
-        <input
-          className={"px-3 py-1.5 rounded-full border border-surface-variant/50 bg-surface-container-lowest/80 text-[12px] w-[190px] placeholder:text-outline/80 focus:outline-none focus:ring-2 " + focusRing}
-          placeholder="搜索成果或归档"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="按文件名搜索成果与归档"
-        />
-        {compactToolbar ? null : (
-          <>
+      <div className="pb-3.5 border-b border-surface-variant/25">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <input
+              className={"w-full rounded-xl border border-surface-variant/50 bg-surface-container-lowest/80 px-3 py-2 pr-10 text-[12px] placeholder:text-outline/80 focus:outline-none focus:ring-2 " + focusRing}
+              placeholder="搜索成果或归档"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="按文件名搜索成果与归档"
+            />
+            <Icon
+              name="search"
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-outline"
+            />
+          </div>
+          {compactToolbar ? null : (
+            <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+              <button className={chip(range === "all")} onClick={() => setRange("all")}>
+                全部
+              </button>
+              <button className={chip(range === "week")} onClick={() => setRange("week")}>
+                本周
+              </button>
+              <button className={chip(range === "month")} onClick={() => setRange("month")}>
+                本月
+              </button>
+            </div>
+          )}
+        </div>
+        {!compactToolbar ? (
+          <div className="flex items-center justify-end gap-1.5 pt-2 sm:hidden">
             <button className={chip(range === "all")} onClick={() => setRange("all")}>
               全部
             </button>
@@ -319,48 +340,39 @@ export function ArtifactExplorer({
             <button className={chip(range === "month")} onClick={() => setRange("month")}>
               本月
             </button>
-          </>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
+          </div>
+        ) : null}
+        <div className="flex items-center justify-end gap-1.5 pt-2">
           <button className={chip(view === "cards")} onClick={() => setView("cards")}>
             卡片
           </button>
           <button className={chip(view === "list")} onClick={() => setView("list")}>
             列表
           </button>
-          {compactToolbar ? null : (
-            <label
-              className="ml-2 flex items-center gap-1.5 text-[11px] text-on-surface-variant cursor-pointer select-none"
-              title="打开后连子目录里的成果一起列；关闭只看最外层"
-            >
-              <input
-                type="checkbox"
-                className="accent-current"
-                checked={includeSubdirs}
-                onChange={(e) => onToggleSubdirs(e.target.checked)}
-              />
-              含子目录
-            </label>
-          )}
+          <label
+            className="ml-1 flex cursor-pointer select-none items-center gap-1.5 text-[12px] text-on-surface-variant"
+            title="打开后连子目录里的成果一起列；关闭只看最外层"
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-current"
+              checked={includeSubdirs}
+              onChange={(e) => onToggleSubdirs(e.target.checked)}
+            />
+            含子目录
+          </label>
         </div>
       </div>
 
       <div className="pt-3 pb-3 space-y-1">
-        <p className="text-[11px] text-outline leading-relaxed">
-          本场景成果共 {files.filter((f) => !f.is_dir).length} 份
-          {archiveCount > 0 ? `，归档 ${archiveCount} 条已并入同一列表` : ""}
-          {/* 精简模式的固定窗口要说出来：用户看不到时间筛选，就得知道列表只覆盖近 30 天。 */}
-          {compactToolbar ? `；当前只列近 30 天（共 ${filtered.length} 条）` : ""}
-          {filtered.length > HARD_CAP ? `；只显示前 ${HARD_CAP} 条` : ""}。
-        </p>
-        <p className="text-[10.5px] text-outline/80 leading-relaxed" title="成果是标准 Markdown，可在 Obsidian 里把设置页显示的目录「打开文件夹作为 vault」直接浏览">
-          标准 Markdown，可直接在 Obsidian 打开所在目录浏览。
-        </p>
+        {filtered.length > HARD_CAP ? (
+          <p className="text-[12px] text-outline leading-relaxed">结果较多，仅显示前 {HARD_CAP} 条。</p>
+        ) : null}
         {archiveError ? (
-          <p className="text-[11px] text-error leading-relaxed">读取历史归档失败：{archiveError}</p>
+          <p className="text-[12px] text-error leading-relaxed">读取历史归档失败：{archiveError}</p>
         ) : null}
         {archiveSkipped > 0 ? (
-          <p className="text-[10.5px] text-outline/80 leading-relaxed">
+          <p className="text-[12px] text-outline/80 leading-relaxed">
             另有 {archiveSkipped} 个归档文件名不符合约定，未列入、也未改动。
           </p>
         ) : null}
@@ -368,7 +380,7 @@ export function ArtifactExplorer({
 
       <div className="min-h-0 overflow-y-auto flex-1 pb-1">
         {filtered.length === 0 ? (
-          <p className="text-[11.5px] text-outline leading-relaxed pt-1">{emptyHint}</p>
+          <p className="text-[12px] text-outline leading-relaxed pt-1">{emptyHint}</p>
         ) : view === "cards" ? (
           <div className="flex flex-col gap-2.5">
             {visible.map((r, i) => {
@@ -391,11 +403,11 @@ export function ArtifactExplorer({
                         <span className="text-[13.5px] font-medium text-on-surface truncate">
                           {r.archive.week} {r.archive.kindLabel}
                         </span>
-                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[10px] text-on-surface-variant bg-surface-container-high">
+                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[12px] text-on-surface-variant bg-surface-container-high">
                           归档
                         </span>
                       </span>
-                      <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-outline">
+                      <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
                         <span className="truncate max-w-full">{r.file_name}</span>
                         <span>· {dateText(r.modified_at)}</span>
                       </span>
@@ -427,13 +439,13 @@ export function ArtifactExplorer({
                     <span className="block text-[13.5px] font-medium text-on-surface line-clamp-2 leading-[1.55] break-words">
                       {m ? m.title ?? r.file_name : "正在读取标题…"}
                     </span>
-                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-outline">
+                    <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
                       <span className="truncate max-w-full">{r.file_name}</span>
                       <span>· {dateText(r.modified_at)}</span>
                       {m?.chars != null ? <span>· {m.chars} 字</span> : null}
                       {showTypeLabels ? (
                         <span
-                          className="px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10"
+                          className="px-1.5 py-[1px] rounded-full text-[12px] text-secondary bg-secondary/10"
                           data-artifact-type={typeLabel(r.artifact_type ?? m?.type ?? null)}
                         >
                           {typeLabel(r.artifact_type ?? m?.type ?? null)}
@@ -464,7 +476,7 @@ export function ArtifactExplorer({
               return (
                 <li key={r.key} className="flex items-center gap-3 py-2.5 first:pt-0 min-w-0">
                   {r.kind === "archive" ? (
-                    <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[10px] text-on-surface-variant bg-surface-container-high">
+                    <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[12px] text-on-surface-variant bg-surface-container-high">
                       归档
                     </span>
                   ) : null}
@@ -476,24 +488,24 @@ export function ArtifactExplorer({
                     <span className="block text-[12.5px] text-on-surface truncate group-hover:text-primary">
                       {primary}
                     </span>
-                    <span className="mt-0.5 block mono text-[10px] text-outline truncate">
+                    <span className="mt-0.5 block mono text-[12px] text-outline truncate">
                       {r.file_name}
                     </span>
                   </button>
-                  <span className="text-[10.5px] text-outline shrink-0 whitespace-nowrap">
+                  <span className="text-[12px] text-outline shrink-0 whitespace-nowrap">
                     {dateText(r.modified_at)}
                   </span>
                   {r.kind === "artifact" ? (
                     <>
                       {showTypeLabels ? (
-                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10">
+                        <span className="shrink-0 px-1.5 py-[1px] rounded-full text-[12px] text-secondary bg-secondary/10">
                           {typeLabel(r.artifact_type ?? m?.type ?? null)}
                         </span>
                       ) : null}
                       {stale ? (
-                        <span className="text-[10px] text-amber-700 shrink-0 whitespace-nowrap">90 天未动</span>
+                        <span className="text-[12px] text-amber-700 shrink-0 whitespace-nowrap">90 天未动</span>
                       ) : null}
-                      <span className="text-[10.5px] text-outline shrink-0 whitespace-nowrap">
+                      <span className="text-[12px] text-outline shrink-0 whitespace-nowrap">
                         {r.bytes} 字节
                       </span>
                     </>
@@ -507,17 +519,17 @@ export function ArtifactExplorer({
         {pageCount > 1 ? (
           <div className="flex items-center gap-2.5 pt-3.5">
             <button
-              className="text-[11px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
+              className="text-[12px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
               disabled={current === 0}
               onClick={() => setPage(current - 1)}
             >
               上一页
             </button>
-            <span className="text-[10.5px] text-outline">
+            <span className="text-[12px] text-outline">
               第 {current + 1} / {pageCount} 页
             </span>
             <button
-              className="text-[11px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
+              className="text-[12px] px-2.5 py-1 rounded-full bg-surface-container disabled:opacity-40"
               disabled={current >= pageCount - 1}
               onClick={() => setPage(current + 1)}
             >
