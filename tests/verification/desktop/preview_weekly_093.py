@@ -228,8 +228,8 @@ def main() -> int:
     bus_addr, bus_proc = start_dbus()
     os.environ["DISPLAY"] = args.display
     os.environ["DBUS_SESSION_BUS_ADDRESS"] = bus_addr
-    if "AT_SPI_BUS_ADDRESS" not in os.environ and os.path.exists("/run/user/1000/at-spi/bus"):
-        os.environ["AT_SPI_BUS_ADDRESS"] = "unix:path=/run/user/1000/at-spi/bus"
+    # 走私有 session bus 上自动拉起的 at-spi registry，避免读到宿主机桌面应用。
+    os.environ.pop("AT_SPI_BUS_ADDRESS", None)
     session = AppSession(
         root=root,
         display=args.display,
@@ -438,7 +438,8 @@ def main() -> int:
             (
                 n
                 for n in nodes
-                if n.role == "button" and (n.name or "").strip() == "列表"
+                if n.role in ("button", "toggle button")
+                and (n.name or "").strip() == "列表"
             ),
             None,
         )
@@ -447,14 +448,105 @@ def main() -> int:
             time.sleep(2.0)
             xs.shot(EVID / "04-artifact-list.png")
             after_list = app_nodes(pid)
-            # 列表视图才显示字节数；卡片视图没有这一列，用它作为视图真的切换了的证据。
+            # OD-ARCH-097 S04 之后列表行只剩标题 + 日期，不再有「字节」这类可判读文本，
+            # 因此改用切换按钮自身的 aria-pressed 状态作为「视图真的切换了」的证据。
             facts["list_view_clicked"] = True
-            facts["list_view_confirmed"] = any(
-                "字节" in (n.name or "") + (n.text or "") for n in after_list
+            checked = False
+            try:
+                from gi.repository import Atspi
+
+                for n in after_list:
+                    if n.role in ("button", "toggle button") and (n.name or "").strip() == "列表":
+                        ss = n.accessible.get_state_set()
+                        # aria-pressed 在 WebKit/ATK 下映射成 PRESSED。
+                        checked = bool(
+                            ss.contains(Atspi.StateType.PRESSED)
+                            or ss.contains(Atspi.StateType.CHECKED)
+                        )
+                        break
+            except Exception:
+                checked = False
+            facts["list_view_pressed"] = checked
+            facts["list_view_confirmed"] = checked
+            (EVID / "12-artifact-rows-ax.json").write_text(
+                json.dumps(
+                    [{"role": n.role, "name": n.name, "text": n.text} for n in after_list],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
             )
         else:
             facts["list_view_clicked"] = False
             facts["list_view_confirmed"] = False
+
+        # 11：四象限轴标（OD-ARCH-097 S01）。轴标是矩阵外的英文标签，
+        # 格子内不应再有「已过日期 · 进周报」这类说明文字与统计数字。
+        nodes = app_nodes(pid)
+        xs.shot(EVID / "11-quadrant-axes.png")
+        axes_text = "\n".join((n.name or "") + (n.text or "") for n in nodes)
+        facts["axes_urgent"] = "URGENT" in axes_text
+        facts["axes_important"] = "IMPORTANT" in axes_text
+        facts["quadrant_action_text_gone"] = "已过日期 · 进周报" not in axes_text
+
+        # 10：打开本周原文 → 贴底卡片（OD-ARCH-097 S03），关闭后主区高度不变。
+        open_btn = next(
+            (n for n in nodes if (n.name or "").strip() == "打开本周原文"),
+            None,
+        )
+        if open_btn is not None:
+            # 主区高度不变：量的是窗口高度 + 页面没有把周报区块推走（由截图与 AX 共同佐证）。
+            try:
+                height_before = xs.geometry(win).h
+            except Exception:
+                height_before = None
+            ax.invoke(open_btn)
+            time.sleep(2.5)
+            xs.shot(EVID / "10-source-sheet.png")
+            sheet_nodes = app_nodes(pid)
+            (EVID / "10-source-sheet-ax.json").write_text(
+                json.dumps(
+                    [{"role": n.role, "name": n.name, "text": n.text} for n in sheet_nodes],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            close_btn = next(
+                (
+                    n
+                    for n in sheet_nodes
+                    if (n.name or "").strip() in ("关闭预览", "关闭")
+                ),
+                None,
+            )
+            # 浮层的无障碍名是文件路径（标题），不会带「原文预览」字样，
+            # 因此以「出现新 dialog」或「出现关闭预览按钮」判定浮层已开。
+            facts["source_sheet_opened"] = close_btn is not None or any(
+                n.role == "dialog" and (n.name or n.text) for n in sheet_nodes
+            )
+            facts["source_sheet_has_close"] = close_btn is not None
+            if close_btn is not None:
+                ax.invoke(close_btn)
+                time.sleep(1.8)
+                closed_nodes = app_nodes(pid)
+                facts["source_sheet_closed"] = not any(
+                    n.role == "dialog" or (n.name or "").strip() == "关闭预览"
+                    for n in closed_nodes
+                )
+                try:
+                    height_after = xs.geometry(win).h
+                except Exception:
+                    height_after = None
+                facts["main_area_height_stable"] = (
+                    height_before is not None and height_after == height_before
+                )
+            else:
+                facts["source_sheet_closed"] = False
+        else:
+            facts["source_sheet_opened"] = False
+            facts["source_sheet_has_close"] = False
+            facts["source_sheet_closed"] = False
 
         (EVID / "facts.json").write_text(
             json.dumps(facts, ensure_ascii=False, indent=2), encoding="utf-8"

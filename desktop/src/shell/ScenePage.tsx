@@ -10,7 +10,7 @@ import {
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import type { OfflineArtifactEntry, SceneOverview } from "../types";
+import type { OfflineArtifactEntry, ProjectSummary, SceneOverview } from "../types";
 import { useThreadCategories } from "../threadCategories";
 import { Icon } from "../components/Icon";
 import { AnnouncementBar } from "./AnnouncementBar";
@@ -20,6 +20,8 @@ import type { Scene } from "./Dock";
 import { SceneStatusStrip } from "./SceneStatusStrip";
 import { WeeklyTimeline } from "./WeeklyTimeline";
 import { WeeklyQuadrants } from "./WeeklyQuadrants";
+import { SourcePeekSheet } from "./SourcePeekSheet";
+import { ProjectBoard } from "./ProjectBoard";
 import { WeeklyReportStatus } from "./WeeklyReportPanel";
 import {
   WritingContinueCard,
@@ -128,12 +130,6 @@ export function ScenePage({
   const tagOptions = useThreadCategories().map((c) => ({ key: c.key, label: c.label }));
   const def = SCENES[scene];
   const [threads, setThreads] = useState<SceneThread[]>(() => listThreadsByTag(scene));
-  /**
-   * 成果区页签，只给项目跟进 / 文案写作用（weekly 已改两栏，见 OD-ARCH-092 R2）。
-   */
-  const [tab, setTab] = useState<"progress" | "artifacts">(
-    def.hasProgress ? "progress" : "artifacts",
-  );
   const [artifacts, setArtifacts] = useState<OfflineArtifactEntry[]>([]);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
   /** 成果元数据是否已读到（OD-ARCH-094 S01：没读到不能把草稿数写成 0）。 */
@@ -153,8 +149,12 @@ export function ScenePage({
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() =>
     fixedSubdirs(scene),
   );
-  const [progress, setProgress] = useState<string | null>(null);
-  const [progressError, setProgressError] = useState<string | null>(null);
+  /** 项目跟进页的确定性汇总（OD-ARCH-098）：两栏卡片与甘特共用这一份数据。 */
+  const [projectSummary, setProjectSummary] = useState<ProjectSummary | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  /** 项目页右栏视图：时间线 / 阶段成果只改视图，不重新取数。 */
+  const [projectRightView, setProjectRightView] = useState<"timeline" | "artifacts">("timeline");
   const [overview, setOverview] = useState<SceneOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   /** 刷新键：状态条与待确认面板共用，确认/放弃/定时登记之后一起重读。 */
@@ -185,11 +185,11 @@ export function ScenePage({
    * 不重置的话「项目跟进」的进度页签会带进别的场景，落在一个没有按钮的分支里。
    */
   useEffect(() => {
-    setTab(def.hasProgress ? "progress" : "artifacts");
     setOpened(null);
     setQuadrant(null);
     setWritingStatusFilter(null);
     setWritingStaleOnly(false);
+    setProjectRightView("timeline");
     setIncludeSubdirs(fixedSubdirs(scene));
   }, [scene, def.hasProgress]);
 
@@ -249,36 +249,40 @@ export function ScenePage({
     return "";
   }, [threads]);
 
-  // 进度：既有确定性汇总（不调模型）。
+  // 项目跟进：既有确定性汇总（不调模型）。两栏卡片与甘特共用这份 summary。
   useEffect(() => {
     let alive = true;
-    if (!def.hasProgress || tab !== "progress") return;
+    if (!def.hasProgress) return;
     if (!itemsText.trim()) {
-      setProgress(null);
-      setProgressError(null);
+      setProjectSummary(null);
+      setProjectError(null);
+      setProjectLoading(false);
       return;
     }
+    setProjectLoading(true);
     shell
       .projectSummary(itemsText, null)
       .then((r) => {
         if (!alive) return;
-        if (r.ok && r.markdown) {
-          setProgress(r.markdown);
-          setProgressError(null);
+        setProjectLoading(false);
+        if (r.ok && r.summary) {
+          setProjectSummary(r.summary);
+          setProjectError(null);
         } else {
-          setProgress(null);
-          setProgressError(r.error ?? "确定性汇总没有产出内容");
+          setProjectSummary(null);
+          setProjectError(r.error ?? "确定性汇总没有产出内容");
         }
       })
       .catch((e) => {
         if (!alive) return;
-        setProgress(null);
-        setProgressError(e instanceof Error ? e.message : String(e));
+        setProjectLoading(false);
+        setProjectSummary(null);
+        setProjectError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       alive = false;
     };
-  }, [def.hasProgress, tab, itemsText]);
+  }, [def.hasProgress, itemsText]);
 
   const openArtifact = useCallback(async (fileName: string) => {
     try {
@@ -815,40 +819,24 @@ export function ScenePage({
             </div>
           </section>
         </div>
-      ) : (
-        /* 项目跟进 / 文案写作：页签结构不变（OD-ARCH-092 未改这两个场景）。 */
-        <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">
-          {def.hasProgress ? (
-            <div className="flex items-center gap-1 pb-2 border-b border-surface-variant/20">
-              <button
-                className={
-                  "px-2 py-1 text-[11px] " +
-                  (tab === "progress" ? "bg-primary text-on-primary" : "bg-surface-container")
-                }
-                onClick={() => setTab("progress")}
-              >
-                进度
-              </button>
-              <button
-                className={
-                  "px-2 py-1 text-[11px] " +
-                  (tab === "artifacts" ? "bg-primary text-on-primary" : "bg-surface-container")
-                }
-                onClick={() => setTab("artifacts")}
-              >
-                阶段成果
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
-              <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果文档库</h2>
-            </div>
-          )}
-
-          {tab === "artifacts" ? (
-            <div className="pt-2 flex-1 flex flex-col min-h-0">
+      ) : scene === "project" ? (
+        /*
+         * 项目跟进（OD-ARCH-098 S03）：左「项目卡列表」+ 右「甘特时间线」，
+         * 阶段成果收进右栏的次级切换。数据来自既有确定性汇总，页面不调模型。
+         */
+        <ProjectBoard
+          summary={projectSummary}
+          today={localToday()}
+          error={projectError}
+          loading={projectLoading}
+          subtitleProjects={def.subtitles?.projects}
+          subtitleTimeline={def.subtitles?.timeline}
+          rightView={projectRightView}
+          onRightView={setProjectRightView}
+          artifactsSlot={
+            <>
               {artifactsError ? (
-                <p className="text-[11px] text-error leading-relaxed pb-1">
+                <p className="text-[12px] text-error leading-relaxed pb-2">
                   读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
                 </p>
               ) : null}
@@ -859,40 +847,43 @@ export function ScenePage({
                 onToggleSubdirs={toggleSubdirs}
                 onOpen={(p) => void openArtifact(p)}
               />
-            </div>
-          ) : (
-            <div className="pt-2 flex-1 overflow-y-auto">
-              {progress ? (
-                <pre className="text-[11.5px] text-on-surface-variant whitespace-pre-wrap leading-relaxed">
-                  {progress}
-                </pre>
-              ) : (
-                <p className="text-[11px] text-outline leading-relaxed">
-                  {progressError
-                    ? "确定性汇总没有产出：" + progressError
-                    : "还没有可汇总的事项。在首页对话里写下事项（日期｜事项｜状态），这里会按本机时间给出进度、逾期与阶段汇总——确定性计算，不调模型。"}
-                </p>
-              )}
-            </div>
-          )}
+            </>
+          }
+        />
+      ) : (
+        /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
+        <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">
+          <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
+            <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果文档库</h2>
+          </div>
+
+          <div className="pt-2 flex-1 flex flex-col min-h-0">
+            {artifactsError ? (
+              <p className="text-[11px] text-error leading-relaxed pb-1">
+                读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
+              </p>
+            ) : null}
+            <ArtifactExplorer
+              files={artifacts}
+              emptyHint={def.emptyHint}
+              includeSubdirs={includeSubdirs}
+              onToggleSubdirs={toggleSubdirs}
+              onOpen={(p) => void openArtifact(p)}
+            />
+          </div>
         </section>
       )}
 
-      {opened ? (
-        <section className="mt-2 bg-white/80 border border-white/90 rounded-2xl px-4 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="mono text-[10.5px] text-outline truncate" title={opened.name}>
-              {opened.name}
-            </span>
-            <button className="text-[10.5px] text-outline hover:underline shrink-0" onClick={() => setOpened(null)}>
-              收起
-            </button>
-          </div>
-          <pre className="text-[11px] text-on-surface-variant whitespace-pre-wrap leading-relaxed mt-1 max-h-[40vh] overflow-y-auto">
-            {opened.body}
-          </pre>
-        </section>
-      ) : null}
+      {/*
+       * 原文 / 周报 / 成果的预览（OD-ARCH-097 S03）：不再作为页面流里的一块往下推，
+       * 改成贴底浮层；主区高度与滚动位置在打开前后保持一致。
+       */}
+      <SourcePeekSheet
+        open={opened !== null}
+        title={opened?.name ?? ""}
+        body={opened?.body ?? ""}
+        onClose={() => setOpened(null)}
+      />
 
       {/*
        * 归档 + 会话历史：weekly 已在三栏里（左栏四象限下方，OD-ARCH-093 S03）；

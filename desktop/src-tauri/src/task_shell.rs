@@ -1531,6 +1531,8 @@ pub struct ProjectItem {
     pub item: String,
     pub owner: String,
     pub due: String,
+    /// 可选开始日期（OD-ARCH-098 S01）。旧式五列行没有这个字段，序列化为 null。
+    pub start: Option<String>,
     pub status: String,
     pub next_step: String,
     pub overdue: bool,
@@ -1552,7 +1554,10 @@ pub struct ProjectSummary {
 
 pub const PROJECT_SCHEMA: &str = "omnidesk.project.v1";
 
-/// 每行格式：`事项 | 负责人代号 | 期限 | 状态 | 下一步`。
+/// 每行格式：`事项 | 负责人代号 | 期限 | 状态 | 下一步`，
+/// 或带开始日期的六列写法 `事项 | 负责人代号 | 期限 | 开始 | 状态 | 下一步`。
+///
+/// 六列只是**可选的额外事实**：没有开始日期时条目按里程碑呈现，不猜一段工期。
 ///
 /// `today` 由调用方显式传入（YYYY-MM-DD），用于判定逾期；不读系统时钟，
 /// 保证同样的输入与日期得到同样的输出。
@@ -1580,17 +1585,25 @@ pub fn summarize_project_with(
             continue;
         }
         let cells: Vec<&str> = line.split('|').map(|c| c.trim()).collect();
-        if cells.len() != 5 {
+        if cells.len() != 5 && cells.len() != 6 {
             return Err(scenario_err(
                 line_no,
-                "每行必须是「事项 | 负责人代号 | 期限 | 状态 | 下一步」五个字段",
+                "每行必须是「事项 | 负责人代号 | 期限 | 状态 | 下一步」五个字段，\
+                 或带开始日期的「事项 | 负责人代号 | 期限 | 开始 | 状态 | 下一步」六个字段",
             ));
         }
+        // 五列与六列只差「开始日期」一列：把状态/下一步的取值位置收敛到这里，
+        // 后面所有校验共用一套逻辑，旧格式的行为完全不变。
+        let (start_cell, status_index) = if cells.len() == 6 {
+            (Some(cells[3]), 4usize)
+        } else {
+            (None, 3usize)
+        };
         for (pos, label) in ["事项", "负责人代号", "下一步"].iter().enumerate() {
             let cell = match pos {
                 0 => cells[0],
                 1 => cells[1],
-                _ => cells[4],
+                _ => cells[cells.len() - 1],
             };
             if cell.is_empty() {
                 return Err(scenario_err(line_no, &format!("{}不能为空", label)));
@@ -1611,25 +1624,41 @@ pub fn summarize_project_with(
                     "期限必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
                 )
             })?;
-        if !PROJECT_STATUSES.contains(&cells[3]) {
+        let start = match start_cell {
+            None => None,
+            Some(raw) => {
+                let start_date = parse_date(raw).ok_or_else(|| {
+                    scenario_err(
+                        line_no,
+                        "开始日期必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
+                    )
+                })?;
+                if date_cmp(start_date, due) == std::cmp::Ordering::Greater {
+                    return Err(scenario_err(line_no, "开始日期不能晚于期限"));
+                }
+                Some(raw.to_string())
+            }
+        };
+        if !PROJECT_STATUSES.contains(&cells[status_index]) {
             return Err(scenario_err(
                 line_no,
                 "状态只允许 not_started / in_progress / blocked / done",
             ));
         }
-        let status = cells[3];
+        let status = cells[status_index];
         let overdue = status != "done" && date_cmp(due, today_date) == std::cmp::Ordering::Less;
         items.push(ProjectItem {
             item: cells[0].to_string(),
             owner: cells[1].to_string(),
             due: cells[2].to_string(),
+            start,
             status: status.to_string(),
-            next_step: cells[4].to_string(),
+            next_step: cells[cells.len() - 1].to_string(),
             overdue,
         });
     }
     if items.is_empty() {
-        return Err("没有可用事项：每行必须是五个字段".to_string());
+        return Err("没有可用事项：每行必须是五个字段（或带开始日期的六个字段）".to_string());
     }
 
     let mut done = 0u64;
@@ -3786,6 +3815,8 @@ mod tests {
 
     #[test]
     fn project_sample_flags_overdue_and_rejects_real_names() {
+        // 五列旧格式没有开始日期：字段序列化为 None，其余行为逐字不变
+        // （OD-ARCH-098 S01 向后兼容）。
         assert!(PROJECT_SAMPLE.contains("纯虚构"));
         let summary = summarize_project(PROJECT_SAMPLE, "2026-10-15").expect("应可汇总");
         assert_eq!(summary.total, 4);
@@ -3793,6 +3824,7 @@ mod tests {
         assert_eq!(summary.blocked, 1);
         // 逾期两条：10-10 in_progress、10-12 blocked（10-08 已完成不计）。
         assert_eq!(summary.overdue, 2);
+        assert!(summary.items.iter().all(|i| i.start.is_none()));
         assert_eq!(summary, summarize_project(PROJECT_SAMPLE, "2026-10-15").unwrap());
         let md = render_project_markdown(&summary);
         assert!(md.contains("受准入阻塞，未验证"));
@@ -3803,6 +3835,70 @@ mod tests {
         let err = summarize_project("合成事项 | P1 | 2026-10-10 | finished | 无", "2026-10-15")
             .unwrap_err();
         assert!(err.contains("not_started"), "{}", err);
+    }
+
+    #[test]
+    fn project_six_columns_read_optional_start() {
+        // 六列：事项 | 负责人 | 期限 | 开始 | 状态 | 下一步。
+        let row = "合成事项 | P1 | 2026-10-20 | 2026-10-12 | in_progress | 补齐说明";
+        let summary = summarize_project(row, "2026-10-15").unwrap();
+        assert_eq!(summary.total, 1);
+        let item = &summary.items[0];
+        assert_eq!(item.start.as_deref(), Some("2026-10-12"));
+        assert_eq!(item.due, "2026-10-20");
+        assert_eq!(item.status, "in_progress");
+        assert_eq!(item.next_step, "补齐说明");
+        // 开始日期不影响逾期判定：判定仍只看期限与状态。
+        assert!(!item.overdue);
+
+        // 开始日期非法（不存在的日期 / 非 YYYY-MM-DD）必须报错，不能静默忽略。
+        let bad = "合成事项 | P1 | 2026-10-20 | 2026-02-30 | in_progress | 说明";
+        let err = summarize_project(bad, "2026-10-15").unwrap_err();
+        assert!(err.contains("开始日期"), "{}", err);
+        let bad = "合成事项 | P1 | 2026-10-20 | 10/12 | in_progress | 说明";
+        let err = summarize_project(bad, "2026-10-15").unwrap_err();
+        assert!(err.contains("开始日期"), "{}", err);
+
+        // 开始日期晚于期限：顺序颠倒的区间不成立，明确拒绝而不是画出反向条。
+        let reversed = "合成事项 | P1 | 2026-10-10 | 2026-10-20 | in_progress | 说明";
+        let err = summarize_project(reversed, "2026-10-15").unwrap_err();
+        assert!(err.contains("开始日期不能晚于期限"), "{}", err);
+
+        // 开始日期与期限同一天允许（单日区间）。
+        let same = "合成事项 | P1 | 2026-10-20 | 2026-10-20 | not_started | 说明";
+        assert_eq!(
+            summarize_project(same, "2026-10-15").unwrap().items[0]
+                .start
+                .as_deref(),
+            Some("2026-10-20")
+        );
+
+        // 空开始日期不是「没填」，是格式错误：报错比默默当成里程碑诚实。
+        let blank = "合成事项 | P1 | 2026-10-20 |  | in_progress | 说明";
+        assert!(summarize_project(blank, "2026-10-15").is_err());
+    }
+
+    #[test]
+    fn project_mixed_five_and_six_column_lines_are_accepted() {
+        let input = "\
+合成甲 | P1 | 2026-10-20 | in_progress | 五列旧写法\n\
+合成乙 | P2 | 2026-10-12 | 2026-10-10 | blocked | 六列新写法";
+        let summary = summarize_project(input, "2026-10-15").unwrap();
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.in_progress, 1);
+        assert_eq!(summary.blocked, 1);
+        assert_eq!(summary.items[0].start, None);
+        assert_eq!(summary.items[1].start.as_deref(), Some("2026-10-10"));
+        // blocked 且期限已过 → 逾期；五列那条未到期。
+        assert_eq!(summary.overdue, 1);
+
+        // 其它列数（4 / 7）仍然拒绝。
+        assert!(summarize_project("合成 | P1 | 2026-10-20 | done", "2026-10-15").is_err());
+        assert!(summarize_project(
+            "合成 | P1 | 2026-10-20 | 2026-10-10 | done | 说明 | 多余",
+            "2026-10-15"
+        )
+        .is_err());
     }
 
     #[test]

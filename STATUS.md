@@ -2,6 +2,60 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-097 / 098：周报页重绘与项目跟进两栏（2026-10-28；已实施，ARCHITECT 审查通过）
+
+> 状态：**已实施；ARCHITECT 审查通过（结论见 REVIEW.md 顶部）。本节是执行记录。**
+> 触发：用户给出效率看板参考图，要求周报页按五点改版（四象限框外轴标、去格内说明与数字、时间线删「转周报」并把去向标签移到左侧、原文改为底部弹出卡片、成果库只显示标题与时间），并批准执行 OD-ARCH-097 与 098。
+> 起点：HEAD e1e4f2d。边界：本助手亲自实施，未派子代理；`runtime/` 零差异；未读凭证；窗口验证只用 `/tmp` 合成数据。
+
+### 改动
+
+**OD-ARCH-097（周报页）**
+
+1. `WeeklyQuadrants.tsx`：2×2 网格外加一圈轴标（上 `URGENT` / `NOT URGENT`，左竖排 `IMPORTANT` / `NOT IMPORTANT`），中文语义放进 `title` 与 `aria-label`；格内删掉 `q.action` 说明行与右上角计数，只留序号、标题、至多 2 条与「还有 N 条」。
+2. 同一文件修了一个真实视觉缺陷：`rounded-xl` 在本项目令牌里是 3rem，112px 高的格子被渲染成胶囊形，改为写死的 `rounded-[8px]`。
+3. 轴标是排版文本，WebKit 不把它暴露进无障碍树；给列标/行标各加 `role="group"` + `aria-label` 后才可读。
+4. `WeeklyTimeline.tsx`：删掉条目上的「转周报」按钮；去向胶囊从正文右侧移到正文左侧行首，无去向的条目不占空槽。
+5. 新增 `SourcePeekSheet.tsx`：portal 到 body、半透明遮罩 + 贴底宽卡、方角、正文自己滚动；`Esc`、关闭按钮、点遮罩都能关；关闭后焦点归还。`ScenePage.tsx` 删掉页面流里的 `opened` `<section>`，四个预览来源统一走该浮层。
+6. `ArtifactExplorer.tsx`：卡片与列表都只留标题 + 日期（标题缺失时回退文件名，此时不再重复同名）；字数、字节数、第二行文件名移出可见文本，路径退到 `title` 悬浮；搜索仍按文件名命中，归档行同步瘦身。
+
+**OD-ARCH-098（项目跟进页）**
+
+7. `task_shell.rs`：`summarize_project` 支持可选的「开始日期」列（6 列），5 列旧行逐字节不变；`ProjectItem` 增加 `start: Option<String>`，types.ts 同步，补 Rust 单测。
+8. 新增 `projectGantt.ts` + `projectGantt.test.mjs`：时间窗、日/周轴、条目定位、里程碑判定、逾期标记，全部为注入 `today` 的纯函数。
+9. 新增 `ProjectBoard.tsx`：左栏搜索 + 事项卡（标题、状态徽标、负责人、期限、下一步一行、逾期标），右栏甘特（今日线、里程碑菱形、区间条、状态色沿用既有 token）+「时间线 / 阶段成果」次级切换；宽窗两栏、1000px 起单列。`ScenePage.tsx` 接线。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npx --no-install tsc --noEmit`（desktop） | 通过 |
+| `npm run build`（desktop） | 通过（仅既有 chunk 体积提示） |
+| `cargo test --offline` | 全绿，含新增 task_shell 五/六列与 projectGantt 相关用例 |
+| `verify_weekly_093.py` | 105 / 105 |
+| `verify_weekly_097.py` | 34 / 34 |
+| `verify_project_098.py` | 35 / 35 |
+| `verify_weekly_091.py` / `verify_weekly_092.py` | 67 / 67、29 / 29（旧断言按 098 的新页签结构同步） |
+| `verify_status_toast_096.py` | 19 / 19 |
+| `verify_writing_094.py` / `verify_worklog_089.py` | 98 / 98、61 / 61 |
+| 窗口 `preview_weekly_093.py`（`:164`） | 全通过，含 `axes_urgent/axes_important/quadrant_action_text_gone/source_sheet_*` |
+| 窗口 `preview_project_098.py`（`:165`） | 全通过，7 卡 / 5 里程碑 / 2 区间 / 搜索 1 命 / 选中联动 / 窄窗两栏 |
+| 窗口 `verify_ui_084.py`（`:161`，搜索定位回归） | 21 / 21 |
+| 窗口 `verify_model_route_095.py`（`:162`） | passed: true |
+| 窗口 `verify_scene_overview_060.py`（`:163`） | 通过 |
+
+### 过程中如实登记的问题
+
+1. **预览脚本原判定写错。** `source_sheet_opened` 找「原文预览」字样，但浮层的无障碍名是文件路径（标题），所以浮层其实已打开却判成 false；改为「出现 dialog 或关闭预览按钮」。
+2. **091/092 有 5 条旧断言失败，属过期断言而非回归。** 它们仍在断言 098 已经替换掉的 `tab === "artifacts"` 与 `def.hasProgress ? (` 页签源码；按新契约改为断言「weekly 不再有自己的 progress/artifacts 页签」与「project 保留 timeline/artifacts 两个视图」，两条脚本随之恢复全绿。
+3. **084 首次复跑拿到 GNOME 桌面节点。** 脚本把 `AT_SPI_BUS_ADDRESS` 指向宿主机 `/run/user/1000/at-spi/bus`，读屏树里混进系统应用，导致 2 条断言误判。改为让 at-spi 跟随私有 session bus 后 21/21 通过；同一处修正同步到 095/060 与三个预览脚本。
+4. **并行跑窗口脚本会互相打断。** 同批并行时曾出现 `Display connection closed by server`，之后一律串行、各用独立显示号。
+
+### 限制
+
+未在用户实际显示器与真实数据上复核，本轮窗口证据均为 Xvfb + 合成数据。按用户长期偏好，本轮已提交并推送 GitHub（提交见 REVIEW 记录）。
+
+
 ## OD-ARCH-096：构建警告清理与模型切换提示条（2026-10-27；已实施，ARCHITECT 审查通过）
 
 > 状态：**已实施；ARCHITECT 独立审查通过（结论见 REVIEW.md 顶部）。本节是执行记录。**

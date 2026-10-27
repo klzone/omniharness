@@ -221,13 +221,16 @@ def main() -> int:
     # 091 的「历史归档」在 093 修订后并入成果库，不再有独立 WeeklyArchive 组件；
     # 归档能力本身（worklog_archive_list、往期周报/周记录可打开）仍是 091 的契约。
     check("archive_wired", "archiveEntries" in scene_tsx and "worklogArchiveList" in scene_tsx, "")
-    # OD-ARCH-092 取消 weekly 页签；OD-ARCH-093 扩为三栏同屏，页签只剩 project/writing 用。
-    check("weekly_no_timeline_tab", '"timeline"' not in scene_tsx, "weekly tab should be gone in 092")
+    # OD-ARCH-092 取消 weekly 页签；OD-ARCH-093 扩为三栏同屏；OD-ARCH-098 又把 project 的
+    # 进度/成果页签换成 ProjectBoard 的右栏视图（timeline / artifacts），因此这里断言的是
+    # 「weekly 不带页签、project 仍有进度与成果两个视图」这一契约，而不是已删除的页签源码。
+    check("weekly_no_legacy_tab_state", 'useState<"progress" | "artifacts">' not in scene_tsx,
+          "weekly has no progress/artifacts tab any more")
     check("weekly_three_columns", "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]" in scene_tsx, "")
     check("archive_threads_in_left_column", "max-lg:order-4" in scene_tsx, "history in the left column")
-    # 其他两个场景的既有区块必须原样保留。
-    check("progress_tab_kept", "def.hasProgress ? (" in scene_tsx, "")
-    check("artifacts_tab_kept", 'tab === "artifacts"' in scene_tsx, "")
+    # 其他两个场景的既有区块必须原样保留（098 后 project 由 ProjectBoard 承载两个视图）。
+    check("progress_view_kept", "def.hasProgress" in scene_tsx and "<ProjectBoard" in scene_tsx, "")
+    check("artifacts_view_kept", 'useState<"timeline" | "artifacts">' in scene_tsx, "")
     check("threads_section_kept", "会话历史" in scene_tsx, "")
     check("announcement_kept", "AnnouncementBar" in scene_tsx, "")
 
