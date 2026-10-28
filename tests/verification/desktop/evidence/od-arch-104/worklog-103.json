@@ -1,0 +1,265 @@
+{
+  "cases": [
+    {
+      "name": "home_keeps_find_date_phrase",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_keeps_host_timezone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_keeps_redate_command",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_marks_local_receipt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_entry_date_param",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_redate_command",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_append_index",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_redate_receipt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_redate_command",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_registers_redate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_validates_entry_date",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_append_failures_have_shape",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_assert_entry_date",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_move_entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_redate_backs_up",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_shared_commit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_conserves_items",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_no_truncate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_rejects_cross_week",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "intent_export_extract",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "intent_export_redate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "intent_rejects_backreference_less",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_date_judged_by_model",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_no_file_editing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_no_invented_tool",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_within_budget",
+      "ok": true,
+      "detail": "1232 字符"
+    },
+    {
+      "name": "workIntent_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "wed_monday_falls_back",
+      "ok": true,
+      "detail": "2026-10-26"
+    },
+    {
+      "name": "wed_monday_weekday_label",
+      "ok": true,
+      "detail": "周一"
+    },
+    {
+      "name": "wed_monday_source",
+      "ok": true,
+      "detail": "weekday"
+    },
+    {
+      "name": "future_weekday_is_null",
+      "ok": true,
+      "detail": "周五"
+    },
+    {
+      "name": "last_week_is_null",
+      "ok": true,
+      "detail": "上周一"
+    },
+    {
+      "name": "next_week_is_null",
+      "ok": true,
+      "detail": "下周二"
+    },
+    {
+      "name": "sunday_is_today",
+      "ok": true,
+      "detail": "2026-11-01"
+    },
+    {
+      "name": "sunday_yesterday_same_week",
+      "ok": true,
+      "detail": "2026-10-31"
+    },
+    {
+      "name": "monday_yesterday_cross_week",
+      "ok": true,
+      "detail": "昨天跨到 W43"
+    },
+    {
+      "name": "explicit_date_wins",
+      "ok": true,
+      "detail": "2026-10-27"
+    },
+    {
+      "name": "explicit_dashed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_date_is_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "correction_detected",
+      "ok": true,
+      "detail": "2026-10-26"
+    },
+    {
+      "name": "correction_move_phrase",
+      "ok": true,
+      "detail": "2026-10-27"
+    },
+    {
+      "name": "correction_ignores_plain_note",
+      "ok": true,
+      "detail": "真实记录不能被当成改日期"
+    },
+    {
+      "name": "correction_ignores_long_text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "correction_needs_known_date",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "continuation_true",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "continuation_false",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "iso_week_monday",
+      "ok": true,
+      "detail": "2026-W44"
+    },
+    {
+      "name": "iso_week_sunday",
+      "ok": true,
+      "detail": "2026-W44"
+    },
+    {
+      "name": "iso_week_next",
+      "ok": true,
+      "detail": "2026-W45"
+    },
+    {
+      "name": "today_key",
+      "ok": true,
+      "detail": "2026-10-28"
+    },
+    {
+      "name": "date_phrase_found",
+      "ok": true,
+      "detail": "周五"
+    },
+    {
+      "name": "date_phrase_absent",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "passed": true
+}

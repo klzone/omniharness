@@ -72,6 +72,7 @@ import type {
   WorklogAppendReceipt,
   WorklogDestinationReceipt,
   WorklogRedateReceipt,
+  WorklogMoveManyReceipt,
   WorklogWeekRead,
   WorklogArchiveList,
   WorklogReportRead,
@@ -466,6 +467,25 @@ export const shell = {
       index: args.index,
       toDate: args.toDate,
       expectText: args.expectText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 批量改日期（OD-ARCH-104）。
+   *
+   * 随手记的语义判定由模型给出，界面校验通过后把 moves 一次性交给宿主：
+   * 一次读入、逐条按 `expectText` 校验、全部通过才重写一次。任一条对不上
+   * 就整批拒绝，`ok=false` 且文件一字未动。
+   */
+  worklogMoveMany(args: {
+    week: string;
+    moves: Array<{ date: string; index: number; to: string; expectText: string }>;
+  }): Promise<WorklogMoveManyReceipt> {
+    return invoke<WorklogMoveManyReceipt>("worklog_move_many", {
+      week: args.week,
+      moves: args.moves,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });

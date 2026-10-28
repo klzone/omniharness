@@ -1,0 +1,340 @@
+{
+  "cases": [
+    {
+      "name": "home_no_redate_regex",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_no_continuation_regex",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_reads_week_before_model",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_only_two_append_sites",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "home_appends_only_after_verdict",
+      "ok": true,
+      "detail": "['    try {\\n        const receipt = await ', '    try {\\n        const receipt = await ']"
+    },
+    {
+      "name": "home_validates_before_write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_uses_batch_move",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_strips_verdict_buffer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_strips_before_settle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_says_fallback",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_local_receipt_label",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_cancel_writes_nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_has_note_index",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_asks_verdict",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_lists_actions",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_rejects_invention",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_keeps_skill_injection",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_move_many",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_move_many",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_registers_move_many",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_move_entries",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_batch_atomic",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_batch_cross_week",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_batch_no_truncate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_six_fields",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_no_file_permission",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_verdict_format",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_no_report_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_links_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_within_budget",
+      "ok": true,
+      "detail": "1232 字符"
+    },
+    {
+      "name": "workRecordVerdict_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index_week",
+      "ok": true,
+      "detail": "2026-W44"
+    },
+    {
+      "name": "index_entries",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "name": "index_first_monday",
+      "ok": true,
+      "detail": "{\"date\":\"2026-10-26\",\"index\":0,\"text\":\"周一上午赴上杭县城现场教学\",\"destination\":\"本周报引用\"}"
+    },
+    {
+      "name": "index_wed_second",
+      "ok": true,
+      "detail": "{\"date\":\"2026-10-28\",\"index\":1,\"text\":\"上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录。\",\"destination\":\"本周报引用\"}"
+    },
+    {
+      "name": "describe_has_date",
+      "ok": true,
+      "detail": "- 2026-10-26 #0 周一上午赴上杭县城现场教学\n- 2026-10-28 #0 明天下午专题课《新时代党内法规制度建设》\n- 2026-10-28 #1 上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录。"
+    },
+    {
+      "name": "describe_has_index1",
+      "ok": true,
+      "detail": "- 2026-10-26 #0 周一上午赴上杭县城现场教学\n- 2026-10-28 #0 明天下午专题课《新时代党内法规制度建设》\n- 2026-10-28 #1 上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录。"
+    },
+    {
+      "name": "describe_empty",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "move_ok",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "move_expect_text",
+      "ok": true,
+      "detail": "上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录。"
+    },
+    {
+      "name": "reject_invented_text",
+      "ok": true,
+      "detail": "记录正文不是用户原话的连续片段：赴上杭县城学习生态文明思想"
+    },
+    {
+      "name": "accept_verbatim_piece",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "accept_punct_diff",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reject_cross_week",
+      "ok": true,
+      "detail": "记录 的日期 2026-10-01 不在 2026-W44"
+    },
+    {
+      "name": "reject_future",
+      "ok": true,
+      "detail": "记录 的日期 2026-10-30 晚于今天 2026-10-28"
+    },
+    {
+      "name": "reject_index_oob",
+      "ok": true,
+      "detail": "索引里没有 2026-10-28 的第 10 条记录"
+    },
+    {
+      "name": "reject_same_date",
+      "ok": true,
+      "detail": "原日期与目标日期相同：2026-10-28"
+    },
+    {
+      "name": "reject_duplicate_move",
+      "ok": true,
+      "detail": "同一位置被移动了两次：2026-10-28#1"
+    },
+    {
+      "name": "reject_record_without_records",
+      "ok": true,
+      "detail": "判定为 record 却没有记录"
+    },
+    {
+      "name": "reject_move_without_moves",
+      "ok": true,
+      "detail": "判定为 move 却没有要移动的条目"
+    },
+    {
+      "name": "reject_answer_with_write",
+      "ok": true,
+      "detail": "判定为 answer 却带着写入或移动"
+    },
+    {
+      "name": "accept_confirm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "accept_answer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "split_visible",
+      "ok": true,
+      "detail": "\"已记录。\""
+    },
+    {
+      "name": "split_block",
+      "ok": true,
+      "detail": "\n{\"action\":\"record\",\"records\":[{\"text\":\"上杭教学和参观紫金矿业\",\"date\":\"2026-10-26\"}],\"moves\":[],\"reply\":\"已记录\"}\n"
+    },
+    {
+      "name": "split_unclosed_hidden",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "display_no_block",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_fenced",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_garbage_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_truncated_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_bad_action_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_empty_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fallback_no_block",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "comparable_ignores_punct",
+      "ok": true,
+      "detail": "上杭教学A1班"
+    },
+    {
+      "name": "short_text",
+      "ok": true,
+      "detail": "一二三四五六…"
+    },
+    {
+      "name": "day_number_invalid",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "day_number_ok",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "passed": true
+}

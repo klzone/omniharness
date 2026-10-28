@@ -144,9 +144,10 @@ check("report_says_no_record", reportEmpty.includes("本周还没有记录"), ""
 const plain = cp.composeConversationPrompt({ preset, turns, current, mode: "report" });
 check("no_worklog_no_section", !plain.includes("本周工作记录（"), "");
 
-// 长度账：随手记提示词应显著短于周报（这是拆 Skill 的直接收益）
-check("note_shorter_than_report", note.length < reportWithLog.length,
-  note.length + " vs " + reportWithLog.length);
+// 长度账（OD-ARCH-104 修订）：随手记提示词现在带当周索引与判定块格式说明，
+// 「短于周报」不再成立；改守预算上限——它仍要明显短于完整组装，且不带章节与铁律。
+check("note_prompt_within_budget", note.length <= 2000,
+  note.length + " vs 上限 2000（周报 " + reportWithLog.length + "）");
 
 console.log(JSON.stringify({ cases, sizes: { note: note.length, report: reportWithLog.length } }));
 """

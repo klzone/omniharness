@@ -284,3 +284,14 @@
 - **边界：** 扫描只保留内存结果，不建持久索引；不读写 `.obsidian/` 配置；隐藏目录与常见依赖目录整棵跳过。
 - **证据：** `desktop/src-tauri/src/knowledge_vault.rs`、`desktop/src-tauri/tests/knowledge_vault_host.rs`、`tests/verification/desktop/verify_knowledge_vault_p1.py`（14/14，`evidence/od-kb-001-p1/`）；执行记录见 STATUS.md 的 OD-KB-001 P1 段。
 - **复审触发：** ①用户需要多个知识库根或跨根统一搜索；②需要把某个分类的知识库与成果归档指向同一目录；③真实库实测显示排除名单不足或扫描超时；④决定引入持久索引或 watcher 时，重新评估读取路径与失效竞态。
+
+### D-032（2026-10-28，OD-ARCH-104 已实现，待真实模型实测）：随手记的语义判断归模型，写盘权归宿主
+- **状态：** 已实现（desktop/src/workRecordVerdict.ts、desktop/src-tauri/src/worklog.rs 的 move_entries、desktop/src/shell/HomeChat.tsx 的 settleNote）；真实模型的分类准确率尚未实测。
+- **决策：** 一句话是事实还是指令，由模型判定；宿主只做结构与事实校验，然后一次性落盘。模型在正文之后输出一个 omnidesk-verdict JSON 块，字段为 action（record/move/confirm/answer）、records[{text,date}]、moves[{date,index,to}]、reply。
+- **理由：** 前端正则分不清「上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录」这类句子；上一版把它整句当成一条记录写进周三，正是用户实测踩到的坑。语义判断本来就是模型的本职。
+- **校验口径（代码不可省）：** ①records 的 text 必须是用户原话的连续片段，逐字比对（只忽略标点与空白），防模型编造；②日期必须是当周且不晚于今天；③moves 的 index 必须落在当日索引范围内，且条目原文与文件一致；④同一句不得既 record 又 move；⑤批量移动一次读盘、全部校验通过后只重写一次，条目总数与结构标记必须守恒。
+- **失败口径（fail-safe）：** 没有判定块、JSON 不合规、校验不过——一律不移动、不改写已有条目，只把用户原话按当天追加，回复里明说「模型未给出判定……未做指令识别」。取消或中断的回合不写盘。
+- **索引口径：** 宿主先读当周文件，整理成「日期 #序号 正文」的短索引随提示词送出；模型看不到文件本身，也无宿主命令通道（引擎 mcpServers 恒为空），只能经文本块交回判定。
+- **影响：** 随手记提示词从「一句缺项追问」变成「先分类再输出判定」，每轮多几百字符、多等几秒模型；换来的是指令不会被写成记录。周报流程不变，仍走完整组装。
+- **证据：** tests/verification/desktop/verify_worklog_104.py 67/67；verify_worklog_103.py 52/52；cargo test --offline --lib worklog:: 38 passed（批量移动、备份、条目守恒、CRLF、越界拒绝）。
+- **复审触发：** ①真实模型实测中判定错误多于旧的正则方案；②出现「模型自己编了原话片段」或「索引与文件不一致导致整批作废」的重复反馈；③需要跨周移动时，扩展 move_entries 的读改边界并补迁移测试。

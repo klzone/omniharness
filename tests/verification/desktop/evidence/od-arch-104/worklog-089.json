@@ -1,0 +1,310 @@
+{
+  "cases": [
+    {
+      "name": "no_note_mode_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_note_button_label",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_report_button_label",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "uses_detect_work_intent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "appends_before_model",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reads_week_for_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "passes_worklog_into_prompt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_worklog_append",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_worklog_read_week",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_registers_append",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_registers_read",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_scans_redline_before_write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "append_only_open_options",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "never_truncates",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rejects_path_traversal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "verifies_prefix_unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_has_six_elements",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_has_no_report_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ma_points_to_report_skill",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_has_five_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_confirm_gate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mr_no_overwrite",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "memory-agent_within_budget",
+      "ok": true,
+      "detail": "1232 字符"
+    },
+    {
+      "name": "memory-report_within_budget",
+      "ok": true,
+      "detail": "988 字符"
+    },
+    {
+      "name": "weekly_three_bindings",
+      "ok": true,
+      "detail": "['memory-agent', 'memory-report', 'knowledge-search']"
+    },
+    {
+      "name": "weekly_max_injected_unchanged",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "name": "anysearch_not_preinjected",
+      "ok": true,
+      "detail": "['memory-agent', 'memory-report', 'knowledge-search']"
+    },
+    {
+      "name": "allowlist_has_memory_report",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "allowlist_has_anysearch",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "workIntent_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report:生成周报",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:帮我写个周报",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:整理成周报",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:总结本周工作",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:本周工作汇总一下",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:这周小结",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report:把上周周报更新一下",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "note:下午在古田干部学院听课，题目是古田会议是党和军队建设史上的里程碑",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:今天开了个会",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:记一下：周三交材料",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:总结一下这次会议",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:本周三下午对接了系统方",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:整理一下这个思路",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:<empty>",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "fullwidth_and_spaces",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "mixed_punctuation",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "describe_report",
+      "ok": true,
+      "detail": "按周报生成"
+    },
+    {
+      "name": "describe_note",
+      "ok": true,
+      "detail": "按随手记记录"
+    },
+    {
+      "name": "conversationPrompt_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_mentions_worklog",
+      "ok": true,
+      "detail": "你是 OmniDesk 工作台的随手记助手，负责把用户这句话补进本周工作记录。\n用户这一句可能是一段事实，也可能是在指挥你\n（「这些都是周一的」「把上一条挪到周"
+    },
+    {
+      "name": "note_has_six_elements",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_has_no_report_sections",
+      "ok": true,
+      "detail": "本周概述/事项进展/问题与风险/下步计划/待确认事项"
+    },
+    {
+      "name": "note_has_no_writing_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_forbids_rewriting",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_includes_worklog_content",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_labels_week",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_has_sections",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_says_no_record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_worklog_no_section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "note_prompt_within_budget",
+      "ok": true,
+      "detail": "1150 vs 上限 2000（周报 719）"
+    },
+    {
+      "name": "note_prompt_measured",
+      "ok": true,
+      "detail": "{\"note\": 1150, \"report\": 719}"
+    }
+  ],
+  "failed": 0
+}
