@@ -240,7 +240,7 @@ function TipButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title ?? label}
+      data-hover-hint={title ?? label}
       aria-label={label}
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] text-outline hover:text-primary hover:bg-surface-container transition-colors disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-outline"
     >
@@ -2378,7 +2378,7 @@ export function HomeChat({
                       {elapsedText(m.startedAtMs, m.endedAtMs) ? (
                         <span
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-outline"
-                          title="从提交到本轮结束的实际等待时间，含排队、生成、工具调用和结果回读。"
+                          data-hover-hint="从提交到本轮结束的实际等待时间，含排队、生成、工具调用和结果回读。"
                         >
                           <Icon name="clock" className="w-[13px] h-[13px]" />
                           <span>{elapsedText(m.startedAtMs, m.endedAtMs)}</span>
@@ -2433,7 +2433,7 @@ export function HomeChat({
                   void addAttachment(item.path);
                 }}
                 className="w-full text-left px-2 py-1 rounded hover:bg-surface-container"
-                title={item.path}
+                data-hover-hint={item.path}
               >
                 <span className="text-[12px] text-on-surface">{item.file_name}</span>
                 <span className="ml-2 text-[10.5px] text-outline">
@@ -2455,7 +2455,7 @@ export function HomeChat({
             type="button"
             onClick={() => void pickAttachments()}
             disabled={busy}
-            title={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/库根`}
+            data-hover-hint={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/库根`}
             aria-label="添加文件"
             data-testid="attachment-pick"
             className="w-7 h-7 rounded-full plate-soft-inset text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2500,7 +2500,7 @@ export function HomeChat({
               <span
                 key={a.path}
                 className="inline-flex items-center gap-1 max-w-[240px] px-2 py-0.5 rounded-full bg-surface-container text-[11px] text-on-surface-variant"
-                title={`${a.path}\nsha256: ${a.sha256}\n${a.content.length} 字，随本轮发送，不单独存盘`}
+                data-hover-hint={`${a.path}\nsha256: ${a.sha256}\n${a.content.length} 字，随本轮发送，不单独存盘`}
               >
                 <Icon name="note" className="w-[12px] h-[12px] flex-shrink-0" />
                 <span className="truncate">{a.fileName}</span>
@@ -2508,7 +2508,7 @@ export function HomeChat({
                   onClick={() => removeAttachment(a.path)}
                   disabled={busy}
                   className="text-outline hover:text-error transition-colors disabled:opacity-40"
-                  title="移除这个附件"
+                  data-hover-hint="移除这个附件"
                   aria-label={`移除附件 ${a.fileName}`}
                 >
                   ×
@@ -2556,7 +2556,7 @@ export function HomeChat({
                 onClick={onNewThread}
                 disabled={busy}
                 className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
-                title="开一段新对话（当前这段已自动保存在本机）"
+                data-hover-hint="开一段新对话（当前这段已自动保存在本机）"
               >
                 <Icon name="note" className="w-[13px] h-[13px]" />
                 <span>新对话</span>
@@ -2565,7 +2565,7 @@ export function HomeChat({
             {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
             <button
               onClick={() => setVoiceNote((v) => !v)}
-              title="语音输入尚未开放：需要先配置语音模型端点"
+              data-hover-hint="语音输入尚未开放：需要先配置语音模型端点"
               aria-expanded={voiceNote}
               data-testid="voice-button"
               className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
@@ -2602,7 +2602,7 @@ export function HomeChat({
                   : !canSubmit || !input.trim()
               }
               className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              title={
+              data-hover-hint={
                 generating
                   ? (engineCancelView.hint ?? engineCancelView.label)
                   : canSubmit
@@ -2644,7 +2644,7 @@ export function HomeChat({
       <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 px-1 flex-shrink-0">
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <Icon name="shield-check" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
-          <span className="font-label-caps text-[10px] text-outline truncate" title={permissionDetail}>
+          <span className="font-label-caps text-[10px] text-outline truncate" data-hover-hint={permissionDetail}>
             {admission === "checking"
               ? "模型权限：正在读取宿主事实…"
               : admission === "ready"
@@ -2664,7 +2664,7 @@ export function HomeChat({
         </span>
         <span
           className="inline-flex items-center gap-1.5 min-w-0"
-          title="引擎上报的上下文用量（used / size tokens）；未上报时显示「—」，不自行估算。"
+          data-hover-hint="引擎上报的上下文用量（used / size tokens）；未上报时显示「—」，不自行估算。"
         >
           <Icon name="trend-up" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
           <span className="font-label-caps text-[10px] text-outline tabular-nums truncate">
@@ -2677,7 +2677,7 @@ export function HomeChat({
         {admission === "ready" && preset !== null ? (
           <span
             className="font-label-caps text-[10px] text-outline truncate"
-            title="规则资产来自应用数据根下的 profiles/discipline.rules.json；可在设置 →「规则资产」查看和修改。"
+            data-hover-hint="规则资产来自应用数据根下的 profiles/discipline.rules.json；可在设置 →「规则资产」查看和修改。"
           >
             规则：{preset.rulesLoaded ? "已加载 Profile 规则" : "未加载（纯净底座）"}
           </span>
@@ -2685,13 +2685,13 @@ export function HomeChat({
         {engineCancel !== null ? (
           <span
             className="font-label-caps text-[10px] text-outline truncate"
-            title={describeEngineCancelOutcome(engineCancel).message}
+            data-hover-hint={describeEngineCancelOutcome(engineCancel).message}
           >
             取消：{describeEngineCancelOutcome(engineCancel).message}
           </span>
         ) : null}
         {workspaceNote ? (
-          <span className="font-label-caps text-[10px] text-outline truncate" title={workspaceNote}>
+          <span className="font-label-caps text-[10px] text-outline truncate" data-hover-hint={workspaceNote}>
             工作目录：{workspaceNote}
           </span>
         ) : null}

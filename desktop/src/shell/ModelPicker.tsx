@@ -100,7 +100,7 @@ export function ModelPicker({
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container transition-colors disabled:opacity-60"
-        title={currentProvider ? `当前路由：${label}（可切换模型与思考等级）` : "当前端点尚未识别"}
+        data-hover-hint={currentProvider ? `当前路由：${label}（可切换模型与思考等级）` : "当前端点尚未识别"}
       >
         <Icon name="spark" className="w-[13px] h-[13px]" />
         <span className="max-w-[150px] truncate">模型：{label}</span>
@@ -118,7 +118,7 @@ export function ModelPicker({
               }}
               disabled={busy || !onFollowDsh}
               className="w-full text-left px-2 py-1.5 rounded-lg text-[11.5px] text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-60"
-              title="归档 OmniDesk 的模型覆盖文件，改用 DSH 设置里的 provider 与默认模型"
+              data-hover-hint="归档 OmniDesk 的模型覆盖文件，改用 DSH 设置里的 provider 与默认模型"
             >
               <span className="block truncate">跟随 DSH 设置（推荐）</span>
               <span className="block truncate text-[10px] text-outline">
@@ -145,7 +145,7 @@ export function ModelPicker({
                       ? "bg-primary text-on-primary"
                       : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high")
                   }
-                  title="对应 DSH 的 reasoningEffort：默认＝不传该参数，由模型/Provider 决定"
+                  data-hover-hint="对应 DSH 的 reasoningEffort：默认＝不传该参数，由模型/Provider 决定"
                 >
                   {lv.label}
                 </button>
@@ -185,7 +185,7 @@ export function ModelPicker({
                             ? "bg-primary/10 text-primary font-medium"
                             : "text-on-surface-variant hover:bg-surface-container")
                         }
-                        title={m.description || undefined}
+                        data-hover-hint={m.description || undefined}
                       >
                         <span className="block truncate">{m.name || m.id}</span>
                         <span className="block truncate text-[10px] text-outline">
@@ -228,7 +228,7 @@ export function ModelPicker({
                                 ? "bg-primary/10 text-primary font-medium"
                                 : "text-on-surface-variant hover:bg-surface-container")
                             }
-                            title={p.baseURL ? "端点：" + p.baseURL : undefined}
+                            data-hover-hint={p.baseURL ? "端点：" + p.baseURL : undefined}
                           >
                             <span className="block truncate">
                               {p.id} / {m}

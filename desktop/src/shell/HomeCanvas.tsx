@@ -121,7 +121,7 @@ function TodoTicker({
           "text-[12px] text-on-surface-variant truncate transition-opacity duration-150 " +
           (shown ? "opacity-100" : "opacity-0")
         }
-        title={current.title}
+        data-hover-hint={current.title}
       >
         {current.title}
         <span className="text-outline"> · {current.scenario || "未分类"}</span>

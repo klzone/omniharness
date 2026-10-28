@@ -69,7 +69,7 @@ export function ThreeWeekCalendar({ now = new Date() }: { now?: Date }) {
               return (
                 <div
                   key={d.toISOString()}
-                  title={d.toLocaleDateString("zh-CN")}
+                  data-hover-hint={d.toLocaleDateString("zh-CN")}
                   className={
                     "relative flex items-center justify-center h-7 rounded-md font-label-caps text-[10px] transition-colors " +
                     (today

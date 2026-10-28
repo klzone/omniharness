@@ -215,7 +215,7 @@ def main() -> int:
         check("quadrant_title_" + title, f'title: "{title}"' in (SRC / "weeklyQuadrants.ts").read_text(encoding="utf-8"), "")
     check("quadrant_rule_removed_from_screen", "口径：" not in quad_tsx and "不调用模型" not in quad_tsx, "")
     check("quadrant_preview_single_line",
-          "truncate opacity-85" in quad_tsx and "title={i.text}" in quad_tsx,
+          "truncate opacity-85" in quad_tsx and "data-hover-hint={i.text}" in quad_tsx,
           "单行截断，悬浮可读全文")
     check("quadrant_click_filters", "onSelect(key)" in quad_tsx and "aria-pressed" in quad_tsx, "")
     check("quadrant_state_in_page",
@@ -257,7 +257,7 @@ def main() -> int:
 
     # ---- S04 中栏两行截断 + 右栏编号卡 ----
     check("entry_line_clamp_two",
-          "line-clamp-2" in tl_tsx and "title={entry.text}" in tl_tsx, "全文仍可读")
+          "line-clamp-2" in tl_tsx and "data-hover-hint={entry.text}" in tl_tsx, "全文仍可读")
     check("entry_card_style", "data-weekly-entry" in tl_tsx and "border-l-2" in tl_tsx, "")
     check("timeline_keeps_rail", "absolute left-[51px]" in tl_tsx, "")
     check("artifact_numbered_card",

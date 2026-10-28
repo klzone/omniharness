@@ -53,7 +53,7 @@ function DestinationSwitch({
     return (
       <span
         className="shrink-0 mt-[3px] px-1.5 py-[2px] text-[11.5px] text-outline/70 border border-dashed border-outline-variant/60"
-        title="这条记录在文件里没有「去向」行，可在原文补一行之后再来点选"
+        data-hover-hint="这条记录在文件里没有「去向」行，可在原文补一行之后再来点选"
       >
         无去向
       </span>
@@ -80,7 +80,7 @@ function DestinationSwitch({
             setBusy(false);
           }
         }}
-        title={
+        data-hover-hint={
           checked
             ? "已进周报：计入「进周报条目」，整理周报时作为上下文。点一下改为不进。"
             : "不进周报：仍留在本周记录里。点一下改为进周报。"
@@ -108,7 +108,7 @@ function DestinationSwitch({
         </span>
       </button>
       {!checked && destination.trim() !== "仅记录" ? (
-        <span className="text-[10.5px] text-outline/80 max-w-[80px] truncate" title={destination}>
+        <span className="text-[10.5px] text-outline/80 max-w-[80px] truncate" data-hover-hint={destination}>
           {destination}
         </span>
       ) : null}
@@ -216,7 +216,7 @@ export function WeeklyTimeline({
           className="ml-auto text-[12px] text-outline hover:text-primary hover:underline shrink-0"
           onClick={onOpenSource}
           disabled={empty && !content}
-          title="在工作记录文件里看原文"
+          data-hover-hint="在工作记录文件里看原文"
         >
           打开本周原文
         </button>
@@ -341,7 +341,7 @@ export function WeeklyTimeline({
                             title 悬浮提示与「查看本周原文」读到，原文一律不改。 */}
                         <p
                           className="flex-1 min-w-0 text-[13.5px] text-on-surface-variant leading-[1.7] line-clamp-2 break-words"
-                          title={entry.text}
+                          data-hover-hint={entry.text}
                         >
                           {entry.text}
                         </p>
@@ -352,7 +352,7 @@ export function WeeklyTimeline({
                       <li
                         key={"raw" + i}
                         className="px-2.5 py-1.5 -ml-2.5 rounded-lg bg-surface-container-low/50 text-[12px] text-outline leading-relaxed whitespace-pre-wrap break-words"
-                        title="这行不符合记录格式，按原文显示，未做改动"
+                        data-hover-hint="这行不符合记录格式，按原文显示，未做改动"
                       >
                         {line}
                       </li>

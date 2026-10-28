@@ -59,7 +59,7 @@ export function ProjectRail(props: ProjectRailProps) {
           <button
             className="text-[11px] text-primary hover:underline"
             onClick={onRefresh}
-            title="重新读取引擎的会话清单"
+            data-hover-hint="重新读取引擎的会话清单"
           >
             {loading ? "读取中…" : "刷新"}
           </button>
@@ -84,7 +84,7 @@ export function ProjectRail(props: ProjectRailProps) {
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-on-surface-variant hover:bg-surface-container")
                   }
-                  title={g.workspace_label || g.workspace_token}
+                  data-hover-hint={g.workspace_label || g.workspace_token}
                 >
                   {g.workspace_label || "（未命名工作区）"}
                 </button>
@@ -99,7 +99,7 @@ export function ProjectRail(props: ProjectRailProps) {
                             ? "bg-primary/10 text-primary"
                             : "text-outline hover:bg-surface-container")
                         }
-                        title={s.engine_session_id}
+                        data-hover-hint={s.engine_session_id}
                       >
                         {s.engine_session_id.slice(0, 12)}
                         {s.resume_status === "resumed"
@@ -120,7 +120,7 @@ export function ProjectRail(props: ProjectRailProps) {
               <button
                 className="text-[11px] text-primary hover:underline flex items-center gap-1"
                 onClick={onNewThread}
-                title="开一段新对话"
+                data-hover-hint="开一段新对话"
               >
                 <Icon name="plus" className="w-3 h-3" />
                 新会话
@@ -141,7 +141,7 @@ export function ProjectRail(props: ProjectRailProps) {
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-on-surface-variant hover:bg-surface-container")
                     }
-                    title={d.title}
+                    data-hover-hint={d.title}
                   >
                     {d.title}
                   </button>
@@ -149,7 +149,7 @@ export function ProjectRail(props: ProjectRailProps) {
                     className="text-[10px] px-1 py-0.5 rounded border border-surface-variant/30 bg-surface-container-lowest/60"
                     value={d.tag}
                     onChange={(e) => onRetag(d.id, e.target.value as ThreadTag)}
-                    title="改挂到别的场景"
+                    data-hover-hint="改挂到别的场景"
                   >
                     {tagOptions.map((o) => (
                       <option key={o.key} value={o.key}>
@@ -177,7 +177,7 @@ export function ProjectRail(props: ProjectRailProps) {
                     ? "bg-primary text-on-primary"
                     : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high")
                 }
-                title="新会话的场景标签"
+                data-hover-hint="新会话的场景标签"
               >
                 {o.label}
               </button>

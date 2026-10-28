@@ -9,6 +9,7 @@ import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
 import { WindowResizeHandles } from "./shell/WindowChrome";
+import { HoverHint } from "./shell/HoverHint";
 import type { EngineDescriptor, ProfileDeclPayload } from "./types";
 
 // 知识库分页只在用户第一次点进来时才加载（OD-KB-001 P2-S04）：它是目前最大的
@@ -196,6 +197,8 @@ export default function App() {
 
   return (
     <div className="relative flex flex-col h-screen w-full bg-background text-on-surface font-body-md overflow-hidden">
+      {/* 全局悬停说明（OD-ARCH-101）：接管 window 的原生 title，统一为方角白底卡片。 */}
+      <HoverHint />
       {/* 柔和背景层（纯装饰，不承载信息）。OD-ARCH-027 Step 2：由高半径 filter: blur 改为静态径向渐变光晕。 */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute -top-[15%] left-[20%] w-[60rem] h-[50rem] rounded-full ambient-glow ambient-glow-a" />
@@ -240,7 +243,7 @@ export default function App() {
         <div
           role="status"
           className="mx-auto mt-2 max-w-4xl rounded-2xl bg-error-container/70 px-4 py-2.5 text-[11.5px] leading-relaxed text-on-error-container ring-1 ring-error/30"
-          title={declError}
+          data-hover-hint={declError}
         >
           Profile 声明未能加载，当前使用内置默认入口。原因：{declError}
         </div>
@@ -256,7 +259,7 @@ export default function App() {
         <div
           role="status"
           className="mx-auto mt-2 max-w-4xl rounded-2xl bg-surface-container-high px-4 py-2.5 text-[11.5px] leading-relaxed text-on-surface-variant ring-1 ring-outline-variant/50"
-          title={decl?.path}
+          data-hover-hint={decl?.path}
         >
           {declDrift === "missing"
             ? "Profile 声明文件已被删除，重启应用后会重建默认声明。当前仍按启动时的入口显示。"

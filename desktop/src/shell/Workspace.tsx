@@ -135,7 +135,7 @@ export function Workspace({ onNavigate }: { onNavigate: (scene: Scene) => void }
             <button
               className="text-[11px] px-2.5 py-1 rounded-md bg-surface-container hover:bg-surface-container-high flex items-center gap-1 shrink-0"
               onClick={() => void recover()}
-              title="让引擎重新加载这个会话（不重放任何任务）"
+              data-hover-hint="让引擎重新加载这个会话（不重放任何任务）"
             >
               恢复会话
             </button>

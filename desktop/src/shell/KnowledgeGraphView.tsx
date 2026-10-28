@@ -759,7 +759,7 @@ export function KnowledgeGraphView({
                     onMouseEnter={() => setHovered(node.id)}
                     onMouseLeave={() => setHovered((current) => (current === node.id ? null : current))}
                     aria-label={nodeAriaLabel(node)}
-                    title={nodeAriaLabel(node)}
+                    data-hover-hint={nodeAriaLabel(node)}
                     data-testid="vault-graph-node"
                     data-kind={node.kind}
                     data-path={node.path ?? ""}

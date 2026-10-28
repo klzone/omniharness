@@ -61,7 +61,7 @@ function TypeChip({ value }: { value: string | null | undefined }) {
   return (
     <span
       className="shrink-0 px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10"
-      title={"内容类型：" + label}
+      data-hover-hint={"内容类型：" + label}
       data-type-label={label}
     >
       {label}
@@ -155,11 +155,11 @@ export function WritingContinueCard({
           </div>
           <p
             className="mt-2.5 font-headline-md text-[15px] leading-[1.5] text-on-surface line-clamp-2 break-words"
-            title={target.relative_path}
+            data-hover-hint={target.relative_path}
           >
             {targetTitle || fallbackTitle(target.file_name)}
           </p>
-          <p className="mt-1 text-[10.5px] text-outline truncate" title={target.relative_path}>
+          <p className="mt-1 text-[10.5px] text-outline truncate" data-hover-hint={target.relative_path}>
             {shortDate(target.modified_at)} · {target.file_name}
           </p>
           <div className="mt-3 flex items-center gap-2">
@@ -172,7 +172,7 @@ export function WritingContinueCard({
             <button
               className="px-3 py-1.5 rounded-full text-[11px] border border-secondary/30 text-secondary hover:bg-secondary/10"
               onClick={onContinueThread}
-              title="回首页，接着最近一段写作对话往下写"
+              data-hover-hint="回首页，接着最近一段写作对话往下写"
             >
               继续对话
             </button>
@@ -238,7 +238,7 @@ export function WritingInspirationShelf({
               <button
                 onClick={() => onOpenThread(t.id)}
                 className="group w-full text-left rounded-xl px-2.5 py-2 hover:bg-surface-container-low border border-transparent hover:border-secondary/20 min-w-0"
-                title={t.title}
+                data-hover-hint={t.title}
                 data-inspiration-thread={t.id}
               >
                 <span className="flex items-baseline gap-2 min-w-0">
@@ -375,7 +375,7 @@ export function WritingPipeline({
               onClick={() => onStatusFilter(active ? null : s.key)}
               aria-pressed={active}
               data-status-filter={s.key}
-              title={s.hint}
+              data-hover-hint={s.hint}
               className={
                 "relative text-left rounded-xl border px-3 py-2.5 transition min-w-0 " +
                 (active
@@ -420,7 +420,7 @@ export function WritingPipeline({
       </div>
 
       <div className="pt-2 flex items-center gap-2 min-w-0">
-        <p className="text-[10px] text-outline leading-relaxed truncate" title={STATUS_DEFAULT_NOTE}>
+        <p className="text-[10px] text-outline leading-relaxed truncate" data-hover-hint={STATUS_DEFAULT_NOTE}>
           口径：{STATUS_DEFAULT_NOTE}；解析只读文件，不回写。
         </p>
         {stale.length > 0 ? (
@@ -466,7 +466,7 @@ export function WritingPipeline({
                         ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
                         : "border-surface-variant/25 bg-surface-container-low/40 hover:bg-surface-container-low hover:border-secondary/25")
                     }
-                    title={f.relative_path}
+                    data-hover-hint={f.relative_path}
                     data-pipeline-item={f.relative_path}
                   >
                     <span className="flex items-baseline gap-2 min-w-0">

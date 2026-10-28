@@ -54,7 +54,7 @@ function Metric({
       </div>
       {/* 动作放在说明行右端：贴在上方标签行会和右邻列的标题挤在一起。 */}
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] text-outline truncate" title={hint}>
+        <span className="text-[10px] text-outline truncate" data-hover-hint={hint}>
           {hint}
         </span>
         {action ? <span className="ml-auto shrink-0">{action}</span> : null}
@@ -201,7 +201,7 @@ function BandMetric({
           <div className="min-w-0 flex-1">
             <div
               className="text-[13px] font-semibold leading-tight tracking-tight text-on-surface truncate"
-              title={label}
+              data-hover-hint={label}
             >
               {label}
             </div>
@@ -211,7 +211,7 @@ function BandMetric({
               </span>
               {subtitle ? (
                 <span
-                  title={subtitle}
+                  data-hover-hint={subtitle}
                   className={
                     "mono text-[12px] uppercase tracking-[0.12em] truncate " + skin.subtitle
                   }
@@ -238,7 +238,7 @@ function BandMetric({
           </div>
         </div>
         <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0">
-          <span className="text-[12px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
+          <span className="text-[12px] text-on-surface-variant/80 leading-snug truncate" data-hover-hint={hint}>
             {hint}
           </span>
           {action ? <span className="ml-auto shrink-0">{action}</span> : null}
@@ -324,7 +324,7 @@ function WritingMetric({
             <Icon name={icon} className={"w-[16px] h-[16px] " + skin.dot} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold leading-tight tracking-tight text-on-surface truncate" title={label}>
+            <div className="text-[13px] font-semibold leading-tight tracking-tight text-on-surface truncate" data-hover-hint={label}>
               {label}
             </div>
             <div className="mt-1 flex items-baseline gap-1.5 min-w-0">
@@ -333,7 +333,7 @@ function WritingMetric({
               </span>
               {subtitle ? (
                 <span
-                  title={subtitle}
+                  data-hover-hint={subtitle}
                   className="mono text-[8.5px] uppercase tracking-[0.12em] text-on-surface-variant/55 truncate"
                 >
                   {subtitle}
@@ -350,7 +350,7 @@ function WritingMetric({
         </div>
       </div>
       <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0 pl-1.5">
-        <span className="text-[10.5px] text-on-surface-variant/80 leading-snug truncate" title={hint}>
+        <span className="text-[10.5px] text-on-surface-variant/80 leading-snug truncate" data-hover-hint={hint}>
           {hint}
         </span>
         {action ? <span className="ml-auto shrink-0">{action}</span> : null}

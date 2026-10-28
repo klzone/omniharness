@@ -35,7 +35,9 @@ def strip_comments(src: str) -> str:
 def only_in_attributes(src: str, needle: str) -> bool:
     """该片段只出现在 title / aria-label 这类属性里，没有作为可见文字渲染。"""
     lines = [ln for ln in src.splitlines() if needle in ln]
-    return bool(lines) and all(("title=" in ln or "aria-label=" in ln) for ln in lines)
+    return bool(lines) and all(
+        ("title=" in ln or "aria-label=" in ln or "data-hover-hint=" in ln) for ln in lines
+    )
 
 
 def main() -> int:
@@ -111,7 +113,10 @@ def main() -> int:
         "卡片不再有第二行文件名",
     )
     check("artifact_title_fallback_kept", "m.title ?? r.file_name" in art)
-    check("artifact_path_in_title_attr", "title={r.relative_path}" in art)
+    check(
+        "artifact_path_in_title_attr",
+        "data-hover-hint={primary}" in art and "const primary" in art,
+    )
     check("artifact_date_still_shown", "dateText(r.modified_at)" in art)
     check("artifact_search_covers_filename", "r.file_name" in art and ".toLowerCase()" in art)
 

@@ -1,3 +1,26 @@
+## OD-ARCH-101 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 软件内 91 处原生悬停提示已全部改为自绘方角卡片：白底、1px 细边框、直角、轻投影、11.5px，与 `StatusToast` 和轮次索引卡同一套视觉语言；不再出现系统默认气泡。41 处组件 prop 的 `title` 一件未动。
+
+**独立复核范围：** HEAD `3e2bd17` + 本轮改动。逐文件核对 `HoverHint.tsx`（单例挂载、`pointermove` 委托 + `elementFromPoint` 向上找 `data-hover-hint`、320ms 延迟、portal、`role="tooltip"`、`aria-describedby` 补挂与还原、`pointer-events-none`、`z-[105]`、`borderRadius: 0`、翻转与水平夹紧、Esc/滚动/点击/离开关闭）、`App.tsx`（`<HoverHint />` 只出现一次）、23 个含 `data-hover-hint` 的 tsx、`ArtifactExplorer.tsx`（悬停取完整标题而非文件名）、`TopNav.tsx`（两个纯图标按钮补 `aria-label`）。`runtime/` 零差异，未读真实工作记录与凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：** `npx tsc --noEmit` 通过；`npm run build` 通过（仅既有 chunk 体积提示，无错误）；`verify_hover_hint_101.py` **30 / 30**；`verify_weekly_091.py` / `092.py` **67 / 67**、**29 / 29**；`verify_weekly_093.py` / `097.py` / `099.py` / `100.py` **105 / 105**、**34 / 34**、**42 / 42**、**32 / 32**；`verify_worklog_089.py` / `verify_writing_094.py` **61 / 61**、**98 / 98**；窗口 `preview_hover_101.py`（`:131`）四项提示均可见。
+
+**审查中修正的两处真实问题：**
+
+1. **延迟计时被持续微动重置。** 初版 `show()` 只在 `currentRef` 已在展示时才提前返回，而计时期间 `currentRef` 仍是 `null`，于是鼠标在同一控件内轻微移动会不断清掉并重建 320ms 计时器，提示可能一直不出。加入 `pendingRef` 后，同一元素已排队或已展示都直接返回；`hide()` 与键盘焦点路径同步清空。窗口脚本的悬停动作也从「移入后停住」改成**六步小幅移动再停住 1.2 秒**，重新抓帧确认四项提示均正常出现——这条修正是靠真实窗口复现的，不是静态推演。
+2. **纯图标按钮丢失可访问名称。** `TopNav` 的设置与通知按钮原先只有原生 `title`，迁移后若不补 `aria-label`，读屏将读不到名称。已补，并在 `verify_hover_hint_101.py` 增加 `icon_buttons_have_labels` 与 `pending_hover_not_reset` 两条断言（28 → 30）。
+
+**目视复核：** `01-disabled-send-hover.png` 显示禁用发送按钮照样出提示，卡片直角、白底、细边框、贴近按钮上方；`02-topnav-profile-hover.png` 显示 Profile 徽标下方的方角卡片与导航条同色系、无圆角；`03-timeline-entry-hover.png` 显示时间线截断正文的完整说明按多行排版、不越出左栏；`04-artifact-hover.png` 显示成果卡悬停为完整标题而非文件名。四张卡片投影一致、不遮挡正文点击区。
+
+**迁移完整性：** 全仓小写原生标签的 `title=` 归零；`data-hover-hint` 91 处、23 个文件；13 处位于 `disabled` 控件上，全部有说明；`component_title=22` 处组件属性未被动到。
+
+**已知限制（不构成阻断）：** ① 窗口证据为 Xvfb 1600×980 + `/tmp` 合成数据，未在用户真实显示器与真实数据上复核。② 未逐页人工悬停全部 91 处，取样覆盖首页、工作记录页、顶部导航与成果库，其余由同一接管层与静态断言保证。③ 触屏与读屏软件实机未验证。④ 视觉上是「一套组件、一处样式」，以后若某处需要不同配色需另加变体，当前未提供。
+
+**阶段决定：OD-ARCH-101 验收通过。** 按用户长期偏好，本轮改动一并提交并推送 GitHub。
+
+---
+
 ## OD-ARCH-100 审查结论（ARCHITECT，2026-10-28）——通过
 
 **结论：通过。** 用户五点要求全部落地：指标卡图标无底色座、放大到 56px；英文字族换为 Inter + IBM Plex Mono（仍自托管）；去向开关改为圆形单点且「进周报」文字移入悬停/读屏语义；成果库的搜索框与 query 过滤删除，工具栏合并成一行；「另有 N 个归档文件名不符合约定…」提示与 `archiveSkipped` prop 一并移除。
