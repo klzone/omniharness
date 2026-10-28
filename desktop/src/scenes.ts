@@ -115,10 +115,11 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     hasProgress: true,
     summary: "project",
     emptyHint:
-      "本场景还没有保存的成果。左侧卡片与右侧时间线都来自既有的确定性汇总，不是模型算的。",
+      "本场景还没有保存的成果。左侧事项由你在页面录入并只存在本机，右侧时间线据此绘制，不调用模型。",
     subtitles: {
       projects: "PROJECTS",
       timeline: "TIMELINE",
+      history: "HISTORY",
     },
   },
 };

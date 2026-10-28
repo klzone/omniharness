@@ -10,7 +10,11 @@ import {
   type SceneThread,
   type ThreadTag,
 } from "../sceneThreads";
-import type { OfflineArtifactEntry, ProjectSummary, SceneOverview } from "../types";
+import type {
+  OfflineArtifactEntry,
+  ProjectItemRecord,
+  SceneOverview,
+} from "../types";
 import { useThreadCategories } from "../threadCategories";
 import { Icon } from "../components/Icon";
 import { AnnouncementBar } from "./AnnouncementBar";
@@ -150,10 +154,12 @@ export function ScenePage({
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() =>
     fixedSubdirs(scene),
   );
-  /** 项目跟进页的确定性汇总（OD-ARCH-098）：两栏卡片与甘特共用这一份数据。 */
-  const [projectSummary, setProjectSummary] = useState<ProjectSummary | null>(null);
+  /** 项目跟进页的本机事项（OD-ARCH-102）：读写 project-items.v1.json，不调模型。 */
+  const [projectRecords, setProjectRecords] = useState<ProjectItemRecord[]>([]);
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectNote, setProjectNote] = useState<string | null>(null);
+  const [projectSaving, setProjectSaving] = useState(false);
   /** 项目页右栏视图：时间线 / 阶段成果只改视图，不重新取数。 */
   const [projectRightView, setProjectRightView] = useState<"timeline" | "artifacts">("timeline");
   const [overview, setOverview] = useState<SceneOverview | null>(null);
@@ -239,51 +245,49 @@ export function ScenePage({
     };
   }, [def.scenario, pendingTick, includeSubdirs]);
 
-  /** 本场景最近一次输入的事项文本（确定性汇总的输入）。 */
-  const itemsText = useMemo(() => {
-    for (const t of threads) {
-      for (let i = t.messages.length - 1; i >= 0; i -= 1) {
-        const m = t.messages[i];
-        if (m.role === "user" && m.text.trim()) return m.text;
-      }
-    }
-    return "";
-  }, [threads]);
-
-  // 项目跟进：既有确定性汇总（不调模型）。两栏卡片与甘特共用这份 summary。
+  /**
+   * 项目跟进：读本机事项文件（OD-ARCH-102）。
+   * 与旧版确定性汇总的差别：输入不再从最近一段对话里猜，而是用户在本页显式录入。
+   */
   useEffect(() => {
     let alive = true;
-    if (!def.hasProgress) return;
-    if (!itemsText.trim()) {
-      setProjectSummary(null);
-      setProjectError(null);
-      setProjectLoading(false);
-      return;
-    }
+    if (scene !== "project") return;
     setProjectLoading(true);
     shell
-      .projectSummary(itemsText, null)
+      .projectItemsRead()
       .then((r) => {
         if (!alive) return;
-        setProjectLoading(false);
-        if (r.ok && r.summary) {
-          setProjectSummary(r.summary);
-          setProjectError(null);
-        } else {
-          setProjectSummary(null);
-          setProjectError(r.error ?? "确定性汇总没有产出内容");
-        }
+        setProjectRecords(r.items);
+        setProjectNote(r.note);
+        setProjectError(null);
       })
       .catch((e) => {
         if (!alive) return;
-        setProjectLoading(false);
-        setProjectSummary(null);
+        // 读不到就如实报错，不能显示成「零事项」。
+        setProjectRecords([]);
+        setProjectNote(null);
         setProjectError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (alive) setProjectLoading(false);
       });
     return () => {
       alive = false;
     };
-  }, [def.hasProgress, itemsText]);
+  }, [scene]);
+
+  /** 整批写回；宿主做完整校验与原子写，成功后以回执为准刷新界面。 */
+  const saveProjectItems = useCallback(async (items: ProjectItemRecord[]) => {
+    setProjectSaving(true);
+    try {
+      const receipt = await shell.projectItemsSave(items);
+      setProjectRecords(receipt.items);
+      setProjectError(null);
+      setProjectNote(null);
+    } finally {
+      setProjectSaving(false);
+    }
+  }, []);
 
   const openArtifact = useCallback(async (fileName: string) => {
     try {
@@ -655,20 +659,23 @@ export function ScenePage({
 
   return (
     <main className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
-      <SceneStatusStrip
-        scene={def}
-        overview={overview}
-        overviewError={overviewError}
-        refreshKey={pendingTick}
-        weekEntries={weekEntries}
-        weekReportEntries={weekReportEntries}
-        reportLabel={reportLabel}
-        onRequestReport={requestWeeklyReport}
-        writingDraftCount={writingCounts ? writingCounts.draft : null}
-        writingInspirationCount={scene === "writing" ? threads.length : null}
-        writingNow={writingNow}
-        onRequestWriting={scene === "writing" ? newWritingThread : undefined}
-      />
+      {/* 项目跟进 v3（OD-ARCH-102）不设顶部指标卡：计数进入左栏标题；周报/写作保持原样。 */}
+      {scene === "project" ? null : (
+        <SceneStatusStrip
+          scene={def}
+          overview={overview}
+          overviewError={overviewError}
+          refreshKey={pendingTick}
+          weekEntries={weekEntries}
+          weekReportEntries={weekReportEntries}
+          reportLabel={reportLabel}
+          onRequestReport={requestWeeklyReport}
+          writingDraftCount={writingCounts ? writingCounts.draft : null}
+          writingInspirationCount={scene === "writing" ? threads.length : null}
+          writingNow={writingNow}
+          onRequestWriting={scene === "writing" ? newWritingThread : undefined}
+        />
+      )}
       <AnnouncementBar onPendingChanged={bumpPending} />
 
       {scene === "writing" ? (
@@ -870,18 +877,25 @@ export function ScenePage({
         </div>
       ) : scene === "project" ? (
         /*
-         * 项目跟进（OD-ARCH-098 S03）：左「项目卡列表」+ 右「甘特时间线」，
-         * 阶段成果收进右栏的次级切换。数据来自既有确定性汇总，页面不调模型。
+         * 项目跟进 v3（OD-ARCH-102）：左「项目事项 + 历史对话」+ 右「甘特时间线」，
+         * 阶段成果收进右栏的次级切换。事项由用户在本页录入并存到应用数据根，不调模型。
          */
         <ProjectBoard
-          summary={projectSummary}
+          records={projectRecords}
           today={localToday()}
           error={projectError}
           loading={projectLoading}
+          saving={projectSaving}
+          storageNote={projectNote}
+          threads={threads}
           subtitleProjects={def.subtitles?.projects}
           subtitleTimeline={def.subtitles?.timeline}
+          subtitleHistory={def.subtitles?.history}
           rightView={projectRightView}
           onRightView={setProjectRightView}
+          onSave={saveProjectItems}
+          onOpenThread={openThread}
+          onNewThread={newThread}
           artifactsSlot={
             <>
               {artifactsError ? (
@@ -936,9 +950,9 @@ export function ScenePage({
 
       {/*
        * 归档 + 会话历史：weekly 已在三栏里（左栏四象限下方，OD-ARCH-093 S03）；
-       * 其它场景仍在页面底部一条通栏，布局与原来一致。
+       * 项目跟进的历史对话已进左栏（OD-ARCH-102），写作页有独立右栏，均不再重复。
        */}
-      {scene === "weekly" || scene === "writing" ? null : (
+      {scene === "weekly" || scene === "writing" || scene === "project" ? null : (
         <div className="mt-2">{threadsSection}</div>
       )}
     </main>

@@ -1198,6 +1198,66 @@ fn scenario_err(line_no: usize, message: &str) -> String {
     format!("第 {} 行：{}", line_no, message)
 }
 
+/// 项目事项的负责人代号校验（OD-ARCH-102 S01 抽取）。
+///
+/// 只接受 `P` + 数字：这是个人工作台的脱敏口径，避免把真实姓名写进条目。
+/// 依赖 `line_no` 只是为了沿用既有的行级错误文案，存储层按「第 N 条」传同样的数。
+pub fn validate_project_owner(line_no: usize, owner: &str) -> Result<(), String> {
+    if !owner.chars().next().map(|c| c == 'P').unwrap_or(false)
+        || !owner[1..].chars().all(|c| c.is_ascii_digit())
+    {
+        return Err(scenario_err(
+            line_no,
+            "负责人只填代号（例如 P1），不得填写真实姓名",
+        ));
+    }
+    Ok(())
+}
+
+/// 期限校验并返回解析后的日期，供开始日期比较与逾期判定共用。
+pub fn validate_project_due(line_no: usize, due: &str) -> Result<(i32, u32, u32), String> {
+    parse_date(due).ok_or_else(|| {
+        scenario_err(
+            line_no,
+            "期限必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
+        )
+    })
+}
+
+/// 可选开始日期校验：合法、且不得晚于期限。
+pub fn validate_project_start(
+    line_no: usize,
+    start: Option<&str>,
+    due: (i32, u32, u32),
+) -> Result<Option<String>, String> {
+    match start {
+        None => Ok(None),
+        Some(raw) => {
+            let start_date = parse_date(raw).ok_or_else(|| {
+                scenario_err(
+                    line_no,
+                    "开始日期必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
+                )
+            })?;
+            if date_cmp(start_date, due) == std::cmp::Ordering::Greater {
+                return Err(scenario_err(line_no, "开始日期不能晚于期限"));
+            }
+            Ok(Some(raw.to_string()))
+        }
+    }
+}
+
+/// 状态枚举校验。
+pub fn validate_project_status(line_no: usize, status: &str) -> Result<(), String> {
+    if !PROJECT_STATUSES.contains(&status) {
+        return Err(scenario_err(
+            line_no,
+            "状态只允许 not_started / in_progress / blocked / done",
+        ));
+    }
+    Ok(())
+}
+
 /// 某年某月的实际天数（含公历闰年规则）。
 fn days_in_month(year: i32, month: u32) -> u32 {
     match month {
@@ -1609,43 +1669,11 @@ pub fn summarize_project_with(
                 return Err(scenario_err(line_no, &format!("{}不能为空", label)));
             }
         }
-        if !cells[1].chars().next().map(|c| c == 'P').unwrap_or(false)
-            || !cells[1][1..].chars().all(|c| c.is_ascii_digit())
-        {
-            return Err(scenario_err(
-                line_no,
-                "负责人只填代号（例如 P1），不得填写真实姓名",
-            ));
-        }
-        let due = parse_date(cells[2])
-            .ok_or_else(|| {
-                scenario_err(
-                    line_no,
-                    "期限必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
-                )
-            })?;
-        let start = match start_cell {
-            None => None,
-            Some(raw) => {
-                let start_date = parse_date(raw).ok_or_else(|| {
-                    scenario_err(
-                        line_no,
-                        "开始日期必须是存在的 YYYY-MM-DD（例如 2026-02-30 不存在）",
-                    )
-                })?;
-                if date_cmp(start_date, due) == std::cmp::Ordering::Greater {
-                    return Err(scenario_err(line_no, "开始日期不能晚于期限"));
-                }
-                Some(raw.to_string())
-            }
-        };
-        if !PROJECT_STATUSES.contains(&cells[status_index]) {
-            return Err(scenario_err(
-                line_no,
-                "状态只允许 not_started / in_progress / blocked / done",
-            ));
-        }
+        validate_project_owner(line_no, cells[1])?;
+        let due = validate_project_due(line_no, cells[2])?;
+        let start = validate_project_start(line_no, start_cell, due)?;
         let status = cells[status_index];
+        validate_project_status(line_no, status)?;
         let overdue = status != "done" && date_cmp(due, today_date) == std::cmp::Ordering::Less;
         items.push(ProjectItem {
             item: cells[0].to_string(),

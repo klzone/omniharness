@@ -2,6 +2,46 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-102：项目跟进页 v3——移除指标卡、左栏双区与事项 CRUD（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部（待 ARCHITECT 独立审查，本记录不是验收结论）。**
+> 触发：用户批准 OD-ARCH-102 的最小计划。范围只到 P1 计划所列的 S01–S04；未扩展到 P2，未读真实知识库、成果或凭证，未改 `runtime/`。
+> 起点：HEAD `609567eb45e6d7d3ad6e8e2758662dec95b1580b`。边界：本助手亲自实施，未派子代理；窗口验证只用 `/tmp` 合成数据；全部改动保留在工作区，未提交、未推送。
+
+### 改动
+
+1. 新增 `desktop/src-tauri/src/project_items.rs`：项目事项落在应用数据根下的 `project-items.v1.json`（schema `omnidesk.project-items.v1`），与 threads 同级，不进入仓库、知识库或成果目录。写入为同目录临时文件 + rename；覆盖前保留 `.bak`；文件上限 1 MiB、条目上限 500 条、单字段 400 字；重名拒绝；`created_at` 沿用旧值，`updated_at` 每次保存更新。
+2. 读取失败按性质分流：**只有文件结构 / JSON 解析 / 文件类型问题**才回退 `.bak` 并在界面标注「已从备份读回」；**schema 不符、条目校验失败（含负责人、日期、开始晚于期限、状态枚举、重复名）一律整批拒绝并报「第 N 条」**，即使存在可读备份也不静默回退。新增两个单测覆盖「主文件非法条目 + 备份存在」「主文件 schema 错误 + 备份存在」都必须报错。
+3. `task_shell.rs` 抽出并公开 `validate_project_owner` / `validate_project_due` / `validate_project_start` / `validate_project_status`，项目事项存储与旧 `summarize_project` 共用同一套规则。
+4. `lib.rs` 注册 `project_items_read` / `project_items_save`；`types.ts`、`api.ts` 增加记录、清单与两个命令的类型/封装。
+5. `ProjectBoard.tsx` 改为 v3：左栏上「项目事项」（搜索、内联新增表单、卡片、编辑回填、删除确认）、左栏下「历史对话」；事项为 0 时不渲染甘特轴并显示引导空态，有事项后卡片与甘特同步刷新；右栏保留「甘特 / 成果」切换。窄窗按左栏 → 右栏单列排列。
+6. `ScenePage.tsx` 的 project 场景不再渲染顶部指标卡，事项改用宿主文件读写，页面不再消费首页对话的确定性汇总；weekly / writing 的指标卡与三栏布局不变。`scenes.ts` 增加 `history: "HISTORY"` 副标题并更新项目页空态文案。
+7. `projectGantt.ts` 增加 `recordToItem` / `recordsToItems`，逾期按当天计算，不写入存储。
+8. 新增 `verify_project_102.py`（51 项静态与数据层断言）与 `preview_project_102.py`（窗口验证）。同步修订三份因本次新增而漂移的既有断言：`verify_writing_094.py` 的「底部不重复历史」判断加入 project 分支；`verify_hover_hint_101.py` 的说明数 91 → 93、组件 title 属性 22 → 23（项目页新增 2 处说明与 1 个确认框标题）。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| TypeScript | `cd desktop && npx --no-install tsc --noEmit` | 通过 |
+| 前端构建 | `cd desktop && npm run build` | 通过（仅既有 >500 kB chunk 提示） |
+| Rust 全量 | `cd desktop/src-tauri && cargo test --offline` | 384 单测 + 40 集成/文档测试全绿，0 失败 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed，30 subtests passed |
+| 项目页静态 | `python3 tests/verification/desktop/verify_project_102.py` | 51 / 51 |
+| 098 回归 | `python3 tests/verification/desktop/verify_project_098.py` | 35 / 35 |
+| 周报回归 | `verify_weekly_091/092/093/097/099/100.py` | 67/67、29/29、105/105、34/34、42/42、32/32 |
+| 写作 / 工作记录 / 悬停 | `verify_writing_094.py`、`verify_worklog_089.py`、`verify_hover_hint_101.py` | 98/98、61/61、30/30 |
+| 窗口验证 | `python3 tests/verification/desktop/preview_project_102.py --display :151 --root /tmp/od102-preview` | 退出码 0，`passed: true`，23 项必需断言全绿 |
+
+窗口 facts 关键读数：空态 `ax_metric_strip_absent=true`、`ax_gantt_axis_absent_when_empty=true`、`ax_projects_heading/ax_history_heading` 均为 true；首条事项用真实键盘键入后 `first_file_items=1`、`first_card_visible=true`、`first_gantt_row=true`；第二条后 `two_cards=2`；搜索 `search_cards=1`；改期为 `2026-12-31` 后 `edit_due_written=true`、`edit_moved_created_at=true`、`edit_visible_due=true`；删除确认后磁盘条目与卡片、甘特行同步降为 1；1000px 窄窗仍显示「项目事项」「历史对话」「项目时间线」。证据：`tests/verification/desktop/evidence/od-arch-102/`（空态、表单、两条事项、搜索、改期、成果切换、删除确认、删除后、窄窗共 10 张截图与对应 AX 快照、`facts.json`）。
+
+### 未做 / 未验证 / 保留项
+
+- 未做旧数据迁移：v3 页面从空清单开始；首页对话 → `task_project_summary` 的旧链路保留，但不再驱动本页。
+- WebKitGTK 不把普通 `p` / `span` 静态文字暴露到 AT-SPI 树，空态引导文案与甘特轴标题改用截图 + 静态源码断言覆盖，已在 `facts.json` 写明证据等级。
+- 未在用户真实显示器上复核；窗口证据为 Xvfb 1600×980 / 1000px 窄窗 + `/tmp` 合成数据。拖拽改期与多人协作不在本计划内。
+- `git diff --check` 返回 0；`git status --porcelain -- runtime/` 为空。工作区既有 P1–P4 与 101 的未提交改动全部保留，本轮未 reset / clean / commit / push。
+
 ## OD-ARCH-101：全局悬停说明统一为软件自绘方角卡片（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**

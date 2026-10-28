@@ -29,6 +29,9 @@ import type {
   LocalRootInfo,
   MaterialRead,
   OfflineFlowResponse,
+  ProjectItemRecord,
+  ProjectItemsListing,
+  ProjectItemsSaveReceipt,
   ProjectSummary,
   ProfileDeclPayload,
   ProfileRulesSaveReceipt,
@@ -1131,6 +1134,22 @@ export const shell = {
       inputText,
       today,
     }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 项目事项清单（OD-ARCH-102 S01）：应用数据根下的 project-items.v1.json。
+   * 只读写这一个文件；`today` 不参与存储，逾期在界面按当天现算。
+   */
+  projectItemsRead(): Promise<ProjectItemsListing> {
+    return invoke<ProjectItemsListing>("project_items_read").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  projectItemsSave(items: ProjectItemRecord[]): Promise<ProjectItemsSaveReceipt> {
+    return invoke<ProjectItemsSaveReceipt>("project_items_save", { items }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
