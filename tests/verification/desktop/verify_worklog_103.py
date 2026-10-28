@@ -113,17 +113,16 @@ def main() -> int:
     skill = (SKILLS / "memory-agent" / "SKILL.md").read_text(encoding="utf-8")
 
     # ---- 静态：前端接线 ----
-    check("home_passes_entry_date", "shell.worklogAppend(text, undefined, entryDate)" in home)
-    check("home_uses_extract_entry_date", "extractEntryDate(text, new Date(), tzOffsetRef.current)" in home)
-    # 日期识别必须与宿主同一时区口径，否则跨时区时合法补录会被判成「晚于今天」。
-    check("home_uses_host_timezone", "scheduler\n      .getConfig()" in home and "utc_offset_minutes" in home)
-    check("home_uses_redate_before_model", home.index("detectRedateInstruction(text, new Date(), tzOffsetRef.current)") < home.index("shell.worklogAppend(text, undefined, entryDate)"))
-    check("home_skips_model_on_redate", "return true;" in home and "shell.worklogRedate({" in home)
-    check("home_keeps_last_note", "lastNoteRef.current = {" in home)
-    # 换会话后不能沿用上个对话的「上一条」，否则改日期会挪错记录。
-    check("home_clears_last_note_on_switch", "lastNoteRef.current = null;" in home)
-    check("home_inherits_continuation_date", "isNoteContinuation(text)" in home)
-    check("home_says_when_date_not_used", "findDatePhrase(text)" in home)
+    #
+    # OD-ARCH-104 起，随手记的「这句是指令还是内容」改由模型判定，界面不再用
+    # detectRedateInstruction / isNoteContinuation 做前置正则。以下几条被 104 取代，
+    # 改由 verify_worklog_104.py 断言（「模型判定到达之前不写盘」「只走批量移动」）；
+    # 这里只保留仍然成立的部分：日期与文本工具还在、本机回执标签还在。
+    check("home_keeps_find_date_phrase", "findDatePhrase(" in home)
+    check("home_keeps_host_timezone", "utc_offset_minutes" in home)
+    # 单条改日期的命令仍在（宿主能力保留）；界面改由 104 的批量通道统一执行，
+    # 这条断言落在 API 层，不再要求 HomeChat 直接调用。
+    check("api_keeps_redate_command", "worklogRedate(" in api and '"worklog_redate"' in api)
     check("home_marks_local_receipt", '"工作台本地处理 · 未调用模型"' in home)
     check("api_entry_date_param", "entryDate: entryDate ?? null" in api)
     check("api_redate_command", '"worklog_redate"' in api)
@@ -137,7 +136,14 @@ def main() -> int:
     check("lib_append_failures_have_shape", lib.count('"entry_index": 0,') >= 5)
     check("worklog_assert_entry_date", "pub fn assert_entry_date" in worklog)
     check("worklog_move_entry", "pub fn move_entry(" in worklog)
-    check("worklog_redate_backs_up", '"## {from_date}"' in worklog and ".md.bak-" in worklog)
+    # 改日期走 move_entries 共用的一套写盘：备份命名 + 只增删允许的日期标题。
+    check(
+        "worklog_redate_backs_up",
+        ".md.bak-" in worklog
+        and 'format!("## {date}")' in worklog
+        and 'format!("## {date}（续）")' in worklog,
+    )
+    check("worklog_shared_commit", "fn commit_week_file(" in worklog)
     check("worklog_conserves_items", "before_items != after_items" in worklog)
     check("worklog_no_truncate", "truncate(true)" not in worklog)
     check("worklog_rejects_cross_week", "跨周移动暂不支持" in worklog)
@@ -146,9 +152,10 @@ def main() -> int:
     check("intent_rejects_backreference_less", "backReference" in intent)
 
     # ---- 静态：Skill 规则 ----
-    check("skill_date_owned_by_host", "由工作台从原文里认出来" in skill)
+    # OD-ARCH-104：日期不再由工作台从原文里「认出来」，改由模型判定 + 索引校验；
+    # Skill 同步改成「先分类、再输出判定块」。
+    check("skill_date_judged_by_model", "你判语义" in skill and "工作台落盘" in skill)
     check("skill_no_file_editing", "没有写文件的权限" in skill)
-    check("skill_reports_mismatch", "回执日期与原文时间语义不符时" in skill)
     check("skill_no_invented_tool", "worklog_redate" not in skill)
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")
 

@@ -684,6 +684,37 @@ export interface WorklogRedateReceipt {
 }
 
 /**
+ * 批量改日期里的一条结果（OD-ARCH-104）。
+ *
+ * 正文原样搬过去，不改写；回执逐条给出原日期 → 目标日期与目标段里的序号，
+ * 界面照它显示「实际移动了哪几条」，用户能一眼核对。
+ */
+export interface WorklogMovedEntry {
+  from_date: string;
+  to_date: string;
+  /** 原日期段里的序号（0 起）。 */
+  index: number;
+  /** 目标日期段里的序号（0 起）。 */
+  new_index: number;
+  text: string;
+}
+
+/**
+ * 批量改日期回执（OD-ARCH-104）。
+ *
+ * 任一条对不上就整批拒绝、文件一字不动：此时 `ok=false`、`moves` 为空、
+ * `error` 原样显示给用户。
+ */
+export interface WorklogMoveManyReceipt {
+  ok: boolean;
+  path: string | null;
+  week: string;
+  moves: WorklogMovedEntry[];
+  backup: string | null;
+  error: string | null;
+}
+
+/**
  * 改去向回执（OD-ARCH-099 S02）。
  *
  * 界面点选「进周报」只改这一条记录在周文件里的去向字段；不写周报正文。

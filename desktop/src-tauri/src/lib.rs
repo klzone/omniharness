@@ -2269,6 +2269,8 @@ fn worklog_redate(
     to_date: String,
     expect_text: String,
 ) -> serde_json::Value {
+    let offset = worklog_offset_minutes(&state);
+    let today = worklog::date_label(task_shell::now_secs(), offset);
     let root = match worklog_library_root(&state) {
         Ok(root) => root,
         Err(message) => {
@@ -2285,7 +2287,7 @@ fn worklog_redate(
             })
         }
     };
-    match worklog::move_entry(&root, &week, &from_date, index, &to_date, &expect_text) {
+    match worklog::move_entry(&root, &week, &from_date, index, &to_date, &expect_text, &today) {
         Ok(receipt) => serde_json::json!(receipt),
         Err(message) => serde_json::json!({
             "ok": false,
@@ -2301,6 +2303,55 @@ fn worklog_redate(
     }
 }
 
+
+/// 批量改日期（OD-ARCH-104）。
+///
+/// 随手记的语义判定由模型完成，界面拿回判定后把 moves 一次性交给这里：
+/// 一次读入、逐条按 expect_text 校验、全部通过才重写一次。任一条对不上就整批拒绝，
+/// 文件一字不动。跨周与晚于今天的日期同样拒绝。
+#[tauri::command(async)]
+fn worklog_move_many(
+    state: State<'_, SharedHost>,
+    week: String,
+    moves: Vec<worklog::MoveRequest>,
+) -> serde_json::Value {
+    let offset = worklog_offset_minutes(&state);
+    let today = worklog::date_label(task_shell::now_secs(), offset);
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "moves": [],
+                "backup": null,
+                "error": message,
+            })
+        }
+    };
+    if let Err(message) = worklog::assert_week_label(&week) {
+        return serde_json::json!({
+            "ok": false,
+            "path": null,
+            "week": week,
+            "moves": [],
+            "backup": null,
+            "error": message,
+        });
+    }
+    match worklog::move_entries(&root, &week, &moves, &today) {
+        Ok(receipt) => serde_json::json!(receipt),
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "path": worklog::week_path(&root, &week).display().to_string(),
+            "week": week,
+            "moves": [],
+            "backup": null,
+            "error": message,
+        }),
+    }
+}
 
 /// 读当周工作记录（周报「有米」用）。只读，不建文件、不改文件。
 #[tauri::command(async)]
@@ -3788,6 +3839,7 @@ pub fn run() {
             worklog_append,
             worklog_set_destination,
             worklog_redate,
+            worklog_move_many,
             worklog_read_week,
             worklog_archive_list,
             worklog_read_report,

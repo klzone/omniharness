@@ -1,5 +1,57 @@
 # 执行状态
 
+## OD-ARCH-104：随手记改由模型判定「指令 / 内容」，代码只校验与落盘（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部 OD-ARCH-104 章节（本节只是执行记录）。**
+> 起点：HEAD 378f729（103 已推送）。边界：本助手亲自实施（未派子代理）；runtime/ 零差异；未读真实工作记录与凭证；测试数据全为 /tmp 合成。
+> 用户原话：「你记录工作能不能先分别啥是指令，啥是需要记录的内容呢？不要遇到问题就用一个规则来判断，你大模型是干嘛的？不能机械的执行啊！」
+
+### 改动
+
+1. **新增 desktop/src/workRecordVerdict.ts**（纯函数，353 行）：splitVerdict / verdictDisplayText（流式与终态都剥掉判定块）、parseVerdict（严格 JSON，容忍外层代码围栏）、validateVerdict（原话连续片段、本 ISO 周且不晚于今天、索引越界、重复移动、action 自相矛盾）、buildWorklogIndex / describeIndex（当周索引：最近 7 天、每条 80 字、上限 60 条）、shortText / dayNumberOf / comparableText。**模块里没有任何「指令/补充/纠正」词表。**
+2. **desktop/src/conversationPrompt.ts**：note 分支重写为「先人话、后 omnidesk-verdict JSON 块」，带今天日期、当周标签、当周条目索引与七条判断原则；保留「配套技能指引（<id>）：」注入；明确「你不需要、也不允许再写文件或改写已有条目」。新增 noteIndex 入参。
+3. **skills/memory-agent/SKILL.md**：重写为「先分类再写什么 / 输出判定块 / 六要素 / 去向 / 周报不归这里 / 数据边界」，1232 字符（预算不超过 2500），去掉改写文件的口径。
+4. **desktop/src-tauri/src/worklog.rs**：新增 MoveRequest / MovedEntry / MoveBatchReceipt、read_week_lines、assert_structure_preserved、commit_week_file、prune_empty_sections、insert_block、move_entries（一次读入、逐条定位校验、区域不重叠、从后往前摘除、空段连标题清理、只允许增删本次涉及的日期标题、结构自证、单份备份、写后回读）。move_entry 改为其薄封装。
+5. **lib.rs / api.ts / types.ts**：新增并注册 worklog_move_many；新增 shell.worklogMoveMany、WorklogMovedEntry、WorklogMoveManyReceipt。
+6. **desktop/src/shell/HomeChat.tsx**：删除 detectRedateInstruction / isNoteContinuation / lastNoteRef 分支。随手记流程改为：读当周文件 → buildWorklogIndex → 带索引调模型 → 终态后 settleNote（notePendingRef 按 taskId 保证每任务只执行一次）→ splitVerdict / parseVerdict / validateVerdict → moves 走 worklogMoveMany、records 逐条 worklogAppend(text, undefined, date) → 追加一条 local 回执消息。判定到达前一个字节都不写。
+7. **降级路径**：无判定块 / JSON 不合法 / 校验不过 → 不移动、不改已有条目，只把原话按当天追加，并明说「模型未给出判定……未做指令识别」。取消或中断的回合不写盘，消息上标「本轮已取消，这句没有写入工作记录。」
+8. **docs/decisions.md**：新增 D-032（模型判语义、宿主守写入），含失败口径与复审触发条件。
+
+### 计划偏离（如实记录）
+
+- 无架构偏离。S1–S5 全部按计划落地；未引入 delete 一类动作，判定只允许 record / move / confirm / answer，模型无权删除条目。
+- 已知代价：记录在模型返回后落盘（多等几秒）；提示词多出索引段。计划里已写明并接受。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| TypeScript | cd desktop && npx tsc --noEmit | 通过，0 错误 |
+| 前端构建 | cd desktop && npm run build | 通过（仅既有 chunk 体积提示） |
+| 104 专项 | python3 tests/verification/desktop/verify_worklog_104.py | **67 / 67** |
+| 103 回归 | verify_worklog_103.py | 52 / 52 |
+| 089 回归 | verify_worklog_089.py | **61 / 61** |
+| 094 回归 | verify_writing_094.py | 98 / 98 |
+| 101 回归 | verify_hover_hint_101.py | 30 / 30 |
+| 082 回归 | verify_skill_bindings_082.py | 38 / 38 |
+| 088 回归 | verify_intent_088.py | 22 / 22 |
+| 会话提示词 | verify_conversation_prompt.py | 26 / 26 |
+| Rust 全量 | cd desktop/src-tauri && cargo test --offline --lib | **401 passed，0 failed** |
+| pytest | python3 -m pytest tests -q | 89 passed + 30 subtests |
+
+**未验证（明确留白）：** 真实模型对用户原三句的分类准确率。confirm 与 moves 的实际表现要等用户端到端实测；脚本只证明「校验与落盘按规则执行」，不证明「模型一定判对」。
+
+### 本轮修掉的两个测试口径问题（非功能缺陷）
+
+1. verify_worklog_089.py 的两条断言依赖提示词字面（「工作记录」「不允许再写文件」）。104 改写提示词后需保留这两个语义锚点，已补回，断言不动。
+2. verify_worklog_104.py 的 prompt_has_note_index 依赖索引段标题措辞，已改成「当周已有记录」。
+
+### 证据
+
+- tests/verification/desktop/evidence/od-arch-104/verdict-104.json（67 项逐条结果）
+- tests/verification/desktop/evidence/od-arch-104/worklog-103.json、worklog-089.json
+
+
 ## OD-ARCH-103：随手记补录日期语义化（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部 OD-ARCH-103 章节（本节只是执行记录）。**

@@ -95,6 +95,13 @@ export function composeConversationPrompt(input: {
    * 模型不必猜「这周做了什么」。null = 没读（非周记录场景）。
    */
   worklog?: { week: string; exists: boolean; content: string } | null;
+  /**
+   * 随手记判定所需的当周索引（OD-ARCH-104）：今天、当周标签、已有条目清单。
+   *
+   * 索引来自宿主读到的真实文件（`describeIndex` 整理），模型据此判断一句话是
+   * 记下来、还是把某几条挪到别的日期——它看不到文件本身，只能看这份索引。
+   */
+  noteIndex?: { week: string; today: string; entries: string } | null;
 }): string {
   const context = input.continuation
     ? "用户：" + input.current
@@ -102,7 +109,9 @@ export function composeConversationPrompt(input: {
   const preset = input.preset;
   if (!preset) return context;
   if (input.mode === "note") {
-    // 只保留事实、不改数据、不补造；不追加铁律、章节或归档条目。
+    // OD-ARCH-104：语义判断交给模型（这句话是指令还是内容），
+    // 宿主只做校验与落盘。这里要求模型在正文之后给出一个结构化判定块，
+    // 界面把它剥掉、校验通过后才写文件。
     // OD-ARCH-082 S4：随手记分支保持轻装，最多注入一个绑定 Skill。
     const noteSkills = (preset.skills ?? []).filter((s) => s.content.trim().length > 0).slice(0, 1);
     const noteSkillLines: string[] = [];
@@ -115,15 +124,50 @@ export function composeConversationPrompt(input: {
       noteSkillLines.push(trimmed);
       noteSkillLines.push("");
     }
+    const idx = input.noteIndex ?? null;
+    const indexLines = idx
+      ? [
+          "今天是 " + idx.today + "，当周文件是 " + idx.week + "。",
+          "当周已有记录（每行：日期 #序号 正文，序号从 0 起）：",
+          idx.entries.trim() || "（本周还没有记录）",
+          "",
+        ]
+      : [];
     return [
-      "你是 OmniDesk 工作台的随手记助手。这条记录已经由工作台追加进当周工作记录文件，",
-      "你不需要、也不允许再写文件或改写已有条目。",
+      "你是 OmniDesk 工作台的随手记助手，负责把用户这句话补进本周工作记录。",
+      "用户这一句可能是一段事实，也可能是在指挥你",
+      "（「这些都是周一的」「把上一条挪到周一」「刚才记错了」）。**分类是你的活**：",
+      "先判断这句话里哪些是事实、哪些是指令，再决定写什么、挪什么。",
       "",
-      "只做一件事（OD-ARCH-089）：",
-      "对照 时间 / 地点 / 人物 / 事件 / 影响 / 感受 这六项，看这条缺哪几项，用一句话问用户要不要补。",
-      "不要复述原文，不要扩写，不要下结论，不要生成周报，不要列清单。",
-      "六项都不缺、或这条本身已足够完整时，只回「已记录」。",
+      "写入由工作台执行：你不需要、也不允许再写文件或改写已有条目；",
+      "你只输出判定，界面校验通过后才落盘。",
       "",
+      "判断原则：",
+      "1. 一句话里混着事实与指令时，只把**事实**放进 records；指令部分只体现在 moves / reply。",
+      "   例：「上杭教学和参观紫金矿业都是周一的行动」——「上杭教学」「参观紫金矿业」是事实，",
+      "   「都是周一的」是日期指令；若这两条已在别的日期，用 moves 挪到周一。",
+      "2. 用户说「都是周一的」「全部调整到周一」时，先在上面索引里找出对应条目再给 moves；",
+      "   找不到就 action=answer 并说明，绝不要新建一条记录冒充。",
+      "3. 无日期的细节句，若明显在续述上一条（「还参观了」「随后」「就是周一上午」），",
+      "   跟随上一条的日期；全新主题用今天。",
+      "4. 「就是周一上午」这类确认句只确认日期，不写新内容：action=confirm。",
+      "5. 纯提问、查记录、要求解释：action=answer，不写文件。",
+      "6. records 的 text 必须逐字取自用户原话的连续片段，不改写、不合并、不润色；",
+      "   工作台会逐字比对，对不上整份判定作废。",
+      "7. 同一句话不要既记一遍又挪一遍：已写过的内容用 moves 处理。",
+      "",
+      "输出格式（两段，先人话后判定）：",
+      "第一段：一句给用户的话（含六要素 时间/地点/人物/事件/影响/感受 的缺项追问）。",
+      "不要复述原文，不要扩写，不要生成周报，不要列清单；几项都齐就只说「已记录」。",
+      "第二段：单独一行 <omnidesk-verdict>，紧跟 JSON，再单独一行 </omnidesk-verdict>：",
+      '{"action":"record|move|confirm|answer",',
+      ' "records":[{"text":"原话片段","date":"2026-10-26"}],',
+      ' "moves":[{"date":"2026-10-28","index":0,"to":"2026-10-26"}],',
+      ' "reply":"一句给用户的话"}',
+      "日期一律 YYYY-MM-DD，只能是本周且不晚于今天；index 用索引里的 #序号。",
+      "没有要写的就写 records:[]，没有要挪的就写 moves:[]。",
+      "",
+      ...indexLines,
       ...noteSkillLines,
       context,
     ].join("\n");

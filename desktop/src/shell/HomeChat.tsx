@@ -15,15 +15,21 @@ import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import {
   describeWorkIntent,
-  detectRedateInstruction,
   detectWorkIntent,
-  extractEntryDate,
   findDatePhrase,
-  isNoteContinuation,
-  isoWeekKeyOf,
   todayDateKey,
   type WorkIntent,
 } from "../workIntent";
+import {
+  buildWorklogIndex,
+  describeIndex,
+  parseVerdict,
+  shortText,
+  splitVerdict,
+  validateVerdict,
+  verdictDisplayText,
+  type WorklogIndex,
+} from "../workRecordVerdict";
 import {
   describeEngineCancelOutcome,
   engineCancelButtonState,
@@ -218,18 +224,21 @@ function AssistantText({
   streamed: boolean;
   highlightQuery?: string;
 }) {
+  // OD-ARCH-104：随手记的判定块是给工作台读的，不能出现在对话里。
+  // 流式阶段块可能还没写完（没有闭合标签），此时连同半截一起藏掉。
+  const shown = verdictDisplayText(text);
   if (streamed) {
     return (
       <>
-        <MarkdownText text={text} highlightQuery={highlightQuery} />
+        <MarkdownText text={shown} highlightQuery={highlightQuery} />
         {live ? <Caret /> : null}
       </>
     );
   }
   return highlightQuery ? (
-    <MarkdownText text={text} highlightQuery={highlightQuery} />
+    <MarkdownText text={shown} highlightQuery={highlightQuery} />
   ) : (
-    <StreamedMarkdown text={text} live={live} />
+    <StreamedMarkdown text={shown} live={live} />
   );
 }
 
@@ -622,13 +631,18 @@ export function HomeChat({
   /** 宿主拒绝准备工作目录时的真实原因（供提交失败时原样带出）。 */
   const workspaceNoteRef = useRef<string | null>(null);
   /**
-   * 刚才这条成功落盘的随手记（OD-ARCH-103）。
-   * 只用于两件事：识别「记错了，应该是周一」时定位要挪的那一条；
-   * 以及无日期的「补充两条」继承上一条的日期。只在本窗口内存里，不落盘。
+   * 本轮随手记的待判定上下文（OD-ARCH-104）。
+   *
+   * 模型拿不到宿主命令，只能把判定写在回复里；界面在终态回读结果后执行。
+   * 按 taskId 存，轮询与提交的闭包各不相同也能对上；done 置位后不再重放，
+   * 「重新查询」不会把同一句记两遍。
    */
-  const lastNoteRef = useRef<{ week: string; date: string; index: number; text: string } | null>(
-    null,
-  );
+  const notePendingRef = useRef<
+    Map<string, { userText: string; week: string; today: string; index: WorklogIndex; done: boolean }>
+  >(new Map());
+  /** 随手记这一轮的流式原文（按任务号），供终态判定用；终态处理完即清。 */
+  const noteRawRef = useRef<Map<string, string>>(new Map());
+
   /**
    * 宿主用的时区偏移（分钟）。日期识别必须与宿主同一口径：宿主按设置里的
    * `utc_offset_minutes` 判定「今天」与周次，界面若按浏览器时区算，跨时区时
@@ -654,8 +668,8 @@ export function HomeChat({
   useEffect(() => {
     setMessages(initialMessages);
     setSkillHint(null);
-    // 换会话后「上一条记录」不再是这个对话里的那一条，改日期与继承都得重新开始。
-    lastNoteRef.current = null;
+    // 换会话后，上一轮还没执行的判定不再适用：丢掉，免得旧索引落到新对话里。
+    notePendingRef.current.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
 
@@ -1104,6 +1118,12 @@ export function HomeChat({
         streamedTasksRef.current.add(event.omni_task_id);
         forceStreamRender((n) => n + 1);
       }
+      if (notePendingRef.current.has(event.omni_task_id)) {
+        noteRawRef.current.set(
+          event.omni_task_id,
+          (noteRawRef.current.get(event.omni_task_id) ?? "") + delta,
+        );
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.role === "assistant" && m.taskId === event.omni_task_id
@@ -1206,8 +1226,138 @@ export function HomeChat({
     [],
   );
 
-  /** 终态后回读结果：有限重试；失败给出可见提示与重试入口。 */
-  const loadResult = useCallback(async (taskId: string, state: TaskState) => {
+  /**
+   * 执行一份随手记判定：校验 → 移动 → 逐条写入 → 返回给用户看的确定性回执。
+   *
+   * 任何不合规、缺失或异常都走降级：原文原样追加到当天，并明确标注
+   * 「未做指令识别」，绝不假装已经理解。降级路径不执行任何移动。
+   */
+  const executeNote = useCallback(
+    async (
+      ctx: { userText: string; week: string; today: string; index: WorklogIndex },
+      content: string,
+    ): Promise<string | null> => {
+    const fallback = async (why: string): Promise<string> => {
+      try {
+        const receipt = await shell.worklogAppend(ctx.userText, undefined, undefined);
+        if (!receipt.ok || !receipt.appended) {
+          return (
+            "模型没有给出可用的判定（" + why + "），工作台按原文原样记录也没成功：" +
+            (receipt.error || "宿主未确认写入") +
+            "。这条还没有记下来，请处理后重发。"
+          );
+        }
+        // 句子里明明有日期却没采用，必须说出来：不能让人以为已经记到那天了。
+        const phrase = findDatePhrase(ctx.userText);
+        return (
+          "模型未给出判定，已按原文原样记录到 " + receipt.date + "，未做指令识别。" +
+          (phrase
+            ? "句子里有「" + phrase + "」，但这次没有据此改日期；要补到别的日期请再说一次。"
+            : "") +
+          "（" + why + "）"
+        );
+      } catch (e) {
+        return "模型没有给出可用的判定（" + why + "），按原文兜底记录也失败：" + String(e) + "。";
+      }
+    };
+
+    const split = splitVerdict(content || "");
+    if (!split.block) return fallback("回复里没有判定块");
+
+    const verdict = parseVerdict(split.block);
+    if (!verdict) return fallback("判定块不是合法 JSON");
+
+    const check = validateVerdict(verdict, ctx, ctx.index);
+    if (!check.ok) return fallback(check.reason);
+
+    const plan = check.plan;
+    if (plan.action === "answer" || plan.action === "confirm") {
+      return null; // 不写文件：正文就交给模型自己的话
+    }
+
+    const lines: string[] = [];
+    const problems: string[] = [];
+
+    if (plan.moves.length > 0) {
+      try {
+        const receipt = await shell.worklogMoveMany({
+          week: ctx.week,
+          moves: plan.moves.map((mv) => ({
+            date: mv.date,
+            index: mv.index,
+            to: mv.to,
+            expectText: mv.expectText,
+          })),
+        });
+        if (!receipt.ok) {
+          problems.push("移动没有执行：" + (receipt.error || "宿主未确认") + "。文件保持原样。");
+        } else {
+          for (const mv of receipt.moves) {
+            lines.push("· " + mv.from_date + " → " + mv.to_date + "：" + shortText(mv.text, 30));
+          }
+        }
+      } catch (e) {
+        problems.push("移动失败：" + String(e) + "。文件保持原样。");
+      }
+    }
+
+    for (const record of plan.records) {
+      try {
+        const receipt = await shell.worklogAppend(record.text, undefined, record.date);
+        if (!receipt.ok || !receipt.appended) {
+          problems.push(
+            "「" + shortText(record.text, 16) + "」没有记下来：" +
+              (receipt.error || "宿主未确认写入") + "。",
+          );
+          continue;
+        }
+        lines.push("· 记入 " + receipt.date + "：" + shortText(record.text, 30));
+        if (receipt.masked) {
+          lines.push("  （已自动脱敏，身份证号 " + receipt.masked_id_card + " 处、手机号 " + receipt.masked_phone + " 处）");
+        }
+      } catch (e) {
+        problems.push("「" + shortText(record.text, 16) + "」写入失败：" + String(e) + "。");
+      }
+    }
+
+    const parts: string[] = [];
+    if (lines.length > 0) {
+      parts.push("工作台已按判定执行：" + "\n" + lines.join("\n"));
+    } else if (problems.length === 0) {
+      parts.push("这一句没有产生写入（判定为 " + plan.action + "）。");
+    }
+    if (problems.length > 0) parts.push(problems.join(" "));
+    return parts.join("\n\n");
+  }, []);
+
+  /**
+   * 终态后按任务号取回这一轮的上下文，执行判定（OD-ARCH-104）。
+   *
+   * 每个任务只执行一次：\`done\` 置位并删除上下文后，「重新查询」再跑一遍终态
+   * 处理也不会把同一句记两遍。
+   */
+  const settleNote = useCallback(async (taskId: string, content: string): Promise<string | null> => {
+    const ctx = notePendingRef.current.get(taskId);
+    if (!ctx || ctx.done) return null;
+    ctx.done = true;
+    try {
+      // 宿主没回正文（读结果失败）时，用流式累积的原文做判定，
+      // 别让已经拿到的模型输出白丢。
+      const raw = content.trim() ? content : (noteRawRef.current.get(taskId) ?? "");
+      return await executeNote(ctx, raw);
+    } finally {
+      // 这一轮已经处理完（含失败），不再保留索引：同一任务不会被执行两次。
+      notePendingRef.current.delete(taskId);
+      noteRawRef.current.delete(taskId);
+    }
+  }, [executeNote]);
+
+  /**
+   * 终态后回读结果：有限重试；失败给出可见提示与重试入口。
+   *
+   * 返回宿主给出的正文（读不到返回 null），OD-ARCH-104 的判定执行需要它。
+   */
+  const loadResult = useCallback(async (taskId: string, state: TaskState): Promise<string | null> => {
     let lastError = "";
     for (let attempt = 1; attempt <= RESULT_RETRIES; attempt += 1) {
       try {
@@ -1220,7 +1370,8 @@ export function HomeChat({
                   ...m,
                   state,
                   stopReason: result.stop_reason ?? null,
-                  text: m.text || (result.content || ""),
+                  // 判定块只给工作台读，不留在对话正文里（复制、朗读、下一轮上下文）。
+                  text: verdictDisplayText(m.text || (result.content || "")),
                   notice: partial ? "结果为部分结果（partial），可能不完整，请人工核对。" : null,
                   retryable: partial,
                   // 终态时刻只记一次：重新查询不会把这轮耗时越算越长。
@@ -1229,7 +1380,7 @@ export function HomeChat({
               : m,
           ),
         );
-        return;
+        return result.content || "";
       } catch (e) {
         lastError = String(e);
         if (attempt < RESULT_RETRIES) {
@@ -1256,6 +1407,7 @@ export function HomeChat({
           : m,
       ),
     );
+    return null;
   }, []);
 
   // 轮询终态：有界失败、不静默吞错、不把未知状态写成成功。
@@ -1348,7 +1500,45 @@ export function HomeChat({
             };
           });
           settle();
-          await loadResult(taskId, status.status);
+          const finalText = await loadResult(taskId, status.status);
+          // OD-ARCH-104：随手记的判定在终态之后执行——模型只交回判定，
+          // 写不写、写到哪由这里校验后决定。被用户取消的这一轮不写任何东西。
+          if (status.status === "cancelled" || status.status === "interrupted") {
+            const pending = notePendingRef.current.get(taskId);
+            if (pending && !pending.done) {
+              pending.done = true;
+              // 取消的这一轮不会再执行判定：连索引与流式原文一起丢掉，
+              // 免得长期占着内存（settleNote 的 finally 走不到这里）。
+              notePendingRef.current.delete(taskId);
+              noteRawRef.current.delete(taskId);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? { ...m, notice: "本轮已取消，这句没有写入工作记录。" }
+                    : m,
+                ),
+              );
+            }
+          } else {
+            // 回读失败时消息里可能还留着流式收到的判定块 JSON：它会被「复制」
+            // 和下一轮上下文带出去。判定执行前先就地剥掉，只留给人看的那段。
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.taskId === taskId && m.role === "assistant"
+                  ? { ...m, text: verdictDisplayText(m.text) }
+                  : m,
+              ),
+            );
+            const outcome = await settleNote(taskId, finalText ?? "");
+            if (outcome) {
+              // 判定与降级兜底都可能产生确定性回执：单独成一条本地消息，
+              // 与「模型输出 · 未复核」分开，用户一眼能看出哪些是工作台真的执行了。
+              setMessages((prev) => [
+                ...prev,
+                { id: nextId(), role: "assistant", local: true, text: outcome },
+              ]);
+            }
+          }
           // OD-ARCH-069：超时（unknown）必须说清楚等了多少秒、没有自动重试，
           // 并留出「重发」入口。引擎的 note 已带秒数；缺省时给一句保守文案。
           if (status.status === "unknown") {
@@ -1395,7 +1585,7 @@ export function HomeChat({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [activeTaskId, loadResult]);
+  }, [activeTaskId, loadResult, settleNote]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1441,165 +1631,35 @@ export function HomeChat({
       const weeklyScene = preset?.key === "weekly";
       const intent: WorkIntent | null = weeklyScene ? detectWorkIntent(text) : null;
       let worklogNotice: string | null = null;
+      /**
+       * OD-ARCH-104：随手记交给模型的当周索引与上下文。等任务号回来后放进
+       * notePendingRef，终态回读结果时据此校验并执行判定。
+       */
+      let noteContext: {
+        userText: string;
+        week: string;
+        today: string;
+        index: WorklogIndex;
+      } | null = null;
       try {
-        // note = 先由宿主确定性落盘，再让模型只做缺项追问；
+        // note = 模型判这句怎么记，宿主校验后才落盘；
         // report = 先把当周记录读出来，模型才有米下锅。
         // 其它场景与普通对话不进入这套流程，行为不变。
         let worklog: { week: string; exists: boolean; content: string } | null = null;
         if (intent === "note") {
-          // OD-ARCH-103：先看这句是不是在改上一条的日期。
-          // 引擎请求固定 mcpServers: []，模型拿不到宿主命令，所以这条纠正在界面里
-          // 确定性完成、不叫模型；否则又会把「记错了」当成一条新记录再写一遍。
-          const redate = detectRedateInstruction(text, new Date(), tzOffsetRef.current);
-          if (redate) {
-            const last = lastNoteRef.current;
-            if (!last) {
-              setBusy(false);
-              setStarting(false);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: nextId(),
-                  role: "assistant",
-                  local: true,
-                  text:
-                    `这句看起来是在改日期，但我这里没有可以纠正的记录（只能纠正刚刚记下的那一条）。` +
-                    `如果要把某条记录挪到 ${redate.date}，请重新说一遍那条内容并在句子里带上日期。`,
-                },
-              ]);
-              return false;
-            }
-            const fromWeek = isoWeekKeyOf(last.date);
-            if (fromWeek !== last.week) {
-              // 上一条属于上一周的文件，而本窗口只纠正当周文件；如实说明，不跨文件猜。
-              setBusy(false);
-              setStarting(false);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: nextId(),
-                  role: "assistant",
-                  local: true,
-                  text:
-                    `上一条记录在 ${last.week} 文件里，而 ${redate.date} 属于 ${fromWeek ?? "别的周"}。` +
-                    `跨周改日期暂不支持，需要手工在原文里调整。`,
-                },
-              ]);
-              return false;
-            }
-            try {
-              const receipt = await shell.worklogRedate({
-                week: last.week,
-                fromDate: last.date,
-                index: last.index,
-                toDate: redate.date,
-                expectText: last.text,
-              });
-              if (!receipt.ok) {
-                setBusy(false);
-                setStarting(false);
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: nextId(),
-                    role: "assistant",
-                    text: "",
-                    error:
-                      "这条日期没有改成：" +
-                      (receipt.error || "工作台没有确认改写结果。") +
-                      "。文件保持原样。",
-                  },
-                ]);
-                return false;
-              }
-              // 挪成功后序号会变：目标段里是第 new_index 条，后续再纠正按新位置定位。
-              lastNoteRef.current = {
-                week: last.week,
-                date: receipt.to_date,
-                index: receipt.new_index,
-                text: last.text,
-              };
-              setBusy(false);
-              setStarting(false);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: nextId(),
-                  role: "assistant",
-                  local: true,
-                  text:
-                    `已把上一条记录从 ${receipt.from_date} 挪到 ${receipt.to_date}（${redate.weekday}），` +
-                    `正文原样保留；原文件已备份。`,
-                },
-              ]);
-              return true;
-            } catch (e) {
-              setBusy(false);
-              setStarting(false);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: nextId(),
-                  role: "assistant",
-                  text: "",
-                  error: "改日期失败：" + String(e) + "。文件保持原样。",
-                },
-              ]);
-              return false;
-            }
-          }
-          // 句子里认出的补录日期（本周内、不晚于今天）随写入交给宿主；
-          // 认不出就用当天，行为与 089 一致。
-          const guess = extractEntryDate(text, new Date(), tzOffsetRef.current);
-          // 没有日期的「补充两条」跟着上一条走，免得补出来的细节散到另一天。
-          // 只在同周文件里继承：跨周时上一条在别的文件，继承日期会把内容写错地方。
-          const currentWeek = isoWeekKeyOf(todayDateKey(new Date(), tzOffsetRef.current));
-          const inherited =
-            !guess &&
-            isNoteContinuation(text) &&
-            lastNoteRef.current &&
-            currentWeek === lastNoteRef.current.week
-              ? lastNoteRef.current.date
-              : null;
-          const entryDate = guess?.date ?? inherited ?? undefined;
-          const receipt = await shell.worklogAppend(text, undefined, entryDate);
-          if (!receipt.ok || !receipt.appended) {
-            // 落盘失败必须停下来说清楚：此时**没有**记下任何东西。
-            setBusy(false);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: "assistant",
-                text: "",
-                error:
-                  "这条没有记下来：" +
-                  (receipt.error || "工作台没有确认写入结果。") +
-                  "。请处理后重发，我不会假装已经记录。",
-              },
-            ]);
-            return false;
-          }
-          const maskNote = receipt.masked
-            ? `已自动脱敏（身份证号 ${receipt.masked_id_card} 处、手机号 ${receipt.masked_phone} 处）。`
-            : "";
-          // 记下这条，供下一句的日期纠正与细节补充定位。
-          lastNoteRef.current = {
-            week: receipt.week,
-            date: receipt.date,
-            index: receipt.entry_index,
-            text: receipt.entry_text,
-          };
+          // OD-ARCH-104：模型判语义，宿主守边界。
+          //
+          // 这里原来是前端正则判断「这句是指令还是内容」（detectRedateInstruction /
+          // isNoteContinuation）。规则没覆盖到的说法会被原样写成正文——用户那句
+          // 「上杭教学和参观紫金矿业都是本周一的行动，你全部调整周一」就被当成了一条
+          // 记录。现在改成：先读当周记录整理成索引 → 模型判 → 校验 → 才落盘。
+          // 判定到达之前，这一轮不写任何文件。
+          const weekRead = await shell.worklogReadWeek();
+          const today = todayDateKey(new Date(), tzOffsetRef.current);
+          const index = buildWorklogIndex(weekRead.content);
+          noteContext = { userText: text, week: weekRead.week, today, index };
           worklogNotice =
-            `已写入 ${receipt.date} ${receipt.path ?? receipt.week}` +
-            (receipt.continued ? "（续）" : "") +
-            "。" +
-            (inherited ? "这句没写日期，按上一条的日期记录。" : "") +
-            // 认出日期却没采用，必须说清楚：不能让人以为已经记到那天了。
-            (!entryDate && findDatePhrase(text)
-              ? `句子里有「${findDatePhrase(text)}」，但不在本周、或晚于今天，我按今天记了；若需补到别的日期请说明。`
-              : "") +
-            maskNote;
+            "已读出 " + weekRead.week + " 的 " + index.entries.length + " 条记录，交给模型判断这句该怎么记。";
         } else if (intent === "report") {
           try {
             const week = await shell.worklogReadWeek();
@@ -1643,8 +1703,15 @@ export function HomeChat({
           continuation,
           // 意图来自本轮输入（OD-ARCH-089 S1）；其它场景恒为完整组装。
           mode: intent ?? "report",
-          // 周报模式带上当周记录（OD-ARCH-089 S2）；随手记不需要。
+          // 周报模式带上当周记录（OD-ARCH-089 S2）；随手记带索引（OD-ARCH-104）。
           worklog,
+          noteIndex: noteContext
+            ? {
+                week: noteContext.week,
+                today: noteContext.today,
+                entries: describeIndex(noteContext.index, noteContext.today),
+              }
+            : null,
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
@@ -1720,6 +1787,12 @@ export function HomeChat({
               .join(" ") || null,
           },
         ]);
+        if (noteContext) {
+          notePendingRef.current.set(receipt.omni_task_id, {
+            ...noteContext,
+            done: false,
+          });
+        }
         setActiveTaskId(receipt.omni_task_id);
         // 这一轮由引擎新建了一个 DSH 会话：把任务号报给上层，便于在工作台里关联到
         // 「项目与会话」里的引擎会话（引擎会话号从任务台账读，不改宿主协议）。
@@ -1733,10 +1806,10 @@ export function HomeChat({
             id: nextId(),
             role: "assistant",
             text: "",
-            // OD-ARCH-089：随手记先落盘再叫模型。模型这一步失败时，记录**已经写进去了**，
-            // 必须把这两件事分开说，否则用户会以为没记上又重发一遍。
+            // OD-ARCH-104：模型这一步没跑起来时什么都没写，直说即可，不要让用户
+            // 以为已经记下来了。
             error:
-              (intent === "note" && worklogNotice ? worklogNotice + " " : "") + String(e),
+              (intent === "note" ? "这句还没有写入工作记录。" : "") + String(e),
           },
         ]);
         // 提交被拒绝常常意味着权限/准入发生了变化：重新读一遍宿主事实。
