@@ -1,5 +1,54 @@
 # 执行状态
 
+## OD-ARCH-103：随手记补录日期语义化（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部 OD-ARCH-103 章节（本节只是执行记录）。**
+> 触发：用户批准 OD-ARCH-103。用户实测复现：周三与 AI 对话补录「周一上午」的课程，外加两条细节，三条全部落到周三标题下。
+> 起点：HEAD `238f8c2`（102 已推送）。边界：本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录与凭证；测试数据全在 `/tmp` 合成。
+
+### 改动
+
+1. `desktop/src/workIntent.ts` 新增日期识别层：`extractEntryDate`（明确日期 > 星期几 > 今天/昨天/前天，只接受当前 ISO 周内且不晚于今天）、`isoWeekKeyOf`、`todayDateKey`、`detectRedateInstruction`（纯日期纠正句）、`isNoteContinuation`（细节补充句）、`findDatePhrase`（句中有日期但未被采用时如实告知）。`上上/下下/上/下/每` 前缀一律不认；`另外/顺便` 不算细节补充。
+2. 纠正句设两道门槛，避免把真实记录当纠正：「回指词」（这条/那条/上一条/记错/应该是/不是…）或「以下令开头」（改成/改为/挪到/移到/归到/换到）；去掉动词、填充词与日期后剩余不超过 6 字。「会议改成周五了」这类真实记录不会被误判。
+3. `desktop/src-tauri/src/worklog.rs` 新增 `assert_entry_date`（格式、ISO 周匹配、不晚于今天）与 `move_entry`（搬条目块、正文不改写、`.md.bak-*` 备份、临时文件 + `sync_all` + rename、写后回读自证、条目数守恒、只允许增删两个日期段的标题、保留 CRLF、混用换行拒绝）。`AppendReceipt` 增加 `entry_index` 与 `entry_text`，供界面定位「上一条」。
+4. `lib.rs`：`worklog_append` 增加可选 `entry_date`，**不合法直接拒绝、不静默回退当天**；所有失败回执补齐 `entry_index`/`entry_text` 形状；新增并注册 `worklog_redate`。
+5. `api.ts` / `types.ts`：`worklogAppend(text, destination?, entryDate?)`、`worklogRedate({...})`、`WorklogRedateReceipt`。
+6. `HomeChat.tsx`：随手记分支先判纯日期纠正 → 命中即调 `worklogRedate` 并**跳过模型**，界面标注「工作台本地处理 · 未调用模型」；否则识别补录日期随写入下传；无日期的细节补充在同周内继承上一条日期；回执提示写明真实落盘日期、继承原因、未采用日期的原因与脱敏计数。
+7. `memory-agent/SKILL.md` 增加「日期：由工作台决定，你不改」：回执日期与原文时间语义不符时请用户说「记错了，应该是周一」，不自称已改、不写文件。
+8. 新增 `tests/verification/desktop/verify_worklog_103.py`（58 项：静态接线 + 编译真实 `workIntent.ts` 的 Node 探针）。
+
+### 计划偏离（如实记录）
+
+原计划 S3 写的是「模型经工具调用触发 `worklog_redate`」。读码发现不可达：`engine/omnidesk_engine/acp_adapter.py:673/690/1123` 三处会话请求的 `mcpServers` 恒为 `[]`，模型没有宿主命令通道。所以 S3 改为**前端确定性纠正通道**：纯日期纠正句由界面直接调 `worklog_redate`，不叫模型。命令、备份、守恒校验、Skill 话术都保留，只是触发点从模型换成界面；这样也顺带避免了「记错了」被当成一条新记录再写一遍。
+
+### 审查中发现并修正的三处问题（本人执行）
+
+1. **`isoWeekKeyOf` 正则丢转义**：写成 `/^(d{4})-(d{2})-(d{2})$/`，任何合法日期都返回 null，导致「上一条是否同周」判断永远为否。验证脚本的 3 条 ISO 周边界用例直接抓到，已改为 `\d`。
+2. **前后端时区口径不一致**：宿主按设置里的 `utc_offset_minutes`（默认 +480）算「今天」，界面原按浏览器本地时区算。跨时区时会把合法补录判成「晚于今天」或错周而被宿主拒绝。已读出 `scheduler_config_get` 的偏移量，`extractEntryDate`/`detectRedateInstruction`/`todayDateKey` 统一传入。
+3. **跨会话泄漏「上一条」**：`lastNoteRef` 只在内存里，切会话时没清空，可能在另一个对话里把上一段对话的记录当成纠正目标。已在 `threadKey` 变化时清空。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| TypeScript | `cd desktop && npx --no-install tsc --noEmit` | 通过 |
+| 前端构建 | `cd desktop && npm run build` | 通过（仅既有 chunk 体积提示） |
+| 103 专项 | `python3 tests/verification/desktop/verify_worklog_103.py` | **58 / 58** |
+| 089 回归 | `verify_worklog_089.py` | 61 / 61 |
+| 094 回归 | `verify_writing_094.py` | 98 / 98 |
+| 101 回归 | `verify_hover_hint_101.py` | 30 / 30 |
+| Rust 全量 | `cd desktop/src-tauri && cargo test --offline` | 395 lib + 41 集成/文档，0 失败 |
+| Python 全量 | `python3 -m pytest tests -q` | 89 passed，30 subtests |
+
+Rust 新增 11 项：`assert_entry_date` 的合法/未来/他周/格式/周标签，`move_entry` 的并段、起新段、原段留其它条目、正文不符拒绝且文件不变、跨周与同日拒绝、CRLF 保留、混用换行拒绝、序号越界；另有 `entry_index` 序号断言。证据：`tests/verification/desktop/evidence/od-arch-103/verify-103.json`。
+
+### 未做 / 未验证
+
+- 跨周补录（「上周一」）与跨周改日期仍不支持：界面识别到就明确说明，不猜、不跨文件搬。
+- 窗口级验证未做：本轮改动都在提交前的确定性路径与宿主写入层，无新增视觉组件；真实窗口回归待下一轮 UI 改动一并覆盖。
+- 未在真实工作记录上跑：全部用 `/tmp` 合成文件。
+- `git status --porcelain -- runtime/` 为空。
+
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
 ## OD-ARCH-102：项目跟进页 v3——移除指标卡、左栏双区与事项 CRUD（2026-10-28；已实施）

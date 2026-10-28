@@ -658,6 +658,28 @@ export interface WorklogAppendReceipt {
   masked: boolean;
   masked_id_card: number;
   masked_phone: number;
+  /** 这条记录在该日期段内的第几条（0 起）；改日期时用它定位。 */
+  entry_index: number;
+  /** 实际落盘的正文（可能已掩码）；改日期时原样带回做一致性校验。 */
+  entry_text: string;
+  error: string | null;
+}
+
+/**
+ * 改日期回执（OD-ARCH-103 S3）。
+ *
+ * 只在本周文件内把一条记录从原日期段挪到目标日期段，正文不改写。
+ * 失败时 `ok=false` 且文件一字未动。
+ */
+export interface WorklogRedateReceipt {
+  ok: boolean;
+  path: string | null;
+  week: string;
+  from_date: string;
+  to_date: string;
+  index: number;
+  new_index: number;
+  backup: string | null;
   error: string | null;
 }
 

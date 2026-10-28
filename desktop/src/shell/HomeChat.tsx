@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { host, invalidateEngineFactsCache, onTaskEvent, shell } from "../api";
+import { host, invalidateEngineFactsCache, onTaskEvent, scheduler, shell } from "../api";
 import {
   ATTACHMENT_MAX_FILES,
   activeMentionQuery,
@@ -13,7 +13,17 @@ import {
 } from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
 import { currentEngineSubmitDecision } from "../engineAdmission";
-import { describeWorkIntent, detectWorkIntent, type WorkIntent } from "../workIntent";
+import {
+  describeWorkIntent,
+  detectRedateInstruction,
+  detectWorkIntent,
+  extractEntryDate,
+  findDatePhrase,
+  isNoteContinuation,
+  isoWeekKeyOf,
+  todayDateKey,
+  type WorkIntent,
+} from "../workIntent";
 import {
   describeEngineCancelOutcome,
   engineCancelButtonState,
@@ -105,6 +115,11 @@ export interface ChatMessage {
    * 只有拿到真实序号才能分支；缺失时按钮禁用，不做本地重放冒充。
    */
   forkSeq?: number | null;
+  /**
+   * OD-ARCH-103：这条不是模型产出，而是工作台本地确定性处理的回执
+   * （例如把记错日期的记录挪到正确日期）。用它区分「本地回执」与「模型输出」。
+   */
+  local?: boolean;
 }
 
 /** 重放进下一轮提示的上文上限（字符）。超出时保留最近的部分。 */
@@ -606,11 +621,41 @@ export function HomeChat({
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   /** 宿主拒绝准备工作目录时的真实原因（供提交失败时原样带出）。 */
   const workspaceNoteRef = useRef<string | null>(null);
+  /**
+   * 刚才这条成功落盘的随手记（OD-ARCH-103）。
+   * 只用于两件事：识别「记错了，应该是周一」时定位要挪的那一条；
+   * 以及无日期的「补充两条」继承上一条的日期。只在本窗口内存里，不落盘。
+   */
+  const lastNoteRef = useRef<{ week: string; date: string; index: number; text: string } | null>(
+    null,
+  );
+  /**
+   * 宿主用的时区偏移（分钟）。日期识别必须与宿主同一口径：宿主按设置里的
+   * `utc_offset_minutes` 判定「今天」与周次，界面若按浏览器时区算，跨时区时
+   * 会把合法补录判成「晚于今天」或错周。读到之前用浏览器本地时区（默认一致）。
+   */
+  const tzOffsetRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    scheduler
+      .getConfig()
+      .then((snap) => {
+        if (alive) tzOffsetRef.current = snap.config.utc_offset_minutes;
+      })
+      .catch(() => {
+        // 读不到就用浏览器时区，不阻断记录。
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 切换会话（threadKey 变化）时载入该会话的消息。
   useEffect(() => {
     setMessages(initialMessages);
     setSkillHint(null);
+    // 换会话后「上一条记录」不再是这个对话里的那一条，改日期与继承都得重新开始。
+    lastNoteRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
 
@@ -1402,7 +1447,122 @@ export function HomeChat({
         // 其它场景与普通对话不进入这套流程，行为不变。
         let worklog: { week: string; exists: boolean; content: string } | null = null;
         if (intent === "note") {
-          const receipt = await shell.worklogAppend(text);
+          // OD-ARCH-103：先看这句是不是在改上一条的日期。
+          // 引擎请求固定 mcpServers: []，模型拿不到宿主命令，所以这条纠正在界面里
+          // 确定性完成、不叫模型；否则又会把「记错了」当成一条新记录再写一遍。
+          const redate = detectRedateInstruction(text, new Date(), tzOffsetRef.current);
+          if (redate) {
+            const last = lastNoteRef.current;
+            if (!last) {
+              setBusy(false);
+              setStarting(false);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  local: true,
+                  text:
+                    `这句看起来是在改日期，但我这里没有可以纠正的记录（只能纠正刚刚记下的那一条）。` +
+                    `如果要把某条记录挪到 ${redate.date}，请重新说一遍那条内容并在句子里带上日期。`,
+                },
+              ]);
+              return false;
+            }
+            const fromWeek = isoWeekKeyOf(last.date);
+            if (fromWeek !== last.week) {
+              // 上一条属于上一周的文件，而本窗口只纠正当周文件；如实说明，不跨文件猜。
+              setBusy(false);
+              setStarting(false);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  local: true,
+                  text:
+                    `上一条记录在 ${last.week} 文件里，而 ${redate.date} 属于 ${fromWeek ?? "别的周"}。` +
+                    `跨周改日期暂不支持，需要手工在原文里调整。`,
+                },
+              ]);
+              return false;
+            }
+            try {
+              const receipt = await shell.worklogRedate({
+                week: last.week,
+                fromDate: last.date,
+                index: last.index,
+                toDate: redate.date,
+                expectText: last.text,
+              });
+              if (!receipt.ok) {
+                setBusy(false);
+                setStarting(false);
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: nextId(),
+                    role: "assistant",
+                    text: "",
+                    error:
+                      "这条日期没有改成：" +
+                      (receipt.error || "工作台没有确认改写结果。") +
+                      "。文件保持原样。",
+                  },
+                ]);
+                return false;
+              }
+              // 挪成功后序号会变：目标段里是第 new_index 条，后续再纠正按新位置定位。
+              lastNoteRef.current = {
+                week: last.week,
+                date: receipt.to_date,
+                index: receipt.new_index,
+                text: last.text,
+              };
+              setBusy(false);
+              setStarting(false);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  local: true,
+                  text:
+                    `已把上一条记录从 ${receipt.from_date} 挪到 ${receipt.to_date}（${redate.weekday}），` +
+                    `正文原样保留；原文件已备份。`,
+                },
+              ]);
+              return true;
+            } catch (e) {
+              setBusy(false);
+              setStarting(false);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  text: "",
+                  error: "改日期失败：" + String(e) + "。文件保持原样。",
+                },
+              ]);
+              return false;
+            }
+          }
+          // 句子里认出的补录日期（本周内、不晚于今天）随写入交给宿主；
+          // 认不出就用当天，行为与 089 一致。
+          const guess = extractEntryDate(text, new Date(), tzOffsetRef.current);
+          // 没有日期的「补充两条」跟着上一条走，免得补出来的细节散到另一天。
+          // 只在同周文件里继承：跨周时上一条在别的文件，继承日期会把内容写错地方。
+          const currentWeek = isoWeekKeyOf(todayDateKey(new Date(), tzOffsetRef.current));
+          const inherited =
+            !guess &&
+            isNoteContinuation(text) &&
+            lastNoteRef.current &&
+            currentWeek === lastNoteRef.current.week
+              ? lastNoteRef.current.date
+              : null;
+          const entryDate = guess?.date ?? inherited ?? undefined;
+          const receipt = await shell.worklogAppend(text, undefined, entryDate);
           if (!receipt.ok || !receipt.appended) {
             // 落盘失败必须停下来说清楚：此时**没有**记下任何东西。
             setBusy(false);
@@ -1423,10 +1583,22 @@ export function HomeChat({
           const maskNote = receipt.masked
             ? `已自动脱敏（身份证号 ${receipt.masked_id_card} 处、手机号 ${receipt.masked_phone} 处）。`
             : "";
+          // 记下这条，供下一句的日期纠正与细节补充定位。
+          lastNoteRef.current = {
+            week: receipt.week,
+            date: receipt.date,
+            index: receipt.entry_index,
+            text: receipt.entry_text,
+          };
           worklogNotice =
-            `已写入 ${receipt.path ?? receipt.week}` +
+            `已写入 ${receipt.date} ${receipt.path ?? receipt.week}` +
             (receipt.continued ? "（续）" : "") +
             "。" +
+            (inherited ? "这句没写日期，按上一条的日期记录。" : "") +
+            // 认出日期却没采用，必须说清楚：不能让人以为已经记到那天了。
+            (!entryDate && findDatePhrase(text)
+              ? `句子里有「${findDatePhrase(text)}」，但不在本周、或晚于今天，我按今天记了；若需补到别的日期请说明。`
+              : "") +
             maskNote;
         } else if (intent === "report") {
           try {
@@ -2179,7 +2351,7 @@ export function HomeChat({
                   <div className="flex items-center space-x-2 text-primary font-medium">
                     <Icon name="shield-check" className="w-[15px] h-[15px]" />
                     <span>
-                      模型输出 · 未复核
+                      {m.local ? "工作台本地处理 · 未调用模型" : "模型输出 · 未复核"}
                       {m.state ? " · " + STATE_LABEL[m.state] : ""}
                       {m.taskId && (pendingApprovals[m.taskId] ?? 0) > 0 ? " · 等待审批中" : ""}
                       {m.taskId && activeTaskId === m.taskId && elapsed > 0 ? ` · 已等待 ${elapsed}s` : ""}

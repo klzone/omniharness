@@ -71,6 +71,7 @@ import type {
   WorkflowSample,
   WorklogAppendReceipt,
   WorklogDestinationReceipt,
+  WorklogRedateReceipt,
   WorklogWeekRead,
   WorklogArchiveList,
   WorklogReportRead,
@@ -406,10 +407,17 @@ export const shell = {
    * 写盘由宿主确定性完成（只追加、不重写），模型只负责缺项追问。
    * 回执里 `ok=false` 必须原样呈现给用户，不能假装已记录。
    */
-  worklogAppend(text: string, destination?: string): Promise<WorklogAppendReceipt> {
+  worklogAppend(
+    text: string,
+    destination?: string,
+    entryDate?: string,
+  ): Promise<WorklogAppendReceipt> {
     return invoke<WorklogAppendReceipt>("worklog_append", {
       text,
       destination: destination ?? null,
+      // OD-ARCH-103：输入里认出的补录日期（当前 ISO 周内、不晚于今天）；
+      // null 表示没有认出，由宿主用当天，行为与 089 一致。
+      entryDate: entryDate ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -433,6 +441,30 @@ export const shell = {
       date: args.date,
       index: args.index,
       destination: args.destination,
+      expectText: args.expectText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 改一条记录的日期（OD-ARCH-103 S3）。
+   *
+   * 引擎看不到宿主命令，所以这条由界面在识别出纯日期纠正时直接调用，不叫模型。
+   * `expectText` 是落盘回执里的正文，宿主用它校验定位；对不上就拒绝且不改文件。
+   */
+  worklogRedate(args: {
+    week: string;
+    fromDate: string;
+    index: number;
+    toDate: string;
+    expectText: string;
+  }): Promise<WorklogRedateReceipt> {
+    return invoke<WorklogRedateReceipt>("worklog_redate", {
+      week: args.week,
+      fromDate: args.fromDate,
+      index: args.index,
+      toDate: args.toDate,
       expectText: args.expectText,
     }).catch((e) => {
       throw new Error(normalizeError(e));
