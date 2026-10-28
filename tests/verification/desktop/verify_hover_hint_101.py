@@ -151,9 +151,11 @@ def main() -> int:
 
     # --- 迁移完整性 ---
     check("no_intrinsic_title_left", not intrinsic_title, "; ".join(intrinsic_title[:5]))
-    check("hint_count_91", hints == 91, f"实际 {hints} 处")
+    # 101 迁移时为 91 处；102 的项目跟进页新增 2 处说明，总数随之变成 93。
+    check("hint_count_93", hints == 93, f"实际 {hints} 处")
     check("hint_spread_23_files", len(hint_files) == 23, f"实际 {len(hint_files)} 个文件")
-    check("component_props_preserved", component_title == 22, f"组件 title 属性实际 {component_title} 处")
+    # 101 时为 22 处；102 新增一次 ConfirmDialog 的 title prop，变成 23 处。
+    check("component_props_preserved", component_title == 23, f"组件 title 属性实际 {component_title} 处")
     check(
         "no_disabled_without_hint",
         not disabled_without_hint,

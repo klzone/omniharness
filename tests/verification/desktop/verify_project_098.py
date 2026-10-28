@@ -68,7 +68,12 @@ def main() -> int:
 
     # --- S03 两栏 ---
     check("board_component_exists", board_path.is_file())
-    check("two_column_grid", "lg:grid-cols-[340px_minmax(0,1fr)]" in board)
+    # OD-ARCH-102 把左栏加宽到 360px（容纳事项表单与历史对话）；其余两栏骨架不变。
+    check(
+        "two_column_grid",
+        "lg:grid-cols-[360px_minmax(0,1fr)]" in board
+        or "lg:grid-cols-[340px_minmax(0,1fr)]" in board,
+    )
     check("narrow_single_column", "grid grid-cols-1 gap-4" in board)
     check("left_column_cards", "data-project-card=" in board)
     check("search_box", 'aria-label="搜索项目事项"' in board)
@@ -87,7 +92,8 @@ def main() -> int:
     check("artifacts_switch_kept", '"artifacts"' in board and "阶段成果" in board)
     check("scene_renders_board", "<ProjectBoard" in scene)
     check("old_progress_tabs_removed", "setTab(" not in scene and "progressError" not in scene)
-    check("project_summary_from_host", "shell\n      .projectSummary(itemsText, null)" in scene or ".projectSummary(itemsText, null)" in scene)
+    # OD-ARCH-102：项目页改读本机事项文件，不再从最近一段对话里做确定性汇总。
+    check("project_items_from_host", ".projectItemsRead()" in scene and ".projectItemsSave(" in scene)
 
     # --- 回归护栏 ---
     check("runtime_untouched", not (REPO / "runtime").exists() or True, "见 git status 的 runtime 零差异")

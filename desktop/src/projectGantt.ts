@@ -8,7 +8,7 @@
  * 没有开始日期就画单日里程碑，**不**用期限倒推一段虚构工期。
  */
 
-import type { ProjectItem } from "./types";
+import type { ProjectItem, ProjectItemRecord } from "./types";
 
 /** 一天 = 86400000 ms；用 UTC 日序数避免本地时区把日期推前/推后一天。 */
 const DAY_MS = 86_400_000;
@@ -238,6 +238,32 @@ export function isMilestone(item: ProjectItem): boolean {
   const due = toDayNumber(item.due);
   const start = toDayNumber(item.start ?? null);
   return due === null || start === null || start > due;
+}
+
+/**
+ * 把一条本地记录转成甘特/卡片共用的 `ProjectItem`（OD-ARCH-102）。
+ *
+ * `overdue` 按传入的今天现算，不落盘：同一条记录在第二天自然变成逾期，
+ * 不需要再写一次文件。
+ */
+export function recordToItem(record: ProjectItemRecord, today: string): ProjectItem {
+  const due = toDayNumber(record.due);
+  const now = toDayNumber(today);
+  const status = record.status;
+  const overdue = due !== null && now !== null && status !== "done" && due < now;
+  return {
+    item: record.item,
+    owner: record.owner,
+    due: record.due,
+    start: record.start ?? null,
+    status,
+    next_step: record.next_step,
+    overdue,
+  };
+}
+
+export function recordsToItems(records: ProjectItemRecord[], today: string): ProjectItem[] {
+  return records.map((r) => recordToItem(r, today));
 }
 
 /** 搜索过滤：按事项标题与负责人代号匹配，空查询返回全部。 */

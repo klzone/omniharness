@@ -1,3 +1,26 @@
+## OD-ARCH-102 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 用户三点要求全部落地：项目跟进页顶部指标卡移除；左栏拆成「项目事项」与「历史对话」上下两区；事项卡片支持新增、修改、删除，录入后才画右侧时间线。数据从「首页最近一条对话的确定性汇总（只读）」换成应用数据根下的 `project-items.v1.json`，写入路径收敛为两个命令。
+
+**独立复核范围：** HEAD `609567e` + 本轮改动。逐文件核对 `project_items.rs`（新文件，应用数据根定位、`assert_local_root_allowed` + `assert_outside_repo` 复用、1 MiB / 500 条上限、单字段 400 字、同目录临时文件 + `sync_all` + rename、覆盖前 `.bak`、坏主文件只在**结构损坏**时回退备份、schema/条目不合规一律整批拒绝并报「第 N 条」、`created_at` 沿用而 `updated_at` 每次刷新）、`task_shell.rs`（四个校验函数抽出且 `summarize_project` 改调同一实现，行为未变）、`lib.rs`（两命令注册，`task_shell::now_secs()` 注入时间）、`api.ts` / `types.ts`、`projectGantt.ts`（`recordToItem` 按当天现算逾期，不落盘）、`ProjectBoard.tsx`（v3 双区左栏、内联表单、编辑回填、删除确认、搜索过滤、空态不画轴）、`ScenePage.tsx`（project 分支不渲染 `SceneStatusStrip`、读写改走本机文件、页面底部不再重复历史区）。`runtime/` 零差异，未读真实知识库、成果或凭证。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：** `npx tsc --noEmit` 通过；`cargo test --offline`（按 `scripts/setup-desktop-toolchain.sh --print-env` 设环境）**384 lib + 41 集成/文档测试全绿、0 失败**；`python3 -m pytest tests -q` **89 passed、30 subtests**；`verify_project_102.py` **51 / 51**；`verify_project_098.py` **35 / 35**。窗口证据 `evidence/od-arch-102/` 十张截图与 `facts.json` 已核对。
+
+**审查判断（几处我特意验证过的边界）：**
+
+1. **坏文件不会静默吞数据。** `load()` 只在结构性故障（读不到、解析失败、非普通文件、超限）时回退 `.bak`；schema 不符或条目校验失败即使备份可读也直接报错，两个单测分别覆盖。这避免了「用户看到的是旧备份、以为编辑丢了」这种情况。
+2. **`created_at` 的沿用按事项名匹配。** 改名后 `created_at` 会重置为当前时间，`updated_at` 不变地刷新——与表单「改名」语义一致，已由 `edit_moved_created_at=true` 的窗口读数佐证。
+3. **写入不碰知识库与成果目录。** 存储只落在应用数据根，`assert_outside_repo` 保证不会写进仓库；CRUD 全程不调模型。
+4. **右栏条件渲染正确。** 空清单时既不画甘特轴也不显示假数据，只有引导文案；录入后卡片数与磁盘条目数一致（`first_file_items=1`、`two_cards=2`、删除后 `after_delete=1`）。
+
+**目视复核：** `01-project-empty.png` 显示顶部无指标卡、左栏上下两区、右栏空态引导且无时间轴；`03-project-two-items.png` 显示两条事项与两条甘特行一一对应、`P1`/`P2` 代号与「还有 23 天」相对期限正常；`07-project-narrow.png` 显示 1000px 下按左栏 → 右栏单列排列，三个标题都在。
+
+**已知限制（不构成阻断）：** ① 未做旧数据迁移——v3 从空清单开始，首页对话的旧汇总链路保留但不再驱动本页；这是计划里写明的取舍。② 窗口证据为 Xvfb 1600×980 / 1000px + `/tmp` 合成数据，未在真实显示器与真实数据上复核。③ WebKitGTK 不把静态 `p`/`span` 暴露到 AT-SPI，空态引导文案靠截图 + 静态断言覆盖。④ 拖拽改期、多人协作不在计划内。
+
+**阶段决定：OD-ARCH-102 验收通过。** 按用户长期偏好，本轮改动一并提交并推送 GitHub。
+
+---
+
 ## OD-ARCH-101 审查结论（ARCHITECT，2026-10-28）——通过
 
 **结论：通过。** 软件内 91 处原生悬停提示已全部改为自绘方角卡片：白底、1px 细边框、直角、轻投影、11.5px，与 `StatusToast` 和轮次索引卡同一套视觉语言；不再出现系统默认气泡。41 处组件 prop 的 `title` 一件未动。

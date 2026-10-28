@@ -24,6 +24,7 @@ mod local_http;
 pub mod model_settings;
 pub mod model_routes;
 pub mod pending_writes;
+pub mod project_items;
 pub mod process_owner;
 pub mod profile_decl;
 pub mod profile_choice;
@@ -1430,6 +1431,40 @@ fn thread_store_delete(
     let store = thread_store::ThreadStore::resolve(&paths)?;
     let removed = store.delete(&id)?;
     Ok(serde_json::json!({ "id": id, "removed": removed }))
+}
+
+// ---------------------------------------------------------------------------
+// 项目事项（OD-ARCH-102 S01）
+//
+// 项目跟进页 v3 的唯一写入路径：应用数据根下的 project-items.v1.json。
+// 纯本地文件能力，不启动引擎、不调模型、不触碰成果目录与知识库。
+// ---------------------------------------------------------------------------
+
+/// 读回项目事项清单（首次使用返回空清单并说明；主文件损坏时回退 `.bak`）。
+#[tauri::command(async)]
+fn project_items_read(
+    state: State<'_, SharedHost>,
+) -> Result<project_items::ProjectItemsListing, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let store = project_items::ProjectItemsStore::resolve(&paths)?;
+    store.load()
+}
+
+/// 保存整份项目事项清单：逐条校验，非法条目整批拒绝并报「第 N 条」。
+#[tauri::command(async)]
+fn project_items_save(
+    state: State<'_, SharedHost>,
+    items: Vec<project_items::ProjectItemRecord>,
+) -> Result<project_items::ProjectItemsSaveReceipt, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let store = project_items::ProjectItemsStore::resolve(&paths)?;
+    store.save(items, task_shell::now_secs())
 }
 
 /// 模型端点与授权现状（只读，不启动引擎）。
@@ -3655,6 +3690,8 @@ pub fn run() {
             thread_store_load,
             thread_store_save,
             thread_store_delete,
+            project_items_read,
+            project_items_save,
             pending_write_create,
             pending_write_list,
             pending_write_confirm,

@@ -1,0 +1,372 @@
+[
+  {
+    "role": "application",
+    "name": "omnidesk-desktop",
+    "text": ""
+  },
+  {
+    "role": "frame",
+    "name": "OmniDesk Discipline",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "filler",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "scroll pane",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "document web",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "image",
+    "name": "OmniDesk",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "combo box",
+    "name": "标准",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "当前会话内查找",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "日期与三周节律，今天 10月28日星期三",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "系统偏好设置",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "未实现：通知与待办",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最小化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "最大化",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "关闭",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作台首页",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "工作记录（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "文案写作（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "项目跟踪（模型起草）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "历史会话（引擎会话 · 本机对话）",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "知识库（本机 Markdown）",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "paragraph",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去设置",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "项目事项",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "项目事项",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "+ 新增",
+    "text": ""
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "entry",
+    "name": "搜索项目事项",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "Synthetic Alpha · 未开始 · 负责人 P1 · 期限 2026-12-31",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "修改",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "删除",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "Synthetic Beta · 未开始 · 负责人 P2 · 期限 2026-12-05",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "修改",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "删除",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "历史对话",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "历史对话",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "合成项目对话：事项录入联调",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "去对话 · 新开",
+    "text": ""
+  },
+  {
+    "role": "landmark",
+    "name": "项目时间线",
+    "text": ""
+  },
+  {
+    "role": "heading",
+    "name": "阶段成果",
+    "text": ""
+  },
+  {
+    "role": "panel",
+    "name": "右栏视图",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "时间线",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "阶段成果",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "全部",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "本周",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "本月",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "卡片",
+    "text": ""
+  },
+  {
+    "role": "toggle button",
+    "name": "列表",
+    "text": ""
+  },
+  {
+    "role": "label",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "check box",
+    "name": "含子目录",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "01 正在读取标题… 2026-10-28",
+    "text": ""
+  },
+  {
+    "role": "button",
+    "name": "02 合成阶段成果：v3 事项录入 2026-10-28",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  },
+  {
+    "role": "section",
+    "name": "",
+    "text": ""
+  }
+]

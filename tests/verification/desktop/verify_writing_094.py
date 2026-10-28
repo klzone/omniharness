@@ -215,7 +215,7 @@ def main() -> int:
           scene_tsx.index("<WritingContinueCard") < scene_tsx.index("<WritingInspirationShelf")
           < scene_tsx.index("<WritingPipeline"), "左栏上继续创作、下灵感架")
     check("writing_page_has_no_extra_thread_block",
-          'scene === "weekly" || scene === "writing" ? null' in scene_tsx,
+          'scene === "weekly" || scene === "writing" || scene === "project" ? null' in scene_tsx,
           "写作页不在底部重复渲染会话历史")
     check("inspiration_opens_thread_home",
           "onOpenThread={openThread}" in scene_tsx and "requestOpenThread(id)" in scene_tsx, "")

@@ -830,6 +830,38 @@ export interface ProjectSummary {
   notes: string[];
 }
 
+/**
+ * 项目事项的本地记录（OD-ARCH-102 S01）：应用数据根下的 project-items.v1.json。
+ * 与 `ProjectItem` 的差别是不含 `overdue`（按当天现算），并带创建/更新时间。
+ */
+export type ProjectItemStatus = ProjectItem["status"];
+
+export interface ProjectItemRecord {
+  item: string;
+  owner: string;
+  due: string;
+  start: string | null;
+  status: ProjectItemStatus;
+  next_step: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ProjectItemsListing {
+  /** 实际存储文件（绝对路径；用于如实显示与排障）。 */
+  path: string;
+  items: ProjectItemRecord[];
+  /** 首次使用或从 `.bak` 读回等情况的说明；正常时为 null。 */
+  note: string | null;
+  recovered_from_backup: boolean;
+}
+
+export interface ProjectItemsSaveReceipt {
+  path: string;
+  bytes: number;
+  items: ProjectItemRecord[];
+}
+
 /** 三个离线流程共用的响应外壳：model_step 恒为「受准入阻塞、未验证」。 */
 export interface OfflineFlowResponse<T> {
   ok: boolean;
