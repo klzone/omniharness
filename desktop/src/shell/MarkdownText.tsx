@@ -43,7 +43,7 @@ function CopyCodeButton({ text }: { text: string }) {
         })();
       }}
       className="md-code-copy"
-      title={done ? "已复制" : "复制代码"}
+      data-hover-hint={done ? "已复制" : "复制代码"}
       aria-label={done ? "已复制" : "复制代码"}
     >
       {done ? "已复制" : "复制"}

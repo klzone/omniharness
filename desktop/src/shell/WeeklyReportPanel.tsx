@@ -54,7 +54,7 @@ export function WeeklyReportStatus({
       <span className={state === "missing" ? "text-outline" : "text-on-surface-variant"}>
         本周周报 · {state === "missing" ? "未生成" : state === "draft" ? "草稿" : "已归档"}
       </span>
-      <span className="text-[12px] text-outline truncate" title={hint}>
+      <span className="text-[12px] text-outline truncate" data-hover-hint={hint}>
         {hint}
       </span>
       <span className="ml-auto flex items-center gap-1.5 shrink-0">
@@ -69,7 +69,7 @@ export function WeeklyReportStatus({
         <button
           className="px-2.5 py-0.5 text-[12px] bg-primary text-on-primary hover:opacity-90"
           onClick={onRequestReport}
-          title="回首页对话，带上本周记录起草周报"
+          data-hover-hint="回首页对话，带上本周记录起草周报"
         >
           {latest ? "重新生成" : "去生成周报"}
         </button>

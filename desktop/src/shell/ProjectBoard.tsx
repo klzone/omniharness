@@ -232,7 +232,7 @@ export function ProjectBoard({
                       {dueHint(item, today)}
                     </span>
                   </span>
-                  <span className="mt-1 block text-[12px] text-on-surface-variant leading-[1.6] line-clamp-1" title={item.next_step}>
+                  <span className="mt-1 block text-[12px] text-on-surface-variant leading-[1.6] line-clamp-1" data-hover-hint={item.next_step}>
                     下一步 · {item.next_step}
                   </span>
                 </button>
@@ -311,7 +311,7 @@ export function ProjectBoard({
                       key={t.date}
                       className="absolute top-0 -translate-x-1/2 mono text-[11px] text-outline whitespace-nowrap"
                       style={{ left: `${t.leftPct}%` }}
-                      title={t.date}
+                      data-hover-hint={t.date}
                     >
                       {t.label}
                     </span>
@@ -327,7 +327,7 @@ export function ProjectBoard({
                     data-gantt-today=""
                     className="absolute top-0 bottom-0 w-px bg-error/70 z-10"
                     style={{ left: `calc(156px + (100% - 156px) * ${nowPct / 100})` }}
-                    title={`今天 ${today}`}
+                    data-hover-hint={`今天 ${today}`}
                   />
                 ) : null}
                 {bars.map((bar, index) => (
@@ -403,7 +403,7 @@ function GanttRow({
         onClick={onSelect}
         aria-pressed={active}
         aria-label={label}
-        title={`${label}\n下一步：${item.next_step}`}
+        data-hover-hint={`${label}\n下一步：${item.next_step}`}
       >
         <span aria-hidden="true" className={"w-1.5 h-1.5 shrink-0 " + style.dot} />
         <span className="min-w-0">
@@ -424,7 +424,7 @@ function GanttRow({
               (item.overdue ? " ring-1 ring-error/60" : "")
             }
             style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
-            title={`${item.start ?? ""} → ${item.due}`}
+            data-hover-hint={`${item.start ?? ""} → ${item.due}`}
           />
         ) : (
           <span
@@ -434,7 +434,7 @@ function GanttRow({
               (item.overdue ? " ring-1 ring-error/70" : "")
             }
             style={{ left: `${bar.leftPct}%` }}
-            title={`里程碑 ${item.due}`}
+            data-hover-hint={`里程碑 ${item.due}`}
           />
         )}
         <span

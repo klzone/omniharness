@@ -95,7 +95,7 @@ export function WindowControls() {
     >
       <button
         type="button"
-        title="最小化"
+        data-hover-hint="最小化"
         aria-label="最小化"
         className={`${base} hover:bg-surface-container`}
         onClick={() => void appWindow().minimize()}
@@ -106,7 +106,7 @@ export function WindowControls() {
       </button>
       <button
         type="button"
-        title={maximized ? "还原" : "最大化"}
+        data-hover-hint={maximized ? "还原" : "最大化"}
         aria-label={maximized ? "还原" : "最大化"}
         className={`${base} hover:bg-surface-container`}
         onClick={() => void appWindow().toggleMaximize()}
@@ -124,7 +124,7 @@ export function WindowControls() {
       </button>
       <button
         type="button"
-        title="关闭"
+        data-hover-hint="关闭"
         aria-label="关闭"
         className={`${base} hover:bg-red-500 hover:text-white`}
         onClick={() => void appWindow().close()}

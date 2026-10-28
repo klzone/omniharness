@@ -94,7 +94,7 @@ def main() -> int:
     check("dest_circle_button", "rounded-full" in timeline_jsx and "rounded-t-2xl" not in timeline_jsx)
     check("dest_no_visible_label", '"保存中…" : "进周报"' not in timeline_jsx,
           "按钮内不再有可见的进周报文字")
-    check("dest_tooltip_kept", "title={" in timeline_jsx and "已进周报：" in timeline_jsx)
+    check("dest_tooltip_kept", "data-hover-hint={" in timeline_jsx and "已进周报：" in timeline_jsx)
     check("dest_failure_inline", "failure" in timeline_jsx and "text-error" in timeline_jsx)
     check("dest_keyboard_ready", "focus-visible:ring-2" in timeline_jsx, "键盘焦点可见")
     check("scene_toggle_wired", "onToggleDestination={toggleDestination}" in scene)
@@ -117,8 +117,8 @@ def main() -> int:
     check("artifact_number_square", "rounded-[8px]" in art and "items-center justify-center" in art)
     check("artifact_number_backing", "bg-surface-container-highest/80" in art, "序号区底色深于正文区")
     check("artifact_title_single_line", 'text-on-surface truncate' in art and "line-clamp-2" not in art_jsx)
-    check("artifact_title_tooltip", "title={m ? m.title ?? r.file_name : undefined}" in art or
-          "title={m.title ?? r.file_name}" in art, "完整标题仍在悬浮提示")
+    check("artifact_title_tooltip", "data-hover-hint={m ? m.title ?? r.file_name : undefined}" in art or
+          "data-hover-hint={m.title ?? r.file_name}" in art, "完整标题仍在悬浮提示")
 
     # --- S04 预览浮层：居中、方角、四边边框、独立滚动 ---
     check("sheet_centered", "items-center" in sheet and "items-end" not in sheet)

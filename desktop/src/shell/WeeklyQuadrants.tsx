@@ -96,7 +96,7 @@ export function WeeklyQuadrants({
           <span
             key={col.key}
             className="pb-0.5 text-center mono text-[11px] uppercase tracking-[0.18em] text-outline"
-            title={col.cn}
+            data-hover-hint={col.cn}
             role="group"
             aria-label={`${col.label} · ${col.cn}`}
           >
@@ -109,7 +109,7 @@ export function WeeklyQuadrants({
             {/* 竖排行标：旋转 90°，与参考图同构。 */}
             <span
               className="flex items-center justify-center"
-              title={row.cn}
+              data-hover-hint={row.cn}
               role="group"
               aria-label={`${row.label} · ${row.cn}`}
             >
@@ -129,7 +129,7 @@ export function WeeklyQuadrants({
                   onClick={() => onSelect(key)}
                   aria-pressed={pressed}
                   aria-label={`${row.cn} · ${COLUMNS[colIndex].cn} · ${q.title} · ${count} 条`}
-                  title={`${q.title} · ${q.action}（点击只看这一格，再点取消）`}
+                  data-hover-hint={`${q.title} · ${q.action}（点击只看这一格，再点取消）`}
                   data-quadrant={key}
                   className={
                     // 本项目的 `rounded-xl` 是 3rem（设计令牌），112px 高的格子会变成胶囊形；
@@ -153,7 +153,7 @@ export function WeeklyQuadrants({
                       <li
                         key={i.id}
                         className="text-[12px] leading-relaxed truncate opacity-85"
-                        title={i.text}
+                        data-hover-hint={i.text}
                       >
                         · {i.text}
                       </li>

@@ -1234,7 +1234,7 @@ export default function SettingsPanel() {
                           min={1}
                           value={m.contextWindow ?? ""}
                           placeholder="上下文窗口"
-                          title="上下文窗口（token）。只写配置声明，端点是否真支持需另行核实。"
+                          data-hover-hint="上下文窗口（token）。只写配置声明，端点是否真支持需另行核实。"
                           onChange={(e) => {
                             const raw = e.target.value.trim();
                             const parsed = raw === "" ? null : Number(raw);
@@ -1250,7 +1250,7 @@ export default function SettingsPanel() {
                           className="ghost small"
                           onClick={() => removeModel(index)}
                           disabled={current.models.length <= 1}
-                          title={current.models.length <= 1 ? "至少保留一个模型" : "删除这个模型"}
+                          data-hover-hint={current.models.length <= 1 ? "至少保留一个模型" : "删除这个模型"}
                         >
                           删除
                         </button>
@@ -1265,7 +1265,7 @@ export default function SettingsPanel() {
                       <button
                         className="ghost small"
                         onClick={() => applyProbeModels()}
-                        title="用端点返回的模型列表替换当前列表，并保留同名模型已填的窗口值"
+                        data-hover-hint="用端点返回的模型列表替换当前列表，并保留同名模型已填的窗口值"
                       >
                         用端点返回的 {probe.models.length} 个模型覆盖列表
                       </button>
@@ -1386,7 +1386,7 @@ export default function SettingsPanel() {
             className="ghost"
             onClick={() => void probeConnection()}
             disabled={probeBusy || modelBusy || !current || current.base_url.trim().length === 0}
-            title="用当前填写的地址与协议，让 DSH 实际请求一次端点"
+            data-hover-hint="用当前填写的地址与协议，让 DSH 实际请求一次端点"
           >
             {probeBusy ? "测试中…" : "测试连接"}
           </button>

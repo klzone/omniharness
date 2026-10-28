@@ -604,7 +604,7 @@ export function ScenePage({
         <button
           className="ml-auto text-[12px] text-primary hover:underline shrink-0"
           onClick={newThread}
-          title="回首页，按本场景开一段新对话"
+          data-hover-hint="回首页，按本场景开一段新对话"
         >
           去对话 · 新开
         </button>
@@ -628,7 +628,7 @@ export function ScenePage({
                     removeThread(t.id);
                     refreshThreads();
                   }}
-                  title="删除这条本机对话记录"
+                  data-hover-hint="删除这条本机对话记录"
                   aria-label={`删除对话：${t.title}`}
                 >
                   <Icon name="x" className="h-3.5 w-3.5" />
@@ -636,7 +636,7 @@ export function ScenePage({
                 <button
                   onClick={() => openThread(t.id)}
                   className="min-w-0 flex-1 text-left px-2 py-2 rounded-lg text-[12px] truncate text-on-surface-variant hover:bg-surface-container"
-                  title={t.title}
+                  data-hover-hint={t.title}
                 >
                   {t.title}
                 </button>

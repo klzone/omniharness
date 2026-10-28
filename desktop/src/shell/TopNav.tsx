@@ -151,7 +151,7 @@ function DateFlip({ now }: { now: Date }) {
             </div>
             <span
               className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-surface-container text-outline font-label-caps text-[9px]"
-              title="日程同步未实现：这里只按本机日期给出时间骨架"
+              data-hover-hint="日程同步未实现：这里只按本机日期给出时间骨架"
             >
               未同步
             </span>
@@ -264,7 +264,7 @@ function ProfileBadge() {
           setOpen((v) => !v);
           if (!view) load();
         }}
-        title={"引擎 Profile：" + currentLabel + "（只影响下次启动，不改模型路由）"}
+        data-hover-hint={"引擎 Profile：" + currentLabel + "（只影响下次启动，不改模型路由）"}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="topnav-profile-badge"
@@ -459,7 +459,7 @@ export function TopNav({
           <ProfileBadge />
 
           <span
-            title={engineLabel}
+            data-hover-hint={engineLabel}
             className={
               "hidden md:inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-label-caps text-[9.5px] tracking-wide border whitespace-nowrap " +
               (engineHealthy
@@ -561,7 +561,8 @@ export function TopNav({
           <button
             onClick={onOpenSettings}
             className="w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 flex items-center justify-center"
-            title="系统偏好设置"
+            data-hover-hint="系统偏好设置"
+            aria-label="系统偏好设置"
           >
             <Icon name="settings" className="w-[19px] h-[19px]" />
           </button>
@@ -569,7 +570,8 @@ export function TopNav({
           <button
             disabled
             className="w-8 h-8 rounded-full text-on-surface-variant/40 flex items-center justify-center cursor-not-allowed"
-            title="未实现：通知与待办"
+            data-hover-hint="未实现：通知与待办"
+            aria-label="未实现：通知与待办"
           >
             <Icon name="bell" className="w-[19px] h-[19px]" />
           </button>

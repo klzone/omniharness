@@ -93,7 +93,7 @@ export function StatusToast({
         type="button"
         onClick={onDismiss}
         aria-label="关闭提示"
-        title="关闭提示"
+        data-hover-hint="关闭提示"
         data-testid="status-toast-close"
         className="flex-shrink-0 p-0.5 text-outline transition-colors hover:text-on-surface"
       >

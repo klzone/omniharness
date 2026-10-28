@@ -319,7 +319,7 @@ export function ArtifactExplorer({
           </button>
           <label
             className="ml-1 flex cursor-pointer select-none items-center gap-1.5 text-[12px] text-on-surface-variant"
-            title="打开后连子目录里的成果一起列；关闭只看最外层"
+            data-hover-hint="打开后连子目录里的成果一起列；关闭只看最外层"
           >
             <input
               type="checkbox"
@@ -357,7 +357,7 @@ export function ArtifactExplorer({
                     data-artifact-card=""
                     data-artifact-archive=""
                     className="group text-left rounded-2xl border border-surface-variant/25 bg-surface-container-low/45 hover:bg-surface-container-low hover:border-primary/25 px-4 py-3.5 flex items-center gap-3.5 min-w-0 transition"
-                    title={r.relative_path}
+                    data-hover-hint={`${r.archive.week} ${r.archive.kindLabel}`}
                   >
                     {/* 序号块（OD-ARCH-099 S04）：48×48 方角、深一档底色，序号居中放大。 */}
                     <span
@@ -377,7 +377,7 @@ export function ArtifactExplorer({
                       </span>
                       {/*
                        * 只留标题与时间（OD-ARCH-097 S04）：文件名与标题常常同名，
-                       * 并排显示就是重复。完整路径仍在 title 悬浮提示里。
+                       * 并排显示就是重复。完整标题在悬停提示里。
                        */}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
                         <span>{dateText(r.modified_at)}</span>
@@ -399,7 +399,7 @@ export function ArtifactExplorer({
                       ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
                       : "border-transparent bg-surface-container-low/55 hover:bg-surface-container-low hover:border-surface-variant/30")
                   }
-                  title={r.relative_path}
+                  data-hover-hint={m ? m.title ?? r.file_name : undefined}
                   data-artifact-stale={stale ? "" : undefined}
                 >
                   {/* 编号块（OD-ARCH-099 S04）：48×48 方角、深一档底色，序号居中放大。 */}
@@ -411,14 +411,14 @@ export function ArtifactExplorer({
                   </span>
                   <span className="min-w-0 flex-1">
                     {/* 标题单行（OD-ARCH-099 S04）：卡片是索引，不承载整段标题；
-                        完整文件名仍在 title 悬浮提示里。 */}
+                        完整标题在悬停提示里。 */}
                     <span
                       className="block text-[13.5px] font-medium text-on-surface truncate leading-[1.55]"
-                      title={m ? m.title ?? r.file_name : undefined}
+                      data-hover-hint={m ? m.title ?? r.file_name : undefined}
                     >
                       {m ? m.title ?? r.file_name : "正在读取标题…"}
                     </span>
-                    {/* 只留标题与时间（OD-ARCH-097 S04）：文件名退到 title 悬浮提示，
+                    {/* 只留标题与时间（OD-ARCH-097 S04）：文件名退到悬停提示，
                         字数/字节这类次要信息不再占版面。 */}
                     <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-outline">
                       <span>{dateText(r.modified_at)}</span>
@@ -461,7 +461,7 @@ export function ArtifactExplorer({
                   ) : null}
                   <button
                     className="min-w-0 flex-1 text-left group"
-                    title={r.relative_path}
+                    data-hover-hint={primary}
                     onClick={r.kind === "archive" ? r.archive.onOpen : r.onOpen}
                   >
                     <span className="block text-[12.5px] text-on-surface truncate group-hover:text-primary">

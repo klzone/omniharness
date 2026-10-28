@@ -1,5 +1,36 @@
 # 当前实施计划
 
+### OD-ARCH-101：全局悬停说明统一为软件自绘方角卡片（已批准，已实施，2026-10-28）
+
+> 分类：界面一致性 + 全局交互组件。用户要求：把软件里所有悬停说明都改成与 OmniDesk 界面一致的样式，沿用四角直角、白底细边框的卡片语言。
+> **状态：用户本轮明确同意执行；S01–S03 实施完毕，验证证据见 STATUS.md，审查结论见 REVIEW.md 顶部。**
+
+#### 已查清的事实（只读排查，2026-10-28；HEAD `3e2bd17`）
+
+1. 全仓 `title=` 共 132 处，其中 **91 处是原生 DOM 标签上的悬停说明**，分布在 23 个文件；另外 **41 处是组件 prop**（如 `<CardHead title=…>`、`<ConfirmDialog title=…>`），不是浏览器悬停提示，不能一并替换。
+2. 91 处里有 **13 处位于 `disabled` 控件上**（设置页删除/测试连接、分类选择、附件增删、新对话、发送、模型路由、去向开关、打开原文）。原生 disabled 控件不派发鼠标事件，接管层必须用命中测试兜底，否则这些说明永远不出现。
+3. 现有可复用的视觉源头有两处：`StatusToast` 的右下角提示条（直角、`border-outline-variant/70`、白底、轻投影、11.5px）与 `TurnRail` 的轮次预览卡（直角、白底、细边框）。字体令牌为 Inter Variable + IBM Plex Mono，颜色走 `@theme` 的 surface/outline/primary。
+4. 浮层层级已有：确认框 60、窗口控件 70、场景状态条 80、原文预览 90、分类选择 95、状态提示 110；全局悬停提示取 **105**，位于常规浮层之上、状态提示之下。
+5. 会受影响的既有断言：`verify_weekly_093.py:218/260`、`verify_weekly_097.py:114`、`verify_weekly_099.py:97/120–121` 都在断言 `title={…}`，需同步改判为 `data-hover-hint={…}`。
+
+#### 方案
+
+- **V1 全局接管**：新增 `desktop/src/shell/HoverHint.tsx`，在 `App` 顶层挂载一次。用事件委托读取 `[data-hover-hint]`，通过 `createPortal` 渲染到 `body`，避免被滚动容器裁切；悬停延迟约 320ms，移出、滚动、窗口缩放、Esc 即消失；视口边缘自动翻到下方并水平夹紧。
+- **V2 原生标签迁移**：只把**小写开头的原生标签**上的 `title=` 换成 `data-hover-hint=`，删除原生 `title` 以免系统黑色气泡与自绘卡片同时出现；组件 prop 的 `title` 一律不动。`undefined` 条件文案保持不渲染。
+- **V3 样式与可达性**：方角、纯白底、1px `outline-variant/70` 边框、轻投影、11.5px 正文、最大宽 320px，与 StatusToast / TurnRail 同源；`role="tooltip"`、`pointer-events-none`，展示期间给触发元素补 `aria-describedby`；disabled 控件通过 `elementFromPoint` 命中兜底，不额外包一层容器、不改布局。
+
+#### 实施步骤
+
+**S01（OD-ARCH-101-S01）**：新增 `HoverHint` 组件并在 `App.tsx` 顶层挂载；实现延迟、翻转、夹紧、Esc/滚动关闭、`aria-describedby` 与 disabled 命中兜底。
+**S02（OD-ARCH-101-S02）**：批量迁移 91 处原生 `title=` → `data-hover-hint=`，核对 41 处组件 prop 未被误改。
+**S03（OD-ARCH-101-S03）**：新增 `verify_hover_hint_101.py`，修订 5 处冲突断言，跑前端构建、静态回归与窗口证据，更新 STATUS/REVIEW。
+
+**影响范围：** 新增 `desktop/src/shell/HoverHint.tsx`，修改 `App.tsx` 与其余 22 个含原生 `title` 的 tsx（合计 23 个文件、91 处），`tests/verification/desktop/verify_hover_hint_101.py`，修订 `verify_weekly_0{93,97,99}.py`，以及 `PLANS.md` / `STATUS.md` / `REVIEW.md`。
+
+**不做的事：** 不改任何组件 prop 的 `title`；不改 TurnRail 的轮次预览卡（它已是同款方角卡片）；不改数据、模型、工作流；不碰 `runtime/`。
+
+**设计借鉴（OD-ARCH-035）：** 已查看 Linear（悬停说明只留一行短句、贴近触发元素）与 Airtable（白底细边框、直角、投影很轻）以及现有 TurnRail/StatusToast。落点：①统一成白底直角小卡，不用深色系统气泡；②说明文字只承载补充信息，触发元素本身的标签与无障碍名称继续由 `aria-label` 承担。
+
 ### OD-ARCH-100：周报页五处视觉与减冗修订——图标去底、英文字体、圆形去向、成果库去搜索、去掉归档提示（已批准，已实施，2026-10-28）
 
 > 分类：界面微调 + 字体资源 + 一处去功能。用户本轮提五点：①顶部四张指标卡的图标去掉背景色块，图标放大到原来色块那么大；②所有英文字体换一个更清晰、更厚实的，现在太单薄；③去向点选的方形按钮改圆形，「进周报」三个字去掉，改成鼠标悬停提示；④成果文档库的搜索框与相关功能去掉，顶部导航已有搜索，重复了；⑤「另有 N 个归档文件名不符合约定，未列入、也未改动。」这句提示去掉。

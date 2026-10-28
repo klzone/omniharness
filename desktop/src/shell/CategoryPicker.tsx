@@ -166,7 +166,7 @@ export function CategoryPicker({
         data-testid="scene-category-picker"
         data-tag={value}
         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[12px] hover:bg-surface-container transition-colors disabled:opacity-60"
-        title="归类只改这段对话的组织方式，不改模型与路由；可选分类在设置页维护"
+        data-hover-hint="归类只改这段对话的组织方式，不改模型与路由；可选分类在设置页维护"
       >
         <span
           className="w-[7px] h-[7px] rounded-full flex-shrink-0 ring-1 ring-black/5"
@@ -240,7 +240,7 @@ export function CategoryPicker({
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-on-surface-variant hover:bg-surface-container")
                     }
-                    title={
+                    data-hover-hint={
                       on
                         ? "这段对话当前归到这一类"
                         : "归到这一类后，这段对话按该场景的规则组织，成果也归到该场景的档案里"

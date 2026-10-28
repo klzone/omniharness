@@ -2,6 +2,45 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-101：全局悬停说明统一为软件自绘方角卡片（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**
+> 触发：用户要求「把软件所有的悬停说明都改为软件一致的样式」。
+> 起点：HEAD `3e2bd17`。边界：本助手亲自实施，未派子代理；`runtime/` 零差异；未读凭证与真实工作记录；窗口验证只用 `/tmp` 合成数据。
+
+### 改动
+
+1. 新增 `desktop/src/shell/HoverHint.tsx`：全局单例，在 `App.tsx` 顶层挂一次。`pointermove` 事件委托 + `elementFromPoint` 命中，向上找 `[data-hover-hint]`，因此**禁用控件也能出提示**（原生 `title` 在 disabled 上不出现）。320ms 延迟、portal 到 `body`、`role="tooltip"`，展示期间给触发元素补 `aria-describedby`，移出即还原。
+2. 样式与软件同源：`z-[105]`（状态提示 110 之下、常规浮层之上）、**直角**（`borderRadius: 0`）、白底 `bg-surface-container-lowest`、1px `border-outline-variant/70`、轻投影 `0 10px 28px -12px rgba(15,23,42,0.35)`、11.5px、最大宽 320px、`whitespace-pre-line` 支持多行说明。上方放不下翻到下方，左右夹进视口。滚动、缩放、Esc、点击、指针离开页面都会收起。
+3. `pointer-events-none`：提示卡不抢点击，也不会因自身命中造成移出闪烁。
+4. 批量迁移 **91 处原生 DOM 标签**的 `title=` → `data-hover-hint=`，覆盖 23 个 tsx 文件；**41 处组件 prop 的 `title` 全部保留**（`<CardHead>`、`<ConfirmDialog>` 等），静态断言核对为 22 处组件上出现、共 41 个属性。
+5. 成果库两处文案校正：卡片与列表悬停改显示**完整标题**（不再显示原始文件名），归档卡悬停显示周次与类型。
+6. 无障碍补齐：`TopNav` 的设置与通知两个纯图标按钮在去掉原生 `title` 后补 `aria-label`，避免失去可访问名称。
+7. 计时缺陷修正：初版在指针于同一控件内轻微移动时会把 320ms 计时器反复重置，提示可能一直不出现。加入 `pendingRef` 后，同一元素已排队或已展示时直接返回，不再重置。
+8. 断言同步：`verify_weekly_0{93,97,99}.py` 里断言 `title=` 的 5 处改判为 `data-hover-hint=`；新增 `verify_hover_hint_101.py`（30 项）与窗口预览 `preview_hover_101.py`。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npx tsc --noEmit`（desktop） | 通过 |
+| `npm run build`（desktop） | 通过（仅既有 >500kB chunk 提示） |
+| `verify_hover_hint_101.py`（新增） | 30 / 30 |
+| `verify_weekly_091.py` / `092.py` | 67 / 67、29 / 29 |
+| `verify_weekly_093.py` / `097.py` / `099.py` / `100.py` | 105 / 105、34 / 34、42 / 42、32 / 32 |
+| `verify_worklog_089.py` / `verify_writing_094.py` | 61 / 61、98 / 98 |
+| 窗口 `preview_hover_101.py`（`:131`） | 四项提示均可见，见下 |
+
+窗口 facts 关键读数：`disabled_hint_visible=true`（「当前权限下不发送输入」，禁用发送按钮，几何 `[1345,604,32,32]`）；`profile_hint_visible=true`（顶部 Profile 徽标）；`entry_hint_visible=true`（时间线截断正文的完整说明）；`artifact_hint_visible=true`（成果卡完整标题）；`no_native_title_left=true`。悬停动作已改为**多步小幅移动后再停住 1.2 秒**，用于覆盖「持续微动不阻断提示」这一修正。
+
+证据：`tests/verification/desktop/evidence/od-arch-101/`（`01-disabled-send-hover.png`、`02-topnav-profile-hover.png`、`03-timeline-entry-hover.png`、`04-artifact-hover.png`、`facts.json`）。
+
+### 未做/未验证
+
+- 未在用户真实显示器上复核；窗口证据为 Xvfb 1600×980 + `/tmp` 合成数据。
+- 未逐页人工悬停全部 91 处，仅在首页、工作记录页、顶部导航与成果库取样；其余由静态断言 + 同一接管层保证。
+- 触屏与读屏软件实机未验证。
+
 ## OD-ARCH-100：周报页五处视觉与减冗修订（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**

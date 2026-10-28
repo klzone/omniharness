@@ -78,7 +78,7 @@ export function SourcePeekSheet({
           />
           <div className="min-w-0 flex-1">
             <p className="text-[12px] uppercase tracking-[0.16em] text-outline">原文预览</p>
-            <p className="mt-1 mono truncate text-[12.5px] text-on-surface" title={title}>
+            <p className="mt-1 mono truncate text-[12.5px] text-on-surface" data-hover-hint={title}>
               {title}
             </p>
           </div>
@@ -87,7 +87,7 @@ export function SourcePeekSheet({
             type="button"
             onClick={onClose}
             aria-label="关闭预览"
-            title="关闭预览（Esc）"
+            data-hover-hint="关闭预览（Esc）"
             data-testid="source-peek-close"
             className="flex shrink-0 items-center gap-1 px-2 py-1 text-[12px] text-outline transition-colors hover:text-on-surface"
           >
