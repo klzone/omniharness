@@ -9,7 +9,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
-import { Icon } from "../components/Icon";
 import type { OfflineArtifactEntry } from "../types";
 
 const PAGE_SIZE = 24;
@@ -116,7 +115,6 @@ export function ArtifactExplorer({
   files,
   archiveEntries = [],
   archiveError = null,
-  archiveSkipped = 0,
   emptyHint,
   includeSubdirs,
   onToggleSubdirs,
@@ -131,14 +129,12 @@ export function ArtifactExplorer({
   archiveEntries?: ArtifactArchiveEntry[];
   /** 归档目录读取失败的原因；与成果错误分开显示，不混成「没有成果」。 */
   archiveError?: string | null;
-  /** 文件名不合约定、被宿主跳过的归档文件数（原「历史归档」卡的尾部提示）。 */
-  archiveSkipped?: number;
   emptyHint: string;
   includeSubdirs: boolean;
   onToggleSubdirs: (next: boolean) => void;
   /**
    * 精简工具栏（OD-ARCH-095，仅工作记录页的右栏用）：不显示时间范围筛选，固定看最近
-   * 30 天；搜索、卡片/列表和「含子目录」仍保留，避免把目录范围藏成不可见状态。
+ * 30 天；卡片/列表和「含子目录」仍保留，避免把目录范围藏成不可见状态。
    */
   compactToolbar?: boolean;
   /**
@@ -152,7 +148,6 @@ export function ArtifactExplorer({
   accent?: "primary" | "secondary";
   onOpen: (relativePath: string) => void;
 }) {
-  const [query, setQuery] = useState("");
   const [range, setRange] = useState<"all" | "week" | "month">("all");
   const [view, setView] = useState<"cards" | "list">("cards");
   const [page, setPage] = useState(0);
@@ -188,7 +183,6 @@ export function ArtifactExplorer({
   }, [files, archiveEntries, onOpen]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     // 精简模式固定「近一个月」：按 30 天滚动窗口，不是自然月。
     const from = compactToolbar
       ? now.getTime() / 1000 - 30 * 24 * 60 * 60
@@ -197,17 +191,8 @@ export function ArtifactExplorer({
         : range === "month"
           ? since.month
           : 0;
-    return rows
-      .filter((r) => (from > 0 ? r.modified_at >= from : true))
-      .filter((r) => {
-        if (!q) return true;
-        const hay =
-          r.kind === "archive"
-            ? `${r.file_name} ${r.relative_path} ${r.archive.kindLabel} ${r.archive.week} 归档`
-            : `${r.file_name} ${r.relative_path}`;
-        return hay.toLowerCase().includes(q);
-      });
-  }, [rows, query, range, since, compactToolbar, now]);
+    return rows.filter((r) => (from > 0 ? r.modified_at >= from : true));
+  }, [rows, range, since, compactToolbar, now]);
 
   const capped = filtered.slice(0, HARD_CAP);
   const pageCount = Math.max(1, Math.ceil(capped.length / PAGE_SIZE));
@@ -267,7 +252,7 @@ export function ArtifactExplorer({
 
   useEffect(() => {
     setPage(0);
-  }, [query, range]);
+  }, [range]);
 
   const chip = (active: boolean) =>
     "px-3 py-1.5 rounded-full text-[12px] leading-none transition " +
@@ -277,7 +262,6 @@ export function ArtifactExplorer({
         : "bg-primary text-on-primary shadow-[0_1px_2px_rgba(53,37,205,0.25)]"
       : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high");
 
-  const focusRing = accent === "secondary" ? "focus:ring-secondary/25" : "focus:ring-primary/25";
   const typeLabel = (value: string | null | undefined): string => {
     switch ((value ?? "").trim().toLowerCase()) {
       case "insight":
@@ -301,22 +285,10 @@ export function ArtifactExplorer({
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="pb-3.5 border-b border-surface-variant/25">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <input
-              className={"w-full rounded-xl border border-surface-variant/50 bg-surface-container-lowest/80 px-3 py-2 pr-10 text-[12px] placeholder:text-outline/80 focus:outline-none focus:ring-2 " + focusRing}
-              placeholder="搜索成果或归档"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="按文件名搜索成果与归档"
-            />
-            <Icon
-              name="search"
-              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-outline"
-            />
-          </div>
+        {/* 去掉搜索后工具栏合并为一行（OD-ARCH-100 S04）；顶部导航已有会话内搜索。 */}
+        <div className="flex flex-wrap min-w-0 items-center gap-1.5">
           {compactToolbar ? null : (
-            <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+            <div className="flex shrink-0 items-center gap-1.5" data-artifact-range="">
               <button className={chip(range === "all")} onClick={() => setRange("all")}>
                 全部
               </button>
@@ -328,21 +300,7 @@ export function ArtifactExplorer({
               </button>
             </div>
           )}
-        </div>
-        {!compactToolbar ? (
-          <div className="flex items-center justify-end gap-1.5 pt-2 sm:hidden">
-            <button className={chip(range === "all")} onClick={() => setRange("all")}>
-              全部
-            </button>
-            <button className={chip(range === "week")} onClick={() => setRange("week")}>
-              本周
-            </button>
-            <button className={chip(range === "month")} onClick={() => setRange("month")}>
-              本月
-            </button>
-          </div>
-        ) : null}
-        <div className="flex items-center justify-end gap-1.5 pt-2">
+          <div className="ml-auto flex items-center gap-1.5">
           <button
             className={chip(view === "cards")}
             onClick={() => setView("cards")}
@@ -371,6 +329,7 @@ export function ArtifactExplorer({
             />
             含子目录
           </label>
+          </div>
         </div>
       </div>
 
@@ -380,11 +339,6 @@ export function ArtifactExplorer({
         ) : null}
         {archiveError ? (
           <p className="text-[12px] text-error leading-relaxed">读取历史归档失败：{archiveError}</p>
-        ) : null}
-        {archiveSkipped > 0 ? (
-          <p className="text-[12px] text-outline/80 leading-relaxed">
-            另有 {archiveSkipped} 个归档文件名不符合约定，未列入、也未改动。
-          </p>
         ) : null}
       </div>
 

@@ -64,9 +64,12 @@ def main() -> int:
     # --- S01 指标卡：图标独占左列，其下无文字 ---
     check("band_has_icon_column", "data-band-icon-column" in band, "指标卡有独立图标列")
     check("band_icon_column_fixed_width", "w-14" in band and "shrink-0" in band)
-    check("band_icon_seat_larger", 'w-14 h-14 rounded-2xl' in band, "图标座 56×56")
-    check("band_icon_glyph_larger", 'Icon name={icon} className="w-7 h-7"' in band, "图标本体 28px")
-    icon_col = band[band.find("data-band-icon-column") : band.find("data-band-icon-column") + 700]
+    # OD-ARCH-100 S01：底色座去掉，图标本体放大到 56px 占满原色块位置。
+    check("band_icon_seat_larger", 'w-14 h-14 rounded-2xl' not in band, "图标不再有圆角色块座")
+    check("band_icon_glyph_larger", 'Icon name={icon} className={"w-14 h-14 "' in band, "图标本体 56px")
+    icon_start = band.find("data-band-icon-column")
+    icon_end = band.find('<div className="relative flex-1 min-w-0 flex flex-col">', icon_start)
+    icon_col = band[icon_start:icon_end] if icon_end > icon_start else band[icon_start : icon_start + 260]
     check(
         "band_icon_column_no_text",
         "{label}" not in icon_col and "{value}" not in icon_col and "{index}" not in icon_col,
@@ -87,7 +90,11 @@ def main() -> int:
           "筛选时用原始下标，不错位")
     check("dest_records_only_value", "仅记录" in timeline_jsx and "仅记录" in scene)
     check("dest_missing_is_static", "无去向" in timeline_jsx and "border-dashed" in timeline_jsx)
-    check("dest_square_button", "rounded-none" in timeline_jsx and "rounded-t-2xl" not in timeline_jsx)
+    # OD-ARCH-100 S03：从方角块改为圆形勾选，可见「进周报」文字移除，语义留给悬停/读屏。
+    check("dest_circle_button", "rounded-full" in timeline_jsx and "rounded-t-2xl" not in timeline_jsx)
+    check("dest_no_visible_label", '"保存中…" : "进周报"' not in timeline_jsx,
+          "按钮内不再有可见的进周报文字")
+    check("dest_tooltip_kept", "title={" in timeline_jsx and "已进周报：" in timeline_jsx)
     check("dest_failure_inline", "failure" in timeline_jsx and "text-error" in timeline_jsx)
     check("dest_keyboard_ready", "focus-visible:ring-2" in timeline_jsx, "键盘焦点可见")
     check("scene_toggle_wired", "onToggleDestination={toggleDestination}" in scene)

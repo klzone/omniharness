@@ -859,7 +859,6 @@ export function ScenePage({
                 files={artifacts}
                 archiveEntries={archiveEntries}
                 archiveError={archiveError}
-                archiveSkipped={archive?.skipped ?? 0}
                 emptyHint={def.emptyHint}
                 includeSubdirs={includeSubdirs}
                 onToggleSubdirs={toggleSubdirs}

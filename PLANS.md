@@ -1,5 +1,89 @@
 # 当前实施计划
 
+### OD-ARCH-100：周报页五处视觉与减冗修订——图标去底、英文字体、圆形去向、成果库去搜索、去掉归档提示（已批准，已实施，2026-10-28）
+
+> 分类：界面微调 + 字体资源 + 一处去功能。用户本轮提五点：①顶部四张指标卡的图标去掉背景色块，图标放大到原来色块那么大；②所有英文字体换一个更清晰、更厚实的，现在太单薄；③去向点选的方形按钮改圆形，「进周报」三个字去掉，改成鼠标悬停提示；④成果文档库的搜索框与相关功能去掉，顶部导航已有搜索，重复了；⑤「另有 N 个归档文件名不符合约定，未列入、也未改动。」这句提示去掉。
+> **状态：用户已批准；S01–S06 全部实施完毕，本人实跑验证与窗口证据见 STATUS.md，审查结论见 REVIEW.md 顶部。**
+
+#### 已查清的事实（只读排查，2026-10-28；HEAD `9989d4d`）
+
+1. **指标卡图标**在 `SceneStatusStrip.tsx` 的 `BandMetric`：图标座是 56×56 的 `w-14 h-14 rounded-2xl` 加 `skin.chip`（`bg-primary/10` 这类浅色底）。图标本体 28px（`w-7 h-7`）。四张卡的色相来自 `BAND_TONES` 的 `chip` 字段；逾期告警态用 `BAND_ALERT.chip`。
+2. **英文字体**分两条链路：① `theme.css` 的 `--font-*` 令牌用 Sora / Plus Jakarta Sans / JetBrains Mono，`styles.css` 的 `.mono` 也写死 JetBrains Mono；② 字体文件由 `main.tsx` 从 `@fontsource/*` 自托管引入，仅 latin 子集，CJK 走系统字体。**本机无外网依赖问题**：`npm install @fontsource-variable/inter` 实测可用（已安装成功后又恢复，未留在工作区）。
+3. **去向开关**在 `WeeklyTimeline.tsx` 的 `DestinationSwitch`：`rounded-none` 方角按钮，内含 13px 方角勾选框 + 可见文字「进周报」。`aria-label` 与 `title` 已经带完整语义，所以去掉可见文字不损失可读性。
+4. **成果库工具栏**在 `ArtifactExplorer.tsx:298–380`：第一行是搜索输入框（`placeholder="搜索成果或归档"`），第二行是卡片/列表切换与「含子目录」。搜索状态 `query` 参与 `filtered` 计算，`includeSubdirs` 是目录范围开关、与搜索无关。`ArtifactExplorer` 被工作记录页、写作页、项目跟进页与兜底分支共四处复用，`compactToolbar` 只影响时间范围那组按钮。
+5. **归档提示**在 `ArtifactExplorer.tsx:384–388`，来自 `archiveSkipped`（`ScenePage.tsx:862` 传 `archive?.skipped ?? 0`）。这只是可见文案；`skipped` 计数在宿主侧仍用于判断归档目录是否可读，去掉文案不影响读取逻辑。
+6. **会受影响的既有断言**：`verify_weekly_093.py:192` 的 `artifact_search_kept_in_compact` 与 `:292` 的 `artifact_toolbar_two_rows` 都断言搜索框存在；`verify_weekly_099.py` 有 `band_icon_seat_larger`、`dest_square_button`、`band_icon_column_no_text` 等与本次改动直接冲突的断言。这些必须同步修订。
+
+#### 方案
+
+- **V1 图标去底放大器（第 1 条）**：图标座去掉 `skin.chip` 的底色与圆角块，只保留色相文字（`text-primary` 这类），图标本体从 `w-7 h-7` 放大到 `w-14 h-14`，正好占满原来 56px 的色块位置。列宽仍是 `w-14`，右侧文字与数字的位置不变，四卡等高关系不变。`BAND_TONES` 里 `chip` 字段改为只含文字色的 token，逾期告警态同样处理。
+- **V2 英文字体换厚（第 2 条）**：主字体由 Sora / Plus Jakarta Sans 换成 **Inter**（自托管 `@fontsource-variable/inter`，只引 latin 子集，仍是本地文件、零外链），Inter 在小字号下笔画更实、辨识度更高。标签/序号这类等宽小字由 JetBrains Mono 换成 **IBM Plex Mono**（同样自托管），比 JetBrains Mono 的细笔画更清楚；若你更想保留等宽观感，也可只换正文、序号继续用等宽。`--font-*` 令牌与 `styles.css` 的 `.mono` 同步改，CJK 回退栈不动。所有字号、行高、字距不变，只换字族。
+- **V3 圆形去向开关（第 3 条）**：改成圆形按钮（`rounded-full`），去掉可见的「进周报」三字，只保留勾选态图形；未选中是空心圆环，选中是实心 primary 圆 + 白色对勾。`aria-label`、`title`、`role="switch"`、`aria-checked` 全部保留，鼠标悬停即可看到说明，键盘与读屏仍可操作。宽度收窄后正文左移，条目换行位置随之变化。
+- **V4 成果库去搜索（第 4 条）**：删掉 `ArtifactExplorer` 的搜索输入框、`query` 状态与其在 `filtered` 里的过滤分支；工具栏第一行如果只剩时间范围就与第二行合并成一行，避免留一条空行。保留卡片/列表切换、时间范围（非精简模式）与「含子目录」——这些不是搜索。四个复用点一并生效。
+- **V5 去掉归档提示（第 5 条）**：删掉 `ArtifactExplorer.tsx` 里渲染 `archiveSkipped` 的那段文案与 `archiveSkipped` prop，`ScenePage.tsx` 不再传。宿主仍解析并返回 `skipped` 计数（供读屏/诊断与既有测试），只是不在界面上提示。
+
+#### 实施步骤
+
+**S01（OD-ARCH-100-S01）**
+
+1. Step ID：OD-ARCH-100-S01
+2. 单一动作描述：`BandMetric` 图标去掉底色块，图标放大到 56px 占满原色块位置，列宽与右侧排版不变。
+3. 输入来源：`SceneStatusStrip.tsx` 的 `BandMetric` 与 `BAND_TONES` / `BAND_ALERT`。
+4. 输出目标：无底色图标座 + 56px 图标；`chip` 字段只保留文字色。
+5. 验收标准：截图上图标看不到浅色圆角底块；图标明显大于现在的 28px；四张卡图标尺寸一致、等高关系不变；写作页 `WritingMetric` 零改动。
+
+**S02（OD-ARCH-100-S02）**
+
+1. Step ID：OD-ARCH-100-S02
+2. 单一动作描述：安装 `@fontsource-variable/inter` 与 `@fontsource/ibm-plex-mono`，把 `--font-*` 令牌、`.mono` 类与 `main.tsx` 的字体引入换成新字族。
+3. 输入来源：`theme.css` 的 `--font-*`、`styles.css` 的 `.mono`、`main.tsx` 的 `@fontsource` 引入、`package.json`。
+4. 输出目标：Inter（正文/标题）+ IBM Plex Mono（序号/标签）+ 原 CJK 回退栈；两个字体包进 `package.json`，仍是本地资源。
+5. 验收标准：`npm run build` 通过且字体文件被产出到 `dist/assets`；界面截图里英文小字比改动前更清楚；字号与行高不变，无布局溢出；不新增任何外链请求。
+
+**S03（OD-ARCH-100-S03）**
+
+1. Step ID：OD-ARCH-100-S03
+2. 单一动作描述：`DestinationSwitch` 改为圆形按钮，删掉可见的「进周报」文字，保留悬停提示与无障碍语义。
+3. 输入来源：`WeeklyTimeline.tsx` 的 `DestinationSwitch`。
+4. 输出目标：圆形勾选按钮（空心/实心两态），`rounded-full`、无可见文案、`title` + `aria-label` 保留，失败原因仍就地显示。
+5. 验收标准：截图上是圆形而不是方角；悬停出现「已进周报 / 不进周报」说明；键盘 Space/Enter 可切换、焦点环可见；筛选状态下点选仍对到正确条目；无去向条目仍是静态标记。
+
+**S04（OD-ARCH-100-S04）**
+
+1. Step ID：OD-ARCH-100-S04
+2. 单一动作描述：删掉成果库搜索框、`query` 状态与相关过滤分支，工具栏合并为紧凑布局。
+3. 输入来源：`ArtifactExplorer.tsx:298–380` 与 `filtered` 计算。
+4. 输出目标：无搜索输入框；卡片/列表、时间范围、含子目录仍在；`filtered` 只按范围与 `includeSubdirs` 处理。
+5. 验收标准：界面上找不到搜索框与「搜索成果或归档」字样；四个复用页都正常；列表数量与改动前（清空搜索时）一致；分页、标题读取、点击预览不受影响。
+
+**S05（OD-ARCH-100-S05）**
+
+1. Step ID：OD-ARCH-100-S05
+2. 单一动作描述：删掉「另有 N 个归档文件名不符合约定…」提示与对应 prop。
+3. 输入来源：`ArtifactExplorer.tsx:384–388`、`ScenePage.tsx:862`。
+4. 输出目标：该文案不再渲染；`archiveSkipped` prop 移除；宿主侧 `skipped` 计数与归档读取逻辑不变。
+5. 验收标准：界面与 AX 树里都找不到该文案；归档条目仍正常列出；`verify_weekly_093.py` 的归档相关断言（`archive_*`）不受影响。
+
+**S06（OD-ARCH-100-S06）**
+
+1. Step ID：OD-ARCH-100-S06
+2. 单一动作描述：同步修订冲突的既有断言，新增 `verify_weekly_100.py`，跑全量回归与窗口截图，落盘证据并更新状态/审查记录。
+3. 输入来源：`verify_weekly_093.py:192/292`、`verify_weekly_099.py`、`preview_weekly_099.py`。
+4. 输出目标：新增静态断言（图标无底色块、图标 56px、Inter/IBM Plex Mono 生效、圆形开关且无可见「进周报」、无搜索框、无归档提示）；`evidence/od-arch-100/` 截图与 facts.json；STATUS.md 与 REVIEW.md 更新。
+5. 验收标准：`tsc --noEmit`、`npm run build`、`cargo test --offline`、`verify_weekly_091/092/093/097/099/100`、`verify_worklog_089`、`verify_writing_094` 全绿；窗口截图确认五处都改到位；`runtime/` 零差异。
+
+**依赖关系：** S01–S05 相互独立；S01–S05 → S06。
+
+**影响范围：** `desktop/src/shell/SceneStatusStrip.tsx`、`WeeklyTimeline.tsx`、`ArtifactExplorer.tsx`、`ScenePage.tsx`、`desktop/src/theme.css`、`desktop/src/styles.css`、`desktop/src/main.tsx`、`desktop/package.json`（+ lock）、`tests/verification/desktop/verify_weekly_0{93,99,100}.py`、新增 `preview_weekly_100.py`、`PLANS.md` / `STATUS.md` / `REVIEW.md`。
+
+**不做的事：** 不改任何数据文件与去向取值；不改周报取数口径；不删顶部导航的会话内搜索（用户说那是保留的那一个）；不改 `WritingMetric`；不动成果库的卡片/列表、时间范围与「含子目录」；不碰 `runtime/`；不读真实工作记录或凭证。
+
+**第 2 条的执行取舍：** 已按「英文正文/标题换 Inter（variable，300–700 全档）、序号与等宽小标换 IBM Plex Mono」实施，两个字体包都由 `@fontsource` 自托管，运行时零外链；若之后要全部统一成 Inter，只改 `--font-label-caps` 与 `.mono` 两处即可。
+
+**设计借鉴（OD-ARCH-035 要求）：** 已检索并实际查看 Baremetrics（指标卡的图标直接作色相符号、不套底板）、Linear（勾选控件用一个圆点表达开合，说明只在悬停时出现）、Notion（列表工具栏一行到底，重复的检索入口只留全局一处）三组同类界面。落点：①图标去掉色块后靠自身笔画的色相与体积承担识别，卡内不再多一层装饰；②圆形单点开关与时间线的圆点节奏对齐，说明退到 `title` 与读屏语义；③成果库工具栏合并成一行，搜索只保留顶部导航那一个入口。
+
+**实施结果（2026-10-28）：** 五处改动与 S06 的断言同步、回归、窗口证据全部完成；`tsc --noEmit`、`npm run build`、`cargo test --offline`、`verify_weekly_091/092/093/097/099/100`、`verify_worklog_089`、`verify_writing_094` 全绿，`preview_weekly_100.py` 窗口读数符合预期。细节见 STATUS.md 的 OD-ARCH-100 章节。
+
 ### OD-ARCH-099：周报页四项微调——指标卡图标列、去向点选、成果卡序号、预览居中（已批准，已实施，2026-10-28）
 
 > 分类：界面微调 + 一处受控的数据写入 + 新宿主命令。用户本轮提四点：①顶部四张指标卡图标放大、独占左侧、图标下不再有内容，文字整体右移；②时间线的「本周报引用」改成圆形点选按钮，选中即进周报、不选即不进；③右侧成果库卡片的 01–05 序号居中放大，序号区底色比正文区深，文件名只显示单行；④点成果文件名弹出的预览卡改为居中（现贴在窗口底部）。

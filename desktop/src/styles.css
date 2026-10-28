@@ -39,7 +39,7 @@ body {
 }
 
 .mono {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
 
@@ -447,7 +447,7 @@ button.ghost {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.28);
   color: var(--fg-dim);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

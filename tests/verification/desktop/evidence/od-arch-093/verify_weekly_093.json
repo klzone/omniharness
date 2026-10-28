@@ -103,7 +103,7 @@
     {
       "name": "artifact_search_kept_in_compact",
       "ok": true,
-      "detail": "搜索框保留"
+      "detail": "成果库搜索已移除（顶部导航搜索统一入口）"
     },
     {
       "name": "artifact_compact_window_not_stated",
@@ -273,7 +273,7 @@
     {
       "name": "artifact_filters_kept",
       "ok": true,
-      "detail": ""
+      "detail": "保留范围/目录筛选，搜索交给顶部导航"
     },
     {
       "name": "artifact_list_view_kept",
@@ -293,7 +293,7 @@
     {
       "name": "archive_searchable",
       "ok": true,
-      "detail": "搜索覆盖周报/周记录"
+      "detail": "归档仍在同一列表里，搜索已交给顶部导航"
     },
     {
       "name": "archive_open_kept",
@@ -318,7 +318,7 @@
     {
       "name": "artifact_toolbar_two_rows",
       "ok": true,
-      "detail": "搜索行与视图/目录控制行分开"
+      "detail": "工具栏合并为一行，只留范围与视图/目录控制"
     },
     {
       "name": "weekly_small_text_floor",
@@ -383,7 +383,7 @@
     {
       "name": "band_larger_icon",
       "ok": true,
-      "detail": "图标座 56px、图标 28px"
+      "detail": "图标 56px 且不再有底色座"
     },
     {
       "name": "section_title_hierarchy",

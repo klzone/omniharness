@@ -1,0 +1,46 @@
+{
+  "display": ":130",
+  "root": "/tmp/od100-preview",
+  "week": "2026-W44",
+  "entries": 7,
+  "today": "2026-10-28",
+  "worklog": "/tmp/od100-preview/local-data/工作记录/2026-W44.md",
+  "artifacts": 3,
+  "band_cards_present": true,
+  "band_crop": [
+    184,
+    191,
+    496,
+    150
+  ],
+  "switch_nodes": 7,
+  "switch_is_round_source": true,
+  "switch_geometry": [
+    639,
+    601,
+    25,
+    24
+  ],
+  "switch_square": false,
+  "switch_toggled": true,
+  "toolbar_crop": [
+    776,
+    335,
+    560,
+    190
+  ],
+  "search_box_absent": true,
+  "archive_notice_absent": true,
+  "writing_toolbar_has_range": true,
+  "writing_search_absent": true,
+  "narrow_band_present": true,
+  "narrow_search_absent": true,
+  "worklog_line_count_same": true,
+  "worklog_changed_lines": [
+    10
+  ],
+  "worklog_backups": [
+    "2026-W44.md.bak-1793149324158"
+  ],
+  "runtime_touched": false
+}
