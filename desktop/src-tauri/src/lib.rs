@@ -2080,11 +2080,39 @@ fn worklog_append(
     state: State<'_, SharedHost>,
     text: String,
     destination: Option<String>,
+    entry_date: Option<String>,
 ) -> serde_json::Value {
     let offset = worklog_offset_minutes(&state);
     let now = task_shell::now_secs();
     let week = worklog::week_label(now, offset);
-    let date = worklog::date_label(now, offset);
+    let today = worklog::date_label(now, offset);
+    // OD-ARCH-103 S2：输入里认出的补录日期由界面带进来；缺省仍是当天。
+    // 不合法一律拒绝并说明原因——绝不静默回退成今天，否则又回到「以为记到周一、实际记到周三」。
+    let requested = entry_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty());
+    if let Some(day) = requested {
+        if let Err(message) = worklog::assert_entry_date(&week, day, &today) {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "date": day,
+                "today": today,
+                "appended": false,
+                "was_new_file": false,
+                "continued": false,
+                "masked": false,
+                "masked_id_card": 0,
+                "masked_phone": 0,
+                "entry_index": 0,
+                "entry_text": "",
+                "error": message,
+            });
+        }
+    }
+    let date = requested.unwrap_or(today.as_str()).to_string();
     let root = match worklog_library_root(&state) {
         Ok(root) => root,
         Err(message) => {
@@ -2099,6 +2127,8 @@ fn worklog_append(
                 "masked": false,
                 "masked_id_card": 0,
                 "masked_phone": 0,
+                "entry_index": 0,
+                "entry_text": "",
                 "error": message,
             })
         }
@@ -2117,6 +2147,8 @@ fn worklog_append(
                 "masked": false,
                 "masked_id_card": 0,
                 "masked_phone": 0,
+                "entry_index": 0,
+                "entry_text": "",
                 "error": message,
             })
         }
@@ -2139,6 +2171,8 @@ fn worklog_append(
             "masked": false,
             "masked_id_card": 0,
             "masked_phone": 0,
+            "entry_index": 0,
+            "entry_text": "",
             "error": format!(
                 "本次内容命中红线扫描，已拒绝写入工作记录：{}。该扫描仅为启发式，不代表合规判断。",
                 detail
@@ -2169,6 +2203,8 @@ fn worklog_append(
             "masked": counts.any(),
             "masked_id_card": counts.id_card,
             "masked_phone": counts.phone,
+            "entry_index": 0,
+            "entry_text": "",
             "error": message,
         }),
     }
@@ -2213,6 +2249,52 @@ fn worklog_set_destination(
             "index": index,
             "destination": destination,
             "previous": null,
+            "backup": null,
+            "error": message,
+        }),
+    }
+}
+
+/// 改一条记录的日期（OD-ARCH-103 S3）。
+///
+/// 引擎侧看不到宿主命令（ACP 会话的 mcpServers 恒为空），所以模型无法直接调用它；
+/// 这条命令由界面在识别出「记错了，应该是周一」这类纯日期纠正时调用，不叫模型。
+/// 只在本周文件内把这一条从原日期段移到目标日期段，内容不改写。
+#[tauri::command(async)]
+fn worklog_redate(
+    state: State<'_, SharedHost>,
+    week: String,
+    from_date: String,
+    index: usize,
+    to_date: String,
+    expect_text: String,
+) -> serde_json::Value {
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "path": null,
+                "week": week,
+                "from_date": from_date,
+                "to_date": to_date,
+                "index": index,
+                "new_index": 0,
+                "backup": null,
+                "error": message,
+            })
+        }
+    };
+    match worklog::move_entry(&root, &week, &from_date, index, &to_date, &expect_text) {
+        Ok(receipt) => serde_json::json!(receipt),
+        Err(message) => serde_json::json!({
+            "ok": false,
+            "path": worklog::week_path(&root, &week).display().to_string(),
+            "week": week,
+            "from_date": from_date,
+            "to_date": to_date,
+            "index": index,
+            "new_index": 0,
             "backup": null,
             "error": message,
         }),
@@ -3705,6 +3787,7 @@ pub fn run() {
             scheduler_heartbeat_scan,
             worklog_append,
             worklog_set_destination,
+            worklog_redate,
             worklog_read_week,
             worklog_archive_list,
             worklog_read_report,

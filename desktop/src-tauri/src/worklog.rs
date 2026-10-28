@@ -51,6 +51,10 @@ pub struct AppendReceipt {
     pub masked: bool,
     pub masked_id_card: u64,
     pub masked_phone: u64,
+    /// 这条记录在该日期段内的第几条（0 起）。补录纠正时用它定位（OD-ARCH-103 S3）。
+    pub entry_index: usize,
+    /// 实际落盘的正文（可能已掩码）。改日期时原样带回做一致性校验。
+    pub entry_text: String,
     pub error: Option<String>,
 }
 
@@ -159,6 +163,61 @@ fn render_block(date: &str, text: &str, destination: &str, already_has_date: boo
     out
 }
 
+/// 校验一条补录日期：形状正确、属于给定周文件、且不晚于今天。
+///
+/// 不合法一律返回错误，由调用方如实拒绝——**不静默回退成今天**。
+/// 静默回退正是 OD-ARCH-103 要修的那个问题的变体：用户以为记到了周一，实际落到了周三。
+pub fn assert_entry_date(week: &str, date: &str, today: &str) -> Result<(), String> {
+    assert_week_label(week)?;
+    if !is_date_shape(date) {
+        return Err(format!("补录日期格式不正确（应为 YYYY-MM-DD）：{date}"));
+    }
+    if !is_date_shape(today) {
+        return Err(format!("今天日期格式不正确（应为 YYYY-MM-DD）：{today}"));
+    }
+    let day = days_from_civil(parse_year(date), parse_month(date), parse_day(date));
+    let today_day = days_from_civil(parse_year(today), parse_month(today), parse_day(today));
+    if day > today_day {
+        return Err(format!("补录日期晚于今天（{date} > {today}），没有写盘"));
+    }
+    let (y, w) = iso_week_of_days(day);
+    let label = format!("{:04}-W{:02}", y, w);
+    if label != week {
+        return Err(format!(
+            "补录日期 {date} 属于 {label}，不在当周文件 {week} 里，没有写盘。跨周补录暂不支持。"
+        ));
+    }
+    Ok(())
+}
+
+fn parse_year(date: &str) -> i64 {
+    date[..4].parse().unwrap_or(0)
+}
+
+fn parse_month(date: &str) -> u32 {
+    date[5..7].parse().unwrap_or(1)
+}
+
+fn parse_day(date: &str) -> u32 {
+    date[8..10].parse().unwrap_or(1)
+}
+
+/// 该日期段内已有的条目数（含「（续）」段）。
+fn count_entries_on_date(content: &str, date: &str) -> usize {
+    let mut current: Option<String> = None;
+    let mut count = 0usize;
+    for line in content.lines() {
+        if let Some(found) = date_heading(line) {
+            current = Some(found);
+            continue;
+        }
+        if current.as_deref() == Some(date) && item_text(line).is_some() {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// 追加一条随手记到当周文件。
 ///
 /// `text` 是用户原文（已过红线与掩码，由调用方决定）；本函数只负责写盘与回执。
@@ -189,6 +248,11 @@ pub fn append_entry(
     };
     let was_new_file = existing.is_none();
     let before_len = existing.as_ref().map(|s| s.len()).unwrap_or(0);
+    // 这条落在该日期段里的序号（0 起）。同一天的第二条是 1，界面和改日期都按它定位。
+    let entry_index = existing
+        .as_ref()
+        .map(|t| count_entries_on_date(t, date))
+        .unwrap_or(0);
 
     // 头部：新建文件时写周标题；既有文件一字不改。
     let mut payload = String::new();
@@ -252,6 +316,8 @@ pub fn append_entry(
             masked: false,
             masked_id_card: 0,
             masked_phone: 0,
+            entry_index,
+            entry_text: trimmed.to_string(),
             error: None,
         },
         payload,
@@ -783,6 +849,333 @@ pub fn set_destination(
     })
 }
 
+// ---------------------------------------------------------------------------
+// 改日期（OD-ARCH-103 S3）：把一条记录从错误日期段挪到正确日期段
+// ---------------------------------------------------------------------------
+
+/// 改日期的回执。失败时 ok=false、error 说明原因，文件一字未动。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RedateReceipt {
+    pub ok: bool,
+    pub path: String,
+    pub week: String,
+    /// 原日期段。
+    pub from_date: String,
+    /// 目标日期段。
+    pub to_date: String,
+    /// 原段内的序号（0 起）。
+    pub index: usize,
+    /// 挪到目标段后是第几条（0 起）。
+    pub new_index: usize,
+    pub backup: Option<String>,
+    pub error: Option<String>,
+}
+
+/// 定位一条记录的完整行块：`- **事**` 行到它的 `**去向**` 行（含）。
+///
+/// 返回 (起始行, 结束行, 正文)。正文与 `set_destination` 的解析口径一致：
+/// 条目行文本 + 中间的续行，逐行去尾空格后用 `\n` 连接。
+fn locate_entry_block(
+    lines: &[String],
+    date: &str,
+    index: usize,
+    expect_text: &str,
+) -> Result<(usize, usize, String), String> {
+    let mut current: Option<String> = None;
+    let mut seen = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(found) = date_heading(line) {
+            current = Some(found);
+            continue;
+        }
+        if current.as_deref() != Some(date) {
+            continue;
+        }
+        let Some(text) = item_text(line) else { continue };
+        if seen != index {
+            seen += 1;
+            continue;
+        }
+        let mut body = vec![text.to_string()];
+        let mut j = i + 1;
+        while j < lines.len() {
+            if date_heading(&lines[j]).is_some() || item_text(&lines[j]).is_some() {
+                break;
+            }
+            if dest_line(&lines[j]).is_some() {
+                let actual = body.join("\n").trim().to_string();
+                let expected = expect_text.trim().to_string();
+                if actual != expected {
+                    return Err(format!(
+                        "第 {} 条记录的正文与界面读到的不一致（文件：{} / 请求：{}），已拒绝改日期",
+                        index + 1,
+                        clip(&actual),
+                        clip(&expected)
+                    ));
+                }
+                return Ok((i, j, actual));
+            }
+            body.push(lines[j].trim().to_string());
+            j += 1;
+        }
+        return Err(format!(
+            "第 {} 条记录没有「去向」行，结构不完整；请在原文补一行后再试",
+            index + 1
+        ));
+    }
+    Err(format!(
+        "在 {} 的日期段里只找到 {} 条记录，没有第 {} 条",
+        date,
+        seen,
+        index + 1
+    ))
+}
+
+/// 把某条记录从 `from_date` 段挪到 `to_date` 段，只动这两个日期段。
+///
+/// 内容不改写：条目行与去向行原样搬到目标段；目标段已有记录时按「（续）」段接在后面。
+/// 原段因此空掉时，连同空日期标题一起删掉，不留空壳。
+/// 写前备份、写入走临时文件 + fsync + rename、写后自证，与改去向同一套保证。
+pub fn move_entry(
+    library_root: &Path,
+    week: &str,
+    from_date: &str,
+    index: usize,
+    to_date: &str,
+    expect_text: &str,
+) -> Result<RedateReceipt, String> {
+    assert_week_label(week)?;
+    if !is_date_shape(from_date) || !is_date_shape(to_date) {
+        return Err("日期格式不正确（应为 YYYY-MM-DD），已拒绝改日期".to_string());
+    }
+    if from_date == to_date {
+        return Err(format!("原日期与目标日期都是 {from_date}，无需改日期"));
+    }
+    if expect_text.trim().is_empty() {
+        return Err("缺少待校验的正文，已拒绝改日期".to_string());
+    }
+    // 目标日期也必须落在同一个周文件里，跨周需要换文件，那是另一件事。
+    let to_day = days_from_civil(parse_year(to_date), parse_month(to_date), parse_day(to_date));
+    let (y, w) = iso_week_of_days(to_day);
+    let to_week = format!("{:04}-W{:02}", y, w);
+    if to_week != week {
+        return Err(format!(
+            "目标日期 {to_date} 属于 {to_week}，与当周文件 {week} 不同；跨周移动暂不支持，未改动文件。"
+        ));
+    }
+
+    let path = week_path(library_root, week);
+    let original = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("当周工作记录不存在：{}", path.display()))
+        }
+        Err(e) => return Err(format!("读取工作记录失败（{}）：{}", path.display(), e)),
+    };
+    let content = String::from_utf8(original.clone())
+        .map_err(|_| "工作记录不是 UTF-8 文本，已拒绝改日期".to_string())?;
+    let crlf = content.contains("\r\n");
+    let eol = if crlf { "\r\n" } else { "\n" };
+    let mut lines: Vec<String> = content
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+    if lines.join(eol) != content {
+        return Err("工作记录里混用了不同换行符，已拒绝改日期以免破坏其他行".to_string());
+    }
+
+    let (start, end, _body) = locate_entry_block(&lines, from_date, index, expect_text)?;
+    let block: Vec<String> = lines[start..=end].to_vec();
+    let new_index = count_entries_on_date(&content, to_date);
+
+    // 1) 取出条目行块；紧跟其后的空行一并去掉，避免留下多余空行。
+    let mut rest_end = end + 1;
+    while rest_end < lines.len() && lines[rest_end].trim().is_empty() {
+        rest_end += 1;
+    }
+    lines.drain(start..rest_end);
+
+    // 2) 原段空了就删掉它的**所有**标题（含「（续）」与标题后的空行），不留空壳。
+    //    只删第一个标题会在「正文落在（续）段」时留下一个孤零零的空标题。
+    while count_entries_on_date(&lines.join(eol), from_date) == 0 {
+        let Some(heading) = lines
+            .iter()
+            .position(|l| date_heading(l).as_deref() == Some(from_date))
+        else {
+            break;
+        };
+        let mut until = heading + 1;
+        while until < lines.len() && lines[until].trim().is_empty() {
+            until += 1;
+        }
+        lines.drain(heading..until);
+    }
+
+    // 3) 接在目标段最后一条记录之后；目标段还不存在就在文件末尾起一段。
+    let mut cur: Option<String> = None;
+    let mut target_last: Option<usize> = None;
+    let mut target_heading: Option<usize> = None;
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(found) = date_heading(line) {
+            if found == to_date && target_heading.is_none() {
+                target_heading = Some(i);
+            }
+            cur = Some(found);
+            continue;
+        }
+        if cur.as_deref() == Some(to_date) && !line.trim().is_empty() {
+            target_last = Some(i);
+        }
+    }
+
+    match target_last {
+        Some(last) => {
+            // 目标段已存在：接在它最后一条之后，空一行再写块。
+            let at = last + 1;
+            let mut payload = vec![String::new()];
+            payload.extend(block.iter().cloned());
+            lines.splice(at..at, payload);
+        }
+        None if target_heading.is_some() => {
+            // 只有空标题（没有条目）：直接补在标题后，不重复写标题。
+            let at = target_heading.unwrap() + 1;
+            while at < lines.len() && lines[at].trim().is_empty() {
+                lines.remove(at);
+            }
+            let mut payload = vec![String::new()];
+            payload.extend(block.iter().cloned());
+            lines.splice(at..at, payload);
+        }
+        None => {
+            // 目标段还没有任何记录：末尾起一个新段。
+            while lines.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+                lines.pop();
+            }
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            lines.push(format!("## {to_date}"));
+            lines.push(String::new());
+            lines.extend(block.iter().cloned());
+            lines.push(String::new());
+        }
+    }
+
+    let updated = lines.join(eol);
+    if updated == content {
+        return Err(format!("这条记录已经在 {to_date} 段里，无需改日期"));
+    }
+
+    // 改写前自证：条目数守恒、每条记录都还在、只有两个日期段被重组。
+    let before_items = content.matches("- **事**：").count();
+    let after_items = updated.matches("- **事**：").count();
+    if before_items != after_items {
+        return Err(format!(
+            "改日期会让条目数从 {before_items} 变成 {after_items}，已中止"
+        ));
+    }
+    let compact = |text: &str| -> Vec<String> {
+        text.split('\n')
+            .map(|l| l.trim_end().to_string())
+            .filter(|l| !l.trim().is_empty())
+            .collect()
+    };
+    let before_lines = compact(&content);
+    let after_lines = compact(&updated);
+    let removed_set: Vec<String> = before_lines
+        .iter()
+        .filter(|l| !after_lines.contains(l))
+        .cloned()
+        .collect();
+    let added_set: Vec<String> = after_lines
+        .iter()
+        .filter(|l| !before_lines.contains(l))
+        .cloned()
+        .collect();
+    if !removed_set.iter().all(|l| l.starts_with("## ")) {
+        return Err("改日期会改动条目正文或其它行，已中止".to_string());
+    }
+    if !added_set.iter().all(|l| l.starts_with("## ")) {
+        return Err("改日期会新增条目正文或其它行，已中止".to_string());
+    }
+    // 被删掉的标题只能是「原段」「目标段」，多删一个就是在动别的日子。
+    if !removed_set
+        .iter()
+        .all(|l| l == &format!("## {from_date}") || l == &format!("## {to_date}") || l == &format!("## {from_date}（续）"))
+    {
+        return Err("改日期会删掉别的日期标题，已中止".to_string());
+    }
+    if !added_set
+        .iter()
+        .all(|l| l == &format!("## {to_date}") || l == &format!("## {to_date}（续）"))
+    {
+        return Err("改日期会新增别的日期标题，已中止".to_string());
+    }
+    // 条目块必须原样出现在目标段里。
+    let target_marker = format!("## {to_date}");
+    if !updated.contains(&target_marker) {
+        return Err("目标日期段没有写出来，已中止".to_string());
+    }
+    for line in &block {
+        if !updated.lines().any(|l| l.trim_end() == line.trim_end()) {
+            return Err("这条记录的正文没有原样出现在文件里，已中止".to_string());
+        }
+    }
+    // 备份 + 临时文件 + fsync + rename。
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut backup = path.with_file_name(format!("{week}.md.bak-{stamp}"));
+    let mut n = 1u32;
+    while backup.exists() {
+        backup = path.with_file_name(format!("{week}.md.bak-{stamp}-{n}"));
+        n += 1;
+    }
+    fs::write(&backup, &original).map_err(|e| format!("写备份失败（{}）：{}", backup.display(), e))?;
+    match fs::read(&backup) {
+        Ok(bytes) if bytes == original => {}
+        Ok(_) => return Err("备份内容与原文件不一致，已中止改日期".to_string()),
+        Err(e) => return Err(format!("回读备份失败（{}）：{}", backup.display(), e)),
+    }
+    let tmp = path.with_file_name(format!(".{week}.md.tmp-{}", std::process::id()));
+    let write_result = (|| -> Result<(), String> {
+        let mut file = fs::File::create(&tmp)
+            .map_err(|e| format!("创建临时文件失败（{}）：{}", tmp.display(), e))?;
+        file.write_all(updated.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("写入临时文件失败（{}）：{}", tmp.display(), e))?;
+        drop(file);
+        fs::rename(&tmp, &path).map_err(|e| format!("替换工作记录失败（{}）：{}", path.display(), e))
+    })();
+    if let Err(message) = write_result {
+        let _ = fs::remove_file(&tmp);
+        return Err(message);
+    }
+
+    let read_back = fs::read_to_string(&path)
+        .map_err(|e| format!("回读工作记录失败（{}）：{}", path.display(), e))?;
+    if read_back != updated {
+        let _ = fs::copy(&backup, &path);
+        return Err(format!(
+            "回读内容与预期不一致，已用备份 {} 回滚",
+            backup.display()
+        ));
+    }
+
+    Ok(RedateReceipt {
+        ok: true,
+        path: path.display().to_string(),
+        week: week.to_string(),
+        from_date: from_date.to_string(),
+        to_date: to_date.to_string(),
+        index,
+        new_index,
+        backup: Some(backup.display().to_string()),
+        error: None,
+    })
+}
+
 
 // ---------------------------------------------------------------------------
 // 测试：追加不覆盖、同日续段、跨周命名
@@ -1110,6 +1503,156 @@ mod tests {
         let after = fs::read_to_string(&path).unwrap();
         assert!(after.contains("  **去向**：仅记录"));
         assert!(after.contains("  第二行\n"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    // -----------------------------------------------------------------------
+    // OD-ARCH-103：补录日期校验 + 改日期
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn assert_entry_date_accepts_same_week_and_past_days() {
+        // 2026-10-28 是周三，属 2026-W44。
+        assert!(assert_entry_date("2026-W44", "2026-10-26", "2026-10-28").is_ok());
+        assert!(assert_entry_date("2026-W44", "2026-10-28", "2026-10-28").is_ok());
+    }
+
+    #[test]
+    fn assert_entry_date_rejects_future_other_week_and_bad_shape() {
+        let week = "2026-W44";
+        let today = "2026-10-28";
+        let future = assert_entry_date(week, "2026-10-30", today).unwrap_err();
+        assert!(future.contains("晚于今天"), "应说明是未来日期：{future}");
+        let other = assert_entry_date(week, "2026-10-19", today).unwrap_err();
+        assert!(other.contains("2026-W43"), "应说明属于哪一周：{other}");
+        let bad = assert_entry_date(week, "2026-10-32", today).unwrap_err();
+        assert!(bad.contains("格式"), "应说明格式问题：{bad}");
+        let slash = assert_entry_date(week, "2026/10/27", today).unwrap_err();
+        assert!(slash.contains("格式"), "斜杠日期也应拒绝：{slash}");
+        let bad_week = assert_entry_date("2026-W99", "2026-10-27", today).unwrap_err();
+        assert!(bad_week.contains("周次"), "周标签也要校验：{bad_week}");
+    }
+
+    #[test]
+    fn move_entry_pastes_block_into_existing_target_section() {
+        let root = temp_root("redate-join");
+        append_entry(&root, "2026-W44", "2026-10-26", "周一的课", "本周报引用").unwrap();
+        append_entry(&root, "2026-W44", "2026-10-28", "周三的事", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+
+        let receipt = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-26", "周三的事").unwrap();
+        assert!(receipt.ok && receipt.new_index == 1);
+        let after = fs::read_to_string(&path).unwrap();
+        let monday = after.find("## 2026-10-26").unwrap();
+        assert!(after.find("## 2026-10-28").is_none(), "原段空掉后标题应删除：{after}");
+        assert!(after.find("周三的事").unwrap() > monday, "记录应落在周一标题之后：{after}");
+        assert_eq!(after.matches("- **事**：").count(), 2, "条目数守恒");
+        assert!(after.contains("- **事**：周三的事\n  **去向**：本周报引用\n"), "正文与去向原样保留");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_creates_target_section_when_absent() {
+        let root = temp_root("redate-new");
+        append_entry(&root, "2026-W44", "2026-10-28", "记错日子的记录", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-27", "记错日子的记录").unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(after.contains("## 2026-10-27"), "应新建目标日期段：{after}");
+        assert!(!after.contains("## 2026-10-28"), "原段应删除：{after}");
+        assert_eq!(after.matches("- **事**：").count(), 1);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_keeps_other_entries_in_source_section() {
+        let root = temp_root("redate-keep");
+        append_entry(&root, "2026-W44", "2026-10-28", "第一条", "本周报引用").unwrap();
+        append_entry(&root, "2026-W44", "2026-10-28", "第二条", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        // 把第 2 条（「（续）」段里的）挪到周一。
+        move_entry(&root, "2026-W44", "2026-10-28", 1, "2026-10-26", "第二条").unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(after.contains("## 2026-10-28"), "原段还有记录，标题要保留：{after}");
+        assert!(after.contains("第一条"));
+        let monday = after.find("## 2026-10-26").unwrap();
+        assert!(after.find("第二条").unwrap() > monday);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_rejects_text_mismatch_and_leaves_file_untouched() {
+        let root = temp_root("redate-mismatch");
+        append_entry(&root, "2026-W44", "2026-10-28", "真实内容", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        let before = fs::read(&path).unwrap();
+        let err = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-26", "别的内容").unwrap_err();
+        assert!(err.contains("不一致"), "应说明正文对不上：{err}");
+        assert_eq!(fs::read(&path).unwrap(), before, "拒绝时文件不能变");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_rejects_cross_week_target_and_same_date() {
+        let root = temp_root("redate-cross");
+        append_entry(&root, "2026-W44", "2026-10-28", "记录", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        let before = fs::read(&path).unwrap();
+        let cross = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-11-02", "记录").unwrap_err();
+        assert!(cross.contains("跨周"), "应拒绝跨周：{cross}");
+        let same = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-28", "记录").unwrap_err();
+        assert!(same.contains("无需"), "同一天应说明无需改：{same}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_preserves_crlf() {
+        let root = temp_root("redate-crlf");
+        let dir = root.join(WORKLOG_DIR);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("2026-W44.md");
+        let original = "# 2026-W44\r\n\r\n## 2026-10-28\r\n\r\n- **事**：周三的记录\r\n  **去向**：本周报引用\r\n";
+        fs::write(&path, original).unwrap();
+        move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-26", "周三的记录").unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(after.contains("## 2026-10-26\r\n"), "应保留 CRLF：{after:?}");
+        assert!(!after.contains("\n\n- **事**"), "不该引入裸 LF 空行：{after:?}");
+        assert_eq!(after.matches("\r\n").count(), after.matches('\n').count());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_rejects_mixed_line_endings() {
+        let root = temp_root("redate-mixed");
+        let dir = root.join(WORKLOG_DIR);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("2026-W44.md");
+        fs::write(&path, "# 2026-W44\r\n\r\n## 2026-10-28\n\n- **事**：混用\n  **去向**：本周报引用\n").unwrap();
+        let before = fs::read(&path).unwrap();
+        let err = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-26", "混用").unwrap_err();
+        assert!(err.contains("换行符"), "应拒绝混用换行：{err}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_entry_reports_out_of_range_index() {
+        let root = temp_root("redate-range");
+        append_entry(&root, "2026-W44", "2026-10-28", "只有一条", "本周报引用").unwrap();
+        let err = move_entry(&root, "2026-W44", "2026-10-28", 3, "2026-10-26", "只有一条").unwrap_err();
+        assert!(err.contains("没有第"), "应报越界：{err}");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn append_reports_entry_index_within_date() {
+        let root = temp_root("index");
+        let (a, _) = append_entry(&root, "2026-W44", "2026-10-26", "周一第一条", "本周报引用").unwrap();
+        let (b, _) = append_entry(&root, "2026-W44", "2026-10-26", "周一第二条", "本周报引用").unwrap();
+        let (c, _) = append_entry(&root, "2026-W44", "2026-10-27", "周二第一条", "本周报引用").unwrap();
+        assert_eq!((a.entry_index, b.entry_index, c.entry_index), (0, 1, 0));
+        assert_eq!(b.entry_text, "周一第二条");
         fs::remove_dir_all(&root).ok();
     }
 
