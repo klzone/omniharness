@@ -1271,18 +1271,17 @@ export function HomeChat({
     if (!check.ok) return fallback(check.reason);
 
     const plan = check.plan;
-    if (plan.action === "answer" || plan.action === "confirm") {
-      return null; // 不写文件：正文就交给模型自己的话
-    }
+    // 两个数组都空 = 这一步只回一句话（确认、追问、回答）：不碰文件。
+    if (plan.append.length === 0 && plan.move.length === 0) return null;
 
     const lines: string[] = [];
     const problems: string[] = [];
 
-    if (plan.moves.length > 0) {
+    if (plan.move.length > 0) {
       try {
         const receipt = await shell.worklogMoveMany({
           week: ctx.week,
-          moves: plan.moves.map((mv) => ({
+          moves: plan.move.map((mv) => ({
             date: mv.date,
             index: mv.index,
             to: mv.to,
@@ -1301,7 +1300,7 @@ export function HomeChat({
       }
     }
 
-    for (const record of plan.records) {
+    for (const record of plan.append) {
       try {
         const receipt = await shell.worklogAppend(record.text, undefined, record.date);
         if (!receipt.ok || !receipt.appended) {
@@ -1324,7 +1323,7 @@ export function HomeChat({
     if (lines.length > 0) {
       parts.push("工作台已按判定执行：" + "\n" + lines.join("\n"));
     } else if (problems.length === 0) {
-      parts.push("这一句没有产生写入（判定为 " + plan.action + "）。");
+      parts.push("这一句没有产生写入。");
     }
     if (problems.length > 0) parts.push(problems.join(" "));
     return parts.join("\n\n");

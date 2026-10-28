@@ -5,11 +5,17 @@
 // 至周一的记录。」被原样记成一条记录，随后几句也各自错日、错条。
 // 语义判断交给模型；能不能写、写到哪，留在宿主这一侧用确定性规则校验。
 //
+// OD-ARCH-105：判定块改为**通用**形状（append / move / note），不再带 action 分类。
+// OmniDesk 是通用工作台：一句话算不算指令、该记还是该挪，由当前场景绑定的 Skill
+// 规定；平台只认「追加一条」「移动一条」这两个宿主能力，以及一句给用户的话。
+// 换一套 Skill 就是另一套判断口径，这里一行不用改。
+//
 // 本模块只做四件确定性的事：
 //   1. 从模型回复里切出 <omnidesk-verdict> 判定块（流式渲染时同步剥掉）；
 //   2. 解析块内 JSON；
 //   3. 校验：正文必须是用户原话的连续片段、日期在本 ISO 周且不晚于今天、
-//      moves 的 date+index 必须能在当周索引里对上。任一不合规，整份判定作废；
+//      move 的 date+index 必须能在当周索引里对上、同一片段不能既追加又移动。
+//      任一不合规，整份判定作废；
 //   4. 把当周索引整理成提示词文本。
 //
 // 不判断语义：这里没有「指令」「补充」「纠正」的词表。
@@ -49,9 +55,8 @@ export interface WorklogIndex {
   entries: WorklogIndexEntry[];
 }
 
-export type VerdictAction = "record" | "move" | "confirm" | "answer";
-
-export interface VerdictRecord {
+/** 追加一条记录（正文 + 日期）。 */
+export interface VerdictAppend {
   /** 必须是用户原话里的连续片段。 */
   text: string;
   /** YYYY-MM-DD，本 ISO 周内、不晚于今天。 */
@@ -68,24 +73,22 @@ export interface VerdictMove {
 }
 
 export interface WorkRecordVerdict {
-  action: VerdictAction;
-  records: VerdictRecord[];
-  moves: VerdictMove[];
-  /** 一句给用户的话（含缺项追问）。 */
-  reply: string;
+  /** 需要追加的条目；空 = 不写。 */
+  append: VerdictAppend[];
+  /** 需要挪动的条目；空 = 不挪。 */
+  move: VerdictMove[];
+  /** 一句给用户的话（缺项追问、确认、回答都放在这里，也允许为空）。 */
+  note: string;
 }
 
 /** 校验通过后的执行计划：move 带上从索引取到的正文，供宿主做一致性校验。 */
 export interface VerdictPlan {
-  action: VerdictAction;
-  records: VerdictRecord[];
-  moves: Array<VerdictMove & { expectText: string }>;
-  reply: string;
+  append: VerdictAppend[];
+  move: Array<VerdictMove & { expectText: string }>;
+  note: string;
 }
 
 export type VerdictCheck = { ok: true; plan: VerdictPlan } | { ok: false; reason: string };
-
-const ACTIONS: readonly VerdictAction[] = ["record", "move", "confirm", "answer"];
 
 /** 从模型完整回复里切出「给人看的正文」与判定块原文。 */
 export function splitVerdict(text: string): { visible: string; block: string | null } {
@@ -133,6 +136,12 @@ function asText(value: unknown): string {
  * 解析判定块。
  *
  * 只接受严格 JSON：宁可判为「未给出判定」，也不要猜模型的意思去写文件。
+ *
+ * 形状（OD-ARCH-105，通用协议，不含业务分类）：
+ *   {"append":[{"text":"…","date":"YYYY-MM-DD"}],
+ *    "move":[{"date":"YYYY-MM-DD","index":0,"to":"YYYY-MM-DD"}],
+ *    "note":"一句话"}
+ * 三个字段都可缺省；缺省或空数组都表示「这一步不做」。
  */
 export function parseVerdict(block: string | null): WorkRecordVerdict | null {
   if (!block || !block.trim()) return null;
@@ -146,29 +155,31 @@ export function parseVerdict(block: string | null): WorkRecordVerdict | null {
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const obj = parsed as Record<string, unknown>;
-  const action = asText(obj.action) as VerdictAction;
-  if (!ACTIONS.includes(action)) return null;
-  const records: VerdictRecord[] = [];
-  for (const item of asArray(obj.records)) {
+  // 字段存在但类型不对 → 整份作废，不替模型猜。
+  if (obj.append !== undefined && !Array.isArray(obj.append)) return null;
+  if (obj.move !== undefined && !Array.isArray(obj.move)) return null;
+
+  const append: VerdictAppend[] = [];
+  for (const item of asArray(obj.append)) {
     if (!item || typeof item !== "object") return null;
     const entry = item as Record<string, unknown>;
     const text = asText(entry.text);
     const date = asText(entry.date);
     if (!text || !date) return null;
-    records.push({ text, date });
+    append.push({ text, date });
   }
-  const moves: VerdictMove[] = [];
-  for (const item of asArray(obj.moves)) {
+  const move: VerdictMove[] = [];
+  for (const item of asArray(obj.move)) {
     if (!item || typeof item !== "object") return null;
     const entry = item as Record<string, unknown>;
     const date = asText(entry.date);
     const to = asText(entry.to);
     const index = typeof entry.index === "number" ? entry.index : Number.NaN;
     if (!date || !to || !Number.isInteger(index) || index < 0) return null;
-    moves.push({ date, index, to });
+    move.push({ date, index, to });
   }
-  const reply = typeof obj.reply === "string" ? obj.reply.trim() : "";
-  return { action, records, moves, reply };
+  const note = typeof obj.note === "string" ? obj.note.trim() : "";
+  return { append, move, note };
 }
 
 /** 日历日序号；形状或真实性不对返回 null。 */
@@ -237,15 +248,15 @@ export function validateVerdict(
   };
 
   const userComparable = comparableText(ctx.userText);
-  const records: VerdictRecord[] = [];
-  const seenRecords = new Set<string>();
-  for (const record of verdict.records) {
-    const text = record.text.trim();
+  const append: VerdictAppend[] = [];
+  const seenAppend = new Set<string>();
+  for (const item of verdict.append) {
+    const text = item.text.trim();
     if (!text) return { ok: false, reason: "记录正文为空" };
     if (text.length > RECORD_TEXT_MAX) {
       return { ok: false, reason: "记录正文过长（" + text.length + " 字符），已拒绝" };
     }
-    const bad = checkDate(record.date, "记录");
+    const bad = checkDate(item.date, "记录");
     if (bad) return { ok: false, reason: bad };
     const piece = comparableText(text);
     if (!piece) return { ok: false, reason: "记录正文没有实质内容" };
@@ -253,55 +264,47 @@ export function validateVerdict(
     if (!userComparable.includes(piece)) {
       return { ok: false, reason: "记录正文不是用户原话的连续片段：" + text.slice(0, 40) };
     }
-    const key = record.date + SEP + piece;
-    if (seenRecords.has(key)) continue;
-    seenRecords.add(key);
-    records.push({ text, date: record.date });
+    const key = item.date + SEP + piece;
+    if (seenAppend.has(key)) continue;
+    seenAppend.add(key);
+    append.push({ text, date: item.date });
   }
 
-  const moves: Array<VerdictMove & { expectText: string }> = [];
+  const move: Array<VerdictMove & { expectText: string }> = [];
   const seenMoves = new Set<string>();
-  for (const move of verdict.moves) {
-    const fromBad = checkDate(move.date, "被移动的记录");
+  for (const item of verdict.move) {
+    const fromBad = checkDate(item.date, "被移动的记录");
     if (fromBad) return { ok: false, reason: fromBad };
-    const toBad = checkDate(move.to, "目标日期");
+    const toBad = checkDate(item.to, "目标日期");
     if (toBad) return { ok: false, reason: toBad };
-    if (move.date === move.to) {
-      return { ok: false, reason: "原日期与目标日期相同：" + move.date };
+    if (item.date === item.to) {
+      return { ok: false, reason: "原日期与目标日期相同：" + item.date };
     }
-    const key = move.date + "#" + move.index;
+    const key = item.date + "#" + item.index;
     if (seenMoves.has(key)) {
       return { ok: false, reason: "同一位置被移动了两次：" + key };
     }
     seenMoves.add(key);
-    const found = index.entries.find((e) => e.date === move.date && e.index === move.index);
+    const found = index.entries.find((e) => e.date === item.date && e.index === item.index);
     if (!found) {
       return {
         ok: false,
-        reason: "索引里没有 " + move.date + " 的第 " + (move.index + 1) + " 条记录",
+        reason: "索引里没有 " + item.date + " 的第 " + (item.index + 1) + " 条记录",
       };
     }
     if (!found.text.trim()) {
       return { ok: false, reason: "索引里的这条记录正文为空，无法校验" };
     }
-    moves.push({ date: move.date, index: move.index, to: move.to, expectText: found.text });
+    // 同一段话既追加又挪动 = 模型把一条记录数成了两份，宁可作废也不写重。
+    const movedPiece = comparableText(found.text);
+    if (movedPiece && append.some((a) => comparableText(a.text) === movedPiece)) {
+      return { ok: false, reason: "同一段话既追加又移动：" + found.text.slice(0, 40) };
+    }
+    move.push({ date: item.date, index: item.index, to: item.to, expectText: found.text });
   }
 
-  // action 必须与内容一致：自相矛盾的判定说明模型没想清楚，不能拿去写文件。
-  if (verdict.action === "record" && records.length === 0) {
-    return { ok: false, reason: "判定为 record 却没有记录" };
-  }
-  if (verdict.action === "move" && moves.length === 0) {
-    return { ok: false, reason: "判定为 move 却没有要移动的条目" };
-  }
-  if (verdict.action === "confirm" && (records.length > 0 || moves.length > 0)) {
-    return { ok: false, reason: "判定为 confirm 却带着写入或移动" };
-  }
-  if (verdict.action === "answer" && (records.length > 0 || moves.length > 0)) {
-    return { ok: false, reason: "判定为 answer 却带着写入或移动" };
-  }
-
-  return { ok: true, plan: { action: verdict.action, records, moves, reply: verdict.reply } };
+  // 两个数组都空 = 这一步只是回一句话（确认、追问、回答），宿主不碰文件。
+  return { ok: true, plan: { append, move, note: verdict.note } };
 }
 
 /** 把当周记录解析成索引（日期按文件顺序，序号为当日第几条，0 起）。 */
@@ -325,7 +328,7 @@ export function buildWorklogIndex(content: string): WorklogIndex {
  * 索引 → 提示词文本。
  *
  * 只带最近若干天、每条截断，避免把小窗口塞满。序号必须与文件里一致：
- * 模型返回的 moves 用 date+index 定位，宿主再拿索引里的正文做一致性校验。
+ * 模型返回的 move 用 date+index 定位，宿主再拿索引里的正文做一致性校验。
  */
 export function describeIndex(index: WorklogIndex, today: string): string {
   const todayDay = dayNumberOf(today);

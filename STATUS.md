@@ -1,5 +1,44 @@
 # 执行状态
 
+## OD-ARCH-105：业务判断全部下放到 Skill，平台只留数据与写盘边界（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
+> 起点：HEAD 473ccf1（104 已推送）。边界：本助手亲自实施（未派子代理）；runtime/ 零差异；未读真实工作记录与凭证；测试数据全为 /tmp 与合成夹具。
+> 用户原话：「我希望这种判断和改变都只是基于 skill，因为这个 omnidesk 平台是通用的，不能有这种特殊限制，你再修改！注意保持省 token 和快回复。」
+
+### 改动
+
+1. **desktop/src/conversationPrompt.ts**：随手记分支删掉七条判断原则、JSON 示例、六要素追问；只保留「按 Skill 处理 / 写入由工作台执行的边界 / 今天与当周索引 / Skill 注入」。无绑定时只说「不要臆测判断口径」。原提示词里两处业务字样（注释里的「判断原则」、报告分支的去向标签）分别改为中性措辞或保留为数据筛选口径，随手记分支已无业务词。
+2. **desktop/src/workRecordVerdict.ts**：判定类型由 `action + records + moves + reply` 改为通用 `append + move + note`；删掉 action 枚举与四条 action 一致性校验；新增「同一段话既追加又移动」拒绝。保留原话片段、日期、索引、重复移动等确定性校验。
+3. **desktop/src/shell/HomeChat.tsx**：`executeNote` 改按 `plan.append` / `plan.move` 执行；两数组都空时返回 null（只回模型那句话）；无 action 分支。落盘顺序仍是先移动后追加，降级路径不变。
+4. **skills/memory-agent/SKILL.md**（1281 字符）：改成 append/move/note 协议；明确「每轮都要给块，漏块等于判断失败」；事实与指令区分、续述跟随、确认句、纯提问、六要素、去向默认、周报归属、数据边界全部留在 Skill。
+5. **测试同步**：verify_worklog_104.py 探针按新协议重写（70 项），新增 `platform_owns_no_rule` 系列与 `accept_reply_only` / `accept_append_and_move` / `reject_append_and_move_same`；verify_worklog_089.py 改为用真实 Skill 文件内容做注入，断言平台段不含业务词、去掉 Skill 后 ≤700 字（78 项）。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| TypeScript | cd desktop && npx tsc --noEmit | 通过，0 错误 |
+| 前端构建 | cd desktop && npm run build | 通过（仅既有 chunk 体积提示） |
+| 105 判定与提示词 | verify_worklog_104.py | **70 / 70** |
+| 089 回归 | verify_worklog_089.py | **78 / 78** |
+| 103 回归 | verify_worklog_103.py | 52 / 52 |
+| 094 回归 | verify_writing_094.py | 98 / 98 |
+| 101 回归 | verify_hover_hint_101.py | 30 / 30 |
+| 082 回归 | verify_skill_bindings_082.py | 38 / 38 |
+| 088 回归 | verify_intent_088.py | 22 / 22 |
+| 会话提示词 | verify_conversation_prompt.py | 26 / 26 |
+| Rust 全量 | cd desktop/src-tauri && cargo test --offline | **442 passed，0 failed** |
+| pytest | python3 -m pytest tests -q | 89 passed + 30 subtests |
+
+**实测体量：** 随手记平台段 248 字（去掉注入的 Skill 后），注入 Skill 后整份 1536 字；同场景周报提示词 1990 字。
+
+**未验证（明确留白）：** 真实模型在新协议下的判定准确率。脚本只证明「协议可解析、校验按边界执行、平台不含业务规则」，不证明模型一定判对；用户原三句（含「就是周一上午」）仍需端到端实测。
+
+### 证据
+
+- tests/verification/desktop/evidence/od-arch-105/（verdict-105.json、prompt-089.json、platform-prompt-only.txt、run-104.txt、run-089.txt）
+
 ## OD-ARCH-104：随手记改由模型判定「指令 / 内容」，代码只校验与落盘（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部 OD-ARCH-104 章节（本节只是执行记录）。**
