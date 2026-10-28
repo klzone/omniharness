@@ -295,3 +295,15 @@
 - **影响：** 随手记提示词从「一句缺项追问」变成「先分类再输出判定」，每轮多几百字符、多等几秒模型；换来的是指令不会被写成记录。周报流程不变，仍走完整组装。
 - **证据：** tests/verification/desktop/verify_worklog_104.py 67/67；verify_worklog_103.py 52/52；cargo test --offline --lib worklog:: 38 passed（批量移动、备份、条目守恒、CRLF、越界拒绝）。
 - **复审触发：** ①真实模型实测中判定错误多于旧的正则方案；②出现「模型自己编了原话片段」或「索引与文件不一致导致整批作废」的重复反馈；③需要跨周移动时，扩展 move_entries 的读改边界并补迁移测试。
+
+### D-033（2026-10-28，OD-ARCH-105 已实现）：业务判断只在 Skill，平台只提供数据与写盘边界
+- **状态：** 已实现并验收通过（desktop/src/conversationPrompt.ts、desktop/src/workRecordVerdict.ts、desktop/src/shell/HomeChat.tsx、skills/memory-agent/SKILL.md）；真实模型准确率尚未实测。
+- **决策：** OmniDesk 是通用工作台。判断「这句话是事实还是指令」「该记还是该挪」属于场景资产（Skill），不属于平台。平台在随手记路径上只做三件事：把宿主读到的今天、当周文件与条目索引交出去；声明「写入由工作台执行、模型不碰文件」；注入当前场景绑定的 Skill 原文。没有绑定 Skill 时只说没有可用指引，不臆测口径。
+- **协议：** 判定块统一为 `{"append":[{"text","date"}],"move":[{"date","index","to"}],"note":"…"}`。不设 action 分类；两数组皆空表示只回一句话（确认、追问、回答），宿主不碰文件。平台因此不认识「记录 / 移动 / 确认 / 回答」这些业务概念。
+- **理由：** OD-ARCH-104 把七条判断原则、JSON 示例与六要素追问写进平台提示词，与 Skill 重复，也让平台带上「工作记录」这个场景的业务限制——换场景、换 Skill 也不解绑。用户明确要求这种判断「都只是基于 skill」。
+- **仍然保留在代码里的确定性校验（不下放）：** append 正文须为用户原话连续片段；日期在本 ISO 周且不晚于今天；move 的 date+index 须在当周索引中且正文一致；同一位置不得移两次；同一段话不得既追加又移动；任一不合规整份作废。这些回答的是「能不能安全执行」，不是「这句是什么意思」。
+- **影响：** 随手记平台段从带业务规则的长段缩短到 248 字（不含注入 Skill）；提示词与输出都更短，首字与整轮延迟同步下降。Skill 成为唯一需要改判断口径的地方，平台代码一行不动。
+- **证据：** tests/verification/desktop/verify_worklog_104.py 70/70（含 platform_owns_no_rule 系列）、verify_worklog_089.py 78/78（platform_prompt_is_thin 248 字）、cargo test --offline 442 passed；证据目录 tests/verification/desktop/evidence/od-arch-105/。
+- **复审触发：** ①真实模型实测显示漏块率高，需要把「必须给块」从 Skill 升为平台协议；②出现第二个场景需要同一套 append/move 能力，评估是否把协议抽成通用宿主能力文档；③`workIntent.ts` 的关键词路由成为新的「写死判断」痛点时，改为由 Skill 声明触发条件。
+
+

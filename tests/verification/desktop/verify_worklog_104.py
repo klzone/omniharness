@@ -39,7 +39,7 @@ function check(name, ok, detail) {
 
 const CTX = { userText: "", week: "2026-W44", today: "2026-10-28" };
 
-// 当周文件：周一两条、周三两条（用户实际踩坑的场景）
+// 当周文件：周一一条、周三两条（用户实际踩坑的场景）
 const FILE = [
   "# 2026-W44",
   "",
@@ -69,57 +69,70 @@ check("describe_has_date", desc.includes("2026-10-26 #0"), desc);
 check("describe_has_index1", desc.includes("2026-10-28 #1"), desc);
 check("describe_empty", mod.describeIndex(mod.buildWorklogIndex(""), "2026-10-28") === "（本周还没有记录）", "");
 
-// ---- 原场景：指令句不该产生正文，「上杭教学」「紫金矿业」应挪到周一 ----
 const user1 = "上杭教学和参观紫金矿业都是本周一的行动，你全部调整至周一的记录。";
-const verdict1 = {
-  action: "move",
-  records: [],
-  moves: [{ date: "2026-10-28", index: 1, to: "2026-10-26" }],
-  reply: "已把这条挪到周一。",
-};
-let r = mod.validateVerdict(verdict1, { userText: user1, week: CTX.week, today: CTX.today }, index);
-check("move_ok", r.ok === true, r.ok ? "" : r.reason);
-check("move_expect_text", r.ok && r.plan.moves[0].expectText.includes("紫金矿业"), r.ok ? r.plan.moves[0].expectText : "");
 
-// 把指令原样当成正文写下去 → 应当被拒绝：不是这条指令本身违例，而是它必须作为指令处理；
-// 这里验证的是「模型想新建一条记录但日期/正文不匹配」时校验能挡住编造。
-const invented = {
-  action: "record",
-  records: [{ text: "赴上杭县城学习生态文明思想", date: "2026-10-26" }],
-  moves: [],
-  reply: "ok",
-};
-r = mod.validateVerdict(invented, { userText: user1, week: CTX.week, today: CTX.today }, index);
+// ---- 通用协议：只有 append / move / note，没有业务分类 ----
+let r = mod.validateVerdict(
+  { append: [], move: [{ date: "2026-10-28", index: 1, to: "2026-10-26" }], note: "已挪到周一。" },
+  { userText: user1, week: CTX.week, today: CTX.today },
+  index,
+);
+check("move_ok", r.ok === true, r.ok ? "" : r.reason);
+check("move_expect_text", r.ok && r.plan.move[0].expectText.includes("紫金矿业"), r.ok ? r.plan.move[0].expectText : "");
+check("move_no_action_field", r.ok && r.plan.action === undefined, r.ok ? String(r.plan.action) : "");
+
+// 编造正文（不是用户原话）→ 拒绝
+r = mod.validateVerdict(
+  { append: [{ text: "赴上杭县城学习生态文明思想", date: "2026-10-26" }], move: [], note: "" },
+  { userText: user1, week: CTX.week, today: CTX.today },
+  index,
+);
 check("reject_invented_text", r.ok === false, r.ok ? "应拒绝" : r.reason);
 
-// 原话片段（含标点差异）可以通过
-const verbatim = {
-  action: "record",
-  records: [{ text: "上杭教学和参观紫金矿业", date: "2026-10-26" }],
-  moves: [],
-  reply: "ok",
-};
-r = mod.validateVerdict(verbatim, { userText: user1, week: CTX.week, today: CTX.today }, index);
+// 原话片段可以通过
+r = mod.validateVerdict(
+  { append: [{ text: "上杭教学和参观紫金矿业", date: "2026-10-26" }], move: [], note: "ok" },
+  { userText: user1, week: CTX.week, today: CTX.today },
+  index,
+);
 check("accept_verbatim_piece", r.ok === true, r.ok ? "" : r.reason);
 
 // 标点差异不算编造
 r = mod.validateVerdict(
-  { action: "record", records: [{ text: "上杭教学, 参观紫金矿业", date: "2026-10-26" }], moves: [], reply: "" },
+  { append: [{ text: "上杭教学, 参观紫金矿业", date: "2026-10-26" }], move: [], note: "" },
   { userText: "上杭教学，参观紫金矿业", week: "2026-W44", today: "2026-10-28" },
   index,
 );
 check("accept_punct_diff", r.ok === true, r.ok ? "" : r.reason);
 
+// 两个数组都空 = 只回一句话，是合法判定（确认、追问、回答）
+r = mod.validateVerdict(
+  { append: [], move: [], note: "就是周一上午，已确认。" },
+  { userText: "就是周一上午", week: "2026-W44", today: "2026-10-28" },
+  index,
+);
+check("accept_reply_only", r.ok === true, r.ok ? "" : r.reason);
+check("accept_reply_only_empty", r.ok && r.plan.append.length === 0 && r.plan.move.length === 0, "");
+
+// 追加与移动可以同时出现在一份判定里（先挪后加由宿主保证顺序）
+r = mod.validateVerdict(
+  { append: [{ text: "参观了紫金矿业生产基地", date: "2026-10-26" }],
+    move: [{ date: "2026-10-28", index: 1, to: "2026-10-26" }], note: "" },
+  { userText: "参观了紫金矿业生产基地", week: "2026-W44", today: "2026-10-28" },
+  index,
+);
+check("accept_append_and_move", r.ok === true && r.plan.append.length === 1 && r.plan.move.length === 1, r.ok ? "" : r.reason);
+
 // 跨周 / 未来日期
 r = mod.validateVerdict(
-  { action: "record", records: [{ text: user1, date: "2026-10-01" }], moves: [], reply: "" },
+  { append: [{ text: user1, date: "2026-10-01" }], move: [], note: "" },
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
 check("reject_cross_week", r.ok === false && r.reason.includes("不在"), r.reason);
 
 r = mod.validateVerdict(
-  { action: "record", records: [{ text: user1, date: "2026-10-30" }], moves: [], reply: "" },
+  { append: [{ text: user1, date: "2026-10-30" }], move: [], note: "" },
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
@@ -127,7 +140,7 @@ check("reject_future", r.ok === false && r.reason.includes("晚于今天"), r.re
 
 // 索引越界
 r = mod.validateVerdict(
-  { action: "move", records: [], moves: [{ date: "2026-10-28", index: 9, to: "2026-10-26" }], reply: "" },
+  { append: [], move: [{ date: "2026-10-28", index: 9, to: "2026-10-26" }], note: "" },
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
@@ -135,7 +148,7 @@ check("reject_index_oob", r.ok === false && r.reason.includes("索引"), r.reaso
 
 // 原日期==目标日期
 r = mod.validateVerdict(
-  { action: "move", records: [], moves: [{ date: "2026-10-28", index: 1, to: "2026-10-28" }], reply: "" },
+  { append: [], move: [{ date: "2026-10-28", index: 1, to: "2026-10-28" }], note: "" },
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
@@ -143,45 +156,47 @@ check("reject_same_date", r.ok === false, r.reason);
 
 // 同一位置移两次
 r = mod.validateVerdict(
-  { action: "move", records: [], moves: [
+  { append: [], move: [
       { date: "2026-10-28", index: 1, to: "2026-10-26" },
       { date: "2026-10-28", index: 1, to: "2026-10-27" },
-    ], reply: "" },
+    ], note: "" },
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
 check("reject_duplicate_move", r.ok === false && r.reason.includes("两次"), r.reason);
 
-// action 与内容自相矛盾
-r = mod.validateVerdict({ action: "record", records: [], moves: [], reply: "" }, { userText: user1, week: "2026-W44", today: "2026-10-28" }, index);
-check("reject_record_without_records", r.ok === false, r.reason);
-r = mod.validateVerdict({ action: "move", records: [], moves: [], reply: "" }, { userText: user1, week: "2026-W44", today: "2026-10-28" }, index);
-check("reject_move_without_moves", r.ok === false, r.reason);
-r = mod.validateVerdict({ action: "answer", records: [{ text: "上杭教学和参观紫金矿业", date: "2026-10-26" }], moves: [], reply: "" }, { userText: user1, week: "2026-W44", today: "2026-10-28" }, index);
-check("reject_answer_with_write", r.ok === false, r.reason);
-r = mod.validateVerdict({ action: "confirm", records: [], moves: [], reply: "就是周一上午。" }, { userText: "就是周一上午", week: "2026-W44", today: "2026-10-28" }, index);
-check("accept_confirm", r.ok === true, r.ok ? "" : r.reason);
-r = mod.validateVerdict({ action: "answer", records: [], moves: [], reply: "这周有 3 条。" }, { userText: "这周记了几条", week: "2026-W44", today: "2026-10-28" }, index);
-check("accept_answer", r.ok === true, r.ok ? "" : r.reason);
+// 同一段话既追加又移动 → 作废（会写重）
+r = mod.validateVerdict(
+  { append: [{ text: "明天下午专题课《新时代党内法规制度建设》", date: "2026-10-26" }],
+    move: [{ date: "2026-10-28", index: 0, to: "2026-10-26" }], note: "" },
+  { userText: "明天下午专题课《新时代党内法规制度建设》", week: "2026-W44", today: "2026-10-28" },
+  index,
+);
+check("reject_append_and_move_same", r.ok === false && r.reason.includes("既追加又移动"), r.reason);
 
 // ---- 判定块解析 ----
 const full = "已记录。" + "\n" + mod.VERDICT_OPEN + "\n" +
-  JSON.stringify({ action: "record", records: [{ text: "上杭教学和参观紫金矿业", date: "2026-10-26" }], moves: [], reply: "已记录" }) +
+  JSON.stringify({ append: [{ text: "上杭教学和参观紫金矿业", date: "2026-10-26" }], move: [], note: "已记录" }) +
   "\n" + mod.VERDICT_CLOSE;
 const split1 = mod.splitVerdict(full);
 check("split_visible", split1.visible.trim() === "已记录。", JSON.stringify(split1.visible));
-check("split_block", !!split1.block && split1.block.includes("action"), split1.block);
-check("split_unclosed_hidden", mod.splitVerdict("已记录\n" + mod.VERDICT_OPEN + '{"action":"rec').visible.trim() === "已记录", "");
+check("split_block", !!split1.block && split1.block.includes("append"), split1.block);
+check("split_unclosed_hidden", mod.splitVerdict("已记录\n" + mod.VERDICT_OPEN + '{"append":[{"te').visible.trim() === "已记录", "");
 check("display_no_block", !mod.verdictDisplayText(full).includes("omnidesk-verdict"), "");
 check("parse_fenced", (() => {
   const fence = String.fromCharCode(96).repeat(3);
-  const p = mod.parseVerdict(fence + "json\n" + JSON.stringify({ action: "answer", records: [], moves: [], reply: "x" }) + "\n" + fence);
-  return p && p.action === "answer";
+  const p = mod.parseVerdict(fence + "json\n" + JSON.stringify({ append: [], move: [], note: "x" }) + "\n" + fence);
+  return p && p.note === "x" && p.append.length === 0;
 })(), "");
 check("parse_garbage_null", mod.parseVerdict("not json") === null, "");
-check("parse_truncated_null", mod.parseVerdict('{"action":"record","records":[') === null, "");
-check("parse_bad_action_null", mod.parseVerdict('{"action":"delete"}') === null, "");
+check("parse_truncated_null", mod.parseVerdict('{"append":[{"text":"a"') === null, "");
 check("parse_empty_null", mod.parseVerdict("") === null, "");
+// 旧协议字段不再被接受：action 不参与判定，形状不对就作废
+check("parse_legacy_action_null", (() => {
+  const p = mod.parseVerdict('{"action":"answer","records":[],"moves":[],"reply":"x"}');
+  return p !== null && p.append.length === 0 && p.move.length === 0 && p.note === "";
+})(), "");
+check("parse_bad_append_type_null", mod.parseVerdict('{"append":"x"}') === null, "");
 
 // 降级路径：没有判定块 → block 为 null，界面据此按原文原样记录
 check("fallback_no_block", mod.splitVerdict("已记录。").block === null, "");
@@ -246,10 +261,16 @@ def main() -> int:
 
     # ---- 静态：提示词 ----
     check("prompt_has_note_index", "noteIndex" in prompt and "当周已有记录" in prompt)
-    check("prompt_asks_verdict", "<omnidesk-verdict>" in prompt)
-    check("prompt_lists_actions", all(k in prompt for k in ['"record|move|confirm|answer"', "records", "moves"]))
-    check("prompt_rejects_invention", "逐字取自用户原话" in prompt)
     check("prompt_keeps_skill_injection", '"配套技能指引（" + s.id + "）："' in prompt)
+    # OD-ARCH-105：平台提示词只给数据 + 写盘边界，判断口径全部来自 Skill。
+    # 运行时的「注意点提示词里没有业务词」由 verify_worklog_089 的探针断言
+    # （它会真正组装一次 note 提示词并去掉注入的 Skill 再比对）；这里只守住
+    # 「平台不再自己描述判定协议」这一点——旧的四分类 schema 一旦回来，
+    # 平台就又成了专用工具。
+    check("prompt_no_verdict_schema", "omnidesk-verdict" not in prompt, "")
+    check("prompt_no_action_enum", "record|move|confirm|answer" not in prompt, "")
+    check("prompt_states_write_boundary", "写入由工作台执行" in prompt, "")
+    check("prompt_no_skill_no_guess", "不要臆测判断口径" in prompt, "")
 
     # ---- 静态：API / 类型 / 宿主 ----
     check("api_move_many", '"worklog_move_many"' in api)
@@ -263,7 +284,8 @@ def main() -> int:
     # ---- 静态：Skill ----
     check("skill_six_fields", all(k in skill for k in ["时间", "地点", "人物", "事件", "影响", "感受"]))
     check("skill_no_file_permission", "没有写文件的权限" in skill)
-    check("skill_verdict_format", "<omnidesk-verdict>" in skill and "records" in skill and "moves" in skill)
+    check("skill_verdict_format", "<omnidesk-verdict>" in skill and "append" in skill and "move" in skill)
+    check("skill_no_legacy_action", '"record|move|confirm|answer"' not in skill and "reply" not in skill, "")
     check("skill_no_report_sections", "本周概述" not in skill)
     check("skill_links_report", "memory-report" in skill)
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")

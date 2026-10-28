@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-10-28 15:06:58",
+  "verified_at": "2026-10-28 15:38:59",
   "evidence_level": "静态代码检查 + 脚本运行（编译真实 scenes.ts 并在 Node 中执行）",
-  "repo_head": "378f729cb581cd5e461f6fd2a6612ffef3e78b3d",
+  "repo_head": "473ccf1ef9c30da3fc580552a9d28b6eacb3d06e",
   "files": {
     "home_chat": "desktop/src/shell/HomeChat.tsx",
     "home_canvas": "desktop/src/shell/HomeCanvas.tsx",
@@ -16,7 +16,7 @@
     {
       "name": "submit_task_call_present",
       "ok": true,
-      "detail": 57412,
+      "detail": 57931,
       "desc": "HomeChat 找到 submitTask 调用点"
     },
     {

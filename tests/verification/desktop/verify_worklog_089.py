@@ -94,8 +94,10 @@ console.log(JSON.stringify({ cases }));
 """
 
 PROMPT_PROBE = r"""
+const fs = require("fs");
 const cp = require(process.argv[2]);
 const rules = require(process.argv[3]);
+const skillText = fs.readFileSync(process.argv[4], "utf8");
 const cases = [];
 function check(name, ok, detail) {
   cases.push({ name, ok: !!ok, detail: detail === undefined ? null : String(detail) });
@@ -108,21 +110,44 @@ const preset = {
   rules: scene.rules,
   sections: scene.sections,
   writingRules: rules.global.writing_rules,
-  skills: [{ id: "memory-agent", content: "随手记技能正文占位" }],
+  skills: [{ id: "memory-agent", content: skillText }],
 };
 const turns = [{ role: "user", text: "上一轮说了点什么" }];
 const current = "下午在古田干部学院听课";
 
-const note = cp.composeConversationPrompt({ preset, turns, current, mode: "note" });
+const note = cp.composeConversationPrompt({
+  preset, turns, current, mode: "note",
+  noteIndex: {
+    week: "2026-W44",
+    today: "2026-10-28",
+    entries: "- 2026-10-26 #0 周一上午赴上杭县城现场教学",
+  },
+});
 const reportSections = scene.sections.split("\n").filter((s) => s.trim());
-check("note_mentions_worklog", /工作记录/.test(note), note.slice(0, 80));
-check("note_has_six_elements",
-  ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => note.includes(k)), "");
+
+// OD-ARCH-105：平台提示词只带数据与写盘边界；业务判断（分类、六要素、JSON 形状）
+// 必须来自注入的 Skill，而不是写死在平台里。
+check("note_has_six_elements", ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => note.includes(k)), "");
+check("note_six_elements_from_skill", note.includes(skillText.trim()), "");
+check("note_carries_skill_id", note.includes("memory-agent"), "");
+check("note_has_index_data", note.includes("当周已有记录"), "");
+for (const word of ["判断原则", "六要素", "逐字取自用户原话", "omnidesk-verdict", "append", "moves", "「本周报引用」"]) {
+  check("platform_owns_no_rule:" + word, !note.replace(skillText.trim(), "").includes(word), word);
+}
+check("note_states_write_boundary", note.includes("写入由工作台执行"), "");
 check("note_has_no_report_sections",
   reportSections.every((s) => !note.includes(s)), reportSections.join("/"));
 check("note_has_no_writing_rules",
   rules.global.writing_rules.every((r) => !note.includes(r)), "");
 check("note_forbids_rewriting", note.includes("不允许再写文件"), "");
+
+// 没绑定 Skill 的场景：不臆测口径，只说没有可用指引
+const bare = cp.composeConversationPrompt({
+  preset: { ...preset, skills: null }, turns, current, mode: "note",
+});
+check("note_no_skill_no_guess", bare.includes("不要臆测判断口径"), "");
+check("note_no_skill_no_six_elements",
+  ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => !bare.includes(k)), "");
 
 // 周报模式：带当周记录
 const reportWithLog = cp.composeConversationPrompt({
@@ -144,12 +169,14 @@ check("report_says_no_record", reportEmpty.includes("本周还没有记录"), ""
 const plain = cp.composeConversationPrompt({ preset, turns, current, mode: "report" });
 check("no_worklog_no_section", !plain.includes("本周工作记录（"), "");
 
-// 长度账（OD-ARCH-104 修订）：随手记提示词现在带当周索引与判定块格式说明，
-// 「短于周报」不再成立；改守预算上限——它仍要明显短于完整组装，且不带章节与铁律。
-check("note_prompt_within_budget", note.length <= 2000,
-  note.length + " vs 上限 2000（周报 " + reportWithLog.length + "）");
+// 长度账（OD-ARCH-105）：平台自己写的那部分必须足够短——它只是数据 + 边界 + Skill 原文。
+// 这里用「去掉注入的 Skill 原文」后的字数衡量平台负担，并守住一个很紧的上限。
+const platformOnly = note.replace(skillText.trim(), "");
+check("platform_prompt_is_thin", platformOnly.length <= 700, platformOnly.length + " 字符（不含 Skill）");
+check("note_prompt_within_budget", note.length <= 2500,
+  note.length + " vs 上限 2500（周报 " + reportWithLog.length + "）");
 
-console.log(JSON.stringify({ cases, sizes: { note: note.length, report: reportWithLog.length } }));
+console.log(JSON.stringify({ cases, sizes: { note: note.length, platform: platformOnly.length, report: reportWithLog.length } }));
 """
 
 
@@ -172,6 +199,14 @@ def main() -> int:
     check("appends_before_model", "shell.worklogAppend(" in home_chat, "")
     check("reads_week_for_report", "shell.worklogReadWeek(" in home_chat, "")
     check("passes_worklog_into_prompt", "worklog," in home_chat, "")
+
+    # OD-ARCH-105：判断口径只在 Skill，平台提示词不带业务规则
+    conv = (SRC / "conversationPrompt.ts").read_text(encoding="utf-8")
+    # 只查随手记分支 + 通用断言：report 分支里的去向标签属于「读取哪些记录」
+    # 的数据筛选，仍是已知残留（见 REVIEW），不在本轮范围。
+    for word in ("判断原则", "六要素", "omnidesk-verdict"):
+        check(f"platform_has_no_rule:{word}", word not in conv, word)
+    check("platform_no_note_verdict_schema", "append" not in conv, "")
 
     api = (SRC / "api.ts").read_text(encoding="utf-8")
     check("api_worklog_append", '"worklog_append"' in api, "")
@@ -240,7 +275,10 @@ def main() -> int:
         probe2 = tmp / "cp-probe.js"
         probe2.write_text(PROMPT_PROBE, encoding="utf-8")
         proc2 = run(
-            ["node", str(probe2), str(tmp / "cp" / "conversationPrompt.js"), str(RULES)],
+            [
+                "node", str(probe2), str(tmp / "cp" / "conversationPrompt.js"), str(RULES),
+                str(SKILLS / "memory-agent" / "SKILL.md"),
+            ],
             DESKTOP,
         )
         if proc2.returncode != 0:
