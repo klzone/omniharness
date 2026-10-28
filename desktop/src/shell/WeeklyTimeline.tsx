@@ -29,8 +29,9 @@ import { REPORT_DESTINATION } from "../weeklyQuadrants";
 /**
  * 一条记录的去向开关（OD-ARCH-099 S03）。
  *
- * 方形点选、primary 紫、方角，与提示条和四象限同一套语言；右侧一句文字说明当前状态，
- * 不靠颜色单独表达。键盘 Space/Enter 可切换，失败时显示宿主返回的原因。
+ * 圆形点选、primary 紫，与时间线的圆点节奏一致；可见文案只在悬停提示里，
+ * 不靠颜色单独表达（`aria-label` + `title` 保留完整语义）。键盘 Space/Enter 可切换，
+ * 失败时显示宿主返回的原因。
  */
 function DestinationSwitch({
   index,
@@ -85,7 +86,7 @@ function DestinationSwitch({
             : "不进周报：仍留在本周记录里。点一下改为进周报。"
         }
         className={
-          "inline-flex items-center gap-1.5 px-1.5 py-[3px] rounded-none border transition-colors duration-150 disabled:opacity-60 " +
+          "inline-flex items-center justify-center w-6 h-6 rounded-full border transition-colors duration-150 disabled:opacity-60 " +
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1 " +
           (checked
             ? "border-primary bg-primary text-white hover:bg-primary/90"
@@ -95,18 +96,15 @@ function DestinationSwitch({
         <span
           aria-hidden
           className={
-            "w-[13px] h-[13px] flex items-center justify-center border " +
-            (checked ? "border-white/70 bg-white/15" : "border-outline-variant/80 bg-transparent")
+            "w-full h-full rounded-full flex items-center justify-center " +
+            (checked ? "bg-primary" : "bg-transparent")
           }
         >
           {checked ? (
-            <svg viewBox="0 0 12 12" className="w-[9px] h-[9px]" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M2 6.2 4.6 8.8 10 3.4" strokeLinecap="square" />
+            <svg viewBox="0 0 12 12" className="w-[10px] h-[10px]" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M2.2 6.3 4.6 8.6 9.8 3.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           ) : null}
-        </span>
-        <span className="text-[11.5px] leading-none whitespace-nowrap">
-          {busy ? "保存中…" : "进周报"}
         </span>
       </button>
       {!checked && destination.trim() !== "仅记录" ? (

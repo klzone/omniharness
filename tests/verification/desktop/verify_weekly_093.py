@@ -189,7 +189,8 @@ def main() -> int:
           and 'readSubdirsPref(scene, scene === "weekly")' in scene_tsx,
           "工作记录页恢复含子目录开关且默认打开")
     check("artifact_search_kept_in_compact",
-          'placeholder="搜索成果或归档"' in art_tsx, "搜索框保留")
+          'placeholder="搜索成果或归档"' not in art_tsx and 'type="search"' not in art_tsx,
+          "成果库搜索已移除（顶部导航搜索统一入口）")
     check("artifact_compact_window_not_stated",
           "本场景成果共" not in art_tsx and "标准 Markdown，可直接在 Obsidian" not in art_tsx,
           "移除右栏说明性计数与 Obsidian 提示")
@@ -261,7 +262,8 @@ def main() -> int:
     check("timeline_keeps_rail", "absolute left-[51px]" in tl_tsx, "")
     check("artifact_numbered_card",
           'padStart(2, "0")' in art_tsx and "data-artifact-card" in art_tsx, "")
-    check("artifact_filters_kept", "按文件名搜索成果" in art_tsx and "含子目录" in art_tsx, "")
+    check("artifact_filters_kept", "按文件名搜索成果" not in art_tsx and "含子目录" in art_tsx
+          and "data-artifact-range" in art_tsx, "保留范围/目录筛选，搜索交给顶部导航")
     check("artifact_list_view_kept", 'view === "list"' in art_tsx, "")
 
     # ---- S06 归档并入成果库（用户 2026-10-27 二次反馈）----
@@ -272,8 +274,8 @@ def main() -> int:
           'data-artifact-archive=""' in art_tsx and "归档" in art_tsx,
           "归档项带徽标")
     check("archive_searchable",
-          "r.archive.kindLabel" in art_tsx and ".toLowerCase().includes(q)" in art_tsx,
-          "搜索覆盖周报/周记录")
+          "r.archive.kindLabel" in art_tsx and "toLowerCase().includes(" not in art_tsx,
+          "归档仍在同一列表里，搜索已交给顶部导航")
     check("archive_open_kept",
           "r.archive.onOpen" in art_tsx and "onOpenReport" in scene_tsx and "openWeekSource" in scene_tsx,
           "归档仍能打开周报与周记录")
@@ -289,9 +291,9 @@ def main() -> int:
           'role="dialog"' in strip_tsx and 'w-[80vw]' in strip_tsx and 'aria-modal="true"' in strip_tsx,
           "待确认写入改为页面内 80% 宽弹窗")
     check("artifact_toolbar_two_rows",
-          "placeholder=\"搜索成果或归档\"" in art_tsx and "items-center justify-end gap-1.5 pt-2" in art_tsx
-          and "name=\"search\"" in art_tsx,
-          "搜索行与视图/目录控制行分开")
+          "placeholder=\"搜索成果或归档\"" not in art_tsx
+          and "data-artifact-range" in art_tsx and "data-artifact-view" in art_tsx,
+          "工具栏合并为一行，只留范围与视图/目录控制")
     check("weekly_small_text_floor",
           "text-[12px]" in strip_tsx and "text-[12px]" in quad_tsx and "text-[12px]" in tl_tsx,
           "周报页主要小字至少 12px")
@@ -330,8 +332,9 @@ def main() -> int:
     check("band_value_no_wrap", "tabular-nums whitespace-nowrap" in strip_tsx,
           "数值区不折行")
     # OD-ARCH-099 S01：图标座放大到 56px，图标 28px，独占一列。
-    check("band_larger_icon", "w-14 h-14 rounded-2xl" in strip_tsx and "w-7 h-7" in strip_tsx,
-          "图标座 56px、图标 28px")
+    # OD-ARCH-100 S01：图标放大到 56px，去掉底色座，只留色相文字。
+    check("band_larger_icon", 'Icon name={icon} className={"w-14 h-14 "' in strip_tsx,
+          "图标 56px 且不再有底色座")
     check("section_title_hierarchy",
           all("text-[16px] font-semibold tracking-tight" in t for t in (quad_tsx, tl_tsx, scene_tsx)),
           "区块标题三级层级中的一级")

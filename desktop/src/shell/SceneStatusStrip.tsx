@@ -84,7 +84,7 @@ const BAND_TONES: Record<
 > = {
   violet: {
     shell: "border-primary/15 bg-[linear-gradient(158deg,#f4f1ff_0%,#faf8ff_62%,#ffffff_100%)]",
-    chip: "bg-primary/10 text-primary",
+    chip: "text-primary",
     glow: "bg-primary/15",
     subtitle: "text-primary/55",
     number: "text-primary",
@@ -93,7 +93,7 @@ const BAND_TONES: Record<
   },
   cyan: {
     shell: "border-secondary/15 bg-[linear-gradient(158deg,#eafafc_0%,#f7fdfe_62%,#ffffff_100%)]",
-    chip: "bg-secondary/10 text-secondary",
+    chip: "text-secondary",
     glow: "bg-secondary/15",
     subtitle: "text-secondary/60",
     number: "text-secondary",
@@ -102,7 +102,7 @@ const BAND_TONES: Record<
   },
   indigo: {
     shell: "border-tertiary/15 bg-[linear-gradient(158deg,#eef0ff_0%,#f8f8ff_62%,#ffffff_100%)]",
-    chip: "bg-tertiary/10 text-tertiary",
+    chip: "text-tertiary",
     glow: "bg-tertiary/15",
     subtitle: "text-tertiary/55",
     number: "text-tertiary",
@@ -111,7 +111,7 @@ const BAND_TONES: Record<
   },
   amber: {
     shell: "border-amber-500/15 bg-[linear-gradient(158deg,#fff8eb_0%,#fffcf5_62%,#ffffff_100%)]",
-    chip: "bg-amber-500/10 text-amber-600",
+    chip: "text-amber-600",
     glow: "bg-amber-400/15",
     subtitle: "text-amber-700/55",
     number: "text-amber-600",
@@ -123,7 +123,7 @@ const BAND_TONES: Record<
 /** 逾期真的存在时整张卡切成告警色，盖掉它原本的琥珀底。 */
 const BAND_ALERT = {
   shell: "border-error/20 bg-[linear-gradient(158deg,#fff0ef_0%,#fffafa_64%,#ffffff_100%)]",
-  chip: "bg-error/10 text-error",
+  chip: "text-error",
   glow: "bg-error/10",
   subtitle: "text-error/55",
   number: "text-error",
@@ -134,7 +134,7 @@ const BAND_ALERT = {
 /**
  * 指标带一格（OD-ARCH-099 S01）：左侧图标独占一列，右侧内容列自上而下放标题、
  * 英文副标题与序号、数字与单位、底行提示与进度轨。图标下方不再叠任何文字，
- * 四张卡等高，扫读时先认色块再读数值。
+ * 四张卡等高，扫读时先认色相再读数值。图标不带底色座，仅用色相文字着色。
  * 进度条只在分子分母都真实存在时绘制，否则整条隐藏——不拿 0 或满格假装有数据。
  */
 function BandMetric({
@@ -194,14 +194,7 @@ function BandMetric({
         data-band-icon-column
         className="relative shrink-0 w-14 flex flex-col items-center justify-start"
       >
-        <span
-          className={
-            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-[0_2px_10px_-5px_rgba(30,27,75,0.4)] " +
-            skin.chip
-          }
-        >
-          <Icon name={icon} className="w-7 h-7" />
-        </span>
+        <Icon name={icon} className={"w-14 h-14 " + skin.chip} />
       </div>
       <div className="relative flex-1 min-w-0 flex flex-col">
         <div className="flex items-start justify-between gap-3 min-w-0">

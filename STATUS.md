@@ -2,6 +2,44 @@
 
 > 2026-10-25 起由本助手亲自实施并填写；本文件记录实测执行状态，不是验收结论。P1～P4 均已由 ARCHITECT 独立验收通过（结论见 REVIEW.md 顶部各阶段章节）。
 
+## OD-ARCH-100：周报页五处视觉与减冗修订（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**
+> 触发：用户五点要求——①顶部四张指标卡的图标去掉背景色块，图标放大到原色块那么大；②所有英文字体换更清晰厚实的；③去向的方形点选按钮改圆形，去掉「进周报」三字改成悬停提示；④成果文档库的搜索框及相关功能去掉（顶部导航已有搜索）；⑤去掉「另有 N 个归档文件名不符合约定，未列入、也未改动。」提示。
+> 起点：HEAD `9989d4d`。边界：本助手亲自实施，未派子代理；`runtime/` 零差异；未读凭证；窗口验证只用 `/tmp` 合成数据。
+
+### 改动
+
+1. `SceneStatusStrip.tsx`：`BAND_TONES` 与 `BAND_ALERT` 的 `chip` 去掉 `bg-*/10`，只留文字色（`text-primary` / `text-secondary` / `text-tertiary` / `text-amber-600` / `text-error`）；`BandMetric` 删掉 56×56 `rounded-2xl` 图标座与其投影，改为 `<Icon name={icon} className={"w-14 h-14 " + skin.chip} />`——图标本体放大到 56px，正好占满原色块位置。图标列宽仍是 `w-14`，右侧标题、副标题、数字、进度轨位置不变，四卡等高关系不变。`WritingMetric` 与其它场景的 `grid` 分支零改动。
+2. `theme.css` / `styles.css` / `markdown.css` / `main.tsx` / `package.json`：英文字族从 Sora + Plus Jakarta Sans + JetBrains Mono 换成 **Inter Variable**（正文/标题/小标，单文件覆盖 300–700 权重）+ **IBM Plex Mono**（`--font-label-caps`、`.mono`、`.epayload`、正文代码块 `code` 的序号与等宽小标）。两个包均为 `@fontsource` 自托管，`main.tsx` 只引 `@fontsource-variable/inter/wght.css` 与 IBM Plex Mono 的 400/500/600，CJK 回退栈（Noto Sans SC / PingFang SC / system-ui）原样保留。旧三个字族包已 `npm uninstall`，不再随包分发。字号、行高、字距一律未改，只换字族。
+3. `WeeklyTimeline.tsx`：`DestinationSwitch` 从方角块 + 13px 方勾选框 + 可见「进周报」文字，改为 24×24 圆形按钮（`rounded-full`）——选中是实心 primary 圆 + 白色圆头对勾，未选是空心圆环；可见文字与「保存中…」一并删除，`aria-label`、`title`（含「点击即进入本周周报的统计与上下文」这类说明）、`role="switch"`、`aria-checked`、焦点环、失败就地显示、无去向静态标记全部保留。宽度收窄后正文左移，条目换行位置随之变化。
+4. `ArtifactExplorer.tsx`：删除搜索输入框、`query` 状态、`filtered` 里的搜索过滤分支与 `setPage(0)` 的 `query` 依赖，以及随之无用的 `Icon` 导入与 `focusRing` 变量；工具栏合并成一行（左：时间范围 chips，右：卡片/列表 + 含子目录），非精简模式不再有 `sm:hidden` 的重复范围行，范围组加 `data-artifact-range` 供断言定位。`filtered` 现在只按时间范围与 `includeSubdirs` 处理。四个复用点（工作记录、写作、项目跟进、兜底）一并生效。
+5. `ArtifactExplorer.tsx` / `ScenePage.tsx`：删掉 `archiveSkipped` prop、其默认值与「另有 N 个归档文件名不符合约定…」文案，调用点不再传 `archive?.skipped`。宿主侧解析出的 `skipped` 计数保留，归档读取失败的真实原因（`archiveError`）仍如实显示。
+6. 断言同步与新增：`verify_weekly_093.py` 的四条过期断言（`artifact_search_kept_in_compact`、`artifact_filters_kept`、`archive_searchable`、`artifact_toolbar_two_rows`）与 `band_larger_icon` 改为新结构断言；`verify_weekly_099.py` 的 `band_icon_seat_larger`、`band_icon_glyph_larger` 改判「圆角色块已消失 + 图标 56px」，新增 `dest_circle_button`、`dest_no_visible_label`、`dest_tooltip_kept`，图标列切片改为到内容列 `div` 为止。新增 `verify_weekly_100.py`（32 项，含旧字体包已移除、正文代码块换族两条）与 `preview_weekly_100.py`（窗口预览，`/tmp` 合成数据）。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npx --no-install tsc --noEmit`（desktop） | 通过 |
+| `npm run build`（desktop） | 通过（仅既有 chunk 体积提示）；`dist/assets` 已产出 Inter 与 IBM Plex Mono 的 woff2 |
+| `cargo test --offline`（全量） | 全绿（含 worklog、task_shell_e2e、thread_store） |
+| `verify_weekly_100.py`（新增） | 32 / 32 |
+| `verify_weekly_091.py` / `092.py` | 67 / 67、29 / 29 |
+| `verify_weekly_093.py` / `097.py` / `099.py` | 105 / 105、34 / 34、42 / 42 |
+| `verify_worklog_089.py` / `verify_writing_094.py` | 61 / 61、98 / 98 |
+| 窗口 `preview_weekly_100.py`（`:130`） | 见下表 |
+
+窗口 facts 关键读数：`band_cards_present=true`；`switch_nodes=7`、`switch_is_round_source=true`、`switch_geometry=[639,601,25,24]`、`switch_square=false`、`switch_toggled=true`；`search_box_absent=true`、`writing_search_absent=true`、`narrow_search_absent=true`；`archive_notice_absent=true`；`writing_toolbar_has_range=true`；`narrow_band_present=true`；点选后工作记录文件只有第 10 行变化、行数不变、留下 1 份 `.md.bak-*`；`runtime_touched=false`。
+
+证据：`tests/verification/desktop/evidence/od-arch-100/`（`01-weekly-wide.png` 宽窗全页、`02-band-icon.png` 指标卡特写、`03-switch-before / 03b-switch-detail / 03c-switch-hover / 03d-switch-after` 去向开关四态、`04-artifact-toolbar.png` 成果库工具栏、`04b-writing-toolbar.png` 与 `04c-writing-wide.png` 写作页复用点、`05-narrow-1000.png` 窄窗、`facts.json`、AX 快照）。
+
+### 未做/未验证
+
+- 未在用户真实显示器与真实工作记录上复核；窗口证据为 Xvfb 1600×980 / 1000×2740 + `/tmp` 合成数据。
+- 1000px 以下更窄视口未单独验证。
+- 悬停说明用的是原生 `title` 提示（系统黑色小条），不是自绘 UI 风格卡片；用户只要求「改成悬停提示」，本轮按最小改动处理。
+
 ## OD-ARCH-099：周报页四项微调（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；审查结论见 REVIEW.md 顶部。本节是执行记录。**

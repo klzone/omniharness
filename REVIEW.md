@@ -1,3 +1,23 @@
+## OD-ARCH-100 审查结论（ARCHITECT，2026-10-28）——通过
+
+**结论：通过。** 用户五点要求全部落地：指标卡图标无底色座、放大到 56px；英文字族换为 Inter + IBM Plex Mono（仍自托管）；去向开关改为圆形单点且「进周报」文字移入悬停/读屏语义；成果库的搜索框与 query 过滤删除，工具栏合并成一行；「另有 N 个归档文件名不符合约定…」提示与 `archiveSkipped` prop 一并移除。
+
+**独立复核范围：** HEAD `9989d4d` + 本轮改动。逐文件核对 `SceneStatusStrip.tsx`（`BAND_TONES`/`BAND_ALERT` 的 `chip` 只剩 `text-*`，`BandMetric` 无 `rounded-2xl` 图标座与投影、图标 `w-14 h-14`、列宽仍 `w-14`、`WritingMetric` 未动）、`theme.css`（`--font-*` 全量换 Inter Variable，`--font-label-caps` 换 IBM Plex Mono，CJK 回退保留）、`styles.css`（`.mono`、`.epayload`）、`markdown.css`（正文 code 的内联等宽字体同步）、`main.tsx`（只引 Inter 与 IBM Plex Mono）、`package.json`（新增两包并移除旧三包）、`WeeklyTimeline.tsx`（`rounded-full` 24×24、实心/空心两态、无可见 `进周报`/`保存中…`、`role="switch"`+`aria-checked`+`aria-label`+`title` 保留、失败就地显示、无去向静态标记）、`ArtifactExplorer.tsx`（无 input、无 `query`、工具栏单行、`data-artifact-range`、无归档提示、`archiveError` 保留）、`ScenePage.tsx`（不再传 `archiveSkipped`）。`runtime/` 零差异。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：** `npx --no-install tsc --noEmit` 通过；`npm run build` 通过，`dist/assets` 实际产出 `inter-latin-wght-normal-*.woff2` 与 `ibm-plex-mono-latin-400/500/600-normal-*.woff2`；`cargo test --offline` 全绿；`verify_weekly_100.py` **32 / 32**；`verify_weekly_099.py` **42 / 42**；`verify_weekly_093.py` **105 / 105**；`verify_weekly_097.py` **34 / 34**；`verify_weekly_091.py` / `092.py` **67 / 67**、**29 / 29**；`verify_worklog_089.py` **61 / 61**；`verify_writing_094.py` **98 / 98**；窗口 `preview_weekly_100.py`（`:130`）读数全部符合预期。
+
+**审查中补齐的一处遗漏：** 初版只改了 `theme.css`/`styles.css`，`markdown.css` 里正文代码块的 `font-family` 仍写死 JetBrains Mono，旧三个字体包也仍留在 `package.json` 里随包分发却已无人引用。已改 `markdown.css` 为 IBM Plex Mono，并 `npm uninstall @fontsource/sora @fontsource/plus-jakarta-sans @fontsource/jetbrains-mono`；`verify_weekly_100.py` 增加两条断言（旧包已移除、正文代码块换族），总数由 30 增至 32。
+
+**目视复核：** `01-weekly-wide.png` 四张指标卡图标只以自身色相着色、下表无文字，卡高与左侧对齐一致；`02-band-icon.png` 特写显示图标填满原色块位置、无浅色底与阴影；`03b-switch-detail.png` 与 `03d-switch-after.png` 显示圆形空心/实心两态，`03c-switch-hover.png` 可见悬停说明；`04-artifact-toolbar.png` 与 `04c-writing-wide.png` 显示成果库与写作页工具栏均为一行、无搜索框；`05-narrow-1000.png` 显示 1000px 下指标带与列表正常。
+
+**数据写入证据（`/tmp` 合成周文件）：** 点选一次后 `worklog_changed_lines=[10]`、行数不变、留下 1 份 `.md.bak-*`，`runtime_touched=false`——与 099 的受控改写契约一致，本轮未改写入逻辑。
+
+**已知限制（不构成阻断）：** ① 窗口证据为 Xvfb 1600×980 / 1000×2740 + `/tmp` 合成数据，未在用户真实显示器与真实工作记录上复核。② 1000px 以下更窄视口未单独验证。③ 悬停说明用的是原生 `title` 提示（系统黑底小条），不是自绘 UI 风格卡片——用户本轮只要求「改成悬停提示」，按最小改动处理；若之后希望与软件视觉统一，需要另做自绘浮层。
+
+**阶段决定：OD-ARCH-100 验收通过。** 按用户长期偏好，本轮改动已一并提交并推送 GitHub。
+
+---
+
 ## OD-ARCH-099 审查结论（ARCHITECT，2026-10-28）——通过
 
 **结论：通过。** 用户四点要求全部落地。第 2 点在实现上严格按用户澄清的语义：点选只改这条记录在周文件里的「去向」字段，不写周报正文；改完后重读整周文件，顶部第 2 张卡「进周报条目」的统计与四象限两格随之变动，周报 Skill 取数口径（只取 `本周报引用`）不变，因此选中条目会进入模型写周报时的上下文。

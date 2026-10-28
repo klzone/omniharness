@@ -7,8 +7,8 @@
  *
  * 说明：
  * - 只使用本地资源，不引任何外链（字体/图标/图片），以符合 Tauri CSP。
- * - Sora / Plus Jakarta Sans / JetBrains Mono 目前无法自托管（本机无法访问
- *   Google 字体源），故给出系统回退栈；字体文件到位后无需改类名。
+ * - 英文字族为 Inter（正文/标题）与 IBM Plex Mono（序号/等宽小标），均由
+ *   @fontsource 自托管；中文走系统字体回退栈，不需要额外下载中文字集。
  */
 @theme {
   /* ---- 颜色：MD3 色调板 ---- */
@@ -66,15 +66,15 @@
   --color-on-background: #131b2e;
 
   /* ---- 字体（含系统回退；字体文件可后补） ---- */
-  --font-display-hero: "Sora", "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-headline-xl: "Sora", "Noto Sans SC", system-ui, sans-serif;
-  --font-headline-lg: "Sora", "Noto Sans SC", system-ui, sans-serif;
-  --font-headline-md: "Sora", "Noto Sans SC", system-ui, sans-serif;
-  --font-body-lg: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-body-md: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-body-sm: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-label-caps: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-label-sm: "Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif;
+  --font-display-hero: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-headline-xl: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-headline-lg: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-headline-md: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-body-lg: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-md: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-sm: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-label-caps: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-label-sm: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
 
   /* ---- 圆角（对齐 Stitch 的 borderRadius 配置） ---- */
   --radius-lg: 2rem;
