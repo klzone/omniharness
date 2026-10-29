@@ -351,6 +351,21 @@
       "detail": "按真实高度上下翻转并夹在视口内"
     },
     {
+      "name": "category_focus_waits_for_anchor",
+      "ok": true,
+      "detail": "聚焦 effect 依赖 anchor：浮层挂载后才把焦点放到当前项"
+    },
+    {
+      "name": "category_button_arrows_move_when_open",
+      "ok": true,
+      "detail": "浮层已开且焦点还在胶囊时，上下键直接落到列表项"
+    },
+    {
+      "name": "category_listbox_home_end",
+      "ok": true,
+      "detail": "listbox 支持 Home/End 跳首尾"
+    },
+    {
       "name": "thread_delete_before_title",
       "ok": true,
       "detail": "删除按钮排在单条对话标题之前"

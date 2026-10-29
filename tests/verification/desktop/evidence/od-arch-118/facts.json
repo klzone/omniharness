@@ -1,0 +1,51 @@
+{
+  "root": "/tmp/od118-preview",
+  "display": ":148",
+  "checks": {
+    "boot_base": true,
+    "popover_opened": true,
+    "create_form_opened": true,
+    "typed_name": true,
+    "typed_label": true,
+    "submitted": true,
+    "created_in_registry": true,
+    "created_dsh_files": true,
+    "create_carries_no_skills": true,
+    "switch_confirmed": true,
+    "switched_to_custom": true,
+    "custom_categories_plain": true,
+    "custom_dock_has_starter_scenes": true,
+    "custom_starter_rules_empty": true,
+    "assets_tab_opened": true,
+    "assets_lists_custom": true,
+    "assets_has_remove_entry": true,
+    "popover_reopened": true,
+    "picked_base": true,
+    "back_to_base": true,
+    "assets_tab_reopened": true,
+    "custom_still_listed": true,
+    "remove_clicked": true,
+    "removed_from_registry": true,
+    "remove_is_recoverable": true,
+    "removed_dsh_dir": true
+  },
+  "skills_after_create": [],
+  "profile_entry": {
+    "name": "my-desk",
+    "label": "My Desk",
+    "created_at": 1793268513,
+    "origin": "standard",
+    "plugins": []
+  },
+  "categories_after_switch": [
+    "plain"
+  ],
+  "assets_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\nMy Desk\n\n已切换，资产已按清单补齐；旧引擎已停止，下一条任务按新 Profile 启动。 资产已就绪（0 项）\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n工作记录（模型起草）\n\n文案写作（模型起草）\n\n项目跟踪（模型起草）\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n设置 本地\n\n设置分页\n\n模型与端点\n\nProfile 资产\n\n对话分类\n\n规则资产\n\n能力管理\n\n成果与文档库\n\n权限\n\n引擎诊断\n\n关于\n\nPROFILE 资产\n\n重新读取\n\n修复缺失 / 恢复出厂内容\n\n切换或启动 Profile 时自动补齐缺失插件\n开：切换后或冷启动时先在后台联网装齐，切换与启动本身都不等安装。 基础标准永远不安装任何插件。\n\n导入\n\n导出\n\n改名\n\n移除\n\n打开目录\n",
+  "assets_text_after_base": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n标准\n\n已切换，资产已按清单补齐；旧引擎已停止，下一条任务按新 Profile 启动。\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n设置 本地\n\n设置分页\n\n模型与端点\n\nProfile 资产\n\n对话分类\n\n规则资产\n\n能力管理\n\n成果与文档库\n\n权限\n\n引擎诊断\n\n关于\n\nPROFILE 资产\n\n重新读取\n\n导入\n\n导出\n\n改名\n\n移除\n\n打开目录\n",
+  "trash_entries": [
+    "my-desk-1793268535-273896"
+  ],
+  "dsh_trash_entries": [
+    "my-desk-1793268535-273896"
+  ]
+}

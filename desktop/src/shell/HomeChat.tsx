@@ -92,6 +92,17 @@ export interface ChatPreset {
   rulesLoaded?: boolean;
   /** 场景绑定的 Skill 清单（OD-ARCH-082 S4 注入链路）。 */
   skills?: Array<{ id: string; content: string }> | null;
+  /**
+   * 按流程分开的绑定（OD-ARCH-108）。
+   *
+   * 同一场景可以有一条以上流程：工作记录既有随手记也有周报，两份底线技能不同。
+   * 意图在提交时才判定，所以 preset 把两组都带出来，由提示词组装按 mode 各取一组；
+   * 缺省（未提供或该流程没有单独配置）时回落到 skills。
+   */
+  skillsByFlow?: {
+    note?: Array<{ id: string; content: string }> | null;
+    report?: Array<{ id: string; content: string }> | null;
+  } | null;
 }
 
 export interface ChatMessage {
@@ -680,7 +691,12 @@ export function HomeChat({
    */
   useEffect(() => {
     if (!preset || !preset.rulesLoaded) return;
-    if (preset.skills !== null) return;
+    // OD-ARCH-108：场景级绑定可能为空，但按流程拆的绑定仍然有效
+    // （工作记录只配了 weekly-note / weekly-report 时就是这种情况）。
+    const anyFlow = preset.skillsByFlow
+      ? Boolean(preset.skillsByFlow.note?.length || preset.skillsByFlow.report?.length)
+      : false;
+    if (preset.skills !== null || anyFlow) return;
     const key = threadKey + ":" + preset.key;
     if (skillHintShownRef.current.has(key)) return;
     skillHintShownRef.current.add(key);
@@ -2921,7 +2937,7 @@ export function HomeChat({
         {admission === "ready" && preset !== null ? (
           <span
             className="font-label-caps text-[10px] text-outline truncate"
-            data-hover-hint="规则资产来自应用数据根下的 profiles/discipline.rules.json；可在设置 →「规则资产」查看和修改。"
+            data-hover-hint="规则资产随 Profile 挂载（应用数据根下的 profiles/<Profile 名>/rules.json）；可在设置 →「规则资产」查看和修改。"
           >
             规则：{preset.rulesLoaded ? "已加载 Profile 规则" : "未加载（纯净底座）"}
           </span>

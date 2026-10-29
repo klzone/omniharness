@@ -1,5 +1,1223 @@
 # 执行状态
 
+## OD-ARCH-131：自建 Profile 能带自己的 Skill（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–130 未提交改动，全部原样保留（本轮新增 1 个取源升级、4 个规则校验函数、2 个命令、1 个界面区块、迁移包新成员、6 个新测试、1 个窗口脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+用户的产品边界是「OmniDesk 干净初始，Profile 是定制的，切过去配置、Skill、插件都要自动到位」。130 之后只剩一个真实缺口：**自建 Profile 只能绑程序内置的 8 个 Skill**——自己写的 Skill 放进去存不住，`validate()` 按 `ALLOWED_SKILLS` 白名单整份拒绝，装配链也没有「这个 Profile 自带的正文」这一层。现在每个自建 Profile 有自己的 Skill 源目录 `profiles/<名字>/skills/<Skill 名>/`，取源顺序是「Profile 自带 → 仓库 → 内嵌」，界面可打开目录、生成模板、勾选绑定，迁移包也会把它带上。
+
+### 改动
+
+1. **校验分层（`profile_rules.rs`）**：`ALLOWED_SKILLS` 注释改为「内置清单」，不再充当白名单；新增 `is_valid_skill_name`（形状校验，委托 `settings::is_valid_profile_name`）、`skill_source_root`、`local_skills`（只读，只认含 `SKILL.md` 的子目录）、`allowed_with_local`（内置 ∪ 自带）。`RulesView` 增 `local_skills`，5 处构造点统一填 `allowed_with_local` + `local_skills`。
+2. **取源统一（`profile_assets.rs`）**：新增 `SkillSource { Profile, Repo, Embedded }`；`expected_skill_files` 改为收 `Scope`、返回「文件清单 + 来源」。名字拼路径前先过形状校验。保存绑定收敛、自建装配、巡检三处调用统一，`materialize_custom` 里重复的挑源分支删除。三态写（不覆盖用户改动）与停放区口径不变。
+3. **命令（`lib.rs`）**：`profile_skill_source_open`（首次点才建目录，xdg-open/gio 失败时返回路径与提示）与 `profile_skill_scaffold`（写带 frontmatter 的模板，已存在不覆盖）。都拒绝基础标准，写前对 `profiles/` 根走 `assert_writable_root`。
+4. **界面（`SettingsPanel.tsx` / `settings-panel.css` / `api.ts` / `types.ts`）**：绑定区底部新增「Profile 自带 Skill」区块（直角、与声明插件同层级）：已有清单、打开目录、名字输入、生成模板。两个新命令的类型参数已补齐。
+5. **迁移包（`profile_lifecycle.rs`）**：新增成员根 `skill`，路径 `<Skill 名>/<相对路径>`，逐段校验；导出收集该 Profile 全部自带 Skill（跳过隐藏项与 `node_modules`，每 Skill ≤64 文件、单文件 ≤1MB、必须 UTF-8）；导入落点修正为 `profiles/<名字>/skills/`（原先会落到 `profiles/<名字>/<Skill 名>/`，装配链看不到）。
+6. **测试**：`profile_rules` 3 个（形状校验放行/拒绝、自带并集）；`profile_assets` 1 个（自带源优先且内容为自带正文）；`profile_lifecycle` 2 个（往返 + `skill/../escape` 拒绝）；`lib.rs` 旧的「未知 Skill 必须拒绝」改为「非法形状必须拒绝」。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测 | `cargo test --offline --lib` | **495 passed / 0 failed**，`/tmp/od131-lib3.log`，EXIT=0 |
+| 集成测试 | `cargo test --offline --tests` | 12 组全通过（含 profile_assets_host 21 项），`/tmp/od131-test-int.log`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests，`/tmp/od131-py.log` |
+| 前端构建 | `npm --prefix desktop run build` | 通过，EXIT=0 |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_skill_source_131.py` | **24/24 checks 全 true**，EXIT=0，`/tmp/od131-win2.log` |
+
+证据：`tests/verification/desktop/evidence/od-arch-131/facts.json` 与 `shots/01-base-no-source-block.png`、`02-source-block.png`、`03-template-created.png`、`04-chip-checked.png`、`05-saved.png`。关键读数：基础标准轮 `app_profile_dirs=[]`；自建轮 `source_path=…/profiles/own-desk/skills/office-note/SKILL.md`、`rules_after.skill_bindings.weekly.skills=["office-note"]`、`runtime_path=…/dsh-home/skills/office-note/SKILL.md`、`runtime_uses_profile_source=true`。
+
+### 过程中确认的边界
+
+1. **迁移包的落点必须与取源根同源。** 导出按 `skill_source_root`（`profiles/<名字>/skills/`）收集，导入若按 `<名字>/<Skill 名>` 落盘，包能导进来、界面却看不到——这类错误不会在往返测试里自动暴露，只有「导入后 `local_skills` 为空」才会现形，所以测试同时断言了 `local_skills`。
+2. **绑定不再要求名字在清单里。** 只有形状合法的名字能写盘；名字合法但三处都没有正文时，记进装配的 `missing_source`，由资产页说明，不再让整份规则坏掉。
+3. **自带源优先级高于仓库，但只对自建 Profile 生效。** 基础标准与出厂 Profile 完全不进这一层，出厂行为与 D-039 一致。
+4. **命令写盘前校验的是 `profiles/` 根。** 这两条命令只动 Profile 目录，按目标根验才算数；先前误按引擎 `dsh_home` 验，已在本轮复核后改正。
+5. **窗口脚本对说明段落改用可操作事实断言。** WebKit 不把 `.sub` 段落暴露给 AT-SPI，区块是否渲染以「名字输入框能定位并输入」为准（截图另行肉眼核对）。
+
+## OD-ARCH-130：绑定保存后立刻把 Skill 放进当前 Profile 的运行时目录（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–129 未提交改动，全部原样保留（本轮新增 1 个收敛函数与 2 个单测、`profile_skill_bindings_save` 接上收敛、1 个前端类型与 1 处回执文案、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733）全程未动。
+
+### 一句话结论
+
+用户重申「OmniDesk 是干净初始环境，Profile 是定制的，切过去就该把配置、Skill 和插件都自动装上」。逐条对表后，**切换 Profile 的自动装配本来是通的**（切换时 `materialize` + `record_managed_skills`，引擎启动前再收敛一次；缺插件在切换后、冷启动、设置页手动三条通道都会补），本轮补的是其中一个真实缺口：**在设置页给当前 Profile 保存 Skill 绑定后，那几个 Skill 要等到下次切换或重启才会落进运行时 `skills/` 目录**，中间这段窗口里界面说「已保存」，引擎却扫不到。现在保存成功当场就把目录收敛到位，解绑的同时移入停放区。
+
+### 改动
+
+1. **收敛函数（`profile_assets.rs`）**：新增 `BoundSkillSync`（profile / standard / wanted / filled / kept / returned / parked / missing_source / failed / note）与 `sync_bound_skills(scope, standard)`（`:447`）。它只做三件事，全部复用既有原语：`wanted_skills` 取清单 → `reconcile_managed_skills` 归位与停放 → 逐个 `expected_skill_files` + `sync_skill_files`（三态写，不覆盖用户改动）→ `save_state` 登记装配状态 → `record_managed_skills`。找不到正文来源记 `missing_source`，单项写失败记 `failed`，都不中断其余项。基础标准第一句就返回空操作（`standard: true`），不建目录、不写登记表。
+2. **命令接上收敛（`lib.rs:2120`）**：`profile_skill_bindings_save` 在规则写盘成功后调用 `sync_bound_skills`，结果以 `skills` 字段并入回执。读取 `dsh_home` / `channel` 用的是**运行中引擎的配置**（`supervisor().config()`）而不是 `profile_choice_scope()`，避免补到另一个根、界面显示补齐而运行时仍看不到。收敛失败不回滚已写入的规则，只在 `skills.note` 里如实说明。
+3. **前端类型（`types.ts`）**：`ProfileRulesSaveReceipt` 增 `skills?: BoundSkillSync`，并新增对应接口。
+4. **回执文案（`SettingsPanel.tsx:1091` `saveBindings`）**：保存后提示改为「绑定已保存，下一轮提交生效。+ 后端 note + 失败明细 + 备份名」，不再让用户以为要再切一次 Profile 才生效。
+5. **单测（`profile_assets.rs`）**：`sync_bound_skills_fills_runtime_dir_and_parks_unbound` 覆盖首存补 2 个、二次保存不重写、解绑后移入停放区且不影响仍绑定的那个；`sync_bound_skills_is_noop_for_standard_profile` 断言基础标准下 `skills/` 与 `profiles/` 都不出现。
+6. **窗口脚本**：新增 `tests/verification/desktop/preview_profile_skill_bindings_130.py`（由 129 改造，证据目录 `evidence/od-arch-130`），第二轮新增两条断言：三个 Skill 的 `SKILL.md` 当场出现在 `dsh-home/skills/`、`.omnidesk-managed` 已写。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测合计 | `cargo test --offline --lib` | **490 passed / 0 failed**，`/tmp/od130-test.log`，EXIT=0 |
+| 集成测试 | `cargo test --offline --tests` | 8 passed（4 + 3 + 1），EXIT=0，`/tmp/od130-tests.log` |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests，`/tmp/od130-pytest.log` |
+| 前端构建 | `npm --prefix desktop run build` | 通过，EXIT=0 |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_skill_bindings_130.py` | **25/25 checks 全 true**，EXIT=0，`/tmp/od130-win.log` |
+
+证据：`tests/verification/desktop/evidence/od-arch-130/facts.json` 与 `shots/01-base-no-editor.png`、`02-editor.png`、`03-picked.png`、`04-saved.png`。关键读数：`runtime_skill_dirs = ["anysearch","memory-agent","memory-report"]`；`weekly_skills` 三个、`max_injected = 3`；第 4 个 `knowledge-search` 点击被禁（false）未进文件；基础标准轮 `app_profile_dirs=[]`、`dsh_profile_dirs=[]`；`backups=["rules.json.bak-1793276897"]`。
+
+### 过程中确认的边界
+
+1. **收敛要读运行中引擎的 `dsh_home`，不能读「当前按 Profile 名推算的根」。** 两者在正常路径上相等，但引擎配置才是切换与启动装配时真正使用的那个；取错根会出现「回执说补齐、引擎扫不到」的假成功，且只有真实窗口能暴露。
+2. **规则写盘成功就不回滚。** 绑定是用户的决定，Skill 拷贝失败（缺源、权限）不该把规则退回去；回执里逐条说明比悄悄回滚更容易被用户看懂，也避免用户以为「点了没反应」。
+3. **基础标准的空操作必须在建目录之前。** 与 128 的 `save_rules_into` 同口径，单测断言目录事后不存在，而不是只断言返回 Ok。
+4. **解绑是移到停放区而不是删除。** `reconcile_managed_skills` 已在 109 之后建立这个口径；本轮沿用，并断言仍绑定的那个不会跟着被收走。
+5. **窗口脚本两轮必须分进程**（GTK / AT-SPI / WebKit 进程内只初始化一次），显示号不复用；本轮沿用 129 的调度方式。
+
+### 清理
+
+本轮起的 vite（5273）、Xvfb、dbus 与预览实例已按进程收尾；正式实例（app pid 107733）未触碰；`/tmp/od130-*` 为临时日志与预览根，可由脚本清理。
+
+
+
+## OD-ARCH-129：自建 Profile 的场景 × Skill 绑定可在界面里勾选保存（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–128 未提交改动，原样保留（本轮新增 1 个绑定写入纯函数与 4 个单测、1 条 Tauri 命令与 4 个行为测试、`allowed_skills` 下发、3 处前端类型/API、设置页 1 个勾选区块与其样式、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733）全程未动。
+
+### 一句话结论
+
+128 之后「建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复 / 改名 / 迁移 / 声明插件」都通了，但**场景绑哪些 Skill 只能手写 `rules.json` 的 `skill_bindings`**：普通用户在规则资产页只看到一行只读摘要，配不出「随手记只预注入 memory-agent、周报只预注入 memory-report」这种 108 定下的底线。本轮把这条配置面搬进界面：规则资产页新增一行式「场景 Skill 绑定」，点选后整表保存，后端复用既有校验与备份通道，其余规则内容不动；基础标准下整块不渲染、后端同样拒绝且不建目录。
+
+### 改动
+
+1. **绑定写入纯函数（`profile_rules.rs`）**：新增 `BindingChoice { scene, skills }` 与 `set_skill_bindings(text, choices)`——解析现有规则 → 用传入表**整表替换** `skill_bindings`（空数组 = 显式解绑、去重、`max_injected = max(1, 绑定数)`）→ `validate()` → 序列化回 pretty JSON。任何一步失败整体拒绝，不产出半份文本。
+2. **可绑定清单由后端下发**：新增 `allowed()` 返回 `ALLOWED_SKILLS`（8 项），`RulesView` 增 `allowed_skills`（`#[serde(default)]`，五个构造分支都填），界面不再维护第二份技能名单，避免前后端漂移。
+3. **命令（`lib.rs`）**：新增 `profile_skill_bindings_save`（`:2120`），已在 `generate_handler!` 注册（`:5000`）。边界抽成纯函数 `save_skill_bindings_into(profile_dir, standard, bindings)`：基础标准首句拒绝且不建目录；规则文件不存在时用 `profile_starter::rules_text` 的起步骨架打底（这样新 Profile 不必先装一套行业规则就能配绑定）；写盘复用 `write_profile_rules` 的备份 + 原子写。
+4. **前端类型与 API**：`types.ts` 的 `ProfileRulesView` 增 `allowed_skills?`、新增 `SkillBindingChoice`；`api.ts` 增 `profileSkillBindingsSave`。
+5. **界面（`SettingsPanel.tsx` 规则资产页）**：状态卡片下方新增「场景 Skill 绑定」区块（`data-testid="skill-binding-editor"`），按行列出五个场景（工作记录 / 随手记 / 周报 / 文案写作 / 项目跟进），每行是场景名 + 一句说明，下方铺开该行可选 Skill 片；每场景最多 3 个，点满后其余片禁用并给出行内提示；行尾「保存绑定」一次提交。只提交界面里出现过的场景，手写的其它场景键原样带回。基础标准下整块不渲染。
+6. **样式（`settings-panel.css`）**：`.binding-*` 一组直角、白底、细分隔线样式，与设置页既有行式列表同构。首版是「左侧场景名 + 右侧片」的两列布局，窗口验收截图中发现 8 个片会折成两行、第二行的片看不出归属，改为**场景名与说明在上、片在下方整行铺开**。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测（规则专项） | `cargo test --offline --lib profile_rules` | 18 passed |
+| 单测（绑定边界） | `cargo test --offline --lib profile_skill_bindings_tests` | 4 passed |
+| 单测合计 | `cargo test --offline --lib` | **488 passed / 0 failed**，`/tmp/od129-lib.log`，EXIT=0 |
+| 集成测试 | `cargo test --offline --tests` | EXIT=0，`/tmp/od129-tests.log` |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests，`/tmp/od129-pytest.log` |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_skill_bindings_129.py` | **24/24 checks 全 true**，EXIT=0 |
+
+证据：`tests/verification/desktop/evidence/od-arch-129/facts.json` 与 `shots/01-base-no-editor.png`、`02-editor.png`、`03-picked.png`、`04-saved.png`（已肉眼核对：基础标准规则页无绑定区块；自建 Profile 里三个片高亮、第四个禁用、保存后摘要显示 `weekly（memory-agent, memory-report, anysearch）`）。
+
+### 过程中确认的边界
+
+1. **两轮必须分进程。** 同一进程连跑两个 `AppSession` 会让第二轮静默退出、无障碍树无文本（128 已实测）。`--phase both` 只做调度，每轮起独立子进程，且本轮用过的显示号不复用。
+2. **「页面已打开」不能用说明段落判定。** WebKit 不把 `.hint` 段落暴露给 AT-SPI，首轮用「行业规则」判定导致一次假失败（截图明明已在该页）。改用页面上真实暴露的按钮文案，并在进入前先判「已经在规则资产页」，避免点「系统偏好设置」把页面切走。
+3. **`global: {}` 会序列化成默认值。** 起步骨架写的是空 `global`，保存后变成「空红线词 + 空铁律 + 身份证/手机号脱敏」——**生效策略等价**，但字节不同。第一版脚本按字节比对 `global` 因此误判失败，改为比对生效配置（空列表 + 两个 `mask`）。
+4. **空选择写进映射而非删键。** 让「刚清空」与「从来没配过」在文件里可区分；装配侧对两者处理一致（都不预注入），但用户能看出自己动过这一行。
+5. **只改绑定，不动其它规则。** 单测 `set_skill_bindings_replaces_only_bindings` 断言 `global` / `scenes` / `profile` 与原文一致；窗口脚本另用独立断言核对 `scenes_untouched` 与摘要里的起步骨架未被替换成出厂行业规则包。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留（`ps` 复查为 0）；`/tmp/od129-*` 日志与隔离根在收尾时用 Python 删除（`rm -rf` 会被拒）。正式实例（app pid 107733）与引擎进程全程未动。
+
+
+## OD-ARCH-128：Profile 装配链补两处真缺口（基础标准零写入收口 + 自建 Profile 声明插件）（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–127 未提交改动，原样保留（本轮新增 1 个插件声明/校验段与 4 个单测、1 条 Tauri 命令、1 处规则保存边界抽函数与 2 个单测、3 处前端类型/API、设置页 1 行声明窄条与 1 处按钮禁用、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733）全程未动。
+
+### 一句话结论
+
+127 之后「建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复 / 改名 / 迁移」都通了，但按用户的产品边界逐条对表还漏两处。**① 基础标准能写出规则文件**——`profile_rules_save` 只做大小与解析校验就直接 `create_dir_all`，干净底座被自己开了个后门，而规则正是准入策略的输入；**② 自建 Profile 加插件只能手改 `package.json` / `cordis.patch.yml`**——界面没有登记入口，用户没法从零把一套定制工作台配出来。本轮把两处都收进代码：基础标准下规则保存一律拒绝且不建目录；自建 Profile 增加「声明一个插件」，先探测、缺才走 DSH 官方通道安装，**装成功才写登记表**，之后「切换装配 + 缺件补装」照旧接管。
+
+### 改动
+
+1. **规则保存收口（`lib.rs`）**：`profile_rules_save` 抽出纯函数 `save_rules_into(profiles_dir, standard, text)`。`standard == true` 时**在解析之前**直接返回「基础标准是干净底座，不保存行业规则包」，不解析、不建目录、不落盘；与 `profile_rules_restore_default` 同口径。
+2. **插件规格解析（`profile_assets.rs`）**：`parse_plugin_spec` 把登记表里的 `pkg` / `pkg@1.2.3` / 补丁里的子路径写法折回包根 + 可选版本；`normalize_plugin_input` 做形状校验——拒空、空白、反斜杠、NUL、`..`、绝对路径、点开头、超 214 字符，scoped 包必须 `@scope/name` 两段都非空，允许三段子路径但统一折回包根。
+3. **声明并安装（`profile_assets.rs`）**：`add_plugin(scope, standard, dsh_cli, input)` 的顺序刻意是「先探测 → 缺才装 → 装成功后登记」。基础标准、出厂 Profile、未登记目录三处入口直接拒绝；本地已就绪只补登记、不联网；装失败**登记表不动**，避免把「没装上」写成这个工作台的依赖。回执 `AddPluginReceipt` 含 `ok / profile / package / already_registered / installed / status / detail / note`。
+4. **巡检与装配同源（`profile_assets.rs`）**：`inspect_custom` 的插件清单由「登记表」改为「登记表 ∪ `detect_plugins`」，键统一用包根 `plugin:@scope/pkg`（界面把它当安装参数回传，带版本或子路径会被安装通道拒绝）。只读路径不回写登记表。
+5. **命令注册（`lib.rs`）**：新增 `profile_plugins_add`（`:1950` 命令体、`:4943` 注册），沿用 `profile_plugins_ensure` 的 Profile 取名与 scope 组装方式。
+6. **前端**：`types.ts` 增 `ProfilePluginAddReceipt`；`api.ts` 增 `profilePluginsAdd`；`SettingsPanel.tsx` 在 Profile 资产页插件分组下加一行「声明插件」窄条（单行输入 `data-testid="profile-plugin-input"`、按钮 `profile-plugin-add`、Enter 提交、聚焦全选），被拒理由就地显示在该行（`role="alert"` + `profile-plugin-error`），成功回执 `role="status"` + `profile-plugin-receipt`；该行只在自建 Profile 下渲染（`isCustomAssetProfile`）。规则资产页基础标准下禁用「校验并保存」并加 `data-hover-hint` 说明原因。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测（专项） | `cargo test --offline --lib`（含本轮 9 个新单测） | 480 passed（基线 471，新增 9） |
+| 单测合计 | `cargo test --offline --lib` | **480 passed / 0 failed**，`/tmp/od128-lib.log` |
+| 集成测试 | `cargo test --offline --tests` | EXIT=0，`/tmp/od128-tests.log` |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests，`/tmp/od128-pytest.log` |
+| 类型检查 | `npx tsc --noEmit` | 通过 |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_plugins_128.py` | **27/27 checks 全 true**，EXIT=0，`/tmp/od128-preview.log` |
+
+证据：`tests/verification/desktop/evidence/od-arch-128/facts.json`（25 项顶层 checks + 两轮子项）与 `shots/01-rules-blocked.png`、`02-bad-package.png`、`03-package-declared.png`（已肉眼核对：非法包名红色行内提示可见；`@acme/plugin` 成功登记回执一行）。
+
+### 过程中确认的边界
+
+1. **基础标准连目录都不建。** 收口放在 `save_rules_into` 的第一句，而不是「先解析再拒」：`write_profile_rules` 的第一句就是 `create_dir_all`，晚一步拒就已经写出了一个空 Profile 目录。单测断言拒绝后 `app_root/profiles/<name>` 不存在。
+2. **登记表代表依赖，不代表装过。** 三个单测分别覆盖：已就绪只登记、重复声明幂等、装失败登记表不变。「装成功才写」这条顺序不能反，否则界面上会出现一条永远补不上的依赖。
+3. **两段式判定要靠折回后的包根。** `@/abs/path` 经 `package_root` 折成 `@/abs`，只看段数会把空 scope 放过去，所以 `scoped_ok` 在 `strip_prefix('@')` 后要求 scope 与 name 都非空且 name 不再含 `/`。
+4. **巡检不能只有一个来源。** 用户在命令行装过插件但没切换过时，登记表里没有它；巡检若只看登记表，界面结论就和切换时的装配判断不一致。改成并集后两边同源，且只读路径不回写。
+5. **窗口脚本两轮必须分进程。** 同一进程连跑两个 `AppSession` 会让第二轮静默退出、无障碍树无文本，所以 `--phase both` 由父进程为每轮起独立子进程。
+6. **锁文件与套接字要一起判空闲。** `free_display` 要求 `/tmp/.X<n>-lock` 与本轮用过的号都不在：残留套接字会让 `start_display` 误判就绪，日志出现 `AT-SPI: Could not obtain desktop path or name`。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od128-*` 日志、`/tmp/od128-preview` 隔离根与调试脚本在收尾时用 Python 删除。正式实例（app pid 107733）全程未动，`runtime/` 零差异。
+
+
+
+## OD-ARCH-127：Profile 可导出 / 可导入（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–126 未提交改动，原样保留（本轮新增 1 个迁移模块段、4 个 Tauri 命令、3 处前端类型/API、设置页两处区块与行内动作、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733）全程未动。
+
+### 一句话结论
+
+109–126 之后「建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复 / 改名」都通了，剩下的缝是**带走**：一套调好的工作台只活在这台机器的两个目录里，换机只能整盘拷数据根，连带把会话、缓存、凭证引用一起搬过去。本轮把一套 Profile 导成单文件包（`omnidesk.profile-bundle.v1`），导入时先在只读校验里逐成员核对，全部通过才落盘；同名一律拒绝，插件本体不进包，仍由既有的「切换装配 + 缺件补装」通道安装。
+
+### 改动
+
+1. **内核 `profile_lifecycle` 新增迁移段**：常量 `BUNDLE_SCHEMA` / `BUNDLE_EXT`（`.omniprofile.json`）/ `BUNDLE_MAX_BYTES`（2 MiB）/ `BUNDLE_FILE_MAX_BYTES`（1 MiB）/ `BUNDLE_FILE_MAX_COUNT`（16），白名单 `DSH_BUNDLE_FILES`（package.json、cordis.yml、cordis.patch.yml、pnpm-lock.yaml、pnpm-workspace.yaml）与 `APP_BUNDLE_FILES`（decl.yml、rules.json、categories.json）。
+2. **导出 `export_bundle`**：只允许已登记的自定义 Profile（出厂 Profile 与未登记目录直接拒绝），逐文件记 `sha256` 与字节数，`node_modules`、`.bak-*`、`trash.v1.json`、隐藏文件与子目录一律不收；默认落 `<应用数据根>/exports/<name>-<时间戳>.omniprofile.json`。
+3. **只读列举 `list_exports`**：扫 `exports/` 下 schema 匹配的包，跳过坏包、超限包与隐藏文件，按 `exported_at` 倒序。不建目录、不写盘，界面每次刷新都能安全调用。
+4. **导入 `verify_bundle` + `import_bundle`**：校验顺序为包大小 → schema → 成员数 → Profile 名 → 单段文件名白名单（拒 `../`、绝对路径、子目录、反斜杠、前导点）→ 字节数 → SHA-256 → `decl.yml` 解析与 `validate` → `rules.json` 解析 → `categories.json` 解析 → `package.json` 含 `dsh.profile`。校验阶段纯只读，任何一项失败磁盘零变化。
+5. **落盘顺序与回滚**：先写 `.import-<epoch>-<pid>` 临时目录，搬到位用 `rename`，登记表最后写；任一步失败清掉临时目录与已落盘的两个目录，不留半套。`categories.json` 的 `profile` 字段按目标名重写，否则切过去会被判成别人的表。
+6. **命令（`lib.rs`）**：`profile_export`（纯读 + 写包，不 emit）、`profile_import`（成功后 emit 既有 `omni://profile-registry`）、`profile_export_list`（只读）、`profile_export_open`（打开导出目录）。全部 `#[tauri::command(async)]`，文件 IO 不在 UI 线程；均已注册进 `generate_handler!`。
+7. **界面（`SettingsPanel.tsx`）**：「自建 Profile」区块改为常驻（空态一句提示），标题行「导入」选外部包，每行行尾「导出」；新增「迁移包」区块列出导出目录里识别得出的包，行尾「导入这套」一回装回；同名冲突时该行就地变「改标识后导入」输入 + 「导入 / 取消」；回执一行中文说明，不弹窗。
+8. **类型与 API**：`types.ts` 新增 `ProfileExportReceipt` / `ProfileImportReceipt` / `ProfileBundleListing`；`api.ts` 新增 `profileExport` / `profileImport` / `profileExportList` / `profileExportOpen`。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测（专项） | `cargo test --offline --lib profile_lifecycle` | 27 passed（本轮新增 7） |
+| 单测 | `cargo test --offline --lib` | **471 passed / 0 failed**（基线 464，新增 7） |
+| 集成测试 | `cargo test --offline --tests` | EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 类型检查 | `npx tsc --noEmit` | 通过 |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_import_export_127.py` | **31/31 checks 全 true**，EXIT=0 |
+| 窗口回归 | `preview_profile_trash_125.py` | 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_rename_126.py` | 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_custom_118.py` | 全 true，EXIT=0 |
+
+### 过程中确认的边界
+
+1. **导出固定落 `exports/`，不改用系统保存框。** 结果可复现（脚本与用户都能按路径找到包），也少一次系统对话框；因此 capabilities 保持原样，**没有**新增 `dialog:allow-save`——曾加过后撤回，本轮结束前已确认该权限不在 `capabilities/default.json` 里。
+2. **包是「包」不是目录拷贝。** `node_modules` 跨架构不可移植，搬过去会得到一个「看起来装好了、实际加载不了」的 Profile；插件清单进登记表，靠 `required_plugins` + `ensure_plugins` 按平台安装。
+3. **同名绝不覆盖。** 合并两套工作台的资产不可逆，导入选择「换名重试」而不是「覆盖」。
+4. **校验先于落盘。** `verify_bundle` 只读；先撞字节数再撞摘要，测试用等长替换（`迁移测试`→`被改名字`）验证了摘要这一关也能独立拦下。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od127-*` 日志与 `/tmp/od127-preview` 隔离根在收尾时用 Python 删除。正式实例（app pid 107733）全程未动，`runtime/` 零差异。
+
+
+## OD-ARCH-126：自建 Profile 的显示名可改（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–125 未提交改动，原样保留（本轮新增 1 个 Rust 改名函数与 5 个单测、1 个 Tauri 命令、2 处前端类型/API、1 处设置页行内编辑、2 条样式、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+109–125 之后建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复都通了，剩下的缝在**命名**：自建工作台的名字建好就定死，只能移进回收站重建。本轮把改名做成只动「显示名」两处真身（登记表 `label` 与场景声明 `display_name`），目录名、Profile 名、规则绑定、Skill 与插件清单一律不动，所以改名不会牵动任何已装配的资产。
+
+### 改动
+
+1. **内核 `profile_lifecycle::rename_label`（新增）**：校验名字合法、label 压成一行后 1–32 字、必须已登记、不得是出厂 Profile；同名直接返回不改文件。声明存在时先解析 → 校验 → 逐行替换顶层 `display_name` → 再解析校验回读，任何一步失败整体拒绝、登记表不动。写入顺序「先声明（`.bak-<epoch>` 备份 + `write_atomic`）后登记表」，登记表失败则把声明还原并删备份。返回 `RenameReceipt { ok, profile, previous_label, decl_updated, backup, note }`。
+2. **声明改写只替换那一行**：`with_display_name` 保留用户手写的注释、缩进与字段顺序；`display_name_line` 拒绝英文双引号与 `#`（前者在受限子集里无转义写法、后者会被当行尾注释），含单引号时加双引号；重复 `display_name` 或找不到该行都明确报错。
+3. **命令 `profile_rename`（`lib.rs`）**：成功后 emit 既有的 `omni://profile-registry`，顶栏与设置页既有订阅自动重读，不新增刷新机制。已注册进 `generate_handler!`。
+4. **界面（`SettingsPanel.tsx` + `settings-panel.css`）**：「自建 Profile」每行行尾改为动作区，非编辑态「改名 / 移除」，编辑态「取消 / 保存」；点「改名」把该行标题换成输入框（`autoFocus`、`maxLength=32`、Enter 保存、Escape 取消），不弹窗、不占额外版面。新增 `.asset-row-input`（直角、与行同高）与 `.asset-row-actions`。
+5. **类型与 API**：`types.ts` 新增 `ProfileRenameReceipt`；`api.ts` 新增 `profileRename(name, label)`。
+6. **新窗口验收脚本** `preview_profile_rename_126.py`：全新 `/tmp` 隔离根，真实窗口「建 → 设置页改名 → 顶栏显示新名 → 磁盘两处同步 → 声明仍可解析校验 → 切过去可用」，含备份存在、DSH 目录名未变两条独立断言。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测（专项） | `cargo test --offline --lib rename` | 5 passed |
+| 单测 | `cargo test --offline --lib` | **464 passed / 0 failed**（基线 459，新增 5） |
+| 集成测试 | `cargo test --offline --tests` | 12 个 test binary 全 `ok`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 类型检查 | `npx tsc --noEmit` | 通过 |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| debug 构建 | `cargo build --offline --bin omnidesk-desktop` | EXIT=0 |
+| 窗口验收 | `preview_profile_rename_126.py` | **26/26 checks 全 true**，EXIT=0 |
+| 窗口回归 | `preview_profile_trash_125.py` | 24/24 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_custom_118.py` | 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_startup_heal_124.py` | 14/14 全 true，EXIT=0 |
+
+### 过程中确认的边界
+
+1. **目录名不动是刻意的。** 改名若连带搬目录，`--profile` 标识、`index.v1.json` 的 name、`rules.json` 的 profile 字段、已绑定 Skill 的归属判断要一起改，任何一处漏改都会让「名字对了但资产全丢」。显示名与标识分离（D-055）让改名变成纯本地、可回滚的低风险操作。
+2. **声明坏了就整体拒绝。** 用户手改坏 `decl.yml` 后点改名，回执是「未做任何改动」而不是「登记表改了、声明没改」——后者会让顶栏显示新名、场景页显示旧名，用户无从判断哪个才是真的。
+3. **验收必须用新构建的二进制。** `window_harness.APP_BIN` 指向 `target/debug/omnidesk-desktop`，本轮先 `cargo build` 再跑窗口脚本，否则会报 `Command profile_rename not found`。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od126-*` 日志与 `/tmp/od126-preview`、`/tmp/od125-preview`、`/tmp/od124-preview`、`/tmp/od118-preview` 等隔离根在收尾时用 Python 删除。正式实例（app pid 107733、引擎 pid 107812）全程未动，`runtime/` 零差异。
+
+
+## OD-ARCH-125：Profile 回收站（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–124 未提交改动，原样保留（本轮新增 1 个未跟踪模块 `profile_lifecycle.rs`、6 个前后端改动点、1 个窗口验收脚本、1 份元数据格式）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+124 之后「切换 / 冷启动 / 补装」三条路都通了，剩下的缝在**移除**这一侧：`profile_remove` 的回执写着「需要时可以从 .trash 恢复」，但软件里没有任何恢复入口，用户只能自己进文件系统改名再补登记项。本轮把回收站补成软件内可逆：移除时把显示名、来源、插件清单随目录一起写进 `trash.v1.json`，设置页列出待恢复条目，一键恢复是纯本地的两次 rename 加一次登记写回。
+
+### 改动
+
+1. **元数据 `trash.v1.json`（`profile_lifecycle.rs`）**：常量 `TRASH_FILE` / `TRASH_SCHEMA = "omnidesk.profile-trash.v1"`。`remove` 先取出登记信息再搬目录，两个目录都搬完后往 `<id>/` 写一份 `name` / `label` / `created_at` / `origin` / `plugins` / `trashed_at`；写失败不阻断移除，只是恢复时退回按目录名解析。回收目录 id 统一为 `<name>-<epoch>-<pid>`，同名 Profile 反复移除不再撞车。
+2. **列举 `list_trash`（只读）**：合并 `<应用数据根>/profiles/.trash` 与 `<dsh_home>/profiles/.trash`，按 `trashed_at` 倒序。无元数据时用 `name_from_trash_id` 按目录名**最后两段**反解，两段必须纯数字，否则整条跳过——宁可少列也不猜错名字。每条返回 `has_dsh` / `has_app` / `has_meta` 与一句 `note`，界面据此显示「可恢复 / 无元数据」。
+3. **恢复 `restore`（纯本地）**：两次 `rename` 搬回原位 + 登记写回。三道拒绝——出厂名、已登记同名、目标目录已存在；中途失败把已搬的那个目录搬回去，不留半套。成功后删掉 Profile 目录里的 `trash.v1.json`，元数据不进正式 Profile。
+4. **新命令（`lib.rs`）**：`profile_trash_list`（只读）、`profile_trash_restore`（接收 `AppHandle`），已注册进 `generate_handler!`。
+5. **清单变化事件（`lib.rs` + `TopNav.tsx`）**：新增 `omni://profile-registry`，`profile_create` / `profile_remove` / `profile_trash_restore` 成功后各发一次；`TopNav` 订阅后 `load()` 重读。这是本轮实测发现的**真实缺陷**：恢复后登记已写回、磁盘也对，但顶栏清单只在挂载时读过一次，用户切不到恢复出来的 Profile——等于恢复了也用不上。
+6. **设置页「回收站」区块（`SettingsPanel.tsx`）**：自建列表下方新增，`data-testid="profile-trash-list"`，每行显示名 + 状态徽标 + 移除时间 + 行尾「恢复」，恢复后显示回执。移除按钮提示改为「移入回收站，可在下方一键恢复」，移除回执不再拼路径。
+7. **类型与 API**：`types.ts` 新增 `ProfileTrashEntry` / `ProfileTrashRestoreReceipt`；`api.ts` 新增 `profileTrashList` / `profileTrashRestore` 与 `onProfileRegistryChanged`。
+8. **新窗口验收脚本** `preview_profile_trash_125.py`：全新 `/tmp` 隔离根，真实窗口「建 → 移除 → 回收站可见 → 恢复 → 切过去」，含元数据落盘、目录归位、元数据不残留、恢复后顶栏可选中并切换、场景挂载等断言。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单测 | `cargo test --offline --lib` | **459 passed / 0 failed**（基线 454，新增 5） |
+| 单测（专项） | `cargo test --offline --lib profile_lifecycle` | 15 passed / 0 failed |
+| 集成测试 | `cargo test --offline --tests` | 全部 `ok`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 类型检查 | `npx tsc --noEmit` | 通过 |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| debug 构建 | `cargo build --offline` | EXIT=0 |
+| release 构建 | `cargo build --offline --release` | EXIT=0 |
+| 窗口验收 | `preview_profile_trash_125.py` | **24/24 checks 全 true**，EXIT=0 |
+| 窗口回归 | `preview_profile_custom_118.py` | 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_autofill_121.py` | 全 true，EXIT=0（真装 51.5 秒） |
+| 窗口回归 | `preview_profile_decl_hot_123.py` | 全 true，EXIT=0 |
+| 窗口回归 | `preview_profile_startup_heal_124.py` | 全 true，EXIT=0 |
+
+### 过程中修正的问题
+
+1. **窗口脚本误判弹层已展开（三轮 `popover_opened=false`）。** 脚本沿用了 110 的 `popover_open`，它认「基础标准 / 纪检专业」，而设置页正文里本来就有「基础标准」，于是「人还在设置页」被当成「弹层已开」，脚本从没真正点开列表。改为只认弹层自己的 `aria-label`「选择引擎 Profile」（表头那句「切换后立即生效」不进无障碍树，探针实测确认）。
+2. **顶栏清单不刷新（真实产品缺陷）。** 恢复成功后登记与目录都对，但 `ProfileBadge` 的可选清单只在挂载时读过一次，弹层里只有「基础标准 / 纪检专业」，恢复出来的条目点不到。加 `omni://profile-registry` 事件与订阅后修复，`picked_restored` / `switched_to_restored` / `restored_dock_has_scenes` 三项转 true。
+3. **回收站行的可见性判定（两轮 `trash_section_visible=false`）。** 截图里「Trash Desk 可恢复 恢复」清清楚楚，但 WebKit 不把 `asset-row-title` 的文字与徽标放进无障碍树（118 已记录同一现象）。判定收窄为「恢复」按钮可见，磁盘侧另有 `trash_has_item` / `trash_meta_written` 两条独立断言，没有放松标准。
+4. **验收脚本必须用新构建的 debug 二进制。** `window_harness.APP_BIN` 指向 `target/debug/omnidesk-desktop`，不重建就会报 `Command profile_trash_list not found`（本轮踩过两次）。
+
+
+## OD-ARCH-124：冷启动插件自愈（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–123 未提交改动，原样保留（本轮新增 1 个 Rust 只读探测函数、1 个启动钩子、1 个日志入口、3 个单元测试、1 个窗口验收脚本、1 处前端事件兜底、1 处设置页文案）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+121 把缺件插件自愈接在**切换 Profile** 那一瞬，用户选好纪检专业之后关掉应用，第二天打开还是残的——界面写着「正在使用专业 Profile」，插件却没装回来。本轮把同一套「探测 → 判定 → 后台补装 → 事件回报」接到启动路径：冷启动发现缺件就在后台补齐，窗口照常先开，装完由事件刷新界面。基础标准仍然一个插件都不装，也不建目录。
+
+### 改动
+
+1. **只读探测 `profile_assets::missing_plugins`**：与 `ensure_plugins` 用同一张 `required_plugins` 清单逐项 `probe`，只过滤出非 `ready` 的项；不联网、不写盘、不建目录；`profile == standard` 直接返回空。单独抽成函数是为了让「启动该不该装」可以脱离窗口与网络单测。
+2. **启动钩子 `maybe_autofill_plugins_on_startup`（lib.rs）**：在 `.setup()` 里调用。取宿主状态时只克隆 `paths.root` / `paths.config` / 引擎配置，锁随即释放；四道短路——非 `web-api` 通道、基础标准、设置开关关闭、探测无缺件——都零动作。真缺件时写一行 `logs/profile-assets.log`（`profile=<name> startup-autofill pending=<n>`）再复用 `spawn_profile_plugins_autofill` 起后台线程，装完照旧 `emit(PROFILE_PLUGINS_EVENT)`。
+3. **日志入口 `append_profile_assets_log`**：`<应用数据根>/logs/profile-assets.log` 追加，`create_dir_all` + append，写不进去静默失败——日志用于排查「为什么没装上」，不能反过来拦住启动。
+4. **前端兜底（`TopNav.tsx`）**：自动补装事件回调原来在 `prev` 为空时直接返回；冷启动自愈恰恰发生在用户没开过弹层的时候，于是用户只看到一句「还有 N 个未就绪」却看不到缺哪几个。改为用 `viewRef` 的清单补标签、从空状态建卡，并在回执里写明仍有几项未就绪。`viewRef` 是为了让只订阅一次的事件回调读到最新的 Profile 清单。
+5. **口径对齐（`SettingsPanel.tsx`）**：开关标题改为「切换或启动 Profile 时自动补齐缺失插件」，说明改为「切换后或冷启动时先在后台联网装齐，切换与启动本身都不等安装」。121 的窗口脚本随之改为按后缀「自动补齐缺失插件」做包含匹配，两种标题都能命中。
+6. **新窗口验收脚本** `tests/verification/desktop/preview_profile_startup_heal_124.py`：全新 `/tmp` 隔离根 + 桩 CLI（收到 `plugin add` 就把包写进目标 Profile 的 `node_modules`，不联网），预置「上次已选纪检专业」的设置与最小 Profile 清单，分三段跑：首启自愈 → 删包重启再自愈 → 开关关闭只探测不装 → 切回基础标准不装、不建目录。桩对 `--dump-config` 单独回一份最小 JSON，避免把引擎的配置探测算成安装调用。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 定向单测 | `cargo test --offline --lib missing_plugins` | 3 passed |
+| Rust 全量 lib | `cargo test --offline --lib` | **454 passed / 0 failed**（基线 451，新增 3） |
+| Rust 集成 | `cargo test --offline --tests` | 12 个 test binary 全 `ok`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | **89 passed / 30 subtests** |
+| 前端类型 | `npx tsc --noEmit` | 通过（无输出） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| **冷启动窗口验收** | `preview_profile_startup_heal_124.py --display :139 --root /tmp/od124-preview` | **14/14 checks 全 true**，EXIT=0 |
+| 回归 121（切换补装） | `preview_profile_autofill_121.py --display :137`（改文案前）、`:141`（改文案后重跑） | 两次均 **20/20 全 true**，EXIT=0；真安装 47.2 秒 / 69.2 秒 |
+| 回归 123（声明热更新） | `preview_profile_decl_hot_123.py --display :138` | **31/31 全 true**，EXIT=0 |
+
+窗口链路实测到的具体事实（`tests/verification/desktop/evidence/od-arch-124/facts.json` + 四张截图）：
+
+- 首启：`boot_uses_saved_profile = true`（日志里是 `profile=discipline`，不是被回落成标准）、`plugin_healed_on_startup = true`、桩 CLI 收到的正是 `plugin --profile discipline add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2`。
+- 第二次冷启动（先删包）：`plugin_healed_after_restart = true`、`second_boot_installed_again = true`、`second_boot_logged = true`；安装调用从 1 条变 2 条，说明确实是**又装了一次**而不是复用上一次的残留。
+- 开关关闭：`no_install_when_switch_off = true`（调用条数一条没增）、`plugin_stays_missing_when_off = true`（包仍然不在，说明是「没装」而不是「装了又删」）。
+- 基础标准：`base_no_install = true`、`base_no_app_profile_dir = true`、`base_uses_standard = true`；日志最后一行是 `profile=omnidesk-base ... result=skipped`，Dock 只剩「工作台首页 / 历史会话 / 知识库」，三个业务场景全部消失。
+- 启动日志形态：`1793261326 profile=discipline channel=web-api result=ok` 紧跟 `1793261327 profile=discipline startup-autofill pending=1`，两次冷启动各出现一次。
+
+### 未验证 / 已知边界
+
+- 真实模型端到端（OD-ARCH-080 清单）仍未跑，仍由用户亲自做；本轮没有触碰模型路由与凭证。
+- 真实 npm registry 的安装成功/失败分支由 121 覆盖（两次真装 47.2 / 69.2 秒）；124 用桩，只验「启动发现缺件 → 起补装 → 事件收敛」这条链路，避免把冷启动验成网络测试。
+- 多窗口同时打开时的事件广播未测（按单窗口假设）。
+- 正式实例是旧进程，要重启应用才能看到本轮改动。
+
+## OD-ARCH-123：切换即工作台的两处收尾（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 109–122 未提交改动，原样保留（本轮新增 3 个 Rust 单元测试、1 个验收脚本、1 个既有脚本的装置修正）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+109–122 之后「切过去就是专属工作台」只剩两处缝：**设置页保存场景声明要重启才生效**（回执自己写着「重启应用后生效」），**基础标准下还能保存声明**（写进去就不再是干净底座）。本轮收掉：保存后事件广播、Dock 当场换入口；基础标准在写盘前直接拒绝，不建目录、不落文件。外部手改文件仍然只提示不热重载，052 定下的可复核边界没有被顺手放宽。
+
+### 改动
+
+1. **保存即生效（`lib.rs` + `App.tsx` + `api.ts` + `types.ts`）**：新增事件常量 `PROFILE_DECL_EVENT = "omni://profile-decl"`，与 `PROFILE_PLUGINS_EVENT` 同级；`profile_decl_save` 加 `app: tauri::AppHandle` 参数，成功后 `emit`（profile / path / digest），回执改为「声明已保存，工作台入口已更新（不需要重启）。」；前端 `onProfileDeclSaved()` 订阅，收到即 `setDeclDrift(null)` + `loadDecl()`，避免「刚保存完立刻亮起磁盘被改的提示」。
+2. **可测内核 `save_decl_into(profiles_dir, standard, text)`**：把「拒绝 / 大小上限 / 解析校验 / 备份 / 原子写」从命令里抽出来，只碰传进来的目录，不读全局状态。`standard = true` 在**任何文件系统动作之前**返回错误，因此「基础标准是否是干净底座」可以靠「目录在不在」复核。
+3. **基础标准不落声明（`lib.rs` + `SettingsPanel.tsx`）**：`profile_decl_save` 走 `profile_asset_scope` 的标准判据（与 `profile_rules_restore_default` 同一口径）；设置页新增 `declStandard` 状态（`choice.standard === choice.effective`，`profileEpoch` 变化即重置），声明卡显示 `data-testid="profile-decl-standard-hint"` 的原因说明，「校验并保存」`disabled`。取模板不拦——它只是文字。
+4. **改口径的两处提示**：`profile_decl_open` 改为「在外部保存后，回到设置页重新点「校验并保存」或切换 Profile 才会更新。」；`profile_decl_starter` 的 `note` 分三支（标准 / 已有声明 / 新建）。`App.tsx` 的漂移提示与 `declDrift` 注释同步改成「应用外部改动」，不再说「重启」。
+5. **新窗口验收脚本** `tests/verification/desktop/preview_profile_decl_hot_123.py`：基础标准冷启 → 声明页取模板并断言保存被禁、`profiles/omnidesk-base/` 未创建 → 新建 `hot-desk` 并切过去 → 删掉 122 给的 `decl.yml`（模拟「新 Profile 没有声明」）→ 填模板 → 校验并保存 → **不重启**断言 Dock 出现工作记录 / 文案写作 / 项目跟踪 → 切回基础标准断言场景消失、底座仍干净。
+
+6. **审查追加（同一轮内发现并修掉）：停在「对话分类」页切换 Profile，声明卡不重读。** 切换 Profile 时设置页只清缓存、不重读，其余分页靠「打开时才读」的 `xxx === null` effect 兜底；声明卡没有分页级兜底，它随「对话分类」页一起渲染。结果是：用户停在这一页切换 Profile 后，页面一直显示空编辑框与「当前 Profile 没有场景声明」，而磁盘上 `decl.yml` 刚被装配写好。修法是在清缓存的同一处调 `refreshDecl()`，顺带清掉 `declError` / `declNote`；窗口验收新增第 5 段复现这条路径（停在声明页切过去，断言编辑框区域像素由空变满）。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 定向单测 | `cargo test --offline --lib profile_decl_save_tests` | 3 passed |
+| Rust 全量 lib | `cargo test --offline --lib` | **451 passed / 0 failed**（基线 448，新增 3） |
+| Rust 集成 | `cargo test --offline --tests` | 12 个 test binary 全 `ok`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | **89 passed / 30 subtests** |
+| 前端类型 | `npx tsc --noEmit` | 通过（无输出） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | EXIT=0 |
+| **真实窗口验收** | `preview_profile_decl_hot_123.py --display :138 --root /tmp/od123-preview` | **31/31 checks 全 true** |
+| 回归 122 | `preview_profile_starter_122.py --display :137 --root /tmp/od122-preview` | EXIT=0，38/38 全 true |
+| 回归 118 | `preview_profile_custom_118.py --display :147 --root /tmp/od118b` | EXIT=0，26/26 全 true |
+| 回归 052 | `verify_decl_restart_hint.py --display :144 --root /tmp/od052e` | EXIT=0，**6/6 全 true** |
+
+窗口链路实测到的具体事实（`tests/verification/desktop/evidence/od-arch-123/facts.json` + 五张截图）：
+
+- 基础标准冷启后打开声明页，模板能取到（`starter_clicked_on_base = true`），但`save_clicked_on_base = false`、`base_decl_not_written = true`、`base_dir_not_created = true`——拒绝发生在建目录之前。
+- 新建 `hot-desk`、切过去、删掉骨架声明后，页面回到「当前 Profile 没有场景声明」；填入模板点保存后 `decl_written = true`、`decl_digest_on_disk = 492B`、五个场景全部解析成功。
+- **不重启**情况下 `dock_scenes_without_restart = true`，Dock 文本里出现「工作记录（模型起草）」「文案写作（模型起草）」「项目跟踪（模型起草）」。
+- 切回基础标准后 `base_has_no_scenes = true`，且 `base_decl_still_absent_after_roundtrip = true`、`base_dir_still_absent = true`——来回切一圈也没在底座上留下任何文件。
+
+### 首轮验收暴露的 3 个装置问题（均非产品缺陷，已修）
+
+1. **`verify_decl_restart_hint.py` 抓图早于首屏渲染。** 首跑四张截图全是空白窗口，横带指纹互不相同、三项断言假红。加 `xs.wait_rendered(win, timeout=120)` 后再抓。
+2. **横带裁切把顶栏时钟框了进去。** 原区间含「15:05」的分钟位；冷启动与重启后只差 36 个像素，差异全部落在 x=1073–1079，被判成「提示条还在」。改为裁 `HINT_X1 = 280`…`HINT_X2 = 1060`，避开时钟。
+3. **旧断言 `missing_not_recreated_on_launch` 与新语义冲突。** 出厂 Profile（discipline）自带声明，109/122 的启动期装配本来就会补回，因此重启后「声明被重建」是既定行为而不是回归。改为 `factory_profile_decl_restored_on_launch`，仍守着真正该守的「运行中手改 / 删除不热重载」（前两条断言）。
+
+### 未验证 / 边界
+
+- 真实模型端到端（OD-ARCH-080）仍未跑，本轮不涉及。
+- 「多窗口同时开着设置页」时的事件广播未测：目前是单窗口假设。
+- 未引入文件监视依赖；外部手改文件依然只提示、需回设置页保存或切换 Profile 才生效（D-051）。
+
+### 收尾自查：「专属工作台」还差什么（本轮追加，未改代码）
+
+逐条核对「切 Profile 之后哪些东西跟着换、哪些不换」，把最后一处没定论的边界钉死（结论写入 D-052）：
+
+1. **跟着换的五项，证据齐。** 场景声明（`profiles/<name>/decl.yml`）、规则资产（`rules.json`）、Skill（全局 `skills/` 由 `reconcile_managed_skills` 收放）、插件（切换后后台补装）、对话分类（`profiles/<name>/categories.json`）。这五项都有 109 / 118 / 121 / 122 / 123 的真实窗口脚本，不是文档自述。
+2. **不跟着换的四项，是有意为之。** 成果根、库根、知识库根、历史会话列表都是机器级单值：`settings.rs` 三个 `Option<String>` 各存一份，`app_paths` 的 `threads` 是 `<应用数据根>/threads`（无 Profile 段）。引擎侧 `engine_supervisor` 只把 profile 名传给 DSH，不传数据根；`~/OmniDesk/runtime/dsh-home/sessions/` 实测按 cwd 分 7 个目录，没有 Profile 维度。若把这些卷进切换，「切回基础标准后你的成果去哪了」就要额外设计迁移与回滚，而磁盘上什么都没删——这属于最难排查的假故障。想按用途隔离，正确做法是在设置页给不同用途配不同的成果根与库根（切换不会覆盖这两项）。
+3. **没有发现新的产品缺陷。** 本轮自查只产出一条决策记录，没有触发代码改动，因此不重跑构建与窗口脚本；上述代码位置是直接读源码确认的。
+
+
+## OD-ARCH-122：自建 Profile 的「体检」与「起手骨架」（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–121 未提交改动，原样保留（本轮新增 118 项未提交改动中的 4 处源码 + 1 个验收脚本 + 文档）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+109–121 把「切过去就是专属工作台」做通了，但自建 Profile 有两条缝：**体检看不见 Skill**（装配会按 `rules.json` 补，设置页却只探测插件，用户删了目录要等下次切换才被悄悄补回），**从基础标准起手没有骨架**（只有首页与历史会话，得从零手写整份 `decl.yml`）。本轮补上这两处：巡检按与装配同一张清单逐项报状态；新建 Profile 落一份最小可改的 `decl.yml`（五个标准入口）+ `rules.json`（零预注入），设置页另给「填入起步模板」按需取用。基础标准仍然一个字节都不写。
+
+### 改动
+
+1. **巡检能看见 Skill（`profile_assets.rs`）**：`inspect_custom` 新增按 `wanted_skills(scope, "")` 遍历，逐项复用现成的 `expected_skill_files` + `inspect_skill`，产出 `skill:<name>` 资产项；状态词沿用 `ready / drift / missing / missing_source / stale`；`notes` 补「本 Profile 的 rules.json 绑定了 N 个 Skill…」；`repo_missing` 改为真实返回（此前固定 `None`）。**只读**：不建目录、不写 `.assets.v1.json`、不补文件。
+2. **起手骨架（新 `profile_starter.rs`，176 行）**：`decl_text(label)` 生成五个标准入口（home 工作台首页 / report 工作记录 / writing 文案写作 / project 项目跟踪 / sessions 历史会话），写完先过 `parse_decl` + `validate` 自校验；显示名压成单行、上限 64 字、空则「我的工作台」。`rules_text(profile)` 生成 schema v2、`global`/`scenes`/`skill_bindings` 全空（零预注入），过 `parse_rules` 校验。`write_starter` 写 `<app_root>/profiles/<name>/` 下两份文件，**永不覆盖**已存在文件，返回实际写下的文件名。
+3. **创建即起手（`profile_lifecycle.rs`）**：`create()` 的 `copy_from = None` 分支调 `write_starter`，成功把文件名并入 `files`，失败记入 `starter_error`（不阻断创建、不假装成功）；回执 `note` 如实说明。复制路径（`Some(from)`）行为不变。
+4. **设置页自助起手（`lib.rs` + 前端）**：新命令 `profile_decl_starter(state, label?)` 只返回文本不写盘（`ok / profile / standard / has_existing / text / note`）；`types.ts` 加 `ProfileDeclStarter`，`api.ts` 加 `profileDeclStarter()`；`SettingsPanel.tsx` 场景声明页 `CardHead` 加「填入起步模板」按钮（`data-testid="profile-decl-starter"`，带 `data-hover-hint`），只灌进编辑框，仍需用户点「校验并保存」。
+5. **新窗口验收脚本** `tests/verification/desktop/preview_profile_starter_122.py`：一次跑完「新建 → 落盘 → 切过去 → 看 Dock → 填模板 → 绑 Skill → 体检 → 切走切回 → 装配补齐」。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Rust 全量 lib | `cargo test --offline --lib` | **448 passed**（基线 443，新增 5：4 个 starter + 1 个 inspect） |
+| Rust 集成 | `cargo test --offline --tests` | 12 个 test binary 全 `ok`，EXIT=0 |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | **41/41** |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 3m02s，EXIT=0 |
+| **真实窗口验收** | `preview_profile_starter_122.py --display :137 --root /tmp/od122-preview` | **38/38 checks 全 true**（`evidence/od-arch-122/`） |
+| **回归：自建 Profile 全链路** | `preview_profile_custom_118.py --display :131 --root /tmp/od118-preview` | **26/26 checks 全 true**（`evidence/od-arch-118/`，已按本轮新默认 Dock 更新断言） |
+
+窗口链路实测到的具体事实（`evidence/od-arch-122/facts.json` + 六张截图）：
+
+- 新建后 `app-data/profiles/my-desk/decl.yml` 与 `rules.json` 立刻落盘，内容分别是五个场景（`display_name: My Desk`）与 `{"global":{},"scenes":{},"skill_bindings":{}}`；此刻设置里 `engine_profile` 仍为 `null`——**创建不切换，不污染底座**。
+- 切过去后 Dock 同时出现「工作记录 / 文案写作 / 项目跟踪」，回执写「资产已就绪（0 项）」——零预注入确实生效。
+- 手动在 `rules.json` 加一条 `writing → memory-agent` 绑定并删掉 Skill 目录后，「Profile 资产」页出现「Skill · memory-agent 缺失 · 缺 1 个文件」，且 `dsh-home/skills/memory-agent` 仍不存在（**巡检只读，没有替用户补**）。
+- 切回基础标准（Dock 无业务场景）再切回来，装配把 Skill 补齐（`skills/memory-agent/SKILL.md` 存在），资产页徽标转「就位」，回执写「已装配 1 项（共 1 项）」。
+
+### 首轮验收暴露的问题
+
+1. **验收装置误判（非产品缺陷）**：资产行的标题/徽标/明细整段不暴露给 AT-SPI（118 轮已记录同类），最初三条断言用文字匹配全部落空。改为「页面正常渲染且无读取错误」+「切换回执里的后端计数」两个可稳定取到的信号，行内容以截图 05/06 作视觉证据。判据下调已如实写在脚本注释与本文件，未把不可测包装成已测。
+2. **`assets_badge_cleared` 用词撞车**：一度用「缺失」作为缺件判据，而页面上的「修复缺失 / 恢复出厂内容」按钮本身就含这两个字，必然误命中。已弃用该判据。
+
+3. **118 旧脚本的装置缺陷（已修）**：`preview_profile_custom_118.py` 原先写死 `reuse_running_dev_server=True`，假定机器上总有一个前端 dev server 在跑；本机没有时直接报「复用的前端 dev server 未在 127.0.0.1:5273 就绪」。改为与 107/108 同口径的 `dev_server_ready()` 探测：有就复用、没有就自起。重跑 26/26 全 true，其中 `custom_dock_has_starter_scenes` 与 `custom_starter_rules_empty` 是本轮新增默认骨架后的断言。
+
+### 未验证 / 边界
+
+- 「填入起步模板」按钮的真实点击只验到「点得中、提示出现」（截图 04），**没有点「校验并保存」走完整保存链路**；该链路本身有 051 留存证据与单测，本轮未重复。
+- 真实模型端到端（OD-ARCH-080）仍未跑。
+- 起步骨架只覆盖「新建自定义 Profile」与「手动填模板」两条入口；已在运行的旧自建 Profile 不会自动获得声明（避免覆盖用户「故意不要场景」的选择）。
+
+
+## OD-ARCH-121：切 Profile 后自动补齐缺失插件（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–120 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
+
+### 一句话结论
+
+「干净底座 + Profile 自带定制」补齐了最后一环：切换 Profile 时配置、场景、规则、Skill 本来就是自动写入的，只有插件这一段要联网，所以一直等用户点按钮。本轮把插件也接到切换流程上——切换立即生效（本地落盘完成才返回），缺的插件放到后台任务里自动联网补装，装完用事件把结果推回界面；同时给安装命令加了 180 秒上界与进程组回收，避免断网或 registry 卡住时「切换转圈 / 后台挂着不动」。基础标准仍然一个插件都不装。
+
+### 改动
+
+1. **安装命令可中断（`profile_assets.rs`）**：新增 `INSTALL_TIMEOUT = 180s`、`InstallRun { exit_code, stdout, stderr, timed_out }`、`run_install_command` 与 `run_command_with_timeout`。读管道改为「`Arc<Mutex<Vec<u8>>>` + mpsc 完成信号」的 `collect_pipe()`，不再 `join()` 读线程；`try_wait` 每 50ms 轮询 + deadline；Unix 下 `process_group(0)` 让命令自成进程组，超时用 `killpg(SIGKILL)` 连孙进程一起收，非 Unix 退回 `child.kill()`；`drain_pipe()` 最多等 2 秒，脱组进程也拖不死收尾。`install_plugin` 改为 `install_plugin_with_timeout` 包装。超时**不**触发构建脚本放行重试，回执写明「安装超时：DSH 命令在 N 秒内没有结束，已终止。网络恢复后可重试。」
+2. **开关与偏好（`settings.rs`）**：`Settings` 新增 `profile_auto_install_plugins`（`serde` 默认 `true`），旧设置文件缺字段时按开启处理，不需要迁移脚本；新增读取与写入函数各一。
+3. **切换后触发（`lib.rs`）**：`profile_choice_set` 在写完设置、停完旧引擎、算出 `plugins_missing` 之后调纯函数 `should_auto_install_plugins(缺项数, 目标, 标准名, 开关)`，为真则 `spawn_profile_plugins_autofill` 走 `spawn_blocking` 调现有 `ensure_plugins`（不新写安装逻辑），完成后 `emit` 事件 `omni://profile-plugins`。响应体新增 `plugins_auto_installing`。新增命令 `profile_assembly_prefs` / `profile_assembly_prefs_set`。
+4. **界面**：`TopNav.tsx` 的 `ProfileBadge` 订阅事件——装齐则收起缺件卡并写回执「已在后台补齐 N 个插件」，仍缺则刷新清单并说明失败项；补装期间按钮显示「后台补齐中…」且禁用。`SettingsPanel.tsx` 资产页新增「切换 Profile 时自动补齐缺失插件」开关，并订阅同一事件以便装完刷新资产清单。
+5. **回执位置修正（窗口实测发现）**：首轮截图显示回执绝对定位在徽标下方，与弹层正文压字、右端被窗口边缘裁掉。改为「弹层开着时回执在弹层顶部；弹层关着时才挂在徽标下方」，并给回执补 `aria-label`——读屏能拿到完整文本，无障碍断言也不再因纯文本段落不可见而误判。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 安装器单测 | `cargo test --offline --lib profile_assets` | 13 passed |
+| 自动补齐判定单测 | `cargo test --offline --lib profile_autofill` | 4 passed |
+| Rust 全量 lib | `cargo test --offline --lib` | **443 passed**（基线 435，新增 8） |
+| Rust 集成 | `cargo test --offline --tests` | 2/1/13/6/5/10/21/4/3/1 全绿，EXIT=0 |
+| 联网端到端 | `OMNIDESK_NET_TESTS=1 cargo test --offline --test profile_assets_host ensure_plugins_installs_over_network` | **1 passed，8.17s**（真实联网装齐，重跑不重装） |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | **41/41** |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 3m03s，EXIT=0 |
+| **真实窗口两路验收** | `preview_profile_autofill_121.py --display :137` | **20/20 checks 全 true**（`evidence/od-arch-121/`） |
+
+真实窗口验收的两条路径（真窗口、真实 XTEST 注入、真实网络）：
+
+- **开关默认开**：冷启动在基础标准 → 切「纪检专业」→ 回执当场写「缺失插件已在后台自动补齐，完成后会提示结果。」→ 后台把 `@deepseek-ai/dsh-skill-office` 装进 `profiles/discipline/node_modules` → 缺件卡自己消失 → 回执变为「已在后台补齐 1 个插件。」（整轮 114.8 秒含窗口启动与两次切换）
+- **关掉开关**：设置页点掉开关 → 删掉已装目录模拟缺失 → 切回基础标准再切回纪检 → 6 秒后界面仍显示缺件卡与「安装缺失插件」按钮，插件目录仍未生成（`not_installed_when_off = true`）。
+
+### 首轮验收暴露并已修掉的两个真问题
+
+1. **只杀 `sh` 收不住孙进程。** 原实现只 `child.kill()`，孙进程（`sleep 30`）仍攥着管道，收尾实测拖到 **30.006923168 秒**。改为进程组回收后同一条单测降到毫秒级。
+2. **窗口验收一开始「全 false」不是代码坏，是验收环境不隔离。** 探测的第一个候选目录是 CLI 自己的 `node_modules`，指向仓库运行时时那个目录里本来就有同名包，缺件恒为 0、自动补齐根本不会触发。按 120 联网测试同样做法，给窗口验收造「只带版本号的转发型锚点 CLI」，安装仍走真实 CLI 与真实网络。
+
+### 未验证 / 遗留
+
+- 真实模型端到端（OD-ARCH-080）仍未测，本轮不涉及。
+- 断网、registry 返回 5xx、安装中途被系统杀掉这三种失败路径只有单测覆盖（超时与失败回执），没有真实网络故障注入的窗口证据。
+- 自动补齐只在「切换那一刻」触发；切换后如果用户手动删掉插件目录，需要再切一次或手动点安装才会补。
+
+
+## OD-ARCH-120：「缺插件点安装」必须真装得上（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–119 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异。
+
+### 一句话结论
+
+「缺失插件 → 点安装」这条路以前从来没真正成功过：不钉版本会被 DSH 的兼容检查拒掉，钉了版本又会被 pnpm 11 的构建脚本审批拦住。两处都修好了，并且在隔离根里走应用真实入口装成功了一个插件，重跑确认已就绪就不再重装。
+
+### 两次实测原文（隔离根 `/tmp`，非推测）
+
+1. 裸包名：`dsh plugin --profile probe add @deepseek-ai/dsh-plugin-manager` → **退出 1**
+   `installation rejected: Plugin @deepseek-ai/dsh-plugin-manager@0.1.6-alpha.2 is incompatible with dsh 0.2.1-alpha.2: peerDependencies {...^0.1.6-alpha.2...}`
+   `dsh: nothing was installed.`
+2. 钉运行时版本：`... add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2` → **退出 1**
+   `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: koffi@3.1.1`
+
+运行时各包版本实测为 `0.2.1-alpha.2`（`dsh`、`dsh-plugin-manager`、`dsh-skill-office`、`dsh-base`、`dsh-tool-subagent-control`）。
+
+### 改了什么
+
+- `profile_assets.rs`：新增 `dsh_runtime_version`（从 CLI 入口向上最多 4 层，只认 `name == "@deepseek-ai/dsh"` 的 `package.json`）、`install_version`（显式版本优先，否则钉运行时版本）。
+- `install_plugin`：改用 `install_version` 组 spec；首次失败且输出（**stdout + stderr 都看**）含 `ERR_PNPM_IGNORED_BUILDS` / `Ignored build scripts` 时，写 `strictDepBuilds: false` 到该 Profile 的 `pnpm-workspace.yaml` 并自动重试一次。写入保留原有键、已存在就不重复写。
+- 测试：`profile_assets.rs` 增 3 条单测（版本读取、显式/回退、放行函数保留原有键 + 关键字判定）；`tests/profile_assets_host.rs` 增联网端到端测试（默认跳过，`OMNIDESK_NET_TESTS=1` 才跑）。
+
+### 实测结果
+
+- `cargo test --offline --lib`：**435 passed**（原 432，本轮 +3）。
+- `cargo test --offline --tests`：集成全绿——2 / 1 / 13 / 6 / 5 / 10 / **21** / 4 / 3 / 1。
+- `OMNIDESK_NET_TESTS=1 cargo test --offline --test profile_assets_host ensure_plugins_installs_over_network_when_enabled`：**1 passed，7.60s**，真实装了 `@deepseek-ai/dsh-skill-office`，包落在 Profile 的 `node_modules`，第二次调用 `attempted` 为空。
+- `python3 -m pytest tests -q`：**89 passed / 30 subtests**。
+- `verify_profile_assets_109.py`：**41/41 passed**。
+- 真实窗口 `preview_profile_custom_118.py`：26 项检查全部 true，「建 → 切 → 看 → 删」未回归。
+
+### 一个被排除的误判
+
+安装后在裸 `node` 里 `import('@deepseek-ai/dsh-skill-office')` 会报 `ERR_MODULE_NOT_FOUND`（缺 `@deepseek-ai/cordis`）。这不是缺陷：DSH 启动器的模块解析是双锚点（安装目录 + Profile 目录，见 `dsh-app-boot` 的 `ProfileRuntimeResolution`），而裸 node 只有 Profile 一处锚。用真实 CLI 起 Profile（`--profile probe --port 0`）能正常启动、25 秒内无报错、只有超时退出。
+
+### 未验证 / 已知限制
+
+- 真实模型端到端（OD-ARCH-080 清单）仍未跑，等用户实测。
+- 「切换 Profile 时自动装插件」仍是设计上的不做项：联网安装只由用户点按钮触发，切换路径不联网。
+- 本机 `~/OmniDesk/runtime` 无 `dsh-runtime`，正式实例依赖 `OMNIDESK_DSH_CLI`。
+
+
+## OD-ARCH-119：补丁里的子路径导出不是独立插件（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–118 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异。
+
+### 一句话结论
+
+118 的实跑回执暴露了一个用户一眼能看见的缺陷：从「基础标准」新建的 Profile，资产页写着「一键安装缺失插件（2）」，而那两项其实是同一包里的子路径导出。现在探测会把它们折回包根，底座新建的 Profile 不再凭空欠两个插件。
+
+### 根因
+
+`cordis.patch.yml` 里 `name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'` 是**模块子路径**，不是独立 npm 包。`detect_plugins` 整串当包名收下，`probe_package` 去找 `node_modules/@deepseek-ai/dsh-tool-subagent-control/list-agents/package.json`，自然找不到；而 `install_plugin` 只接受两段式，于是形成「永远报缺、点安装永远失败」的死角。
+
+### 改动
+
+1. `profile_lifecycle.rs`：新增 `pub fn package_root(name) -> &str`，scoped 名字取前两段，非 scoped 原样返回。
+2. `detect_plugins`：`package.json` 依赖与补丁 `name:` 两个来源都过 `package_root`，末尾 `sort + dedup`（原来是先出现先保留，顺序取决于文件里的书写位置）。
+3. `profile_assets.rs::required_plugins`：读登记表时同样归一，旧登记表里已写死的子路径也能被纠正。
+4. 两条新单测：`detect_plugins_folds_subpath_exports_to_package_root`、`package_root_only_strips_scoped_subpaths`。
+
+### 实跑结果（本人执行）
+
+| 检查 | 结果 |
+| --- | --- |
+| `cargo test --offline --lib profile_lifecycle` | **10 passed**（新增 2 条） |
+| `cargo test --offline --lib` | **432 passed**（原 430 + 2） |
+| `cargo test --offline --tests` | 集成 2+1+13+6+5+10+**20**+4+3+1 全绿 |
+| `python3 -m pytest tests -q` | **89 passed / 30 subtests** |
+| `verify_profile_assets_109.py` | **41/41 passed** |
+| `preview_profile_custom_118.py`（真实窗口） | **26/26 true，EXIT=0** |
+| `npx tsc --noEmit` | 无输出（通过） |
+| `npm run build` | 通过（仅既有 chunk 体积提示） |
+| `cargo build --release --features custom-protocol` | **完成，2m56s**（`target/release/omnidesk-desktop`，7,619,632 字节） |
+
+真实窗口前后对比（同一脚本、同一动作序列）：
+
+- 修复前：资产页文本含「一键安装缺失插件（2）」「安装」「安装」；`profile_entry.plugins` = `["@deepseek-ai/dsh-tool-subagent-control/list-agents","@deepseek-ai/dsh-plugin-manager/tools"]`。
+- 修复后：这两个按钮与那句话**整段消失**；`profile_entry.plugins` = `[]`。
+
+### 清理
+
+5273 预览服务、Xvfb、`/tmp/od119-*`、`/tmp/vite119.log` 全部清理；正式实例 pid 107733 / 引擎 107812 未动。
+
+> **注意：** 正式实例仍在跑旧二进制（进程已加载的映像不会因为重新构建而改变）。新构建已覆盖 `target/release/omnidesk-desktop`，**重启软件后生效**。
+
+### 未做
+
+- 不自动安装任何插件（仍由用户点「安装」触发）；
+- 不改补丁文件里的 `name:`——那是 DSH 侧合法的模块入口；
+- 真实联网装插件与真实模型端到端仍未测。
+
+
+## OD-ARCH-118：自定义 Profile 的「建 → 切 → 看 → 删」整条链路实跑（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–117 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；隔离根在 `/tmp`，只用合成数据。
+
+### 一句话结论
+
+109–117 一直在验「在出厂 Profile 之间切」。本轮第一次从界面把**用户自建 Profile** 走完一生：新建 → 立刻切过去 → 资产页看得见 → 切回底座 → 移除进 `.trash` 可恢复。真实窗口 **26/26** 全通过。
+
+### 改动
+
+纯验收资产，**零产品代码改动**：
+
+1. 新增 `tests/verification/desktop/preview_profile_custom_118.py`（约 280 行），走「建 → 切 → 看 → 删」22 个业务断言 + 4 个辅助断言。
+2. 脚本内新增 `open_popover_any`：按传入的任意 Profile 显示名定位顶栏徽标，并且**必须看到弹层真的展开**才返回成功。不改 `preview_profile_switch_110.py` 的共用定位器（那条路径只用「标准 / 专业」出厂文案，改它没有收益、只会扩大回归面）。
+
+### 三轮修正（都是脚本口径，不是产品缺陷）
+
+| 轮次 | 现象 | 判定与修正 |
+| --- | --- | --- |
+| 1 | 16 true / 9 false，从 `popover_reopened` 起全红 | 设置页里徽标文案是 `My Desk`，共用定位器只认「标准 / 专业」→ 新增 `open_popover_any`，先回工作台首页避开资产页同名条目 |
+| 2 | `picked_base` / `back_to_base` 仍红 | 「基础标准」列表项文字含描述，精确匹配点不中 → 改用 110 已验证的 `pick_profile`（包含匹配 + 点确认） |
+| 3 | `custom_still_listed` 红，但「移除」能点中 | WebKit 不把资产行标题的 span 放进 AT-SPI 树，先前命中的 `My Desk` 来自徽标 → 改为「行内『移除』按钮可见」+「注册表仍有条目」两处并证 |
+
+### 实跑结果（本人执行）
+
+| 检查 | 结果 |
+| --- | --- |
+| `preview_profile_custom_118.py` | **26/26 true，EXIT=0** |
+| `python3 -m pytest tests -q` | **89 passed / 30 subtests**（1.71s） |
+| `verify_profile_assets_109.py` | **41/41 passed**（静态接线，含 `ensure_plugins_never_in_assembly`、`managed_skills_registered_after_write` 等） |
+
+实跑关键事实（facts.json）：
+
+- `boot_base` = true：`OMNIDESK_DSH_PROFILE=""` 冷启动后 `engine_profile` 为 `None`，底座干净起手；
+- `create_carries_no_skills` = true：`skills_after_create` 为空数组——从底座新建的 Profile 不带任何业务 Skill；
+- `profile_entry` = `{"name":"my-desk","label":"My Desk","origin":"standard","plugins":["@deepseek-ai/dsh-tool-subagent-control/list-agents","@deepseek-ai/dsh-plugin-manager/tools"]}`；
+- `custom_categories_plain` = true：`categories_after_switch` 为 `["plain"]`，自建 Profile 不继承业务分类；
+- `custom_dock_stays_base` = true：Dock 未出现「工作记录」等业务场景；
+- `trash_entries` / `dsh_trash_entries` = `["my-desk-1793247214-118499"]`：移除进回收目录可恢复，不是硬删；
+- `removed_dsh_dir` = true：`dsh-home/profiles/my-desk` 已清空。
+
+### 清理
+
+- 5273 预览服务（npm / sh / node 三层）已 kill；Xvfb 已退出；`/tmp/od118-preview`、`/tmp/od118.json`、`/tmp/od118.err`、`/tmp/vite118.log` 已用 Python 删除。
+- 正式实例 pid 107733 与它的引擎 107812 保持运行，未动。
+
+### 未做 / 已知限制
+
+- 真实联网安装插件未测（118 里 `my-desk` 探测出 2 个缺失插件，未点安装）；
+- 真实模型端到端仍未测（OD-ARCH-080 实测清单待执行）；
+- 未 commit、未 push。
+
+
+## OD-ARCH-117：复制 Profile 带上分类表，停放区在设置页可见（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–116 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+116 让分类表成为 Profile 资产，但只有切换路径在用它。本轮补两处：**复制 Profile 时把分类表带上**（不能再靠「继承当时生效的那张表」碰运气）；**停放区在设置页看得见**（切回基础标准后业务 Skill 去哪了，用户终于有个地方能看）。
+
+### 改动
+
+1. **复制带分类表**（`profile_lifecycle.rs::create`）：复制 `decl.yml` / `rules.json` 之后一并写 `profiles/<name>/categories.json`。取值三档：来源正在生效→用当前生效设置（盘上是上次切走的旧快照，可能少一截）→ 来源的分类文件 → 出厂内嵌清单。用 `profile_categories::save` 重新序列化，`profile` 字段自动改成新名字，避免 parse 以「归属不符」拒绝。失败不阻断创建，与 decl/rules 同口径。
+2. **停放区只读清单**（`profile_assets.rs`）：新增 `pub struct ParkedSkill { name, path, entries }` 与 `pub fn list_parked(app_root)`。目录不存在返回空表且**绝不建目录**（基础标准态「看一眼不多出文件夹」）；跳过点号开头的临时项；按名字排序。
+3. **命令**（`lib.rs`）：`profile_assets_parked` 只读暴露，注册进 `generate_handler!`。
+4. **前端**：`types.ts` 加 `ParkedSkillView`；`api.ts` 加 `profileAssetsParked()`；`SettingsPanel.tsx` 在 `refreshAssets` 里与资产清单、Profile 清单并发读，设置页「Profile 资产」在有停放项时多一节「已停放 · N」，每行写「不属于当前 Profile，切回需要它的 Profile 会自动归位」。切换 Profile 的 `profileEpoch` effect 同时清空这份缓存。不提供删除按钮：停放本来就是「移走不删除」。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 复制/移除单测 | `cargo test --offline --lib profile_lifecycle` | **8 passed**（新增 `create_from_profile_copies_categories`） |
+| 资产单测 | `cargo test --offline --lib profile_assets` | 8 passed（新增 `list_parked_is_read_only_and_sorted`） |
+| Rust 全量 | `cargo test --offline --lib` | **430 passed** |
+| Rust 集成 | `cargo test --offline --tests` | 2+1+13+6+5+10+**20**+4+3+1 全绿 |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | **41/41**（原 38 + 新增 3 条） |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 2m56s |
+| 真实窗口 | `preview_profile_switch_110.py --display :139 --root /tmp/od117-preview` | **16/16 checks 全 true** |
+| 真实窗口（资产页） | `preview_profile_assets_109.py --display :145 --root /tmp/od117-assets5` | **9/9 + 第二轮 6/6 全 true**（第二轮新增 `parked_item_preserved`） |
+
+真实窗口回执里 `parked_skills` 列出 8 个随基础标准被停放的业务 Skill（anysearch / document-review / knowledge-agent / knowledge-search / material-writing / memory-agent / memory-report / project-agent），`skills_after_base` 为空——与 115 的收敛设计一致，本轮只是让它可见。
+
+### 部署与备份（2026-10-29）
+
+- 停旧实例（app pid 97027）后遗留的孤儿引擎 97550 已 kill；确认无在跑任务再停止。
+- 新二进制已部署：`scripts/omnidesk.sh --no-build`，app pid **107733**。
+- 阶段性备份见本轮末条。
+
+
+## OD-ARCH-116：对话分类随 Profile 走，干净底座不再残留业务分类（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–115 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+114/115 之后配置、场景、规则、Skill、插件都跟着 Profile 走了，**对话分类没跟**：它躺在全局 `config/settings.v1.json`，切回 `omnidesk-base` 后首页胶囊、历史会话、设置页仍是「未分类 / 工作记录 / 文案写作 / 项目跟进」。本轮把分类表变成 Profile 的一部分：切走时回存、切入时装载、基础标准只剩「未分类」；真实窗口 16/16 全绿。
+
+### 改动
+
+1. **校验松动为「至少 plain」**（`settings.rs`）：新增 `REQUIRED_CATEGORY_KEY` 与 `standard_thread_categories()`；`validate_categories` 只要求 `plain` 存在且键唯一，`weekly/writing/project` 缺失不再算错。旧线程 tag 一个都不改，显示名回落为「未分类」，切回专业 Profile 自动恢复真名。
+2. **默认值改为干净底座**（`settings.rs`）：`thread_categories` 的 `serde` 默认与 `Settings::default()` 改用 `standard_thread_categories()`。这是真实窗口跑出来的缺陷——首跑时全新安装（没有设置文件）内存里仍是四类，`boot_base_categories_only_plain` 判 false；改成默认只留 `plain` 后转绿。`default_thread_categories()` 保留为专业 Profile 的出厂清单。
+3. **新模块 `profile_categories.rs`**：`<app_root>/profiles/<name>/categories.json`（schema `omnidesk.profile-categories.v1`，原子写）；`load` 缺文件返回 `None`（不建目录）、损坏/schema 不符/归属不符一律报错不猜；`embedded_for` 编译期嵌入 `samples/profiles/discipline.categories.json`；`apply_for_switch` 先回存离开的 Profile、再定目标表（file → embedded → inherited）、最后写当前设置，返回 `source` / `saved_to`。
+4. **接线 `profile_choice_set`**：在写 `engine_profile` **之前** 调 `apply_for_switch`，失败即整次不切换（不会出现「Profile 换了、分类还是旧的」）；回执加 `categories` 字段。
+5. **前端**：`App.tsx` 的 `onProfileChanged` 补 `refreshThreadCategories()`；`SettingsPanel` 的 `profileEpoch` effect 清掉 `categories` / `catDrafts` / `catError`；`threadCategories.ts` 的初始缓存从四类改为「只有未分类」，避免启动瞬间闪一下业务分类；设置页分类区补「这份分类表属于当前 Profile」，场景声明区把过期的「保存后需重启应用生效」改为准确说法（下次启动或切换后生效，5 秒指纹轮询会提示）。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 分类单测 | `cargo test --offline --lib profile_categories` | **5 passed** |
+| 分类集成靶 | `cargo test --offline --test profile_categories_host` | **4 passed** |
+| Rust 全量 | `cargo test --offline --tests` | 428 lib + 集成 2+1+13+6+5+10+20+**4**+3+1 全绿 |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | **38/38**（原 34 + 新增 4 条分类断言） |
+| 切换验证脚本 | `verify_profile_switch_110.py` | 22/22 |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 2m56s，7,603,888 字节 |
+| 真实窗口 | `preview_profile_switch_110.py --display :137 --root /tmp/od116-preview` | **16/16 checks 全 true** |
+
+真实窗口新增的四条断言：`boot_base_categories_only_plain`（冷启动只有 plain）、`discipline_categories_restored`（切到纪检后四类回来）、`discipline_categories_file`（`app-data/profiles/discipline/categories.json` 已落盘）、`base_categories_only_plain_again`（切回基础后再次只剩 plain）。`base_categories: ["plain"]` 与切回后的设置文件内容都记在 `evidence/od-arch-110/facts.json`。
+
+### 部署与备份（2026-10-29 11:18）
+
+- 正式实例已换新二进制：`scripts/omnidesk.sh --stop` 后 `scripts/omnidesk.sh --no-build`，app pid `97027`、引擎 pid `97550`（`--profile discipline`）。`profile-assets.log` 末行 `profile=discipline result=ok`。
+- 停旧实例时遗留的孤儿引擎 `79928` 已 kill；停止前确认没有正在跑的任务。
+- 阶段性备份：`/home/kevin/OmniDesk/backups/src-od116-final-20261029_111939`（HEAD、git status、四份状态文档、`decisions.md`、测试清单、tracked diff、untracked 全量包、`new-files/`）。
+
+### 已知限制
+
+- 分类表只随「切换 Profile」同步；直接在磁盘上手改 `categories.json` 后需再切一次（或重启）才生效，与声明文件的既有口径一致。
+- 已有线程的 tag 未迁移，切走时显示回落为「未分类」是设计如此。
+- 真实联网安装插件、真实模型端到端仍未测（同 114/115）。
+- 既有无关告警：`worklog.rs::AppendReceipt::failure` dead_code。
+
+
+## OD-ARCH-114 / 115：缺失插件摆上台面 + 切回基础标准真的收回 Skill（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–113 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 按需定制」不成立：切换回执从不提「插件没装上」，得进设置页才发现；切回基础标准只是「不再装配」，8 个纪检 Skill 仍躺在 `<dsh_home>/skills/`，被 DSH 当全局用户根无条件加载。本轮把缺失插件摆进切换回执并给一键安装，同时给 Skill 建立归属登记与停放机制。
+
+### 改动
+
+1. **Skill 归属登记 + 停放（115）**：新增 `MANAGED_SKILLS_FILE`（`.omnidesk-managed`）与 `PARKED_SKILLS_DIR`（`profiles/.parked-skills`）；`wanted_skills` 按目标算出应有哪些 Skill（基础标准为空）。`reconcile_managed_skills` 先归位停放区里目标需要的目录，再把登记过而目标不需要的移入停放区，最后把登记表收敛为「目标需要且 `SKILL.md` 确实存在」。停放用 `rename` 移动，不删除；停放区已有同名先 `backup_dir` 成 `.bak-<epoch>`。
+2. **装配后补登记**：新增 `record_managed_skills`，`materialize_with`（出厂与自定义两条分支）、`profile_choice_set`、`profile_assets_repair` 在写完后调用。原因是 `reconcile` 跑在装配之前，那时 Skill 还没落盘，登记表会永远为空——**这是本轮首跑三条集成测试全红的真实原因**，不是测试写错。
+3. **两条切换分支都收敛 Skill**：`lib.rs::profile_choice_set` 在 `chosen == None`（切回基础标准）时也调 `reconcile_managed_skills`；原先这条路径完全没碰 Skill，等于「配置切走了、技能还留着」。`engine_supervisor.rs::assemble_profile_assets` 启动时同样先 `reconcile` 再装配。
+4. **缺失插件进回执（114）**：`profile_choice_set` 返回值加 `plugins_missing`（来自装配结果里 `kind==plugin && status!=ready`），基础标准恒空。新增命令 `profile_plugins_ensure` → `ensure_plugins`：只装非 ready 的包，单个失败不中断其余，装完重新探测，`ok` 仅在全部 ready 时为 true。插件清单用所有权类型 `PluginSpec`，未用 `Box::leak` 凑静态生命周期。
+5. **界面**：切换后若仍缺插件，`TopNav` 弹层不自动关闭，列出缺的包并提供「安装缺失插件 / 稍后」（均带 `data-hover-hint` 说明会联网）；安装结果写回弹层。`SettingsPanel` 的一键安装改走批量命令，N 次 IPC 收敛为 1 次。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 资产集成靶 | `cargo test --offline --test profile_assets_host` | **20 passed**（原 17 + 新增 3） |
+| Rust 全量 | `cargo test --offline` | 423 lib + 集成 2+1+13+6+5+10+20+3+1 全绿，EXIT=0 |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | **34/34**（原 29 + 新增 5） |
+| 切换验证脚本 | `verify_profile_switch_110.py` | 22/22 |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 2m59s，无 warning/error，7,591,728 字节 |
+| 正式实例重启 | `scripts/omnidesk.sh --stop` → `--no-build` | app 79834 / 引擎 79928（`--profile discipline`） |
+| 部署只读核对 | `profile-assets.log` / `skills/` / 登记表 / `.assets.v1.json` | 末行 `profile=discipline channel=web-api result=ok`；8 个 Skill 目录；登记表 9 行（含表头）；资产登记 31 项 |
+| 真实窗口切换 | `preview_profile_switch_110.py --display :137 --root /tmp/od115-preview` | **12/12 checks 全 true**；切回基础后 `skills_after_base: []`、`parked_skills` 8 项；切到专业后 `skills/` 含登记表 + 8 个 Skill 目录；同一窗口内完成，无重启 |
+
+新增集成测试：`switching_back_to_standard_parks_managed_skills`（切回基础标准后 8 个目录进停放区、`skills/` 为空连登记表都不留）、`switching_back_to_profile_returns_parked_skills`（切回专业归位 8 个，再装配幂等）、`parked_skill_keeps_user_edit_after_return`（改过正文 → 停放 → 归位后仍是用户版）。
+
+### 已知限制
+
+- 真实联网安装插件未在正式实例上跑（会拉包）；用户实测时若网络受限，回执会如实回报 `still_missing`。
+- 停放区（`~/OmniDesk/app/profiles/.parked-skills/`）目前没有界面入口，只能从文件系统取回；`reconcile` 会自动归位。
+- 部署后 `.omnidesk-managed` 里现在是 8 个 Skill（切到 `discipline` 的正常状态）；切回基础标准时才会被清空。
+- 真实模型端到端仍未测；既有 `worklog.rs::AppendReceipt::failure` dead_code 告警与本轮无关。
+
+
+## OD-ARCH-113：资产页就地修复 + Skill 巡检比内容（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–112 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+109–112 让「切换 Profile 自动装配」成立了，但资产页只会看、不会修：丢文件只能重切或重启，想还原自己改过的文件只能手工删。Skill 巡检更糟——只看 `SKILL.md` 在不在，正文被改过仍报「就绪」，是假绿。本轮补上就地修复通道，并把 Skill 判定改成逐文件比摘要。
+
+### 改动
+
+1. **`profile_assets.rs` 增加显式覆盖通道**：`sync_bytes` 新增 `overwrite_drift` 参数，为 true 时 drift 分支先 `backup_of` 成 `.bak-<epoch>` 再按出厂内容写回、状态记 `updated`；为 false 时保持原行为（不动用户文件）。该参数逐层下传到 `sync_skill_files` / `materialize_references` / `record_file` / `materialize_custom`。
+2. **新增 `materialize_with(scope, standard, overwrite_drift)`**，原 `materialize` 转调 `materialize_with(.., false)`，日常装配路径行为不变。
+3. **Skill 巡修改为逐文件比对**：新增 `expected_skill_files(name, repo_skills)`（仓库优先、内嵌兜底，与装配共用同一来源）与 `inspect_skill(...)`，逐文件 sha256 后按 `drift` → `missing` → `stale` → `ready` 的优先级判定；删掉原来「只看 SKILL.md 存在」的判定。内嵌来源在 detail 里补「（内嵌）」。`STATUS_STALE` 提为公开常量。
+4. **新命令 `profile_assets_repair`**（`lib.rs`，已进 `generate_handler!`）：校验 Profile 名、解析 standard，调 `materialize_with(.., true)`，返回 `{ ok, profile, standard, changed, remaining, report, note }`。`changed` 统计 created|updated，`remaining` 统计修复后仍为 missing|missing_source|drift 的项。不联网、不动插件。
+5. **界面**：「Profile 资产」卡头加按钮「修复缺失 / 恢复出厂内容」（`data-testid="profile-asset-repair"`，基础标准下不渲染，带 `data-hover-hint`）；回执块字数写明补写几项、还剩几项。新增「一键安装缺失插件（N）」批量入口（`profile-plugin-install-missing`），逐个跑、逐项回执、单个失败不中断。`profileEpoch` 变化时清掉修复回执。页面说明改为「打开页面只判定、不改文件；缺项或想还原时点修复」。
+6. **类型与调用**：`api.ts` 加 `profileAssetsRepair(profile?)` 并补 `ProfileAssetsRepairReceipt` 的 import（曾漏，tsc 报错，已修）；`types.ts` 加同名类型。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Rust lib | `cargo test --offline --lib` | 423 passed |
+| Rust 全量 | `cargo test --offline` | 423 lib + 集成 2+1+14+6+5+10+17+3+1 全绿，EXIT=0 |
+| 资产集成靶 | `cargo test --offline --test profile_assets_host` | 17 passed（原 14 + 新增 3） |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python 测试 | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 资产验证脚本 | `verify_profile_assets_109.py` | 29/29 |
+| 切换验证脚本 | `verify_profile_switch_110.py` | 22/22 |
+| release 构建 | `cargo build --release --offline --features custom-protocol` | 3m05s，无 warning/error，7,564,592 字节 |
+| 真实分发预览 | `preview_embedded_assets_111.py` | 7/7 |
+
+新增集成测试三条：`inspect_detects_edited_skill_body`（改正文后报 drift，不再 ready）、`repair_fills_missing_and_backs_up_drift`（补齐缺失文件，被改文件写回出厂内容，且 `.bak-<epoch>` 里是用户原文）、`repair_standard_profile_still_writes_nothing`（基础标准点修复仍零写入、不建目录）。
+
+### 已知限制
+
+- 修复只覆盖 Profile 资产（Skill 正文与 references、decl/rules、package.json/cordis.patch.yml），不装插件——插件要联网，必须用户显式触发。
+- 修复不改 `runtime/`、不碰 `~/.dsh`。
+- 真实模型端到端仍未测；既有 `worklog.rs::AppendReceipt::failure` dead_code 告警与本轮无关。
+
+
+## OD-ARCH-112：引擎与插件探测同源（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–111 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+111 让 Skill 正文随二进制走了，但引擎启动仍按编译期仓库路径找引擎目录与 DSH CLI。分发到用户机器后就会出现「插件面板说已就绪、引擎却起不来」。112 把两边统一到同一套路径推导。
+
+### 改动
+
+1. **`engine_supervisor.rs` 新增 `locate_engine_dir(repo_root, app_root)`**：依次试 `<repo>/engine`、`<app_root 上一级>/engine`、`$HOME/OmniDesk/engine`，只认真正含 `omnidesk_engine/` 的候选；都不中返回第一候选，交给 `validate()` 如实报错。
+2. **DSH CLI 改走 `profile_assets::default_dsh_cli_for(repo_root, Some(app_root))`**：与插件探测/安装同源，不再在引擎里另写一遍路径拼接。
+3. **`profile_assets.rs` 抽出两个函数**：`default_dsh_cli_for` 为显式版本（读 `OMNIDESK_DSH_CLI` 后委托）；`locate_cli(repo_root, app_root, home)` 是纯路径推导，不读全局环境变量，便于单测直接比对。原 `default_dsh_cli()` 缩成两行转调。
+4. **新增测试 `distributed_layout_resolves_engine_and_cli_without_repo`**：构造 `<base>/{app,engine,runtime}` 装机布局、`repo_root` 指向不存在的目录，断言两侧都定位成功且 CLI 相同。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Rust lib | `cargo test --offline --lib` | 423 passed |
+| Rust 全量 | `cargo test --offline` | 423 lib + 集成 2+1+13+6+5+10+14+3+1 全绿，EXIT=0 |
+
+### 踩坑记录
+
+该测试最初直接改 `OMNIDESK_REPO_ROOT` / `OMNIDESK_ENGINE_DIR` 等进程级环境变量，与并行测试互相污染，导致 `engine_config_default_channel_is_web_api` 假失败。已改为纯路径推导，不碰环境变量；改动只在测试代码，产品逻辑未因此变化。
+
+### 已知限制
+
+- 兜底顺序按当前默认布局（`~/OmniDesk/{app,runtime,engine}`）设计；安装器换布局仍需 `OMNIDESK_ENGINE_DIR` / `OMNIDESK_DSH_CLI`。
+- 本机 `$HOME/OmniDesk/runtime` 下没有 `dsh-runtime`，运行时仍在仓库内，所以正式实例仍依赖 `OMNIDESK_DSH_CLI`。
+- 真实模型端到端仍未测。
+
+
+## OD-ARCH-111：Profile 资产随二进制走（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104–110 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+110 让「切换 Profile 立即生效」成立，但那只在**源码树里**成立。111 补的是前提：Skill 与写作资产随二进制内嵌，干净环境（deb / AppImage、仓库目录不存在）里切到「纪检专业」照样装出完整的 8 个 Skill 与 references，不再是「配置齐了、Skill 一个没有」。
+
+### 改动
+
+1. **新增 `desktop/src-tauri/src/profile_seed.rs`**：编译期内嵌表。`SKILLS` 收 8 个 Skill 的 `SKILL.md`；`ASSETS` 收 `templates`（3 个）、`writing-style`（5 个）、`excellent-cases`（1 个）。全部 `include_str!`，约 110K，对 7.5MB 二进制无实质影响。
+2. **`profile_assets.rs` 的 Skill 装配改成「仓库优先、内嵌兜底」**：仓库里该 Skill 有 `SKILL.md` 就用仓库（开发期能看到改动），否则用内嵌正文写入 `<dsh_home>/skills/<name>/`。`detail` 标注「（内嵌）」。自定义 Profile 的 `materialize_custom` 走同一套兜底。
+3. **新增 `sync_skill_files` / `repo_skill_files`**：仓库与内嵌两条来源都汇成 `(相对路径, 字节)` 再走同一套三态写入，所以「开发机写入 → 用户机器内嵌读取」不会把同一份内容误判成用户改动。原先的 `copy_missing_tree` 整目录复制会让 Skill 文件不进 `.assets.v1.json`，改源后永远是 drift；这一版把它们逐文件登记摘要。
+4. **`materialize_references` 支持内嵌**：`templates/discipline`、`knowledge/writing-style`、`knowledge/excellent-cases` 三处仓库源缺失时，改用内嵌文件物化到 `<skill>/references/`。签名由 `repo_root: &Path` 改为 `Option<&Path>`。
+5. **`default_dsh_cli()` 增加分发环境的路径兜底**：仓库根候选 → `<app_root 的上一级>/runtime/dsh-runtime/...`（即 `~/OmniDesk/runtime/...`）→ `$HOME/OmniDesk/runtime/...`；都没有就返回首选候选，由上层如实报「找不到 DSH CLI」，不伪造成功。
+6. **`inspect` 也认内嵌**：巡检时若 Skill 缺失但内嵌有副本，状态是 `missing`（「切换 Profile 或重启时会补入内嵌正文」），不再误报 `missing_source`。
+7. **三处传递仓库根的调用点加 `is_dir()` 过滤**：`lib.rs` 的 `profile_choice_set` / `profile_assets_view`、`engine_supervisor.rs` 的 `assemble_profile_assets`。`CARGO_MANIFEST_DIR` 是编译期路径，分发后它「看起来存在」是假象；不存在的目录不该被当成可用仓库根传下去。`profile_rules_view` 读取 Skill 正文时也加了内嵌回落。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Rust 全量 | `cargo test --offline` | 422 lib + 51 集成（2+1+13+6+5+10+14+3+1）全绿，EXIT=0 |
+| 新增集成靶 | `cargo test --offline --test profile_assets_host` | 14 passed（原 10 + 新增 4） |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 静态验证 109 | `verify_profile_assets_109.py` | 24/24 |
+| 静态验证 110 | `verify_profile_switch_110.py` | 22/22 |
+| 真实分发预览 | `preview_embedded_assets_111.py` | 7/7（release 二进制 + 一次性 Xvfb + `/tmp` 隔离根，`OMNIDESK_REPO_ROOT` 指向不存在的目录） |
+
+真实分发预览的 7 项断言与实测值：`repo_root_absent`（ghost 目录始终没被创建）、`assembly_ran`（装配日志 `profile=discipline channel=web-api result=ok`）、`all_skills_present`（`dsh-home/skills` 下 8 个 Skill 的 `SKILL.md` 齐备）、`references_present`（写作模板 / 写作风格 / 优秀案例三类 references 齐备）、`config_present`（`dsh-home/profiles/discipline` 有 `package.json` 与 `cordis.patch.yml`，`app-data/profiles/discipline` 有 `decl.yml` 与 `rules.json`）、`content_matches_repo`（8 个内嵌 Skill 与仓库源逐字节相同）、`no_missing_source`（装配日志无 `missing_source`）。证据：`tests/verification/desktop/evidence/od-arch-111/facts.json`。首轮跑出 6/7，唯一失败是脚本把 `package.json` 的断言目录写成了 `app-data/`（实际在 `dsh-home/profiles/<name>/`），修正断言后 7/7；产品代码未因此改动。
+
+真实数据根复查（`$HOME/OmniDesk`，非隔离根，只读核对）：8 个 Skill 的 `SKILL.md` 与仓库源逐字节相同（8/8）；`app/profiles/discipline/.assets.v1.json` 登记 31 项（`package.json`、`cordis.patch.yml`、`rules.json` 三个配置项，`skill:*` 8 项，`ref:*` 20 项）；`app/logs/profile-assets.log` 最新一行 `profile=discipline channel=web-api result=ok`，无 `missing_source`。另核实：`$HOME/OmniDesk/runtime/` 下只有 `dsh-home`，没有 `dsh-runtime`，DSH 运行时仍在仓库内，所以 `default_dsh_cli()` 的三个候选在本机全部落空。插件探测因此需要 `OMNIDESK_DSH_CLI` 才能就绪——这是安装器布局的既有限制，不是本轮引入的问题，已记入限制。
+
+新增的 4 个集成测试：
+
+- `embedded_seed_fills_skills_without_repo`：`repo_root = None` 时 discipline 仍装出 8 个 Skill 与三类 references，二次装配全部 `unchanged`；
+- `embedded_seed_matches_repo_sources_byte_for_byte`：内嵌副本与 `skills/*/SKILL.md`、三处资产目录逐字节比对，两边漂移即红；
+- `embedded_skill_user_edit_is_not_overwritten`：无仓库环境下用户改过的 Skill 仍是 `drift`，内容不动；
+- `inspect_without_repo_expects_embedded_seed`：无仓库时巡检如实说「会补入内嵌正文」，不误报 `missing_source`，且不写盘。
+
+### 偏离与取舍
+
+1. **没有把 `node_modules` 或 DSH 运行时内嵌。** 体积与许可边界都不合适，而且运行时是独立安装物。真正缺的只是「Skill 正文」这一层。
+2. **仓库源仍优先于内嵌。** 开发期改 `skills/` 立刻生效，不必先重建二进制；代价是两边可能漂移，因此用逐字节比对测试兜住。
+3. **Skill 改为逐文件写入，不再是「整目录不存在才复制」。** 好处是摘要登记完整、改源能安全更新；行为上对「目录已存在但缺文件」更宽容（会补齐），对「用户改过」仍然一律不覆盖。
+
+### 真实窗口回归（收尾补跑）
+
+`preview_profile_assets_109.py` 在一次性 Xvfb + `/tmp` 隔离根上重跑通过，两轮共 9 项 checks 全 true：`auto_assembled_on_start`（启动即装配）、`skills_copied`（8 个 Skill 齐备）、`assets_tab_opened` / `assets_tab_has_heading`（设置页「Profile 资产」分区可打开）、`shows_ready_status`（面板显示「已就绪」）、`skipped_assembly` + `no_profile_written` + `no_skills_copied`（切到基础标准零写入，`startup_log` 为 `profile=omnidesk-base ... result=skipped`，`profile_dirs` 与 `skill_dirs` 均为空）。首轮曾因 5273 端口的开发服务器未运行而停在 `start_vite`（脚本硬依赖 dev server，非产品缺陷）；启动 dev server 后一次通过，跑完已关闭。
+
+### 已知限制
+
+- 改 `skills/` 里的正文必须重建二进制才会进入用户机器，这是内嵌的固有代价。
+- 内嵌清单是静态表：新增 Skill 要在 `profile_seed.rs` 与 `AssetProfile.skills` 两处登记。
+- `default_dsh_cli()` 的兜底路径按当前默认布局（`~/OmniDesk/{app,runtime}`）设计；安装器若把运行时放到别处，仍需 `OMNIDESK_DSH_CLI` 指定。
+- 真实模型端到端仍未测。
+- `worklog.rs::AppendReceipt::failure` 的 dead_code 告警是既有问题，与本轮无关。
+
+
+## OD-ARCH-110：切换 Profile 立即生效（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104/106/107/108/109 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 改动
+
+1. **`lib.rs` 新增 `adopt_engine_config(supervisor, snapshot, fresh)`**：把**同一份** `EngineConfig` 同时写进 supervisor 与 `HostSnapshot`。分开解析会得出两份可能不同的配置，那样「界面显示的 Profile」「准入判定用的 Profile」「引擎启动用的 Profile」会各说各话。
+2. **`profile_choice_set` 改为切换即换引擎**：签名加 `app: tauri::AppHandle`；装配 + 写盘通过后 `EngineConfig::from_env` 重读（失败则回滚设置并返回错误）；`lifecycle.begin_change()` 立屏障 → `adopt_engine_config` 换配置 → `stop_engine(10s)` 停旧引擎 → 成功 `succeed()` / 失败 `fail(reason)` 并保留屏障。回执新增 `effective`、`engine_stopped`。
+3. **顺序是有意的**：屏障先于换配置，因为「换完配置、还没停旧引擎」这段窗口里，新任务会拿到新 Profile 的规则却被送进旧 Profile 的引擎。
+4. **前端**：`App.tsx` 把读声明抽成 `loadDecl`、把探引擎抽成 `probeEngine`，新增 `profileEpoch`；`TopNav` 切换成功且 `engine_stopped !== false` 时回调 `onProfileChanged`，App 重读声明、bump epoch、重探引擎；`SettingsPanel` 按 `profileEpoch` 清空缓存重读；`types.ts` 增 `effective` / `engine_stopped`。
+5. **文案统一为即时生效**：徽标提示、确认弹窗、弹层小标题、底部「当前生效：」、`profile_choice_view` 的 note 全部改写；确认弹窗明说「正在生成的内容随之中断」。
+6. **验证脚本**：新增 `verify_profile_switch_110.py`（22 项静态边界）、`preview_profile_switch_110.py`（真实窗口一轮三步：干净底座 → 切纪检专业 → 切回标准）；同步修正 `verify_ui_082.py`、`verify_home_layout_072.py` 里已过期的「下次启动」断言。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| Rust 单测 | `cargo test --offline` | 422 lib + 2 + 1 + 13 + 6 + 5 + 10 + 10 + 3 + 1 全绿，EXIT=0 |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python | `python3 -m pytest tests -q` | 89 passed / 30 subtests |
+| 静态验证 109 | `verify_profile_assets_109.py` | 24/24 passed |
+| 静态验证 110 | `verify_profile_switch_110.py` | 22/22 passed |
+| 真实窗口 | `preview_profile_switch_110.py` | 11 项 checks 全 true |
+
+收尾时补跑了两条被改过断言的既有回归：`verify_ui_082.py` 17/17 通过；`verify_home_layout_072.py` 首跑是**假通过**（徽标固定坐标 `(310,44)` 因文案缩短已点偏，弹层未展开却无断言），改成按无障碍元素定位并加四处强制断言后通过，证据 `evidence/od-arch-072/home-facts.json`（`popover_open: true`、`confirm_shown: true`、`engine_profile_after: discipline`、`badge_now: 专业`），隔离根与 `~/.dsh` 零变化。
+
+真实窗口一轮三步（同一进程，全程不重启应用）：以 `omnidesk-base` 冷启动，`settings.v1.json` 无 `engine_profile`、Dock 只有平台入口、`dsh-home/profiles/discipline` 不存在；顶栏切「纪检专业」后设置写入 `discipline`，`dsh-home/profiles/discipline/{package.json,cordis.patch.yml}` 与 `app-data/profiles/discipline/{decl.yml,rules.json,.assets.v1.json}` 到位，8 个 Skill 齐备，**同一个窗口里 Dock 变成「工作记录 / 文案写作 / 项目跟踪」**；再切回「基础标准」，设置清空、Dock 退回干净底座。证据：`tests/verification/desktop/evidence/od-arch-110/`（`facts.json` + 5 张截图）。
+
+### 偏离计划的处理
+
+1. **`OMNIDESK_DSH_PROFILE` 必须为空才能测切换。** 环境变量是最高优先级开关，脚本里若写死 `omnidesk-base`，顶栏切换的结果会被它盖掉。第一版脚本踩了这个坑（checks 全 false），改为空串后一次通过。这是测试写法问题，不是产品缺陷；但也说明「环境变量优先于界面设置」这条既有优先级必须保留。
+2. **无障碍树里读不到 `data-testid`。** WebKit 在这台机器上只暴露可见文案，徽标在树里是文本为「标准」/「专业」的按钮。脚本改为按文案取坐标点击，并在点击后以「弹层出现」为成功信号。
+
+### 已知限制
+
+- 切换会中断正在生成的内容，这是「换引擎」的固有代价，界面与文档都已如实说明。
+- 旧引擎按 10 秒优雅退出，超时后最多再 10 秒强杀；停止失败时保留屏障（失败关闭），不会让旧引擎带着旧 Profile 继续吃新任务。
+- 不做任务队列与「切换前排空」；也不做跨 Profile 的会话迁回。
+- 真实模型端到端仍未测（用户要自己验）。
+- `worklog.rs::AppendReceipt::failure` 的 dead_code 告警与本轮无关。
+
+## OD-ARCH-109：Profile 资产自装配（2026-10-29；已实施，本人实跑验证）
+
+> 起点 HEAD `7820751`，工作区含 104/106/107/108 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。用户授权本轮计划自行制定并批准、阶段性备份、完成后关机。
+
+### 改动
+
+1. **新增 `desktop/src-tauri/src/profile_assets.rs`**：出厂 Profile 静态表（仅 `discipline`，manifest / patch / decl / rules 全部 `include_str!`）、8 个 Skill 清单、插件清单；`materialize` 三态幂等装配（created / updated / unchanged / drift），写入前 `.bak-<epoch>` 备份；标准 Profile 直接返回、零写入；`inspect` 纯只读；`probe_package` 本地解析；`install_plugin` 走 `node <dsh_cli> plugin --profile <p> add <pkg>[@ver]` 并显式传 `DSH_HOME`。
+2. **新增 `desktop/src-tauri/src/profile_lifecycle.rs`**：登记表 `app_root/profiles/index.v1.json`；新建（复制 `omnidesk-base` 或指定源，不复制 `node_modules`）、移除（拒绝出厂/当前/未登记，移入 `profiles/.trash/`）、插件探测与归类。含 7 个单测。
+3. **`profile_choice.rs`**：`resolve` 增 `app_root` 参数；新增 `list_all`、`is_selectable`。
+4. **`lib.rs`**：注册 `profile_assets` / `profile_lifecycle`；`profile_choice_set` 改为「校验可选 → 装配 → 校验 package.json → 保存」，返回装配摘要；`profile_choice_view` 增自建 Profile；新增命令 `profile_create` / `profile_remove` / `profile_assets_view` / `profile_plugin_install`；`build_state()` 在窗口创建前同步装配并写 `logs/profile-assets.log`。
+5. **`engine_supervisor.rs`**：新增 `EngineConfig::assemble_profile_assets()`，应用根取自 `engine_state_dir` 的父目录；`start()` 保留幂等兜底；新增单测 `assemble_profile_assets_covers_both_ends`。
+6. **前端**：`types.ts` / `api.ts` 增 Profile 资产、自建 Profile、插件安装相关类型与调用；`SettingsPanel.tsx` 增「Profile 资产」分页（分组状态行、安装按钮、自建列表、移除），状态行加 `role="status" aria-live="polite"`；`settings-panel.css` 增方角样式；`TopNav.tsx` 切换回执带装配摘要、折叠新建表单。
+7. **验证脚本**：新增 `tests/verification/desktop/verify_profile_assets_109.py`（24 项静态/隔离根检查）、`preview_profile_assets_109.py`（真实窗口两轮）。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 启动期装配单测 | `cargo test --offline --lib assemble_profile_assets_covers_both_ends` | 1 passed（修正 `use crate::profile_assets` 与测试污染真实目录后） |
+| Rust 单测 | `cargo test --offline --lib` | 420 passed / 0 failed |
+| Rust 集成 | `cargo test --offline`（其余集成靶） | 14 passed / 0 failed |
+| 前端类型 | `npx tsc --noEmit` | 无输出（通过） |
+| 前端构建 | `npm run build` | 通过（仅既有 chunk 体积提示） |
+| Python | `python3 -m pytest tests -q` | 89 passed, 30 subtests |
+| 静态验证 | `verify_profile_assets_109.py` | 24/24 passed |
+| 真实窗口 | `preview_profile_assets_109.py` | 两轮全通过：`auto_assembled_on_start` / `skills_copied` / `shows_ready_status` / `skipped_assembly` / `no_profile_written` / `no_skills_copied` / 截图均 true |
+| release 构建 | `cargo build --offline --release --features custom-protocol` | 通过，二进制 02:00，`.build-features` 为 `custom-protocol`（正式启动器 `scripts/omnidesk.sh` 即用此产物） |
+| release 冒烟 | 隔离根 + `OMNIDESK_DSH_PROFILE=discipline` 直接跑 release 二进制 25 秒 | `logs/profile-assets.log` = `result=ok`；`dsh-home/profiles/discipline` 3 个文件、`app-data/profiles/discipline` 3 个文件（含 `.assets.v1.json`）、`dsh-home/skills` 8 个 Skill 齐备；无遗留进程 |
+
+真实窗口证据：`tests/verification/desktop/evidence/od-arch-109/`（`facts.json`、`shots/01-assets-discipline.png`、`shots/02-assets-standard.png`）。第一轮空数据根 + `discipline` → 5 个配置文件 + 8 个 Skill 齐备，资产页「纪检专业 · 就绪 13/13」；第二轮全新根 + `omnidesk-base` → 启动日志 `result=skipped`，`dsh-home/profiles`、`dsh-home/skills`、`app-data/profiles` 全为空。
+
+### 偏离计划的处理
+
+1. **装配时机前移。** 计划写「引擎 `start()` 时装配」，实测引擎按需启动，冷启动后不装配；改为 `build_state()` 同步装配，`start()` 保留幂等兜底。
+2. **应用根改由 `engine_state_dir` 推导。** 原实现读 `OMNIDESK_APP_DATA_ROOT`，导致新增单测写入真实 `~/OmniDesk/app` 且无法隔离；修正后测试全部落在临时夹具。误写只涉及一个 `.assets.v1.json`，经哈希比对与真实资产一致，未改动任何 Profile 文件。
+3. **新增 `profile_lifecycle`。** 计划只要求切换装配，用户同时要求 Profile 可定制，故补新建/移除与登记表。
+4. **`inspect` 只读。** 资产页「重新读取」不落盘。
+
+### 已知限制
+
+1. **Skill 复制依赖 `<repo>/skills` 存在。** 打包分发后仓库不在原位时需另做内嵌，本轮沿用「引擎依赖 `repo_root`」的既有前提。
+2. **摘要判定只识别「我们写过、之后没被人动过」。** 若用户手工放入同样内容，摘要相同会被视作出厂版而更新；内容本就一致，影响可接受。
+3. **插件安装依赖 pnpm 与网络**，失败原样报错，不重试；随运行时携带的包始终 `ready`，不会联网。
+4. **WebKit AT-SPI 对设置页正文暴露不稳定**（同一轮时有时无，两轮对照可复现）。因此「标准底座零写入」用文件状态 + 启动日志 + 截图判定，`standard_note_in_ax` 只作参考，不进断言。
+5. **真实模型端到端未测。** 本轮只验证装配、探测与界面呈现。
+6. 既有告警 `worklog.rs::AppendReceipt::failure` dead_code 与本轮无关，未处理。
+
+## OD-ARCH-104（插件挂载）：办公 Skill 随专业 Profile 挂载（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。** 起点 HEAD 7820751，工作区含 106/107/108 未提交改动（均已验收、尚未提交推送）。未做任何 commit / push / reset / clean；本助手亲自实施，未派子代理；runtime/ 零差异；未读真实工作记录与凭证。
+> 编号说明：PLANS.md 里另有第 190 行一条同号的「随手记改由模型判定」（OD-ARCH-105 记录中已实施）。本轮沿用 104 并加「插件挂载」限定，不另起 109；两条 104 在文档里以限定词区分。
+
+### 改动
+
+1. **samples/profiles/discipline.profile.patch.yml**：从 [] 改成一条补丁——顶层 - insert: 下挂 - id: skill-office / name: '@deepseek-ai/dsh-skill-office'。文件头写明「办公能力只随专业 Profile 挂载，基础标准不加这条」。
+2. **实机 ~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml**：改成与样例逐字相同的内容。改前备份为 cordis.patch.yml.bak-od104-20261028-234012（原内容为 []）。目录里 package.json、cordis.yml 未动。
+3. **tests/verification/desktop/verify_plugin_scope_104.py**（新增，34 项）：静态核对样例结构与基础标准不含 office；核对插件包版本 0.2.1-alpha.2 与 assets/{office-docx,office-pptx,office-xlsx,scripts}、libreoffice-kit 的 cli 存在；实跑 --dump-config 对比 discipline / omnidesk-base；再真跑一次插件本体（apply → 注册 provider → 取一条 Skill 正文）。
+4. **证据**：tests/verification/desktop/evidence/od-arch-104/plugin-scope-104.json。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 组装结果 | DSH_HOME=~/OmniDesk/runtime/dsh-home node .../dsh/lib/bin.js --profile discipline --dump-config | exit 0；1229–1230 行为 - id: skill-office / name: '@deepseek-ai/dsh-skill-office'，紧跟在 cordis.patch.yml 注释之后，顶格（宿主层） |
+| 基础标准对照 | 同上换 --profile omnidesk-base | exit 0；全文 0 次 skill-office |
+| 禁用告警 | 两次 dump 的 stderr | 均为空，无 disabling profile plugin |
+| 真实启动 | 复制 Profile 到 /tmp 隔离根后 --profile discipline --no-open --port 0 | 25 秒内打印 dsh web: http://127.0.0.1:39145/?token=…，stderr 空（timeout 124 属预期） |
+| 插件本体 | node 直接 import lib/index.js 并 apply({}) | provider = dsh-office；skills = office-docx / office-pptx / office-xlsx；首条正文含 Installed LibreOffice Kit |
+| 验证脚本 | python3 tests/verification/desktop/verify_plugin_scope_104.py | 34 cases / 0 failed |
+| 前端 | npx tsc --noEmit（desktop） | 通过 |
+| 构建 | npm run build | 通过（仅既有 chunk 体积提示） |
+| Rust | cargo test --offline（带 omnidesk-tauri-deps 的 PKG_CONFIG 环境） | 405 lib + 41 集成（2+1+13+6+5+10+3+1）全通过，0 failed |
+| Python | python3 -m pytest tests -q | 89 passed, 30 subtests passed |
+| 注入流程回归 | python3 tests/verification/desktop/verify_skill_flow_injection_108.py（带本次 office 补丁） | 首次 23:53 一次失败（随手记轮未到模型），原样重跑 2026-10-29 00:00 15/15 通过，判定为一次性根 + Xvfb 时序偶发 |
+
+### 计划偏差与已知限制
+
+1. **计划措辞被纠正（重要）。** PLANS 原文写「继承 preset-standard 的 plugins 数组追加」，实际不可行：dsh-app-boot 的 applyEntryPatches 对 config 整体替换，只有 group 且 config 为数组的条目才可定位，没有「往 preset 的 plugins 里增量追加」的路径。实现改用同一函数的无 id insert（第 73–88 行），直接 push 到宿主层。结果等价且更小：preset 的 30 余条插件声明一条都不用复制，基础标准也不受影响。
+2. **出厂资产缺口（本轮未修）。** engine_supervisor.rs 的 seed_profile_if_missing 只播种 web Profile，且 profiles/<name>/package.json 存在就直接返回；仓库里没有任何脚本把 samples/profiles/discipline.profile.patch.yml 复制到用户机器。所以新装用户与版本升级都拿不到这条补丁，只有当前这台机器的实机文件被同步过。要真正「出厂即带」，需要单独计划（例如按 profile 名播种 discipline，或在 Profile 切换时补写缺失的 cordis.patch.yml）。
+3. **未验证项。** 没有在真实模型会话里让模型实际调用 office-docx / office-pptx / office-xlsx 产出文件；本轮只证明插件已挂载、provider 可列出三个技能且资源路径可解析。Office 三个技能是否出现在会话的 available_skills 清单，要等下一次模型对话实测。
+4. **runtime/ 零差异。** 没有改 dsh-runtime 里的任何文件，插件复用随附的 @deepseek-ai/dsh-skill-office@0.2.1-alpha.2 与 @deepseek-ai/libreoffice-kit。
+5. **不推送。** 按批准范围只执行不提交；工作区改动原样保留，含 106/107/108 的既有改动。
+
+## OD-ARCH-108：绑定只留工作流底线，其余交给模型按需加载（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
+> 起点：HEAD `7820751`；工作区含 106/107 的未提交改动（均已验收、尚未提交推送），108 叠加其上。**未做任何 commit / push / reset / clean**。边界：本助手亲自实施（未派子代理）；`runtime/` 零差异；未读真实工作记录与凭证；测试数据全在 `/tmp` 与合成夹具。
+> 用户口径：「场景绑定 skill，然后模型根据需要调用额外的 skill……这是工作流的底线要求，其他以大模型的能力来判断！」
+
+### 改动
+
+1. **`samples/profiles/discipline.rules.json`**：`skill_bindings` 改成 5 个键——`weekly`（`memory-agent`，作旧键别名只服务随手记）、`weekly-note`（`memory-agent`）、`weekly-report`（`memory-report`）、`writing`（`material-writing`）、`project`（`project-agent`），每个 `max_injected: 1`。`anysearch` / `knowledge-search` / `document-review` / `knowledge-agent` 不再出现在任何绑定里。文件其余字段零改动。
+2. **实机 `~/OmniDesk/app/profiles/discipline/rules.json`**：同口径改绑定段。改前备份 `rules.json.bak-od108-20261028195703`（旧值是 `weekly: memory-agent / knowledge-search / anysearch`，`writing: material-writing / knowledge-search / document-review`，均 `max_injected: 3`）。脚本断言「除 `skill_bindings` 外逐字相同」通过。
+3. **`desktop/src/conversationPrompt.ts`**：`ConversationPreset` 增 `skillsByFlow`；新增导出 `presetSkillsFor(preset, mode)`（该流程没单独配置时回落场景级 `skills`；空数组与 null 都表示不注入，不在此处补默认值）。随手记分支改取 `note` 那一组并保持 `.slice(0,1)`；周报分支（`aiDraft` 入参）改取 `report` 那一组。
+4. **`desktop/src/shell/HomeCanvas.tsx`**：局部 `readBinding(key)`（含 `max_injected` 截断与正文缺失过滤）产出 `sceneSkills / noteSkills / reportSkills`；仅当 note 或 report 至少一侧存在时才生成 `skillsByFlow`，缺的一侧回落场景级，避免把空值当成「明确不注入」。
+5. **`desktop/src/shell/HomeChat.tsx`**：「未预注入」提示的判定加上 `anyFlow`，工作的记录场景只配流程键时不再误报。
+6. **`desktop/src/SettingsPanel.tsx`**：`sceneLabel()` 增 `weekly-note` → 「工作记录 · 随手记」、`weekly-report` → 「工作记录 · 周报」；能力管理页说明改为「同一场景里的不同流程（如随手记与周报）各绑自己的底线技能，不会互相带上」。
+7. **四个 Skill 正文各加一小段「按需加载其他能力」**（只写何时该自己读，不写死触发词）：`memory-agent`、`memory-report`、`material-writing`、`project-agent`。`scripts/sync-skills.sh` 已同步到 `~/OmniDesk/runtime/dsh-home/skills`，`--check` 报「一致」。
+8. **`desktop/src-tauri/src/profile_rules.rs`**：内嵌样例单测 `default_pack_is_valid_and_has_expected_shape` 改为断言三条流程各 1 项、且四个按需技能不在任何绑定内。
+9. **测试脚本同步**：`verify_worklog_089.py`、`verify_skill_bindings_082.py`、`tests/verification/phase-worklog/verify_env_085.py`、`verify_skill_scope_107.py` 改到流程口径。
+10. **`workstations/discipline/skills/README.md`**：表格补「绑定 / 按需」一列。**`docs/decisions.md`**：新增 D-035。
+
+### 新增的真实窗口验收
+
+`tests/verification/desktop/verify_skill_flow_injection_108.py`：一次性 Xvfb（`:173`）+ 隔离根 `/tmp/od108-flow` + 合成模型端点 + AT-SPI。
+
+- 第 1 轮：Dock「工作记录」→「去对话」→ 发一条不含「周报」字样的 ASCII 合成句。
+- 第 2 轮：回场景页点产品自己的「去生成周报」→ 提交。
+- 结果：**15 / 15 通过，`result: pass`**。证据 `tests/verification/desktop/evidence/od-arch-108/flow-injection.json`，截图 `01-home.png` / `02-note-composer.png` / `03-weekly-page.png` / `04-report-composer.png`，无障碍树 `01-home-ax.json` / `03-weekly-page-ax.json` / `04-report-composer-ax.json`，场景注入对照 `scene-injection.json`。
+- 探针原样值：随手记 `probe_hits = ["随手记 (Memory Agent)"]`、`probe_misses = ["周报起草 (Memory Report)", "联网检索 (AnySearch)", "整理成周报"]`；周报 `probe_hits = ["周报起草 (Memory Report)", "整理成周报"]`、`probe_misses = ["随手记 (Memory Agent)", "联网检索 (AnySearch)"]`。第二轮命中「整理成周报」即证明请求来自产品预填路径。
+- **整段提示词字符数**（含场景规则、安全边界，不是技能正文）：随手记 `9699`、周报 `9912`。技能正文本轮实测：随手记 `memory-agent` 1408 字符、周报 `memory-report` 1099 字符。两者不要混说。
+- 踩到的两个坑，记下来免得下次重犯：①合成端点原先把 `last_user` 只存前 200 字符，用户原话在末尾会被截掉 → 改成按请求序号取新请求（`request_count()` 基线 + `new_request(baseline)`）；②WebKit 的 `<input>` 当前值不进无障碍树（entry 只暴露 placeholder），所以预填不用 AX 断言，改由「整理成周报」探针证明，事实写进 `prefill_visible_in_ax: false` 与 `prefill_note`。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | 通过，无输出 |
+| `cd desktop && npm run build` | 通过（仅既有 chunk 体积提示） |
+| `cargo test --offline` | EXIT=0：405 lib + 41 集成/文档，0 failed |
+| `python3 -m pytest tests -q` | 89 passed、30 subtests passed |
+| `verify_skill_flow_injection_108.py` | **15 / 15，pass** |
+| `verify_skill_scope_107.py` | 33 / 33 |
+| `verify_skill_bindings_082.py` | 57 / 57 |
+| `verify_worklog_089.py` | 83 / 83 |
+| `verify_env_085.py --no-write` | 42 / 42 |
+
+`cargo` 需要三个环境变量才能离线编过（缺系统 pkgconfig 两段会报 `gobject-2.0 not found`）：`PATH` 加 `$HOME/.cargo/bin`；`PKG_CONFIG_PATH` 含 `/home/kevin/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu/pkgconfig`、`…/usr/share/pkgconfig` 与系统 `/usr/lib/x86_64-linux-gnu/pkgconfig`、`/usr/share/pkgconfig`；`PKG_CONFIG_SYSROOT_DIR=/home/kevin/.local/omnidesk-tauri-deps`；`LIBRARY_PATH` 指向其 `usr/lib/x86_64-linux-gnu`。
+
+**本轮未重跑**：`verify_skill_scope_107_window.py`、`verify_profile_scope_106_window.py`（属 106/107，已在各自 REVIEW 记录通过，本轮无相关改动）。
+
+### 计划偏离
+
+无架构偏离。两处实现层面的收敛写在计划语义内：①`skillsByFlow` 只在 note/report 至少一侧有值时生成，缺的一侧回落场景级，避免「空数组 = 明确不注入」被误读；②窗口脚本改用请求序号取新请求、并放弃 AX 断言预填值——前者是探针自身缺陷，后者是 WebKit 无障碍树的限制。
+
+## OD-ARCH-107：能力管理页说清「本 Profile 预注入哪些 Skill、哪些只是按需加载」（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
+> 起点：HEAD `7820751`；工作区含 106 的未提交改动（已验收、尚未提交推送），本轮 107 的改动与其同处一个工作区，**未做任何 commit / push / reset / clean**。边界：本助手亲自实施（未派子代理）；`runtime/` 零差异；未读真实工作记录与凭证；测试数据全在 `/tmp` 与合成夹具。
+> 用户原话：「我切换了base profile，然后场景就恢复到默认状态了，但在设置页面看skill还是和纪检profile一样，我不知道哪些加载了，哪些没加载？」
+
+### 根因（实读代码与实机数据）
+
+1. 设置页列的是**磁盘清单**：`capabilities::list_skills` 直接扫 `<DSH_HOME>/skills`，所有 Profile 共用一份（DSH 官方 `skill-filesystem` 语义），所以切 Profile 后这一页看起来完全没变化。
+2. Profile 真正影响的是**预注入**：来自 `profiles/<Profile>/rules.json` 的 `skill_bindings` + `max_injected`。基础标准没有 rules.json → preset 为 null → 零预注入，但 Skill 仍可由模型按需加载。
+3. 注入量按流程不同：周报/初稿注入 `max_injected` 以内的全部绑定；随手记只取第 1 个。
+
+### 改动
+
+1. **desktop/src-tauri/src/capabilities.rs**：`SkillEntry` 增加 `id` / `bindings`；新增 `SkillBinding{scene,order,max_injected,effective,resolved}`、`MissingBinding`、`SkillScope` / `SceneScope`；`CapabilityView` 增加 `standard / rules_loaded / rules_error / rules_profile / preinjected / missing_bindings`。新增纯映射函数 `apply_scope`（**不读任何文件**）与 `load_with_scope`；原 `load` 保留为默认空作用域包装，兼容既有调用与测试。新增单测 `scope_marks_effective_and_missing_bindings`（覆盖预注入 / 超上限 / 缺失三类）。
+2. **desktop/src-tauri/src/lib.rs**：把 `profile_rules_load` 的读取与 `skill_contents` 回填抽成 `fn profile_rules_view(state)`（唯一读取实现），`profile_rules_load` 改为调用它；新增 `fn skill_scope(state)` 复用同一份 `RulesView` 转成 `capabilities::SkillScope`；`capability_view` 改走 `load_with_scope`。**规则文件仍只解析一处**，capabilities 模块不碰 rules.json。
+3. **desktop/src/types.ts**：`CapabilitySkill` 增加 `id` / `bindings`；新增 `SkillBinding` / `MissingSkillBinding`；`CapabilityView` 增加六个作用域字段。
+4. **desktop/src/SettingsPanel.tsx**：Skill 区改为按 `bindings.some(effective)` 互斥分成「本 Profile 预注入（N）」与「可被模型按需加载（M）」两组，每行带场景标签（超出上限标「超出预注入上限，不注入」，读不到正文标「正文缺失」）；新增四态说明 `SkillScopeSummary`（基础标准 / 规则损坏 / 无规则包 / 已加载），基础标准一句「不预注入任何 Skill，下面列出的仍可按需加载」，已加载态注明「随手记只取该场景绑定里的第 1 个」；新增缺失绑定告警 `data-testid="skill-missing-bindings"`，不再静默。
+5. **desktop/src/settings-panel.css**：新增 `.skill-group` / `.skill-group-head` / `.skill-tags` / `.skill-tag` / `.skill-tag.on`；标签 `border-radius: 0`（方形小签，与设置页信息块一致）。
+6. **测试**：新增 `tests/verification/desktop/verify_skill_scope_107.py`（31 项静态断言，含 `code_of()` 去注释辅助、避免注释里的字样被当成实现；末项 `note_preinjected_count` 固定「共 N 个 Skill 会被预注入」用的是 `caps.preinjected.length`，而非另算一遍）与 `verify_skill_scope_107_window.py`（真实窗口两轮对照）。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | 通过，0 错误 |
+| `cd desktop && npm run build` | 通过（仅既有 chunk 体积提示） |
+| `cargo build --offline` | 通过 |
+| `cargo test --offline` | **405 lib + 41 集成/文档，全部通过，0 failed**（`/tmp/cargo107.log`） |
+| `python3 -m pytest tests -q` | 89 passed + 30 subtests |
+| `verify_skill_scope_107.py` | **31 / 31** |
+| `verify_skill_scope_107_window.py` | **pass**：标准轮「预注入」标签强调色像素 0、未自动创建 rules.json / decl.yml；discipline 轮 695 像素、两个分组同时出现。补计数文案后重建前端产物（18:38）并复跑，结果不变 |
+
+窗口证据：`tests/verification/desktop/evidence/od-arch-107/shots/01-standard-capabilities.png`（基础标准：`skill-scope-standard` 文案 + 「可被模型按需加载 8」，无预注入组）、`02-discipline-capabilities.png`（discipline：`本 Profile 预注入 6` + 场景标签），判定数据 `skill-scope-window.json`。
+
+判定口径说明：窗口脚本最初用「偏冷色像素」统计，标准轮误报 884 像素——那是左栏面板底色 `(226,225,235)`，不是标签。改为只认标签自己的两种合成色（底色 `(235,235,252)`、描边 `(165,161,241)`）后，标准轮 0、discipline 轮 695。这条调整写在这里，是因为「阈值定错会假通过」是本轮唯一一次验证器自身出错。
+
+### 计划偏离
+
+无架构偏离。实施中补了三处计划未逐条写明的必要动作：①`load` 保留为 `load_with_scope` 的空作用域包装，避免改动既有调用点与测试；②`profile_rules_view` 抽成函数供两处复用，保证规则只解析一次；③窗口脚本的像素判据从「偏冷色」收紧为「标签合成色精确匹配」。
+
+### 未验证 / 需用户确认
+
+1. 真实数据根 `~/OmniDesk` 上未跑（本轮全在 `/tmp` 一次性根 + 合成端点 + Xvfb）。
+2. **用户机器上 discipline 的 weekly 绑定与仓库样例存在漂移**：live `rules.json` 是 `memory-agent / knowledge-search / anysearch`，仓库样例是 `memory-agent / memory-report / knowledge-search`（memory-report 在 c1e823f 之后才加进样例）。属用户数据，本轮**未改动**。是否对齐需用户决定。
+3. 本轮改动**尚未提交、尚未推送**（与 106 的改动同处工作区，等用户指示）。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb 与 AppSession 随脚本退出；`ps` 复核无 `omnidesk-desktop` / `Xvfb` / `verify_skill_scope` 残留。仍在运行的 `npm run dev`（vite，PID 87237/87238，约 7 小时前启动）属用户自己的开发服务器，**未动**。
+
+## OD-ARCH-106：基础标准 = 干净 DSH 底座，场景/规则随 Profile 挂载（2026-10-28；已实施）
+
+> 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
+> 起点：HEAD `7820751`（105 已推送）。边界：本助手亲自实施（未派子代理）；`runtime/` 零差异；未读真实工作记录与凭证；测试数据全为 /tmp 与合成夹具。
+> 用户原话：「在不加载纪检等自定义profile时，初始就是「基础标准」（omnidesk-base，默认）时，这个状态的omnidesk就是自定义UI+DSH cli底座，和使用官方DSH-desktop没差别。我们现在开发的场景功能和skill以及配套插件都是跟随profile的，当omnidesk切换为自定义profile时，omnidesk就自动加载场景、skill和插件……默认profile可以保持最基础的DSH默认配置skill和插件。」
+
+### 改动
+
+1. **desktop/src-tauri/src/profile_decl.rs**：落点由固定 `profiles/discipline.yml` 改为 `profiles/<Profile 名>/decl.yml`；`load_decl` 改为返回 `Option<LoadedDecl>`，文件不存在返回 `Ok(None)`（**不再创建默认声明、不再建目录**）；删除 `created` / `warnings` 字段与「额外 Profile 目录」告警；新增 `migrate_legacy_decl`（只对非标准 Profile、目标已存在即跳过、先校验再复制、旧文件保留）。
+2. **desktop/src-tauri/src/profile_rules.rs**：落点改为 `profiles/<Profile 名>/rules.json`；新增 `migrate_legacy_rules`（同口径）；`RulesView` 增加 `default_blocked_reason`（标准模式下拒绝安装行业规则包并说明原因）与 `migration_warning`（旧规则没搬过来的原因，**不塞进 `error`**，避免旧文件损坏变成新的提交故障）。
+3. **desktop/src-tauri/src/lib.rs**：新增 `profile_asset_scope` / `profile_asset_dir`，资产目录取**运行中引擎实例的 Profile**（supervisor 内存配置），而不是从磁盘设置重新推算——否则用户刚改顶栏 Profile、还没重启时，界面会提前挂上专业场景而模型仍跑在干净底座里。`profile_decl_load` / `profile_decl_digest` / `profile_decl_open` / `profile_decl_save` / `profile_rules_load` / `engine_submit_task` 全部改走该目录；迁移在读取前执行且幂等。
+4. **desktop/src/shell/Dock.tsx**：新增 `BUILTIN_PLATFORM_ITEMS`（首页 / 历史会话 / 知识库）。`declared` 为 `null` 且**没有**读取失败时只显示这三项；只有 `declFailed` 才回退 `DEFAULT_BUSINESS_ITEMS` 并提示原因。
+5. **desktop/src/shell/HomeCanvas.tsx**：`sceneOptions` 在无声明且无错误时隐藏全部业务分类；场景预设额外要求「场景在此 Profile 的声明里」且 `rulesView.loaded`，否则 `preset = null`（不套场景提示词、不注入 Skill 原文）。新增首页「标准模式：DSH 底座 + OmniDesk UI，无业务场景」说明，用 `declReady && !declFailed && declaredScenes === null` 三重门控，避免启动瞬间误报。
+6. **desktop/src/App.tsx**：新增 `declReady`；声明到达后若当前场景不在声明里则落回首页（标准模式下也从业务场景回到首页）；把 `declFailed` / `declReady` 传给 Dock 与 HomeCanvas；删除 `warnings` 提示条；「声明被删除」的提示改为「重启后只显示平台固有入口（不再自动生成声明）」。
+7. **desktop/src/SettingsPanel.tsx**：声明为空时显示「该 Profile 没有场景声明（标准模式）」并给出说明与输入框占位；「恢复默认规则包」在标准模式下禁用，悬停说明与页内提示都给出原因（`data-hover-hint` + `data-testid`）；新增迁移告警展示。
+8. **desktop/src/api.ts / types.ts**：`profileDecl()` 返回 `ProfileDeclPayload | null`；移除 `created` / `warnings`；`ProfileRulesView` 增加两个新字段。
+9. **samples/profiles/omnidesk-base.profile.patch.yml**：撤销 `skill-filesystem` / `tool-skill` 的 `disabled: true`，插件面与官方 `dsh-base` 一致（基础标准下模型可按需加载技能）。`samples/profiles/discipline.yml` 注释改为新落点。
+10. **测试同步**：新增 `verify_profile_scope_106.py`（45 项静态断言）与 `verify_profile_scope_106_window.py`（真实窗口：标准 3 个 Dock 入口、discipline 6 个，且标准模式不自动创建声明）；`verify_profile_decl` / `verify_decl_restart_hint` / `verify_scene_decl_linkage_055` / `verify_conversation_center_059` / `verify_ui_088` 改为显式切 `OMNIDESK_DSH_PROFILE=discipline` 并预置声明；`verify_hover_hint_101` 补回 `data-hover-hint` 断言（30 项）。
+11. **文档**：`docs/decisions.md` 新增 D-034（资产随 Profile 挂载），并更正 D-027 / D-028 里的旧固定路径；`docs/user-testing-checklist.md` 第 6 步路径同步。
+12. **desktop/src/shell/CategoryPicker.tsx（复核中发现的真实缺陷）**：归类下拉改成 portal 之后，聚焦 effect 只依赖 `[open, currentIndex]`，而浮层要等 `place()` 算出坐标（`anchor`）才挂载；effect 在列表项还不存在的那一帧就跑完并不再重跑，焦点一直留在胶囊按钮上——键盘上下键与回车都选不中分类。修复：`if (!open || !anchor) return`，依赖加入 `anchor`；胶囊上已展开时按上下键直接落到列表项；补 Home / End 跳首尾。这条是 059 窗口测试在改完 Profile 路径后连续两次复现的（`tag_after` 停在 `weekly`），不是文档级猜测。
+
+### 验证（本人实际运行，2026-10-28）
+
+| 验证 | 结果 |
+| --- | --- |
+| `cd desktop && npx tsc --noEmit` | 通过，0 错误 |
+| `cd desktop && npm run build` | 通过（仅既有 chunk 体积提示） |
+| `cargo test --offline` | **445 passed，0 failed**（404 lib + 41 集成/文档） |
+| `cargo build --offline` | 通过，无 warning |
+| `python3 -m pytest tests -q` | 89 passed + 30 subtests |
+| `verify_profile_scope_106.py` | **45 / 45** |
+| `verify_profile_scope_106_window.py` | pass（标准 3 入口 / discipline 6 入口 / 标准模式未创建声明） |
+| `verify_hover_hint_101.py` | 30 / 30 |
+| `verify_profile_presets_082.py` | 12 / 12 |
+| `verify_profile_rules_068.py` | 25 / 25 |
+| `verify_worklog_104.py` | 70 / 70 |
+| `verify_worklog_089.py` | 78 / 78 |
+| `verify_worklog_103.py` | 52 / 52 |
+| `verify_conversation_prompt.py` | 26 / 26 |
+| `verify_intent_088.py` | 22 / 22（evidence/od-arch-088/intent.json，failed=0） |
+| 插件面对齐官方 `dsh-base` | 文件事实：32 项 id 与 disabled 标记逐条相同，差异 0（evidence/od-arch-106/plugin-parity.json） |
+| `verify_conversation_center_059.py`（真实窗口） | pass：`retag` weekly→writing、隐藏文案写作后同为两次下移落到 project、声明恢复逐字节一致 |
+| `verify_weekly_093.py` | 108 / 108（新增 3 条 CategoryPicker 焦点断言） |
+| `verify_profile_decl.py` / `verify_scene_decl_linkage_055.py`（真实窗口） | 均 pass；后者声明 sha256 前后一致 |
+
+窗口证据：`tests/verification/desktop/evidence/od-arch-106/shots/01-standard.png`（标准模式，Dock 仅首页/历史会话/知识库，问候语下显示「标准模式：DSH 底座 + OmniDesk UI，无业务场景」）、`02-discipline.png`（discipline，Dock 6 项）、`profile-scope-window.json`、`profile-scope.json`。
+
+### 计划偏离
+
+无架构偏离。实施中补了三处计划未逐条写明的必要动作：①资产范围改用运行中引擎 Profile（避免界面与引擎不同步）；②旧文件迁移失败单独走 `migration_warning`，不升级为会阻断提交的 `error`；③首页显式标注标准模式，并加「声明读完才显示」门控。
+
+### 未验证（明确留白）
+
+真实用户数据根（`~/OmniDesk`）上的端到端启动与真实模型实测未做：本轮全部在一次性数据根 + 合成模型端点 + Xvfb 下完成。旧数据从 `profiles/discipline.yml` 迁到 `profiles/discipline/decl.yml` 的实际效果，只在 Rust 单测与合成夹具里验证过；首次在真实数据根启动时仍应确认迁移提示与场景恢复情况。
+
+### 进程清理
+
+窗口脚本自带的 Xvfb 与 AppSession 已随脚本退出，无残留（`ps` 复核只剩一个本轮之前就存在的 `npm run dev` / vite，11:22 启动、属用户开发服务器，未动）。
+
+
 ## OD-ARCH-105：业务判断全部下放到 Skill，平台只留数据与写盘边界（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
@@ -3198,7 +4416,7 @@ S1–S3 实施项与 PLANS.md 059 各节一致，无计划外功能。上述第 
 | `git status --porcelain runtime/` | 空 | 文件事实 | — |
 | `verify_decl_restart_hint.py` | 6 项自动断言全为 true（见下） | 真实桌面窗口运行（一次性 Xvfb `:96` + 一次性数据根 `/tmp/od052-hint` + 合成端点） | `tests/verification/desktop/evidence/od-arch-052/decl-restart-hint.json`、`shots/01-cold.png`–`04-after-restart.png` |
 
-真实窗口自动断言：`hint_appears_after_edit`（运行中改文件 → 顶部横带像素变化）、`user_edit_not_overwritten`、`hint_changes_when_file_deleted`（文案切到"已被删除"）、`delete_is_not_hot_reloaded`（文件确实没被重建，证明不是热重载）、`hint_cleared_after_restart`（重启后横带与冷启动逐像素相同）、`missing_recreated_on_launch`（重启才重建默认声明）。
+真实窗口自动断言：`hint_appears_after_edit`（运行中改文件 → 顶部横带像素变化）、`user_edit_not_overwritten`、`hint_changes_when_file_deleted`（文案切到"已被删除"）、`delete_is_not_hot_reloaded`（文件确实没被重建，证明不是热重载）、`hint_cleared_after_restart`（重启后横带与冷启动逐像素相同）、`factory_profile_decl_restored_on_launch`（重启后声明由出厂 Profile 装配补回；052 当时的写法是 `missing_recreated_on_launch`，OD-ARCH-109/122 起出厂 Profile 自带声明、启动装配会补回，故按现状改名并改写语义，`/tmp` 隔离根下 2026-10-29 重跑 6/6 全 true）。
 
 提示条的两条文案是**人工看截图确认**的（脚本不做 OCR），截图见 `shots/02-modified-live.png`、`shots/03-deleted-live.png`。
 

@@ -1,5 +1,1155 @@
 # 当前实施计划
 
+### OD-ARCH-131：自建 Profile 能带自己的 Skill（不再只认内置 8 个）（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划自行制定并批准，写入文档，阶段性备份」；2026-10-29 已实施并通过审查，见 REVIEW.md / STATUS.md / D-060）
+
+> **触发：** 用户重申产品边界——「OmniDesk 是干净和初始的环境，Profile 是定制的，切换 Profile 时要能自动写入所需的配置、Skill 和插件，缺插件要能自动安装」。130 之后，切换装配、保存绑定后的即时收敛、缺插件三条补装通道都通了，逐项自查发现还剩一个会挡住真实定制的地方：**自建 Profile 只能绑程序内置的 8 个 Skill**。用户自己写的一个 Skill（比如某个单位专用的写法）放进去也存不住：规则校验按 `ALLOWED_SKILLS` 白名单拒绝，装配链也没有「这个 Profile 自带的 Skill 源码」这一层。
+
+#### 已核实的前提（本人实读源码）
+
+1. **白名单是硬拒绝。** `profile_rules.rs:244` 在 `validate()` 里判 `ALLOWED_SKILLS.contains`，不在 8 项内就整份规则包解析失败——连保存都进不去。
+2. **取源只有两处。** `expected_skill_files`（`profile_assets.rs:696`）只认「仓库 `skills/<name>`」与「编译期内嵌副本」，没有第三个来源；`materialize_custom`（`:1186`）另外重复了一遍同样的两段挑源代码。
+3. **界面只列白名单。** `allowed_skills` 由 `profile_rules::allowed()` 生成，前端 `SettingsPanel.tsx:3204` 照着渲染勾选片，所以自建 Skill 连选都选不到。
+4. **迁移包不收 Skill。** `profile_lifecycle.rs` 的 `APP_BUNDLE_FILES` 只列 `decl.yml / rules.json / categories.json` 三个单段文件，Skill 目录进不了包。
+5. **没有会被破坏的既有口径。** 基础标准仍然零写入；出厂 Profile 仍按编译期清单取源；现有 8 个 Skill 的装配与停放行为不变。
+
+#### 方案
+
+**一句话：给自建 Profile 一个属于自己的 Skill 源目录 `<应用数据根>/profiles/<名字>/skills/<skill名>/`，取源顺序变成「Profile 自带 → 仓库 → 内嵌」，并把这份目录接进装配、巡检、绑定界面与迁移包。**
+
+- **命名校验与白名单分工（profile_rules.rs）**：`ALLOWED_SKILLS` 降为「内置清单」，新增 `is_valid_skill_name` 做**形状**校验（小写字母／数字／`-`／`_`，1–48 字符）。`validate()` 改用形状校验，非法名照旧整份拒绝；`..`、大写、空格、中文标点这类写不出目录的仍然进不去。绑定了一个不存在的名字时不再让整份规则坏掉，而是在资产页显示「找不到正文来源」。
+- **取源升级（profile_assets.rs）**：`expected_skill_files(scope, name)` 改为收 `Scope`，返回带来源标记的三态（Profile 自带 / 仓库 / 内嵌）。三处调用（保存绑定收敛、自建 Profile 装配、巡检）统一走这一条，删掉 `materialize_custom` 里重复的挑源分支。`sync_skill_files` 的三态写不变：用户改过就不覆盖，缺失才补。
+- **界面（SettingsPanel.tsx 规则资产页）**：`allowed_skills` 由后端拼成「内置 ∪ 该 Profile 自带」；绑定勾选片因此能选到自己写的 Skill。区块里加一行「Profile 自带 Skill」，两个动作：打开该目录（首次点才建）、按名字生成一份带 frontmatter 的模板（已存在不覆盖）。
+- **命令（lib.rs）**：新增 `profile_skill_source_open` 与 `profile_skill_scaffold`，都拒绝基础标准，写前走 `assert_writable_root` 同口径路径校验。
+- **迁移包（profile_lifecycle.rs）**：包成员新增 `root: "skill"`，路径形如 `<skill名>/SKILL.md`，逐段校验、拒绝上跳与隐藏文件；导出带上该 Profile 自带的全部 Skill 文件，导入按同一白名单校验后落回 `profiles/<名字>/skills/`。旧包（没有 skill 成员）照常导入。
+- **测试**：新增单测覆盖「自建 Skill 能通过校验」「非法名仍被拒绝」「装配优先用 Profile 自带源」「迁移包带 Skill 往返」；现有 `bad_skill_test` 改为断言非法形状仍被拒。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+沿用 129 已验收的直角行式区块与统一悬停说明，不新增弹层；「自带 Skill」作为绑定区块内的一行动作条，与「声明插件」同一视觉层级。
+
+#### 明确不做
+
+- 不新增 Skill 市场、不联网下载 Skill：Skill 仍由用户放进目录、随 Profile 自带或随程序发布。
+- 不改基础标准零写入口径，不改出厂 Profile 的编译期清单。
+- 不改数据根与会话归属（D-052）。
+- 不 commit / push（未获授权）。
+
+### OD-ARCH-130：绑定保存后立刻把 Skill 放进当前 Profile 的运行时目录（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划授权你制定并批准执行」；2026-10-29 已实施并通过审查，见 REVIEW.md / STATUS.md / D-059）
+
+> **触发：** 用户重申产品边界——「omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」。逐条对表后，切换这条链是通的（配置 / 场景 / 规则 / Skill 在切换时补齐，缺插件切换后与冷启动都会后台补装），但 **在设置页给当前 Profile 保存 Skill 绑定之后，那几个 Skill 并不立刻落到运行时目录**：profile_skill_bindings_save 只写 rules.json，要等下一次切换 Profile 或重启引擎才会由装配链补。中间的窗口里，界面显示「已绑定」，实际运行时里没有那本 Skill。
+
+#### 已核实的前提（本人实读源码）
+
+1. **切换即装配已经在位。** lib.rs:1233 切换时 profile_assets::materialize → record_managed_skills；engine_supervisor.rs:295 启动引擎前又走一次 reconcile_managed_skills + materialize。出厂 Profile 按编译期清单、自建 Profile 按 rules.json 的 skill_bindings（profile_assets.rs:191 / :1092）补 Skill。
+2. **缺插件有三条自动通道。** 切换后 spawn_profile_plugins_autofill（:1340）、冷启动 maybe_autofill_plugins_on_startup（:1448）、设置页手动「安装」，都受 profile_auto_install_plugins 开关（默认开）约束，且基础标准恒不装。
+3. **保存绑定的路径没有接上装配。** lib.rs:2120 的 profile_skill_bindings_save 只调 save_skill_bindings_into（写规则 + 备份 + 原子写）就返回，回执只说「Skill 绑定已保存」。前端 SettingsPanel.tsx:1111 因此提示「下一轮提交生效」，但运行时目录里其实还没有这些 Skill 目录。
+4. **补齐所需的原语都已存在。** expected_skill_files（仓库优先、内嵌兜底）、sync_skill_files（三态写、不覆盖用户改动）、reconcile_managed_skills（把解绑的移入停放区、把需要的从停放区归位）、record_managed_skills（登记归属便于切走时收回）。缺的只是一条「保存之后立刻按新绑定收敛」的窄入口。
+
+#### 方案
+
+**一句话：绑定写盘成功后，立刻按同一份 rules.json 收敛当前 Profile 的全局 skills/ 目录——该补的补、该归位的归位、解绑的移入停放区，并把明细写进回执；基础标准仍零写入。**
+
+- **后端窄函数（profile_assets.rs）**：新增 BoundSkillSync 与 sync_bound_skills(scope, standard)。逻辑复用既有原语：wanted_skills 取清单 → reconcile_managed_skills（归位 / 停放）→ 逐个 expected_skill_files + sync_skill_files（三态写，不覆盖用户改动）→ 保存装配状态 → record_managed_skills。找不到正文来源的记入 missing_source，不中断其余。
+- **命令（lib.rs）**：profile_skill_bindings_save 在规则写盘成功后调用 sync_bound_skills。**规则已经写入就不回滚**（绑定是用户的决定，Skill 拷贝失败不该让配置回到旧值），但回执里的 skills 明细如实写明补了哪些、哪几个缺源；基础标准在 save_skill_bindings_into 首句就被拒，走不到这一步。
+- **回执与界面**：ProfileRulesSaveReceipt 增 skills；设置页保存后的提示改为「绑定已保存 + 已补齐 / 已在位 N 个 Skill」，不再笼统写「下一轮提交生效」。
+- **测试**：profile_assets 新增两个单测（自建 Profile 绑定后 Skill 目录真实出现且二次保存不重复写；基础标准下 skills/ 目录与登记表都不出现）。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+本轮不改版式，只改一条回执文案与后端行为，沿用 129 已验收的行式区块与统一悬停说明规范，不新增弹层与控件。
+
+#### 明确不做
+
+- 不新增 Skill 市场或联网下载：Skill 仍随 OmniDesk 发布（编译期内嵌）或由用户放进仓库目录。
+- 不在保存绑定这条路径上联网安装插件（插件补装仍走切换 / 冷启动 / 手动三条既有通道）。
+- 不改基础标准的零写入口径，不改出厂 Profile 的固定清单。
+- 不 commit / push（未获授权）。
+
+### OD-ARCH-129：自建 Profile 的场景 × Skill 绑定可在界面里配（不用手写 JSON）（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划授权你制定并批准执行」；2026-10-29 已实施并通过审查，见 REVIEW.md / STATUS.md / D-058）
+
+> **触发：** 用户的产品边界是「OmniDesk 是干净初始环境，Profile 是定制的，切过去就该是专属工作台」。128 之后建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复 / 改名 / 迁移 / 声明插件都通了，但**场景绑哪些 Skill 只能靠手写 rules.json 的 skill_bindings**：普通用户在设置页只能看到一行只读摘要，配不出来「工作记录 → memory-agent 只预注入这一个」这类底线。装配链本身已就绪（wanted_skills 与 materialize_custom 都按这份绑定补 Skill），缺的是入口。
+
+#### 已核实的前提（本人实读源码）
+
+1. **绑定是装配的唯一来源。** profile_assets.rs:191 wanted_skills 与 :1092 materialize_custom 都只读 rules.json 的 skill_bindings；自建 Profile 的起步规则包刻意写空绑定（profile_starter.rs:79），所以新 Profile 现在必定零预注入。
+2. **校验器已存在且严格。** profile_rules.rs:229 validate 限制每场景 max_injected 在 1..=3、绑定数不超过它、技能必须在 ALLOWED_SKILLS（8 项）内且不重复。界面不该另写一套规则，只该把选择交给这条校验。
+3. **写入通道已有备份与原子写。** lib.rs:2157 write_profile_rules 先备份成 .bak-<epoch> 再写；128 已把「基础标准拒绝且不建目录」放在 save_rules_into 首句。新增命令复用同一入口即可，不新开写盘路径。
+4. **界面目前只有只读摘要。** SettingsPanel.tsx:3049 把绑定拼成一行文字展示，真正编辑只能改下面的 JSON textarea；普通用户不知道 weekly-note / weekly-report 这类流程键该怎么写。
+
+#### 方案
+
+**一句话：在「规则资产」页加一块行式「场景 × Skill」勾选表，点选后整表保存；后端把整张绑定表替换进现有 rules.json（其余规则一个字节不动），仍走统一校验与备份。**
+
+- **后端纯函数**（profile_rules.rs）：set_skill_bindings(text, bindings) -> Result<String, String>：解析现有规则 → 用传入映射重建 skill_bindings（空数组表示解绑、去重、max_injected = max(1, 绑定数)）→ validate() → 序列化回 pretty JSON。解析失败、技能不在清单、超上限一律整体拒绝，不产出半份文本。
+- **命令 profile_skill_bindings_save**（lib.rs）：基础标准直接拒绝且不建目录；读现有规则文件（不存在则用 profile_starter::rules_text 的起步骨架）→ set_skill_bindings → write_profile_rules（沿用备份 + 原子写）。返回 ok / path / backup / digest / note。
+- **界面**（SettingsPanel.tsx 规则资产页）：状态卡片下方新增「场景 Skill 绑定」区块，按行列出要配的场景（工作记录、工作记录 · 随手记、工作记录 · 周报、文案写作、项目跟进），每行右侧是该行可选的 Skill 勾选片；勾选只改本地草稿，行尾「保存绑定」一次性提交，未保存时显示提示。基础标准下整块不渲染（后端同样拒绝）。
+- **类型 / API**：RulesView 增 allowed_skills（由后端给出，避免前后端两份清单漂移）；types.ts 同步；api.ts 增 profileSkillBindingsSave。
+- **测试**：profile_rules 增 4 个单测（新建绑定、解绑清空、非法技能拒绝且原文不变、超 3 个拒绝）；lib.rs 增基础标准拒绝保存绑定的行为测试；窗口脚本覆盖勾选→保存→重读绑定生效。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+用 screenshots-design-inspiration 检索「settings page assign skills to workflow checkbox rows」，返回 Shopify 设置页一类界面：能力归属用勾选行表达，保存动作收在区块行尾。据此把绑定做成设置页既有的直角行式列表 + 行内勾选片，不新增弹层，也不再要求用户手写 JSON 才能配出专属工作台。
+
+#### 明确不做
+
+- 不新增 Skill 安装通道（Skill 仍随 OmniDesk 发布或由用户放进目录）。
+- 不改 max_injected 上限 3，也不在界面暴露任意数值输入：绑定几个就注入几个的底线够用。
+- 不自动切换 Profile、不自动重启引擎；保存后下一轮提交即生效。
+- 不 commit / push（未获授权）。
+
+
+### OD-ARCH-128：Profile 装配链补两处真缺口（基础标准零写入收口 + 自建 Profile 声明插件）（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划授权你制定并批准执行」；2026-10-29 已实施并通过审查，见 REVIEW.md / D-057）
+
+> **触发：** 127 之后主干（建 / 复制 / 切换 / 装配 / 补装 / 巡检 / 移除 / 恢复 / 改名 / 迁移）通了，但按「omnidesk 是干净和初始的环境，profile 是定制的，切换 profile 要自动写入所需配置、skill 和插件，缺插件能自动安装」逐条对表，仍有两处断点：**① 基础标准能写出规则文件**，干净底座的分界被自己打开一个口子；**② 自建 Profile 要加插件只能手改 `package.json` / `cordis.patch.yml`**，界面里没有登记入口，用户无法从零把一套定制工作台配出来。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **基础标准下 `profile_rules_save` 没有拦截。** `lib.rs:2067` 只做大小与解析校验，直接调 `write_profile_rules(&profile_rules_dir(&state), &text)`；`profile_rules_dir` 返回 `<应用数据根>/profiles/<当前 Profile>/`，`write_profile_rules` 第一句就是 `create_dir_all`。对照 `profile_decl_save`（`lib.rs:1041` 的 `save_decl_into`）已有 `standard` 拒绝分支，规则这条是漏的。后果不止「多一个目录」：`current_rule_policy` 从同一路径读规则，干净底座一旦写下业务规则就会被准入策略采用。
+2. **自建 Profile 的插件清单只有两个来源。** 创建时 `required_plugins(dir, dsh_home)` 从 `package.json` 依赖与 `cordis.patch.yml` 里探测一次，写进登记表 `index.v1.json` 的 `plugins`；之后 `required_plugins(scope, standard)`（`profile_assets.rs:1660`）只读这张表。全仓没有任何命令能改 `entry.plugins`，只有 `materialize_custom` 在探测到新依赖时顺手回写（`profile_assets.rs:1202`），而这条路径要求用户先用别的方式把依赖写进 DSH 侧文件。
+3. **安装通道已经存在且只装缺件。** `install_plugin(dsh_cli, dsh_home, profile, package, version)` 走 `dsh plugin --profile <p> add <pkg>[@ver]`，已处理 pnpm 的 `strictDepBuilds` 重试（OD-ARCH-120）；`ensure_plugins` 与三个触发点（手动 / 切换后 / 冷启动后）共用 `required_plugins` 这张表。所以「声明插件」只需把包名写回登记表，后续自动补装立刻对它生效，不需要新机制。
+4. **只读巡检漏掉外部新装的插件。** `inspect_custom`（`profile_assets.rs:1231`）只列 `entry.plugins`；若用户在命令行装了插件但没切换过，设置页看不到它，与 `materialize_custom` 的判定不一致。
+5. **规则资产页已有 JSON 编辑 + 校验保存。** 自建 Profile 声明 Skill 绑定（`rules.json` 的 `skill_bindings`）在界面上是可写的，`profile_rules::validate` 会拒非法技能名与超限。故这一轮不新增可视化 Skill 绑定器，只把「绑定后 Skill 会自动补齐」这条链打通验证。
+
+#### 方案
+
+**一句话：基础标准下规则保存一律拒绝且不建目录；自建 Profile 增加「声明一个插件」入口，经文 DSH 官方插件通道安装，成功后把包根写进登记表，让「切换装配 + 缺件补装」照旧接管。**
+
+- **A. 基础标准零写入收口**
+  - `profile_rules_save` 在解析前先取 `profile_asset_scope(&state)`，`standard == true` 时返回错误说明「基础标准是干净底座，不安装行业规则包；切到专业 Profile 再保存」，**不解析、不建目录、不落盘**（与 `profile_rules_restore_default` 同口径）。
+  - 前端规则资产页：基础标准时「校验并保存」按钮禁用，`data-hover-hint` 说明原因；文案区仍可粘贴查看，不影响只读观察。
+- **B. 自建 Profile 声明插件（新命令 `profile_plugins_add`）**
+  - 入参 `profile`、`package`（可写 `pkg` 或 `pkg@1.2.3`，scoped 包同理）。校验：名字合法、必须是已登记的自定义 Profile（拒绝基础标准与出厂 Profile）、包根经 `package_root` 归一后满足「非空、无空白、无 `..`、不以 `.` 或 `/` 开头、长度 ≤ 214」。
+  - 已登记且本地就绪 → 直接返回「已就绪、未重复安装」；已登记但缺件 → 走安装。
+  - 安装走既有 `install_plugin`（联网，只在用户点按钮时发生）。**只有安装成功后**才把包根写入登记表 `entry.plugins`（去重、保持既有顺序、新项追加），写失败则在回执里如实说明；安装失败不改登记表。
+  - 回执含 `ok / package / already_registered / installed / note`，界面一行中文说明；不弹窗、不自动重启引擎。
+- **C. 只读巡检与装配同源**：`inspect_custom` 的插件清单改为 `entry.plugins` ∪ `detect_plugins(dsh_profile_dir)`（只读、不写登记表、不装任何东西），避免「命令行装过、设置页看不见」。
+- **界面（`SettingsPanel.tsx`，Profile 资产页）**：插件分组下方加一行窄条「声明插件」：单行输入 + 「安装并登记」按钮，成功/失败回执写在同一行的 `.sub` 里；基础标准与出厂 Profile 不渲染该行。沿用现有直角卡片、`data-hover-hint` 与 `.asset-row` 结构，不新增弹层。
+- **类型 / API**：`types.ts` 增 `ProfilePluginAddReceipt`；`api.ts` 增 `profilePluginsAdd`。
+- **测试**：`profile_lifecycle` 增插件规格解析与登记去重的纯函数单测；`lib.rs` 增基础标准拒绝规则保存的行为测试（沿用既有「不写盘」断言写法）；窗口脚本覆盖基础标准按钮禁用与提示文案。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+用 `screenshots-design-inspiration` 检索 `settings page dependency list add plugin missing badge install button`，返回 Additor 等设置/详情页，共性是把「缺什么」做成行内徽标、把「补什么」做成该行行尾动作。据此把插件声明做成资产分组里的行内输入 + 行尾按钮，沿用设置页既有的行式列表与直角样式，不加新弹层。
+
+
+### OD-ARCH-127：Profile 可导出 / 可导入（一套定制工作台能带走、能在别处装回来）（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划授权你制定并批准执行」；2026-10-29 已实施）
+
+> **触发：** 用户的产品边界——「omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」，以及本轮补充「把 Profile 功能全部完善」。109–126 之后，建 / 复制 / 切换 / 装配 / 补装 / 巡检修复 / 移除 / 恢复 / 改名都通了，剩下的缝在**迁移**：一套调好的工作台只活在这台机器的两个目录里，换机或备份只能整盘拷数据根。D-054 的复审触发点②「出现跨设备/跨机器迁移 Profile 的需求」已经出现。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **一个自建 Profile 的资产散在两处，共五类。** DSH 侧 `dsh_home/profiles/<name>/`：`package.json`、`cordis.yml`、`cordis.patch.yml`、可选 `pnpm-lock.yaml` / `pnpm-workspace.yaml`；应用侧 `app_root/profiles/<name>/`：`decl.yml`（场景声明）、`rules.json`（规则包与 Skill 绑定）、`categories.json`（对话分类）；归属信息在 `app_root/profiles/index.v1.json`。没有任何一处能单独代表「这套工作台」。
+2. **没有导出 / 导入能力。** 全仓检索只有 `profile_create` / `profile_remove` / `profile_trash_list` / `profile_trash_restore` / `profile_rename`，没有面向迁移的命令，设置页「自建 Profile」每行只有「改名 / 移除」。用户换机只能拷整个数据根，连带把会话、缓存、凭证引用一起搬过去。
+3. **`node_modules` 不可移植，也不该进包。** `copy_profile_files` 从来只复制配置（不复制 `node_modules`），插件由 `required_plugins` 判定、由 `ensure_plugins` 走 DSH 官方通道安装。跨架构搬二进制会得到一个「看起来装好了、实际加载不了」的 Profile。
+4. **插件清单已在代码里有单一真相。** `profile_assets::required_plugins` 对出厂 Profile 用编译期清单、对自建 Profile 用登记表 `plugins`；`missing_plugins` 与 `ensure_plugins` 共用这张表。导入后只要把 `plugins` 写回登记表，「缺 N 个插件」与「自动补装」两条既有通道立刻生效，不需要新机制。
+5. **`.bak-<epoch>` 与 `trash.v1.json` 是过程文件。** 前者是改名 / 规则写入的回退点，后者是回收站元数据，两者都不属于 Profile 资产，导出时必须排除，否则会把历史残留一起带到新机器。
+6. **校验器都已存在。** `profile_decl::parse_decl`、`profile_rules::parse_rules`、`profile_categories::parse`、`settings::is_valid_profile_name`、`sha256::sha256_hex` 都在，导入校验不需要新写解析器。
+7. **文件选择器能力已放行。** `tauri-plugin-dialog` 已在 `Cargo.toml` 与 capabilities 的 `dialog:allow-open` 中；设置页已用它选知识库目录。导出需要 `dialog:allow-save`，当前未放行，本轮补这一条。
+
+#### 方案
+
+**一句话：导出一个自包含的单文件包（`omnidesk.profile-bundle.v1`），导入时先在临时目录逐文件校验，全部通过才落盘；同名一律拒绝、绝不覆盖；包内不带 `node_modules`，插件照旧由「切换装配 + 缺件补装」这条既有通道安装。**
+
+- **格式（单文件 JSON，UTF-8）**：`{schema, exported_at, omnidesk_version, profile:{name,label,created_at,origin,plugins}, files:[{path,kind,sha256,bytes,text}]}`。选 JSON 而不是 tar 的理由：内容全是 KB 级文本，明文可审阅、可手工抢救，也不需要为离线构建新增打包依赖（本仓库锁文件里没有归档 crate）。
+- **导出 `profile_lifecycle::export_bundle(dsh_home, app_root, name) -> Result<ExportReceipt, String>`**：
+  - 只允许已登记的自定义 Profile；出厂 Profile（`asset_profile`）与未登记目录直接拒绝——它们的资产来自编译期清单，导出没有意义；
+  - 白名单收集 DSH 侧五个配置文件名与应用侧 `decl.yml` / `rules.json` / `categories.json`，逐个记 `sha256` 与字节数；
+  - 排除 `node_modules`、`.bak-*`、`trash.v1.json`、`.assets.v1.json`、隐藏临时文件与任何子目录；
+  - 默认落点 `<应用数据根>/exports/<name>-<yyyymmdd-HHMMSS>.omniprofile.json`，也可由调用方指定目录；写前建目录，写失败整体报错、不留半份文件。
+- **导入 `profile_lifecycle::import_bundle(path, dsh_home, app_root, rename_to, label) -> Result<ImportReceipt, String>`**：
+  - 校验顺序：包大小上限（2 MB）→ schema → 每个 `path` 必须是**单段文件名白名单**（拒 `../`、绝对路径、子目录、反斜杠）→ 逐个 `sha256` 与字节数 → `name` 合法 → `decl.yml` 能 `parse_decl` → `rules.json` 能 `parse_rules` → `categories.json` 能 `parse`（且 `profile` 字段按新名重写）→ `package.json` 是合法 JSON 且含 `dsh.profile`；
+  - 名字冲突（DSH 目录存在 / 应用目录存在 / 已登记 / 出厂名）→ **整体拒绝**，并在回执里说明「改成什么名字可以导入」，界面提供就地改名输入；
+  - 落盘顺序：先写 `<app_root>/profiles/.import-<epoch>-<pid>/` 与 `<dsh_home>/profiles/<name>/`，DSH 目录用先写临时目录再 `rename` 到位；任一步失败就把已写的清掉，不留半套；登记表最后写，写失败则把两个目录撤回并清理；
+  - 成功后 `plugins` 原样进登记表，界面照旧显示「需要 N 个插件」，走既有 `ensure_plugins` / 自动补装；导入路径**绝不联网**。
+- **命令（`lib.rs`）**：`profile_export`（纯读 + 写包，不 emit）、`profile_import`（成功后 emit `omni://profile-registry`，顶栏与设置页既有订阅自动重读）、`profile_export_list`（只读列出导出目录里的包）、`profile_export_open`（在文件管理器打开导出目录）。全部 `#[tauri::command(async)]`，导出与导入都不在 UI 线程做文件 IO。
+- **界面（`SettingsPanel.tsx`）**：「自建 Profile」每行行尾加「导出」，包固定落 `<应用数据根>/exports/`（不弹系统保存框：导出结果可复现，也少一次系统对话框）；区块标题行右侧加「导入」用于选外部包；「迁移包」区块列出导出目录里识别得出的包，行尾「导入这套」一键装回，同名冲突时该行就地变为「改标识后导入」输入 + 「导入 / 取消」，与 126 的行内编辑同构。回执用一句中文说明「导出了哪几个文件」「导入了哪个工作台、还缺哪些插件」，不弹窗。
+- **类型 / API**：`types.ts` 增 `ProfileExportReceipt` / `ProfileImportReceipt`；`api.ts` 增 `profileExport` / `profileImport`。
+- **capabilities**：`default.json` 保留原样（导出不再走系统保存框，因此没有新增 save 权限；外部包的读取沿用已有 `dialog:allow-open`）。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+用 `screenshots-design-inspiration` 检索了两组关键词：`settings export import profile json dialog`（返回 Claude 的设置轮播、ChatGPT 的权限弹层与底部面板等）与 `settings page list row action buttons backup import export`（返回 Notion 的 Inline Row Actions 等）。借鉴两点：迁移动作收在对应资源的行尾、页面级导入单独一个按钮（Notion 行内动作）；导入结果只用一行文字说明，不弹窗打断（Claude 设置页窄条列表）。据此把「导出」做成自建 Profile 的行尾动作、「导入」放在区块标题行，沿用设置页既有窄条列表与直角样式，不新增弹层。
+
+#### 验收口径
+
+1. 单测（`profile_lifecycle` 模块内）：导出内容只含白名单文件且排除 `node_modules` / `.bak-*`；sha256 不匹配整体拒绝且磁盘零变化；`../` 与绝对路径被拒；同名拒绝且不覆盖；导入后 `decl.yml` 可解析、`categories.json` 的 `profile` 已改成新名、`plugins` 保留；导出→导入往返得到等价清单。
+2. `cargo test --offline --lib` 全绿（基线 464），`--tests`、`pytest tests -q`、`npx tsc --noEmit`、`npm run build` 通过。
+3. 真实窗口脚本 `preview_profile_import_export_127.py`：全新 `/tmp` 隔离根里建 Profile → 点「导出」（包落 `exports/`）→ 移除该 Profile → 在「迁移包」区块点「导入这套」导入回来 → 设置页与顶栏都能看到 → 切过去可用（场景入口生效），全 true、EXIT=0。
+4. 回归：125（回收站）、126（改名）、118（自建）三个窗口脚本 EXIT=0。
+
+#### 明确不做
+
+- 不做云端同步、账户体系或 Profile 市场：迁移是用户自己拿文件走。
+- 不自动覆盖同名 Profile：合并两套资产属于不可逆操作，需要单独设计确认流程。
+- 不把 `node_modules` 打进包：跨架构二进制不可移植，插件仍由 DSH 官方通道按平台安装。
+- 不打包会话、线程、缓存与凭证引用：这些不属于「工作台配置」，且带出数据根会扩大数据边界。
+- 不做「清空回收站 / 永久删除」：D-054 已定，触发点未到。
+- 不 commit / push（本轮未授权）。
+
+
+### OD-ARCH-126：自建 Profile 的显示名可改（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善」并授权自行制定并批准计划；2026-10-29 已实施）
+
+> **触发：** 用户的产品边界——「OmniDesk 是干净和初始的环境，Profile 是定制的，切换 Profile 时要能自动写入所需的配置、skill 和插件，如有缺失插件需要提供自动安装的功能」。用户同时授权「把 Profile 功能全部完善，中途的计划授权你制定并批准执行」。109–125 之后，建 / 复制 / 切换 / 装配 / 补装 / 巡检修复 / 移除 / 恢复都通了，剩下的缝在**命名**：自建工作台的名字建好就定死了。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **没有改名入口。** profile_lifecycle.rs 只有 create / remove / list_trash / restore；全仓检索 rename 只命中文件系统的 fs::rename，没有一个面向用户的改名命令或按钮。SettingsPanel.tsx 的「自建 Profile」列表每行只有一个「移除」按钮。
+2. **显示名有两份真身。** 一份在 index.v1.json 的 ManagedProfile.label（顶栏弹层与设置页列表读的是它，profile_choice.rs:107、SettingsPanel.tsx 的 p.label）；另一份在 app_root/profiles/<name>/decl.yml 的 display_name（profile_starter.rs 起手时按 label 写入）。只改登记表，声明里的旧名字会留在场景页与资产页；只改声明，顶栏和列表还是旧名。
+3. **目录名与显示名是两件事。** 顶栏与列表显示的是 label，实际目录与 DSH 的 --profile 用的是 name。因此改名可以只动 label，不必搬目录、不必改 rules.json 里的 profile 字段、不影响已绑定的 Skill 与插件——这是把「改名」做成低风险操作的前提。
+4. **声明是用户可改文件。** decl.yml 走 profile_decl::parse_decl 校验；用户可能手改过 display_name，也可能改坏了。改名时若声明存在且能解析，就把 display_name 替换成新值并整份重写（先备份）；解析不了就明确报错、一个字节不动，不猜着改。
+5. **基础标准与出厂 Profile 不该被改名。** 出厂 Profile 的 label 来自 profile_choice::friendly_label 的编译期映射，写登记表也没用；基础标准根本没有登记项。两条都直接拒绝。
+
+#### 方案
+
+**一句话：改名只动「显示名」两处真身——登记表的 label 与场景声明的 display_name；目录名、Profile 名、规则绑定、Skill、插件一律不动。**
+
+- **内核 profile_lifecycle::rename_label(app_root, name, label) -> Result<RenameReceipt, String>**：
+  - 校验：名字合法、label 去空白后 1–32 字、必须已登记（未登记 = 历史遗留目录，不碰）、不得是出厂 Profile；
+  - 先算出声明文件的新文本（若 decl.yml 存在）：解析 → 替换 display_name → 重新 validate；解析或校验失败**整体拒绝**，不动登记表；
+  - 再写：声明先备份成 .bak-<epoch> 并用 write_atomic 写入，随后写登记表；登记表写失败时把声明还原（用备份内容写回），避免「名字改了一半」；
+  - 返回 {ok, profile, previous_label, decl_updated, note}，界面据此如实回执。
+- **命令 profile_rename（lib.rs）**：取 app_root，改名成功后 emit(PROFILE_REGISTRY_EVENT)——顶栏与设置页已有的订阅会自动重读，不需要第二套刷新机制。
+- **界面**：设置页「自建 Profile」每行在「移除」左侧加「改名」，点开行内出现输入框与「保存 / 取消」（不弹窗、不占额外版面），沿用现有直角行与 data-hover-hint 规范。改名成功后刷新资产视图与自建列表。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+查了 Forge Business（Enterprise / Account Settings）、Gem（SaaS Dashboard）、Navigator（Workspace）三组界面：设置类列表里「改这一行」都留在本行内解决，动作按钮固定在行尾、编辑态只把这一行变成输入框。据此沿用「自建 Profile」列表的行内编辑：点「改名」把该行换成输入框 + 行尾「保存 / 取消」，与设置页既有的窄条列表同构，不新增弹层。
+
+#### 验收口径
+
+1. 单测：正常改名写两处；声明解析失败时整体拒绝且登记表不变；未登记 / 出厂名拒绝；label 越界拒绝；声明不存在时只改登记表并如实说明。
+2. cargo test --offline --lib 全绿（基线 459，本轮新增 5）；--tests、pytest tests -q、npx tsc --noEmit、npm run build 通过。
+3. 真实窗口脚本 preview_profile_rename_126.py：建 Profile → 设置页改名 → 顶栏显示新名 → 磁盘两处都是新名 → 解析校验仍通过 → 切过去可用，全 true、EXIT=0。
+4. 回归：125（回收站）、118（自建）、124（冷启动自愈）三个窗口脚本 EXIT=0。
+
+#### 明确不做
+
+- 不改目录名、不改 --profile 标识、不改 rules.json 的 profile 字段：改名不该牵动 Skill 绑定、插件清单、线程分类与会话目录。
+- 不给出厂 Profile（基础标准 / 纪检专业）改名：它们的显示名来自编译期映射，改登记表无效，改了也只会让界面与代码不一致。
+- 不做 Profile 导入 / 导出（换机迁移）：那是另一条带安全边界的通道，需单独设计确认流程。
+- 不做「清空回收站 / 永久删除」：D-054 已定，触发条件仍未出现。
+- 不 commit / push（本轮用户未要求提交）。
+
+### OD-ARCH-125：Profile 回收站（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善」；2026-10-29 已实施并通过窗口验收）
+
+> **触发：** 用户的产品边界——「omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」。用户同时授权「把 Profile 功能全部完善……阶段性备份、写文档」。124 之后「切换」「冷启动」「缺件补装」三条路都通了，剩下的缝在**移除**这一侧：软件把 Profile 搬进回收目录，回执却说「需要时可以恢复」，而软件里没有任何恢复入口。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **回执承诺了不存在的能力。** `profile_remove` 的 `ProfileRemoveReceipt.note` 原文是「已移入回收目录 `…/.trash`（不是永久删除），需要时可以从 `.trash` 恢复」。`profile_lifecycle::remove` 确实只做两次 `rename`，但应用里没有一个命令、一个按钮能把它搬回来——用户只能自己进文件系统改名，还得自己补回 `index.v1.json` 的登记项。
+2. **目录名不可逆。** 移除时目录被改名成 `<name>-<epoch>`，`name` 与 `label` 就丢了；就算手工搬回，显示名、建立时间、来源 Profile、插件清单都得靠人记。这使「恢复」在实践中等于「重建一个同名的」。
+3. **顶栏清单只在挂载时读一次。** `ProfileBadge` 的 `load` 只在 `useEffect(load, [load])` 里跑；设置页里移除或恢复 Profile 后，用户回到顶栏看到的还是旧清单，点不到刚恢复的那个。
+4. **回收目录已经存在且是刻意设计。** `remove` 早就把两个目录（`<应用数据根>/profiles/.trash`、`<dsh_home>/profiles/.trash`）搬好，本轮不新增目录布局，只补读写与入口。
+5. **118 已记录的 WebKit 行为。** 行内标题文字（`asset-row-title`）与徽标不进 AT-SPI 无障碍树，窗口脚本只能按行尾按钮判定行是否可见。
+
+#### 方案
+
+**一句话：把「移除」从单向的搬走，补成软件内可逆的回收站——元数据随目录一起搬，恢复是纯本地的两次 rename 加一次登记写回。**
+
+- **元数据（`trash.v1.json`）**：`remove` 在两个目录都搬完后，往 `<id>/` 写一份 `omnidesk.profile-trash.v1`：`name` / `label` / `created_at` / `origin` / `plugins` / `trashed_at`。写失败**不阻断移除**（回收站仍可用，只是退回按目录名解析）。回收目录 id 统一为 `<name>-<epoch>-<pid>`，避免同名 Profile 反复移除时撞车。
+- **列举 `list_trash`（只读）**：合并两个 `.trash`，按 `trashed_at` 倒序；没有元数据时按目录名**最后两段**反解（`name_from_trash_id`，两段必须纯数字），反解不出来就整条跳过——宁可少列一条，也不猜错名字。
+- **恢复 `restore`（纯本地）**：两次 `rename` 搬回原位 + 登记写回。三道拒绝：出厂名（`omnidesk-base` / `discipline` 等由清单决定）、已登记同名、目标目录已存在。中途失败把已搬的那个目录搬回去，不留半套。成功后删掉 Profile 目录里的 `trash.v1.json`，元数据不进正式 Profile。
+- **事件刷新**：新增 `omni://profile-registry`，`profile_create` / `profile_remove` / `profile_trash_restore` 成功后各发一次；`TopNav` 订阅后重读清单。这是本轮发现的**真实缺陷**：恢复后登记已写回、磁盘也对，但顶栏清单不刷新，用户点不到，等于恢复了也用不上。
+- **界面**：设置页「Profile 资产」的自建列表下方加「回收站」区块（直角卡片、状态徽标、行尾「恢复」、悬停说明）。移除按钮的提示改为「移入回收站，可在下方一键恢复」，回执不再拼路径。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+回收站沿用设置页既有的窄条列表（标题 + 副行 + 行尾动作），与自建 Profile 列表同构；只在「可恢复 / 无元数据」上用徽标区分，不新增弹窗或第二套视觉。
+
+#### 验收口径
+
+1. `cargo test --offline --lib`：新增 5 个单测（元数据列举、恢复搬回目录与登记、同名拒绝、无元数据兜底、脏目录名拒绝），总数从 454 到 459。
+2. 真实窗口 `preview_profile_trash_125.py`：建 → 移除 → 回收站可见 → 恢复 → 切过去，24 项 checks 全 true、EXIT=0。
+3. 回归：`preview_profile_custom_118.py`、`preview_profile_autofill_121.py`、`preview_profile_decl_hot_123.py`、`preview_profile_startup_heal_124.py` 四个脚本 EXIT=0。
+
+#### 明确不做
+
+- 不做「永久删除 / 清空回收站」按钮：用户没提，且这类不可逆动作需要单独设计确认流程。
+- 不做「恢复时覆盖同名目录」：宁可拒绝并让用户看见，也不静默合并两个 Profile 的资产。
+- 不动数据目录（成果根 / 库根 / 知识库根 / 历史会话）——D-052 已定它们不随 Profile 走。
+- 不 commit / push（用户未授权本轮提交）。
+
+
+### OD-ARCH-124：冷启动插件自愈（计划者与实施者：本助手；用户授权自行制定并批准；2026-10-29 已实施）
+
+> **触发：** 用户的产品边界——「omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」。121 已把插件自愈接在**切换**那一刻，本轮补上另一半：选好 Profile 之后**冷启动**，缺的插件要自己回来。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **启动装配不含插件。** `assemble_profile_assets_on_startup`（lib.rs:4593）只装配配置清单、cordis 补丁、声明、规则与 Skill；全文件没有一处调用 `ensure_plugins`。
+2. **自动补装只挂在切换命令上。** `spawn_profile_plugins_autofill` 的唯一调用点在 `profile_choice_set`（lib.rs 约 1333）。用户选完 Profile 关掉应用、第二天再打开，走的是启动路径，缺件不会被发现，更不会被装上；界面照旧显示「正在使用专业 Profile」，能力却是残的，只能靠用户自己进设置页手点「安装」。
+3. **探测与安装的分工已经清楚。** `PluginSpec::probe` 只读本地 `node_modules`（多候选目录），不联网、不写盘；`ensure_plugins` 才走 `dsh plugin --profile <p> add`。因此可以在启动早期安全地「先探测」。
+4. **总开关已存在且默认开。** `settings::profile_auto_install_plugins`（settings.rs:217，默认 true），设置页「自动补齐缺失插件」一项门控。
+5. **基础标准的兜底是硬编码的。** `required_plugins` 与 `ensure_plugins` 对 `profile == standard` 都直接返回空，「底座不装插件」不依赖界面文案。
+
+#### 方案
+
+**一句话：把切换时用的同一套「探测 → 判定 → 后台补装 → 事件回报」接到启动路径，判定条件与切换完全同源。**
+
+- `profile_assets::missing_plugins(scope, standard, dsh_cli) -> Vec<PluginProbe>`：只读探测，和 `required_plugins` 用同一张清单，标准 Profile 恒返回空。单独成函数是为了让「启动要不要装」这件事可以单测，而不必起窗口。
+- `maybe_autofill_plugins_on_startup(app)`：在 `.setup()` 里调用。锁内只克隆路径与引擎配置随即释放；四道短路——非 `web-api` 通道、基础标准、开关关闭、探测无缺件——都不起任何任务、不写盘、不联网。真缺件时写一行 `logs/profile-assets.log`（`profile=<name> startup-autofill pending=<n>`），再复用 `spawn_profile_plugins_autofill` 起后台线程，装完照旧 `emit(PROFILE_PLUGINS_EVENT)`。
+- `TopNav` 的自动补装事件回调补上「从空状态建卡」：冷启动自愈发生在用户还没开过 Profile 弹层的时候，原实现里 `prev` 为 null 直接返回，用户只会看到一句「还有 N 个未就绪」却看不到缺哪几个。
+- 设置页开关标题与说明同步改为「切换或启动 Profile 时自动补齐缺失插件」，与真实行为对齐；121 的窗口脚本改用后缀包含匹配，两种标题都能命中。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+后台自愈属于「无感修复」，界面只在修不好时才说话：装齐了给一句回执，装不齐才摆出缺件卡与手动入口。
+沿用项目既有直角卡片、状态徽标与 `data-hover-hint` 说明，不新增视觉语言。
+
+#### 验收口径
+
+- 单测：标准 Profile 恒返回空；登记了插件但本地没有时返回 1 项 `missing` 且**不新建任何目录**（`node_modules` / `profiles` / 应用数据根条目数不变）；包落地后立刻恢复为空。
+- `cargo test --offline --lib` 全绿（基线 451，本轮 +3）；`--tests` 12 个 binary 全 ok；`pytest tests -q` 89 passed；`npx tsc --noEmit`、`npm run build` 通过。
+- 真实窗口 `preview_profile_startup_heal_124.py` 全 true：首启自愈、删包后重启自愈、开关关闭不装、基础标准不装且不建目录。
+- 回归 `preview_profile_autofill_121.py`（切换路径）与 `preview_profile_decl_hot_123.py` 全 true。
+- 全程只写 `/tmp` 隔离根，不碰 `~/OmniDesk`、不读真实工作记录 / 知识库 / 凭证；`runtime/` 零差异；不 commit / push。
+
+#### 明确不做
+
+- 不让「装配」这一步联网：配置 / 声明 / 规则 / Skill 的装配仍然纯本地，联网只发生在用户明确知道的那一次插件安装里。
+- 不给基础标准装任何插件，也不因启动而给它建 `profiles/omnidesk-base/` 目录。
+- 不在启动路径上阻塞窗口：窗口先开，安装走后台，结果用事件回报。
+- 不新增第二个开关：自动补装仍只有设置页那一处门控，切换与启动共用。
+
+### OD-ARCH-123：切换即工作台的两处收尾（计划者与实施者：本助手；用户授权自行制定并批准；2026-10-29 已实施并通过审查，见 STATUS.md / REVIEW.md / D-051）
+
+> **触发：** 用户的产品边界原话——「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」。109 / 121 / 122 已把配置、声明、规则、Skill 的装配与缺失插件的后台补装做完，本轮收掉最后两处「切过去还不是那个工作台」的缝。
+
+#### 已核实的前提（本人实读源码，非推测）
+
+1. **装配链已闭环。** `profile_choice_set`（lib.rs:1108）先 `materialize` 再停旧引擎；出厂 Profile 写 package.json / cordis.patch.yml / decl.yml / rules.json / 8 个 Skill，自建 Profile 走 `materialize_custom` 按 `rules.json` 的 skill_bindings 补 Skill，切回基础标准由 `reconcile_managed_skills` 收回；缺失插件在切换后由 `spawn_profile_plugins_autofill` 后台补齐。这三段分别有 109 / 118 / 121 / 122 的窗口实跑证据。
+2. **缺口 D：保存场景声明必须重启应用才生效。** `profile_decl_save`（lib.rs:1000）回执写死「声明已保存；重启应用后生效。」；`App.tsx` 的 `loadDecl` 只在挂载与切换 Profile 时调用（App.tsx:92、235），保存动作不触发任何重读；5 秒指纹轮询（App.tsx:113）只把 `declDrift` 置成 `modified`，文案同样写「重启应用后生效」，而且 `App.tsx:301` 的漂移提示在用户保存后立刻亮起，等于告诉用户「你刚保存的东西没生效」。声明只决定 Dock 入口与显示名，不参与引擎启动参数（`engine_supervisor` 只读 profile 名与插件清单），热重载是安全操作。
+3. **缺口 E：基础标准下仍能保存场景声明。** `profile_rules_restore_default`（lib.rs:1795）对标准有短路拒绝，`profile_decl_save` 没有：它会 `create_dir_all` 并把 decl.yml 写进 `<应用数据根>/profiles/omnidesk-base/`。一旦写进去，基础标准就不再是「干净底座」，与用户「omnidesk 是干净和初始的环境」的边界冲突。
+4. **取模板与保存是两件事。** `profile_decl_starter` 只返回文本不写盘（lib.rs:924），标准下也允许（它只是文字）。本轮只拦保存，不拦取模板。
+5. **既有脚本依赖旧语义。** `verify_decl_restart_hint.py` 逐轮断言「改文件后必须重启才变」「删除文件后重启才消失」，其中「运行中改文件不热重载」是它要验证的事实本身；本轮改的是「用户在设置页保存」这条路径，不能顺手把「外部手改文件」也做成热重载，否则该脚本与 D-052 的边界一起失效。
+
+#### 方案
+
+**一句话：在设置页保存声明后 Dock 立刻换成新入口，外部手改文件仍然只提示不热重载；基础标准拒绝保存声明，保持干净底座。**
+
+**A. 保存即生效（热重载只走应用内保存这一条路）。**
+
+- 新增事件常量 `PROFILE_DECL_EVENT = "omni://profile-decl"`，与 `PROFILE_PLUGINS_EVENT` 同级放在 lib.rs 顶部。
+- `profile_decl_save` 成功后 `app.emit(PROFILE_DECL_EVENT, {profile, path, digest, saved_at})`；回执 `note` 改为「声明已保存，工作台入口已更新。」。函数签名加 `app: tauri::AppHandle` 参数（Tauri 命令注入既有先例：`profile_choice_set`）。
+- `App.tsx` 订阅该事件：收到后调 `loadDecl()`、清掉 `declDrift`（用户自己的保存不该触发「磁盘被改」提示）、按新声明校准当前场景（既有 effect 已经处理）。
+- 外部手改文件路径不变：仍由 5 秒指纹轮询报 `modified` / `missing`，仍不热重载。文案从「重启应用后生效」改为「保存后立即生效；外部改动的文件请重新在设置页保存或切换 Profile」。这条区分要写进 `docs/decisions.md`，避免以后有人把轮询也改成热重载。
+- `SettingsPanel.tsx` 的声明卡提示与 `profile_decl_starter` 的 `note` 一并改口径。
+
+**B. 基础标准拒绝保存声明。**
+
+- `profile_decl_save` 开头加标准短路（复用 `profile_asset_scope`，与 `profile_rules_restore_default` 同一判据）：返回「基础标准是干净底座，不挂业务场景。请先在顶栏切到 Profile 再保存声明。」
+- 标准判据的副产物：`profile_decl_starter` 回执已带 `standard: true/false`，前端据此禁用「校验并保存」按钮并把原因写在按钮下面的 `hint` 里（不新造弹窗）；「填入起步模板」继续可用。
+- 单测：标准下保存被拒且**不创建目录、不落文件**；非标准下保存成功并返回 digest。
+
+**C. 验收补课：在真实窗口里跑通「取模板 → 保存 → Dock 立刻出现场景」。**
+
+- 122 只验到「按钮可点、提示出现」，保存链路（含新的事件热重载）从未在窗口里跑过。本轮新增 `preview_profile_decl_hot_123.py`，在隔离根里：切到自建 Profile → 设置页填模板 → 校验并保存 → **不重启**断言 Dock 出现五个场景 → 切回基础标准 → 断言保存按钮禁用、Dock 只剩固有入口。
+- 既有 `verify_decl_restart_hint.py` 保留原断言（外部手改仍需重启），只按新文案更新证据里的说明文字。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+参考 Claude / Acuity 一类设置面板：破坏性或受限操作就地给原因并禁用按钮，不用弹窗追赶用户。
+沿用本项目既有直角卡片、状态徽标与 `data-hover-hint` 悬停说明，不新增视觉语言。
+
+#### 验收口径
+
+- 单测：标准 Profile 下 `profile_decl_save` 返回错误，且 `profiles/omnidesk-base/` 未被创建；非标准下写入成功、回执含 digest 与 backup 语义不变。
+- 单测：声明解析 / 校验失败仍然一字节不写（既有断言不回退）。
+- `cargo test --offline --lib` 全绿（基线 448，只可增）；`cargo test --offline --tests` 12 个 binary 全 ok；`python3 -m pytest tests -q` 全绿；`npx tsc --noEmit`、`npm run build` 通过。
+- 真实窗口：新脚本 `preview_profile_decl_hot_123.py` 全 true（保存后不重启 Dock 即更新、标准下保存被禁）；`preview_profile_starter_122.py` 与 `verify_decl_restart_hint.py` 回归通过。
+- 全程只写 `/tmp` 隔离根，不碰 `~/OmniDesk`、不读真实工作记录 / 知识库 / 凭证；`runtime/` 零差异；不 commit / push。
+
+#### 明确不做
+
+- 不把「外部手改声明文件」也做成热重载：那是 052 定下的可复核边界，热重载会让「磁盘上是什么」与「界面是什么」脱钩。
+- 不在基础标准下写任何 Profile 资产（含空 decl.yml）。
+- 不改引擎启动参数、不改 Profile 清单、不改插件安装通道。
+- 不引入 Profile 市场、模板库或自动安装 Skill 的新通道。
+- 不让成果根 / 库根 / 知识库根 / 历史会话随 Profile 走（收尾自查结论，见 D-052）：这几项是用户数据，不是可再生的装配资产。
+
+### OD-ARCH-122：自建 Profile 的「体检」与「起手骨架」（计划者与实施者：本助手；用户授权自行制定并批准；2026-10-29 已实施并通过审查，见 STATUS.md / REVIEW.md）
+
+> **触发：** 用户把本轮目标定为「OmniDesk 是干净的初始环境，Profile 是定制的；切换 Profile 时要能自动写入所需配置、Skill 和插件，缺失插件要能自动安装」，并要求把 Profile 功能全部完善到「切过去就是一个专属工作台」。
+
+#### 已核实的前提（本人实读代码，非推测）
+
+1. **主干已闭环。** 切换路径 `profile_choice_set`（lib.rs:1078）先 `materialize` 再停旧引擎；出厂 Profile 写配置 / 补丁 / 声明 / 规则 / 8 个 Skill，自建 Profile 走 `materialize_custom`（profile_assets.rs:1077）按 `rules.json` 的 `skill_bindings` 补 Skill；切走时 `reconcile_managed_skills` 把不属于目标的 Skill 移入停放区；插件在 121 已改为切换后台自动联网补齐。启动路径 `assemble_profile_assets_on_startup` 走同一入口。
+2. **缺口 A：自建 Profile 的只读巡检看不到 Skill。** `inspect_custom`（profile_assets.rs:1231）只探测登记表里的插件，不检查 `rules.json` 声明的 Skill 是否真的在 `<dsh_home>/skills/<name>/SKILL.md`。对照 `materialize_custom` 会补 Skill，所以「装配有、体检无」：用户删了 Skill 目录，设置页看不出来，只有下一次切换才被悄悄补回。用户 107 明确说过「设置页看 skill 还是和纪检 profile 一样，我不知道哪些加载了、哪些没加载」。
+3. **缺口 B：从基础标准起手的新 Profile 没有工作台骨架。** `write_base_files(None)`（profile_lifecycle.rs:165）只写 `package.json` / `cordis.patch.yml` / `cordis.yml`，不写 `decl.yml` 与 `rules.json`。结果新 Profile 切过去只有平台固有入口（首页 / 历史会话），业务场景为空，得手工填一整份声明才有工作台——与本轮「切过去就是专属工作台」的目标不符。
+
+#### 方案
+
+**一句话：让自建 Profile 也说得清「哪些 Skill 加载了、缺了」，并从基础标准起手时就自带一份可改的最小工作台骨架。**
+
+- **A. 巡检补 Skill。** `inspect_custom` 复用 `wanted_skills`（与装配同一张清单）逐项调用现成的 `expected_skill_files` + `inspect_skill`，产出 `skill:<name>` 资产项，状态词沿用 `ready / drift / missing / missing_source / stale`。只读：不建目录、不写状态文件、不补文件。找不到正文来源时给 `missing_source` 并在 `notes` 里说明。
+- **B. 起手骨架。** `write_base_files(None)` 之外，`create()` 在应用数据根 `profiles/<name>/` 写两份起步文件：`decl.yml`（schema + display_name=用户填的显示名 + 五个标准场景入口：工作台首页 / 工作记录 / 文案写作 / 项目跟踪 / 历史会话）与 `rules.json`（schema v2、目标 profile 名、空 global、空 scenes、空 skill_bindings —— **零预注入、零行业规则**）。写前用现有 `parse_decl` / `parse_rules` 自校验，写失败不阻断创建但要在回执里如实说。复制路径（`copy_from=Some`）行为不变。
+- **C. 设置页可自助起手。** 新增只读命令 `profile_decl_starter(label?)` 复用同一份模板生成函数；场景声明页在没有声明时给一个「填入起步模板」按钮，把模板灌进编辑框（仍需用户点保存、仍走校验与备份）。已有声明不动。
+- **D. 基础标准仍然零写入。** 模板只在「新建自定义 Profile」与「用户手动点填入」两条路径上产出，`omnidesk-base` 不写任何文件。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+参考 MixPanel / Linear 的设置面板：依赖项就地显示逐项状态与单一主操作，空状态给一句可执行的下一步而不是空白。
+沿用本项目既有直角卡片、状态徽标与 `data-hover-hint` 悬停说明，不引入新视觉语言。
+
+#### 验收口径
+
+- 单测：自建 Profile 在 `rules.json` 声明 Skill 后，`inspect` 返回对应 `skill:<name>` 项；Skill 目录缺失时状态为 `missing`，补齐后为 `ready`；巡检不得创建目录、不得写状态文件。
+- 单测：从基础标准新建后，应用数据根出现 `decl.yml` 与 `rules.json`，且两者都能被 `parse_decl` / `parse_rules` 通过校验；`rules.json` 的 `skill_bindings` 为空；生成的 decl 五个场景 id 均在白名单内。
+- 单测：`profile_decl_starter` 产出的文本能通过 `parse_decl` + `validate`，显示名换行被压成单行。
+- `cargo test --offline --lib` 全绿（基线 443，只可增不可减）；`cargo test --offline --tests` 集成全绿；`python3 -m pytest tests -q` 全绿；`verify_profile_assets_109.py` 全过；`npx tsc --noEmit`、`npm run build` 通过。
+- 真实窗口验收：隔离根里新建一个从基础标准起手的 Profile → 切过去 → Dock 出现五个场景 → 设置页「Profile 资产」列出该 Profile 声明的 Skill 及状态。
+- 全程只写 `/tmp` 隔离根，不碰 `~/OmniDesk`、不读真实工作记录 / 知识库 / 凭证；`runtime/` 必须零差异；不 commit / push。
+
+#### 明确不做
+
+- 不在切换路径上自动往自建 Profile 补写 `decl.yml`（会覆盖用户「故意不要场景」的选择）；只在「新建」与「用户点填入」处产出。
+- 不给自建 Profile 预置任何行业规则、红线词或 Skill 绑定：默认零预注入，省 token、快回复。
+- 不改出厂 `discipline` 的资产内容与装配顺序。
+- 不自动升级、不改写用户已安装插件，不动 `runtime/`。
+
+### OD-ARCH-121：切 Profile 自动补齐缺失插件（计划者与实施者：本助手；已实施，2026-10-29）
+
+> **触发：** 用户明确产品边界——「OmniDesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能」。
+
+#### 已核实的前提（本人实读代码 + 既有实跑证据，非推测）
+
+1. **配置 / 场景 / 规则 / Skill 已经是自动的。** `profile_choice_set`（lib.rs:1078）在写 `engine_profile` 之前调 `profile_assets::materialize`，出厂 Profile 写 `package.json` / `cordis.patch.yml` / `decl.yml` / `rules.json` / 8 个 Skill；自定义 Profile 走 `materialize_custom`，按 `rules.json` 的 skill 绑定补 Skill。切回基础标准走 `reconcile_managed_skills` 收回，底座保持干净（109 / 115 / 116 / 117 已验收证据）。启动路径 `assemble_profile_assets_on_startup` 走同一入口。
+2. **只有插件这一段不自动。** `lib.rs:1214` 把未 ready 的插件收进 `plugins_missing` 回执，前端 `TopNav.tsx` 弹「安装缺失插件」按钮；`ensure_plugins` 的注释与 docs/decisions.md D-043 都写明「只由用户点击触发，装配与切换路径不联网」。这正是用户这次要补的一环。
+3. **安装通道本身已能真装成功（OD-ARCH-120 实跑）。** `install_version` 钉运行时版本、`relax_dep_builds` 放行 pnpm `strictDepBuilds` 后自动重试一次；联网端到端测试在隔离根里装成 `@deepseek-ai/dsh-skill-office`，重跑不再重装。
+4. **当前安装调用没有超时。** `install_plugin` 用 `cmd.output()` 阻塞等待，无 deadline、无 kill。切换是同步命令，直接在切换路径里装会把「断网 / registry 慢」变成「切换一直转圈」——这正是 D-043 当初不自动的理由，必须一并解决才能自动。
+5. **主进程内已有可复用的超时范式。** `model_routes.rs:122` 与 `route_classifier.rs:104` 都是「`try_wait` 轮询 + deadline + `kill` + `wait`」，本计划沿用同一写法，不引入新依赖。
+
+#### 方案
+
+**一句话：切换先本地落盘并立即生效，插件放在切换之后的后台任务里自动补装，装完用右下角状态条报告。**
+
+- **A. 安装器加超时与可中断。** `profile_assets.rs` 新增 `run_install_command(...)`：`try_wait` 轮询 + 单包 deadline（初定 180 秒，常量集中一处）+ 超时 `kill` + `wait` 回收，stdout/stderr 由两个线程读完，避免管道写满卡死。`install_plugin` 改走它，回执新增「是否超时」的说明；超时按失败返回，不假装成功。既有的 pnpm 放行重试逻辑保留（重试也各自计时）。
+- **B. 切换后触发自动补齐（不阻塞切换）。** `profile_choice_set` 在**已经写完设置、停完旧引擎、算出 `plugins_missing` 之后**，若缺项非空且开关打开，用 `tauri::async_runtime::spawn_blocking` 起后台任务：调用现有 `ensure_plugins`（不新写安装逻辑），完成后重新探测并把结果推给界面。切换响应体新增 `plugins_auto_installing: true/false`，让前端知道后台在跑。
+- **C. 结果回传。** 新增事件 `omni://profile-plugins`，payload 为「profile / attempted / ok / still_missing / 每包退出码」。前端 `ProfileBadge` 订阅该事件：全部就绪就清掉缺件卡并弹一次成功提示；仍有缺项就把缺件卡刷新成最新清单，并说明哪几项失败。提示复用 `StatusToast`（右下角矮平长条、60 秒自动关、可手动关）。
+- **D. 一个显式开关。** 设置文件加 `profile_auto_install_plugins`（默认 `true`，与用户本次意图一致；`deny_unknown_fields` 下旧文件缺字段走 serde 默认，不需要迁移脚本）。设置页「Profile 资产」分组里放一行开关，文案说明「切换 Profile 时自动联网补齐缺失插件；关掉后只提示，由你点按钮安装」。关闭时行为与现在 114 完全一致。
+- **E. 界面口径。** 设置页缺件区改为：主按钮仍是「一键安装缺失插件（N）」，旁边一行小字说明自动补装是否开启、上次自动补装的结果；自动补装期间按钮显示进行中。沿用现有直角卡片与 `data-hover-hint` 悬停说明体系，不新增圆角气泡。
+- **F. 基础标准恒不触发。** `required_plugins` 对 standard 已返回空表，自动补装在标准 Profile 上是纯空操作；补装任务入口再加一道 `profile == standard` 的短路，避免以后改动误触。
+
+#### 设计参考（OD-ARCH-035 要求，2 句以内）
+
+参考 MixPanel / Linear 一类设置面板：依赖项旁就地显示逐项状态与单一主操作，进度用细条加计数表达，不用模态打断。
+沿用本项目既有直角卡片 + 右下角 `StatusToast` 的高度与配色，不引入外来视觉语言。
+
+#### 验收口径
+
+- 单测：`run_install_command` 的超时分支能在人为慢命令上按时 `kill` 并返回失败（用 `sh -c 'sleep 30'` 之类可控命令，deadline 设 1 秒）；正常命令 stdout/stderr 完整回收；`profile_auto_install_plugins` 缺字段默认为 `true`、写读往返稳定。
+- 单测：切换路径在「缺项非空 + 开关开」时置 `plugins_auto_installing=true`，开关关或缺项为空时为 `false`；基础标准恒为 `false`。
+- `cargo test --offline --lib` 全绿（当前基线 435，允许增加但不得减少）；`cargo test --offline --tests` 集成全绿（当前 2/1/13/6/5/10/21/4/3/1）。
+- `OMNIDESK_NET_TESTS=1` 联网端到端：在 `/tmp` 隔离根里让一个缺插件的自定义 Profile 走「切换 → 自动补装 → 就绪」，断言第二次切换不再触发安装。
+- `python3 -m pytest tests -q` 全绿；`verify_profile_assets_109.py` 41/41；真实窗口脚本覆盖「开关开 / 开关关」两种缺件提示，全 true。
+- 全程只写 `/tmp` 隔离根，不碰 `~/OmniDesk`、不读真实工作记录 / 知识库 / 凭证；`runtime/` 必须零差异。
+
+#### 明确不做
+
+- 不把安装塞进切换的同步路径：切换的响应时间不受网络影响，这是本轮硬要求。
+- 不改 `runtime/` 里的 DSH 与插件管理器，不写逐包 `allowBuilds` 白名单（沿用 120 的 `strictDepBuilds` 开关）。
+- 不做安装重试风暴：单包一次自动重试（pnpm 放行那次）之外不再循环，失败就如实报。
+- 不自动升级已就绪插件，不改用户 `package.json` 里自己写的依赖。
+- 不在基础标准上装任何插件。
+- 不做"停放区手工归位/删除"与旧线程 tag 迁移（既有遗留，另立计划）。
+
+#### 实施与验收
+
+**已由本助手亲自实施完毕**（2026-10-29），结果与实跑证据见 STATUS.md 顶部「OD-ARCH-121」、REVIEW.md 顶部审查结论，架构决策记为 docs/decisions.md 的 D-049。
+
+实施中与原计划的两处偏差，均已实测确认：
+
+1. **超时回收要连进程组一起收。** 原计划只写「kill + wait」。单测实测发现：只杀 sh 时孙进程（sleep 30）仍攥着 stdout/stderr 管道，收尾被拖到 30.006923168 秒——页面上就是「装完了但卡着不动」。改为 Unix 下 process_group(0) + killpg(SIGKILL)，管道读取附 2 秒排空宽限，同一单测降到毫秒级。非 Unix 分支退回 child.kill()。
+2. **切换回执的位置要改。** 首轮窗口验收截图显示：回执绝对定位在徽标下方，与弹层正文互相压字，右端还被窗口边缘裁掉。改为「弹层开着时回执在弹层顶部，弹层关着时才挂在徽标下方」，并给回执与缺件卡补了 aria-label，让读屏与无障碍断言都能拿到完整文本。
+### OD-ARCH-120：「缺插件点安装」必须真装得上：版本钉到运行时，并放行 pnpm 的构建脚本拦截（计划者与实施者：本助手；用户授权自行制定并批准，2026-10-29）
+
+> **触发：** 用户要求「切换 Profile 时自动写入配置、skill 和插件，如有缺失插件要能自动安装」。109–119 证明的是「探测说得清缺什么」，但没人真的点过一次安装并装成功。本轮在 `/tmp` 隔离根里走真实 CLI，一次撞出两个硬阻断。
+
+#### 已核实的前提（本人实跑，非推测）
+
+1. **不钉版本必然被拒。** `dsh plugin --profile probe add @deepseek-ai/dsh-plugin-manager` 退出 1：
+   `installation rejected: Plugin @deepseek-ai/dsh-plugin-manager@0.1.6-alpha.2 is incompatible with dsh 0.2.1-alpha.2 ... dsh: nothing was installed.`
+   而探测出的清单多半不带版本，于是「点安装」在用户眼里永远是失败。
+2. **钉版本后又撞 pnpm 11 的构建脚本拦截。** `add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2` 退出 1：
+   `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: koffi@3.1.1`。DSH 的安装是非交互的，界面上没有 `pnpm approve-builds` 的入口。
+3. **拦截信息写在 stdout。** 只在 stderr 里找关键字会漏判——第一次修完重跑仍退出 1，正是因为找错了流。
+4. DSH 启动器的模块解析是双锚点（安装目录 + Profile 目录），因此「单独装一个包、在裸 node 里 import 失败」不能当成缺陷。
+
+#### 方案
+
+- `profile_assets.rs` 新增 `dsh_runtime_version`（从 CLI 入口向上找 `@deepseek-ai/dsh` 的 `package.json` 取 `version`）与 `install_version`（显式版本优先，否则钉运行时版本）。
+- `install_plugin` 用 `install_version` 组出 `<pkg>@<ver>`；失败且输出里出现 `ERR_PNPM_IGNORED_BUILDS` / `Ignored build scripts` 时，把该 Profile 的 `pnpm-workspace.yaml` 写成 `strictDepBuilds: false`（保留原有键、不重复写），**自动重试一次**，并在回执里注明。
+- 单测覆盖：版本读取、显式/回退/CLI 缺失、放行函数保留原有键且幂等、关键字判定。
+- 新增联网端到端集成测试 `ensure_plugins_installs_over_network_when_enabled`，默认跳过，`OMNIDESK_NET_TESTS=1` 才跑；走应用真实入口 `ensure_plugins` → `install_plugin`，断言退出码 0、包装进 Profile 的 `node_modules`、第二次不再重装。
+
+#### 验收口径
+
+- `cargo test --offline --lib` 435 passed；`--tests` 集成全绿；
+- `OMNIDESK_NET_TESTS=1` 跑通那条联网测试；
+- `pytest tests -q` 89 passed / 30 subtests；`verify_profile_assets_109.py` 41/41；
+- 真实窗口重跑 `preview_profile_custom_118.py` 全绿；
+- 全程只写 `/tmp` 隔离根，不碰 `~/OmniDesk` 与 `runtime/`。
+
+#### 明确不做
+
+- 不在切换 Profile 时自动联网安装：仍是用户点「安装」才触发；
+- 不改 `runtime/` 里的 DSH 与插件管理器；
+- 不改 DSH 的 `allowBuilds` 逐包批准表，只关 strict 开关。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+见 STATUS.md 顶部同号条目。
+
+### OD-ARCH-119：补丁里的子路径导出不是独立插件，探测必须折回包根（计划者与实施者：本助手；用户授权自行制定并批准，2026-10-29）
+
+> **触发：** 118 实跑回执里，从「基础标准」新建的 `my-desk` 带着 `plugins: ["@deepseek-ai/dsh-tool-subagent-control/list-agents", "@deepseek-ai/dsh-plugin-manager/tools"]`，资产页出现「一键安装缺失插件（2）」和两颗「安装」按钮。而这两个条目是**同一包内的子路径导出**，不是能安装的 npm 包——`install_plugin` 的两段式校验会直接判为不合法。用户点下去只会看到「插件名或 Profile 名不合法」。
+
+#### 已核实的前提（本人实读代码）
+
+1. `profile_lifecycle.rs::detect_plugins` 把 `cordis.patch.yml` 里 `name: '@scope/...'` 整串当包名，不过滤子路径。
+2. `profile_assets.rs::probe_package` 用 `node_modules/<name>/package.json` 判断就绪；`.../list-agents` 在磁盘上不存在这样的目录，永远 `missing`。
+3. `install_plugin` 只接受 `@scope/pkg` 两段式；因此这是「永远报缺、永远装不上」的死角，不是偶发。
+4. 两个包根 `@deepseek-ai/dsh-tool-subagent-control`、`@deepseek-ai/dsh-plugin-manager` 都随运行时提供（已实地确认 `package.json` 存在）。
+
+#### 方案
+
+- `profile_lifecycle.rs` 新增 `pub fn package_root(name) -> &str`：scoped 名字取前两段，非 scoped 原样返回。
+- `detect_plugins` 的两处来源（`package.json` 依赖、补丁 `name:`）都过一遍 `package_root`，最后排序去重。
+- `profile_assets::required_plugins` 读登记表时同样归一，旧登记表里已写死的子路径也能被纠正。
+- 补两条单测：子路径折叠 + 排序去重；归一化只动 scoped 子路径。
+
+#### 验收口径
+
+- 单测覆盖子路径与两段式、非 scoped 的边界；
+- Rust 全量与集成不回归；
+- 真实窗口重跑 118：新建的 Profile 资产页不再出现「一键安装缺失插件」，`plugins` 为空；
+- 不联网安装、不改 `runtime/`。
+
+#### 明确不做
+- 不自动安装任何插件（仍是用户点「安装」才触发）；
+- 不改补丁文件本身：`name:` 写子路径在 DSH 侧是合法的模块入口，改文件会改掉引擎的实际加载行为。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- 新增 `package_root`；`detect_plugins` 两个来源都归一后排序去重；`required_plugins` 读登记表时归一。
+- `cargo test --offline --lib profile_lifecycle` **10 passed**（新增 2 条）；`--lib` 全量 **432 passed**；`--tests` 集成全绿（2+1+13+6+5+10+20+4+3+1）；`pytest` 89 passed / 30 subtests；`verify_profile_assets_109.py` **41/41**。
+- 真实窗口重跑 `preview_profile_custom_118.py` **26/26 true、EXIT=0**；资产页文本里「一键安装缺失插件（2）」与「安装」按钮消失，`profile_entry.plugins` 从两项子路径变为 `[]`。
+
+
+### OD-ARCH-118：自定义 Profile 的「建 → 切 → 看 → 删」整条链路实跑（计划者与实施者：本助手；用户授权自行制定并批准，2026-10-29）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 109–117 证明的一直是「在出厂的两三个 Profile 之间切」。用户真正要用的是**自己建一个工作台**：顶栏新建 → 立刻切过去 → 资产页看得见 → 不要了点移除、还能找回来。这条链路此前只有 Rust 单测，没有一条真实窗口证据。
+
+#### 已核实的前提（本人实读代码）
+
+1. `profile_lifecycle.rs::create` / `remove` 已有单测，但没有任何验收脚本从界面点进去过一次。
+2. `lib.rs::profile_remove` 会拒绝对「当前 Profile」的移除，因此「建完直接删」走不通，必须先切回底座——这条业务约束只有真点一次才会暴露。
+3. 共用定位函数 `open_profile_popover` 只认「标准 / 专业」两种徽标文案；自建 Profile 的徽标写的是自定义显示名，直接复用会点空。
+
+#### 方案
+
+单脚本 `tests/verification/desktop/preview_profile_custom_118.py`，隔离 `/tmp` 根、一次性 Xvfb、`OMNIDESK_DSH_PROFILE=""` 冷启动，按用户的实际动作走完：
+
+1. 从 `omnidesk-base` 起手，点徽标 → 「新建自定义 Profile」→ 填 `my-desk` / `My Desk` → 创建；
+2. 断言注册表有条目、`dsh-home/profiles/my-desk/` 有 `package.json` + `cordis.patch.yml`、`skills/` 为空（不凭空带业务技能）；
+3. 确认切换 → 断言 `engine_profile == my-desk`、分类只剩 `plain`、Dock 不长出「工作记录」；
+4. 设置 → Profile 资产 → 断言列出该自建项且有「移除」；
+5. 回工作台、重开弹层切回「基础标准」→ 断言 `engine_profile` 为 `None`；
+6. 再进资产页 → 点「移除」→ 断言注册表已删、`app-data/profiles/.trash/my-desk-*` 存在、`dsh-home/profiles/my-desk` 已清。
+
+脚本内部单独实现 `open_popover_any`（按传入的任意显示名找徽标、且必须看到弹层真的展开才算成功），不改共用函数——110 那条路径只用出厂文案，动它没有收益。
+
+#### 验收口径
+
+- 上述 26 项全部为 true，脚本 `EXIT=0`；
+- `pytest` 与 `verify_profile_assets_109.py` 不回归；
+- 清理 dev server / Xvfb / `/tmp` 隔离根，不碰正式实例与 `runtime/`。
+
+#### 明确不做
+- 不测真实联网装插件（另计，见已知限制）；
+- 不改产品代码：本条只补验收证据；
+- 不 commit / push / reset / clean。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- 首跑 16 项通过、9 项失败，三项都是脚本口径问题、不是产品缺陷：①设置页里徽标文案是 `My Desk`，共用定位器点空；②「基础标准」列表项文字带描述，精确匹配点不中；③资产页行的 span 文字不进 AT-SPI 树，`custom_still_listed` 误判。
+- 依次修正：本地 `open_popover_any`（先回工作台首页避免与资产页同名文字混淆）、改用已经验证过的 `pick_profile` 包含匹配、把「还在列表里」改为「行内『移除』按钮可见 + 注册表仍有条目」两处并证。
+- 终跑 **26/26 true、EXIT=0**；`python3 -m pytest tests -q` **89 passed / 30 subtests**；`verify_profile_assets_109.py` **41/41**。
+- 已清理 5273 dev server、Xvfb 与 `/tmp/od118-*`；正式实例（pid 107733 / 引擎 107812）未动。
+- 未做：真实模型端到端、真实联网装插件、commit / push。
+
+
+### OD-ARCH-117：复制 Profile 带上分类表，停放区在设置页可见（计划者与实施者：本助手；用户授权自行制定并批准，2026-10-29）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 116 之后分类表已经是 Profile 资产，但**只有切换路径在用**。两处漏网：复制一个 Profile 时不带分类表（新 Profile 靠「继承当前生效表」碰运气）；被移进 profiles/.parked-skills/ 的 Skill 在界面上完全看不见——用户切回基础标准后只发现业务技能「消失了」，不知道它们去哪了、什么时候回来。
+
+#### 已核实的前提（本人实读代码）
+
+1. profile_lifecycle.rs 的 create 只复制 decl.yml / rules.json，全文零处提及 categories。
+2. profile_categories::load 缺文件返回 None，apply_for_switch 才走「继承一次」；也就是说从 A 复制出 B 时，B 的分类取决于用户当时正好停在哪个 Profile。
+3. profile_assets.rs 有 PARKED_SKILLS_DIR / restore_parked / retire_unwanted，全部私有，没有任何只读出口；停放区目录在真实数据根里当前不存在（用户尚未切走过）。
+
+#### 方案
+
+**S1｜复制即带分类表**：create 在复制 decl/rules 之后一并写 profiles/<name>/categories.json。取值优先级：来源正在生效时用当前生效设置（盘上是上次切走的旧快照，可能少一截）→ 来源的分类文件 → 出厂内嵌清单。用 profile_categories::save 重新序列化，把 profile 字段改成新名字，避免 parse 以「归属不符」拒绝。失败不阻断创建，与 decl/rules 同口径。
+
+**S2｜停放区只读可见**：profile_assets::list_parked(app_root) 返回名字、路径、条目数，目录不存在返回空表且**绝不建目录**；新命令 profile_assets_parked 只读暴露；设置页「Profile 资产」页在有停放项时多一节「已停放」，说明「不属于当前 Profile，切回需要它的 Profile 会自动归位」。不提供删除按钮——停放本身就是「移走不删除」。
+
+#### 验收口径
+
+- 从 A 复制出 B，B 拿到 A 的分类表且 profile 字段是 B；无分类来源时创建仍成功；
+- list_parked 在停放目录不存在时返回空表且磁盘不变；有内容时按名字排序；
+- 停放项出现在设置页，tsc / 构建 / Rust 全量 / pytest / 109/110 脚本全绿。
+
+#### 明确不做
+- 不在停放区提供删除入口；
+- 不改既有线程 tag、不改写用户文件、不碰 runtime/。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- profile_lifecycle.rs 的 create：复制 decl/rules 之后按「生效设置 → 来源文件 → 内嵌清单」取分类表，用 profile_categories::save 重写（归属自动改成新名字）；新增单测 create_from_profile_copies_categories（8 passed）。
+- profile_assets.rs：新增 pub struct ParkedSkill 与 pub fn list_parked（只读、排序、目录不存在不建）；新增单测 list_parked_is_read_only_and_sorted。
+- lib.rs：新增 tauri 命令 profile_assets_parked 并注册。
+- 前端：types.ts 加 ParkedSkillView、api.ts 加 profileAssetsParked()、SettingsPanel.tsx 在 refreshAssets 里并发读停放清单并在资产页渲染「已停放」一节。
+- 实跑：cargo test --offline --lib **430 passed**；cargo test --offline --tests 集成 2+1+13+6+5+10+**20**+4+3+1 全绿；npx tsc --noEmit 无输出；npm run build 通过；python3 -m pytest tests -q 89 passed / 30 subtests；verify_profile_assets_109.py **41/41**（原 38 + 新增 3 条：复制带分类、停放清单只读、停放区在 UI 可见）；preview_profile_switch_110.py --display :139 --root /tmp/od117-preview **16/16 true**，回执里 parked_skills 列出 8 个被停放的业务 Skill。
+- 未做：真实模型端到端仍待用户实测；未 commit、未 push。
+
+
+### OD-ARCH-116：对话分类随 Profile 走，基础标准不再残留业务分类（计划者与实施者：本助手；用户授权自行制定并批准，2026-10-29）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件。」
+> 114 / 115 之后，配置、场景、规则、Skill、插件在切换时都跟着 Profile 走了。**对话分类没有跟。** 它躺在全局 `config/settings.v1.json` 里，切回 `omnidesk-base` 后仍是「未分类 / 工作记录 / 文案写作 / 项目跟进」——首页输入框左边的胶囊、历史会话页的归类下拉、设置页的分类卡片全都还在说业务话。干净底座在「分类」这一层漏了。
+
+#### 已核实的前提（本人实读代码）
+
+1. `settings.rs:63` `thread_categories` 是**全局**字段，默认四类由 `default_thread_categories()` 给死；`profiles/<name>/` 目录下没有任何分类文件。
+2. `profile_assets.rs` 全文零处提及 categories——`materialize` / `reconcile_managed_skills` 都不碰它。
+3. 前端消费点三处同源：`threadCategories.ts`（`useThreadCategories`）、`HomeCanvas.tsx:369`、`Workspace.tsx:30`、`ScenePage.tsx:135`。`sceneOptions()` 靠**场景声明**挡掉 weekly/writing/project 三个内置分类，自定义分类挡不掉（声明里隐藏业务场景时，自定义业务分类照样出现）。
+4. `profile_choice_set` 现在做三件事：装配资产、写 `engine_profile`、停旧引擎；没有任何分类同步。
+
+#### 方案
+
+**S1｜分类表按 Profile 分文件存放**
+新增 `<app_root>/profiles/<name>/categories.json`（schema `omnidesk.profile-categories.v1`）。出厂 Profile 的清单编译期嵌入（`samples/profiles/discipline.categories.json`），自定义 Profile 由用户在该 Profile 下编辑时落盘。
+
+**S2｜切换时双向同步，基础标准只留「未分类」**
+`profile_choice_set` 在写入 `engine_profile` 前后各半步：
+- **切走前**：若离开的是非标准 Profile，把当前生效分类表**回存**到该 Profile 的 `categories.json`（用户在该 Profile 下的改名、新增分类不会被切丢）。
+- **切入后**：非标准 Profile 用它的 `categories.json`（首次用出厂清单或从当前分类继承一份）；基础标准收敛为**只有「未分类」一类**。
+- 现有线程的 tag 一个都不改（历史对话仍按原 tag 存着，标签显示回落为「未分类」，切回 Profile 就恢复真名）。
+
+**S3｜内置四键的约束松动为「至少 plain」**
+现在 `validate_categories` 强制要求四个内置键齐全，基础标准没法只留 `plain`。改为：`plain` 必须存在且键唯一；`weekly/writing/project` 缺失时按「该 Profile 没有这个业务分类」处理，不算错误。
+
+#### 具体改动
+
+1. `settings.rs`：`validate_categories` 只要求 `plain`；新增 `standard_thread_categories()`（仅 plain）与 `DEFAULT_CATEGORIES` 区分。
+2. 新模块 `profile_categories.rs`：`load/save`（`<app_root>/profiles/<name>/categories.json`，原子写，损坏即报错不猜）、`embedded_for(profile)`（出厂清单，编译期嵌入）、`apply_for_switch`。
+3. `samples/profiles/discipline.categories.json`：纪检专业的分类表（四类，带 weekly-report / material-writing / project-management 映射）。
+4. `lib.rs::profile_choice_set`：装配段之后调用 `apply_for_switch`；返回值加 `categories` 字段；失败整次切换回滚（与现有 `engine_profile` 回滚口径一致）。
+5. 前端 `App.tsx` 的 `onProfileChanged` 补 `refreshThreadCategories()`；`SettingsPanel` 的 `profileEpoch` effect 清掉分类缓存；设置页分类区说明「这些分类属于当前 Profile」。
+6. `SettingsPanel.tsx:2205` 的「保存后需重启应用生效」在 110 之后已不成立，改为准确说法。
+
+#### 验收口径
+
+- 切到 `omnidesk-base` 后 `settings.v1.json.thread_categories` 只剩 `plain`；首页胶囊、历史会话、设置页都不再出现三个业务分类；
+- 切到 `discipline` 后四类回来，归档目录映射与 062 一致；
+- 在某 Profile 下改名/新增分类 → 切走 → 切回，改动仍在（`categories.json` 回存）；
+- 基础标准态下切换**不创建任何 `profiles/<name>/` 文件**，既有线程 tag 不被改写；
+- 新增集成测试覆盖以上四条 + 损坏 `categories.json` 被拒绝；`cargo test` / `tsc` / `npm run build` / `pytest` / 109/110 脚本全绿；`preview_profile_switch_110.py` 增加「base 态不含业务分类」断言并真实窗口跑通。
+
+#### 明确不做
+- 不迁移、不改写既有线程的 tag 与消息；
+- 不删除任何分类对应的成果目录或文件；
+- 不在切换时联网、不碰 `runtime/`、不碰 `~/.dsh`。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- `settings.rs`：新增 `REQUIRED_CATEGORY_KEY = "plain"` 与 `standard_thread_categories()`（仅 plain）；`validate_categories` 不再强制四键，只要求 `plain` 存在且唯一；`thread_categories` 的 serde 默认值与 `Settings::default()` 都改为干净底座，`default_thread_categories()` 保留为专业 Profile 的出厂清单。
+- 新模块 `profile_categories.rs`：`load / save / embedded_for / apply_for_switch`，走 `model_settings::write_atomic` 原子写，schema 与归属双重校验，损坏即报错不猜；`apply_for_switch` 先回存离开的 Profile，再按「文件 → 内嵌 → 继承一次」取目标值。
+- `samples/profiles/discipline.categories.json`：四类 + 归档目录映射，编译期内嵌。
+- `lib.rs::profile_choice_set`：在 `set_engine_profile` 之前同步分类，失败则整次切换中止并给出「分类表同步失败，未切换」；回执新增 `categories`。
+- 前端：`App.tsx` 切换成功后 `refreshThreadCategories()`；`SettingsPanel.tsx` 的 `profileEpoch` effect 清缓存与草稿；`threadCategories.ts` 默认值改为只有 plain。
+- **首跑暴露的真实缺口：** 真实窗口首轮 `boot_base_categories_only_plain` 为 false——全新数据根没有设置文件，`Settings::default()` 仍给四类。只读测试全绿也掩盖不了这一点，改默认值后第二轮才转绿。
+- 实跑：`cargo test --offline --lib profile_categories` 5 passed；`--test profile_categories_host` 4 passed；`cargo test --offline --tests` 428 lib + 集成 2+1+13+6+5+10+20+4+3+1 全绿；`npx tsc --noEmit` 无输出；`npm run build` 通过；`python3 -m pytest tests -q` 89 passed / 30 subtests；`verify_profile_assets_109.py` **38/38**；`preview_profile_switch_110.py` 22/22 静态 + 真实窗口（`:137`，`/tmp/od116-preview`）**16/16 true**。
+- 未做：真实模型端到端仍待用户实测；未 commit、未 push。
+
+
+
+### OD-ARCH-114：切换 Profile 时把缺失插件摆到台面上，并给一键安装（已实施并通过验收，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 109–113 之后，配置与 Skill 在切换时就写好了；插件只做到「探测」，缺失项只有进设置页才看得见，切换回执里一个字都不提。
+
+#### 已核实的前提（本人实读代码）
+
+1. `profile_choice_set` 装配完只回 `assembled_changes`（写了几项），插件状态在 `assembly.items` 里，但前端只用它算「已装配 N 项」，用户看不到「有插件没装上」。
+2. 安装能力已存在（`profile_plugin_install` → `dsh plugin --profile <p> add`），但一次只装一个；批量只在设置页的「一键安装缺失插件」里有，且要先切进设置页。
+3. 安装是联网写操作，不能在装配里静默执行——必须让用户看得见「要装什么、为什么、会联网」。
+
+#### 方案
+
+**S1｜新命令 `profile_plugins_ensure`**
+入参 Profile 名；按出厂清单（自定义 Profile 走登记表）算出缺的插件，逐个调 `install_plugin`，返回每项的 `InstallReceipt` 与安装后重新探测的状态。单个失败不中断其余，最终 `ok` 只在全部就绪时为 true。
+
+**S2｜切换回执带缺失插件清单**
+`profile_choice_set` 返回值加 `plugins_missing: [{package, status, detail}]`；基础标准恒为空。
+
+**S3｜切换后的一次性提示**
+切换成功且 `plugins_missing` 非空时，在 Profile 弹层里显示一条「还缺 N 个插件」的条，附「安装」按钮（带 hover 说明「会联网」），点完把逐项回执与最终就绪状态显示出来。用户不点就不联网。
+
+**S4｜明确不做**
+- 不在装配里自动联网安装；
+- 不装清单外的包，不禁用用户自己装的插件；
+- 不改 `runtime/`、不碰 `~/.dsh`。
+
+#### 验收口径
+- 切换到一个依赖插件但本地没有的 Profile，回执里列出缺的包名，界面出现安装入口；
+- 点安装后逐项回执，全部成功时再探测为 `ready`；单个失败不中断其余；
+- 基础标准切换始终零插件请求、零写入；
+- cargo test / tsc / npm run build / pytest / 109+110 验证脚本全绿。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- `profile_assets.rs` 新增 `PluginSpec`（所有权类型，不用 `Box::leak`）、`required_plugins`、`EnsureReceipt`、`ensure_plugins`；`lib.rs` 新增 `profile_plugins_ensure` 命令并加入 `generate_handler!`；`profile_choice_set` 返回值加 `plugins_missing`。
+- 界面：`TopNav.tsx` 在切换后若仍缺插件，弹层不自动关闭，列出缺的包并提供「安装缺失插件 / 稍后」，均带 `data-hover-hint`；`SettingsPanel.tsx` 的「一键安装缺失插件」改走批量命令，N 次 IPC 收敛为 1 次。
+- 实跑：`npx tsc --noEmit` 无输出；`npm run build` 通过；`python3 -m pytest tests -q` 89 passed / 30 subtests；`verify_profile_assets_109.py` **34/34**（新增 3 项：回执带缺失清单、批量命令已注册、装配路径不调 `ensure_plugins`）。
+- 未做：真实联网安装未在正式实例上跑（会拉包），留给用户实测时确认网络与镜像。
+
+
+### OD-ARCH-115：切回基础标准时把 OmniDesk 写的 Skill 收起来——底座要真的是空的（已实施并通过验收，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的。」
+> 现状：8 个业务 Skill 写在 `<dsh_home>/skills/`，而 DSH 的 `skill-filesystem` 把该目录当**全局用户根**扫描。于是切回基础标准后，底座仍会加载纪检的业务 Skill——「干净底座」只体现在配置层，没体现在 Skill 层。
+
+#### 方案
+
+**S1｜登记 + 停放**
+装配时把写过的 Skill 名记到 `<dsh_home>/skills/.omnidesk-managed`。切到不需要这些 Skill 的 Profile（基础标准或不绑这些 Skill 的自定义 Profile）时，把这些目录**移动到** `<app_root>/profiles/.parked-skills/<name>`，并从登记表移除。移动不删除，用户内容仍可取回。
+
+**S2｜切回来时先归位再装配**
+装配前先把目标 Profile 需要的、仍停在 park 目录里的 Skill 移回原位，再走既有的三态写入。这样用户在 Skill 里做过的修改仍然按 `drift` 保护，不会被内嵌副本覆盖。
+
+**S3｜零写入不破**
+基础标准且没有登记项时，`retire` 是空操作：不建目录、不写文件。原有「基础标准零写入」的测试继续有效。
+
+#### 验收口径
+- 空根 → 切 discipline：8 个 Skill 在 `skills/`，登记表 8 项；
+- 再切基础标准：8 个目录移入 `.parked-skills/`，`skills/` 为空，登记表为空；
+- 再切回 discipline：8 个目录归位，内容与出厂一致；
+- 用户在 Skill 里改过正文，停放再归位后内容仍是用户版（drift 不被覆盖）；
+- cargo test 全绿，109/110 脚本通过。
+
+#### 实施与验收（2026-10-29，本人执行）
+
+- `profile_assets.rs` 新增 `wanted_skills` / `load_managed_skills` / `save_managed_skills` / `restore_parked` / `retire_unwanted` / `reconcile_managed_skills`，以及装配后补登记的 `record_managed_skills`。
+- `lib.rs::profile_choice_set` 两条分支都收敛 Skill：切回基础标准调 `reconcile`，切到 Profile 时 `materialize` 后调 `record`；`profile_assets_repair` 修复后同样补登记。`engine_supervisor.rs::assemble_profile_assets` 启动时先 `reconcile` 再装配。
+- **首跑暴露的真实缺口：** 登记原先只写在 `reconcile` 里，而 `reconcile` 跑在装配前——那时 Skill 还没落盘，登记表永远为空，收回无从谈起。三条新集成测试首跑全红，补 `record_managed_skills` 后才绿。该边界已写入 D-042。
+- 实跑：`cargo test --offline --test profile_assets_host` **20 passed**（新增 3 条）；`cargo test --offline` 423 lib + 集成 2+1+13+6+5+10+20+3+1 全绿、EXIT=0。
+
+
+### OD-ARCH-113：资产页就地修复 + Skill 巡检比内容——「缺了就点，改了就还原」（已实施并通过验收，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 109–112 把「切换即装配」做通了，但资产页仍然是**只读**的：丢了文件只能靠再切一次或重启；想还原自己改过的文件只能手工删。Skill 项还只看 SKILL.md 在不在，改了正文依然显示「就绪」。
+
+#### 已核实的前提（本人实读代码，非推断）
+
+1. inspect（profile_assets.rs）对 Skill 只判 dst/SKILL.md 是否 is_file() → 用户改了正文仍报 ready，是假绿；配置类（package.json / cordis.patch.yml / decl.yml / rules.json）走摘要三态，是准的。
+2. 缺项文案是「切换 Profile 或重启时会补写」，界面没有就地修复入口；drift 文案是「需要出厂内容时请先备份再删除该文件」，纯手工。
+3. materialize 系列函数没有「显式覆盖」通道：sync_bytes 在 drift 分支无条件返回不动。
+4. 插件安装已有单条入口（profile_plugin_install），但没有「一次装完所有缺失插件」的批量入口。
+
+#### 方案
+
+**S1｜显式覆盖通道**
+sync_bytes / sync_skill_files / materialize_references / record_file / materialize_custom 与新增 materialize_with 都接受 overwrite_drift: bool。日常路径传 false（行为不变），修复路径传 true：drift 分支先 backup_of 成 .bak-<epoch>，再按出厂内容写回，状态记 updated。
+
+**S2｜Skill 巡检逐文件比摘要**
+新增 expected_skill_files(name, repo_skills)（仓库优先、内嵌兜底，与装配共用同一来源）与 inspect_skill(...)：逐文件比 sha256，优先报 drift（用户改过）→ missing（缺文件）→ stale（有新版）→ ready。STATUS_STALE 补为公开常量。
+
+**S3｜新命令 profile_assets_repair**
+后端校验 Profile 名合法、非标准，调 materialize_with(..., true)，返回 { ok, profile, standard, changed, remaining, report, note }。changed 统计 created|updated，remaining 统计修复后仍为 missing|missing_source|drift 的项。不联网、不动插件。
+
+**S4｜界面**
+「Profile 资产」卡头加「修复缺失 / 恢复出厂内容」（基础标准下不渲染），回执写明补写几项、还剩几项。若有缺失插件，另出一条「一键安装缺失插件（N）」，逐个跑、逐项回执、失败不中断。api.ts / types.ts 同步加方法与 ProfileAssetsRepairReceipt。
+
+**S5｜明确不做**
+- 修复不装插件（插件联网，必须独立触发）；
+- 修复不改 runtime/、不碰 ~/.dsh；
+- 不放松基础标准零写入。
+
+#### 验收口径
+- 改过 Skill 正文后巡检报 drift（不再是 ready），且巡检本身不写盘；
+- 删除的 Skill 点修复即补齐；被改过的文件修复后内容为出厂版，且同目录留 .bak-<epoch> 且备份里是用户原文；
+- 基础标准点修复仍然零写入（不建目录）；
+- cargo test / tsc / npm run build / pytest / 109+110 验证脚本全绿。
+
+
+### OD-ARCH-112：引擎与插件探测同源——分发后「面板说有插件」必须等于「引擎真能起来」（已实施并通过验收，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 111 解决了「Skill 正文随二进制走」，但引擎自己的路径解析仍只认源码树。二者的差就是：**面板说插件已就绪，引擎却起不来**。
+
+#### 已核实的前提（本人实读代码，非推断）
+
+1. `EngineConfig::from_env`（`engine_supervisor.rs`）的引擎目录与 DSH CLI 都从 `repo_root_hint()` 推：引擎取 `<repo>/engine`，CLI 取 `<repo>/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js`；仓库根不可用时直接返回 `Err`。
+2. 资产侧（`profile_assets::default_dsh_cli`）在 111 之后已有安装位置兜底（`<app_root 的上一级>/runtime/...`、`$HOME/OmniDesk/runtime/...`）。
+3. 于是 deb / AppImage 装到用户机器上会得出两条互相矛盾的结论：插件探测按兜底路径找到 CLI → 面板显示「已就绪」；引擎按仓库路径推不出 CLI → 第一个任务起不来。
+4. `validate()` 只校验路径存在性与 `omnidesk_engine/` 目录，没有「换个位置再找一次」的能力。
+
+#### 方案
+
+**S1｜引擎目录按安装布局兜底**
+新增纯函数 `locate_engine_dir(repo_root, app_root)`：依次试 `<repo>/engine`、`<app_root 上一级>/engine`（即 `~/OmniDesk/engine`）、`$HOME/OmniDesk/engine`，只返回真正含 `omnidesk_engine/` 的候选；都不中则返回第一候选，由 `validate()` 如实报「引擎包目录缺少 omnidesk_engine/」，不伪造可用。
+
+**S2｜CLI 与插件探测共用一套候选**
+`profile_assets` 抽出显式版本 `default_dsh_cli_for(repo_root, app_root)` 与纯推导 `locate_cli(repo_root, app_root, home)`（不读全局环境变量，便于单测比对）；`default_dsh_cli()` 退化为读环境后委托过去。引擎启动改用同一个 `default_dsh_cli_for`，两边不再各写一遍推导。
+
+**S3｜测试只做纯路径推导**
+新增 `distributed_layout_resolves_engine_and_cli_without_repo`：构造 `<base>/{app,engine,runtime}` 的装机布局、`repo_root` 指向不存在的目录，断言引擎目录与 CLI 都被正确定位。该用例**不读写进程级环境变量**——最初版本改 `OMNIDESK_REPO_ROOT` 造成并行测试互相污染，已改掉。
+
+**S4｜明确不做**
+- 不改 `validate()` 的判定，也不为「路径不存在」放水。
+- 不内嵌 DSH 运行时与 `node_modules`（体积与许可边界）。
+- 不改安装器布局；换布局时仍以 `OMNIDESK_ENGINE_DIR` / `OMNIDESK_DSH_CLI` 显式指定。
+
+#### 验收口径
+- 分发布局（仓库目录不存在）下引擎目录与 CLI 都能定位，且与插件探测得出同一个 CLI；
+- 都找不到时仍是明确报错，不静默降级成「能跑」；
+- `cargo test` / `tsc` / `npm run build` / `pytest` 全绿；
+- 重跑 111 的真实分发预览 7/7（证明内嵌与路径兜底同时成立）。
+
+
+### OD-ARCH-111：Profile 自带资产随二进制走——干净环境下也能一次切换到专属工作台（已实施并通过验收，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「我想 omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 110 之后「切换即生效」已成立，但**「自动写入」只在源码树里成立**。本条补的就是这个前提。
+
+#### 已核实的前提（本人实读代码，非推断）
+
+1. **Skill 只从仓库目录复制。** `materialize`（`profile_assets.rs:474`）走 `scope.repo_root.join("skills")`；`scope.repo_root` 来自 `task_shell::repo_root_hint()`（`task_shell.rs:329`），后者优先读 `OMNIDESK_REPO_ROOT`，否则用 `env!("CARGO_MANIFEST_DIR")` 反推。`CARGO_MANIFEST_DIR` 是**编译期的源码绝对路径**，deb/AppImage 装到用户机器上时该目录不存在。
+2. **结果就是「干净环境下 Skill 全缺」。** `repo_skills == None` 时每个 Skill 落 `missing_source`，配置、场景、规则仍然装得上——用户能切过去，但三个场景要用的 8 个 Skill 一个都没有。
+3. **写作 references 同理。** `materialize_references`（`profile_assets.rs:275`）读 `templates/discipline`、`knowledge/writing-style`、`knowledge/excellent-cases`，同样只走仓库路径。
+4. **体积允许内嵌。** 8 个 Skill 共 8 个文件 / 76K；写作资产 9 个文件 / 约 32K，合计约 110K，对当前 7.5MB 二进制无实质影响。
+5. **内嵌是本项目既有做法。** `profile_assets.rs` 的 `manifest` / `patch` / `decl` / `rules` 已经全部 `include_str!`。
+6. **插件探测与安装就绪但依赖 CLI 路径。** `default_dsh_cli()` 同样从 `repo_root_hint()` 推 `runtime/dsh-runtime/.../bin.js`；用户机器上运行时不在该路径时，探测全报 `missing`、点「安装」也会因「找不到 DSH CLI」失败。
+
+#### 方案
+
+**S1｜Skill 正文内嵌**
+新增 Skill 正文的编译期内嵌表，`materialize` 在仓库源不可用时改用内嵌正文写入 `<dsh_home>/skills/<name>/SKILL.md`，并照常走 `sync_bytes` 三态判定（不存在→写入、摘要一致→更新、被改过→`drift` 不覆盖）。仓库源可用时仍优先用仓库，开发期能看到改动。
+
+**S2｜写作 references 内嵌**
+`templates/discipline`、`knowledge/writing-style`、`knowledge/excellent-cases` 三处资产同样内嵌，仓库源缺失时用内嵌内容物化到 `<skill>/references/`。
+
+**S3｜CLI 路径兜底**
+`default_dsh_cli()` 在仓库根推不出可用文件时，回落到常见安装位置（`<app_root>/runtime/dsh-runtime/...`、`~/OmniDesk/runtime/dsh-runtime/...`）；仍找不到就返回空路径，由上层如实报「找不到 DSH CLI」，不伪造成功。
+
+**S4｜来源如实标注**
+`AssetItem.detail` 说明该 Skill 来自「内嵌」还是「仓库」；内嵌补齐与仓库补齐在界面上语义一致（都是已写入）。
+
+**S5｜明确不做**
+- 不内嵌 `node_modules` 与 DSH 运行时本身（体积与许可边界都不合适）。
+- 不改 Profile 白名单、不改切换时序、不改干净底座零写入的结论。
+- 不覆盖用户改过的文件：内嵌内容同样受 `drift` 保护。
+
+#### 验收口径
+- 新增集成测试：仓库根不可用时，discipline 仍装出 8 个 Skill 与写作 references；
+- 内嵌内容与仓库源逐字节一致（防两边漂移）；
+- 用户改过的 Skill 仍不覆盖；基础标准仍零写入；
+- 既有 `cargo test` / `tsc` / `npm run build` / `pytest` / 109+110 验证脚本全绿。
+
+### OD-ARCH-110：切换 Profile 立即生效——换引擎、换场景、换规则，不用重启（已批准并实施，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：**「omnidesk 是干净和初始的环境，而 profile 是定制的」——Profile 的语义必须是「换一个工作台」，而不是「存一个名字等下次启动」。
+
+#### 已核实的前提（本人实读代码，非推断）
+
+1. `profile_choice_set`（lib.rs:1056）在装配与写盘之后**只**调 `settings::set_engine_profile`；不动 supervisor 里的内存配置，也不停引擎。
+2. `profile_asset_scope()`（lib.rs:793）取的是**运行中引擎**的 `config().profile`；`engine_submit_task` 的规则/隐私/注入 Skill 也都读它。所以切换后场景、规则、注入技能仍按旧 Profile。
+3. `App.tsx` 的 `profileDecl()` 只在挂载时读一次；`TopNav` 切换成功后只刷新自己的列表，Dock 入口与规则不变。
+4. 后端 `profile_choice_view` 的 note 与 `TopNav` 的确认文案都写着「下次启动引擎时生效」，即当前实现是已知的半成品。
+5. 先例：`model_settings_save`（lib.rs:1589）走「写盘 → 同步两份配置快照 → `begin_change()` → `stop_engine(10s)` → `succeed()/fail()` → `from_env` 重读」。Profile 切换缺的正是这一段。
+
+#### 方案
+
+**S1｜后端切换即换引擎（`profile_choice_set`）**
+装配 + 校验 + 写盘通过后：
+- `EngineConfig::from_env(&app_root)` 重读（此时 resolve 会选中新 Profile）；
+- 把新配置同时写回 `supervisor.config_mut()` 与 `HostSnapshot.config`，保证「界面看到的 Profile」「准入判定用的 Profile」「引擎启动用的 Profile」是同一个值；
+- 用 `lifecycle.begin_change()` 独占生命周期，`stop_engine(10s)` 停掉旧引擎；成功 `succeed()`，失败 `fail(reason)` 并保留屏障（失败关闭）。
+- 返回新增 `engine_stopped`、`effective`（切换后实际生效名），note 改成「已切换到 X；旧引擎已停止，下一条任务按新配置启动」，失败时如实说明「旧引擎未能确认停止」。
+- 需给命令加 `app: tauri::AppHandle` 参数以触达 `HostSnapshot`。
+
+**S2｜前端切换后立即刷新**
+- `ProfileBadge` 增加 `onProfileChanged` 回调；`App.tsx` 把读声明的那段抽成 `reloadDecl()` 并传下去。切换成功后：刷新徽标列表 + 让 App 重读 `profileDecl()` + 重算 Dock/场景。
+- 确认弹窗与徽标提示改为「切换后旧引擎停止，下一条任务即按新 Profile 运行（正在生成的内容会被中断）」。
+- `profile_choice_view` 的 note 改为「当前生效的 Profile」。
+
+**S3｜明确不做**
+- 不做「排队等旧任务跑完再切」：那会让切换看起来没反应，且排队语义需要新的任务队列，超出本轮范围；
+- 不新增 `engine_restart` 命令：复用 `stop_engine` + 下一条任务惰性启动，已有成熟路径；
+- 不改变 Profile 白名单、资产装配规则与干净底座结论。
+
+#### 验收口径
+- `cargo test`：新增「切换后 supervisor 与快照的 profile 一致」用例；
+- `tsc --noEmit` + `npm run build`；
+- `pytest` 与 109 的 verify 脚本继续全绿；
+- 真实窗口：切到 discipline → Dock 立刻出现专业场景、规则生效；切回标准 → 立即回到干净底座；运行中任务被停止且界面如实说明。
+
+### OD-ARCH-109：Profile 资产自装配——切换即写入配置、Skill、插件，并检测/安装缺失插件（已批准并实施，2026-10-29；用户授权自行制定并批准）
+
+> **触发（用户口径）：** 「omnidesk 是干净和初始的环境，而 profile 是定制的，所以切换 profile 时要能自动写入所需的配置、skill 和插件，还有如有缺失插件需要提供自动安装的功能。」
+> 分类：架构 + 功能实现。核心是把「Profile 是一份可安装的资产包」这件事落到代码里，不再靠手工同步。
+
+#### 已核实的前提（本人实读代码/实测，非推断）
+
+1. **切换 Profile 目前只写一个名字。** `profile_choice_set`（`lib.rs:1040`）校验 `profiles/<name>/package.json` 存在后，只调 `settings::set_engine_profile`；profile 目录缺失时直接**报错拒绝切换**，不会补建。
+2. **仓库里没有任何安装路径。** `samples/profiles/discipline.profile.patch.yml` 只被测试脚本读取；`engine_supervisor::seed_profile_if_missing`（`engine_supervisor.rs:222`）只播种 `web`，且 `package.json` 存在即返回。这就是 104 记下的「出厂资产缺口」。
+3. **插件包其实随运行时就有。** `runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office@0.2.1-alpha.2` 是 `@deepseek-ai/dsh` 的依赖（lockfile 可证），`libreoffice-kit` 同层。插件解析先查 installAnchor、再查 profile 目录（`resolveBundleDir`），所以**随运行时携带的插件无需 pnpm 安装**，缺的只是那一行 patch。用户机器 `~/OmniDesk` 没有 `runtime/dsh-runtime`，运行时在仓库内，这一点必须写清楚。
+4. **官方安装通道存在但不该默认触发。** `dsh plugin --profile <name> add <pkg>` 会把参数转发给 pnpm、在 profile 目录里装依赖（`plugin-BGnVfe_D.js:58-96`），需要 pnpm 与网络；离线/无 pnpm 时退出码非 0。
+5. **Skill 目录是共享的。** `skill-filesystem` 的 roots 含 `<dshHome>/skills`（`skills.js:171`），与 Profile 无关；107 已按此定稿「都在盘上，只是预注入不同」。宿主 UI 也只读 `<dsh-home>/skills`（`capabilities.rs:413`）。
+6. **默认资产已编译期内嵌。** `DEFAULT_DECL`、`DEFAULT_RULES_JSON` 都是 `include_str!`，没有走 Tauri 资源打包，说明内嵌是既有做法。
+
+#### 方案
+
+**S1｜资产清单与内嵌默认值（新模块 `profile_assets.rs`）**
+每个非标准 Profile 由一张静态表描述：Profile 名 → { dsh 清单、cordis.patch.yml、decl.yml、rules.json、所需 Skill 名、所需插件包 }。默认内容全部 `include_str!`，随二进制走，不依赖仓库路径（Skill 正文除外，见 S3）。
+
+**S2｜幂等装配（核心）**
+`materialize(dsh_home, app_root, profile)` 逐项处理：
+- 文件**不存在** → 写入默认值，记为「已补写」；
+- 文件存在且摘要 == 上次我们写入的摘要（无用户改动）→ 更新为新默认值，记为「已更新」；
+- 文件存在但摘要不符（用户改过）→ **一律不覆盖**，记为「已修改，未覆盖」并给出原因；
+- 动手前备份为 `.bak-<epoch>`，与 `write_profile_rules` 同口径。
+装配状态记在 `<app-root>/profiles/<name>/.assets.v1.json`（含每项摘要与新写入值），这样「是用户改的」还是「是旧的出厂版」可判定，而不是靠猜。
+
+**S3｜Skill 跟随 Profile**
+按 S1 表把该 Profile 需要的 Skill 目录从 `<repo>/skills` 复制到 `<dsh-home>/skills`（缺则补，已有则不覆盖，只比对不删除）。**不改共享目录模型、不加 customSkillDirs**——理由见「明确不做」。基础标准完全不执行本步。
+
+**S4｜插件就绪探测 + 一键安装**
+`probe_plugins` 只做本地解析：先查 installAnchor（`runtime/dsh-runtime/node_modules`）、再查 profile 目录，返回 { 名称、期望版本、实际版本、状态 }。三态：`ready` / `missing` / `version_mismatch`。
+`install_plugin` 仅在 `missing` 时可用，执行 `dsh plugin --profile <name> add <pkg>@<version>`，**必须由用户点击触发**（网络写操作），回传真实 stdout/stderr 与退出码，失败原样展示、不吞错。随运行时自带的包永远是 `ready`，不会被拉去联网。
+
+**S5｜两条执行时机**
+- **切换时**：`profile_choice_set` 改为「先装配、再校验、后保存」，不再因为目录缺失直接拒绝；装配失败带原因返回，不静默降级。
+- **启动时**：`supervisor.start()` 在 `validate` 之后跑同一函数（自愈：文件被删会补回；用户改过则不动）。基础标准直接跳过，保持 106 的「干净底座」事实。
+
+**S6｜设置页新增「Profile 资产」面板**
+按软件现有方角卡片与悬停说明口径呈现：每项一行（配置 / 场景声明 / 规则包 / Skill / 插件），状态用既有配色语义（就绪、已补写、已修改未覆盖、缺失、版本不符），缺失插件旁给「安装」按钮，结果用右下角矮条提示（沿用 096）。基础标准下显示一句「基础标准不安装任何 Profile 资产」。
+
+**S7｜验证**
+新增 `verify_profile_assets_109.py`（静态 + 隔离根实跑）：空 dsh_home 切换到 discipline 后五项齐备；二次运行零改写；用户改过的文件不被覆盖且状态为 drift；删文件后启动自愈；omnidesk-base 全程零写入（目录都不创建）；插件探测在「随运行时携带」与「人为移走」两种情形下分别给出 ready / missing。再补一次真实窗口像素/AX 检查面板状态。`cargo test` 覆盖装配三态与备份。
+
+#### 明确不做
+
+- **不做 Profile 级 Skill 目录隔离。** skill-filesystem 在 web app 里由 `preset-standard` 拥有，而补丁对 `config` 是整体替换（104 已证），要隔离就得每个 Profile 复制整份 30 余项 preset 配置，升级即漂移。保持 107 的共享目录 + 预注入绑定模型。
+- 不改 `runtime/`，不内置插件市场，不做插件版本自动升级。
+- 不在启动时静默联网装包；不覆盖用户改过的任何文件；不删用户文件。
+- 不动基础标准的任何资产（106 的边界）。
+
+#### 风险与已知限制
+
+1. Skill 复制依赖 `<repo>/skills` 存在；打包分发（deb/appimage）后仓库不在原位时需要另做内嵌，本轮沿用「引擎也依赖 repo_root」的既有前提，不扩大。
+2. 摘要判定只能识别「我们写过、之后没被人动过」。若用户在别的机器上手工放了同样内容，摘要相同也会被视作出厂版而更新——这种情况下内容本就一致，影响可接受，会在文档写明。
+3. 插件安装依赖 pnpm 与网络，失败路径只能如实报错，不做重试编排。
+
+#### 原定验收
+
+空目录上切到 discipline，配置/场景/规则/Skill/插件五项自动就位且可启动；重复切换无副作用；用户改动不被覆盖；基础标准零写入；缺失插件可一键安装并展示真实结果；tsc / build / cargo test / pytest 全绿；证据落 `evidence/od-arch-109/`。
+
+#### 实施结论（2026-10-29，本助手亲自实施）
+
+计划已按 S1–S7 落地，另有四处按实况修正，均已在代码与文档中体现：
+
+1. **装配时机从「引擎启动」前移到「应用启动」。** 计划的 S5 写「启动时跑 `supervisor.start()`」，实测发现引擎是**按需启动**（提交首条任务才 `start()`），冷启动后什么都不做就永远不装配，真实窗口第一轮资产页全空。现在 `lib.rs::build_state()` 在窗口创建前同步调用 `EngineSupervisor::assemble_profile_assets()`，结果写 `logs/profile-assets.log`；`start()` 里保留同一次调用做幂等兜底。失败只记日志、`eprintln`，不阻断启动。
+2. **应用根改由 `engine_state_dir` 的父目录推导，不再读 `OMNIDESK_APP_DATA_ROOT`。** 原写法让单测直接往真实 `~/OmniDesk/app` 写装配状态，且测试夹具无法隔离。`engine_state_dir` 默认就是 `<app_root>/engine-state`，与生产路径等价。修正时真实目录只被误写过一个 `.assets.v1.json`（其余资产哈希与真实文件一致、`decl.yml` 一条未登记），无资产被改动。
+3. **新增 `profile_lifecycle.rs`（计划外补充，服务于「自建 Profile」）。** 登记表 `app_root/profiles/index.v1.json`（schema `omnidesk.profiles.v1`）记录自建 Profile 的来源与插件；支持从 `omnidesk-base` 或指定源复制配置新建、移除（拒绝出厂/当前/未登记，移到 `profiles/.trash/` 可恢复）。自建 Profile 只按自身 `rules.json` 的 `skill_bindings` 补 Skill，不写配置文件，缺失插件以 `plugin:<pkg>` 列出。
+4. **巡检改为纯只读。** `inspect` / `inspect_custom` 只报状态、不落任何文件，资产页的「重新读取」不会改动磁盘。
+
+其余偏差：插件条目 `version=None` 时只校验包存在、不校验版本；`install_plugin` 显式传 `DSH_HOME`，确保不会装进 `~/.dsh`；`material-writing` 与 `document-review` 额外物化 `references/`（含 `README.md`）；装配报告带 `summary_note` 供界面直接显示。
+
+实跑结果：`cargo test --offline`（420 lib + 14 集成）全通过；`npx tsc --noEmit`、`npm run build` 通过；`pytest tests -q` 89 passed / 30 subtests；`verify_profile_assets_109.py` 24/24；真实窗口两轮（discipline 自动装配 13/13、omnidesk-base 零写入）全部通过，证据在 `tests/verification/desktop/evidence/od-arch-109/`。
+
+### OD-ARCH-104（插件挂载）：discipline Profile 挂载办公插件（已批准并实施，2026-10-28）
+
+> **触发：** 用户研判三场景插件需求。核实（static）：当前 omnidesk-base 插件面与官方 preset-standard 零差异（30 项全保留）；运行时无 dsh-viewer / univer-office 包；办公能力由 dsh-skill-office（Word/PPT/Excel 工作流，未启用）、dsh-office-to-pdf（web-app 默认依赖，已随附）承担。discipline.profile.patch.yml 现为空 []，Profile 无插件差异。
+
+#### 方案（最小改动）
+
+- S1：discipline.profile.patch.yml 增加 skill-office 条目（**实施纠正：不是往 preset-standard 的 plugins 里追加，而是补丁层的顶层 insert**），仅专业 Profile 启用；基础 Profile 保持纯净。supervisor seed 与 patches 传参链路已支持，无需改 Rust。
+- S2：验证——skill-office 在 discipline 生效（隔离环境启动后 capability 清单含 office skill）、omnidesk-base 不含；cargo test 相关用例 + tsc + build。
+- S3：证据落 evidence/od-arch-104/。
+
+#### 明确不做
+
+- 不引入 dsh-viewer / univer-office（当前 DSH 版本无此包；预览由官方 documentpreview 与自研 ArtifactExplorer 承担）。
+- 甘特图不加插件：OmniDesk 自研确定性渲染已实现（OD-ARCH-102），模型只供数据。
+- 不开插件管理界面：维持「插件固化、随升级更新」既定策略。
+
+#### 实施结论（2026-10-28）
+
+**已落地：** 仓库样例与实机 ~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml 同口径改成一条顶层 insert（id: skill-office / name: @deepseek-ai/dsh-skill-office），未改 Rust、未改 runtime/。实机改前备份 cordis.patch.yml.bak-od104-20261028-234012。
+
+**计划措辞纠正：** 原文「继承 preset-standard 的 plugins 数组追加」不可行。dsh-app-boot 的 applyEntryPatches 对 config 是整体替换，只有 group 且 config 为数组的条目可定位，因此不存在向 preset 的 plugins 增量追加的路径。实际用的是同一函数第 73–88 行的无 id insert，直接 push 到宿主层，与 skill-filesystem / tool-skill 同级；好处是不必复制 preset 里 30 余条插件声明。
+
+**验证：** 新增 tests/verification/desktop/verify_plugin_scope_104.py，34/34 通过；dsh --dump-config 在 discipline 的输出含 skill-office（顶格、无 disabled、跟随补丁层注释），在 omnidesk-base 的输出不含，两者 stderr 均无 disabling profile plugin；真实启动 --profile discipline --no-open --port 0 正常起服务并打印 web 地址；模块直连探针注册出 office-docx / office-pptx / office-xlsx，正文含 Installed LibreOffice Kit。证据 tests/verification/desktop/evidence/od-arch-104/plugin-scope-104.json。
+
+**落盘缺口（未在本计划内修）：** engine_supervisor.rs 的 seed_profile_if_missing 只播种 web Profile，且 package.json 存在即返回；samples/profiles/discipline.profile.patch.yml 没有任何安装路径复制到用户机器。因此新装与升级都需要手工同步该文件；本轮只保证仓库样例与当前实机一致。
+
+**未做：** 不引入 dsh-viewer / univer-office（当前 DSH 版本无此包）；不动甘特图与插件管理界面；真实模型下未实测 Office 技能的端到端调用。
+
+**验收：** 专业 Profile 下引擎能力清单含 office 三个技能、基础标准完全不含；tsc、build、cargo test --offline（405 lib + 41 集成）、pytest（89 passed / 30 subtests）全部通过，详见 STATUS.md 与 REVIEW.md 顶部。
+
+#### 原定验收
+
+- 专业 Profile 下模型可产出/读取 docx、xlsx；基础 Profile 行为不变；runtime/ 零差异；不提交不推送。
+
+### OD-ARCH-108：绑定只留工作流底线，其余交给模型按需加载（已批准并实施，2026-10-28）
+> **实施结论：** S1–S7 全部落地，无架构偏离。两条流程各绑各的底线：随手记只注入 `memory-agent`，周报只注入 `memory-report`；`anysearch` / `knowledge-search` / `document-review` / `knowledge-agent` 已从所有绑定中移除，改由模型按需自读。真实窗口两轮对照 15/15 通过（证据 `tests/verification/desktop/evidence/od-arch-108/flow-injection.json`）。
+> **技能正文字数变化（各 Skill 的 SKILL.md 全文，非整段提示词）：** 周报 —— 实机旧规则（`weekly` 绑 `memory-agent / knowledge-search / anysearch`，`max_injected: 3`）4901 → 1099；仓库样例旧口径（`memory-agent / memory-report / knowledge-search`）4402 → 1099。随手记 —— 1281 → 1408（多了「按需加载」那一小段）。计划原先估计的「约 5.9k」，按新正文把四个技能相加才是 6127，实机从未这样绑过，以本节的两个实测值为准。真实窗口实测的**整段提示词**是随手记 9699 字符、周报 9912 字符，含场景规则与安全边界，不能当成技能注入量。
+> 执行记录见 STATUS.md 顶部，验收见 REVIEW.md 顶部。
+> 分类：注入链路 + 规则资产。把「每场景一份绑定」细化为「每条流程只绑底线技能」，其余能力由模型按需自行加载。
+> 用户口径（2026-10-28）：「场景绑定 skill，然后模型根据需要调用额外的 skill。比如我现在在 weekly 场景，随手记时就只绑定 memory-agent，当大模型判断还需要搜索资料时，就自己加载 anysearch；同样周报也只绑定 memory-report，知识库就只绑定 knowledge-search。这是工作流的底线要求，其他以大模型的能力来判断！」
+
+#### 已核实的前提（本人实读代码 + 引擎配置实测）
+
+1. **模型本来就有按需加载通道。** 用 OmniDesk 隔离根导出 `dsh --profile discipline --dump-config`：host 层的 `skill-filesystem` / `tool-skill` 被 `dsh-web-app` 关掉，但**每个 preset 内各挂一份**，`agent-preset-registry.default = standard`，`preset-standard` 里两者均启用；`dsh-skill-filesystem` 的扫描根含 `$DSH_HOME/skills`（`~/OmniDesk/runtime/dsh-home/skills`，8 个 Skill 全在）。模型随时能自己读任一 Skill 正文。
+2. **现在的问题不是「预加载」，是「全文注入」且绑得过多。** `profile_rules_view` 按 `skill_bindings` 读盘把正文拼进 preset，`conversationPrompt`（随手记）与 `aiDraft`（周报/初稿）再塞进当轮提示词。`weekly` 一份绑定同时服务两条流程：随手记取第 1 个，周报取 `max_injected` 以内**全部**——四个全绑会让周报凭空背上 `memory-agent`（它自己写着「周报见 memory-report」）。
+3. **知识库页面今天没有模型调用。** `KnowledgeVaultPage` 只有扫描 / 读取 / 搜索 / 保存等宿主命令，没有 `submitTask`；检索是确定性的本地全文检索。**因此不存在「知识库场景绑定 knowledge-search」的注入点**，只能纯按需加载。
+4. **绑定键可以按流程拆。** `validate()` 只校验键非空、值合法、数量上限，不限制键名集合；`HomeCanvas` 用 `def.preset` 查表，`conversationPrompt` 的 note 分支只取首个。新增 `weekly-note` / `weekly-report` 属规则资产层变化，不改注入骨架。
+5. **上限 3 是硬闸，本轮不需要放宽。** `MAX_SKILL_BINDINGS_PER_SCENE = 3`；每条流程只绑 1 个，远低于上限。
+
+#### 方案
+
+**S1 绑定按流程拆，每条只留底线技能。**
+
+| 流程键 | 绑定 | 说明 |
+| --- | --- | --- |
+| `weekly-note` | `memory-agent` | 随手记底线，平台注入 |
+| `weekly-report` | `memory-report` | 周报底线，平台注入 |
+| `writing` | `material-writing` | 起草底线 |
+| `project` | `project-agent` | 项目底线 |
+| （无） | — | 知识库无模型调用，`knowledge-search` 不进任何绑定，纯按需 |
+
+`anysearch`、`knowledge-search`、`document-review`、`knowledge-agent` **不进任何绑定**，全部由模型判断后自行加载。
+
+**兼容别名方向：** 旧键 `weekly` 保留并指向随手记（`memory-agent`），不指向周报。历史语义里 `weekly` 首位就是 `memory-agent`，这样旧规则文件在随手记路径上的行为不变；若指向周报，旧数据会让随手记注入 `memory-report`，正是要避免的错误。
+
+**S2 前端按流程选绑定。** 意图在**提交时**才判定（`HomeChat` 的 `detectWorkIntent`），preset 在提交前已构建，所以不能在 preset 里定型。做法：preset 同时带出 `skillsByFlow`（`note` ← `weekly-note`、`report` ← `weekly-report`，缺则回退 `weekly` / 场景键），`composeConversationPrompt` 按 `mode` 选对应那一组；`writing` / `project` 仍走单组。组装结构与注入位置不变，只是取值多一层，随手记「最多注入 1 个」的既有约束继续生效。
+
+**S3 Skill 正文写明「何时自己加载什么」。** 在 `memory-agent`、`memory-report`、`material-writing`、`project-agent` 的 SKILL.md 各补一小段可选能力提示：需要联网查公开资料时自行加载 `anysearch`，需要查工作台知识库卡片时自行加载 `knowledge-search`，需要成稿审校时自行加载 `document-review`。只写「什么时候该去读」，不写死调用条件、不给固定触发词——目录里只有名称和一句描述，写明时机才算真正的按需加载。字数控制在每条 3 行以内，避免把省下的注入量又加回去。
+
+**S4 两份规则文件同改。** 仓库样例 `samples/profiles/discipline.rules.json`（编译期嵌入，供「恢复默认」用）与实机 `~/OmniDesk/app/profiles/discipline/rules.json`。实机那份属用户数据，改前备份 `rules.json.bak-od108-<时间戳>`，只改 `skill_bindings` 段；写作铁律、红线词表、掩码、scenes 逐字保留。实机文件与样例当前已经漂移（实机 weekly 是 `memory-agent / knowledge-search / anysearch`，样例是 `memory-agent / memory-report / knowledge-search`），本次一并收敛到新口径。
+
+**S5 界面标签可读。** `SettingsPanel` 的 `sceneLabel()` 增加 `weekly-note` → 「工作记录·随手记」、`weekly-report` → 「工作记录·周报」映射，能力管理页的绑定标签不再显示原始键名；`verify_skill_scope_107.py` 的场景标签断言同步。
+
+**S6 旧断言与文案同步。** `verify_worklog_089.py`（`weekly_three_bindings` 等）、`verify_skill_bindings_082.py`（`weekly_does_not_preinject_anysearch` / `weekly_binds_memory_report`）、`tests/verification/phase-worklog/verify_env_085.py`（`weekly_binding_has_knowledge_search` 等）改为新口径；`profile_rules.rs` 内嵌样例相关单测同步；`workstations/discipline/skills/README.md` 表格补「绑定 / 按需」一列。历史证据文件不改写。
+
+**S7 记一条决定。** `docs/decisions.md` 增补 D-035：绑定只表达工作流底线，其余能力由模型按需加载；附带实测证据（`--dump-config` 中 preset 内的 skill 插件与扫描根）。
+
+#### 影响（如实列出）
+
+- 周报的技能正文从实机旧口径（三个绑定全上，4901 字，原估「约 5.9k」偏高）降到**仅 `memory-report`（1099 字）**；随手记维持 `memory-agent`（1281 → 1408 字，多的是按需加载那一段）。省下的 token 是每轮都省的。
+- 代价：模型需要额外一次工具往返去读 `anysearch` / `knowledge-search`，且**依赖它自己的判断**。判断不到位时不会检索——这是用户明确选择的取舍，验收里按「已知限制」如实记录，不算缺陷。
+- 设置页「本 Profile 预注入」从 6 条降到 4 条（memory-agent / memory-report / material-writing / project-agent），其余归入「可被模型按需加载」。
+- 知识库页面维持「无模型、确定性检索」，不因本轮改变。若以后要给知识库加对话式问答，那是独立计划（需要模型调用与授权）。
+
+#### 范围外
+
+- 不改 `MAX_SKILL_BINDINGS_PER_SCENE`（不再需要 4）。
+- 不改 DSH runtime 的 preset 与插件面；不改 `runtime/` 内容。
+- 不给知识库页面新增模型问答入口。
+- 不动 `writing` / `project` 的注入链路，只改绑定内容与 Skill 文案。
+- 不改写任何历史证据文件。
+
+#### 验收口径
+
+1. 两份 `rules.json` 里 `weekly-note` / `weekly-report` / `writing` / `project` 各只绑 1 个 Skill，`anysearch`、`knowledge-search`、`document-review`、`knowledge-agent` 不在任何绑定内。
+2. 真实窗口：weekly 场景随手记一轮，注入正文只含 `memory-agent`；同一会话说「写周报」一轮，只含 `memory-report`；两轮都不含 `anysearch` 正文。
+3. 按需加载通道可用：`--dump-config` 里 preset-standard 的 `skill-filesystem` + `tool-skill` 仍启用，扫描根指向隔离 `dsh-home/skills`；若做一轮需要联网的周报请求，观察模型是否自行读取 `anysearch`，读不到就如实记为「依赖模型判断」的已知限制。
+4. 回归全绿：`cargo test --offline`、`pytest tests -q`、`npx tsc --noEmit`、`npm run build`、`verify_skill_scope_107.py` 与其窗口脚本、上述三个改过的验证脚本。
+5. 实机 `rules.json` 有备份，`skill_bindings` 以外的字段 diff 为空。
+
+### OD-ARCH-107：能力管理页说清「本 Profile 预注入哪些 Skill、哪些只是按需加载」（已批准并实施，2026-10-28）
+> **实施结论：** S1–S4 全部落地，无架构偏离。基础标准页明确写「零预注入」、Skill 全部归入按需加载；discipline 出现「本 Profile 预注入 6」与方形场景标签；注入链路与 Skill 目录结构未动。执行记录见 STATUS.md 顶部，验收见 REVIEW.md 顶部。
+> 分类：界面口径 + 只读数据汇总。不改注入链路，不改 Skill 目录结构。
+> 用户口径（2026-10-28）：「我切换了 base profile，然后场景就恢复到默认状态了，但在设置页面看 skill 还是和纪检 profile 一样，我不知道哪些加载了，哪些没加载？」
+
+#### 现状（已核实，本人实读代码与实机数据）
+
+1. **设置页列的是磁盘清单，不是注入清单。** `capabilities::list_skills` 直接扫 `<DSH_HOME>/skills`（capabilities.rs:345），`CapabilityView.skills_dir` 也是这个目录；`SettingsPanel.tsx` 能力管理页（约 1917 行）原样渲染 `caps.skills`，只有名称、描述、修改时间。Skill 目录全局一份、所有 Profile 共用，这是 DSH 官方 `skill-filesystem` 语义，不是缺陷。
+2. **Profile 真正影响的是「预注入」。** 来源是 `profiles/<Profile>/rules.json` 的 `skill_bindings` 与 `max_injected`；`profile_rules_load` 把绑定 Skill 的 SKILL.md 读进 `skill_contents`。基础标准没有 rules.json 时 `rulesView.loaded=false` → preset=null → **零 Skill 预注入**，但模型仍可按需加载任一 Skill。
+3. **注入量按流程不同。** 周报/初稿（aiDraft.ts:115）注入 `max_injected` 以内的全部绑定；随手记（conversationPrompt.ts:123）只取第 1 个绑定。
+4. **实机状态。** 引擎跑 `--profile omnidesk-base`；`profiles/omnidesk-base/` 目录不存在（无 decl.yml、无 rules.json），符合标准模式不造文件的约定。`profiles/discipline/` 有 3 条绑定。
+5. **用户文件与仓库样例存在漂移。** live `discipline/rules.json` 的 weekly 绑定是 `memory-agent / knowledge-search / anysearch`，仓库样例是 `memory-agent / memory-report / knowledge-search`（memory-report 是 c1e823f 之后才加进样例的）。属用户数据，本轮不改，只在报告里说明。
+6. 界面目前没有任何「绑定 / 预注入 / 可选用」的区分，所以切 Profile 后这一页看起来完全没有变化。
+
+#### 方案
+
+**S1 只读汇总，不新增解析。** `capability_view` 命令复用 `profile_rules_load` 同一套读取（含迁移与 skill_contents 回填），把「rules.loaded / rules.error / skill_bindings / 实际读到的正文」压成一份 `SkillScope` 传入 `capabilities::load`；capabilities 模块不自己读 rules 文件，避免两处解析口径分叉。
+
+**S2 每条 Skill 带状态。** `SkillEntry` 增加 `bindings: Vec<{scene, order, max_injected, effective}>`，`effective = order <= max_injected`（即会进入预注入）；`CapabilityView` 增加 `rules_loaded / rules_error / standard / scenes / missing_bindings`。
+
+**S3 缺失绑定要暴露。** 绑定了但磁盘上找不到 SKILL.md 的条目单列提示。现在这种故障是静默的——注入时只是没内容，界面看不出来。
+
+**S4 界面分组。** Skill 列表分成「本 Profile 预注入（N）」与「可被模型按需加载（M）」，每条显示绑定的场景标签；基础标准下页顶一句话说明「基础标准不预注入任何 Skill，下面的 Skill 仍可由模型按需加载」；并注明随手记只注入第 1 个绑定。规则文件损坏时如实显示损坏，不退化成「未加载」。
+
+#### 范围外
+
+- 不按 Profile 隔离 Skill 目录（会破坏「base = 官方 DSH 底座」这条 106 定下的边界）。
+- 不改注入链路、不改 rules.json 内容，不自动替用户对齐 live 与样例的绑定差异。
+- 不新增 Skill 编辑与启用开关（D-030 口径不变）。
+
+#### 验收口径
+
+1. 基础标准（无 rules.json）：页面明确显示零预注入，Skill 仍列为可按需加载；探针断言页面没有「预注入」条目。
+2. discipline：weekly / writing / project 的绑定逐个出现在对应场景标签下，effective 与实际注入顺序一致；随手记只取第 1 个的口径在界面上可读。
+3. 绑定指向不存在的 Skill → 界面给出缺失提示，不静默。
+4. 回归：`tsc --noEmit`、`npm run build`、`cargo test`、`pytest` 全绿；新增 `verify_skill_scope_107.py` 静态断言与 capabilities 侧单测；标准模式 Dock 3 入口基线不变。
+
+### OD-ARCH-106：基础标准 = 干净 DSH 底座，场景/Skill/规则随 Profile 挂载（已批准并实施，2026-10-28）
+> **实施结论：** S1–S5 全部落地，无架构偏离。基础标准下 Dock 只剩 3 个平台固有入口、无声明时不再自动造文件、不装行业规则包；切到 discipline 后场景与规则按原基线恢复。执行记录见 STATUS.md 顶部，验收见 REVIEW.md 顶部。
+
+> 分类：架构调整（Profile 分层）。用户口径（2026-10-28）：「不加载纪检等自定义 profile 时，初始就是基础标准（omnidesk-base，默认），这个状态的 omnidesk 就是自定义 UI + DSH cli 底座，和使用官方 DSH-desktop 没差别；场景功能、skill 和配套插件都跟随 profile，切为自定义 profile 时自动加载。」补充确认：「默认 profile 可以保持最基础的 DSH 默认配置 skill 和插件。」
+
+#### 现状（已核实的事实，2026-10-28）
+
+1. 插件与 bundle 已随 Profile：宿主按 `engine_profile` 解析 Profile 名（profile_choice.rs resolve()），以 `dsh --profile <名>` 启动引擎（engine_supervisor.rs），下次启动生效。
+2. 业务场景（Dock 入口、对话预设、右栏）不随 Profile：入口来自应用数据根下唯一一份 `profiles/discipline.yml`（profile_decl.rs，注释明确「只有一个生效文件」）；规则资产与 skill_bindings 也来自唯一一份 `profiles/discipline.rules.json`（profile_rules.rs）。切回基础标准后这些仍然生效。
+3. Skill 文件是隔离 DSH home 下全局一份（scripts/sync-skills.sh 同步到 `runtime/dsh-home/skills/`），所有 Profile 共用。
+4. 与官方 DSH 的偏离：`omnidesk-base.profile.patch.yml` 显式禁用了 `skill-filesystem` 与 `tool-skill` 两个插件；官方 dsh-base 里这两个默认启用。这使基础标准下的模型无法按需加载技能，与「和官方 DSH 只差 UI」的目标冲突。
+5. 对照官方 DSH Desktop（docs/user-guide.md）：Profile 是隔离单位（bundle + 依赖 + patch），切换有序重启；skill-filesystem 从 DSH home 的 skills/ 扫描技能。DSH 没有「场景」层，场景挂载属于 OmniDesk 产品层，需自建。
+
+#### 方案
+
+**S1 默认 Profile 回归官方默认配置**：`omnidesk-base.profile.patch.yml` 移除对 `skill-filesystem` / `tool-skill` 的禁用，保持与官方 dsh-base 一致的插件面。「不重复注入、省 token」的取舍改由场景层承担（S4），不再用禁插件实现。
+
+**S2 场景声明随 Profile**：Dock 入口声明从固定 `profiles/discipline.yml` 改为按 Profile 取 `profiles/<profile>/decl.yml`（文件名待实现时定，目录按 Profile 隔离）。基础标准下无此文件 → 只显示平台固有入口：首页、历史会话、知识库、设置。现有单文件 `~/OmniDesk/app/profiles/discipline.yml` 做一次性兼容迁移（移入 discipline Profile 的声明位置），不静默丢弃。
+
+**S3 规则资产随 Profile**：`discipline.rules.json` 同样按 Profile 目录取（`profiles/<profile>/rules.json`）。基础标准下无文件 = 纯净底座（零关键词、零铁律、零绑定，现有 RulePolicy::clean() 语义）。现有文件一次性迁移进 discipline Profile 目录，保留 .bak 备份机制。
+
+**S4 场景预设与 Skill 注入按「场景存在」判定**：HomeCanvas 的 preset 判定改为——场景入口不存在（声明里没有）或规则资产未加载时，preset = null，对话按普通对话处理，不套场景提示词组装器、不注入 Skill 原文、不进周报/随手记流程。`workIntent.ts` 的意图路由只在 weekly 场景 preset 存在时参与。
+
+**S5 界面口径诚实**：基础标准下，顶栏徽标仍显示「标准」；首页与设置页明确显示「标准模式：DSH 底座 + OmniDesk UI，无业务场景」。切换到 discipline 后显示其 display_name 与场景清单。Profile 选择仍沿用「下次启动引擎生效」语义，不新增热切换。
+
+#### 范围外（本轮不做）
+
+- 不做 Profile 热切换；不改模型路由 overlay 机制（各 Profile 的模型选择本就互不相通）。
+- 不新增 Profile 管理器（不复制 Profile、不创建 Profile）；白名单仍为 omnidesk-base / discipline / acp。
+- 不改 skills/ 全局目录结构；S2/S3 的按 Profile 隔离只覆盖声明与规则资产，Skill 文件仍共享一份（与官方 DSH skill-filesystem 行为一致）。
+
+#### 验收口径
+
+1. `engine_profile` 为 omnidesk-base（或空）启动：Dock 无工作记录/文案写作/项目跟踪入口；对话不出现场景预设与 Skill 注入（探针断言提示词不含场景规则、铁律、Skill 原文）；规则资产视为未加载（rulesLoaded=false）。
+2. 切到 discipline 并重启引擎：场景入口、规则、Skill 绑定、场景预设全部恢复现有行为（与 105 验收基线一致）。
+3. `omnidesk-base.profile.patch.yml` 不再含 disabled: true 的 skill 插件；用 `--dump-config` 或候选读取确认插件面与官方 dsh-base 一致。
+4. 旧数据迁移：既有 discipline.rules.json / discipline.yml 在新位置生效，旧文件保留为迁移备份，无用户数据丢失。
+5. 回归：105 随手记（verify_worklog_104/089）、082 skill 绑定、088 意图探针全部通过；tsc、cargo test、pytest 全绿。
+
 ### OD-ARCH-105：把随手记的业务判断全部下放到 Skill，平台只留数据与写盘边界（已批准，已实施，2026-10-28）
 > **实施结论：** S1–S4 全部落地。判定协议由四分类（record/move/confirm/answer）收成通用三字段（append/move/note），平台提示词不再含任何业务规则；随手记平台段实测 248 字（不含注入的 Skill），真实模型准确率仍属未验证项。执行记录见 STATUS.md，验收见 REVIEW.md 顶部。
 

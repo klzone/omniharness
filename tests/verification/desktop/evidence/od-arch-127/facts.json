@@ -1,0 +1,55 @@
+{
+  "root": "/tmp/od127-preview",
+  "display": ":147",
+  "checks": {
+    "boot_base": true,
+    "popover_opened": true,
+    "create_form_opened": true,
+    "typed_name": true,
+    "typed_label": true,
+    "submitted": true,
+    "created": true,
+    "assets_tab_opened": true,
+    "export_clicked": true,
+    "bundle_written": true,
+    "bundle_schema_ok": true,
+    "bundle_has_decl": true,
+    "bundle_has_rules": true,
+    "bundle_has_package": true,
+    "bundle_no_node_modules": true,
+    "remove_clicked": true,
+    "removed_from_registry": true,
+    "bundle_survives_remove": true,
+    "bundle_row_visible": true,
+    "import_clicked": true,
+    "imported_to_registry": true,
+    "dsh_dir_back": true,
+    "app_dir_back": true,
+    "decl_restored": true,
+    "no_import_leftover": true,
+    "label_preserved": true,
+    "popover_reopened": true,
+    "listed_in_popover": true,
+    "picked": true,
+    "switched": true,
+    "dock_has_scenes": true
+  },
+  "bundle_files": [
+    "migrate-desk-20261029-101340.omniprofile.json"
+  ],
+  "bundle_schema": "omnidesk.profile-bundle.v1",
+  "bundle_members": [
+    "app/decl.yml",
+    "app/rules.json",
+    "dsh/cordis.patch.yml",
+    "dsh/cordis.yml",
+    "dsh/package.json"
+  ],
+  "imported_entry": {
+    "name": "migrate-desk",
+    "label": "Migrate Desk",
+    "created_at": 1793268813,
+    "origin": "standard",
+    "plugins": []
+  }
+}

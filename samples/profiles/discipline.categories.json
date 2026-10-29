@@ -1,0 +1,31 @@
+{
+  "schema": "omnidesk.profile-categories.v1",
+  "profile": "discipline",
+  "categories": [
+    {
+      "key": "plain",
+      "label": "未分类",
+      "folder": null,
+      "vault": null
+    },
+    {
+      "key": "weekly",
+      "label": "工作记录",
+      "folder": "weekly-report",
+      "vault": null
+    },
+    {
+      "key": "writing",
+      "label": "文案写作",
+      "folder": "material-writing",
+      "vault": null
+    },
+    {
+      "key": "project",
+      "label": "项目跟进",
+      "folder": "project-management",
+      "vault": null
+    }
+  ]
+}
+

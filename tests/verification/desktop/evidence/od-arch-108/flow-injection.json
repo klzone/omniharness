@@ -1,0 +1,164 @@
+{
+  "verified_at": "2026-10-29 00:00:24",
+  "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 合成模型端点（非真实模型）",
+  "script_sha256": "555db9ab4b9e1fe3c29c4821d31a9a098f070a5be6499c31487bbe274645b3c7",
+  "root": "/tmp/od108-flow",
+  "probes": {
+    "note": "随手记 (Memory Agent)",
+    "report": "周报起草 (Memory Report)",
+    "search": "联网检索 (AnySearch)"
+  },
+  "checks": {
+    "composer_reached": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "进入工作记录对话输入区"
+    },
+    "note_prompt_sent": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "提交一条随手记合成输入"
+    },
+    "note_request_reached_model": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "合成端点收到随手记这一轮请求"
+    },
+    "note_injects_memory_agent": {
+      "pass": true,
+      "measured": [
+        "随手记 (Memory Agent)"
+      ],
+      "expected": "随手记 (Memory Agent)",
+      "desc": "随手记轮注入了 memory-agent 正文"
+    },
+    "note_excludes_memory_report": {
+      "pass": true,
+      "measured": [
+        "随手记 (Memory Agent)"
+      ],
+      "expected": "不含 周报起草 (Memory Report)",
+      "desc": "随手记轮不带周报技能"
+    },
+    "note_excludes_anysearch": {
+      "pass": true,
+      "measured": [
+        "随手记 (Memory Agent)"
+      ],
+      "expected": "不含 联网检索 (AnySearch)",
+      "desc": "随手记轮不带按需技能（模型自己决定是否读）"
+    },
+    "dock_reachable_for_round2": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "回到 Dock 上的工作记录入口"
+    },
+    "report_action_present": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "场景页有「去生成周报」动作"
+    },
+    "report_prompt_sent": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "提交预填的周报指令"
+    },
+    "report_request_reached_model": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "合成端点收到周报这一轮请求"
+    },
+    "report_prompt_from_product_prefill": {
+      "pass": true,
+      "measured": [
+        "周报起草 (Memory Report)",
+        "整理成周报"
+      ],
+      "expected": "整理成周报",
+      "desc": "周报请求里含「整理成周报」，说明走的是产品「去生成周报」预填，不是脚本拼的输入"
+    },
+    "report_injects_memory_report": {
+      "pass": true,
+      "measured": [
+        "周报起草 (Memory Report)",
+        "整理成周报"
+      ],
+      "expected": "周报起草 (Memory Report)",
+      "desc": "周报轮注入了 memory-report 正文"
+    },
+    "report_excludes_memory_agent": {
+      "pass": true,
+      "measured": [
+        "周报起草 (Memory Report)",
+        "整理成周报"
+      ],
+      "expected": "不含 随手记 (Memory Agent)",
+      "desc": "周报轮不再背上随手记技能"
+    },
+    "report_excludes_anysearch": {
+      "pass": true,
+      "measured": [
+        "周报起草 (Memory Report)",
+        "整理成周报"
+      ],
+      "expected": "不含 联网检索 (AnySearch)",
+      "desc": "周报轮不带按需技能"
+    },
+    "app_alive_at_end": {
+      "pass": true,
+      "measured": true,
+      "expected": true,
+      "desc": "验收结束时 App 仍存活"
+    }
+  },
+  "failures": [],
+  "note_request": {
+    "text_chars": 10872,
+    "probe_hits": [
+      "随手记 (Memory Agent)"
+    ],
+    "probe_misses": [
+      "周报起草 (Memory Report)",
+      "联网检索 (AnySearch)",
+      "整理成周报"
+    ]
+  },
+  "note_prompt_echoed": false,
+  "prefill_visible_in_ax": false,
+  "prefill_note": "WebKit 的 entry 只暴露 placeholder，预填值不在无障碍树里；预填是否生效由请求探针 report_prompt_from_product_prefill 判定，截图 04 为人工可核对的补充证据。",
+  "report_request": {
+    "text_chars": 11085,
+    "probe_hits": [
+      "周报起草 (Memory Report)",
+      "整理成周报"
+    ],
+    "probe_misses": [
+      "随手记 (Memory Agent)",
+      "联网检索 (AnySearch)"
+    ]
+  },
+  "injected_chars": {
+    "note": 10872,
+    "report": 11085
+  },
+  "app_alive": true,
+  "session_log": [
+    "合成端点：http://127.0.0.1:41123/v1",
+    "复用已在运行的前端 dev server（127.0.0.1:5273，未启动也未终止）",
+    "App PID=282470（数据根 /tmp/od108-flow）"
+  ],
+  "app_stop": {
+    "pid": 282470,
+    "already_exited": false,
+    "exit_code": -15,
+    "wait_seconds": 0.03
+  },
+  "result": "pass"
+}

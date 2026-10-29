@@ -1,0 +1,33 @@
+{
+  "root": "/tmp/od124-preview",
+  "display": ":139",
+  "dsh_cli": "/tmp/od124-preview/cli-anchor/node_modules/@deepseek-ai/dsh/lib/bin.js",
+  "checks": {
+    "boot_uses_saved_profile": true,
+    "profile_assets_booted": true,
+    "plugin_healed_on_startup": true,
+    "install_invoked_by_stub": true,
+    "startup_log_records_autofill": true,
+    "plugin_removed_before_restart": true,
+    "plugin_healed_after_restart": true,
+    "second_boot_installed_again": true,
+    "second_boot_logged": true,
+    "no_install_when_switch_off": true,
+    "plugin_stays_missing_when_off": true,
+    "base_no_install": true,
+    "base_no_app_profile_dir": true,
+    "base_uses_standard": true
+  },
+  "notes": {
+    "install_calls_first_boot": [
+      "plugin --profile discipline add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2"
+    ],
+    "install_calls_second_boot": [
+      "plugin --profile discipline add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2",
+      "plugin --profile discipline add @deepseek-ai/dsh-skill-office@0.2.1-alpha.2"
+    ]
+  },
+  "startup_log": "1793266371 profile=discipline channel=web-api result=ok\n1793266374 profile=discipline startup-autofill pending=1\n",
+  "off_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n专业\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n工作记录（模型起草）\n\n文案写作（模型起草）\n\n项目跟踪（模型起草）\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n去设置\n\n下午好· 欢迎回到 OmniDesk\n\nOmniDesk\n\n添加文件\n\n模型权限未开启：可在设置中确认端点后启用\n\n本次对话归到哪一类，当前：未分类\n\n新对话\n\n语音\n\n模型：未识别 ▼\n\n发送指令\n\n去设置\n",
+  "base_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n标准\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n去设置\n\n下午好· 欢迎回到 OmniDesk\n\nOmniDesk\n\n添加文件\n\n模型权限未开启：可在设置中确认端点后启用\n\n本次对话归到哪一类，当前：未分类\n\n新对话\n\n语音\n\n模型：未识别 ▼\n\n发送指令\n\n去设置\n"
+}

@@ -1,7 +1,7 @@
 {
   "plan": "OD-ARCH-051 S3",
   "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）",
-  "display": ":174",
+  "display": ":97",
   "rounds": {
     "default": {
       "title": "OmniDesk Discipline",
@@ -13,9 +13,9 @@
         900
       ],
       "app_alive": true,
-      "decl_path": "/tmp/od051-s3/app-data/profiles/discipline.yml",
-      "decl_created": true,
-      "decl_matches_sample": true
+      "decl_path": "/tmp/od051-s3/app-data/profiles/discipline/decl.yml",
+      "decl_preset": true,
+      "decl_untouched_by_host": true
     },
     "edited": {
       "title": "OmniDesk Discipline",
@@ -43,7 +43,7 @@
   },
   "notes": [
     "rounds[*].title 是 X 窗口标题（WM_NAME），由 tauri.conf 固定，不随声明变化；声明里的 display_name 只改界面左上角品牌文字，请以截图为准。",
-    "脚本自动断言：声明文件被创建 / 首轮内容与 samples 逐字一致 / 进程存活 / 写坏后坏文件未被覆盖。",
+    "脚本自动断言：预置声明未被宿主改写（OD-ARCH-106 起宿主不再创建默认声明）/ 进程存活 / 写坏后坏文件未被覆盖。",
     "Dock 入口数量与品牌名变化是人工比对三张截图判定的，不是 DOM 断言。"
   ]
 }

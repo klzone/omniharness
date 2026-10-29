@@ -1,0 +1,31 @@
+{
+  "plan": "OD-ARCH-107",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实",
+  "rounds": {
+    "standard": {
+      "window_found": true,
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-107/shots/01-standard-capabilities.png",
+      "accent_pixels": 0,
+      "alive": true,
+      "profile": "omnidesk-base",
+      "root": "/tmp/od107-scope/standard"
+    },
+    "discipline": {
+      "window_found": true,
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-107/shots/02-discipline-capabilities.png",
+      "accent_pixels": 695,
+      "alive": true,
+      "profile": "discipline",
+      "root": "/tmp/od107-scope/discipline"
+    }
+  },
+  "checks": {
+    "standard_window_alive": true,
+    "standard_no_preinjected_tag": true,
+    "standard_no_rules_created": true,
+    "standard_no_decl_created": true,
+    "discipline_window_alive": true,
+    "discipline_has_preinjected_tag": true
+  },
+  "result": "pass"
+}

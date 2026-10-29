@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-10-25 05:50:27",
+  "verified_at": "2026-10-29 08:47:34",
   "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI + 像素判定）",
-  "root": "/tmp/od082-completion-audit",
+  "root": "/tmp/od082-recheck",
   "checks": {
     "test_thread_opened": {
       "pass": true,
@@ -38,14 +38,14 @@
       "measured": "discipline",
       "desc": "配置已成功保存为 discipline"
     },
-    "reopened_shows_discipline_scheduled": {
+    "reopened_shows_discipline_effective": {
       "pass": true,
       "measured": true,
-      "desc": "弹层显示下次启动生效为纪检专业"
+      "desc": "弹层显示当前生效为纪检专业"
     },
     "turnrail_hover_card_appears": {
       "pass": true,
-      "measured": 12549,
+      "measured": 4518,
       "desc": "TurnRail 悬停卡片成功浮现"
     },
     "turnrail_card_focus_shot": {
@@ -60,7 +60,7 @@
     },
     "search_highlight_mark_pixels": {
       "pass": true,
-      "measured": 3265,
+      "measured": 1444,
       "desc": "对话区命中词出现琥珀高亮背景"
     },
     "search_count_2_of_2_after_enter": {
@@ -70,7 +70,7 @@
     },
     "search_jump_scroll_delta": {
       "pass": true,
-      "measured": 33396,
+      "measured": 8784,
       "desc": "回车前后对话区发生跳转定位变化"
     },
     "search_count_0_of_0": {

@@ -1,0 +1,93 @@
+{
+  "root": "/tmp/od117-switch",
+  "display": ":139",
+  "checks": {
+    "boot_base_settings_null": true,
+    "boot_base_no_scenes": true,
+    "boot_base_no_assets": true,
+    "boot_base_categories_only_plain": true,
+    "popover_opened": true,
+    "pick_discipline": true,
+    "switch_assembled": true,
+    "discipline_categories_restored": true,
+    "discipline_categories_file": true,
+    "dock_switched_without_restart": true,
+    "popover_reopened": true,
+    "pick_base": true,
+    "switch_back_saved": true,
+    "dock_back_to_base": true,
+    "base_categories_only_plain_again": true,
+    "base_skills_really_parked": true
+  },
+  "base_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n标准\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n去设置\n\n早上好· 欢迎回到 OmniDesk\n\nOmniDesk\n\n添加文件\n\n模型权限未开启：可在设置中确认端点后启用\n\n本次对话归到哪一类，当前：未分类\n\n新对话\n\n语音\n\n模型：未识别 ▼\n\n发送指令\n\n去设置\n",
+  "base_categories": [
+    "plain"
+  ],
+  "settings_after_switch": {
+    "schema": "omnidesk.settings.v1",
+    "artifact_root": null,
+    "library_root": null,
+    "knowledge_vault_root": null,
+    "model_permissions": {
+      "local": false,
+      "private": false,
+      "public": false
+    },
+    "thread_categories": [
+      {
+        "key": "plain",
+        "label": "未分类",
+        "folder": null,
+        "vault": null
+      },
+      {
+        "key": "weekly",
+        "label": "工作记录",
+        "folder": "weekly-report",
+        "vault": null
+      },
+      {
+        "key": "writing",
+        "label": "文案写作",
+        "folder": "material-writing",
+        "vault": null
+      },
+      {
+        "key": "project",
+        "label": "项目跟进",
+        "folder": "project-management",
+        "vault": null
+      }
+    ],
+    "engine_profile": "discipline"
+  },
+  "files": {
+    "package.json": true,
+    "cordis.patch.yml": true,
+    "decl.yml": true,
+    "rules.json": true
+  },
+  "skills": [
+    ".omnidesk-managed",
+    "anysearch",
+    "document-review",
+    "knowledge-agent",
+    "knowledge-search",
+    "material-writing",
+    "memory-agent",
+    "memory-report",
+    "project-agent"
+  ],
+  "after_switch_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n专业\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n工作记录（模型起草）\n\n文案写作（模型起草）\n\n项目跟踪（模型起草）\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n去设置\n\n早上好· 欢迎回到 OmniDesk\n\nOmniDesk\n\n添加文件\n\n模型权限未开启：可在设置中确认端点后启用\n\n本次对话归到哪一类，当前：未分类\n\n新对话\n\n语音\n\n模型：未识别 ▼\n\n发送指令\n\n去设置\n",
+  "skills_after_base": [],
+  "parked_skills": [
+    "anysearch",
+    "document-review",
+    "knowledge-agent",
+    "knowledge-search",
+    "material-writing",
+    "memory-agent",
+    "memory-report",
+    "project-agent"
+  ]
+}

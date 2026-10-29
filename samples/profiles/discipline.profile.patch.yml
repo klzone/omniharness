@@ -1,2 +1,11 @@
-[]
+# OmniDesk Discipline Profile Patch (OD-ARCH-104)
+# 本层在每个 bundle 之后应用：顶层 YAML 数组，id 定向覆盖或 insert 列表。
+#
+# 办公能力（Word / PowerPoint / Excel 工作流）只随专业 Profile 挂载：
+# dsh-skill-office 提供 office-docx / office-pptx / office-xlsx 三个候选项，
+# 配合 preset-standard 内已启用的 skill 注册表与 tool-skill 生效。
+# 基础标准（omnidesk-base）不加这条，插件面保持与官方 dsh-base 一致。
+- insert:
+    - id: skill-office
+      name: '@deepseek-ai/dsh-skill-office'
 

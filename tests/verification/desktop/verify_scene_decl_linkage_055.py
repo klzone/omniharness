@@ -180,16 +180,23 @@ def main(argv: list[str]) -> int:
             "演练结束把声明恢复为初始字节，sha256 前后比对见 decl_sha256_*。",
         ],
     }
-    session = AppSession(root=root, display=args.display)
+    # OD-ARCH-106：声明随 Profile 挂载。harness 默认 Profile 是 `web`，这里显式切到
+    # discipline，并在启动前预置一份声明（宿主不再自动创建）。
+    session = AppSession(
+        root=root, display=args.display, env_extra={"OMNIDESK_DSH_PROFILE": "discipline"}
+    )
     try:
         session.prepare()
         xs = XSession(args.display)
-        decl_path = session.app_data / "profiles" / "discipline.yml"
+        decl_path = session.app_data / "profiles" / "discipline" / "decl.yml"
+        decl_path.parent.mkdir(parents=True, exist_ok=True)
+        decl_path.write_text(DEFAULT_DECL, encoding="utf-8")
 
         # --- 1. 默认声明 ---------------------------------------------------------
         session.start()
         report["rounds"]["default"] = round_shot(session, xs, SHOTS / "01-default.png")
         report["rounds"]["default"]["decl_path"] = str(decl_path)
+        # OD-ARCH-106：宿主不写默认声明，这里断言预置内容未被改写。
         report["rounds"]["default"]["decl_matches_sample"] = (
             decl_path.exists() and decl_path.read_text(encoding="utf-8") == DEFAULT_DECL
         )

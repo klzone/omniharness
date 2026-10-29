@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { shell } from "../api";
+import { onProfilePlugins, onProfileRegistryChanged, shell } from "../api";
 import { Icon } from "../components/Icon";
-import type { ProfileChoiceOption, ProfileChoiceView } from "../types";
+import type {
+  ProfileChoiceOption,
+  ProfileChoiceView,
+  ProfileMissingPlugin,
+} from "../types";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 import { WindowControls } from "./WindowChrome";
 
@@ -10,7 +14,7 @@ import { WindowControls } from "./WindowChrome";
  *
  * 三处结构变化：
  * 1. 左侧品牌固定为软件名「OmniDesk」；后面的 Profile 徽标是**独立**控件，
- *    只决定「下次启动引擎用哪个 Profile」，不再顶替品牌名。
+ *    决定「用哪个 Profile 作为工作台」，切换即换引擎（OD-ARCH-110），不再顶替品牌名。
  * 2. 日期区域从常驻展示改为**悬浮卡片入口**：点日期弹出三周节律，鼠标移开 1 秒淡出。
  * 3. 时钟仍是自持状态的小组件，tick 只重渲染这一小块，不影响品牌与按钮。
  *
@@ -168,17 +172,109 @@ function DateFlip({ now }: { now: Date }) {
 /**
  * Profile 徽标 + 选择弹层（OD-ARCH-072）。
  *
- * 选择只保存一个 Profile 名到应用数据根；改的是「下次启动引擎用哪个」，不重启、不改路由。
+ * 选择保存一个 Profile 名到应用数据根，并**立即停掉旧引擎**（OD-ARCH-110）：
+ * 下一条任务按新 Profile 启动，场景声明、规则与注入 Skill 随之一并切换。
  * 结构上刻意与软件名分开：品牌永远是 OmniDesk，Profile 只是运行配置。
  */
-function ProfileBadge() {
+function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
   const [view, setView] = useState<ProfileChoiceView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<ProfileChoiceOption | null>(null);
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState<string | null>(null);
+  // 新建自定义 Profile（OD-ARCH-109 补充）：默认折叠，不挤占选择列表。
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [copyFrom, setCopyFrom] = useState("");
+  // 切换后仍未就绪的插件（OD-ARCH-114）：切换不静默联网，缺什么摆到台面上。
+  const [missing, setMissing] = useState<{
+    profile: string;
+    label: string;
+    items: ProfileMissingPlugin[];
+  } | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [installNote, setInstallNote] = useState<string | null>(null);
+  // 后台自动补装进行中（OD-ARCH-121）：切换回执先秒回，装完再由事件收尾。
+  const [autofill, setAutofill] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // 事件回调只在挂载时订阅一次，读当前清单要靠 ref（OD-ARCH-124）。
+  // 冷启动自愈发生在订阅之后、用户还没开过弹层，闭包里的 view 会一直是 null。
+  const viewRef = useRef<ProfileChoiceView | null>(null);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  /**
+   * 后台补装结束（OD-ARCH-121）。
+   *
+   * 只处理「自动」事件；手动点「安装」走命令回执，不走这里。
+   * 装齐 → 收起缺件卡并说明结果；仍缺 → 用最新探测结果刷新列表，保留安装入口。
+   */
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | null = null;
+    onProfilePlugins((ev) => {
+      if (!alive || !ev.automatic) return;
+      setAutofill(false);
+      if (ev.error) {
+        setInstallNote("自动补齐未执行：" + ev.error);
+        return;
+      }
+      const failed = ev.results.filter((x) => !x.ok).length;
+      if (ev.ok && ev.still_missing.length === 0) {
+        setMissing(null);
+        setInstallNote(null);
+        setReceipt(
+          ev.attempted.length > 0
+            ? `已在后台补齐 ${ev.attempted.length} 个插件。`
+            : "插件已就绪。",
+        );
+        return;
+      }
+      setMissing((prev) => {
+        const items =
+          ev.still_missing.length > 0
+            ? ev.still_missing.map((p) => ({
+                package: p.package,
+                status: "missing" as const,
+                detail: p.detail,
+              }))
+            : prev?.items ?? [];
+        if (prev) return { ...prev, items };
+        if (items.length === 0) return prev;
+        // 冷启动补装失败：此前没有切换回执，卡片得从空状态建出来，
+        // 否则用户只看到一句「仍有 N 个未就绪」，却看不到缺的是哪几个。
+        const known = viewRef.current;
+        const label =
+          known?.options.find((o) => o.name === ev.profile)?.label ||
+          known?.custom?.find((c) => c.name === ev.profile)?.label ||
+          ev.profile;
+        return { profile: ev.profile, label, items };
+      });
+      if (ev.still_missing.length > 0) {
+        setReceipt(`「${ev.profile}」还有 ${ev.still_missing.length} 个插件未就绪。`);
+      }
+      setInstallNote(
+        `后台已尝试 ${ev.attempted.length} 个，仍有 ${ev.still_missing.length} 个未就绪` +
+          (failed > 0 ? `（${failed} 项命令失败）` : "") +
+          "。可稍后重试。",
+      );
+    })
+      .then((fn) => {
+        if (alive) unlisten = fn;
+        else fn();
+      })
+      .catch(() => {
+        // 订阅失败不影响手动安装入口，静默即可。
+      });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, []);
 
   const load = useCallback(() => {
     shell
@@ -194,6 +290,27 @@ function ProfileBadge() {
   }, []);
 
   useEffect(load, [load]);
+
+  // 清单变了就重读（OD-ARCH-125）：设置页里移除或从回收站恢复后，
+  // 顶栏原来只在挂载时拉一次，用户回到顶栏看到的还是旧清单，切不过去。
+  useEffect(() => {
+    let alive = true;
+    let unlisten: (() => void) | null = null;
+    onProfileRegistryChanged(() => {
+      if (alive) load();
+    })
+      .then((fn) => {
+        if (alive) unlisten = fn;
+        else fn();
+      })
+      .catch(() => {
+        /* 订阅失败不影响手动打开弹层时的那次读取 */
+      });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [load]);
 
   useEffect(() => {
     if (!open) return;
@@ -236,7 +353,8 @@ function ProfileBadge() {
     if (view.saved_out_of_whitelist) return "标准";
     if (!view.saved || view.saved === "omnidesk-base") return "标准";
     if (view.saved === "discipline") return "专业";
-    return view.saved;
+    // 自建 Profile 优先显示登记的中文名，徽标本身仍保持短。
+    return view.custom?.find((c) => c.name === view.saved)?.label || view.saved;
   })();
 
   const confirm = () => {
@@ -246,9 +364,104 @@ function ProfileBadge() {
     shell
       .profileChoiceSet(target)
       .then((r) => {
-        setReceipt(r.note);
+        // 切换即装配（OD-ARCH-109）：回执要说清补了什么，而不是只说「已保存」。
+        const assembly = r.assembly;
+        const changes = r.assembled_changes ?? 0;
+        const detail = assembly
+          ? assembly.standard
+            ? "基础标准：不写入任何资产。"
+            : changes > 0
+              ? `已装配 ${changes} 项（共 ${assembly.items.length} 项）`
+              : `资产已就绪（${assembly.items.length} 项）`
+          : "";
+        // 已在后台自动补装（OD-ARCH-121）：明确说出来，避免用户以为「缺了就不管」。
+        const auto = r.plugins_auto_installing === true;
+        setReceipt(
+          [r.note, detail, auto ? "缺失插件已在后台自动补齐，完成后会提示结果。" : ""]
+            .filter(Boolean)
+            .join(" "),
+        );
+        setAutofill(auto);
+        // 缺什么都摆出来：自动补齐时这张卡改成进度说明，失败后仍由用户点「安装」。
+        const gaps = r.plugins_missing ?? [];
+        setMissing(
+          gaps.length > 0
+            ? { profile: pending.name, label: pending.label, items: gaps }
+            : null,
+        );
+        setInstallNote(null);
+        // 切换已生效：让 App 重读场景声明，Dock 与场景入口立刻换到新 Profile。
+        if (r.engine_stopped !== false) onProfileChanged?.();
         setPending(null);
-        setOpen(false);
+        // 还缺插件时留在弹层里，把「装什么」直接给出来；齐了就关。
+        setOpen(gaps.length > 0);
+        load();
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setSaving(false));
+  };
+
+  /** 一次补齐缺的插件：逐项回执，失败不中断其余，安装后重新探测。 */
+  const ensurePlugins = () => {
+    if (!missing || installing) return;
+    setInstalling(true);
+    setInstallNote(null);
+    shell
+      .profilePluginsEnsure(missing.profile)
+      .then((r) => {
+        const failed = r.results.filter((x) => !x.ok).length;
+        if (r.attempted.length === 0) {
+          setInstallNote("现在没有需要安装的插件。");
+        } else if (r.ok) {
+          setInstallNote(`已装齐 ${r.attempted.length} 个插件。`);
+        } else {
+          setInstallNote(
+            `已尝试 ${r.attempted.length} 个，仍有 ${r.still_missing.length} 个未就绪` +
+              (failed > 0 ? `（${failed} 项安装命令失败）` : "") +
+              "。",
+          );
+        }
+        if (r.ok || r.still_missing.length === 0) {
+          setMissing(null);
+        } else if (missing) {
+          setMissing({
+            ...missing,
+            items: r.still_missing.map((p) => ({
+              package: p.package,
+              status: "missing" as const,
+              detail: p.detail,
+            })),
+          });
+        }
+      })
+      .catch((e) =>
+        setInstallNote(e instanceof Error ? e.message : String(e)),
+      )
+      .finally(() => setInstalling(false));
+  };
+
+  /** 新建 / 复制：成功后刷新列表，并把新 Profile 直接列为待切换项。 */
+  const createProfile = () => {
+    const name = newName.trim().toLowerCase();
+    if (!name) {
+      setError("先填一个 Profile 名（小写字母、数字、连字符、下划线）。");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    shell
+      .profileCreate(name, newLabel.trim() || name, copyFrom || null)
+      .then((r) => {
+        setReceipt(r.note);
+        setCreating(false);
+        setNewName("");
+        setNewLabel("");
+        setCopyFrom("");
+        setPending({
+          name: r.profile.name,
+          label: r.profile.label,
+          standard: false,
+        });
         load();
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -264,7 +477,7 @@ function ProfileBadge() {
           setOpen((v) => !v);
           if (!view) load();
         }}
-        data-hover-hint={"引擎 Profile：" + currentLabel + "（只影响下次启动，不改模型路由）"}
+        data-hover-hint={"引擎 Profile：" + currentLabel + "（切换即生效：旧引擎停止，下一条任务按新 Profile 运行）"}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="topnav-profile-badge"
@@ -287,6 +500,15 @@ function ProfileBadge() {
           data-testid="topnav-profile-popover"
           className="absolute left-0 top-full mt-2 w-[300px] rounded-2xl bg-white/97 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2.5 z-50"
         >
+          {receipt ? (
+            <p
+              className="mx-1 mb-2 px-2 py-1.5 text-[10.5px] leading-relaxed text-emerald-700 bg-emerald-500/8 ring-1 ring-emerald-500/20 break-words"
+              role="status"
+              aria-label={receipt}
+            >
+              {receipt}
+            </p>
+          ) : null}
           {pending ? (
             <div
               role="alertdialog"
@@ -297,9 +519,9 @@ function ProfileBadge() {
                 切换到「{pending.label}」？
               </p>
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                Profile 决定引擎加载哪些插件与能力。改动会在
-                <span className="font-medium text-on-surface">下次启动引擎</span>
-                时生效，当前正在运行的任务不受影响。
+                Profile 决定引擎加载哪些插件、场景与规则。确认后
+                <span className="font-medium text-on-surface">立即切换</span>
+                ：旧引擎会被停止，正在生成的内容随之中断，下一条任务按新 Profile 运行。
               </p>
               <div className="flex items-center justify-end gap-2 pt-0.5">
                 <button
@@ -317,18 +539,74 @@ function ProfileBadge() {
                   data-testid="topnav-profile-confirm"
                   className="px-3 py-1 rounded-full bg-primary text-on-primary text-[11.5px] font-medium disabled:opacity-50"
                 >
-                  {saving ? "保存中…" : "确认"}
+                  {saving ? "切换中…" : "确认"}
                 </button>
               </div>
             </div>
           ) : (
             <>
               <div className="px-1.5 pb-1.5 text-[10px] uppercase tracking-wide text-outline">
-                下次启动使用 · 当前：{currentLabel}
+                切换后立即生效 · 当前：{currentLabel}
               </div>
               {view?.saved_out_of_whitelist ? (
                 <div className="mx-1 mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 leading-relaxed">
                   当前保存的 Profile 不在可选清单，本次使用默认。
+                </div>
+              ) : null}
+              {missing ? (
+                <div
+                  className="mx-1 mb-2 border border-outline-variant/40 bg-surface-container/50 p-2"
+                  data-testid="topnav-profile-missing-plugins"
+                >
+                  <p className="text-[11px] font-medium text-on-surface">
+                    「{missing.label}」还缺 {missing.items.length} 个插件
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-on-surface-variant leading-relaxed">
+                    {autofill
+                      ? "配置与 Skill 已写入；这些包正在后台联网补齐，装完会在这里更新结果。"
+                      : "配置与 Skill 已写入，这些包还没装上。装齐后该 Profile 的插件能力才完整。"}
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {missing.items.map((p) => (
+                      <li
+                        key={p.package}
+                        className="flex items-baseline gap-1.5 text-[10px] text-outline"
+                      >
+                        <span className="font-mono text-on-surface-variant truncate">
+                          {p.package}
+                        </span>
+                        <span className="flex-shrink-0">{p.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={ensurePlugins}
+                      disabled={installing || autofill}
+                      data-testid="topnav-profile-install-missing"
+                      data-hover-hint="会联网，通过 DSH 官方插件通道装到当前 Profile"
+                      className="px-2.5 py-1 bg-primary text-on-primary text-[11px] font-medium disabled:opacity-50"
+                    >
+                      {autofill ? "后台补齐中…" : installing ? "安装中…" : "安装缺失插件"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMissing(null);
+                        setInstallNote(null);
+                      }}
+                      disabled={installing}
+                      className="px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-container disabled:opacity-50"
+                    >
+                      稍后
+                    </button>
+                  </div>
+                  {installNote ? (
+                    <p className="mt-1.5 text-[10px] text-on-surface-variant leading-relaxed">
+                      {installNote}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {view === null ? (
@@ -371,21 +649,101 @@ function ProfileBadge() {
               )}
               <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[10px] text-outline leading-relaxed">
                 {view
-                  ? "本次启动实际使用：" + view.effective + "（" + view.channel + " 通道）"
+                  ? "当前生效：" + view.effective + "（" + view.channel + " 通道）"
                   : "读取隔离数据根失败时不会显示可选清单。"}
               </p>
               {error && view ? (
                 <p className="px-1.5 pt-1 text-[10px] text-error leading-relaxed">{error}</p>
               ) : null}
+
+              {/* 自建 Profile：默认折叠，展开才占地方 */}
+              <div className="mt-1.5 pt-1.5 border-t border-surface-variant/20">
+                {creating ? (
+                  <div className="space-y-1.5 px-1" data-testid="topnav-profile-create-form">
+                    <input
+                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      placeholder="名字，如 my-work"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      data-testid="topnav-profile-new-name"
+                      aria-label="新 Profile 名字"
+                    />
+                    <input
+                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      placeholder="显示名（可选），如 我的工作台"
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      data-testid="topnav-profile-new-label"
+                      aria-label="新 Profile 显示名"
+                    />
+                    <select
+                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      value={copyFrom}
+                      onChange={(e) => setCopyFrom(e.target.value)}
+                      data-testid="topnav-profile-copy-from"
+                      aria-label="从哪个 Profile 复制"
+                    >
+                      <option value="">从基础标准起手（干净底座）</option>
+                      {(view?.options ?? [])
+                        .filter((o) => o.name !== view?.standard)
+                        .map((o) => (
+                          <option key={o.name} value={o.name}>
+                            复制：{o.label}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-[10px] text-outline leading-relaxed">
+                      只带配置与场景规则，不带已装插件；切过去后在设置 →「Profile 资产」里按需安装。
+                    </p>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreating(false);
+                          setError(null);
+                        }}
+                        disabled={saving}
+                        className="px-2.5 py-1 rounded-full text-[11px] text-on-surface-variant hover:bg-surface-container disabled:opacity-50"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={createProfile}
+                        disabled={saving}
+                        data-testid="topnav-profile-create-submit"
+                        className="px-2.5 py-1 rounded-full bg-primary text-on-primary text-[11px] font-medium disabled:opacity-50"
+                      >
+                        {saving ? "创建中…" : "创建"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreating(true);
+                      setError(null);
+                    }}
+                    data-testid="topnav-profile-create-toggle"
+                    className="w-full text-left px-2 py-1 rounded-lg text-[11px] text-primary hover:bg-surface-container"
+                  >
+                    ＋ 新建自定义 Profile
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>
       ) : null}
 
-      {receipt ? (
+      {/* 弹层关着时（插件齐全）才在徽标下方摆回执；弹层开着时回执在弹层里，
+          避免两条文字互相压住、还被窗口右边缘裁掉（OD-ARCH-121 实测）。 */}
+      {receipt && !open ? (
         <p
           className="absolute left-0 top-full mt-1.5 text-[10px] text-emerald-600 whitespace-nowrap z-40"
           role="status"
+          aria-label={receipt}
         >
           {receipt}
         </p>
@@ -398,6 +756,8 @@ export interface TopNavProps {
   engineHealthy: boolean | null;
   engineLabel: string;
   onOpenSettings: () => void;
+  /** 顶栏切换 Profile 成功后的回调（OD-ARCH-110）：让 App 重读场景声明。 */
+  onProfileChanged?: () => void;
   searchQuery?: string;
   onSearchQueryChange?: (q: string) => void;
   searchMatchCount?: number;
@@ -411,6 +771,7 @@ export function TopNav({
   engineHealthy,
   engineLabel,
   onOpenSettings,
+  onProfileChanged,
   searchQuery = "",
   onSearchQueryChange,
   searchMatchCount = 0,
@@ -456,7 +817,7 @@ export function TopNav({
             </span>
           </div>
 
-          <ProfileBadge />
+          <ProfileBadge onProfileChanged={onProfileChanged} />
 
           <span
             data-hover-hint={engineLabel}

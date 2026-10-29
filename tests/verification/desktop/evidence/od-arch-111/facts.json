@@ -1,0 +1,42 @@
+{
+  "root": "/tmp/od111-preview",
+  "checks": {
+    "repo_root_absent": true,
+    "assembly_ran": true,
+    "all_skills_present": true,
+    "references_present": true,
+    "config_present": true,
+    "content_matches_repo": true,
+    "no_missing_source": true
+  },
+  "binary": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/target/release/omnidesk-desktop",
+  "binary_bytes": 7564592,
+  "assembly_log_seen": true,
+  "startup_log": "1793239478 profile=discipline channel=web-api result=ok\n",
+  "ghost_exists": false,
+  "skill_dirs": [
+    "anysearch",
+    "document-review",
+    "knowledge-agent",
+    "knowledge-search",
+    "material-writing",
+    "memory-agent",
+    "memory-report",
+    "project-agent"
+  ],
+  "missing_skill_md": [],
+  "missing_references": [],
+  "profile_dirs": [
+    "discipline"
+  ],
+  "app_profile_files": [
+    ".assets.v1.json",
+    "decl.yml",
+    "rules.json"
+  ],
+  "dsh_profile_files": [
+    "cordis.patch.yml",
+    "package.json"
+  ],
+  "content_mismatch": []
+}

@@ -1,0 +1,14 @@
+{
+  "plan": "OD-ARCH-106 S1",
+  "evidence_level": "文件事实（两份 preset 的插件 id 与 disabled 标记逐条比对）",
+  "official_source": "runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-web-app/presets/standard.patch.yml",
+  "ours_source": "samples/profiles/omnidesk-base.profile.patch.yml",
+  "official_count": 32,
+  "ours_count": 32,
+  "missing_in_ours": [],
+  "extra_in_ours": [],
+  "disabled_differs": [],
+  "skill_filesystem_disabled": false,
+  "tool_skill_disabled": false,
+  "result": "pass"
+}

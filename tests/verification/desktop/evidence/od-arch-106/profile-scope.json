@@ -1,0 +1,235 @@
+{
+  "plan": "OD-ARCH-106",
+  "evidence_level": "静态代码检查（源码 + 样本）",
+  "cases": 45,
+  "failed": 0,
+  "result": "pass",
+  "failed_cases": [],
+  "cases_detail": [
+    {
+      "name": "exists:profile_decl.rs",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/src/profile_decl.rs"
+    },
+    {
+      "name": "exists:profile_rules.rs",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/src/profile_rules.rs"
+    },
+    {
+      "name": "exists:lib.rs",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src-tauri/src/lib.rs"
+    },
+    {
+      "name": "exists:Dock.tsx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src/shell/Dock.tsx"
+    },
+    {
+      "name": "exists:HomeCanvas.tsx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src/shell/HomeCanvas.tsx"
+    },
+    {
+      "name": "exists:App.tsx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src/App.tsx"
+    },
+    {
+      "name": "exists:SettingsPanel.tsx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src/SettingsPanel.tsx"
+    },
+    {
+      "name": "exists:api.ts",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/desktop/src/api.ts"
+    },
+    {
+      "name": "exists:omnidesk-base.profile.patch.yml",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/samples/profiles/omnidesk-base.profile.patch.yml"
+    },
+    {
+      "name": "decl_file_name",
+      "ok": true,
+      "detail": "声明文件名应为 decl.yml"
+    },
+    {
+      "name": "rules_file_name",
+      "ok": true,
+      "detail": "规则文件名应为 rules.json"
+    },
+    {
+      "name": "decl_path_joins_profile_dir",
+      "ok": true,
+      "detail": "decl_path 应把文件名拼到 Profile 目录"
+    },
+    {
+      "name": "rules_path_joins_profile_dir",
+      "ok": true,
+      "detail": "rules_path 应把文件名拼到 Profile 目录"
+    },
+    {
+      "name": "profile_asset_dir_uses_profile",
+      "ok": true,
+      "detail": "资产目录须按 Profile 名拼接"
+    },
+    {
+      "name": "load_decl_returns_option",
+      "ok": true,
+      "detail": "load_decl 应返回 Option"
+    },
+    {
+      "name": "load_decl_missing_is_none",
+      "ok": true,
+      "detail": "文件缺失必须返回 Ok(None)"
+    },
+    {
+      "name": "load_decl_never_writes",
+      "ok": true,
+      "detail": "load_decl 不得写盘"
+    },
+    {
+      "name": "decl_no_default_on_load",
+      "ok": true,
+      "detail": "加载路径不应引用内置默认声明"
+    },
+    {
+      "name": "load_rules_never_writes",
+      "ok": true,
+      "detail": "load_rules 不得写盘"
+    },
+    {
+      "name": "load_rules_missing_unloaded",
+      "ok": true,
+      "detail": "规则缺失应为 loaded=false"
+    },
+    {
+      "name": "decl_migrate_skips_standard",
+      "ok": true,
+      "detail": "标准 Profile 不迁移"
+    },
+    {
+      "name": "decl_migrate_never_overwrites",
+      "ok": true,
+      "detail": "目标已存在即跳过"
+    },
+    {
+      "name": "decl_migrate_keeps_legacy",
+      "ok": true,
+      "detail": "不得删除旧文件"
+    },
+    {
+      "name": "rules_migrate_skips_standard",
+      "ok": true,
+      "detail": "标准 Profile 不迁移"
+    },
+    {
+      "name": "rules_migrate_never_overwrites",
+      "ok": true,
+      "detail": "目标已存在即跳过"
+    },
+    {
+      "name": "rules_migrate_keeps_legacy",
+      "ok": true,
+      "detail": "不得删除旧文件"
+    },
+    {
+      "name": "migrate_called_before_load",
+      "ok": true,
+      "detail": "读声明前应先跑一次性迁移"
+    },
+    {
+      "name": "migrate_skips_standard_mode",
+      "ok": true,
+      "detail": "标准模式直接跳过迁移"
+    },
+    {
+      "name": "restore_rejects_standard",
+      "ok": true,
+      "detail": "标准模式应拒绝安装出厂规则包"
+    },
+    {
+      "name": "rules_view_block_reason",
+      "ok": true,
+      "detail": "宿主应把禁用原因交给界面"
+    },
+    {
+      "name": "settings_disables_restore",
+      "ok": true,
+      "detail": "设置页应按原因禁用按钮"
+    },
+    {
+      "name": "dock_has_builtin_items",
+      "ok": true,
+      "detail": "Dock 需要平台固有入口清单"
+    },
+    {
+      "name": "dock_business_only_on_failure",
+      "ok": true,
+      "detail": "无声明时应显示平台固有入口；只有读取失败才回退完整业务入口"
+    },
+    {
+      "name": "dock_props_declared_nullable",
+      "ok": true,
+      "detail": "声明入参须允许 null（标准模式）"
+    },
+    {
+      "name": "app_passes_nullable_declared",
+      "ok": true,
+      "detail": "App 应把无声明表达为 null"
+    },
+    {
+      "name": "app_has_decl_ready",
+      "ok": true,
+      "detail": "声明读取完成前不应按默认场景校准"
+    },
+    {
+      "name": "api_decl_nullable",
+      "ok": true,
+      "detail": "profileDecl 应允许返回 null"
+    },
+    {
+      "name": "scene_options_hides_all_without_decl",
+      "ok": true,
+      "detail": "无声明时三个业务分类全部隐藏"
+    },
+    {
+      "name": "preset_requires_declared_scene",
+      "ok": true,
+      "detail": "场景预设须要求入口真的挂在 Profile 上"
+    },
+    {
+      "name": "preset_requires_loaded_rules",
+      "ok": true,
+      "detail": "规则未加载不套场景预设"
+    },
+    {
+      "name": "home_shows_standard_mode_copy",
+      "ok": true,
+      "detail": "首页应显示标准模式说明"
+    },
+    {
+      "name": "home_standard_copy_gated",
+      "ok": true,
+      "detail": "标准模式说明须等声明读取完成且确认无声明后才显示"
+    },
+    {
+      "name": "app_passes_decl_ready",
+      "ok": true,
+      "detail": "App 应把声明读取完成状态传给首页"
+    },
+    {
+      "name": "base_enables_skill_filesystem",
+      "ok": true,
+      "detail": "skill-filesystem 不应禁用"
+    },
+    {
+      "name": "base_enables_tool_skill",
+      "ok": true,
+      "detail": "tool-skill 不应禁用"
+    }
+  ]
+}

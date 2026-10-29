@@ -1,7 +1,7 @@
 {
-  "verified_at": "2026-10-28 15:38:59",
+  "verified_at": "2026-10-28 17:29:27",
   "evidence_level": "静态代码检查 + 脚本运行（编译真实 scenes.ts 并在 Node 中执行）",
-  "repo_head": "473ccf1ef9c30da3fc580552a9d28b6eacb3d06e",
+  "repo_head": "7820751ba567528821af7e5e2ba7b32f88d1aad5",
   "files": {
     "home_chat": "desktop/src/shell/HomeChat.tsx",
     "home_canvas": "desktop/src/shell/HomeCanvas.tsx",

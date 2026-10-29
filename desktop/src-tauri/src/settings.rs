@@ -59,8 +59,11 @@ pub struct Settings {
     #[serde(default)]
     pub model_permissions: ModelPermissions,
     /// 对话分类（OD-ARCH-062）：显示名、归档子目录、vault 绑定。
-    /// 旧设置文件缺少该字段时按内置四类处理；不迁移、不改写旧文件。
-    #[serde(default = "default_thread_categories")]
+    ///
+    /// OD-ARCH-116：缺省值改为「只有未分类」——没有设置文件就是干净底座
+    /// （基础标准），不该凭空挂着工作记录 / 文案写作 / 项目跟进。
+    /// 业务分类由切换 Profile 时写入；不迁移、不改写旧文件。
+    #[serde(default = "standard_thread_categories")]
     pub thread_categories: Vec<ThreadCategory>,
     /// 用户选择的 DSH Profile（OD-ARCH-072 首页改版）。
     ///
@@ -70,11 +73,24 @@ pub struct Settings {
     /// 下一次引擎启动（或用户手动停止后再次提交任务）才生效。
     #[serde(default)]
     pub engine_profile: Option<String>,
+    /// 切换 Profile 时是否自动联网补齐缺失插件（OD-ARCH-121）。
+    ///
+    /// 默认开启：用户的产品口径是「切换 profile 就能得到专属工作台」，
+    /// 缺插件还让人再点一次，就不算装配完成。关闭后行为回到 OD-ARCH-114
+    /// 的「只提示、由用户点安装」。旧设置文件缺字段时按默认值 true 处理，
+    /// 不需要迁移脚本。
+    #[serde(default = "default_true")]
+    pub profile_auto_install_plugins: bool,
 }
 
 /// 内置分类键。这四个是内部场景键，永不由用户新增；自定义分类一律带 `custom:` 前缀，
 /// 与场景键不会冲突（前端据此决定是否套用场景预设）。
 pub const BUILTIN_CATEGORY_KEYS: [&str; 4] = ["plain", "weekly", "writing", "project"];
+/// 基础分类键（OD-ARCH-116）：任何 Profile 的分类表都必须有它。
+///
+/// 干净底座只剩这一类，所以「四键齐全」不能再当作校验前提——那只是一种
+/// 安装形态（专业 Profile），不是不变量。
+pub const REQUIRED_CATEGORY_KEY: &str = "plain";
 /// 分类数量上限，防止异常配置撑爆界面。
 pub const MAX_CATEGORIES: usize = 12;
 
@@ -121,6 +137,19 @@ pub fn default_thread_categories() -> Vec<ThreadCategory> {
             vault: None,
         },
     ]
+}
+
+/// 基础标准的分类表（OD-ARCH-116）：只有「未分类」。
+///
+/// 这是「干净底座」在分类层的定义：没有工作记录 / 文案写作 / 项目跟进，
+/// 因为基础标准根本没有这三个业务场景。切回基础标准时宿主收敛到这一份。
+pub fn standard_thread_categories() -> Vec<ThreadCategory> {
+    vec![ThreadCategory {
+        key: "plain".into(),
+        label: "未分类".into(),
+        folder: None,
+        vault: None,
+    }]
 }
 
 /// 可配置的端点类别。未知类别不在其中，因此没有“开启”入口。
@@ -170,10 +199,36 @@ impl Default for Settings {
             library_root: None,
             knowledge_vault_root: None,
             model_permissions: ModelPermissions::default(),
-            thread_categories: default_thread_categories(),
+            thread_categories: standard_thread_categories(),
             engine_profile: None,
+            profile_auto_install_plugins: true,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// 读取「切换 Profile 时自动补齐缺失插件」开关。
+///
+/// 设置文件读不出来时**按默认开启**处理：这是用户明确要的行为，
+/// 不该因为一个坏文件悄悄退回「只提示」。
+pub fn profile_auto_install_plugins(config_dir: &Path) -> bool {
+    load(config_dir)
+        .map(|s| s.profile_auto_install_plugins)
+        .unwrap_or(true)
+}
+
+/// 保存上述开关；其余设置原样保留。
+pub fn set_profile_auto_install_plugins(
+    config_dir: &Path,
+    enabled: bool,
+) -> Result<bool, String> {
+    let mut settings = load(config_dir)?;
+    settings.profile_auto_install_plugins = enabled;
+    write_settings(config_dir, &settings)?;
+    Ok(settings.profile_auto_install_plugins)
 }
 
 /// Profile 名合法字符：小写字母、数字、连字符、下划线，长度 1–48。
@@ -297,8 +352,13 @@ pub fn is_safe_relative_folder(folder: &str) -> bool {
         })
 }
 
-/// 校验整组分类：四类内置键必须齐全（否则线程标签会失去归属），键唯一，显示名非空，
+/// 校验整组分类：`plain` 必须存在（线程标签的兜底归属），键唯一，显示名非空，
 /// 键与目录格式合法。越界目录的拒绝在写入前由 `set_thread_categories` 负责。
+///
+/// OD-ARCH-116：不再要求 `weekly/writing/project` 齐全。这三个是**业务分类**，
+/// 只属于带对应场景的 Profile；基础标准下它们本就不该存在（否则干净底座
+/// 仍然挂着工作记录 / 文案写作 / 项目跟进）。缺失它们不破坏任何线程：
+/// 旧线程仍按原 tag 存着，显示名回落为「未分类」，切回专业 Profile 就恢复真名。
 pub fn validate_categories(categories: &[ThreadCategory]) -> Result<(), String> {
     if categories.is_empty() {
         return Err("分类列表为空，拒绝保存".to_string());
@@ -338,10 +398,11 @@ pub fn validate_categories(categories: &[ThreadCategory]) -> Result<(), String> 
             }
         }
     }
-    for key in BUILTIN_CATEGORY_KEYS {
-        if !seen.contains(key) {
-            return Err(format!("内置分类 {} 不能删除", key));
-        }
+    if !seen.contains(REQUIRED_CATEGORY_KEY) {
+        return Err(format!(
+            "分类表必须保留 {} 这一类（线程标签的兜底归属）",
+            REQUIRED_CATEGORY_KEY
+        ));
     }
     Ok(())
 }
@@ -911,7 +972,7 @@ mod tests {
             assert_eq!(settings.library_root.as_deref(), library.to_str());
             assert_eq!(settings.artifact_root.as_deref(), artifacts.to_str());
             assert!(settings.model_permissions.private, "改库根不得重置模型权限");
-            assert_eq!(settings.thread_categories, default_thread_categories());
+            assert_eq!(settings.thread_categories, standard_thread_categories());
 
             let eff = effective_library_root(&app.config).unwrap();
             assert_eq!(eff.source, "user");
@@ -1271,13 +1332,22 @@ mod tests {
         });
     }
 
-    /// OD-ARCH-062 S1：旧设置文件没有 thread_categories 时按内置四类处理。
+    /// OD-ARCH-116：没有设置文件（或旧文件没有该字段）就是干净底座，只有「未分类」。
+    ///
+    /// 业务分类随 Profile 写入；全新安装不该凭空挂着工作记录 / 文案写作 / 项目跟进。
     #[test]
-    fn categories_default_to_four_builtins() {
+    fn categories_default_to_clean_standard() {
         with_no_env(|| {
             let app = temp_app("categories-default");
-            assert_eq!(load(&app.config).unwrap().thread_categories, default_thread_categories());
-            // 旧格式（无新字段）必须仍能读，且四个键齐全、顺序不变。
+            assert_eq!(
+                load(&app.config).unwrap().thread_categories,
+                standard_thread_categories()
+            );
+            assert_eq!(standard_thread_categories().len(), 1);
+            // 出厂清单本身仍是四类：它只用于专业 Profile，不当全局默认。
+            assert_eq!(default_thread_categories().len(), 4);
+
+            // 旧格式（无新字段）必须仍能读，读回来的同样是干净底座。
             fs::write(
                 settings_path(&app.config),
                 r#"{"schema":"omnidesk.settings.v1","artifact_root":null,"model_permissions":{"local":true,"private":false,"public":false}}"#,
@@ -1286,7 +1356,7 @@ mod tests {
             let loaded = load(&app.config).unwrap();
             assert!(loaded.model_permissions.local, "旧字段不得因新增字段丢失");
             let keys: Vec<&str> = loaded.thread_categories.iter().map(|c| c.key.as_str()).collect();
-            assert_eq!(keys, vec!["plain", "weekly", "writing", "project"]);
+            assert_eq!(keys, vec!["plain"]);
         });
     }
 
@@ -1296,6 +1366,8 @@ mod tests {
         with_no_env(|| {
             let app = temp_app("categories-roundtrip");
             set_model_permission(&app.config, "private", true).unwrap();
+            // 干净底座只有未分类；先装一份专业 Profile 的四类再改。
+            set_thread_categories(&app, default_thread_categories()).unwrap();
             update_thread_category(
                 &app,
                 "weekly",
@@ -1326,11 +1398,15 @@ mod tests {
     fn categories_reject_out_of_range_values() {
         with_no_env(|| {
             let app = temp_app("categories-reject");
-            let base = load(&app.config).unwrap().thread_categories;
+            // 干净底座的默认表只有 plain，这里用专业 Profile 的四类做越界用例。
+            let base = default_thread_categories();
+            set_thread_categories(&app, base.clone()).unwrap();
 
             // 1. 缺内置键（删掉 plain）
             let missing: Vec<_> = base.iter().filter(|c| c.key != "plain").cloned().collect();
-            assert!(set_thread_categories(&app, missing).unwrap_err().contains("不能删除"));
+            assert!(set_thread_categories(&app, missing)
+                .unwrap_err()
+                .contains("必须保留"));
 
             // 2. 重复键
             let mut dup = base.clone();
@@ -1386,7 +1462,8 @@ mod tests {
             let keep = existing.join("keep.md");
             fs::write(&keep, "用户既有成果\n").unwrap();
 
-            let categories = load(&app.config).unwrap().thread_categories;
+            // 干净底座只有未分类；目录骨架用例用专业 Profile 的四类映射。
+            let categories = default_thread_categories();
             let first = init_category_folders(&app.config, &categories).unwrap();
             assert_eq!(first.len(), 4);
             assert!(existing.is_dir());
@@ -1403,6 +1480,41 @@ mod tests {
                 None => std::env::remove_var(LOCAL_ROOT_ENV),
             }
             let _ = fs::remove_dir_all(&root);
+        });
+    }
+
+    /// OD-ARCH-121：旧设置文件没有这个字段时按「开启」处理，
+    /// 不需要迁移脚本，也不会把用户悄悄退回「只提示」。
+    #[test]
+    fn auto_install_plugin_defaults_true_for_legacy_settings() {
+        with_no_env(|| {
+            let app = temp_app("auto-install-legacy");
+            fs::write(
+                settings_path(&app.config),
+                r#"{"schema":"omnidesk.settings.v1","artifact_root":null,"model_permissions":{"local":true,"private":false,"public":false}}"#,
+            )
+            .unwrap();
+            assert!(profile_auto_install_plugins(&app.config));
+
+            // 没有设置文件（干净底座）也按开启，不凭空写盘。
+            let fresh = temp_app("auto-install-fresh");
+            assert!(profile_auto_install_plugins(&fresh.config));
+            assert!(!settings_path(&fresh.config).exists(), "只读判定不得建文件");
+        });
+    }
+
+    /// 开关要能往返，且不改动同一文件里的其他设置。
+    #[test]
+    fn auto_install_plugin_switch_round_trips() {
+        with_no_env(|| {
+            let app = temp_app("auto-install-roundtrip");
+            assert_eq!(set_profile_auto_install_plugins(&app.config, false).unwrap(), false);
+            assert!(!profile_auto_install_plugins(&app.config));
+            let loaded = load(&app.config).unwrap();
+            assert_eq!(loaded.engine_profile, None, "其余设置应保持默认");
+
+            assert!(set_profile_auto_install_plugins(&app.config, true).unwrap());
+            assert!(profile_auto_install_plugins(&app.config));
         });
     }
 }

@@ -1278,12 +1278,12 @@ export interface ProfileDecl {
   scenes: ProfileSceneEntry[];
 }
 
-/** `profileDecl()` 的返回值：声明本体 + 落盘路径 + 是否首次创建 + 告警。 */
+/** `profileDecl()` 的返回值：声明本体 + 落盘路径 + 载入指纹。null = 当前 Profile 没有声明。 */
 // ---------------------------------------------------------------------------
 // Profile 规则资产（OD-ARCH-068）
 //
 // 平台代码不内置任何行业规则：红线词表、写作铁律、场景规则与思考档、隐私策略
-// 全部来自用户可编辑的 `<数据根>/profiles/discipline.rules.json`。
+// 全部来自用户可编辑的 `<数据根>/profiles/<Profile 名>/rules.json`（随 Profile 挂载）。
 // 结构必须与 Rust `profile_rules::ProfileRules` 对齐（schema 校验在宿主侧）。
 // ---------------------------------------------------------------------------
 
@@ -1334,6 +1334,15 @@ export interface ProfileRulesView {
   rules: ProfileRules | null;
   error: string | null;
   default_available: boolean;
+  /** 可绑定的 Skill 清单，由后端下发（与 Rust ALLOWED_SKILLS 同源，OD-ARCH-129）。 */
+  allowed_skills?: string[];
+  /** 该 Profile 自带的 Skill（`profiles/<名字>/skills/`，OD-ARCH-131）。 */
+  local_skills?: string[];
+  /** 当前 Profile 不允许安装出厂规则包时的原因（OD-ARCH-106：只有基础标准会给出）。 */
+  default_blocked_reason?: string | null;
+  /** 旧单文件规则包迁移到当前 Profile 目录失败的原因（OD-ARCH-106）。
+   *  与 `error` 区别：`error` 会拦住模型提交，这个只提示，不影响使用。 */
+  migration_warning?: string | null;
   skill_contents?: Record<string, string>;
 }
 
@@ -1343,15 +1352,71 @@ export interface ProfileRulesSaveReceipt {
   backup: string | null;
   digest: string;
   note: string;
+  /**
+   * 保存绑定后立刻收敛运行时 skills/ 的结果（OD-ARCH-130）。
+   * 只有「保存 Skill 绑定」这条回执带这个字段；普通规则保存没有。
+   * 缺省或 ok=false 时，绑定已经写进 rules.json，但这几个 Skill 还没进运行时目录。
+   */
+  skills?: BoundSkillSync;
+}
+
+/** 「保存绑定后立刻收敛 Skill」的回执（OD-ARCH-130）。 */
+export interface BoundSkillSync {
+  ok?: boolean;
+  profile?: string;
+  standard?: boolean;
+  /** 绑定里点到的 Skill。 */
+  wanted?: string[];
+  /** 这次新补进运行时目录的。 */
+  filled?: string[];
+  /** 本来就在运行时目录、这次没动的。 */
+  kept?: string[];
+  /** 从停放区归位的。 */
+  returned?: string[];
+  /** 解绑后被移入停放区的。 */
+  parked?: string[];
+  /** 找不到正文来源的（仓库与内嵌副本都没有）。 */
+  missing_source?: string[];
+  /** 写盘失败的，逐条带原因。 */
+  failed?: string[];
+  note?: string;
+}
+
+/** 一次「场景 → Skill」绑定的提交项（OD-ARCH-129）。空数组表示该场景不预注入。 */
+export interface SkillBindingChoice {
+  scene: string;
+  skills: string[];
 }
 
 /** 能力管理（OD-ARCH-072）：一个 Skill 的只读条目。 */
 export interface CapabilitySkill {
+  /** 目录名，也就是 rules.json 里 skill_bindings 写的标识。 */
+  id: string;
   name: string;
   description: string | null;
   /** Unix 秒；null 表示读不到修改时间。 */
   modified_at: number | null;
   path: string;
+  /** 本 Profile 挂在哪几个场景上（OD-ARCH-107）；空 = 只是磁盘上有。 */
+  bindings: SkillBinding[];
+}
+
+/** 一条「场景 → Skill」绑定。 */
+export interface SkillBinding {
+  scene: string;
+  /** 1 起的绑定顺序。 */
+  order: number;
+  max_injected: number;
+  /** order <= max_injected：真的会进预注入。 */
+  effective: boolean;
+  /** 宿主读到了 SKILL.md 正文。 */
+  resolved: boolean;
+}
+
+/** 绑定了却读不到正文的条目。 */
+export interface MissingSkillBinding {
+  scene: string;
+  skill: string;
 }
 
 /** 能力管理：一个插件（bundle）的当前状态。 */
@@ -1369,6 +1434,17 @@ export interface CapabilityView {
   skills_dir: string;
   skills: CapabilitySkill[];
   plugins: CapabilityPlugin[];
+  /** 当前是否基础标准（干净底座）。 */
+  standard: boolean;
+  /** 当前 Profile 的规则包是否加载成功。 */
+  rules_loaded: boolean;
+  /** 规则包损坏的原因；没有规则文件时为 null。 */
+  rules_error: string | null;
+  /** 规则包声明的 Profile 名。 */
+  rules_profile: string | null;
+  /** 会被预注入的 Skill 目录名。 */
+  preinjected: string[];
+  missing_bindings: MissingSkillBinding[];
   market_installed: boolean;
   market_enabled: boolean;
   market_version: string | null;
@@ -1385,10 +1461,8 @@ export interface CapabilityReceipt {
 export interface ProfileDeclPayload {
   decl: ProfileDecl;
   path: string;
-  created: boolean;
   /** 载入时文件内容的 SHA-256；用于判断运行期间文件是否被改动（需重启生效）。 */
   content_sha256: string;
-  warnings: string[];
   /** 声明原文（设置页编辑框载入用；保存前由宿主重新校验）。 */
   text: string;
 }
@@ -1524,6 +1598,21 @@ export interface ProfileDeclSaveReceipt {
   note: string;
 }
 
+/**
+ * 起步场景声明模板（OD-ARCH-122）。
+ *
+ * 宿主只在内存里生成，不写盘；`has_existing` 为真表示当前 Profile 已有声明，
+ * 保存会覆盖（旧文件先备份为 .bak-<时间戳>）。
+ */
+export interface ProfileDeclStarter {
+  ok: boolean;
+  profile: string;
+  standard: boolean;
+  has_existing: boolean;
+  text: string;
+  note: string;
+}
+
 /** 顶栏 Profile 徽标（OD-ARCH-072）：一个可选的引擎 Profile。 */
 export interface ProfileChoiceOption {
   /** 目录名，也是 DSH 的 profile 名。 */
@@ -1546,14 +1635,305 @@ export interface ProfileChoiceView {
   /** 本次启动实际生效的 Profile。 */
   effective: string;
   options: ProfileChoiceOption[];
+  /** 用户自建 Profile（OD-ARCH-109 补充）；只显示这里登记的，不露历史遗留目录。 */
+  custom?: ProfileCustomEntry[];
   /** 引擎配置读不出来时的原因；此时 effective 是推算值。 */
   warning: string | null;
   note: string;
+}
+
+/** 一个自建 Profile 的登记信息。 */
+export interface ProfileCustomEntry {
+  name: string;
+  label: string;
+  /** `standard`（从基础标准起手）或 `copy:<源 Profile>`。 */
+  origin: string;
+  created_at: number;
+}
+
+/** 新建 / 复制自定义 Profile 的回执。 */
+export interface ProfileCreateReceipt {
+  ok: boolean;
+  profile: ProfileCustomEntry;
+  directory: string;
+  files: string[];
+  note: string;
+}
+
+/** 移除自定义 Profile 的回执：移入回收目录，不是永久删除。 */
+export interface ProfileRemoveReceipt {
+  ok: boolean;
+  name: string;
+  trashed_dsh: string | null;
+  trashed_app: string | null;
+  note: string;
+}
+
+/** 改显示名的回执（OD-ARCH-126）：只动 label 与 display_name。 */
+export interface ProfileRenameReceipt {
+  ok: boolean;
+  profile: ProfileCustomEntry;
+  previous_label: string;
+  /** 是否同时改了场景声明里的 display_name。 */
+  decl_updated: boolean;
+  /** 声明改写前的备份文件；没改声明时为 null。 */
+  backup: string | null;
+  note: string;
+}
+
+/** 回收站里的一项（`profile_trash_list` 的返回，OD-ARCH-125）。 */
+export interface ProfileTrashEntry {
+  /** 回收目录名，恢复时原样传回。 */
+  id: string;
+  name: string;
+  label: string;
+  origin: string;
+  /** 移除时间（Unix 秒）；旧版本留下的条目可能为 0。 */
+  trashed_at: number;
+  has_dsh: boolean;
+  has_app: boolean;
+  /** 是否有元数据；没有时只能按目录名恢复名字与登记。 */
+  has_meta: boolean;
+  note: string;
+}
+
+/** 从回收站恢复一个 Profile 的回执。 */
+export interface ProfileTrashRestoreReceipt {
+  ok: boolean;
+  profile: ProfileCustomEntry;
+  directory: string;
+  note: string;
+}
+
+/**
+ * 导出一个自定义 Profile 的回执（OD-ARCH-127）。
+ *
+ * 包是单文件 JSON，只含配置与声明，不含 `node_modules`；`plugins` 只是
+ * 需要在目标机器上安装的清单。
+ */
+export interface ProfileExportReceipt {
+  ok: boolean;
+  profile: string;
+  label: string;
+  /** 迁移包落点的绝对路径。 */
+  path: string;
+  bytes: number;
+  /** 包内成员，形如 `dsh/package.json`、`app/decl.yml`。 */
+  files: string[];
+  plugins: string[];
+  note: string;
+}
+
+/** 从迁移包导入一个 Profile 的回执（OD-ARCH-127）。 */
+export interface ProfileImportReceipt {
+  ok: boolean;
+  profile: ProfileCustomEntry;
+  directory: string;
+  files: string[];
+  /** 包内声明的插件：导入后由「缺件提示 + 自动补装」按清单安装。 */
+  plugins: string[];
+  /** 导入时改了名字的情况下，包里原本写的名字。 */
+  original_name: string | null;
+  note: string;
+}
+
+/** 导出目录里的一个迁移包（OD-ARCH-127，只读清单）。 */
+export interface ProfileBundleListing {
+  file: string;
+  path: string;
+  profile: string;
+  label: string;
+  exported_at: number;
+  bytes: number;
 }
 
 export interface ProfileChoiceReceipt {
   ok: boolean;
   saved: string | null;
   effective_next_start: string;
+  /** 切换后实际生效的 Profile 名（OD-ARCH-110）。 */
+  effective?: string;
+  /** 旧引擎是否已确认停止；false 表示宿主仍会拒绝新的引擎调用。 */
+  engine_stopped?: boolean;
+  note: string;
+  /** 切换时按出厂清单补齐的资产明细（OD-ARCH-109）；null = 没有装配（标准模式）。 */
+  assembly?: ProfileAssetsView | null;
+  /** 本次真正写入/更新的条目数（含被改动过而未覆盖的漂移项）。 */
+  assembled_changes?: number;
+  /**
+   * 切换后仍未就绪的插件（OD-ARCH-114）：配置与 Skill 已写入，但这些包没装上。
+   * 基础标准恒为空数组；界面据此在切换回执里给出安装入口。
+   */
+  plugins_missing?: ProfileMissingPlugin[];
+  /**
+   * 已在后台启动自动补齐缺失插件（OD-ARCH-121）。
+   *
+   * 为 true 时切换本身已经生效，安装结果稍后由 `omni://profile-plugins` 事件回报；
+   * 基础标准、开关关闭或本来就不缺插件时恒为 false。
+   */
+  plugins_auto_installing?: boolean;
+}
+
+/** 「切换时自动补齐插件」偏好的读写回执（OD-ARCH-121）。 */
+export interface ProfileAssemblyPrefs {
+  ok: boolean;
+  auto_install_plugins: boolean;
+  /** 设置文件绝对路径，设置页展示用；写入接口不回传。 */
+  settings_path?: string;
+  note?: string;
+}
+
+/**
+ * 后台自动补齐结束的事件（`omni://profile-plugins`，OD-ARCH-121）。
+ *
+ * `automatic` 恒为 true：手动点「安装」走命令回执，不走这个事件。
+ * 安装失败时 `error` 有值，`still_missing` 可能为空——两者都要看。
+ */
+export interface ProfilePluginsAutofillEvent {
+  ok: boolean;
+  profile: string;
+  attempted: string[];
+  results: ProfilePluginInstallReceipt[];
+  still_missing: ProfilePluginProbe[];
+  note: string;
+  automatic: boolean;
+  error: string | null;
+}
+
+/**
+ * 用户在设置页保存场景声明后宿主广播的事件（`omni://profile-decl`，OD-ARCH-123）。
+ *
+ * 只覆盖「应用内保存」：外部手改文件仍由指纹轮询提示、不热重载。
+ */
+export interface ProfileDeclSavedEvent {
+  /** 保存到哪个 Profile（防止切换后收到过期事件）。 */
+  profile: string;
+  path: string;
+  digest: string;
+}
+
+/** 切换回执里一条「缺的插件」。 */
+export interface ProfileMissingPlugin {
+  package: string;
+  status: ProfileAssetStatus;
+  detail: string;
+}
+
+/** 插件探测结果（安装后重新探测时用，字段与 Rust 的 PluginProbe 一致）。 */
+export interface ProfilePluginProbe {
+  package: string;
+  expected_version: string | null;
+  actual_version: string | null;
+  path: string;
+  status: string;
+  detail: string;
+}
+
+/** 批量补齐某个 Profile 缺失插件的回执（OD-ARCH-114）。 */
+export interface ProfilePluginsEnsureReceipt {
+  ok: boolean;
+  profile: string;
+  /** 安装前判定为缺失/版本不符的包名。 */
+  attempted: string[];
+  /** 逐项安装回执，顺序与 attempted 一致；单个失败不影响其余。 */
+  results: ProfilePluginInstallReceipt[];
+  /** 安装后重新探测仍不 ready 的包。 */
+  still_missing: ProfilePluginProbe[];
+  note: string;
+}
+
+/** Profile 资产单项状态（OD-ARCH-109）。 */
+export type ProfileAssetStatus =
+  | "ready"
+  | "stale"
+  | "created"
+  | "updated"
+  | "unchanged"
+  | "drift"
+  | "missing"
+  | "missing_source"
+  | "version_mismatch";
+
+export type ProfileAssetKind = "config" | "patch" | "decl" | "rules" | "skill" | "plugin";
+
+export interface ProfileAssetItem {
+  key: string;
+  kind: ProfileAssetKind;
+  label: string;
+  path: string;
+  status: ProfileAssetStatus;
+  detail: string;
+}
+
+/**
+ * 停在 `profiles/.parked-skills/` 里的一个 Skill（OD-ARCH-117）。
+ *
+ * 切到不需要它的 Profile 时目录被移入停放区而不是删除；切回需要它的 Profile
+ * 会自动归位。这里只给清单，界面不提供删除入口。
+ */
+export interface ParkedSkillView {
+  name: string;
+  path: string;
+  entries: number;
+}
+
+/** 一个 Profile 的资产清单与就绪情况（`profile_assets_view` 的返回）。 */
+export interface ProfileAssetsView {
+  profile: string;
+  label: string;
+  /** 这个 Profile 做什么的（副标题）；自定义 Profile 为 null。 */
+  summary_note: string | null;
+  /** 基础标准：不装配任何资产。 */
+  standard: boolean;
+  items: ProfileAssetItem[];
+  notes: string[];
+  /** 仓库根不可用时的提示（Skill 无法补齐）。 */
+  repo_missing: string | null;
+}
+
+/** 资产就地修复的回执（OD-ARCH-113）。 */
+export interface ProfileAssetsRepairReceipt {
+  ok: boolean;
+  profile: string;
+  /** 基础标准：仍然零写入。 */
+  standard: boolean;
+  /** 本次真正补写 / 更新的条目数。 */
+  changed: number;
+  /** 修复后仍未就位的条目数（插件需单独安装）。 */
+  remaining: number;
+  report: ProfileAssetsView;
+  note: string;
+}
+
+/** 插件安装回执（真实命令输出，失败原样展示）。 */
+export interface ProfilePluginInstallReceipt {
+  ok: boolean;
+  package: string;
+  profile: string;
+  command: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  note: string;
+}
+
+/**
+ * 给自建 Profile 声明并安装一个插件的回执（OD-ARCH-128）。
+ *
+ * 顺序是「先探测、缺才装、装成功才登记」，因此 ok 为 false 时登记表一定没变；
+ * installed 为 false 表示本地已就绪、本次只补了登记。
+ */
+export interface ProfilePluginAddReceipt {
+  ok: boolean;
+  profile: string;
+  /** 归一后的包根，可能带版本号后缀。 */
+  package: string;
+  /** 加之前登记表里就已经有这一项。 */
+  already_registered: boolean;
+  /** 本次真的跑了安装命令。 */
+  installed: boolean;
+  /** 安装后的探测状态；装不上时为 null 或非 ready 值。 */
+  status: string | null;
+  detail: string;
   note: string;
 }

@@ -1,7 +1,8 @@
 # OmniDesk 纪检 Profile 声明（omnidesk.profile-decl.v1）
 #
 # 这个文件决定左侧 Dock 上出现哪些业务场景入口、叫什么名字、用什么图标。
-# 运行时会复制到你的 OmniDesk 数据根下的 profiles/discipline.yml，之后以那份为准；
+# 安装到你的 OmniDesk 数据根下的 profiles/discipline/decl.yml，之后以那份为准；
+# 声明随 Profile 挂载：基础标准（omnidesk-base）没有这份文件，只有平台固有入口；
 # 改那里的文件、重启应用即可看到变化，不需要改代码。
 #
 # 允许的 id：home / report / writing / project / sessions

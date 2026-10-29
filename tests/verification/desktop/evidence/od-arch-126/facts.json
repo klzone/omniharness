@@ -1,0 +1,39 @@
+{
+  "root": "/tmp/od126-preview",
+  "display": ":148",
+  "checks": {
+    "boot_base": true,
+    "popover_opened": true,
+    "create_form_opened": true,
+    "typed_name": true,
+    "typed_label": true,
+    "submitted": true,
+    "created": true,
+    "created_label": true,
+    "decl_written": true,
+    "assets_tab_opened": true,
+    "rename_button_present": true,
+    "rename_opened": true,
+    "input_appeared": true,
+    "focused_input": true,
+    "saved": true,
+    "registry_updated": true,
+    "decl_updated": true,
+    "decl_still_valid": true,
+    "backup_left": true,
+    "dsh_dir_unchanged": true,
+    "popover_reopened": true,
+    "new_label_in_popover": true,
+    "picked": true,
+    "confirmed": true,
+    "switched": true,
+    "dock_has_scenes": true
+  },
+  "entry_after_rename": {
+    "name": "rename-desk",
+    "label": "New Desk",
+    "created_at": 1793268466,
+    "origin": "standard",
+    "plugins": []
+  }
+}

@@ -26,13 +26,19 @@ const BUILTIN_HINTS: Record<string, string> = {
   project: "按项目跟进场景的规则整理，成果归到该场景档案",
 };
 
-/** 内置四类（宿主配置读回之前的显示用；键与顺序与宿主默认值一致）。 */
+/** 内置四类（专业 Profile 的出厂清单；宿主配置读回之后以宿主为准）。 */
 export const THREAD_CATEGORIES: ThreadCategory[] = [
   { key: "plain", label: "未分类", hint: BUILTIN_HINTS.plain },
   { key: "weekly", label: SCENES.weekly.label, hint: BUILTIN_HINTS.weekly },
   { key: "writing", label: SCENES.writing.label, hint: BUILTIN_HINTS.writing },
   { key: "project", label: SCENES.project.label, hint: BUILTIN_HINTS.project },
 ];
+
+/** 干净底座的分类表（OD-ARCH-116）：宿主读回之前的默认显示。
+ *
+ * 基础标准没有业务场景，也就不该先闪一下工作记录 / 文案写作 / 项目跟进。
+ */
+const STANDARD_CATEGORIES: ThreadCategory[] = [THREAD_CATEGORIES[0]];
 
 export function isCustomKey(key: string): boolean {
   return key.startsWith("custom:");
@@ -56,7 +62,7 @@ function toCategory(view: ThreadCategoryView): ThreadCategory {
 //
 // 初次渲染用内置四类，读回后替换为宿主列表。读取失败时保留旧值并记下错误，
 // 由调用方决定怎么显示；这里不静默假装成功。
-let current: ThreadCategory[] = THREAD_CATEGORIES;
+let current: ThreadCategory[] = STANDARD_CATEGORIES;
 let currentViews: ThreadCategoryView[] | null = null;
 let currentError: string | null = null;
 let inFlight: Promise<void> | null = null;

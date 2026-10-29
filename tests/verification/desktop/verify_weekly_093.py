@@ -317,6 +317,18 @@ def main() -> int:
     check("category_menu_flips_to_fit_viewport",
           "window.innerHeight" in cat_tsx and "menuRef.current" in cat_tsx,
           "按真实高度上下翻转并夹在视口内")
+    # OD-ARCH-106 复核：浮层改成 portal 后，聚焦 effect 必须等 anchor 算出来再跑，
+    # 否则列表项还不存在，焦点留在胶囊上，上下键/回车都选不中（059 窗口实测复现过）。
+    check("category_focus_waits_for_anchor",
+          "if (!open || !anchor) return;" in cat_tsx
+          and "}, [open, currentIndex, anchor]);" in cat_tsx,
+          "聚焦 effect 依赖 anchor：浮层挂载后才把焦点放到当前项")
+    check("category_button_arrows_move_when_open",
+          "if (open) {" in cat_tsx and "move(e.key === \"ArrowDown\" ? 1 : -1);" in cat_tsx,
+          "浮层已开且焦点还在胶囊时，上下键直接落到列表项")
+    check("category_listbox_home_end",
+          'e.key === "Home"' in cat_tsx and 'e.key === "End"' in cat_tsx,
+          "listbox 支持 Home/End 跳首尾")
     check("thread_delete_before_title",
           'aria-label={`删除对话：${t.title}`}' in scene_tsx
           and scene_tsx.index('aria-label={`删除对话：${t.title}`}') < scene_tsx.index("onClick={() => openThread(t.id)}"),

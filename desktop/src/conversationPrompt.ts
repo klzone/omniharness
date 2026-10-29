@@ -29,6 +29,16 @@ export interface ConversationPreset {
   thinking?: string | null;
   /** 场景绑定的 Skill 清单（OD-ARCH-082 S4 注入链路）。 */
   skills?: Array<{ id: string; content: string }> | null;
+  /**
+   * 按流程分开的绑定（OD-ARCH-108）：同一场景的不同流程各有一套底线技能。
+   *
+   * 随手记与周报共用「工作记录」场景，但平台该注入的底线技能不同。意图在提交时
+   * 才判定，所以两组一起带出来，按 mode 取用；缺省时回落到 skills。
+   */
+  skillsByFlow?: {
+    note?: Array<{ id: string; content: string }> | null;
+    report?: Array<{ id: string; content: string }> | null;
+  } | null;
 }
 
 /** 重放进下一轮提示的上文上限（字符）。 */
@@ -76,6 +86,22 @@ export function buildContext(turns: ConversationTurn[], current: string): string
  * - continuation=true（OD-ARCH-034）：**续接既有引擎会话**，引擎侧已持有完整上文，
  *   这里只发本轮输入，不再重放上文（避免提示词膨胀与重复内容）。
  */
+/**
+ * 取本轮该注入的 Skill（OD-ARCH-108）。
+ *
+ * 同一场景可以有多条流程（工作记录 = 随手记 + 周报），各自只绑自己的底线技能。
+ * 按 mode 取对应那一组；该流程没有单独配置时回落到场景级 skills。
+ * 空数组与 null 都表示「这一轮不注入」，不在这里补默认值——补默认会绕过规则资产。
+ */
+export function presetSkillsFor(
+  preset: ConversationPreset,
+  mode: "note" | "report",
+): Array<{ id: string; content: string }> | null {
+  const flow = preset.skillsByFlow?.[mode];
+  if (Array.isArray(flow)) return flow;
+  return preset.skills ?? null;
+}
+
 export function composeConversationPrompt(input: {
   preset: ConversationPreset | null;
   turns: ConversationTurn[];
@@ -120,7 +146,10 @@ export function composeConversationPrompt(input: {
     // 界面按兜底路径记录原文。此前把业务口径抄在提示词里，既与 Skill 重复，
     // 也让平台带上业务限制——本轮移除。
     // OD-ARCH-082 S4：随手记分支保持轻装，最多注入一个绑定 Skill。
-    const noteSkills = (preset.skills ?? []).filter((s) => s.content.trim().length > 0).slice(0, 1);
+    // OD-ARCH-108：取随手记这一条流程自己的底线技能，而不是场景的全部绑定。
+    const noteSkills = (presetSkillsFor(preset, "note") ?? [])
+      .filter((s) => s.content.trim().length > 0)
+      .slice(0, 1);
     const noteSkillLines: string[] = [];
     if (noteSkills.length > 0) {
       const s = noteSkills[0];
@@ -184,6 +213,8 @@ export function composeConversationPrompt(input: {
     sceneRules: preset.rules,
     sceneSections: preset.sections,
     writingRules: preset.writingRules ?? null,
-    skills: preset.skills ?? null,
+    // OD-ARCH-108：周报只注入周报自己的底线技能（memory-report），
+    // 不再把随手记那一条一起塞进来。
+    skills: presetSkillsFor(preset, "report"),
   });
 }

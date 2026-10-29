@@ -1,0 +1,26 @@
+{
+  "plan": "OD-ARCH-106",
+  "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实",
+  "root": "/tmp/od106-scope",
+  "rounds": {
+    "standard": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-106/shots/01-standard.png",
+      "dock_bands": 3,
+      "app_alive": true,
+      "decl_path": "/tmp/od106-scope/app-data/profiles/omnidesk-base/decl.yml",
+      "decl_absent": true
+    },
+    "discipline": {
+      "shot": "/mnt/data/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-106/shots/02-discipline.png",
+      "dock_bands": 6,
+      "app_alive": true
+    }
+  },
+  "checks": {
+    "standard_dock_is_three": true,
+    "standard_no_decl_created": true,
+    "discipline_dock_is_six": true,
+    "discipline_decl_untouched": true
+  },
+  "result": "pass"
+}

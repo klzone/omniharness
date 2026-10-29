@@ -1,0 +1,181 @@
+{
+  "plan": "OD-ARCH-104",
+  "evidence_level": "静态源码检查 + dsh --dump-config 组装结果 + 插件本体直连探针",
+  "dsh_home": "/home/kevin/OmniDesk/runtime/dsh-home",
+  "cases": 34,
+  "failed": 0,
+  "result": "pass",
+  "failed_cases": [],
+  "cases_detail": [
+    {
+      "name": "exists:discipline.profile.patch.yml",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/samples/profiles/discipline.profile.patch.yml"
+    },
+    {
+      "name": "exists:omnidesk-base.profile.patch.yml",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/samples/profiles/omnidesk-base.profile.patch.yml"
+    },
+    {
+      "name": "exists:bin.js",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
+    },
+    {
+      "name": "exists:dsh-skill-office",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office"
+    },
+    {
+      "name": "exists:cordis.patch.yml",
+      "ok": true,
+      "detail": "/home/kevin/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml"
+    },
+    {
+      "name": "sample_is_top_level_list",
+      "ok": true,
+      "detail": "补丁层须是顶层 YAML 数组"
+    },
+    {
+      "name": "sample_single_insert",
+      "ok": true,
+      "detail": "只应有一条 insert"
+    },
+    {
+      "name": "sample_no_entry_override",
+      "ok": true,
+      "detail": "不应改 preset 内既有条目"
+    },
+    {
+      "name": "sample_names_office",
+      "ok": true,
+      "detail": "name 须是该插件正式包名"
+    },
+    {
+      "name": "sample_id_stable",
+      "ok": true,
+      "detail": "条目 id 固定为 skill-office"
+    },
+    {
+      "name": "sample_no_disabled",
+      "ok": true,
+      "detail": "挂载后不应自带 disabled"
+    },
+    {
+      "name": "base_has_no_office",
+      "ok": true,
+      "detail": "基础标准不得挂办公插件"
+    },
+    {
+      "name": "base_keeps_upstream_plugins",
+      "ok": true,
+      "detail": "基础标准须保持上游技能通道"
+    },
+    {
+      "name": "real_matches_sample",
+      "ok": true,
+      "detail": "实机 discipline 补丁须与出厂样例一致"
+    },
+    {
+      "name": "office_version",
+      "ok": true,
+      "detail": "0.2.1-alpha.2"
+    },
+    {
+      "name": "asset:office-docx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office/assets/office-docx"
+    },
+    {
+      "name": "asset:office-pptx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office/assets/office-pptx"
+    },
+    {
+      "name": "asset:office-xlsx",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office/assets/office-xlsx"
+    },
+    {
+      "name": "asset:scripts",
+      "ok": true,
+      "detail": "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-skill-office/assets/scripts"
+    },
+    {
+      "name": "libreoffice_kit_cli",
+      "ok": true,
+      "detail": "默认 cli 路径须能解析到真实文件"
+    },
+    {
+      "name": "dump_exit:discipline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dump_office:discipline",
+      "ok": true,
+      "detail": "discipline 应有、base 应无"
+    },
+    {
+      "name": "dump_no_disable_warn:discipline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dump_office_top_level",
+      "ok": true,
+      "detail": "条目须位于宿主层（顶格），不塞进 preset 的 plugins"
+    },
+    {
+      "name": "dump_preset_intact",
+      "ok": true,
+      "detail": "preset-standard 及其 tool-skill 须原样保留"
+    },
+    {
+      "name": "dump_office_enabled",
+      "ok": true,
+      "detail": "- id: skill-office\n  name: '@deepseek-ai/dsh-skill-office'\n"
+    },
+    {
+      "name": "dump_office_after_patch_comment",
+      "ok": true,
+      "detail": "条目须来自 Profile 补丁层"
+    },
+    {
+      "name": "dump_exit:omnidesk-base",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dump_office:omnidesk-base",
+      "ok": true,
+      "detail": "基础标准不得含 office"
+    },
+    {
+      "name": "dump_no_disable_warn:omnidesk-base",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "probe_applies",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "probe_three_skills",
+      "ok": true,
+      "detail": "['office-docx', 'office-pptx', 'office-xlsx']"
+    },
+    {
+      "name": "probe_provider",
+      "ok": true,
+      "detail": "dsh-office"
+    },
+    {
+      "name": "probe_kit_paths",
+      "ok": true,
+      "detail": "加载正文须含 Installed LibreOffice Kit 段落"
+    }
+  ]
+}

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""OD-ARCH-082 S6: Agent preset 条目序列比对校验脚本。"""
+"""OD-ARCH-082 S6: Agent preset 条目序列比对校验脚本。
+
+OD-ARCH-106 修订：基础标准（omnidesk-base）的插件面须与官方 dsh-base 一致，
+不再禁用 skill-filesystem / tool-skill。
+"""
 from __future__ import annotations
 
 import argparse
@@ -78,11 +82,20 @@ def main() -> int:
     check("skill_filesystem_in_list", "skill-filesystem" in base_top, "")
     check("tool_skill_in_list", "tool-skill" in base_top, "")
 
-    m_sf = re.search(r"- id: skill-filesystem[\s\S]*?disabled: true", base_text)
-    check("skill_filesystem_disabled", m_sf is not None, "未找到 disabled: true")
+    # OD-ARCH-106：基础标准回归官方 DSH 插件面——这两个插件默认启用，不能带 disabled: true。
+    m_sf = re.search(r"- id: skill-filesystem[\s\S]*?(?=\n\s+- id: |\Z)", base_text)
+    check(
+        "skill_filesystem_enabled",
+        m_sf is not None and "disabled: true" not in m_sf.group(0),
+        "skill-filesystem 不应带 disabled: true（与官方 dsh-base 一致）",
+    )
 
-    m_ts = re.search(r"- id: tool-skill[\s\S]*?disabled: true", base_text)
-    check("tool_skill_disabled", m_ts is not None, "未找到 disabled: true")
+    m_ts = re.search(r"- id: tool-skill[\s\S]*?(?=\n\s+- id: |\Z)", base_text)
+    check(
+        "tool_skill_enabled",
+        m_ts is not None and "disabled: true" not in m_ts.group(0),
+        "tool-skill 不应带 disabled: true（与官方 dsh-base 一致）",
+    )
 
     failed = [c for c in cases if not c["ok"]]
     payload = {

@@ -1,0 +1,29 @@
+{
+  "root": "/tmp/od121-preview",
+  "display": ":151",
+  "dsh_cli": "/tmp/od121-preview/cli-anchor/node_modules/@deepseek-ai/dsh/lib/bin.js",
+  "checks": {
+    "boot_base": true,
+    "popover_opened": true,
+    "picked_discipline": true,
+    "switch_saved": true,
+    "receipt_says_background": true,
+    "plugin_installed_in_background": true,
+    "missing_card_cleared": true,
+    "receipt_reports_done": true,
+    "assets_tab_opened": true,
+    "toggle_found": true,
+    "switch_persisted_off": true,
+    "plugin_removed_for_test": true,
+    "picked_base": true,
+    "back_to_base": true,
+    "popover_reopened": true,
+    "picked_discipline_again": true,
+    "switched_again": true,
+    "no_background_claim": true,
+    "missing_card_visible": true,
+    "not_installed_when_off": true
+  },
+  "install_seconds": 51.5,
+  "off_text_sample": "omnidesk-desktop\n\nOmniDesk Discipline\n\nOmniDesk\n\nOmniDesk\n\n专业\n\n选择引擎 Profile\n\n已切换，资产已按清单补齐；旧引擎已停止，下一条任务按新 Profile 启动。 已装配 9 项（共 13 项）\n\n@deepseek-ai/dsh-skill-office missing\n\n安装缺失插件\n\n稍后\n\n可选 Profile\n\n基础标准 通道默认 (omnidesk-base)\n\n纪检专业 discipline\n\n＋ 新建自定义 Profile\n\n当前会话内查找\n\n日期与三周节律，今天 10月29日星期四\n\n系统偏好设置\n\n未实现：通知与待办\n\n最小化\n\n最大化\n\n关闭\n\n工作台首页\n\n工作记录（模型起草）\n\n文案写作（模型起草）\n\n项目跟踪（模型起草）\n\n历史会话（引擎会话 · 本机对话）\n\n知识库（本机 Markdown）\n\n去设置\n\n下午好· 欢迎回到 OmniDesk\n\nOmniDesk\n\n添加文件\n\n模型权限未开启：可在设置中确认端点后启用\n\n本次对话归到哪一类，当前：未分类\n\n新对话\n\n语音\n\n模型：未识别 ▼\n\n发送指令\n\n去设置\n"
+}

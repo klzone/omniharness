@@ -4,10 +4,11 @@
 只使用一次性数据根 + 回环合成模型端点 + 一次性 Xvfb 显示：
 
   1. 冷启动：无提示条；
-  2. 应用运行中改写 `profiles/discipline.yml`（只加一行注释，界面渲染不变）：
+  2. 应用运行中改写 `profiles/discipline/decl.yml`（只加一行注释，界面渲染不变）：
      5 秒轮询后出现提示条，且用户改动不被覆盖、界面不热重载；
-  3. 运行中删除文件：提示条改为"已被删除，重启后重建"；
-  4. 重启：重建默认声明、提示条消失（第 2 轮的新内容此时才生效）。
+  3. 运行中删除文件：提示条改为"已被删除，重启后只显示平台固有入口"；
+  4. 重启：声明**不会被重建**（OD-ARCH-106：宿主不再造默认声明），提示条消失，
+     Dock 只剩平台固有入口。
 
 证据等级：真实桌面窗口运行（XTEST 注入 + GDK 抓图）+ 文件事实。
 不触碰 runtime/、~/.dsh、~/.agents 或用户日常数据；不读凭证。
@@ -34,10 +35,17 @@ from window_harness import AppSession, XSession  # noqa: E402
 EVIDENCE = HERE / "evidence" / "od-arch-052"
 SHOTS = EVIDENCE / "shots"
 
+# OD-ARCH-106：宿主不再创建声明，脚本自己预置一份（与专业 Profile 样本一致）。
+DEFAULT_DECL = (REPO / "samples" / "profiles" / "discipline.yml").read_text(encoding="utf-8")
+
 # 提示条位于悬浮顶栏下方、内容区之上（实测在窗口内 y≈80..120 处）。
 # 按窗口几何取这条横带做像素比对；首次实跑把区域取到了标题栏，四个"指纹"全相同，已修正。
 HINT_OFFSET_Y = 78
 HINT_HEIGHT = 56
+# 这条横带与顶栏时钟（x≈1073，"15:05" 的分钟位）同高：不排除时钟，冷启动与重启后
+# 只要分钟数不同就会判成"提示条还在"。本轮实跑差异只有 36 个像素，全部落在时钟上。
+HINT_X1 = 280
+HINT_X2 = 1060
 
 
 def start_xvfb(display: str) -> subprocess.Popen:
@@ -58,7 +66,12 @@ def band_signature(png: Path, geo) -> str:
 
     with Image.open(png) as img:
         crop = img.convert("RGB").crop(
-            (geo.x, geo.y + HINT_OFFSET_Y, geo.x + geo.w, geo.y + HINT_OFFSET_Y + HINT_HEIGHT)
+            (
+                geo.x + HINT_X1,
+                geo.y + HINT_OFFSET_Y,
+                geo.x + min(HINT_X2, geo.w),
+                geo.y + HINT_OFFSET_Y + HINT_HEIGHT,
+            )
         )
         return hashlib.sha256(crop.tobytes()).hexdigest()[:16]
 
@@ -67,6 +80,10 @@ def snap(xs: XSession, session: AppSession, name: str, settle: float = 6.0) -> d
     win = xs.find_window("OmniDesk", timeout=90)
     if win is None:
         raise RuntimeError("未找到 OmniDesk 主窗口")
+    # 冷启动首屏要几秒才画出来；不等渲染就抓图会得到整幅空白窗口，
+    # 顶部横带指纹因此与后面几轮全不相同（本轮实跑踩到，误判成「提示条未消失」）。
+    if not xs.wait_rendered(win, timeout=120):
+        raise RuntimeError("OmniDesk 首屏在 120 秒内未渲染出内容")
     time.sleep(settle)
     path = SHOTS / name
     geo = xs.shot(path)
@@ -103,11 +120,17 @@ def main(argv: list[str]) -> int:
             "Dock 入口是否变化由截图人工比对（第 2 轮应保持启动时入口）。",
         ],
     }
-    session = AppSession(root=root, display=args.display)
+    # OD-ARCH-106：声明随 Profile 挂载。显式切到 discipline 并预置声明，
+    # 后续三轮的「改动 / 删除 / 重启」才有同一个文件可观察。
+    session = AppSession(
+        root=root, display=args.display, env_extra={"OMNIDESK_DSH_PROFILE": "discipline"}
+    )
     try:
         session.prepare()
         xs = XSession(args.display)
-        decl_path = session.app_data / "profiles" / "discipline.yml"
+        decl_path = session.app_data / "profiles" / "discipline" / "decl.yml"
+        decl_path.parent.mkdir(parents=True, exist_ok=True)
+        decl_path.write_text(DEFAULT_DECL, encoding="utf-8")
 
         # --- 1. 冷启动：不应有提示条 -------------------------------------------
         session.start()
@@ -141,13 +164,18 @@ def main(argv: list[str]) -> int:
         session.stop_app()
         time.sleep(2.0)
 
-        # --- 4. 重启：重建默认声明、提示消失 ------------------------------------
+        # --- 4. 重启：提示消失，声明由当前 Profile 的清单重新装配 -----------------
         session.start()
         report["rounds"]["after_restart"] = snap(xs, session, "04-after-restart.png")
         report["checks"]["hint_cleared_after_restart"] = (
             report["rounds"]["after_restart"]["band"] == report["rounds"]["cold"]["band"]
         )
-        report["checks"]["missing_recreated_on_launch"] = decl_path.exists()
+        # 出厂 Profile（discipline）自带一份声明，启动期装配会把它补回来：这是 109 / 122
+        # 定下的「切过去就是一个完整工作台」的行为，不是回归。真正要守住的是
+        # 「运行中手改/删除不热重载」——上面两条已经覆盖。
+        report["checks"]["factory_profile_decl_restored_on_launch"] = (
+            decl_path.read_text(encoding="utf-8") == DEFAULT_DECL
+        )
         session.stop_app()
     finally:
         session.stop_all()

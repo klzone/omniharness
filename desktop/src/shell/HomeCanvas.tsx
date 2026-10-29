@@ -160,13 +160,20 @@ function greeting(date: Date): string {
 function sceneOptions(
   categories: ThreadCategory[],
   declared: ProfileSceneEntry[] | null | undefined,
+  declFailed: boolean,
 ): Array<{ key: ThreadTag; label: string }> {
   const hidden: Record<string, string> = {
     weekly: "report",
     writing: "writing",
     project: "project",
   };
-  const visible = declared ? new Set(declared.map((d) => d.id as string)) : null;
+  // OD-ARCH-106：声明不存在（基础标准）时没有任何业务场景，三个场景分类一律不出现；
+  // 只有声明读取失败才回退完整列表（与 Dock 的内置默认入口一致），并在界面上说明原因。
+  const visible = declared
+    ? new Set(declared.map((d) => d.id as string))
+    : declFailed
+      ? null
+      : new Set<string>();
   return categories
     .filter((c) => {
       const declId = hidden[c.key];
@@ -177,7 +184,12 @@ function sceneOptions(
 
 export interface HomeCanvasProps {
   onNavigate: (scene: Scene) => void;
+  /** 声明里的业务场景；null = 当前 Profile 没有场景声明（基础标准，正常状态）。 */
   declaredScenes?: ProfileSceneEntry[] | null;
+  /** 声明读取失败。只有这种情况才回退完整场景列表。 */
+  declFailed?: boolean;
+  /** 声明是否已读取完成。读取完成前不显示「标准模式」说明，避免启动瞬间误报。 */
+  declReady?: boolean;
   searchQuery?: string;
   searchCurrentIndex?: number;
   onSearchMatchesChange?: (count: number) => void;
@@ -186,6 +198,8 @@ export interface HomeCanvasProps {
 export function HomeCanvas({
   onNavigate,
   declaredScenes = null,
+  declFailed = false,
+  declReady = true,
   searchQuery = "",
   searchCurrentIndex = 0,
   onSearchMatchesChange,
@@ -298,15 +312,46 @@ export function HomeCanvas({
     // 只有三个业务场景带开场预设；未分类与自定义分类都按普通对话进行（OD-ARCH-062 S1）。
     if (!isSceneKey(effectiveTag)) return null;
     const def = SCENES[effectiveTag];
+    // OD-ARCH-106：场景入口必须**真的挂在这个 Profile 上**才套场景预设。
+    // 没有场景声明（基础标准）→ 不套场景提示词、不注入 Skill 原文，按普通对话走。
+    // 声明读取失败时退回内置默认入口，此时场景可用（界面上另行提示错误）。
+    // 声明里的入口键与内部场景键不同：weekly 场景对应 Dock 上的 report 入口。
+    const declId = effectiveTag === "weekly" ? "report" : effectiveTag;
+    const sceneDeclared = declaredScenes
+      ? declaredScenes.some((s) => s.id === declId)
+      : declFailed;
+    if (!sceneDeclared) return null;
+    // 规则资产是这个 Profile 的场景配置来源；没有它就不套场景规则（基础标准 / 空 Profile）。
+    // 读取失败时 rulesView 为 null，同样按普通对话处理——宁可少注入，也不套一份来路不明的规则。
+    if (!rulesView?.loaded) return null;
     const flow = pack ? pack[def.preset] : null;
     // Profile 规则优先，流程包只作缺省回退（OD-ARCH-068）。
     const scene = rulesView?.rules?.scenes?.[def.preset] ?? null;
-    const bound = rulesView?.rules?.skill_bindings?.[def.preset];
-    const maxInjected = bound?.max_injected ?? 3;
-    const boundSkillIds = (bound?.skills ?? []).slice(0, maxInjected);
-    const boundSkills = boundSkillIds
-      .map((id) => ({ id, content: rulesView?.skill_contents?.[id] ?? "" }))
-      .filter((s) => Boolean(s.content));
+    // OD-ARCH-108：同一场景可以拆出多条流程的绑定，每条只绑自己的底线技能。
+    // 随手记与周报共用「工作记录」场景，各自读 weekly-note / weekly-report；
+    // 哪条流程没有单独配置就回落到场景键（writing / project 仍走场景键）。
+    const readBinding = (key: string) => {
+      const bound = rulesView?.rules?.skill_bindings?.[key];
+      if (!bound) return null;
+      const maxInjected = bound.max_injected ?? 3;
+      const skills = (bound.skills ?? [])
+        .slice(0, maxInjected)
+        .map((id) => ({ id, content: rulesView?.skill_contents?.[id] ?? "" }))
+        .filter((s) => Boolean(s.content));
+      return skills.length > 0 ? skills : null;
+    };
+    const sceneSkills = readBinding(def.preset);
+    const noteSkills = readBinding(def.preset + "-note");
+    const reportSkills = readBinding(def.preset + "-report");
+    // 没有按流程拆分时，两组都回落到场景级绑定（旧规则文件的行为不变）。
+    const boundSkills = sceneSkills;
+    const skillsByFlow =
+      noteSkills || reportSkills
+        ? {
+            note: noteSkills ?? sceneSkills,
+            report: reportSkills ?? sceneSkills,
+          }
+        : null;
 
     return {
       key: def.preset,
@@ -316,14 +361,15 @@ export function HomeCanvas({
       writingRules: rulesView?.rules?.global?.writing_rules ?? null,
       thinking: scene?.thinking ?? null,
       rulesLoaded: Boolean(rulesView?.loaded),
-      skills: boundSkills.length > 0 ? boundSkills : null,
+      skills: boundSkills,
+      skillsByFlow,
     };
-  }, [effectiveTag, pack, rulesView]);
+  }, [effectiveTag, pack, rulesView, declaredScenes, declFailed]);
 
   const categories = useThreadCategories();
   const options = useMemo(
-    () => sceneOptions(categories, declaredScenes),
-    [categories, declaredScenes],
+    () => sceneOptions(categories, declaredScenes, declFailed),
+    [categories, declaredScenes, declFailed],
   );
 
   /** 改本段对话的场景标签：已有对话直接改挂（复用 retagThread），新对话先建再挂。 */
@@ -397,6 +443,20 @@ export function HomeCanvas({
             </span>
           </h1>
         </div>
+        {/*
+          OD-ARCH-106 S5：基础标准下把「现在是什么模式」说清楚。
+          无声明是正常状态（不是读取失败）：只有平台固有入口，对话按普通对话处理。
+          声明读取完成前不显示，避免启动瞬间误报。
+        */}
+        {declReady && !declFailed && declaredScenes === null ? (
+          <p
+            className="text-[11.5px] text-outline pb-1 flex items-center gap-1.5"
+            data-testid="home-standard-mode"
+          >
+            <Icon name="brand" className="w-[12px] h-[12px] text-primary/60 flex-shrink-0" />
+            标准模式：DSH 底座 + OmniDesk UI，无业务场景
+          </p>
+        ) : null}
         <TodoTicker
           items={todos}
           error={todoError}

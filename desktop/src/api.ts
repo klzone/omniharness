@@ -34,7 +34,17 @@ import type {
   ProjectItemsSaveReceipt,
   ProjectSummary,
   ProfileDeclPayload,
+  ParkedSkillView,
+  ProfileAssetsView,
+  ProfileAssetsRepairReceipt,
+  ProfileAssemblyPrefs,
+  ProfilePluginsAutofillEvent,
+  ProfileDeclSavedEvent,
+  ProfilePluginInstallReceipt,
+  ProfilePluginsEnsureReceipt,
+  ProfilePluginAddReceipt,
   ProfileRulesSaveReceipt,
+  SkillBindingChoice,
   ProfileRulesView,
   ReferenceCandidate,
   ReferenceRoot,
@@ -84,8 +94,17 @@ import type {
   ModelSettingsView,
   ProfileDeclOpenReceipt,
   ProfileDeclSaveReceipt,
+  ProfileDeclStarter,
   ProfileChoiceView,
   ProfileChoiceReceipt,
+  ProfileCreateReceipt,
+  ProfileRemoveReceipt,
+  ProfileRenameReceipt,
+  ProfileTrashEntry,
+  ProfileTrashRestoreReceipt,
+  ProfileExportReceipt,
+  ProfileImportReceipt,
+  ProfileBundleListing,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -569,13 +588,14 @@ export const shell = {
   },
 
   /**
-   * 只读：纪检 Profile 声明（OD-ARCH-051 S3）。
+   * 只读：当前 Profile 的场景声明（OD-ARCH-051 S3，OD-ARCH-106 改为随 Profile 挂载）。
    *
-   * 决定 Dock 上显示哪些业务场景入口。宿主负责首次创建默认文件、解析与校验；
-   * 文件坏掉时这里会 reject，调用方必须显式提示并回退内置入口，不能静默吞掉。
+   * 决定 Dock 上显示哪些业务场景入口。**返回 null 表示这个 Profile 没有场景声明**——
+   * 基础标准（干净 DSH 底座）下这是正常状态，不是错误；宿主不会自动创建文件。
+   * 只有解析/校验失败才 reject，调用方必须显式提示并回退内置入口，不能静默吞掉。
    */
-  profileDecl(): Promise<ProfileDeclPayload> {
-    return invoke<ProfileDeclPayload>("profile_decl_load").catch((e) => {
+  profileDecl(): Promise<ProfileDeclPayload | null> {
+    return invoke<ProfileDeclPayload | null>("profile_decl_load").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -605,11 +625,242 @@ export const shell = {
   },
 
   /**
-   * 保存 Profile 选择（null = 回到标准模式）。只写应用数据根的设置文件，
-   * 不重启引擎、不改 Profile 内容；下次启动引擎时生效。
+   * 切换 Profile（null = 回到标准模式，OD-ARCH-110）。
+   *
+   * 写设置 → 装配资产 → 立即停止旧引擎，下一条任务按新 Profile 启动。
+   * 返回的 engine_stopped 为 false 时表示旧引擎未确认停止，界面须如实提示。
    */
   profileChoiceSet(profile: string | null): Promise<ProfileChoiceReceipt> {
     return invoke<ProfileChoiceReceipt>("profile_choice_set", { profile }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 新建 / 复制自定义 Profile（OD-ARCH-109 补充）。
+   *
+   * `copyFrom = null` 从基础标准起手；否则复制那个 Profile 的配置与场景规则。
+   * 只写隔离数据根，不装插件、不覆盖已有目录。
+   */
+  profileCreate(
+    name: string,
+    label: string,
+    copyFrom: string | null,
+  ): Promise<ProfileCreateReceipt> {
+    return invoke<ProfileCreateReceipt>("profile_create", {
+      name,
+      label,
+      copyFrom,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 移除自定义 Profile：移入回收目录（可恢复），出厂/当前 Profile 会被拒绝。 */
+  profileRemove(name: string): Promise<ProfileRemoveReceipt> {
+    return invoke<ProfileRemoveReceipt>("profile_remove", { name }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 改自定义 Profile 的显示名（OD-ARCH-126）。
+   *
+   * 只改登记表的 label 与场景声明的 display_name；目录名与 --profile 标识不变，
+   * 因此 Skill 绑定、插件清单、线程分类与会话目录都不受影响。
+   */
+  profileRename(name: string, label: string): Promise<ProfileRenameReceipt> {
+    return invoke<ProfileRenameReceipt>("profile_rename", { name, label }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：回收站里可恢复的自定义 Profile（OD-ARCH-125）。
+   *
+   * 与「已停放 Skill」同口径，只列清单，不建目录、不改文件、不联网。
+   */
+  profileTrashList(): Promise<ProfileTrashEntry[]> {
+    return invoke<ProfileTrashEntry[]>("profile_trash_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 从回收站恢复一个 Profile：两次本地改名加一次登记写回。
+   *
+   * 同名已存在时拒绝且不动任何文件；不联网、不装插件。
+   */
+  profileTrashRestore(id: string): Promise<ProfileTrashRestoreReceipt> {
+    return invoke<ProfileTrashRestoreReceipt>("profile_trash_restore", { id }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 把一个自定义 Profile 导出成单文件迁移包（OD-ARCH-127）。
+   *
+   * 纯本地读写：不联网、不装插件；包里不含 `node_modules`。
+   * `destDir` 省略时落到应用数据根下的 `exports/`。
+   */
+  profileExport(
+    name: string,
+    destDir?: string | null,
+  ): Promise<ProfileExportReceipt> {
+    return invoke<ProfileExportReceipt>("profile_export", {
+      name,
+      destDir: destDir ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 从迁移包导入一个自定义 Profile（OD-ARCH-127）。
+   *
+   * 先校验后落盘，同名一律拒绝；插件本体不进包，导入后按清单提示安装。
+   */
+  profileImport(
+    path: string,
+    renameTo?: string | null,
+    label?: string | null,
+  ): Promise<ProfileImportReceipt> {
+    return invoke<ProfileImportReceipt>("profile_import", {
+      path,
+      renameTo: renameTo ?? null,
+      label: label ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只读：导出目录里已有的迁移包，供设置页一键导入。 */
+  profileExportList(): Promise<ProfileBundleListing[]> {
+    return invoke<ProfileBundleListing[]>("profile_export_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 在系统文件管理器里打开导出目录（不存在时先建）。 */
+  profileExportOpen(): Promise<{ ok: boolean; opened: string }> {
+    return invoke<{ ok: boolean; opened: string }>("profile_export_open").catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 只读：某个 Profile 的出厂资产就绪情况（OD-ARCH-109）。
+   *
+   * 不传 `profile` 时看当前运行中的实例；传了就预览该 Profile。只判定不写盘，
+   * 写动作只发生在切换 Profile 与启动引擎时。
+   */
+  profileAssetsView(profile?: string | null): Promise<ProfileAssetsView> {
+    return invoke<ProfileAssetsView>("profile_assets_view", {
+      profile: profile ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 就地修复某个 Profile 的资产（OD-ARCH-113）。
+   *
+   * 只在用户点「修复缺失 / 恢复出厂内容」时调用：补齐缺失项，被用户改过的文件
+   * 先备份成 \`.bak-<epoch>\` 再按出厂内容写回。不联网、不装插件。
+   */
+  profileAssetsRepair(
+    profile?: string | null,
+  ): Promise<ProfileAssetsRepairReceipt> {
+    return invoke<ProfileAssetsRepairReceipt>("profile_assets_repair", {
+      profile: profile ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：停在 `profiles/.parked-skills/` 里的 Skill（OD-ARCH-117）。
+   *
+   * 切换 Profile 时不属于目标的 Skill 会被移入停放区（不删除），切回时自动归位。
+   * 这个调用只列清单，不建目录、不改文件。
+   */
+  profileAssetsParked(): Promise<ParkedSkillView[]> {
+    return invoke<ParkedSkillView[]>("profile_assets_parked").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 只读：Profile 装配偏好（OD-ARCH-121）。目前只有「切换时自动补齐缺失插件」。
+   *
+   * 读不出来时宿主按默认「开启」返回，不会因为坏文件悄悄退回「只提示」。
+   */
+  profileAssemblyPrefs(): Promise<ProfileAssemblyPrefs> {
+    return invoke<ProfileAssemblyPrefs>("profile_assembly_prefs").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存「切换时自动补齐缺失插件」开关；其余设置原样保留。 */
+  profileAssemblyPrefsSet(autoInstallPlugins: boolean): Promise<ProfileAssemblyPrefs> {
+    return invoke<ProfileAssemblyPrefs>("profile_assembly_prefs_set", {
+      autoInstallPlugins,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 通过 DSH 官方插件通道安装某个 Profile 缺的插件（OD-ARCH-109）。
+   *
+   * 会联网、会写 profile 目录，只由用户点「安装」触发；失败时回执里带原样输出。
+   */
+  profilePluginInstall(
+    profile: string,
+    pkg: string,
+  ): Promise<ProfilePluginInstallReceipt> {
+    return invoke<ProfilePluginInstallReceipt>("profile_plugin_install", {
+      profile,
+      package: pkg,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 一次补齐某个 Profile 缺失的插件（OD-ARCH-114）。
+   *
+   * 只装探测为缺失/版本不符的包，单个失败不中断其余；安装后重新探测并回报
+   * 仍然缺的项。会联网、只由用户点「安装」触发。
+   */
+  profilePluginsEnsure(
+    profile?: string | null,
+  ): Promise<ProfilePluginsEnsureReceipt> {
+    return invoke<ProfilePluginsEnsureReceipt>("profile_plugins_ensure", {
+      profile: profile ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 给自建 Profile 声明一个插件（OD-ARCH-128）。
+   *
+   * 本地已就绪就只补登记；缺件才走 DSH 插件通道联网装，装成功才写登记表。
+   * 基础标准与出厂 Profile 都会被宿主拒绝，理由放在错误文案里。
+   */
+  profilePluginsAdd(
+    profile: string | null,
+    pkg: string,
+  ): Promise<ProfilePluginAddReceipt> {
+    return invoke<ProfilePluginAddReceipt>("profile_plugins_add", {
+      profile,
+      package: pkg,
+    }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -977,6 +1228,19 @@ export const shell = {
   },
 
   /**
+   * 只读：取一份起步场景声明模板（OD-ARCH-122）。
+   *
+   * 只在内存里生成文本，不写盘。用户还要在声明页点「校验并保存」才会落文件。
+   * `has_existing` 为真表示当前 Profile 已有声明，保存会覆盖（旧文件先备份）。
+   */
+  profileDeclStarter(label?: string): Promise<ProfileDeclStarter> {
+    return invoke<ProfileDeclStarter>("profile_decl_starter", {
+      label: label ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+  /**
    * 只读：Profile 规则资产（OD-ARCH-068）。
    *
    * 文件不存在时 `loaded=false` 且无 error（纯净底座）；文件损坏时 `error` 有值，
@@ -998,6 +1262,59 @@ export const shell = {
   /** 恢复出厂默认规则包（同样先备份旧文件）。 */
   profileRulesRestoreDefault(): Promise<ProfileRulesSaveReceipt> {
     return invoke<ProfileRulesSaveReceipt>("profile_rules_restore_default").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 保存「场景 → Skill」绑定（OD-ARCH-129）。
+   *
+   * 只替换规则包里的 skill_bindings，其余规则内容由宿主原样保留；
+   * 基础标准会被宿主拒绝，界面据此禁用入口。
+   */
+  profileSkillBindingsSave(
+    bindings: SkillBindingChoice[],
+  ): Promise<ProfileRulesSaveReceipt> {
+    return invoke<ProfileRulesSaveReceipt>("profile_skill_bindings_save", { bindings }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 打开当前 Profile 自带的 Skill 源目录（OD-ARCH-131）。
+   * 首次点才创建目录；基础标准由宿主拒绝。
+   */
+  profileSkillSourceOpen(): Promise<{
+    ok: boolean;
+    opened?: string;
+    path?: string;
+    note: string;
+  }> {
+    return invoke<{
+      ok: boolean;
+      opened?: string;
+      path?: string;
+      note: string;
+    }>("profile_skill_source_open").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 按名字生成一份 Profile 自带 Skill 的起步模板（已存在不覆盖）。 */
+  profileSkillScaffold(name: string): Promise<{
+    ok: boolean;
+    created: boolean;
+    path: string;
+    note: string;
+  }> {
+    return invoke<{
+      ok: boolean;
+      created: boolean;
+      path: string;
+      note: string;
+    }>("profile_skill_scaffold", { name }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -1426,6 +1743,43 @@ export function onTaskEvent(
   handler: (event: TaskEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<TaskEvent>("omni://task-event", (e) => handler(e.payload));
+}
+
+/**
+ * 订阅后台自动补装插件的结束事件（OD-ARCH-121）。
+ *
+ * 切换命令只负责「已在后台开始」，装完（或失败）才从这条事件回报；
+ * 前端据此清掉缺件卡或刷新为「仍缺哪些」。
+ */
+export function onProfilePlugins(
+  handler: (event: ProfilePluginsAutofillEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ProfilePluginsAutofillEvent>("omni://profile-plugins", (e) =>
+    handler(e.payload),
+  );
+}
+
+/**
+ * 订阅「设置页保存了场景声明」（OD-ARCH-123）。
+ *
+ * 只在**应用内保存**时触发；外部手改 decl.yml 仍走指纹提示、不热重载。
+ * 界面收到后必须重读声明，否则用户刚保存完 Dock 还是旧入口。
+ */
+export function onProfileDeclSaved(
+  handler: (event: ProfileDeclSavedEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ProfileDeclSavedEvent>("omni://profile-decl", (e) =>
+    handler(e.payload),
+  );
+}
+
+/**
+ * 订阅「自定义 Profile 清单变了」（OD-ARCH-125）。
+ *
+ * 新建、移除、从回收站恢复都会触发。收到后重读一次清单即可；事件本身不带数据。
+ */
+export function onProfileRegistryChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("omni://profile-registry", () => handler());
 }
 
 /**
