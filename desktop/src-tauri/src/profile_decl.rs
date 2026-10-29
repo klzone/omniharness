@@ -1,14 +1,15 @@
 //! 纪检 Profile 声明（omnidesk.profile-decl.v1）——OD-ARCH-051 S3。
 //!
 //! 只声明**界面层面**的内容：Profile 名、Dock 上要显示哪些业务场景入口、它们的顺序。
-//! 它不加载插件、不改模型路由、不改 Skill 清单、不改任何判定逻辑，也不是多 Profile
-//! 管理器的雏形：本阶段只有一个生效文件，第二个 Profile 只预留**目录位置**。
+//! 它不加载插件、不改模型路由、不改 Skill 清单、不改任何判定逻辑。
 //!
 //! 为什么是文件而无代码：计划要求「改声明文件、不动代码，场景入口可见变化」。
 //! 因此加载失败必须能明确提示并回退到内置默认，而不是让界面空白或静默吞掉。
 //!
-//! 落点：`<应用数据根>/profiles/discipline.yml`（仓库外，用户自己的数据根）。
-//! 首次启动时由仓库内嵌入的默认声明创建；文件一旦存在就不再自动覆盖。
+//! 落点（OD-ARCH-106）：`<应用数据根>/profiles/<Profile 名>/decl.yml`（仓库外）。
+//! 声明**随 Profile 挂载**：基础标准（omnidesk-base）下没有这个文件，界面只有平台固有
+//! 入口；切到专业 Profile 时才有业务场景。文件不由宿主自动创建——没有就是没有，
+//! 这样「基础标准 = 干净底座」才是可复核的事实。
 //!
 //! 解析方式：**不引入 YAML 依赖**（本仓库离线构建，锁文件里没有 YAML crate）。
 //! 改为解析这份声明所需的受限子集：顶层 `key: value`、`scenes:` 下的列表项、
@@ -16,16 +17,17 @@
 //!
 //! 证据等级：本文件为 static（源码事实）；模块内测试为 script（Rust 测试运行）。
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::sha256::sha256_hex;
 
 /// 声明文件 schema 标识。版本不符一律拒绝。
 pub const PROFILE_DECL_SCHEMA: &str = "omnidesk.profile-decl.v1";
-/// 声明文件名（位于应用数据根下的 profiles/ 下）。
-pub const PROFILE_DECL_FILE: &str = "discipline.yml";
+/// 声明文件名（位于 `<应用数据根>/profiles/<Profile 名>/` 下）。
+pub const PROFILE_DECL_FILE: &str = "decl.yml";
+/// OD-ARCH-106 之前的单文件落点，只用于一次性兼容迁移（不删除、不覆盖）。
+pub const LEGACY_PROFILE_DECL_FILE: &str = "discipline.yml";
 /// 允许出现在 Dock 上的场景标识。不在表里的一律拒绝——声明不能凭空造入口。
 pub const ALLOWED_SCENES: &[&str] = &["home", "report", "writing", "project", "sessions"];
 /// 每个场景可选的图标名（取值与前端 `IconName` 对齐，前端另有校验）。
@@ -35,7 +37,7 @@ const MAX_FIELD_CHARS: usize = 64;
 /// 场景条目上限，防止异常文件把 Dock 撑爆。
 const MAX_SCENES: usize = 12;
 
-/// 仓库内默认声明。编译期嵌入，作为首次创建的文件内容。
+/// 仓库内默认声明（专业 Profile 的模板）。编译期嵌入；仅供显式写入使用，不自动落盘。
 pub const DEFAULT_DECL: &str = include_str!("../../../samples/profiles/discipline.yml");
 
 /// Dock 上一个业务场景入口。
@@ -124,31 +126,27 @@ impl ProfileDecl {
 pub struct LoadedDecl {
     pub decl: ProfileDecl,
     pub path: String,
-    /// true 表示本次首次创建了默认文件（不是覆盖用户修改）。
-    pub created: bool,
     /// 本次载入时文件内容的 SHA-256。用于判断文件在运行期间是否被改动，
     /// 从而提示"重启应用生效"（OD-ARCH-052 第 2 步）。只做比对，不做热重载。
     pub content_sha256: String,
-    /// 加载告警（例如目录里出现了第二个 Profile 目录，本阶段不加载它）。
-    pub warnings: Vec<String>,
     /// 声明原文（供设置页内嵌编辑框载入；只读展示，保存仍走 `profile_decl_save` 校验）。
     pub text: String,
 }
 
-/// 只读探测：当前磁盘上声明文件的内容指纹。
+/// 只读探测：当前 Profile 目录下声明文件的内容指纹。
 ///
-/// - 文件不存在 → `Ok(None)`（用户可能自己删了，界面应提示会重建默认声明）。
+/// - 文件不存在 → `Ok(None)`（基础标准下就是没有声明，不是错误）。
 /// - 读取失败 → `Err`（不猜内容）。
 ///
 /// 刻意**不**创建文件、不改解析逻辑：这条路径只服务于"是否已经改了"的判断。
-pub fn decl_digest(profiles_dir: &Path) -> Result<Option<String>, String> {
-    if !profiles_dir.is_absolute() {
+pub fn decl_digest(profile_dir: &Path) -> Result<Option<String>, String> {
+    if !profile_dir.is_absolute() {
         return Err(format!(
-            "Profile 声明目录必须是绝对路径：{}",
-            profiles_dir.display()
+            "Profile 目录必须是绝对路径：{}",
+            profile_dir.display()
         ));
     }
-    let path = decl_path(profiles_dir);
+    let path = decl_path(profile_dir);
     match fs::read(&path) {
         Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -160,22 +158,22 @@ pub fn decl_digest(profiles_dir: &Path) -> Result<Option<String>, String> {
     }
 }
 
-/// 声明文件路径（`profiles/` 目录由调用方给出，必须是绝对路径）。
-pub fn decl_path(profiles_dir: &Path) -> PathBuf {
-    profiles_dir.join(PROFILE_DECL_FILE)
+/// 声明文件路径（`profiles/<Profile 名>/` 目录由调用方给出，必须是绝对路径）。
+pub fn decl_path(profile_dir: &Path) -> PathBuf {
+    profile_dir.join(PROFILE_DECL_FILE)
 }
 
 /// 只读读取声明原文（OD-ARCH-053 设置页内嵌编辑框）。
 ///
 /// 只读、不创建、不改写；文件不存在返回 `Ok(None)`。上限与保存端一致（64 KB）。
-pub fn read_text(profiles_dir: &Path) -> Result<Option<String>, String> {
-    if !profiles_dir.is_absolute() {
+pub fn read_text(profile_dir: &Path) -> Result<Option<String>, String> {
+    if !profile_dir.is_absolute() {
         return Err(format!(
-            "Profile 声明目录必须是绝对路径：{}",
-            profiles_dir.display()
+            "Profile 目录必须是绝对路径：{}",
+            profile_dir.display()
         ));
     }
-    let path = decl_path(profiles_dir);
+    let path = decl_path(profile_dir);
     match fs::metadata(&path) {
         Ok(meta) if meta.len() > 64 * 1024 => Err(format!(
             "声明文件超过 64 KB（{} 字节），请用系统编辑器处理：{}",
@@ -194,37 +192,29 @@ pub fn read_text(profiles_dir: &Path) -> Result<Option<String>, String> {
     }
 }
 
-/// 加载声明：不存在则创建默认文件；存在则读取并校验。
+/// 加载当前 Profile 的声明。
 ///
-/// 目录里若还有别的子目录（预留给第二个 Profile），只记录一条告警，不加载、不管理。
-pub fn load_decl(profiles_dir: &Path) -> Result<LoadedDecl, String> {
-    if !profiles_dir.is_absolute() {
+/// **文件不存在就返回 `Ok(None)`**：基础标准本来就没有场景声明，这不是错误，
+/// 更不能顺手写一份默认声明把干净底座变成带场景的工作台。
+pub fn load_decl(profile_dir: &Path) -> Result<Option<LoadedDecl>, String> {
+    if !profile_dir.is_absolute() {
         return Err(format!(
-            "Profile 声明目录必须是绝对路径：{}",
-            profiles_dir.display()
+            "Profile 目录必须是绝对路径：{}",
+            profile_dir.display()
         ));
     }
-    fs::create_dir_all(profiles_dir)
-        .map_err(|e| format!("创建 Profile 目录失败（{}）：{}", profiles_dir.display(), e))?;
-    let path = decl_path(profiles_dir);
-    let mut created = false;
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => {
-            file.write_all(DEFAULT_DECL.as_bytes())
-                .map_err(|e| format!("写入默认 Profile 声明失败（{}）：{}", path.display(), e))?;
-            created = true;
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+    let path = decl_path(profile_dir);
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => {
             return Err(format!(
-                "无法创建 Profile 声明文件（{}）：{}",
+                "读取 Profile 声明失败（{}）：{}",
                 path.display(),
                 e
             ))
         }
-    }
-    let text = fs::read_to_string(&path)
-        .map_err(|e| format!("读取 Profile 声明失败（{}）：{}", path.display(), e))?;
+    };
     let content_sha256 = sha256_hex(text.as_bytes());
     let decl = parse_decl(&text).map_err(|e| {
         format!(
@@ -241,28 +231,50 @@ pub fn load_decl(profiles_dir: &Path) -> Result<LoadedDecl, String> {
         )
     })?;
 
-    let mut warnings = Vec::new();
-    if let Ok(entries) = fs::read_dir(profiles_dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p != path && p.is_dir() {
-                warnings.push(format!(
-                    "发现额外 Profile 目录「{}」，本阶段只加载 {}，不管理其它 Profile。",
-                    p.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
-                    PROFILE_DECL_FILE
-                ));
-            }
-        }
-    }
-
-    Ok(LoadedDecl {
+    Ok(Some(LoadedDecl {
         decl,
         path: path.display().to_string(),
-        created,
         content_sha256,
-        warnings,
         text,
-    })
+    }))
+}
+
+/// OD-ARCH-106 一次性迁移：把旧的单文件声明复制进 `profiles/<Profile 名>/decl.yml`。
+///
+/// 只对**非标准 Profile**执行；新位置已有文件一律不动（永不覆盖）。旧文件原样保留，
+/// 作为迁移前的备份。返回 `true` 表示本次复制发生了。
+pub fn migrate_legacy_decl(
+    profiles_root: &Path,
+    profile: &str,
+    standard_profile: &str,
+) -> Result<bool, String> {
+    if profile.trim().is_empty() || profile == standard_profile {
+        return Ok(false);
+    }
+    let legacy = profiles_root.join(LEGACY_PROFILE_DECL_FILE);
+    if !legacy.is_file() {
+        return Ok(false);
+    }
+    let target_dir = profiles_root.join(profile);
+    let target = target_dir.join(PROFILE_DECL_FILE);
+    if target.exists() {
+        return Ok(false);
+    }
+    // 先按旧文件内容校验：坏文件不搬，交给界面如实报错。
+    let text = fs::read_to_string(&legacy)
+        .map_err(|e| format!("读取旧声明失败（{}）：{}", legacy.display(), e))?;
+    parse_decl(&text)?.validate()?;
+    fs::create_dir_all(&target_dir)
+        .map_err(|e| format!("创建 Profile 目录失败（{}）：{}", target_dir.display(), e))?;
+    fs::copy(&legacy, &target).map_err(|e| {
+        format!(
+            "迁移旧声明失败（{} → {}）：{}",
+            legacy.display(),
+            target.display(),
+            e
+        )
+    })?;
+    Ok(true)
 }
 
 /// 解析声明的受限 YAML 子集。
@@ -484,7 +496,9 @@ mod tests {
     }
 
     #[test]
-    fn load_creates_default_once_then_reads_user_edit() {
+    fn missing_file_is_none_and_never_creates_a_default() {
+        // OD-ARCH-106：基础标准下没有声明就是没有场景。加载不得写文件，
+        // 否则「干净底座」会在第一次启动后变成带场景的工作台。
         let root = std::env::temp_dir().join(format!(
             "od-profile-decl-{}-{}",
             std::process::id(),
@@ -493,29 +507,49 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
-        let dir = root.join("profiles");
-        let first = load_decl(&dir).expect("首次加载应创建默认文件");
-        assert!(first.created);
-        assert_eq!(first.decl, parse_decl(DEFAULT_DECL).unwrap());
+        let dir = root.join("profiles").join("omnidesk-base");
+        assert!(load_decl(&dir).expect("缺文件不是错误").is_none());
+        assert!(!dir.exists(), "只读加载不得创建 Profile 目录或声明文件");
+        let _ = fs::remove_dir_all(&root);
+    }
 
-        // 用户改文件（去掉 writing）：再加载必须读新内容，且不再标记 created。
+    #[test]
+    fn reads_user_edit_and_rejects_broken_file() {
+        let root = temp_profiles_dir("edit-read");
+        fs::create_dir_all(&root).unwrap();
         let edited = "schema: omnidesk.profile-decl.v1\ndisplay_name: 我的工作台\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n";
-        fs::write(decl_path(&dir), edited).unwrap();
-        let second = load_decl(&dir).expect("用户修改后应能加载");
-        assert!(!second.created);
-        assert_eq!(second.decl.display_name, "我的工作台");
-        assert_eq!(second.decl.scenes.len(), 1);
-
-        // 第二个 Profile 目录只告警，不被加载或管理。
-        fs::create_dir_all(dir.join("education")).unwrap();
-        let third = load_decl(&dir).unwrap();
-        assert_eq!(third.warnings.len(), 1);
-        assert!(third.warnings[0].contains("education"));
+        fs::write(decl_path(&root), edited).unwrap();
+        let loaded = load_decl(&root).expect("应能加载").expect("文件存在应返回 Some");
+        assert_eq!(loaded.decl.display_name, "我的工作台");
+        assert_eq!(loaded.decl.scenes.len(), 1);
 
         // 坏文件必须报错，不悄悄退回默认。
-        fs::write(decl_path(&dir), "schema: nope\n").unwrap();
-        assert!(load_decl(&dir).is_err());
+        fs::write(decl_path(&root), "schema: nope\n").unwrap();
+        assert!(load_decl(&root).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
 
+    #[test]
+    fn migrates_legacy_decl_to_profile_dir_once_without_overwrite() {
+        let root = temp_profiles_dir("migrate");
+        fs::create_dir_all(&root).unwrap();
+        let legacy_text = "schema: omnidesk.profile-decl.v1\ndisplay_name: 旧声明\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n";
+        fs::write(root.join(LEGACY_PROFILE_DECL_FILE), legacy_text).unwrap();
+
+        // 标准 Profile 不迁移：干净底座不得被旧场景污染。
+        assert!(!migrate_legacy_decl(&root, "omnidesk-base", "omnidesk-base").unwrap());
+        assert!(!root.join("omnidesk-base").exists());
+
+        assert!(migrate_legacy_decl(&root, "discipline", "omnidesk-base").unwrap());
+        let target = root.join("discipline").join(PROFILE_DECL_FILE);
+        assert_eq!(fs::read_to_string(&target).unwrap(), legacy_text);
+        // 旧文件保留，作为迁移前备份。
+        assert!(root.join(LEGACY_PROFILE_DECL_FILE).is_file());
+
+        // 新位置已有文件：不再覆盖。
+        fs::write(&target, "schema: omnidesk.profile-decl.v1\ndisplay_name: 用户改过\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n").unwrap();
+        assert!(!migrate_legacy_decl(&root, "discipline", "omnidesk-base").unwrap());
+        assert!(fs::read_to_string(&target).unwrap().contains("用户改过"));
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -533,7 +567,9 @@ mod tests {
     #[test]
     fn digest_matches_loaded_content_and_changes_after_edit() {
         let dir = temp_profiles_dir("edit");
-        let loaded = load_decl(&dir).expect("首次加载应创建默认文件");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(decl_path(&dir), DEFAULT_DECL).unwrap();
+        let loaded = load_decl(&dir).expect("应能加载").expect("文件存在应返回 Some");
         // 载入后未改动：指纹一致 —— 界面此时不应提示重启。
         assert_eq!(
             decl_digest(&dir).expect("应能读指纹"),
@@ -551,7 +587,7 @@ mod tests {
         assert_eq!(fs::read_to_string(decl_path(&dir)).unwrap(), edited);
         // 此时真正的加载才会拿到新内容，证明"重启生效"的说法属实。
         assert_eq!(
-            load_decl(&dir).unwrap().decl.display_name,
+            load_decl(&dir).unwrap().unwrap().decl.display_name,
             "我的工作台"
         );
 

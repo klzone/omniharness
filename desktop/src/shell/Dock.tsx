@@ -23,7 +23,10 @@ interface DockItem {
   note?: string;
 }
 
-/** 内置默认的业务入口：声明文件缺失或读取失败时使用（界面另有明确提示）。 */
+/**
+ * 内置默认入口：**只在声明读取失败**时使用（界面另有明确错误提示）。
+ * 声明文件不存在不是失败——基础标准下本来就没有业务场景声明（OD-ARCH-106）。
+ */
 export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
   { scene: "home", icon: "brand", label: "工作台首页" },
   { scene: "report", icon: "note", label: "工作记录", note: "模型起草" },
@@ -50,6 +53,16 @@ export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
 };
 
 /**
+ * 平台固有入口（OD-ARCH-106）：不受 Profile 声明管辖，任何 Profile 下都在。
+ * 基础标准（无场景声明）时 Dock 只有这三项：首页、历史会话、知识库。
+ */
+export const BUILTIN_PLATFORM_ITEMS: DockItem[] = [
+  { scene: "home", icon: "brand", label: "工作台首页" },
+  { scene: "sessions", icon: "history", label: "历史会话", note: "引擎会话 · 本机对话" },
+  BUILTIN_KNOWLEDGE_ITEM,
+];
+
+/**
  * Dock 只放业务入口（OD-ARCH-061）：设置与引擎诊断都在顶栏设置页里，
  * 任务工作台已下线，不再有「基础设施」图标占位。
  */
@@ -58,11 +71,17 @@ export function Dock({
   scene,
   onSelect,
   declared,
+  declFailed = false,
 }: {
   scene: Scene;
   onSelect: (scene: Scene) => void;
-  /** 声明文件里的业务场景；null/undefined 表示用内置默认（调用方负责提示原因）。 */
+  /**
+   * 声明文件里的业务场景。null/undefined = 当前 Profile 没有场景声明（基础标准），
+   * 只显示平台固有入口——这是正常状态，不是错误。
+   */
   declared?: ProfileSceneEntry[] | null;
+  /** 声明读取失败（真错误）。只有这种情况才回退内置默认入口，并由调用方提示原因。 */
+  declFailed?: boolean;
 }) {
   const declaredItems: DockItem[] =
     declared && declared.length > 0
@@ -72,7 +91,9 @@ export function Dock({
           label: s.label,
           note: s.note || undefined,
         }))
-      : DEFAULT_BUSINESS_ITEMS;
+      : declFailed
+        ? DEFAULT_BUSINESS_ITEMS
+        : BUILTIN_PLATFORM_ITEMS;
   // 声明里即使手工写了 knowledge 也不重复；声明校验另有允许场景列表，本条只是兜底。
   const items = declaredItems.some((item) => item.scene === "knowledge")
     ? declaredItems

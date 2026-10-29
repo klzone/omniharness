@@ -28,6 +28,11 @@ pub mod project_items;
 pub mod process_owner;
 pub mod profile_decl;
 pub mod profile_choice;
+pub mod profile_assets;
+pub mod profile_categories;
+pub mod profile_seed;
+pub mod profile_lifecycle;
+pub mod profile_starter;
 pub mod profile_rules;
 pub mod route_classifier;
 pub mod scene_overview;
@@ -47,7 +52,7 @@ pub mod worklog;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tauri::{Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use app_paths::AppPaths;
 use engine_bridge::{EngineBridge, EventSink};
@@ -57,6 +62,23 @@ use task_shell::{SaveArtifactRequest, UsageRecordInput};
 
 /// UI 事件通道名。UI 只订阅这一个通道，拿到的都是归一化事件。
 const TASK_EVENT_CHANNEL: &str = "omni://task-event";
+/// 切换 Profile 后后台补装插件的结果通道（OD-ARCH-121）。
+///
+/// 与任务事件分开：这条只在装配收尾时出现一次，界面按它刷新缺件卡与状态条。
+const PROFILE_PLUGINS_EVENT: &str = "omni://profile-plugins";
+/// 用户在设置页保存场景声明后广播（OD-ARCH-123）。
+///
+/// **只覆盖「应用内保存」这一条路径**：外部手改文件仍由指纹轮询提示、不热重载
+/// （OD-ARCH-052 第 2 步的边界）。分开的理由是「谁改的」决定「界面该不该跟着变」：
+/// 用户刚点完保存，界面还按旧入口显示，等于告诉用户刚保存的东西没生效。
+const PROFILE_DECL_EVENT: &str = "omni://profile-decl";
+/// 自定义 Profile 清单变化后广播（OD-ARCH-125）。
+///
+/// 新建、移除、从回收站恢复都会改动 `profiles/index.v1.json`。顶栏只在
+/// 「清单为空」时拉一次，之后不再重读；设置页里恢复完再回顶栏，用户
+/// 看到的还是旧清单，切不过去。这条事件只表示「清单变了，重读一次」，
+/// 不带任何业务数据。
+const PROFILE_REGISTRY_EVENT: &str = "omni://profile-registry";
 
 struct HostState {
     paths: AppPaths,
@@ -108,6 +130,22 @@ fn sync_model_overlay(app: &tauri::AppHandle, host: &SharedHost, app_root: &std:
     }
     if let Some(snap) = app.try_state::<HostSnapshot>() {
         snap.config.lock().unwrap().sync_overlay(app_root);
+    }
+}
+
+/// 换 Profile 后把新配置同时装进 supervisor 与只读快照（OD-ARCH-110）。
+///
+/// 抽成函数的原因：两处配置必须来自**同一次** `EngineConfig::from_env`，分别解析
+/// 可能得到不同结果；而「界面 / 准入 / 引擎启动」三处读到的 Profile 必须一致。
+/// 锁顺序与 `sync_model_overlay` 相同：宿主锁 → supervisor 锁，快照锁独立。
+fn adopt_engine_config(
+    supervisor: &Arc<Mutex<EngineSupervisor>>,
+    snapshot: Option<&Mutex<EngineConfig>>,
+    fresh: EngineConfig,
+) {
+    *supervisor.lock().unwrap().config_mut() = fresh.clone();
+    if let Some(config) = snapshot {
+        *config.lock().unwrap() = fresh;
     }
 }
 
@@ -356,11 +394,7 @@ async fn engine_submit_task(
     // OD-ARCH-068：红线词表、隐私策略来自 Profile 规则资产（仓库外数据根）。
     // 没有规则文件 = 纯净底座（零关键词、不掩码）；文件损坏时**拒绝提交**，
     // 不静默退回纯净底座——否则等于悄悄关掉了用户以为还在的保护。
-    let profiles_dir = {
-        let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
-    };
-    let rules_view = profile_rules::load_rules(&profiles_dir);
+    let rules_view = profile_rules::load_rules(&profile_asset_dir(&state));
     if let Some(error) = rules_view.error.clone() {
         return Err(serde_json::json!({
             "engine_error_code": "profile_rules_invalid",
@@ -771,22 +805,117 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
 }
 
 // ---------------------------------------------------------------------------
-// 纪检 Profile 声明（OD-ARCH-051 S3）
+// Profile 声明（OD-ARCH-051 S3 / OD-ARCH-106）
 //
 // 只决定 Dock 上显示哪些业务场景入口，不加载插件、不改模型路由与 Skill。
-// 文件固定在应用数据根下 profiles/discipline.yml（仓库外）；首次启动创建默认声明，
-// 之后不再覆盖。加载/校验失败一律返回错误，由界面显式提示并回退内置入口。
+// 落点是 `<应用数据根>/profiles/<Profile 名>/decl.yml`：声明**随 Profile 挂载**，
+// 基础标准（omnidesk-base）下没有这个文件，界面只有平台固有入口。
+// 文件不由宿主自动创建；加载/校验失败一律返回错误，由界面显式提示。
 // ---------------------------------------------------------------------------
+
+/// 当前 Profile 的界面资产范围（OD-ARCH-106）。
+///
+/// `profile` 取**运行中引擎实例**的 Profile（supervisor 里的内存配置），而不是
+/// 从设置文件重新推算：用户刚在顶栏改了 Profile 但还没重启时，磁盘上已经是新名字、
+/// 引擎里仍是旧名字。若按磁盘算，界面会提前挂上专业场景，而模型仍在干净底座里跑，
+/// 等于把场景提示词与 Skill 注入到一个没有对应插件的引擎上。
+/// 引擎字段为空（异常配置）时按通道标准 Profile 处理，避免误挂专业规则。
+struct ProfileAssetScope {
+    profiles_root: std::path::PathBuf,
+    profile: String,
+    standard: bool,
+}
+
+fn profile_asset_scope(state: &State<'_, SharedHost>) -> ProfileAssetScope {
+    let (app_root, running_profile, channel) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (host.paths.root.clone(), cfg.profile, cfg.channel)
+    };
+    let standard_name = profile_choice::standard_profile(&channel).to_string();
+    let profile = {
+        let trimmed = running_profile.trim();
+        if trimmed.is_empty() {
+            standard_name.clone()
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let standard = profile == standard_name;
+    ProfileAssetScope {
+        profiles_root: app_root.join("profiles"),
+        profile,
+        standard,
+    }
+}
+
+/// 以当前 Profile 名为准的资产目录。
+fn profile_asset_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
+    let scope = profile_asset_scope(state);
+    scope.profiles_root.join(&scope.profile)
+}
+
+/// 一次性兼容迁移（OD-ARCH-106）：旧单文件 → `profiles/<Profile 名>/`。
+///
+/// 只对非标准 Profile 执行；新位置已有文件一律不动；旧文件保留作备份。
+/// 两种资产各自返回迁移失败原因，交给对应界面显示——否则用户只会看到
+/// 「没有声明」或「未加载（纯净底座）」，不知道是自己的旧文件写坏了。
+/// 幂等：新位置已有文件时两次调用都直接跳过。
+fn migrate_legacy_profile_assets(
+    state: &State<'_, SharedHost>,
+) -> (Option<String>, Option<String>) {
+    let scope = profile_asset_scope(state);
+    if scope.standard {
+        return (None, None);
+    }
+    let channel = {
+        let host = state.lock().unwrap();
+        host.bridge.supervisor().lock().unwrap().config().channel.clone()
+    };
+    let standard_name = profile_choice::standard_profile(&channel).to_string();
+    let decl_error =
+        profile_decl::migrate_legacy_decl(&scope.profiles_root, &scope.profile, &standard_name).err();
+    let rules_error =
+        profile_rules::migrate_legacy_rules(&scope.profiles_root, &scope.profile, &standard_name).err();
+    (
+        decl_error.map(|e| {
+            format!(
+                "旧声明 `{}` 未迁移（{}）。修好缩进后在设置页保存，或直接改这份旧文件的格式。",
+                scope
+                    .profiles_root
+                    .join(profile_decl::LEGACY_PROFILE_DECL_FILE)
+                    .display(),
+                e
+            )
+        }),
+        rules_error.map(|e| {
+            format!(
+                "旧规则包 `{}` 未迁移（{}）。修正格式后可在设置 →「规则资产」重新保存。",
+                scope
+                    .profiles_root
+                    .join(profile_rules::LEGACY_PROFILE_RULES_FILE)
+                    .display(),
+                e
+            )
+        }),
+    )
+}
 
 #[tauri::command(async)]
 fn profile_decl_load(
     state: State<'_, SharedHost>,
-) -> Result<profile_decl::LoadedDecl, String> {
-    let profiles_dir = {
-        let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
-    };
-    profile_decl::load_decl(&profiles_dir)
+) -> Result<Option<profile_decl::LoadedDecl>, String> {
+    let (migration_error, _) = migrate_legacy_profile_assets(&state);
+    let dir = profile_asset_dir(&state);
+    let loaded = profile_decl::load_decl(&dir)?;
+    // 新位置没有声明、旧文件又搬不过来时，把迁移原因说出来；否则用户看到的是
+    // 「这个 Profile 没有场景声明」，与「旧文件写坏了」是两件事。
+    if loaded.is_none() {
+        if let Some(reason) = migration_error {
+            return Err(reason);
+        }
+    }
+    Ok(loaded)
 }
 
 /// 只读：声明文件当前的内容指纹（OD-ARCH-052 第 2 步）。
@@ -796,22 +925,62 @@ fn profile_decl_load(
 /// 这条命令不创建文件、不改配置、不启动引擎。
 #[tauri::command(async)]
 fn profile_decl_digest(state: State<'_, SharedHost>) -> Result<Option<String>, String> {
-    let profiles_dir = {
+    profile_decl::decl_digest(&profile_asset_dir(&state))
+}
+
+/// 只读：生成一份起步场景声明模板（OD-ARCH-122）。
+///
+/// 只返回文本，**不写盘**：用户还要在设置页里点「校验并保存」才会落文件。
+/// 当前 Profile 已经有声明时额外告知，让界面提醒「保存会覆盖既有内容」。
+/// 基础标准下也允许取模板（它只是文字），保存时仍走原有的校验与备份。
+#[tauri::command(async)]
+fn profile_decl_starter(
+    state: State<'_, SharedHost>,
+    label: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (app_root, running) = {
         let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (host.paths.root.clone(), cfg.profile)
     };
-    profile_decl::decl_digest(&profiles_dir)
+    let (channel, _dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let dir = app_root.join("profiles").join(&running);
+    let existing = profile_decl::read_text(&dir)?;
+    let display = label
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(running.as_str())
+        .to_string();
+    let text = crate::profile_starter::decl_text(&display)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "profile": running,
+        "standard": running == standard,
+        "has_existing": existing.is_some(),
+        "text": text,
+        "note": if running == standard {
+            "基础标准是干净底座，不挂业务场景：模板可以看，但保存会被拒绝。请先在顶栏切到 Profile。"
+        } else if existing.is_some() {
+            "这个 Profile 已经有场景声明：模板只是参考，保存会覆盖现有内容（旧文件会先备份）。"
+        } else {
+            "已生成起步模板；改好后点「校验并保存」，工作台入口会立刻更新。"
+        },
+    }))
 }
 
 /// 在系统编辑器里打开场景声明文件（OD-ARCH-053 S3）。**不**接受路径参数。
 #[tauri::command(async)]
 fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
-    let profiles_dir = {
-        let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
+    migrate_legacy_profile_assets(&state);
+    let dir = profile_asset_dir(&state);
+    let Some(loaded) = profile_decl::load_decl(&dir)? else {
+        return Err(
+            "当前 Profile 没有场景声明（基础标准下只显示平台固有入口）。切到带场景的 Profile 后再编辑。"
+                .to_string(),
+        );
     };
-    // 先确保文件存在（与启动时同一套 create_new 逻辑，永不覆盖）。
-    let loaded = profile_decl::load_decl(&profiles_dir)?;
     let path = std::path::PathBuf::from(&loaded.path);
     let mut last_error = String::new();
     for (program, args) in [
@@ -830,7 +999,7 @@ fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, 
                 return Ok(serde_json::json!({
                     "ok": true,
                     "opened": loaded.path,
-                    "note": "已在系统编辑器打开声明文件；保存后需重启应用生效。",
+                    "note": "已在系统编辑器打开声明文件；在外部保存后，回到设置页重新点「校验并保存」或切换 Profile 才会更新工作台。",
                 }))
             }
             Err(e) => last_error = format!("{}：{}", program, e),
@@ -841,13 +1010,45 @@ fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, 
 
 /// 保存场景声明（OD-ARCH-053 S3）：先校验，校验通过才备份并原子写。
 ///
-/// 校验失败一律拒绝保存，文件原样保留；写前把旧文件复制成 `discipline.yml.bak-<epoch>`。
+/// 校验失败一律拒绝保存，文件原样保留；写前把旧文件复制成 `decl.yml.bak-<epoch>`。
+///
+/// OD-ARCH-123：基础标准拒绝保存（干净底座不挂业务场景，与 `profile_rules_restore_default`
+/// 同一判据）；保存成功后广播 `omni://profile-decl`，前端 Dock 立刻换成新入口，无需重启。
 #[tauri::command(async)]
-fn profile_decl_save(state: State<'_, SharedHost>, text: String) -> Result<serde_json::Value, String> {
-    let profiles_dir = {
-        let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
-    };
+fn profile_decl_save(
+    app: tauri::AppHandle,
+    state: State<'_, SharedHost>,
+    text: String,
+) -> Result<serde_json::Value, String> {
+    let scope = profile_asset_scope(&state);
+    let dir = scope.profiles_root.join(&scope.profile);
+    let saved = save_decl_into(&dir, scope.standard, &text)?;
+    let _ = app.emit(
+        PROFILE_DECL_EVENT,
+        serde_json::json!({
+            "profile": scope.profile,
+            "path": saved["path"].clone(),
+            "digest": saved["digest"].clone(),
+        }),
+    );
+    Ok(saved)
+}
+
+/// `profile_decl_save` 的可测内核（OD-ARCH-123）：只碰传进来的目录，不读全局状态。
+///
+/// `standard = true` 时直接拒绝，**不创建目录、不落文件**——基础标准是否为干净底座
+/// 要能靠「目录在不在」复核。校验失败同样一字节不写。
+fn save_decl_into(
+    profiles_dir: &std::path::Path,
+    standard: bool,
+    text: &str,
+) -> Result<serde_json::Value, String> {
+    if standard {
+        return Err(
+            "基础标准是干净底座，不挂业务场景。请先在顶栏切到 Profile，再保存场景声明。"
+                .to_string(),
+        );
+    }
     if text.len() > 64 * 1024 {
         return Err("声明文件过大（上限 64 KB）".to_string());
     }
@@ -874,7 +1075,7 @@ fn profile_decl_save(state: State<'_, SharedHost>, text: String) -> Result<serde
         "path": path.display().to_string(),
         "backup": backup,
         "digest": crate::sha256::sha256_hex(text.as_bytes()),
-        "note": "声明已保存；重启应用后生效。",
+        "note": "声明已保存，工作台入口已更新（不需要重启）。",
     }))
 }
 
@@ -924,14 +1125,14 @@ fn profile_choice_view(state: State<'_, SharedHost>) -> Result<serde_json::Value
         .and_then(|s| s.engine_profile);
     let saved_out_of_whitelist = saved
         .as_deref()
-        .map(|s| !profile_choice::is_whitelisted(&channel, s))
+        .map(|s| !profile_choice::is_selectable(&channel, &app_root, s))
         .unwrap_or(false);
     // 「本次启动实际生效」只认引擎配置；引擎配置读不出来时退回按已保存选择推算，
     // 并显式带上 warning，不把推算值当成事实。
     let (effective, warning) = match engine_supervisor::EngineConfig::from_env(&app_root) {
         Ok(config) => (config.profile, None),
         Err(e) => {
-            let guess = profile_choice::resolve(&dsh_home, &channel, saved.as_deref())
+            let guess = profile_choice::resolve(&dsh_home, &channel, saved.as_deref(), Some(&app_root))
                 .unwrap_or_else(|_| profile_choice::standard_profile(&channel).to_string());
             (guess, Some(e))
         }
@@ -943,49 +1144,978 @@ fn profile_choice_view(state: State<'_, SharedHost>) -> Result<serde_json::Value
         "saved": saved,
         "saved_out_of_whitelist": saved_out_of_whitelist,
         "effective": effective,
-        "options": profile_choice::list(&dsh_home, &channel),
+        "options": profile_choice::list_all(&dsh_home, &channel, &app_root),
+        "custom": profile_lifecycle::load_registry(&app_root)
+            .profiles
+            .iter()
+            .map(|p| serde_json::json!({
+                "name": p.name,
+                "label": p.label,
+                "origin": p.origin,
+                "created_at": p.created_at,
+            }))
+            .collect::<Vec<_>>(),
         "warning": warning,
-        "note": "这里是本次启动实际使用的 Profile；改动在下次启动引擎时生效。",
+        "note": "这里列出可选 Profile 与当前生效的 Profile；切换后会立即停止旧引擎并按新 Profile 运行。",
     }))
 }
 
-/// 保存 Profile 选择（None = 回到标准模式）。只写设置文件，不重启引擎。
+/// 保存 Profile 选择（None = 回到标准模式）。
+///
+/// OD-ARCH-109：不再「目录不存在就拒绝」，改为**先装配、再校验、后保存**：
+/// 出厂 Profile（如 discipline）在全新数据根上也能一次切换成功，配置 / 场景 /
+/// 规则 / Skill 自动补齐；基础标准仍然零写入。装配有漂移只提示、不阻断切换。
+///
+/// OD-ARCH-110：保存后**立即换引擎**——重读配置、同步 supervisor 与只读快照、
+/// 在生命周期屏障内停掉旧引擎。下一条任务即按新 Profile 启动，场景声明 / 规则 /
+/// 注入 Skill 都取运行中的 Profile，因此不用重启整个应用。
 #[tauri::command(async)]
 fn profile_choice_set(
+    app: tauri::AppHandle,
     state: State<'_, SharedHost>,
     profile: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let config_dir = {
+    let (config_dir, app_root, paths) = {
         let host = state.lock().unwrap();
-        host.paths.config.clone()
+        (host.paths.config.clone(), host.paths.root.clone(), host.paths.clone())
     };
+    // 切换前的保存值：新配置解析失败时用它回滚，避免「磁盘写了新名字、引擎还是旧名字」。
+    let previous_saved = crate::settings::load(&config_dir)
+        .ok()
+        .and_then(|s| s.engine_profile);
     let (channel, dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
     let chosen = match profile.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         None => None,
         Some(name) => {
             if !crate::settings::is_valid_profile_name(name) {
                 return Err(format!("Profile 名不合法：{:?}", name));
             }
-            let manifest = dsh_home.join("profiles").join(name).join("package.json");
-            if !manifest.is_file() {
+            // 只允许通道白名单或已登记的自定义 Profile：否则会被启动时的 resolve 静默回落，
+            // 界面显示「已切换」而引擎仍在别的 Profile 上跑。
+            if !profile_choice::is_selectable(&channel, &app_root, name) {
                 return Err(format!(
-                    "隔离数据根里没有这个 Profile：{}（缺少 {}）",
-                    name,
-                    manifest.display()
+                    "「{}」不在可选的 Profile 清单里。请先在顶栏新建一个自定义 Profile。",
+                    name
                 ));
             }
             Some(name.to_string())
         }
     };
+    // 装配（基础标准 / 自定义 Profile 都是空操作）。
+    // 仓库根只在确实存在时传下去：分发后的二进制里 CARGO_MANIFEST_DIR 是编译期路径，
+    // 在用户机器上并不存在，误传会让 Skill 装配误判为「源在仓库」。
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let assembly = match chosen.as_deref() {
+        None => {
+            // 切回基础标准也必须收敛 Skill（OD-ARCH-115）：DSH 把 <dsh_home>/skills/
+            // 当全局用户根无条件扫描，不收回的话纪检技能仍会被加载，底座就不是干净的。
+            // 没有登记项时这里是纯空操作，不建目录、不写文件。
+            let scope = profile_assets::Scope {
+                dsh_home: &dsh_home,
+                app_root: &app_root,
+                profile: &standard,
+                repo_root: repo_root.as_deref(),
+            };
+            profile_assets::reconcile_managed_skills(&scope, &standard)
+                .map_err(|e| format!("切回基础标准时整理 Skill 失败，未切换：{}", e))?;
+            None
+        }
+        Some(name) => {
+            let scope = profile_assets::Scope {
+                dsh_home: &dsh_home,
+                app_root: &app_root,
+                profile: name,
+                repo_root: repo_root.as_deref(),
+            };
+            let report = profile_assets::materialize(&scope, &standard).map_err(|e| {
+                format!("Profile「{}」的资产装配失败，未切换：{}", name, e)
+            })?;
+            // 装配后登记归属，下次切走才知道该收回哪些目录。
+            profile_assets::record_managed_skills(&scope, &standard)
+                .map_err(|e| format!("Profile「{}」的 Skill 登记失败，未切换：{}", name, e))?;
+            Some(report)
+        }
+    };
+    // 装配后再校验目录：自定义 Profile 仍要求已存在的 package.json。
+    if let Some(name) = chosen.as_deref() {
+        let manifest = dsh_home.join("profiles").join(name).join("package.json");
+        if !manifest.is_file() {
+            return Err(format!(
+                "隔离数据根里没有这个 Profile：{}（缺少 {}）。这是自定义 Profile，请先创建它。",
+                name,
+                manifest.display()
+            ));
+        }
+    }
+    // 分类表也随 Profile 走（OD-ARCH-116）：先回存离开的 Profile，再切入目标的表。
+    // 放在写 engine_profile 之前，失败就整体不切换，避免「Profile 换了、分类还是旧的」。
+    let categories = crate::profile_categories::apply_for_switch(
+        &paths,
+        previous_saved.as_deref(),
+        chosen.as_deref(),
+        &standard,
+    )
+    .map_err(|e| format!("Profile「{}」的分类表同步失败，未切换：{}", chosen.clone().unwrap_or_else(|| standard.clone()), e))?;
     crate::settings::set_engine_profile(&config_dir, chosen.as_deref())?;
-    let effective_next =
-        chosen.clone().unwrap_or_else(|| profile_choice::standard_profile(&channel).to_string());
+    // 重读配置：设置已落盘，resolve 会选中新 Profile。读不出来就回滚保存值，
+    // 让「设置文件」与「实际可用配置」保持一致，而不是让用户以为切换成功。
+    let fresh = match engine_supervisor::EngineConfig::from_env(&app_root) {
+        Ok(config) => config,
+        Err(message) => {
+            let _ = crate::settings::set_engine_profile(&config_dir, previous_saved.as_deref());
+            return Err(format!(
+                "Profile「{}」的引擎配置无法解析，切换已回滚：{}",
+                chosen.clone().unwrap_or_else(|| standard.clone()),
+                message
+            ));
+        }
+    };
+    let effective = fresh.profile.clone();
+    // 换 Profile 等于换权限与插件集合：按「模型权限变更」同口径独占生命周期，
+    // 旧引擎没有确认停止时保留屏障（失败关闭），绝不与新 Profile 混用。
+    let lifecycle = {
+        let host = state.lock().unwrap();
+        Arc::clone(&host.lifecycle)
+    };
+    let change = lifecycle.begin_change();
+    // 屏障先立起来再换配置：否则「换完配置、还没停旧引擎」这一小段时间里，
+    // 新任务会拿到新 Profile 的规则，却被送进仍在运行的旧 Profile 引擎。
+    // 把新配置同步到两处（supervisor 决定启动参数、快照供准入与端点事实），
+    // 必须用同一份 `fresh`，否则三处会看到不同的 Profile。
+    {
+        let host = state.lock().unwrap();
+        let supervisor = host.bridge.supervisor();
+        let snapshot = app.try_state::<HostSnapshot>();
+        adopt_engine_config(&supervisor, snapshot.as_ref().map(|s| &s.config), fresh);
+    }
+    let engine_stopped = match stop_engine(state.inner(), Duration::from_secs(10)) {
+        Ok(_) => {
+            change.succeed();
+            true
+        }
+        Err(message) => {
+            change.fail(message);
+            false
+        }
+    };
+    let assembled = assembly
+        .as_ref()
+        .map(|r| {
+            r.items
+                .iter()
+                .filter(|i| {
+                    matches!(
+                        i.status.as_str(),
+                        profile_assets::STATUS_CREATED
+                            | profile_assets::STATUS_UPDATED
+                            | profile_assets::STATUS_DRIFT
+                    )
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    // 缺失插件要在切换当下就摆出来（OD-ARCH-114）：否则用户只看得到「已装配 N 项」，
+    // 却不知道这个 Profile 还缺插件、要不要联网装。这里只列出，不自动安装。
+    let plugins_missing: Vec<serde_json::Value> = assembly
+        .as_ref()
+        .map(|r| {
+            r.items
+                .iter()
+                .filter(|i| i.kind == "plugin" && i.status != profile_assets::STATUS_READY)
+                .map(|i| {
+                    serde_json::json!({
+                        "package": i.key.trim_start_matches("plugin:"),
+                        "status": i.status,
+                        "detail": i.detail,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    // 缺插件就放到后台自动补齐（OD-ARCH-121）：切换本身已经生效，网络安装不占这条命令。
+    // 只在「非基础标准 + 开关打开 + 确有缺项」时启动，其余情况行为与 114 完全一致。
+    let auto_install = should_auto_install_plugins(
+        plugins_missing.len(),
+        chosen.as_deref(),
+        &standard,
+        crate::settings::profile_auto_install_plugins(&config_dir),
+    );
+    if auto_install {
+        if let Some(target) = chosen.clone() {
+            spawn_profile_plugins_autofill(
+                app.clone(),
+                app_root.clone(),
+                dsh_home.clone(),
+                target,
+                standard.clone(),
+            );
+        }
+    }
     Ok(serde_json::json!({
         "ok": true,
         "saved": chosen,
-        "effective_next_start": effective_next,
-        "note": "Profile 已保存，下次启动引擎时生效；正在运行的任务不受影响。",
+        "effective": effective.clone(),
+        "effective_next_start": effective,
+        "engine_stopped": engine_stopped,
+        "assembly": assembly,
+        "assembled_changes": assembled,
+        "plugins_missing": plugins_missing,
+        "plugins_auto_installing": auto_install,
+        "categories": categories,
+        "note": if engine_stopped {
+            "已切换，资产已按清单补齐；旧引擎已停止，下一条任务按新 Profile 启动。"
+        } else {
+            "Profile 已保存，但旧引擎未能确认停止；在旧引擎停止前宿主会拒绝新的引擎调用。"
+        },
     }))
+}
+
+/// 切换后要不要自动补装（OD-ARCH-121）：缺件非空、开关打开、且目标不是基础标准。
+///
+/// 抽成纯函数，便于直接覆盖四种组合，不必起窗口或联网。
+pub fn should_auto_install_plugins(
+    missing: usize,
+    chosen: Option<&str>,
+    standard: &str,
+    enabled: bool,
+) -> bool {
+    missing > 0 && enabled && chosen.map(|n| n != standard).unwrap_or(false)
+}
+
+/// 切换之后在后台补齐缺失插件（OD-ARCH-121）。
+///
+/// 三个约束：
+///   * **不阻塞切换**：走阻塞线程池，切换命令已经返回；
+///   * **不加锁等界面**：只拿自己的路径与名字，运行中不再访问宿主状态；
+///   * **结果必须回传**：装完重新探测，通过 `omni://profile-plugins` 告诉前端
+///     是否已齐、还缺哪些、每包退出码，前端据此刷新缺件卡。
+fn spawn_profile_plugins_autofill(
+    app: tauri::AppHandle,
+    app_root: std::path::PathBuf,
+    dsh_home: std::path::PathBuf,
+    profile: String,
+    standard: String,
+) {
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    tauri::async_runtime::spawn_blocking(move || {
+        let scope = profile_assets::Scope {
+            dsh_home: &dsh_home,
+            app_root: &app_root,
+            profile: &profile,
+            repo_root: repo_root.as_deref(),
+        };
+        let cli = profile_assets::default_dsh_cli();
+        let payload = match profile_assets::ensure_plugins(&scope, &standard, &cli) {
+            Ok(receipt) => serde_json::json!({
+                "ok": receipt.ok,
+                "profile": receipt.profile,
+                "attempted": receipt.attempted,
+                "results": receipt.results,
+                "still_missing": receipt.still_missing,
+                "note": receipt.note,
+                "automatic": true,
+                "error": serde_json::Value::Null,
+            }),
+            Err(e) => serde_json::json!({
+                "ok": false,
+                "profile": profile,
+                "attempted": Vec::<String>::new(),
+                "results": Vec::<serde_json::Value>::new(),
+                "still_missing": Vec::<serde_json::Value>::new(),
+                "note": "自动补齐插件未能执行。",
+                "automatic": true,
+                "error": e,
+            }),
+        };
+        let _ = app.emit(PROFILE_PLUGINS_EVENT, payload);
+    });
+}
+
+/// 冷启动时补齐「已经选好、但本地缺件」的 Profile 插件（OD-ARCH-124）。
+///
+/// 121 把自动补装接在 `profile_choice_set` 上，只有**切换**那一刻会跑。用户选好
+/// 非标准 Profile 之后重启应用，缺的插件不会自己回来——界面显示「正在使用专业
+/// Profile」，能力却是残的，只能靠用户进设置页手点。这里把同一套判据接到启动路径：
+///   * 只对非基础标准生效（底座永不装插件）；
+///   * 遵守设置页的自动补装开关；
+///   * 确有缺件才起后台任务，全部就绪时零动作、不写盘、不联网；
+///   * 不阻塞启动：窗口先正常打开，装完走 `omni://profile-plugins` 回报。
+fn maybe_autofill_plugins_on_startup(app: &tauri::AppHandle) {
+    let Some(host) = app.try_state::<SharedHost>() else {
+        return;
+    };
+    // 只取路径与配置，锁在函数内释放：安装任务运行期间不再碰宿主状态。
+    let (app_root, config_dir, config) = {
+        let guard = host.lock().unwrap();
+        let cfg = guard.bridge.supervisor().lock().unwrap().config().clone();
+        (guard.paths.root.clone(), guard.paths.config.clone(), cfg)
+    };
+    if config.channel != "web-api" {
+        return;
+    }
+    let standard = crate::profile_choice::standard_profile(&config.channel).to_string();
+    let profile = config.profile.clone();
+    if profile.trim() == standard {
+        return;
+    }
+    if !crate::settings::profile_auto_install_plugins(&config_dir) {
+        return;
+    }
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &config.dsh_home,
+        app_root: &app_root,
+        profile: &profile,
+        repo_root: repo_root.as_deref(),
+    };
+    let missing = profile_assets::missing_plugins(&scope, &standard, &config.dsh_cli);
+    if !should_auto_install_plugins(
+        missing.len(),
+        Some(profile.as_str()),
+        &standard,
+        true,
+    ) {
+        return;
+    }
+    append_profile_assets_log(
+        &app_root,
+        &format!(
+            "profile={} startup-autofill pending={}\n",
+            profile,
+            missing.len()
+        ),
+    );
+    spawn_profile_plugins_autofill(app.clone(), app_root, config.dsh_home.clone(), profile, standard);
+}
+
+/// 启动期装配日志的统一落盘入口（`logs/profile-assets.log`）。
+///
+/// 写不进去不影响功能：日志只用于「为什么没装上」的排查，不能反过来拦住启动。
+fn append_profile_assets_log(app_root: &std::path::Path, line: &str) {
+    let dir = app_root.join("logs");
+    let path = dir.join("profile-assets.log");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = file.write_all(format!("{} {}", chrono_like_stamp(), line).as_bytes());
+    }
+}
+
+/// 读取 Profile 装配偏好（OD-ARCH-121）：目前只有「切换时自动补齐缺失插件」。
+#[tauri::command(async)]
+fn profile_assembly_prefs(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "auto_install_plugins": settings::profile_auto_install_plugins(&config_dir),
+        "settings_path": settings::settings_path(&config_dir).display().to_string(),
+        "note": "开启后，切换 Profile 缺插件会在后台自动联网补齐；关闭后只提示，由你点按钮安装。",
+    }))
+}
+
+/// 保存上述开关；其余设置原样保留。
+#[tauri::command(async)]
+fn profile_assembly_prefs_set(
+    state: State<'_, SharedHost>,
+    auto_install_plugins: bool,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let saved = settings::set_profile_auto_install_plugins(&config_dir, auto_install_plugins)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "auto_install_plugins": saved,
+    }))
+}
+
+/// 只读：当前（或指定）Profile 的资产就绪情况（OD-ARCH-109）。
+///
+/// 传 `profile` 时预览该 Profile；不传时看当前运行中的实例。只判定、只读盘，
+/// 不写文件——写动作只在切换 Profile 与启动引擎时发生。
+#[tauri::command(async)]
+fn profile_assets_view(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+) -> Result<profile_assets::MaterializeReport, String> {
+    let (app_root, running) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (host.paths.root.clone(), cfg.profile)
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let name = profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or(running);
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &dsh_home,
+        app_root: &app_root,
+        profile: &name,
+        repo_root: repo_root.as_deref(),
+    };
+    profile_assets::inspect(&scope, &standard)
+}
+
+/// 就地修复资产（OD-ARCH-113）。
+///
+/// 与 \`profile_assets_view\` 的只读巡检互补：这个命令**会写盘**，但只在用户
+/// 明确点「修复缺失 / 恢复出厂内容」时调用。三种情况：
+///   * 缺失 / 旧版 → 按出厂内容补齐；
+///   * 用户改过（drift）→ 先备份成 \`.bak-<epoch>\`，再按出厂内容覆盖；
+///   * 基础标准 → 仍然零写入，返回 \`standard: true\`。
+///
+/// 不联网、不装插件：插件安装仍走 \`profile_plugin_install\`。
+#[tauri::command(async)]
+fn profile_assets_repair(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (app_root, running) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (host.paths.root.clone(), cfg.profile)
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let name = profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or(running);
+    if !crate::settings::is_valid_profile_name(&name) {
+        return Err(format!("Profile 名不合法：{:?}", name));
+    }
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &dsh_home,
+        app_root: &app_root,
+        profile: &name,
+        repo_root: repo_root.as_deref(),
+    };
+    let report = profile_assets::materialize_with(&scope, &standard, true)?;
+    // 修复路径同样要维护 Skill 归属：新增的 Skill 也要能被下次切走时收回。
+    if name != standard {
+        profile_assets::record_managed_skills(&scope, &standard)?;
+    }
+    let changed = report
+        .items
+        .iter()
+        .filter(|i| {
+            matches!(
+                i.status.as_str(),
+                profile_assets::STATUS_CREATED | profile_assets::STATUS_UPDATED
+            )
+        })
+        .count();
+    let remaining = report
+        .items
+        .iter()
+        .filter(|i| {
+            matches!(
+                i.status.as_str(),
+                profile_assets::STATUS_MISSING
+                    | profile_assets::STATUS_MISSING_SOURCE
+                    | profile_assets::STATUS_DRIFT
+            )
+        })
+        .count();
+    Ok(serde_json::json!({
+        "ok": true,
+        "profile": report.profile,
+        "standard": report.standard,
+        "changed": changed,
+        "remaining": remaining,
+        "report": report,
+        "note": if report.standard {
+            "基础标准是干净底座，没有写入任何文件。"
+        } else if changed == 0 && remaining == 0 {
+            "资产已是出厂内容，没有需要修复的项。"
+        } else if remaining == 0 {
+            "已按出厂内容补齐并备份被覆盖的文件。"
+        } else {
+            "已尽可能修复；仍有条目未就位（见清单，插件需单独点「安装」）。"
+        },
+    }))
+}
+
+/// 打开（必要时创建）当前 Profile 自带的 Skill 源目录（OD-ARCH-131）。
+///
+/// 用户把自己的 Skill 放进 `<应用数据根>/profiles/<名字>/skills/<skill名>/`，
+/// 切换时就会随 Profile 装配；这个命令只把那个目录摊开给人看。
+/// 基础标准拒绝：干净底座不该有业务 Skill 目录。
+#[tauri::command(async)]
+fn profile_skill_source_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let scope = profile_asset_scope(&state);
+    if scope.standard {
+        return Err(
+            "基础标准是干净底座，不带 Skill 目录。请先在顶栏切到一个自定义 Profile。"
+                .to_string(),
+        );
+    }
+    // 校验真正要写入的那个根（`<应用数据根>/profiles/`），而不是引擎的 DSH_HOME：
+    // 这条命令只动 Profile 目录，按目标根验才算数。
+    crate::capabilities::assert_writable_root(&scope.profiles_root)?;
+    let dir = profile_rules::skill_source_root(&scope.profiles_root.join(&scope.profile));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("创建 Skill 目录失败（{}）：{}", dir.display(), e))?;
+    let mut last_error = String::new();
+    for (program, args) in [
+        ("xdg-open", Vec::<String>::new()),
+        ("gio", vec!["open".to_string()]),
+    ] {
+        match std::process::Command::new(program)
+            .args(&args)
+            .arg(&dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "opened": dir.display().to_string(),
+                    "note": "把 Skill 放进这个目录（每个 Skill 一个子目录，至少含 SKILL.md），保存绑定后即可用。",
+                }))
+            }
+            Err(e) => last_error = format!("{}：{}", program, e),
+        }
+    }
+    Ok(serde_json::json!({
+        "ok": false,
+        "path": dir.display().to_string(),
+        "note": format!("没能自动打开文件管理器（{}）。目录已经建好，可以手动打开：{}", last_error, dir.display()),
+    }))
+}
+
+/// 按名字生成一份 Profile 自带 Skill 的起步模板（OD-ARCH-131）。
+///
+/// 已存在就不覆盖——用户的正文永远优先。只写 `SKILL.md`，不带任何行业规则。
+#[tauri::command(async)]
+fn profile_skill_scaffold(
+    state: State<'_, SharedHost>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let scope = profile_asset_scope(&state);
+    if scope.standard {
+        return Err(
+            "基础标准是干净底座，不生成 Skill。请先在顶栏切到一个自定义 Profile。"
+                .to_string(),
+        );
+    }
+    let name = name.trim();
+    if !profile_rules::is_valid_skill_name(name) {
+        return Err(format!(
+            "Skill 名不合法：{:?}（只允许小写字母、数字、连字符、下划线，最多 48 字符）",
+            name
+        ));
+    }
+    crate::capabilities::assert_writable_root(&scope.profiles_root)?;
+    let app_dir = scope.profiles_root.join(&scope.profile);
+    let dir = profile_rules::skill_source_root(&app_dir).join(name);
+    let path = dir.join("SKILL.md");
+    if path.is_file() {
+        return Ok(serde_json::json!({
+            "ok": true,
+            "created": false,
+            "path": path.display().to_string(),
+            "note": "这个 Skill 已经有正文，未覆盖。",
+        }));
+    }
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("创建 Skill 目录失败（{}）：{}", dir.display(), e))?;
+    let body = format!(
+        "---\nname: {name}\ndescription: 说明这个 Skill 什么时候用、交付什么。\nuser-invocable: true\n---\n\n# {name}\n\n写下这个 Skill 的判断口径与输出要求。\n\n只写方法与边界，不要写具体业务数据。\n"
+    );
+    crate::model_settings::write_atomic(&path, body.as_bytes())?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "created": true,
+        "path": path.display().to_string(),
+        "note": "已生成起步模板；改好正文后回到绑定区勾选它并保存。",
+    }))
+}
+
+/// 只读：停放在 `profiles/.parked-skills/` 里的 Skill（OD-ARCH-117）。
+///
+/// 切换 Profile 时，不属于目标 Profile 的 Skill 会被**移入**停放区而不是删除，
+/// 切回需要的 Profile 时自动归位。这个命令只列清单，不建目录、不动文件，
+/// 让用户在设置页能看见「哪些 Skill 现在停在边上」。
+#[tauri::command(async)]
+fn profile_assets_parked(
+    state: State<'_, SharedHost>,
+) -> Result<Vec<profile_assets::ParkedSkill>, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    Ok(profile_assets::list_parked(&app_root))
+}
+
+/// 新建 / 复制一个自定义 Profile（OD-ARCH-109 补充）。
+///
+/// `copy_from = None` 从基础标准起手；`Some(name)` 复制那个 Profile 的配置与
+/// 场景规则。只写隔离根，不接管 DSH 的内部格式，也不装插件。
+#[tauri::command(async)]
+fn profile_create(
+    state: State<'_, SharedHost>,
+    app: AppHandle,
+    name: String,
+    label: String,
+    copy_from: Option<String>,
+) -> Result<profile_lifecycle::CreateReceipt, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let source = copy_from
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let source = match source {
+        Some(from) => {
+            if !profile_choice::is_selectable(&channel, &app_root, from) {
+                return Err(format!("不能从「{}」复制：它不在可选的 Profile 清单里。", from));
+            }
+            Some(from.to_string())
+        }
+        None => None,
+    };
+    let receipt = profile_lifecycle::create(
+        &dsh_home,
+        &app_root,
+        &name,
+        &label,
+        source.as_deref(),
+    )?;
+    let _ = app.emit(PROFILE_REGISTRY_EVENT, ());
+    Ok(receipt)
+}
+
+/// 移除一个自定义 Profile：移入 `.trash`，可恢复；出厂/当前 Profile 拒绝。
+#[tauri::command(async)]
+fn profile_remove(
+    state: State<'_, SharedHost>,
+    app: AppHandle,
+    name: String,
+) -> Result<profile_lifecycle::DeleteReceipt, String> {
+    let (app_root, current) = {
+        let host = state.lock().unwrap();
+        (
+            host.paths.root.clone(),
+            host.bridge.supervisor().lock().unwrap().config().profile.clone(),
+        )
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    let receipt = profile_lifecycle::remove(&dsh_home, &app_root, &name, Some(&current))?;
+    let _ = app.emit(PROFILE_REGISTRY_EVENT, ());
+    Ok(receipt)
+}
+
+/// 只读：回收站里可恢复的自定义 Profile（OD-ARCH-125）。
+///
+/// 与「已停放 Skill」同口径：只列清单，不建目录、不改文件、不联网。
+#[tauri::command(async)]
+fn profile_trash_list(
+    state: State<'_, SharedHost>,
+) -> Result<Vec<profile_lifecycle::TrashEntry>, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    Ok(profile_lifecycle::list_trash(&app_root, &dsh_home))
+}
+
+/// 改自定义 Profile 的显示名（OD-ARCH-126）。
+///
+/// 只写登记表的 label 与场景声明的 display_name；目录名与 --profile 标识不变，
+/// 因此 Skill 绑定、插件清单、线程分类与会话目录都不受影响。
+#[tauri::command(async)]
+fn profile_rename(
+    state: State<'_, SharedHost>,
+    app: AppHandle,
+    name: String,
+    label: String,
+) -> Result<profile_lifecycle::RenameReceipt, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let receipt = profile_lifecycle::rename_label(&app_root, &name, &label)?;
+    let _ = app.emit(PROFILE_REGISTRY_EVENT, ());
+    Ok(receipt)
+}
+
+/// 把回收站里的一项恢复成可选 Profile。
+///
+/// 纯本地：两次 `rename` 加一次登记写回。同名已存在时拒绝且不动任何文件；
+/// 中途失败会把已经搬走的目录搬回回收站。不联网、不装插件。
+#[tauri::command(async)]
+fn profile_trash_restore(
+    state: State<'_, SharedHost>,
+    app: AppHandle,
+    id: String,
+) -> Result<profile_lifecycle::RestoreReceipt, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    let receipt = profile_lifecycle::restore(&dsh_home, &app_root, &id)?;
+    let _ = app.emit(PROFILE_REGISTRY_EVENT, ());
+    Ok(receipt)
+}
+
+/// 把一个自定义 Profile 导出成单文件迁移包（OD-ARCH-127）。
+///
+/// 纯读 + 写一个 JSON 文件：不联网、不装插件、不动登记表，因此不广播事件。
+#[tauri::command(async)]
+fn profile_export(
+    state: State<'_, SharedHost>,
+    name: String,
+    dest_dir: Option<String>,
+) -> Result<profile_lifecycle::ExportReceipt, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    let dest = dest_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    profile_lifecycle::export_bundle(&dsh_home, &app_root, &name, dest.as_deref())
+}
+
+/// 从迁移包导入一个自定义 Profile（OD-ARCH-127）。
+///
+/// 先校验后落盘、同名一律拒绝；插件本体不进包，导入后由既有的
+/// 「缺件提示 + 自动补装」通道按清单安装。
+#[tauri::command(async)]
+fn profile_import(
+    state: State<'_, SharedHost>,
+    app: AppHandle,
+    path: String,
+    rename_to: Option<String>,
+    label: Option<String>,
+) -> Result<profile_lifecycle::ImportReceipt, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    let trim = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let bundle = std::path::PathBuf::from(path.trim());
+    let receipt = profile_lifecycle::import_bundle(
+        &bundle,
+        &dsh_home,
+        &app_root,
+        trim(&rename_to).as_deref(),
+        trim(&label).as_deref(),
+    )?;
+    let _ = app.emit(PROFILE_REGISTRY_EVENT, ());
+    Ok(receipt)
+}
+
+/// 只读：导出目录里已有的迁移包（供设置页一键导入）。
+#[tauri::command(async)]
+fn profile_export_list(
+    state: State<'_, SharedHost>,
+) -> Result<Vec<profile_lifecycle::BundleListing>, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    Ok(profile_lifecycle::list_exports(&app_root))
+}
+
+/// 在系统文件管理器里打开导出目录（目录不存在时先建，再打开）。
+#[tauri::command(async)]
+fn profile_export_open(
+    state: State<'_, SharedHost>,
+) -> Result<serde_json::Value, String> {
+    let dir = {
+        let host = state.lock().unwrap();
+        host.paths.root.join("exports")
+    };
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("创建导出目录失败（{}）：{}", dir.display(), e))?;
+    let mut last_error = String::new();
+    for (program, args) in [
+        ("xdg-open", Vec::<String>::new()),
+        ("gio", vec!["open".to_string()]),
+    ] {
+        match std::process::Command::new(program)
+            .args(&args)
+            .arg(&dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "opened": dir.display().to_string(),
+                }))
+            }
+            Err(e) => last_error = format!("{}：{}", program, e),
+        }
+    }
+    Err(format!("没能打开导出目录（{}）：{}", dir.display(), last_error))
+}
+
+/// 安装某个 Profile 需要的插件（用户点「安装」才调用，会联网）。
+#[tauri::command(async)]
+fn profile_plugin_install(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+    package: String,
+) -> Result<profile_assets::InstallReceipt, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let (_, dsh_home) = profile_choice_scope()?;
+    let name = profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            crate::settings::load(&config_dir)
+                .ok()
+                .and_then(|s| s.engine_profile)
+        })
+        .ok_or_else(|| "没有指定要安装到哪个 Profile".to_string())?;
+    if !crate::settings::is_valid_profile_name(&name) {
+        return Err(format!("Profile 名不合法：{:?}", name));
+    }
+    let cli = profile_assets::default_dsh_cli();
+    let version = profile_assets::asset_profile(&name)
+        .and_then(|a| a.plugins.iter().find(|p| p.package == package.trim()))
+        .and_then(|p| p.version);
+    Ok(profile_assets::install_plugin(
+        &cli,
+        &dsh_home,
+        &name,
+        &package,
+        version,
+    ))
+}
+
+/// 给自建 Profile 声明一个插件（OD-ARCH-128）。
+///
+/// 这是「从零配出整套工作台」的最后一个缺口：此前加插件只能手改 DSH 侧配置，
+/// 而登记表 `index.v1.json` 才是装配与补装共用的真源。这里先探测、缺才联网装，
+/// 装成就写回登记表，之后切换 / 冷启动的后台补装对它与内置项一视同仁。
+#[tauri::command(async)]
+fn profile_plugins_add(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+    package: String,
+) -> Result<profile_assets::AddPluginReceipt, String> {
+    let (app_root, config_dir) = {
+        let host = state.lock().unwrap();
+        (host.paths.root.clone(), host.paths.config.clone())
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let name = profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            crate::settings::load(&config_dir)
+                .ok()
+                .and_then(|s| s.engine_profile)
+        })
+        .unwrap_or_else(|| standard.clone());
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &dsh_home,
+        app_root: &app_root,
+        profile: &name,
+        repo_root: repo_root.as_deref(),
+    };
+    let cli = profile_assets::default_dsh_cli();
+    profile_assets::add_plugin(&scope, &standard, &cli, &package)
+}
+
+/// 一次性补齐某个 Profile 缺的插件（OD-ARCH-114）。
+///
+/// 只装清单里缺的包，单个失败不中断其余；联网安装仍只由用户点按钮触发。
+#[tauri::command(async)]
+fn profile_plugins_ensure(
+    state: State<'_, SharedHost>,
+    profile: Option<String>,
+) -> Result<profile_assets::EnsureReceipt, String> {
+    let (app_root, config_dir) = {
+        let host = state.lock().unwrap();
+        (host.paths.root.clone(), host.paths.config.clone())
+    };
+    let (channel, dsh_home) = profile_choice_scope()?;
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let name = profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            crate::settings::load(&config_dir)
+                .ok()
+                .and_then(|s| s.engine_profile)
+        })
+        .unwrap_or_else(|| standard.clone());
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &dsh_home,
+        app_root: &app_root,
+        profile: &name,
+        repo_root: repo_root.as_deref(),
+    };
+    let cli = profile_assets::default_dsh_cli();
+    profile_assets::ensure_plugins(&scope, &standard, &cli)
 }
 
 // ---------------------------------------------------------------------------
@@ -1000,20 +2130,45 @@ fn profile_choice_set(
 // ---------------------------------------------------------------------------
 
 fn profile_rules_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
-    let host = state.lock().unwrap();
-    host.paths.root.join("profiles")
+    profile_asset_dir(state)
 }
 
 /// 读取规则资产（只读；不创建文件）。
 #[tauri::command(async)]
 fn profile_rules_load(state: State<'_, SharedHost>) -> profile_rules::RulesView {
+    profile_rules_view(&state)
+}
+
+/// 规则资产的唯一读取实现（OD-ARCH-107）。
+///
+/// 设置页与能力管理页都走这里，避免两处各自解析 rules.json 得出不同结论。
+/// 迁移在这里跑，幂等；只读，不创建文件。
+fn profile_rules_view(state: &State<'_, SharedHost>) -> profile_rules::RulesView {
+    // 规则也可能先于声明被读到（用户直接进设置页）：迁移同样要先跑一次，且幂等。
+    let (_, migration_error) = migrate_legacy_profile_assets(&state);
     let mut view = profile_rules::load_rules(&profile_rules_dir(&state));
+    // 旧规则搬不过来不塞进 `error`：那个字段会让引擎拒绝提交（等于把损坏的旧文件
+    // 变成新的功能故障）。改用单独的提示字段，界面按「未加载（纯净底座）」显示，
+    // 同时把原因说清楚。
+    if !view.loaded {
+        view.migration_warning = migration_error;
+    }
+    // OD-ARCH-106：宿主知道当前是哪个 Profile，据此告诉界面「恢复默认」能不能用。
+    // 只标原因、不禁读：基础标准下若用户自己粘贴保存了规则，照样按文件生效。
+    if profile_asset_scope(&state).standard {
+        view.default_blocked_reason = Some(
+            "基础标准是干净底座，不安装行业规则包。切到专业 Profile 才能安装。".to_string(),
+        );
+    }
     if view.loaded {
         let dsh_home = {
             let host = state.lock().unwrap();
             host.bridge.supervisor().lock().unwrap().config().dsh_home.clone()
         };
-        let repo_skills = crate::task_shell::repo_root_hint().map(|r| r.join("skills")).ok();
+        let repo_skills = crate::task_shell::repo_root_hint()
+            .ok()
+            .filter(|p| p.is_dir())
+            .map(|r| r.join("skills"));
         if let Some(rules) = &view.rules {
             for binding in rules.skill_bindings.values() {
                 for skill_id in &binding.skills {
@@ -1025,9 +2180,16 @@ fn profile_rules_load(state: State<'_, SharedHost>) -> profile_rules::RulesView 
                         std::fs::read_to_string(&dsh_path).ok()
                     } else if let Some(repo_dir) = &repo_skills {
                         let repo_path = repo_dir.join(skill_id).join("SKILL.md");
-                        std::fs::read_to_string(&repo_path).ok()
+                        std::fs::read_to_string(&repo_path).ok().or_else(|| {
+                            // 分发环境下仓库源不存在，回落到编译期内嵌正文。
+                            crate::profile_seed::skill(skill_id)
+                                .and_then(|s| s.files.iter().find(|f| f.rel == "SKILL.md"))
+                                .map(|f| f.body.to_string())
+                        })
                     } else {
-                        None
+                        crate::profile_seed::skill(skill_id)
+                            .and_then(|s| s.files.iter().find(|f| f.rel == "SKILL.md"))
+                            .map(|f| f.body.to_string())
                     };
                     if let Some(c) = content {
                         view.skill_contents.insert(skill_id.clone(), c);
@@ -1045,12 +2207,115 @@ fn profile_rules_save(
     state: State<'_, SharedHost>,
     text: String,
 ) -> Result<serde_json::Value, String> {
+    save_rules_into(&profile_rules_dir(&state), profile_asset_scope(&state).standard, &text)
+}
+
+/// 保存「场景 → Skill」绑定（OD-ARCH-129）。
+///
+/// 只替换规则包里的 `skill_bindings`，其余内容原样保留；仍走同一套校验与备份。
+/// 基础标准与规则保存同口径：拒绝且不建目录——干净底座不该有业务 Skill 预注入。
+#[tauri::command(async)]
+fn profile_skill_bindings_save(
+    state: State<'_, SharedHost>,
+    bindings: Vec<profile_rules::BindingChoice>,
+) -> Result<serde_json::Value, String> {
+    let dir = profile_rules_dir(&state);
+    let asset_scope = profile_asset_scope(&state);
+    let mut receipt = save_skill_bindings_into(&dir, asset_scope.standard, &bindings)?;
+    // OD-ARCH-130：绑定写盘成功就立刻收敛运行时 skills/。
+    // 规则已经写进文件就不回滚（那是用户的决定），补齐失败只在回执里如实说明。
+    // 路径取运行中引擎的配置：与切换 / 启动时的装配用同一个 dsh_home，
+    // 否则「补到了另一个根」会让界面显示补齐、运行时仍看不到。
+    let (app_root, dsh_home, channel) = {
+        let host = state.lock().unwrap();
+        let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
+        (host.paths.root.clone(), cfg.dsh_home, cfg.channel)
+    };
+    let standard = profile_choice::standard_profile(&channel).to_string();
+    let repo_root = crate::task_shell::repo_root_hint()
+        .ok()
+        .filter(|p| p.is_dir());
+    let scope = profile_assets::Scope {
+        dsh_home: &dsh_home,
+        app_root: &app_root,
+        profile: &asset_scope.profile,
+        repo_root: repo_root.as_deref(),
+    };
+    let skills = match profile_assets::sync_bound_skills(&scope, &standard) {
+        Ok(sync) => serde_json::to_value(sync).unwrap_or(serde_json::Value::Null),
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "note": format!("绑定已保存，但没能立刻写入运行时 Skill 目录：{}", e),
+        }),
+    };
+    if let Some(map) = receipt.as_object_mut() {
+        map.insert("skills".to_string(), skills);
+    }
+    Ok(receipt)
+}
+
+/// 绑定保存的真实边界，抽成纯函数便于直接测「基础标准零写入」与「只改绑定」。
+///
+/// 规则文件不存在时用起步骨架打底：这样新 Profile 不用先点「恢复默认规则包」
+/// 就能配出绑定，也不会顺带装上任何行业规则。
+fn save_skill_bindings_into(
+    profile_dir: &std::path::Path,
+    standard: bool,
+    bindings: &[profile_rules::BindingChoice],
+) -> Result<serde_json::Value, String> {
+    if standard {
+        return Err(
+            "基础标准是干净底座，不保存 Skill 绑定。请先在顶栏切到一个自定义 Profile 再配。"
+                .to_string(),
+        );
+    }
+    let path = profile_rules::rules_path(profile_dir);
+    let base = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let name = profile_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            crate::profile_starter::rules_text(&name)?
+        }
+        Err(e) => return Err(format!("读取规则文件失败（{}）：{}", path.display(), e)),
+    };
+    let text = profile_rules::set_skill_bindings(&base, bindings)?;
+    let mut receipt = write_profile_rules(profile_dir, &text)?;
+    if let Some(map) = receipt.as_object_mut() {
+        map.insert(
+            "note".to_string(),
+            serde_json::Value::String(
+                "Skill 绑定已保存；其余规则内容未改动，旧文件已备份。".to_string(),
+            ),
+        );
+    }
+    Ok(receipt)
+}
+
+/// 规则保存的真实边界，抽成纯函数便于直接测「基础标准连目录都不建」。
+///
+/// OD-ARCH-128：原先只有「恢复默认」拦基础标准，手动粘贴保存这条能直接
+/// `create_dir_all` 写盘，等于给干净底座开了后门；规则又是准入策略的输入，
+/// 写进去就不再是「干净」了。
+fn save_rules_into(
+    profiles_dir: &std::path::Path,
+    standard: bool,
+    text: &str,
+) -> Result<serde_json::Value, String> {
+    if standard {
+        return Err(
+            "基础标准是干净底座，不保存行业规则包。请先在顶栏切到一个自定义 Profile 再保存。"
+                .to_string(),
+        );
+    }
     if text.len() > 128 * 1024 {
         return Err("规则文件过大（上限 128 KB）".to_string());
     }
     // 校验失败一律不写：避免把「以为保存成功」的坏规则留在磁盘上。
-    profile_rules::parse_rules(&text)?;
-    write_profile_rules(&profile_rules_dir(&state), &text)
+    profile_rules::parse_rules(text)?;
+    write_profile_rules(profiles_dir, text)
 }
 
 /// 恢复出厂默认规则包（写入编译期嵌入的样例）。
@@ -1058,6 +2323,15 @@ fn profile_rules_save(
 fn profile_rules_restore_default(
     state: State<'_, SharedHost>,
 ) -> Result<serde_json::Value, String> {
+    // OD-ARCH-106：出厂规则包属于专业 Profile。基础标准下点「恢复默认」不能把
+    // 纪律规则写进干净底座，否则切换 Profile 就不再是「有没有业务规则」的分水岭。
+    let scope = profile_asset_scope(&state);
+    if scope.standard {
+        return Err(
+            "基础标准是干净底座，不安装行业规则包。请先在顶栏切到专业 Profile 再安装。"
+                .to_string(),
+        );
+    }
     profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)?;
     write_profile_rules(&profile_rules_dir(&state), profile_rules::DEFAULT_RULES_JSON)
 }
@@ -2715,7 +3989,37 @@ fn capability_view(state: State<'_, SharedHost>) -> Result<capabilities::Capabil
         let cfg = host.bridge.supervisor().lock().unwrap().config().clone();
         (cfg.dsh_home, cfg.profile)
     };
-    capabilities::load(&dsh_home, &profile)
+    // OD-ARCH-107：把「这个 Profile 预注入哪些 Skill」一并交给界面。
+    // 复用 profile_rules_load 的同一条读取路径（含迁移与正文回填），
+    // 不在 capabilities 模块里再解析一次 rules.json。
+    capabilities::load_with_scope(&dsh_home, &profile, &skill_scope(&state))
+}
+
+/// 从当前 Profile 的规则资产汇总出 Skill 作用域（只读）。
+///
+/// 与 profile_rules_load 保持同一口径：先跑一次幂等迁移，再读规则文件。
+/// 规则没加载（标准模式 / 文件不存在）时不伪造绑定——那就是「零预注入」。
+fn skill_scope(state: &State<'_, SharedHost>) -> capabilities::SkillScope {
+    let with_contents = profile_rules_view(state);
+    let standard = profile_asset_scope(state).standard;
+    let mut scope = capabilities::SkillScope {
+        standard,
+        rules_loaded: with_contents.loaded,
+        rules_error: with_contents.error.clone(),
+        rules_profile: with_contents.rules.as_ref().map(|r| r.profile.clone()),
+        resolved: with_contents.skill_contents.keys().cloned().collect(),
+        scenes: Vec::new(),
+    };
+    if let Some(rules) = &with_contents.rules {
+        for (scene, binding) in &rules.skill_bindings {
+            scope.scenes.push(capabilities::SceneScope {
+                scene: scene.clone(),
+                max_injected: binding.max_injected,
+                skills: binding.skills.clone(),
+            });
+        }
+    }
+    scope
 }
 
 /// 启用/停用一个插件（= 在 bundles 数组里增删）。`name` 只能是清单里已有的条目。
@@ -3178,11 +4482,7 @@ fn current_flow_pack(state: &State<'_, SharedHost>) -> Result<flow_pack::LoadedP
 ///
 /// 文件不存在 → 纯净底座；文件损坏 → 明确报错，由调用方整次拒绝。
 fn current_rule_policy(state: &State<'_, SharedHost>) -> Result<profile_rules::RulePolicy, String> {
-    let profiles_dir = {
-        let host = state.lock().unwrap();
-        host.paths.root.join("profiles")
-    };
-    let view = profile_rules::load_rules(&profiles_dir);
+    let view = profile_rules::load_rules(&profile_asset_dir(state));
     if let Some(error) = view.error {
         return Err(format!(
             "Profile 规则文件无法读取，已拒绝本次操作：{}。请到设置 →「规则资产」修正或恢复默认。",
@@ -3686,6 +4986,12 @@ fn build_state() -> Result<HostState, String> {
         .ensure()
         .map_err(|e| format!("创建应用数据目录失败（{}）：{}", paths.root.display(), e))?;
     let config = EngineConfig::from_env(&paths.root)?;
+    // OD-ARCH-109：资产装配必须在**应用启动**时完成，而不是等引擎第一次被拉起。
+    //
+    // 引擎只在提交首条任务时才 `start()`，冷启动后什么都不做时把装配挂在 `start()`
+    // 上等于永远不执行——实测表现是「切到 discipline，设置页资产全空、Skill 一个
+    // 都没复制」。因此这里在窗口创建前同步装配一次，与切换 Profile 时的装配同一入口。
+    assemble_profile_assets_on_startup(&paths, &config);
     let supervisor = EngineSupervisor::new(config);
     Ok(HostState {
         bridge: EngineBridge::new(Arc::new(Mutex::new(supervisor))),
@@ -3693,6 +4999,46 @@ fn build_state() -> Result<HostState, String> {
         lifecycle: Arc::new(EngineLifecycle::new()),
         vault_index: Arc::new(Mutex::new(None)),
     })
+}
+
+/// 启动期装配 Profile 资产，并把结果写进 `logs/profile-assets.log`。
+///
+/// 不阻断启动：Skill 目录权限之类的问题只应让资产页显示缺项，不该让整机打不开。
+/// 但也不能静默吞掉——否则「切换 Profile 后什么都没装」将无从排查。
+fn assemble_profile_assets_on_startup(paths: &AppPaths, config: &EngineConfig) {
+    let outcome = match config.assemble_profile_assets() {
+        Ok(true) => "ok".to_string(),
+        Ok(false) => "skipped".to_string(),
+        Err(e) => format!("error: {}", e),
+    };
+    let line = format!(
+        "{} profile={} channel={} result={}\n",
+        chrono_like_stamp(),
+        config.profile,
+        config.channel,
+        outcome
+    );
+    let path = paths.logs.join("profile-assets.log");
+    let _ = std::fs::create_dir_all(&paths.logs);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = file.write_all(line.as_bytes());
+    }
+    if outcome.starts_with("error") {
+        eprintln!("[OmniDesk][profile-assets] {}", line.trim_end());
+    }
+}
+
+/// 启动日志只需要「可排序、可读」，不引入额外依赖：用 epoch 秒替代带时区的格式化时间。
+fn chrono_like_stamp() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3758,10 +5104,31 @@ pub fn run() {
             profile_decl_digest,
             profile_decl_open,
             profile_decl_save,
+            profile_decl_starter,
             profile_choice_view,
             profile_choice_set,
+            profile_create,
+            profile_remove,
+            profile_rename,
+            profile_trash_list,
+            profile_trash_restore,
+            profile_export,
+            profile_import,
+            profile_export_list,
+            profile_export_open,
+            profile_assets_view,
+            profile_assets_repair,
+            profile_assets_parked,
+            profile_skill_source_open,
+            profile_skill_scaffold,
+            profile_assembly_prefs,
+            profile_assembly_prefs_set,
+            profile_plugins_ensure,
+            profile_plugins_add,
+            profile_plugin_install,
             profile_rules_load,
             profile_rules_save,
+            profile_skill_bindings_save,
             profile_rules_restore_default,
             model_settings_load,
             model_settings_probe,
@@ -3849,6 +5216,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("OmniDesk Discipline");
             }
+            // OD-ARCH-124：已选好的非标准 Profile 冷启动时若缺插件，后台自愈。
+            // 只是探测 + 起后台任务，不阻塞窗口；基础标准与开关关闭时零动作。
+            maybe_autofill_plugins_on_startup(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -4594,6 +5964,8 @@ mod host_wrapper_tests {
 
 #[cfg(test)]
 mod engine_lifecycle_wiring_tests {
+    use super::*;
+
     /// OD-ARCH-024 源码级接线检查。
     ///
     /// 这里直接扫描本文件源码，防止后续新增入口绕过生命周期边界：
@@ -4863,6 +6235,84 @@ mod engine_lifecycle_wiring_tests {
         );
     }
 
+    /// OD-ARCH-110：切换 Profile 必须同步 supervisor 与只读快照两份配置。
+    ///
+    /// 只比对“两边都被写成了同一份新配置”。若只更新其中一处，界面读到的 Profile
+    /// 与引擎启动用的 Profile 就会分叉——这正是本轮修复的缺陷。
+    #[test]
+    fn adopt_engine_config_updates_supervisor_and_snapshot_together() {
+        let base = std::env::temp_dir().join("omnidesk-od110-switch");
+        let old = EngineConfig {
+            python: "python3".to_string(),
+            engine_dir: base.join("engine"),
+            dsh_cli: base.join("dsh.js"),
+            dsh_home: base.join("dsh-home"),
+            agents_home: base.join("agents-home"),
+            engine_state_dir: base.join("app").join("engine-state"),
+            result_dir: base.join("app").join("engine-state").join("results"),
+            profile: "omnidesk-base".to_string(),
+            channel: "web-api".to_string(),
+            patch_files: vec![],
+        };
+        let mut next = old.clone();
+        next.profile = "discipline".to_string();
+
+        let supervisor = Arc::new(Mutex::new(EngineSupervisor::new(old.clone())));
+        let snapshot = Mutex::new(old);
+        adopt_engine_config(&supervisor, Some(&snapshot), next.clone());
+
+        assert_eq!(
+            supervisor.lock().unwrap().config().profile,
+            "discipline",
+            "supervisor 必须改用新 Profile（下一条任务按它启动）"
+        );
+        assert_eq!(
+            snapshot.lock().unwrap().profile,
+            "discipline",
+            "只读快照必须与 supervisor 一致（准入与端点事实读它）"
+        );
+        // 其它字段也要一起换成新配置，而不是只改 profile。
+        assert_eq!(
+            supervisor.lock().unwrap().config().dsh_home,
+            next.dsh_home,
+            "必须整份替换配置，不能只改 profile 字段"
+        );
+    }
+
+    /// OD-ARCH-110：切换流程必须是「先立屏障 → 再换配置 → 再停旧引擎」。
+    ///
+    /// 顺序反了会有一个窗口：配置已换、旧引擎还在跑，新任务带着新 Profile 的规则
+    /// 被送进旧引擎。这里用源码顺序钉住这个约束。
+    #[test]
+    fn profile_switch_barrier_precedes_config_swap_and_stop() {
+        let src = include_str!("lib.rs");
+        let body = src.split("\n#[cfg(test)]").next().expect("源码前缀");
+        let start = body
+            .find("fn profile_choice_set(")
+            .expect("找不到 profile_choice_set");
+        let rest = &body[start..];
+        let end = rest[1..]
+            .find("\n#[tauri::command")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        let code = &rest[..end];
+        let barrier = code.find("begin_change()").expect("必须在屏障内切换");
+        let swap = code
+            .find("adopt_engine_config(")
+            .expect("必须同步新配置到 supervisor 与快照");
+        let stop = code
+            .find("stop_engine(")
+            .expect("必须停止旧引擎，否则新 Profile 不会真正接管");
+        assert!(
+            barrier < swap && swap < stop,
+            "顺序必须是 begin_change → adopt_engine_config → stop_engine"
+        );
+        assert!(
+            code.contains("change.succeed()") && code.contains("change.fail("),
+            "停引擎成功才清屏障，失败必须保留屏障（失败关闭）"
+        );
+    }
+
     /// OD-ARCH-076 S2：DSH 原生设置窗口已移除，窗口收尾逻辑只服务主窗口。
     ///
     /// 旧测试检查「非主窗口不触发引擎收尾」。窗口入口删除后该分支已成死代码，
@@ -4986,5 +6436,237 @@ mod engine_lifecycle_wiring_tests {
              请改为 #[tauri::command(async)]（同步函数体保持不变即可）。",
             blocking
         );
+    }
+}
+
+#[cfg(test)]
+mod profile_autofill_tests {
+    //! OD-ARCH-121：切换后是否自动补装的判定。
+    //!
+    //! 四种组合逐条钉住：基础标准永远不装（干净底座的承诺），
+    //! 开关关闭时行为回到 114 的「只提示」，没有缺件时不白跑一次网络。
+
+    use super::should_auto_install_plugins;
+
+    const BASE: &str = "omnidesk-base";
+
+    #[test]
+    fn installs_only_when_missing_and_enabled_and_not_standard() {
+        assert!(should_auto_install_plugins(2, Some("discipline"), BASE, true));
+    }
+
+    #[test]
+    fn standard_profile_never_installs() {
+        assert!(!should_auto_install_plugins(2, None, BASE, true), "跟随标准模式");
+        assert!(!should_auto_install_plugins(2, Some(BASE), BASE, true), "显式选基础标准");
+    }
+
+    #[test]
+    fn disabled_switch_falls_back_to_prompt_only() {
+        assert!(!should_auto_install_plugins(2, Some("discipline"), BASE, false));
+    }
+
+    #[test]
+    fn nothing_missing_is_a_noop() {
+        assert!(!should_auto_install_plugins(0, Some("discipline"), BASE, true));
+    }
+}
+
+#[cfg(test)]
+mod profile_decl_save_tests {
+    //! OD-ARCH-123：场景声明的保存边界。
+    //!
+    //! 钉住两条事实：基础标准连目录都不建（干净底座要能靠目录复核），
+    //! 非标准 Profile 保存成功并真的落到 decl.yml。
+
+    use super::save_decl_into;
+    use std::path::PathBuf;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("od123-{tag}-{stamp}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn standard_refuses_and_writes_nothing() {
+        let root = temp_dir("standard");
+        let target = root.join("profiles").join("omnidesk-base");
+        let text = crate::profile_starter::decl_text("x").unwrap();
+        let err = save_decl_into(&target, true, &text).expect_err("基础标准必须拒绝保存声明");
+        assert!(err.contains("基础标准"), "错误文案要说清原因：{err}");
+        assert!(!target.exists(), "拒绝保存时不得创建 Profile 目录");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn custom_profile_writes_decl() {
+        let root = temp_dir("custom");
+        let target = root.join("profiles").join("my-desk");
+        let text = crate::profile_starter::decl_text("我的工作台").unwrap();
+        let receipt = save_decl_into(&target, false, &text).expect("非标准 Profile 应能保存");
+        assert_eq!(receipt["ok"], serde_json::json!(true));
+        assert!(target.join(crate::profile_decl::PROFILE_DECL_FILE).is_file());
+        assert!(receipt["note"].as_str().unwrap().contains("不需要重启"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn invalid_text_never_touches_disk() {
+        let root = temp_dir("invalid");
+        let target = root.join("profiles").join("my-desk");
+        assert!(save_decl_into(&target, false, "schema: nope\n").is_err());
+        assert!(!target.exists(), "校验失败不得创建目录");
+        std::fs::remove_dir_all(&root).ok();
+    }
+}
+
+#[cfg(test)]
+mod profile_rules_save_tests {
+    //! OD-ARCH-128：规则资产的保存边界与声明同口径。
+    //!
+    //! 基础标准连目录都不建；自建 Profile 才写盘；校验失败不落盘。
+
+    use super::save_rules_into;
+    use std::path::PathBuf;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("od128-rules-{tag}-{stamp}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn standard_refuses_and_writes_nothing() {
+        let root = temp_dir("standard");
+        let target = root.join("profiles").join("omnidesk-base");
+        let err = save_rules_into(&target, true, crate::profile_rules::DEFAULT_RULES_JSON)
+            .expect_err("基础标准必须拒绝保存规则");
+        assert!(err.contains("干净底座"), "错误文案要说清原因：{err}");
+        assert!(!target.exists(), "拒绝保存时不得创建 Profile 目录");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn custom_profile_writes_rules() {
+        let root = temp_dir("custom");
+        let target = root.join("profiles").join("my-desk");
+        let receipt = save_rules_into(&target, false, crate::profile_rules::DEFAULT_RULES_JSON)
+            .expect("自建 Profile 应能保存规则");
+        assert_eq!(receipt["ok"], serde_json::json!(true));
+        assert!(target.join(crate::profile_rules::PROFILE_RULES_FILE).is_file());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn invalid_rules_never_touch_disk() {
+        let root = temp_dir("invalid");
+        let target = root.join("profiles").join("my-desk");
+        assert!(save_rules_into(&target, false, "{ not json").is_err());
+        assert!(!target.exists(), "校验失败不得创建目录");
+        std::fs::remove_dir_all(&root).ok();
+    }
+}
+
+#[cfg(test)]
+mod profile_skill_bindings_tests {
+    //! OD-ARCH-129：场景 → Skill 绑定的保存边界。
+    //!
+    //! 三条事实：基础标准零写入；新 Profile 无规则文件时用起步骨架打底；
+    //! 保存绑定只换 skill_bindings，红线词与写作铁律逐字节保留。
+
+    use super::save_skill_bindings_into;
+    use crate::profile_rules::BindingChoice;
+    use std::path::PathBuf;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("od129-bindings-{tag}-{stamp}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn choice(scene: &str, skills: &[&str]) -> BindingChoice {
+        BindingChoice {
+            scene: scene.to_string(),
+            skills: skills.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn standard_refuses_and_writes_nothing() {
+        let root = temp_dir("standard");
+        let target = root.join("profiles").join("omnidesk-base");
+        let err = save_skill_bindings_into(&target, true, &[choice("weekly", &["memory-agent"])])
+            .expect_err("基础标准必须拒绝保存绑定");
+        assert!(err.contains("干净底座"), "错误文案要说清原因：{err}");
+        assert!(!target.exists(), "拒绝保存时不得创建 Profile 目录");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn new_profile_starts_from_starter_rules() {
+        let root = temp_dir("fresh");
+        let target = root.join("profiles").join("my-desk");
+        save_skill_bindings_into(&target, false, &[choice("weekly", &["memory-agent"])])
+            .expect("没有规则文件时应以起步骨架打底");
+        let text =
+            std::fs::read_to_string(target.join(crate::profile_rules::PROFILE_RULES_FILE)).unwrap();
+        let rules = crate::profile_rules::parse_rules(&text).unwrap();
+        assert_eq!(rules.skill_bindings["weekly"].skills, vec!["memory-agent"]);
+        assert_eq!(rules.skill_bindings["weekly"].max_injected, 1);
+        assert!(rules.global.redline_keywords.is_empty(), "起步规则包不得带行业红线");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn keeps_other_rule_content_intact() {
+        let root = temp_dir("keep");
+        let target = root.join("profiles").join("my-desk");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(
+            target.join(crate::profile_rules::PROFILE_RULES_FILE),
+            crate::profile_rules::DEFAULT_RULES_JSON,
+        )
+        .unwrap();
+        save_skill_bindings_into(&target, false, &[choice("report", &["memory-report"])])
+            .expect("已有规则文件时应能改绑定");
+        let text =
+            std::fs::read_to_string(target.join(crate::profile_rules::PROFILE_RULES_FILE)).unwrap();
+        let rules = crate::profile_rules::parse_rules(&text).unwrap();
+        assert_eq!(rules.skill_bindings.len(), 1, "整表替换，旧的场景绑定不残留");
+        assert_eq!(rules.skill_bindings["report"].skills, vec!["memory-report"]);
+        let original = crate::profile_rules::parse_rules(crate::profile_rules::DEFAULT_RULES_JSON)
+            .unwrap();
+        assert_eq!(rules.global, original.global, "红线词 / 铁律 / 隐私策略必须原样保留");
+        assert_eq!(rules.scenes, original.scenes, "场景规则必须原样保留");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// OD-ARCH-131 起，绑定只校验名字形状（名字合法但暂时没有正文来源可以保存，
+    /// 由资产页提示「找不到正文来源」）；真正必须挡住的是写不成目录的非法名字。
+    #[test]
+    fn bad_skill_name_never_touches_disk() {
+        let root = temp_dir("bad");
+        let target = root.join("profiles").join("my-desk");
+        std::fs::create_dir_all(&target).unwrap();
+        let path = target.join(crate::profile_rules::PROFILE_RULES_FILE);
+        std::fs::write(&path, crate::profile_rules::DEFAULT_RULES_JSON).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(save_skill_bindings_into(&target, false, &[choice("weekly", &["../escape"])])
+            .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before, "被拒时文件逐字节不变");
+        std::fs::remove_dir_all(&root).ok();
     }
 }

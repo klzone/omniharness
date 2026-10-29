@@ -150,7 +150,8 @@ def wait_for(predicate, timeout: float, interval: float = 0.75):
 
 def write_v1_rules(session: AppSession) -> Path:
     """只写一次性隔离根里的旧版规则包（schema v1、无 skill_bindings）。"""
-    path = session.app_data / "profiles" / "discipline.rules.json"
+    # OD-ARCH-106：规则随 Profile 挂载，落点是 profiles/<Profile 名>/rules.json。
+    path = session.app_data / "profiles" / "discipline" / "rules.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -164,6 +165,17 @@ def write_v1_rules(session: AppSession) -> Path:
             indent=2,
         )
         + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_decl(session: AppSession) -> Path:
+    """预置 discipline 的场景声明（OD-ARCH-106 起宿主不再自动创建）。"""
+    path = session.app_data / "profiles" / "discipline" / "decl.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        (REPO / "samples" / "profiles" / "discipline.yml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     return path
@@ -249,7 +261,9 @@ def main() -> int:
         reuse_running_dev_server=False,
         env_extra={
             "DBUS_SESSION_BUS_ADDRESS": bus_addr,
-            "OMNIDESK_DSH_PROFILE": "",
+            # OD-ARCH-106：本脚本要测的是工作记录场景，必须真的挂上 discipline Profile
+            # （基础标准没有场景声明，也没有场景入口）。
+            "OMNIDESK_DSH_PROFILE": "discipline",
             # 库根必须一起隔离：工作记录落在库根而不是成果目录。漏了这条，
             # 合成指令会被 worklog_append 写进用户真实的工作记录文件。
             "OMNIDESK_KNOWLEDGE_ROOT": str(root / "local-data"),
@@ -283,6 +297,7 @@ def main() -> int:
             tool_call_trigger="OD088-2",
         )
         write_settings(session)
+        write_decl(session)
         rules_path = write_v1_rules(session)
 
         session.start()

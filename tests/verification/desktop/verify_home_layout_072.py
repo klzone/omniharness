@@ -7,7 +7,7 @@
   2. 预置一条合成对话并重启：输入区落底、历史完整；
   3. 点顶栏日期：三周节律浮卡出现；指针移开 1 秒后消失；
   4. 点 Profile 徽标：列出隔离根里真实存在的 Profile；选一个 → 确认弹窗 → 确认后
-     设置文件写入 engine_profile（文件事实），界面显示「下次启动生效」回执。
+     设置文件写入 engine_profile（文件事实），界面显示「切换后立即生效」回执。
 
 用法：python3 verify_home_layout_072.py [--display :94] [--root /tmp/od072-home]
 """
@@ -28,6 +28,7 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 
 from window_harness import AppSession, XSession  # noqa: E402
+import accessibility as ax  # noqa: E402
 
 EVID = HERE / "evidence" / "od-arch-072"
 SOURCE_HOME = Path.home() / "OmniDesk" / "runtime" / "dsh-home"
@@ -36,6 +37,22 @@ SCREEN_W, SCREEN_H = 1440, 900
 DATE_PILL = (940, 44)
 PROFILE_BADGE = (310, 44)
 THREAD_ID = "t072homelayout"
+
+
+def profile_badge_point(g) -> tuple[int, int]:
+    """按无障碍元素取徽标中心；徽标文案会随 Profile 变化，固定坐标会点偏。"""
+    for label in ("标准", "专业", "读取中"):
+        pt = ax.focus_point(label)
+        if pt:
+            return pt
+    node = ax.find("topnav-profile-badge", contains=True)
+    if node is not None:
+        from gi.repository import Atspi
+
+        ext = node.accessible.get_component().get_extents(Atspi.CoordType.SCREEN)
+        if ext.width > 0 and ext.height > 0:
+            return (ext.x + ext.width // 2, ext.y + ext.height // 2)
+    return (g.x + PROFILE_BADGE[0], g.y + PROFILE_BADGE[1])
 
 
 def start_display(display: str) -> subprocess.Popen:
@@ -210,14 +227,21 @@ def main(argv: list[str]) -> int:
 
         # --- 4. Profile 徽标 ----------------------------------------------
         time.sleep(1.0)
-        xs.move(g.x + PROFILE_BADGE[0], g.y + PROFILE_BADGE[1])
-        xs.click(g.x + PROFILE_BADGE[0], g.y + PROFILE_BADGE[1], settle=2.0)
+        badge = profile_badge_point(g)
+        xs.move(*badge)
+        xs.click(*badge, settle=2.0)
         time.sleep(1.5)
         xs.shot(EVID / "15-profile-popover.png")
+        labels_open = "\n".join(ax.labels())
+        popover_open = "切换后立即生效" in labels_open or "可选 Profile" in labels_open
         facts["steps"]["profile_open"] = {
             "screenshot": str(EVID / "15-profile-popover.png"),
-            "expect": "默认「无 · 标准模式」，列表来自隔离根真实 profile 目录",
+            "badge_point": list(badge),
+            "popover_open": popover_open,
+            "expect": "默认「标准」，弹层显示「切换后立即生效」，列表来自隔离根真实 profile 目录",
         }
+        if not popover_open:
+            raise RuntimeError("Profile 弹层未展开，后续步骤会静默失真")
 
         # 选列表里第一个非标准项（弹层在徽标下方左对齐，宽 300）：
         # 每项高约 48；首项 y≈100，之后依次 +48。
@@ -227,26 +251,48 @@ def main(argv: list[str]) -> int:
             json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else None
         )
 
-        # 选最后一个非标准 Profile（列表顺序 = 名称排序，标准项插入其中）。
-        xs.click(g.x + 380, g.y + 304, settle=1.5)
+        # 选「纪检专业」：按无障碍文字定位，不依赖列表排序后的固定像素。
+        option = ax.find("纪检专业", contains=True)
+        if option is None:
+            raise RuntimeError("弹层里找不到「纪检专业」选项")
+        ax.invoke(option)
+        time.sleep(1.2)
         time.sleep(1.0)
         xs.shot(EVID / "16-profile-confirm.png")
+        labels_confirm = "\n".join(ax.labels())
+        confirm_shown = "切换到「纪检专业」？" in labels_confirm
         facts["steps"]["profile_confirm"] = {
             "screenshot": str(EVID / "16-profile-confirm.png"),
-            "expect": "确认弹窗说明「下次启动引擎生效」，有 取消 / 确认",
+            "confirm_shown": confirm_shown,
+            "expect": "确认弹窗说明「确认后立即切换、旧引擎停止」，有 取消 / 确认",
         }
-        xs.click(g.x + 505, g.y + 163, settle=1.5)
+        if not confirm_shown:
+            raise RuntimeError("确认弹窗未出现")
+        ax.invoke_named("确认", role="push button") or ax.invoke_named("确认")
         time.sleep(1.5)
         xs.shot(EVID / "17-profile-saved.png")
         after = (
             json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else None
         )
+        saved = (after or {}).get("engine_profile")
         facts["steps"]["profile_saved"] = {
             "screenshot": str(EVID / "17-profile-saved.png"),
             "settings_path": str(settings_path),
-            "engine_profile_after": (after or {}).get("engine_profile"),
+            "engine_profile_after": saved,
             "expect": "设置文件 engine_profile 写入所选 Profile；界面出现回执",
         }
+        if saved != "discipline":
+            raise RuntimeError(f"设置文件未写入 discipline，实际为 {saved!r}")
+        # 回执是一段 <p role="status">，WebKit 在这台机器上不一定把它挂进无障碍树，
+        # 因此以「徽标已换成专业」作为界面证据，回执文本只记录不强制。
+        labels_after = "\n".join(ax.labels())
+        facts["steps"]["profile_saved"]["receipt_text"] = (
+            "已切换" in labels_after or "立即生效" in labels_after
+        )
+        badge_now = "专业" if ax.focus_point("专业") else "标准"
+        facts["steps"]["profile_saved"]["badge_now"] = badge_now
+        if badge_now != "专业":
+            raise RuntimeError("切换后顶栏徽标未变为「专业」")
         session.stop_app()
         time.sleep(1.0)
     finally:

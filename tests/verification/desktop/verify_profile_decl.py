@@ -3,9 +3,13 @@
 
 只使用一次性数据根 + 回环合成模型端点 + 一次性 Xvfb 显示：
 
-  1. 首次启动：宿主在 `<数据根>/profiles/discipline.yml` 创建默认声明，Dock 显示 5 个声明入口 + 内置知识库（共 6 个）；
+  1. 预置声明后启动：`<数据根>/profiles/discipline/decl.yml` 生效，Dock 显示 5 个声明入口 + 内置知识库（共 6 个）；
   2. 改声明（去掉「文案写作」）后重启：Dock 上该入口消失，名称随之变化；
   3. 声明写坏后重启：界面显示错误提示并回退内置入口（不静默）。
+
+OD-ARCH-106：声明随 Profile 挂载，宿主**不再**自动创建默认声明。本脚本因此改为
+显式预置 `profiles/discipline/decl.yml`，并把原来的「首次自动创建」断言换成
+「预置内容未被宿主改写」。
 
 证据等级：真实桌面窗口运行（XTEST 注入 + GDK 抓图）+ 文件事实。
 不触碰 runtime/、~/.dsh、~/.agents 或用户日常数据；不读凭证。
@@ -70,8 +74,8 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
 
     SHOTS.mkdir(parents=True, exist_ok=True)
-    # 一次性数据根：上一次运行留下的 profiles/discipline.yml 会让「首次创建默认声明」
-    # 这一步变成读旧文件，断言随之失真（实测复跑时确已发生）。只清本次指定的目录。
+    # 一次性数据根：上一次运行留下的 profiles/<Profile>/decl.yml 会让预置内容
+    # 变成读旧文件，断言随之失真（实测复跑时确已发生）。只清本次指定的目录。
     root = Path(args.root)
     # 只允许清 /tmp 下的一次性目录：防止误把 --root 指到真实数据根后删用户数据。
     resolved = root.resolve()
@@ -88,30 +92,30 @@ def main(argv: list[str]) -> int:
         "notes": [
             "rounds[*].title 是 X 窗口标题（WM_NAME），由 tauri.conf 固定，不随声明变化；"
             "声明里的 display_name 只改界面左上角品牌文字，请以截图为准。",
-            "脚本自动断言：声明文件被创建 / 首轮内容与 samples 逐字一致 / 进程存活 / 写坏后坏文件未被覆盖。",
+            "脚本自动断言：预置声明未被宿主改写（OD-ARCH-106 起宿主不再创建默认声明）/ 进程存活 / 写坏后坏文件未被覆盖。",
             "Dock 入口数量与品牌名变化是人工比对三张截图判定的，不是 DOM 断言。",
         ],
     }
-    session = AppSession(root=root, display=args.display)
+    # OD-ARCH-106：声明按 Profile 目录取。harness 默认把 OMNIDESK_DSH_PROFILE 固定成
+    # `web`，这里显式切到 discipline，并用下方预置的 decl.yml 驱动 Dock。
+    session = AppSession(
+        root=root, display=args.display, env_extra={"OMNIDESK_DSH_PROFILE": "discipline"}
+    )
     try:
         session.prepare()
         xs = XSession(args.display)
+        decl_path = session.app_data / "profiles" / "discipline" / "decl.yml"
+        decl_path.parent.mkdir(parents=True, exist_ok=True)
+        decl_path.write_text(DEFAULT_DECL, encoding="utf-8")
 
-        # --- 1. 首次启动：默认声明 -------------------------------------------------
+        # --- 1. 预置声明启动 -------------------------------------------------------
         session.start()
         report["rounds"]["default"] = run_round(session, xs, SHOTS / "01-default.png")
-        decl_path = session.app_data / "profiles" / "discipline.yml"
         report["rounds"]["default"]["decl_path"] = str(decl_path)
-        deadline = time.monotonic() + 30.0
-        while not decl_path.exists() and time.monotonic() < deadline:
-            time.sleep(0.2)
-        report["rounds"]["default"]["decl_created"] = decl_path.exists()
-        if not decl_path.exists():
-            raise RuntimeError(f"宿主未创建默认 Profile 声明：{decl_path}")
-        if decl_path.exists():
-            report["rounds"]["default"]["decl_matches_sample"] = (
-                decl_path.read_text(encoding="utf-8") == DEFAULT_DECL
-            )
+        report["rounds"]["default"]["decl_preset"] = decl_path.exists()
+        report["rounds"]["default"]["decl_untouched_by_host"] = (
+            decl_path.read_text(encoding="utf-8") == DEFAULT_DECL
+        )
         session.stop_app()
         time.sleep(2.0)
 

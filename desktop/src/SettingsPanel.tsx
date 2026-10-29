@@ -10,15 +10,18 @@ import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import {
   host,
   invalidateEngineFactsCache,
+  onProfilePlugins,
   scheduler as schedulerApi,
   shell,
 } from "./api";
 import { PendingWritePanel } from "./shell/PendingWriteCard";
 import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { refreshThreadCategories } from "./threadCategories";
+import { SCENES } from "./scenes";
 import type {
   AdmissionFacts,
   CapabilityView,
+  CapabilitySkill,
   CategoryInitReceipt,
   KnowledgeVaultRootStatus,
   KnowledgeVaultScan,
@@ -32,6 +35,14 @@ import type {
   ModelSettingsView,
   ProviderSettings,
   ProfileChoiceView,
+  ProfileAssetsView,
+  ParkedSkillView,
+  ProfileTrashEntry,
+  ProfileBundleListing,
+  ProfileAssetsRepairReceipt,
+  ProfilePluginInstallReceipt,
+  ProfilePluginAddReceipt,
+  ProfileCustomEntry,
   ProfileDeclPayload,
   ProfileRulesView,
   SchedulerConfig,
@@ -48,6 +59,7 @@ const SOURCE_LABEL: Record<string, string> = {
 /** 设置分页（OD-ARCH-061 S2）。 */
 type SettingsTab =
   | "model"
+  | "assets"
   | "categories"
   | "rules"
   | "capabilities"
@@ -58,6 +70,7 @@ type SettingsTab =
 
 const SETTINGS_TABS: Array<{ key: SettingsTab; label: string }> = [
   { key: "model", label: "模型与端点" },
+  { key: "assets", label: "Profile 资产" },
   { key: "categories", label: "对话分类" },
   { key: "rules", label: "规则资产" },
   { key: "capabilities", label: "能力管理" },
@@ -144,9 +157,133 @@ function CardHead({
     <div className="card-head">
       <div className="card-head-main">
         <h2 className="pane-title">{title}</h2>
-        {status ? <p className="card-status mono">{status}</p> : null}
+        {/* 状态行是这一页唯一的进度信号，读屏与验收脚本都靠它；
+            没有 `role="status"` 时 WebKit 的无障碍树会把它当成装饰性文本丢掉。 */}
+        {status ? (
+          <p className="card-status mono" role="status" aria-live="polite">
+            {status}
+          </p>
+        ) : null}
       </div>
       {children ? <div className="actions card-head-actions">{children}</div> : null}
+    </div>
+  );
+}
+
+/** 场景键 → 用户看得懂的名字；未知键原样显示，不猜。 */
+function sceneLabel(key: string): string {
+  // OD-ARCH-108：工作记录场景按流程拆了绑定，标签要让人看出是哪一条流程。
+  if (key === "weekly-note") return SCENES.weekly.label + " · 随手记";
+  if (key === "weekly-report") return SCENES.weekly.label + " · 周报";
+  if (key === "weekly" || key === "writing" || key === "project") {
+    return SCENES[key].label;
+  }
+  return key;
+}
+
+/**
+ * 绑定页固定列出的场景（OD-ARCH-129）。
+ *
+ * 与场景注册表和 OD-ARCH-108 的流程拆分一致：工作记录一条场景级绑定，
+ * 再加「随手记 / 周报」两条流程级绑定，另外两个场景各一条。
+ * 用户手写的其它场景键不会被丢掉——保存时原样带回去。
+ */
+type BindingScene =
+  | "weekly"
+  | "weekly-note"
+  | "weekly-report"
+  | "writing"
+  | "project";
+
+const BINDING_SCENES: BindingScene[] = [
+  "weekly",
+  "weekly-note",
+  "weekly-report",
+  "writing",
+  "project",
+];
+
+/** 每个场景最多绑定的 Skill 数，与宿主 validate 的上限一致。 */
+const MAX_BINDINGS_PER_SCENE = 3;
+
+/** 一句人话说明这条绑定管什么，避免用户对着键名猜。 */
+const BINDING_SCENE_HINTS: Record<BindingScene, string> = {
+  weekly: "工作记录的通用底线；随手记 / 周报没单独配时用这一条",
+  "weekly-note": "只在你随手记时预注入",
+  "weekly-report": "只在生成周报时预注入",
+  writing: "文案写作对话的底线",
+  project: "项目跟进对话的底线",
+};
+
+/**
+ * 当前 Profile 的 Skill 作用域说明（OD-ARCH-107）。
+ *
+ * 这一页列的是磁盘上的 Skill 目录——所有 Profile 共用一份。真正决定「这次会预注入
+ * 什么」的是 Profile 规则包里的 skill_bindings。两者必须分开讲，否则切了 Profile
+ * 页面看着一模一样，用户没法判断到底加载了什么。
+ */
+function SkillScopeSummary({ caps }: { caps: CapabilityView }) {
+  if (caps.standard) {
+    return (
+      <p className="hint" data-testid="skill-scope-standard">
+        当前是<strong>基础标准</strong>：不挂业务场景，因此<strong>不预注入任何 Skill</strong>。
+        下面列出的 Skill 仍可由模型在处理任务时按需加载。
+      </p>
+    );
+  }
+  if (caps.rules_error) {
+    return (
+      <p className="hint" data-testid="skill-scope-broken">
+        规则包读取失败（{caps.rules_error}），因此现在没有任何场景 Skill 会被预注入。
+        修好规则文件后回到这一页重新读取即可。
+      </p>
+    );
+  }
+  if (!caps.rules_loaded) {
+    return (
+      <p className="hint" data-testid="skill-scope-empty">
+        当前 Profile 没有规则包，因此不预注入任何 Skill。
+        下面列出的 Skill 仍可由模型按需加载。
+      </p>
+    );
+  }
+  return (
+    <p className="hint" data-testid="skill-scope-bound">
+      当前规则包属于 <strong>{caps.rules_profile ?? "未命名"}</strong>：
+      共 <strong>{caps.preinjected.length}</strong> 个 Skill 会被预注入（按场景去重），
+      它们会在对应场景开始时随提示词一起发出；
+      其余 Skill 只在模型需要时自行加载。同一场景里的不同流程（如随手记与周报）
+      各绑自己的底线技能，不会互相带上。
+    </p>
+  );
+}
+
+/** 一条 Skill：名称、说明、绑定场景。 */
+function SkillRow({ skill }: { skill: CapabilitySkill }) {
+  return (
+    <div className="provider-item" data-testid={"skill-row-" + skill.id}>
+      <span className="name">{skill.name}</span>
+      <span className="sub">{skill.description ?? "（没有说明）"}</span>
+      <span className="sub">
+        {skill.modified_at
+          ? "最近修改 " + new Date(skill.modified_at * 1000).toLocaleDateString()
+          : "修改时间未知"}
+      </span>
+      {skill.bindings.length > 0 ? (
+        <span className="skill-tags">
+          {skill.bindings.map((b) => (
+            <span
+              className={b.effective ? "skill-tag on" : "skill-tag"}
+              key={b.scene}
+              data-testid={"skill-tag-" + skill.id + "-" + b.scene}
+            >
+              {sceneLabel(b.scene)}
+              {b.effective ? "" : "（超出预注入上限，不注入）"}
+              {b.resolved ? "" : " · 正文缺失"}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -177,7 +314,36 @@ function blankProvider(): ProviderSettings {
   };
 }
 
-export default function SettingsPanel() {
+/** Profile 资产分组（OD-ARCH-109）：配置类在前，Skill / 插件在后，和落盘位置无关。 */
+const ASSET_GROUPS: Array<{ title: string; kinds: string[] }> = [
+  { title: "配置与场景", kinds: ["config", "patch", "decl", "rules"] },
+  { title: "Skill", kinds: ["skill"] },
+  { title: "插件", kinds: ["plugin"] },
+];
+
+/** 资产状态 → 徽标文案与色义。色义沿用软件既有语义，只在小面积色块上体现。 */
+const ASSET_STATUS: Record<
+  string,
+  { label: string; tone: "ok" | "warn" | "bad" | "neutral" | "info" }
+> = {
+  ready: { label: "就绪", tone: "ok" },
+  unchanged: { label: "已就位", tone: "ok" },
+  created: { label: "已补写", tone: "info" },
+  updated: { label: "已更新", tone: "info" },
+  stale: { label: "待更新", tone: "warn" },
+  drift: { label: "已修改未覆盖", tone: "warn" },
+  missing: { label: "缺失", tone: "bad" },
+  missing_source: { label: "源缺失", tone: "bad" },
+  version_mismatch: { label: "版本不符", tone: "warn" },
+};
+
+/** 长路径只留末尾两段，完整路径放在悬停说明里。 */
+function shortPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length <= 2 ? path : "…/" + parts.slice(-2).join("/");
+}
+
+export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: number }) {
   // —— 分页（OD-ARCH-061 S2）：唯一设置入口，一页一件事 ——
   const [tab, setTab] = useState<SettingsTab>("model");
 
@@ -252,6 +418,13 @@ export default function SettingsPanel() {
   const [declBusy, setDeclBusy] = useState(false);
   const [declNote, setDeclNote] = useState<string | null>(null);
   const [declError, setDeclError] = useState<string | null>(null);
+  /**
+   * 当前是否基础标准（OD-ARCH-123）。
+   *
+   * 基础标准是干净底座：声明可以看、可以取模板，但保存会被宿主拒绝。
+   * 这里提前把按钮禁用并把原因写在旁边，避免用户点下去才吃一个错误。
+   */
+  const [declStandard, setDeclStandard] = useState<boolean | null>(null);
 
   // —— Profile 规则资产（OD-ARCH-068 S4）——
   // 平台代码不内置行业规则：这里只是规则文件的编辑面。保存后下一轮提交即生效。
@@ -260,6 +433,19 @@ export default function SettingsPanel() {
   const [rulesBusy, setRulesBusy] = useState(false);
   const [rulesNote, setRulesNote] = useState<string | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  /**
+   * 场景 → Skill 绑定的界面草稿（OD-ARCH-129）。
+   *
+   * 点勾选片只改这里，点「保存绑定」才提交：一次提交走一遍校验与备份，
+   * 不会因为连点几下面在磁盘上留下几份备份。
+   */
+  const [bindingDraft, setBindingDraft] = useState<Record<string, string[]>>({});
+  const [bindingBusy, setBindingBusy] = useState(false);
+  const [bindingNote, setBindingNote] = useState<string | null>(null);
+  const [bindingError, setBindingError] = useState<string | null>(null);
+  // Profile 自带 Skill 源（OD-ARCH-131）：填名字 → 生成模板 → 勾选绑定时就能选到它。
+  const [skillSourceName, setSkillSourceName] = useState("");
+  const [skillSourceBusy, setSkillSourceBusy] = useState(false);
 
   // —— 能力管理（OD-ARCH-072）：Skill 只读展示 + 插件（bundle）启停 ——
   // 只在打开这一页时读一次；启停写的是隔离实例的 profile，重启后生效。
@@ -267,6 +453,56 @@ export default function SettingsPanel() {
   const [capsBusy, setCapsBusy] = useState(false);
   const [capsNote, setCapsNote] = useState<string | null>(null);
   const [capsError, setCapsError] = useState<string | null>(null);
+
+  // —— Profile 资产（OD-ARCH-109）：切换即装配，这里只看结果、按需装插件 ——
+  const [assets, setAssets] = useState<ProfileAssetsView | null>(null);
+  const [assetsBusy, setAssetsBusy] = useState(false);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
+  const [assetsNote, setAssetsNote] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installReceipts, setInstallReceipts] = useState<
+    Record<string, ProfilePluginInstallReceipt>
+  >({});
+  // 声明插件（OD-ARCH-128）：自建 Profile 从零配齐的最后一项，装成功才登记。
+  const [pluginDraft, setPluginDraft] = useState("");
+  const [pluginAdding, setPluginAdding] = useState(false);
+  const [pluginAddReceipt, setPluginAddReceipt] =
+    useState<ProfilePluginAddReceipt | null>(null);
+  // 被拒的理由要贴在这一行里：放到页面顶部的 alert 会被滚动位置藏掉。
+  const [pluginAddError, setPluginAddError] = useState<string | null>(null);
+  // 就地修复（OD-ARCH-113）：只在用户点按钮时写盘。
+  const [repairing, setRepairing] = useState(false);
+  const [repairReceipt, setRepairReceipt] =
+    useState<ProfileAssetsRepairReceipt | null>(null);
+  // 自建 Profile 的登记（用于移除入口）；来自同一个 profile_choice_view。
+  const [customProfiles, setCustomProfiles] = useState<ProfileCustomEntry[]>([]);
+  const [removingProfile, setRemovingProfile] = useState<string | null>(null);
+  const [removeReceipt, setRemoveReceipt] = useState<string | null>(null);
+  // 行内改名（OD-ARCH-126）：只改显示名，目录名与绑定不动。
+  const [renamingProfile, setRenamingProfile] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameReceipt, setRenameReceipt] = useState<string | null>(null);
+  // 回收站（OD-ARCH-125）：移除是移入 .trash，这里提供软件内的恢复入口。
+  const [trash, setTrash] = useState<ProfileTrashEntry[]>([]);
+  const [restoringTrash, setRestoringTrash] = useState<string | null>(null);
+  const [restoreReceipt, setRestoreReceipt] = useState<string | null>(null);
+  // 迁移（OD-ARCH-127）：导出成单文件包、从包导入。同名冲突时就地改名再导。
+  const [exportingProfile, setExportingProfile] = useState<string | null>(null);
+  const [bundles, setBundles] = useState<ProfileBundleListing[]>([]);
+  const [migrateReceipt, setMigrateReceipt] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  // 冲突时暂存待导入的包路径，用户改名后复用。
+  const [importConflict, setImportConflict] = useState<{
+    path: string;
+    note: string;
+  } | null>(null);
+  const [importNameDraft, setImportNameDraft] = useState("");
+  // 停放区（OD-ARCH-117）：切走时不属于目标 Profile 的 Skill 移到这里，切回自动归位。
+  const [parked, setParked] = useState<ParkedSkillView[]>([]);
+  // 切换时自动补齐缺失插件（OD-ARCH-121）。默认开启；只有这里和设置文件两处状态。
+  const [autoInstall, setAutoInstall] = useState<boolean | null>(null);
+  const [autoInstallBusy, setAutoInstallBusy] = useState(false);
 
   // —— 对话分类管理（OD-ARCH-062 S1）——
   // 每行一份草稿：只有点“保存这一行”才写盘，避免输入过程中反复落盘。
@@ -332,15 +568,55 @@ export default function SettingsPanel() {
 
   const refreshDecl = useCallback(async () => {
     try {
-      const r = await shell.profileDecl();
+      // 同时读一次 Profile 选择（只读、很轻）：基础标准下保存会被宿主拒绝，
+      // 按钮要提前禁用并给出原因（OD-ARCH-123）。
+      const [r, choice] = await Promise.all([shell.profileDecl(), shell.profileChoiceView()]);
       setDecl(r);
-      setDeclText(r.text);
+      // null = 当前 Profile 没有场景声明（基础标准）。这是正常状态，不是读取失败。
+      setDeclText(r ? r.text : "");
+      setDeclStandard(choice.standard === choice.effective);
       setDeclError(null);
     } catch (e) {
       setDecl(null);
+      setDeclStandard(null);
       setDeclError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  /**
+   * 切换 Profile（OD-ARCH-110）后，各分页缓存的是旧 Profile 的资产与能力清单。
+   *
+   * 这里只清缓存、不写盘：清掉后用户再打开对应分页会重新读一遍真实的磁盘状态
+   * （分类 / 能力 / 资产 / 规则都靠自身分页的「打开才读」effect 兜底）。
+   *
+   * 场景声明是例外，必须当场重读（OD-ARCH-123 审查追加）：它没有分页级兜底，
+   * 而是与页面同生在「对话分类」页渲染。用户停在这一页切换 Profile 时，
+   * 只清缓存会让这一页一直显示「当前 Profile 没有场景声明」，
+   * 而磁盘上刚被装配写好了 decl.yml——界面于是在说假话。
+   */
+  useEffect(() => {
+    if (profileEpoch === 0) return;
+    // 分类表随 Profile 走（OD-ARCH-116）：不清掉的话，切回基础标准后这里
+    // 仍显示上一个 Profile 的业务分类，点进分类页也不会重读。
+    setCategories(null);
+    setCatDrafts({});
+    setCatError(null);
+    setCaps(null);
+    setAssets(null);
+    setDecl(null);
+    setDeclStandard(null);
+    setDeclText("");
+    setDeclError(null);
+    setDeclNote(null);
+    setRules(null);
+    setChannelView(null);
+    setInstallReceipts({});
+    setRepairReceipt(null);
+    setParked([]);
+    setAssetsError(null);
+    setCapsError(null);
+    void refreshDecl();
+  }, [profileEpoch, refreshDecl]);
 
   /**
    * 读取规则资产（只读）。
@@ -353,6 +629,16 @@ export default function SettingsPanel() {
       setRules(r);
       setRulesText(r.text ?? "");
       setRulesError(r.error);
+      setBindingDraft(
+        Object.fromEntries(
+          Object.entries(r.rules?.skill_bindings ?? {}).map(([key, b]) => [
+            key,
+            [...(b.skills ?? [])],
+          ]),
+        ),
+      );
+      setBindingNote(null);
+      setBindingError(null);
       if (!r.text && r.loaded === false && !r.error) {
         setRulesNote("当前没有规则文件（纯净底座：零关键词、零铁律）。可点「恢复默认规则包」安装一套。");
       }
@@ -372,6 +658,347 @@ export default function SettingsPanel() {
       setCapsError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  /** 读取 Profile 资产清单（只读巡检，不写盘）。 */
+  const refreshAssets = useCallback(async () => {
+    setAssetsBusy(true);
+    try {
+      const [view, choice, parkedList, trashList, bundleList] = await Promise.all([
+        shell.profileAssetsView(),
+        shell.profileChoiceView(),
+        shell.profileAssetsParked(),
+        shell.profileTrashList(),
+        shell.profileExportList(),
+      ]);
+      setAssets(view);
+      setCustomProfiles(choice.custom ?? []);
+      setParked(parkedList);
+      setTrash(trashList);
+      setBundles(bundleList);
+      setAssetsError(null);
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAssetsBusy(false);
+    }
+  }, []);
+
+  /** 移除一个自建 Profile：后端会移入 .trash，当前在用的会被拒绝。 */
+  const removeProfile = useCallback(
+    async (name: string) => {
+      setRemovingProfile(name);
+      setRemoveReceipt(null);
+      setRestoreReceipt(null);
+      try {
+        const r = await shell.profileRemove(name);
+        setRemoveReceipt(r.note);
+        await refreshAssets();
+      } catch (e) {
+        setAssetsError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRemovingProfile(null);
+      }
+    },
+    [refreshAssets],
+  );
+
+  /** 开始行内改显示名：输入框里的初值是当前显示名。 */
+  const startRename = useCallback((entry: ProfileCustomEntry) => {
+    setRenamingProfile(entry.name);
+    setRenameDraft(entry.label);
+    setRenameReceipt(null);
+    setRemoveReceipt(null);
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingProfile(null);
+    setRenameDraft("");
+  }, []);
+
+  /** 保存显示名：后端只改登记表 label 与声明 display_name，目录名不动。 */
+  const saveRename = useCallback(
+    async (name: string) => {
+      if (renameBusy) return;
+      setRenameBusy(true);
+      setRenameReceipt(null);
+      try {
+        const r = await shell.profileRename(name, renameDraft);
+        setRenameReceipt(r.note);
+        setRenamingProfile(null);
+        setRenameDraft("");
+        await refreshAssets();
+      } catch (e) {
+        setAssetsError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRenameBusy(false);
+      }
+    },
+    [refreshAssets, renameBusy, renameDraft],
+  );
+
+  /** 从回收站恢复一个 Profile：后端做两次改名加登记写回，同名已存在会拒绝。 */
+  const restoreFromTrash = useCallback(
+    async (id: string) => {
+      setRestoringTrash(id);
+      setRestoreReceipt(null);
+      setRemoveReceipt(null);
+      try {
+        const r = await shell.profileTrashRestore(id);
+        setRestoreReceipt(r.note);
+        await refreshAssets();
+      } catch (e) {
+        setAssetsError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRestoringTrash(null);
+      }
+    },
+    [refreshAssets],
+  );
+
+  /** 导出成单文件迁移包：只含配置与声明，不含插件本体。 */
+  const exportProfile = useCallback(async (entry: ProfileCustomEntry) => {
+    setExportingProfile(entry.name);
+    setMigrateReceipt(null);
+    try {
+      const r = await shell.profileExport(entry.name, null);
+      setMigrateReceipt(
+        "已导出「" +
+          r.label +
+          "」共 " +
+          r.files.length +
+          " 个配置文件：" +
+          r.path +
+          "。可在下面这个区块里换台机器导入。",
+      );
+      await refreshAssets();
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportingProfile(null);
+    }
+  }, [refreshAssets]);
+
+  /** 选一个迁移包导入；同名冲突时退回改名字段，让用户换一个标识。 */
+  const importProfile = useCallback(
+    async (path: string, renameTo: string | null) => {
+      setImportBusy(true);
+      setMigrateReceipt(null);
+      try {
+        const r = await shell.profileImport(path, renameTo, null);
+        setImportConflict(null);
+        setImportNameDraft("");
+        setMigrateReceipt(
+          "已导入「" +
+            r.profile.label +
+            "」。" +
+            (r.plugins.length
+              ? "这套工作台声明了 " + r.plugins.length + " 个插件，切过去时缺的会自动补装。"
+              : "这套工作台没有声明插件。"),
+        );
+        await refreshAssets();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // 同名 / 目录已存在：给出就地改名入口，而不是让用户去改包。
+        if (/已经在自定义 Profile 清单里|已经有同名目录|是出厂 Profile 名/.test(msg)) {
+          const taken = /「([^」]+)」/.exec(msg)?.[1] ?? "";
+          setImportConflict({ path, note: msg });
+          setImportNameDraft(taken ? taken + "-2" : "");
+        } else {
+          setAssetsError(msg);
+        }
+      } finally {
+        setImportBusy(false);
+      }
+    },
+    [refreshAssets],
+  );
+
+  const pickImportFile = useCallback(async () => {
+    setMigrateReceipt(null);
+    try {
+      const picked = await openDirectoryDialog({
+        directory: false,
+        multiple: false,
+        filters: [{ name: "OmniDesk Profile 包", extensions: ["json"] }],
+        title: "选择要导入的 Profile 包",
+      });
+      if (typeof picked !== "string" || picked.length === 0) {
+        return;
+      }
+      await importProfile(picked, null);
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    }
+  }, [importProfile]);
+
+  /** 安装一个缺失插件：走 DSH 官方插件通道，结果如实展示。 */
+  const installPlugin = useCallback(
+    async (profile: string, pkg: string) => {
+      setInstalling(pkg);
+      setAssetsNote(null);
+      try {
+        const receipt = await shell.profilePluginInstall(profile, pkg);
+        setInstallReceipts((prev) => ({ ...prev, [pkg]: receipt }));
+        await refreshAssets();
+      } catch (e) {
+        setAssetsError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setInstalling(null);
+      }
+    },
+    [refreshAssets],
+  );
+
+  /** 就地修复资产：补齐缺失 / 恢复被改过的文件（会写盘，先备份）。 */
+  const repairAssets = useCallback(async () => {
+    if (!assets) return;
+    setRepairing(true);
+    setAssetsNote(null);
+    setAssetsError(null);
+    try {
+      const receipt = await shell.profileAssetsRepair(assets.profile);
+      setRepairReceipt(receipt);
+      setAssets(receipt.report);
+      setAssetsNote(receipt.note);
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRepairing(false);
+    }
+  }, [assets]);
+
+  /**
+   * 缺的插件挨个装（会联网）：一次点击跑完，逐个回执，失败不中断其余。
+   *
+   * 开启「切换时自动补齐」后，这是装失败后的手动重试入口，不是唯一路径。
+   */
+  const installMissingPlugins = useCallback(async () => {
+    if (!assets) return;
+    setInstalling("batch");
+    setAssetsError(null);
+    try {
+      // 一次调用补齐（OD-ARCH-114）：后端只装缺的，单个失败不中断其余。
+      const r = await shell.profilePluginsEnsure(assets.profile);
+      const next: Record<string, ProfilePluginInstallReceipt> = {};
+      for (const receipt of r.results) next[receipt.package] = receipt;
+      setInstallReceipts((prev) => ({ ...prev, ...next }));
+      if (r.attempted.length === 0) {
+        setAssetsNote("没有缺失的插件，无需安装。");
+      } else if (r.ok) {
+        setAssetsNote(`已装齐 ${r.attempted.length} 个插件，回执见每一项。`);
+      } else {
+        setAssetsNote(
+          `已尝试 ${r.attempted.length} 个，仍有 ${r.still_missing.length} 个没就绪，回执见每一项。`,
+        );
+      }
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    }
+    setInstalling(null);
+    await refreshAssets();
+  }, [assets, refreshAssets]);
+
+  /** 本地没装到的插件数：只在有资产清单且非基础标准时才有意义。 */
+  const missingPluginCount =
+    assets && !assets.standard
+      ? assets.items.filter((i) => i.kind === "plugin" && i.status !== "ready").length
+      : 0;
+
+  /** 当前资产页看的是不是「自建 Profile」：只有这类才允许声明插件。 */
+  const isCustomAssetProfile = Boolean(
+    assets &&
+      !assets.standard &&
+      customProfiles.some((p) => p.name === assets.profile),
+  );
+
+  /**
+   * 给自建 Profile 声明一个插件（OD-ARCH-128）。
+   *
+   * 宿主先探测：本地已就绪就只补登记；缺件才联网装，装成功才写登记表，
+   * 失败一律不写。这里只负责把回执如实摆出来，并刷新资产清单。
+   */
+  const addPlugin = useCallback(async () => {
+    if (!assets) return;
+    const pkg = pluginDraft.trim();
+    if (!pkg) return;
+    setPluginAdding(true);
+    setPluginAddReceipt(null);
+    setPluginAddError(null);
+    try {
+      const receipt = await shell.profilePluginsAdd(assets.profile, pkg);
+      setPluginAddReceipt(receipt);
+      if (receipt.ok) setPluginDraft("");
+    } catch (e) {
+      setPluginAddError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPluginAdding(false);
+    }
+    await refreshAssets();
+  }, [assets, pluginDraft, refreshAssets]);
+
+  /** 读自动补齐开关：只读，不改设置文件。 */
+  const refreshAutoInstall = useCallback(async () => {
+    try {
+      const prefs = await shell.profileAssemblyPrefs();
+      setAutoInstall(prefs.auto_install_plugins);
+    } catch {
+      // 读不到就按宿主默认（开启）显示，不拦住页面。
+      setAutoInstall(true);
+    }
+  }, []);
+
+  /** 切换开关：写入后以宿主回执为准，不先乐观改界面。 */
+  const changeAutoInstall = useCallback(async (enabled: boolean) => {
+    setAutoInstallBusy(true);
+    try {
+      const prefs = await shell.profileAssemblyPrefsSet(enabled);
+      setAutoInstall(prefs.auto_install_plugins);
+      setAssetsNote(
+        prefs.auto_install_plugins
+          ? "已开启：切换 Profile 缺插件时会在后台自动联网补齐。"
+          : "已关闭：切换 Profile 只提示缺哪些插件，由你点按钮安装。",
+      );
+    } catch (e) {
+      setAssetsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutoInstallBusy(false);
+    }
+  }, []);
+
+  // 打开资产页时读一次偏好；顺手订阅后台补装结果，装完刷新清单。
+  useEffect(() => {
+    if (tab !== "assets") return;
+    if (autoInstall === null) void refreshAutoInstall();
+    let alive = true;
+    let unlisten: (() => void) | null = null;
+    onProfilePlugins((ev) => {
+      if (!alive || !ev.automatic) return;
+      if (ev.error) setAssetsNote("后台自动补齐未执行：" + ev.error);
+      else if (ev.ok && ev.still_missing.length === 0) {
+        setAssetsNote(
+          ev.attempted.length > 0
+            ? `后台已补齐 ${ev.attempted.length} 个插件。`
+            : "插件已就绪。",
+        );
+      } else {
+        setAssetsNote(
+          `后台已尝试 ${ev.attempted.length} 个，仍有 ${ev.still_missing.length} 个未就绪。`,
+        );
+      }
+      void refreshAssets();
+    })
+      .then((fn) => {
+        if (alive) unlisten = fn;
+        else fn();
+      })
+      .catch(() => {
+        // 订阅失败时手动安装入口仍可用。
+      });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [tab, autoInstall, refreshAutoInstall, refreshAssets]);
 
   const togglePlugin = useCallback(
     async (name: string, enabled: boolean) => {
@@ -439,6 +1066,109 @@ export default function SettingsPanel() {
       setRulesBusy(false);
     }
   }, [refreshRules]);
+
+  /** 勾选 / 取消一个 Skill（OD-ARCH-129）；每场景最多 3 个，与宿主校验同口径。 */
+  const toggleBinding = useCallback((scene: string, skill: string) => {
+    setBindingNote(null);
+    setBindingError(null);
+    setBindingDraft((prev) => {
+      const current = prev[scene] ?? [];
+      const has = current.includes(skill);
+      if (!has && current.length >= MAX_BINDINGS_PER_SCENE) {
+        setBindingError(
+          `「${sceneLabel(scene)}」最多绑定 ${MAX_BINDINGS_PER_SCENE} 个 Skill；先取消一个再选。`,
+        );
+        return prev;
+      }
+      const next = has ? current.filter((s) => s !== skill) : [...current, skill];
+      return { ...prev, [scene]: next };
+    });
+  }, []);
+
+  /**
+   * 提交整张绑定表（OD-ARCH-129）。
+   *
+   * 只提交界面上真配过的场景：没出现在草稿里的场景保持宿主原样，
+   * 避免「打开设置页就顺手清空了别人写的绑定」。
+   */
+  const saveBindings = useCallback(async () => {
+    setBindingBusy(true);
+    setBindingNote(null);
+    setBindingError(null);
+    try {
+      // 只提交「文件里已有的」与「这次点过的」：宿主整表替换，若把五个固定场景
+      // 无条件写进去，新 Profile 会凭空多出五行空绑定；反过来漏掉自定义场景键，
+      // 又会把用户手写的绑定一起冲掉。
+      const payload: { scene: string; skills: string[] }[] = BINDING_SCENES.filter(
+        (scene) => scene in bindingDraft,
+      ).map((scene) => ({
+        scene,
+        skills: (bindingDraft[scene] ?? []).filter((s) => Boolean(s)),
+      }));
+      const extras = Object.keys(bindingDraft).filter(
+        (k) => !BINDING_SCENES.includes(k as BindingScene),
+      );
+      for (const scene of extras) {
+        payload.push({ scene, skills: (bindingDraft[scene] ?? []).filter((s) => Boolean(s)) });
+      }
+      const r = await shell.profileSkillBindingsSave(payload);
+      // OD-ARCH-130：保存成功后运行时 skills/ 已按新绑定收敛，回执直接说清补了哪几个，
+      // 不让用户以为「还得切一次 Profile 才生效」。
+      const synced = r.skills;
+      const detail = synced?.note ?? "";
+      const failed = synced?.failed?.length
+        ? ` 有 ${synced.failed.length} 项没能写入：${synced.failed.join("；")}`
+        : "";
+      setBindingNote(
+        `绑定已保存，下一轮提交生效。` +
+          (detail ? ` ${detail}` : "") +
+          failed +
+          (r.backup ? ` 旧文件已备份为 ${r.backup.split("/").pop()}。` : ""),
+      );
+      await refreshRules();
+    } catch (e) {
+      setBindingError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBindingBusy(false);
+    }
+  }, [bindingDraft, refreshRules]);
+
+  /** 打开该 Profile 自带的 Skill 目录（OD-ARCH-131；首次点才建）。 */
+  const openSkillSource = useCallback(async () => {
+    setSkillSourceBusy(true);
+    setBindingNote(null);
+    setBindingError(null);
+    try {
+      const r = await shell.profileSkillSourceOpen();
+      setBindingNote(r.note);
+    } catch (e) {
+      setBindingError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSkillSourceBusy(false);
+    }
+  }, []);
+
+  /** 按名字生成一份自带 Skill 的模板（已存在不覆盖）。 */
+  const scaffoldSkill = useCallback(async () => {
+    const name = skillSourceName.trim().toLowerCase();
+    if (!name) {
+      setBindingError("先填一个 Skill 名，例如 office-note。");
+      return;
+    }
+    setSkillSourceBusy(true);
+    setBindingNote(null);
+    setBindingError(null);
+    try {
+      const r = await shell.profileSkillScaffold(name);
+      setBindingNote(r.note);
+      setSkillSourceName("");
+      await refreshRules();
+    } catch (e) {
+      setBindingError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSkillSourceBusy(false);
+    }
+  }, [refreshRules, skillSourceName]);
 
   const refreshCategories = useCallback(async () => {
     setCatBusy(true);
@@ -710,6 +1440,11 @@ export default function SettingsPanel() {
     if (tab === "capabilities" && caps === null) void refreshCaps();
   }, [tab, caps, refreshCaps]);
 
+  // Profile 资产同理：只读巡检，打开这一页才读。
+  useEffect(() => {
+    if (tab === "assets" && assets === null) void refreshAssets();
+  }, [tab, assets, refreshAssets]);
+
   const saveModel = useCallback(async () => {
     setModelBusy(true);
     setModelNote(null);
@@ -893,6 +1628,22 @@ export default function SettingsPanel() {
     }
   }, []);
 
+  /** 把起步模板灌进编辑框（OD-ARCH-122）：只改内存，仍需用户点「校验并保存」。 */
+  const fillStarterDecl = useCallback(async () => {
+    setDeclBusy(true);
+    setDeclNote(null);
+    setDeclError(null);
+    try {
+      const r = await shell.profileDeclStarter(decl?.decl.display_name ?? undefined);
+      setDeclText(r.text);
+      setDeclNote(r.note);
+    } catch (e) {
+      setDeclError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeclBusy(false);
+    }
+  }, [decl]);
+
   const saveDecl = useCallback(async () => {
     setDeclBusy(true);
     setDeclNote(null);
@@ -1036,6 +1787,11 @@ export default function SettingsPanel() {
   /** 当前提供商对应的凭据状态（只含 configured/source/writable）。 */
   const keyStatus = current ? view?.key_status?.[current.api_key_ref] ?? null : null;
   const savedOverlay = view?.overlay_present === true;
+  const readyCount = assets
+    ? assets.items.filter(
+        (i) => i.status === "ready" || i.status === "unchanged",
+      ).length
+    : 0;
 
   return (
     <div className="settings-v2 settings-surface">
@@ -1502,7 +2258,583 @@ export default function SettingsPanel() {
         ) : null}
       </section>
 
-      {/* ============ 2. 对话分类 ============ */}
+      {/* ============ 2. Profile 资产（OD-ARCH-109） ============ */}
+      <section className="pane" hidden={tab !== "assets"}>
+        <CardHead
+          title="Profile 资产"
+          status={
+            assets
+              ? assets.standard
+                ? "基础标准 · 不安装任何资产"
+                : `${assets.label} · 就绪 ${readyCount}/${assets.items.length}`
+              : assetsError
+                ? "读取失败"
+                : "读取中…"
+          }
+        >
+          <button className="ghost" onClick={() => void refreshAssets()} disabled={assetsBusy}>
+            重新读取
+          </button>
+          {assets && !assets.standard ? (
+            <button
+              className="ghost"
+              disabled={assetsBusy || repairing}
+              onClick={() => void repairAssets()}
+              data-hover-hint="按出厂内容补齐缺失项；被改过的文件会先备份成 .bak-<时间戳> 再写回。插件不在这里装。"
+              data-testid="profile-asset-repair"
+            >
+              {repairing ? "修复中…" : "修复缺失 / 恢复出厂内容"}
+            </button>
+          ) : null}
+        </CardHead>
+        <p className="hint">
+          OmniDesk 本身是干净底座，专属能力由 Profile 带来。切换 Profile 时会自动补齐它需要的
+          配置、场景声明、规则与 Skill；插件在开启自动补齐时由后台联网安装（切换不等安装），
+          关掉后就只提示缺哪些、由你点「安装」。
+          打开页面只判定、不改文件；缺项或想还原改动时，点「修复缺失 / 恢复出厂内容」。
+        </p>
+        {assetsError ? <div className="alert">Profile 资产：{assetsError}</div> : null}
+        {assetsNote ? <p className="hint">{assetsNote}</p> : null}
+        {repairReceipt ? (
+          <div
+            className={"asset-receipt " + (repairReceipt.ok ? "ok" : "bad")}
+            data-testid="profile-asset-repair-receipt"
+          >
+            <p>
+              {repairReceipt.note} 本次补写 / 更新 {repairReceipt.changed} 项
+              {repairReceipt.remaining > 0
+                ? `，仍有 ${repairReceipt.remaining} 项未就位`
+                : "，清单已无缺项"}
+              。
+            </p>
+          </div>
+        ) : null}
+        {assets?.repo_missing ? <div className="alert">{assets.repo_missing}</div> : null}
+        {assets?.summary_note ? <p className="hint">{assets.summary_note}</p> : null}
+        {assets && !assets.standard ? (
+          <div
+            className="status-card"
+            data-testid="profile-auto-install-pref"
+          >
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={autoInstall ?? true}
+                disabled={autoInstallBusy || autoInstall === null}
+                onChange={(e) => void changeAutoInstall(e.target.checked)}
+              />
+              <span>
+                <strong>切换或启动 Profile 时自动补齐缺失插件</strong>
+                <br />
+                {autoInstallBusy
+                  ? "正在保存…"
+                  : autoInstall === false
+                    ? "关：只提示缺哪些插件，由你点按钮安装。"
+                    : "开：切换后或冷启动时先在后台联网装齐，切换与启动本身都不等安装。"}
+                <span className="sub">
+                  {" "}
+                  基础标准永远不安装任何插件。
+                </span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+        {assets && !assets.standard && missingPluginCount > 0 ? (
+          <div className="status-card" data-testid="profile-plugin-missing">
+            <div className="status-row">
+              <span className="k">缺失插件</span>
+              <span className="v">
+                有 {missingPluginCount} 个插件本地没装到。点右边会联网、通过 DSH 官方插件通道
+                逐个装到「{assets.label}」。
+              </span>
+            </div>
+            <button
+              className="ghost"
+              disabled={installing !== null}
+              onClick={() => void installMissingPlugins()}
+              data-testid="profile-plugin-install-missing"
+            >
+              {installing ? "安装中…" : `一键安装缺失插件（${missingPluginCount}）`}
+            </button>
+          </div>
+        ) : null}
+
+        {assets?.standard ? (
+          <div className="status-card" data-testid="profile-assets-standard">
+            <div className="status-row">
+              <span className="k">当前 Profile</span>
+              <span className="v mono">{assets.profile}（基础标准）</span>
+            </div>
+            <div className="status-row">
+              <span className="k">资产</span>
+              <span className="v">
+                不写入任何文件，也不创建 Profile 目录；Skill 仍可被模型按需加载。
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {assets && !assets.standard && assets.items.length === 0 ? (
+          <p className="hint">
+            这个 Profile 没有出厂资产清单，也没有声明 Skill 绑定或额外插件：保持现状，不写入任何文件。
+          </p>
+        ) : null}
+
+        {assets && !assets.standard ? (
+          <div className="asset-groups" data-testid="profile-asset-groups">
+            {ASSET_GROUPS.map((group) => {
+              const rows = assets.items.filter((i) => group.kinds.includes(i.kind));
+              if (rows.length === 0) return null;
+              return (
+                <div className="provider-list" key={group.title}>
+                  <div className="provider-list-head">
+                    <span>{group.title}</span>
+                    <span className="sub">{rows.length}</span>
+                  </div>
+                  {rows.map((item) => {
+                    const badge = ASSET_STATUS[item.status] ?? {
+                      label: item.status,
+                      tone: "neutral" as const,
+                    };
+                    const receipt = installReceipts[item.key.replace(/^plugin:/, "")];
+                    return (
+                      <div className="asset-row" key={item.key} data-testid={"profile-asset-" + item.key}>
+                        <div className="asset-row-main">
+                          <div className="asset-row-title">
+                            <span className="name" data-hover-hint={item.path}>
+                              {item.label}
+                            </span>
+                            <span
+                              className={"asset-badge " + badge.tone}
+                              data-hover-hint={item.detail}
+                              data-testid={"profile-asset-status-" + item.key}
+                            >
+                              {badge.label}
+                            </span>
+                          </div>
+                          <p className="sub" data-hover-hint={item.detail}>
+                            {item.detail}
+                            {item.path ? " · " + shortPath(item.path) : ""}
+                          </p>
+                          {receipt ? (
+                            <div
+                              className={"asset-receipt " + (receipt.ok ? "ok" : "bad")}
+                              data-testid={"profile-asset-receipt-" + item.key}
+                            >
+                              <p>{receipt.note}</p>
+                              <p className="mono">{receipt.command}</p>
+                              {receipt.exit_code !== null ? (
+                                <p className="mono">退出码 {receipt.exit_code}</p>
+                              ) : null}
+                              {receipt.stdout.trim() ? (
+                                <pre className="mono">{receipt.stdout.trim()}</pre>
+                              ) : null}
+                              {receipt.stderr.trim() ? (
+                                <pre className="mono">{receipt.stderr.trim()}</pre>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                        {item.kind === "plugin" ? (
+                          <button
+                            className="ghost"
+                            disabled={
+                              installing !== null ||
+                              item.status === "ready" ||
+                              item.status === "unchanged"
+                            }
+                            onClick={() =>
+                              void installPlugin(
+                                assets.profile,
+                                item.key.replace(/^plugin:/, ""),
+                              )
+                            }
+                            data-hover-hint={
+                              item.status === "ready"
+                                ? "本地已就绪，无需安装"
+                                : "会联网，通过 DSH 官方插件通道装到当前 Profile"
+                            }
+                            data-testid={"profile-asset-install-" + item.key}
+                          >
+                            {installing === item.key.replace(/^plugin:/, "")
+                              ? "安装中…"
+                              : item.status === "ready"
+                                ? "已就绪"
+                                : "安装"}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {/* 自建 Profile 的插件入口（OD-ARCH-128）：登记表与装配同源，装成功才登记。 */}
+        {assets && !assets.standard && isCustomAssetProfile ? (
+          <div className="provider-list" data-testid="profile-plugin-declare">
+            <div className="provider-list-head">
+              <span>声明插件</span>
+              <span className="sub">装成功才写进这个 Profile 的清单</span>
+            </div>
+            <div className="asset-row">
+              <div className="asset-row-main">
+                <input
+                  className="text-input asset-row-input mono"
+                  value={pluginDraft}
+                  maxLength={214}
+                  spellCheck={false}
+                  placeholder="@scope/plugin 或 plugin-name，可带 @1.2.3"
+                  aria-label="要声明并安装的插件包名"
+                  onChange={(e) => setPluginDraft(e.target.value)}
+                  // 聚焦即全选：上一次被拒的写法不会被接着往后拼。
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void addPlugin();
+                  }}
+                  data-testid="profile-plugin-input"
+                />
+                <p className="sub">
+                  本地已就绪就只登记、不联网；缺件才走 DSH 插件通道安装。
+                  基础标准与出厂 Profile 不接受这里改动。
+                </p>
+                {pluginAddReceipt ? (
+                  <div
+                    className={"asset-receipt " + (pluginAddReceipt.ok ? "ok" : "bad")}
+                    role="status"
+                    aria-label={pluginAddReceipt.note}
+                    data-testid="profile-plugin-receipt"
+                  >
+                    <p>{pluginAddReceipt.note}</p>
+                  </div>
+                ) : null}
+                {pluginAddError ? (
+                  <div
+                    className="asset-receipt bad"
+                    role="alert"
+                    aria-label={pluginAddError}
+                    data-testid="profile-plugin-error"
+                  >
+                    <p>{pluginAddError}</p>
+                  </div>
+                ) : null}
+              </div>
+              <div className="asset-row-actions">
+                <button
+                  className="primary"
+                  disabled={pluginAdding || pluginDraft.trim().length === 0}
+                  onClick={() => void addPlugin()}
+                  data-hover-hint="先探测本地，缺件才联网安装；装不上不会写进清单"
+                  data-testid="profile-plugin-add"
+                >
+                  {pluginAdding ? "处理中…" : "安装并登记"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {assets?.notes.length ? (
+          <div className="asset-notes">
+            {assets.notes.map((n) => (
+              <p className="hint" key={n}>
+                {n}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        {parked.length ? (
+          <div className="provider-list" data-testid="profile-parked-skills">
+            <div className="provider-list-head">
+              <span>已停放</span>
+              <span className="sub">{parked.length}</span>
+            </div>
+            {parked.map((p) => (
+              <div className="asset-row" key={p.name} data-testid={"profile-parked-" + p.name}>
+                <div className="asset-row-main">
+                  <div className="asset-row-title">
+                    <span className="name">{p.name}</span>
+                    <span className="asset-badge neutral" data-hover-hint={p.path}>
+                      停放中
+                    </span>
+                  </div>
+                  <p className="sub">
+                    不属于当前 Profile，切回需要它的 Profile 会自动归位。
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* 自建 Profile 管理：新建入口在顶栏，这里负责列出、移除、改名与迁移 */}
+        <div className="provider-list" data-testid="profile-custom-list">
+          <div className="provider-list-head">
+            <span>自建 Profile</span>
+            <span className="asset-row-actions">
+              <span className="sub">{customProfiles.length}</span>
+              <button
+                className="ghost"
+                disabled={importBusy}
+                onClick={() => void pickImportFile()}
+                data-hover-hint="从 .omniprofile.json 迁移包装回一套工作台；插件按清单自动补装"
+                data-testid="profile-import-open"
+              >
+                {importBusy ? "导入中…" : "导入"}
+              </button>
+            </span>
+          </div>
+          {customProfiles.length === 0 ? (
+            <p className="hint">还没有自建 Profile。可以从顶栏新建，也可以导入迁移包。</p>
+          ) : null}
+            {customProfiles.map((p) => {
+              const inUse = assets?.profile === p.name;
+              const renaming = renamingProfile === p.name;
+              return (
+                <div className="asset-row" key={p.name} data-testid={"profile-custom-" + p.name}>
+                  <div className="asset-row-main">
+                    <div className="asset-row-title">
+                      {renaming ? (
+                        <input
+                          className="text-input asset-row-input"
+                          value={renameDraft}
+                          maxLength={32}
+                          autoFocus
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void saveRename(p.name);
+                            if (e.key === "Escape") cancelRename();
+                          }}
+                          aria-label="新的显示名"
+                          data-testid={"profile-rename-input-" + p.name}
+                        />
+                      ) : (
+                        <span className="name">{p.label}</span>
+                      )}
+                      <span className="asset-badge info" data-hover-hint={p.origin}>
+                        {p.origin === "standard" ? "基础起手" : "复制 " + p.origin.slice(5)}
+                      </span>
+                      {inUse ? <span className="asset-badge ok">当前</span> : null}
+                    </div>
+                    <p className="sub mono">{p.name}</p>
+                  </div>
+                  {renaming ? (
+                    <div className="asset-row-actions">
+                      <button
+                        className="ghost"
+                        onClick={cancelRename}
+                        data-testid={"profile-rename-cancel-" + p.name}
+                      >
+                        取消
+                      </button>
+                      <button
+                        className="primary"
+                        disabled={renameBusy || renameDraft.trim().length === 0}
+                        data-hover-hint="只改显示名，目录名、Skill 与插件绑定都不动"
+                        onClick={() => void saveRename(p.name)}
+                        data-testid={"profile-rename-save-" + p.name}
+                      >
+                        {renameBusy ? "保存中…" : "保存"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="asset-row-actions">
+                      <button
+                        className="ghost"
+                        disabled={exportingProfile !== null || removingProfile !== null}
+                        data-hover-hint="导出成单文件迁移包；不含插件本体，在新机器导入后按清单补装"
+                        onClick={() => void exportProfile(p)}
+                        data-testid={"profile-custom-export-" + p.name}
+                      >
+                        {exportingProfile === p.name ? "导出中…" : "导出"}
+                      </button>
+                      <button
+                        className="ghost"
+                        disabled={renameBusy || removingProfile !== null}
+                        data-hover-hint="改这个工作台的显示名"
+                        onClick={() => startRename(p)}
+                        data-testid={"profile-custom-rename-" + p.name}
+                      >
+                        改名
+                      </button>
+                      <button
+                        className="ghost"
+                        disabled={removingProfile !== null || inUse}
+                        data-hover-hint={
+                          inUse
+                            ? "这是当前 Profile，先切到别的再移除"
+                            : "移入回收站，可在下方一键恢复"
+                        }
+                        onClick={() => void removeProfile(p.name)}
+                        data-testid={"profile-custom-remove-" + p.name}
+                      >
+                        {removingProfile === p.name ? "移除中…" : "移除"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          {importConflict ? (
+            <div className="asset-row" data-testid="profile-import-conflict">
+              <div className="asset-row-main">
+                <div className="asset-row-title">
+                  <span className="name">这个包的名字已被占用</span>
+                  <span className="asset-badge warn" data-hover-hint={importConflict.note}>
+                    需改名
+                  </span>
+                </div>
+                <p className="sub">{importConflict.note}</p>
+              </div>
+              <div className="asset-row-actions">
+                <input
+                  className="text-input asset-row-input"
+                  value={importNameDraft}
+                  maxLength={48}
+                  autoFocus
+                  onChange={(e) => setImportNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && importNameDraft.trim()) {
+                      void importProfile(importConflict.path, importNameDraft.trim());
+                    }
+                    if (e.key === "Escape") setImportConflict(null);
+                  }}
+                  aria-label="导入用的新标识"
+                  data-testid="profile-import-name"
+                />
+                <button
+                  className="ghost"
+                  onClick={() => setImportConflict(null)}
+                  data-testid="profile-import-cancel"
+                >
+                  取消
+                </button>
+                <button
+                  className="primary"
+                  disabled={importBusy || importNameDraft.trim().length === 0}
+                  data-hover-hint="用这个标识新建一套工作台；已有同名工作台不会被覆盖"
+                  onClick={() =>
+                    void importProfile(importConflict.path, importNameDraft.trim())
+                  }
+                  data-testid="profile-import-confirm"
+                >
+                  {importBusy ? "导入中…" : "导入"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {renameReceipt ? <p className="hint">{renameReceipt}</p> : null}
+        {removeReceipt ? <p className="hint">{removeReceipt}</p> : null}
+        {migrateReceipt ? (
+          <p className="hint" data-testid="profile-migrate-receipt">
+            {migrateReceipt}
+          </p>
+        ) : null}
+
+        {/* 迁移包（OD-ARCH-127）：导出落在数据根的 exports/ 里，这里直接列出来一键导入。 */}
+        <div className="provider-list" data-testid="profile-bundle-list">
+          <div className="provider-list-head">
+            <span>迁移包</span>
+            <span className="asset-row-actions">
+              <span className="sub">{bundles.length}</span>
+              <button
+                className="ghost"
+                onClick={() =>
+                  void shell
+                    .profileExportOpen()
+                    .catch((e) =>
+                      setAssetsError(e instanceof Error ? e.message : String(e)),
+                    )
+                }
+                data-hover-hint="在系统文件管理器里打开导出目录，方便拷到别的机器"
+                data-testid="profile-export-open"
+              >
+                打开目录
+              </button>
+            </span>
+          </div>
+          {bundles.length === 0 ? (
+            <p className="hint">
+              还没有导出过。点任意一台工作台行尾的「导出」，包会落在这里。
+            </p>
+          ) : (
+            bundles.map((b) => (
+              <div className="asset-row" key={b.file} data-testid={"profile-bundle-" + b.profile}>
+                <div className="asset-row-main">
+                  <div className="asset-row-title">
+                    <span className="name">{b.label}</span>
+                    <span className="asset-badge neutral" data-hover-hint={b.path}>
+                      {(b.bytes / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <p className="sub mono">
+                    {b.profile}
+                    {b.exported_at > 0
+                      ? " · 导出于 " + new Date(b.exported_at * 1000).toLocaleString()
+                      : ""}
+                  </p>
+                </div>
+                <button
+                  className="ghost"
+                  disabled={importBusy}
+                  data-hover-hint="校验后装入这个工作台；同名不会覆盖，会让你改个标识"
+                  onClick={() => void importProfile(b.path, null)}
+                  data-testid={"profile-bundle-import-" + b.profile}
+                >
+                  导入这套
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 回收站（OD-ARCH-125）：移除是移入而不是删除，这里给回软件内的恢复通道。 */}
+        {trash.length ? (
+          <div className="provider-list" data-testid="profile-trash-list">
+            <div className="provider-list-head">
+              <span>回收站</span>
+              <span className="sub">{trash.length}</span>
+            </div>
+            {trash.map((t) => (
+              <div className="asset-row" key={t.id} data-testid={"profile-trash-" + t.id}>
+                <div className="asset-row-main">
+                  <div className="asset-row-title">
+                    <span className="name">{t.label}</span>
+                    <span
+                      className={t.has_meta ? "asset-badge neutral" : "asset-badge warn"}
+                      data-hover-hint={t.note}
+                    >
+                      {t.has_meta ? "可恢复" : "无元数据"}
+                    </span>
+                  </div>
+                  <p className="sub mono">
+                    {t.name}
+                    {t.trashed_at > 0
+                      ? " · 移除于 " + new Date(t.trashed_at * 1000).toLocaleString()
+                      : ""}
+                  </p>
+                </div>
+                <button
+                  className="ghost"
+                  disabled={restoringTrash !== null}
+                  data-hover-hint="把配置与资产目录搬回原位，并重新登记为可选 Profile"
+                  onClick={() => void restoreFromTrash(t.id)}
+                  data-testid={"profile-trash-restore-" + t.id}
+                >
+                  {restoringTrash === t.id ? "恢复中…" : "恢复"}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {restoreReceipt ? <p className="hint">{restoreReceipt}</p> : null}
+      </section>
+
+      {/* ============ 3. 对话分类 ============ */}
       <section className="pane" hidden={tab !== "categories"}>
         <CardHead
           title="对话分类"
@@ -1518,6 +2850,8 @@ export default function SettingsPanel() {
         <p className="hint">
           首页输入框左边的胶囊就是这里的分类。选一个只改变这段本机对话归到哪一类，
           不改模型、不改路由，也不移动任何已有文件。声明里隐藏了某个场景时，对应的内置分类不再出现。
+          <strong>这份分类表属于当前 Profile：</strong>切到基础标准只剩「未分类」，
+          切回专业 Profile 时你的改名与新增分类会原样恢复（切走时自动回存到该 Profile）。
         </p>
 
         {catError ? <div className="alert">分类设置：{catError}</div> : null}
@@ -1678,7 +3012,7 @@ export default function SettingsPanel() {
               ? decl.decl.display_name + " · " + String(decl.decl.scenes.length) + " 个入口"
               : declError
                 ? "声明未能载入"
-                : "读取中…"
+                : "该 Profile 没有场景声明（标准模式）"
           }
         >
           <button className="ghost" onClick={() => void openDecl()} disabled={declBusy}>
@@ -1687,12 +3021,29 @@ export default function SettingsPanel() {
           <button className="ghost" onClick={() => void refreshDecl()} disabled={declBusy}>
             重新读取
           </button>
+          <button
+            className="ghost"
+            onClick={() => void fillStarterDecl()}
+            disabled={declBusy}
+            data-hover-hint="把一份五个标准入口的最小声明灌进编辑框；只改编辑框，点「校验并保存」才会落文件。已有声明会被覆盖（旧文件先备份）。"
+            data-testid="profile-decl-starter"
+          >
+            {declBusy ? "读取中…" : "填入起步模板"}
+          </button>
         </CardHead>
         <p className="hint">
           这份声明决定左侧 Dock 显示哪些业务场景，以及工作台叫什么名字。它只影响界面入口，
           不改插件、路由或权限。保存前会先校验；校验不过不会写文件，旧文件在写入前自动备份。
-          <strong>保存后需重启应用生效。</strong>
+          <strong>保存后工作台入口立刻更新，不需要重启；在应用外部手改文件则需回来重新保存或切换 Profile。</strong>
+          声明随 Profile 挂载：基础标准下没有这份文件是正常的（只有平台固有入口），
+          这里保存一份即属于当前 Profile。
         </p>
+        {declStandard ? (
+          <p className="hint" data-testid="profile-decl-standard-hint">
+            当前是基础标准（干净底座），不挂业务场景，保存会被拒绝。要挂载工作台，
+            先到顶栏切到一个 Profile；这里的模板可以先看、先改。
+          </p>
+        ) : null}
         {declError ? <div className="alert">场景声明：{declError}</div> : null}
         {decl ? (
           <div className="status-card">
@@ -1709,7 +3060,12 @@ export default function SettingsPanel() {
               <span className="v">{decl.decl.scenes.map((s) => s.label).join(" / ")}</span>
             </div>
           </div>
-        ) : null}
+        ) : declError ? null : (
+          <p className="hint">
+            当前 Profile 没有场景声明，Dock 只显示平台固有入口（首页 / 历史会话 / 知识库）。
+            需要业务场景时，在下方填入声明并保存，或先在顶栏切到带场景的 Profile。
+          </p>
+        )}
         <div className="field">
           <label className="field-label">声明内容（YAML）</label>
           <textarea
@@ -1718,13 +3074,20 @@ export default function SettingsPanel() {
             spellCheck={false}
             value={declText}
             onChange={(e) => setDeclText(e.target.value)}
+            placeholder={"当前 Profile 没有场景声明。填入 omnidesk.profile-decl.v1 内容并保存即可为这个 Profile 挂载业务场景。"}
           />
         </div>
         <div className="actions">
           <button
             className="primary"
             onClick={() => void saveDecl()}
-            disabled={declBusy || declText.trim().length === 0}
+            disabled={declBusy || declText.trim().length === 0 || declStandard === true}
+            data-testid="profile-decl-save"
+            data-hover-hint={
+              declStandard
+                ? "基础标准是干净底座，不挂业务场景。先在顶栏切到一个 Profile 再保存。"
+                : "校验通过后写入当前 Profile，工作台入口立刻更新"
+            }
           >
             {declBusy ? "校验并保存中…" : "校验并保存"}
           </button>
@@ -1754,7 +3117,11 @@ export default function SettingsPanel() {
           <button
             className="ghost"
             onClick={() => void restoreRules()}
-            disabled={rulesBusy || !rules?.default_available}
+            disabled={rulesBusy || !rules?.default_available || Boolean(rules?.default_blocked_reason)}
+            data-testid="rules-restore-default"
+            data-hover-hint={
+              rules?.default_blocked_reason ?? "写入出厂行业规则包（会先备份现有文件）"
+            }
           >
             恢复默认规则包
           </button>
@@ -1764,6 +3131,16 @@ export default function SettingsPanel() {
           以及身份证号和手机号是拦下还是脱敏后放行。OmniDesk 本体不含任何行业内容——
           没有这份文件时就是一个干净底座。保存后下一轮提交立即生效，不用重启；旧文件会先备份。
         </p>
+        {rules?.default_blocked_reason ? (
+          <p className="hint" data-testid="rules-default-blocked">
+            {rules.default_blocked_reason}
+          </p>
+        ) : null}
+        {rules?.migration_warning ? (
+          <p className="hint" data-testid="rules-migration-warning">
+            {rules.migration_warning}
+          </p>
+        ) : null}
         {rulesError ? <div className="alert">规则资产：{rulesError}</div> : null}
         {/* OD-ARCH-088：旧版（v1）规则包没有场景 Skill 绑定。只提示、不改写文件；
             是否启用出厂绑定由用户显式点「恢复默认规则包」决定。 */}
@@ -1838,6 +3215,128 @@ export default function SettingsPanel() {
             </div>
           </div>
         ) : null}
+
+        {/* ===== 场景 Skill 绑定（OD-ARCH-129）=====
+            这是「切过去就是专属工作台」的实际配置面：勾哪个场景绑哪些 Skill，
+            保存时由宿主整表替换 skill_bindings，其余规则内容不动。 */}
+        {!declStandard ? (
+          <div className="binding-block" data-testid="skill-binding-editor">
+            <div className="binding-head">
+              <span className="binding-title">场景 Skill 绑定</span>
+              <span className="sub">
+                勾选即预注入；不勾表示该场景只靠模型按需加载。每场景最多{" "}
+                {MAX_BINDINGS_PER_SCENE} 个。
+              </span>
+            </div>
+            {(rules?.allowed_skills ?? []).length === 0 ? (
+              <p className="hint">当前实例还没有可绑定的 Skill。</p>
+            ) : null}
+            <div className="binding-rows">
+              {BINDING_SCENES.map((scene) => {
+                const picked = bindingDraft[scene] ?? [];
+                return (
+                  <div className="binding-row" key={scene} data-testid={`binding-row-${scene}`}>
+                    <div className="binding-row-main">
+                      <span className="binding-scene">{sceneLabel(scene)}</span>
+                      <span className="sub">{BINDING_SCENE_HINTS[scene]}</span>
+                    </div>
+                    <div className="binding-chips">
+                      {(rules?.allowed_skills ?? []).map((skill) => {
+                        const on = picked.includes(skill);
+                        const full = !on && picked.length >= MAX_BINDINGS_PER_SCENE;
+                        return (
+                          <button
+                            key={skill}
+                            type="button"
+                            className={"binding-chip" + (on ? " on" : "")}
+                            aria-pressed={on}
+                            disabled={bindingBusy || full}
+                            data-testid={`binding-chip-${scene}-${skill}`}
+                            data-hover-hint={
+                              full
+                                ? `「${sceneLabel(scene)}」已绑满 ${MAX_BINDINGS_PER_SCENE} 个`
+                                : on
+                                  ? `取消 ${skill}`
+                                  : `在「${sceneLabel(scene)}」里预注入 ${skill}`
+                            }
+                            onClick={() => toggleBinding(scene, skill)}
+                          >
+                            {skill}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="actions">
+              <button
+                className="primary"
+                onClick={() => void saveBindings()}
+                disabled={bindingBusy || Boolean(rules?.default_blocked_reason)}
+                data-hover-hint="保存整张绑定表；只改 skill_bindings，其它规则内容原样保留"
+                data-testid="skill-binding-save"
+              >
+                {bindingBusy ? "保存中…" : "保存绑定"}
+              </button>
+            </div>
+            {/* OD-ARCH-131：这个 Profile 自己的 Skill 源。放在绑定区底部：
+                先把正文放进目录，再回到上面的勾选片绑定，顺序与装配一致。 */}
+            <div className="binding-source" data-testid="skill-source-block">
+              <div className="binding-row-main">
+                <span className="binding-scene">Profile 自带 Skill</span>
+                <span className="sub">
+                  {(rules?.local_skills ?? []).length > 0
+                    ? `已有 ${(rules?.local_skills ?? []).length} 个：${(rules?.local_skills ?? []).join("、")}`
+                    : "还没有。放进这个目录的 Skill 优先于仓库与内置副本。"}
+                </span>
+              </div>
+              <div className="binding-source-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void openSkillSource()}
+                  disabled={skillSourceBusy}
+                  data-testid="skill-source-open"
+                  data-hover-hint="打开当前 Profile 的 Skill 目录（首次打开时才创建）"
+                >
+                  打开目录
+                </button>
+                <input
+                  className="text-input"
+                  value={skillSourceName}
+                  onChange={(e) => setSkillSourceName(e.target.value)}
+                  placeholder="新 Skill 名，如 office-note"
+                  spellCheck={false}
+                  disabled={skillSourceBusy}
+                  data-testid="skill-source-name"
+                  data-hover-hint="只允许小写字母、数字、连字符、下划线"
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void scaffoldSkill()}
+                  disabled={skillSourceBusy || skillSourceName.trim().length === 0}
+                  data-testid="skill-source-scaffold"
+                  data-hover-hint="生成一份带 frontmatter 的 SKILL.md 模板；已存在时不覆盖"
+                >
+                  生成模板
+                </button>
+              </div>
+            </div>
+            {bindingError ? (
+              <p className="hint" role="alert" data-testid="skill-binding-error">
+                {bindingError}
+              </p>
+            ) : null}
+            {bindingNote ? (
+              <p className="hint" role="status" data-testid="skill-binding-note">
+                {bindingNote}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="field">
           <label className="field-label">规则内容（JSON）</label>
           <textarea
@@ -1853,7 +3352,16 @@ export default function SettingsPanel() {
           <button
             className="primary"
             onClick={() => void saveRules()}
-            disabled={rulesBusy || rulesText.trim().length === 0}
+            disabled={
+              rulesBusy ||
+              rulesText.trim().length === 0 ||
+              Boolean(rules?.default_blocked_reason)
+            }
+            data-hover-hint={
+              rules?.default_blocked_reason ??
+              "校验通过后写入当前 Profile 的 rules.json，旧文件先备份"
+            }
+            data-testid="rules-save"
           >
             {rulesBusy ? "校验并保存中…" : "校验并保存"}
           </button>
@@ -1893,6 +3401,15 @@ export default function SettingsPanel() {
         {caps?.notes.length ? (
           <div className="alert">{caps.notes.join("；")}</div>
         ) : null}
+        {caps?.missing_bindings.length ? (
+          <div className="alert" data-testid="skill-missing-bindings">
+            这些绑定找不到对应的 SKILL.md，因此注入不到内容：
+            {caps.missing_bindings
+              .map((m) => sceneLabel(m.scene) + " → " + m.skill)
+              .join("；")}
+            。把 Skill 放回目录，或从规则包的 skill_bindings 里去掉这一项。
+          </div>
+        ) : null}
 
         <div className="provider-split">
           <div className="provider-list" data-testid="skill-list">
@@ -1903,17 +3420,40 @@ export default function SettingsPanel() {
             {caps && caps.skills.length === 0 ? (
               <p className="hint">这个实例还没有 Skill。目录：{caps.skills_dir}</p>
             ) : null}
-            {caps?.skills.map((s) => (
-              <div className="provider-item" key={s.path}>
-                <span className="name">{s.name}</span>
-                <span className="sub">{s.description ?? "（没有说明）"}</span>
-                <span className="sub">
-                  {s.modified_at
-                    ? "最近修改 " + new Date(s.modified_at * 1000).toLocaleDateString()
-                    : "修改时间未知"}
-                </span>
+            {caps ? <SkillScopeSummary caps={caps} /> : null}
+            {caps?.skills.filter((s) => s.bindings.some((b) => b.effective)).length ? (
+              <div className="skill-group" data-testid="skill-group-preinjected">
+                <div className="skill-group-head">
+                  <span>本 Profile 预注入</span>
+                  <span className="sub">
+                    {caps.skills.filter((s) => s.bindings.some((b) => b.effective)).length}
+                  </span>
+                </div>
+                {caps.skills
+                  .filter((s) => s.bindings.some((b) => b.effective))
+                  .map((s) => (
+                    <SkillRow key={s.path} skill={s} />
+                  ))}
               </div>
-            ))}
+            ) : null}
+            {caps ? (
+              <div className="skill-group" data-testid="skill-group-ondemand">
+                <div className="skill-group-head">
+                  <span>可被模型按需加载</span>
+                  <span className="sub">
+                    {caps.skills.filter((s) => !s.bindings.some((b) => b.effective)).length}
+                  </span>
+                </div>
+                {caps.skills.filter((s) => !s.bindings.some((b) => b.effective)).length === 0 ? (
+                  <p className="hint">没有未绑定的 Skill：磁盘上的 Skill 都在上面对应的场景里。</p>
+                ) : null}
+                {caps.skills
+                  .filter((s) => !s.bindings.some((b) => b.effective))
+                  .map((s) => (
+                    <SkillRow key={s.path} skill={s} />
+                  ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="provider-editor">

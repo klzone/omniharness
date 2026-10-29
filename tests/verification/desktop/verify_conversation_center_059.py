@@ -132,7 +132,14 @@ def main(argv: list[str]) -> int:
     xvfb = start_xvfb(args.display)
     # artifact_override：成果目录也指向一次性目录。不隔离时场景页会列出用户真实
     # 成果文件名，等于把个人数据拍进验收截图（059 S2 首轮即出现）。
-    session = AppSession(root=root, display=args.display, artifact_override=True)
+    # OD-ARCH-106：声明随 Profile 挂载。harness 默认 Profile 是 `web`，这里显式切到
+    # discipline，并在启动前预置声明（宿主不再自动创建）。
+    session = AppSession(
+        root=root,
+        display=args.display,
+        artifact_override=True,
+        env_extra={"OMNIDESK_DSH_PROFILE": "discipline"},
+    )
     facts: dict = {
         "plan": "OD-ARCH-059 S2",
         "evidence_level": "真实桌面窗口运行（一次性 Xvfb + 合成端点）+ 文件事实（线程记录 JSON）",
@@ -142,7 +149,9 @@ def main(argv: list[str]) -> int:
     try:
         session.prepare()
         xs = XSession(args.display)
-        decl_path = session.app_data / "profiles" / "discipline.yml"
+        decl_path = session.app_data / "profiles" / "discipline" / "decl.yml"
+        decl_path.parent.mkdir(parents=True, exist_ok=True)
+        decl_path.write_text(DEFAULT_DECL, encoding="utf-8")
 
         # --- 1. 首页：场景 chip / 新对话 / Dock 改名（历史下拉已移除）-------------
         session.start()

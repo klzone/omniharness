@@ -239,12 +239,28 @@ def main() -> int:
         check(f"{name}_within_budget", len(text) <= 2500, f"{len(text)} 字符")
 
     rules = json.loads(RULES.read_text(encoding="utf-8"))
-    weekly = rules["skill_bindings"]["weekly"]
-    check("weekly_three_bindings",
-          weekly["skills"] == ["memory-agent", "memory-report", "knowledge-search"],
-          str(weekly["skills"]))
-    check("weekly_max_injected_unchanged", weekly["max_injected"] == 3, str(weekly["max_injected"]))
-    check("anysearch_not_preinjected", "anysearch" not in weekly["skills"], str(weekly["skills"]))
+    bindings = rules["skill_bindings"]
+    # OD-ARCH-108：绑定按流程拆。每条流程只绑自己的底线技能，其余由模型按需加载。
+    weekly_note = bindings.get("weekly-note", {})
+    weekly_report = bindings.get("weekly-report", {})
+    check("note_binds_memory_agent_only",
+          weekly_note.get("skills") == ["memory-agent"],
+          str(weekly_note.get("skills")))
+    check("report_binds_memory_report_only",
+          weekly_report.get("skills") == ["memory-report"],
+          str(weekly_report.get("skills")))
+    check("flow_bindings_inject_one_each",
+          weekly_note.get("max_injected") == 1 and weekly_report.get("max_injected") == 1,
+          f"{weekly_note.get('max_injected')} / {weekly_report.get('max_injected')}")
+    # 旧键 weekly 保留为随手记的兼容别名，不能指向 memory-report。
+    check("legacy_weekly_alias_is_note",
+          bindings.get("weekly", {}).get("skills") == ["memory-agent"],
+          str(bindings.get("weekly", {}).get("skills")))
+    bound_ids = [s for b in bindings.values() for s in b.get("skills", [])]
+    for ondemand in ("anysearch", "knowledge-search", "document-review", "knowledge-agent"):
+        check(f"{ondemand}_not_preinjected",
+              ondemand not in bound_ids,
+              str(bound_ids))
 
     profile_rules = (DESKTOP / "src-tauri" / "src" / "profile_rules.rs").read_text(encoding="utf-8")
     check("allowlist_has_memory_report", '"memory-report"' in profile_rules, "")

@@ -82,27 +82,22 @@ impl EngineConfig {
         let repo_root = Self::repo_root();
 
         let python = env_or("OMNIDESK_PYTHON", "python3");
+        // OD-ARCH-112：分发环境下 `CARGO_MANIFEST_DIR` 是编译期路径，仓库根本不存在。
+        // 资产探测（`profile_assets::default_dsh_cli`）早就有安装位置兜底，引擎启动却只认
+        // 仓库路径，两边会得出不同的 CLI：面板说「已就绪」、引擎却起不来。这里改成同源。
         let engine_dir = match env_path("OMNIDESK_ENGINE_DIR") {
             Some(p) => p,
-            None => repo_root
-                .as_ref()
-                .map(|r| r.join("engine"))
+            None => locate_engine_dir(repo_root.as_deref(), app_root)
                 .ok_or_else(|| "无法定位引擎目录：请设置 OMNIDESK_ENGINE_DIR".to_string())?,
         };
         let dsh_cli = match env_path("OMNIDESK_DSH_CLI") {
             Some(p) => p,
-            None => repo_root
-                .as_ref()
-                .map(|r| {
-                    r.join("runtime")
-                        .join("dsh-runtime")
-                        .join("node_modules")
-                        .join("@deepseek-ai")
-                        .join("dsh")
-                        .join("lib")
-                        .join("bin.js")
-                })
-                .ok_or_else(|| "无法定位 DSH CLI：请设置 OMNIDESK_DSH_CLI".to_string())?,
+            // 与插件探测/安装共用一套候选顺序，避免「面板已就绪、安装却找不到 CLI」。
+            // 显式传入本次解析用的仓库根与应用数据根（`app_root` 的上一级就是安装根），
+            // 不要在两边各写一遍推导——那正是「面板有、引擎没有」的来源。
+            None => {
+                crate::profile_assets::default_dsh_cli_for(repo_root.as_deref(), Some(app_root))
+            }
         };
 
         let home = std::env::var_os("HOME")
@@ -139,7 +134,7 @@ impl EngineConfig {
             let saved = crate::settings::load(&app_root.join("config"))
                 .ok()
                 .and_then(|s| s.engine_profile);
-            crate::profile_choice::resolve(&dsh_home, &channel, saved.as_deref())?
+            crate::profile_choice::resolve(&dsh_home, &channel, saved.as_deref(), Some(&app_root))?
         };
         let mut patch_files = std::env::var("OMNIDESK_DSH_PATCHES")
             .ok()
@@ -267,6 +262,47 @@ impl EngineConfig {
             .map(|p| p.to_path_buf())
     }
 
+    /// 启动前补齐 Profile 资产（OD-ARCH-109）。
+    ///
+    /// 与切换 Profile 时走**同一个** `profile_assets::materialize`：
+    /// 用户手工删了 `cordis.patch.yml` 或某个 Skill，下次启动会补回；
+    /// 用户改过的文件一律不覆盖；基础标准直接跳过、不创建任何目录。
+    /// 装配失败不阻断启动：缺资产时引擎仍能起来，界面会把缺项显示出来。
+    pub fn assemble_profile_assets(&self) -> Result<bool, String> {
+        if self.channel != "web-api" {
+            return Ok(false);
+        }
+        let standard = crate::profile_choice::standard_profile(&self.channel).to_string();
+        // 应用根取自已注入的引擎状态目录（`<app_root>/engine-state`），
+        // 与真实启动路径一致，也让单测能把装配写进隔离夹具。
+        let app_root = self
+            .engine_state_dir
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "无法定位应用数据根".to_string())?;
+        // 分发到用户机器后 <编译期仓库根> 并不存在：此时不传仓库根，
+        // 让 Skill 与写作资产走编译期内嵌副本（OD-ARCH-111）。
+        let repo = Self::repo_root().filter(|p| p.is_dir());
+        let scope = crate::profile_assets::Scope {
+            dsh_home: &self.dsh_home,
+            app_root: &app_root,
+            profile: &self.profile,
+            repo_root: repo.as_deref(),
+        };
+        // 先按目标 Profile 收敛全局 skills/（OD-ARCH-115）：切回基础标准时把
+        // OmniDesk 写过的业务 Skill 收进停放区，切回来再归位。
+        // 标准且从未装配过时这里是纯空操作，不会创建任何目录。
+        crate::profile_assets::reconcile_managed_skills(&scope, &standard)?;
+        if self.profile.trim() == standard {
+            return Ok(false);
+        }
+        crate::profile_assets::materialize(&scope, &standard)?;
+        // 装配完再把「这次写下的 Skill」记进登记表：下次切到别的 Profile
+        // 才知道哪些目录该收回（OD-ARCH-115）。
+        crate::profile_assets::record_managed_skills(&scope, &standard)?;
+        Ok(true)
+    }
+
     /// 传给引擎子进程的环境变量（显式、最小集）。
     pub fn child_env(&self) -> Vec<(String, String)> {
         vec![
@@ -319,9 +355,36 @@ fn env_path(key: &str) -> Option<PathBuf> {
     }
 }
 
+/// 定位引擎包目录（OD-ARCH-112）。
+///
+/// 开发机按仓库根；分发后仓库根不存在，则按与运行时相同的安装布局依次尝试
+/// `<app_root 的上一级>/engine`（即 `~/OmniDesk/engine`）与 `$HOME/OmniDesk/engine`。
+/// 只返回真正含 `omnidesk_engine/` 的候选；都不中时返回第一候选，由 `validate()`
+/// 如实报「引擎包目录缺少 omnidesk_engine/」，不在这里伪造可用。
+fn locate_engine_dir(repo_root: Option<&Path>, app_root: &Path) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(repo) = repo_root {
+        candidates.push(repo.join("engine"));
+    }
+    if let Some(parent) = app_root.parent() {
+        candidates.push(parent.join("engine"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(home).join("OmniDesk").join("engine"));
+    }
+    if let Some(ok) = candidates
+        .iter()
+        .find(|p| p.join("omnidesk_engine").is_dir())
+    {
+        return Some(ok.clone());
+    }
+    candidates.into_iter().next()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::profile_assets;
 
     /// 本测试模块读写的环境变量（用于结束后还原，避免影响同进程的其它测试）。
     const OWNED_ENV_KEYS: [&str; 7] = [
@@ -348,6 +411,52 @@ mod tests {
                 None => std::env::remove_var(key),
             }
         }
+    }
+
+    /// 分发环境（OD-ARCH-112）：仓库根不存在时，引擎目录与 DSH CLI 仍按安装布局被定位。
+    ///
+    /// 这是「干净环境切 Profile 就能用」的前提——否则面板能探测插件，引擎却起不来。
+    /// 只测纯路径推导：`EngineConfig::from_env` 读的是进程级环境变量，并行测试里
+    /// 改动它会污染同进程的其它用例（本文件里已出现过一次假失败）。
+    #[test]
+    fn distributed_layout_resolves_engine_and_cli_without_repo() {
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-engine-dist-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        // 模拟装机布局：<base>/{app,runtime,engine}，没有源码仓库。
+        let app_root = base.join("app");
+        std::fs::create_dir_all(app_root.join("config")).expect("创建 app 根");
+        std::fs::create_dir_all(base.join("engine").join("omnidesk_engine"))
+            .expect("创建引擎目录");
+        let cli = base.join("runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
+        std::fs::create_dir_all(cli.parent().unwrap()).expect("创建运行时目录");
+        std::fs::write(&cli, "// stub\n").expect("写占位 CLI");
+        std::fs::create_dir_all(base.join("dsh-home")).expect("创建 DSH_HOME");
+        std::fs::create_dir_all(base.join("agents-home")).expect("创建 agents");
+
+        let ghost_repo = base.join("no-such-repo");
+        let engine = locate_engine_dir(Some(&ghost_repo), &app_root);
+        let located_cli =
+            crate::profile_assets::locate_cli(Some(&ghost_repo), Some(&app_root), Some(&base));
+
+        let engine_ok = engine.as_deref() == Some(base.join("engine").as_path());
+        let cli_ok = located_cli == cli;
+
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(
+            engine_ok,
+            "应定位到 {}，实际 {:?}",
+            base.join("engine").display(),
+            engine
+        );
+        assert!(
+            cli_ok,
+            "引擎与插件探测必须用同一个 CLI，期望 {}，实际 {}",
+            cli.display(),
+            located_cli.display()
+        );
     }
 
     /// 一次性隔离夹具：本测试只验证宿主配置解析，因此只要求引擎目录含 `omnidesk_engine/`、
@@ -651,6 +760,52 @@ mod tests {
         );
     }
 
+    /// OD-ARCH-109：启动期装配对标准 Profile 必须零写入，对出厂 Profile 必须补齐。
+    ///
+    /// 这一组盯的是「冷启动时资产到底有没有被写下去」——引擎是按需启动的，装配不能
+    /// 只挂在 `start()` 上，否则不提交任务就永远不装配。
+    #[test]
+    fn assemble_profile_assets_covers_both_ends() {
+        let fixture = SeedFixture::new("assemble");
+        let app_root = fixture.base.join("app");
+        std::fs::create_dir_all(app_root.join("config")).expect("建应用配置目录");
+
+        // 标准 Profile：连目录都不该出现。
+        let mut config = fixture.config("web-api");
+        config.profile = "omnidesk-base".to_string();
+        assert_eq!(config.assemble_profile_assets(), Ok(false));
+        assert!(
+            !fixture.base.join("dsh-home").join("profiles").exists(),
+            "标准 Profile 不得创建 Profile 目录"
+        );
+
+        // 出厂 Profile：配置、声明、规则、状态都补齐；Skill 依赖仓库，单独断言。
+        let mut config = fixture.config("web-api");
+        config.profile = "discipline".to_string();
+        assert_eq!(config.assemble_profile_assets(), Ok(true));
+        let profile_dir = fixture.base.join("dsh-home").join("profiles").join("discipline");
+        assert!(profile_dir.join("package.json").is_file(), "应写入 Profile 清单");
+        assert!(profile_dir.join("cordis.patch.yml").is_file(), "应写入场景与插件补丁");
+        assert!(app_root.join("profiles").join("discipline").join("decl.yml").is_file());
+        assert!(app_root.join("profiles").join("discipline").join("rules.json").is_file());
+        assert!(
+            app_root.join("profiles").join("discipline").join(profile_assets::ASSET_STATE_FILE).is_file(),
+            "应记录装配状态，后续才能三态判定"
+        );
+
+        // 幂等：第二次装配不产生新写入。
+        let state_before = std::fs::read(
+            app_root.join("profiles").join("discipline").join(profile_assets::ASSET_STATE_FILE),
+        )
+        .unwrap();
+        assert_eq!(config.assemble_profile_assets(), Ok(true));
+        let state_after = std::fs::read(
+            app_root.join("profiles").join("discipline").join(profile_assets::ASSET_STATE_FILE),
+        )
+        .unwrap();
+        assert_eq!(state_before, state_after, "幂等装配不应改动状态文件内容");
+    }
+
     /// 落在禁止数据根（原版 DSH / agents / runtime 源码）时拒绝写入且不落盘。
     #[test]
     fn seed_profile_refuses_forbidden_roots() {
@@ -724,6 +879,9 @@ impl EngineSupervisor {
         }
         self.config.validate()?;
         self.config.seed_profile_if_missing()?;
+        // 资产装配失败不阻断启动：缺文件时引擎仍能起来，界面会把缺项显示出来；
+        // 反过来在这里 `?` 会让「某个 Skill 目录权限不对」变成整机打不开。
+        let _ = self.config.assemble_profile_assets();
 
         // OD-ARCH-074：启动前只按 owner.json 核验并回收上一实例的遗留进程组。
         // 身份核验不通过（或另一实例仍在使用同一数据根）时拒绝启动，绝不盲杀。

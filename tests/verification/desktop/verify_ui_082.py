@@ -257,7 +257,12 @@ def main() -> int:
         xs.shot(shot_base)
 
         labels_after_open = "\n".join(ax.labels())
-        has_popover = "下次启动使用" in labels_after_open or "通道默认" in labels_after_open
+        # OD-ARCH-110：切换即时生效，弹层小标题改成「切换后立即生效 · 当前：…」。
+        has_popover = (
+            "切换后立即生效" in labels_after_open
+            or "当前生效" in labels_after_open
+            or "通道默认" in labels_after_open
+        )
         check("profile_popover_opened", has_popover, has_popover, "Profile 选择弹层成功展开")
 
         # 断言不得出现技术包名前缀 "dsh-profile-"
@@ -304,7 +309,7 @@ def main() -> int:
         xs.click(*badge_pt2, settle=1.5)
         labels_reopened = "\n".join(ax.labels())
         has_saved_disc_hint = "纪检专业" in labels_reopened or ax.has_text("纪检专业")
-        check("reopened_shows_discipline_scheduled", has_saved_disc_hint, has_saved_disc_hint, "弹层显示下次启动生效为纪检专业")
+        check("reopened_shows_discipline_effective", has_saved_disc_hint, has_saved_disc_hint, "弹层显示当前生效为纪检专业")
 
         # 点击空白处关闭弹层
         xs.click(700, 500, settle=1.0)

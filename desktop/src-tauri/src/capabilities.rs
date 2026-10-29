@@ -1,5 +1,10 @@
 //! 能力管理（OD-ARCH-072）——Skill 与插件的一处集中入口。
 //!
+//! OD-ARCH-107：Skill 目录是**所有 Profile 共用**的一份（DSH 官方 skill-filesystem
+//! 语义），但「会不会被预注入」由当前 Profile 的 rules.json 决定。因此这里额外接收
+//! 一份宿主算好的 SkillScope，把「预注入 / 仅可按需加载 / 绑定缺失」讲清楚——
+//! 本模块不自己读 rules 文件，避免两处解析口径分叉。
+//!
 //! 边界（Plan 影响范围）：
 //!   * Skill 只读：扫 <隔离 DSH_HOME>/skills/<name>/SKILL.md 的 frontmatter，
 //!     不执行、不改写、不伪造版本号（Skill 目录本身没有版本字段）。
@@ -26,12 +31,63 @@ const MAX_SKILL_BYTES: u64 = 256 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SkillEntry {
+    /// 目录名，也就是 rules.json 的 skill_bindings 里写的那个标识。
+    pub id: String,
     pub name: String,
     /// frontmatter 里的 description 折叠成一行；没有就为 null（不编造）。
     pub description: Option<String>,
     /// 最近修改时间（Unix 秒）；读不到为 null。
     pub modified_at: Option<u64>,
     pub path: String,
+    /// 本 Profile 里挂在哪些场景上（OD-ARCH-107）；空 = 只是磁盘上有，没被绑定。
+    pub bindings: Vec<SkillBinding>,
+}
+
+/// 一条「场景 → Skill」绑定，供界面说明注入顺序与上限。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SkillBinding {
+    /// 场景键（weekly / writing / project …），与 rules.json 一致。
+    pub scene: String,
+    /// 1 起的绑定顺序；超过 max_injected 的部分不会被预注入。
+    pub order: usize,
+    pub max_injected: usize,
+    /// order <= max_injected：这一条真的会进预注入。
+    pub effective: bool,
+    /// 宿主是否读到了 SKILL.md 正文；false = 绑了但注入不到内容。
+    pub resolved: bool,
+}
+
+/// 绑定了却读不到正文的条目（用户能遇到的真实故障，不能静默）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct MissingBinding {
+    pub scene: String,
+    pub skill: String,
+}
+
+/// 宿主汇总的 Skill 作用域：当前 Profile 的规则状态 + 场景绑定。
+///
+/// 由命令层从 profile_rules::RulesView 转换而来，本模块只读不改。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SkillScope {
+    /// 是否为基础标准（干净底座：不挂场景、不预注入）。
+    pub standard: bool,
+    /// rules.json 是否存在且解析通过。
+    pub rules_loaded: bool,
+    /// 规则文件损坏时的原因；不存在时为 None。
+    pub rules_error: Option<String>,
+    /// 规则文件里声明的 profile 名。
+    pub rules_profile: Option<String>,
+    /// 宿主已读到正文的 Skill 目录名。
+    pub resolved: Vec<String>,
+    pub scenes: Vec<SceneScope>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneScope {
+    pub scene: String,
+    pub max_injected: usize,
+    /// 按 rules.json 里的书写顺序。
+    pub skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -54,6 +110,18 @@ pub struct CapabilityView {
     pub skills_dir: String,
     pub skills: Vec<SkillEntry>,
     pub plugins: Vec<PluginEntry>,
+    /// 当前是否基础标准（干净底座）。
+    pub standard: bool,
+    /// 当前 Profile 的规则包是否加载成功。
+    pub rules_loaded: bool,
+    /// 规则包损坏的原因；没有规则文件时为 null。
+    pub rules_error: Option<String>,
+    /// 规则包声明的 Profile 名；未加载时为 null。
+    pub rules_profile: Option<String>,
+    /// 会被预注入的 Skill 目录名（跨场景去重，按首次出现顺序）。
+    pub preinjected: Vec<String>,
+    /// 绑定了但宿主读不到 SKILL.md 的条目。
+    pub missing_bindings: Vec<MissingBinding>,
     /// 市场包是否已安装（未安装时开关必须保持关闭并如实说明）。
     pub market_installed: bool,
     pub market_enabled: bool,
@@ -387,20 +455,63 @@ pub fn list_skills(dsh_home: &Path, notes: &mut Vec<String>) -> Vec<SkillEntry> 
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs());
         out.push(SkillEntry {
+            id: fallback.clone(),
             name,
             description,
             modified_at,
             path: path.display().to_string(),
+            bindings: Vec::new(),
         });
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     out
 }
 
+/// 把 Profile 的绑定关系贴到 Skill 列表上（OD-ARCH-107 只读汇总）。
+///
+/// 只做映射，不读文件：谁读到过正文由宿主通过 SkillScope.resolved 告知。
+pub fn apply_scope(skills: &mut [SkillEntry], scope: &SkillScope) -> (Vec<String>, Vec<MissingBinding>) {
+    let mut preinjected: Vec<String> = Vec::new();
+    let mut missing: Vec<MissingBinding> = Vec::new();
+    for scene in &scope.scenes {
+        for (idx, skill_id) in scene.skills.iter().enumerate() {
+            let order = idx + 1;
+            let effective = order <= scene.max_injected;
+            let resolved = scope.resolved.iter().any(|r| r == skill_id);
+            if effective && !preinjected.iter().any(|p| p == skill_id) {
+                preinjected.push(skill_id.clone());
+            }
+            if !resolved && !missing.iter().any(|m| &m.skill == skill_id && m.scene == scene.scene) {
+                missing.push(MissingBinding { scene: scene.scene.clone(), skill: skill_id.clone() });
+            }
+            if let Some(entry) = skills.iter_mut().find(|s| &s.id == skill_id) {
+                entry.bindings.push(SkillBinding {
+                    scene: scene.scene.clone(),
+                    order,
+                    max_injected: scene.max_injected,
+                    effective,
+                    resolved,
+                });
+            }
+        }
+    }
+    (preinjected, missing)
+ }
+
 pub fn load(dsh_home: &Path, profile: &str) -> Result<CapabilityView, String> {
+    load_with_scope(dsh_home, profile, &SkillScope::default())
+}
+
+/// 带 Profile 作用域的读取（OD-ARCH-107）。
+pub fn load_with_scope(
+    dsh_home: &Path,
+    profile: &str,
+    scope: &SkillScope,
+) -> Result<CapabilityView, String> {
     let dir = profile_dir(dsh_home, profile)?;
     let mut notes = Vec::new();
-    let skills = list_skills(dsh_home, &mut notes);
+    let mut skills = list_skills(dsh_home, &mut notes);
+    let (preinjected, missing_bindings) = apply_scope(&mut skills, scope);
     let value = load_manifest(&dir)?;
     let enabled = bundle_names(&value)?;
     let mut plugins: Vec<PluginEntry> = Vec::new();
@@ -452,6 +563,12 @@ pub fn load(dsh_home: &Path, profile: &str) -> Result<CapabilityView, String> {
         skills_dir: dsh_home.join("skills").display().to_string(),
         skills,
         plugins,
+        standard: scope.standard,
+        rules_loaded: scope.rules_loaded,
+        rules_error: scope.rules_error.clone(),
+        rules_profile: scope.rules_profile.clone(),
+        preinjected,
+        missing_bindings,
         market_installed,
         market_enabled,
         market_version,
@@ -579,6 +696,44 @@ mod tests {
         let skills = list_skills(&base, &mut notes);
         assert_eq!(skills.len(), 2);
         assert!(skills[0].modified_at.is_some());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// OD-ARCH-107：绑定关系要能区分「会预注入」「挂名但不注入」「绑定缺失」。
+    #[test]
+    fn scope_marks_effective_and_missing_bindings() {
+        let base = std::env::temp_dir().join(format!("omnidesk-caps-scope-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        for id in ["memory-agent", "knowledge-search", "document-review"] {
+            let dir = base.join("skills").join(id);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("SKILL.md"), format!("---\nname: {id}\ndescription: d\n---\n# {id}\n")).unwrap();
+        }
+        let mut skills = list_skills(&base, &mut Vec::new());
+        let scope = SkillScope {
+            standard: false,
+            rules_loaded: true,
+            rules_error: None,
+            rules_profile: Some("discipline".to_string()),
+            resolved: vec!["memory-agent".to_string(), "knowledge-search".to_string()],
+            scenes: vec![SceneScope {
+                scene: "weekly".to_string(),
+                max_injected: 2,
+                skills: vec![
+                    "memory-agent".to_string(),
+                    "knowledge-search".to_string(),
+                    "missing-skill".to_string(),
+                ],
+            }],
+        };
+        let (preinjected, missing) = apply_scope(&mut skills, &scope);
+        assert_eq!(preinjected, vec!["memory-agent".to_string(), "knowledge-search".to_string()]);
+        let memory = skills.iter().find(|s| s.id == "memory-agent").unwrap();
+        assert!(memory.bindings[0].effective && memory.bindings[0].resolved);
+        assert_eq!(memory.bindings[0].order, 1);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].skill, "missing-skill");
+        assert!(!skills.iter().any(|s| s.id == "missing-skill"), "缺失的 Skill 不会凭空造出条目");
         let _ = fs::remove_dir_all(&base);
     }
 }

@@ -1,6 +1,10 @@
-# OmniDesk Base Profile Patch (OD-ARCH-082 S6)
-# 覆盖 preset-standard 的 config.plugins，保留上游条目与顺序，
-# 把 skill-filesystem 与 tool-skill 标记 disabled: true。
+# OmniDesk Base Profile Patch (OD-ARCH-082 S6, OD-ARCH-106 修订)
+# 覆盖 preset-standard 的 config.plugins，保留上游条目与顺序，插件面与官方
+# dsh-base（presets/standard.patch.yml）一致：skill-filesystem 与 tool-skill
+# 默认**启用**，模型可按需加载技能。
+#
+# 基础标准（omnidesk-base）只做「自定义 UI + DSH 官方底座」这一件事；
+# 业务场景、场景规则与 Skill 预注入都属于 Profile 资产，切到专业 Profile 才挂载。
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
   config:
@@ -35,10 +39,8 @@
         name: '@deepseek-ai/dsh-tool-schedule'
       - id: skill-filesystem
         name: '@deepseek-ai/dsh-skill-filesystem'
-        disabled: true
       - id: tool-skill
         name: '@deepseek-ai/dsh-tool-skill'
-        disabled: true
       - id: command-goal
         name: '@deepseek-ai/dsh-command-goal'
       - id: tool-goal

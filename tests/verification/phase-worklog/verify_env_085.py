@@ -5,7 +5,8 @@
 
 1. 仓库 skills/ 与数据根 ~/OmniDesk/runtime/dsh-home/skills/ 的两份 SKILL.md 逐字节一致；
 2. 两份 SKILL.md 都 ≤ 2500 字符（desktop/src/aiDraft.ts 的注入截断点），规则不会到不了模型；
-3. 出厂规则包 weekly 场景的绑定与 src-tauri 的 ALLOWED_SKILLS 白名单是否相容；
+3. 出厂规则包各流程绑定与 src-tauri 的 ALLOWED_SKILLS 白名单是否相容
+   （OD-ARCH-108 起按流程拆分：weekly-note / weekly-report / writing / project）；
 4. 本机是否有 Obsidian CLI（决定走 CLI 还是降级文件读写）；
 5. 数据根目录骨架与 知识库/索引.md 空表头存在；
 6. 冻结范围（runtime/、desktop/src-tauri/、engine/）零差异。
@@ -115,21 +116,28 @@ def check_bindings() -> dict[str, object]:
 
     rules = json.loads(RULES.read_text(encoding="utf-8"))
     bindings = rules.get("skill_bindings", {})
-    weekly = bindings.get("weekly", {})
-    skills = weekly.get("skills", [])
-    max_injected = weekly.get("max_injected", 0)
-    check("weekly_binding_shape", isinstance(skills, list) and len(skills) > 0, str(skills))
-    check("weekly_binding_within_three", 1 <= max_injected <= 3 and len(skills) <= max_injected,
-          f"{len(skills)} 项 / 上限 {max_injected}")
-    check("weekly_binding_all_allowed", all(s in allowed for s in skills),
-          "存在白名单外技能则整份规则文件会被拒绝：" + str(skills))
-    check("weekly_binding_has_memory_agent", "memory-agent" in skills, str(skills))
-    check("weekly_binding_has_knowledge_search", "knowledge-search" in skills, str(skills))
-    check("weekly_binding_no_duplicates", len(skills) == len(set(skills)), str(skills))
+    # OD-ARCH-108：绑定按流程拆，每条流程只绑自己的底线技能。
+    for key in ("weekly", "weekly-note", "weekly-report", "writing", "project"):
+        b = bindings.get(key, {})
+        skills = b.get("skills", [])
+        max_injected = b.get("max_injected", 0)
+        check(f"{key}_binding_shape", isinstance(skills, list) and len(skills) > 0, str(skills))
+        check(f"{key}_binding_within_three",
+              1 <= max_injected <= 3 and len(skills) <= max_injected,
+              f"{len(skills)} 项 / 上限 {max_injected}")
+        check(f"{key}_binding_all_allowed", all(s in allowed for s in skills),
+              "存在白名单外技能则整份规则文件会被拒绝：" + str(skills))
+        check(f"{key}_binding_no_duplicates", len(skills) == len(set(skills)), str(skills))
 
-    # OD-ARCH-089：anysearch 移出 weekly 预注入，运行时按需加载；仍在白名单与安装清单里。
-    check("weekly_binding_excludes_anysearch_after_089", "anysearch" not in skills, str(skills))
-    check("weekly_binding_has_memory_report_after_089", "memory-report" in skills, str(skills))
+    check("note_binding_is_memory_agent_only",
+          bindings.get("weekly-note", {}).get("skills") == ["memory-agent"],
+          str(bindings.get("weekly-note", {}).get("skills")))
+    check("report_binding_is_memory_report_only",
+          bindings.get("weekly-report", {}).get("skills") == ["memory-report"],
+          str(bindings.get("weekly-report", {}).get("skills")))
+    bound_ids = [s for b in bindings.values() for s in b.get("skills", [])]
+    for ondemand in ("anysearch", "knowledge-search", "document-review", "knowledge-agent"):
+        check(f"{ondemand}_not_preinjected_after_108", ondemand not in bound_ids, str(bound_ids))
     check("anysearch_still_allowlisted", "anysearch" in allowed, str(allowed))
 
     if "anysearch" not in allowed:
@@ -139,7 +147,7 @@ def check_bindings() -> dict[str, object]:
             "validate() 会整份拒绝该规则文件（loaded:false，红线与掩码一起失效）。"
             "OD-ARCH-086 已解冻白名单；此处仅提示仍存在清单外技能。",
         )
-    return {"allowlist": allowed, "weekly": weekly}
+    return {"allowlist": allowed, "skill_bindings": bindings}
 
 
 def check_injection_budget_source() -> None:

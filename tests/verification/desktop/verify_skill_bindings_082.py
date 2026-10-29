@@ -2,13 +2,14 @@
 """OD-ARCH-082：三大场景 Skill 绑定与提示词注入验证。
 
 验证：
-1. discipline.rules.json schema v2 结构与合法性：skill_bindings 各场景配置，
-   包含 weekly (memory-agent), writing (material-writing, knowledge-search, document-review),
-   project (project-agent)。
+1. discipline.rules.json schema v2 结构与合法性：skill_bindings 各流程配置。
+   OD-ARCH-108 之后每条流程只绑自己的底线技能：weekly-note (memory-agent)、
+   weekly-report (memory-report)、writing (material-writing)、project (project-agent)，
+   weekly 保留为随手记的兼容别名；其余能力由模型按需加载。
 2. 约束边界校验：非法 skill id 拦截、同场景重复拦截、超出上限拦截、v1 规则向后兼容。
 3. 真实 conversationPrompt.ts 与 aiDraft.ts 编译与注入执行：
-   - note 模式（随手记）最多注入 1 个 Skill；
-   - report 模式注入对应绑定的所有 Skill；
+   - note 模式（随手记）只注入 weekly-note 那一个 Skill；
+   - report 模式只注入 weekly-report 那一个 Skill，不再带上随手记的技能；
    - 切换场景后注入内容严格不同；
    - continuation（多轮续答）仍每轮重新注入；
    - 无绑定或无规则包时，提示词与现状完全一致（逐字比对）。
@@ -34,9 +35,9 @@ SOURCE_CP = DESKTOP / "src" / "conversationPrompt.ts"
 SOURCE_AD = DESKTOP / "src" / "aiDraft.ts"
 RULES = REPO / "samples" / "profiles" / "discipline.rules.json"
 SKILLS_DIR = REPO / "skills"
-# OD-ARCH-089 改了注入内容（拆 skill、去 anysearch 预注入），本脚本重跑时
-# 证据改落到 089 目录，避免改写 082 的历史证据。
-EVIDENCE_DIR = HERE / "evidence" / "od-arch-089"
+# OD-ARCH-089 改过注入内容，OD-ARCH-108 又把绑定按流程拆开——每次都落到新目录，
+# 不改写更早那一轮的历史证据。
+EVIDENCE_DIR = HERE / "evidence" / "od-arch-108"
 
 PROFILE_RULES_SRC = DESKTOP / "src-tauri" / "src" / "profile_rules.rs"
 
@@ -91,11 +92,16 @@ const promptWithEmptySkills = cp.composeConversationPrompt({
 });
 check("empty_skills_identical_to_no_skills", promptWithoutSkills === promptWithEmptySkills, "");
 
-// 2. Weekly 随手记 (note mode)：最多注入 1 个 Skill，保持轻装
+// 2. Weekly 随手记 (note mode)：只注入随手记这条流程的底线技能，保持轻装
 const weeklySkills = [
   { id: "memory-agent", content: skillContents["memory-agent"] || "Memory Agent Content" },
   { id: "knowledge-agent", content: skillContents["knowledge-agent"] || "Knowledge Agent Content" }
 ];
+// OD-ARCH-108：同一场景按流程拆绑定，report 走 memory-report。
+const weeklyFlowSkills = {
+  note: [{ id: "memory-agent", content: skillContents["memory-agent"] || "Memory Agent Content" }],
+  report: [{ id: "memory-report", content: skillContents["memory-report"] || "Memory Report Content" }]
+};
 const weeklyPreset = {
   key: "weekly",
   label: "周报与随记",
@@ -103,6 +109,7 @@ const weeklyPreset = {
   sections: rules.scenes.weekly.sections,
   writingRules: rules.global.writing_rules,
   skills: weeklySkills,
+  skillsByFlow: weeklyFlowSkills,
 };
 
 const notePrompt = cp.composeConversationPrompt({
@@ -113,6 +120,7 @@ const notePrompt = cp.composeConversationPrompt({
 });
 check("note_injects_first_skill", notePrompt.includes("配套技能指引（memory-agent）："), notePrompt.slice(0, 100));
 check("note_does_not_inject_second_skill", !notePrompt.includes("knowledge-agent"), "");
+check("note_does_not_inject_report_skill", !notePrompt.includes("Memory Report Content"), "");
 // OD-ARCH-089：随手记不再「整理成要点」（写盘由宿主完成），只做缺项追问。
 check("note_contains_clean_directive", notePrompt.includes("这六项") || notePrompt.includes("六要素"), "");
 check("note_has_no_report_sections", !notePrompt.includes("本周概述"), "");
@@ -124,14 +132,13 @@ const reportWeeklyPrompt = cp.composeConversationPrompt({
   current: "整理本周工作",
   mode: "report",
 });
-check("report_weekly_injects_skill", reportWeeklyPrompt.includes("--- 技能：memory-agent ---"), "");
+check("report_weekly_injects_report_skill", reportWeeklyPrompt.includes("--- 技能：memory-report ---"), "");
+check("report_weekly_skips_note_skill", !reportWeeklyPrompt.includes("Memory Agent Content"), "");
 check("report_weekly_has_sections", reportWeeklyPrompt.includes("本周概述"), "");
 
-// 4. Writing 模式：注入 3 个 Skill (material-writing, knowledge-search, document-review)
+// 4. Writing 模式：只注入第底线 material-writing（OD-ARCH-108）
 const writingSkills = [
-  { id: "material-writing", content: skillContents["material-writing"] || "Writing Content" },
-  { id: "knowledge-search", content: skillContents["knowledge-search"] || "Search Content" },
-  { id: "document-review", content: skillContents["document-review"] || "Review Content" }
+  { id: "material-writing", content: skillContents["material-writing"] || "Writing Content" }
 ];
 const writingPreset = {
   key: "writing",
@@ -148,8 +155,8 @@ const writingPrompt = cp.composeConversationPrompt({
   current: "起草一份监督工作总结",
 });
 check("writing_injects_material_writing", writingPrompt.includes("--- 技能：material-writing ---"), "");
-check("writing_injects_knowledge_search", writingPrompt.includes("--- 技能：knowledge-search ---"), "");
-check("writing_injects_document_review", writingPrompt.includes("--- 技能：document-review ---"), "");
+check("writing_skips_knowledge_search", !writingPrompt.includes("--- 技能：knowledge-search ---"), "");
+check("writing_skips_document_review", !writingPrompt.includes("--- 技能：document-review ---"), "");
 
 // 5. Project 模式：注入 project-agent
 const projectSkills = [
@@ -185,7 +192,7 @@ const contWeeklyPrompt = cp.composeConversationPrompt({
   mode: "report",
 });
 check("continuation_does_not_repeat_history", !contWeeklyPrompt.includes("历史轮次"), "");
-check("continuation_still_injects_skills", contWeeklyPrompt.includes("--- 技能：memory-agent ---"), "");
+check("continuation_still_injects_skills", contWeeklyPrompt.includes("--- 技能：memory-report ---"), "");
 check("continuation_has_current_turn", contWeeklyPrompt.includes("用户：这是第二轮问题"), "");
 
 // 收集 S5 证据
@@ -205,11 +212,9 @@ const evidence = {
   writing: {
     scene: "writing",
     input: "起草一份政治监督专项检查报告初稿，强调四次现场督查与发现的9个共性问题。",
-    hit_skills: ["material-writing", "knowledge-search", "document-review"],
+    hit_skills: ["material-writing"],
     snippets: [
-      skillContents["material-writing"] ? skillContents["material-writing"].slice(0, 180) : "",
-      skillContents["knowledge-search"] ? skillContents["knowledge-search"].slice(0, 180) : "",
-      skillContents["document-review"] ? skillContents["document-review"].slice(0, 180) : ""
+      skillContents["material-writing"] ? skillContents["material-writing"].slice(0, 180) : ""
     ],
     prompt_sample: writingPrompt.slice(0, 600)
   },
@@ -239,9 +244,10 @@ def test_rule_bindings_asset() -> list[dict]:
 
     check("schema_is_v2", rules.get("schema") == "omnidesk.profile-rules.v2", rules.get("schema"))
     bindings = rules.get("skill_bindings", {})
-    check("bindings_present", isinstance(bindings, dict) and len(bindings) >= 3, str(len(bindings)))
+    check("bindings_present", isinstance(bindings, dict) and len(bindings) >= 5, str(len(bindings)))
 
-    for scene in ("weekly", "writing", "project"):
+    # OD-ARCH-108：weekly 按流程拆成 weekly-note / weekly-report，weekly 保留为随手记别名。
+    for scene in ("weekly", "weekly-note", "weekly-report", "writing", "project"):
         b = bindings.get(scene, {})
         skills = b.get("skills", [])
         max_injected = b.get("max_injected", 3)
@@ -251,29 +257,34 @@ def test_rule_bindings_asset() -> list[dict]:
         check(f"{scene}_all_skills_allowed", all(s in ALLOWED_SKILLS for s in skills), str(skills))
         check(f"{scene}_no_duplicate_skills", len(skills) == len(set(skills)), str(skills))
 
-    # OD-ARCH-089：weekly 拆成 memory-agent（随手记）+ memory-report（周报），
-    # anysearch 移出预注入——仍在白名单、Skill 文件仍随安装同步，运行时按需加载。
-    weekly = bindings.get("weekly", {})
+    # OD-ARCH-108：每条流程只绑自己的底线技能；其余能力由模型按需加载。
     check(
-        "weekly_does_not_preinject_anysearch",
-        "anysearch" not in weekly.get("skills", []),
-        str(weekly.get("skills", [])),
+        "note_binds_memory_agent_only",
+        bindings.get("weekly-note", {}).get("skills") == ["memory-agent"],
+        str(bindings.get("weekly-note", {}).get("skills")),
     )
     check(
-        "weekly_binds_memory_report",
-        "memory-report" in weekly.get("skills", []),
-        str(weekly.get("skills", [])),
+        "report_binds_memory_report_only",
+        bindings.get("weekly-report", {}).get("skills") == ["memory-report"],
+        str(bindings.get("weekly-report", {}).get("skills")),
     )
     check(
-        "weekly_anysearch_skill_file_present",
-        (SKILLS_DIR / "anysearch" / "SKILL.md").is_file(),
-        str(SKILLS_DIR / "anysearch" / "SKILL.md"),
+        "legacy_weekly_alias_is_note",
+        bindings.get("weekly", {}).get("skills") == ["memory-agent"],
+        str(bindings.get("weekly", {}).get("skills")),
     )
-    check(
-        "weekly_memory_report_skill_file_present",
-        (SKILLS_DIR / "memory-report" / "SKILL.md").is_file(),
-        str(SKILLS_DIR / "memory-report" / "SKILL.md"),
-    )
+    bound_ids = [s for b in bindings.values() for s in b.get("skills", [])]
+    for ondemand in ("anysearch", "knowledge-search", "document-review", "knowledge-agent"):
+        check(
+            f"{ondemand}_not_preinjected",
+            ondemand not in bound_ids,
+            str(bound_ids),
+        )
+        check(
+            f"{ondemand}_skill_file_present",
+            (SKILLS_DIR / ondemand / "SKILL.md").is_file(),
+            str(SKILLS_DIR / ondemand / "SKILL.md"),
+        )
 
     return cases
 

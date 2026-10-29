@@ -121,13 +121,20 @@ export function CategoryPicker({
     };
   }, [open, place]);
 
-  // 打开后把焦点放到当前项，键盘用户可以直接上下移动。
+  /**
+   * 打开后把焦点放到当前项，键盘用户可以直接上下移动。
+   *
+   * 依赖里必须带 `anchor`：浮层用 portal 渲染且要等 `place()` 算出坐标才挂载。
+   * 只看 [open, currentIndex] 时，effect 会在列表项还不存在的那一帧跑完就不再重跑，
+   * 焦点永远留在胶囊按钮上——上下键与回车都无法选中（OD-ARCH-106 复核实测到的缺陷）。
+   * anchor 一变（含从 null 变为坐标）就重新聚焦，floating 列表真正可用了。
+   */
   useEffect(() => {
-    if (!open) return;
+    if (!open || !anchor) return;
     const el = itemRefs.current[currentIndex];
     // preventScroll：浮层向上展开，聚焦列表项不该带动整页滚动。
     el?.focus({ preventScroll: true });
-  }, [open, currentIndex]);
+  }, [open, currentIndex, anchor]);
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -144,6 +151,13 @@ export function CategoryPicker({
     itemRefs.current[next]?.focus({ preventScroll: true });
   };
 
+  /** Home / End 跳到首尾（listbox 的常规键盘行为，原生 select 也有）。 */
+  const jump = (to: "first" | "last") => {
+    if (options.length === 0) return;
+    const index = to === "first" ? 0 : options.length - 1;
+    itemRefs.current[index]?.focus({ preventScroll: true });
+  };
+
   return (
     <div className="relative" ref={rootRef}>
       <button
@@ -153,7 +167,18 @@ export function CategoryPicker({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            setOpen(true);
+            if (open) {
+              // 浮层已经开着、焦点还在胶囊上时，上下键要直接落到列表项上，
+              // 否则这一步会被当成「再次打开」，键盘用户永远出不去按钮。
+              move(e.key === "ArrowDown" ? 1 : -1);
+            } else {
+              setOpen(true);
+            }
+          } else if ((e.key === "Enter" || e.key === " ") && open) {
+            // 焦点在胶囊上按回车/空格：等同于选中当前项。
+            e.preventDefault();
+            onChange(value);
+            close(true);
           } else if (e.key === "Escape" && open) {
             e.preventDefault();
             close(true);
@@ -205,6 +230,12 @@ export function CategoryPicker({
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 move(-1);
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                jump("first");
+              } else if (e.key === "End") {
+                e.preventDefault();
+                jump("last");
               }
             }}
           >

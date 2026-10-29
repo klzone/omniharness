@@ -539,6 +539,151 @@
   margin-top: 0.75rem;
 }
 
+/* ---- Profile 资产（OD-ARCH-109）----
+   一行一项 + 状态徽标 + 行尾动作；分组只靠留白与列表自身的边框区分，
+   不整行染色。卡片保持软件既有的方角白底口径。 */
+.settings-surface .asset-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.settings-surface .asset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 0.5rem 0.75rem;
+  align-items: start;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+}
+
+.settings-surface .asset-row + .asset-row {
+  border-top-color: rgba(199, 196, 216, 0.4);
+}
+
+.settings-surface .asset-row-main {
+  min-width: 0;
+}
+
+/* 行内改名的输入框：与列表行同高，不把行撑高，也不换成圆角弹层。 */
+.settings-surface input.text-input.asset-row-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 1.85rem;
+  padding: 0 0.45rem;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 0;
+}
+
+/* 行尾动作区：改名 / 移除（或保存 / 取消）并排，右对齐。 */
+.settings-surface .asset-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.settings-surface .asset-row-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.settings-surface .asset-row-title .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.settings-surface .asset-row .sub {
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+}
+
+.settings-surface .asset-badge {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid rgba(199, 196, 216, 0.7);
+  border-radius: 0;
+  background: #fff;
+  font-family: var(--font-label-caps);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  line-height: 1.7;
+  color: var(--color-on-surface-variant);
+}
+
+.settings-surface .asset-badge.ok {
+  border-color: rgba(16, 122, 87, 0.35);
+  color: #0f6b4d;
+}
+
+.settings-surface .asset-badge.info {
+  border-color: rgba(79, 70, 229, 0.35);
+  color: #4f46e5;
+}
+
+.settings-surface .asset-badge.warn {
+  border-color: rgba(180, 120, 0, 0.4);
+  color: #8a5a00;
+  background: rgba(255, 246, 224, 0.9);
+}
+
+.settings-surface .asset-badge.bad {
+  border-color: rgba(186, 26, 26, 0.35);
+  color: #ba1a1a;
+  background: rgba(255, 240, 238, 0.9);
+}
+
+.settings-surface .asset-receipt {
+  margin: 0.45rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-left: 2px solid rgba(199, 196, 216, 0.8);
+  background: rgba(250, 250, 253, 0.95);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-on-surface-variant);
+}
+
+.settings-surface .asset-receipt.ok {
+  border-left-color: rgba(16, 122, 87, 0.6);
+}
+
+.settings-surface .asset-receipt.bad {
+  border-left-color: rgba(186, 26, 26, 0.6);
+}
+
+.settings-surface .asset-receipt p {
+  margin: 0;
+}
+
+.settings-surface .asset-receipt pre {
+  margin: 0.3rem 0 0;
+  max-height: 8rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 10.5px;
+}
+
+.settings-surface .asset-notes {
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(199, 196, 216, 0.4);
+}
+
 /* ---- 模型端点：提供商列表 + 编辑区（OD-ARCH-065）----
    此前这几个类只有标记没有样式，列表和表单会塌成一行文字。 */
 .settings-surface .provider-split {
@@ -606,6 +751,191 @@
   line-height: 1.35;
   color: var(--color-on-surface-variant, #6b6b7b);
   overflow-wrap: anywhere;
+}
+
+/* Skill 分组与场景标签（OD-ARCH-107）。
+   一组一个框，标签用方形小签，与设置页其余信息块一致。 */
+.settings-surface .skill-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(199, 196, 216, 0.5);
+  border-radius: 0.625rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.settings-surface .skill-group + .skill-group {
+  margin-top: 0.25rem;
+}
+
+.settings-surface .skill-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.25rem 0.25rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant, #5b5b6b);
+}
+
+.settings-surface .skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.settings-surface .skill-tag {
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid rgba(199, 196, 216, 0.7);
+  border-radius: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant, #5b5b6b);
+  background: rgba(247, 248, 255, 0.9);
+}
+
+.settings-surface .skill-tag.on {
+  border-color: rgba(79, 70, 229, 0.45);
+  background: rgba(79, 70, 229, 0.1);
+  color: rgb(55, 48, 163);
+  font-weight: 600;
+}
+
+/* ---- 场景 Skill 绑定（OD-ARCH-129）----
+   一行一个场景、行尾一排勾选片：归属用「点亮 / 未点亮」表达，不引入下拉与弹层。
+   直角、白底、上下细分隔线，与设置页其它窄条列表同一套口径。 */
+.settings-surface .binding-block {
+  margin-top: 0.9rem;
+  border: 1px solid rgba(199, 196, 216, 0.55);
+  border-radius: 0;
+  background: #fff;
+  padding: 0.7rem 0.75rem 0.75rem;
+}
+
+.settings-surface .binding-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.settings-surface .binding-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.settings-surface .binding-head .sub {
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  line-height: 1.5;
+}
+
+.settings-surface .binding-rows {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-surface .binding-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0.55rem 0;
+}
+
+.settings-surface .binding-row + .binding-row {
+  border-top: 1px solid rgba(199, 196, 216, 0.4);
+}
+
+.settings-surface .binding-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+}
+
+.settings-surface .binding-scene {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.settings-surface .binding-row-main .sub {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--color-on-surface-variant);
+}
+
+.settings-surface .binding-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.settings-surface .binding-chip {
+  padding: 0.12rem 0.45rem;
+  border: 1px solid rgba(199, 196, 216, 0.85);
+  border-radius: 0;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.settings-surface .binding-chip:hover:not(:disabled) {
+  border-color: rgba(79, 70, 229, 0.5);
+  color: rgb(55, 48, 163);
+}
+
+.settings-surface .binding-chip.on {
+  border-color: rgba(79, 70, 229, 0.6);
+  background: rgba(79, 70, 229, 0.1);
+  color: rgb(55, 48, 163);
+  font-weight: 600;
+}
+
+.settings-surface .binding-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-surface .binding-chip.on:disabled {
+  opacity: 0.75;
+}
+
+/* ---- Profile 自带 Skill 源（OD-ARCH-131）----
+   与上面的勾选行同一套直角、细分隔线；动作条一行排开，窄屏自动折行。 */
+.settings-surface .binding-source {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(199, 196, 216, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.settings-surface .binding-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.settings-surface .binding-source-actions .text-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 280px;
+  font-size: 11.5px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0;
 }
 
 .settings-surface .provider-editor {
