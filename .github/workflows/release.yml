@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -87,6 +87,9 @@ jobs:
     if: needs.meta.outputs.publish == 'true'
     runs-on: windows-latest
     steps:
+      - name: 关闭换行符自动转换
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - name: 应用发布源码补丁
         shell: bash
