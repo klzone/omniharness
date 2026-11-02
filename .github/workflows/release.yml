@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: '22'
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "v$VERSION 已存在，本次只构建不发布。"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "准备发布 v$VERSION。"
+          fi
+
+  macos:
+    needs: meta
+    if: needs.meta.outputs.publish == 'true'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: 应用发布源码补丁
+        run: |
+          if [ -f .github/release-source.patch ]; then
+            git apply .github/release-source.patch
+            echo "已应用 .github/release-source.patch"
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: 安装前端依赖
+        working-directory: desktop
+        run: npm ci
+      - name: 引导 DSH 底座
+        run: bash scripts/bootstrap-runtime.sh
+      - name: 生成应用图标
+        working-directory: desktop
+        run: npx tauri icon src-tauri/icons/icon-512.png
+      - name: 构建桌面程序
+        working-directory: desktop
+        run: npx tauri build --features custom-protocol --target universal-apple-darwin --bundles app
+      - name: 组装免安装包
+        env:
+          PLATFORM: macos-universal
+        run: bash scripts/build-portable-package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-package
+          path: dist-package/*.zip
+          if-no-files-found: error
+
+  windows:
+    needs: meta
+    if: needs.meta.outputs.publish == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 应用发布源码补丁
+        shell: bash
+        run: |
+          if [ -f .github/release-source.patch ]; then
+            git apply .github/release-source.patch
+            echo "已应用 .github/release-source.patch"
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: 安装前端依赖
+        working-directory: desktop
+        shell: bash
+        run: npm ci
+      - name: 引导 DSH 底座
+        shell: bash
+        run: bash scripts/bootstrap-runtime.sh
+      - name: 生成应用图标
+        working-directory: desktop
+        shell: bash
+        run: npx tauri icon src-tauri/icons/icon-512.png
+      - name: 构建桌面程序
+        working-directory: desktop
+        shell: bash
+        run: npx tauri build --features custom-protocol --no-bundle
+      - name: 组装免安装包
+        shell: bash
+        run: bash scripts/build-portable-package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: dist-package/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [meta, macos, windows]
+    if: needs.meta.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: 列出产物
+        run: ls -lh artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.meta.outputs.version }}
+          name: OmniDesk v${{ needs.meta.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          files: artifacts/*.zip
+          body: |
+            ## OmniDesk v${{ needs.meta.outputs.version }}
+
+            免安装版，解压即用。Windows 与 macOS(Apple Silicon) 各一个压缩包。
+
+            ### 使用前
+            1. 装 Node.js 22.19+（https://nodejs.org）
+            2. 装 Python 3.10+（https://www.python.org）
+            3. 解压后直接运行：Windows 双击 `OmniDesk.exe`，macOS 双击 `OmniDesk.app`
+
+            macOS 包未做 Apple 签名/公证，首次打开若提示“无法验证开发者”，请右键点图标 → 打开，
+            或在终端执行一次：
+            ```
+            xattr -dr com.apple.quarantine /path/to/OmniDesk.app
+            ```
+
+            Windows 包未签名，SmartScreen 可能提示“未知发布者”，选择“仍要运行”。
+
+            ### 首次启动
+            程序会把包内 `runtime/dsh-home-seed` 的 Profile 与 Skill 复制到 `~/OmniDesk/runtime/dsh-home`
+            （Windows 为 `%USERPROFILE%\OmniDesk\...`），已存在则不覆盖。
+            包内不含任何密钥，需在“设置 → 模型服务”里填自己的 API Key。
+
+            ### 数据位置
+            - `~/OmniDesk/app`：设置、会话、引擎台账
+            - `~/OmniDesk/runtime`：隔离的 DSH 数据根（模型配置与凭据）
+            - `~/OmniDesk/workspace`：成果目录
+
