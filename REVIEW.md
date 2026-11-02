@@ -1,3 +1,27 @@
+## OD-ARCH-133 审查结论（ARCHITECT，2026-11-03）——通过
+
+**结论：通过。** 宿主与引擎两侧的进程核验原先都直接读 Linux 的 `/proc`。macOS 上没有 `/proc`，`boot_id` / `proc_stat` / `proc_cmdline` / `group_members` 一律返回空，直接后果是单实例互斥失效（同一次开机的登记被判成上次开机残留而删除）与遗留进程组收不回来（成员表恒空，`terminate_group` 直接返回）。本轮把「怎么看进程」下沉到平台层，判定条件与拒绝路径保持不变。
+
+**独立复核范围：** HEAD `b658d8a870` + 工作区改动。逐行核对 `platform.rs` 新增的 `ProcRow` 与四个函数的三种 `cfg` 分支（含 `kern.boottime` 解析与 `ps` 四列切分）；`process_owner.rs` 的委托替换、`group_members` 的僵尸过滤，以及 `reclaim_before_start` / `terminate_group` / `cleanup_engine_group` 未动；`process_owner.py` 的 darwin 分支与 Linux 分支对照；三处测试口径修正；新脚本与 `facts.json`。`runtime/` 零差异；没有新增命令、权限或数据目录字段。
+
+**审查判断（几处特意验过的边界）：**
+
+1. **只换「怎么看进程」，没换「什么情况下能杀」。** `reclaim_before_start` 的判定顺序（他人实例 → 身份不符 → 孤立子组 → 活跃引擎 → 残留登记）、拒绝文案与「核验不通过一个都不杀」全部原样；改动集中在数据来源函数，这是本轮最重要的边界。
+2. **`cfg` 三分而不是二分。** 用 `cfg(not(any(target_os = "linux", target_os = "macos")))` 显式兜住 Windows，而不是 `cfg(not(target_os = "macos"))` 把 Windows 带进 `/proc` 分支；后者虽然运行时返回空，但语义上是「假装 Linux」，容易在后续改动里被当成可用路径。
+3. **boot id 不同源，天然不串。** Linux 是内核 UUID，macOS 是 `darwin:<秒>`。两个平台的登记永不相等，跨平台拷贝数据根也不会被误认成本次开机。
+4. **argv 相等不是唯一判据。** macOS 命令行来自 `ps args=` 的空白切分，路径带空格会丢边界；因此核验仍要求 pid + pgid + boot_id +「组内全是我方进程」同时成立。宁可拒绝回收、让用户手工处理，也不误杀——这与 074 的原始设计一致。
+5. **`ps` 的调用点只在低频路径。** 复核了全部调用点（`engine_supervisor.rs` 926 / 1040 / 1095），都是启动回收与关闭兜底；心跳、状态查询、界面刷新都不经过这里。
+6. **两处测试修正改的是口径，不是结论。** `task_shell` 那条断言比的是「返回的根是否就是传入的根」，规范化后比较才表达这个意思（`/var` 到 `/private/var`）；074 脚本的临时根同理。单测夹具的等待是补 fork/exec 竞态，Rust 侧同一用例早有相同等待，这次只是把口径对齐，没有放宽任何断言。
+7. **旧登记不会被这次升级「顺手杀掉」。** `boot_id` 为空时走 `stale_boot`，只删 `owner.json`、不发信号；用户重开即可。这是升级路径上最需要保守的地方。
+
+8. **并行单测的偶发红是测试隔离缺陷，不是本计划的回归；已顺手修掉。** 四个测试模块（`task_shell` / `settings` / `lib.rs::command_tests` / `engine_supervisor`）各自改 `OMNIDESK_*`，锁不共用，`command_tests` 那条甚至不持锁、结束时直接 `remove_var`，于是并行时别的用例读到了被改掉的数据根。现统一到 crate 级 `test_env_lock::ENV_LOCK`，并让 `command_tests` 保存/还原原值。判定依据是「同样的代码串行全绿、并行偶发红」——这类差异只能来自共享状态，不能靠重跑掩盖。改动仅限 `#[cfg(test)]` 代码。
+
+**验证证据：** `verify_process_platform_133.py` **28/28**、`cargo test --offline --lib` **499 passed / 0 failed**（并行连跑 3 次一致）、引擎单测 **10/10**、`verify_process_lifecycle_074.py` **21/21**、`verify_worklog_132.py` **43/43**、`verify_worklog_104.py` **70/70**、前端 build 通过；证据 `tests/verification/desktop/evidence/od-arch-133/facts.json`。
+
+**本轮未覆盖（不作为通过条件）：** 真实发布包在 macOS 上的端到端表现需要用户实测——强杀引擎后子进程组是否被自动收掉、同一数据根第二次启动是否给出可读拒绝。本轮只用本机假进程与原 074 脚本验证，不启动真实 DSH。
+
+**一句提醒：** `ps` 输出是给人看的文本，不是结构化接口。后续若要把「路径带空格」这类情况做准，应换 `libproc` 或 `sysctl KERN_PROCARGS2`，而不是在切分规则上继续打补丁；在那之前，保守拒绝就是正确行为。
+
 ## OD-ARCH-132 审查结论（ARCHITECT，2026-11-03）——通过
 
 **结论：通过。** 用户实测「先记一条、再补一句」落成了两条独立记录。根因是两条：Skill 只让模型「跟随上一条的日期」，落盘通道只有 append 且自检要求「原字节不变」，机制上就没有合并这条路。本轮新增 `merge` 判定通道与 `merge_entry` 落盘函数，把补充以「；」接在同一行末尾，并保持「除目标行外逐字节不变」这条护栏。

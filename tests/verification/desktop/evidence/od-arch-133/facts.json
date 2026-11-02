@@ -1,0 +1,151 @@
+{
+  "plan": "OD-ARCH-133",
+  "platform": "darwin",
+  "cases": [
+    {
+      "name": "platform_macos_boot_id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "platform_macos_process_stat",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "platform_macos_process_cmd",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "platform_macos_process_table",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "platform_windows_returns_empty",
+      "ok": true,
+      "detail": "Windows 不参与回收，查不到即不动"
+    },
+    {
+      "name": "platform_proc_row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "platform_boottime_parser",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "owner_no_procfs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "owner_delegates_platform",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "owner_kill_group_unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "owner_refuses_unverifiable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py_darwin_flag",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py__darwin_boot_id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py__darwin_stat",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py__darwin_cmdline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py__darwin_group_members",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py_dispatch",
+      "ok": true,
+      "detail": "boot_id / _proc_stat / _proc_cmdline / group_members 四处分流"
+    },
+    {
+      "name": "py_linux_path_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "task_shell_assertion_canonical",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lifecycle_uses_platform_tempdir",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unit_waits_for_exec",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py_boot_id_darwin",
+      "ok": true,
+      "detail": "darwin:1793505130"
+    },
+    {
+      "name": "py_stat_self",
+      "ok": true,
+      "detail": "('S', 78344)"
+    },
+    {
+      "name": "py_cmdline_self",
+      "ok": true,
+      "detail": "/Library/Developer/CommandLineTools/Libr"
+    },
+    {
+      "name": "py_group_members_contains_self",
+      "ok": true,
+      "detail": "members=4"
+    },
+    {
+      "name": "py_group_members_rejects_illegal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "py_inspect_active_engine",
+      "ok": true,
+      "detail": "active_engine"
+    },
+    {
+      "name": "py_inspect_after_exit",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "summary": {
+    "total": 28,
+    "failed": 0
+  },
+  "passed": true
+}

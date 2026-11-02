@@ -5,6 +5,9 @@
 //!
 //! Rust 依赖中不含 libc，因此只用外部 `/bin/kill` 向进程组发信号，并在发送前
 //! 再次核验：pid 存活 + pgid 匹配 + boot_id 一致 + 命令行指纹一致。
+//!
+//! 进程的读取方式按平台差异交给 `platform`（OD-ARCH-133）：Linux 读 procfs，
+//! macOS 走 ps / sysctl。本文件只保留「什么情况下可以杀」的判定。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -33,36 +36,17 @@ fn owner_path(state_dir: &Path) -> PathBuf {
     state_dir.join("owner.json")
 }
 
+// 平台差异（procfs / ps / sysctl）集中在 `platform`，这里只做薄委托。
 fn boot_id() -> Option<String> {
-    std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
-        .ok()
-        .map(|s| s.trim().to_string())
+    crate::platform::boot_id()
 }
 
 fn proc_stat(pid: i32) -> Option<(char, i32)> {
-    if pid <= 0 {
-        return None;
-    }
-    let raw = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
-    let end = raw.rfind(')')?;
-    let rest = raw.get(end + 1..)?.trim_start();
-    let mut parts = rest.split_whitespace();
-    let state = parts.next()?.chars().next()?;
-    // rest 从 state 开始：state ppid pgrp ...
-    let _ppid = parts.next()?;
-    let pgrp: i32 = parts.next()?.parse().ok()?;
-    Some((state, pgrp))
+    crate::platform::process_stat(pid)
 }
 
 fn proc_cmdline(pid: i32) -> Vec<String> {
-    let Ok(bytes) = std::fs::read(format!("/proc/{}/cmdline", pid)) else {
-        return Vec::new();
-    };
-    bytes
-        .split(|b| *b == 0)
-        .filter(|part| !part.is_empty())
-        .map(|part| String::from_utf8_lossy(part).to_string())
-        .collect()
+    crate::platform::process_cmd(pid)
 }
 
 fn is_alive(pid: i32) -> bool {
@@ -84,22 +68,11 @@ fn group_members(pgid: i32) -> Vec<(i32, Vec<String>)> {
     if pgid <= 1 {
         return Vec::new();
     }
-    let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        let Ok(pid) = name.parse::<i32>() else { continue };
-        if let Some((state, pgrp)) = proc_stat(pid) {
-            if state != 'Z' && pgrp == pgid {
-                out.push((pid, proc_cmdline(pid)));
-            }
-        }
-    }
-    out
+    crate::platform::process_table()
+        .into_iter()
+        .filter(|row| row.state != 'Z' && row.pgid == pgid)
+        .map(|row| (row.pid, row.cmd))
+        .collect()
 }
 
 pub fn read_owner(state_dir: &Path) -> Option<OwnerRecord> {

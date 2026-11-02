@@ -2939,9 +2939,9 @@ pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // 进程环境是全局状态：与 settings / lib 里的用例共用同一把锁（OD-ARCH-133）。
+    use crate::test_env_lock::ENV_LOCK;
     use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn temp_root(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -4979,7 +4979,10 @@ mod material_tests {
         assert!(!names.contains(&".hidden.md"), "{:?}", names);
         assert!(!names.contains(&"inner.md"), "{:?}", names);
         assert!(!names.contains(&"big.md"), "{:?}", names);
-        assert!(items.iter().all(|i| i.source_root == dir.display().to_string()));
+        // list_reference_files 记的是规范化后的根（macOS 的 /var 会变成 /private/var），
+        // 断言也要按同一口径比较，否则这条只会在 Linux 上成立。
+        let root_real = dir.canonicalize().unwrap().display().to_string();
+        assert!(items.iter().all(|i| i.source_root == root_real), "{:?}", items);
 
         // 查询词只按文件名过滤，大小写不敏感。
         let filtered = list_reference_files(&[dir.clone()], Some("KEEP"), 50).unwrap();

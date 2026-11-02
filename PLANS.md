@@ -1,4 +1,44 @@
 # 当前实施计划
+
+### OD-ARCH-133：macOS 上的引擎进程核验与回收（计划者与实施者：本助手；用户授权「授权执行OD-ARCH-133」；2026-11-03 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-133/facts.json）
+
+> **触发：** 132 收尾时跑全量单测，4 项平台失败里有 3 项落在 `process_owner`。核对后确认不是测试写错，而是**运行期缺陷**：宿主与引擎两侧的进程核验都直接读 Linux 的 `/proc`，而 macOS 发布包（v0.2.4 / v0.2.5 用户实机测试）跑的正是这套代码。
+
+#### 已核实的前提（本人实读源码 + 实机复现）
+
+1. **`/proc` 在 macOS 上不存在。** `process_owner.rs` 的 `boot_id` / `proc_stat` / `proc_cmdline` / `group_members` 全部读 `/proc`；`engine/omnidesk_engine/process_owner.py` 同构。macOS 上这四个函数一律返回空。
+2. **后果一：单实例互斥失效。** `reclaim_before_start` 里 `current_boot.is_empty()` 直接判「上次开机残留」并删掉 `owner.json`，于是第二个实例不会被拒绝。
+3. **后果二：遗留进程组收不回来。** `group_members` 恒空 → `terminate_group` 直接返回、`cleanup_engine_group` 恒返回 None，引擎强杀后遗留的 DSH 子进程只能靠用户手工 kill。
+4. **Python 侧同样失效。** `inspect_owner` 在 macOS 上恒判 `pid_reused`（因为 `_proc_stat` 为空），`claim_ownership` 记下的 `boot_id` 是空串。
+5. **实机基线（本机 macOS，2026-11-03）。** `python3 -m unittest test_process_owner_unit` → **10 项里 4 项失败**（`active_engine` 判成 `pid_reused`、`child_pid` 记成 0 等）；`cargo test --offline --lib` → 4 项失败，其中 3 项在 `process_owner`。
+6. **macOS 上可用的等价接口（本人实测）。** `ps -A -ww -o pid=,pgid=,stat=,args=` 能给出 pid / 进程组 / 状态 / 完整命令行；`sysctl -n kern.boottime` 给出 `{ sec = 1793505130, ... }`；`kill -s TERM -- -<pgid>` 对进程组有效（实测 rc=0，BSD 只认带 `--` 的写法）。
+
+#### 目标
+
+让进程核验与回收在 macOS 上按与 Linux 相同的口径工作：同一数据根只允许一个引擎；身份核验通过才回收；核验不通过一律不杀。Windows 不在本轮（没有进程组概念，要用 Job Object，单独立项），但代码必须保持可编译且不误杀。
+
+#### 实施步骤
+
+1. **`platform.rs` 增加进程后端**（跨平台差异集中在这里，与既有「家目录 / 打开器 / Python 解释器」同一层）：`boot_id()`、`process_stat(pid)`、`process_cmd(pid)`、`process_table()`。Linux 读 `/proc`（行为不变）；macOS 用 `ps` 与 `sysctl kern.boottime`（boot id 记成 `darwin:<sec>`，与 Linux 的 UUID 天然不同源，不会互相误认）；Windows 返回 `None` / 空表并注明不参与回收。
+2. **`process_owner.rs` 改调后端**：删除本文件内的 `/proc` 读取，改为委托 `platform`。判定顺序、拒绝条件、`/bin/kill` 的 `-s SIG -- -PGID` 调用与自证逻辑全部保持原样——本轮只换「怎么看进程」，不换「什么情况下能杀」。
+3. **`engine/omnidesk_engine/process_owner.py` 同步**：`boot_id` / `_proc_stat` / `_proc_cmdline` / `group_members` 按 `sys.platform == "darwin"` 走 `ps` 分支，Linux 分支逐行不动。命令行在 macOS 上没有 argv 数组，统一按空白切分（同一次登记与同一次核验用同一变换，比较仍然稳定）。
+4. **测试口径**：`task_shell` 那条失败是 `dir.display()` 与规范化路径比较，属测试写死 Linux 路径形态，改为两侧都 `canonicalize` 后比较。
+5. **验证**：`cargo test --offline --lib`（process_owner / task_shell 全绿）；`python3 -m unittest test_process_owner_unit` 10/10；`verify_process_lifecycle_074.py` 不退化；前端 build 不受影响但照跑一次。
+6. **测试隔离**：并行跑全量单测时发现 `task_shell::offline_artifact_*` 偶发失败，根因是四个测试模块各自持锁、`lib.rs::command_tests` 干脆不持锁，同进程环境变量互相覆盖。统一为 crate 级 `test_env_lock::ENV_LOCK`（`#[cfg(test)]`），四个模块共用，`lib.rs` 那条改为保存/还原原值。只改测试代码。
+
+#### 影响范围
+
+`platform.rs`、`process_owner.rs`、`engine/omnidesk_engine/process_owner.py`、`task_shell.rs` 的一处测试断言；以及仅测试代码的 `lib.rs` / `settings.rs` / `engine_supervisor.rs`（共用环境锁）。不动 Skill、不动 UI、不动数据目录结构；`owner.json` 字段不变。
+
+#### 风险
+
+- `ps` 每次核验 fork 一个进程：只在启动回收 / 关闭兜底两条低频路径上调用，不进热路径。
+- macOS 的命令行按空白切分有损（路径带空格）：因此**不把 argv 相等当作唯一判据**，仍然要求 pid + pgid + boot id + 「组内全是我方进程」同时成立；宁可拒绝回收，也不误杀。
+- 旧 `owner.json`（boot_id 为空）在升级后会被判为无法核验：按其原有保守语义只删登记、不杀进程，用户手动重启即恢复。
+
+#### 验收标准
+
+macOS 上：第二次启动同一数据根被拒绝并给出可读原因；引擎被强杀后其 DSH 子进程组能被收掉；核验不通过时一个进程都不杀（旁观进程存活）。Linux 行为零变化。
 ### OD-ARCH-132：随手记补充内容并入上一条（计划者与实施者：本助手；用户已批准「批准执行OD-ARCH-132」；2026-11-03 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-132/facts.json）
 
 > **触发：** 用户实测发现：先记一条，再补一句，落盘成了两条独立记录。原因有二：① Skill 规则只让模型"跟随上一条的日期"，落盘永远新起一条，没有"并入上一条"的通道；② 工作记录文件是只增不改设计（append_entry 自检"原字节不变"），从机制上就不支持合并。

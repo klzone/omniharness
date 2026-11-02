@@ -277,3 +277,237 @@ pub fn resolve_node() -> Result<String, String> {
     )
     .to_string())
 }
+
+// ---------------------------------------------------------------------------
+// 进程核验后端（OD-ARCH-133）
+//
+// process_owner 需要知道三件事：本次开机是谁、某个 pid 的状态与进程组、某个
+// 进程组里现在有哪些进程。Linux 直接读 procfs；macOS 没有 procfs，改用 ps 与
+// sysctl 的等价输出。差异只留在这里，上层的「什么情况下可以杀」判定不分平台。
+//
+// 边界：只读查询，不发信号；ps 会 fork，调用点仅限启动回收 / 关闭兜底这种
+// 低频路径，不进热路径。Windows 没有进程组语义（要用 Job Object，另立项），
+// 这里统一返回「查不到」，让上层走「无法核验就不动」的保守分支。
+// ---------------------------------------------------------------------------
+
+/// 一条进程记录。state 取 ps / procfs 的状态字符，'Z' 表示僵尸。
+#[derive(Debug, Clone)]
+pub struct ProcRow {
+    pub pid: i32,
+    pub pgid: i32,
+    pub state: char,
+    /// 命令行。Linux 是 argv 数组；macOS 是整行参数串按空白切分。
+    pub cmd: Vec<String>,
+}
+
+/// 本次内核启动的标识。跨平台不同源（Linux 是 UUID，macOS 是 darwin:<秒>），
+/// 因此永远不会把一个平台的旧登记误认成本平台的。
+#[cfg(target_os = "linux")]
+pub fn boot_id() -> Option<String> {
+    let raw = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn boot_id() -> Option<String> {
+    let out = Command::new("/usr/sbin/sysctl")
+        .arg("-n")
+        .arg("kern.boottime")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    parse_boottime_sec(&text).map(|sec| format!("darwin:{}", sec))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub fn boot_id() -> Option<String> {
+    None
+}
+
+/// 从 { sec = 1793505130, usec = 109931 } Sun Nov  1 ... 里取整秒。
+#[cfg(target_os = "macos")]
+fn parse_boottime_sec(text: &str) -> Option<u64> {
+    let start = text.find("sec")? + 3;
+    let rest = text.get(start..)?;
+    let eq = rest.find('=')? + 1;
+    let digits: String = rest
+        .get(eq..)?
+        .chars()
+        .skip_while(|c| c.is_whitespace())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse::<u64>().ok()
+}
+
+/// 进程状态字符与进程组。进程不存在 / 无权查看时返回 None。
+#[cfg(target_os = "linux")]
+pub fn process_stat(pid: i32) -> Option<(char, i32)> {
+    if pid <= 0 {
+        return None;
+    }
+    let raw = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+    let end = raw.rfind(')')?;
+    let rest = raw.get(end + 1..)?.trim_start();
+    let mut parts = rest.split_whitespace();
+    let state = parts.next()?.chars().next()?;
+    // rest 从 state 开始：state ppid pgrp ...
+    let _ppid = parts.next()?;
+    let pgrp: i32 = parts.next()?.parse().ok()?;
+    Some((state, pgrp))
+}
+
+#[cfg(target_os = "macos")]
+pub fn process_stat(pid: i32) -> Option<(char, i32)> {
+    if pid <= 0 {
+        return None;
+    }
+    let out = Command::new("/bin/ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("stat=,pgid=")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().find(|l| !l.trim().is_empty())?;
+    let mut parts = line.split_whitespace();
+    let state = parts.next()?.chars().next()?;
+    let pgid: i32 = parts.next()?.parse().ok()?;
+    Some((state, pgid))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub fn process_stat(_pid: i32) -> Option<(char, i32)> {
+    None
+}
+
+/// 命令行。macOS 没有 argv 数组，按空白切分（有损，因此不单独作为杀进程判据）。
+#[cfg(target_os = "linux")]
+pub fn process_cmd(pid: i32) -> Vec<String> {
+    if pid <= 0 {
+        return Vec::new();
+    }
+    let Ok(bytes) = std::fs::read(format!("/proc/{}/cmdline", pid)) else {
+        return Vec::new();
+    };
+    bytes
+        .split(|b| *b == 0)
+        .filter(|part| !part.is_empty())
+        .map(|part| String::from_utf8_lossy(part).to_string())
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+pub fn process_cmd(pid: i32) -> Vec<String> {
+    if pid <= 0 {
+        return Vec::new();
+    }
+    let out = Command::new("/bin/ps")
+        .arg("-ww")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("args=")
+        .output()
+        .ok();
+    let Some(out) = out else { return Vec::new() };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub fn process_cmd(_pid: i32) -> Vec<String> {
+    Vec::new()
+}
+
+/// 完整的进程快照（含僵尸，由调用方过滤）。
+#[cfg(target_os = "linux")]
+pub fn process_table() -> Vec<ProcRow> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        let Ok(pid) = name.parse::<i32>() else { continue };
+        if let Some((state, pgid)) = process_stat(pid) {
+            out.push(ProcRow {
+                pid,
+                pgid,
+                state,
+                cmd: process_cmd(pid),
+            });
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "macos")]
+pub fn process_table() -> Vec<ProcRow> {
+    let mut out = Vec::new();
+    let Ok(res) = Command::new("/bin/ps")
+        .arg("-A")
+        .arg("-ww")
+        .arg("-o")
+        .arg("pid=,pgid=,stat=,args=")
+        .output()
+    else {
+        return out;
+    };
+    if !res.status.success() {
+        return out;
+    }
+    for line in String::from_utf8_lossy(&res.stdout).lines() {
+        let line = line.trim_start();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(4, char::is_whitespace);
+        let (Some(pid), Some(pgid), Some(state)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let (Ok(pid), Ok(pgid), Some(state)) = (
+            pid.parse::<i32>(),
+            pgid.parse::<i32>(),
+            state.chars().next(),
+        ) else {
+            continue;
+        };
+        let cmd = parts
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        out.push(ProcRow {
+            pid,
+            pgid,
+            state,
+            cmd,
+        });
+    }
+    out
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub fn process_table() -> Vec<ProcRow> {
+    Vec::new()
+}

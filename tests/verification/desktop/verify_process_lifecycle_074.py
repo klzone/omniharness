@@ -295,15 +295,24 @@ def main() -> int:
     record("R_record_removed_after_reclaim", "pass" if not owner_file.exists() else "fail")
 
     # --- F. 边界自检 ----------------------------------------------------
-    text_root = str(root["base"])
-    record("S_root_is_temp_only", "pass" if text_root.startswith("/tmp/") else "fail", note=text_root)
+    # 临时根按平台取：macOS 的 TMPDIR 在 /var/folders/...（realpath 后是 /private/var），
+    # 写死 /tmp/ 只会在 Linux 上成立。
+    text_root = os.path.realpath(str(root["base"]))
+    temp_root = os.path.realpath(tempfile.gettempdir())
+    record(
+        "S_root_is_temp_only",
+        "pass" if text_root.startswith(temp_root + os.sep) else "fail",
+        note=text_root,
+    )
     record(
         "T_no_original_dsh_paths",
         "pass" if "/.dsh" not in text_root and "/.agents" not in text_root else "fail",
     )
     record(
         "U_engine_state_under_temp_root",
-        "pass" if str(root["state"]).startswith(text_root) else "fail",
+        "pass"
+        if os.path.realpath(str(root["state"])).startswith(text_root + os.sep)
+        else "fail",
     )
 
     failed = [c for c in report["checks"] if c["verdict"] != "pass"]

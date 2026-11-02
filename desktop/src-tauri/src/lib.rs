@@ -4924,6 +4924,18 @@ fn scheduler_heartbeat_scan(
     serde_json::to_value(scan).map_err(|e| format!("序列化心跳结果失败：{}", e))
 }
 
+/// 单元测试共用的进程环境互斥量（OD-ARCH-133）。
+///
+/// `cargo test` 的用例跑在同一进程里，环境变量是全局状态。凡是写 `OMNIDESK_*` / `HOME`
+/// 的用例都必须经过这里，否则并行时分不清自己读到的是自己的临时根还是别人的。
+/// 注意不可重入：已持锁的用例不要再调用会取锁的辅助函数。
+#[cfg(test)]
+pub(crate) mod test_env_lock {
+    use std::sync::Mutex;
+
+    pub(crate) static ENV_LOCK: Mutex<()> = Mutex::new(());
+}
+
 #[cfg(test)]
 mod command_tests {
     use super::*;
@@ -4933,6 +4945,11 @@ mod command_tests {
     /// 且不得产生任何文件系统副作用。
     #[test]
     fn prepare_workspace_is_refused_while_permission_change_blocked() {
+        // 与其它写环境变量的用例共用一把锁，结束后还原原值（并行跑时不能互相覆盖）。
+        let _guard = crate::test_env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var_os("OMNIDESK_LOCAL_DATA_ROOT");
         let base = std::env::temp_dir().join(format!(
             "omnidesk-prepare-{}-{}",
             std::process::id(),
@@ -4957,7 +4974,10 @@ mod command_tests {
         life.begin_change().succeed();
         assert!(life.begin_call().is_ok(), "确认停止并恢复后才重新开放");
 
-        std::env::remove_var("OMNIDESK_LOCAL_DATA_ROOT");
+        match previous {
+            Some(value) => std::env::set_var("OMNIDESK_LOCAL_DATA_ROOT", value),
+            None => std::env::remove_var("OMNIDESK_LOCAL_DATA_ROOT"),
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 

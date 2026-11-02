@@ -877,9 +877,8 @@ pub fn init_category_folders(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // 进程环境是全局状态：与 task_shell / lib 里的用例共用同一把锁（OD-ARCH-133）。
+    use crate::test_env_lock::ENV_LOCK;
 
     fn temp_app(tag: &str) -> AppPaths {
         let root = std::env::temp_dir().join(format!(

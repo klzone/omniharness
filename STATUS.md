@@ -1,5 +1,48 @@
 # 执行状态
 
+## OD-ARCH-133：macOS 上的引擎进程核验与回收（2026-11-03；已实施，本人实跑验证）
+
+> 起点 HEAD `b658d8a870`，工作区含 132 提交后的改动。改动 7 个文件 + 1 个新验证脚本 + 1 份证据；未派子代理，`runtime/` 零差异，未读真实工作记录、知识库与凭证，未改数据目录结构，`owner.json` 字段不变。
+
+### 一句话结论
+
+进程核验原先写死在 Linux 的 procfs 上：`boot_id`、`proc_stat`、`proc_cmdline`、`group_members` 全读 `/proc`。macOS 没有 `/proc`，这四个函数一律返回空，于是两条护栏同时失效：启动回收把同一次开机的登记当成「上次开机残留」直接删掉（单实例互斥失效），回收时看不到任何组成员（强杀引擎后遗留的 DSH 子进程组收不回来）。现在把「怎么看进程」下沉到平台层——Rust 侧集中到 `platform.rs`，引擎侧按 `sys.platform == "darwin"` 分流；「什么情况下能杀」的判定、拒绝条件与 `/bin/kill -s SIG -- -PGID` 的调用一字未改。
+
+### 改动
+
+1. **`platform.rs`**：新增 `ProcRow` 与四个后端函数，按 `target_os` 三分。Linux 与原实现逐行等价（procfs）；macOS 用 `ps -A -ww -o pid=,pgid=,stat=,args=`、`ps -p <pid> -o stat=,pgid=`、`ps -ww -p <pid> -o args=` 与 `sysctl -n kern.boottime`（boot id 记成 `darwin:<秒>`，与 Linux 的 UUID 不同源，永远不会互相误认）；Windows 返回 `None` / 空表，交给上层「无法核验就不动」。
+2. **`process_owner.rs`**：删除本文件内的 `/proc` 读取，四个函数改为薄委托 `crate::platform::*`；`group_members` 改为过滤 `process_table()`（僵尸不计入）。判定顺序、拒绝文案、自证逻辑与 kill 调用全部保持原样。
+3. **`engine/omnidesk_engine/process_owner.py`**：加 `_DARWIN` 与 `_run_ps` / `_darwin_boot_id` / `_darwin_stat` / `_darwin_cmdline` / `_darwin_group_members`，四处按平台分流；Linux 分支逐行未动。
+4. **三处测试口径修正**（都是「写死 Linux 形态」的断言，不是生产逻辑）：`task_shell` 的 `source_root` 断言两侧都 canonicalize；`verify_process_lifecycle_074.py` 的临时根改用 `tempfile.gettempdir()`（并同步 U 项的 realpath 比较）；`test_process_owner_unit.py` 的 `spawn_fake_engine` 等到 exec 完成后再返回（fork/exec 之间读到的 cmdline 还是父进程的，macOS 上 exec 更慢，这个竞态更容易复现）。
+5. **`worklog.rs`**：一处未使用的 `content` 绑定改名 `_content`，消掉 132 遗留的编译告警，行为不变。
+6. **验证**：新增 `tests/verification/desktop/verify_process_platform_133.py`（28 项）与 `evidence/od-arch-133/facts.json`。
+7. **测试隔离（收尾时发现的既有缺陷）**：`cargo test` 的用例同进程并行，环境变量是全局状态，而 `task_shell` / `settings` / `lib.rs::command_tests` / `engine_supervisor` 四个模块各写各的 `OMNIDESK_*`，锁不共用——`lib.rs::command_tests::prepare_workspace_is_refused_while_permission_change_blocked` 甚至不持锁，结束时直接 `remove_var`。并行跑会偶发 1–2 项 `task_shell::offline_artifact_*` 失败，串行跑全绿。现统一到 crate 级 `test_env_lock::ENV_LOCK`（`lib.rs`，`#[cfg(test)]`），四个模块共用；`lib.rs` 那条改为保存并还原原值。只动测试代码，生产逻辑零变化。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 133 验证 | `python3 tests/verification/desktop/verify_process_platform_133.py` | **28/28 通过** |
+| 宿主全量单测 | `cargo test --offline --lib`（并行，连跑 3 次） | **499 passed / 0 failed**，三次一致（含 `process_owner` 5 项、`task_shell::material_tests` 22 项） |
+| 引擎单测 | `python3 -m unittest test_process_owner_unit` | **10/10 通过** |
+| 进程生命周期 | `python3 tests/verification/desktop/verify_process_lifecycle_074.py` | **21/21 通过** |
+| 132 回归 | `python3 tests/verification/desktop/verify_worklog_132.py` | 43/43 |
+| 104 回归 | `python3 tests/verification/desktop/verify_worklog_104.py` | 70/70 |
+| 前端构建 | `npm --prefix desktop run build` | 通过 |
+
+> 上述 Python 项要读系统进程表、发信号，需在宿主权限下运行；在受限沙箱里 `ps` / `sysctl` 会被拒（表现为假失败，4 项 `pid=0` 之类的断言），不是回归。
+
+### 边界与已知限制
+
+1. **macOS 没有 argv 数组。** `ps args=` 只能给出拼好的整行，按空白切分；路径带空格会丢边界。因此 argv 相等不是唯一判据，仍要求 pid + pgid + boot_id +「组内全是我方进程」同时成立——宁可拒绝回收，也不误杀。
+2. **`ps` 每次 fork 一个进程。** 只用启动回收与关闭兜底两条低频路径（`engine_supervisor.rs:926 / 1040 / 1095`），不进心跳与轮询；`terminate_group` 的等待循环里是 50ms 一次的轮询，只在真正回收时发生。
+3. **旧登记仍按原语义保守处理。** `boot_id` 为空（133 之前写在 macOS 上的登记）或来自别的内核时，只删登记、不杀进程；用户手动重开即恢复。
+4. **Windows 不参与回收**（没有进程组语义，要用 Job Object，另立项）。后端返回空表，上层走「无法核验就不动」；本轮只保证可编译、不误杀。
+
+### 未覆盖
+
+发布包在真实 macOS 上的端到端行为（强杀引擎后子进程组是否被自动收掉、同一数据根第二次启动是否被拒）仍需用户实测；本轮证据来自本机假进程与原 074 脚本，不启动真实 DSH、不碰用户数据。
+
 ## OD-ARCH-132：随手记补充内容并入上一条（2026-11-03；已实施，本人实跑验证）
 
 > 起点 HEAD `c878f0a5ca`，工作区保留 132 的改动（1 个新落盘函数与写前自证、1 个命令、判定协议新通道、1 处执行顺序调整、1 份 Skill 规则、1 个验证脚本与证据目录）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。

@@ -1445,7 +1445,7 @@ pub fn merge_entry(
     if addition.contains('\n') || addition.contains('\r') {
         return Err("补充内容只能是一行，已拒绝并入".to_string());
     }
-    let (path, original, content, eol, mut lines) = read_week_lines(library_root, week)?;
+    let (path, original, _content, eol, mut lines) = read_week_lines(library_root, week)?;
     let (start, end, text) = locate_entry_block(&lines, date, index, expect_text)?;
     let before_lines = lines.clone();
     let line = lines[start].trim_end().to_string();

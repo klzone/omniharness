@@ -8,7 +8,7 @@
     {
       "check": "B_owner_record_written",
       "verdict": "pass",
-      "note": "pid=30317 pgid=30317 child_pid=30318 child_pgid=30318"
+      "note": "pid=78339 pgid=78339 child_pid=78342 child_pgid=78342"
     },
     {
       "check": "C_owner_file_mode_0600",
@@ -22,7 +22,7 @@
     {
       "check": "E_dsh_child_group_live",
       "verdict": "pass",
-      "note": "child_pgid=30318 members=[30318]"
+      "note": "child_pgid=78342 members=[78342]"
     },
     {
       "check": "F_second_instance_refused",
@@ -40,12 +40,12 @@
     {
       "check": "I_engine_group_drained",
       "verdict": "pass",
-      "note": "pgid=30317 members=[]"
+      "note": "pgid=78339 members=[]"
     },
     {
       "check": "J_child_group_drained",
       "verdict": "pass",
-      "note": "child_pgid=30318 members=[]"
+      "note": "child_pgid=78342 members=[]"
     },
     {
       "check": "K_second_boot_initialize_ok",
@@ -59,7 +59,7 @@
     {
       "check": "M_orphan_child_group_left_behind",
       "verdict": "pass",
-      "note": "child_pgid=30333 members=[30333]"
+      "note": "child_pgid=78379 members=[78379]"
     },
     {
       "check": "N_crash_state_is_orphan_group",
@@ -75,7 +75,7 @@
     {
       "check": "P_orphan_group_reclaimed",
       "verdict": "pass",
-      "note": "child_pgid=30333 members=[]"
+      "note": "child_pgid=78379 members=[]"
     },
     {
       "check": "Q_engine_group_gone_after_crash",
@@ -88,7 +88,7 @@
     {
       "check": "S_root_is_temp_only",
       "verdict": "pass",
-      "note": "/tmp/od074-run-22ii7hb2"
+      "note": "/private/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/od074-run-lf4j3ltu"
     },
     {
       "check": "T_no_original_dsh_paths",
@@ -99,7 +99,7 @@
       "verdict": "pass"
     }
   ],
-  "root": "/tmp/od074-run-22ii7hb2",
+  "root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/od074-run-lf4j3ltu",
   "limitations": [],
   "summary": {
     "total": 21,
