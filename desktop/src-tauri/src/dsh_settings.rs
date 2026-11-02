@@ -599,7 +599,18 @@ fn port_of(url: &str) -> Option<u16> {
 }
 
 fn process_alive(pid: u32) -> bool {
-    Path::new("/proc").join(pid.to_string()).exists()
+    // 跨平台存活检查：macOS 没有 /proc，原先的 /proc/<pid> 判断会永远为 false，
+    // 导致服务刚拿到地址就被判成“已退出”（表现为「地址没有留在内存里」）。
+    // 信号 0 只做存在性与权限检查，不真正发送信号。
+    Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn port_listening(port: u16) -> bool {
@@ -657,12 +668,24 @@ fn stop_recorded(record_path: &Path) {
 }
 
 fn looks_like_dsh_web(pid: u32) -> bool {
-    let path = Path::new("/proc").join(pid.to_string()).join("cmdline");
-    let Ok(raw) = std::fs::read(path) else {
+    // /proc/<pid>/cmdline 只在 Linux 存在；macOS 用 ps 取同一份信息。
+    let output = Command::new("ps")
+        .arg("-o")
+        .arg("command=")
+        .arg("-p")
+        .arg(pid.to_string())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    let Ok(output) = output else {
         return false;
     };
-    let cmdline = String::from_utf8_lossy(&raw).replace('\0', " ");
-    cmdline.contains("dsh") && cmdline.contains("web")
+    let cmdline = String::from_utf8_lossy(&output.stdout).to_string().to_lowercase();
+    // 0.2.1 的 web 实例命令行里不含 "web"（它是 Profile 名），实际是
+    // `node .../dsh/lib/bin.js --profile ... --port 0`。因此同时接受 bin.js 指纹，
+    // 但仍然要求落在 DSH CLI 路径内，避免误杀同 pid 的其他进程。
+    (cmdline.contains("dsh") && cmdline.contains("bin.js"))
+        || (cmdline.contains("dsh") && cmdline.contains("web"))
 }
 
 #[cfg(test)]

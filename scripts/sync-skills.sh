@@ -53,7 +53,7 @@ SYNC_OK=0
 on_exit() {
   local rc=$?
   if [ "$SYNC_STARTED" -eq 1 ] && [ "$SYNC_OK" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
-    warn "本次同步未正常完成（退出码 $rc）：运行时副本可能处于半更新状态，请不要依赖当前的局部结果，重新执行 scripts/sync-skills.sh 直至成功。"
+    warn "本次同步未正常完成（退出码 ${rc}）：运行时副本可能处于半更新状态，请不要依赖当前的局部结果，重新执行 scripts/sync-skills.sh 直至成功。"
   fi
 }
 trap on_exit EXIT
@@ -111,7 +111,7 @@ while IFS= read -r d; do
   [ -n "$d" ] || continue
   skill_count=$((skill_count + 1))
 done < <(find "$SOURCE_DIR" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort)
-[ "$skill_count" -gt 0 ] || die "源 Skills 目录为空：$SOURCE_DIR（拒绝用空源执行 --delete 同步）"
+[ "$skill_count" -gt 0 ] || die "源 Skills 目录为空：${SOURCE_DIR}（拒绝用空源执行 --delete 同步）"
 
 # 清单：列出每个 Skill，并标出缺失 SKILL.md / 使用废弃 frontmatter 键的情况。
 LEGACY_KEYS='modelInvocable|userInvocable|disableModelInvocation'
@@ -131,7 +131,7 @@ inventory() {
   done
 }
 
-info "源目录   : $SOURCE_DIR（$skill_count 个 Skill）"
+info "源目录   : ${SOURCE_DIR}（$skill_count 个 Skill）"
 info "源清单："
 inventory
 
@@ -162,10 +162,10 @@ esac
 
 # 2.2 目标绝不能位于原版数据根之下
 case "$TARGET_DIR/" in
-  "$STOCK_DSH_ABS/"*) die "目标落入原版 DSH 数据根 $STOCK_DSH_ABS，拒绝同步。" ;;
+  "$STOCK_DSH_ABS/"*) die "目标落入原版 DSH 数据根 ${STOCK_DSH_ABS}，拒绝同步。" ;;
 esac
 case "$TARGET_DIR/" in
-  "$STOCK_AGENTS_ABS/"*) die "目标落入原版 Agent 数据根 $STOCK_AGENTS_ABS，拒绝同步。" ;;
+  "$STOCK_AGENTS_ABS/"*) die "目标落入原版 Agent 数据根 ${STOCK_AGENTS_ABS}，拒绝同步。" ;;
 esac
 if [ "$TARGET_DIR" = "$STOCK_DSH_ABS" ] || [ "$TARGET_DIR" = "$STOCK_AGENTS_ABS" ]; then
   die "目标等于原版数据根，拒绝同步。"
@@ -193,7 +193,7 @@ else
 fi
 
 if [ "$CHECK_ONLY" -eq 0 ] && [ ! -d "$BASE_HOME_ABS" ]; then
-  die "隔离根尚未初始化：$BASE_HOME_ABS（请先运行 scripts/omnidesk-dev.sh --check）"
+  die "隔离根尚未初始化：${BASE_HOME_ABS}（请先运行 scripts/omnidesk-dev.sh --check）"
 fi
 
 # --------------------------------------------------------------------------
@@ -283,7 +283,7 @@ done
 # --------------------------------------------------------------------------
 # 4.5 清除「受本同步器托管、且源目录中已删除」的 Skill
 #
-#     删除范围严格以托管清单（$MANAGED_MANIFEST）为界：
+#     删除范围严格以托管清单（${MANAGED_MANIFEST}）为界：
 #       - 只删除「清单中有、源目录已没有」的目录；
 #       - 清单之外的任何目录都视为用户自有内容，一律保留并提示；
 #       - 清单不存在时不做任何删除（避免首次同步或清单损坏时误删）。
@@ -297,14 +297,14 @@ if [ -d "$TARGET_DIR" ] && [ -f "$MANAGED_MANIFEST" ]; then
     tname="$(basename "$tdir")"
     [ -d "$SOURCE_DIR/$tname" ] && continue
     if ! is_managed "$tname"; then
-      info "保留未托管目录：$tname（用户自有内容，不在同步器管理范围）"
+      info "保留未托管目录：${tname}（用户自有内容，不在同步器管理范围）"
       skip_list+=("$tname")
       continue
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
-      info "（dry-run）将删除托管 Skill：$tname（源目录中已不存在）"
+      info "（dry-run）将删除托管 Skill：${tname}（源目录中已不存在）"
     else
-      info "删除托管 Skill: $tname（受托管且源目录中已不存在）"
+      info "删除托管 Skill: ${tname}（受托管且源目录中已不存在）"
       rm -rf -- "$tdir"
     fi
     prune_list+=("$tname")

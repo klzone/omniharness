@@ -56,7 +56,7 @@ expect_reject() {
   if [ "$rc" -eq 0 ]; then
     bad "$label —— 预期被拒绝，实际退出码 0"
   elif ! printf '%s' "$out" | grep -qF -- "$needle"; then
-    bad "$label —— 被拒绝但输出未包含关键字「$needle」"
+    bad "$label —— 被拒绝但输出未包含关键字「${needle}」"
     printf '%s\n' "$out" | tail -3 | sed 's/^/         /'
   else
     ok "$label"

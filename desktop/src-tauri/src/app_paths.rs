@@ -70,11 +70,11 @@ impl AppPaths {
         let root = match std::env::var_os("OMNIDESK_APP_DATA_ROOT") {
             Some(raw) if !raw.is_empty() => PathBuf::from(raw),
             _ => {
-                let home = std::env::var_os("HOME").ok_or_else(|| PathBoundaryError {
+                let home = crate::platform::home_dir().ok_or_else(|| PathBoundaryError {
                     path: PathBuf::from("$HOME"),
-                    reason: "环境变量 HOME 缺失，无法确定默认应用数据根".to_string(),
+                    reason: "无法确定用户主目录，无法确定默认应用数据根".to_string(),
                 })?;
-                PathBuf::from(home).join("OmniDesk").join("app")
+                home.join("OmniDesk").join("app")
             }
         };
 
@@ -124,8 +124,7 @@ impl AppPaths {
         })?;
 
         // 额外拒绝"根本身就是这些目录"的写法（此时不含尾部子路径，上面的片段匹配可能漏掉）。
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
+        if let Some(home) = crate::platform::home_dir() {
             let resolved_home = resolve_real_path(&home).unwrap_or_else(|_| home.clone());
             for name in [".dsh", ".agents", ".codex"] {
                 let candidate = home.join(name);
@@ -246,17 +245,7 @@ pub fn resolve_real_path(path: &Path) -> Result<PathBuf, String> {
 ///
 /// 与 task_shell 使用同一约定，保证两类数据根共享同一仓库边界。
 fn repo_root_hint() -> Result<PathBuf, String> {
-    if let Some(raw) = std::env::var_os("OMNIDESK_REPO_ROOT") {
-        if !raw.is_empty() {
-            return Ok(PathBuf::from(raw));
-        }
-    }
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
-        .ok_or_else(|| "无法从 CARGO_MANIFEST_DIR 推断仓库根".to_string())
+    crate::platform::repo_root().ok_or_else(|| "无法推断仓库根".to_string())
 }
 
 /// 词法归一：解析 . 与 ..，不触碰文件系统（canonicalize 失败时的兜底比较）。

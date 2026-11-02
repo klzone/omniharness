@@ -71,7 +71,7 @@ port_owned_by_launcher() {
   fi
   owner_cwd="$(port_owner_cwd "$owner")"
   if [ "$owner_cwd" != "$expected_cwd" ]; then
-    echo "端口占用者工作目录为 ${owner_cwd:-<未知>}，期望 $expected_cwd。" >&2
+    echo "端口占用者工作目录为 ${owner_cwd:-<未知>}，期望 ${expected_cwd}。" >&2
     return 1
   fi
   return 0

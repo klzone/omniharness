@@ -81,10 +81,10 @@ impl EngineConfig {
     pub fn from_env(app_root: &Path) -> Result<Self, String> {
         let repo_root = Self::repo_root();
 
-        let python = env_or("OMNIDESK_PYTHON", "python3");
         // OD-ARCH-112：分发环境下 `CARGO_MANIFEST_DIR` 是编译期路径，仓库根本不存在。
         // 资产探测（`profile_assets::default_dsh_cli`）早就有安装位置兜底，引擎启动却只认
         // 仓库路径，两边会得出不同的 CLI：面板说「已就绪」、引擎却起不来。这里改成同源。
+        let python = crate::platform::python_program();
         let engine_dir = match env_path("OMNIDESK_ENGINE_DIR") {
             Some(p) => p,
             None => locate_engine_dir(repo_root.as_deref(), app_root)
@@ -100,9 +100,8 @@ impl EngineConfig {
             }
         };
 
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .ok_or_else(|| "环境变量 HOME 缺失".to_string())?;
+        let home = crate::platform::home_dir()
+            .ok_or_else(|| "无法确定用户主目录（HOME 与 USERPROFILE 均缺失）".to_string())?;
         let dsh_home = env_path("OMNIDESK_DSH_HOME")
             .unwrap_or_else(|| home.join("OmniDesk").join("runtime").join("dsh-home"));
         let agents_home = env_path("OMNIDESK_AGENTS_HOME")
@@ -215,6 +214,7 @@ impl EngineConfig {
     ///     避免启动时联网或改用户已装好的依赖。
     ///   * 目标必须在隔离根内，且隔离根不能落在原版 DSH 数据根。
     pub fn seed_profile_if_missing(&self) -> Result<bool, String> {
+        self.seed_home_from_package()?;
         if self.channel != "web-api" {
             return Ok(false);
         }
@@ -249,17 +249,35 @@ impl EngineConfig {
         Ok(true)
     }
 
+    /// 免安装包首次启动：把包内 `runtime/dsh-home-seed` 复制成隔离 DSH_HOME。
+    ///
+    /// 只在目标 home 还没有 `profiles/` 时执行；已存在就完全不动用户数据。
+    /// 目的：发布包换一台电脑解压后，Profile（含插件 node_modules）与 Skill 开箱可用，
+    /// 不需要用户手工跑 npm。仓库开发态没有这个 seed 目录，因此此处直接跳过。
+    fn seed_home_from_package(&self) -> Result<(), String> {
+        if self.dsh_home.join("profiles").is_dir() {
+            return Ok(());
+        }
+        let Some(repo) = Self::repo_root() else {
+            return Ok(());
+        };
+        let seed = repo.join("runtime").join("dsh-home-seed");
+        if !seed.is_dir() {
+            return Ok(());
+        }
+        copy_tree(&seed, &self.dsh_home).map_err(|e| {
+            format!(
+                "初始化 DSH 数据根失败（{} → {}）：{}",
+                seed.display(),
+                self.dsh_home.display(),
+                e
+            )
+        })
+    }
+
     /// 仓库根：优先环境变量，其次编译期 MANIFEST 的相对路径（仅开发构建可用）。
     fn repo_root() -> Option<PathBuf> {
-        if let Some(p) = env_path("OMNIDESK_REPO_ROOT") {
-            return Some(p);
-        }
-        let manifest = option_env!("CARGO_MANIFEST_DIR")?;
-        // desktop/src-tauri -> 仓库根
-        PathBuf::from(manifest)
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.to_path_buf())
+        crate::platform::repo_root()
     }
 
     /// 启动前补齐 Profile 资产（OD-ARCH-109）。
@@ -369,8 +387,8 @@ fn locate_engine_dir(repo_root: Option<&Path>, app_root: &Path) -> Option<PathBu
     if let Some(parent) = app_root.parent() {
         candidates.push(parent.join("engine"));
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        candidates.push(PathBuf::from(home).join("OmniDesk").join("engine"));
+    if let Some(home) = crate::platform::home_dir() {
+        candidates.push(home.join("OmniDesk").join("engine"));
     }
     if let Some(ok) = candidates
         .iter()
@@ -379,6 +397,26 @@ fn locate_engine_dir(repo_root: Option<&Path>, app_root: &Path) -> Option<PathBu
         return Some(ok.clone());
     }
     candidates.into_iter().next()
+}
+
+/// 递归复制目录树（不存在则创建）。用于发布包首次启动时把只读的 seed 铺到用户目录。
+fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_tree(&from, &to)?;
+        } else if file_type.is_symlink() {
+            // seed 来自发布包，不含符号链接；真遇到就按文件复制，避免跟随到包外。
+            std::fs::copy(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -72,7 +72,7 @@ if [ -f "$CONFIG_SRC" ]; then
   cp "$CONFIG_SRC" "$BASE_DIR/yvan-work.yaml"
   echo "      已同步主配置文件 -> $BASE_DIR/yvan-work.yaml"
 else
-  echo "      警告: 未找到源配置文件 $CONFIG_SRC，跳过配置复制。"
+  echo "      警告: 未找到源配置文件 ${CONFIG_SRC}，跳过配置复制。"
 fi
 
 # 在根目录生成规范说明 (README.md)
