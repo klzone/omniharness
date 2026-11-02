@@ -45,6 +45,9 @@ fi
 
 STAGE="$OUT_DIR/.stage-$PLATFORM"
 PKG="$STAGE/OmniDesk"
+# 每次打包都从干净 stage 开始：残留的旧 stage 会让 cp -R 变成嵌套复制
+# （runtime/dsh-runtime/dsh-runtime/...），文件数翻倍且混入旧版本内容。
+rm -rf "$STAGE"
 mkdir -p "$PKG/runtime"
 
 say() { printf '[package] %s\n' "$*"; }
@@ -96,6 +99,17 @@ if [ ! -d "$ROOT/runtime/dsh-runtime" ]; then
 fi
 cp "$ROOT/runtime/RUNTIME.lock" "$PKG/runtime/"
 cp -R "$ROOT/runtime/dsh-runtime" "$PKG/runtime/dsh-runtime"
+
+# 3.5) 裁剪 DSH 底座中的非运行时文件。
+# npm 安装的包带有 .d.ts / .ts / sourcemap / 测试目录，运行时都不会被加载
+# （已实测：裁剪后 dsh --version、--dump-config、真实启动均正常）。
+# 裁剪后文件数从约 6.4 万降到约 3 万，免安装包解压不再是"几万个文件"。
+say "裁剪 runtime/dsh-runtime 中的非运行时文件..."
+PRUNED_PKG="$PKG/runtime/dsh-runtime"
+find "$PRUNED_PKG" -name '*.ts' -type f -delete
+find "$PRUNED_PKG" -name '*.map' -type f -delete
+find "$PRUNED_PKG" -type d \( -name test -o -name tests -o -name __tests__ -o -name coverage \) -prune -exec rm -rf {} + 2>/dev/null || true
+say "裁剪完成：$(find "$PRUNED_PKG" -type f | wc -l | tr -d ' ') 个文件"
 
 # 4) 首次启动 seed：Profile + Skill，避免新机器上还要手工 npm
 SEED="$PKG/runtime/dsh-home-seed"
