@@ -12,11 +12,16 @@
 本模块只依赖 Python 标准库。
 """
 
+# 进程的读取方式按平台分流（OD-ARCH-133）：Linux 读 procfs，macOS 没有 procfs，
+# 改用 ps / sysctl 的等价输出。判定条件在上层保持完全一致。
+
 from __future__ import annotations
 
 import json
 import os
 import signal
+import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -24,6 +29,7 @@ from typing import Iterable, Optional
 
 OWNER_FILENAME = "owner.json"
 _BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+_DARWIN = sys.platform == "darwin"
 
 
 class OwnerConflict(RuntimeError):
@@ -62,10 +68,100 @@ class OwnerInspection:
 
 
 def boot_id() -> str:
+    if _DARWIN:
+        return _darwin_boot_id()
     try:
         return Path(_BOOT_ID_PATH).read_text(encoding="ascii").strip()
     except OSError:
         return ""
+
+
+def _run_ps(args: list[str]) -> str:
+    """跑一次 ps 并取 stdout；任何失败都当作「查不到」。"""
+    try:
+        out = subprocess.run(
+            ["/bin/ps", *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if out.returncode != 0:
+        return ""
+    return out.stdout
+
+
+def _darwin_boot_id() -> str:
+    """kern.boottime 形如 { sec = 1793505130, usec = 109931 } Sun Nov  1 ..."""
+    try:
+        out = subprocess.run(
+            ["/usr/sbin/sysctl", "-n", "kern.boottime"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if out.returncode != 0:
+        return ""
+    text = out.stdout
+    at = text.find("sec")
+    if at < 0:
+        return ""
+    rest = text[at + 3 :]
+    eq = rest.find("=")
+    if eq < 0:
+        return ""
+    digits = ""
+    for ch in rest[eq + 1 :].lstrip():
+        if not ch.isdigit():
+            break
+        digits += ch
+    return "darwin:" + digits if digits else ""
+
+
+def _darwin_stat(pid: int) -> Optional[tuple[str, int]]:
+    if pid <= 0:
+        return None
+    for line in _run_ps(["-p", str(pid), "-o", "stat=,pgid="]).splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            return parts[0][0], int(parts[1])
+        except (IndexError, ValueError):
+            continue
+    return None
+
+
+def _darwin_cmdline(pid: int) -> list[str]:
+    if pid <= 0:
+        return []
+    for line in _run_ps(["-ww", "-p", str(pid), "-o", "args="]).splitlines():
+        if line.strip():
+            return line.split()
+    return []
+
+
+def _darwin_group_members(pgid: int) -> list[tuple[int, list[str]]]:
+    """一次 ps 取全表，再按 pgid 过滤；僵尸不计入。"""
+    members: list[tuple[int, list[str]]] = []
+    text = _run_ps(["-A", "-ww", "-o", "pid=,pgid=,stat=,args="])
+    for line in text.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            row_pgid = int(parts[1])
+        except ValueError:
+            continue
+        if row_pgid != pgid or not parts[2] or parts[2][0] == "Z":
+            continue
+        cmd = parts[3].split() if len(parts) > 3 else []
+        members.append((pid, cmd))
+    return members
 
 
 def owner_path(state_dir: str | os.PathLike[str]) -> Path:
@@ -74,6 +170,8 @@ def owner_path(state_dir: str | os.PathLike[str]) -> Path:
 
 def _proc_stat(pid: int) -> Optional[tuple[str, int]]:
     """返回 (进程状态, 进程组号)；进程不存在或不可读时返回 None。"""
+    if _DARWIN:
+        return _darwin_stat(pid)
     try:
         raw = Path("/proc/%d/stat" % pid).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -92,6 +190,8 @@ def _proc_stat(pid: int) -> Optional[tuple[str, int]]:
 
 
 def _proc_cmdline(pid: int) -> list[str]:
+    if _DARWIN:
+        return _darwin_cmdline(pid)
     try:
         raw = Path("/proc/%d/cmdline" % pid).read_bytes()
     except OSError:
@@ -115,6 +215,8 @@ def is_engine_cmdline(cmdline: Iterable[str]) -> bool:
 def group_members(pgid: int) -> list[tuple[int, list[str]]]:
     if pgid <= 1:
         return []
+    if _DARWIN:
+        return _darwin_group_members(pgid)
     members: list[tuple[int, list[str]]] = []
     try:
         entries = os.listdir("/proc")

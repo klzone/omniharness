@@ -588,11 +588,13 @@ mod tests {
     /// `web-api`、Profile 必须是 `web`，并且 `child_env()` 与 `initialize_params()`
     /// 都把两者传给子进程。显式设 `OMNIDESK_ENGINE_CHANNEL=acp` 时切回 ACP 与 `acp` Profile。
     ///
-    /// 环境变量争用：本模块只有这一个测试改动 `OWNED_ENV_KEYS`，且不触碰被其它测试模块读取的
-    /// `HOME` / `OMNIDESK_REPO_ROOT` / `OMNIDESK_LOCAL_DATA_ROOT`；因此可与并行测试共存。
-    /// 测试结束后按快照还原，避免污染同进程的其它测试。
+    /// 环境变量争用：`cargo test` 同进程并行，环境变量是全局状态。本用例持 crate 级
+    /// 环境锁（OD-ARCH-133），结束后按快照还原，避免污染同进程的其它测试。
     #[test]
     fn engine_config_default_channel_is_web_api() {
+        let _guard = crate::test_env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let snapshot = owned_env_snapshot();
         let fixture = ConfigFixture::new("default");
         fixture.apply_to_env();

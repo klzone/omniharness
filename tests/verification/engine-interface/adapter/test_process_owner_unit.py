@@ -26,12 +26,21 @@ from omnidesk_engine import process_owner as po
 
 def spawn_fake_engine(tag: str = "engine") -> subprocess.Popen:
     """起一个可丢弃、独占进程组的假 DSH 进程（cmdline 含 omnidesk_engine）。"""
-    return subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(120)", "omnidesk_engine-" + tag],
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    # fork 与 exec 之间读到的 cmdline 还是父进程（unittest）的，argv[0] 也会在 exec
+    # 后被替换成解释器的真实路径。等它真正变成假引擎再交给用例，否则身份比对会偶发
+    # 落到「无法核验」分支。macOS 上 exec 更慢，这个竞态更容易出现。
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if any("omnidesk_engine" in arg for arg in po._proc_cmdline(proc.pid)):
+            break
+        time.sleep(0.02)
+    return proc
 
 
 def spawn_bystander() -> subprocess.Popen:
