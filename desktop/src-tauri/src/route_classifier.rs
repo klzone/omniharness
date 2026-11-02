@@ -54,10 +54,7 @@ impl RouteFacts {
 
 /// 调用分类器。返回 Ok 时类别可能是 `unknown`（由调用方拒绝）。
 pub fn classify(config: &EngineConfig) -> Result<RouteFacts, String> {
-    let node = std::env::var("OMNIDESK_NODE")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "node".to_string());
+    let node = crate::platform::resolve_node()?;
 
     let route_args = serde_json::json!({
         "dshCli": config.dsh_cli.display().to_string(),

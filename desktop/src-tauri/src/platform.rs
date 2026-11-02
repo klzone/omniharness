@@ -162,3 +162,61 @@ fn spawn_opener(target: &str) -> Result<Child, String> {
     Err(last_error)
 }
 
+
+/// 解析 node 可执行文件的绝对路径。
+///
+/// 从 Finder/Launchpad 启动的 app 不继承 shell 的 PATH（homebrew 的
+/// /opt/homebrew/bin 不在 GUI 进程的默认 PATH 里），直接 spawn "node" 会报
+/// "No such file or directory (os error 2)"。这里按以下顺序解析：
+///   1. OMNIDESK_NODE 环境变量（用户显式指定，优先级最高）；
+///   2. PATH（命令行/终端启动时正常命中）；
+///   3. 常见安装位置的探测（homebrew Apple Silicon / Intel、系统目录、nvm）。
+/// 全部失败时返回带修复指引的错误。
+pub fn resolve_node() -> Result<String, String> {
+    if let Ok(value) = std::env::var("OMNIDESK_NODE") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+    // PATH 命中且能执行时直接用（保持旧行为）。
+    if let Ok(output) = Command::new("node").arg("--version").output() {
+        if output.status.success() {
+            return Ok("node".to_string());
+        }
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(home) = home_dir() {
+        // nvm / fnm / volta 的默认 node 位置
+        for pattern in [
+            ".nvm/versions/node",
+            ".volta/tools/image/node",
+            ".local/share/fnm/node-versions",
+        ] {
+            let base = home.join(pattern);
+            if let Ok(entries) = std::fs::read_dir(&base) {
+                let mut versions: Vec<PathBuf> = entries
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .collect();
+                versions.sort();
+                if let Some(latest) = versions.pop() {
+                    candidates.push(latest.join("bin/node"));
+                }
+            }
+        }
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin/node"));
+    candidates.push(PathBuf::from("/usr/local/bin/node"));
+    candidates.push(PathBuf::from("/usr/bin/node"));
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(concat!(
+        "未找到 node。OmniDesk 需要 Node.js 22+ 才能驱动 DSH 引擎。",
+        "请安装 Node.js（https://nodejs.org），",
+        "或在系统设置中为 OmniDesk 设置 OMNIDESK_NODE 环境变量指向 node 的绝对路径。"
+    )
+    .to_string())
+}

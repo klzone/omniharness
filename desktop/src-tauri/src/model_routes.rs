@@ -72,10 +72,7 @@ fn stderr_tail(raw: &str) -> String {
 }
 
 fn run_script(payload: Value) -> Result<Value, String> {
-    let node = std::env::var("OMNIDESK_NODE")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "node".to_string());
+    let node = crate::platform::resolve_node()?;
 
     let mut child = Command::new(&node)
         .arg("--input-type=module")
