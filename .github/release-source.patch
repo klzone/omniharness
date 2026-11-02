@@ -1,0 +1,907 @@
+diff --git a/.gitignore b/.gitignore
+index 9ebde8c..f5c866c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -9,6 +9,7 @@ Thumbs.db
+ # Node & Build artifacts (for runtime or custom tools)
+ node_modules/
+ dist/
++dist-package/
+ build/
+ *.log
+ 
+diff --git a/desktop/src-tauri/src/app_paths.rs b/desktop/src-tauri/src/app_paths.rs
+index 86c646c..a5c1da4 100644
+--- a/desktop/src-tauri/src/app_paths.rs
++++ b/desktop/src-tauri/src/app_paths.rs
+@@ -70,11 +70,11 @@ impl AppPaths {
+         let root = match std::env::var_os("OMNIDESK_APP_DATA_ROOT") {
+             Some(raw) if !raw.is_empty() => PathBuf::from(raw),
+             _ => {
+-                let home = std::env::var_os("HOME").ok_or_else(|| PathBoundaryError {
++                let home = crate::platform::home_dir().ok_or_else(|| PathBoundaryError {
+                     path: PathBuf::from("$HOME"),
+-                    reason: "环境变量 HOME 缺失，无法确定默认应用数据根".to_string(),
++                    reason: "无法确定用户主目录，无法确定默认应用数据根".to_string(),
+                 })?;
+-                PathBuf::from(home).join("OmniDesk").join("app")
++                home.join("OmniDesk").join("app")
+             }
+         };
+ 
+@@ -124,8 +124,7 @@ impl AppPaths {
+         })?;
+ 
+         // 额外拒绝"根本身就是这些目录"的写法（此时不含尾部子路径，上面的片段匹配可能漏掉）。
+-        if let Some(home) = std::env::var_os("HOME") {
+-            let home = PathBuf::from(home);
++        if let Some(home) = crate::platform::home_dir() {
+             let resolved_home = resolve_real_path(&home).unwrap_or_else(|_| home.clone());
+             for name in [".dsh", ".agents", ".codex"] {
+                 let candidate = home.join(name);
+@@ -246,17 +245,7 @@ pub fn resolve_real_path(path: &Path) -> Result<PathBuf, String> {
+ ///
+ /// 与 task_shell 使用同一约定，保证两类数据根共享同一仓库边界。
+ fn repo_root_hint() -> Result<PathBuf, String> {
+-    if let Some(raw) = std::env::var_os("OMNIDESK_REPO_ROOT") {
+-        if !raw.is_empty() {
+-            return Ok(PathBuf::from(raw));
+-        }
+-    }
+-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+-    manifest
+-        .parent()
+-        .and_then(|p| p.parent())
+-        .map(|p| p.to_path_buf())
+-        .ok_or_else(|| "无法从 CARGO_MANIFEST_DIR 推断仓库根".to_string())
++    crate::platform::repo_root().ok_or_else(|| "无法推断仓库根".to_string())
+ }
+ 
+ /// 词法归一：解析 . 与 ..，不触碰文件系统（canonicalize 失败时的兜底比较）。
+diff --git a/desktop/src-tauri/src/dsh_settings.rs b/desktop/src-tauri/src/dsh_settings.rs
+index 22aa0d1..faa2303 100644
+--- a/desktop/src-tauri/src/dsh_settings.rs
++++ b/desktop/src-tauri/src/dsh_settings.rs
+@@ -599,7 +599,18 @@ fn port_of(url: &str) -> Option<u16> {
+ }
+ 
+ fn process_alive(pid: u32) -> bool {
+-    Path::new("/proc").join(pid.to_string()).exists()
++    // 跨平台存活检查：macOS 没有 /proc，原先的 /proc/<pid> 判断会永远为 false，
++    // 导致服务刚拿到地址就被判成“已退出”（表现为「地址没有留在内存里」）。
++    // 信号 0 只做存在性与权限检查，不真正发送信号。
++    Command::new("kill")
++        .arg("-0")
++        .arg(pid.to_string())
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .status()
++        .map(|status| status.success())
++        .unwrap_or(false)
+ }
+ 
+ fn port_listening(port: u16) -> bool {
+@@ -657,12 +668,24 @@ fn stop_recorded(record_path: &Path) {
+ }
+ 
+ fn looks_like_dsh_web(pid: u32) -> bool {
+-    let path = Path::new("/proc").join(pid.to_string()).join("cmdline");
+-    let Ok(raw) = std::fs::read(path) else {
++    // /proc/<pid>/cmdline 只在 Linux 存在；macOS 用 ps 取同一份信息。
++    let output = Command::new("ps")
++        .arg("-o")
++        .arg("command=")
++        .arg("-p")
++        .arg(pid.to_string())
++        .stdin(Stdio::null())
++        .stderr(Stdio::null())
++        .output();
++    let Ok(output) = output else {
+         return false;
+     };
+-    let cmdline = String::from_utf8_lossy(&raw).replace('\0', " ");
+-    cmdline.contains("dsh") && cmdline.contains("web")
++    let cmdline = String::from_utf8_lossy(&output.stdout).to_string().to_lowercase();
++    // 0.2.1 的 web 实例命令行里不含 "web"（它是 Profile 名），实际是
++    // `node .../dsh/lib/bin.js --profile ... --port 0`。因此同时接受 bin.js 指纹，
++    // 但仍然要求落在 DSH CLI 路径内，避免误杀同 pid 的其他进程。
++    (cmdline.contains("dsh") && cmdline.contains("bin.js"))
++        || (cmdline.contains("dsh") && cmdline.contains("web"))
+ }
+ 
+ #[cfg(test)]
+diff --git a/desktop/src-tauri/src/engine_supervisor.rs b/desktop/src-tauri/src/engine_supervisor.rs
+index 8826606..97e3713 100644
+--- a/desktop/src-tauri/src/engine_supervisor.rs
++++ b/desktop/src-tauri/src/engine_supervisor.rs
+@@ -81,10 +81,10 @@ impl EngineConfig {
+     pub fn from_env(app_root: &Path) -> Result<Self, String> {
+         let repo_root = Self::repo_root();
+ 
+-        let python = env_or("OMNIDESK_PYTHON", "python3");
+         // OD-ARCH-112：分发环境下 `CARGO_MANIFEST_DIR` 是编译期路径，仓库根本不存在。
+         // 资产探测（`profile_assets::default_dsh_cli`）早就有安装位置兜底，引擎启动却只认
+         // 仓库路径，两边会得出不同的 CLI：面板说「已就绪」、引擎却起不来。这里改成同源。
++        let python = crate::platform::python_program();
+         let engine_dir = match env_path("OMNIDESK_ENGINE_DIR") {
+             Some(p) => p,
+             None => locate_engine_dir(repo_root.as_deref(), app_root)
+@@ -100,9 +100,8 @@ impl EngineConfig {
+             }
+         };
+ 
+-        let home = std::env::var_os("HOME")
+-            .map(PathBuf::from)
+-            .ok_or_else(|| "环境变量 HOME 缺失".to_string())?;
++        let home = crate::platform::home_dir()
++            .ok_or_else(|| "无法确定用户主目录（HOME 与 USERPROFILE 均缺失）".to_string())?;
+         let dsh_home = env_path("OMNIDESK_DSH_HOME")
+             .unwrap_or_else(|| home.join("OmniDesk").join("runtime").join("dsh-home"));
+         let agents_home = env_path("OMNIDESK_AGENTS_HOME")
+@@ -215,6 +214,7 @@ impl EngineConfig {
+     ///     避免启动时联网或改用户已装好的依赖。
+     ///   * 目标必须在隔离根内，且隔离根不能落在原版 DSH 数据根。
+     pub fn seed_profile_if_missing(&self) -> Result<bool, String> {
++        self.seed_home_from_package()?;
+         if self.channel != "web-api" {
+             return Ok(false);
+         }
+@@ -249,17 +249,35 @@ impl EngineConfig {
+         Ok(true)
+     }
+ 
++    /// 免安装包首次启动：把包内 `runtime/dsh-home-seed` 复制成隔离 DSH_HOME。
++    ///
++    /// 只在目标 home 还没有 `profiles/` 时执行；已存在就完全不动用户数据。
++    /// 目的：发布包换一台电脑解压后，Profile（含插件 node_modules）与 Skill 开箱可用，
++    /// 不需要用户手工跑 npm。仓库开发态没有这个 seed 目录，因此此处直接跳过。
++    fn seed_home_from_package(&self) -> Result<(), String> {
++        if self.dsh_home.join("profiles").is_dir() {
++            return Ok(());
++        }
++        let Some(repo) = Self::repo_root() else {
++            return Ok(());
++        };
++        let seed = repo.join("runtime").join("dsh-home-seed");
++        if !seed.is_dir() {
++            return Ok(());
++        }
++        copy_tree(&seed, &self.dsh_home).map_err(|e| {
++            format!(
++                "初始化 DSH 数据根失败（{} → {}）：{}",
++                seed.display(),
++                self.dsh_home.display(),
++                e
++            )
++        })
++    }
++
+     /// 仓库根：优先环境变量，其次编译期 MANIFEST 的相对路径（仅开发构建可用）。
+     fn repo_root() -> Option<PathBuf> {
+-        if let Some(p) = env_path("OMNIDESK_REPO_ROOT") {
+-            return Some(p);
+-        }
+-        let manifest = option_env!("CARGO_MANIFEST_DIR")?;
+-        // desktop/src-tauri -> 仓库根
+-        PathBuf::from(manifest)
+-            .parent()
+-            .and_then(|p| p.parent())
+-            .map(|p| p.to_path_buf())
++        crate::platform::repo_root()
+     }
+ 
+     /// 启动前补齐 Profile 资产（OD-ARCH-109）。
+@@ -369,8 +387,8 @@ fn locate_engine_dir(repo_root: Option<&Path>, app_root: &Path) -> Option<PathBu
+     if let Some(parent) = app_root.parent() {
+         candidates.push(parent.join("engine"));
+     }
+-    if let Some(home) = std::env::var_os("HOME") {
+-        candidates.push(PathBuf::from(home).join("OmniDesk").join("engine"));
++    if let Some(home) = crate::platform::home_dir() {
++        candidates.push(home.join("OmniDesk").join("engine"));
+     }
+     if let Some(ok) = candidates
+         .iter()
+@@ -381,6 +399,26 @@ fn locate_engine_dir(repo_root: Option<&Path>, app_root: &Path) -> Option<PathBu
+     candidates.into_iter().next()
+ }
+ 
++/// 递归复制目录树（不存在则创建）。用于发布包首次启动时把只读的 seed 铺到用户目录。
++fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
++    std::fs::create_dir_all(dst)?;
++    for entry in std::fs::read_dir(src)? {
++        let entry = entry?;
++        let from = entry.path();
++        let to = dst.join(entry.file_name());
++        let file_type = entry.file_type()?;
++        if file_type.is_dir() {
++            copy_tree(&from, &to)?;
++        } else if file_type.is_symlink() {
++            // seed 来自发布包，不含符号链接；真遇到就按文件复制，避免跟随到包外。
++            std::fs::copy(&from, &to)?;
++        } else {
++            std::fs::copy(&from, &to)?;
++        }
++    }
++    Ok(())
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/desktop/src-tauri/src/external_open.rs b/desktop/src-tauri/src/external_open.rs
+index e9479d4..b4fbb3b 100644
+--- a/desktop/src-tauri/src/external_open.rs
++++ b/desktop/src-tauri/src/external_open.rs
+@@ -10,8 +10,6 @@
+ //!   3. 拒绝控制字符与空白，长度上限 2048；
+ //!   4. 不拼接 shell：`xdg-open` / `gio open` 以地址作为独立参数执行。
+ 
+-use std::process::{Command, Stdio};
+-
+ const MAX_URL_LEN: usize = 2048;
+ 
+ /// 校验外部链接是否允许打开；返回规范化后的地址或错误说明。
+@@ -47,24 +45,8 @@ pub fn validate_external_url(raw: &str) -> Result<String, String> {
+ /// 交给系统默认浏览器打开；失败时返回可读原因，不吞错误。
+ pub fn open_in_browser(raw: &str) -> Result<String, String> {
+     let url = validate_external_url(raw)?;
+-    let mut last_error = String::new();
+-    for (program, args) in [
+-        ("xdg-open", Vec::<&str>::new()),
+-        ("gio", vec!["open"]),
+-    ] {
+-        match Command::new(program)
+-            .args(&args)
+-            .arg(&url)
+-            .stdin(Stdio::null())
+-            .stdout(Stdio::null())
+-            .stderr(Stdio::null())
+-            .spawn()
+-        {
+-            Ok(_) => return Ok(url),
+-            Err(e) => last_error = format!("{}：{}", program, e),
+-        }
+-    }
+-    Err(format!("系统没有可用的打开器（{}）", last_error))
++    crate::platform::open_url(&url)?;
++    Ok(url)
+ }
+ 
+ #[cfg(test)]
+diff --git a/desktop/src-tauri/src/lib.rs b/desktop/src-tauri/src/lib.rs
+index cab568c..2725997 100644
+--- a/desktop/src-tauri/src/lib.rs
++++ b/desktop/src-tauri/src/lib.rs
+@@ -24,6 +24,7 @@ mod local_http;
+ pub mod model_settings;
+ pub mod model_routes;
+ pub mod pending_writes;
++pub mod platform;
+ pub mod project_items;
+ pub mod process_owner;
+ pub mod profile_decl;
+@@ -982,30 +983,12 @@ fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value,
+         );
+     };
+     let path = std::path::PathBuf::from(&loaded.path);
+-    let mut last_error = String::new();
+-    for (program, args) in [
+-        ("xdg-open", Vec::<String>::new()),
+-        ("gio", vec!["open".to_string()]),
+-    ] {
+-        match std::process::Command::new(program)
+-            .args(&args)
+-            .arg(&path)
+-            .stdin(std::process::Stdio::null())
+-            .stdout(std::process::Stdio::null())
+-            .stderr(std::process::Stdio::null())
+-            .spawn()
+-        {
+-            Ok(_) => {
+-                return Ok(serde_json::json!({
+-                    "ok": true,
+-                    "opened": loaded.path,
+-                    "note": "已在系统编辑器打开声明文件；在外部保存后，回到设置页重新点「校验并保存」或切换 Profile 才会更新工作台。",
+-                }))
+-            }
+-            Err(e) => last_error = format!("{}：{}", program, e),
+-        }
+-    }
+-    Err(format!("无法打开声明文件，系统缺少可用的打开器（{}）", last_error))
++    platform::open_target(&path).map_err(|e| format!("无法打开声明文件（{}）", e))?;
++    Ok(serde_json::json!({
++        "ok": true,
++        "opened": loaded.path,
++        "note": "已在系统编辑器打开声明文件；保存后需重启应用生效。",
++    }))
+ }
+ 
+ /// 保存场景声明（OD-ARCH-053 S3）：先校验，校验通过才备份并原子写。
+@@ -1102,9 +1085,9 @@ fn profile_choice_scope() -> Result<(String, std::path::PathBuf), String> {
+     let dsh_home = match std::env::var_os("OMNIDESK_DSH_HOME").filter(|v| !v.is_empty()) {
+         Some(p) => std::path::PathBuf::from(p),
+         None => {
+-            let home = std::env::var_os("HOME").ok_or_else(|| "环境变量 HOME 缺失".to_string())?;
+-            std::path::PathBuf::from(home)
+-                .join("OmniDesk")
++            let home = platform::home_dir()
++                .ok_or_else(|| "无法确定用户主目录（HOME 与 USERPROFILE 均缺失）".to_string())?;
++            home.join("OmniDesk")
+                 .join("runtime")
+                 .join("dsh-home")
+         }
+@@ -2978,8 +2961,8 @@ fn task_library_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
+ }
+ 
+ fn default_library_root_display() -> Option<String> {
+-    std::env::var_os("HOME").map(|home| {
+-        std::path::PathBuf::from(home)
++    platform::home_dir().map(|home| {
++        home
+             .join(task_shell::DEFAULT_LIBRARY_SUBDIR)
+             .display()
+             .to_string()
+@@ -3942,24 +3925,8 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
+             eff.root.display()
+         ));
+     }
+-    let mut last_error = String::new();
+-    for (program, args) in [
+-        ("xdg-open", Vec::<String>::new()),
+-        ("gio", vec!["open".to_string()]),
+-    ] {
+-        match std::process::Command::new(program)
+-            .args(&args)
+-            .arg(&eff.root)
+-            .stdin(std::process::Stdio::null())
+-            .stdout(std::process::Stdio::null())
+-            .stderr(std::process::Stdio::null())
+-            .spawn()
+-        {
+-            Ok(_) => return Ok(serde_json::json!({ "ok": true, "opened": eff.root.display().to_string() })),
+-            Err(e) => last_error = format!("{}：{}", program, e),
+-        }
+-    }
+-    Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
++    platform::open_target(&eff.root).map_err(|e| format!("无法打开目录（{}）", e))?;
++    Ok(serde_json::json!({ "ok": true, "opened": eff.root.display().to_string() }))
+ }
+ 
+ /// 在系统默认浏览器里打开正文中的 http(s) 链接（OD-ARCH-081）。
+@@ -4050,30 +4017,12 @@ fn capability_open_skills(state: State<'_, SharedHost>) -> Result<serde_json::Va
+     if !dir.is_dir() {
+         return Err(format!("Skill 目录还不存在：{}", dir.display()));
+     }
+-    let mut last_error = String::new();
+-    for (program, args) in [
+-        ("xdg-open", Vec::<String>::new()),
+-        ("gio", vec!["open".to_string()]),
+-    ] {
+-        match std::process::Command::new(program)
+-            .args(&args)
+-            .arg(&dir)
+-            .stdin(std::process::Stdio::null())
+-            .stdout(std::process::Stdio::null())
+-            .stderr(std::process::Stdio::null())
+-            .spawn()
+-        {
+-            Ok(_) => {
+-                return Ok(serde_json::json!({
+-                    "ok": true,
+-                    "opened": dir.display().to_string(),
+-                    "note": "Skill 在这里只读展示；改动目录里的文件后重启应用生效。",
+-                }))
+-            }
+-            Err(e) => last_error = format!("{}：{}", program, e),
+-        }
+-    }
+-    Err(format!("无法打开 Skill 目录，系统缺少可用的打开器（{}）", last_error))
++    platform::open_target(&dir).map_err(|e| format!("无法打开 Skill 目录（{}）", e))?;
++    Ok(serde_json::json!({
++        "ok": true,
++        "opened": dir.display().to_string(),
++        "note": "Skill 在这里只读展示；改动目录里的文件后重启应用生效。",
++    }))
+ }
+ 
+ /// 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
+diff --git a/desktop/src-tauri/src/platform.rs b/desktop/src-tauri/src/platform.rs
+new file mode 100644
+index 0000000..6e32aae
+--- /dev/null
++++ b/desktop/src-tauri/src/platform.rs
+@@ -0,0 +1,164 @@
++//! 跨平台适配（macOS / Windows / Linux）。
++//!
++//! 只集中三类差异，避免"打开目录"这类命令各写一份 Linux 专用实现：
++//!   1. 家目录：Windows 没有 `HOME`，必须回退到 `USERPROFILE` 或 `HOMEDRIVE+HOMEPATH`；
++//!   2. 系统打开器：macOS 用 `open`，Windows 用 `cmd /C start`，Linux 用 `xdg-open`；
++//!   3. Python 解释器：Windows 习惯是 `python`，其余平台是 `python3`。
++//!
++//! 边界不变：打开器是固定程序，目标作为独立参数传入，不拼接 shell。
++
++use std::path::{Path, PathBuf};
++use std::process::{Child, Command, Stdio};
++use std::time::{Duration, Instant};
++
++/// 家目录。Windows 上没有 `HOME`，回退顺序：USERPROFILE → HOMEDRIVE+HOMEPATH。
++pub fn home_dir() -> Option<PathBuf> {
++    for key in ["HOME", "USERPROFILE"] {
++        if let Some(value) = std::env::var_os(key) {
++            if !value.is_empty() {
++                return Some(PathBuf::from(value));
++            }
++        }
++    }
++    let drive = std::env::var_os("HOMEDRIVE")?;
++    let rest = std::env::var_os("HOMEPATH")?;
++    let mut joined = drive.to_string_lossy().into_owned();
++    joined.push_str(&rest.to_string_lossy());
++    if joined.is_empty() {
++        None
++    } else {
++        Some(PathBuf::from(joined))
++    }
++}
++
++/// Python 解释器：尊重 `OMNIDESK_PYTHON`，否则按平台给默认值。
++pub fn python_program() -> String {
++    match std::env::var("OMNIDESK_PYTHON") {
++        Ok(value) if !value.trim().is_empty() => value,
++        _ => {
++            if cfg!(windows) {
++                "python".to_string()
++            } else {
++                "python3".to_string()
++            }
++        }
++    }
++}
++
++/// 仓库根（或免安装包根）。
++///
++/// 优先级：
++///   1. `OMNIDESK_REPO_ROOT`；
++///   2. 可执行文件所在目录向上找 `engine/omnidesk_engine` + `runtime/RUNTIME.lock`；
++///   3. 编译期 `CARGO_MANIFEST_DIR` 上溯两级（仅开发构建有效）。
++///
++/// 第 2 条是给"解压即用"的发布包准备的：`CARGO_MANIFEST_DIR` 是构建机的路径，
++/// 换一台电脑必然不存在；而发布包把 `engine/` 与 `runtime/` 放在可执行文件旁边。
++pub fn repo_root() -> Option<PathBuf> {
++    if let Some(raw) = std::env::var_os("OMNIDESK_REPO_ROOT") {
++        if !raw.is_empty() {
++            return Some(PathBuf::from(raw));
++        }
++    }
++    if let Some(found) = repo_root_from_exe() {
++        return Some(found);
++    }
++    let manifest = option_env!("CARGO_MANIFEST_DIR")?;
++    PathBuf::from(manifest)
++        .parent()
++        .and_then(|p| p.parent())
++        .map(|p| p.to_path_buf())
++}
++
++fn repo_root_from_exe() -> Option<PathBuf> {
++    let exe = std::env::current_exe().ok()?;
++    let mut dir = exe.parent()?;
++    // 发布包：exe 在包根；macOS .app：Contents/MacOS → 上溯三级即包根；
++    // 开发构建：desktop/src-tauri/target/release → 上溯五级即仓库根。
++    for _ in 0..6 {
++        if dir.join("engine").join("omnidesk_engine").is_dir()
++            && dir.join("runtime").join("RUNTIME.lock").is_file()
++        {
++            return Some(dir.to_path_buf());
++        }
++        dir = dir.parent()?;
++    }
++    None
++}
++
++/// 用系统默认程序打开文件或目录。
++pub fn open_target(target: &Path) -> Result<(), String> {
++    open_str(&target.to_string_lossy())
++}
++
++/// 用系统默认程序打开链接。
++pub fn open_url(url: &str) -> Result<(), String> {
++    open_str(url)
++}
++
++fn open_str(target: &str) -> Result<(), String> {
++    let mut child = spawn_opener(target)?;
++    // 打开器存在但立刻失败（例如没有注册处理程序）时要让用户看到错误；
++    // 短暂等待后仍在运行的视为已启动。
++    let deadline = Instant::now() + Duration::from_millis(1200);
++    loop {
++        match child.try_wait() {
++            Ok(Some(status)) if status.success() => return Ok(()),
++            Ok(Some(status)) => return Err(format!("系统打开器退出状态 {}", status)),
++            Ok(None) if Instant::now() < deadline => {
++                std::thread::sleep(Duration::from_millis(40));
++            }
++            Ok(None) => return Ok(()),
++            Err(e) => return Err(format!("无法确认打开结果（{}）", e)),
++        }
++    }
++}
++
++#[cfg(target_os = "macos")]
++fn spawn_opener(target: &str) -> Result<Child, String> {
++    Command::new("open")
++        .arg(target)
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .spawn()
++        .map_err(|e| format!("open：{}", e))
++}
++
++#[cfg(target_os = "windows")]
++fn spawn_opener(target: &str) -> Result<Child, String> {
++    use std::os::windows::process::CommandExt;
++    let mut command = Command::new("cmd");
++    command.arg("/C");
++    // `start` 的第一个带引号参数是窗口标题，必须给空串，否则带空格的路径会被当成标题。
++    command.raw_arg(format!("start \"\" \"{}\"", target.replace('"', "")));
++    command
++        .stdin(Stdio::null())
++        .stdout(Stdio::null())
++        .stderr(Stdio::null())
++        .spawn()
++        .map_err(|e| format!("cmd /C start：{}", e))
++}
++
++#[cfg(all(unix, not(target_os = "macos")))]
++fn spawn_opener(target: &str) -> Result<Child, String> {
++    let mut last_error = String::new();
++    for (program, args) in [
++        ("xdg-open", Vec::<&str>::new()),
++        ("gio", vec!["open"]),
++    ] {
++        match Command::new(program)
++            .args(&args)
++            .arg(target)
++            .stdin(Stdio::null())
++            .stdout(Stdio::null())
++            .stderr(Stdio::null())
++            .spawn()
++        {
++            Ok(child) => return Ok(child),
++            Err(e) => last_error = format!("{}：{}", program, e),
++        }
++    }
++    Err(last_error)
++}
++
+diff --git a/desktop/src-tauri/src/profile_assets.rs b/desktop/src-tauri/src/profile_assets.rs
+index 1874b93..3912b9d 100644
+--- a/desktop/src-tauri/src/profile_assets.rs
++++ b/desktop/src-tauri/src/profile_assets.rs
+@@ -2344,6 +2344,8 @@ fn kill_tree(child: &mut std::process::Child, group: Option<i32>) {
+             libc::killpg(pgid, libc::SIGKILL);
+         }
+     }
++    #[cfg(not(unix))]
++    let _ = group;
+     let _ = child.kill();
+ }
+ 
+diff --git a/desktop/src-tauri/src/settings.rs b/desktop/src-tauri/src/settings.rs
+index daae01d..cc8aedf 100644
+--- a/desktop/src-tauri/src/settings.rs
++++ b/desktop/src-tauri/src/settings.rs
+@@ -271,9 +271,9 @@ pub fn app_config_dir() -> Result<PathBuf, String> {
+     match std::env::var_os("OMNIDESK_APP_DATA_ROOT") {
+         Some(raw) if !raw.is_empty() => Ok(PathBuf::from(raw).join("config")),
+         _ => {
+-            let home = std::env::var_os("HOME")
+-                .ok_or_else(|| "环境变量 HOME 缺失，无法确定应用配置目录".to_string())?;
+-            Ok(PathBuf::from(home).join("OmniDesk").join("app").join("config"))
++            let home = crate::platform::home_dir()
++                .ok_or_else(|| "无法确定用户主目录，无法确定应用配置目录".to_string())?;
++            Ok(home.join("OmniDesk").join("app").join("config"))
+         }
+     }
+ }
+@@ -419,9 +419,9 @@ pub fn configured_library_root(config_dir: &Path) -> Result<Option<PathBuf>, Str
+ 
+ /// 默认库根：`$HOME/OmniDesk/库`。
+ fn default_library_root() -> Result<PathBuf, String> {
+-    let home = std::env::var_os("HOME")
+-        .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认库根".to_string())?;
+-    Ok(PathBuf::from(home).join(DEFAULT_LIBRARY_SUBDIR))
++    let home = crate::platform::home_dir()
++        .ok_or_else(|| "无法确定用户主目录，无法确定默认库根".to_string())?;
++    Ok(home.join(DEFAULT_LIBRARY_SUBDIR))
+ }
+ 
+ /// 库根的环境变量覆盖（沿用既有 `OMNIDESK_KNOWLEDGE_ROOT`，优先级最高）。
+@@ -482,9 +482,9 @@ pub fn env_override() -> Option<PathBuf> {
+ }
+ 
+ fn default_root() -> Result<PathBuf, String> {
+-    let home = std::env::var_os("HOME")
+-        .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认成果目录".to_string())?;
+-    Ok(PathBuf::from(home).join(DEFAULT_ARTIFACT_SUBDIR))
++    let home = crate::platform::home_dir()
++        .ok_or_else(|| "无法确定用户主目录，无法确定默认成果目录".to_string())?;
++    Ok(home.join(DEFAULT_ARTIFACT_SUBDIR))
+ }
+ 
+ /// 校验一个候选数据根（成果目录、库根）：绝对路径、无禁止片段、真实落点在允许范围、
+diff --git a/desktop/src-tauri/src/vault_open.rs b/desktop/src-tauri/src/vault_open.rs
+index 516c5ad..24cbc86 100644
+--- a/desktop/src-tauri/src/vault_open.rs
++++ b/desktop/src-tauri/src/vault_open.rs
+@@ -11,7 +11,6 @@
+ //! 不能打开本地文件。因此这里沿用仓库既有的 `Command::new(...).arg(...)` 方式。
+ 
+ use std::path::{Path, PathBuf};
+-use std::process::{Command, Stdio};
+ 
+ use crate::knowledge_vault::{resolve_vault_file, VAULT_NOTE_EXTS};
+ 
+@@ -44,54 +43,18 @@ where
+     Ok(relative.trim().replace('\\', "/"))
+ }
+ 
+-/// 固定打开器：只尝试 `xdg-open` 与 `gio open`，路径作为独立参数。
++/// 固定打开器：按平台选系统默认程序（见 `platform`），路径作为独立参数。
+ pub fn open_attachment(root: &Path, relative: &str) -> Result<String, String> {
+     open_attachment_with(root, relative, system_open)
+ }
+ 
+ fn system_open(path: &Path) -> Result<(), String> {
+-    let mut last_error = String::new();
+-    for (program, args) in [
+-        ("xdg-open", Vec::<&str>::new()),
+-        ("gio", vec!["open"]),
+-    ] {
+-        match Command::new(program)
+-            .args(&args)
+-            .arg(path)
+-            .stdin(Stdio::null())
+-            .stdout(Stdio::null())
+-            .stderr(Stdio::null())
+-            .spawn()
+-        {
+-            Ok(mut child) => {
+-                // 打开器存在但立刻失败（例如没有注册处理程序）时要让用户看到错误，
+-                // 不能把 spawn 成功当成打开成功。短暂等待后仍在运行的视为已启动。
+-                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
+-                loop {
+-                    match child.try_wait() {
+-                        Ok(Some(status)) if status.success() => return Ok(()),
+-                        Ok(Some(status)) => {
+-                            last_error = format!("{}：退出状态 {}", program, status);
+-                            break;
+-                        }
+-                        Ok(None) if std::time::Instant::now() < deadline => {
+-                            std::thread::sleep(std::time::Duration::from_millis(40));
+-                        }
+-                        Ok(None) => return Ok(()),
+-                        Err(e) => {
+-                            last_error = format!("{}：无法确认打开结果（{}）", program, e);
+-                            break;
+-                        }
+-                    }
+-                }
+-            }
+-            Err(e) => last_error = format!("{}：{}", program, e),
+-        }
+-    }
+-    Err(format!(
+-        "系统没有可用的附件打开器（{}）。知识库浏览与编辑不受影响。",
+-        last_error
+-    ))
++    crate::platform::open_target(path).map_err(|e| {
++        format!(
++            "系统没有可用的附件打开器（{}）。知识库浏览与编辑不受影响。",
++            e
++        )
++    })
+ }
+ 
+ #[cfg(test)]
+diff --git a/desktop/src-tauri/tauri.conf.json b/desktop/src-tauri/tauri.conf.json
+index ac9b1f1..bf8b14e 100644
+--- a/desktop/src-tauri/tauri.conf.json
++++ b/desktop/src-tauri/tauri.conf.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "https://schema.tauri.app/config/2",
+   "productName": "OmniDesk",
+-  "version": "0.1.0",
++  "version": "0.2.1",
+   "identifier": "dev.omnidesk.discipline",
+   "build": {
+     "frontendDist": "../dist",
+@@ -29,12 +29,14 @@
+   },
+   "bundle": {
+     "active": true,
+-    "targets": ["deb", "appimage"],
++    "targets": "all",
+     "icon": [
+       "icons/32x32.png",
+       "icons/128x128.png",
+       "icons/128x128@2x.png",
+-      "icons/icon.png"
++      "icons/icon.png",
++      "icons/icon.icns",
++      "icons/icon.ico"
+     ],
+     "category": "Productivity",
+     "shortDescription": "OmniDesk 独立 AI 工作站外壳",
+diff --git a/scripts/build-portable-package.sh b/scripts/build-portable-package.sh
+new file mode 100755
+index 0000000..6fabb62
+--- /dev/null
++++ b/scripts/build-portable-package.sh
+@@ -0,0 +1,162 @@
++#!/usr/bin/env bash
++# 组装"解压即用"发布包（免安装目录形态）。
++#
++# 产出目录结构（macOS 示例）：
++#   OmniDesk/
++#     OmniDesk.app                  桌面程序（前端资源已内嵌）
++#     engine/                       Python 引擎（仅标准库依赖）
++#     runtime/RUNTIME.lock          DSH 底座版本锁
++#     runtime/dsh-runtime/          该平台现装的 DSH CLI（含原生模块）
++#     runtime/dsh-home-seed/        首次启动时铺到 ~/OmniDesk/runtime/dsh-home
++#     skills/ profiles/ samples/ config/ scripts/
++#     启动说明.txt
++#
++# 前置条件：desktop 已构建完成（tauri build）。
++#   macOS：desktop/src-tauri/target/release/bundle/macos/OmniDesk.app
++#   Windows：desktop/src-tauri/target/release/omnidesk-desktop.exe
++#
++# 用法：scripts/build-portable-package.sh [--no-zip]
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
++ROOT="$(dirname "$SCRIPT_DIR")"
++VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
++OUT_DIR="$ROOT/dist-package"
++
++ZIP=1
++for arg in "$@"; do
++  case "$arg" in
++    --no-zip) ZIP=0 ;;
++    *) printf '未知参数：%s\n' "$arg" >&2; exit 2 ;;
++  esac
++done
++
++# PLATFORM 可由环境变量指定（例如 CI 里打通用包：PLATFORM=macos-universal）
++if [ -z "${PLATFORM:-}" ]; then
++  case "$(uname -s)" in
++    Darwin)
++      if [ "$(uname -m)" = "arm64" ]; then PLATFORM="macos-arm64"; else PLATFORM="macos-x64"; fi
++      ;;
++    MINGW*|MSYS*|CYGWIN*) PLATFORM="windows-x64" ;;
++    Linux) PLATFORM="linux-x64" ;;
++    *) printf '不认识的系统：%s\n' "$(uname -s)" >&2; exit 1 ;;
++  esac
++fi
++
++STAGE="$OUT_DIR/.stage-$PLATFORM"
++PKG="$STAGE/OmniDesk"
++mkdir -p "$PKG/runtime"
++
++say() { printf '[package] %s\n' "$*"; }
++
++say "版本 $VERSION / 平台 $PLATFORM"
++
++# 1) 桌面程序
++case "$PLATFORM" in
++  macos-*) IS_MAC=1 ;;
++  *) IS_MAC=0 ;;
++esac
++
++if [ "$IS_MAC" -eq 1 ]; then
++  APP_SRC=""
++  for candidate in \
++    "$ROOT/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/OmniDesk.app" \
++    "$ROOT/desktop/src-tauri/target/release/bundle/macos/OmniDesk.app"
++  do
++    if [ -d "$candidate" ]; then APP_SRC="$candidate"; break; fi
++  done
++  [ -n "$APP_SRC" ] || { printf '缺少桌面程序 OmniDesk.app（先跑 tauri build）\n' >&2; exit 1; }
++  cp -R "$APP_SRC" "$PKG/"
++else
++  EXE_SRC=""
++  for candidate in \
++    "$ROOT/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/omnidesk-desktop.exe" \
++    "$ROOT/desktop/src-tauri/target/release/omnidesk-desktop.exe" \
++    "$ROOT/desktop/src-tauri/target/release/omnidesk-desktop"
++  do
++    if [ -f "$candidate" ]; then EXE_SRC="$candidate"; break; fi
++  done
++  [ -n "$EXE_SRC" ] || { printf '缺少桌面程序可执行文件（先跑 tauri build）\n' >&2; exit 1; }
++  if [ "$PLATFORM" = "windows-x64" ]; then
++    cp "$EXE_SRC" "$PKG/OmniDesk.exe"
++  else
++    cp "$EXE_SRC" "$PKG/OmniDesk"
++  fi
++fi
++
++# 2) 引擎与业务资产（发布包根 = 程序认识的 repo_root）
++for dir in engine skills profiles samples config scripts; do
++  if [ -d "$ROOT/$dir" ]; then cp -R "$ROOT/$dir" "$PKG/"; fi
++done
++
++# 3) DSH 底座
++if [ ! -d "$ROOT/runtime/dsh-runtime" ]; then
++  printf '缺少 runtime/dsh-runtime（先跑 scripts/bootstrap-runtime.sh）\n' >&2
++  exit 1
++fi
++cp "$ROOT/runtime/RUNTIME.lock" "$PKG/runtime/"
++cp -R "$ROOT/runtime/dsh-runtime" "$PKG/runtime/dsh-runtime"
++
++# 4) 首次启动 seed：Profile + Skill，避免新机器上还要手工 npm
++SEED="$PKG/runtime/dsh-home-seed"
++for profile in omnidesk-base web; do
++  mkdir -p "$SEED/profiles/$profile"
++  cp "$ROOT/samples/profiles/$profile.profile.json" "$SEED/profiles/$profile/package.json"
++  cp "$ROOT/samples/profiles/$profile.profile.patch.yml" "$SEED/profiles/$profile/cordis.patch.yml"
++  say "安装 Profile 依赖：$profile"
++  if ! ( cd "$SEED/profiles/$profile" && npm install --no-audit --no-fund --omit=dev >/dev/null 2>&1 ); then
++    say "警告：$profile 依赖安装失败，该 Profile 插件不可用（基础对话不受影响）"
++  fi
++done
++mkdir -p "$SEED/skills"
++for skill_dir in "$ROOT"/skills/*/; do
++  if [ -d "$skill_dir" ]; then cp -R "$skill_dir" "$SEED/skills/"; fi
++done
++
++# 5) 启动说明
++cat > "$PKG/启动说明.txt" <<'TXT'
++OmniDesk 免安装版
++=================
++
++一、运行前需要装两样东西（只需一次）
++  1. Node.js 22.19 以上：https://nodejs.org
++  2. Python 3.10 以上：https://www.python.org
++
++二、启动
++  macOS：双击 OmniDesk.app
++         若提示“无法验证开发者”，右键点它 → 打开；或在终端执行一次：
++         xattr -dr com.apple.quarantine "/Applications/OmniDesk.app"
++  Windows：双击 OmniDesk.exe
++
++三、第一次启动会做什么
++  程序会把 runtime/dsh-home-seed 里的 Profile 与 Skill 复制到
++  ~/OmniDesk/runtime/dsh-home（Windows 是 %USERPROFILE%\OmniDesk\...）。
++  已经存在就完全不覆盖，升级版本时你的数据不受影响。
++
++四、你的数据在哪
++  ~/OmniDesk/app          设置、会话、引擎台账
++  ~/OmniDesk/runtime      隔离的 DSH 数据根（模型配置与凭据）
++  ~/OmniDesk/workspace    成果目录
++
++五、这个包不含任何密钥
++  模型 API Key 需要在“设置 → 模型服务”里自己填，第一次对话前必须先填。
++TXT
++
++say "组装完成：$PKG"
++
++# 6) 压缩
++if [ "$ZIP" -eq 1 ]; then
++  OUT="$OUT_DIR/OmniDesk-$VERSION-$PLATFORM.zip"
++  if [ "$IS_MAC" -eq 1 ]; then
++    ditto -c -k --sequesterRsrc --keepParent "$PKG" "$OUT"
++    say "已生成：$OUT"
++  elif [ "$PLATFORM" = "windows-x64" ]; then
++    WIN_PKG="$(cygpath -w "$PKG")"
++    WIN_OUT="$(cygpath -w "$OUT")"
++    powershell.exe -NoProfile -Command "Compress-Archive -Path '$WIN_PKG' -DestinationPath '$WIN_OUT' -CompressionLevel Optimal -Force"
++    say "已生成：$OUT"
++  else
++    say "当前系统不自动压缩，请手工把 $PKG 打包为 $OUT"
++  fi
++fi
++
