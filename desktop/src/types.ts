@@ -716,6 +716,30 @@ export interface WorklogMoveManyReceipt {
 }
 
 /**
+ * 并入上一条回执（OD-ARCH-132）。
+ *
+ * 只改目标条目的那一行：原句后面以「；」接上补充。其余行逐字节不变；
+ * 定位不上、正文对不上或写入失败时 ok=false 且文件一字未动。
+ */
+export interface WorklogMergeReceipt {
+  ok: boolean;
+  path: string | null;
+  week: string;
+  date: string;
+  index: number;
+  /** 合并后的完整条目正文（原句 + 补充）。 */
+  entry_text: string;
+  /** 本次并入的补充文本（可能已掩码）。 */
+  added: string;
+  merged: boolean;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+  backup: string | null;
+  error: string | null;
+}
+
+/**
  * 改去向回执（OD-ARCH-099 S02）。
  *
  * 界面点选「进周报」只改这一条记录在周文件里的去向字段；不写周报正文。

@@ -1,4 +1,29 @@
 # 当前实施计划
+### OD-ARCH-132：随手记补充内容并入上一条（计划者与实施者：本助手；用户已批准「批准执行OD-ARCH-132」；2026-11-03 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-132/facts.json）
+
+> **触发：** 用户实测发现：先记一条，再补一句，落盘成了两条独立记录。原因有二：① Skill 规则只让模型"跟随上一条的日期"，落盘永远新起一条，没有"并入上一条"的通道；② 工作记录文件是只增不改设计（append_entry 自检"原字节不变"），从机制上就不支持合并。
+
+#### 目标
+明显续述上一条的补充（"还参观了…""另外…""补充一下…"）并进上一条同一行，不再分成两条。
+
+#### 实施步骤
+
+1. **worklog.rs 新增 merge_entry（合并落盘通道）**：签名对齐 move_entry（date + index + expect_text 三元组定位），确认目标无误后把补充文本以"；"接在该条同一行末尾，写临时文件 + rename 原子替换；自检为重写前后除目标行外逐字节一致，否则整份作废不落盘。追加文本照走掩码（身份证/手机号）。Tauri command：worklog_merge。
+2. **skills/memory-agent/SKILL.md 规则升级**：判定输出增加 "merge" 通道：{"merge":{"date":"...","index":0,"text":"补充原话"}}；规则第 3 条改为：无日期细节且明显续述上一条主题（同一次行动的补充、展开、感受追加）→ merge；全新主题 → append 今天。改写指令、纯提问、确认句行为不变。
+3. **前端与索引兼容**：Receipt 带合并后的行文本，weekTimeline.ts 重读即可，无需新 UI。执行顺序定为 merge → move → append：并入不增删条目、不改序号，放在移动之前才不会拿到被移动改过的旧序号。
+4. **验证**（tests/verification/desktop/verify_worklog_132.py）：合并后文件除目标行外逐字节一致；索引错位 / expect_text 不匹配时拒绝且文件未动；追加文本含身份证号被掩码；move/append/merge 混合序列正确；cargo test worklog 全量 + tsc + build 通过。
+
+#### 影响范围
+worklog.rs、lib.rs（一个新 command）、memory-agent/SKILL.md、新增验证脚本。不动周报（memory-report）与知识卡链路。
+
+#### 风险
+- 整文件重写替代纯追加：用"临时文件 + rename"保证原子，崩溃不留半写文件。
+- 模型误判"续述"导致该分开的被合并：合并后原句仍在，时间轴可见；低频问题，手工改正即可，不做自动拆分。
+
+#### 验收标准
+用户场景复现：先记"赴上杭县城现场教学"，再补"参观了紫金矿业…"，落盘为一条含两段的记录。
+
+> **实施结果（2026-11-03）：** merge_entry / worklog_merge / 判定协议 merge 通道 / Skill 规则 / 回执展示全部落地；verify_worklog_132.py 43 项全通过，verify_worklog_104.py 70 项无退化，cargo test worklog 42 项通过，前端 build 通过。全量 cargo lib 有 4 项与本计划无关的平台失败（process_owner、task_shell，均为 Linux /proc 与 macOS 符号链接路径差异），改动未触及这两个模块。
 
 ### OD-ARCH-131：自建 Profile 能带自己的 Skill（不再只认内置 8 个）（计划者与实施者：本助手；用户授权「把 Profile 功能全部完善，中途的计划自行制定并批准，写入文档，阶段性备份」；2026-10-29 已实施并通过审查，见 REVIEW.md / STATUS.md / D-060）
 

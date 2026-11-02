@@ -1,0 +1,220 @@
+{
+  "cases": [
+    {
+      "name": "worklog_merge_entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_same_line",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_no_truncate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_guards_lines",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_rejects_multiline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_atomic",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_merge_locator_reuses_move",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_merge_command",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_merge_registered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_merge_red_line",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_merge_masks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_merge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_merge_receipt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_calls_merge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_merge_before_move_before_append",
+      "ok": true,
+      "detail": "(43328, 44284, 44980)"
+    },
+    {
+      "name": "home_empty_guard_includes_merge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_reports_merge_line",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_merge_rule",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_merge_json",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_four_fields",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_within_budget",
+      "ok": true,
+      "detail": "1546 字符"
+    },
+    {
+      "name": "workRecordVerdict_compiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index_two_entries",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "parse_merge_ok",
+      "ok": true,
+      "detail": "{\"append\":[],\"move\":[],\"merge\":[{\"date\":\"2026-10-26\",\"index\":0,\"text\":\"还参观了紫金矿业生产基地\"}],\"note\":\"已并入\"}"
+    },
+    {
+      "name": "parse_merge_text",
+      "ok": true,
+      "detail": "还参观了紫金矿业生产基地"
+    },
+    {
+      "name": "parse_merge_defaults_empty",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_merge_bad_type_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_merge_missing_text_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "parse_merge_bad_index_null",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "merge_ok",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "merge_expect_text",
+      "ok": true,
+      "detail": "周一上午赴上杭县城现场教学"
+    },
+    {
+      "name": "merge_keeps_index",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "merge_reject_invented",
+      "ok": true,
+      "detail": "补充正文不是用户原话的连续片段：参观了矿区并了解矿产知识"
+    },
+    {
+      "name": "merge_reject_missing_index",
+      "ok": true,
+      "detail": "索引里没有 2026-10-27 的第 1 条记录"
+    },
+    {
+      "name": "merge_reject_twice",
+      "ok": true,
+      "detail": "同一条记录被补充了两次：2026-10-26#0"
+    },
+    {
+      "name": "merge_reject_duplicate_content",
+      "ok": true,
+      "detail": "这条记录里已经有这段内容，未重复并入"
+    },
+    {
+      "name": "merge_reject_with_append",
+      "ok": true,
+      "detail": "同一段话既并入又追加：还参观了紫金矿业生产基地"
+    },
+    {
+      "name": "merge_reject_with_move",
+      "ok": true,
+      "detail": "同一条记录既移动又并入，已拒绝"
+    },
+    {
+      "name": "merge_reject_cross_week",
+      "ok": true,
+      "detail": "补充的记录 的日期 2026-10-19 不在 2026-W44"
+    },
+    {
+      "name": "merge_reject_future",
+      "ok": true,
+      "detail": "补充的记录 的日期 2026-10-30 晚于今天 2026-10-28"
+    },
+    {
+      "name": "merge_reject_too_long",
+      "ok": true,
+      "detail": "补充正文过长（1212 字符），已拒绝"
+    },
+    {
+      "name": "legacy_append_still_ok",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reply_only_ok",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "passed": true
+}

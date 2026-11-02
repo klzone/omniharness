@@ -970,6 +970,30 @@ pub struct MoveBatchReceipt {
     pub error: Option<String>,
 }
 
+/// 并入上一条的回执（OD-ARCH-132）。
+///
+/// 合并只改目标条目的那一行，其余字节原样保留。entry_text 是合并后的完整正文，
+/// 界面拿它回读索引与后续校验，不需要另做解析。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MergeReceipt {
+    pub ok: bool,
+    pub path: String,
+    pub week: String,
+    pub date: String,
+    /// 这条记录在该日期段里的序号（0 起，与索引一致）。
+    pub index: usize,
+    /// 合并后的条目正文（原句 + 分隔符 + 补充）。
+    pub entry_text: String,
+    /// 本次并入的补充文本（已掩码）。
+    pub added: String,
+    pub merged: bool,
+    pub masked: bool,
+    pub masked_id_card: u64,
+    pub masked_phone: u64,
+    pub backup: Option<String>,
+    pub error: Option<String>,
+}
+
 /// 读出当周文件并拆行；换行口径必须一致，否则拒绝改写。
 fn read_week_lines(
     library_root: &Path,
@@ -1394,6 +1418,108 @@ pub fn move_entry(
         backup: batch.backup,
         error: None,
     })
+}
+
+/// 把一句补充并入已有记录（OD-ARCH-132）。
+///
+/// 定位口径与改日期一致：date + index + expect_text 三元组，对不上就整份拒绝。
+/// 语义由模型判定（这句是不是在补充上一条）；这里只负责「能不能安全并」：
+/// 只改目标条目的那一行，在句尾以「；」接上补充，其余行逐字节保持不变，
+/// 临时文件 + rename 原子替换，失败不留半写文件。
+pub fn merge_entry(
+    library_root: &Path,
+    week: &str,
+    date: &str,
+    index: usize,
+    expect_text: &str,
+    addition: &str,
+) -> Result<MergeReceipt, String> {
+    assert_week_label(week)?;
+    if !is_date_shape(date) {
+        return Err(format!("日期格式不正确（应为 YYYY-MM-DD），已拒绝并入：{date}"));
+    }
+    let addition = addition.trim();
+    if addition.is_empty() {
+        return Err("补充内容为空，未写入".to_string());
+    }
+    if addition.contains('\n') || addition.contains('\r') {
+        return Err("补充内容只能是一行，已拒绝并入".to_string());
+    }
+    let (path, original, content, eol, mut lines) = read_week_lines(library_root, week)?;
+    let (start, end, text) = locate_entry_block(&lines, date, index, expect_text)?;
+    let before_lines = lines.clone();
+    let line = lines[start].trim_end().to_string();
+    // 句尾已经有分号就不再叠一个。
+    if line.ends_with('；') || line.ends_with(';') {
+        lines[start] = format!("{line}{addition}");
+    } else {
+        lines[start] = format!("{line}；{addition}");
+    }
+    // 合并后的正文：新的条目行 + 原有续行（如果有），供界面回读。
+    let merged_text = {
+        let mut body = vec![item_text(&lines[start]).unwrap_or("").to_string()];
+        for line in lines[start + 1..=end].iter() {
+            if item_text(line).is_some() || dest_line(line).is_some() {
+                break;
+            }
+            body.push(line.trim().to_string());
+        }
+        body.join("\n").trim().to_string()
+    };
+    if merged_text == text {
+        return Err("补充内容与原句重复，未写入".to_string());
+    }
+    let updated = lines.join(&eol);
+    assert_only_target_line_changed(&before_lines, &updated, &eol, start)?;
+    let backup = commit_week_file(&path, week, &original, &updated)?;
+    Ok(MergeReceipt {
+        ok: true,
+        path: path.display().to_string(),
+        week: week.to_string(),
+        date: date.to_string(),
+        index,
+        entry_text: merged_text,
+        added: addition.to_string(),
+        merged: true,
+        masked: false,
+        masked_id_card: 0,
+        masked_phone: 0,
+        backup: Some(backup.display().to_string()),
+        error: None,
+    })
+}
+
+/// 写前自证：行数不变，除目标行外逐行逐字节一致，目标行以原行开头。
+fn assert_only_target_line_changed(
+    before: &[String],
+    updated: &str,
+    eol: &str,
+    target: usize,
+) -> Result<(), String> {
+    let after: Vec<String> = updated
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+    if after.join(eol) != updated {
+        return Err("并入后的文件换行口径不一致，已中止".to_string());
+    }
+    if after.len() != before.len() {
+        return Err(format!(
+            "并入会让行数从 {} 变成 {}，已中止",
+            before.len(),
+            after.len()
+        ));
+    }
+    for (i, (old, new)) in before.iter().zip(after.iter()).enumerate() {
+        if i == target {
+            if !new.starts_with(old.trim_end()) || new.len() <= old.trim_end().len() {
+                return Err("目标行没有被正确追加，已中止".to_string());
+            }
+        } else if old != new {
+            return Err(format!("第 {} 行会被改动，已中止", i + 1));
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2048,6 +2174,123 @@ mod tests {
         let (c, _) = append_entry(&root, "2026-W44", "2026-10-27", "周二第一条", "本周报引用").unwrap();
         assert_eq!((a.entry_index, b.entry_index, c.entry_index), (0, 1, 0));
         assert_eq!(b.entry_text, "周一第二条");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn merge_appends_to_target_line_only() {
+        let root = temp_root("merge");
+        append_entry(&root, "2026-W44", "2026-10-26", "上午赴上杭县城现场教学", "本周报引用").unwrap();
+        append_entry(&root, "2026-W44", "2026-10-26", "下午回单位整理材料", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        let before = fs::read_to_string(&path).unwrap();
+
+        let receipt = merge_entry(
+            &root,
+            "2026-W44",
+            "2026-10-26",
+            0,
+            "上午赴上杭县城现场教学",
+            "还参观了紫金矿业生产基地",
+        )
+        .unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+
+        assert!(receipt.merged);
+        assert_eq!(receipt.index, 0);
+        assert_eq!(
+            receipt.entry_text,
+            "上午赴上杭县城现场教学；还参观了紫金矿业生产基地"
+        );
+        assert!(receipt.backup.as_deref().map(Path::new).unwrap().exists());
+        // 条目数不变、没有新起日期段。
+        assert_eq!(after.matches("- **事**：").count(), 2);
+        assert_eq!(after.matches("## ").count(), before.matches("## ").count());
+        // 除目标行外逐字节一致。
+        let before_lines: Vec<&str> = before.lines().collect();
+        let after_lines: Vec<&str> = after.lines().collect();
+        assert_eq!(before_lines.len(), after_lines.len());
+        for (i, (old, new)) in before_lines.iter().zip(after_lines.iter()).enumerate() {
+            if i == 4 {
+                assert!(new.starts_with(old), "第 {i} 行应以原行开头");
+                assert!(new.ends_with("还参观了紫金矿业生产基地"));
+            } else {
+                assert_eq!(old, new, "第 {i} 行被改动");
+            }
+        }
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn merge_rejects_mismatch_and_leaves_file_untouched() {
+        let root = temp_root("merge-reject");
+        append_entry(&root, "2026-W44", "2026-10-26", "上午赴上杭县城现场教学", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        let before = fs::read(&path).unwrap();
+
+        let err = merge_entry(
+            &root,
+            "2026-W44",
+            "2026-10-26",
+            0,
+            "界面读到的另一句话",
+            "补充一句",
+        )
+        .unwrap_err();
+        assert!(err.contains("不一致"), "应按正文不符拒绝：{err}");
+        assert_eq!(fs::read(&path).unwrap(), before, "被拒绝后文件不应变化");
+
+        let err = merge_entry(&root, "2026-W44", "2026-10-26", 3, "上午赴上杭县城现场教学", "补充")
+            .unwrap_err();
+        assert!(err.contains("没有第"), "应报越界：{err}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn merge_rejects_empty_multiline_and_same_text() {
+        let root = temp_root("merge-shape");
+        append_entry(&root, "2026-W44", "2026-10-26", "上午赴上杭县城现场教学", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W44");
+        let before = fs::read(&path).unwrap();
+
+        assert!(merge_entry(&root, "2026-W44", "2026-10-26", 0, "上午赴上杭县城现场教学", "  ")
+            .unwrap_err()
+            .contains("为空"));
+        assert!(merge_entry(
+            &root,
+            "2026-W44",
+            "2026-10-26",
+            0,
+            "上午赴上杭县城现场教学",
+            "第一行\n第二行"
+        )
+        .unwrap_err()
+        .contains("一行"));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn merge_preserves_crlf_and_avoids_double_separator() {
+        let root = temp_root("merge-crlf");
+        let path = week_path(&root, "2026-W44");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let body = "# 2026-W44\r\n\r\n## 2026-10-26\r\n\r\n- **事**：上午赴上杭县城现场教学；\r\n  **去向**：本周报引用\r\n\r\n";
+        fs::write(&path, body).unwrap();
+        merge_entry(
+            &root,
+            "2026-W44",
+            "2026-10-26",
+            0,
+            "上午赴上杭县城现场教学；",
+            "还参观了紫金矿业生产基地",
+        )
+        .unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(after.contains("现场教学；还参观了紫金矿业生产基地\r\n"), "{after}");
+        assert!(after.contains("## 2026-10-26\r\n"), "换行应保持 CRLF");
+        assert!(!after.contains("；；"));
         fs::remove_dir_all(&root).ok();
     }
 

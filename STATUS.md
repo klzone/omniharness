@@ -1,5 +1,44 @@
 # 执行状态
 
+## OD-ARCH-132：随手记补充内容并入上一条（2026-11-03；已实施，本人实跑验证）
+
+> 起点 HEAD `c878f0a5ca`，工作区保留 132 的改动（1 个新落盘函数与写前自证、1 个命令、判定协议新通道、1 处执行顺序调整、1 份 Skill 规则、1 个验证脚本与证据目录）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
+
+### 一句话结论
+
+用户先记「赴上杭县城现场教学」、再补「还参观了紫金矿业…」，原先落成两条独立记录，因为 Skill 只让模型「跟随上一条日期」，而落盘通道只有 append（自检要求原字节不变），根本没有「并入上一条」这条路。现在判定协议多了一个 `merge` 通道：模型认出这是同一次行动的展开，就按 date + index + expect_text 三元组定位目标条目，把补充以「；」接在同一行末尾；除目标行外整份文件逐字节不变，写临时文件后 rename 原子替换。
+
+### 改动
+
+1. **`worklog.rs`**：新增 `MergeReceipt` 与 `merge_entry(library_root, week, date, index, expect_text, addition)`。定位复用 `locate_entry_block`（与改日期同一口径）；目标行已有「；」或「;」时不再叠一个分隔符；补充为空、含换行、与原句重复都拒绝。新增 `assert_only_target_line_changed`：行数不变、除目标行外逐行逐字节一致、目标行必须以原行开头且确有增长，否则整份作废。落盘照走 `commit_week_file`（备份 + 临时文件 + fsync + rename + 回读自证），保留 CRLF，不使用 truncate。
+2. **`lib.rs`**：新增 `worklog_merge` 命令并注册。与追加同口径：先过红线扫描，命中即拒绝；身份证 / 手机号掩码后才落盘；失败回执字段齐全（`ok/merged/masked/error`），前端不用猜。
+3. **`workRecordVerdict.ts`**：`WorkRecordVerdict` / `VerdictPlan` 增 `merge`；解析旧判定没有该字段时按空数组处理（旧协议不退化）。校验补充必须是用户原话的连续片段、日期合法且在当周、索引存在、不能重复补同一条、不能与已有内容重复、不能与 append 重复、不能与同一记录的移动同时出现、合并后不超过 1000 字符。
+4. **`HomeChat.tsx`**：执行顺序改为 **merge → move → append**。并入不增删条目、不改序号，移动会改序号，所以并入必须在移动之前；否则同一轮里先移动了别的记录，后面的并入会用旧索引定位到错的条目。
+5. **`skills/memory-agent/SKILL.md`**：明确「还参观了」「随后又去了」这类同一次行动的展开用 `merge`、不新起条目；确认句与纯提问不写；一条记录只用一个动作。文件仍在既有 2500 字符预算内（1546 字符）。
+6. **验证**：新增 `tests/verification/desktop/verify_worklog_132.py`（43 项）与证据 `evidence/od-arch-132/facts.json`。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 132 验证 | `python3 tests/verification/desktop/verify_worklog_132.py` | **43/43 通过**，EXIT=0 |
+| 104 回归 | `python3 tests/verification/desktop/verify_worklog_104.py` | **70/70 通过**，判定协议旧能力未退化 |
+| 落盘单测 | `cargo test --offline --lib worklog` | **42 passed / 0 failed**，含 4 个 merge 用例 |
+| 前端构建 | `npm --prefix desktop run build` | 通过（vite 构建 258ms，仅有既有 chunk 体积提示） |
+| 全量单测 | `cargo test --offline --lib` | 495 passed / **4 failed**，见下方边界第 4 条 |
+
+### 过程中确认的边界
+
+1. **并入不是「追加一条」，是「改一行」。** 这与工作记录「只增不改」的旧约定冲突，所以护栏做在写前自证里：行数必须不变、非目标行必须逐字节一致、目标行必须保留原句。任何一条不满足就整份放弃，不落半写文件。
+2. **索引是快照，顺序决定正确性。** 同一轮判定里既有 move 又有 merge 时，move 会让后面的条目序号变化；因此执行顺序固定为 merge → move → append，并在校验层禁止「同一条既移动又并入」（模型若这样输出，直接拒绝而不是猜用户意图）。
+3. **并入的语义交给模型，安全性留给代码。** 脚本不判断「这句话是不是在补充上一条」——那是模型的事；代码只保证「要并的那条确实是它，且只改这一行」。
+4. **全量 `cargo test --lib` 的 4 项失败与本计划无关，是 macOS 平台差异。** `process_owner` 的 3 项直接读 `/proc/<pid>/stat`、`/proc/<pid>/cmdline`、`/proc/sys/kernel/random/boot_id`（Linux 专有）；`task_shell::material_tests::lists_only_supported_visible_reference_files` 用 `dir.display()` 与规范化路径比较，macOS 的 `/var/folders` 会解析成 `/private/var/folders`。两者都不在本轮改动文件内（`git diff` 未触及），在 Linux 上应为通过；本机不做「为过测试而改生产代码」的处理。
+5. **没有新 UI。** 回执以「· 并入 <日期> 第 N 条：<文本>」并入既有执行结果区，索引页重读时间线即可。
+
+### 未覆盖
+
+真实模型是否把「还参观了…」判成 merge，属于 OD-ARCH-080 的真实端到端实测范围，需要用户用真实供应商跑一次；脚本只验证协议、校验、落盘与接线。
+
 ## OD-ARCH-131：自建 Profile 能带自己的 Skill（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 109–130 未提交改动，全部原样保留（本轮新增 1 个取源升级、4 个规则校验函数、2 个命令、1 个界面区块、迁移包新成员、6 个新测试、1 个窗口脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
