@@ -58,3 +58,4 @@ runtime/dsh-runtime/
 
 # 本地知识库抽取的纯文本缓存（由真实文档生成，含业务内容，只留本机）
 .kb_extract/
+desktop/tsconfig.tsbuildinfo
