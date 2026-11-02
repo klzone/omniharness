@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import hashlib
 import threading
 import time
@@ -102,7 +103,16 @@ def canonical_cwd(path: str, *, field: str = "cwd") -> str:
             detail={field: path},
         )
     try:
-        return os.path.realpath(path, strict=True)
+        # realpath 的 strict 关键字是 Python 3.10+ 才有；3.9 上等价行为是
+        # 先 os.path.exists 预检（realpath 本身从不抛“不存在”）。已解析落点
+        # 必须真实存在，否则按契约报错，不静默退化。
+        if sys.version_info >= (3, 10):
+            resolved = os.path.realpath(path, strict=True)
+        else:
+            resolved = os.path.realpath(path)
+            if not os.path.exists(resolved):
+                raise OSError("no such file or directory: " + path)
+        return resolved
     except OSError as exc:
         raise EngineError(
             EngineErrorCode.INVALID_ARGUMENT,
