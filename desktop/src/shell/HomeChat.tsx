@@ -1243,7 +1243,7 @@ export function HomeChat({
   );
 
   /**
-   * 执行一份随手记判定：校验 → 移动 → 逐条写入 → 返回给用户看的确定性回执。
+   * 执行一份随手记判定：校验 → 移动 → 并入 → 逐条写入 → 返回给用户看的确定性回执。
    *
    * 任何不合规、缺失或异常都走降级：原文原样追加到当天，并明确标注
    * 「未做指令识别」，绝不假装已经理解。降级路径不执行任何移动。
@@ -1287,11 +1287,40 @@ export function HomeChat({
     if (!check.ok) return fallback(check.reason);
 
     const plan = check.plan;
-    // 两个数组都空 = 这一步只回一句话（确认、追问、回答）：不碰文件。
-    if (plan.append.length === 0 && plan.move.length === 0) return null;
+    // 三个数组都空 = 这一步只回一句话（确认、追问、回答）：不碰文件。
+    if (plan.append.length === 0 && plan.move.length === 0 && plan.merge.length === 0) return null;
 
     const lines: string[] = [];
     const problems: string[] = [];
+
+    // 并入先于移动：并入不增删条目、不改序号；移动会改变序号，追加会新增条目。
+    for (const record of plan.merge) {
+      try {
+        const receipt = await shell.worklogMerge({
+          week: ctx.week,
+          date: record.date,
+          index: record.index,
+          expectText: record.expectText,
+          text: record.text,
+        });
+        if (!receipt.ok || !receipt.merged) {
+          problems.push(
+            "「" + shortText(record.text, 16) + "」没有并入 " + record.date + " 第 " +
+              (record.index + 1) + " 条：" + (receipt.error || "宿主未确认") + "。文件保持原样。",
+          );
+          continue;
+        }
+        lines.push(
+          "· 并入 " + receipt.date + " 第 " + (receipt.index + 1) + " 条：" +
+            shortText(receipt.added, 30),
+        );
+        if (receipt.masked) {
+          lines.push("  （已自动脱敏，身份证号 " + receipt.masked_id_card + " 处、手机号 " + receipt.masked_phone + " 处）");
+        }
+      } catch (e) {
+        problems.push("「" + shortText(record.text, 16) + "」并入失败：" + String(e) + "。");
+      }
+    }
 
     if (plan.move.length > 0) {
       try {

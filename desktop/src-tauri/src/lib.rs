@@ -3610,6 +3610,73 @@ fn worklog_move_many(
     }
 }
 
+/// 把一句补充并入已有记录（OD-ARCH-132）。
+///
+/// 与追加同口径：先过红线扫描，命中即拒绝；身份证/手机号掩码后才落盘。
+/// 定位用 date + index + expect_text，对不上就整份拒绝，文件一字不动。
+#[tauri::command(async)]
+fn worklog_merge(
+    state: State<'_, SharedHost>,
+    week: String,
+    date: String,
+    index: usize,
+    expect_text: String,
+    text: String,
+) -> serde_json::Value {
+    let failure = |path: Option<String>, message: String, counts: (u64, u64, bool)| {
+        serde_json::json!({
+            "ok": false,
+            "path": path,
+            "week": week,
+            "date": date,
+            "index": index,
+            "entry_text": "",
+            "added": "",
+            "merged": false,
+            "masked": counts.2,
+            "masked_id_card": counts.0,
+            "masked_phone": counts.1,
+            "backup": null,
+            "error": message,
+        })
+    };
+    let root = match worklog_library_root(&state) {
+        Ok(root) => root,
+        Err(message) => return failure(None, message, (0, 0, false)),
+    };
+    let path = worklog::week_path(&root, &week).display().to_string();
+    let policy = match current_rule_policy(&state) {
+        Ok(policy) => policy,
+        Err(message) => return failure(Some(path), message, (0, 0, false)),
+    };
+    let hits = task_shell::red_line_scan_with(&text, &policy);
+    if !hits.is_empty() {
+        let mut detail = String::new();
+        for hit in &hits {
+            detail.push_str(&format!("{}（{} 处）；", hit.label, hit.count));
+        }
+        return failure(
+            Some(path),
+            format!(
+                "本次内容命中红线扫描，已拒绝写入工作记录：{}。该扫描仅为启发式，不代表合规判断。",
+                detail
+            ),
+            (0, 0, false),
+        );
+    }
+    let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
+    let counts = (counts.id_card, counts.phone, counts.any());
+    match worklog::merge_entry(&root, &week, &date, index, &expect_text, &masked_text) {
+        Ok(mut receipt) => {
+            receipt.masked = counts.2;
+            receipt.masked_id_card = counts.0;
+            receipt.masked_phone = counts.1;
+            serde_json::json!(receipt)
+        }
+        Err(message) => failure(Some(path), message, counts),
+    }
+}
+
 /// 读当周工作记录（周报「有米」用）。只读，不建文件、不改文件。
 #[tauri::command(async)]
 fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serde_json::Value {
@@ -5156,6 +5223,7 @@ pub fn run() {
             worklog_set_destination,
             worklog_redate,
             worklog_move_many,
+            worklog_merge,
             worklog_read_week,
             worklog_archive_list,
             worklog_read_report,

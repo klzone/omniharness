@@ -1,3 +1,27 @@
+## OD-ARCH-132 审查结论（ARCHITECT，2026-11-03）——通过
+
+**结论：通过。** 用户实测「先记一条、再补一句」落成了两条独立记录。根因是两条：Skill 只让模型「跟随上一条的日期」，落盘通道只有 append 且自检要求「原字节不变」，机制上就没有合并这条路。本轮新增 `merge` 判定通道与 `merge_entry` 落盘函数，把补充以「；」接在同一行末尾，并保持「除目标行外逐字节不变」这条护栏。
+
+**独立复核范围：** HEAD `c878f0a5ca` + 工作区改动。逐行核对 `worklog.rs` 的 `MergeReceipt`、`merge_entry`、`assert_only_target_line_changed` 与 4 个单测；`lib.rs` 的 `worklog_merge`（红线扫描 → 掩码 → 落盘 → 失败回执）与命令注册；`workRecordVerdict.ts` 的解析与校验分支；`HomeChat.tsx` 的执行顺序与回执文案；`skills/memory-agent/SKILL.md` 全文与长度；`verify_worklog_132.py` 全文与 `facts.json`。`runtime/` 零差异；未新增权限，走既有 invoke 通道。
+
+**审查判断（几处特意验过的边界）：**
+
+1. **执行顺序必须是 merge → move → append。** 并入不增删条目、不改序号；移动会改序号。若先移动再并入，后面的并入会用快照里的旧索引去定位，可能落到别的条目上。初版写成 move → merge → append，本轮已改正，并把验证脚本的静态断言从 `move < merge < append` 改为 `merge < move < append`——断言跟着不变量走，而不是跟着实现行号走。
+2. **「只改一行」是写前自证，不是事后假设。** `assert_only_target_line_changed` 要求：行数与原文一致、非目标行逐字节相等、目标行以原行开头且确有增长。任何一条不满足就中途中止，文件一字不动。这条比「记住只改一行」可靠，因为它拦的是实现漂移。
+3. **定位口径与改日期共用一套。** `locate_entry_block(lines, date, index, expect_text)` 是既有函数，不新写一份解析。索引错位或正文不符时拒绝写入，单测断言「被拒绝后文件字节不变」，而不是只断言返回 Err。
+4. **分号不叠加。** 目标行已以「；」或「;」结尾时直接接补充，否则补一个「；」。CRLF 文件保持 CRLF，单测同时断言 `\r\n` 与「不含 ；；」。
+5. **掩码与红线在命令层，不在 Skill 层。** `worklog_merge` 先 `red_line_scan_with` 命中即拒，再 `mask_privacy` 掩码后落盘；与 `worklog_append` 同口径。回执里的 `masked / masked_id_card / masked_phone` 让界面能说明「已脱敏」，失败分支也带完整字段，前端不用靠 500 判断。
+6. **旧判定协议不退化。** `merge` 字段缺失时按空数组处理，`verify_worklog_104.py` 70 项全通过；旧的两字段 / 三字段判定仍然有效。
+7. **校验宁严不猜。** 补充必须是用户原话的连续片段；不能补同一条两次、不能与已有内容或本轮 append 重复、不能与同一条的移动同时出现；合并后不超过 1000 字符。模型输出越界时拒绝并回话，而不是「尽力而为」地并进去。
+8. **Skill 仍在一页之内。** `memory-agent/SKILL.md` 1546 字符，在既有 2500 字符预算内；新增的只是「续述用 merge、不新起条目」与「一条记录只用一个动作」，没有引入新的必答步骤。
+9. **没有新 UI。** 结果区加一行「· 并入 <日期> 第 N 条：<文本>」，索引页重读时间线。132 之前用户看不到「并入」这个动作，现在能看见，也方便手工纠正误判。
+
+**验证证据：** `verify_worklog_132.py` **43/43**、`verify_worklog_104.py` **70/70**、`cargo test --offline --lib worklog` **42 passed / 0 failed**、`npm --prefix desktop run build` 通过；证据 `tests/verification/desktop/evidence/od-arch-132/facts.json`。全量 `cargo test --lib` 为 495 passed / 4 failed，4 项均在本轮未触及的模块，且都是 macOS 平台差异：`process_owner` 三项读 `/proc`（Linux 专有），`task_shell` 一项用 `dir.display()` 与规范化路径比较（`/var` → `/private/var`）。这部分不作为本计划的通过条件，也不为过测试去改生产代码。
+
+**本轮未覆盖（不作为通过条件）：** 真实模型是否把「还参观了…」判成 merge 属 OD-ARCH-080 真实端到端实测，需用户用真实供应商跑一次；「感受追加」这类边界表述的实际命中率同理，只能实测。
+
+**一句提醒：** 并入会改写既有行，这与「工作记录只增不改」的老约定相反。护栏全靠 `assert_only_target_line_changed` 与 `commit_week_file` 的回读自证，后续若有人想「顺手清理空行」或「顺便规整格式」，这条护栏会直接拒绝——这是有意的，不要为了通过测试去放宽它。
+
 ## OD-ARCH-131 审查结论（ARCHITECT，2026-10-29）——通过
 
 **结论：通过。** 用户的产品边界是「OmniDesk 干净初始、Profile 定制，切过去配置 / Skill / 插件自动到位」。130 之后逐条对表，切换装配、保存绑定收敛、缺插件三条补装通道都通，只剩一处真缺口：**自建 Profile 只能绑内置 8 个 Skill**——`profile_rules.rs` 的 `validate()` 按 `ALLOWED_SKILLS` 整份拒绝，装配链也没有「Profile 自带正文」这一层，用户自己写的 Skill 连存都存不住。本轮把它补成三层取源，并且没有动基础标准零写入、出厂清单与停放区口径。

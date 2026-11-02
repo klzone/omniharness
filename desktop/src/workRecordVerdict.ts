@@ -10,11 +10,15 @@
 // 规定；平台只认「追加一条」「移动一条」这两个宿主能力，以及一句给用户的话。
 // 换一套 Skill 就是另一套判断口径，这里一行不用改。
 //
+// OD-ARCH-132：新增第三个宿主能力「并入一条」（merge）。用户先记一条、再补一句
+// 「还参观了…」时，判定可以指向已有条目，由宿主在同一行句尾接上补充；平台仍不
+// 判断「这是不是补充」，只校验定位、原话片段与长度。
+//
 // 本模块只做四件确定性的事：
 //   1. 从模型回复里切出 <omnidesk-verdict> 判定块（流式渲染时同步剥掉）；
 //   2. 解析块内 JSON；
 //   3. 校验：正文必须是用户原话的连续片段、日期在本 ISO 周且不晚于今天、
-//      move 的 date+index 必须能在当周索引里对上、同一片段不能既追加又移动。
+//      move / merge 的 date+index 必须能在当周索引里对上、同一片段不能既追加又移动。
 //      任一不合规，整份判定作废；
 //   4. 把当周索引整理成提示词文本。
 //
@@ -34,6 +38,8 @@ export const INDEX_MAX_ENTRIES = 60;
 export const INDEX_DAYS = 7;
 /** 单条记录正文上限（字符）。 */
 export const RECORD_TEXT_MAX = 500;
+/** 并入后整条记录上限（字符）：原句 + 分隔符 + 补充。 */
+export const MERGED_TEXT_MAX = 1000;
 
 const DAY_MS = 86_400_000;
 /** 去重键分隔符（用字符串构造，避免源码里出现控制字符）。 */
@@ -72,11 +78,23 @@ export interface VerdictMove {
   to: string;
 }
 
+/** 把一句补充并入已有记录（OD-ARCH-132）。 */
+export interface VerdictMerge {
+  /** 目标记录所在日期段。 */
+  date: string;
+  /** 目标记录在该日期段里的序号（0 起，与索引一致）。 */
+  index: number;
+  /** 补充原话（必须是用户原话的连续片段）。 */
+  text: string;
+}
+
 export interface WorkRecordVerdict {
   /** 需要追加的条目；空 = 不写。 */
   append: VerdictAppend[];
   /** 需要挪动的条目；空 = 不挪。 */
   move: VerdictMove[];
+  /** 需要并入已有记录的补充；空 = 不并。 */
+  merge: VerdictMerge[];
   /** 一句给用户的话（缺项追问、确认、回答都放在这里，也允许为空）。 */
   note: string;
 }
@@ -85,6 +103,7 @@ export interface WorkRecordVerdict {
 export interface VerdictPlan {
   append: VerdictAppend[];
   move: Array<VerdictMove & { expectText: string }>;
+  merge: Array<VerdictMerge & { expectText: string }>;
   note: string;
 }
 
@@ -140,8 +159,9 @@ function asText(value: unknown): string {
  * 形状（OD-ARCH-105，通用协议，不含业务分类）：
  *   {"append":[{"text":"…","date":"YYYY-MM-DD"}],
  *    "move":[{"date":"YYYY-MM-DD","index":0,"to":"YYYY-MM-DD"}],
+ *    "merge":[{"date":"YYYY-MM-DD","index":0,"text":"补充原话"}],
  *    "note":"一句话"}
- * 三个字段都可缺省；缺省或空数组都表示「这一步不做」。
+ * 四个字段都可缺省；缺省或空数组都表示「这一步不做」。
  */
 export function parseVerdict(block: string | null): WorkRecordVerdict | null {
   if (!block || !block.trim()) return null;
@@ -158,6 +178,7 @@ export function parseVerdict(block: string | null): WorkRecordVerdict | null {
   // 字段存在但类型不对 → 整份作废，不替模型猜。
   if (obj.append !== undefined && !Array.isArray(obj.append)) return null;
   if (obj.move !== undefined && !Array.isArray(obj.move)) return null;
+  if (obj.merge !== undefined && !Array.isArray(obj.merge)) return null;
 
   const append: VerdictAppend[] = [];
   for (const item of asArray(obj.append)) {
@@ -178,8 +199,18 @@ export function parseVerdict(block: string | null): WorkRecordVerdict | null {
     if (!date || !to || !Number.isInteger(index) || index < 0) return null;
     move.push({ date, index, to });
   }
+  const merge: VerdictMerge[] = [];
+  for (const item of asArray(obj.merge)) {
+    if (!item || typeof item !== "object") return null;
+    const entry = item as Record<string, unknown>;
+    const date = asText(entry.date);
+    const text = asText(entry.text);
+    const index = typeof entry.index === "number" ? entry.index : Number.NaN;
+    if (!date || !text || !Number.isInteger(index) || index < 0) return null;
+    merge.push({ date, index, text });
+  }
   const note = typeof obj.note === "string" ? obj.note.trim() : "";
-  return { append, move, note };
+  return { append, move, merge, note };
 }
 
 /** 日历日序号；形状或真实性不对返回 null。 */
@@ -303,8 +334,56 @@ export function validateVerdict(
     move.push({ date: item.date, index: item.index, to: item.to, expectText: found.text });
   }
 
+  // merge：把补充并进已有条目。定位与 move 同口径；补充仍必须是用户原话，
+  // 不能借「并入」把模型改写过的句子写进记录。
+  const merge: Array<VerdictMerge & { expectText: string }> = [];
+  const seenMerge = new Set<string>();
+  for (const item of verdict.merge ?? []) {
+    const text = item.text.trim();
+    if (!text) return { ok: false, reason: "补充正文为空" };
+    if (text.length > RECORD_TEXT_MAX) {
+      return { ok: false, reason: "补充正文过长（" + text.length + " 字符），已拒绝" };
+    }
+    const bad = checkDate(item.date, "补充的记录");
+    if (bad) return { ok: false, reason: bad };
+    const key = item.date + "#" + item.index;
+    if (seenMerge.has(key)) {
+      return { ok: false, reason: "同一条记录被补充了两次：" + key };
+    }
+    seenMerge.add(key);
+    const found = index.entries.find((e) => e.date === item.date && e.index === item.index);
+    if (!found) {
+      return {
+        ok: false,
+        reason: "索引里没有 " + item.date + " 的第 " + (item.index + 1) + " 条记录",
+      };
+    }
+    if (!found.text.trim()) {
+      return { ok: false, reason: "索引里的这条记录正文为空，无法并入" };
+    }
+    const piece = comparableText(text);
+    if (!piece) return { ok: false, reason: "补充正文没有实质内容" };
+    if (!userComparable.includes(piece)) {
+      return { ok: false, reason: "补充正文不是用户原话的连续片段：" + text.slice(0, 40) };
+    }
+    if (comparableText(found.text).includes(piece)) {
+      return { ok: false, reason: "这条记录里已经有这段内容，未重复并入" };
+    }
+    if (found.text.length + 1 + text.length > MERGED_TEXT_MAX) {
+      return { ok: false, reason: "并入后整条记录过长（超过 " + MERGED_TEXT_MAX + " 字符），已拒绝" };
+    }
+    // 同一条既挪又并：先挪会让序号变化，先并再挪语义也不清楚，宁可作废。
+    if (move.some((m) => m.date === item.date && m.index === item.index)) {
+      return { ok: false, reason: "同一条记录既移动又并入，已拒绝" };
+    }
+    if (append.some((a) => comparableText(a.text) === piece)) {
+      return { ok: false, reason: "同一段话既并入又追加：" + text.slice(0, 40) };
+    }
+    merge.push({ date: item.date, index: item.index, text, expectText: found.text });
+  }
+
   // 两个数组都空 = 这一步只是回一句话（确认、追问、回答），宿主不碰文件。
-  return { ok: true, plan: { append, move, note: verdict.note } };
+  return { ok: true, plan: { append, move, merge, note: verdict.note } };
 }
 
 /** 把当周记录解析成索引（日期按文件顺序，序号为当日第几条，0 起）。 */

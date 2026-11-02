@@ -83,6 +83,7 @@ import type {
   WorklogDestinationReceipt,
   WorklogRedateReceipt,
   WorklogMoveManyReceipt,
+  WorklogMergeReceipt,
   WorklogWeekRead,
   WorklogArchiveList,
   WorklogReportRead,
@@ -505,6 +506,30 @@ export const shell = {
     return invoke<WorklogMoveManyReceipt>("worklog_move_many", {
       week: args.week,
       moves: args.moves,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 把一句补充并入已有记录（OD-ARCH-132）。
+   *
+   * 语义由模型判定（这句是不是在补充上一条），这里只执行：按 date + index +
+   * expectText 定位，对不上就拒绝且文件一字未动；成功时只有目标行变长。
+   */
+  worklogMerge(args: {
+    week: string;
+    date: string;
+    index: number;
+    expectText: string;
+    text: string;
+  }): Promise<WorklogMergeReceipt> {
+    return invoke<WorklogMergeReceipt>("worklog_merge", {
+      week: args.week,
+      date: args.date,
+      index: args.index,
+      expectText: args.expectText,
+      text: args.text,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
