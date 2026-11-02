@@ -226,12 +226,34 @@ export default function App() {
 
   useEffect(() => probeEngine(), [probeEngine]);
 
+
+
   const engineHealthy = descriptor ? descriptor.healthy : null;
   const engineLabel = descriptor
     ? `${descriptor.engine_kind} · ${descriptor.engine_version} · ${descriptor.compatibility}`
     : descriptorError
       ? `引擎未就绪：${descriptorError}`
       : "正在检测引擎…";
+
+  /** 引擎未就绪时轻量轮询（健康快照），就绪即停：IPC 徽标不能只在启动时探一次，
+   *  否则权限后开、引擎冷启动完成、Profile 切换后恢复都永远显示 OFF。 */
+  useEffect(() => {
+    if (engineHealthy) return undefined;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const admission = await host.admissionStatus();
+          if (!admission.ok || !admission.facts?.allowed) return;
+          const d = await host.describe();
+          setDescriptor(d);
+          setDescriptorError(null);
+        } catch {
+          /* 仍未就绪：下一轮继续探 */
+        }
+      })();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [engineHealthy]);
 
   const selectScene = (next: Scene) => {
     if (scene === "knowledge" && next !== "knowledge" && knowledgeDirty) {

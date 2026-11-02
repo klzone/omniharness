@@ -488,6 +488,7 @@ impl EngineBridge {
         };
         serde_json::json!({
             "running": running,
+            "initialized": self.initialized,
             "engine_version": get("engine_version"),
             "protocol_version": get("protocol_version"),
             "compatibility": get("compatibility"),
