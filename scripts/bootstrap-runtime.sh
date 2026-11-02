@@ -59,16 +59,16 @@ installed_version() {
 
 CURRENT="$(installed_version)"
 if [ -n "$CURRENT" ] && [ "$CURRENT" = "$LOCK_VERSION" ] && [ "$FORCE" -eq 0 ]; then
-  info "已安装且版本一致（$CURRENT），无需重新安装。"
+  info "已安装且版本一致（${CURRENT}），无需重新安装。"
   exit 0
 fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   if [ "$CURRENT" = "$LOCK_VERSION" ]; then
-    info "--check：底座版本一致（$CURRENT）。"
+    info "--check：底座版本一致（${CURRENT}）。"
     exit 0
   fi
-  warn "--check：底座未安装或版本不符（当前：${CURRENT:-未安装}，期望：$LOCK_VERSION）。"
+  warn "--check：底座未安装或版本不符（当前：${CURRENT:-未安装}，期望：${LOCK_VERSION}）。"
   exit 1
 fi
 
@@ -76,7 +76,7 @@ mkdir -p "$INSTALL_DIR"
 if [ ! -f "$INSTALL_DIR/package.json" ]; then
   ( cd "$INSTALL_DIR" && npm init -y >/dev/null 2>&1 )
 fi
-info "正在安装 @deepseek-ai/dsh@$LOCK_VERSION（首次约需数分钟）..."
+info "正在安装 @deepseek-ai/dsh@${LOCK_VERSION}（首次约需数分钟）..."
 ( cd "$INSTALL_DIR" && npm install --no-audit --no-fund "@deepseek-ai/dsh@$LOCK_VERSION" )
 
 FINAL="$(installed_version)"
