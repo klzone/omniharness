@@ -45,6 +45,40 @@ pub fn python_program() -> String {
     }
 }
 
+/// 解析 Python 解释器的绝对路径，逻辑与 node 解析一致：
+/// GUI 启动不继承 shell PATH，裸 "python3" 在 Finder 启动的 app 里会 ENOENT。
+/// 顺序：OMNIDESK_PYTHON → PATH 探测 → /usr/bin 与 homebrew 常见位置。
+pub fn resolve_python() -> Result<String, String> {
+    if let Ok(value) = std::env::var("OMNIDESK_PYTHON") {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+    let fallback = python_program();
+    if let Ok(output) = Command::new(&fallback).arg("--version").output() {
+        if output.status.success() {
+            return Ok(fallback);
+        }
+    }
+    let candidates = [
+        PathBuf::from("/usr/bin/python3"),
+        PathBuf::from("/opt/homebrew/bin/python3"),
+        PathBuf::from("/usr/local/bin/python3"),
+    ];
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(concat!(
+        "未找到 python3。OmniDesk 的引擎需要 Python 3.10+。",
+        "请安装 Python（https://www.python.org），",
+        "或设置 OMNIDESK_PYTHON 指向 python3 的绝对路径。"
+    )
+    .to_string())
+}
+
 /// 仓库根（或免安装包根）。
 ///
 /// 优先级：
