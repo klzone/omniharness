@@ -56,18 +56,41 @@ pub fn resolve_python() -> Result<String, String> {
         }
     }
     let fallback = python_program();
-    if let Ok(output) = Command::new(&fallback).arg("--version").output() {
-        if output.status.success() {
-            return Ok(fallback);
-        }
+    let fallback_version_ok = Command::new(&fallback)
+        .arg("-c")
+        .arg("import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if fallback_version_ok {
+        return Ok(fallback);
     }
+    // PATH 里的 python3 版本过低时，按候选顺序找第一个 3.10+ 的解释器；
+    // homebrew 安装根下的具体版本目录（python@3.12/3.13 等）也参与候选。
     let candidates = [
         PathBuf::from("/usr/bin/python3"),
         PathBuf::from("/opt/homebrew/bin/python3"),
         PathBuf::from("/usr/local/bin/python3"),
     ];
-    for candidate in &candidates {
-        if candidate.is_file() {
+    let mut versioned: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/opt") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("python@3.") {
+                versioned.push(entry.path().join("bin").join(&*name.replace("@", "")));
+            }
+        }
+    }
+    versioned.sort();
+    for candidate in candidates.iter().chain(versioned.iter().rev()) {
+        let ok = Command::new(candidate)
+            .arg("-c")
+            .arg("import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
             return Ok(candidate.to_string_lossy().into_owned());
         }
     }
