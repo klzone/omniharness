@@ -84,7 +84,7 @@ impl EngineConfig {
         // OD-ARCH-112：分发环境下 `CARGO_MANIFEST_DIR` 是编译期路径，仓库根本不存在。
         // 资产探测（`profile_assets::default_dsh_cli`）早就有安装位置兜底，引擎启动却只认
         // 仓库路径，两边会得出不同的 CLI：面板说「已就绪」、引擎却起不来。这里改成同源。
-        let python = crate::platform::python_program();
+        let python = crate::platform::resolve_python()?;
         let engine_dir = match env_path("OMNIDESK_ENGINE_DIR") {
             Some(p) => p,
             None => locate_engine_dir(repo_root.as_deref(), app_root)

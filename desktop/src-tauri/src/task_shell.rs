@@ -325,19 +325,15 @@ fn normalize_path(path: &Path) -> PathBuf {
     }
 }
 
-/// 仓库根探测：优先环境变量，其次由 CARGO_MANIFEST_DIR（desktop/src-tauri）上溯两级。
+/// 仓库根探测：统一委托 platform::repo_root()（OMNIDESK_REPO_ROOT →
+/// 可执行文件相对探测 → CARGO_MANIFEST_DIR 回退）。
+///
+/// 此前这里直接用编译期 CARGO_MANIFEST_DIR，发布包在 CI 构建时该常量是
+/// 构建机路径（/Users/runner/work/...），导致用户机器上插件安装报
+/// 「找不到 DSH CLI」。引擎启动走 platform::repo_root() 所以正常——
+/// 两边必须同源，见 OD-ARCH-112。
 pub(crate) fn repo_root_hint() -> Result<PathBuf, String> {
-    if let Some(raw) = std::env::var_os("OMNIDESK_REPO_ROOT") {
-        if !raw.is_empty() {
-            return Ok(PathBuf::from(raw));
-        }
-    }
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
-        .ok_or_else(|| "无法从 CARGO_MANIFEST_DIR 推断仓库根".to_string())
+    crate::platform::repo_root().ok_or_else(|| "无法定位仓库根/包根".to_string())
 }
 
 /// 校验一个路径可以作为本地数据根：必须是绝对路径，且不含被禁止片段。
