@@ -104,6 +104,10 @@ impl SettingsService {
         }
         // 走到这里说明内存里没有可用实例：清掉遗留进程，再起一个新的。
         stop_recorded(record_path);
+        // 首次起设置服务前先补齐 Profile 资产：凭据保存/测试连接不经过引擎启动，
+        // 若 DSH_HOME 还没初始化（老用户升级或刚换机器），DSH 会因 profile 缺失
+        // 直接崩溃。与引擎 start() 走同一套 seed 逻辑，幂等、只在缺失时写。
+        config.seed_profile_if_missing()?;
         let child = spawn(config, log_path)?;
         let pid = child.id();
         match wait_for_url(child, log_path) {
