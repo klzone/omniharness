@@ -126,6 +126,10 @@ mkdir -p "$SEED/skills"
 for skill_dir in "$ROOT"/skills/*/; do
   if [ -d "$skill_dir" ]; then cp -R "$skill_dir" "$SEED/skills/"; fi
 done
+# seed 里的 profile 依赖与底座同理：运行时只加载 JS，类型/源图/测试目录一并裁剪
+find "$SEED" -name '*.ts' -type f -delete
+find "$SEED" -name '*.map' -type f -delete
+find "$SEED" -type d \( -name test -o -name tests -o -name __tests__ -o -name coverage \) -prune -exec rm -rf {} + 2>/dev/null || true
 
 # 5) 启动说明
 cat > "$PKG/启动说明.txt" <<'TXT'
