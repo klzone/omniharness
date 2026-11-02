@@ -216,6 +216,7 @@ export interface HostError {
 
 export interface EngineHealth {
   running: boolean;
+  initialized?: boolean;
   engine_version: string | null;
   protocol_version: string | null;
   compatibility: string | null;
