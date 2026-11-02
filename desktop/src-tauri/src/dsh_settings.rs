@@ -440,10 +440,7 @@ fn exchange_token(port: u16, url: &str) -> Result<String, String> {
 /// Profile 与 `--patch` 之后。实测 `dsh --profile web --port 0 --no-open` 会打印
 /// `dsh web: http://127.0.0.1:<port>/?token=...`（OD-ARCH-065）。
 fn spawn(config: &EngineConfig, log_path: &Path) -> Result<Child, String> {
-    let node = std::env::var("OMNIDESK_NODE")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "node".to_string());
+    let node = crate::platform::resolve_node()?;
     if !config.dsh_cli.is_file() {
         return Err(format!(
             "找不到引擎运行时里的 DSH CLI：{}；请先完成运行时引导（scripts/bootstrap-runtime.sh）。",

@@ -2202,7 +2202,8 @@ fn run_install_command(
     spec: &str,
     timeout: Duration,
 ) -> Result<InstallRun, String> {
-    let mut cmd = std::process::Command::new("node");
+    let node = crate::platform::resolve_node()?;
+    let mut cmd = std::process::Command::new(node);
     cmd.arg(dsh_cli)
         .arg("plugin")
         .arg("--profile")
