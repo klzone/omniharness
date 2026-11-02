@@ -10,8 +10,6 @@
 //!   3. 拒绝控制字符与空白，长度上限 2048；
 //!   4. 不拼接 shell：`xdg-open` / `gio open` 以地址作为独立参数执行。
 
-use std::process::{Command, Stdio};
-
 const MAX_URL_LEN: usize = 2048;
 
 /// 校验外部链接是否允许打开；返回规范化后的地址或错误说明。
@@ -47,24 +45,8 @@ pub fn validate_external_url(raw: &str) -> Result<String, String> {
 /// 交给系统默认浏览器打开；失败时返回可读原因，不吞错误。
 pub fn open_in_browser(raw: &str) -> Result<String, String> {
     let url = validate_external_url(raw)?;
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<&str>::new()),
-        ("gio", vec!["open"]),
-    ] {
-        match Command::new(program)
-            .args(&args)
-            .arg(&url)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(_) => return Ok(url),
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!("系统没有可用的打开器（{}）", last_error))
+    crate::platform::open_url(&url)?;
+    Ok(url)
 }
 
 #[cfg(test)]

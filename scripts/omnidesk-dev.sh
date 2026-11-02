@@ -154,10 +154,10 @@ esac
 
 # 3.2 解析结果绝不能落入原版数据根
 case "$DSH_HOME_ABS/" in
-  "$STOCK_DSH_ABS"/*) die "DSH 隔离根落入了原版数据根 $STOCK_DSH_ABS，拒绝启动。" ;;
+  "$STOCK_DSH_ABS"/*) die "DSH 隔离根落入了原版数据根 ${STOCK_DSH_ABS}，拒绝启动。" ;;
 esac
 case "$AGENTS_HOME_ABS/" in
-  "$STOCK_AGENTS_ABS"/*) die "Agent 隔离根落入了原版数据根 $STOCK_AGENTS_ABS，拒绝启动。" ;;
+  "$STOCK_AGENTS_ABS"/*) die "Agent 隔离根落入了原版数据根 ${STOCK_AGENTS_ABS}，拒绝启动。" ;;
 esac
 if [ "$DSH_HOME_ABS" = "$AGENTS_HOME_ABS" ]; then
   die "DSH 隔离根与 Agent 隔离根不能相同，拒绝启动。"
@@ -177,7 +177,7 @@ TEMPLATE_DIR="$PROJECT_ROOT/profiles/$OMNIDESK_PROFILE"
 
 if [ ! -d "$PROFILE_DIR" ] || [ ! -f "$PROFILE_DIR/package.json" ]; then
   if [ ! -f "$TEMPLATE_DIR/package.json" ] || [ ! -f "$TEMPLATE_DIR/cordis.patch.yml" ]; then
-    die "Profile 未初始化，且仓库模板不完整：$TEMPLATE_DIR（需含 package.json 与 cordis.patch.yml）"
+    die "Profile 未初始化，且仓库模板不完整：${TEMPLATE_DIR}（需含 package.json 与 cordis.patch.yml）"
   fi
   mkdir -p "$PROFILE_DIR"
   cp "$TEMPLATE_DIR/package.json" "$PROFILE_DIR/package.json"
@@ -263,9 +263,9 @@ fi
 
 if [ -z "$CLI_KIND" ]; then
   die "未找到可用的 DSH CLI 入口。已尝试：
-  0) $OMNIDESK_CLI_ENTRY_0（需先运行 scripts/bootstrap-runtime.sh）
-  1) $OMNIDESK_CLI_ENTRY_1（需要 $OMNIDESK_ELECTRON_BIN）
-  2) $OMNIDESK_CLI_ENTRY_2（需要 node >= 24）"
+  0) ${OMNIDESK_CLI_ENTRY_0}（需先运行 scripts/bootstrap-runtime.sh）
+  1) ${OMNIDESK_CLI_ENTRY_1}（需要 ${OMNIDESK_ELECTRON_BIN}）
+  2) ${OMNIDESK_CLI_ENTRY_2}（需要 node >= 24）"
 fi
 
 # 3.7 探测环境变量在子进程中是否真实生效

@@ -271,9 +271,9 @@ pub fn app_config_dir() -> Result<PathBuf, String> {
     match std::env::var_os("OMNIDESK_APP_DATA_ROOT") {
         Some(raw) if !raw.is_empty() => Ok(PathBuf::from(raw).join("config")),
         _ => {
-            let home = std::env::var_os("HOME")
-                .ok_or_else(|| "环境变量 HOME 缺失，无法确定应用配置目录".to_string())?;
-            Ok(PathBuf::from(home).join("OmniDesk").join("app").join("config"))
+            let home = crate::platform::home_dir()
+                .ok_or_else(|| "无法确定用户主目录，无法确定应用配置目录".to_string())?;
+            Ok(home.join("OmniDesk").join("app").join("config"))
         }
     }
 }
@@ -419,9 +419,9 @@ pub fn configured_library_root(config_dir: &Path) -> Result<Option<PathBuf>, Str
 
 /// 默认库根：`$HOME/OmniDesk/库`。
 fn default_library_root() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认库根".to_string())?;
-    Ok(PathBuf::from(home).join(DEFAULT_LIBRARY_SUBDIR))
+    let home = crate::platform::home_dir()
+        .ok_or_else(|| "无法确定用户主目录，无法确定默认库根".to_string())?;
+    Ok(home.join(DEFAULT_LIBRARY_SUBDIR))
 }
 
 /// 库根的环境变量覆盖（沿用既有 `OMNIDESK_KNOWLEDGE_ROOT`，优先级最高）。
@@ -482,9 +482,9 @@ pub fn env_override() -> Option<PathBuf> {
 }
 
 fn default_root() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| "环境变量 HOME 缺失，无法确定默认成果目录".to_string())?;
-    Ok(PathBuf::from(home).join(DEFAULT_ARTIFACT_SUBDIR))
+    let home = crate::platform::home_dir()
+        .ok_or_else(|| "无法确定用户主目录，无法确定默认成果目录".to_string())?;
+    Ok(home.join(DEFAULT_ARTIFACT_SUBDIR))
 }
 
 /// 校验一个候选数据根（成果目录、库根）：绝对路径、无禁止片段、真实落点在允许范围、

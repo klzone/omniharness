@@ -9,6 +9,7 @@ Thumbs.db
 # Node & Build artifacts (for runtime or custom tools)
 node_modules/
 dist/
+dist-package/
 build/
 *.log
 

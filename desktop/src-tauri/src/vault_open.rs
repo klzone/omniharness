@@ -11,7 +11,6 @@
 //! 不能打开本地文件。因此这里沿用仓库既有的 `Command::new(...).arg(...)` 方式。
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use crate::knowledge_vault::{resolve_vault_file, VAULT_NOTE_EXTS};
 
@@ -44,54 +43,18 @@ where
     Ok(relative.trim().replace('\\', "/"))
 }
 
-/// 固定打开器：只尝试 `xdg-open` 与 `gio open`，路径作为独立参数。
+/// 固定打开器：按平台选系统默认程序（见 `platform`），路径作为独立参数。
 pub fn open_attachment(root: &Path, relative: &str) -> Result<String, String> {
     open_attachment_with(root, relative, system_open)
 }
 
 fn system_open(path: &Path) -> Result<(), String> {
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<&str>::new()),
-        ("gio", vec!["open"]),
-    ] {
-        match Command::new(program)
-            .args(&args)
-            .arg(path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(mut child) => {
-                // 打开器存在但立刻失败（例如没有注册处理程序）时要让用户看到错误，
-                // 不能把 spawn 成功当成打开成功。短暂等待后仍在运行的视为已启动。
-                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(status)) if status.success() => return Ok(()),
-                        Ok(Some(status)) => {
-                            last_error = format!("{}：退出状态 {}", program, status);
-                            break;
-                        }
-                        Ok(None) if std::time::Instant::now() < deadline => {
-                            std::thread::sleep(std::time::Duration::from_millis(40));
-                        }
-                        Ok(None) => return Ok(()),
-                        Err(e) => {
-                            last_error = format!("{}：无法确认打开结果（{}）", program, e);
-                            break;
-                        }
-                    }
-                }
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!(
-        "系统没有可用的附件打开器（{}）。知识库浏览与编辑不受影响。",
-        last_error
-    ))
+    crate::platform::open_target(path).map_err(|e| {
+        format!(
+            "系统没有可用的附件打开器（{}）。知识库浏览与编辑不受影响。",
+            e
+        )
+    })
 }
 
 #[cfg(test)]

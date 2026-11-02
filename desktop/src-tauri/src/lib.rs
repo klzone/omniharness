@@ -24,6 +24,7 @@ mod local_http;
 pub mod model_settings;
 pub mod model_routes;
 pub mod pending_writes;
+pub mod platform;
 pub mod project_items;
 pub mod process_owner;
 pub mod profile_decl;
@@ -982,30 +983,12 @@ fn profile_decl_open(state: State<'_, SharedHost>) -> Result<serde_json::Value, 
         );
     };
     let path = std::path::PathBuf::from(&loaded.path);
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<String>::new()),
-        ("gio", vec!["open".to_string()]),
-    ] {
-        match std::process::Command::new(program)
-            .args(&args)
-            .arg(&path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "opened": loaded.path,
-                    "note": "已在系统编辑器打开声明文件；在外部保存后，回到设置页重新点「校验并保存」或切换 Profile 才会更新工作台。",
-                }))
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!("无法打开声明文件，系统缺少可用的打开器（{}）", last_error))
+    platform::open_target(&path).map_err(|e| format!("无法打开声明文件（{}）", e))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "opened": loaded.path,
+        "note": "已在系统编辑器打开声明文件；保存后需重启应用生效。",
+    }))
 }
 
 /// 保存场景声明（OD-ARCH-053 S3）：先校验，校验通过才备份并原子写。
@@ -1102,9 +1085,9 @@ fn profile_choice_scope() -> Result<(String, std::path::PathBuf), String> {
     let dsh_home = match std::env::var_os("OMNIDESK_DSH_HOME").filter(|v| !v.is_empty()) {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let home = std::env::var_os("HOME").ok_or_else(|| "环境变量 HOME 缺失".to_string())?;
-            std::path::PathBuf::from(home)
-                .join("OmniDesk")
+            let home = platform::home_dir()
+                .ok_or_else(|| "无法确定用户主目录（HOME 与 USERPROFILE 均缺失）".to_string())?;
+            home.join("OmniDesk")
                 .join("runtime")
                 .join("dsh-home")
         }
@@ -2978,8 +2961,8 @@ fn task_library_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
 }
 
 fn default_library_root_display() -> Option<String> {
-    std::env::var_os("HOME").map(|home| {
-        std::path::PathBuf::from(home)
+    platform::home_dir().map(|home| {
+        home
             .join(task_shell::DEFAULT_LIBRARY_SUBDIR)
             .display()
             .to_string()
@@ -3942,24 +3925,8 @@ fn task_open_artifact_root(state: State<'_, SharedHost>) -> Result<serde_json::V
             eff.root.display()
         ));
     }
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<String>::new()),
-        ("gio", vec!["open".to_string()]),
-    ] {
-        match std::process::Command::new(program)
-            .args(&args)
-            .arg(&eff.root)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => return Ok(serde_json::json!({ "ok": true, "opened": eff.root.display().to_string() })),
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!("无法打开目录，系统缺少可用的打开器（{}）", last_error))
+    platform::open_target(&eff.root).map_err(|e| format!("无法打开目录（{}）", e))?;
+    Ok(serde_json::json!({ "ok": true, "opened": eff.root.display().to_string() }))
 }
 
 /// 在系统默认浏览器里打开正文中的 http(s) 链接（OD-ARCH-081）。
@@ -4050,30 +4017,12 @@ fn capability_open_skills(state: State<'_, SharedHost>) -> Result<serde_json::Va
     if !dir.is_dir() {
         return Err(format!("Skill 目录还不存在：{}", dir.display()));
     }
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<String>::new()),
-        ("gio", vec!["open".to_string()]),
-    ] {
-        match std::process::Command::new(program)
-            .args(&args)
-            .arg(&dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "opened": dir.display().to_string(),
-                    "note": "Skill 在这里只读展示；改动目录里的文件后重启应用生效。",
-                }))
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!("无法打开 Skill 目录，系统缺少可用的打开器（{}）", last_error))
+    platform::open_target(&dir).map_err(|e| format!("无法打开 Skill 目录（{}）", e))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "opened": dir.display().to_string(),
+        "note": "Skill 在这里只读展示；改动目录里的文件后重启应用生效。",
+    }))
 }
 
 /// 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。

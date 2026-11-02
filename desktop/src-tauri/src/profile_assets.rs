@@ -2344,6 +2344,8 @@ fn kill_tree(child: &mut std::process::Child, group: Option<i32>) {
             libc::killpg(pgid, libc::SIGKILL);
         }
     }
+    #[cfg(not(unix))]
+    let _ = group;
     let _ = child.kill();
 }
 

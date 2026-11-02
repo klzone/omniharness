@@ -6,7 +6,7 @@
 #
 # 硬边界（OD-ARCH-004）：
 #   * 只用本机回环「合成」模型端点（零凭证、零外网）；不提供接入真实端点的开关。
-#   * 数据根固定在 $OMNIDESK_DEV_ROOT（默认 /tmp/omnidesk-dev/<运行名>），不触碰真实应用数据。
+#   * 数据根固定在 ${OMNIDESK_DEV_ROOT}（默认 /tmp/omnidesk-dev/<运行名>），不触碰真实应用数据。
 #   * 任何失败都清楚退出并回收本次已启动的进程，不留半启动实例。
 #   * 不创建、不修改仓库 runtime/ 下的任何内容；底座缺失时直接报错退出。
 #   * PID 文件按运行目录独立；停止前逐个核对进程身份，绝不误杀别的实例。
@@ -142,14 +142,14 @@ stop_group() {
     fi
     now_start="$(proc_start_time "$pid" || true)"
     if [ -z "$now_start" ] || [ "$now_start" != "$started" ]; then
-      echo "  跳过 $name PID $pid：进程身份不符（可能已被复用）。" >&2
+      echo "  跳过 $name PID ${pid}：进程身份不符（可能已被复用）。" >&2
       skipped=$((skipped + 1))
       continue
     fi
     # 启动时刻相同还不足以证明是同一进程：必须命令行完全一致才允许发信号。
     now_cmd="$(proc_cmdline "$pid" || true)"
     if [ -z "$cmd" ] || [ -z "$now_cmd" ] || [ "$now_cmd" != "$cmd" ]; then
-      echo "  跳过 $name PID $pid：命令行与记录不符，未发送信号。" >&2
+      echo "  跳过 $name PID ${pid}：命令行与记录不符，未发送信号。" >&2
       skipped=$((skipped + 1))
       continue
     fi
@@ -163,7 +163,7 @@ stop_group() {
 import sys, os
 os.remove(sys.argv[1])
 PY
-  echo "  $name：已停止 $stopped 个，跳过 $skipped 个。"
+  echo "  ${name}：已停止 $stopped 个，跳过 $skipped 个。"
 }
 
 # 停止一整棵已核实身份的进程树（先回收后代，再回收根进程）。
@@ -180,7 +180,7 @@ stop_tree() {
     now_cmd="$(proc_cmdline "$pid" || true)"
     if [ -z "$now_start" ] || [ "$now_start" != "$started" ] \
       || [ -z "$cmd" ] || [ -z "$now_cmd" ] || [ "$now_cmd" != "$cmd" ]; then
-      echo "  跳过 $name PID $pid：进程身份不符，未发送信号。" >&2
+      echo "  跳过 $name PID ${pid}：进程身份不符，未发送信号。" >&2
       skipped=$((skipped + 1))
       continue
     fi
@@ -194,7 +194,7 @@ stop_tree() {
 import sys, os
 os.remove(sys.argv[1])
 PY
-  echo "  $name：已停止 $stopped 个（含子进程），跳过 $skipped 个。"
+  echo "  ${name}：已停止 $stopped 个（含子进程），跳过 $skipped 个。"
 }
 
 stop_all() {
@@ -218,7 +218,7 @@ PY
 
 show_status() {
   if [ ! -d "$PID_DIR" ]; then
-    echo "未启动（无记录目录 $PID_DIR）。"
+    echo "未启动（无记录目录 ${PID_DIR}）。"
     return 0
   fi
   local name file pid started cmd alive
@@ -315,7 +315,7 @@ fi
 [ -x "$BIN" ] || { echo "二进制不存在：$BIN" >&2; exit 1; }
 
 # --- 3) 前端 dev server：由本次启动器独占 -------------------------------------
-echo "启动前端 dev server（:$DEV_PORT）…"
+echo "启动前端 dev server（:${DEV_PORT}）…"
 (cd "$APPDIR" && exec npm run dev > "$RUNDIR/vite.log" 2>&1) &
 VITE_PID=$!
 record_pid vite "$VITE_PID"
@@ -394,7 +394,7 @@ MOCK_URL="$(cat "$MOCK_URL_FILE")"
 case "$MOCK_URL" in
   http://127.0.0.1:*|http://localhost:*) ;;
   *)
-    echo "合成端点地址异常（非本机回环）：$MOCK_URL，中止。" >&2
+    echo "合成端点地址异常（非本机回环）：${MOCK_URL}，中止。" >&2
     FAILED=1
     exit 1 ;;
 esac
@@ -434,7 +434,7 @@ export OMNIDESK_DSH_PATCHES="$OVERLAY"
 export OMNI_FAKE_KEY="synthetic-placeholder-not-a-credential"
 
 # --- 5) 启动 App -----------------------------------------------------------------
-echo "启动 OmniDesk…（数据根 $RUNDIR，合成端点 $MOCK_URL）"
+echo "启动 OmniDesk…（数据根 ${RUNDIR}，合成端点 ${MOCK_URL}）"
 "$BIN" >> "$RUNDIR/app.log" 2>&1 &
 APP_PID=$!
 record_pid app "$APP_PID"

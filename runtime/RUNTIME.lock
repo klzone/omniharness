@@ -9,19 +9,20 @@
 
 source:
   repo: https://github.com/deepseek-ai/deepseek-harness.git
-  tag: dsh-v0.2.1-alpha.2
-  commit: d743267388641bc76f17c45ce8b4c231aed1d32c
+  tag: dsh-v0.2.1-rc.5
+  commit: b830ec950faba0a46dda564be3e2d854afed94f1
 
 runtime:
   npm_package: "@deepseek-ai/dsh"
-  version: 0.2.1-alpha.2
+  version: 0.2.1-rc.5
   node_engine: "^22.19.0 || >=24.0.0"
   install_dir: runtime/dsh-runtime   # 由 bootstrap 脚本生成，已被 .gitignore 排除
 
 verified:
-  date: 2026-10-15
-  by: 实机安装并运行 `dsh --version` -> 0.2.1-alpha.2
+  date: 2026-11-02
+  by: 实机安装并运行 `dsh --version` -> 0.2.1-rc.5
   notes: >
-    与用户本机 /opt/DeepSeek Harness 打包 CLI 版本一致（0.2.1-alpha.2）。
+    升级自 0.2.1-alpha.2（2026-11-02）。兼容性已实测：
+    --dump-config / plugin ls / 真实启动 omnidesk-base 均通过。
     OmniDesk 的隔离启动器优先使用本锁定版本，确保任何机器上下载即得同一底座。
 

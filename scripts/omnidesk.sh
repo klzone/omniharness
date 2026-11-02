@@ -93,7 +93,7 @@ stop_one() {
   local name="$1" fingerprint="$2" pid
   pid="$(read_pid "$name" 2>/dev/null || true)"
   if [ -z "$pid" ] || ! pid_alive "$pid"; then
-    echo "  $name：未在运行"
+    echo "  ${name}：未在运行"
     rm -f "$PID_DIR/$name.pid"
     return 0
   fi
@@ -105,17 +105,17 @@ stop_one() {
         sleep 0.25
       done
       pid_alive "$pid" && kill -KILL "$pid" 2>/dev/null || true
-      echo "  $name：已停止（pid $pid）"
+      echo "  ${name}：已停止（pid ${pid}）"
       ;;
     *)
-      echo "  $name：命令行与记录不符（pid $pid），不回收；请人工确认" >&2 ;;
+      echo "  ${name}：命令行与记录不符（pid ${pid}），不回收；请人工确认" >&2 ;;
   esac
   rm -f "$PID_DIR/$name.pid"
 }
 
 # --- status / stop --------------------------------------------------------------
 if [ "$MODE" = status ]; then
-  echo "正式环境实例状态（run dir: $RUNDIR）"
+  echo "正式环境实例状态（run dir: ${RUNDIR}）"
   if verify_pid app "omnidesk-desktop"; then
     echo "  app：运行中（pid $(read_pid app)）"
   else
@@ -172,7 +172,7 @@ if [ "$NO_BUILD" -eq 0 ] && needs_build; then
 fi
 [ -x "$BIN" ] || { echo "构建后仍找不到二进制：$BIN" >&2; exit 1; }
 if [ "$(cat "$BUILD_MARK" 2>/dev/null || true)" != "$BUILD_FEATURES" ]; then
-  echo "现有二进制不是生产构建（缺少 $BUILD_FEATURES），窗口会去连 127.0.0.1:$DEV_PORT。" >&2
+  echo "现有二进制不是生产构建（缺少 ${BUILD_FEATURES}），窗口会去连 127.0.0.1:${DEV_PORT}。" >&2
   echo "去掉 --no-build 重新构建即可：scripts/omnidesk.sh" >&2
   exit 1
 fi
