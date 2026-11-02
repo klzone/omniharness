@@ -31,6 +31,7 @@
 
 from __future__ import annotations
 
+
 import json
 import os
 import hashlib
@@ -38,6 +39,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Optional, Sequence
+from .node_runtime import resolve_node
 
 from .contract import (
     TERMINAL_STATES,
@@ -204,7 +206,7 @@ class AcpEngineAdapter(TaskCoreBase):
         env: Optional[Mapping[str, str]] = None,
         **kwargs: Any,
     ) -> "AcpEngineAdapter":
-        cmd = ["node", dsh_bin, "--profile", profile]
+        cmd = [resolve_node(), dsh_bin, "--profile", profile]
         for p in patch_files:
             cmd.extend(["--patch", p])
         kwargs.setdefault("engine_profile", profile)

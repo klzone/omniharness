@@ -35,6 +35,7 @@ import queue
 import socket
 import struct
 import subprocess
+
 import threading
 import time
 import urllib.error
@@ -43,6 +44,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
+from .node_runtime import resolve_node
 
 from .contract import (
     TERMINAL_STATES,
@@ -488,7 +490,7 @@ class WebApiAdapter(TaskCoreBase):
         **kwargs: Any,
     ) -> "WebApiAdapter":
         # `--patch` 是 launcher 级参数，必须排在 web app 参数之前。
-        cmd = ["node", dsh_bin, "--profile", profile]
+        cmd = [resolve_node(), dsh_bin, "--profile", profile]
         for p in patch_files:
             cmd.extend(["--patch", p])
         cmd.extend(["--port", "0", "--no-open"])
