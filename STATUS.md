@@ -1,5 +1,50 @@
 # 执行状态
 
+## OD-ARCH-134：Windows 安装器与启动体验修复（2026-11-04；已实施，本人实跑验证）
+
+> 起点 HEAD `b3cda4fb17`。改动 10 个文件 + 1 个新脚本 + 1 个新页面 + 1 个新验证脚本与证据；未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；未改数据目录结构。
+
+### 一句话结论
+
+Windows 用户拿到的发布物原来只有一个 zip：双击 `OmniDesk.exe` 时，宿主拉起的 python / node / cmd 都是控制台子系统程序，Windows 会为每一个新开黑窗；缺 node 或 python 时引擎起不来，失败只写进日志，用户看到的就是「终端一闪而过」。现在发布物主件是 NSIS 安装向导，所有子进程带 `CREATE_NO_WINDOW`，启动时先做一次依赖体检，缺什么就在窗口里列出来并给出下载页。
+
+### 改动
+
+1. **`release.yml`**：Windows job 由 `--no-bundle` 改为 `--bundles nsis`，产物上传 `dist-package/*.zip` 与 `bundle/nsis/*.exe` 两类，Release 同时挂 zip 与 `x64-setup.exe`。macOS job 保持 `--bundles app`。两个 job 在构建前都调用新的版本同步脚本。
+2. **`tauri.conf.json`**：新增 `bundle.windows.nsis`（`installMode: both`、`SimpChinese`、关闭语言选择器）；版本号由半年前的 `0.2.3` 校正到与 `VERSION` 一致的 `0.2.5`。
+3. **`scripts/sync-app-version.sh`（新增）**：把 `VERSION` 写进 `tauri.conf.json`。发布产物名取自 conf、Release tag 取自 VERSION，两处各写一遍必然漂移，发布前统一一次，内容相同就不写文件。
+4. **`platform.rs`**：新增 `CREATE_NO_WINDOW` 与 `hide_console(&mut Command)`（Windows 生效，其余平台空操作）；`resolve_node` 补 `%ProgramFiles%\nodejs`、nvm-windows、scoop、用户目录解压形态；`resolve_python` 的候选拆成按平台生成，Windows 补 python.org 的两种安装落点与官方 `py -3` 启动器（问出真实解释器路径）；新增 `environment_report()` 与两个依赖状态结构（找到与否、版本、要求、修复提示、下载页）。
+5. **子进程统一隐藏控制台**：`engine_ipc.rs`（引擎）、`dsh_settings.rs`（DSH 设置服务）、`model_routes.rs`、`route_classifier.rs`、`profile_assets.rs`（插件安装）、`platform.rs` 的 Windows 打开器。
+6. **`lib.rs`**：新增 `environment_check` 命令并注册；`profile_skill_source_open` 与 `profile_export_open` 不再各自拼 `xdg-open` / `gio` 循环，改走 `platform::open_target`（Windows 上原来这两处根本打不开）。
+7. **前端**：`types.ts` + `api.ts` 增加体检类型与调用；新增 `shell/EnvironmentCheck.tsx`（两项依赖的状态、版本、路径、修复提示、下载按钮、重新检测）；`App.tsx` 在 `envReport.ok === false` 时用它接管主区域，体检本身失败按「不确定」放行，不拦界面。
+8. **`build-portable-package.sh`**：启动说明补上「启动会自检，缺依赖会在窗口里列出来」与安装器入口。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 134 验证 | `python3 tests/verification/desktop/verify_windows_packaging_134.py` | **35/35 通过** |
+| 宿主全量单测 | `cargo test --offline --lib` | **504 passed / 0 failed**（含新增 5 项平台层单测） |
+| 前端构建 | `npm --prefix desktop run build` | 通过（仅既有 chunk 体积提示） |
+| release 构建 | `cargo build --release --features custom-protocol` | 通过 |
+| 启动冒烟 | release 二进制直接启动 | 进程正常存活、stderr 为空；本机 node 26 / python 3.13，未触发检查页 |
+
+### 边界与已知限制
+
+1. **NSIS 首次在 CI 出包未实测。** 安装器由 `tauri build --bundles nsis` 生成，语言包与图标若有细节问题，需要看 tag 后的 Release 产物再修一轮；本轮只能验证配置与命令面。
+2. **Windows 分支无法在本机执行。** `windows_node_candidates` / `python_candidates` 的 Windows 部分只过了编译与静态断言，真实路径命中要靠实机；单测覆盖的是版本解析、`hide_console` 不破坏参数、体检结果自洽。
+3. **依赖版本门槛是硬性的。** Node < 22 或 Python < 3.10 会显示「版本过低」并挡住主界面（顶栏仍可进设置）。这与引擎的实际要求一致，但会让「装旧版能凑合」的用户多一步。
+4. **`installMode: both` 需要管理员权限。** 这是允许用户选择「为所有用户安装 / 仅自己」的代价；只想要免提权安装的话应改成 `currentUser`。
+5. **体检是只读的。** 不安装、不改 PATH、不写注册表；装好后点「重新检测」即可，不必重装应用。
+
+### 未覆盖
+
+Release 页真实出现 `x64-setup.exe`、向导安装可改目录、桌面快捷方式、无 node 机器上的检查页、全程无黑框——都属于用户实测项，本轮证据为静态断言 + 本机构建与启动。
+
+### 顺带发现（本轮未修）
+
+`scripts/omnidesk.sh` 第 185 行调 `setsid`，macOS 没有这个命令，脚本启动会直接报 `setsid: command not found` 退出。属于启动器脚本的既有平台问题，不在 134 范围；macOS 用户目前直接双击 `.app` 不受影响。
+
 ## OD-ARCH-133：macOS 上的引擎进程核验与回收（2026-11-03；已实施，本人实跑验证）
 
 > 起点 HEAD `b658d8a870`，工作区含 132 提交后的改动。改动 7 个文件 + 1 个新验证脚本 + 1 份证据；未派子代理，`runtime/` 零差异，未读真实工作记录、知识库与凭证，未改数据目录结构，`owner.json` 字段不变。

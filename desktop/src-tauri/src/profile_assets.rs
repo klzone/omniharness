@@ -2215,6 +2215,8 @@ fn run_install_command(
     if let Some(dir) = dsh_cli.parent().and_then(|p| p.parent()) {
         cmd.current_dir(dir);
     }
+    // Windows：node 是控制台子系统程序，不隐藏会弹黑框（OD-ARCH-134）。
+    crate::platform::hide_console(&mut cmd);
     run_command_with_timeout(cmd, timeout)
 }
 

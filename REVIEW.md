@@ -1,3 +1,24 @@
+## OD-ARCH-134 审查结论（ARCHITECT，2026-11-04）——通过
+
+**结论：通过。** Windows 发布物从「只有 zip」变成「NSIS 安装向导 + zip」，子进程统一不带控制台窗口，缺 node / python 时启动页直接给出可操作的检查页。三块都落在既有结构里：打包在 workflow 与 conf、平台差异在 `platform.rs`、失败提示在既有 React 外壳。
+
+**独立复核范围：** HEAD `b3cda4fb17` + 工作区改动。核对 `release.yml` 两个 job 的构建命令与产物通配符是否对齐、`tauri.conf.json` 的 nsis 段与版本号、`sync-app-version.sh` 的幂等性、`platform.rs` 的 `hide_console` 与两组 Windows 候选、六处 spawn 是否都带上标志、`lib.rs` 的两处打开器替换与新命令注册、前端体检类型 / 调用 / 页面 / 渲染分支。`runtime/` 零差异；未新增权限，未改数据目录字段。
+
+**审查判断（几处特意验过的边界）：**
+
+1. **安装器与免安装包并存，路径对得上。** 构建用 `--bundles nsis`，上传同时收 `dist-package/*.zip` 与 `bundle/nsis/*.exe`，Release 的 `files:` 用两个通配符接住；macOS job 仍是 `--bundles app`，不受这次改动影响。`--no-bundle` 在整份 workflow 里已经不存在，不会出现「改了一处、另一处照旧跳过」。
+2. **版本号只有一个事实源。** 产物名取自 `tauri.conf.json`、tag 取自 `VERSION`。此前两者已经漂移（0.2.3 vs 0.2.5），这轮先校正再让 CI 每次构建前同步；脚本内容不变时不写文件，不制造无意义差异。
+3. **防闪窗只加创建标志，不动管道。** `CREATE_NO_WINDOW = 0x0800_0000` 只在 Windows 生效；引擎与设置服务的 stdin/stdout/stderr 仍是 piped，IPC 读写路径不变。非 Windows 分支是空操作，macOS / Linux 行为零变化。
+4. **六处 spawn 一视同仁。** 引擎、DSH 设置服务、模型路由、端点分类器、插件安装、Windows 打开器都带上了标志。漏掉任一处，用户就会看到那一个黑框，所以这条按调用点逐个核过。
+5. **Windows 候选不会盖过用户设置。** `OMNIDESK_NODE` / `OMNIDESK_PYTHON` 仍排在最前，候选只在「没设、PATH 也没有」时才用。`py` 启动器不是直接返回程序名，而是用 `py -3 -c print(sys.executable)` 问出真实路径——直接返回会让后续调用落到默认解释器上，可能是 2.7。
+6. **体检失败是 fail-open。** 命令本身出错（序列化、宿主异常）时前端把结果置空、照常进界面；只有明确 `ok === false` 才接管主区域。这样不会因为一次探测失败把整个应用挡在门外。
+7. **打开器替换修的是真 bug。** `profile_skill_source_open` 与 `profile_export_open` 原来各自拼 `xdg-open` / `gio` 循环，Windows 上根本没有这两个程序，必然失败；改走 `platform::open_target` 后与其它入口同一套实现。
+8. **边界写在文档里。** NSIS 首跑、Windows 真实路径命中、无 node 机器上的检查页都列为用户实测项，没有把静态断言说成端到端验证。
+
+**验证证据：** `verify_windows_packaging_134.py` **35/35**、`cargo test --offline --lib` **504 passed / 0 failed**、`npm --prefix desktop run build` 通过、release 构建通过、release 二进制启动冒烟正常；证据 `tests/verification/desktop/evidence/od-arch-134/facts.json`。
+
+**一句提醒：** 体检页给的是「修好再进来」的路径，门槛是硬的（Node 22+ / Python 3.10+）。如果之后收到「我明明装了却还提示未找到」的反馈，优先看两件事：安装器是否装在用户目录（`%LOCALAPPDATA%` 已覆盖）、以及是否仍在用旧版 zip 目录里的旧二进制启动。
+
 ## OD-ARCH-133 审查结论（ARCHITECT，2026-11-03）——通过
 
 **结论：通过。** 宿主与引擎两侧的进程核验原先都直接读 Linux 的 `/proc`。macOS 上没有 `/proc`，`boot_id` / `proc_stat` / `proc_cmdline` / `group_members` 一律返回空，直接后果是单实例互斥失效（同一次开机的登记被判成上次开机残留而删除）与遗留进程组收不回来（成员表恒空，`terminate_group` 直接返回）。本轮把「怎么看进程」下沉到平台层，判定条件与拒绝路径保持不变。

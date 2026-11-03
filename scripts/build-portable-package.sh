@@ -139,12 +139,16 @@ OmniDesk 免安装版
 一、运行前需要装两样东西（只需一次）
   1. Node.js 22.19 以上：https://nodejs.org
   2. Python 3.10 以上：https://www.python.org
+  装好后直接启动即可；OmniDesk 启动时会自检，缺哪一样会在窗口里列出来，
+  并给出下载页，不会只闪一下就没。
 
 二、启动
   macOS：双击 OmniDesk.app
          若提示“无法验证开发者”，右键点它 → 打开；或在终端执行一次：
          xattr -dr com.apple.quarantine "/Applications/OmniDesk.app"
   Windows：双击 OmniDesk.exe
+         如果下载的是 OmniDesk_*_x64-setup.exe，双击走安装向导即可，
+         安装完从开始菜单或桌面快捷方式启动（免安装版仍可用）。
 
 三、第一次启动会做什么
   程序会把 runtime/dsh-home-seed 里的 Profile 与 Skill 复制到

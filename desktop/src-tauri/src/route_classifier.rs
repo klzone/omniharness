@@ -66,12 +66,16 @@ pub fn classify(config: &EngineConfig) -> Result<RouteFacts, String> {
     })
     .to_string();
 
-    let mut child = Command::new(&node)
+    let mut cmd = Command::new(&node);
+    cmd
         .arg("--input-type=module")
         .env("OMNIDESK_ROUTE_ARGS", route_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    // Windows：node 是控制台子系统程序，不隐藏会弹黑框（OD-ARCH-134）。
+    crate::platform::hide_console(&mut cmd);
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("无法启动端点分类器（{}）：{}", node, e))?;
 

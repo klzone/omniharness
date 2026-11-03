@@ -64,6 +64,9 @@ jobs:
       - name: 安装前端依赖
         working-directory: desktop
         run: npm ci
+      - name: 同步版本号到 tauri.conf.json
+        shell: bash
+        run: bash scripts/sync-app-version.sh
       - name: 引导 DSH 底座
         run: bash scripts/bootstrap-runtime.sh
       - name: 生成应用图标
@@ -111,6 +114,9 @@ jobs:
         working-directory: desktop
         shell: bash
         run: npm ci
+      - name: 同步版本号到 tauri.conf.json
+        shell: bash
+        run: bash scripts/sync-app-version.sh
       - name: 引导 DSH 底座
         shell: bash
         run: bash scripts/bootstrap-runtime.sh
@@ -118,17 +124,19 @@ jobs:
         working-directory: desktop
         shell: bash
         run: npx tauri icon src-tauri/icons/icon-512.png
-      - name: 构建桌面程序
+      - name: 构建桌面程序与 NSIS 安装器
         working-directory: desktop
         shell: bash
-        run: npx tauri build --features custom-protocol --no-bundle
+        run: npx tauri build --features custom-protocol --bundles nsis
       - name: 组装免安装包
         shell: bash
         run: bash scripts/build-portable-package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: windows-package
-          path: dist-package/*.zip
+          path: |
+            dist-package/*.zip
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   publish:
@@ -149,11 +157,14 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            artifacts/*.exe
           body: |
             ## OmniDesk v${{ needs.meta.outputs.version }}
 
-            免安装版，解压即用。Windows 与 macOS(Apple Silicon) 各一个压缩包。
+            Windows 提供安装向导（`OmniDesk_*_x64-setup.exe`），也保留解压即用的 zip；
+            macOS(Apple Silicon) 为 zip 免安装包。
 
             ### 使用前
             1. 装 Node.js 22.19+（https://nodejs.org）

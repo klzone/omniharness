@@ -1,5 +1,48 @@
 # 当前实施计划
 
+### OD-ARCH-134：Windows 安装器与启动体验修复（计划者与实施者：本助手；用户授权「批准 执行 OD-ARCH-134」；2026-11-04 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-134/facts.json）
+
+> **触发：** 用户实测 Windows 包（v0.2.x）：① 下载到的是纯 zip，没有像原版 DSH-desktop 的安装向导；② 双击 OmniDesk.exe 后 node 终端一闪而过，应用无法启动。
+
+#### 已核实根因（本人实读源码）
+
+1. **无安装器是打包命令造成的。** .github/workflows/release.yml:125 用 `npx tauri build --features custom-protocol --no-bundle`，明确跳过 bundle；产物只有 build-portable-package.sh 压的 zip。Tauri 2 自带 NSIS 安装器支持，未启用。
+2. **子进程在 Windows 上闪黑框。** 全仓无 CREATE_NO_WINDOW（0x08000000）：engine_ipc.rs EngineChannel::spawn（python 引擎）、dsh_settings.rs spawn（node/DSH）、platform.rs spawn_opener 都没设 creation_flags。GUI 进程拉起控制台子系统子进程时 Windows 必弹控制台窗，失败时"一闪而过"。
+3. **node/python 解析无 Windows 分支。** platform.rs resolve_node 的候选路径全是 Unix（bin/node、/opt/homebrew…），nvm-windows/Program Files\nodejs 不在列；resolve_python 只在 PATH 里找。Windows 双击启动时若 PATH 没有这两样，引擎起不来且报错只进日志，用户看不到。
+4. **免安装包要求用户预装 Node 22+/Python 3.10+**（启动说明.txt），这是"起不来"的直接原因之一，但没有前置检查与友好提示。
+
+#### 方案
+
+**一句话：启用 NSIS 安装器作为 Windows 主发布物；全部子进程加防闪窗标志；node/python 找不到或版本不对时在应用窗口内给出可操作的提示页，而不是无声失败。**
+
+1. **NSIS 安装器（release.yml + 本地脚本）**
+   - Windows job 增加 `npx tauri build --features custom-protocol --bundles nsis`，产物 `OmniDesk_\<ver\>_x64-setup.exe` 上传 Release 为主下载项；zip 免安装包保留为进阶选项。
+   - tauri.conf.json 增加 bundle.windows.nsis 配置（安装模式 perMachine=both、语言简体中文、允许改安装目录）。
+2. **防闪窗（Windows 专属）**
+   - platform.rs 新增 `fn no_window() -> Option<CREATE_NO_WINDOW>`（cfg windows 返回 0x08000000，其余平台 None）；engine_ipc.rs、dsh_settings.rs、platform.rs spawn_opener、lib.rs 两处直接 Command spawn 全部套用。
+3. **依赖探测与友好失败**
+   - resolve_node 增加 Windows 候选：%ProgramFiles%\\nodejs\\node.exe、nvm-windows（%APPDATA%\\nvm）、scoop；resolve_python 增加 %LocalAppData%\\Programs\\Python 与 py 启动器探测。
+   - 启动引擎前先跑一次探测：失败时前端弹独立"环境检查"页（Node/Python 版本、下载链接、OMNIDESK_NODE/OMNIDESK_PYTHON 设置说明），不再黑框一闪。
+4. **验证**
+   - 本地可验证：cargo test（新增 no_window 单测 + 探测函数单测，Unix 上跑逻辑分支）；npm build；防闪窗与 NSIS 走 CI 实测（tag 后看 Release 产物）。
+   - 用户实测项：新安装器双击安装、改目录、桌面快捷方式；无 node 的机器上应看到提示页而非闪退；装好 node 后正常启动且全程无黑框。
+
+#### 影响范围
+.github/workflows/release.yml、tauri.conf.json、platform.rs、engine_ipc.rs、dsh_settings.rs、lib.rs（探测命令 + 启动前置检查）、前端环境检查页、启动说明.txt。
+
+#### 风险
+- NSIS 在 CI 的首跑可能有配置细节问题（语言包、图标），用 tag 后 Release 产物核验，必要时一轮修正。
+- 探测分支在 macOS/Linux 上不可实测 Windows 路径，单测只覆盖逻辑，真实行为以用户实测为准。
+- 防闪窗不影响 stdout/stderr 管道，但需回归引擎 IPC 全套测试确认无回归。
+
+#### 明确不做
+- 不把 node/python 运行时打进包里（体积+许可问题，等用户反馈再议）。
+- 不改免安装包形态本身，仍保留。
+
+#### 验收标准
+Release 页出现 x64-setup.exe；用户在两台 Windows（有/无 node）上分别验证：一台向导安装后正常启动，另一台看到环境提示页。全程无黑色终端闪现。
+
+> **实施结果（2026-11-04）：** 安装器、防闪窗、依赖体检三块全部落地。`cargo test --offline --lib` 504 项通过（新增 5 项平台层单测）；`npm --prefix desktop run build` 通过；`verify_windows_packaging_134.py` 35 项全通过。NSIS 产物与「无 node 机器上的检查页」需 CI 出包后在 Windows 实机确认。
 ### OD-ARCH-133：macOS 上的引擎进程核验与回收（计划者与实施者：本助手；用户授权「授权执行OD-ARCH-133」；2026-11-03 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-133/facts.json）
 
 > **触发：** 132 收尾时跑全量单测，4 项平台失败里有 3 项落在 `process_owner`。核对后确认不是测试写错，而是**运行期缺陷**：宿主与引擎两侧的进程核验都直接读 Linux 的 `/proc`，而 macOS 发布包（v0.2.4 / v0.2.5 用户实机测试）跑的正是这套代码。

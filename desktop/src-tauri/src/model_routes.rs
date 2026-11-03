@@ -74,14 +74,18 @@ fn stderr_tail(raw: &str) -> String {
 fn run_script(payload: Value) -> Result<Value, String> {
     let node = crate::platform::resolve_node()?;
 
-    let mut child = Command::new(&node)
+    let mut cmd = Command::new(&node);
+    cmd
         .arg("--input-type=module")
         .env("OMNIDESK_ROUTE_ARGS", payload.to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         // OD-ARCH-095 S04：stderr 不再丢弃。脚本自身会把 DSH 的失败原因附在错误消息里，
         // 但脚本崩在 `main()` 之外（语法/依赖问题）时不会有 JSON，唯一线索就在 stderr。
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    // Windows：node 是控制台子系统程序，不隐藏会弹黑框（OD-ARCH-134）。
+    crate::platform::hide_console(&mut cmd);
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("无法启动模型路由脚本（{}）：{}", node, e))?;
 

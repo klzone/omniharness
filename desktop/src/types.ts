@@ -1962,3 +1962,27 @@ export interface ProfilePluginAddReceipt {
   detail: string;
   note: string;
 }
+
+/**
+ * 一项运行时依赖的体检结果（OD-ARCH-134）。
+ *
+ * `ok` 同时要求「找得到」和「版本达标」；`found` 只说明找没找到，
+ * 这样界面能区分「没装」和「装了但版本太低」两种修法。
+ */
+export interface EnvironmentDependency {
+  name: "node" | "python";
+  ok: boolean;
+  found: boolean;
+  path: string | null;
+  version: string | null;
+  requirement: string;
+  hint: string;
+  download: string;
+}
+
+/** 引擎启动前的依赖体检（只读，不安装、不改环境）。 */
+export interface EnvironmentReport {
+  ok: boolean;
+  node: EnvironmentDependency;
+  python: EnvironmentDependency;
+}

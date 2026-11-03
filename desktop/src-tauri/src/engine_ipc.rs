@@ -144,6 +144,8 @@ impl EngineChannel {
         for (key, value) in envs {
             cmd.env(key, value);
         }
+        // Windows：引擎是控制台子系统程序，不隐藏控制台会弹黑框（OD-ARCH-134）。
+        crate::platform::hide_console(&mut cmd);
 
         let mut child = cmd.spawn()?;
         let pid = child.id();

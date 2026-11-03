@@ -9,9 +9,10 @@ import { ConfirmDialog } from "./shell/ConfirmDialog";
 import { ScenePage } from "./shell/ScenePage";
 import { Workspace } from "./shell/Workspace";
 import { TopNav } from "./shell/TopNav";
+import { EnvironmentCheck } from "./shell/EnvironmentCheck";
 import { WindowResizeHandles } from "./shell/WindowChrome";
 import { HoverHint } from "./shell/HoverHint";
-import type { EngineDescriptor, ProfileDeclPayload } from "./types";
+import type { EngineDescriptor, EnvironmentReport, ProfileDeclPayload } from "./types";
 
 // 知识库分页只在用户第一次点进来时才加载（OD-KB-001 P2-S04）：它是目前最大的
 // 单个页面模块，静态引入会让每次启动都多解析一遍。首次进入时才拉取，不进首屏。
@@ -35,6 +36,11 @@ export default function App() {
   const [threadsReady, setThreadsReady] = useState(false);
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
+  // 运行时依赖体检（OD-ARCH-134）：缺 node / python 时先给出可操作的检查页，
+  // 而不是让引擎在后台起不来、用户只看到「终端一闪而过」。体检失败本身不阻断
+  // 界面（读设置、看记录都不需要引擎），只有明确缺依赖时才接管主区域。
+  const [envReport, setEnvReport] = useState<EnvironmentReport | null>(null);
+  const [envBusy, setEnvBusy] = useState(false);
   // Profile 场景声明（OD-ARCH-051 S3，OD-ARCH-106 起随 Profile 挂载）：
   // `profiles/<Profile 名>/decl.yml` 驱动 Dock 上的业务场景入口。
   // **没有这份文件是正常状态**（基础标准 = 干净 DSH 底座），此时 Dock 只显示平台固有入口；
@@ -189,6 +195,20 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  /** 只读体检 node / python（OD-ARCH-134）；失败按「不确定」处理，不拦住界面。 */
+  const checkEnvironment = useCallback(() => {
+    setEnvBusy(true);
+    void host
+      .environmentCheck()
+      .then((report) => setEnvReport(report))
+      .catch(() => setEnvReport(null))
+      .finally(() => setEnvBusy(false));
+  }, []);
+
+  useEffect(() => {
+    checkEnvironment();
+  }, [checkEnvironment]);
 
   /** 只读检测引擎描述；失败就如实显示“引擎未就绪”，不伪造描述。 */
   const probeEngine = useCallback(() => {
@@ -363,7 +383,13 @@ export default function App() {
       ) : null}
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {!threadsReady ? (
+        {envReport && !envReport.ok ? (
+          <EnvironmentCheck
+            report={envReport}
+            busy={envBusy}
+            onRecheck={checkEnvironment}
+          />
+        ) : !threadsReady ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">
             <p className="text-[11.5px] text-outline">正在从本机数据目录恢复对话记录…</p>
           </div>
