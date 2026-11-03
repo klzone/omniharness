@@ -45,6 +45,31 @@ pub fn python_program() -> String {
     }
 }
 
+/// Windows 的「不创建控制台窗口」创建标志（OD-ARCH-134）。
+///
+/// OmniDesk 是 GUI 子系统程序，它拉起的 python / node / cmd 都是控制台子系统。
+/// 不带这个标志时，Windows 会为每个子进程新开一个黑色控制台窗口；双击启动时
+/// 就表现为「终端一闪而过」。
+#[cfg(target_os = "windows")]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// 给即将 spawn 的命令加上「不弹控制台」，其余平台是空操作。
+pub fn hide_console(command: &mut Command) -> &mut Command {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = command;
+    command
+}
+
+/// Python 版本门槛探针：3.10 及以上退出码 0。
+const PY_VERSION_PROBE: &str = "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)";
+/// 取解释器版本号（major.minor.patch）。
+const PY_VERSION_PRINT: &str = "import sys; print('%d.%d.%d' % sys.version_info[:3])";
+
 /// 解析 Python 解释器的绝对路径，逻辑与 node 解析一致：
 /// GUI 启动不继承 shell PATH，裸 "python3" 在 Finder 启动的 app 里会 ENOENT。
 /// 顺序：OMNIDESK_PYTHON → PATH 探测 → /usr/bin 与 homebrew 常见位置。
@@ -56,50 +81,255 @@ pub fn resolve_python() -> Result<String, String> {
         }
     }
     let fallback = python_program();
-    let fallback_version_ok = Command::new(&fallback)
-        .arg("-c")
-        .arg("import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if fallback_version_ok {
+    if python_is_supported(Path::new(&fallback)) {
         return Ok(fallback);
     }
-    // PATH 里的 python3 版本过低时，按候选顺序找第一个 3.10+ 的解释器；
-    // homebrew 安装根下的具体版本目录（python@3.12/3.13 等）也参与候选。
-    let candidates = [
-        PathBuf::from("/usr/bin/python3"),
-        PathBuf::from("/opt/homebrew/bin/python3"),
-        PathBuf::from("/usr/local/bin/python3"),
-    ];
-    let mut versioned: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir("/opt/homebrew/opt") {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("python@3.") {
-                versioned.push(entry.path().join("bin").join(&*name.replace("@", "")));
-            }
-        }
-    }
-    versioned.sort();
-    for candidate in candidates.iter().chain(versioned.iter().rev()) {
-        let ok = Command::new(candidate)
-            .arg("-c")
-            .arg("import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if ok {
+    // PATH 里的解释器版本过低、或 GUI 启动根本没有 PATH 时，按平台候选顺序找
+    // 第一个 3.10+ 的解释器（OD-ARCH-134：Windows 补 python.org 安装位置与 py 启动器）。
+    for candidate in python_candidates() {
+        if python_is_supported(&candidate) {
             return Ok(candidate.to_string_lossy().into_owned());
         }
     }
     Err(concat!(
-        "未找到 python3。OmniDesk 的引擎需要 Python 3.10+。",
-        "请安装 Python（https://www.python.org），",
-        "或设置 OMNIDESK_PYTHON 指向 python3 的绝对路径。"
+        "未找到 Python 3.10+。OmniDesk 的引擎需要 Python 3.10 或更高版本。",
+        "请安装 Python（https://www.python.org/downloads/），",
+        "或设置 OMNIDESK_PYTHON 指向解释器的绝对路径。"
     )
     .to_string())
+}
+
+/// 解释器能不能用：只问「版本够不够」，不解析输出。
+fn python_is_supported(program: &Path) -> bool {
+    let mut cmd = Command::new(program);
+    cmd.arg("-c").arg(PY_VERSION_PROBE);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console(&mut cmd);
+    cmd.status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// 候选解释器路径，按平台给出。调用方逐个 probe 版本。
+fn python_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    #[cfg(not(target_os = "windows"))]
+    {
+        out.push(PathBuf::from("/usr/bin/python3"));
+        out.push(PathBuf::from("/opt/homebrew/bin/python3"));
+        out.push(PathBuf::from("/usr/local/bin/python3"));
+        // homebrew 安装根下的具体版本目录（python@3.12/3.13 等）也参与候选。
+        let mut versioned: Vec<PathBuf> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("/opt/homebrew/opt") {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with("python@3.") {
+                    versioned.push(entry.path().join("bin").join(&*name.replace("@", "")));
+                }
+            }
+        }
+        versioned.sort();
+        out.extend(versioned.into_iter().rev());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // python.org 安装器的两种落点：按用户安装（LOCALAPPDATA）与全机安装。
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            out.extend(python_dirs_under(
+                &PathBuf::from(local).join("Programs").join("Python"),
+            ));
+        }
+        if let Some(pf) = std::env::var_os("ProgramFiles") {
+            out.extend(python_dirs_under(&PathBuf::from(pf)));
+        }
+        // 最后问官方 py 启动器：`py -3` 能直接报出真实解释器路径。
+        if let Some(path) = python_from_launcher() {
+            out.push(path);
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// 运行时依赖探测（OD-ARCH-134）
+//
+// 发布包不自带 node / python。缺依赖时引擎起不来，而失败只写在日志里，用户
+// 双击后看到的是「闪一下就没」。这里把「找得到吗、版本够不够」变成一次可展示
+// 的事实，界面据此给出安装入口，而不是让用户猜。
+// ---------------------------------------------------------------------------
+
+/// 一项运行时依赖的探测结果。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DependencyStatus {
+    pub name: &'static str,
+    /// 找到且版本达标。
+    pub ok: bool,
+    pub found: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub requirement: &'static str,
+    pub hint: &'static str,
+    pub download: &'static str,
+}
+
+/// 引擎启动的两个前置依赖。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EnvironmentReport {
+    pub ok: bool,
+    pub node: DependencyStatus,
+    pub python: DependencyStatus,
+}
+
+/// 探测 node / python：只读，不安装、不改环境。
+pub fn environment_report() -> EnvironmentReport {
+    let node = match resolve_node() {
+        Ok(path) => {
+            let version = run_version(&path, &["--version"]);
+            let ok = version
+                .as_deref()
+                .and_then(node_major)
+                .map(|major| major >= 22)
+                .unwrap_or(false);
+            DependencyStatus {
+                name: "node",
+                ok,
+                found: true,
+                path: Some(path),
+                version,
+                requirement: "Node.js 22+",
+                hint: "版本低于 22 时 DSH 底座无法运行。装好新版后重启 OmniDesk；也可以设置 OMNIDESK_NODE 指向 node 的绝对路径。",
+                download: "https://nodejs.org",
+            }
+        }
+        Err(_) => DependencyStatus {
+            name: "node",
+            ok: false,
+            found: false,
+            path: None,
+            version: None,
+            requirement: "Node.js 22+",
+            hint: "安装 Node.js 22 或更高版本后重启 OmniDesk；也可以设置 OMNIDESK_NODE 指向 node 的绝对路径。",
+            download: "https://nodejs.org",
+        },
+    };
+    let python = match resolve_python() {
+        Ok(path) => {
+            let version = run_version(&path, &["-c", PY_VERSION_PRINT]);
+            let ok = version
+                .as_deref()
+                .and_then(python_major_minor)
+                .map(|(major, minor)| (major, minor) >= (3, 10))
+                .unwrap_or(false);
+            DependencyStatus {
+                name: "python",
+                ok,
+                found: true,
+                path: Some(path),
+                version,
+                requirement: "Python 3.10+",
+                hint: "版本低于 3.10 时引擎无法启动。装好新版后重启 OmniDesk；也可以设置 OMNIDESK_PYTHON 指向解释器的绝对路径。",
+                download: "https://www.python.org/downloads/",
+            }
+        }
+        Err(_) => DependencyStatus {
+            name: "python",
+            ok: false,
+            found: false,
+            path: None,
+            version: None,
+            requirement: "Python 3.10+",
+            hint: "安装 Python 3.10 或更高版本后重启 OmniDesk；也可以设置 OMNIDESK_PYTHON 指向解释器的绝对路径。",
+            download: "https://www.python.org/downloads/",
+        },
+    };
+    EnvironmentReport {
+        ok: node.ok && python.ok,
+        node,
+        python,
+    }
+}
+
+/// 运行一个只读版本命令，返回去掉首尾空白的 stdout。失败返回 None。
+fn run_version(program: &str, args: &[&str]) -> Option<String> {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    hide_console(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// `v22.19.0` → 22。
+fn node_major(version: &str) -> Option<u32> {
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// `3.12.4` → (3, 12)。
+fn python_major_minor(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.trim().split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
+/// 在给定目录下找 `Python3*` 子目录里的 python.exe（Windows 专用）。
+#[cfg(target_os = "windows")]
+fn python_dirs_under(root: &Path) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("Python3") {
+                let exe = entry.path().join("python.exe");
+                if exe.is_file() {
+                    found.push(exe);
+                }
+            }
+        }
+    }
+    // 目录名里带版本号，倒序即新版本优先。
+    found.sort();
+    found.reverse();
+    found
+}
+
+/// 用官方启动器 `py -3` 问出解释器绝对路径（Windows 专用）。
+#[cfg(target_os = "windows")]
+fn python_from_launcher() -> Option<PathBuf> {
+    let mut cmd = Command::new("py");
+    cmd.args(["-3", "-c", "import sys; print(sys.executable)"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    hide_console(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
 }
 
 /// 仓库根（或免安装包根）。
@@ -189,6 +419,8 @@ fn spawn_opener(target: &str) -> Result<Child, String> {
     command.arg("/C");
     // `start` 的第一个带引号参数是窗口标题，必须给空串，否则带空格的路径会被当成标题。
     command.raw_arg(format!("start \"\" \"{}\"", target.replace('"', "")));
+    // 不加这个标志，双击启动时会跟着弹一个黑框（OD-ARCH-134）。
+    hide_console(&mut command);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -237,7 +469,10 @@ pub fn resolve_node() -> Result<String, String> {
         }
     }
     // PATH 命中且能执行时直接用（保持旧行为）。
-    if let Ok(output) = Command::new("node").arg("--version").output() {
+    let mut probe = Command::new("node");
+    probe.arg("--version");
+    hide_console(&mut probe);
+    if let Ok(output) = probe.output() {
         if output.status.success() {
             return Ok("node".to_string());
         }
@@ -262,9 +497,14 @@ pub fn resolve_node() -> Result<String, String> {
             }
         }
     }
-    candidates.push(PathBuf::from("/opt/homebrew/bin/node"));
-    candidates.push(PathBuf::from("/usr/local/bin/node"));
-    candidates.push(PathBuf::from("/usr/bin/node"));
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidates.push(PathBuf::from("/opt/homebrew/bin/node"));
+        candidates.push(PathBuf::from("/usr/local/bin/node"));
+        candidates.push(PathBuf::from("/usr/bin/node"));
+    }
+    #[cfg(target_os = "windows")]
+    candidates.extend(windows_node_candidates());
     for candidate in &candidates {
         if candidate.is_file() {
             return Ok(candidate.to_string_lossy().into_owned());
@@ -276,6 +516,48 @@ pub fn resolve_node() -> Result<String, String> {
         "或在系统设置中为 OmniDesk 设置 OMNIDESK_NODE 环境变量指向 node 的绝对路径。"
     )
     .to_string())
+}
+
+/// Windows 上的 node 安装位置（OD-ARCH-134）。
+///
+/// 双击启动时 GUI 进程的 PATH 里通常没有 node：官方安装器写的是机器级 PATH，
+/// 而 nvm-windows / scoop 只改用户 PATH。这里直接按常见落点找可执行文件。
+#[cfg(target_os = "windows")]
+fn windows_node_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(base) = std::env::var_os(key) {
+            out.push(PathBuf::from(base).join("nodejs").join("node.exe"));
+        }
+    }
+    // nvm-windows：%APPDATA%\nvm\v20.11.1\node.exe，版本目录倒序取最新。
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let base = PathBuf::from(appdata).join("nvm");
+        if let Ok(entries) = std::fs::read_dir(&base) {
+            let mut versions: Vec<PathBuf> = entries
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.file_name()
+                        .map(|n| n.to_string_lossy().starts_with('v'))
+                        .unwrap_or(false)
+                })
+                .collect();
+            versions.sort();
+            out.extend(versions.into_iter().rev().map(|dir| dir.join("node.exe")));
+        }
+    }
+    // scoop 与「官方 zip 解压到用户目录」的常见形态。
+    if let Some(home) = home_dir() {
+        out.push(
+            home.join("scoop")
+                .join("apps")
+                .join("nodejs")
+                .join("current")
+                .join("node.exe"),
+        );
+        out.push(home.join("nodejs").join("node.exe"));
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -510,4 +792,63 @@ pub fn process_table() -> Vec<ProcRow> {
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn process_table() -> Vec<ProcRow> {
     Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 版本解析只认「主版本」，前缀 v 可有可无（node 输出 `v22.19.0`，有的发行版不给 v）。
+    #[test]
+    fn node_major_parses_common_forms() {
+        assert_eq!(node_major("v22.19.0"), Some(22));
+        assert_eq!(node_major("20.11.1"), Some(20));
+        assert_eq!(node_major("  24.0.0\n"), Some(24));
+        assert_eq!(node_major(""), None);
+        assert_eq!(node_major("not-a-version"), None);
+    }
+
+    #[test]
+    fn python_major_minor_parses_common_forms() {
+        assert_eq!(python_major_minor("3.12.4"), Some((3, 12)));
+        assert_eq!(python_major_minor("3.9.6"), Some((3, 9)));
+        assert_eq!(python_major_minor("3"), None);
+        assert_eq!(python_major_minor("garbage"), None);
+    }
+
+    /// 防闪窗只是加一个 Windows 创建标志：程序名与参数必须原样保留。
+    #[test]
+    fn hide_console_keeps_program_and_args() {
+        let mut cmd = Command::new("omnidesk-nonexistent-probe");
+        cmd.arg("--version").arg("a b");
+        let returned = hide_console(&mut cmd);
+        assert_eq!(returned.get_program(), "omnidesk-nonexistent-probe");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, vec!["--version".to_string(), "a b".to_string()]);
+    }
+
+    /// 版本命令跑不起来时必须返回 None，而不是 panic 或空串。
+    #[test]
+    fn run_version_returns_none_for_missing_program() {
+        assert_eq!(run_version("omnidesk-nonexistent-probe", &["--version"]), None);
+    }
+
+    /// 体检结果必须自洽：ok 蕴含 found；缺依赖时仍带下载页与修复提示。
+    #[test]
+    fn environment_report_is_consistent() {
+        let report = environment_report();
+        for item in [&report.node, &report.python] {
+            assert!(item.found || !item.ok, "{}：ok 不能先于 found", item.name);
+            assert!(item.requirement.contains("3.10") || item.requirement.contains("22"));
+            assert!(item.download.starts_with("https://"));
+            assert!(!item.hint.is_empty());
+            if !item.ok {
+                assert!(item.hint.contains("OMNIDESK_"), "{}：缺依赖时要给可操作的修复路径", item.name);
+            }
+        }
+        assert_eq!(report.ok, report.node.ok && report.python.ok);
+    }
 }

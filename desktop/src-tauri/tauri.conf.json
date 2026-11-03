@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OmniDesk",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "identifier": "dev.omnidesk.discipline",
   "build": {
     "frontendDist": "../dist",
@@ -40,6 +40,13 @@
     ],
     "category": "Productivity",
     "shortDescription": "OmniDesk 独立 AI 工作站外壳",
-    "longDescription": "OmniDesk 桌面外壳：自有 React UI + Rust 宿主 + Python 引擎适配层。不加载 DSH Desktop 界面，不依赖 DSH Web 服务。"
+    "longDescription": "OmniDesk 桌面外壳：自有 React UI + Rust 宿主 + Python 引擎适配层。不加载 DSH Desktop 界面，不依赖 DSH Web 服务。",
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

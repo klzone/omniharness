@@ -15,6 +15,7 @@ import type {
   CategorySettingsPayload,
   EngineDescriptor,
   EngineHealth,
+  EnvironmentReport,
   ExplanationSource,
   LibraryRootInfo,
   KnowledgeVaultNote,
@@ -169,6 +170,18 @@ export function invalidateEngineFactsCache(): void {
 export const host = {
   describe(): Promise<EngineDescriptor> {
     return invoke<EngineDescriptor>("engine_describe").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 运行时依赖体检（OD-ARCH-134）：只读探测 node / python 是否就绪。
+   *
+   * 启动页只在 `ok === false` 时显示「环境检查」，把安装入口摆到用户面前；
+   * 依赖齐全时这次调用不产生任何界面变化。
+   */
+  environmentCheck(): Promise<EnvironmentReport> {
+    return invoke<EnvironmentReport>("environment_check").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

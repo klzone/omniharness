@@ -1668,34 +1668,19 @@ fn profile_skill_source_open(state: State<'_, SharedHost>) -> Result<serde_json:
     let dir = profile_rules::skill_source_root(&scope.profiles_root.join(&scope.profile));
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("创建 Skill 目录失败（{}）：{}", dir.display(), e))?;
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<String>::new()),
-        ("gio", vec!["open".to_string()]),
-    ] {
-        match std::process::Command::new(program)
-            .args(&args)
-            .arg(&dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "opened": dir.display().to_string(),
-                    "note": "把 Skill 放进这个目录（每个 Skill 一个子目录，至少含 SKILL.md），保存绑定后即可用。",
-                }))
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
+    // 走平台层：macOS 用 open、Windows 用 cmd /C start、Linux 用 xdg-open（OD-ARCH-134）。
+    match crate::platform::open_target(&dir) {
+        Ok(()) => Ok(serde_json::json!({
+            "ok": true,
+            "opened": dir.display().to_string(),
+            "note": "把 Skill 放进这个目录（每个 Skill 一个子目录，至少含 SKILL.md），保存绑定后即可用。",
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "ok": false,
+            "path": dir.display().to_string(),
+            "note": format!("没能自动打开文件管理器（{}）。目录已经建好，可以手动打开：{}", e, dir.display()),
+        })),
     }
-    Ok(serde_json::json!({
-        "ok": false,
-        "path": dir.display().to_string(),
-        "note": format!("没能自动打开文件管理器（{}）。目录已经建好，可以手动打开：{}", last_error, dir.display()),
-    }))
 }
 
 /// 按名字生成一份 Profile 自带 Skill 的起步模板（OD-ARCH-131）。
@@ -1958,29 +1943,13 @@ fn profile_export_open(
     };
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("创建导出目录失败（{}）：{}", dir.display(), e))?;
-    let mut last_error = String::new();
-    for (program, args) in [
-        ("xdg-open", Vec::<String>::new()),
-        ("gio", vec!["open".to_string()]),
-    ] {
-        match std::process::Command::new(program)
-            .args(&args)
-            .arg(&dir)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => {
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "opened": dir.display().to_string(),
-                }))
-            }
-            Err(e) => last_error = format!("{}：{}", program, e),
-        }
-    }
-    Err(format!("没能打开导出目录（{}）：{}", dir.display(), last_error))
+    // 走平台层：macOS 用 open、Windows 用 cmd /C start、Linux 用 xdg-open（OD-ARCH-134）。
+    crate::platform::open_target(&dir)
+        .map_err(|e| format!("没能打开导出目录（{}）：{}", dir.display(), e))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "opened": dir.display().to_string(),
+    }))
 }
 
 /// 安装某个 Profile 需要的插件（用户点「安装」才调用，会联网）。
@@ -4005,6 +3974,16 @@ fn open_external_url(url: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "ok": true, "opened": opened }))
 }
 
+/// 运行时依赖体检（OD-ARCH-134）：只读探测 node / python 是否就绪。
+///
+/// 启动页据此决定是否显示「环境检查」页。缺依赖时把安装入口与修复方法直接摆出来，
+/// 而不是让引擎在后台静默失败、用户只看到黑框一闪。
+#[tauri::command(async)]
+fn environment_check() -> Result<serde_json::Value, String> {
+    let report = crate::platform::environment_report();
+    serde_json::to_value(report).map_err(|e| format!("序列化环境体检结果失败：{}", e))
+}
+
 // ---------------------------------------------------------------------------
 // 能力管理（OD-ARCH-072）
 //
@@ -5178,6 +5157,7 @@ pub fn run() {
             task_set_library_root,
             task_open_artifact_root,
             open_external_url,
+            environment_check,
             capability_view,
             capability_set_plugin,
             capability_open_skills,

@@ -466,6 +466,8 @@ fn spawn(config: &EngineConfig, log_path: &Path) -> Result<Child, String> {
     for patch in &config.patch_files {
         command.arg("--patch").arg(patch);
     }
+    // Windows：node 是控制台子系统程序，必须隐藏控制台（OD-ARCH-134）。
+    crate::platform::hide_console(&mut command);
     command
         .arg("--port")
         .arg("0")

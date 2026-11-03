@@ -1,0 +1,186 @@
+{
+  "plan": "OD-ARCH-134",
+  "platform": "darwin",
+  "cases": [
+    {
+      "name": "wf_windows_builds_nsis",
+      "ok": true,
+      "detail": "windows job 构建命令"
+    },
+    {
+      "name": "wf_windows_no_longer_bundleless",
+      "ok": true,
+      "detail": "--no-bundle 已移除"
+    },
+    {
+      "name": "wf_uploads_setup_exe",
+      "ok": true,
+      "detail": "upload-artifact 含安装器"
+    },
+    {
+      "name": "wf_publish_ships_exe",
+      "ok": true,
+      "detail": "Release 上传 exe"
+    },
+    {
+      "name": "wf_body_mentions_setup",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "conf_nsis_install_mode",
+      "ok": true,
+      "detail": "both"
+    },
+    {
+      "name": "conf_nsis_chinese",
+      "ok": true,
+      "detail": "['SimpChinese']"
+    },
+    {
+      "name": "conf_version_matches_version_file",
+      "ok": true,
+      "detail": "0.2.5 vs 0.2.5"
+    },
+    {
+      "name": "sync_script_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "wf_syncs_version_in_both_jobs",
+      "ok": true,
+      "detail": "macOS 与 Windows 各一次"
+    },
+    {
+      "name": "rust_create_no_window_const",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_hide_console_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_hide_console_noop_off_windows",
+      "ok": true,
+      "detail": "非 Windows 平台空操作"
+    },
+    {
+      "name": "rust_engine_ipc.rs_hides_console",
+      "ok": true,
+      "detail": "引擎子进程"
+    },
+    {
+      "name": "rust_dsh_settings.rs_hides_console",
+      "ok": true,
+      "detail": "DSH 设置服务"
+    },
+    {
+      "name": "rust_model_routes.rs_hides_console",
+      "ok": true,
+      "detail": "模型路由脚本"
+    },
+    {
+      "name": "rust_route_classifier.rs_hides_console",
+      "ok": true,
+      "detail": "端点分类器"
+    },
+    {
+      "name": "rust_profile_assets.rs_hides_console",
+      "ok": true,
+      "detail": "插件安装"
+    },
+    {
+      "name": "rust_windows_opener_hides_console",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_node_candidates",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_node_program_files",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_node_nvm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_node_scoop",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_python_localappdata",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_windows_py_launcher",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_environment_report_shape",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rust_python_requirement_310",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_registers_environment_check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_calls_environment_check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "app_renders_environment_check",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "page_has_testid",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "page_links_downloads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "page_mentions_env_vars",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_uses_platform_open_more_than_once",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lib_no_xdg_loop_left",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "summary": {
+    "total": 35,
+    "failed": 0
+  },
+  "passed": true
+}
