@@ -14,8 +14,9 @@
 6. **体检失败是 fail-open。** 命令本身出错（序列化、宿主异常）时前端把结果置空、照常进界面；只有明确 `ok === false` 才接管主区域。这样不会因为一次探测失败把整个应用挡在门外。
 7. **打开器替换修的是真 bug。** `profile_skill_source_open` 与 `profile_export_open` 原来各自拼 `xdg-open` / `gio` 循环，Windows 上根本没有这两个程序，必然失败；改走 `platform::open_target` 后与其它入口同一套实现。
 8. **边界写在文档里。** NSIS 首跑、Windows 真实路径命中、无 node 机器上的检查页都列为用户实测项，没有把静态断言说成端到端验证。
+9. **发布通配符按 artifact 的实际结构核过。** 第一次出包暴露了一个只在 CI 显形的问题：Windows artifact 同时含 `dist-package/` 与 `bundle/nsis/`，公共祖先变成仓库根，文件被放进两层目录，`artifacts/*.exe` 与 `artifacts/*.zip` 匹配不到，安装器生成了却没进 Release。现在发布 job 先把 `*.zip` / `*-setup.exe` 摊平到根目录，该次构建的安装器与 Windows zip 也已补挂到 v0.2.6。教训是发布路径要按 artifact 的真实层级验，不能照本地路径想当然。
 
-**验证证据：** `verify_windows_packaging_134.py` **35/35**、`cargo test --offline --lib` **504 passed / 0 failed**、`npm --prefix desktop run build` 通过、release 构建通过、release 二进制启动冒烟正常；证据 `tests/verification/desktop/evidence/od-arch-134/facts.json`。
+**验证证据：** `verify_windows_packaging_134.py` **36/36**、`cargo test --offline --lib` **504 passed / 0 failed**、`npm --prefix desktop run build` 通过、release 构建通过、release 二进制启动冒烟正常、0.2.6 的 CI 出包成功（NSIS 产出 `OmniDesk_0.2.6_x64-setup.exe` 2.71 MiB）；证据 `tests/verification/desktop/evidence/od-arch-134/facts.json`。
 
 **一句提醒：** 体检页给的是「修好再进来」的路径，门槛是硬的（Node 22+ / Python 3.10+）。如果之后收到「我明明装了却还提示未找到」的反馈，优先看两件事：安装器是否装在用户目录（`%LOCALAPPDATA%` 已覆盖）、以及是否仍在用旧版 zip 目录里的旧二进制启动。
 

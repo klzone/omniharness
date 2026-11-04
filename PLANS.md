@@ -42,7 +42,7 @@
 #### 验收标准
 Release 页出现 x64-setup.exe；用户在两台 Windows（有/无 node）上分别验证：一台向导安装后正常启动，另一台看到环境提示页。全程无黑色终端闪现。
 
-> **实施结果（2026-11-04）：** 安装器、防闪窗、依赖体检三块全部落地。`cargo test --offline --lib` 504 项通过（新增 5 项平台层单测）；`npm --prefix desktop run build` 通过；`verify_windows_packaging_134.py` 35 项全通过。NSIS 产物与「无 node 机器上的检查页」需 CI 出包后在 Windows 实机确认。
+> **实施结果（2026-11-04）：** 安装器、防闪窗、依赖体检三块全部落地。`cargo test --offline --lib` 504 项通过（新增 5 项平台层单测）；`npm --prefix desktop run build` 通过；`verify_windows_packaging_134.py` 36 项全通过。v0.2.6 已由 CI 出包：NSIS 产出 `OmniDesk_0.2.6_x64-setup.exe`（2.71 MiB），Release 同时挂了 macOS zip、Windows zip 与安装器。首轮发布因 artifact 目录层级导致安装器没被挂上，发布 job 已加「摊平」步骤修正。向导安装、无 node 机器上的检查页仍需 Windows 实机确认。
 ### OD-ARCH-133：macOS 上的引擎进程核验与回收（计划者与实施者：本助手；用户授权「授权执行OD-ARCH-133」；2026-11-03 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-133/facts.json）
 
 > **触发：** 132 收尾时跑全量单测，4 项平台失败里有 3 项落在 `process_owner`。核对后确认不是测试写错，而是**运行期缺陷**：宿主与引擎两侧的进程核验都直接读 Linux 的 `/proc`，而 macOS 发布包（v0.2.4 / v0.2.5 用户实机测试）跑的正是这套代码。
