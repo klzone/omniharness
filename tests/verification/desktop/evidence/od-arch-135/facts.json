@@ -1,0 +1,146 @@
+{
+  "plan": "OD-ARCH-135",
+  "platform": "darwin",
+  "cases": [
+    {
+      "name": "win_conf_exists",
+      "ok": true,
+      "detail": "Windows 平台专属配置"
+    },
+    {
+      "name": "win_conf_has_resources",
+      "ok": true,
+      "detail": "['../../engine', '../../runtime/RUNTIME.lock', '../../runtime/dsh-runtime', '../../runtime/dsh-home-seed']"
+    },
+    {
+      "name": "resource_mapped_engine",
+      "ok": true,
+      "detail": "../../engine → engine"
+    },
+    {
+      "name": "resource_mapped_runtime_RUNTIME.lock",
+      "ok": true,
+      "detail": "../../runtime/RUNTIME.lock → runtime/RUNTIME.lock"
+    },
+    {
+      "name": "resource_mapped_runtime_dsh-runtime",
+      "ok": true,
+      "detail": "../../runtime/dsh-runtime → runtime/dsh-runtime"
+    },
+    {
+      "name": "resource_mapped_runtime_dsh-home-seed",
+      "ok": true,
+      "detail": "../../runtime/dsh-home-seed → runtime/dsh-home-seed"
+    },
+    {
+      "name": "engine_dir_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "runtime_lock_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prepare_script_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prepare_builds_seed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prepare_prunes_typescript",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prepare_seed_profiles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "seed_is_gitignored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "wf_windows_runs_prepare",
+      "ok": true,
+      "detail": "windows job 调准备脚本"
+    },
+    {
+      "name": "wf_prepare_before_build",
+      "ok": true,
+      "detail": "准备必须先于 tauri build"
+    },
+    {
+      "name": "portable_calls_prepare",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "portable_no_duplicate_prune",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reusable_uses_port_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reusable_no_process_alive",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no_kill_zero_probe",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fatal_startup_dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fatal_dialog_windows",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "fatal_dialog_called",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "report_has_assets",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "assets_hint_reinstall",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "page_renders_assets",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "main_conf_has_no_resources",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "summary": {
+    "total": 27,
+    "failed": 0
+  },
+  "passed": true
+}

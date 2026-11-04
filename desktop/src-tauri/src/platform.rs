@@ -179,6 +179,8 @@ pub struct EnvironmentReport {
     pub ok: bool,
     pub node: DependencyStatus,
     pub python: DependencyStatus,
+    /// 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。
+    pub assets: DependencyStatus,
 }
 
 /// 探测 node / python：只读，不安装、不改环境。
@@ -243,10 +245,41 @@ pub fn environment_report() -> EnvironmentReport {
             download: "https://www.python.org/downloads/",
         },
     };
+    // 安装完整性：Windows 安装器曾只装 exe，引擎目录根本不存在。这里把
+    // 「包是不是完整的」也作为一项前置条件，缺了就让用户重装，而不是看着
+    // 窗口发呆。仓库开发态天然命中，不影响本机构建。
+    let assets = match repo_root() {
+        Some(root)
+            if root.join("engine").join("omnidesk_engine").is_dir()
+                && root.join("runtime").join("RUNTIME.lock").is_file() =>
+        {
+            DependencyStatus {
+                name: "assets",
+                ok: true,
+                found: true,
+                path: Some(root.display().to_string()),
+                version: None,
+                requirement: "运行时目录",
+                hint: "",
+                download: "https://github.com/klzone/omniharness/releases",
+            }
+        }
+        found_root => DependencyStatus {
+            name: "assets",
+            ok: false,
+            found: found_root.is_some(),
+            path: found_root.map(|root| root.display().to_string()),
+            version: None,
+            requirement: "运行时目录",
+            hint: "安装不完整：缺少 engine/ 或 runtime/。重新运行安装程序即可恢复，已保存的对话与设置不受影响。",
+            download: "https://github.com/klzone/omniharness/releases",
+        },
+    };
     EnvironmentReport {
-        ok: node.ok && python.ok,
+        ok: node.ok && python.ok && assets.ok,
         node,
         python,
+        assets,
     }
 }
 
@@ -839,6 +872,11 @@ mod tests {
     /// 体检结果必须自洽：ok 蕴含 found；缺依赖时仍带下载页与修复提示。
     #[test]
     fn environment_report_is_consistent() {
+        // 体检读进程环境（OMNIDESK_REPO_ROOT / OMNIDESK_NODE…），与其它写环境的
+        // 用例共用一把锁，否则并行时会读到别人的临时根（OD-ARCH-135）。
+        let _guard = crate::test_env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let report = environment_report();
         for item in [&report.node, &report.python] {
             assert!(item.found || !item.ok, "{}：ok 不能先于 found", item.name);
@@ -849,6 +887,37 @@ mod tests {
                 assert!(item.hint.contains("OMNIDESK_"), "{}：缺依赖时要给可操作的修复路径", item.name);
             }
         }
-        assert_eq!(report.ok, report.node.ok && report.python.ok);
+        assert_eq!(
+            report.ok,
+            report.node.ok && report.python.ok && report.assets.ok
+        );
+    }
+
+    /// 安装完整性是第三项：仓库开发态天然带 engine/ 与 runtime/RUNTIME.lock，
+    /// 因此这里必须判为完整；整体 ok 要同时看三项。
+    #[test]
+    fn environment_report_includes_install_assets() {
+        let _guard = crate::test_env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // 明确指向仓库根：既不依赖宿主环境，也不受其它用例残留影响。
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("仓库根")
+            .to_path_buf();
+        let previous = std::env::var_os("OMNIDESK_REPO_ROOT");
+        std::env::set_var("OMNIDESK_REPO_ROOT", &repo);
+        let report = environment_report();
+        match previous {
+            Some(value) => std::env::set_var("OMNIDESK_REPO_ROOT", value),
+            None => std::env::remove_var("OMNIDESK_REPO_ROOT"),
+        }
+        assert_eq!(report.assets.name, "assets");
+        assert!(report.assets.ok, "仓库根应包含 engine/ 与 runtime/RUNTIME.lock");
+        assert_eq!(
+            report.ok,
+            report.node.ok && report.python.ok && report.assets.ok
+        );
     }
 }

@@ -693,10 +693,18 @@ mod tests {
     /// 播种专用夹具：只造目录，不启动任何进程、不读环境变量。
     struct SeedFixture {
         base: PathBuf,
+        previous_repo: Option<std::ffi::OsString>,
+        _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl SeedFixture {
         fn new(tag: &str) -> Self {
+            // 仓库跑过打包脚本后会生成 runtime/dsh-home-seed，播种逻辑会先读它。
+            // 这些用例要验证的是「没有 seed 时按出厂资产播种」，因此把仓库根指到
+            // 一个没有 seed 的临时目录，并在用例期间独占环境变量（OD-ARCH-135）。
+            let _guard = crate::test_env_lock::ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let base = std::env::temp_dir().join(format!(
                 "omnidesk-seed-tests/{}-{}",
                 tag,
@@ -704,7 +712,17 @@ mod tests {
             ));
             let _ = std::fs::remove_dir_all(&base);
             std::fs::create_dir_all(&base).expect("创建播种夹具目录");
-            Self { base }
+            let repo = base.join("repo");
+            std::fs::create_dir_all(repo.join("engine").join("omnidesk_engine"))
+                .expect("创建夹具引擎目录");
+            std::fs::create_dir_all(repo.join("runtime")).expect("创建夹具运行时目录");
+            let previous_repo = std::env::var_os("OMNIDESK_REPO_ROOT");
+            std::env::set_var("OMNIDESK_REPO_ROOT", &repo);
+            Self {
+                base,
+                previous_repo,
+                _guard,
+            }
         }
 
         fn config(&self, channel: &str) -> EngineConfig {
@@ -729,6 +747,10 @@ mod tests {
 
     impl Drop for SeedFixture {
         fn drop(&mut self) {
+            match self.previous_repo.take() {
+                Some(value) => std::env::set_var("OMNIDESK_REPO_ROOT", value),
+                None => std::env::remove_var("OMNIDESK_REPO_ROOT"),
+            }
             let _ = std::fs::remove_dir_all(&self.base);
         }
     }

@@ -1,3 +1,22 @@
+## OD-ARCH-135 审查结论（ARCHITECT，2026-11-04）——通过
+
+**结论：通过。** 安装器缺运行时资产是 134 的直接缺陷：资源清单里一个目录都没写，NSIS 自然只装 exe。本轮用 Windows 专属清单补齐 `engine/`、`runtime/`（含底座与首启 seed），并把准备逻辑抽成一份脚本；同轮修掉两个在 Windows 上必然失败的判定（启动失败无声、凭据服务存活检查恒假）。
+
+**独立复核范围：** HEAD `daed74eb55` + 工作区改动。核对 `tauri.windows.conf.json` 的源路径与目标路径、`prepare-runtime-assets.sh` 的三段操作、`release.yml` 的准备与构建顺序、`build-portable-package.sh` 是否只调用不重复实现、`lib.rs` 的 `report_fatal_startup`、`dsh_settings.rs` 的 `reusable`、`platform.rs` 的 `assets` 项与前端渲染。`runtime/` 仅生成被忽略的 seed。
+
+**审查判断（几处特意验过的边界）：**
+
+1. **资源清单与启动查找同构。** 清单把目录放到安装根，`repo_root_from_exe` 从 exe 所在目录上探 `engine/omnidesk_engine` + `runtime/RUNTIME.lock` 正好命中；本机用同一份清单构建 `.app`，`Resources/` 下确实出现了 `engine`、`runtime/dsh-runtime`、`runtime/dsh-home-seed`，体积从 6.68 MiB 变成 476.63 MiB。这是「清单真的生效」的直接证据，而不是读配置推断。
+2. **只挂 Windows 是对的。** macOS 的 `.app` 由免安装目录另带一套运行时；若主配置也挂资源，macOS 包会重复一份，体积翻倍。
+3. **准备脚本是唯一实现。** 免安装包不再自己裁剪、自己生成 seed，只调用这份脚本；CI 在 `tauri build` 之前调用。顺序错了资源清单会指向不存在的目录，构建直接失败——验证脚本把「准备早于构建」写成断言。
+4. **删除 `process_alive` 是收窄误判面，不是放宽校验。** 端口可达说明服务在跑，随后 `exchange_token` 会用令牌做真正鉴权；保留一个在 Windows 上恒假的进程检查只会把可用实例判死。全仓只有 `reusable()` 调用它，删除后没有悬空引用。
+5. **启动弹窗的文本走环境变量。** 错误消息含中文、路径与引号，拼进 `-Command` 必然踩转义；用 `OMNIDESK_FATAL_TEXT` 传值，脚本本身是常量。弹窗失败也只 `let _ =`，不影响退出码。
+6. **体检第三项让「装坏了」变成可读状态。** `assets` 参与 `report.ok`，缺 `engine/` 或 `runtime/` 时页面直接给重装指引，用户不再面对一个没有解释的窗口。
+7. **测试隔离跟着改。** 仓库里生成过 seed 后，三个播种用例会读到真实 seed，前提失效；`SeedFixture` 现在把 `OMNIDESK_REPO_ROOT` 指到临时根并持环境锁，体检用例也持锁。并行连跑两次均 505/505。
+8. **边界在文档里。** NSIS 写约 3 万个文件的安装耗时、长路径与杀软行为都列为实机项，没有拿本机 `.app` 的结果替代 Windows 安装验证。
+
+**验证证据：** `verify_windows_installer_135.py` **27/27**、`cargo test --offline --lib` **505 passed / 0 failed**（并行两次）、`npm --prefix desktop run build` 通过、本机资源打包实测 `.app` 476.63 MiB；证据 `tests/verification/desktop/evidence/od-arch-135/facts.json`。
+
 ## OD-ARCH-134 审查结论（ARCHITECT，2026-11-04）——通过
 
 **结论：通过。** Windows 发布物从「只有 zip」变成「NSIS 安装向导 + zip」，子进程统一不带控制台窗口，缺 node / python 时启动页直接给出可操作的检查页。三块都落在既有结构里：打包在 workflow 与 conf、平台差异在 `platform.rs`、失败提示在既有 React 外壳。

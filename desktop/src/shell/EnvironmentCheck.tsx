@@ -30,6 +30,7 @@ export function EnvironmentCheck({
         </p>
 
         <div className="mt-4 space-y-3">
+          <DependencyRow item={report.assets} />
           <DependencyRow item={report.node} />
           <DependencyRow item={report.python} />
         </div>
@@ -62,7 +63,8 @@ export function EnvironmentCheck({
 }
 
 function DependencyRow({ item }: { item: EnvironmentDependency }) {
-  const title = item.name === "node" ? "Node.js" : "Python";
+  const title =
+    item.name === "node" ? "Node.js" : item.name === "python" ? "Python" : "运行时目录";
   const state = item.ok ? "就绪" : item.found ? "版本过低" : "未找到";
   return (
     <div className="rounded-xl bg-surface px-4 py-3 ring-1 ring-outline-variant/40">

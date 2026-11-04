@@ -5056,13 +5056,46 @@ fn chrono_like_stamp() -> String {
         .unwrap_or_else(|_| "0".to_string())
 }
 
+/// 启动失败时的可读提示（OD-ARCH-135）。
+///
+/// 打包成 GUI 子系统程序后没有终端：双击安装好的应用，失败就是「完全没反应」。
+/// Windows 用系统消息框把原因摆到屏幕上；其它平台写 stderr（终端启动时可见）。
+fn report_fatal_startup(message: &str) {
+    eprintln!("[OmniDesk][致命] {}", message);
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Stdio;
+        // 文本走环境变量：消息里有中文、路径与引号，拼进 -Command 会踩转义。
+        let script = concat!(
+            "$m = $env:OMNIDESK_FATAL_TEXT; ",
+            "Add-Type -AssemblyName PresentationFramework; ",
+            "[System.Windows.MessageBox]::Show($m, 'OmniDesk 启动失败', 'OK', 'Error') | Out-Null"
+        );
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script,
+        ])
+        .env("OMNIDESK_FATAL_TEXT", message)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+        crate::platform::hide_console(&mut cmd);
+        let _ = cmd.status();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = match build_state() {
         Ok(state) => state,
         Err(message) => {
             // 边界校验失败：给出明确原因并退出，而不是继续运行。
-            eprintln!("[OmniDesk][致命] {}", message);
+            report_fatal_startup(&message);
             std::process::exit(2);
         }
     };
