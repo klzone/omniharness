@@ -31,7 +31,7 @@
 #### 验收标准
 Windows 安装后，安装目录里能看到 `engine/`、`runtime/dsh-runtime/`、`runtime/dsh-home-seed/`；首次启动自动铺到 `%USERPROFILE%\OmniDesk\runtime\dsh-home`，双击即可打开；保存模型密钥一次成功；人为删掉 `runtime/` 后启动会看到「安装不完整」提示。
 
-> **实施结果（2026-11-04）：** 资源清单、准备脚本、CI 顺序、启动弹窗、存活判定、体检第三项全部落地。本机用同一份清单构建 `.app`：体积 6.68 MiB → 476.63 MiB，`Resources/engine`、`Resources/runtime/dsh-runtime`、`Resources/runtime/dsh-home-seed` 均在。`cargo test --offline --lib` 505 项通过（并行连跑两次）；`npm build` 通过；`verify_windows_installer_135.py` 27/27。安装器实机表现待 Windows 用户验证。
+> **实施结果（2026-11-04）：** 资源清单、准备脚本、CI 顺序、启动弹窗、存活判定、体检第三项全部落地。本机用同一份清单构建 `.app`：体积 6.68 MiB → 476.63 MiB，`Resources/engine`、`Resources/runtime/dsh-runtime`、`Resources/runtime/dsh-home-seed` 均在。`cargo test --offline --lib` 505 项通过（并行连跑两次）；`npm build` 通过；`verify_windows_installer_135.py` 27/27。v0.2.7 已出包：安装器 **90.4 MB**（此前 2.7 MB），Windows/macOS 构建均成功；发布 job 因「cp 到自身」失败一次，已修，本版资产手动补挂。安装器实机表现待 Windows 用户验证。
 ### OD-ARCH-134：Windows 安装器与启动体验修复（计划者与实施者：本助手；用户授权「批准 执行 OD-ARCH-134」；2026-11-04 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-134/facts.json）
 
 > **触发：** 用户实测 Windows 包（v0.2.x）：① 下载到的是纯 zip，没有像原版 DSH-desktop 的安装向导；② 双击 OmniDesk.exe 后 node 终端一闪而过，应用无法启动。

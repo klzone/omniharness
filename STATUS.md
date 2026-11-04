@@ -27,6 +27,7 @@ v0.2.6 的 NSIS 安装器只装了主 exe：资源清单里一个运行时目录
 | 前端构建 | `npm --prefix desktop run build` | 通过 |
 | 资源清单实测 | 本机 `tauri build --bundles app` + 同一份清单 | `.app` 6.68 MiB → **476.63 MiB**，`Resources/engine`、`Resources/runtime/dsh-runtime`、`Resources/runtime/dsh-home-seed` 均在 |
 | 准备脚本 | `bash scripts/prepare-runtime-assets.sh` | 裁剪后 30515 个文件；seed 8.2 MB / 600 个文件 |
+| 0.2.7 出包（CI） | `Release` workflow（run 41771413439） | windows/macos 构建成功；安装器 **90.4 MB**（2.7 MB → 90.4 MB，资源确实进包）；Release 已挂 macOS zip、Windows zip、安装器 |
 
 ### 边界与已知限制
 
@@ -35,6 +36,7 @@ v0.2.6 的 NSIS 安装器只装了主 exe：资源清单里一个运行时目录
 3. **seed 依赖网络。** CI 里 `npm install` 失败会警告并继续，此时插件不可用但基础对话仍可跑。
 4. **启动弹窗只在 Windows 生效。** macOS/Linux 保持 stderr，本轮没有做原生弹窗。
 5. **`process_alive` 被删除。** 端口可达 + 后续 `exchange_token` 已经能区分服务是否可用；保留一个在 Windows 上恒假的检查只会制造误判。
+6. **发布 job 的「摊平」步骤补了一个边界。** 第一次跑 0.2.7 时，macOS 的 zip 本来就在 `artifacts/` 根目录，`cp` 到自身报错并让脚本退出，publish 失败；已改为跳过根目录文件。本版产物改用「先推标签、再建 Release、手动挂资产」补齐，0.2.8 起由 CI 自动发布。
 
 ### 未覆盖
 
