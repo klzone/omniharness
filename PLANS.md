@@ -1,5 +1,32 @@
 # 当前实施计划
 
+### OD-ARCH-136：macOS 应用自带运行时 + 安装根识别收紧（计划者与实施者：本助手；用户反馈 0.2.7 mac 版报「/Users/runner/... 安装不完整」；2026-11-04 已实施，用户本机验证通过）
+
+> **触发：** 用户打开 0.2.7 的 macOS 包，环境检查页显示运行时目录为 `/Users/runner/work/omniharness/omniharness`，提示安装不完整。
+
+#### 已核实根因
+
+1. **编译期路径泄漏到发布包。** `repo_root()` 的第三级兜底是 `CARGO_MANIFEST_DIR` 上溯两级，那是构建机的绝对路径。发布包找不到运行时的时候，它把 `/Users/runner/...` 当成安装根返回，界面于是显示一个用户机器上根本不存在的路径。
+2. **macOS 包依赖同目录副本。** `.app` 本身不带运行时，靠免安装目录把 `engine/`、`runtime/` 放在 `.app` 旁边。用户把 `OmniDesk.app` 拖进 `/Applications`（或系统做了 App Translocation），兄弟目录就找不到了，应用必然起不来。
+3. **检查项文案错位。** `assets` 项复用了 node/python 的「版本过低」判断文案，运行时缺失时显示成「版本过低」。
+
+#### 方案（已实施）
+
+1. **`.app` 自带运行时**：新增 `tauri.macos.conf.json`，把 `engine/`、`runtime/RUNTIME.lock`、`runtime/dsh-runtime`、`runtime/dsh-home-seed` 打进 `Contents/Resources`；`repo_root_from_exe` 增加 Resources 查找。这样应用可以单独拖进 `/Applications`，不受同目录文件与 translocation 影响。
+2. **免安装脚本去重**：macOS 分支不再把运行时复制到 `.app` 旁边，zip 里只有一个自带运行时的 `.app` 与启动说明，体积不翻倍；打包前校验 `.app` 内确有 `engine/` 与 `runtime/`，避免误用 target 里旧的空壳构建。
+3. **兜底收紧**：编译期路径只有在真的包含 `engine/omnidesk_engine` 与 `runtime/RUNTIME.lock` 时才认；否则返回 None，让界面报「安装不完整」。构建机路径不再出现在用户界面上。
+4. **文案修正**：运行时目录缺失显示「不完整 / 未找到」，不再叫「版本过低」；该行不再重复展示「需要 运行时目录」。
+5. **验证**：`find_bundle_root` 抽出成可测函数，新增三种布局的单元测试；新增 `verify_macos_bundle_136.py` 校验资源清单、安装根识别、打包守卫与 `.app` 内四个路径；用户本机验证自带运行时的 macOS 包可启动（2026-11-04）；发布后用 `unzip -l` 核对 zip 内结构。
+
+#### 影响范围
+`tauri.macos.conf.json`（新增）、`platform.rs`（安装根识别与兜底）、`scripts/build-portable-package.sh`（macOS 去重）、`release.yml`（macOS 构建前准备资产）、前端体检文案、新验证脚本。
+
+#### 风险
+- macOS `.app` 变为约 480MB（zip 约 150MB），首次启动从包内复制 seed（约 8MB）。
+- 未签名应用首次打开仍需右键「打开」或去隔离属性；这与包内资源无关。
+
+#### 验收标准
+macOS 用户把 `OmniDesk.app` 拖进 `/Applications` 后双击即可启动，不再出现 `/Users/runner/...` 之类的构建机路径；环境检查页在运行时缺失时显示「不完整」而不是「版本过低」。
 ### OD-ARCH-135：Windows 安装器补运行时资产 + 启动可读报错 + 凭据服务存活判定（计划者与实施者：本助手；用户反馈「安装后只有 exe 与 uninstall」；2026-11-04 已实施，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-135/facts.json）
 
 > **触发：** 用户装完 v0.2.6 的 `x64-setup.exe`，安装目录里只有 `omnidesk-desktop.exe` 与 `uninstall.exe`；双击没有反应。同一版本还暴露出「保存模型密钥时报『地址没有留在内存里』」。

@@ -63,9 +63,10 @@ export function EnvironmentCheck({
 }
 
 function DependencyRow({ item }: { item: EnvironmentDependency }) {
-  const title =
-    item.name === "node" ? "Node.js" : item.name === "python" ? "Python" : "运行时目录";
-  const state = item.ok ? "就绪" : item.found ? "版本过低" : "未找到";
+  const isAssets = item.name === "assets";
+  const title = item.name === "node" ? "Node.js" : item.name === "python" ? "Python" : "运行时目录";
+  // 「版本过低」只对 node / python 成立；运行时目录要么在，要么缺。
+  const state = item.ok ? "就绪" : item.found ? (isAssets ? "不完整" : "版本过低") : "未找到";
   return (
     <div className="rounded-xl bg-surface px-4 py-3 ring-1 ring-outline-variant/40">
       <div className="flex items-center gap-2">
@@ -74,7 +75,9 @@ function DependencyRow({ item }: { item: EnvironmentDependency }) {
           className={`inline-block h-2 w-2 rounded-full ${item.ok ? "bg-primary" : "bg-error"}`}
         />
         <span className="text-[12.5px] font-medium text-on-surface">{title}</span>
-        <span className="text-[11.5px] text-outline">需要 {item.requirement}</span>
+        {isAssets ? null : (
+          <span className="text-[11.5px] text-outline">需要 {item.requirement}</span>
+        )}
         <span
           className={`ml-auto text-[11.5px] ${item.ok ? "text-on-surface-variant" : "text-error"}`}
         >

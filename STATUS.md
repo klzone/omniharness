@@ -1,5 +1,43 @@
 # 执行状态
 
+## OD-ARCH-136：macOS 应用自带运行时与安装根识别收紧（2026-11-04；已实施，本机验证 + 用户实测）
+
+> 起点 HEAD `b546c86f9b`。改动 6 个文件 + 2 个新文件（macOS 资源清单、验证脚本）+ 1 份证据；未派子代理；未读凭证。
+
+### 一句话结论
+
+0.2.7 的 macOS 包没有把运行时放进 `.app`，靠同目录的 `engine/`、`runtime/` 工作；找不到时 `repo_root()` 退回编译期 `CARGO_MANIFEST_DIR`，于是用户界面显示 `/Users/runner/...`。现在 `.app` 自带运行时（`Contents/Resources`），应用可以单独拖进 `/Applications`；编译期兜底只在真的含运行时才算数，找不到就老实报「安装不完整」。
+
+### 改动
+
+1. **`desktop/src-tauri/tauri.macos.conf.json`（新增）**：`bundle.resources` 把 `engine/`、`runtime/RUNTIME.lock`、`runtime/dsh-runtime`、`runtime/dsh-home-seed` 打进 `Contents/Resources`。
+2. **`platform.rs`**：抽出 `find_bundle_root`，同时认「与可执行文件同级」和「`Contents/Resources`」两种布局；新增 `looks_like_bundle_root`，编译期兜底路径必须通过同一判定，避免把构建机路径返回给界面。
+3. **`build-portable-package.sh`**：macOS 分支不再复制同目录运行时（`.app` 已自带），zip 里只有一个 `.app` 与启动说明；选包时只接受 `Contents/Resources` 下四项齐全的 `.app`，避免误用 target 里旧版本的空壳构建。
+4. **`release.yml`**：macOS job 在 `tauri build` 之前执行运行时准备脚本。
+5. **体检文案**：运行时目录缺失显示「不完整 / 未找到」，不再套用「版本过低」；该行不再重复「需要 运行时目录」。
+6. **验证**：三种布局的 `find_bundle_root` 单测；新增 `verify_macos_bundle_136.py`（21 项）。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 136 验证 | `python3 tests/verification/desktop/verify_macos_bundle_136.py` | **22/22 通过** |
+| 宿主全量单测 | `cargo test --offline --lib` | **508 passed / 0 failed** |
+| 前端构建 | `npm --prefix desktop run build` | 通过 |
+| macOS 构建 | `tauri build --bundles app`（含新清单） | `.app` **476.65 MiB**，`Contents/Resources` 下 `engine`、`runtime/RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 齐全 |
+| 打包布局 | `PLATFORM=macos-arm64 build-portable-package.sh --no-zip` | 跳过旧的空壳 universal 构建，选中自带运行时的 `.app`；阶段目录仅 `OmniDesk.app` + `启动说明.txt` |
+| 本地 zip 结构 | `PLATFORM=macos-arm64 build-portable-package.sh` + `unzip -Z1` | **181 MB / 72,410 项**；`Contents/Resources` 下 `engine`、`runtime/RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 均在，无同目录重复运行时 |
+| 用户本机实测 | 自带运行时的 macOS 包 | **通过**：用户反馈可启动，不再出现 `/Users/runner/...` 安装不完整提示 |
+
+### 边界与已知限制
+
+1. **`.app` 体积约 480MB。** zip 约 150MB；这是自带运行时的代价，换来可以单独拖进 `/Applications`。
+2. **未签名应用仍会被 Gatekeeper 拦一次。** 右键「打开」或 `xattr -dr com.apple.quarantine` 的步骤不变，与包内资源无关。
+3. **`Contents/Resources` 只读。** 应用运行时数据仍写到 `~/OmniDesk`，不会往包内写。
+
+### 未覆盖
+
+0.2.8 发布后的 zip 下载与全新机器首次启动仍需按发布产物复核；当前证据为本机构建、包结构、单元测试与用户本机实测。
 ## OD-ARCH-135：Windows 安装器补运行时资产与同类启动缺陷（2026-11-04；已实施，本机验证 + CI 出包）
 
 > 起点 HEAD `daed74eb55`。改动 7 个文件 + 2 个新文件（资源清单、准备脚本）+ 1 个新验证脚本与证据；未派子代理；`runtime/` 只生成被忽略的 `dsh-home-seed`；未读凭证。

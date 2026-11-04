@@ -69,6 +69,9 @@ jobs:
         run: bash scripts/sync-app-version.sh
       - name: 引导 DSH 底座
         run: bash scripts/bootstrap-runtime.sh
+      # .app 自带的资源清单引用这些目录，必须先就位（OD-ARCH-136）。
+      - name: 准备运行时资产（裁剪 + 首启 seed）
+        run: bash scripts/prepare-runtime-assets.sh
       - name: 生成应用图标
         working-directory: desktop
         run: npx tauri icon src-tauri/icons/icon-512.png
@@ -182,12 +185,12 @@ jobs:
             ## OmniDesk v${{ needs.meta.outputs.version }}
 
             Windows 提供安装向导（`OmniDesk_*_x64-setup.exe`），也保留解压即用的 zip；
-            macOS(Apple Silicon) 为 zip 免安装包。
+            macOS(Universal) 为 zip 免安装包；`.app` 已自带运行时，解压后可拖入「应用程序」目录直接运行。
 
             ### 使用前
             1. 装 Node.js 22.19+（https://nodejs.org）
             2. 装 Python 3.10+（https://www.python.org）
-            3. 解压后直接运行：Windows 双击 `OmniDesk.exe`，macOS 双击 `OmniDesk.app`
+            3. 解压后直接运行：Windows 双击 `OmniDesk.exe`；macOS 双击 `OmniDesk.app`（也可拖入「应用程序」）
 
             macOS 包未做 Apple 签名/公证，首次打开若提示“无法验证开发者”，请右键点图标 → 打开，
             或在终端执行一次：
