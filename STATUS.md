@@ -29,6 +29,15 @@
 | 本地 zip 结构 | `PLATFORM=macos-arm64 build-portable-package.sh` + `unzip -Z1` | **181 MB / 72,410 项**；`Contents/Resources` 下 `engine`、`runtime/RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 均在，无同目录重复运行时 |
 | 用户本机实测 | 自带运行时的 macOS 包 | **通过**：用户反馈可启动，不再出现 `/Users/runner/...` 安装不完整提示 |
 
+### 0.2.8 出包结果（CI，2026-11-04）
+
+| 检查 | 结果 |
+| --- | --- |
+| Release workflow | run **41848528087**：meta / macos / windows / publish 全部成功 |
+| Release | [v0.2.8](https://github.com/klzone/omniharness/releases/tag/v0.2.8)，tag 指向 `ee96e11de7` |
+| macOS 产物 | `OmniDesk-0.2.8-macos-universal.zip` **177,324,235 bytes / 33,126 项**；`Contents/Resources` 下 `engine`、`RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 齐全，无同目录 `engine/` 或 `runtime/` |
+| Windows 产物 | 安装器 `OmniDesk_0.2.8_x64-setup.exe` **94,813,574 bytes**；免安装 zip **173,924,946 bytes** |
+
 ### 边界与已知限制
 
 1. **`.app` 体积约 480MB。** zip 约 150MB；这是自带运行时的代价，换来可以单独拖进 `/Applications`。
@@ -37,7 +46,7 @@
 
 ### 未覆盖
 
-0.2.8 发布后的 zip 下载与全新机器首次启动仍需按发布产物复核；当前证据为本机构建、包结构、单元测试与用户本机实测。
+0.2.8 的 macOS zip 已从 CI 下载并核对包内结构；全新机器首次启动仍需用户实测。当前证据为本机构建、包结构、单元测试、用户本机实测与 CI 产物核对。
 ## OD-ARCH-135：Windows 安装器补运行时资产与同类启动缺陷（2026-11-04；已实施，本机验证 + CI 出包）
 
 > 起点 HEAD `daed74eb55`。改动 7 个文件 + 2 个新文件（资源清单、准备脚本）+ 1 个新验证脚本与证据；未派子代理；`runtime/` 只生成被忽略的 `dsh-home-seed`；未读凭证。
