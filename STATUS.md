@@ -10,7 +10,7 @@ Windows 用户拿到的发布物原来只有一个 zip：双击 `OmniDesk.exe` �
 
 ### 改动
 
-1. **`release.yml`**：Windows job 由 `--no-bundle` 改为 `--bundles nsis`，产物上传 `dist-package/*.zip` 与 `bundle/nsis/*.exe` 两类，Release 同时挂 zip 与 `x64-setup.exe`。macOS job 保持 `--bundles app`。两个 job 在构建前都调用新的版本同步脚本。
+1. **`release.yml`**：Windows job 由 `--no-bundle` 改为 `--bundles nsis`，产物上传 `dist-package/*.zip` 与 `bundle/nsis/*.exe` 两类，Release 同时挂 zip 与 `x64-setup.exe`。macOS job 保持 `--bundles app`。两个 job 在构建前都调用新的版本同步脚本。发布 job 增加「摊平产物」一步：Windows artifact 同时含 `dist-package/` 与 `bundle/nsis/`，公共祖先变成仓库根，文件被放进两层目录，不摊平的话 `artifacts/*.exe` 匹配不到安装器。
 2. **`tauri.conf.json`**：新增 `bundle.windows.nsis`（`installMode: both`、`SimpChinese`、关闭语言选择器）；版本号由半年前的 `0.2.3` 校正到与 `VERSION` 一致的 `0.2.5`。
 3. **`scripts/sync-app-version.sh`（新增）**：把 `VERSION` 写进 `tauri.conf.json`。发布产物名取自 conf、Release tag 取自 VERSION，两处各写一遍必然漂移，发布前统一一次，内容相同就不写文件。
 4. **`platform.rs`**：新增 `CREATE_NO_WINDOW` 与 `hide_console(&mut Command)`（Windows 生效，其余平台空操作）；`resolve_node` 补 `%ProgramFiles%\nodejs`、nvm-windows、scoop、用户目录解压形态；`resolve_python` 的候选拆成按平台生成，Windows 补 python.org 的两种安装落点与官方 `py -3` 启动器（问出真实解释器路径）；新增 `environment_report()` 与两个依赖状态结构（找到与否、版本、要求、修复提示、下载页）。
@@ -23,15 +23,16 @@ Windows 用户拿到的发布物原来只有一个 zip：双击 `OmniDesk.exe` �
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
-| 134 验证 | `python3 tests/verification/desktop/verify_windows_packaging_134.py` | **35/35 通过** |
+| 134 验证 | `python3 tests/verification/desktop/verify_windows_packaging_134.py` | **36/36 通过** |
 | 宿主全量单测 | `cargo test --offline --lib` | **504 passed / 0 failed**（含新增 5 项平台层单测） |
 | 前端构建 | `npm --prefix desktop run build` | 通过（仅既有 chunk 体积提示） |
 | release 构建 | `cargo build --release --features custom-protocol` | 通过 |
 | 启动冒烟 | release 二进制直接启动 | 进程正常存活、stderr 为空；本机 node 26 / python 3.13，未触发检查页 |
+| 0.2.6 出包（CI） | `Release` workflow（run 41740368120） | 三个 job 成功，NSIS 由 makensis 产出 `OmniDesk_0.2.6_x64-setup.exe`（2.71 MiB）；Release 现有 macOS zip、Windows zip、安装器三个资产 |
 
 ### 边界与已知限制
 
-1. **NSIS 首次在 CI 出包未实测。** 安装器由 `tauri build --bundles nsis` 生成，语言包与图标若有细节问题，需要看 tag 后的 Release 产物再修一轮；本轮只能验证配置与命令面。
+1. **NSIS 首次出包踩到一个发布路径坑，已修。** 第一次运行（41740368120）安装器确实生成了，但发布 job 只挂上了 macOS zip：两个 job 的 artifact 目录层级不同，Windows 的文件被放进 `artifacts/dist-package/` 与 `artifacts/desktop/...` 两层，`artifacts/*.exe` 匹配不到。发布 job 已加「摊平」步骤，并把这个构建的安装器与 Windows zip 补挂到 v0.2.6。安装向导的语言包、图标与安装路径等细节仍需实机确认。
 2. **Windows 分支无法在本机执行。** `windows_node_candidates` / `python_candidates` 的 Windows 部分只过了编译与静态断言，真实路径命中要靠实机；单测覆盖的是版本解析、`hide_console` 不破坏参数、体检结果自洽。
 3. **依赖版本门槛是硬性的。** Node < 22 或 Python < 3.10 会显示「版本过低」并挡住主界面（顶栏仍可进设置）。这与引擎的实际要求一致，但会让「装旧版能凑合」的用户多一步。
 4. **`installMode: both` 需要管理员权限。** 这是允许用户选择「为所有用户安装 / 仅自己」的代价；只想要免提权安装的话应改成 `currentUser`。
@@ -39,7 +40,7 @@ Windows 用户拿到的发布物原来只有一个 zip：双击 `OmniDesk.exe` �
 
 ### 未覆盖
 
-Release 页真实出现 `x64-setup.exe`、向导安装可改目录、桌面快捷方式、无 node 机器上的检查页、全程无黑框——都属于用户实测项，本轮证据为静态断言 + 本机构建与启动。
+Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`）。向导安装可改目录、桌面快捷方式、无 node 机器上的检查页、全程无黑框——都属于用户实机项，本轮证据为静态断言 + CI 出包日志 + 本机构建与启动。
 
 ### 顺带发现（本轮未修）
 
