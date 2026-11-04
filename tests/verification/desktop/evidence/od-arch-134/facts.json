@@ -45,7 +45,7 @@
     {
       "name": "conf_version_matches_version_file",
       "ok": true,
-      "detail": "0.2.6 vs 0.2.6"
+      "detail": "0.2.7 vs 0.2.7"
     },
     {
       "name": "sync_script_exists",

@@ -161,7 +161,10 @@ jobs:
         run: |
           mapfile -t found < <(find artifacts -type f \( -name '*.zip' -o -name '*-setup.exe' \))
           for f in "${found[@]}"; do
-            cp -f "$f" "artifacts/$(basename "$f")"
+            base="$(basename "$f")"
+            # 已经在根目录的（macOS 的 zip）不用再复制；cp 到自身会报错并让脚本退出。
+            [ "$f" = "artifacts/$base" ] && continue
+            cp -f "$f" "artifacts/$base"
           done
       - name: 列出产物
         run: ls -lh artifacts

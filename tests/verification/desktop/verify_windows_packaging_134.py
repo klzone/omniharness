@@ -68,7 +68,9 @@ def main() -> int:
     record("wf_publish_ships_exe", "artifacts/*.exe" in workflow, "Release 上传 exe")
     record(
         "wf_flattens_nested_artifacts",
-        "摊平产物到 artifacts 根目录" in workflow and "*-setup.exe" in workflow,
+        "摊平产物到 artifacts 根目录" in workflow
+        and "*-setup.exe" in workflow
+        and 'artifacts/$base' in workflow,
         "Windows artifact 会带目录层级，发布前要摊平",
     )
     record("wf_body_mentions_setup", "x64-setup.exe" in workflow or "setup.exe" in workflow)
