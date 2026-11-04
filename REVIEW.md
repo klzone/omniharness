@@ -1,3 +1,19 @@
+## OD-ARCH-137 审查结论（ARCHITECT，2026-11-04）——通过
+
+**结论：通过。** 0.2.8 的报错不是 DSH 配置损坏，而是启动顺序问题：新机器还没有 `runtime/dsh-home`，`build_state()` 只装配资产、不播种；模型设置又绕开引擎启动直接调 `dsh --dump-config`，所以必报 `profile "omnidesk-base" does not exist`。本轮把播种提前到启动入口，并在三条模型路径上补了同一道保险。
+
+**独立复核范围：** HEAD `9414b34cce` + 工作区改动。核对 `build_state()` 的调用顺序、`seed_dsh_home_on_startup()` 的日志与失败路径、`model_settings_save` / `task_list_model_routes` / `task_set_model_route` 的 seed 调用位置、`seed_home_from_package()` 的合并语义，以及三个新增测试与 `verify_startup_seed_137.py` 的 12 项断言。
+
+**审查判断：**
+
+1. **根因修在启动顺序上。** `seed_dsh_home_on_startup()` 在资产装配之前执行；标准 Profile 的装配仍然是空操作，但 `dsh-home` 已经由包内 seed 建好。模型设置不再依赖「用户先发一条消息把引擎拉起来」。
+2. **模型路径不是只修一处。** 保存、列表、选择三条入口都在调用 DSH 前补齐 Profile；即使用户绕过启动入口直接触发设置，也不会再报同一个错。
+3. **已有数据根不被覆盖。** `seed_home_from_package()` 现在逐个检查 `profiles/` 与 `skills/`，只在目标不存在时复制；用户改过的清单、补丁与 Skill 原样保留。这解决了 0.2.7 老数据根只有 `web`、升级后仍缺 `omnidesk-base` 的情况。
+4. **失败可诊断。** 播种结果写进 `profile-assets.log`（`created` / `ready` / `error`）；失败不阻断窗口，但模型设置仍会如实报错，且日志能回答「为什么没初始化」。
+5. **验证不是只读源码。** 新回归测试直接调用生产入口 `build_state()`；本地用 0.2.8 包内 DSH 复现了空 home 退出 1、seed home 退出 0。
+
+**验证证据：** `verify_startup_seed_137.py` **12/12**、`cargo test --offline --lib` **509 passed / 0 failed**、新启动回归测试通过、包内 DSH 空 home **退出 1** / seed home **退出 0**（1,242 行输出）；证据 `tests/verification/desktop/evidence/od-arch-137/facts.json`。
+
 ## OD-ARCH-136 审查结论（ARCHITECT，2026-11-04）——通过
 
 **结论：通过。** 用户看到的 `/Users/runner/...` 是 `repo_root()` 把编译期 `CARGO_MANIFEST_DIR` 当成安装根返回的结果；根子在 macOS 包不带运行时、只能靠同目录文件，而用户一移动 `.app` 就落空。本轮让 `.app` 自带运行时，并把兜底路径收紧为「必须真的含 `engine/` 与 `runtime/RUNTIME.lock`」。

@@ -1,0 +1,71 @@
+{
+  "plan": "OD-ARCH-137",
+  "platform": "darwin",
+  "cases": [
+    {
+      "name": "startup_seeds_before_assembly",
+      "ok": true,
+      "detail": "build_state 先播种再装配"
+    },
+    {
+      "name": "startup_seed_calls_seed_profile",
+      "ok": true,
+      "detail": "启动播种复用既有 seed_profile_if_missing"
+    },
+    {
+      "name": "startup_seed_logs_outcome",
+      "ok": true,
+      "detail": "日志记录 seed=created/ready/error"
+    },
+    {
+      "name": "model_save_seeds_profile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "model_list_seeds_profile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "model_set_seeds_profile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "seed_merge_preserves_existing",
+      "ok": true,
+      "detail": "已有 Profile / Skill 不覆盖"
+    },
+    {
+      "name": "prepare_seeds_both_profiles",
+      "ok": true,
+      "detail": "seed 同时准备 omnidesk-base 与 web"
+    },
+    {
+      "name": "base_profile_sample_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regression_tests_exist",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dsh_dump_empty_home_is_rejected",
+      "ok": true,
+      "detail": "空 home 复现 0.2.8 的 profile 不存在"
+    },
+    {
+      "name": "dsh_dump_seeded_home_succeeds",
+      "ok": true,
+      "detail": "铺开 seed 后 DSH 配置转储成功"
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "failed": 0
+  },
+  "passed": true
+}

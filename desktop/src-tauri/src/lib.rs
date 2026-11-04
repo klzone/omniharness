@@ -2553,6 +2553,8 @@ async fn model_settings_save(
         let config = snap.config.lock().unwrap().clone();
         config
     };
+    // 模型设置不经过引擎启动；首次打开时先补齐包内 seed（OD-ARCH-137）。
+    engine_config.seed_profile_if_missing()?;
     // 先取引擎 Profile 当前生效的路由：补丁层对 config 是浅合并，
     // 读不到 Profile 路由就不写盘，避免抹掉 Profile 自带的其它路由。
     let base = model_routes::base_routes(&engine_config, &app_root)?;
@@ -4087,6 +4089,8 @@ async fn task_list_model_routes(app: tauri::AppHandle) -> Result<serde_json::Val
         host.paths.root.clone()
     };
     let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    // 与启动路径同口径：模型下拉可能比引擎更早被打开（OD-ARCH-137）。
+    config.seed_profile_if_missing()?;
     let profiles = model_routes::discover_profiles(&config.dsh_home, &config.profile);
     let mut result = model_routes::list_routes(&config, &profiles)?;
     if let Some(obj) = result.as_object_mut() {
@@ -4123,6 +4127,8 @@ fn task_set_model_route(
         host.paths.root.clone()
     };
     let config = engine_supervisor::EngineConfig::from_env(&app_root)?;
+    // 首次选模型时 dsh-home 可能还没初始化，先按包内 seed 补齐（OD-ARCH-137）。
+    config.seed_profile_if_missing()?;
     let overlay = model_routes::overlay_path(&app_root);
     // OD-ARCH-048：web-api 通道的模型目录按 provider 列模型，provider 未必定义在
     // 引擎 Profile 里（它可能来自共享凭据层的另一个 Profile）。先试指定 Profile，
@@ -4919,6 +4925,105 @@ pub(crate) mod test_env_lock {
 mod command_tests {
     use super::*;
 
+    /// OD-ARCH-137 回归：新机器首次启动、还没起引擎就打开「设置模型」时，
+    /// DSH_HOME 必须已经有包内 seed 的 Profile，否则 DSH 转储会报
+    /// `profile "omnidesk-base" does not exist`。
+    ///
+    /// 这里直接跑生产启动入口 `build_state()`，验证它会在装配资产之前完成播种。
+    #[test]
+    fn build_state_seeds_bundled_home_before_model_settings() {
+        let _guard = crate::test_env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-startup-seed-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let app_root = base.join("app");
+        let dsh_home = base.join("runtime/dsh-home");
+        let agents_home = base.join("runtime/agents-home");
+        let bundle = base.join("bundle");
+        let engine_dir = bundle.join("engine");
+        std::fs::create_dir_all(engine_dir.join("omnidesk_engine")).unwrap();
+        let cli = bundle.join("runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
+        std::fs::create_dir_all(cli.parent().unwrap()).unwrap();
+        std::fs::write(&cli, "// stub\n").unwrap();
+        let python = base.join("python3-stub");
+        std::fs::write(&python, "#!/bin/sh\nexit 0\n").unwrap();
+
+        let seed = bundle.join("runtime/dsh-home-seed");
+        let base_profile = seed.join("profiles/omnidesk-base");
+        std::fs::create_dir_all(&base_profile).unwrap();
+        std::fs::write(
+            base_profile.join("package.json"),
+            "{\"name\":\"dsh-profile-omnidesk-base\"}\n",
+        )
+        .unwrap();
+        std::fs::write(base_profile.join("cordis.patch.yml"), "# seed\n").unwrap();
+        let web_profile = seed.join("profiles/web");
+        std::fs::create_dir_all(&web_profile).unwrap();
+        std::fs::write(web_profile.join("package.json"), "{\"name\":\"dsh-profile-web\"}\n")
+            .unwrap();
+        let skill = seed.join("skills/demo");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "# demo\n").unwrap();
+
+        let keys = [
+            "OMNIDESK_APP_DATA_ROOT",
+            "OMNIDESK_DSH_HOME",
+            "OMNIDESK_AGENTS_HOME",
+            "OMNIDESK_ENGINE_DIR",
+            "OMNIDESK_DSH_CLI",
+            "OMNIDESK_REPO_ROOT",
+            "OMNIDESK_DSH_PROFILE",
+            "OMNIDESK_ENGINE_CHANNEL",
+            "OMNIDESK_DSH_PATCHES",
+            "OMNIDESK_PYTHON",
+        ];
+        let snapshot: Vec<(&str, Option<std::ffi::OsString>)> = keys
+            .iter()
+            .map(|key| (*key, std::env::var_os(key)))
+            .collect();
+        std::env::set_var("OMNIDESK_APP_DATA_ROOT", &app_root);
+        std::env::set_var("OMNIDESK_DSH_HOME", &dsh_home);
+        std::env::set_var("OMNIDESK_AGENTS_HOME", &agents_home);
+        std::env::set_var("OMNIDESK_ENGINE_DIR", &engine_dir);
+        std::env::set_var("OMNIDESK_DSH_CLI", &cli);
+        std::env::set_var("OMNIDESK_REPO_ROOT", &bundle);
+        std::env::set_var("OMNIDESK_PYTHON", &python);
+        std::env::remove_var("OMNIDESK_DSH_PROFILE");
+        std::env::remove_var("OMNIDESK_ENGINE_CHANNEL");
+        std::env::remove_var("OMNIDESK_DSH_PATCHES");
+
+        let result = super::build_state();
+        let manifest = dsh_home.join("profiles/omnidesk-base/package.json");
+        let copied_skill = dsh_home.join("skills/demo/SKILL.md");
+        let log = app_root.join("logs/profile-assets.log");
+        let seeded = manifest.is_file();
+        let skill_copied = copied_skill.is_file();
+        let log_text = std::fs::read_to_string(&log).unwrap_or_default();
+
+        for (key, value) in snapshot {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
+
+        assert!(result.is_ok(), "启动入口应成功：{:?}", result.err());
+        assert!(
+            seeded,
+            "首次启动必须把包内 seed 的 omnidesk-base Profile 铺到 {}，实际日志：{}",
+            dsh_home.display(),
+            log_text
+        );
+        assert!(skill_copied, "seed 里的 Skill 也必须随包铺开");
+        assert!(log_text.contains("seed=ready"), "启动日志应记录播种结果：{log_text}");
+    }
+
     /// 直接调用宿主命令（不经 UI）：端点无法确认或权限关闭时必须拒绝，且不创建任何目录。
     /// OD-ARCH-023：准备目录的入口同样受守卫保护——屏障生效期间必须被拒绝，
     /// 且不得产生任何文件系统副作用。
@@ -5001,6 +5106,10 @@ fn build_state() -> Result<HostState, String> {
         .ensure()
         .map_err(|e| format!("创建应用数据目录失败（{}）：{}", paths.root.display(), e))?;
     let config = EngineConfig::from_env(&paths.root)?;
+    // OD-ARCH-137：首次启动先把包内 seed 铺到隔离 DSH_HOME。模型设置与端点分类
+    // 不经过引擎启动，不能等 `start()` 才播种；否则新机器上打开「设置模型」会
+    // 直接报 profile/omnidesk-base 不存在。
+    seed_dsh_home_on_startup(&paths, &config);
     // OD-ARCH-109：资产装配必须在**应用启动**时完成，而不是等引擎第一次被拉起。
     //
     // 引擎只在提交首条任务时才 `start()`，冷启动后什么都不做时把装配挂在 `start()`
@@ -5014,6 +5123,37 @@ fn build_state() -> Result<HostState, String> {
         lifecycle: Arc::new(EngineLifecycle::new()),
         vault_index: Arc::new(Mutex::new(None)),
     })
+}
+
+/// 启动期把包内 `runtime/dsh-home-seed` 铺到隔离 DSH_HOME（OD-ARCH-137）。
+///
+/// 只在缺失时写，失败不阻断启动：界面后续仍会给出模型配置错误，
+/// 但日志必须留下「为什么没初始化」，不能静默。
+fn seed_dsh_home_on_startup(paths: &AppPaths, config: &EngineConfig) {
+    let manifest = config
+        .dsh_home
+        .join("profiles")
+        .join(&config.profile)
+        .join("package.json");
+    let outcome = match config.seed_profile_if_missing() {
+        Ok(true) => "created".to_string(),
+        Ok(false) if manifest.is_file() => "ready".to_string(),
+        Ok(false) => "skipped".to_string(),
+        Err(e) => format!("error: {}", e),
+    };
+    append_profile_assets_log(
+        &paths.root,
+        &format!(
+            "profile={} channel={} seed={}\n",
+            config.profile, config.channel, outcome
+        ),
+    );
+    if outcome.starts_with("error") {
+        eprintln!(
+            "[OmniDesk][seed] profile={} channel={} seed={}",
+            config.profile, config.channel, outcome
+        );
+    }
 }
 
 /// 启动期装配 Profile 资产，并把结果写进 `logs/profile-assets.log`。

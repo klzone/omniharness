@@ -201,8 +201,9 @@ jobs:
             Windows 包未签名，SmartScreen 可能提示“未知发布者”，选择“仍要运行”。
 
             ### 首次启动
-            程序会把包内 `runtime/dsh-home-seed` 的 Profile 与 Skill 复制到 `~/OmniDesk/runtime/dsh-home`
-            （Windows 为 `%USERPROFILE%\OmniDesk\...`），已存在则不覆盖。
+            程序会先把包内 `runtime/dsh-home-seed` 的 Profile 与 Skill 复制到 `~/OmniDesk/runtime/dsh-home`
+            （Windows 为 `%USERPROFILE%\OmniDesk\...`），已存在则只补缺失项、不覆盖。
+            这一步发生在窗口打开前，因此第一次打开「设置模型」就能读到 Profile。
             包内不含任何密钥，需在“设置 → 模型服务”里填自己的 API Key。
 
             ### 数据位置
