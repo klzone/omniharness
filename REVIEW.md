@@ -14,8 +14,9 @@
 6. **体检第三项让「装坏了」变成可读状态。** `assets` 参与 `report.ok`，缺 `engine/` 或 `runtime/` 时页面直接给重装指引，用户不再面对一个没有解释的窗口。
 7. **测试隔离跟着改。** 仓库里生成过 seed 后，三个播种用例会读到真实 seed，前提失效；`SeedFixture` 现在把 `OMNIDESK_REPO_ROOT` 指到临时根并持环境锁，体检用例也持锁。并行连跑两次均 505/505。
 8. **边界在文档里。** NSIS 写约 3 万个文件的安装耗时、长路径与杀软行为都列为实机项，没有拿本机 `.app` 的结果替代 Windows 安装验证。
+9. **出包体积是资源生效的旁证。** v0.2.7 的 Windows 安装器从 2.71 MB 变成 **90.4 MB**，与「只在资源清单里加了运行时」这一改动相符；如果 `tauri.windows.conf.json` 没被合并，体积不会变。这也顺带说明平台专属配置确实生效。发布 job 还踩到「`cp` 到自身」的边界（macOS 的 zip 已在根目录），已修并在本版手动补挂资产。
 
-**验证证据：** `verify_windows_installer_135.py` **27/27**、`cargo test --offline --lib` **505 passed / 0 failed**（并行两次）、`npm --prefix desktop run build` 通过、本机资源打包实测 `.app` 476.63 MiB；证据 `tests/verification/desktop/evidence/od-arch-135/facts.json`。
+**验证证据：** `verify_windows_installer_135.py` **27/27**、`cargo test --offline --lib` **505 passed / 0 failed**（并行两次）、`npm --prefix desktop run build` 通过、本机资源打包实测 `.app` 476.63 MiB、v0.2.7 安装器 90.4 MB；证据 `tests/verification/desktop/evidence/od-arch-135/facts.json`。
 
 ## OD-ARCH-134 审查结论（ARCHITECT，2026-11-04）——通过
 
