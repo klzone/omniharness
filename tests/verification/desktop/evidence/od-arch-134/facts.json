@@ -23,6 +23,11 @@
       "detail": "Release 上传 exe"
     },
     {
+      "name": "wf_flattens_nested_artifacts",
+      "ok": true,
+      "detail": "Windows artifact 会带目录层级，发布前要摊平"
+    },
+    {
       "name": "wf_body_mentions_setup",
       "ok": true,
       "detail": ""
@@ -40,7 +45,7 @@
     {
       "name": "conf_version_matches_version_file",
       "ok": true,
-      "detail": "0.2.5 vs 0.2.5"
+      "detail": "0.2.6 vs 0.2.6"
     },
     {
       "name": "sync_script_exists",
@@ -179,7 +184,7 @@
     }
   ],
   "summary": {
-    "total": 35,
+    "total": 36,
     "failed": 0
   },
   "passed": true
