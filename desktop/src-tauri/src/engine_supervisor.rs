@@ -255,9 +255,6 @@ impl EngineConfig {
     /// 目的：发布包换一台电脑解压后，Profile（含插件 node_modules）与 Skill 开箱可用，
     /// 不需要用户手工跑 npm。仓库开发态没有这个 seed 目录，因此此处直接跳过。
     fn seed_home_from_package(&self) -> Result<(), String> {
-        if self.dsh_home.join("profiles").is_dir() {
-            return Ok(());
-        }
         let Some(repo) = Self::repo_root() else {
             return Ok(());
         };
@@ -265,14 +262,47 @@ impl EngineConfig {
         if !seed.is_dir() {
             return Ok(());
         }
-        copy_tree(&seed, &self.dsh_home).map_err(|e| {
-            format!(
-                "初始化 DSH 数据根失败（{} → {}）：{}",
-                seed.display(),
-                self.dsh_home.display(),
-                e
-            )
-        })
+        if !self.dsh_home.join("profiles").is_dir() {
+            return copy_tree(&seed, &self.dsh_home).map_err(|e| {
+                format!(
+                    "初始化 DSH 数据根失败（{} → {}）：{}",
+                    seed.display(),
+                    self.dsh_home.display(),
+                    e
+                )
+            });
+        }
+        // 已有数据根（升级或部分初始化）：只补缺失的 Profile 与 Skill，绝不覆盖。
+        // 0.2.7 的老数据根可能只有 `web`，直接跳过会让模型设置继续报
+        // `omnidesk-base` 不存在（OD-ARCH-137）。
+        for sub in ["profiles", "skills"] {
+            let src = seed.join(sub);
+            if !src.is_dir() {
+                continue;
+            }
+            let entries = std::fs::read_dir(&src).map_err(|e| {
+                format!("读取包内 {} 失败（{}）：{}", sub, src.display(), e)
+            })?;
+            for entry in entries {
+                let entry = entry.map_err(|e| {
+                    format!("读取包内 {} 条目失败（{}）：{}", sub, src.display(), e)
+                })?;
+                let name = entry.file_name();
+                let dst = self.dsh_home.join(sub).join(&name);
+                if dst.exists() {
+                    continue;
+                }
+                copy_tree(&entry.path(), &dst).map_err(|e| {
+                    format!(
+                        "补齐 DSH 资产失败（{} → {}）：{}",
+                        entry.path().display(),
+                        dst.display(),
+                        e
+                    )
+                })?;
+            }
+        }
+        Ok(())
     }
 
     /// 仓库根：优先环境变量，其次编译期 MANIFEST 的相对路径（仅开发构建可用）。
@@ -779,6 +809,88 @@ mod tests {
         assert!(manifest.contains("dsh-cost-meter"));
         // 资产里不得出现任何密钥值，只允许 apiKeyEnv 引用名。
         assert!(patch.contains("apiKeyEnv"));
+    }
+
+    /// OD-ARCH-137：新机器没有任何 DSH_HOME 时，包内 seed 的完整 Profile 与 Skill
+    /// 必须先铺开；模型设置在第一条消息之前就会读它。
+    #[test]
+    fn seed_profile_copies_bundled_home_on_fresh_install() {
+        let fixture = SeedFixture::new("fresh-seed");
+        let seed = fixture.base.join("repo/runtime/dsh-home-seed");
+        for (profile, body) in [
+            ("omnidesk-base", "seed-base"),
+            ("web", "seed-web"),
+        ] {
+            let dir = seed.join("profiles").join(profile);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("package.json"), format!("{{\"name\":\"{body}\"}}\n"))
+                .unwrap();
+        }
+        let skill = seed.join("skills/demo");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "seed-skill\n").unwrap();
+
+        let mut config = fixture.config("web-api");
+        config.profile = "omnidesk-base".to_string();
+        assert!(config.seed_profile_if_missing().is_ok());
+
+        let home = fixture.base.join("dsh-home");
+        assert!(std::fs::read_to_string(home.join("profiles/omnidesk-base/package.json"))
+            .unwrap()
+            .contains("seed-base"));
+        assert!(std::fs::read_to_string(home.join("profiles/web/package.json"))
+            .unwrap()
+            .contains("seed-web"));
+        assert!(home.join("skills/demo/SKILL.md").is_file());
+    }
+
+    /// OD-ARCH-137：已有数据根只补缺失项。0.2.7 可能只有 `web`，不能因此跳过
+    /// `omnidesk-base`；反过来，用户已经改过的 Profile / Skill 一个字都不能动。
+    #[test]
+    fn seed_home_fills_missing_profiles_without_overwriting_existing() {
+        let fixture = SeedFixture::new("merge-seed");
+        let seed = fixture.base.join("repo/runtime/dsh-home-seed");
+        for (profile, body) in [
+            ("omnidesk-base", "seed-base"),
+            ("web", "seed-web"),
+        ] {
+            let dir = seed.join("profiles").join(profile);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("package.json"), format!("{{\"name\":\"{body}\"}}\n"))
+                .unwrap();
+        }
+        for name in ["demo", "existing"] {
+            let dir = seed.join("skills").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), format!("seed-{name}\n")).unwrap();
+        }
+
+        let home = fixture.base.join("dsh-home");
+        let user_web = home.join("profiles/web");
+        std::fs::create_dir_all(&user_web).unwrap();
+        std::fs::write(user_web.join("package.json"), "user-web\n").unwrap();
+        let user_skill = home.join("skills/existing");
+        std::fs::create_dir_all(&user_skill).unwrap();
+        std::fs::write(user_skill.join("SKILL.md"), "user-skill\n").unwrap();
+
+        let mut config = fixture.config("web-api");
+        config.profile = "omnidesk-base".to_string();
+        assert!(config.seed_profile_if_missing().is_ok());
+
+        assert_eq!(
+            std::fs::read_to_string(user_web.join("package.json")).unwrap(),
+            "user-web\n",
+            "已有 Profile 必须原样保留"
+        );
+        assert_eq!(
+            std::fs::read_to_string(user_skill.join("SKILL.md")).unwrap(),
+            "user-skill\n",
+            "已有 Skill 必须原样保留"
+        );
+        assert!(std::fs::read_to_string(home.join("profiles/omnidesk-base/package.json"))
+            .unwrap()
+            .contains("seed-base"));
+        assert!(home.join("skills/demo/SKILL.md").is_file());
     }
 
     /// 已有 Profile 一律不覆盖：这是「用户可改」的边界。

@@ -1,5 +1,38 @@
 # 执行状态
 
+## OD-ARCH-137：首次启动先播种 DSH Profile（2026-11-04；已实施，本机验证）
+
+> 起点 HEAD `9414b34cce`。改动 2 个 Rust 文件 + 1 个新验证脚本与证据；未派子代理；未读凭证；`runtime/` 零改动。
+
+### 一句话结论
+
+0.2.8 在全新的 `~/OmniDesk` 上还没有 `runtime/dsh-home`，启动入口只装配资产、不播种；模型设置又绕过引擎启动直接调 `dsh --dump-config`，于是报 `profile "omnidesk-base" does not exist`。现在启动先铺包内 seed，三条模型路径也会在转储前补齐 Profile；已有数据根只补缺失项。
+
+### 改动
+
+1. **`lib.rs` 启动入口**：`build_state()` 在 `assemble_profile_assets_on_startup()` 之前调用 `seed_dsh_home_on_startup()`，并把播种结果写入 `logs/profile-assets.log`。
+2. **`lib.rs` 模型路径**：`model_settings_save`、`task_list_model_routes`、`task_set_model_route` 在 DSH 转储前执行 `seed_profile_if_missing()`。
+3. **`engine_supervisor.rs` 合并语义**：`seed_home_from_package()` 在已有 `profiles/` 时不再整体跳过，而是逐个补齐缺失的 Profile / Skill；已有文件不覆盖。
+4. **回归测试**：`build_state_seeds_bundled_home_before_model_settings` 直接跑生产启动入口；新增 fresh install 与 partial home 两个 seed 合并用例。
+5. **验证脚本**：`tests/verification/desktop/verify_startup_seed_137.py`（12 项）。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 137 验证 | `python3 tests/verification/desktop/verify_startup_seed_137.py` | **12/12 通过** |
+| 宿主全量单测 | `cargo test --offline --lib` | **509 passed / 0 failed** |
+| 新启动回归 | `cargo test --offline --lib build_state_seeds_bundled_home_before_model_settings` | 通过 |
+| DSH 转储实测 | 0.2.8 包内 DSH，空 home vs seed home | 空 home **退出 1**（复现原文）；seed home **退出 0**，输出 1,242 行 |
+
+### 关于「单文件 500MB」
+
+macOS 的 `.app` 是包目录，Finder 只显示成一个文件。0.2.8 的 `OmniDesk.app` 约 560MB（其中 `runtime/dsh-runtime` 约 549MB，块占用口径；逻辑文件约 475MiB），zip 为 169MB。0.2.7 也有同样一套运行时，只是放在 `.app` 旁边；136 把运行时搬进 `Contents/Resources`，所以现在看起来是一个 500MB 的单文件。这是「拖进 /Applications 就能跑」的代价，不是重复打包。
+
+### 未覆盖
+
+0.2.9 发布后在全新机器上下载 zip、首次启动、打开「设置模型」的完整路径仍需用户实测；本轮证据为本机启动入口测试、seed 合并测试与包内 DSH 转储实测。
+
 ## OD-ARCH-136：macOS 应用自带运行时与安装根识别收紧（2026-11-04；已实施，本机验证 + 用户实测）
 
 > 起点 HEAD `b546c86f9b`。改动 6 个文件 + 2 个新文件（macOS 资源清单、验证脚本）+ 1 份证据；未派子代理；未读凭证。

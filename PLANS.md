@@ -1,5 +1,39 @@
 # 当前实施计划
 
+### OD-ARCH-137：首次启动先播种 DSH Profile（计划者与实施者：本助手；用户反馈 0.2.8 新机器打开「设置模型」报 `profile "omnidesk-base" does not exist`；2026-11-04 已实施）
+
+#### 触发
+
+0.2.8 在全新的 `~/OmniDesk` 上打开「设置模型」时提示：
+「DSH 配置转储失败（退出码 1）：Profile「omnidesk-base」在 DSH 里不存在」。此时 `~/OmniDesk` 只有 `app/`，没有 `runtime/`。
+
+#### 已核实根因
+
+1. **启动入口没有播种。** `build_state()` 只调用 `assemble_profile_assets_on_startup()`；标准 Profile（`omnidesk-base`）下装配是 no-op，`dsh-home` 仍然不存在。
+2. **模型设置不经过引擎启动。** `task_list_model_routes` / `model_settings_save` / `task_set_model_route` 直接构造 `EngineConfig` 并调用 `dsh --dump-config`，不会触发 `engine.start()` 或 `dsh_settings::ensure()` 里的 `seed_profile_if_missing()`。
+3. **全新数据根缺少 Profile。** 包内 `runtime/dsh-home-seed` 有 `omnidesk-base` 与 `web`，但没有被铺到用户目录；DSH 自然报 profile 不存在。
+
+#### 方案（已实施）
+
+1. **启动时播种**：`build_state()` 在装配资产之前调用 `seed_dsh_home_on_startup()`，把包内 seed 铺到隔离 `DSH_HOME`，并把 `seed=created/ready/error` 写进 `logs/profile-assets.log`。
+2. **模型路径兜底**：`model_settings_save`、`task_list_model_routes`、`task_set_model_route` 在调用 DSH 前先执行 `seed_profile_if_missing()`，不再依赖「引擎先启动过」。
+3. **部分数据根补齐**：`seed_home_from_package()` 从「有 `profiles/` 就整体跳过」改为「逐个补缺失的 Profile 与 Skill」，已有用户文件不覆盖。
+4. **验证**：新增 `build_state_seeds_bundled_home_before_model_settings` 回归测试；`verify_startup_seed_137.py` 静态检查三条模型路径，并用本机 `.app` 自带 DSH 实测「空 home 退出 1、seed home 退出 0」。
+
+#### 影响范围
+
+`desktop/src-tauri/src/lib.rs`（启动播种 + 三条模型路径）、`desktop/src-tauri/src/engine_supervisor.rs`（seed 合并语义）、新增验证脚本与证据、版本号 0.2.9。
+
+#### 风险与边界
+
+- 首次启动会复制约 8MB 的 seed（Profile 依赖 + Skill）；之后启动只检查存在性。
+- 已有数据根只补缺失项；用户改过的 `package.json`、`cordis.patch.yml`、`SKILL.md` 一律不覆盖。
+- 包内 seed 缺失时仍会报模型配置错误，但 `profile-assets.log` 会留下 `seed=error`，不再静默。
+
+#### 验收标准
+
+全新 `~/OmniDesk` 启动 0.2.9 后，`runtime/dsh-home/profiles/omnidesk-base/package.json` 存在；打开「设置模型」能正常列出路由；DSH `--dump-config` 在铺开 seed 后退出 0；全量单测通过。
+
 ### OD-ARCH-136：macOS 应用自带运行时 + 安装根识别收紧（计划者与实施者：本助手；用户反馈 0.2.7 mac 版报「/Users/runner/... 安装不完整」；2026-11-04 已实施，用户本机验证通过）
 
 > **触发：** 用户打开 0.2.7 的 macOS 包，环境检查页显示运行时目录为 `/Users/runner/work/omniharness/omniharness`，提示安装不完整。
