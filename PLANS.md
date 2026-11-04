@@ -16,7 +16,7 @@
 2. **免安装脚本去重**：macOS 分支不再把运行时复制到 `.app` 旁边，zip 里只有一个自带运行时的 `.app` 与启动说明，体积不翻倍；打包前校验 `.app` 内确有 `engine/` 与 `runtime/`，避免误用 target 里旧的空壳构建。
 3. **兜底收紧**：编译期路径只有在真的包含 `engine/omnidesk_engine` 与 `runtime/RUNTIME.lock` 时才认；否则返回 None，让界面报「安装不完整」。构建机路径不再出现在用户界面上。
 4. **文案修正**：运行时目录缺失显示「不完整 / 未找到」，不再叫「版本过低」；该行不再重复展示「需要 运行时目录」。
-5. **验证**：`find_bundle_root` 抽出成可测函数，新增三种布局的单元测试；新增 `verify_macos_bundle_136.py` 校验资源清单、安装根识别、打包守卫与 `.app` 内四个路径；用户本机验证自带运行时的 macOS 包可启动（2026-11-04）；发布后用 `unzip -l` 核对 zip 内结构。
+5. **验证**：`find_bundle_root` 抽出成可测函数，新增三种布局的单元测试；新增 `verify_macos_bundle_136.py` 校验资源清单、安装根识别、打包守卫与 `.app` 内四个路径；用户本机验证自带运行时的 macOS 包可启动（2026-11-04）；0.2.8 发布后已用 `unzip -Z1` 核对 zip 内结构（33,126 项，四个运行时路径齐全，无同目录副本）。
 
 #### 影响范围
 `tauri.macos.conf.json`（新增）、`platform.rs`（安装根识别与兜底）、`scripts/build-portable-package.sh`（macOS 去重）、`release.yml`（macOS 构建前准备资产）、前端体检文案、新验证脚本。

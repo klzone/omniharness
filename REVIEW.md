@@ -13,7 +13,7 @@
 5. **文案与语义对齐。** 运行时目录没有「版本」概念，缺失时显示「不完整 / 未找到」；`assets` 行不再重复「需要 运行时目录」。
 6. **边界如实。** 未签名应用的 Gatekeeper 拦截与包内资源无关，仍需右键打开或去隔离属性；`.app` 体积约 480MB，这是自带运行时的代价。
 
-**验证证据：** `verify_macos_bundle_136.py` **22/22**、`cargo test --offline --lib` **508 passed / 0 failed**、`npm --prefix desktop run build` 通过、本机 `.app` 476.65 MiB 且 `Contents/Resources` 四项齐全；证据 `tests/verification/desktop/evidence/od-arch-136/facts.json`。用户实测（2026-11-04）：自带运行时的 macOS 包在本机验证通过，不再出现 `/Users/runner/...` 安装不完整提示。
+**验证证据：** `verify_macos_bundle_136.py` **22/22**、`cargo test --offline --lib` **508 passed / 0 failed**、`npm --prefix desktop run build` 通过、本机 `.app` 476.65 MiB 且 `Contents/Resources` 四项齐全；证据 `tests/verification/desktop/evidence/od-arch-136/facts.json`。用户实测（2026-11-04）：自带运行时的 macOS 包在本机验证通过，不再出现 `/Users/runner/...` 安装不完整提示。0.2.8 已由 Release 工作流 **41848528087** 发布：macOS zip **177,324,235 bytes / 33,126 项**，`Contents/Resources` 下 `engine`、`RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 齐全且无同目录副本；Windows 安装器 **94,813,574 bytes**。
 
 ## OD-ARCH-135 审查结论（ARCHITECT，2026-11-04）——通过
 
