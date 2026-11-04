@@ -1,0 +1,121 @@
+{
+  "plan": "OD-ARCH-136",
+  "platform": "darwin",
+  "cases": [
+    {
+      "name": "mac_conf_exists",
+      "ok": true,
+      "detail": "macOS 平台专属配置"
+    },
+    {
+      "name": "mac_resource_engine",
+      "ok": true,
+      "detail": "../../engine → engine"
+    },
+    {
+      "name": "mac_resource_runtime_RUNTIME.lock",
+      "ok": true,
+      "detail": "../../runtime/RUNTIME.lock → runtime/RUNTIME.lock"
+    },
+    {
+      "name": "mac_resource_runtime_dsh-runtime",
+      "ok": true,
+      "detail": "../../runtime/dsh-runtime → runtime/dsh-runtime"
+    },
+    {
+      "name": "mac_resource_runtime_dsh-home-seed",
+      "ok": true,
+      "detail": "../../runtime/dsh-home-seed → runtime/dsh-home-seed"
+    },
+    {
+      "name": "wf_macos_prepares_assets",
+      "ok": true,
+      "detail": "macOS job 调准备脚本"
+    },
+    {
+      "name": "wf_macos_prepare_before_build",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "portable_skips_mac_duplicates",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "portable_mac_message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "portable_requires_bundled_runtime",
+      "ok": true,
+      "detail": "打包前校验 .app 真的自带运行时，拒绝旧的空壳构建"
+    },
+    {
+      "name": "find_bundle_root_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "find_bundle_root_checks_resources",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "bundle_root_guard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compile_fallback_validated",
+      "ok": true,
+      "detail": "编译期路径必须真的含运行时才算数"
+    },
+    {
+      "name": "tests_cover_app_layout",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "label_not_version_for_assets",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "assets_row_hides_requirement",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "built_app_has_engine",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "built_app_has_runtime_lock",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "built_app_has_dsh_runtime",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "built_app_has_seed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "built_app_has_no_sibling_engine",
+      "ok": true,
+      "detail": "同目录不应再有 engine"
+    }
+  ],
+  "summary": {
+    "total": 22,
+    "failed": 0
+  },
+  "passed": true
+}

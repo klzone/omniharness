@@ -383,23 +383,51 @@ pub fn repo_root() -> Option<PathBuf> {
     if let Some(found) = repo_root_from_exe() {
         return Some(found);
     }
+    // 编译期路径只对开发构建有意义。发布包落到这里说明运行时没找到，
+    // 宁可返回 None 让上层报「安装不完整」，也不要把构建机的路径
+    // （/Users/runner/work/...）显示给用户（OD-ARCH-136）。
     let manifest = option_env!("CARGO_MANIFEST_DIR")?;
-    PathBuf::from(manifest)
+    let candidate = PathBuf::from(manifest)
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
+        .map(|p| p.to_path_buf())?;
+    if looks_like_bundle_root(&candidate) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// 某个目录像不像「带运行时的安装根」：引擎包与底座版本锁同时存在。
+fn looks_like_bundle_root(dir: &Path) -> bool {
+    dir.join("engine").join("omnidesk_engine").is_dir()
+        && dir.join("runtime").join("RUNTIME.lock").is_file()
 }
 
 fn repo_root_from_exe() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    let mut dir = exe.parent()?;
+    find_bundle_root(exe.parent()?)
+}
+
+/// 从某个目录（通常是可执行文件所在目录）向上找「带运行时的安装根」。
+///
+/// 两条布局都要认：
+///   * 免安装包 / Windows 安装：`engine/` 与 `runtime/` 与可执行文件同级；
+///   * macOS `.app`：资源在 `Contents/Resources/`（OD-ARCH-136）。
+fn find_bundle_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start;
     // 发布包：exe 在包根；macOS .app：Contents/MacOS → 上溯三级即包根；
     // 开发构建：desktop/src-tauri/target/release → 上溯五级即仓库根。
-    for _ in 0..6 {
-        if dir.join("engine").join("omnidesk_engine").is_dir()
-            && dir.join("runtime").join("RUNTIME.lock").is_file()
-        {
+    for _ in 0..7 {
+        if looks_like_bundle_root(dir) {
             return Some(dir.to_path_buf());
+        }
+        // macOS .app 的资源在 Contents/Resources（OD-ARCH-136）：包里自带运行时后，
+        // 应用可以直接拖进 /Applications，不再依赖同目录的 engine/runtime。
+        if let Some(resources) = dir.parent().map(|p| p.join("Resources")) {
+            if looks_like_bundle_root(&resources) {
+                return Some(resources);
+            }
         }
         dir = dir.parent()?;
     }
@@ -919,5 +947,56 @@ mod tests {
             report.ok,
             report.node.ok && report.python.ok && report.assets.ok
         );
+    }
+
+    /// 造一个「带运行时」的目录骨架。
+    fn make_bundle(root: &Path) {
+        std::fs::create_dir_all(root.join("engine").join("omnidesk_engine")).unwrap();
+        std::fs::create_dir_all(root.join("runtime")).unwrap();
+        std::fs::write(root.join("runtime").join("RUNTIME.lock"), "runtime:\n").unwrap();
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "omnidesk-bundle-{}-{}",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Windows 安装版 / 免安装包：运行时与可执行文件同级。
+    #[test]
+    fn find_bundle_root_accepts_portable_layout() {
+        let root = scratch("portable");
+        make_bundle(&root);
+        assert_eq!(find_bundle_root(&root), Some(root.clone()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// macOS .app：资源在 Contents/Resources，可执行文件在 Contents/MacOS。
+    #[test]
+    fn find_bundle_root_accepts_app_resources_layout() {
+        let root = scratch("app");
+        let macos = root.join("OmniDesk.app").join("Contents").join("MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        make_bundle(&root.join("OmniDesk.app").join("Contents").join("Resources"));
+        assert_eq!(
+            find_bundle_root(&macos),
+            Some(root.join("OmniDesk.app").join("Contents").join("Resources"))
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 只有目录、没有 RUNTIME.lock 的空壳不算安装根：宁可报「不完整」。
+    #[test]
+    fn find_bundle_root_rejects_incomplete_layout() {
+        let root = scratch("empty");
+        std::fs::create_dir_all(root.join("engine").join("omnidesk_engine")).unwrap();
+        std::fs::create_dir_all(root.join("runtime")).unwrap();
+        assert_eq!(find_bundle_root(&root), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

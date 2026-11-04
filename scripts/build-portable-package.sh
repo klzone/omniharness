@@ -48,7 +48,8 @@ PKG="$STAGE/OmniDesk"
 # 每次打包都从干净 stage 开始：残留的旧 stage 会让 cp -R 变成嵌套复制
 # （runtime/dsh-runtime/dsh-runtime/...），文件数翻倍且混入旧版本内容。
 rm -rf "$STAGE"
-mkdir -p "$PKG/runtime"
+# 运行时目录只在 Windows 免安装布局里需要；macOS 由 .app 自带（OD-ARCH-136）。
+mkdir -p "$PKG"
 
 say() { printf '[package] %s\n' "$*"; }
 
@@ -66,9 +67,21 @@ if [ "$IS_MAC" -eq 1 ]; then
     "$ROOT/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/OmniDesk.app" \
     "$ROOT/desktop/src-tauri/target/release/bundle/macos/OmniDesk.app"
   do
-    if [ -d "$candidate" ]; then APP_SRC="$candidate"; break; fi
+    # 只接受真的自带运行时的 .app。target 里可能留着旧版本构建的空壳
+    # （Resources 只有 icon.icns），误用它打出来的 zip 会在用户机器上起不来。
+    if [ -d "$candidate" ] \
+      && [ -d "$candidate/Contents/Resources/engine/omnidesk_engine" ] \
+      && [ -f "$candidate/Contents/Resources/runtime/RUNTIME.lock" ] \
+      && [ -d "$candidate/Contents/Resources/runtime/dsh-runtime" ] \
+      && [ -d "$candidate/Contents/Resources/runtime/dsh-home-seed" ]; then
+      APP_SRC="$candidate"
+      break
+    fi
   done
-  [ -n "$APP_SRC" ] || { printf '缺少桌面程序 OmniDesk.app（先跑 tauri build）\n' >&2; exit 1; }
+  [ -n "$APP_SRC" ] || {
+    printf '缺少自带运行时的 OmniDesk.app（Contents/Resources 下需有 engine/、runtime/RUNTIME.lock、dsh-runtime、dsh-home-seed；先跑 tauri build）\n' >&2
+    exit 1
+  }
   cp -R "$APP_SRC" "$PKG/"
 else
   EXE_SRC=""
@@ -87,24 +100,29 @@ else
   fi
 fi
 
-# 2) 引擎与业务资产（发布包根 = 程序认识的 repo_root）
-for dir in engine skills profiles samples config scripts; do
-  if [ -d "$ROOT/$dir" ]; then cp -R "$ROOT/$dir" "$PKG/"; fi
-done
+# 2–4) 运行时资产。
+#   * macOS：`.app` 已由 tauri.macos.conf.json 把 engine/ 与 runtime/ 打进
+#     Contents/Resources（OD-ARCH-136），同目录再放一份只会让 zip 体积翻倍。
+#   * Windows：zip 是解压即用目录，运行时必须与 exe 同级。
+if [ "$IS_MAC" -eq 1 ]; then
+  say "macOS：运行时已内置于 OmniDesk.app，跳过同目录副本"
+else
+  mkdir -p "$PKG/runtime"
+  for dir in engine skills profiles samples config scripts; do
+    if [ -d "$ROOT/$dir" ]; then cp -R "$ROOT/$dir" "$PKG/"; fi
+  done
 
-# 3) DSH 底座
-if [ ! -d "$ROOT/runtime/dsh-runtime" ]; then
-  printf '缺少 runtime/dsh-runtime（先跑 scripts/bootstrap-runtime.sh）\n' >&2
-  exit 1
+  if [ ! -d "$ROOT/runtime/dsh-runtime" ]; then
+    printf '缺少 runtime/dsh-runtime（先跑 scripts/bootstrap-runtime.sh）\n' >&2
+    exit 1
+  fi
+  cp "$ROOT/runtime/RUNTIME.lock" "$PKG/runtime/"
+  cp -R "$ROOT/runtime/dsh-runtime" "$PKG/runtime/dsh-runtime"
+
+  # 裁剪底座 + 生成首启 seed，与 Windows 安装器共用同一份准备逻辑。
+  say "准备运行时资产（裁剪 + 首启 seed）…"
+  bash "$SCRIPT_DIR/prepare-runtime-assets.sh" "$PKG/runtime"
 fi
-cp "$ROOT/runtime/RUNTIME.lock" "$PKG/runtime/"
-cp -R "$ROOT/runtime/dsh-runtime" "$PKG/runtime/dsh-runtime"
-
-# 3.5) 裁剪底座 + 4) 生成首启 seed。
-# 与 Windows 安装器共用同一份准备逻辑（OD-ARCH-135）：安装器这次只装了 exe，
-# 根因就是「这些目录只有打包脚本知道」，资源清单里一个都没写。
-say "准备运行时资产（裁剪 + 首启 seed）…"
-bash "$SCRIPT_DIR/prepare-runtime-assets.sh" "$PKG/runtime"
 
 # 5) 启动说明
 cat > "$PKG/启动说明.txt" <<'TXT'

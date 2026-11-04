@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../../engine": "engine",
+      "../../runtime/RUNTIME.lock": "runtime/RUNTIME.lock",
+      "../../runtime/dsh-runtime": "runtime/dsh-runtime",
+      "../../runtime/dsh-home-seed": "runtime/dsh-home-seed"
+    }
+  }
+}

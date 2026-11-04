@@ -1,3 +1,20 @@
+## OD-ARCH-136 审查结论（ARCHITECT，2026-11-04）——通过
+
+**结论：通过。** 用户看到的 `/Users/runner/...` 是 `repo_root()` 把编译期 `CARGO_MANIFEST_DIR` 当成安装根返回的结果；根子在 macOS 包不带运行时、只能靠同目录文件，而用户一移动 `.app` 就落空。本轮让 `.app` 自带运行时，并把兜底路径收紧为「必须真的含 `engine/` 与 `runtime/RUNTIME.lock`」。
+
+**独立复核范围：** HEAD `b546c86f9b` + 工作区改动。核对 `tauri.macos.conf.json` 的四个映射、`find_bundle_root` 的两条布局与上溯层数、`repo_root()` 兜底判定、`build-portable-package.sh` 的 macOS 去重分支、workflow 的准备顺序、体检页文案，以及本机构建产物的目录结构。
+
+**审查判断：**
+
+1. **根因修在返回值的可信度上。** 以前只要前两级找不到就无条件返回构建机路径，界面于是显示一个用户机器上不存在的目录；现在这个路径必须通过 `looks_like_bundle_root`（引擎包 + 版本锁同时存在），否则返回 None，让体检页报「不完整」。构建机路径不会再出现在用户界面上。
+2. **两条布局都覆盖，且可测。** `find_bundle_root` 同时认「与可执行文件同级」和「`Contents/Resources`」；三条单测分别覆盖免安装布局、`.app` 布局、空壳目录。`.app` 这条在 0.2.7 之前从未被识别过，是本轮新增的路径。
+3. **自带运行时让 `.app` 可移动。** 资源进 `Contents/Resources` 后，用户把应用拖进 `/Applications` 或系统做 App Translocation 都不影响启动；这同时消除了「必须保留解压目录」的隐性要求。
+4. **打包去重避免了体积翻倍，并挡住旧空壳。** macOS 分支不再复制同目录运行时；本机阶段目录只有 `OmniDesk.app` 与启动说明。若两处都放，zip 会变成约 300MB。打包脚本现在只接受 `Contents/Resources` 下 `engine`、`RUNTIME.lock`、`dsh-runtime`、`dsh-home-seed` 四项齐全的 `.app`——本机 `target` 里 11 月 2 日留下的 universal 空壳（只有 `icon.icns`）会被跳过，选中当天的自带运行时构建；误用空壳会在用户机器上直接起不来。
+5. **文案与语义对齐。** 运行时目录没有「版本」概念，缺失时显示「不完整 / 未找到」；`assets` 行不再重复「需要 运行时目录」。
+6. **边界如实。** 未签名应用的 Gatekeeper 拦截与包内资源无关，仍需右键打开或去隔离属性；`.app` 体积约 480MB，这是自带运行时的代价。
+
+**验证证据：** `verify_macos_bundle_136.py` **22/22**、`cargo test --offline --lib` **508 passed / 0 failed**、`npm --prefix desktop run build` 通过、本机 `.app` 476.65 MiB 且 `Contents/Resources` 四项齐全；证据 `tests/verification/desktop/evidence/od-arch-136/facts.json`。用户实测（2026-11-04）：自带运行时的 macOS 包在本机验证通过，不再出现 `/Users/runner/...` 安装不完整提示。
+
 ## OD-ARCH-135 审查结论（ARCHITECT，2026-11-04）——通过
 
 **结论：通过。** 安装器缺运行时资产是 134 的直接缺陷：资源清单里一个目录都没写，NSIS 自然只装 exe。本轮用 Windows 专属清单补齐 `engine/`、`runtime/`（含底座与首启 seed），并把准备逻辑抽成一份脚本；同轮修掉两个在 Windows 上必然失败的判定（启动失败无声、凭据服务存活检查恒假）。
