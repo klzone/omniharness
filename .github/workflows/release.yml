@@ -148,6 +148,17 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      # 每个 job 的 artifact 保留上传时的相对路径：macOS 只有 dist-package/*.zip，
+      # 根部就是 zip；Windows 同时有 dist-package/ 与 bundle/nsis/，公共祖先变成仓库根，
+      # 文件被放进了 artifacts/dist-package/ 与 artifacts/desktop/... 两层。
+      # 不摊平的话，下面 artifacts/*.zip、artifacts/*.exe 只能匹配到 macOS 那一个。
+      - name: 摊平产物到 artifacts 根目录
+        shell: bash
+        run: |
+          mapfile -t found < <(find artifacts -type f \( -name '*.zip' -o -name '*-setup.exe' \))
+          for f in "${found[@]}"; do
+            cp -f "$f" "artifacts/$(basename "$f")"
+          done
       - name: 列出产物
         run: ls -lh artifacts
       - uses: softprops/action-gh-release@v2
