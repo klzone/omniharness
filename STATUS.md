@@ -1,5 +1,48 @@
 # 执行状态
 
+## OD-ARCH-135：Windows 安装器补运行时资产与同类启动缺陷（2026-11-04；已实施，本机验证 + CI 出包）
+
+> 起点 HEAD `daed74eb55`。改动 7 个文件 + 2 个新文件（资源清单、准备脚本）+ 1 个新验证脚本与证据；未派子代理；`runtime/` 只生成被忽略的 `dsh-home-seed`；未读凭证。
+
+### 一句话结论
+
+v0.2.6 的 NSIS 安装器只装了主 exe：资源清单里一个运行时目录都没写，装完自然起不来。现在 Windows 专属清单把 `engine/`、`runtime/RUNTIME.lock`、`runtime/dsh-runtime`、首启 `dsh-home-seed` 一并打进安装目录；准备逻辑抽成一份脚本，免安装包与安装器共用。同一轮还修了两个会在 Windows 上必然失败的地方：启动失败只写 stderr（GUI 下等于无声），以及凭据服务的存活检查用 `kill -0`（Windows 没有这条命令，恒判服务已死，保存密钥时报「地址没有留在内存里」）。
+
+### 改动
+
+1. **`desktop/src-tauri/tauri.windows.conf.json`（新增）**：`bundle.resources` 把四个运行时路径映射到安装根，与应用启动时找 `repo_root` 的位置一致。只挂 Windows——macOS 的 `.app` 由免安装目录带这些文件，重复打包会让包体翻倍。
+2. **`scripts/prepare-runtime-assets.sh`（新增）**：裁剪 `dsh-runtime` 的 `*.ts` / `*.map` / 测试目录；按 `samples` 清单重建 `runtime/dsh-home-seed`（两个内置 Profile 的 npm 依赖 + 仓库 Skill）。`build-portable-package.sh` 改为调用它，两处不再各写一份。
+3. **`release.yml`**：Windows job 在 `tauri build` 之前执行准备脚本；顺序错了资源清单会指向不存在的目录。
+4. **`lib.rs`**：新增 `report_fatal_startup`——Windows 用系统消息框（PowerShell `MessageBox`，文本走环境变量避免转义）显示启动失败原因，其余平台保持 stderr。
+5. **`dsh_settings.rs`**：`reusable()` 改为「端口连得上即可用」，删除依赖 `kill -0` 的 `process_alive`。
+6. **`platform.rs` + 前端**：体检结果增加第三项 `assets`（`engine/omnidesk_engine` 与 `runtime/RUNTIME.lock` 是否就位），缺失时体检页直接说「安装不完整，请重新运行安装程序」。
+7. **测试夹具**：`SeedFixture` 把 `OMNIDESK_REPO_ROOT` 指向临时根并持环境锁——仓库里生成过 seed 后，这三个播种用例的前提会变。体检用例同样持锁，避免并行读到别人的仓库根。
+
+### 实跑结果（本人执行）
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 135 验证 | `python3 tests/verification/desktop/verify_windows_installer_135.py` | **27/27 通过** |
+| 宿主全量单测 | `cargo test --offline --lib`（并行，连跑 2 次） | **505 passed / 0 failed** |
+| 前端构建 | `npm --prefix desktop run build` | 通过 |
+| 资源清单实测 | 本机 `tauri build --bundles app` + 同一份清单 | `.app` 6.68 MiB → **476.63 MiB**，`Resources/engine`、`Resources/runtime/dsh-runtime`、`Resources/runtime/dsh-home-seed` 均在 |
+| 准备脚本 | `bash scripts/prepare-runtime-assets.sh` | 裁剪后 30515 个文件；seed 8.2 MB / 600 个文件 |
+
+### 边界与已知限制
+
+1. **安装器体积与耗时明显变大。** 自带 DSH 底座后约 200 MB 量级、约 3 万个文件；这是不再依赖用户预装运行时的代价。
+2. **NSIS 写 3 万个文件的实机行为待确认。** 本机只能验证资源确实进了 bundle；安装耗时、长路径、杀软拦截都需要 Windows 实测。
+3. **seed 依赖网络。** CI 里 `npm install` 失败会警告并继续，此时插件不可用但基础对话仍可跑。
+4. **启动弹窗只在 Windows 生效。** macOS/Linux 保持 stderr，本轮没有做原生弹窗。
+5. **`process_alive` 被删除。** 端口可达 + 后续 `exchange_token` 已经能区分服务是否可用；保留一个在 Windows 上恒假的检查只会制造误判。
+
+### 未覆盖
+
+Windows 实机安装后的目录结构、双击启动、密钥保存、删除 `runtime/` 后的提示页——都需用户验证。本轮证据为静态断言、本机 `.app` 资源实测与单测。
+
+### 顺带发现（本轮未修）
+
+`scripts/omnidesk.sh` 第 185 行调 `setsid`，macOS 没有这个命令，脚本启动会直接报错退出；macOS 用户双击 `.app` 不受影响。
 ## OD-ARCH-134：Windows 安装器与启动体验修复（2026-11-04；已实施，本人实跑验证）
 
 > 起点 HEAD `b3cda4fb17`。改动 10 个文件 + 1 个新脚本 + 1 个新页面 + 1 个新验证脚本与证据；未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；未改数据目录结构。

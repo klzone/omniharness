@@ -52,6 +52,8 @@ knowledge/learning-materials/*
 
 # Bootstrap 安装的锁定版本底座（由 scripts/bootstrap-runtime.sh 生成，勿提交）
 runtime/dsh-runtime/
+# 打包时生成的首启 seed（Profile 依赖 + Skill），由 prepare-runtime-assets.sh 产出
+runtime/dsh-home-seed/
 
 # CodeGraph 本地索引（每台机器各自生成，勿提交；配置见 codegraph.json）
 .codegraph/

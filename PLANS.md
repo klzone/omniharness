@@ -1,5 +1,37 @@
 # 当前实施计划
 
+### OD-ARCH-135：Windows 安装器补运行时资产 + 启动可读报错 + 凭据服务存活判定（计划者与实施者：本助手；用户反馈「安装后只有 exe 与 uninstall」；2026-11-04 已实施，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-135/facts.json）
+
+> **触发：** 用户装完 v0.2.6 的 `x64-setup.exe`，安装目录里只有 `omnidesk-desktop.exe` 与 `uninstall.exe`；双击没有反应。同一版本还暴露出「保存模型密钥时报『地址没有留在内存里』」。
+
+#### 已核实根因（本人实读源码 + 实机复核）
+
+1. **NSIS 只打 exe。** `bundle.resources` 从未配置。`engine/`、`runtime/dsh-runtime`、首启 seed 只有 `scripts/build-portable-package.sh` 知道，Tauri bundler 完全不知道它们存在。
+2. **启动失败在 GUI 下无声。** `resolve_python` / `locate_engine_dir` 拿不到路径就 `exit(2)`，`eprintln!` 没有终端可看；`windows_subsystem = "windows"` 下表现为「双击毫无反应」。
+3. **凭据服务的存活检查在 Windows 上恒 false。** `dsh_settings::process_alive` 用 `kill -0`，Windows 没有 `kill.exe`，命令构造即失败；而 `reusable()` 要求「进程存活 && 端口监听」同时成立，于是刚拿到地址就被判成不可用。
+
+#### 方案（已实施）
+
+1. **Windows 专属资源清单** `desktop/src-tauri/tauri.windows.conf.json`：把 `engine/`、`runtime/RUNTIME.lock`、`runtime/dsh-runtime/`、`runtime/dsh-home-seed/` 映射到安装根目录。只挂 Windows：macOS 的 `.app` 由免安装目录带这些文件，重复打包会让包体翻倍。
+2. **抽出 `scripts/prepare-runtime-assets.sh`**：裁剪 `dsh-runtime` 的 `*.ts` / `*.map` / 测试目录，重建 seed（两个内置 Profile 的 npm 依赖 + 仓库 Skill）。免安装脚本改为调用它，两处共用一份实现。
+3. **CI 顺序**：Windows job 在 `tauri build` 之前跑准备脚本，否则资源清单指向不存在的目录。
+4. **启动失败弹窗**：`run()` 的 `build_state` 失败分支改走 `report_fatal_startup`，Windows 用系统消息框（PowerShell `MessageBox`，文本走环境变量避免转义）把原因显示出来，其余平台保持 stderr。
+5. **凭据服务存活判定**：`reusable()` 改为「端口连得上即可用」，删除依赖 `kill -0` 的 `process_alive`。真正的鉴权在随后的 `exchange_token`，不需要进程表再确认一遍。
+6. **安装完整性进体检**：`environment_report` 增加第三项 `assets`（`engine/omnidesk_engine` 与 `runtime/RUNTIME.lock` 是否就位），缺了就在体检页说「安装不完整，请重新运行安装程序」。
+7. **验证**：新增 `verify_windows_installer_135.py`（27 项）；本地用同一份资源清单构建 `.app` 验证目录真的进包；播种夹具隔离 `OMNIDESK_REPO_ROOT`，避免仓库里生成 seed 后单测前提变化。
+
+#### 影响范围
+`tauri.windows.conf.json`（新增）、`scripts/prepare-runtime-assets.sh`（新增）、`scripts/build-portable-package.sh`、`.github/workflows/release.yml`、`.gitignore`、`lib.rs`（启动弹窗）、`dsh_settings.rs`（存活判定）、`platform.rs`（体检第三项与单测）、前端体检页与类型。
+
+#### 风险
+- 安装器体积从 2.7MB 涨到约 200MB 量级，安装时间变长；这是自带运行时必然的代价。
+- NSIS 要写约 3 万个文件，路径长度与安装耗时按实机确认；若个别机器受限，再考虑单文件归档 + 首启解压。
+- `runtime/dsh-home-seed` 依赖 npm install，CI 需要网络；装不上时脚本警告并继续（基础对话不受影响）。
+
+#### 验收标准
+Windows 安装后，安装目录里能看到 `engine/`、`runtime/dsh-runtime/`、`runtime/dsh-home-seed/`；首次启动自动铺到 `%USERPROFILE%\OmniDesk\runtime\dsh-home`，双击即可打开；保存模型密钥一次成功；人为删掉 `runtime/` 后启动会看到「安装不完整」提示。
+
+> **实施结果（2026-11-04）：** 资源清单、准备脚本、CI 顺序、启动弹窗、存活判定、体检第三项全部落地。本机用同一份清单构建 `.app`：体积 6.68 MiB → 476.63 MiB，`Resources/engine`、`Resources/runtime/dsh-runtime`、`Resources/runtime/dsh-home-seed` 均在。`cargo test --offline --lib` 505 项通过（并行连跑两次）；`npm build` 通过；`verify_windows_installer_135.py` 27/27。安装器实机表现待 Windows 用户验证。
 ### OD-ARCH-134：Windows 安装器与启动体验修复（计划者与实施者：本助手；用户授权「批准 执行 OD-ARCH-134」；2026-11-04 已实施并通过审查，见 REVIEW.md / STATUS.md / tests/verification/desktop/evidence/od-arch-134/facts.json）
 
 > **触发：** 用户实测 Windows 包（v0.2.x）：① 下载到的是纯 zip，没有像原版 DSH-desktop 的安装向导；② 双击 OmniDesk.exe 后 node 终端一闪而过，应用无法启动。

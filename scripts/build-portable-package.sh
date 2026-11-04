@@ -100,36 +100,11 @@ fi
 cp "$ROOT/runtime/RUNTIME.lock" "$PKG/runtime/"
 cp -R "$ROOT/runtime/dsh-runtime" "$PKG/runtime/dsh-runtime"
 
-# 3.5) 裁剪 DSH 底座中的非运行时文件。
-# npm 安装的包带有 .d.ts / .ts / sourcemap / 测试目录，运行时都不会被加载
-# （已实测：裁剪后 dsh --version、--dump-config、真实启动均正常）。
-# 裁剪后文件数从约 6.4 万降到约 3 万，免安装包解压不再是"几万个文件"。
-say "裁剪 runtime/dsh-runtime 中的非运行时文件..."
-PRUNED_PKG="$PKG/runtime/dsh-runtime"
-find "$PRUNED_PKG" -name '*.ts' -type f -delete
-find "$PRUNED_PKG" -name '*.map' -type f -delete
-find "$PRUNED_PKG" -type d \( -name test -o -name tests -o -name __tests__ -o -name coverage \) -prune -exec rm -rf {} + 2>/dev/null || true
-say "裁剪完成：$(find "$PRUNED_PKG" -type f | wc -l | tr -d ' ') 个文件"
-
-# 4) 首次启动 seed：Profile + Skill，避免新机器上还要手工 npm
-SEED="$PKG/runtime/dsh-home-seed"
-for profile in omnidesk-base web; do
-  mkdir -p "$SEED/profiles/$profile"
-  cp "$ROOT/samples/profiles/$profile.profile.json" "$SEED/profiles/$profile/package.json"
-  cp "$ROOT/samples/profiles/$profile.profile.patch.yml" "$SEED/profiles/$profile/cordis.patch.yml"
-  say "安装 Profile 依赖：$profile"
-  if ! ( cd "$SEED/profiles/$profile" && npm install --no-audit --no-fund --omit=dev >/dev/null 2>&1 ); then
-    say "警告：$profile 依赖安装失败，该 Profile 插件不可用（基础对话不受影响）"
-  fi
-done
-mkdir -p "$SEED/skills"
-for skill_dir in "$ROOT"/skills/*/; do
-  if [ -d "$skill_dir" ]; then cp -R "$skill_dir" "$SEED/skills/"; fi
-done
-# seed 里的 profile 依赖与底座同理：运行时只加载 JS，类型/源图/测试目录一并裁剪
-find "$SEED" -name '*.ts' -type f -delete
-find "$SEED" -name '*.map' -type f -delete
-find "$SEED" -type d \( -name test -o -name tests -o -name __tests__ -o -name coverage \) -prune -exec rm -rf {} + 2>/dev/null || true
+# 3.5) 裁剪底座 + 4) 生成首启 seed。
+# 与 Windows 安装器共用同一份准备逻辑（OD-ARCH-135）：安装器这次只装了 exe，
+# 根因就是「这些目录只有打包脚本知道」，资源清单里一个都没写。
+say "准备运行时资产（裁剪 + 首启 seed）…"
+bash "$SCRIPT_DIR/prepare-runtime-assets.sh" "$PKG/runtime"
 
 # 5) 启动说明
 cat > "$PKG/启动说明.txt" <<'TXT'

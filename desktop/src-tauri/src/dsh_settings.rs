@@ -146,7 +146,12 @@ impl SettingsService {
     fn reusable(&self) -> Option<Running> {
         let guard = self.running.lock().unwrap();
         let running = guard.as_ref()?;
-        if process_alive(running.pid) && port_listening(running.port) {
+        // 端口还连得上，就说明服务还活着（OD-ARCH-135）。
+        // 早期实现要求「进程存活 && 端口监听」同时成立，而进程检查用的是
+        // `kill -0`——Windows 上没有 kill.exe，构造命令就失败，恒返回 false，
+        // 于是刚拿到地址就被判成「地址没有留在内存里」。端口检查本身是更强的证据，
+        // 真正的鉴权在后面的 exchange_token 里，不需要再靠进程表确认。
+        if port_listening(running.port) {
             Some(Running {
                 pid: running.pid,
                 port: running.port,
@@ -599,21 +604,6 @@ fn port_of(url: &str) -> Option<u16> {
     let rest = url.strip_prefix("http://127.0.0.1:")?;
     let port = rest.split('/').next()?;
     port.parse().ok()
-}
-
-fn process_alive(pid: u32) -> bool {
-    // 跨平台存活检查：macOS 没有 /proc，原先的 /proc/<pid> 判断会永远为 false，
-    // 导致服务刚拿到地址就被判成“已退出”（表现为「地址没有留在内存里」）。
-    // 信号 0 只做存在性与权限检查，不真正发送信号。
-    Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
 }
 
 fn port_listening(port: u16) -> bool {
