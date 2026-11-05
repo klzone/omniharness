@@ -1,0 +1,10 @@
+{
+  "schema": "omnidesk.sensitive-dict.v1",
+  "entries": [
+    {"type": "PERSON", "value": "林青禾", "aliases": ["林青禾同志"]},
+    {"type": "PERSON", "value": "周岚"},
+    {"type": "BRANCH", "value": "城东支行", "aliases": ["城东支行营业部"]},
+    {"type": "ORG", "value": "青禾联社"},
+    {"type": "CUSTOM", "value": "内部代号·晨星", "aliases": ["晨星项目"]}
+  ]
+}
