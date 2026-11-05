@@ -1,5 +1,13 @@
 # 执行状态
 
+## OD-ARCH-143 · S4/S5 收口执行（2026-11-05；用户批准，ARCHITECT 执行）
+
+- 分 6 个提交推送 origin/main（98a7e27..6a19f07）：安全引擎 / 知识库工作流 / 强制脱敏 / 测试修复 / E2E+文档 / 命令注册补充
+- tag v0.2.9 重指到 6a19f07（旧 tag 指向无新功能的 98a7e27 且无 Release，删除重打）
+- CI run 42043467444 success；Release v0.2.9 三产物：macOS universal zip、Windows zip、Windows NSIS setup.exe
+- 提交后回归：Python 166/166、cargo lib 524/524
+- 待用户：下载 0.2.9 安装 → S3 四项实测清单
+
 ## OD-ARCH-143 · Task 5 端到端验收与收口（2026-11-05；S1–S2 完成，S3 待用户实测，S4/S5 未执行）
 
 > 起点 HEAD `98a7e27c56` + Task 1–4 的未提交实现。S1 只修测试自身缺陷，不改生产断言；S3/S4/S5 尚未执行。
