@@ -1,0 +1,70 @@
+{
+  "plan": "OD-ARCH-143",
+  "step": "S2",
+  "passed": true,
+  "checks": [
+    {
+      "name": "rust_knowledge_ingest_e2e",
+      "ok": true,
+      "detail": "\nrunning 1 test\ntest synthetic_inbox_masks_then_creates_card_and_searches ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s\n     Running tests/knowledge_ingest_e2e_143.rs (target/debug/deps/knowledge_ingest_e2e_143-c576d4af648482f0)\n"
+    },
+    {
+      "name": "adapter_terminal_succeeded",
+      "ok": true,
+      "detail": "succeeded"
+    },
+    {
+      "name": "outbound_placeholder",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "outbound_no_original",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stderr_no_original",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "answer_restored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stream_restored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "worklog_regression",
+      "ok": true,
+      "detail": "\nPASS [WORKLOG-089] note_forbids_rewriting\nPASS [WORKLOG-089] note_no_skill_no_guess\nPASS [WORKLOG-089] note_no_skill_no_six_elements\nPASS [WORKLOG-089] report_includes_worklog_content\nPASS [WORKLOG-089] report_labels_week\nPASS [WORKLOG-089] report_has_sections\nPASS [WORKLOG-089] report_says_no_record\nPASS [WORKLOG-089] no_worklog_no_section\nPASS [WORKLOG-089] platform_prompt_is_thin\nPASS [WORKLOG-089] note_prompt_within_budget\nPASS [WORKLOG-089] note_prompt_measured\ncases=83 passed=83 failed=0\n"
+    },
+    {
+      "name": "weekly_quadrant_regression",
+      "ok": true,
+      "detail": "s_match_timeline_shape\nPASS [WEEKLY-093] empty_week_all_zero\nPASS [WEEKLY-093] invalid_date_not_overdue\nPASS [WEEKLY-093] visible_ids_match_cell\nPASS [WEEKLY-093] visible_ids_null_when_cleared\nPASS [WEEKLY-093] items_in_matches_count\nPASS [WEEKLY-093] quadrant_titles_chinese\nPASS [WEEKLY-093] quadrant_indexes\nPASS [WEEKLY-093] report_destination_literal\ncases=108 passed=108 failed=0\nevidence -> /Users/yvan/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-093/verify_weekly_093.json\n"
+    },
+    {
+      "name": "artifact_regression",
+      "ok": true,
+      "detail": "s02_cjk_fallback_kept\nPASS  s03_round_button\nPASS  s03_no_visible_label\nPASS  s03_tooltip_kept\nPASS  s03_accessibility_kept\nPASS  s03_failure_still_inline\nPASS  s03_missing_destination_static\nPASS  s04_no_search_input\nPASS  s04_no_query_state\nPASS  s04_no_text_filter\nPASS  s04_toolbar_single_row\nPASS  s04_keeps_range_view_subdirs\nPASS  s04_page_resets_on_range\nPASS  s04_all_reuse_sites_intact\nPASS  s05_text_gone\nPASS  s05_prop_gone\nPASS  s05_caller_cleaned\nPASS  s05_archive_error_kept\n\n32/32 通过\n"
+    }
+  ],
+  "adapter": {
+    "status": "succeeded",
+    "result_has_original": true,
+    "result_has_placeholder": false,
+    "outbound_has_original": false,
+    "outbound_has_placeholder": true,
+    "stderr_has_original": false,
+    "text_deltas_have_original": true
+  },
+  "rust_exit": 0,
+  "worklog_exit": 0,
+  "weekly_exit": 0,
+  "artifact_exit": 0
+}

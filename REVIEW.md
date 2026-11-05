@@ -1,3 +1,105 @@
+## OD-ARCH-143 审查结论（ARCHITECT，2026-11-05）——S1/S2 通过，S3–S5 待用户逐项执行
+
+**结论：S1（坏测试修复）与 S2（合成端到端）复核通过。项目首次达到全部测试零失败。S3 用户实测、S4 收口提交、S5 发布确认待逐项执行。**
+
+**独立复核范围：** 独立复跑——host_integration 13/13（此前 3 项失败全修复）、web_api 88/88（此前 2 项失败全修复）、E2E 端到端 10/10、cargo 全量 14 个测试组全部 ok 且 0 FAILED；S4 只读预检复核：新增文件凭证模式扫描零命中（唯一 grep 命中是测试夹具的临时目录命名，非凭证），词典样例 5 条全虚构确认。
+
+**复核判断：**
+
+1. **S1 修的是测试自身，没动生产断言。** host_integration 的 /bin/true 改为 tempfile 可执行假 CLI（跨平台）；web_api 的 socket 超时预算参数化、参数序断言改为对 resolve_node 实际结果的比较。还额外发现并修了一个计划外问题（knowledge_vault_index_host 的 symlink 路径规范化），处理正确。
+2. **S2 覆盖了承诺的全部链路。** 知识库初始化→整理→建卡/索引/归档→检索命中→词典人名出站占位符→假模型回文还原→出站日志无原文→随手记/周报/四象限/成果库回归，10 项断言全绿，证据落 evidence/od-arch-143/。
+3. **提交预检干净。** 凭证模式（sk-/ghp_/AKIA/私钥头/api_key 赋值）零命中；无真实工作记录关键词。
+4. **实施方纪律良好。** S3/S4/S5 需要用户实测与明确授权的部分全部停下未动，没有擅自 git commit/push/tag。
+
+**S3 用户实测清单（四项，逐项确认）：**
+- [ ] 真实模型对话：词典人名出站占位符，回答自动还原
+- [ ] 真实 Vault：丢材料→整理→检索命中→打开引用卡
+- [ ] 随手记与周报真实工作流各走一遍
+- [ ] 应用重启后旧会话占位符原样显示+一次提示
+
+**S4（用户批准后执行）：** 分批提交（安全引擎/知识库/强制脱敏/测试修复/文档）→ push origin/main → 0.2.9 tag → CI 三产物。S5：发布确认与实机安装冒烟。
+## OD-ARCH-142 审查结论（ARCHITECT，2026-11-05）——通过
+
+**结论：通过。** Task 4 完成 LLM 调用链全量强制脱敏：出站在引擎 submit_task 唯一汇合点强制过 DataMasker（附件/知识上下文/重放历史都已拼入该点之后），回程流式与非流式双路自动还原，映射按引擎会话内存存活。139 规划承诺的"Task 4 强制点"落地，数据安全拼图补完。
+
+**独立复核范围：** 独立复跑全部专项——Masking 4/4、StreamUnmask 5/5、审计 15/15（0 违例）、Task 1/2/141 回归 78/78、Rust lib 524/524、npm build 通过、UI 静态检查 7/7；实读引擎接入主路径（_mask_prompt/_mask_session_for/_unmask_delta）、StreamUnmasker 状态机、宿主词典路径环境变量下发；手工烟测：占位符跨 delta 切断还原（3 实体 3 还原、往返一致、ok=True）。
+
+**复核判断：**
+
+1. **强制点真实。** _mask_prompt 调用在 submit_task 唯一文本汇合点（web_api_adapter.py:1400），汇合点之后只有脱敏文本进 _turn_worker；审计脚本 15/15 静态断言 0 违例。脱敏失败**拒绝提交**（fail-closed，不降级明文出站）——比 141 检索注入的 fail-open 更严，语义正确（前者是保护，后者是增强）。
+2. **会话映射生命周期符合设计。** _mask_sessions 按引擎会话隔离（unittest 验证）；词典会话建立时读取（存续会话不换表）；OMNIDESK_MASKER=off 显式关闭且 warn 记录（UI 无开关，审计断言 no_ui_masker_switch 通过）。
+3. **流式还原状态机正确。** 手工烟测：三个占位符的文本从中间切成两半喂入，最终逐字还原为原文，restored=3。跨 delta 切断的场景（模型输出占位符时恰好断在 [PERSON_07 中间）是流式还原最容易错的点，有专门测试。
+4. **回执/展示完整。** mask_stats 进任务回执（计数不含原文）、unmask_report 挂终态事件、前端 ok=False 顶部提示、本地会话记录不被改写（原文留在本地）。
+5. **失败语义分层正确。** 出站脱敏失败=拒提交（安全）；回程 unknown 占位符=原样保留+提示（可用性）；词典缺失=降级纯规则+warn（不阻断）。
+6. **既有失败 5 项确认与 142 无关**（host_integration 3 项 /bin/true、web_api 2 项 socket/参数序）——142 新增测试全绿且未触碰既有测试逻辑。
+
+**本轮未覆盖（用户实测项）：** 真实模型端到端——出站占位符→回答自动还原→本地原文不变，需要你配置的模型通道跑一次；会话恢复（重启应用续旧会话）时占位符原样保留+一次性提示的行为。
+
+**Task 4 收口。** 至此安全链路完整：红线拒绝 → 打码 → 双向脱敏 → 回程还原，全链强制。剩余 Task 5（端到端验收）收尾后统一提交。
+## OD-ARCH-141 审查结论（ARCHITECT，2026-11-05）——通过（附两项既有失败说明）
+
+**结论：通过。** Task 3 知识库工作流接线落地：收件箱目录骨架、整理提示词组装（出站过 Task 2 脱敏）、整理结果校验（路径白名单/标题防重/卡长/sources 存在性）、逐卡落盘+索引追加+原文归档（失败回滚当卡）、对话知识意图检索注入（top3 命中、≤2 卡、≤3000 字、可点击引用）、整理面板 UI。全链路"AI 判语义、工作台落盘"哲学与 memory-agent 一致。
+
+**独立复核范围：** 独立复跑全部验收命令——cargo lib 523/523（含 knowledge_ingest 12 项）、引擎单测 8/8、前端 retrieval 8/8、UI 验证脚本 16/16、npm build 通过；实读 knowledge_ingest.rs 校验器与落盘主路径、引擎 assemble_ingest_prompt（mask_markdown 注入确认）、HomeChat 检索挂钩与 knowledgeRetrieval 上限常量；git status 改动面核对（新增 5 个功能文件 + 3 个测试文件，修改 5 个接线文件，无越界）。
+
+**复核判断：**
+
+1. **校验器是本链路的安全闸，实现到位。** 路径只许 概念/方法/ 两目录（clean_rel + is_card_path 双层）、标题防重同时查索引与现存卡（title_key 归一化）、正文 300 字上限按 parse_note 后正文计（frontmatter 不占额）、sources 逐条验证存在。模型输出再狂野也写不进白名单外。
+2. **落盘事务性合格。** 卡创建成功但索引更新失败时：回滚已建卡文件、原文不归档、错误入报告——不会出现"卡在库里但索引没有"的孤儿状态。
+3. **对话检索修正了两处真问题（实施方自查发现，值得肯定）：** vault_search 是字面子串匹配，整句问话命中不了卡片——改为抽最长知识意图词再查；knowledge_vault_open_attachment 拒绝 .md，原实现点击引用必报错——改为读笔记+方角预览卡。两处都有测试覆盖。
+4. **注入边界清楚。** 只注入 知识库/概念|方法/ 下的卡，inbox 原文/索引页/用户笔记不进模型上下文；上限 3000 字截断且显式标注；失败不阻断提交（fail-open 合理——知识库增强而非门禁）。
+5. **出站脱敏接入。** assemble_ingest_prompt 对 inbox 原文跑 mask_markdown，session scope 跨文件同实体同占位符，映射不序列化（测试断言）。
+6. **边界遵守。** 无定时整理（092 裁定）、无向量库（140 触发条件）、基础标准不提供、模型无直接写权。
+
+**两项既有失败（均与 141 无关，独立复核确认）：**
+
+1. host_integration 3 项（supervisor_refuses_stock_dsh_home / refuses_stock_agents_home / engine_dir_missing）：测试硬编码 /bin/true 作为假 CLI——Linux 有、macOS 只有 /usr/bin/true，config.validate() 先报"CLI 不存在"就到不了真正要测的断言。属测试的可移植性缺陷（048 引入），非产品缺陷；建议后续小任务改用 tempfile 写一个可执行假 CLI。
+2. test_web_api_unit 2 项（139 时已记录）：recv_budget 心跳帧 + for_dsh 参数序，同属既有测试口径问题。
+
+**建议**：上述 5 个坏测试打包一个独立小任务（"测试可移植性修复"）处理，不混入功能任务。
+
+**本轮未覆盖（用户实测项）：** 真实模型整理质量（建卡是否准确、来源是否可靠）、真实对话检索的意图判定命中率、@知识库 显式触发。需要用户在真实环境跑一遍完整流程。
+
+**Task 3 收口。** 知识库现在活了：inbox 丢材料 → 整理建卡 → 对话检索引用。剩余：Task 4（LLM 链路全量强制脱敏）→ Task 5（端到端）。
+## OD-ARCH-140 审查结论（ARCHITECT，2026-11-05）——通过
+
+**结论：通过。** Task 2 结构感知脱敏落地：mask_markdown / unmask_markdown 对 Obsidian 兼容 Markdown 实现"只改该改的位置，结构逐字节保真"。独立复跑 Task 2 全量 38/38、Task 1 回归 32/32，均 OK；另做 4 项手工烟测全部符合区域策略表。
+
+**独立复核范围：** git status 改动面核对（仅 security/ 与测试文件，Rust 零改动）；复跑两组验收命令；烟测覆盖：frontmatter 脱敏且 sources 保留、正文裸敏感词替换、WikiLink 目标保留+显示文本处理、代码块内证件号不替换、标签/URL 保留、往返逐字节一致、frontmatter 与正文同名实体同占位符。
+
+**复核判断：**
+
+1. 区域策略表八类行为与设计一致（烟测实证，非仅断言）。
+2. MD 标准链接 [文本](url) 的链接文本被替换后，占位符自身方括号与链接语法叠加成 [[占位符]](url)——语法仍合法、往返还原逐字节一致、链接目标 URL 未动，接受；此形态已记入本结论，Task 4 集成时若对渲染有要求可再评估占位符定界符。
+3. 未闭合 frontmatter/代码块按 warn 降级，未崩未误替换（测试组 -k Edge 覆盖）。
+4. Task 1 纯文本路径行为零变化（32 项原样通过），符合"不得修改已通过行为"红线。
+5. 范围纪律：无第三方依赖、无 Rust 改动、测试零 print、全虚构数据。
+
+**本轮未覆盖：** 真实知识卡批量脱敏演练属 Task 5 端到端；vault_write 对齐确认（S5 文档步骤）已由实施方在 STATUS 记录，我核对其结论与 vault_write.rs 白名单事实一致。
+
+**DataMasker 主体（Task 1+2）就此收口。** 下一阶段按路线图：Task 3（知识库工作流接线，规划中）→ Task 4（LLM 链路强制脱敏）→ Task 5（端到端）。
+## OD-ARCH-139 审查结论（ARCHITECT，2026-11-05）——通过（附一项既有失败说明）
+
+**结论：通过。** DeepSeek 在新会话按任务卡 S1–S7 完成 DataMasker Task 1：词典加载、四类规则识别（GB11643/Luhn 真校验）、随机类型化占位符、请求级/会话级映射、双向脱敏还原与完整性报告全部落地。实施范围与任务卡完全一致，未越界。
+
+**独立复核范围：** 实读 masker.py 全部 493 行（匹配排序、占位符生成、MaskMapping 封装、unmask/validate）、__init__.py 导出面、样例词典、390 行测试脚本、STATUS.md 记录；git status 核对改动面；独立复跑全部验收命令；另做 6 项手工烟测（往返一致、跨映射隔离、会话一致性、别名合并、校验码拒绝、词典+规则叠加）。
+
+**复核判断：**
+
+1. **范围合规。** git status：新增 security/ 两文件 + 样例词典 + 测试脚本，修改 PLANS.md/STATUS.md；engine 现有文件零 diff（git diff --stat HEAD -- engine/ 为空）。无第三方 import（stdlib only：re/secrets/dataclasses/typing/json/pathlib）。
+2. **验收命令独立复跑全过。** test_security_masker_unit 32/32 OK；test_process_owner_unit 10/10 OK；test_web_api_unit 79 项 1 failure + 1 error——在 git archive HEAD 干净副本上同样复现，确认与 DataMasker 无关（实施方判断正确，未为过测试去改范围外文件，符合纪律）。
+3. **映射安全构造成立。** DataMasker 实例零映射留存（__init__ 只存词典）；MaskMapping frozen、无 to_dict/原文导出、repr 为 "<MaskMapping n=N>"；SessionScope repr 同样脱敏。跨请求还原烟测：用另一请求的 mapping → ok=False、占位符原样保留，未猜测还原。
+4. **识别与重叠正确。** 手工烟测：词典词"林青禾"（含别名"林青禾同志"）与 value 同占位符；"城东支行营业部" alias 命中；校验码错误的 18 位串不命中（invalid_idcard_kept 验证通过）；词典与规则同段叠加（PHONE + BRANCH 各自替换）；(start,-length,priority) 排序 + overlap_dropped 计数在源码确认。
+5. **往返完整性。** mask → unmask 原文逐字还原；report.ok=True/False 语义与设计一致；modified_candidates 计数形似占位符但查表失败的条目。
+6. **一处与任务书接口建议的合理偏差（接受）**：mask 返回 MaskResult dataclass（text/mapping/stats 三属性）而非三元组——更符合项目 dataclass 风格，字段齐全，不构成问题。任务书签名里的 extra_dict 参数未实现，当前以 entries 构造参数支持等价能力；Task 4 集成时如需请求级临时词典再补，不阻塞本轮。
+7. **红线核查。** 测试零 print（断言验证而非打印）；样例词典五条全虚构（林青禾/周岚/城东支行/青禾联社/晨星项目）；无真实证件号、卡号、干部姓名。
+
+**本轮未覆盖（不作为通过条件）：** Task 2 结构适配（Markdown/WikiLink）、Task 4 LLM 链路接入未做——Task 1 完成不等于云端调用已受保护，强制点在 Task 4，此前已在路线图明示。
+
+**既有失败移交：** test_web_api_unit 的 test_recv_budget_survives_heartbeat_frames（error）与 test_for_dsh_argument_order（fail）是 HEAD 上既有的两个坏测试，与本任务无关；建议单开小任务修复（属于 engine-interface 测试口径问题），不混入 DataMasker 后续阶段。
+
+**Test 1（Task 1）收口。** 后续按路线图推进：Task 2（结构适配）→ Task 3（加固）→ Task 4（LLM 接入，关键强制点）→ Task 5（端到端）。OD-ARCH-138（四象限）仍挂起待用户恢复。
+
 ## OD-ARCH-137 审查结论（ARCHITECT，2026-11-04）——通过
 
 **结论：通过。** 0.2.8 的报错不是 DSH 配置损坏，而是启动顺序问题：新机器还没有 `runtime/dsh-home`，`build_state()` 只装配资产、不播种；模型设置又绕开引擎启动直接调 `dsh --dump-config`，所以必报 `profile "omnidesk-base" does not exist`。本轮把播种提前到启动入口，并在三条模型路径上补了同一道保险。
