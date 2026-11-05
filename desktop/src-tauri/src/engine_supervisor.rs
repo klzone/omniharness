@@ -78,6 +78,7 @@ impl EngineConfig {
     ///   OMNIDESK_ENGINE_CHANNEL    对话通道：web-api（默认）或 acp
     ///   OMNIDESK_DSH_PROFILE       Profile 名，默认随通道（web-api→web，acp→acp）
     ///   OMNIDESK_DSH_PATCHES       逗号分隔的补丁绝对路径
+    ///   OMNIDESK_SENSITIVE_DICT    运行时敏感词典（默认 <app root>/config/sensitive-dict.v1.json）
     pub fn from_env(app_root: &Path) -> Result<Self, String> {
         let repo_root = Self::repo_root();
 
@@ -353,6 +354,12 @@ impl EngineConfig {
 
     /// 传给引擎子进程的环境变量（显式、最小集）。
     pub fn child_env(&self) -> Vec<(String, String)> {
+        let sensitive_dict = self
+            .engine_state_dir
+            .parent()
+            .unwrap_or(&self.engine_state_dir)
+            .join("config")
+            .join("sensitive-dict.v1.json");
         vec![
             ("OMNIDESK_DSH_HOME".to_string(), self.dsh_home.display().to_string()),
             ("OMNIDESK_AGENTS_HOME".to_string(), self.agents_home.display().to_string()),
@@ -362,6 +369,10 @@ impl EngineConfig {
             (
                 "OMNIDESK_ENGINE_STATE_DIR".to_string(),
                 self.engine_state_dir.display().to_string(),
+            ),
+            (
+                "OMNIDESK_SENSITIVE_DICT".to_string(),
+                sensitive_dict.display().to_string(),
             ),
         ]
     }
@@ -593,6 +604,22 @@ mod tests {
             channel: "web-api".to_string(),
             patch_files: vec![],
         }
+    }
+
+    /// OD-ARCH-142 S1：引擎子进程必须拿到运行时词典路径，而不是从仓库猜。
+    #[test]
+    fn child_env_exposes_sensitive_dict_under_app_config() {
+        let config = fake_config();
+        let expected = config
+            .engine_state_dir
+            .parent()
+            .unwrap()
+            .join("config")
+            .join("sensitive-dict.v1.json");
+        assert_eq!(
+            child_env_value(&config, "OMNIDESK_SENSITIVE_DICT"),
+            Some(expected.display().to_string())
+        );
     }
 
     /// 生命周期回归（自集成测试迁入）：通道已挂载后可 initialize 并优雅关闭。

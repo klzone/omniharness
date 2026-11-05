@@ -12,6 +12,15 @@ import {
   type AttachmentInput,
 } from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
+import {
+  buildKnowledgeContext,
+  citationsFromHits,
+  detectKnowledgeIntent,
+  filterKnowledgeHits,
+  KNOWLEDGE_MAX_CARDS,
+  knowledgeSearchKeyword,
+  type KnowledgeCitation,
+} from "../knowledgeRetrieval";
 import { currentEngineSubmitDecision } from "../engineAdmission";
 import {
   describeWorkIntent,
@@ -40,6 +49,7 @@ import {
   type ApprovalRequest,
   type AdmissionFacts,
   type CancelOutcome,
+  type KnowledgeVaultNote,
   type QuestionAnswerItem,
   type QuestionRequest,
   type ReferenceCandidate,
@@ -49,6 +59,7 @@ import {
 } from "../types";
 import { Icon } from "../components/Icon";
 import { BrandMark } from "../components/BrandMark";
+import { KnowledgeIngestPanel } from "./KnowledgeIngestPanel";
 import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
@@ -137,6 +148,8 @@ export interface ChatMessage {
    * （例如把记错日期的记录挪到正确日期）。用它区分「本地回执」与「模型输出」。
    */
   local?: boolean;
+  /** OD-ARCH-141：本轮注入的知识库卡片引用。 */
+  citations?: KnowledgeCitation[];
 }
 
 /** 重放进下一轮提示的上文上限（字符）。超出时保留最近的部分。 */
@@ -597,8 +610,12 @@ export function HomeChat({
   const [voiceNote, setVoiceNote] = useState(false);
   /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
   const [sendNote, setSendNote] = useState<string | null>(null);
+  /** OD-ARCH-142：回程有未识别占位符时，页面顶部提示一次。 */
+  const [maskerWarning, setMaskerWarning] = useState<string | null>(null);
   /** 消息操作条的一次性反馈（复制成功、朗读不可用、分支已建等），按消息 id 显示。 */
   const [tipNote, setTipNote] = useState<{ id: string; text: string } | null>(null);
+  /** OD-ARCH-141 S6：点击回答里的引用卡时，在对话内预览卡片正文。 */
+  const [citationPreview, setCitationPreview] = useState<KnowledgeVaultNote | null>(null);
   /** 已提交到宿主、引擎尚未返回任务号（冷启动可能数秒）。 */
   const [starting, setStarting] = useState(false);
   /**
@@ -916,6 +933,7 @@ export function HomeChat({
           tool_name?: unknown;
           call_id?: unknown;
           reason?: unknown;
+          report?: unknown;
           event?: unknown;
           note?: unknown;
           idle_seconds?: unknown;
@@ -981,6 +999,22 @@ export function HomeChat({
               ),
             };
           });
+          return;
+        }
+        if (p.kind === "masker_unmask") {
+          const report = p.report as
+            | { ok?: unknown; unknown_placeholders?: unknown; modified_candidates?: unknown }
+            | undefined;
+          if (report && report.ok === false) {
+            const count = Array.isArray(report.unknown_placeholders)
+              ? report.unknown_placeholders.length
+              : 0;
+            setMaskerWarning(
+              count > 0
+                ? `有 ${count} 个脱敏占位符未能还原，已原样保留；请回到本地原文核对。`
+                : "有脱敏占位符未能完整还原，已原样保留；请回到本地原文核对。",
+            );
+          }
           return;
         }
         /** OD-ARCH-088：结构化提问到达 —— 登记为可答卡片（同 id 不重复）。 */
@@ -1662,6 +1696,7 @@ export function HomeChat({
         return false;
       }
       resetCancelState();
+      setMaskerWarning(null);
     // OD-ARCH-078 S3：记录提交时刻，完成后算「本轮耗时」。
     const startedAtMs = Date.now();
     setMessages((prev) => [...prev, { id: nextId(), role: "user", text }]);
@@ -1733,6 +1768,46 @@ export function HomeChat({
               "无法为引擎提供工作目录（宿主未返回可用目录）。",
           );
         }
+        // OD-ARCH-141 S5：只有知识意图或显式 @知识库 才检索；失败不阻断提交。
+        let knowledgeContext: string | null = null;
+        let knowledgeCitations: KnowledgeCitation[] = [];
+        let knowledgeNotice: string | null = null;
+        if (detectKnowledgeIntent(text)) {
+          const keyword = knowledgeSearchKeyword(text);
+          if (!keyword) {
+            knowledgeNotice = "已识别 @知识库，但没有可检索的词；本轮未注入知识库上下文。";
+          } else {
+            try {
+              const search = await shell.knowledgeVaultSearch({
+                keyword,
+                tags: [],
+                properties: [],
+              });
+              // 宿主搜索是字面子串匹配，且会扫到 inbox/索引/用户笔记；这里只保留 AI 建的知识卡。
+              const hits = filterKnowledgeHits(search.hits).slice(0, 3);
+              if (hits.length === 0) {
+                knowledgeNotice = "知识库没有命中相关卡片；本轮未注入知识库上下文。";
+              } else {
+                const notes: KnowledgeVaultNote[] = [];
+                for (const hit of hits.slice(0, KNOWLEDGE_MAX_CARDS)) {
+                  try {
+                    notes.push(await shell.knowledgeVaultReadNote(hit.relative_path));
+                  } catch {
+                    // 单张卡读不到时用命中摘要，不因一张卡失败放弃整轮检索。
+                  }
+                }
+                knowledgeContext = buildKnowledgeContext(hits, notes);
+                knowledgeCitations = citationsFromHits(
+                  hits.slice(0, KNOWLEDGE_MAX_CARDS),
+                  KNOWLEDGE_MAX_CARDS,
+                );
+                knowledgeNotice = `已检索知识库：${hits.length} 条命中，引用 ${knowledgeCitations.length} 张卡。`;
+              }
+            } catch (e) {
+              knowledgeNotice = "知识库检索失败：" + String(e) + "；本轮未注入知识库上下文。";
+            }
+          }
+        }
         // 提示词：普通对话发上下文本身；带预设的对话用同一套组装器把场景规则、
         // 期望章节与上文（上一轮对话）一起带进去。
         //
@@ -1756,6 +1831,7 @@ export function HomeChat({
                 entries: describeIndex(noteContext.index, noteContext.today),
               }
             : null,
+          knowledgeContext,
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
@@ -1805,6 +1881,19 @@ export function HomeChat({
         const maskParts: string[] = [];
         if (masked && masked.id_card > 0) maskParts.push(`身份证号 ${masked.id_card} 处`);
         if (masked && masked.phone > 0) maskParts.push(`手机号 ${masked.phone} 处`);
+        const maskerLabels: Record<string, string> = {
+          PERSON: "人名",
+          BRANCH: "机构",
+          ORG: "组织",
+          CUSTOM: "自定义词",
+          EMAIL: "邮箱",
+          BANKCARD: "银行卡",
+          IDCARD: "身份证号",
+          PHONE: "手机号",
+        };
+        for (const [kind, count] of Object.entries(masked?.masker?.by_type ?? {})) {
+          if (count > 0) maskParts.push(`${maskerLabels[kind] ?? kind} ${count} 处`);
+        }
         const maskNotice = maskParts.length > 0
           ? `已自动脱敏（${maskParts.join("、")}），原文只保留在本机对话里。`
           : null;
@@ -1820,12 +1909,14 @@ export function HomeChat({
             endedAtMs: null,
             // OD-ARCH-069：记住本轮原文，供超时后「重发」用（不额外落盘）。
             sentText: text,
+            citations: knowledgeCitations,
             notice: [
               degraded ? "引擎会话已失效，这一轮改用新会话；下一轮会把上文补回去。" : null,
               // OD-ARCH-089：把本轮走的路与落盘结果说清楚，用户不必猜标签去哪了。
               intent ? describeWorkIntent(intent) + "。" : null,
               worklogNotice,
               maskNotice,
+              knowledgeNotice,
             ]
               .filter(Boolean)
               .join(" ") || null,
@@ -2413,6 +2504,25 @@ export function HomeChat({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {maskerWarning ? (
+        <div
+          className="mb-2 flex shrink-0 items-start gap-2 border border-outline-variant/70 bg-surface-container-low px-3 py-2 text-[11.5px] text-on-surface-variant"
+          role="status"
+          data-testid="masker-warning"
+        >
+          <Icon name="shield-check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+          <p className="min-w-0 flex-1 leading-relaxed">{maskerWarning}</p>
+          <button
+            type="button"
+            onClick={() => setMaskerWarning(null)}
+            className="shrink-0 text-outline hover:text-on-surface"
+            aria-label="关闭脱敏还原提示"
+            data-hover-hint="关闭提示"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       {/* 空对话时的上方留白（有历史时收成 0，输入框自然落底） */}
       <div
         aria-hidden="true"
@@ -2597,6 +2707,31 @@ export function HomeChat({
                   ) : (
                     <p className="text-outline leading-relaxed">正在生成…</p>
                   )}
+
+                  {m.citations && m.citations.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5" data-testid="knowledge-citations">
+                      <span className="text-[10.5px] text-outline">引用</span>
+                      {m.citations.map((citation) => (
+                        <button
+                          key={citation.relative_path}
+                          type="button"
+                          data-testid="knowledge-citation"
+                          onClick={() => {
+                            setSendNote(null);
+                            void shell
+                              .knowledgeVaultReadNote(citation.relative_path)
+                              .then((note) => setCitationPreview(note))
+                              .catch((e: unknown) => setSendNote("打开引用失败：" + String(e)));
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-primary text-[11px] hover:bg-surface-container-high transition-colors"
+                          title={citation.relative_path}
+                        >
+                          <Icon name="note" className="w-[12px] h-[12px]" />
+                          <span className="max-w-[180px] truncate">{citation.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {m.toolNote ? (
                     <p className="flex items-center space-x-1.5 text-[11.5px] text-outline">
@@ -2851,6 +2986,7 @@ export function HomeChat({
                 <span>新对话</span>
               </button>
             ) : null}
+            <KnowledgeIngestPanel />
             {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
             <button
               onClick={() => setVoiceNote((v) => !v)}
@@ -2993,6 +3129,40 @@ export function HomeChat({
         className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out"
         style={{ flexGrow: empty ? 1 : 0, flexBasis: 0 }}
       />
+
+      {citationPreview ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/25 p-5"
+          data-testid="knowledge-citation-preview"
+          onClick={() => setCitationPreview(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`知识卡：${citationPreview.file_name}`}
+            className="w-full max-w-2xl max-h-[78vh] flex flex-col rounded-xl bg-surface p-4 shadow-xl ring-1 ring-outline-variant/40"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-outline-variant/30 pb-2.5">
+              <div className="min-w-0">
+                <p className="text-[14px] font-medium text-on-surface truncate">{citationPreview.file_name}</p>
+                <p className="text-[11px] text-outline truncate">{citationPreview.relative_path}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCitationPreview(null)}
+                className="text-outline hover:text-on-surface"
+                aria-label="关闭知识卡预览"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-3 min-h-0 overflow-y-auto text-[13px] text-on-surface">
+              <MarkdownText text={citationPreview.content} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
