@@ -1,5 +1,448 @@
 # 当前实施计划
 
+### OD-ARCH-143：Task 5 端到端验收与整体收口（S1/S2 已复核通过；S3 用户实测、S4/S5 收口待用户批准执行）
+
+> **触发：** 用户指示 Task 4 完成后出 Task 5 规划；Task 1–4 全部改动积压在工作区未提交，Task 5 完成后一次性提交推送。
+
+---
+
+## 一、现状盘点（实读核实）
+
+**已实现且复核通过的功能面：**
+- DataMasker 安全引擎（Task 1 纯文本 32 项 + Task 2 Markdown 结构感知 38 项 + Task 4 主链强制接入）——红线→打码→双向脱敏→回程还原全链贯通。
+- 知识库工作流（141）：inbox 收件箱 → AI 整理建卡 → 索引维护 → 对话两跳检索带引用。
+- 工作记录四象限（093/097）、周报（memory-report）、随手记合并（132）、项目甘特（098/102）。
+- 测试资产：3 个 Python 单测文件（78 项）、1 个前端 test.mjs（8 项）、12+ 个桌面验证脚本、cargo lib 524 项。
+
+**待 Task 5 解决的三类问题：**
+1. **积压 30 项未提交**——Task 1–4 全部成果无备份。
+2. **5 个既有坏测试**（host_integration 3 项 /bin/true、web_api 2 项 socket/参数序）——影响"全绿"可信度。
+3. **零真实环境端到端**——所有验证都在隔离/合成数据上，真实模型 + 真实 Vault 的整链路从未跑过。
+
+## 二、任务定义
+
+**目标：一次端到端验收 + 一次收口提交，把积压工作变成可发布状态。**
+
+### S1 坏测试修复（独立小任务，先做——验收基线必须全绿）
+- host_integration 3 项：/bin/true → tempfile 写可执行假 CLI（跨平台）。
+- test_web_api_unit 2 项：recv_budget socket 超时（超时预算参数化）；for_dsh 参数序断言（改断言 resolve_node 结果而非字面 "node"）。
+- 验收：cargo test --offline 全量（lib + host_integration）全绿；web_api 88/88。不放宽任何生产断言，只修测试自身缺陷。
+
+### S2 端到端验收脚本（合成数据全链路）
+verify_e2e_143.py 一条龙（隔离 /tmp 数据根 + 假模型端点）：
+1. 启动 → 初始化知识库骨架（S1 of 141）；
+2. inbox 投合成材料 → 整理 → 卡落盘 + 索引更新 + 原文归档；
+3. 对话提交（含词典人名）→ 引擎日志断言出站占位符 → 假模型回文含占位符 → 还原正确；
+4. 随手记 → 周报草稿 → 四象限归类 → 保存成果；
+5. 断言全程敏感原文未出现在任何出站日志/事件。
+验收：脚本全绿，证据落 evidence/od-arch-143/。
+
+### S3 真实环境验收清单（用户执行，列出清单不代跑）
+- 真实模型对话：词典人名出站占位符、回答自动还原；
+- 真实 Vault：丢一份材料→整理→对话检索命中引用；
+- 随手记/周报在真实工作流里各走一遍；
+- 应用重启后旧会话占位符如实提示。
+用户确认后填实测结论。
+
+### S4 收口提交（用户批准后执行）
+- 敏感扫描：新增文件全过红线词表与凭证模式扫描；词典样例确认全虚构；
+- 分批提交（建议 5 个提交：Task 1+2 安全引擎 / Task 3 知识库 / Task 4 强制脱敏 / 文档 / 测试修复），推送 origin/main；
+- GitHub Release：版本号 0.2.9（VERSION + tauri.conf 同步），tag 触发 CI 出包（macOS zip + Windows NSIS + Windows zip）；
+- STATUS/REVIEW/decisions 更新（D-0xx：LLM 链路强制脱敏决策记录）。
+
+### S5 发布确认
+- CI 三产物齐全；安装包体积回归（对比 0.2.8 基线）；用户实机安装冒烟。
+
+## 三、验收标准
+
+1. S1 后：全部测试零失败（首次达到）。
+2. S2 后：合成端到端全链路绿。
+3. S3 后：用户实测清单全部打勾（或明确列出未过项与原因）。
+4. S4/S5 后：GitHub main 与本地一致、0.2.9 三产物可下载、实机安装可用。
+
+## 四、质量门禁
+
+1. 盘点基于实读（测试资产清单、STATUS 各轮记录、git status）。
+2. 无重复建设：S2 复用既有假模型端点与隔离根模式，不新建框架。
+3. 无未决决策：提交分批与版本号沿用既有惯例；坏测试只修测试自身不改生产断言。
+4. 全部步骤可自动验收（S3 用户清单除外——本来就是人验）。
+5. 泄漏风险：S4 提交前扫描是最后一道闸；词典样例与测试数据全虚构已复核三轮。
+6. 不改生产代码：S1 只修测试；S2/S4 只加脚本与文档。
+### OD-ARCH-142：Task 4 LLM 调用链全量强制脱敏（实施已复核通过，见 REVIEW.md 顶部；2026-11-05）
+
+> **触发：** 用户指示出 Task 4 规划。目标：让所有流向云端模型的文本强制经过 DataMasker 脱敏层、所有模型回文自动还原——把 139 规划时承诺的"Task 4 强制点"落地。这是数据安全的最后一块拼图。
+
+---
+
+## 一、现状事实（实读核实：调用链全景与已有脱敏覆盖）
+
+1. **出站唯一入口**：宿主 engine_submit_task（lib.rs:379）是前端到模型文本的**唯一通道**。既有保护链：红线扫描（按用户原文扫）→ mask_privacy（18 位证件/17+X/11 位手机号打码，单向）→ 引擎 submit_task → DSH Web API。
+2. **回程两条路**：① 流式事件 assistant-stream/text-delta（引擎翻译后经 bridge_sink → omni://task-event → 前端）；② 非流式终文 get_task_result_text。
+3. **已有脱敏覆盖**：对话主链路 mask_privacy 已接（出站）；知识整理链路（141）mask_markdown 已接（引擎侧）；工作记录/知识卡落盘链路 mask_privacy 已接。
+4. **缺口（Task 4 要补的三处）**：
+   - a. mask_privacy 是**单向打码**：模型回文里没有原文可还原，用户看到的是 "***"，来回对话后上下文质量下降；DataMasker 双向引擎未接主对话链。
+   - b. **词典识别未接主链**：干部姓名、支行机构等（sensitive-dict.v1.json）只在知识整理链路生效，对话链路的"张三"会明文出站。
+   - c. **回程无还原**：模型用 [PERSON_xxx] 占位符写的回答，前端原样显示占位符——用户不知道指的是谁。
+5. **会话多轮结构**：同一引擎会话内多轮 prompt；映射需要按会话存活（SessionScope），否则第二轮模型看到第一轮的占位符却查不到表。
+
+## 二、设计决策（定死）
+
+### D1 双层脱敏，保留打码语义
+mask_privacy（证件/手机号打码）**保留不动**——它是对话落盘与本地显示的既有语义；DataMasker 在其后追加：词典实体（PERSON/BRANCH/ORG/CUSTOM）+ EMAIL + 银行卡，出站顺序 = 红线扫描 → mask_privacy → DataMasker.mask（SessionScope 按引擎会话存活）。证件/手机号已被 mask_privacy 打成星号，不会被 DataMasker 二次识别（星号串不匹配规则），无双保险冲突。
+
+### D2 会话映射生命周期
+映射表存宿主内存 HashMap<engine_session_id, SessionScope>；生命周期 = 引擎会话生命周期（会话结束/应用退出即丢）。不落盘、不进日志、不进前端。多轮对话内同实体同占位符（SessionScope 既有行为）。应用重启后新会话自然新映射——旧会话恢复（recover_session）时映射表为空，此时占位符无法还原，按"未识别占位符原样保留 + 顶部提示一次"处理（如实告知，不猜）。
+
+### D3 回程还原（引擎侧，双路覆盖）
+- 流式：引擎 _turn_worker 在 text-delta 事件转发前，按本任务映射表还原（delta 可能切断占位符——引擎在事件层做缓冲拼接：占位符完整匹配才还原，切断的按 buffer 处理；实现上对 delta 流做一个小状态机）。
+- 非流式：get_task_result_text 返回前同表还原。
+- 还原 report（ok/unknown）挂到任务终态事件，前端 ok=False 时顶部提示"部分占位符未能还原"，不拦截显示。
+
+### D4 强制性（本 Task 的灵魂）
+- DataMasker 接入点在**引擎 submit_task 内部**（web_api_adapter.submit_task 在拿到 text 后、发 session/prompt 前），不在前端、不在宿主——这样绕过前端/宿主直接调引擎的路径（测试、脚本、未来 API）也受保护。
+- 引擎新增配置开关 masker_enabled（默认 **true**，无词典时纯规则模式仍生效）；关闭开关的途径只有显式环境变量 OMNIDESK_MASKER=off——UI 不提供关闭入口（用户 10-25 已定"权限默认收紧"哲学）。
+- 验收硬指标："绕过脱敏直连模型的路径是否存在"——审计 submit_task 之后的文本流向，确认 prompt_text 进 session/prompt 前已过 masker；附件路径（attachmentPrompt 拼接的正文）同样过。
+
+### D5 词典来源
+运行时 <app_root>/config/sensitive-dict.v1.json（139 已定）。词典更新后新会话生效（SessionScope 建立时加载），存续会话不中断——避免半途换表造成映射不一致。
+
+### D6 性能
+SessionScope 建立时编译正则缓存（masker 已缓存）；每次 mask O(n)；1MB 提示词实测 <100ms（Task 1 已验证同量级），不设专门优化。
+
+## 三、任务卡（S1–S7）
+
+> 测试：tests/verification/engine-interface/adapter/（引擎侧 unittest）+ desktop/src-tauri（cargo 单测）+ verify_e2e 脚本。
+
+- **S1 宿主会话映射注册表**：lib.rs 新增 SessionMaskRegistry（Mutex<HashMap<String, SessionScope>>）；engine_submit_task 在 mask_privacy 后调 DataMasker 路径……实现抉择：DataMasker 是 Python——宿主 Rust 不能直接调。**修正：接入点放引擎侧**（见 D4），宿主只负责传 engine_session_id（已传）与词典路径环境变量（OMNIDESK_SENSITIVE_DICT，指向 <app_root>/config/sensitive-dict.v1.json，settings 变更时下发）。验收：cargo 单测（环境变量组装）+ 引擎侧读配置单测。
+- **S2 引擎出站接入**：web_api_adapter.submit_task 在 text 校验后、_turn_worker 前：加载词典（首次+缓存）、DataMasker().mask(text, session=registry[engine_session_id])、映射表按 session 存引擎内存、占位符文本进 _turn_worker；mask 后长度/统计写任务记录（计数，不含原文）。验收：unittest——mock DSH 前占位符已注入、同会话同实体同占位符、不同会话隔离、词典缺失降级纯规则、OMNIDESK_MASKER=off 关闭。
+- **S3 流式回程还原状态机**：_turn_worker 的 text-delta 路径加 buffer 状态机（正则边界内聚合，占位符完整才查表替换）；非流式 get_task_result_text 同表还原；report 挂终态事件。验收：unittest——占位符跨 delta 切断还原、多占位符混排、unknown 保留、report 正确。
+- **S4 前端展示与提示**：终态 ok=False 时顶部提示条；引用卡/脱敏统计展示复用既有 privacy_masked 通道扩展（masked counts 增加 masker 计数）。验收：verify_ui 脚本 + tsc。
+- **S5 审计：绕过路径清零**：文本流向审计脚本（静态断言 submit_task → prompt 无第二条未脱敏路径；附件/知识上下文/重放历史均在 submit_task 汇合点之后）；输出进 STATUS。验收：审计脚本 0 违例。
+- **S6 全链路回归**：Task 1/2 单测 32+38、141 全套、cargo 全量、tsc、build 全绿；手工烟测：对话含词典人名 → 出站占位符 → 回答还原为原文 → 本地线程记录仍为原文。
+- **S7 收口**：STATUS/REVIEW 更新，停下待复核。
+
+## 四、验收标准（用户实测）
+
+1. 对话输入"请帮我总结张三的工作表现"（张三在词典）→ DSH 诊断/引擎日志确认出站是 [PERSON_xxx]，模型回答里"张三"自动还原。
+2. 重启应用后旧会话继续问 → 占位符原样显示 + 一次性提示（不猜还原）。
+3. 词典加一个新支行名 → 新对话生效。
+4. 全程本地会话记录不被改写（原文保留在本地）。
+
+## 五、质量门禁
+
+1. 已实读：engine_submit_task 全文、引擎 submit_task/_turn_worker/text-delta 路径、bridge_sink、事件监听、既有 mask 调用点、141 检索注入。
+2. 重复风险：与 mask_privacy 分工明确（D1），无双保险冲突（星号串天然不匹配 DataMasker 规则）。
+3. 未决决策：无。恢复会话映射丢失的行为（如实提示，不猜）已定。
+4. 自动验收：S1–S6 全部可自动；真实模型端到端列用户实测。
+5. 泄漏风险：映射表只在引擎内存，随会话消失；词典缺失降级纯规则并在统计 warn；OMNIDESK_MASKER=off 是显式环境变量，UI 无关闭入口。
+6. 结构破坏：主对话是纯文本路径，Task 2 的 markdown 路径不涉及。
+7. 跨请求泄漏：SessionScope 按会话隔离（Task 1 已验）；恢复会话映射清空属已知边界（如实提示）。
+8. 云端强制：本 Task 完成后"绕过脱敏直连"审计通过即成立——这是 139 规划承诺的最终强制点。
+### OD-ARCH-141：Task 3 知识库工作流接线（实施已复核通过，见 REVIEW.md 顶部；2026-11-05）
+
+> **触发：** 用户指示继续 Task 3。目标体验：用户只管往收件箱丢材料，AI 自动整理成知识卡；对话时 AI 自动查知识库给出更准、更适合、带引用的回答（NotebookLM 式）。Task 2 结构感知脱敏已完成，整理链路出站可安全脱敏。
+
+---
+
+## 一、现状事实（实读核实）
+
+1. **知识卡规范已齐**：knowledge-search skill 定义卡片格式（frontmatter tags/sources/date + 正文≤300字自包含 + 双链）、索引.md 一行一卡格式、两跳检索硬约束、防重复建卡流程、Obsidian CLI 可用/降级双路径；knowledge-agent skill 定义建卡内容规范（五段式）。**技能层完全就绪，缺的是运行时接线。**
+2. **Vault 命令族已齐**：lib.rs 已注册 knowledge_vault_scan / read_note / parse_note / create_note / save_note / search / rebuild_index / note_links 八个命令——建卡、检索、索引的宿主能力全部存在。
+3. **用户 Vault 现状**：库/ 下只有 工作记录/，无 知识库/ 目录、无索引.md、无 inbox/——链路从未跑通。
+4. **对话注入点已存在**：conversationPrompt.ts 的 skills 注入链（skillsByFlow 按 mode 取技能）；HomeChat 是唯一对话入口（ScenePage 不挂 Chat）。
+5. **Task 1/2 脱敏引擎就绪**：整理链路若走云端模型，出站可过 mask_markdown。
+
+## 二、设计决策（定死）
+
+### D1 目录约定（Vault 布局）
+- 库/知识库/概念/ 与 方法/：AI 建卡目标目录（skill 已定）。
+- 库/知识库/原文/：原始材料归档（卡片 sources 指向这里）。
+- 库/inbox/：用户唯一入口——往里丢任何 md/txt，即"待整理"。
+- 索引.md：库/知识库/索引.md，AI 维护。
+- 用户自有笔记区：库/笔记/（AI 只读，永不写）。首建时由 Task 3 的初始化动作创建目录骨架 + 空索引。
+
+### D2 整理工作流（写路径）
+触发：场景页/首页提供「整理收件箱」按钮（手动，不做定时——沿用 092 裁定）。流程：
+1. 宿主列 inbox 文件（复用 knowledge_vault_scan 限定 inbox 前缀）。
+2. 每批（≤5 文件）组装提示词：文件原文 + knowledge-agent 建卡规范 + knowledge-search 卡片格式 + 索引现状 → intent=knowledge_ingest 走 submit_task。
+3. 模型返回结构化结果（JSON：cards[] + index_lines[] + archive_moves[]），宿主校验（目标路径白名单、标题防重复——与索引比对、卡正文 ≤300 字、sources 路径必须真实存在）后逐卡落盘（knowledge_vault_create_note）+ 更新索引.md（追加行）+ 原文移入 原文/。
+4. 校验失败的卡不入库、列入报告；全部结果在界面展示（建了几张、跳过什么、为何跳过）。
+5. 出站脱敏：提示词组装时对 inbox 原文先跑 mask_markdown（Task 2 引擎，Python 侧在引擎内做——引擎新增 ingest 前置调用，映射表随任务在内存持有，还原仅用于本地归档文件名）。
+
+### D3 对话自动检索（读路径）
+触发：用户在对话中提问且问题含"规定/制度/怎么办/流程/依据"等知识意图关键词，或显式 @知识库。流程：
+1. 提交前宿主先跑 knowledge_vault_search（现成命令，预算检索）取 top3 命中。
+2. 命中则把 索引.md 相关行 + 命中卡正文（≤2 张）注入提示词上下文区（带"以下为知识库检索结果，引用须与原文一致"约束）。
+3. 关键词意图判定由确定性词表 + 首次模型自判（"是否需要查知识库"）双层：词表命中直接查；未命中但用户 @知识库 时必查；其余不查（省 token）。
+4. 回答后前端展示"引用了哪几张卡"（可点击打开——复用 knowledge_vault_open_attachment）。
+
+### D4 边界
+- 不做向量/RAG（140 已定触发条件）。
+- 不做定时整理（092 裁定沿用）。
+- 模型整理结果必须经宿主校验落盘，AI 无直接写权（与 memory-agent 同哲学：AI 判语义，工作台落盘）。
+- 基础标准（omnidesk-base）下不提供（无场景规则节点）。
+
+## 三、任务卡（S1–S7）
+
+> 测试位置：tests/verification/desktop/（宿主/集成层用既有 verification 模式）+ engine 单测。
+> 实施交新会话 DeepSeek，模式同 Task 1/2。
+
+- **S1 目录骨架初始化**：宿主命令 knowledge_ingest_init——建 概念/方法/原文/inbox/ 目录 + 空索引.md（幂等，已存在不动）；验收：隔离 /tmp 数据根跑命令，断言目录与索引生成、二次执行零改动。
+- **S2 整理提示词组装**（引擎侧）：assemble_ingest_prompt(files, index, card_spec) 纯函数 + 单测；断言：含建卡规范全文、索引现状、原文 mask 后注入、JSON 输出约束；mask 映射随任务对象持有。
+- **S3 整理结果校验器**：validate_ingest_result(json, index, vault_scan)——标题防重（与索引比）、路径白名单（只许 概念/方法/）、卡长校验、sources 存在性；断言：非法路径拒、重复标题拒、超长拒、sources 缺失拒、合法通过；单测 8+ 用例。
+- **S4 落盘与索引更新**：host 侧 apply_ingest_result——逐卡 create_note + 索引追加 + 原文移动；失败回滚当卡（不影响已通过卡）；断言：隔离根跑通全流程、失败卡跳过且报告正确、索引行与卡一一对应。
+- **S5 对话检索注入**：HomeChat 提交前钩子——词表意图判定 + knowledge_vault_search top3 + 上下文注入（截断上限 3000 字符）+ 引用卡片记录；断言：词表命中触发、@知识库必触发、无命中不注入、注入不超上限（前端 tsc + 组件测试脚本）。
+- **S6 前端入口**：首页/工作记录场景「整理收件箱」按钮 + 进度与结果报告 UI + 引用卡点击打开；验收：npm build + verify_ui 脚本（固定选择器）。
+- **S7 收口**：全链路冒烟（隔离根：inbox 放合成材料 → 整理 → 卡落盘 → 对话检索命中 → 引用展示）；cargo test 全量 + tsc + build；STATUS/REVIEW 更新。
+
+## 四、验收标准（用户实测）
+
+1. 往 inbox 丢一份合成制度材料 → 点整理 → 知识库出现合规卡 + 索引更新 + 原文归档。
+2. 对话问"专项检查的流程是什么" → 回答引用刚建的卡，可点击打开。
+3. 问无关问题 → 不触发检索（token 不浪费）。
+4. 全程无真实材料进入 Git 或测试夹具。
+
+## 五、质量门禁
+
+1. 已实读：两个 knowledge skill 全文、vault 八命令、对话注入链、用户 Vault 实况。
+2. 重复风险：无新检索实现（复用 vault_search）；卡格式复用 skill 既有定义，不另造。
+3. 未决决策：无。RAG 触发条件沿用 140；定时整理沿用 092 裁定不做。
+4. 自动验收：S1-S4、S6 可全自动；S5 词表判定可自动、模型自判属真实模型实测（列用户实测项）；S7 冒烟脚本自动。
+5. 泄漏风险：出站 mask_markdown 在 S2 强制；映射内存持有不落盘；收件箱材料若含敏感值，建卡后的卡片内容已被脱敏（可回原文核对——原文在本地 原文/ 目录）。
+6. 结构破坏：卡片由 create_note 新建，不碰既有文件；索引只追加（防重在校验器）。
+7. 跨请求泄漏：Task 1/2 机制继承。
+8. 云端强制：整理链路本任务内即过脱敏（S2）；全链路强制仍属 Task 4。
+### OD-ARCH-140：Task 2 结构感知脱敏 + 知识库问答架构（Task 2 实施已复核通过，见 REVIEW.md；Task 3 规划进行中）
+
+> **触发：** 用户批准 Task 1 后指示：① 开始规划 Task 2（DataMasker 结构适配）；② 一并回答 Obsidian 与 llm-wiki 如何融合、是否用 RAG、是否调大模型。用户定调：知识库是给 AI 准备的，我不维护不检索，我只管不断输入内容，最后 AI 借知识库给我更准的回答——参考 NotebookLM。
+
+---
+
+## 一、现状事实（实读核实，决定三条路线）
+
+1. Vault 基础设施已建成：desktop/src-tauri/ 下有 vault_search.rs（带读取预算的全文检索）、vault_index.rs（标题/块锚点/双链索引/fingerprint）、vault_link.rs（双链解析）、vault_note.rs（Frontmatter/标签解析）、vault_write.rs（白名单写入）、knowledge_vault.rs（库根校验）——OD-KB-001 P2 已落地笔记浏览、属性、搜索、安全编辑。Rust 侧结构解析器已存在，Task 2 不必从零写。
+2. llm-wiki 方案已部分落地：knowledge-search skill 定义了索引卡+两跳检索（读 索引.md → 按标签定位 → 只加载 1-2 张卡），knowledge-agent skill 负责整理成卡。但用户 Vault 里还没有 知识库/ 目录和索引.md——skill 有了，卡没建，链路没跑通。
+3. 模型通道已通：引擎 submit_task → DSH Web API 全链路（080 协议验证过，真实模型用户已配置）。
+4. DataMasker Task 1 已收口：纯文本双向脱敏可用；masker.py 无结构感知。
+5. 无向量库、无 embedding 基础设施。
+
+## 二、用户问题直接回答（决策记录，写入 decisions）
+
+### Q1 Obsidian 与 llm-wiki 如何融合？
+
+文件系统即接口，零转换层。Obsidian 的本质是一个 Markdown 文件夹 + 双链语法；llm-wiki（索引卡+两跳）也是 Markdown 文件夹。两者共用同一目录（~/OmniDesk/库/知识库/），Obsidian 是人看的编辑器，llm-wiki 索引卡是 AI 读的目录页。融合 = 四条约定：
+- 知识卡由 AI 整理生成、用户在 Obsidian 里只读不改（改了 AI 下次整理会重建并提示冲突）；用户自有笔记放另一个目录，AI 只读不写。
+- 索引.md 由 AI 维护：每次整理自动更新一行一卡；Task 2 顺手把 vault_index.rs 的链接/标签索引导出为索引.md 的校验源。
+- 双向链接 [[卡片名]]：AI 建卡时按 vault_link.rs 已解析的关系自动生成，Obsidian 里点得动，AI 读索引时按标题跳。
+- Obsidian 本体不安装、不依赖（沿用 10-26 基线 Obsidian 可用但非依赖）。
+
+### Q2 要不要 RAG（向量检索）？
+
+现在不建，触发条件明确（写入 decisions，不提前造）。理由：
+- 个人纪检知识库预计百级卡片、每卡几百字——索引.md 一次读入 1-2k token，两跳检索在千卡以内绰绰有余，向量库在此量级是过度设计。
+- 向量库引入 embedding 依赖、索引构建、阈值调参、检索质量评测四套成本；知识卡本身已是 AI 提炼的语义单元——卡就是最准的 chunk，再切分向量化是二次降质。
+- 触发条件（满足任一才评估）：卡片 >500 张且索引读取超预算；提问频繁出现索引没有但库里其实有（召回失败）；引入大批量非卡式长文档（如 234 份制度汇编）需段落级定位。触发后优先评估 BM25/全文排序升级（vault_search 已有预算检索骨架），而非向量库。
+
+### Q3 要不要调大模型？
+
+要，两处，都走现有通道，不新建：
+- 整理入库（写路径）：knowledge-agent skill 读原始材料 → 生成知识卡 + 更新索引。skill 已有，缺触发时机与批量工作流——纳入 Task 3 规划（用户只管输入内容 = 放进收件箱目录，整理动作手动触发或打开应用时提示）。
+- 检索问答（读路径）：knowledge-search 两跳检索 → 卡片注入上下文 → 模型作答并引用。skill 与通道已有，缺对话自动带知识库上下文的接线——纳入 Task 3。
+
+### Q4 与 NotebookLM 的差异（如实告知）
+
+NotebookLM = 上传源文档 + 全库语义索引 + 带引用问答。OmniDesk 在带引用问答上目标一致（卡片带 sources frontmatter，可回原文核对——检索验收规格 A/B 两命题已定义）；差异在索引方式（索引卡 vs 向量），这是有意取舍：省 token、可人审、可重建、不引新依赖。千卡以内体验等价，超了按 Q2 触发升级。
+
+## 三、Task 2 范围定义（DataMasker 结构感知，只做这一件事）
+
+目标：mask/unmask 对 Obsidian 兼容 Markdown 安全——只改占位符该在的位置，结构逐字节保真。
+
+区域策略表（定死）：
+- YAML Frontmatter：脱敏（sources 里可能有人名/机构）
+- 普通正文：脱敏（主战场）
+- 代码块与行内代码：跳过（脱敏破坏代码语义）
+- WikiLink 目标 [[目标]]：跳过（改目标=断链）
+- WikiLink 显示文本 [[a|显示]]：脱敏（显示文本是正文）
+- 嵌入 ![[目标]]：跳过（同链接目标）
+- 标签 #tag：跳过（标签是检索键）
+- URL：跳过（改了失效）
+
+实现：区域扫描器（frontmatter 边界定义与 vault_note.rs 对齐；代码块/行内码/WikiLink 正则切区）→ 只对脱敏区跑 Task 1 引擎 → 拼回。禁止解析再序列化：输出 = 原文逐字节保留 + 仅替换区间改写；验收含除占位符外逐字节一致硬断言。
+
+新接口：mask_markdown(text, session=None) 返回 MaskResult；unmask_markdown 对称。保留 mask() 纯文本路径不动（Task 4 LLM 链路用纯文本，不受影响）。
+
+## 四、任务卡（S1-S6，unittest -k 验收，模式同 Task 1）
+
+- S1 区域扫描器：Markdown 切区（frontmatter/代码块/行内码/WikiLink/其余正文）输出区间列表；验收 -k Region：三类 WikiLink 区分、嵌套代码块、frontmatter 未闭合告警、区间并集不重叠。
+- S2 mask_markdown 主路径：只对脱敏区调 Task 1 引擎；验收 -k MaskMd：除占位符外逐字节一致；代码块内证件号不替换；frontmatter 人名替换；显示文本替换但链接目标保留。
+- S3 unmask_markdown：对称还原 + report；验收 -k UnmaskMd：往返逐字节一致；跨映射拒绝同 Task 1。
+- S4 畸形结构：未闭合代码块、巨量链接、1MB 文档性能上限；验收 -k Edge。
+- S5 vault_write 侧对齐确认（纯文档核对，不改 Rust）：确认写入白名单与 .md 脱敏无冲突，产出检查记录进 STATUS。
+- S6 收口：全量单测 + Task 1 32 项回归 + 手工烟测。
+
+运行目录与命令形态同 Task 1：cd tests/verification/engine-interface/adapter && python3 -m unittest -v test_security_masker_markdown_unit -k <Key>。
+
+## 五、Task 3 预告（下一轮规划，本轮不展开）
+
+知识库只输入不管体验的落地：收件箱目录约定、knowledge-agent 批量整理工作流（建卡+索引更新+冲突提示）、对话自动带两跳检索接线、NotebookLM 式引用格式（卡片链接 + sources 回溯）。整理链路出站脱敏在 Task 4 一并接入。
+
+## 六、质量门禁
+
+1. 已检查真实代码：vault 六模块、两个 knowledge skill、用户 Vault 实况、DataMasker 现状均实读。
+2. 重复风险：区域扫描与 vault_note.rs 的 frontmatter 语法须对齐（同一套 YAML 边界），列为 S1 验收项；不重建检索（vault_search 已有），本轮零 Rust 改动。
+3. 未决决策：无——八类区域策略全部定死；RAG 设触发条件不做预设实现。
+4. 自动验收：S1-S4、S6 全部 unittest -k；S5 为文档核对（产出检查记录）。
+5. 泄漏风险：代码块跳过是设计决策——代码块内敏感值不脱敏，验收样例明示此边界。
+6. 结构破坏风险：逐字节保真硬断言 + 链接目标永不改写。
+7. 跨请求泄漏：Task 1 机制原样继承。
+8. 云端强制：仍属 Task 4，本轮不变。
+
+## 七、交付与边界
+
+本轮新增：docs/DATAMASKER_TASK2_PLAN.md（三、四节展开）、PLANS.md 登记。实施交新会话 DeepSeek 按卡执行（模式同 Task 1），S1-S6 全过 + ARCHITECT 复核后收口。
+### OD-ARCH-139：DataMasker 双向脱敏引擎（规划轮已审通过；Task 1 实施已复核通过，见 REVIEW.md 顶部与 STATUS.md）
+
+> **触发：** 用户暂停四象限（OD-ARCH-138 挂起），下达 Task 1 规划指令：建立独立敏感数据脱敏模块 DataMasker，为知识库 / LLM-Wiki / 云端 LLM 调用提供统一数据安全基础。本轮只产出规划文档，不写功能代码。
+
+---
+
+## 一、Step 1 架构检查结论（已实读，全部为文件事实）
+
+1. **Python 侧只有一个包**：engine/omnidesk_engine/（10 个模块），纯标准库（dataclasses/typing/json/pathlib/urllib/socket 等），零第三方依赖；Python 3.9 兼容是硬约束（OD-ARCH-132 曾专门修 3.9 兼容）。用户建议路径 "omniharness/security/masker.py" 中的 omniharness 包**不存在**，须落到 engine/omnidesk_engine/security/。
+2. **现有脱敏能力是单向且不可还原**：Rust 侧 profile_rules.rs::mask_privacy 只做打码（18 位证件/17+X/11 位手机号 → ***），无映射、无还原；task_shell.rs::red_line_scan 是关键词命中拒绝。DataMasker 的"双向可还原"是全新能力，**与现有实现不重复、不冲突**，但口径必须对齐（同一证件/手机号识别规则），否则两条链路会各判各的。
+3. **配置落点惯例**：仓库 config/ 只放样例；用户可改配置在 ~/OmniDesk/app/config/（offline-flows.v1.json、scheduler.v1.json 等 <name>.v1.json 命名模式）。sensitive_dict 应循此例：仓库放 config/sensitive-dict.sample.v1.json，运行时读 <app_root>/config/sensitive-dict.v1.json。
+4. **测试惯例**：unittest（非 pytest），测试文件放 tests/verification/engine-interface/adapter/，命令 python3 -m unittest -v test_xxx；本轮新建 tests/verification/engine-interface/adapter/test_security_masker_unit.py。
+5. **文档目录**：docs/ 为现行项目文档根（docs/development/ 是未跟踪新目录，来源不明，不用）；规划文档放 docs/。
+6. **LLM 调用链（只看不动）**：宿主 lib.rs → 引擎 web_api_adapter.py → DSH Web API（session/prompt ws）。Task 4 集成点在引擎 submit_task 出站前（mask）与会话事件回程（unmask），本轮不碰。
+
+## 二、Step 2 技术设计（全部定死，不留实施方选择）
+
+### 2.1 模块与文件
+- engine/omnidesk_engine/security/__init__.py（导出 DataMasker）
+- engine/omnidesk_engine/security/masker.py（核心，仅标准库 re/secrets/hashlib/dataclasses/typing/json/pathlib）
+- config/sensitive-dict.sample.v1.json（样例词典，全部虚构）
+- 运行时词典：<app_root>/config/sensitive-dict.v1.json（masker 不写它；加载失败时只用规则路径并如实上报）
+
+### 2.2 词典结构（sensitive-dict.v1.json）
+{"schema":"omnidesk.sensitive-dict.v1","entries":[{"type":"PERSON|BRANCH|ORG|CUSTOM","value":"张三丰","aliases":["张三丰总"]},...]}
+- 同 value 不同 type 视为不同实体；aliases 并入匹配集，占位符一致。
+- 类型集合 Task 1 固定四类，代码用 Literal 约束，扩展留 type 注册表钩子（新增类型 = 注册 + 正则/词典项，不改核心）。
+
+### 2.3 规则识别（正则 + 校验，不裸判长度）
+- IDCARD：18 位，含 GB11643 校验码验证（加权因子算法， rejecting 校验失败的 18 位串——避免把 18 位流水号当证件）；兼容 17+X。
+- BANKCARD（Luhn 校验，13–19 位数字；不区分卡组织——Task 1 不做 BIN 表）。
+- PHONE：(?<!d)1[3-9]d{9}(?!d)，前后必须是数字边界。
+- EMAIL：标准 RFC 简化式（本地@域，域含点），长度上限 254。
+- 优先级：IDCARD > BANKCARD > PHONE > EMAIL > 词典（数字规则先于词典，防止词典词内含数字串被抢先；同为规则时按上述顺序）。
+
+### 2.4 占位符与映射
+- 占位符：[TYPE_ + secrets.token_hex(4) 大写] ，如 [PERSON_A81F29C4]；8 hex 随机、32bit 空间、同请求内重复实体查表复用，碰撞时重生成（while 循环 + 上限 1000 次，概率上不可能触达）。
+- Request Mapping：MaskMapping dataclass（frozen mapping of placeholder→{type, original}），生命周期=单次 mask 调用返回值，由调用方持有；DataMasker 不留存。
+- Session Mapping：SessionScope 对象由调用方创建并传入 mask(session=scope)，同 scope 内相同实体复用占位符；Task 1 只做内存态接口，不持久化。
+- Local Dictionary：即 2.2 词典文件（长期存在的"识别依据"），不是映射表。
+- Identity Vault：不做。
+
+### 2.5 重叠/同名/冲突
+- 匹配全部定位后按 (start, -length) 排序，先占长、位置重叠的短匹配丢弃；词典与规则在同一轮扫描中统一排序。
+- 同名同 type = 同一实体一个占位符；同名不同 type = 各自占位符，还原互不干扰。
+- unmask 只处理精确完整占位符（正则 [(IDCARD|BANKCARD|PHONE|EMAIL|PERSON|BRANCH|ORG|CUSTOM)_[0-9A-F]{8}] 整体匹配 + mapping 查表），未知/被改占位符原样保留并计入 issues。
+
+### 2.6 映射安全边界
+- MaskMapping 不实现 to_dict 导出原文；repr 覆盖为 "<MaskMapping n=8>"；文档明示"不得写入日志/不得随请求外发/不得跨请求复用"。
+- unmask(mapping=) 必须显式传对应 mapping；DataMasker 实例不保存任何历史映射（无实例级 dict）——映射隔离由构造保证，不靠纪律。
+- validate_mapping(masked, mapping) 返回 {ok, unknown:[...], missing_in_mapping:n, stats}，不改文本。
+
+### 2.7 Markdown 结构适配的边界（Task 2 做，本轮只定策略基调）
+- Task 1 按纯文本处理，不识别结构。
+- Task 2 起实施区域策略：代码块/行内代码默认跳过（可配），Frontmatter 默认处理，WikiLink 目标与别名分别处理（目标脱敏会破坏链接，默认只处理显示文本——具体在 Task 2 设计文档定）。
+- 永远不做"解析再序列化"。
+
+### 2.8 还原完整性
+- unmask 返回 (text, report)；report 含 restored/unknown_placeholders/modified_candidates（形如占位符但查表失败的数量）。ok 条件：unknown=0。调用方（Task 4）在 ok=False 时不得把结果当已还原内容使用——这个纪律写进接口 docstring 与 Task 4 验收。
+
+## 三、Step 3 实施任务卡（每步一个动作、可自动验收）
+
+**S1 词典模块**：security/__init__.py + masker.py 的 DictEntry/load_dictionary；输入 config/sensitive-dict.sample.v1.json；验收 python3 -m unittest test_security_masker_unit -k Dict（样例文件可加载、schema 错拒绝、重复 value+type 合并 aliases、非法 type 拒绝）。前置：无。
+**S2 规则识别器**：四类正则+校验函数；验收 -k Rule：GB11643 合法/非法样例各若干（虚构）、Luhn 合法/非法、手机号边界（前贴数字不命中）、邮箱长短；全部虚构数据。前置 S1。
+**S3 占位符与 MaskMapping**：生成、同作用域复用、碰撞重试、repr 脱敏；验收 -k Placeholder：同文本两处同名同占位符；不同请求不同占位符；repr 不含原文。前置 S1。
+**S4 mask 主体与重叠处理**：统一扫描排序替换；验收 -k Mask：重叠（"张三丰" vs "张三"）长者胜；规则与词典叠加；空文本/None/超长安全返回。前置 S2 S3。
+**S5 unmask + validate_mapping**：精确还原、未知占位符保留并报告、跨 mapping 还原无效、修改占位符不还原；验收 -k Unmask。前置 S4。
+**S6 SessionScope**：同 session 复用占位符、不同 session 隔离；验收 -k Session。前置 S4。
+**S7 收口**：全量单测 + 引擎现有两套 unittest 回归（确认零 import 波及）；npm/cargo 不涉及；更新 STATUS/REVIEW。
+
+每步验收命令统一形态：cd tests/verification/engine-interface/adapter && python3 -m unittest -v test_security_masker_unit -k <Key>，退出码 0 且断言数 ≥ 任务卡列出的最小断言数（写入脚本 docstring）。
+
+## 四、Step 4 后续路线图（本轮只登记不实施）
+- Task 2（OD-ARCH-141 候选）：Markdown/YAML/WikiLink 结构感知脱敏（区域策略表 + 逐区域扫描，禁解析再序列化）。
+- Task 3（142）：安全加固——异常审计日志（只记计数与类型，不记原文/映射）、词典文件完整性校验、并发使用约束。
+- Task 4（143）：接入 LLM 调用链——引擎 submit_task 出站 mask、会话事件回程 unmask、ok=False 时拦截并提示（含映射隔离与还原失败 UX）。
+- Task 5（144）：知识库批量处理与端到端验收（含 Obsidian 库实测）。
+
+## 五、质量门禁回答
+
+1. 已检查真实代码/测试体系：是（engine 包、Rust mask_privacy、unittest 惯例、config 命名均实读）。
+2. 与现有功能重复：无双向脱敏重复实现；但识别口径必须与 mask_privacy/red_line 对齐，已列入设计（2.3）。
+3. 未决技术决策：无——占位符、映射生命周期、重叠优先级、还原校验、文件落点全部定死；唯一外部依赖项是 Task 2 的 WikiLink 目标默认策略（明确划出本轮）。
+4. 无法自动验收的步骤：无——7 步全部给出 unittest -k 命令与断言要点；"真实效果符合岗位直觉"类主观验收不存在于本轮。
+5. 敏感信息泄漏风险：样例词典全虚构；映射 repr 脱敏 + 不提供原文导出 + 无实例留存；测试命令不打印敏感值。残留风险：调用方自行 persist mapping 无法从代码层阻止，只能靠 Task 4 的接口设计收口——已写入路线图。
+6. 破坏 Markdown 结构风险：本轮按纯文本处理，结构适配整体划给 Task 2 并已定"禁解析再序列化"基调。
+7. 跨请求映射泄漏：构造性杜绝（DataMasker 不持有任何映射；session 映射显式传入且不持久化）。
+8. 未来云端请求必经脱敏层：不能在本轮保证——Task 1 是独立模块；真正的强制点在 Task 4（引擎出站单点接入），届时以"绕过脱敏的直连路径是否存在"为验收项。此点如实告知：Task 1 完成不等于云端调用已受保护。
+
+## 六、交付物清单（本轮仅新增 3 份文档）
+- docs/DATAMASKER_ARCHITECTURE.md（第一、二节展开成文）
+- docs/DATAMASKER_TASK_PLAN.md（第三节任务卡展开成文，含每步断言清单）
+- docs/DATAMASKER_ROADMAP.md（第四节展开成文）
+不动任何源码/测试/配置/AGENTS.md。用户批准后按任务卡交实施。
+### OD-ARCH-138：工作记录四象限 AI 优先级归类（待批准）
+
+> **触发：** 用户裁定现行四象限"既不正确也没有意义"——只按「日期已过 + 去向」两个死规则机械分格。真实需求：AI 读当周记录里的想做、在做、未完成事项，结合岗位职责与工作重点判断优先级，推动及时完成。
+
+#### 现状与可行路径（已实读代码核实）
+
+- 现行归类在 weeklyQuadrants.ts（classifyWorklog），纯规则推导，卡片 WeeklyQuadrants.tsx 无模型输入。
+- 模型通道复用引擎既有 submit_task → session/prompt → get_task_result_text 全链路（engine/omnidesk_engine/web_api_adapter.py:1208/1422），不新增 RPC、不改协议。
+- 岗位上下文落点：rules.json 的 scenes.weekly（现有场景规则编辑器已支持编辑该节点），新增可选字段 priority_context。
+
+#### 方案
+
+**一句话：场景页四象限新增「AI 归类」动作——宿主组装「当周记录原文 + 岗位工作重点 + 输出格式约束」发起一次引擎任务，模型返回结构化四象限判定，卡片按 AI 结果渲染并标注来源，无结果时回落规则视图。**
+
+1. **规则字段（profile_rules.rs / rules.json schema v2）**：scenes.weekly 新增可选 priority_context（字符串，≤2000 字），语义是"用户岗位职责与当前工作重点"，设置页场景规则编辑器加一个多行输入。缺省为空——为空时提示词里不含岗位段落，仅按记录内容判断。
+2. **宿主命令 priority_review（lib.rs 新命令）**：
+   - 输入：week（可选，默认当周）。
+   - 组装提示词：当周工作记录原文（worklog::read_week）+ priority_context + 严格输出约束（只输出 JSON 数组：[{ "ref": "日期#序号", "status": "done|doing|todo|idea", "quadrant": "do_now|schedule|delegate|hold", "reason": "一句话" }]；不新增条目、不改写原文、不得调用工具；ref 必须来自材料中真实存在的条目，发现不了就省略）。
+   - 以独立 intent（priority_review）走 submit_task 发起任务（新会话、max 轮次 1 语义由提示词约束），轮询 task_status 至 completed/failed（超时 120 秒），取 get_task_result_text，从回复中提取 JSON（容错：剥 markdown 代码围栏），校验 ref 全部命中当周条目（ref 不存在的条目丢弃并计数）。
+   - 结果持久化：~/OmniDesk/app/engine-state/priority/<week>.json（含 model 标识、时间戳、条目数、丢弃数）。读命令 priority_review_get 返回缓存。
+   - 红线与隐私：记录原文已在落盘时掩码；本次不新增掩码逻辑，但回执不落任何模型原始全文，只存解析后的 JSON。
+3. **前端（ScenePage / WeeklyQuadrants）**：
+   - 卡片头部加「AI 归类」按钮：有缓存先显示缓存 + 「重新分析」；无缓存显示规则视图 + 「AI 归类」入口。
+   - AI 结果渲染：四格语义改为 立即做（重要且紧急）/ 排期做（重要不紧急）/ 可委托（紧急不重要）/ 暂缓（不急不重要）；条目显示状态徽标（想做/在做/已完成/想法）+ 一句理由；标注「模型判定 HH:MM」。
+   - 条目点击仍联动时间线筛选（ref 含日期与序号）。
+   - 任务进行中显示进度态；失败显示原因与重试；模型不可用（引擎未起/无路由）时按钮置灰并说明。
+   - 规则视图保留为空态与降级视图，界面上两种来源都如实标注。
+4. **缓存失效**：当周记录文件变化（mtime/内容 hash）后，缓存标记「已过期」并在卡片提示"记录有更新，可重新分析"，不自动重跑（省 token）。
+5. **验证**：
+   - Rust：priority_review 的提示词组装（含/不含 priority_context、week 缺省）、JSON 提取容错（围栏/前后缀/非法 ref 丢弃）、缓存读写、单测。
+   - verify_worklog_138.py：假引擎返回固定 JSON 的端到端（提交→轮询→解析→缓存→读取）、ref 不命中丢弃、超时失败路径、缓存过期标记。
+   - 前端 tsc + build；cargo 全量回归。
+   - 真实模型效果属用户实测项：按你的当周真实记录跑一次，检查排序是否符合你的岗位直觉。
+
+#### 影响范围
+profile_rules.rs（新字段 + 校验）、lib.rs（两个新命令）、新模块 priority_review.rs（组装/解析/缓存）、SettingsPanel（工作重点输入）、ScenePage + WeeklyQuadrants（按钮与渲染）、weekQuadrants 语义文案、新验证脚本。不改引擎、不改协议、不改 worklog 写入链路。
+
+#### 风险
+- 模型可能不守"只输出 JSON"约束：提取器做容错剥离，解析失败如实报错并保留规则视图，不硬造结果。
+- 每周多次点「重新分析」会多花 token：缓存 + 过期提示 + 手动触发，不做自动重跑。
+- DSH 任务通道可能带工具调用拖慢速度：提示词显式禁止工具；若实测仍慢，下轮改走窄化 intent。
+
+#### 明确不做
+- 不改四象限的写入安全链路（本功能零写记录文件）。
+- 不做自动定时分析（用户 2026-10-25 已裁定移除自动复盘入口；本功能保持手动触发）。
+- 不在基础标准（omnidesk-base）下提供此功能（无场景规则节点，按钮不渲染）。
+
+#### 验收标准
+用户实机：加载 discipline → 工作记录场景填一次「工作重点」→ 点「AI 归类」→ 四象限按真实优先级排布、每条带状态与理由、点击联动时间线；重新修改记录后卡片提示可重新分析；关掉模型路由后回落规则视图且标注清楚。
 ### OD-ARCH-137：首次启动先播种 DSH Profile（计划者与实施者：本助手；用户反馈 0.2.8 新机器打开「设置模型」报 `profile "omnidesk-base" does not exist`；2026-11-04 已实施）
 
 #### 触发

@@ -1,5 +1,145 @@
 # 执行状态
 
+## OD-ARCH-143 · Task 5 端到端验收与收口（2026-11-05；S1–S2 完成，S3 待用户实测，S4/S5 未执行）
+
+> 起点 HEAD `98a7e27c56` + Task 1–4 的未提交实现。S1 只修测试自身缺陷，不改生产断言；S3/S4/S5 尚未执行。
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| S1 坏测试修复 | `cargo test --offline`（沙箱外）；`python3 -m unittest -v test_web_api_unit` | **Rust 全量全绿**（524 lib + 全部集成）；**web_api 88/88** |
+| S2 合成端到端 | `python3 tests/verification/desktop/verify_e2e_143.py` | **10/10 通过**；证据 `tests/verification/desktop/evidence/od-arch-143/facts.json` |
+
+S1 额外发现并修复一个计划未列出的 macOS 夹具问题：`knowledge_vault_index_host` 的临时目录是符号链接，测试用非规范路径与生产索引比较；夹具改为 `canonicalize`，生产断言未改。
+
+S2 覆盖：合成 inbox 初始化与整理、卡片/索引/原文归档、检索命中、词典人名出站占位符、假模型回文还原、出站日志无原文、随手记/周报四象限/成果库回归。
+
+### S3 用户实测清单（未执行，需用户确认）
+
+- [ ] 真实模型对话：词典人名出站为占位符，回答自动还原为原文。
+- [ ] 真实 Vault：丢入一份材料 → 整理 → 对话检索命中并可打开引用卡。
+- [ ] 随手记与周报在真实工作流里各走一遍。
+- [ ] 应用重启后旧会话的占位符原样显示，并出现一次“未能还原”提示。
+
+### S4/S5 未执行
+
+- S4 只做了只读预检：新增/修改文件未命中凭证模式（`sk-`、`ghp_`、`AKIA`、私钥头、api_key 赋值）；`config/sensitive-dict.sample.v1.json` 的 5 条词典项均为虚构；仓库内未检索到用户真实工作记录关键词。
+- S4 需要用户明确批准提交、推送 origin/main、创建 0.2.9 tag 与 GitHub Release；本轮未执行任何 `git commit` / `git push` / `git tag`。
+- S5 依赖 S4 的 CI 三产物与用户实机安装冒烟，未执行。
+- 计划正文只定义到 S1–S5，没有 S6/S7；“按 S1→S7 实施”与计划不一致，已在 S3 后停下。
+
+## OD-ARCH-142 · LLM 调用链全量强制脱敏（2026-11-05；S1–S5 通过，S6 有既有环境失败，S7 待复核）
+
+> 起点 HEAD `98a7e27c56` + 未提交的 Task 1/2、141 实现。只在引擎 submit_task 汇合点前脱敏、回程还原；`runtime/` 不动，未提交、未推送。
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| S1 宿主下发词典路径 | `cargo test --offline --lib engine_supervisor::tests::child_env_exposes_sensitive_dict_under_app_config` | **1/1 通过**（`<app root>/config/sensitive-dict.v1.json` 进入子进程环境） |
+| S2 引擎出站脱敏 | `python3 -m unittest -v test_web_api_unit -k Masking` | **4/4 通过**（worker 前已脱敏、同会话复用、跨会话隔离、词典缺失降级、显式 off） |
+| S3 流式回程还原 | `python3 -m unittest -v test_web_api_unit -k StreamUnmask` | **5/5 通过**（跨 delta 切断、多占位符、unknown 保留、非流式终文、report） |
+| S4 前端展示 | `npm --prefix desktop run build`；`python3 tests/verification/desktop/verify_masker_ui_142.py` | build 通过；静态检查 **7/7 通过** |
+| S5 绕过路径审计 | `python3 tests/verification/desktop/verify_masker_audit_142.py` | **15/15 通过，0 违例** |
+| S6 Task 1/2 回归 | `python3 -m unittest -v test_security_masker_unit`；`... test_security_masker_markdown_unit` | **32/32、38/38 通过** |
+| S6 141 回归 | `... -k test_knowledge_ingest_unit`；`verify_knowledge_ingest_ui_141.py` | **8/8、16/16 通过** |
+| S6 Rust 单测 | `cargo test --offline --lib`（沙箱外） | **524 passed / 0 failed** |
+| S6 Rust 全量 | `cargo test --offline`（沙箱外） | **524 个 lib 单测通过；`host_integration` 3 项失败**：本机 macOS 无 `/bin/true`，与 142 无关 |
+| S6 前端构建 | `npm --prefix desktop run build` | `tsc --noEmit` + vite build 通过 |
+| S7 收口 | 实读 diff / `git diff --check` / 记录 STATUS | 已停下等待 ARCHITECT 复核；REVIEW.md 结论留给审查者，不自行标通过 |
+
+### S6 未全绿与边界
+
+- `test_web_api_unit` 的完整 88 项里仍有 2 项既有失败：`test_recv_budget_survives_heartbeat_frames`（本机 socket 等待超时）和 `test_for_dsh_argument_order`（本机 `resolve_node()` 返回 nvm 绝对路径，断言仍写死 `"node"`）。142 新增的 `MaskingTests` 4/4、`StreamUnmaskTests` 5/5 全绿，未触碰这两项测试逻辑。
+- 真实模型端到端未执行：需要用户配置的模型通道与真实会话；本轮只做到引擎纯函数、适配层、宿主环境与静态审计。真实“出站占位符 → 回答还原 → 本地原文不变”列为用户实测项。
+- 会话恢复时映射为空是既定行为：旧占位符原样保留，前端 `masker_unmask` 的 `ok=false` 顶部提示会显示；不猜测还原。
+
+## OD-ARCH-141 · 知识库工作流接线（2026-11-05；S1–S6 通过，S7 收口未全绿，待 ARCHITECT 复核）
+
+> 起点 HEAD `98a7e27c56` + 未提交的 Task 1/2 实现。新增宿主 `knowledge_ingest`、
+> 引擎提示词组装、检索纯函数与整理面板；未提交、未推送。
+
+### 分步验收
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| S1 目录骨架 | `cargo test --offline --lib knowledge_ingest::tests::init_creates_skeleton_and_is_idempotent` | **1/1 通过**（概念/方法/原文/inbox + 空索引；二次执行零改动） |
+| S2 提示词组装 | `python3 -m unittest -v test_knowledge_ingest_unit` | **8/8 通过**（规范/索引/脱敏注入/跨文件同实体复用/JSON 约束/映射不序列化/CLI） |
+| S3 结果校验 | `cargo test --offline --lib knowledge_ingest::tests::validator_` | **9/9 通过**（路径白名单、标题防重、300 字、sources 缺失/为空、索引行、归档路径） |
+| S4 落盘与索引 | `cargo test --offline --lib knowledge_ingest::tests::apply_` | **2/2 通过**（建卡+索引+归档；失败卡不影响已通过卡） |
+| S5 检索注入 | `node --experimental-strip-types --test desktop/src/knowledgeRetrieval.test.mjs` | **8/8 通过**（词表/@知识库、问句抽词、只保留知识卡、无命中、≤3000 字、引用顺序与上限） |
+| S6 前端入口 | `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | **16/16 通过**（按钮/面板/报告/引用选择器/预览/API/类型/接线） |
+| S7 冒烟 | `cargo test --offline --lib knowledge_ingest::tests::apply_creates_card_updates_index_and_moves_source` | **1/1 通过**（合成 inbox → 建卡 → 索引 → 原文归档 → `smoke_search` 命中） |
+| S7 收口 | `cargo test --offline --lib` | **523 passed / 0 failed** |
+| S7 收口 | `cargo test --offline`（全量） | **523 个 lib 单测通过；`tests/host_integration.rs` 3 项失败**：`/bin/true` 在本机 macOS 不存在（错误为「DSH CLI 入口不存在：/bin/true」），与 141 改动无关 |
+| S7 收口 | `npm --prefix desktop run build` | `tsc --noEmit` + vite build 通过 |
+
+### 实现边界与已知限制
+
+- 新增 `desktop/src-tauri/src/knowledge_ingest.rs`：初始化、校验、逐卡落盘、索引追加、原文归档与 S7 冒烟检索；命令注册在 `lib.rs`。
+- 新增 `engine/omnidesk_engine/knowledge_ingest.py`：`assemble_ingest_prompt` 纯函数与 stdin/stdout CLI；原文先走 Task 2 `mask_markdown`。
+- 新增 `desktop/src/knowledgeRetrieval.ts` 与 `KnowledgeIngestPanel.tsx`；HomeChat 在知识意图/@知识库时检索 top3、读最多 2 张卡、注入 ≤3000 字上下文，并把引用卡作为可点击条目。
+- **本轮复核修正：** 对话检索此前把整句问话直接交给宿主，而 `vault_search` 只做字面子串匹配（「专项检查的流程是什么」不会命中「专项检查」卡）；现改为抽取最长知识意图词再检索。检索结果只保留 `知识库/概念|方法/` 下的卡片，避免把 `inbox/` 原文、索引页或用户笔记注入模型上下文。
+- **引用打开修正：** `knowledge_vault_open_attachment` 明确拒绝 `.md` 笔记，原实现点击引用必然报错；现改为 `knowledgeVaultReadNote` + 对话内方角预览卡，仍不写知识库。
+- **上下文去重：** `buildKnowledgeContext` 已带引用约束标题，`conversationPrompt` 不再重复拼一遍。
+- **整理批次与来源校验：** 收件箱先按相对路径排序再截取前 5 份，批次顺序稳定；`sources` 为空也整卡拒绝，不再只校验「给了但不存在的路径」。
+- **跨文件脱敏一致：** `assemble_ingest_prompt` 让同一批文件共用一个 `SessionScope`，同一个人/机构在多个材料里得到同一占位符。
+- **映射生命周期说明：** `IngestPrompt.mappings` 在纯函数调用内持有，宿主通过一次性 Python CLI 只取回 prompt；Task 3 不把脱敏文本还原回卡片（原文保留在 `知识库/原文/`），因此映射不跨进程、不落盘。若后续需要“还原卡片显示文本”，必须另行设计长驻映射边界。
+- `knowledge_ingest_prepare` 依赖已配置的模型通道与 `dsh-home/skills` 下的两份 knowledge skill；缺失时返回明确错误，不伪造建卡规范。
+- 前端只有在用户点击「整理收件箱」或对话命中知识意图时才发生额外检索/模型调用；普通对话行为不变。
+
+## OD-ARCH-140 · DataMasker Task 2 结构感知（2026-11-05；S1–S6 通过，待 ARCHITECT 复核）
+
+> 起点 HEAD `98a7e27c56` + 未提交的 Task 1 实现。只改
+> `engine/omnidesk_engine/security/masker.py`、新增
+> `tests/verification/engine-interface/adapter/test_security_masker_markdown_unit.py` 与 `STATUS.md`。
+> 零 Rust 改动；零第三方依赖；未提交、未推送。
+
+### 分步验收
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| S1 区域扫描器 | `python3 -m unittest -v test_security_masker_markdown_unit -k Region` | **13/13 通过**（纯文本/空串/frontmatter 起点与未闭合、围栏与嵌套围栏、行内码、三类 WikiLink、区间覆盖不重叠、纯代码文档） |
+| S2 mask_markdown | `python3 -m unittest -v test_security_masker_markdown_unit -k MaskMd` | **10/10 通过**（表格/缩进/注释保真、代码块与行内码跳过、frontmatter 脱敏、显示文本脱敏而目标保留、跨区域同占位符、session 透传、标签/URL 跳过） |
+| S3 unmask_markdown | `python3 -m unittest -v test_security_masker_markdown_unit -k UnmaskMd` | **8/8 通过**（复杂文档往返、跨映射 ok=False、被改占位符保留、report 四字段、占位符挪进代码仍能还原、空文档） |
+| S4 畸形结构与性能 | `python3 -m unittest -v test_security_masker_markdown_unit -k Edge` | **7/7 通过**（未闭合围栏/行内码、1000 WikiLink、1MB 文档 <5s、嵌套反引号、BOM/未闭合 frontmatter） |
+| S5 vault_write 对齐 | 实读 `vault_write.rs`（文档核对，无代码改动） | **无结构冲突**；见下方结论 |
+| S6 收口 | `python3 -m unittest -v test_security_masker_markdown_unit` | **38/38 通过** |
+| S6 收口 | `python3 -m unittest -v test_security_masker_unit` | **32/32 通过**（Task 1 回归） |
+
+### S5 vault_write 对齐结论
+
+- 写入白名单是 `VAULT_WRITE_EXTS = ["md", "markdown"]`；DataMasker 输出仍是同一份 Markdown 字符串，不改变路径、扩展名或目录边界，因此不触发写入白名单冲突。
+- `create_note` / `save_note` 只校验 UTF-8、单文件上限 `VAULT_MAX_NOTE_BYTES = 512KB` 与目标路径；不解析 Markdown，也不重排 Frontmatter，区域策略不会被写入层二次改写。
+- 脱敏占位符通常比原文长；若脱敏后的最终正文超过 512KB，写入层会返回明确的「超过单文件上限」错误，不会静默截断。调用方应在脱敏后按最终字节数判断，而不是按脱敏前判断。
+- `save_note` 的 `expected_sha256` 必须对应**实际要写入的字节**。Task 3/4 接入时若先脱敏再保存，恢复/冲突哈希应使用脱敏后的正文；不能拿脱敏前原文的哈希去校验脱敏后内容。
+- 本轮未改 Rust；上述是接口对齐结论，不是代码修改。
+
+## OD-ARCH-139 · DataMasker Task 1 实施（2026-11-05；S1–S6 通过，S7 收口受既有测试阻塞，待 ARCHITECT 复核）
+
+> 起点 HEAD `98a7e27c56` + 未提交的 139 规划文档。只改任务卡允许的文件：
+> `engine/omnidesk_engine/security/` 两个文件、`config/sensitive-dict.sample.v1.json`、
+> `tests/verification/engine-interface/adapter/test_security_masker_unit.py`、`STATUS.md`。
+> 未引入第三方依赖；未改 Rust 侧；未接 LLM 调用链；未提交、未推送。
+
+### 分步验收
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| S1 词典模块 | `python3 -m unittest -v test_security_masker_unit -k Dict` | **6/6 通过**（样例可加载、schema 拒绝、重复 value+type 合并 aliases、非法 type 报第 5 行、缺文件降级并 warn、terms 去重） |
+| S2 规则识别器 | `python3 -m unittest -v test_security_masker_unit -k Rule` | **6/6 通过**（GB11643 合法/非法、Luhn 合法/非法、手机号前后贴数字不命中、邮箱超长/无点不命中、证件优先于银行卡） |
+| S3 占位符与 MaskMapping | `python3 -m unittest -v test_security_masker_unit -k Placeholder` | **5/5 通过**（同文本复用、独立请求不同、repr 仅数量、格式匹配、碰撞重试） |
+| S4 mask 主体与重叠 | `python3 -m unittest -v test_security_masker_unit -k Mask` | **6/6 通过**（长者胜、同名同 type 复用、同名不同 type 区分、空/None/1MB 安全、词典与规则叠加、原文不残留） |
+| S5 unmask + validate_mapping | `python3 -m unittest -v test_security_masker_unit -k Unmask` | **6/6 通过**（精确往返、未知保留、被改占位符计数、跨 mapping 全 unknown、validate 不改文本、type 不匹配拒绝还原） |
+| S6 SessionScope | `python3 -m unittest -v test_security_masker_unit -k Session` | **3/3 通过**（同 scope 复用、不同 scope 隔离、scope 与 request mapping 互不污染） |
+| S7 收口 | `python3 -m unittest -v test_security_masker_unit` | **32/32 通过** |
+| S7 收口 | `python3 -m unittest -v test_process_owner_unit` | **10/10 通过** |
+| S7 收口 | `python3 -m unittest -v test_web_api_unit` | 79 项，**1 error**：`test_recv_budget_survives_heartbeat_frames`（既有失败，clean HEAD 同样复现） |
+
+### S7 收口结论（未通过，停止待复核）
+
+- `test_web_api_unit` 的 `test_recv_budget_survives_heartbeat_frames` 在 `git archive HEAD` 的干净副本 `/tmp/od-head139` 上同样超时，未因 DataMasker 包引入；该文件不在本任务允许改动范围，我没有改它。
+- 同一套测试的 `test_for_dsh_argument_order` 在本机因 `resolve_node()` 找到 `/opt/homebrew/bin/node` 而期望 `"node"` 失败；设置 `OMNIDESK_NODE=node` 后该条通过，干净 HEAD 同样复现。
+- 安全包 import 扫描只含标准库：`__future__`、`dataclasses`、`json`、`pathlib`、`re`、`secrets`、`typing`；未引入第三方依赖。
+- 按任务卡要求停在 S7，未提交、未推送。
+
 ## OD-ARCH-137：首次启动先播种 DSH Profile（2026-11-04；已实施，本机验证）
 
 > 起点 HEAD `9414b34cce`。改动 2 个 Rust 文件 + 1 个新验证脚本与证据；未派子代理；未读凭证；`runtime/` 零改动。
