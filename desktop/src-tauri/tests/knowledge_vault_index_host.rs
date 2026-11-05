@@ -35,6 +35,9 @@ impl Fixture {
         fs::create_dir_all(vault.join("notes")).unwrap();
         fs::create_dir_all(vault.join(".obsidian")).unwrap();
         fs::write(vault.join(".obsidian/app.json"), "{}").unwrap();
+        // macOS 的 /tmp、/var 是符号链接；宿主发布索引时保存的是真实路径。
+        // 夹具统一用规范化路径，避免测试自己的路径表示与生产比较口径不一致。
+        let vault = fs::canonicalize(&vault).unwrap_or(vault);
         let fx = Self { base, app, vault };
         settings::set_knowledge_vault_root(&fx.app, fx.vault.to_str().unwrap()).unwrap();
         fx

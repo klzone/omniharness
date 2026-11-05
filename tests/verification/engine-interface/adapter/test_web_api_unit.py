@@ -16,6 +16,7 @@ import socket
 import threading
 import shutil
 import tempfile
+import json
 from pathlib import Path
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
@@ -23,8 +24,12 @@ import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
 from omnidesk_engine import TaskState
 from omnidesk_engine.contract import EventType
 from omnidesk_engine.task_core import _TaskRecord
+from omnidesk_engine.task_core import SubmitTaskRequest
 from omnidesk_engine.web_api_adapter import WebApiAdapter
 from omnidesk_engine.web_api_adapter import _ApprovalChannel
+from omnidesk_engine.node_runtime import resolve_node
+from omnidesk_engine.security import DataMasker, DictEntry, MaskMapping
+from omnidesk_engine.security.stream_unmask import StreamUnmasker
 
 
 def make_adapter(tmp_state="/tmp/od048-unit-state", **kwargs):
@@ -246,6 +251,139 @@ class StreamFrameTests(unittest.TestCase):
         self.assertEqual(WebApiAdapter._message_text({"content": "raw"}), "")
 
 
+class MaskingTests(unittest.TestCase):
+    """OD-ARCH-142 S2：submit_task 前的出站脱敏与会话隔离。"""
+
+    def setUp(self):
+        self.state_dir = tempfile.mkdtemp(prefix="od142-unit-")
+        self.adapter = make_adapter(tmp_state=self.state_dir)
+        self.dict_path = Path(self.state_dir) / "sensitive-dict.v1.json"
+        self.dict_path.write_text(
+            json.dumps({
+                "schema": "omnidesk.sensitive-dict.v1",
+                "entries": [
+                    {"type": "PERSON", "value": "张三"},
+                    {"type": "BRANCH", "value": "城南支行"},
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.adapter._masker_dict_path = self.dict_path
+
+    def tearDown(self):
+        shutil.rmtree(self.state_dir, ignore_errors=True)
+
+    def test_same_session_reuses_placeholder_and_sessions_are_isolated(self):
+        first, stats, _ = self.adapter._mask_prompt("张三 在城南支行", "sess-a")
+        second, _, _ = self.adapter._mask_prompt("张三 负责", "sess-a")
+        other, _, _ = self.adapter._mask_prompt("张三 负责", "sess-b")
+        self.assertNotIn("张三", first)
+        self.assertIn("[PERSON_", first)
+        self.assertEqual(first.split()[0], second.split()[0])
+        self.assertNotEqual(first.split()[0], other.split()[0])
+        self.assertEqual(stats["by_type"]["PERSON"], 1)
+        self.assertNotIn("张三", str(stats))
+
+    def test_missing_dictionary_degrades_to_rules(self):
+        self.adapter._masker_dict_path = Path(self.state_dir) / "missing.json"
+        masked, stats, _ = self.adapter._mask_prompt("联系 13800138000", "sess-rules")
+        self.assertNotIn("13800138000", masked)
+        self.assertIn("[PHONE_", masked)
+        self.assertTrue(stats["warn"])
+
+    def test_explicit_off_leaves_text_unchanged(self):
+        self.adapter._masker_enabled = False
+        masked, stats, session = self.adapter._mask_prompt("张三", "sess-off")
+        self.assertEqual(masked, "张三")
+        self.assertFalse(stats["enabled"])
+        self.assertIsNone(session)
+
+    def test_submit_masks_before_worker_and_receipt_reports_counts(self):
+        self.adapter._ensure_approval_channel = lambda: None
+        self.adapter._create_session = lambda workspace, task: "sess-new"
+
+        class Follow:
+            session_id = "sess-new"
+
+        self.adapter._open_follow = lambda session_id, workspace: Follow()
+        seen = []
+        done = threading.Event()
+
+        def worker(record, follow, text):
+            seen.append(text)
+            done.set()
+
+        self.adapter._turn_worker = worker
+        receipt = self.adapter.submit_task(SubmitTaskRequest(
+            intent="unit", workspace_dir="/tmp", prompt_text="张三 负责",
+        ))
+        self.assertTrue(done.wait(2), "worker 未被启动")
+        self.assertNotIn("张三", seen[0])
+        self.assertIn("[PERSON_", seen[0])
+        self.assertEqual(receipt.masker["by_type"]["PERSON"], 1)
+
+
+class StreamUnmaskTests(unittest.TestCase):
+    """OD-ARCH-142 S3：跨 delta 切断的占位符还原与非流式终文。"""
+
+    def setUp(self):
+        self.masker = DataMasker(entries=[DictEntry("PERSON", "张三")])
+        result = self.masker.mask("张三 负责")
+        self.masked = result.text
+        self.placeholder = self.masked.split()[0]
+        self.mapping = result.mapping
+
+    def test_placeholder_split_across_deltas_is_restored(self):
+        unmasker = StreamUnmasker(self.masker, self.mapping)
+        cut = max(1, len(self.placeholder) // 2)
+        self.assertEqual(unmasker.feed(self.placeholder[:cut]), "")
+        self.assertEqual(unmasker.feed(self.placeholder[cut:] + " 负责"), "张三 负责")
+        self.assertTrue(unmasker.report["ok"])
+        self.assertEqual(unmasker.report["restored"], 1)
+
+    def test_multiple_placeholders_and_unknown_are_kept(self):
+        unmasker = StreamUnmasker(self.masker, self.mapping)
+        text = unmasker.feed(self.placeholder + " 与 [PERSON_DEADBEEF]")
+        self.assertIn("张三", text)
+        self.assertIn("[PERSON_DEADBEEF]", text)
+        self.assertFalse(unmasker.report["ok"])
+        self.assertEqual(unmasker.report["unknown_placeholders"], ["[PERSON_DEADBEEF]"])
+
+    def test_stream_frame_restores_before_emit_and_stores_original(self):
+        adapter = make_adapter()
+        record = make_record()
+        record.unmasker = StreamUnmasker(self.masker, self.mapping)
+        cut = max(1, len(self.placeholder) // 2)
+        adapter._on_stream_frame(record, {"type": "chunk", "chunk": {
+            "type": "text-delta", "text": self.placeholder[:cut]}})
+        self.assertEqual(record.text_parts, [])
+        adapter._on_stream_frame(record, {"type": "chunk", "chunk": {
+            "type": "text-delta", "text": self.placeholder[cut:]}})
+        self.assertEqual(record.text_parts, ["张三"])
+        deltas = [e for e in record.events if e.type == EventType.TEXT_DELTA]
+        self.assertEqual([e.payload["text"] for e in deltas], ["张三"])
+
+    def test_non_stream_final_text_is_restored_and_report_is_emitted(self):
+        adapter = make_adapter()
+        record = make_record()
+        record.unmasker = StreamUnmasker(self.masker, self.mapping)
+        adapter._settle_turn(record, "completed", "stop", self.placeholder)
+        self.assertEqual(record.text_parts[-1], "张三")
+        self.assertEqual(record.state, TaskState.SUCCEEDED)
+        reports = [e for e in record.events if e.payload.get("kind") == "masker_unmask"]
+        self.assertEqual(len(reports), 1)
+        self.assertTrue(reports[0].payload["report"]["ok"])
+
+    def test_unknown_terminal_placeholder_reports_not_ok(self):
+        adapter = make_adapter()
+        record = make_record()
+        record.unmasker = StreamUnmasker(self.masker, MaskMapping(()))
+        adapter._settle_turn(record, "completed", "stop", "[PERSON_DEADBEEF]")
+        self.assertIn("[PERSON_DEADBEEF]", record.text_parts[-1])
+        reports = [e for e in record.events if e.payload.get("kind") == "masker_unmask"]
+        self.assertFalse(reports[0].payload["report"]["ok"])
+
+
 class SettleTurnTests(unittest.TestCase):
     def settle(self, reason, finish=None, final_text=""):
         adapter = make_adapter()
@@ -311,7 +449,7 @@ class RedactionAndCommandTests(unittest.TestCase):
             "/tmp/bin.js", cwd="/tmp", profile="web",
             patch_files=["/tmp/a.yml", "/tmp/b.yml"], state_dir="/tmp/s")
         cmd = adapter._command
-        self.assertEqual(cmd[:4], ["node", "/tmp/bin.js", "--profile", "web"])
+        self.assertEqual(cmd[:4], [resolve_node(), "/tmp/bin.js", "--profile", "web"])
         self.assertEqual(cmd[4:8], ["--patch", "/tmp/a.yml", "--patch", "/tmp/b.yml"])
         self.assertEqual(cmd[8:], ["--port", "0", "--no-open"])
         self.assertEqual(adapter._engine_profile, "web")
@@ -879,7 +1017,8 @@ class TimeoutPolicyTests(unittest.TestCase):
         client.closed = False
         started = time.monotonic()
         try:
-            with self.assertRaises(TimeoutError):
+            # Python 3.9/3.13 对 socket timeout 的暴露不同；两者都表示预算到达。
+            with self.assertRaises((TimeoutError, socket.timeout)):
                 client.recv(timeout=1.0)
             elapsed = time.monotonic() - started
             self.assertGreaterEqual(elapsed, 0.8)
