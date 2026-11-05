@@ -8,6 +8,7 @@
 //! 全部使用 tests/fixtures/fake_engine 假引擎，**不接触**真实 DSH、真实模型与任何凭证。
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use omnidesk_desktop_lib::engine_ipc::EngineChannel;
@@ -32,6 +33,33 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").expect("HOME"))
 }
 
+/// 跨平台假 CLI：测试只要求“存在的绝对路径”，不能依赖 macOS 没有的 /bin/true。
+fn fake_dsh_cli() -> PathBuf {
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "omnidesk-fake-dsh-{}-{}.js",
+            std::process::id(),
+            stamp
+        ));
+        std::fs::write(&path, b"// fake DSH CLI for host integration tests\n")
+            .expect("写假 CLI 失败");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&path).expect("读假 CLI 权限").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).expect("设置假 CLI 权限失败");
+        }
+        path
+    })
+    .clone()
+}
+
 fn spawn_fake() -> EngineChannel {
     EngineChannel::spawn(
         &python(),
@@ -48,7 +76,7 @@ fn base_config() -> EngineConfig {
     EngineConfig {
         python: python(),
         engine_dir: fixture_dir(),
-        dsh_cli: PathBuf::from("/bin/true"),
+        dsh_cli: fake_dsh_cli(),
         dsh_home: home().join("OmniDesk").join("runtime").join("dsh-home"),
         agents_home: home().join("OmniDesk").join("runtime").join("agents-home"),
         engine_state_dir: app_root.join("engine-state"),
