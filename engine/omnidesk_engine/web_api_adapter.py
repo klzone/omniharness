@@ -74,12 +74,26 @@ from .task_core import (
 )
 from .acp_adapter import canonical_cwd, workspace_label_for, workspace_token_for
 from .process_owner import record_child_group, terminate_group
+from .security import DataMasker, MaskMapping, SessionScope
+from .security.stream_unmask import StreamUnmasker
 
 __all__ = [
     "WEB_API_PROTOCOL_VERSION",
     "WebApiAdapter",
     "WsClient",
 ]
+
+
+@dataclass
+class _MaskSession:
+    """一个引擎会话的脱敏表；只驻内存，不落盘、不进事件。"""
+
+    masker: DataMasker
+    scope: SessionScope
+    entries: dict
+
+    def mapping(self) -> MaskMapping:
+        return MaskMapping(tuple(self.entries.items()))
 
 WEB_API_PROTOCOL_VERSION = "dsh-web-api/1"
 
@@ -476,6 +490,13 @@ class WebApiAdapter(TaskCoreBase):
         self._engine_ask_seen: dict = {}
         # 会话读回时用到的展示映射（只存不透明 token，与 ACP 通道一致）。
         self._session_cwd: dict = {}
+        # OD-ARCH-142：出站脱敏。默认开启；只有显式 OMNIDESK_MASKER=off 才关。
+        env = self._env if self._env is not None else os.environ
+        self._masker_enabled = str(env.get("OMNIDESK_MASKER", "")).strip().lower() != "off"
+        raw_dict = str(env.get("OMNIDESK_SENSITIVE_DICT", "") or "").strip()
+        self._masker_dict_path = Path(raw_dict) if raw_dict else None
+        # engine_session_id -> 会话作用域 + 已用占位符映射。
+        self._mask_sessions: dict = {}
 
     # -- 构造便利方法 -------------------------------------------------------
     @classmethod
@@ -1205,6 +1226,73 @@ class WebApiAdapter(TaskCoreBase):
             return value
         return {"ok": True}
 
+    def _mask_session_for(self, session_id: str) -> _MaskSession:
+        """按引擎会话取/建脱敏作用域；词典在会话建立时读取。"""
+
+        session = self._mask_sessions.get(session_id)
+        if session is not None:
+            return session
+        masker = (
+            DataMasker(dictionary_path=self._masker_dict_path)
+            if self._masker_dict_path is not None
+            else DataMasker()
+        )
+        session = _MaskSession(masker=masker, scope=SessionScope(), entries={})
+        self._mask_sessions[session_id] = session
+        return session
+
+    def _mask_prompt(self, text: str, session_id: str):
+        """出站脱敏；返回 (masked_text, stats, session|None)。不写原文。"""
+
+        if not self._masker_enabled:
+            return text, {
+                "enabled": False,
+                "found": 0,
+                "replaced": 0,
+                "by_type": {},
+                "warn": ["已通过 OMNIDESK_MASKER=off 显式关闭"],
+                "chars_before": len(text),
+                "chars_after": len(text),
+            }, None
+        session = self._mask_session_for(session_id)
+        result = session.masker.mask(text, session=session.scope)
+        session.entries.update(dict(result.mapping._entries))
+        stats = {
+            "enabled": True,
+            "found": result.stats.found,
+            "replaced": result.stats.replaced,
+            "by_type": dict(result.stats.by_type),
+            "warn": list(result.stats.warn),
+            "chars_before": len(text),
+            "chars_after": len(result.text),
+        }
+        return result.text, stats, session
+
+    @staticmethod
+    def _unmask_delta(record: _TaskRecord, text: str, *, flush: bool = False) -> str:
+        unmasker = getattr(record, "unmasker", None)
+        if unmasker is None:
+            return text
+        out = unmasker.flush() if flush else unmasker.feed(text)
+        record.unmask_report = unmasker.report
+        return out
+
+    def _emit_unmask_report(self, record: _TaskRecord) -> None:
+        if getattr(record, "unmasker", None) is None or record.unmask_reported:
+            return
+        report = record.unmasker.report
+        record.unmask_report = report
+        record.unmask_reported = True
+        self._emit(
+            record,
+            EventType.PROGRESS,
+            {
+                "kind": "masker_unmask",
+                "report": dict(report),
+                "note": "占位符已还原" if report.get("ok") else "部分占位符未能还原，已原样保留",
+            },
+        )
+
     def submit_task(self, request: SubmitTaskRequest) -> SubmitTaskReceipt:
         if not request.intent or not isinstance(request.intent, str):
             raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "intent must be a non-empty string")
@@ -1234,6 +1322,7 @@ class WebApiAdapter(TaskCoreBase):
                     engine_session_id=existing.engine_session_id,
                     note="idempotency_key 命中，未重复提交",
                     session_mode=existing.session_mode,
+                    masker=existing.mask_stats,
                 )
             omni_task_id = request.omni_task_id or new_omni_task_id()
             if omni_task_id in self._tasks:
@@ -1305,9 +1394,31 @@ class WebApiAdapter(TaskCoreBase):
             self._session_cwd[session_id] = workspace_dir
         self._persist(record)
 
+        # OD-ARCH-142：唯一出站汇合点。附件、知识上下文、重放历史都已经拼进
+        # 这份 text；这里之后只有脱敏文本进入 _turn_worker。
+        try:
+            masked_text, mask_stats, mask_session = self._mask_prompt(text, session_id)
+        except Exception as exc:  # 脱敏失败必须拒绝提交，不能明文凭原文出站。
+            with self._lock:
+                record.state = TaskState.QUEUED
+            self._drop_follow(follow)
+            error = EngineError(
+                EngineErrorCode.INVALID_ARGUMENT,
+                "出站脱敏失败，已拒绝提交：" + type(exc).__name__,
+            )
+            self._settle_failed(record, error)
+            raise error
+        with self._lock:
+            record.mask_stats = mask_stats
+            if mask_session is not None:
+                record.unmasker = StreamUnmasker(
+                    mask_session.masker, mask_session.mapping()
+                )
+                record.unmask_report = record.unmasker.report
+
         worker = threading.Thread(
             target=self._turn_worker,
-            args=(record, follow, text),
+            args=(record, follow, masked_text),
             name="omni-web-turn-" + omni_task_id,
             daemon=True,
         )
@@ -1330,6 +1441,7 @@ class WebApiAdapter(TaskCoreBase):
             engine_session_id=session_id,
             note=receipt_note,
             session_mode=session_mode,
+            masker=record.mask_stats,
         )
 
     def _drop_follow(self, follow: _Follow) -> None:
@@ -1378,6 +1490,8 @@ class WebApiAdapter(TaskCoreBase):
                     "note": "任务已结束，提问不再可答",
                 },
             )
+        if state in TERMINAL_STATES and record.unmasker is not None:
+            self._emit_unmask_report(record)
         return super()._settle(record, state, evidence, **kwargs)
 
     def _task_timeout(self, record: _TaskRecord) -> Optional[float]:
@@ -1638,8 +1752,8 @@ class WebApiAdapter(TaskCoreBase):
                 return None
             chunk_type = chunk.get("type")
             if chunk_type == "text-delta":
-                text = str(chunk.get("text") or "")
-                if not text:
+                raw = str(chunk.get("text") or "")
+                if not raw:
                     return None
                 measure_ttfb = False
                 with self._lock:
@@ -1648,10 +1762,15 @@ class WebApiAdapter(TaskCoreBase):
                             max(0.0, time.monotonic() - record.submitted_monotonic), 3
                         )
                         measure_ttfb = True
-                    record.text_parts.append(text)
-                    record.text_len += len(text)
                 if measure_ttfb:
                     self._persist(record)
+                # 占位符可能被切在多个 delta 里：缓冲器只放行已完整的部分。
+                text = self._unmask_delta(record, raw)
+                if not text:
+                    return None
+                with self._lock:
+                    record.text_parts.append(text)
+                    record.text_len += len(text)
                 self._emit(
                     record,
                     EventType.TEXT_DELTA,
@@ -1687,8 +1806,23 @@ class WebApiAdapter(TaskCoreBase):
         finish_reason: Optional[str],
         final_text: str,
     ) -> None:
+        # 先把流式缓冲的尾巴放出来；再处理「整段终文」路径。
+        if record.unmasker is not None:
+            tail = self._unmask_delta(record, "", flush=True)
+            if tail:
+                with self._lock:
+                    record.text_parts.append(tail)
+                    record.text_len += len(tail)
+                self._emit(
+                    record,
+                    EventType.TEXT_DELTA,
+                    {"text": tail, "chars": len(tail), "streamed": True},
+                )
         if record.text_len == 0 and final_text:
             # 有的路径不给增量帧；用最终消息补齐，但如实标注不是流式得到的。
+            if record.unmasker is not None:
+                final_text = self._unmask_delta(record, final_text)
+                final_text += self._unmask_delta(record, "", flush=True)
             with self._lock:
                 record.text_parts.append(final_text)
                 record.text_len += len(final_text)
@@ -1697,6 +1831,7 @@ class WebApiAdapter(TaskCoreBase):
                 EventType.TEXT_DELTA,
                 {"text": final_text, "chars": len(final_text), "streamed": False},
             )
+        self._emit_unmask_report(record)
         truncated = str(finish_reason or "") in {"max-tokens", "max_tokens", "length"}
         if reason_kind == "completed":
             self._settle(
@@ -2706,6 +2841,7 @@ class WebApiAdapter(TaskCoreBase):
             self._closed = True
             self._cookie = None
             self._token = None
+            self._mask_sessions.clear()
         note = "已关闭事件流并终止隔离的 DSH web 进程"
         if forced:
             note = "宽限期内未结束，已强制终止；未落盘输出可能丢失"

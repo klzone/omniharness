@@ -27,6 +27,9 @@ import type {
   KnowledgeVaultScan,
   KnowledgeVaultSearchQuery,
   KnowledgeVaultSearchResponse,
+  KnowledgeIngestApplyReport,
+  KnowledgeIngestInit,
+  KnowledgeIngestPrepare,
   LocalRootInfo,
   MaterialRead,
   OfflineFlowResponse,
@@ -1058,6 +1061,29 @@ export const shell = {
     });
   },
 
+  /** 建立收件箱/概念/方法/原文骨架与空索引（幂等）。 */
+  knowledgeIngestInit(): Promise<KnowledgeIngestInit> {
+    return invoke<KnowledgeIngestInit>("knowledge_ingest_init").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 收件箱前 5 份材料脱敏后组装整理提示词。 */
+  knowledgeIngestPrepare(): Promise<KnowledgeIngestPrepare> {
+    return invoke<KnowledgeIngestPrepare>("knowledge_ingest_prepare").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 校验模型 JSON 并逐卡落盘、更新索引、归档原文。 */
+  knowledgeIngestApply(resultText: string): Promise<KnowledgeIngestApplyReport> {
+    return invoke<KnowledgeIngestApplyReport>("knowledge_ingest_apply", {
+      resultText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /** 在系统文件管理器中打开当前成果目录（只读）。 */
   openArtifactRoot(): Promise<{ ok: boolean; opened: string }> {
     return invoke<{ ok: boolean; opened: string }>(
@@ -1092,6 +1118,7 @@ export const shell = {
           return value;
         });
     }
+
     return modelRoutesInflight;
   },
 

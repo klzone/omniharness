@@ -128,12 +128,18 @@ export function composeConversationPrompt(input: {
    * 记下来、还是把某几条挪到别的日期——它看不到文件本身，只能看这份索引。
    */
   noteIndex?: { week: string; today: string; entries: string } | null;
+  /** OD-ARCH-141 S5：已检索到的知识库上下文（≤3000 字）。 */
+  knowledgeContext?: string | null;
 }): string {
   const context = input.continuation
     ? "用户：" + input.current
     : buildContext(input.turns, input.current);
   const preset = input.preset;
-  if (!preset) return context;
+  // knowledgeContext 已由 knowledgeRetrieval 带上引用约束标题，这里只负责放位置。
+  const knowledgeBlock = input.knowledgeContext?.trim()
+    ? [input.knowledgeContext.trim(), ""]
+    : [];
+  if (!preset) return [context, ...knowledgeBlock].filter(Boolean).join("\n");
   if (input.mode === "note") {
     // OD-ARCH-105：平台只给数据与写盘边界，判断口径全部来自绑定 Skill。
     //
@@ -185,6 +191,7 @@ export function composeConversationPrompt(input: {
       "",
       ...indexLines,
       ...noteSkillLines,
+      ...knowledgeBlock,
       context,
     ].join("\n");
   }
@@ -203,12 +210,15 @@ export function composeConversationPrompt(input: {
             "没有记录就如实说明「本周还没有记录」，不得虚构事项。",
           ].join("\n"))
     : context;
+  const materialWithKnowledge = knowledgeBlock.length
+    ? material + "\n\n" + knowledgeBlock.join("\n")
+    : material;
   return buildDraftPrompt({
     sceneLabel: preset.label,
     purpose: "按用户在本轮对话中的要求完成",
     audience: "（由用户在对话中说明）",
     requirements: "",
-    material,
+    material: materialWithKnowledge,
     materials: [],
     sceneRules: preset.rules,
     sceneSections: preset.sections,

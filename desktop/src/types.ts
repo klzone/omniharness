@@ -176,7 +176,20 @@ export interface SubmitTaskReceipt {
    * 本次出站文本被自动掩码的类别计数（OD-ARCH-068）；只回传数量，不回显原文。
    * 本地线程仍保留用户原文，只有送往引擎的提示词被替换。
    */
-  privacy_masked?: { id_card: number; phone: number } | null;
+  privacy_masked?: {
+    id_card: number;
+    phone: number;
+    /** OD-ARCH-142：DataMasker 出站统计；只含类别计数与提示，不含原文。 */
+    masker?: {
+      enabled: boolean;
+      found: number;
+      replaced: number;
+      by_type: Record<string, number>;
+      warn: string[];
+      chars_before: number;
+      chars_after: number;
+    } | null;
+  } | null;
   /** 本次提交是否加载了 Profile 规则（false = 纯净底座，零关键词零铁律）。 */
   profile_rules_loaded?: boolean | null;
 }
@@ -535,6 +548,35 @@ export interface KnowledgeVaultSearchResponse {
   hits_truncated: boolean;
   skipped: KnowledgeVaultSearchSkip[];
   query: KnowledgeVaultSearchQuery;
+}
+
+/** OD-ARCH-141：整理收件箱的宿主动作。 */
+export interface KnowledgeIngestInit {
+  root: string;
+  index_path: string;
+  created_dirs: string[];
+  index_created: boolean;
+}
+
+export interface KnowledgeIngestPrepareFile {
+  relative_path: string;
+  chars: number;
+}
+
+export interface KnowledgeIngestPrepare {
+  prompt: string;
+  files: KnowledgeIngestPrepareFile[];
+  index_path: string;
+}
+
+export interface KnowledgeIngestApplyReport {
+  ok: boolean;
+  created: Array<{ relative_path: string; title: string; bytes: number }>;
+  rejected_cards: Array<{ relative_path: string; reason: string }>;
+  index_updated: boolean;
+  moved: Array<{ from: string; to: string }>;
+  move_errors: Array<{ relative_path: string; reason: string }>;
+  errors: string[];
 }
 
 /** P3-S02：索引里的一个笔记节点。orphan = 没有其他笔记指向它。 */

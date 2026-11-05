@@ -73,6 +73,8 @@ class SubmitTaskReceipt:
     note: str = ""
     # new / continued / resumed / degraded（degraded = 续接失败后新建）。
     session_mode: str = "new"
+    # OD-ARCH-142：出站脱敏的类别计数；不含原文。
+    masker: Optional[Mapping[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +84,7 @@ class SubmitTaskReceipt:
             "engine_session_id": self.engine_session_id,
             "note": self.note,
             "session_mode": self.session_mode,
+            "masker": dict(self.masker) if self.masker is not None else None,
         }
 
 
@@ -318,6 +321,11 @@ class _TaskRecord:
     pending_approvals: dict = field(default_factory=dict)
     # 本轮 turn/end 的会话事件序号：会话分支（session/fork）的精确切点。
     turn_end_seq: Optional[int] = None
+    # OD-ARCH-142：出站脱敏统计、回程还原缓冲与报告（均只驻内存）。
+    mask_stats: Optional[Mapping[str, Any]] = None
+    unmasker: Optional[Any] = None
+    unmask_report: Optional[Mapping[str, Any]] = None
+    unmask_reported: bool = False
 
 
 class TaskCoreBase:
@@ -466,6 +474,8 @@ class TaskCoreBase:
             "ttfb_seconds": record.ttfb_seconds,
             "pending_approvals": len(record.pending_approvals),
             "turn_end_seq": record.turn_end_seq,
+            "masker": dict(record.mask_stats) if record.mask_stats is not None else None,
+            "unmask": dict(record.unmask_report) if record.unmask_report is not None else None,
             "content": "".join(record.text_parts),
         }
 
