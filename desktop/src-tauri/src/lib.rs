@@ -20,6 +20,7 @@ pub mod engine_supervisor;
 pub mod external_open;
 pub mod flow_pack;
 pub mod knowledge_vault;
+pub mod knowledge_ingest;
 mod local_http;
 pub mod model_settings;
 pub mod model_routes;
@@ -498,7 +499,15 @@ async fn engine_submit_task(
         // 只回传类别计数，不回显原文。
         Ok(inner) => inner.map(|mut result| {
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("privacy_masked".to_string(), serde_json::json!(privacy_masked));
+                let masker_stats = obj.remove("masker");
+                obj.insert(
+                    "privacy_masked".to_string(),
+                    serde_json::json!({
+                        "id_card": privacy_masked.id_card,
+                        "phone": privacy_masked.phone,
+                        "masker": masker_stats,
+                    }),
+                );
                 obj.insert(
                     "profile_rules_loaded".to_string(),
                     serde_json::json!(profile_rules_loaded),
@@ -3279,6 +3288,65 @@ fn knowledge_vault_note_links(
     knowledge_vault_note_links_for(&index, &root, &relative_path)
 }
 
+/// 建立收件箱/概念/方法/原文骨架与空索引（幂等）。
+#[tauri::command(async)]
+fn knowledge_ingest_init(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_ingest::IngestInit, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths)?;
+    knowledge_ingest::init_vault(&root)
+}
+
+/// 列出收件箱前 5 份材料，脱敏后组装模型提示词。
+#[tauri::command(async)]
+fn knowledge_ingest_prepare(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_ingest::PrepareResult, String> {
+    let (paths, config) = {
+        let host = state.lock().unwrap();
+        let paths = host.paths.clone();
+        let config = EngineConfig::from_env(&paths.root)?;
+        (paths, config)
+    };
+    let root = configured_vault_root(&paths)?;
+    let user_dict = paths.config.join("sensitive-dict.v1.json");
+    let dictionary = if user_dict.is_file() {
+        Some(user_dict)
+    } else {
+        crate::platform::repo_root()
+            .map(|repo| repo.join("config/sensitive-dict.sample.v1.json"))
+            .filter(|path| path.is_file())
+    };
+    knowledge_ingest::prepare_inbox(
+        &root,
+        &config.dsh_home,
+        &config.python,
+        &config.engine_dir,
+        dictionary.as_deref(),
+    )
+}
+
+/// 校验模型返回的 JSON，逐卡落盘、追加索引并归档原文。
+#[tauri::command(async)]
+fn knowledge_ingest_apply(
+    state: State<'_, SharedHost>,
+    result_text: String,
+) -> Result<knowledge_ingest::ApplyReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths)?;
+    knowledge_ingest::init_vault(&root)?;
+    let scan = knowledge_vault::scan_vault(&root, Some(&paths.root))?;
+    let value = knowledge_ingest::parse_result_text(&result_text)?;
+    Ok(knowledge_ingest::apply_payload(&root, &value, &scan))
+}
+
 // ---------------------------------------------------------------------------
 // 工作记录确定性落盘（OD-ARCH-089 S2）
 //
@@ -5376,6 +5444,9 @@ pub fn run() {
             knowledge_vault_rebuild_index,
             knowledge_vault_index_status,
             knowledge_vault_note_links,
+            knowledge_ingest_init,
+            knowledge_ingest_prepare,
+            knowledge_ingest_apply,
             thread_store_load,
             thread_store_save,
             thread_store_delete,
