@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759716.3895812,
+  "started_at": 1793941722.5946171,
   "checks": [
     {
       "check": "dump_config_default_has_baseline_persona",
@@ -70,7 +70,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e18_ztzueyva",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e18_go5j9v6z",
     "dump_default_persona": {
       "rc": 0,
       "persona_lines": [
@@ -91,8 +91,8 @@
         "model": "synthetic-model",
         "stream": true,
         "message_count": 3,
-        "text_chars": 3164,
-        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_ztzueyva/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "text_chars": 3268,
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/private/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e18_go5j9v6z/work\".",
         "mode": "ok",
         "probe_hits": [
           "OMNI-E18-PERSONA-OVERLAY-MARKER"
@@ -121,7 +121,7 @@
       "cancelled": [],
       "still_running": [],
       "connection_closed": true,
-      "process_exit_code": -9,
+      "process_exit_code": 0,
       "forced_terminate": true,
       "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
     },
@@ -131,8 +131,8 @@
         "model": "synthetic-model",
         "stream": true,
         "message_count": 3,
-        "text_chars": 3192,
-        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/tmp/omni_p1s3_e18_ztzueyva/work\".\n\nCurrent DSH file policy: workspace-write. Any avai",
+        "text_chars": 3296,
+        "last_user": "Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent working directory: \"/private/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e18_go5j9v6z/work\".",
         "mode": "ok",
         "probe_hits": [
           "You are a coding agent"
@@ -161,7 +161,7 @@
       "cancelled": [],
       "still_running": [],
       "connection_closed": true,
-      "process_exit_code": -9,
+      "process_exit_code": 0,
       "forced_terminate": true,
       "note": "强制终止：可能丢失未落盘输出；下次启动不自动重放"
     },
@@ -174,5 +174,5 @@
     "复现步骤（具备凭证时）：\n1) 为隔离实例配置的 provider 提供对应 *_API_KEY（例如 OPENDESIGN_API_KEY），仅通过进程环境注入，不写入仓库；\n2) 以相同合成输入分别运行两次：一次不带 personaPrefix 覆盖，一次带覆盖；\n3) 对照两次原始模型输出与所用配置来源，人工判定差异；\n4) 测试结束后核实隔离配置与原版环境边界未被破坏。"
   ],
   "verdict": "pass",
-  "finished_at": 1792759721.050165
+  "finished_at": 1793941724.845657
 }

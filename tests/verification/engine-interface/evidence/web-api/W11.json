@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792857500.4786105,
+  "started_at": 1793939807.135359,
   "checks": [
     {
       "check": "turn_end_seq_recorded",
@@ -15,8 +15,8 @@
       "check": "fork_ok",
       "pass": true,
       "detail": {
-        "parent_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
-        "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+        "parent_session_id": "session-c6b9c790-7cca-4dfa-8d00-67dbf444fd9d",
+        "engine_session_id": "session-e2789811-1f49-43e1-8153-d72a6a86b009",
         "at_seq": 17,
         "note": "已在引擎侧按切点建立子会话；后续消息直接续接该会话，不重放历史"
       }
@@ -25,8 +25,8 @@
       "check": "child_session_is_new",
       "pass": true,
       "detail": {
-        "parent": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
-        "child": "session-1268812c-b9fa-46ec-b967-e6fffa561664"
+        "parent": "session-c6b9c790-7cca-4dfa-8d00-67dbf444fd9d",
+        "child": "session-e2789811-1f49-43e1-8153-d72a6a86b009"
       }
     },
     {
@@ -41,8 +41,8 @@
       "check": "child_submit_continued_same_session",
       "pass": true,
       "detail": {
-        "want": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
-        "got": "session-1268812c-b9fa-46ec-b967-e6fffa561664"
+        "want": "session-e2789811-1f49-43e1-8153-d72a6a86b009",
+        "got": "session-e2789811-1f49-43e1-8153-d72a6a86b009"
       }
     },
     {
@@ -79,42 +79,51 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w11_na2ghoqi",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w11_lj0xe8kc",
     "parent": {
-      "engine_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+      "engine_session_id": "session-c6b9c790-7cca-4dfa-8d00-67dbf444fd9d",
       "turn_end_seq": 17,
       "status": {
-        "omni_task_id": "omni-3ab3cc1b-a246-461c-a571-6b42ea7d00a3",
+        "omni_task_id": "omni-58cd5dee-b31b-49be-a883-0a703b2ba781",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792857503.2655866,
-        "last_event_seq": 4,
+        "since": 1793939808.138209,
+        "last_event_seq": 5,
         "partial_output_size": 22,
-        "engine_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
+        "engine_session_id": "session-c6b9c790-7cca-4dfa-8d00-67dbf444fd9d",
         "note": "stop_reason=stop",
-        "ttfb_seconds": 0.445,
+        "ttfb_seconds": 0.088,
         "pending_approvals": 0,
         "engine_turn_end_seq": 17
       }
     },
     "fork": {
-      "parent_session_id": "session-9a6c2fbc-a22f-45dc-a2dd-eb354258778a",
-      "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+      "parent_session_id": "session-c6b9c790-7cca-4dfa-8d00-67dbf444fd9d",
+      "engine_session_id": "session-e2789811-1f49-43e1-8153-d72a6a86b009",
       "at_seq": 17,
       "note": "已在引擎侧按切点建立子会话；后续消息直接续接该会话，不重放历史"
     },
     "child_receipt": {
-      "omni_task_id": "omni-3ff7cf56-091a-46c2-9f0f-ea9c41984cdd",
+      "omni_task_id": "omni-531fa028-d22f-47fa-a1a0-c017cd6541c2",
       "status": "running",
-      "accepted_at": 1792857503.3100002,
-      "engine_session_id": "session-1268812c-b9fa-46ec-b967-e6fffa561664",
+      "accepted_at": 1793939808.182657,
+      "engine_session_id": "session-e2789811-1f49-43e1-8153-d72a6a86b009",
       "note": "已重开既有引擎会话并提交；等待引擎终态证据",
-      "session_mode": "resumed"
+      "session_mode": "resumed",
+      "masker": {
+        "enabled": true,
+        "found": 0,
+        "replaced": 0,
+        "by_type": {},
+        "warn": [],
+        "chars_before": 46,
+        "chars_after": 46
+      }
     },
     "child_model_requests": [
       {
         "message_count": 6,
-        "text_chars": 6535,
+        "text_chars": 6798,
         "probe_hits": [
           "OMNI-W11-PARENT-MARKER",
           "OMNI-W11-CHILD-MARKER"
@@ -134,5 +143,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792857503.8766897
+  "finished_at": 1793939808.705247
 }

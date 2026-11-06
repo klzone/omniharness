@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759654.4214752,
+  "started_at": 1793941681.01442,
   "checks": [
     {
       "check": "initialize_ok",
@@ -34,12 +34,12 @@
           "advertised_mcp_http": true,
           "auth_methods": 0,
           "command": [
-            "node",
-            "/mnt/data/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+            "/Users/yvan/.nvm/versions/node/v26.13.0/bin/node",
+            "/Users/yvan/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
             "--profile",
             "acp",
             "--patch",
-            "/tmp/omni_p1s3_e01_1fi_oacz/e01.yml"
+            "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e01_kxf9bjai/e01.yml"
           ],
           "client_capabilities": {
             "fs": {
@@ -68,25 +68,26 @@
       "check": "submit_ok",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-14b3e12f-d38c-4f5d-b89c-7988a580a252",
+        "omni_task_id": "omni-f51c2168-7458-4974-957e-a96eb2afe0a7",
         "status": "running",
-        "accepted_at": 1792759655.7731776,
-        "engine_session_id": "b3352e3c-ece5-4f1a-b8e7-5eb531934634",
+        "accepted_at": 1793941681.50547,
+        "engine_session_id": "a8e9b625-cd29-49f4-87aa-477e82bb62e0",
         "note": "适配层已建立会话并提交；等待引擎终态证据",
-        "session_mode": "new"
+        "session_mode": "new",
+        "masker": null
       }
     },
     {
       "check": "omni_task_id_stable",
       "pass": true,
-      "detail": "omni-14b3e12f-d38c-4f5d-b89c-7988a580a252"
+      "detail": "omni-f51c2168-7458-4974-957e-a96eb2afe0a7"
     },
     {
       "check": "id_layers_distinct",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-14b3e12f-d38c-4f5d-b89c-7988a580a252",
-        "engine_session_id": "b3352e3c-ece5-4f1a-b8e7-5eb531934634"
+        "omni_task_id": "omni-f51c2168-7458-4974-957e-a96eb2afe0a7",
+        "engine_session_id": "a8e9b625-cd29-49f4-87aa-477e82bb62e0"
       }
     },
     {
@@ -98,29 +99,30 @@
       "check": "idempotency_same_when_key_repeats",
       "pass": true,
       "detail": {
-        "first": "omni-5be47ce2-cf3a-4048-8bcb-dfcf35e81aff",
-        "second": "omni-5be47ce2-cf3a-4048-8bcb-dfcf35e81aff"
+        "first": "omni-f92ecc8e-a6d5-4bfc-84d6-8569f9141194",
+        "second": "omni-f92ecc8e-a6d5-4bfc-84d6-8569f9141194"
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e01_1fi_oacz",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e01_kxf9bjai",
     "receipt": {
-      "omni_task_id": "omni-14b3e12f-d38c-4f5d-b89c-7988a580a252",
+      "omni_task_id": "omni-f51c2168-7458-4974-957e-a96eb2afe0a7",
       "status": "running",
-      "accepted_at": 1792759655.7731776,
-      "engine_session_id": "b3352e3c-ece5-4f1a-b8e7-5eb531934634",
+      "accepted_at": 1793941681.50547,
+      "engine_session_id": "a8e9b625-cd29-49f4-87aa-477e82bb62e0",
       "note": "适配层已建立会话并提交；等待引擎终态证据",
-      "session_mode": "new"
+      "session_mode": "new",
+      "masker": null
     },
     "shutdown": {
       "mode": "graceful",
       "in_flight_before": [
-        "omni-5be47ce2-cf3a-4048-8bcb-dfcf35e81aff"
+        "omni-f92ecc8e-a6d5-4bfc-84d6-8569f9141194"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-5be47ce2-cf3a-4048-8bcb-dfcf35e81aff"
+        "omni-f92ecc8e-a6d5-4bfc-84d6-8569f9141194"
       ],
       "connection_closed": true,
       "process_exit_code": 0,
@@ -131,5 +133,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759656.5230823
+  "finished_at": 1793941682.103799
 }

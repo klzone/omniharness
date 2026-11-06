@@ -3176,6 +3176,23 @@ mod tests {
         assert!(assert_input_allowed_with(scan_target(prompt, None), &policy).is_err());
     }
 
+    /// OD-ARCH-144：知识整理提示词含建卡规范（案件/线索/审查调查…），
+    /// 扫描必须落在同一批 inbox 原文上，不能因规范文本误拒。
+    #[test]
+    fn knowledge_ingest_scans_inbox_text_not_card_spec() {
+        let policy = discipline_policy();
+        let prompt = "你是知识库整理助手。建卡规范：不处理案件、线索、审查调查、举报、涉案、未公开信息；\n\n收件箱材料：合成材料，专项检查每季度一次。";
+        let inbox = "合成材料，专项检查每季度一次。";
+        assert!(
+            !red_line_scan_with(prompt, &policy).is_empty(),
+            "前提：规范文本本身会命中红线词"
+        );
+        assert!(
+            assert_input_allowed_with(scan_target(prompt, Some(inbox)), &policy).is_ok(),
+            "整理链路必须以 inbox 原文为扫描对象"
+        );
+    }
+
     #[test]
     fn red_line_scan_is_quiet_on_clean_synthetic_data() {
         for sample in samples() {

@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792857503.8795435,
+  "started_at": 1793939808.7109919,
   "checks": [
     {
       "check": "bad_cut_rejected",
@@ -34,11 +34,11 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w12_wbs9vtyu",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w12_2u5bfnm9",
     "bad_cut_error": {
       "exception": "EngineError",
       "engine_error_code": "invalid_argument",
-      "message": "[invalid_argument] event 999999 does not exist in session \"session-6110a63f-28ad-4c69-9d51-ac9b69651d48\" (last seq: 18)",
+      "message": "[invalid_argument] event 999999 does not exist in session \"session-9123186f-df79-41ef-b314-5b44779249e1\" (last seq: 18)",
       "detail": {
         "channel": "web-api",
         "method": "session/fork",
@@ -68,5 +68,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792857507.026328
+  "finished_at": 1793939810.240584
 }

@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759755.859266,
+  "started_at": 1793939799.438735,
   "checks": [
     {
       "check": "session_mode_continued",
@@ -15,8 +15,8 @@
       "check": "same_session_id",
       "pass": true,
       "detail": {
-        "first": "session-e2047774-9d28-4410-b1ef-e68a8b39061c",
-        "second": "session-e2047774-9d28-4410-b1ef-e68a8b39061c"
+        "first": "session-9ebed5ac-6a1d-4dc2-b2da-5f3bbac40d4f",
+        "second": "session-9ebed5ac-6a1d-4dc2-b2da-5f3bbac40d4f"
       }
     },
     {
@@ -31,14 +31,23 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w06_606jtb0n",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w06_lnwy_8ea",
     "second_receipt": {
-      "omni_task_id": "omni-659264b3-ee15-4c49-a257-765d041e2d8f",
+      "omni_task_id": "omni-27e6b558-e41a-468a-8f70-93e39fdf426e",
       "status": "running",
-      "accepted_at": 1792759758.5101554,
-      "engine_session_id": "session-e2047774-9d28-4410-b1ef-e68a8b39061c",
+      "accepted_at": 1793939800.479359,
+      "engine_session_id": "session-9ebed5ac-6a1d-4dc2-b2da-5f3bbac40d4f",
       "note": "已在同一引擎会话内继续本轮；等待引擎终态证据",
-      "session_mode": "continued"
+      "session_mode": "continued",
+      "masker": {
+        "enabled": true,
+        "found": 0,
+        "replaced": 0,
+        "by_type": {},
+        "warn": [],
+        "chars_before": 16,
+        "chars_after": 16
+      }
     },
     "results": {
       "first": "FIRST",
@@ -58,5 +67,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759759.07223
+  "finished_at": 1793939800.99747
 }

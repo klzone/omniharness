@@ -1,5 +1,63 @@
 # 执行状态
 
+## OD-ARCH-145 · 续接会话挂死诊断与在途任务可恢复（2026-11-06；已实施，待真实复现验证）
+
+> 起点 HEAD `46cc88476e` + 144 hotfix。目标：补齐引擎 stderr 证据、starting 兜底提示、取消后不回到旧 resumed 会话。
+
+### 改动
+
+- **A 引擎 stderr 落盘：** [engine_ipc.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/engine_ipc.rs:132) 新增 `spawn_with_stderr_log`；stderr 追加到 `<app root>/logs/engine-stderr.log`，单文件 1 MiB，保留 `.1`–`.3` 三份滚动副本。[engine_supervisor.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/engine_supervisor.rs:355) 启动时传入日志路径并创建 `logs/`。
+- **B starting 兜底：** [HomeChat.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx:620) 在启动或任务 `starting` 超过 120 秒时显示“可点取消重试；连续两次建议重启应用”，不自动杀任务。
+- **C 取消可恢复：** [web_api_adapter.py](/Users/yvan/Code/MyWorkStation/engine/omnidesk_engine/web_api_adapter.py:2386) 对 `starting` 任务取消直接本地落定 `failed`，不再等可能不存在的 `session/cancel`；[HomeChat.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx:2350) 清除旧会话号并设置 `replayNextTurn`，下一次提交新建会话。`sceneThreads` 的会话号允许 `null`。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| stderr 滚动单测 | 1/1 通过（超过 1 MiB 生成 `.1`，当前文件写入新行） |
+| stderr 子进程落盘单测 | 1/1 通过（真实 Python 子进程写 stderr，日志出现） |
+| stderr 路径单测 | 1/1 通过（`<app root>/logs/engine-stderr.log`） |
+| starting 取消单测 | 1/1 通过（落定 `failed`，不调用 `session/cancel`） |
+| 145 静态接线 | 12/12 通过 |
+| UI 141 回归 | 18/18 通过 |
+| Python 166+1 项 | 167/167 通过 |
+| `cargo test --offline`（沙箱外） | **529 passed / 0 failed**（lib + 全部集成） |
+| `npm --prefix desktop run build` | `tsc --noEmit` + vite build 通过 |
+
+### 未验证 / 边界
+
+- 真实卡死复现未跑：需要用户在包含本修复的版本里再次遇到第 4 轮卡死，取 `~/OmniDesk/app/logs/engine-stderr.log` 给 ARCHITECT 定位 DSH 侧根因。
+- B 的 120 秒真实等待没有跑满；已用静态接线和计时逻辑核对，未改宿主“不自动停止”的哲学。
+- 本轮未改 DSH runtime、未改 resumed 机制本身；工作区改动未提交、未推送，`runtime/` 零差异。
+
+## OD-ARCH-144 · 知识整理链路红线扫描修复（2026-11-05；已实施，待真实验证）
+
+> 起点 HEAD `46cc88476e`（0.2.9 已发布）。用户实测“整理收件箱”被 `red_line_rejected` 命中 14 处；根因是面板把完整整理提示词当 `promptText`，没有传 `userInputText`，宿主退回扫描建卡规范全文。
+
+### 改动
+
+- [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:112) 的 `PrepareResult` 新增 `user_input_text`：由同一批 inbox 文件正文按 `\n\n` 拼接，与组装提示词同源。
+- [KnowledgeIngestPanel.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeIngestPanel.tsx:50) 提交时传 `userInputText: prep.user_input_text`；红线扫描落在用户材料上，而不是含“案件/线索/审查调查”等边界说明的建卡规范。
+- [types.ts](/Users/yvan/Code/MyWorkStation/desktop/src/types.ts:566) 同步字段；[verify_knowledge_ingest_ui_141.py](/Users/yvan/Code/MyWorkStation/tests/verification/desktop/verify_knowledge_ingest_ui_141.py:1) 增加两条接线断言。
+- 新增 Rust 单测：`knowledge_ingest::tests::inbox_scan_text_is_joined_from_same_batch` 与 `task_shell::tests::knowledge_ingest_scans_inbox_text_not_card_spec`。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| Rust 定向单测（inbox 拼接） | 1/1 通过 |
+| Rust 定向单测（scan_target） | 1/1 通过 |
+| UI 静态断言 | 18/18 通过 |
+| `npm --prefix desktop run build` | `tsc --noEmit` + vite build 通过 |
+| `cargo test --offline`（沙箱外） | **526 passed / 0 failed**（lib + 全部集成） |
+| Python 166 项回归 | **166/166 通过** |
+
+### 未验证 / 边界
+
+- 真实模型验证尚未执行：需要在包含本修复的构建里重新点“整理收件箱”，确认进入模型调用而不是 `red_line_rejected`。这是用户实测项。
+- 完整 Python discover 还会跑 `test_process_owner_unit` 的 10 项；其中 4 项在当前沙箱里因进程权限失败，计划口径的 166 项（其余四个测试文件）全绿。
+- 工作区改动未提交、未推送；`runtime/` 零差异。
+
 ## OD-ARCH-143 · S4/S5 收口执行（2026-11-05；用户批准，ARCHITECT 执行）
 
 - 分 6 个提交推送 origin/main（98a7e27..6a19f07）：安全引擎 / 知识库工作流 / 强制脱敏 / 测试修复 / E2E+文档 / 命令注册补充

@@ -112,7 +112,17 @@ pub struct PrepareFile {
 pub struct PrepareResult {
     pub prompt: String,
     pub files: Vec<PrepareFile>,
+    /// 收件箱材料正文（红线扫描对象），与 prompt 来自同一批文件。
+    pub user_input_text: String,
     pub index_path: String,
+}
+
+fn join_inbox_text(files: &[(String, String)]) -> String {
+    files
+        .iter()
+        .map(|(_, content)| content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn clean_rel(raw: &str) -> Result<String, String> {
@@ -594,6 +604,7 @@ pub fn prepare_inbox(
                 chars: content.chars().count(),
             })
             .collect(),
+        user_input_text: join_inbox_text(&files),
         index_path: index_path.display().to_string(),
     })
 }
@@ -645,6 +656,15 @@ mod tests {
         let path = root.join(rel);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn inbox_scan_text_is_joined_from_same_batch() {
+        let files = vec![
+            ("inbox/a.md".to_string(), "合成甲".to_string()),
+            ("inbox/b.md".to_string(), "合成乙".to_string()),
+        ];
+        assert_eq!(join_inbox_text(&files), "合成甲\n\n合成乙");
     }
 
     fn card_payload(index_line: &str) -> Value {

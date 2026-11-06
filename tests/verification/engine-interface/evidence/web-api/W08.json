@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759765.2084138,
+  "started_at": 1793941344.778091,
   "checks": [
     {
       "check": "system_message_event_observed",
@@ -39,7 +39,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w08_z0s9ecyl",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w08_9w2m86g1",
     "observed_frame_kinds": [
       {
         "kind": "ready",
@@ -159,10 +159,10 @@
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-934f79d4-94af-4325-a3e0-58a558f60bdb",
+      "omni_task_id": "omni-a15a7803-c9c8-41e8-8058-a406ffb85f8b",
       "form": "complete",
       "content": "PUBLIC-ANSWER",
-      "persisted_at": 1792759767.6966193,
+      "persisted_at": 1793941345.763438,
       "integrity": "complete",
       "sources": [
         {
@@ -222,5 +222,5 @@
     "personaPrefix 未出现在模型请求体中（整包探针也未命中）：该覆盖在 web 通道对模型请求没有可见效果。dump-config 生效只能证明配置被接受，不能证明模型收到。"
   ],
   "verdict": "pass",
-  "finished_at": 1792759768.1645818
+  "finished_at": 1793941346.257525
 }

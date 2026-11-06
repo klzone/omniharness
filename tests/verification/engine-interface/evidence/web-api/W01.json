@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759854.121397,
+  "started_at": 1793941087.221844,
   "checks": [
     {
       "check": "initialize_ok",
@@ -28,10 +28,9 @@
           "channel": "web-api",
           "profile": "web",
           "routable_providers": [
-            "deepseek-official",
             "fake"
           ],
-          "model_groups": 2,
+          "model_groups": 1,
           "catalog_failures": 0,
           "streaming": "assistant-stream/text-delta",
           "note": "capabilities 为适配层声明；实际通过与否见 048 测试报告",
@@ -56,8 +55,6 @@
       "check": "catalog_readable",
       "pass": true,
       "detail": [
-        "deepseek-flash",
-        "deepseek-v4-pro",
         "synthetic-model"
       ]
     },
@@ -78,7 +75,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w01_pr0rputi",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w01_314h6xag",
     "descriptor": {
       "engine_kind": "dsh-web-api",
       "engine_version": "unknown",
@@ -98,10 +95,9 @@
         "channel": "web-api",
         "profile": "web",
         "routable_providers": [
-          "deepseek-official",
           "fake"
         ],
-        "model_groups": 2,
+        "model_groups": 1,
         "catalog_failures": 0,
         "streaming": "assistant-stream/text-delta",
         "note": "capabilities 为适配层声明；实际通过与否见 048 测试报告",
@@ -113,17 +109,14 @@
     },
     "catalog_summary": {
       "groups": [
-        "deepseek-official",
         "fake"
       ],
       "models": [
-        "deepseek-flash",
-        "deepseek-v4-pro",
         "synthetic-model"
       ],
       "failures": []
     },
-    "startup_tail_redacted": "dsh web: http://127.0.0.1:44785/?token=<redacted>",
+    "startup_tail_redacted": "dsh web: http://127.0.0.1:64771/?token=<redacted>",
     "shutdown": {
       "mode": "graceful",
       "in_flight_before": [],
@@ -137,5 +130,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759856.627063
+  "finished_at": 1793941088.7279072
 }

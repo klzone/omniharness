@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759631.962545,
+  "started_at": 1793941660.498847,
   "checks": [
     {
       "check": "idle_control_isolation_holds",
@@ -50,8 +50,10 @@
     },
     {
       "check": "rerun_all_verdicts_pass",
-      "pass": true,
-      "detail": {}
+      "pass": false,
+      "detail": {
+        "E17": "fail"
+      }
     },
     {
       "check": "no_own_trace__dsh_home",
@@ -92,11 +94,13 @@
     },
     {
       "check": "repo_working_tree_status_unchanged",
-      "pass": true,
+      "pass": false,
       "detail": {
-        "before_n": 74,
-        "after_n": 74,
-        "delta": []
+        "before_n": 47,
+        "after_n": 48,
+        "delta": [
+          "?? \"\\347\\224\\250\\346\\210\\267\\346\\210\\220\\346\\236\\234/\""
+        ]
       }
     },
     {
@@ -117,18 +121,18 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e20_1jwhpeo_",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e20_khzf3zsw",
     "snapshot_targets": {
-      "dsh_home": "/home/kevin/.dsh",
-      "agents_home": "/home/kevin/.agents",
-      "omnidesk_root": "/home/kevin/OmniDesk",
-      "yvanai_root": "/home/kevin/YvanAI"
+      "dsh_home": "/Users/yvan/.dsh",
+      "agents_home": "/Users/yvan/.agents",
+      "omnidesk_root": "/Users/yvan/OmniDesk",
+      "yvanai_root": "/Users/yvan/YvanAI"
     },
     "targets_exist_before": {
       "dsh_home": true,
-      "agents_home": true,
+      "agents_home": false,
       "omnidesk_root": true,
-      "yvanai_root": true
+      "yvanai_root": false
     },
     "idle_control_seconds": 20.0,
     "idle_control_drift": {
@@ -166,7 +170,7 @@
       }
     },
     "rerun_rc": 0,
-    "rerun_summary": "E01 -> pass\nE02 -> pass\nE03 -> pass\nE04 -> pass\nE05 -> pass\nE06 -> pass\nE07 -> pass\nE08 -> pass\nE09 -> pass\nE10 -> pass\nE11 -> pass\nE12 -> pass\nE13 -> pass\nE14 -> pass\nE15 -> pass\nE16 -> pass\nE17 -> pass\nE18 -> pass\nE19 -> pass\n{\n \"E01\": \"pass\",\n \"E02\": \"pass\",\n \"E03\": \"pass\",\n \"E04\": \"pass\",\n \"E05\": \"pass\",\n \"E06\": \"pass\",\n \"E07\": \"pass\",\n \"E08\": \"pass\",\n \"E09\": \"pass\",\n \"E10\": \"pass\",\n \"E11\": \"pass\",\n \"E12\": \"pass\",\n \"E13\": \"pass\",\n \"E14\": \"pass\",\n \"E15\": \"pass\",\n \"E16\": \"pass\",\n \"E17\": \"pass\",\n \"E18\": \"pass\",\n \"E19\": \"pass\"\n}\n",
+    "rerun_summary": "E01 -> pass\nE02 -> pass\nE03 -> pass\nE04 -> pass\nE05 -> pass\nE06 -> pass\nE07 -> pass\nE08 -> pass\nE09 -> pass\nE10 -> pass\nE11 -> pass\nE12 -> pass\nE13 -> pass\nE14 -> pass\nE15 -> pass\nE16 -> pass\nE17 -> fail\nE18 -> pass\nE19 -> pass\n{\n \"E01\": \"pass\",\n \"E02\": \"pass\",\n \"E03\": \"pass\",\n \"E04\": \"pass\",\n \"E05\": \"pass\",\n \"E06\": \"pass\",\n \"E07\": \"pass\",\n \"E08\": \"pass\",\n \"E09\": \"pass\",\n \"E10\": \"pass\",\n \"E11\": \"pass\",\n \"E12\": \"pass\",\n \"E13\": \"pass\",\n \"E14\": \"pass\",\n \"E15\": \"pass\",\n \"E16\": \"pass\",\n \"E17\": \"fail\",\n \"E18\": \"pass\",\n \"E19\": \"pass\"\n}\n",
     "rerun_verdicts": {
       "E01": "pass",
       "E02": "pass",
@@ -184,7 +188,7 @@
       "E14": "pass",
       "E15": "pass",
       "E16": "pass",
-      "E17": "pass",
+      "E17": "fail",
       "E18": "pass",
       "E19": "pass"
     },
@@ -248,17 +252,12 @@
       "changed": [],
       "changed_count": 0
     },
-    "leftover_scenario_roots": [
-      "/tmp/omni_p1s3_e20_1jwhpeo_",
-      "/tmp/omni_p1s3_a01_pfel0i48",
-      "/tmp/omni_p1s3_a01_o_wiub13",
-      "/tmp/omni_p1s3_a01_45zilrim"
-    ]
+    "leftover_scenario_roots": []
   },
   "notes": [
     "E20 是隔离边界核对：先对原版 DSH 与用户数据做只读元数据快照（路径/类型/大小/mtime，不读内容），再完整复跑 E01-E19，最后再次快照比对。在**独立子进程**中复跑 E01-E19（显式列出，避免递归触发 E20 自身）。\n注意：本机原版 DSH Desktop 正被用户实时使用，会自行写它自己的 ~/.dsh。因此 dsh_home 的差异必须做**归因**：只有命中本阶段痕迹特征的路径才算本阶段写入，其余归为第三方（原版 Desktop / 其他进程）。",
     "归因结论：E01-E19 全部使用 /tmp 下一次性 DSH_HOME / DSH_AGENTS_HOME，这些根之外的目标目录（~/.agents、~/OmniDesk、~/YvanAI）元数据零差异；~/.dsh 的变化路径均不含本阶段痕迹特征，属于本机原版 DSH Desktop 自身（用户正在使用）的写入，不计入本阶段副作用。"
   ],
-  "verdict": "pass",
-  "finished_at": 1792759729.7972448
+  "verdict": "fail",
+  "finished_at": 1793941729.373131
 }

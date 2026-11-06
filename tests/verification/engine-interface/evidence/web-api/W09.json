@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759768.1685476,
+  "started_at": 1793941346.2635279,
   "checks": [
     {
       "check": "recover_unknown_rejected",
@@ -36,7 +36,7 @@
       "check": "fails_fast_before_timeout",
       "pass": true,
       "detail": {
-        "elapsed_s": 0.011,
+        "elapsed_s": 0.003,
         "timeout": 8
       }
     },
@@ -55,7 +55,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w09_iwjfcbjv",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w09_2vj7oy5p",
     "unknown_session_error": {
       "exception": "EngineError",
       "engine_error_code": "unknown_session",
@@ -65,7 +65,7 @@
         "follow_code": "session/not-found"
       }
     },
-    "elapsed_s": 0.011,
+    "elapsed_s": 0.003,
     "model_request_count": 0,
     "shutdown": {
       "mode": "graceful",
@@ -80,5 +80,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759771.1737428
+  "finished_at": 1793941347.2681768
 }

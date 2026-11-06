@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759856.6292505,
+  "started_at": 1793941328.346808,
   "checks": [
     {
       "check": "three_or_more_deltas",
@@ -14,7 +14,7 @@
     {
       "check": "deltas_arrive_over_time",
       "pass": true,
-      "detail": 0.48699999999999993
+      "detail": 0.508
     },
     {
       "check": "all_deltas_marked_streamed",
@@ -23,17 +23,17 @@
         {
           "text": "TOK-A ",
           "streamed": true,
-          "at_s": 0.339
+          "at_s": 0.099
         },
         {
           "text": "TOK-B ",
           "streamed": true,
-          "at_s": 0.576
+          "at_s": 0.354
         },
         {
           "text": "TOK-C",
           "streamed": true,
-          "at_s": 0.826
+          "at_s": 0.607
         }
       ]
     },
@@ -46,7 +46,8 @@
         3,
         4,
         5,
-        6
+        6,
+        7
       ]
     },
     {
@@ -61,36 +62,37 @@
       "check": "terminal_succeeded",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-73d12f5a-c8ce-4631-a9a9-fff916b3affb",
+        "omni_task_id": "omni-2497b002-552b-4ae3-85c5-52b232c0e3da",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792759859.9375472,
-        "last_event_seq": 6,
+        "since": 1793941330.628101,
+        "last_event_seq": 7,
         "partial_output_size": 17,
-        "engine_session_id": "session-f23bd5f1-f7f7-46da-b420-14642797905e",
+        "engine_session_id": "session-bb90c1fc-73cf-4672-8f20-bdac78d32b0f",
         "note": "stop_reason=stop",
-        "ttfb_seconds": 0.339,
-        "pending_approvals": 0
+        "ttfb_seconds": 0.099,
+        "pending_approvals": 0,
+        "engine_turn_end_seq": 17
       }
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w02_o93z155_",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w02_mbpt49gp",
     "delta_arrivals": [
       {
         "text": "TOK-A ",
         "streamed": true,
-        "at_s": 0.339
+        "at_s": 0.099
       },
       {
         "text": "TOK-B ",
         "streamed": true,
-        "at_s": 0.576
+        "at_s": 0.354
       },
       {
         "text": "TOK-C",
         "streamed": true,
-        "at_s": 0.826
+        "at_s": 0.607
       }
     ],
     "event_types": [
@@ -99,13 +101,14 @@
       "text_delta",
       "text_delta",
       "progress",
+      "progress",
       "task_completed"
     ],
     "final_result": {
-      "omni_task_id": "omni-73d12f5a-c8ce-4631-a9a9-fff916b3affb",
+      "omni_task_id": "omni-2497b002-552b-4ae3-85c5-52b232c0e3da",
       "form": "complete",
       "content": "TOK-A TOK-B TOK-C",
-      "persisted_at": 1792759859.1634195,
+      "persisted_at": 1793941329.8566558,
       "integrity": "complete",
       "sources": [
         {
@@ -137,5 +140,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759860.6423967
+  "finished_at": 1793941330.854228
 }

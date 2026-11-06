@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759704.8949535,
+  "started_at": 1793941712.8738801,
   "checks": [
     {
       "check": "initialize_fails",
@@ -56,7 +56,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e16_70_lqkuw",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e16_lrqz4bzi",
     "initialize_error": {
       "exception": "EngineError",
       "engine_error_code": "engine_unavailable",
@@ -73,25 +73,28 @@
     },
     "task_records": [
       {
-        "omni_task_id": "omni-5c93bf2a-8713-4957-89a8-597344eadbba",
+        "omni_task_id": "omni-c6d80573-3a2f-4c07-8352-2c7944530404",
         "intent": "synthetic-writing-task",
-        "workspace_dir": "/tmp/omni_p1s3_e16_70_lqkuw/work",
+        "workspace_dir": "/private/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e16_lrqz4bzi/work",
         "idempotency_key": null,
         "engine_session_id": null,
         "session_mode": "new",
         "state": "interrupted",
         "evidence_source": "engine_error",
-        "created_at": 1792759705.028135,
-        "state_since": 1792759705.0284753,
+        "created_at": 1793941712.980468,
+        "state_since": 1793941712.981353,
         "seq": 1,
         "stop_reason": null,
         "error_code": "engine_unavailable",
         "error_message": "engine process already exited (rc=1); frame not sent",
         "cancel_phase": "not_requested",
         "truncated": false,
-        "persisted_at": 1792759705.0287054,
+        "persisted_at": 1793941712.9818618,
         "ttfb_seconds": null,
         "pending_approvals": 0,
+        "turn_end_seq": null,
+        "masker": null,
+        "unmask": null,
         "content": ""
       }
     ],
@@ -108,5 +111,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759705.0288393
+  "finished_at": 1793941713.014146
 }

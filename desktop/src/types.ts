@@ -566,6 +566,8 @@ export interface KnowledgeIngestPrepareFile {
 export interface KnowledgeIngestPrepare {
   prompt: string;
   files: KnowledgeIngestPrepareFile[];
+  /** OD-ARCH-144：inbox 原文，提交时作为红线扫描对象；与 prompt 同批。 */
+  user_input_text: string;
   index_path: string;
 }
 

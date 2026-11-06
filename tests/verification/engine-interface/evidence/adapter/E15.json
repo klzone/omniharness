@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759702.185921,
+  "started_at": 1793941710.754716,
   "checks": [
     {
       "check": "forced_terminate_recorded",
@@ -12,14 +12,14 @@
       "detail": {
         "mode": "graceful",
         "in_flight_before": [
-          "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
+          "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a"
         ],
         "cancelled": [],
         "still_running": [
-          "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
+          "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a"
         ],
         "connection_closed": true,
-        "process_exit_code": -9,
+        "process_exit_code": 0,
         "forced_terminate": true,
         "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
       }
@@ -33,7 +33,7 @@
       "check": "still_running_or_unknown_recorded",
       "pass": true,
       "detail": [
-        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
+        "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a"
       ]
     },
     {
@@ -43,35 +43,36 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e15_65klly4h",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e15_bg_f77zh",
     "shutdown_report": {
       "mode": "graceful",
       "in_flight_before": [
-        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
+        "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a"
       ],
       "cancelled": [],
       "still_running": [
-        "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4"
+        "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a"
       ],
       "connection_closed": true,
-      "process_exit_code": -9,
+      "process_exit_code": 0,
       "forced_terminate": true,
       "note": "宽限期内未结束，已强制终止；未落盘输出可能丢失"
     },
     "status_after_force": {
-      "omni_task_id": "omni-5398519b-0781-4dcf-83e6-c54a0d48efc4",
+      "omni_task_id": "omni-6ee0895e-81ed-4046-9eb5-1871a7cb443a",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792759703.7012122,
+      "since": 1793941711.320629,
       "last_event_seq": 1,
       "partial_output_size": 0,
-      "engine_session_id": "6457a4bc-1c0f-4a40-9fdf-27f68f8c95c6",
+      "engine_session_id": "8ce70a37-1d59-4e43-b8dc-92ff8ae82db7",
       "note": "",
       "ttfb_seconds": null,
-      "pending_approvals": 0
+      "pending_approvals": 0,
+      "engine_turn_end_seq": null
     }
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759704.8936388
+  "finished_at": 1793941712.869119
 }

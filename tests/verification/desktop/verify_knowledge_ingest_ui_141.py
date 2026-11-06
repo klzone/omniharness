@@ -38,6 +38,8 @@ def main() -> int:
     check("types_present", "KnowledgeIngestPrepare" in types and "KnowledgeIngestApplyReport" in types)
     check("retrieval_intent_wired", "detectKnowledgeIntent" in home and "buildKnowledgeContext" in home)
     check("retrieval_keyword_wired", "knowledgeSearchKeyword" in home and "filterKnowledgeHits" in home)
+    check("ingest_scan_uses_inbox_text", "userInputText: prep.user_input_text" in panel)
+    check("ingest_prepare_exposes_inbox_text", "user_input_text: string" in types)
 
     failed = [c for c in CASES if not c["ok"]]
     for case in CASES:

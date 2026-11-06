@@ -4,7 +4,7 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759684.2823746,
+  "started_at": 1793941698.0504189,
   "checks": [
     {
       "check": "no_duplicate_seq",
@@ -44,12 +44,12 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e11_aa2m_7_d",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e11_d9a8wf0f",
     "partial_before_reconnect": [
       {
-        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
+        "omni_task_id": "omni-288518d7-2a28-4230-9edc-567b81f32248",
         "seq": 1,
-        "occurred_at": 1792759685.7546995,
+        "occurred_at": 1793941698.668519,
         "type": "task_started",
         "payload": {
           "normalized": true,
@@ -59,33 +59,33 @@
         }
       },
       {
-        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
+        "omni_task_id": "omni-288518d7-2a28-4230-9edc-567b81f32248",
         "seq": 2,
-        "occurred_at": 1792759687.5152152,
+        "occurred_at": 1793941700.243613,
         "type": "text_delta",
         "payload": {
           "text": "甲乙丙丁戊",
-          "message_id": "ea0c1784-00f2-4653-85a4-2d61bb1378cd",
+          "message_id": "5bc50262-990f-442f-b977-ac7206266403",
           "chars": 5
         }
       }
     ],
     "resumed_after_reconnect": [
       {
-        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
+        "omni_task_id": "omni-288518d7-2a28-4230-9edc-567b81f32248",
         "seq": 3,
-        "occurred_at": 1792759687.5166852,
+        "occurred_at": 1793941700.243891,
         "type": "progress",
         "payload": {
           "kind": "usage",
-          "used": 5728,
+          "used": 5754,
           "size": 262144
         }
       },
       {
-        "omni_task_id": "omni-8f0dd4f0-75da-45b5-8396-a80f88cbd131",
+        "omni_task_id": "omni-288518d7-2a28-4230-9edc-567b81f32248",
         "seq": 4,
-        "occurred_at": 1792759687.5335338,
+        "occurred_at": 1793941700.25528,
         "type": "task_completed",
         "payload": {
           "stop_reason": "end_turn",
@@ -109,5 +109,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759687.9676557
+  "finished_at": 1793941700.718281
 }

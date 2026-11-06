@@ -4,20 +4,20 @@
   "channel": "acp",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759673.865219,
+  "started_at": 1793941692.28417,
   "checks": [
     {
       "check": "session_id_captured",
       "pass": true,
-      "detail": "f4775c56-4ff0-4149-aa2e-826b7827e01e"
+      "detail": "964ea498-4533-4ae3-8433-08e57b6dda0d"
     },
     {
       "check": "recover_session_ok",
       "pass": true,
       "detail": {
-        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+        "engine_session_id": "964ea498-4533-4ae3-8433-08e57b6dda0d",
         "resumed": true,
-        "workspace_token": "d16063cae21c929b",
+        "workspace_token": "c9a5510f9496474c",
         "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
@@ -28,9 +28,9 @@
       "check": "resumed_is_existing_session",
       "pass": true,
       "detail": {
-        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+        "engine_session_id": "964ea498-4533-4ae3-8433-08e57b6dda0d",
         "resumed": true,
-        "workspace_token": "d16063cae21c929b",
+        "workspace_token": "c9a5510f9496474c",
         "workspace_label": "",
         "config_option_count": 1,
         "evidence": "engine_terminal",
@@ -57,18 +57,19 @@
       "check": "task_recovery_ok",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
+        "omni_task_id": "omni-398f7749-4e8a-4ab6-8e56-004089b12b51",
         "status": {
-          "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
+          "omni_task_id": "omni-398f7749-4e8a-4ab6-8e56-004089b12b51",
           "status": "succeeded",
           "evidence_source": "engine_terminal",
-          "since": 1792759675.6218705,
+          "since": 1793941692.903502,
           "last_event_seq": 4,
           "partial_output_size": 6,
-          "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+          "engine_session_id": "964ea498-4533-4ae3-8433-08e57b6dda0d",
           "note": "来自本地记录（前次运行取得的引擎终态证据）",
           "ttfb_seconds": null,
-          "pending_approvals": 0
+          "pending_approvals": 0,
+          "engine_turn_end_seq": null
         },
         "replayed": false,
         "evidence": "engine_terminal",
@@ -82,7 +83,7 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_e08_xnbgmppx",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_e08_qtai1sgg",
     "first_shutdown": {
       "mode": "graceful",
       "in_flight_before": [],
@@ -94,9 +95,9 @@
       "note": "优雅关闭"
     },
     "session_recovery": {
-      "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+      "engine_session_id": "964ea498-4533-4ae3-8433-08e57b6dda0d",
       "resumed": true,
-      "workspace_token": "d16063cae21c929b",
+      "workspace_token": "c9a5510f9496474c",
       "workspace_label": "",
       "config_option_count": 1,
       "evidence": "engine_terminal",
@@ -110,18 +111,19 @@
       "session/resume": 1
     },
     "task_recovery": {
-      "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
+      "omni_task_id": "omni-398f7749-4e8a-4ab6-8e56-004089b12b51",
       "status": {
-        "omni_task_id": "omni-1d832319-3303-435d-8932-039acbc6531c",
+        "omni_task_id": "omni-398f7749-4e8a-4ab6-8e56-004089b12b51",
         "status": "succeeded",
         "evidence_source": "engine_terminal",
-        "since": 1792759675.6218705,
+        "since": 1793941692.903502,
         "last_event_seq": 4,
         "partial_output_size": 6,
-        "engine_session_id": "f4775c56-4ff0-4149-aa2e-826b7827e01e",
+        "engine_session_id": "964ea498-4533-4ae3-8433-08e57b6dda0d",
         "note": "来自本地记录（前次运行取得的引擎终态证据）",
         "ttfb_seconds": null,
-        "pending_approvals": 0
+        "pending_approvals": 0,
+        "engine_turn_end_seq": null
       },
       "replayed": false,
       "evidence": "engine_terminal",
@@ -140,5 +142,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759678.074701
+  "finished_at": 1793941694.382036
 }

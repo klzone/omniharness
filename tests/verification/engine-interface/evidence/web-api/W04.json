@@ -4,7 +4,7 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759860.6454372,
+  "started_at": 1793941380.363611,
   "checks": [
     {
       "check": "was_running",
@@ -24,7 +24,7 @@
     {
       "check": "settled_within_2s",
       "pass": true,
-      "detail": 0.051
+      "detail": 0.031
     },
     {
       "check": "final_state_cancelled",
@@ -33,40 +33,42 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w04_3jt3dvj7",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w04_c6b0xvml",
     "status_before_cancel": {
-      "omni_task_id": "omni-d7f2d784-d417-46d1-b205-83da683fbe6f",
+      "omni_task_id": "omni-e4cfa6a9-d057-4cc0-b4d1-19257f70005a",
       "status": "running",
       "evidence_source": "operator_confirm",
-      "since": 1792759862.9762108,
+      "since": 1793941381.7480168,
       "last_event_seq": 1,
       "partial_output_size": 0,
-      "engine_session_id": "session-7b542f14-940e-425e-9f12-2a1178cb95f4",
+      "engine_session_id": "session-2c8ed061-45d9-4738-8272-dc90349413a4",
       "note": "",
       "ttfb_seconds": null,
-      "pending_approvals": 0
+      "pending_approvals": 0,
+      "engine_turn_end_seq": null
     },
     "cancel_outcome": {
-      "omni_task_id": "omni-d7f2d784-d417-46d1-b205-83da683fbe6f",
+      "omni_task_id": "omni-e4cfa6a9-d057-4cc0-b4d1-19257f70005a",
       "phase": "confirmed_cancelled",
-      "requested_at": 1792759863.9768825,
-      "settled_at": 1792759864.0273788,
+      "requested_at": 1793941382.7533262,
+      "settled_at": 1793941382.784292,
       "final_state": "cancelled",
       "evidence": "engine_terminal",
       "note": "引擎以 turn/end=aborted 落定"
     },
-    "cancel_elapsed_s": 0.051,
+    "cancel_elapsed_s": 0.031,
     "status_after_cancel": {
-      "omni_task_id": "omni-d7f2d784-d417-46d1-b205-83da683fbe6f",
+      "omni_task_id": "omni-e4cfa6a9-d057-4cc0-b4d1-19257f70005a",
       "status": "cancelled",
       "evidence_source": "engine_terminal",
-      "since": 1792759864.018161,
-      "last_event_seq": 3,
+      "since": 1793941382.766922,
+      "last_event_seq": 4,
       "partial_output_size": 0,
-      "engine_session_id": "session-7b542f14-940e-425e-9f12-2a1178cb95f4",
+      "engine_session_id": "session-2c8ed061-45d9-4738-8272-dc90349413a4",
       "note": "stop_reason=aborted",
       "ttfb_seconds": null,
-      "pending_approvals": 0
+      "pending_approvals": 0,
+      "engine_turn_end_seq": 17
     },
     "shutdown": {
       "mode": "force",
@@ -81,5 +83,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759864.2430923
+  "finished_at": 1793941382.833382
 }

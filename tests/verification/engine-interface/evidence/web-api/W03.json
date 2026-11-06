@@ -4,22 +4,23 @@
   "channel": "web-api",
   "evidence_level": "script",
   "executed": true,
-  "started_at": 1792759745.7402704,
+  "started_at": 1793939793.817228,
   "checks": [
     {
       "check": "reached_failed",
       "pass": true,
       "detail": {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
+        "omni_task_id": "omni-dbbd6866-a001-4575-9bae-6f39706259b5",
         "status": "failed",
         "evidence_source": "engine_terminal",
-        "since": 1792759748.4258304,
-        "last_event_seq": 3,
+        "since": 1793939794.853929,
+        "last_event_seq": 4,
         "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
+        "engine_session_id": "session-4ab4fc48-8f61-4d9d-b070-8c46549d4f8c",
         "note": "stop_reason=error; error=engine reported turn/end=error",
         "ttfb_seconds": null,
-        "pending_approvals": 0
+        "pending_approvals": 0,
+        "engine_turn_end_seq": 17
       }
     },
     {
@@ -39,74 +40,40 @@
     }
   ],
   "artifacts": {
-    "data_root": "/tmp/omni_p1s3_w03_tw76bqd3",
+    "data_root": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omni_p1s3_w03_83wiet2f",
     "status_series": [
       {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
+        "omni_task_id": "omni-dbbd6866-a001-4575-9bae-6f39706259b5",
         "status": "running",
         "evidence_source": "operator_confirm",
-        "since": 1792759748.058288,
+        "since": 1793939794.77833,
         "last_event_seq": 1,
         "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
+        "engine_session_id": "session-4ab4fc48-8f61-4d9d-b070-8c46549d4f8c",
         "note": "",
         "ttfb_seconds": null,
-        "pending_approvals": 0
+        "pending_approvals": 0,
+        "engine_turn_end_seq": null
       },
       {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
-        "status": "running",
-        "evidence_source": "operator_confirm",
-        "since": 1792759748.058288,
-        "last_event_seq": 1,
-        "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
-        "note": "",
-        "ttfb_seconds": null,
-        "pending_approvals": 0
-      },
-      {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
-        "status": "running",
-        "evidence_source": "operator_confirm",
-        "since": 1792759748.058288,
-        "last_event_seq": 1,
-        "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
-        "note": "",
-        "ttfb_seconds": null,
-        "pending_approvals": 0
-      },
-      {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
-        "status": "running",
-        "evidence_source": "operator_confirm",
-        "since": 1792759748.058288,
-        "last_event_seq": 1,
-        "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
-        "note": "",
-        "ttfb_seconds": null,
-        "pending_approvals": 0
-      },
-      {
-        "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
+        "omni_task_id": "omni-dbbd6866-a001-4575-9bae-6f39706259b5",
         "status": "failed",
         "evidence_source": "engine_terminal",
-        "since": 1792759748.4258304,
-        "last_event_seq": 3,
+        "since": 1793939794.853929,
+        "last_event_seq": 4,
         "partial_output_size": 0,
-        "engine_session_id": "session-631d40bb-108f-49e6-ac1b-23d916c99286",
+        "engine_session_id": "session-4ab4fc48-8f61-4d9d-b070-8c46549d4f8c",
         "note": "stop_reason=error; error=engine reported turn/end=error",
         "ttfb_seconds": null,
-        "pending_approvals": 0
+        "pending_approvals": 0,
+        "engine_turn_end_seq": 17
       }
     ],
     "task_result": {
-      "omni_task_id": "omni-2ce5ca09-28fb-444e-8710-680c5fbcbb39",
+      "omni_task_id": "omni-dbbd6866-a001-4575-9bae-6f39706259b5",
       "form": "unrecoverable",
       "content": "",
-      "persisted_at": 1792759748.4261825,
+      "persisted_at": 1793939794.8543491,
       "integrity": "partial",
       "sources": [
         {
@@ -133,5 +100,5 @@
   },
   "notes": [],
   "verdict": "pass",
-  "finished_at": 1792759748.8754942
+  "finished_at": 1793939795.349235
 }

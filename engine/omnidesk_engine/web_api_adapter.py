@@ -2391,6 +2391,7 @@ class WebApiAdapter(TaskCoreBase):
                     evidence="already_terminal",
                     note="任务已终态，未发送取消请求",
                 )
+            was_starting = record.state == TaskState.STARTING
             session_id = record.engine_session_id
             record.cancel_phase = CancelPhase.REQUEST_SENT
             record.cancel_requested_at = now()
@@ -2404,6 +2405,33 @@ class WebApiAdapter(TaskCoreBase):
                 "note": "session/cancel 无独立 ack；确认以 turn/end=aborted 为准",
             },
         )
+        # OD-ARCH-145 C：starting 阶段可能还没真正进入引擎会话；此时等引擎 ack
+        # 只会把取消也一起挂死。用户已明确取消，本地落定 failed，下一次提交由
+        # 前端清空会话号并新建，避免再次进入同一旁路。
+        if was_starting:
+            note = "启动阶段取消：未等待引擎会话确认，任务已本地落定；下一次提交将新建会话"
+            with self._lock:
+                record.cancel_phase = CancelPhase.CONFIRMED_CANCELLED
+                record.cancel_settled_at = now()
+                requested_at = record.cancel_requested_at
+                settled_at = record.cancel_settled_at
+            self._settle(
+                record,
+                TaskState.FAILED,
+                "operator_confirm",
+                note=note,
+                error_code=EngineErrorCode.CANCEL_FAILED.value,
+                error_message=note,
+            )
+            return CancelOutcome(
+                omni_task_id=omni_task_id,
+                phase=CancelPhase.CONFIRMED_CANCELLED,
+                requested_at=requested_at,
+                settled_at=settled_at,
+                final_state=TaskState.FAILED,
+                evidence="operator_confirm",
+                note=note,
+            )
         if session_id is None:
             raise EngineError(
                 EngineErrorCode.CANCEL_FAILED,
