@@ -1,5 +1,12 @@
 # 执行状态
 
+## v0.2.10 发布（2026-11-06；包含 OD-ARCH-145 + 144）
+
+- 提交：`d846af3a89`（145 实现 + 144 复核随行）、`03ce33e0c9`（版本号 0.2.10）、`daf6caa9f3`（CI macOS runner 升级 macos-15：macos-14 镜像已下线导致首轮 macos job 被取消）
+- Release run 42215771838 全部 success（meta / macos / windows / publish）
+- Release v0.2.10 三产物已发布：macOS universal zip（177 MB）、Windows zip（174 MB）、Windows NSIS setup.exe（95 MB）
+- 待用户：下载安装 0.2.10，复测第 4 轮提交场景；若再现卡死，取 `~/OmniDesk/app/logs/engine-stderr.log`（本轮新增的 stderr 滚动日志）
+
 ## OD-ARCH-145 · 续接会话挂死诊断与在途任务可恢复（2026-11-06；已实施，待真实复现验证）
 
 > 起点 HEAD `46cc88476e` + 144 hotfix。目标：补齐引擎 stderr 证据、starting 兜底提示、取消后不回到旧 resumed 会话。
