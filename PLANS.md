@@ -1,5 +1,53 @@
 # 当前实施计划
 
+### OD-ARCH-145：续接会话偶发挂死诊断与在途任务可恢复（已批准并实施，待真实复现验证）
+
+> **触发：** 用户实测素材写作，第 4 轮提交后一直"生成中/未收到输出"（等待 1124 秒无 TTFB）。同模式已在 0.2.8（11-05 22:30）与 0.2.9（11-06 10:01）各出现一次，三次成功后第四次卡死。判据：两代版本都发生、成功与卡死同模式混杂 → 指向续接会话（resumed）在 DSH 侧偶发不响应，非 141/142 回归。
+
+#### 已核实事实
+1. 卡死任务特征：state=starting、seq=0、ttfb=None、masker 字段为空——卡在宿主 with_engine_call（引擎冷启动/提交）阶段，连引擎的 masker 都没执行到。
+2. 同会话此前三次提交均成功（masker 正常记录），排除词典/脱敏问题。
+3. 引擎 stderr 无落盘（piped 给宿主但宿主未持久化）——卡死时无证据可查，诊断盲区。
+4. 用户端显示"已静默 60 秒 · 不会自动停止"——宿主心跳提示在，但没有对 starting 超时的兜底。
+
+#### 方案（三件事，最小改动）
+
+**A. 引擎 stderr 落盘（诊断盲区补上）**
+engine_supervisor 拉起 python 引擎时把 stderr 写入 logs/engine-stderr.log（滚动保留最近 1MB×3），与 dsh-settings.log 同惯例。这是后续一切诊断的前提。
+
+**B. starting 阶段兜底超时（用户可控）**
+提交后 N 秒（默认 120s）仍 state=starting 且无任何事件 → 前端提示"启动已超过 2 分钟，可点取消重试；连续两次建议重启应用"。不在宿主自动杀任务（保持"不自动停止"哲学），只给用户可见的动作建议。UI 已有取消按钮，仅加提示。
+
+**C. 取消后可干净重试**
+用户点取消 → 引擎 omni.cancel_task → 任务落 failed → 下一次提交新建会话（避免再进同一卡死的 resumed 通道）。验证取消在 starting 阶段有效（当前 cancel 在 starting 的行为待核）。
+
+#### 验证
+- A：日志文件出现且含引擎启动信息；单测覆盖路径。
+- B：模拟卡死（假引擎不响应）→ 120 秒后前端提示出现。
+- C：卡死任务取消 → failed 落定 → 新提交走 new 会话成功。
+- 真实复现：用户第 4 轮卡死时取 engine-stderr.log 给 ARCHITECT 定位 DSH 侧根因（DSH 本体不动，runtime 保护）。
+
+#### 边界
+不修改 DSH runtime；不改 resumed 机制本身（数据由 141/142 链路共享）；B 不自动杀任务。
+### OD-ARCH-144：知识整理链路红线扫描修复（hotfix，已批准并实施，待真实验证）
+
+> **触发：** 用户 0.2.9 实测"整理收件箱"被拒：red_line_rejected 命中 14 处。根因实锤：Panel 把 assemble 组装后的完整提示词（含建卡规范全文 4422 字）当 promptText 提交，engine_submit_task 的 scan_target 未传 user_input_text → 退回扫描整个提示词 → 规范文本里"案件（3）线索（5）审查调查（1）举报（1）涉案（1）未公开（2）案件线索（1）"合计 14 处命中 → 拒绝。**用户材料本身零命中。**这是 141 实施时的接线缺陷（扫错了对象），不是红线机制的问题。
+
+#### 方案（最小修复，两处）
+
+1. **KnowledgeIngestPanel.tsx**：submitTask 增加 user_input_text 参数 = inbox 材料正文拼接（与 promptText 的来源一致——prep.files 的 content）。红线扫描回落在用户原文上；规范文本不再被扫。
+2. **宿主加固（防御纵深）**：knowledge_ingest_prepare 返回的 PrepareResult 增加 user_input_text 字段（已拼好的用户原文），前端直接透传，避免前端再拼一次导致口径漂移。
+3. **验证**：
+   - Rust：单测——整理链路 scan_target 落在用户原文（用真规范文本+含"案件"的规范验证不误拒）。
+   - verify_knowledge_ingest_ui_141.py 扩展断言 submitTask 带 user_input_text。
+   - 全量回归：python 166 + cargo 524。
+   - 真实验证：用户重新点"整理收件箱"，应进入模型调用阶段。
+
+#### 影响范围
+KnowledgeIngestPanel.tsx、knowledge_ingest.rs（PrepareResult 加字段）、测试脚本。零协议变更、零新依赖。
+
+#### 顺带说明
+同类隐患排查：其他"系统拼提示词"的链路（周报/文案/项目）已传 user_input_text（068 修过），唯 141 漏了。本次一并复查确认无第四处。
 ### OD-ARCH-143：Task 5 端到端验收与整体收口（S1/S2 已复核通过；S3 用户实测、S4/S5 收口待用户批准执行）
 
 > **触发：** 用户指示 Task 4 完成后出 Task 5 规划；Task 1–4 全部改动积压在工作区未提交，Task 5 完成后一次性提交推送。

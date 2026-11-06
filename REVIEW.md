@@ -1,3 +1,41 @@
+## OD-ARCH-145 审查结论（ARCHITECT，2026-11-06）——通过（附 2 条基线风险记录）
+
+**结论：通过。** A（stderr 落盘）、B（starting 兜底提示）、C（starting 取消可恢复）三项实现与计划一致，实现代码逐行核对无误，回归全绿。真实复现验证仍待用户实测，与本计划"待真实复现验证"的口径一致。
+
+**独立复核范围：** HEAD `46cc88476e` + 工作区改动（13 个修改文件 + 新增 verify_starting_145.py）。逐行核对了 engine_ipc.rs 的滚动日志实现、engine_supervisor.rs 的接线、HomeChat.tsx 的兜底与取消清会话、web_api_adapter.py 的 starting 取消落定、sceneThreads/types 的可空会话号。全程 `runtime/` 零差异、零提交、零推送。
+
+**独立实跑结果（本人执行，非采信 STATUS.md）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `python3 tests/verification/desktop/verify_starting_145.py` | 12/12 通过 |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 18/18 通过 |
+| `python3 -m unittest test_web_api_unit`（adapter 目录） | 89/89（新增 StartingCancelTests 1 项） |
+| 三个纯单元测试文件（masker 32 / markdown 38 / ingest 8） | 32/32、38/38、8/8 |
+| `cargo test --offline`（沙箱外，需要 /bin/ps） | **529 lib + 13 host_integration + 其余集成目标全 ok / 0 failed** |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过 |
+| `run_approval_scenarios.py` A01–A05 | 5/5 pass |
+| `run_web_api_scenarios.py` W01–W12 | 12/12 pass |
+| `run_engine_adapter_scenarios.py` E01–E20 | 18/20 pass；E17、E20 见风险记录 |
+| `run_visibility_scenarios.py` V01–V05 | 2/5 pass；V02/V03/V05 见风险记录 |
+
+**审查判断：**
+
+1. **C 的状态转换是合法的。** cancel_task 先置 CANCELLING 再落 FAILED；契约 3.2 的 LEGAL_TRANSITIONS 只约束 _settle 的 from-state，CANCELLING→FAILED 在表内。error_code 用 CANCEL_FAILED 语义贴切（"未等引擎确认、本地终态"）。单元测试证明 starting 取消不再发 session/cancel。
+2. **B 无自动杀任务、提示精确落在计划文案。** slowStarting（提交中 120s）与 startingTooLong（activeTask starting 且 elapsed>=120）两条路径都只加红字提示；没有改宿主取消模型。
+3. **A 的滚动日志实现在 stderr 读线程内逐行追加，1 MiB 阈值 + .1–.3 三份滚动。** 单测覆盖超限滚动与真实子进程落盘；日志目录随 supervisor 启动创建。
+4. **取消后的会话重置闭环核对：** onEngineSessionId(null) → HomeCanvas setThreadEngineSession(id, null) → sceneThreads 接受 null → 下次 submitText 传 engineSessionId=null → 引擎新建会话。receipt.engine_session_id 为空时不清旧值，避免误清除，逻辑自洽。
+5. **144 顺带复核通过：** PrepareResult.user_input_text 与前端透传、types.ts 同步、两条新单测与 18 项 UI 静态断言全绿（含 ingest_scan_uses_inbox_text）。
+
+**基线风险记录（非本轮改动引入，E17 于 10-23 之前已如此）：**
+
+- **[P3] E17/E20 在 DSH 0.2.1-rc.5（11-02 升级）后回归失败，升级当日未发现。** E17 期望 sdk 通道对 session/resume 返回 "unknown method"；rc.5 实际先走 "SDK server is not initialized"（initialize 缺 provider/model 时先行失败）。测试断言过窄（对错误字符串精确匹配），可放宽为"返回 -32603 错误"即可恢复全绿。E20 只是复跑汇总的连带失败。10-23 的 E17 pass 证据对应 alpha.2 行为；11-02 底座升级时未重跑该场景。
+- **[P3] V02/V03/V05 同受 11-02 底座升级影响。** 显式 total_seconds 截止不再生效（超时落 interrupted 而非 unknown+带秒数文案）、未知询问帧无法阻止任务被 engine 关闭 interrupted。三项均断言旧行为；与 145 的 starting 兜底哲学不冲突，但建议单开一轮超时口径审查。基线（46cc88476e 归档目录）复跑同样失败，确认非本轮回归。
+
+**遗留：** ① 真实第 4 轮卡死复现后取 `~/OmniDesk/app/logs/engine-stderr.log` 定位 DSH 侧根因（需要包含本轮改动的构建）；② 120s 兜底提示的真实等待未跑满（静态接线 + 计时逻辑核对）；③ E17/V02/V03/V05 建议另立测试修复轮，不阻塞 145 验收。
+
+**Git 状态：** 工作区改动未提交未推送；本轮验证新增了 evidence JSON 的时间戳更新（30+ 个 evidence 文件 diff），属重跑脚本的预期写入；新增 `用户成果/` 目录（用户实测产物，不入库）。
+
 ## OD-ARCH-143 审查结论（ARCHITECT，2026-11-05）——S1/S2 通过，S3–S5 待用户逐项执行
 
 **结论：S1（坏测试修复）与 S2（合成端到端）复核通过。项目首次达到全部测试零失败。S3 用户实测、S4 收口提交、S5 发布确认待逐项执行。**

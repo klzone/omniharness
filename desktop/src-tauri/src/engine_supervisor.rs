@@ -352,6 +352,15 @@ impl EngineConfig {
         Ok(true)
     }
 
+    /// 引擎 stderr 诊断日志（OD-ARCH-145 A）：与应用日志同目录。
+    pub fn stderr_log_path(&self) -> PathBuf {
+        self.engine_state_dir
+            .parent()
+            .unwrap_or(&self.engine_state_dir)
+            .join("logs")
+            .join("engine-stderr.log")
+    }
+
     /// 传给引擎子进程的环境变量（显式、最小集）。
     pub fn child_env(&self) -> Vec<(String, String)> {
         let sensitive_dict = self
@@ -620,6 +629,19 @@ mod tests {
             child_env_value(&config, "OMNIDESK_SENSITIVE_DICT"),
             Some(expected.display().to_string())
         );
+    }
+
+    /// OD-ARCH-145 A：stderr 诊断日志落在应用数据根 logs/ 下。
+    #[test]
+    fn stderr_log_path_is_under_app_logs() {
+        let config = fake_config();
+        let expected = config
+            .engine_state_dir
+            .parent()
+            .unwrap()
+            .join("logs")
+            .join("engine-stderr.log");
+        assert_eq!(config.stderr_log_path(), expected);
     }
 
     /// 生命周期回归（自集成测试迁入）：通道已挂载后可 initialize 并优雅关闭。
@@ -1092,11 +1114,16 @@ impl EngineSupervisor {
         )?;
 
         let args = vec!["-m".to_string(), "omnidesk_engine".to_string()];
-        let channel = EngineChannel::spawn(
+        let stderr_log = self.config.stderr_log_path();
+        if let Some(parent) = stderr_log.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let channel = EngineChannel::spawn_with_stderr_log(
             &self.config.python,
             &args,
             &self.config.engine_dir,
             &self.config.child_env(),
+            Some(&stderr_log),
         )
         .map_err(|e| {
             format!(

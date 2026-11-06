@@ -25,6 +25,7 @@ from omnidesk_engine import TaskState
 from omnidesk_engine.contract import EventType
 from omnidesk_engine.task_core import _TaskRecord
 from omnidesk_engine.task_core import SubmitTaskRequest
+from omnidesk_engine.contract import CancelPhase
 from omnidesk_engine.web_api_adapter import WebApiAdapter
 from omnidesk_engine.web_api_adapter import _ApprovalChannel
 from omnidesk_engine.node_runtime import resolve_node
@@ -382,6 +383,23 @@ class StreamUnmaskTests(unittest.TestCase):
         self.assertIn("[PERSON_DEADBEEF]", record.text_parts[-1])
         reports = [e for e in record.events if e.payload.get("kind") == "masker_unmask"]
         self.assertFalse(reports[0].payload["report"]["ok"])
+
+
+class StartingCancelTests(unittest.TestCase):
+    """OD-ARCH-145 C：starting 阶段取消必须立即落定，不再等引擎 ack。"""
+
+    def test_starting_cancel_settles_failed_without_engine_rpc(self):
+        adapter = make_adapter(tmp_state=None)
+        record = make_record(state=TaskState.STARTING)
+        record.engine_session_id = "sess-stuck"
+        adapter._tasks[record.omni_task_id] = record
+        calls = []
+        adapter._rpc = lambda *args, **kwargs: calls.append(args) or None
+        outcome = adapter.cancel_task(record.omni_task_id, timeout=1)
+        self.assertEqual(record.state, TaskState.FAILED)
+        self.assertEqual(outcome.phase, CancelPhase.CONFIRMED_CANCELLED)
+        self.assertEqual(outcome.final_state, TaskState.FAILED)
+        self.assertEqual(calls, [], "starting 取消不应等待 session/cancel")
 
 
 class SettleTurnTests(unittest.TestCase):

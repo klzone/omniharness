@@ -12,7 +12,9 @@
 //! 对应的等待者。两者都在同一个读线程里完成，避免竞态。
 
 use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
@@ -22,6 +24,9 @@ use std::time::{Duration, Instant};
 
 /// 引擎域错误统一使用该 JSON-RPC 码（与 Python 侧 serve.py 一致）。
 pub const ENGINE_ERROR_CODE: i64 = -32000;
+/// 引擎 stderr 诊断日志：单文件 1 MiB，保留当前 + 3 份滚动副本。
+pub const ENGINE_STDERR_MAX_BYTES: u64 = 1024 * 1024;
+const ENGINE_STDERR_BACKUPS: usize = 3;
 
 /// 结构化 RPC 错误：保留 JSON-RPC 码、消息与 data（含引擎错误码与五属性）。
 #[derive(Debug, Clone)]
@@ -132,8 +137,19 @@ impl EngineChannel {
     pub fn spawn(
         program: &str,
         args: &[String],
-        cwd: &std::path::Path,
+        cwd: &Path,
         envs: &[(String, String)],
+    ) -> std::io::Result<Self> {
+        Self::spawn_with_stderr_log(program, args, cwd, envs, None)
+    }
+
+    /// 同 `spawn`，但把引擎 stderr 追加到滚动诊断日志（OD-ARCH-145 A）。
+    pub fn spawn_with_stderr_log(
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+        envs: &[(String, String)],
+        stderr_log: Option<&Path>,
     ) -> std::io::Result<Self> {
         let mut cmd = Command::new(program);
         cmd.args(args)
@@ -213,12 +229,16 @@ impl EngineChannel {
         // stderr 线程：只保留末尾若干行用于诊断，绝不写入协议通道。
         {
             let tail = Arc::clone(&stderr_tail);
+            let log_path = stderr_log.map(Path::to_path_buf);
             thread::Builder::new()
                 .name("omnidesk-engine-stderr".to_string())
                 .spawn(move || {
                     let reader = BufReader::new(stderr);
                     for line in reader.lines() {
                         let Ok(line) = line else { break };
+                        if let Some(path) = &log_path {
+                            append_stderr_line(path, &line);
+                        }
                         let mut buf = tail.lock().unwrap();
                         if buf.len() >= 200 {
                             buf.remove(0);
@@ -438,6 +458,42 @@ impl EngineChannel {
     }
 }
 
+fn stderr_backup_path(path: &Path, index: usize) -> PathBuf {
+    let mut raw = path.as_os_str().to_os_string();
+    raw.push(format!(".{}", index));
+    PathBuf::from(raw)
+}
+
+fn rotate_stderr_log(path: &Path) {
+    let _ = fs::remove_file(stderr_backup_path(path, ENGINE_STDERR_BACKUPS));
+    for index in (1..ENGINE_STDERR_BACKUPS).rev() {
+        let _ = fs::rename(
+            stderr_backup_path(path, index),
+            stderr_backup_path(path, index + 1),
+        );
+    }
+    let _ = fs::rename(path, stderr_backup_path(path, 1));
+}
+
+fn append_stderr_line(path: &Path, line: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if fs::metadata(path)
+        .map(|meta| meta.len() > ENGINE_STDERR_MAX_BYTES)
+        .unwrap_or(false)
+    {
+        rotate_stderr_log(path);
+    }
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(file, "[{}] {}", stamp, line);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,5 +524,59 @@ mod tests {
             data: serde_json::Value::Null,
         };
         assert_eq!(err.engine_error_code(), "jsonrpc_-32601");
+    }
+
+    #[test]
+    fn stderr_log_is_bounded_and_rotated() {
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-stderr-log-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let path = base.join("logs/engine-stderr.log");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, vec![b'x'; ENGINE_STDERR_MAX_BYTES as usize + 1]).unwrap();
+        append_stderr_line(&path, "合成诊断行");
+        assert!(stderr_backup_path(&path, 1).is_file(), "超限后应滚动旧日志");
+        let current = fs::read_to_string(&path).unwrap();
+        assert!(current.contains("合成诊断行"));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn spawn_with_stderr_log_captures_child_stderr() {
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-stderr-spawn-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let log = base.join("logs/engine-stderr.log");
+        let python = std::env::var("OMNIDESK_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let code = "import sys; sys.stderr.write('合成引擎启动信息\\n'); sys.stderr.flush()";
+        let mut channel = EngineChannel::spawn_with_stderr_log(
+            &python,
+            &["-c".to_string(), code.to_string()],
+            &std::env::temp_dir(),
+            &[],
+            Some(&log),
+        )
+        .expect("应能启动合成 stderr 子进程");
+        let mut captured = String::new();
+        for _ in 0..40 {
+            captured = fs::read_to_string(&log).unwrap_or_default();
+            if captured.contains("合成引擎启动信息") {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        let _ = channel.wait_exit(Duration::from_secs(2));
+        assert!(captured.contains("合成引擎启动信息"), "日志应包含子进程 stderr");
+        let _ = fs::remove_dir_all(base);
     }
 }

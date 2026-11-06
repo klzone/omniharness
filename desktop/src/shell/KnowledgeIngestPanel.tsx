@@ -50,6 +50,8 @@ export function KnowledgeIngestPanel() {
         promptText: prep.prompt,
         intent: "knowledge_ingest",
         workspaceDir: workspace.workspace_dir,
+        // OD-ARCH-144：红线扫描只针对 inbox 原文；建卡规范本身含边界用词。
+        userInputText: prep.user_input_text,
       });
       let status = await host.taskStatus(receipt.omni_task_id);
       for (let i = 0; i < 180 && !TERMINAL_STATES.includes(status.status); i += 1) {

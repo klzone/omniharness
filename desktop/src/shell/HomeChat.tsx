@@ -338,8 +338,8 @@ export interface HomeChatProps {
    * 没有时本组件在本次运行内自行记住第一轮拿到的会话号。
    */
   engineSessionId?: string | null;
-  /** 拿到（新建或续接后的）引擎会话号时回调，供上层按线程持久化。 */
-  onEngineSessionId?: (engineSessionId: string) => void;
+  /** 拿到（新建或续接后的）引擎会话号时回调；null 表示启动取消后清除旧会话。 */
+  onEngineSessionId?: (engineSessionId: string | null) => void;
   /** 当前会话搜索（OD-ARCH-082 S8） */
   searchQuery?: string;
   searchCurrentIndex?: number;
@@ -618,6 +618,8 @@ export function HomeChat({
   const [citationPreview, setCitationPreview] = useState<KnowledgeVaultNote | null>(null);
   /** 已提交到宿主、引擎尚未返回任务号（冷启动可能数秒）。 */
   const [starting, setStarting] = useState(false);
+  /** OD-ARCH-145 B：启动超过 2 分钟仍无任务时提示，不自动杀任务。 */
+  const [slowStarting, setSlowStarting] = useState(false);
   /**
    * 本轮提交的放弃标记（OD-ARCH-045 第 3 步）。
    * 冷启动期间还没有任务号，宿主无法按任务号取消失败的提交；这里只能撤销
@@ -626,6 +628,8 @@ export function HomeChat({
   const submitTokenRef = useRef<{ aborted: boolean; noteId: string | null } | null>(null);
   /** 已等待秒数（让「慢」可见，而不是像卡死）。 */
   const [elapsed, setElapsed] = useState(0);
+  const startingTooLong =
+    slowStarting || (activeTaskStatus === "starting" && elapsed >= 120);
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
   /**
@@ -1682,6 +1686,15 @@ export function HomeChat({
     return () => window.clearInterval(timer);
   }, [activeTaskId]);
 
+  useEffect(() => {
+    if (!starting) {
+      setSlowStarting(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlowStarting(true), 120_000);
+    return () => window.clearTimeout(timer);
+  }, [starting]);
+
   const submitText = useCallback(
     async (raw: string, picked: AttachmentInput[] = []): Promise<boolean> => {
       const text = raw.trim();
@@ -2344,7 +2357,17 @@ export function HomeChat({
           setEngineCancel(null);
           setCancelRequested(true);
         },
-        onOutcome: (outcome) => setEngineCancel(outcome as CancelOutcome),
+        onOutcome: (outcome) => {
+          setEngineCancel(outcome as CancelOutcome);
+          // OD-ARCH-145 C：启动阶段取消后丢弃旧会话号，下一次提交强制新建，
+          // 避免再次进入同一旁路卡死的 resumed 通道。
+          const finalState = (outcome as CancelOutcome).final_state;
+          if (activeTaskStatus === "starting" || finalState === "failed") {
+            setLocalEngineSessionId(null);
+            onEngineSessionId?.(null);
+            setReplayNextTurn(true);
+          }
+        },
         onStatus: (status) => setActiveTaskStatus((status as TaskStatus).status),
         onError: (message) =>
           setMessages((prev) =>
@@ -2358,7 +2381,7 @@ export function HomeChat({
         },
       },
     );
-  }, [activeTaskId, activeTaskStatus, cancelBusy, engineCancel, cancelRequested, abandonStarting]);
+  }, [activeTaskId, activeTaskStatus, cancelBusy, engineCancel, cancelRequested, abandonStarting, onEngineSessionId]);
 
   /**
    * 从提问卡取消本次任务（OD-ARCH-088）。
@@ -3048,6 +3071,15 @@ export function HomeChat({
       {starting ? (
         <p className="text-[10.5px] text-outline pb-1">
           正在启动引擎并提交（首次启动可能要几秒）…
+        </p>
+      ) : null}
+      {startingTooLong ? (
+        <p
+          className="pb-1 text-[10.5px] text-error"
+          role="status"
+          data-testid="starting-timeout-hint"
+        >
+          启动已超过 2 分钟，可点取消重试；连续两次建议重启应用。
         </p>
       ) : null}
 

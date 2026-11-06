@@ -343,7 +343,7 @@ export function retagThread(id: string, tag: ThreadTag): void {
  * 这是**引擎侧的会话标识**，不是对话正文；与线程消息一样只存在浏览器本地存储，
  * 不进仓库、不进成果目录。换会话（新建线程）时自然另起一个会话号。
  */
-export function setThreadEngineSession(id: string, engineSessionId: string): void {
+export function setThreadEngineSession(id: string, engineSessionId: string | null): void {
   const next = read().map((t) =>
     t.id === id ? { ...t, engineSessionId, updatedAt: Date.now() } : t,
   );
