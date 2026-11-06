@@ -41,7 +41,7 @@ jobs:
   macos:
     needs: meta
     if: needs.meta.outputs.publish == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: 应用发布源码补丁
