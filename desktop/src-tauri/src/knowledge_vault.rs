@@ -298,6 +298,13 @@ pub fn scan_vault(root: &Path, app_root: Option<&Path>) -> Result<VaultScan, Str
                 continue;
             }
             if file_type.is_dir() {
+                // OD-KB-201 S2：vault 根下的 governance/ 是宿主治理记录，不是
+                // 知识资产；只跳过这一层，不把任意同名子目录一并排除。
+                if dir == root_real && name == crate::knowledge_governance::GOVERNANCE_DIR {
+                    scan.stats.skipped_excluded += 1;
+                    push_skip(&mut scan, &root_real, &path, "governance");
+                    continue;
+                }
                 if let Some(reason) = excluded_dir_name(&name) {
                     match reason {
                         "hidden" => scan.stats.skipped_hidden += 1,

@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { shell } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { host, shell } from "../api";
 import type {
+  KnowledgeGovernanceRecord,
+  KnowledgeQualityReport,
+  KnowledgeRawAdmitReport,
+  KnowledgeReviewItem,
   KnowledgeVaultFile,
   KnowledgeVaultIndex,
   KnowledgeVaultIndexLink,
@@ -12,13 +17,18 @@ import type {
   KnowledgeVaultSaveOutcome,
   KnowledgeVaultScan,
   KnowledgeVaultSearchResponse,
+  TaskRecordSummary,
 } from "../types";
 import { MarkdownText } from "./MarkdownText";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
+import { KnowledgeIngestPanel } from "./KnowledgeIngestPanel";
+import { KnowledgeDashboard } from "./KnowledgeDashboard";
+import { KnowledgeReviewCenter } from "./KnowledgeReviewCenter";
+import { buildKnowledgeConflicts, countPendingReviews, rawFiles, wikiNotes } from "./knowledgeHub";
 
 type EditorMode = "edit" | "preview" | "raw";
-type VaultMode = "notes" | "graph";
+type HubPage = "dashboard" | "review" | "assets";
 
 type VaultConfirm = {
   title: string;
@@ -139,8 +149,25 @@ export function KnowledgeVaultPage({
   // 已解析链接的跳转定位：行号在目标笔记加载后滚动并显示。
   const [focus, setFocus] = useState<VaultFocus | null>(null);
   const [focusNotice, setFocusNotice] = useState<string | null>(null);
-  // 图谱只读当前索引快照；切回「笔记」保留原有选中与草稿状态。
-  const [vaultMode, setVaultMode] = useState<VaultMode>("notes");
+  // OD-KB-201 S3：三页主结构；图谱只在驾驶舱健康卡内打开。
+  const [hubPage, setHubPage] = useState<HubPage>("dashboard");
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<"new" | "conflict">("new");
+  const [reviewItems, setReviewItems] = useState<KnowledgeReviewItem[]>([]);
+  const [reviewBroken, setReviewBroken] = useState(0);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+  const [rawAdmissions, setRawAdmissions] = useState<KnowledgeGovernanceRecord[]>([]);
+  const [reviewDecisions, setReviewDecisions] = useState<KnowledgeGovernanceRecord[]>([]);
+  const [governanceError, setGovernanceError] = useState<string | null>(null);
+  const [quality, setQuality] = useState<KnowledgeQualityReport | null>(null);
+  const [qualityError, setQualityError] = useState<string | null>(null);
+  const [taskRecords, setTaskRecords] = useState<TaskRecordSummary[]>([]);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [rawUploadBusy, setRawUploadBusy] = useState(false);
+  const [rawUploadReport, setRawUploadReport] = useState<KnowledgeRawAdmitReport | null>(null);
+  const [rawUploadError, setRawUploadError] = useState<string | null>(null);
 
   const dirty = note !== null && draft !== note.content;
   const loadSeq = useRef(0);
@@ -204,7 +231,8 @@ export function KnowledgeVaultPage({
         setNote(loaded);
         setParsed(doc);
         updateDraft(loaded.content);
-        setMode("edit");
+        // OD-KB-201 S3：资产默认只读预览，编辑由显式按钮进入。
+        setMode("preview");
         setFocus(
           options?.focusLine
             ? { path: relativePath, line: Math.max(1, options.focusLine) }
@@ -254,6 +282,129 @@ export function KnowledgeVaultPage({
       setIndexBusy(false);
     }
   }, []);
+
+  const loadReview = useCallback(async () => {
+    setReviewBusy(true);
+    setReviewError(null);
+    try {
+      const listing = await shell.knowledgeReviewList();
+      setReviewItems(listing.items);
+      setReviewBroken(listing.broken);
+    } catch (error) {
+      setReviewError(errText(error));
+    } finally {
+      setReviewBusy(false);
+    }
+  }, []);
+
+  const loadGovernance = useCallback(async () => {
+    setGovernanceError(null);
+    try {
+      const [admissions, decisions] = await Promise.all([
+        shell.knowledgeGovernanceList("raw_admissions"),
+        shell.knowledgeGovernanceList("review_decisions"),
+      ]);
+      setRawAdmissions(admissions);
+      setReviewDecisions(decisions);
+    } catch (error) {
+      setGovernanceError(errText(error));
+    }
+  }, []);
+
+  const loadTaskRecords = useCallback(async () => {
+    setTaskError(null);
+    try {
+      const listing = await host.taskRecords(60);
+      setTaskRecords(listing.records);
+    } catch (error) {
+      setTaskError(errText(error));
+    }
+  }, []);
+
+  const loadQuality = useCallback(async () => {
+    setQualityError(null);
+    try {
+      const report = await shell.knowledgeQualityReport();
+      setQuality(report);
+    } catch (error) {
+      setQualityError(errText(error));
+    }
+  }, []);
+
+  const refreshHubData = useCallback(async () => {
+    await Promise.all([loadScan(), loadReview(), loadGovernance(), loadTaskRecords(), loadQuality()]);
+  }, [loadScan, loadReview, loadGovernance, loadTaskRecords, loadQuality]);
+
+  const decideReview = useCallback(
+    async (id: string, decision: "approve" | "request_changes" | "reject") => {
+      setReviewBusy(true);
+      setReviewError(null);
+      setReviewMessage(null);
+      try {
+        const result = await shell.knowledgeReviewDecide(id, decision);
+        const label =
+          decision === "approve" ? "已通过并纳入" : decision === "reject" ? "已驳回" : "已标记需要修改";
+        setReviewMessage(
+          `${label}：${result.review.cards[0]?.title ?? result.review.id}` +
+            (result.governance_errors.length > 0
+              ? `；治理记录部分失败：${result.governance_errors.join("；")}`
+              : ""),
+        );
+        await Promise.all([loadReview(), loadScan(), loadGovernance(), loadQuality()]);
+        if (result.apply && result.apply.created.length > 0) {
+          await rebuildIndex();
+        }
+      } catch (error) {
+        setReviewError(errText(error));
+      } finally {
+        setReviewBusy(false);
+      }
+    },
+    [loadReview, loadScan, loadGovernance, loadQuality, rebuildIndex],
+  );
+
+  const resolveConflict = useCallback(
+    async (subject: string, decision: "resolved" | "deferred" | "needs_more") => {
+      setReviewBusy(true);
+      setReviewError(null);
+      try {
+        await shell.knowledgeConflictResolve(subject, decision);
+        setReviewMessage(
+          decision === "resolved" ? "冲突已标记处理" : decision === "deferred" ? "冲突已保留待定" : "冲突已标记需要更多依据",
+        );
+        await loadGovernance();
+      } catch (error) {
+        setReviewError(errText(error));
+      } finally {
+        setReviewBusy(false);
+      }
+    },
+    [loadGovernance],
+  );
+
+  const uploadRawFiles = useCallback(async () => {
+    if (rawUploadBusy) return;
+    setRawUploadError(null);
+    setRawUploadReport(null);
+    try {
+      const picked = await openFileDialog({
+        title: "上传原始资料到 raw/",
+        multiple: true,
+        directory: false,
+      });
+      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+      if (paths.length === 0) return;
+      setRawUploadBusy(true);
+      const report = await shell.knowledgeRawAdmitPaths(paths);
+      setRawUploadReport(report);
+      await Promise.all([loadScan(), loadGovernance(), loadQuality()]);
+      setHubPage("assets");
+    } catch (error) {
+      setRawUploadError(errText(error));
+    } finally {
+      setRawUploadBusy(false);
+    }
+  }, [rawUploadBusy, loadScan, loadGovernance, loadQuality]);
 
   /** 只跳转宿主已解析出目标路径的引用；未解析/歧义/外部/附件都不提供跳转。 */
   const openIndexLink = (link: KnowledgeVaultIndexLink, fromBacklink = false) => {
@@ -310,6 +461,11 @@ export function KnowledgeVaultPage({
       cancelled = true;
     };
   }, [loadScan]);
+
+  useEffect(() => {
+    if (!status?.configured || status.error) return;
+    void Promise.all([loadReview(), loadGovernance(), loadTaskRecords(), loadQuality()]);
+  }, [status?.configured, status?.error, loadReview, loadGovernance, loadTaskRecords, loadQuality]);
 
   // 打开页面时读取已发布快照；没有就等用户显式刷新，不在后台自动扫描。
   useEffect(() => {
@@ -578,8 +734,16 @@ export function KnowledgeVaultPage({
     }
   };
 
-  const notes = scan?.files.filter((file) => file.kind === "note") ?? [];
-  const attachments = scan?.files.filter((file) => file.kind === "attachment") ?? [];
+  const wikiFiles = wikiNotes(scan);
+  const rawFileList = rawFiles(scan);
+  const otherAttachments = (scan?.files ?? []).filter(
+    (file) => file.kind === "attachment" && !file.relative_path.startsWith("raw/"),
+  );
+  const conflicts = useMemo(
+    () => buildKnowledgeConflicts(scan, index, reviewDecisions),
+    [scan, index, reviewDecisions],
+  );
+  const pendingReviewCount = countPendingReviews(reviewItems);
   const skippedCount = scan
     ? scan.stats.skipped_hidden +
       scan.stats.skipped_excluded +
@@ -596,64 +760,112 @@ export function KnowledgeVaultPage({
       <header className="flex-none rounded-2xl bg-white/80 border border-white/90 px-4 py-3 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)]">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-headline-md text-[16px] font-semibold text-on-surface">知识库</h1>
-          <span className="mono text-[10px] text-outline">本机 Markdown · 显式保存</span>
+          <span className="mono text-[10px] text-outline">本机 Markdown · AI 治理</span>
           <div
-            className="ml-2 flex items-center gap-0.5 rounded-lg bg-surface-container p-0.5"
-            role="group"
-            aria-label="知识库视图"
+            className="ml-2 flex items-center gap-0.5 rounded-full border border-white/80 bg-white/60 p-0.5"
+            role="tablist"
+            aria-label="知识库页面"
           >
-            <button
-              className={
-                "rounded-md px-2.5 py-1 text-[11px] " +
-                (vaultMode === "notes"
-                  ? "bg-white text-on-surface shadow-sm"
-                  : "text-on-surface-variant hover:text-primary")
-              }
-              onClick={() => setVaultMode("notes")}
-              aria-pressed={vaultMode === "notes"}
-              data-testid="vault-view-notes"
-            >
-              笔记
-            </button>
-            <button
-              className={
-                "rounded-md px-2.5 py-1 text-[11px] " +
-                (vaultMode === "graph"
-                  ? "bg-white text-on-surface shadow-sm"
-                  : "text-on-surface-variant hover:text-primary")
-              }
-              onClick={() => setVaultMode("graph")}
-              aria-pressed={vaultMode === "graph"}
-              data-testid="vault-view-graph"
-            >
-              图谱
-            </button>
+            {(
+              [
+                ["dashboard", "知识驾驶舱"],
+                ["review", "知识审核"],
+                ["assets", "知识资产"],
+              ] as const
+            ).map(([page, label]) => (
+              <button
+                key={page}
+                role="tab"
+                aria-selected={hubPage === page}
+                data-testid={`hub-tab-${page}`}
+                className={
+                  "rounded-full px-3.5 py-1 text-[11.5px] " +
+                  (hubPage === page
+                    ? "bg-primary text-on-primary shadow-sm"
+                    : "text-on-surface-variant hover:text-primary")
+                }
+                onClick={() => {
+                  setHubPage(page);
+                  setGraphOpen(false);
+                }}
+              >
+                {label}
+                {page === "review" && pendingReviewCount > 0 ? (
+                  <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 mono text-[9px] text-amber-800">
+                    {pendingReviewCount}
+                  </span>
+                ) : null}
+              </button>
+            ))}
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {hubPage === "dashboard" ? (
+              <button
+                className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                onClick={() => void refreshHubData()}
+                disabled={scanBusy || !status?.configured || !!status?.error}
+                data-testid="dashboard-refresh"
+              >
+                {scanBusy ? "刷新中…" : "刷新数据"}
+              </button>
+            ) : null}
+            {hubPage === "review" ? (
+              <KnowledgeIngestPanel onApplied={() => {
+                  void loadScan();
+                  void loadReview();
+                  void loadGovernance();
+                }} />
+            ) : null}
+            {hubPage === "assets" ? (
+              <button
+                className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                onClick={startNew}
+                disabled={!status?.configured || !!status?.error}
+                data-testid="vault-new-start"
+              >
+                新建笔记
+              </button>
+            ) : null}
             <button
               className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
-              onClick={startNew}
-              disabled={!status?.configured || !!status?.error}
-              data-testid="vault-new-start"
+              onClick={() => void uploadRawFiles()}
+              disabled={rawUploadBusy || !status?.configured || !!status?.error}
+              data-testid="vault-raw-upload"
             >
-              新建笔记
+              {rawUploadBusy ? "上传中…" : "上传原始资料"}
             </button>
-            <button
-              className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
-              onClick={() => void loadScan()}
-              disabled={scanBusy || !status?.configured || !!status?.error}
-              data-testid="vault-refresh"
-            >
-              {scanBusy ? "扫描中…" : "刷新扫描"}
-            </button>
-            <button
-              className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
-              onClick={() => void rebuildIndex()}
-              disabled={indexBusy || !status?.configured || !!status?.error}
-              data-testid="vault-index-refresh"
-            >
-              {indexBusy ? "构建中…" : index ? "重建关系索引" : "构建关系索引"}
-            </button>
+            {hubPage === "assets" ? (
+              <>
+                <button
+                  className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                  onClick={() => void loadScan()}
+                  disabled={scanBusy || !status?.configured || !!status?.error}
+                  data-testid="vault-refresh"
+                >
+                  {scanBusy ? "扫描中…" : "刷新扫描"}
+                </button>
+                <button
+                  className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                  onClick={() => void rebuildIndex()}
+                  disabled={indexBusy || !status?.configured || !!status?.error}
+                  data-testid="vault-index-refresh"
+                >
+                  {indexBusy ? "构建中…" : index ? "重建关系索引" : "构建关系索引"}
+                </button>
+                <button
+                  className="rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                  onClick={() => {
+                    if (!note) return;
+                    setMode("edit");
+                    setSaveMessage(null);
+                  }}
+                  disabled={!note || noteBusy}
+                  data-testid="vault-edit-start"
+                >
+                  编辑此条
+                </button>
+              </>
+            ) : null}
             <button
               className="rounded-lg px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:text-primary"
               onClick={onOpenSettings}
@@ -705,6 +917,29 @@ export function KnowledgeVaultPage({
             扫描失败：{scanError}
           </p>
         ) : null}
+        {rawUploadError ? (
+          <p className="mt-2 text-[11.5px] text-error" role="alert" data-testid="raw-upload-error">
+            上传失败：{rawUploadError}
+          </p>
+        ) : null}
+        {rawUploadReport ? (
+          <div className="mt-2 rounded-xl bg-surface-container-low px-3 py-2 text-[10.5px] leading-relaxed text-on-surface-variant" data-testid="raw-upload-report">
+            <p>
+              raw 准入：新增 {rawUploadReport.admitted.length} 份；拒绝 {rawUploadReport.rejected.length} 份；索引
+              {rawUploadReport.index_updated ? "已更新" : "未更新"}。
+            </p>
+            <p className="text-outline">已保存到 raw/，不是 inbox/；下一步到「知识审核」点「整理材料」即可把 raw/ 可读文本纳入批次。</p>
+            {rawUploadReport.admitted.slice(0, 5).map((file) => (
+              <p key={file.relative_path} className="truncate text-primary">✓ {file.relative_path} · {file.bytes} 字节</p>
+            ))}
+            {rawUploadReport.rejected.slice(0, 5).map((item) => (
+              <p key={item.relative_path} className="text-error">× {item.relative_path}：{item.reason}</p>
+            ))}
+            {rawUploadReport.errors.map((error) => (
+              <p key={error} className="text-error">× {error}</p>
+            ))}
+          </div>
+        ) : null}
       </header>
 
       {status && !status.configured ? (
@@ -742,37 +977,101 @@ export function KnowledgeVaultPage({
           </div>
         </section>
       ) : status?.configured ? (
-        vaultMode === "graph" ? (
-          <KnowledgeGraphView
+        graphOpen ? (
+          <section className="flex-1 min-h-0 flex flex-col gap-2" data-testid="dashboard-graph-view">
+            <div className="flex items-center gap-2 rounded-xl bg-white/75 px-3 py-2">
+              <p className="text-[11.5px] text-on-surface-variant">知识关联索引图 · 只读</p>
+              <button
+                type="button"
+                className="ml-auto rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary"
+                onClick={() => setGraphOpen(false)}
+                data-testid="graph-back-dashboard"
+              >
+                返回驾驶舱
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <KnowledgeGraphView
+                index={index}
+                selectedPath={selectedPath}
+                indexBusy={indexBusy}
+                indexError={indexError}
+                onRequestIndex={() => void rebuildIndex()}
+                onOpenNote={(relativePath) => {
+                  setGraphOpen(false);
+                  setHubPage("assets");
+                  void loadNote(relativePath);
+                }}
+              />
+            </div>
+          </section>
+        ) : hubPage === "dashboard" ? (
+          <KnowledgeDashboard
+            scan={scan}
             index={index}
-            selectedPath={selectedPath}
-            indexBusy={indexBusy}
-            indexError={indexError}
-            onRequestIndex={() => void rebuildIndex()}
-            onOpenNote={(relativePath) => {
-              if (relativePath === selectedPath && note) {
-                setVaultMode("notes");
-                return;
+            reviewItems={reviewItems}
+            conflicts={conflicts}
+            taskRecords={taskRecords}
+            rawAdmissions={rawAdmissions}
+            quality={quality}
+            qualityError={qualityError}
+            loadingError={governanceError ?? taskError ?? qualityError}
+            onOpenReview={(queue) => {
+              setReviewQueue(queue);
+              setHubPage("review");
+            }}
+            onOpenAssets={() => setHubPage("assets")}
+            onOpenGraph={() => setGraphOpen(true)}
+            onOpenAsset={(path) => {
+              setHubPage("assets");
+              const file = scan?.files.find((entry) => entry.relative_path === path);
+              if (file && file.kind === "attachment") {
+                void openAttachment(file);
+              } else {
+                void loadNote(path);
               }
-              // 未保存草稿的确认由 loadNote 统一处理；确认后仍停在图谱里会看不到结果。
-              setVaultMode("notes");
-              void loadNote(relativePath);
+            }}
+            onRebuildIndex={() => void rebuildIndex()}
+            onRefresh={() => void refreshHubData()}
+            onRefreshQuality={() => void loadQuality()}
+          />
+        ) : hubPage === "review" ? (
+          <KnowledgeReviewCenter
+            items={reviewItems}
+            conflicts={conflicts}
+            busy={reviewBusy}
+            error={reviewError ?? (reviewBroken > 0 ? `另有 ${reviewBroken} 条审核记录损坏，已跳过。` : null)}
+            message={reviewMessage}
+            queue={reviewQueue}
+            onQueueChange={setReviewQueue}
+            onDecide={decideReview}
+            onResolveConflict={resolveConflict}
+            onRefresh={() => {
+              void loadReview();
+              void loadGovernance();
             }}
           />
         ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto xl:overflow-hidden">
-          <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(230px,290px)_minmax(0,1.35fr)_minmax(240px,310px)] gap-2.5">
+        <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto xl:overflow-hidden" data-testid="knowledge-assets">
+          <div className="flex items-baseline gap-3 rounded-xl bg-white/65 px-3 py-2">
+            <h2 className="text-[18px] font-semibold tracking-tight text-on-surface">知识资产</h2>
+            <span className="mono text-[10px] text-outline">Read-only · Browse</span>
+            <span className="ml-auto rounded-full border border-outline-variant/60 bg-white/70 px-2.5 py-0.5 mono text-[10px] text-on-surface-variant">
+              Wiki {wikiFiles.length} · raw/ {rawFileList.length}
+            </span>
+          </div>
+          <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(230px,290px)_minmax(0,1.35fr)_minmax(240px,310px)] gap-2.5">
             <aside className="min-h-0 flex flex-col gap-2.5">
               <section className="rounded-2xl bg-white/80 border border-white/90 p-3 flex flex-col min-h-[220px] xl:flex-1 xl:min-h-0">
                 <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
-                  <h2 className="text-[12.5px] font-semibold text-on-surface">笔记</h2>
-                  <span className="mono text-[10px] text-outline">{notes.length}</span>
+                  <h2 className="text-[12.5px] font-semibold text-on-surface">Wiki 知识条目</h2>
+                  <span className="mono text-[10px] text-outline">{wikiFiles.length}</span>
                 </div>
                 <div className="pt-2 flex-1 min-h-0 overflow-y-auto" data-testid="vault-note-list">
-                  {notes.length === 0 ? (
-                    <p className="text-[11px] text-on-surface-variant">扫描结果里没有 Markdown 笔记。</p>
+                  {wikiFiles.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant">扫描结果里没有 Wiki 知识条目。</p>
                   ) : (
-                    notes.map((file) => (
+                    wikiFiles.map((file) => (
                       <button
                         key={file.relative_path}
                         onClick={() => void loadNote(file.relative_path)}
@@ -798,14 +1097,44 @@ export function KnowledgeVaultPage({
 
               <section className="rounded-2xl bg-white/80 border border-white/90 p-3 flex flex-col max-h-[26vh] xl:max-h-[28%]">
                 <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
-                  <h2 className="text-[12.5px] font-semibold text-on-surface">附件</h2>
-                  <span className="mono text-[10px] text-outline">{attachments.length}</span>
+                  <h2 className="text-[12.5px] font-semibold text-on-surface">raw/ 原始资料</h2>
+                  <span className="mono text-[10px] text-outline">{rawFileList.length}</span>
                 </div>
                 <div className="pt-2 min-h-0 overflow-y-auto">
-                  {attachments.length === 0 ? (
-                    <p className="text-[11px] text-on-surface-variant">没有附件。</p>
+                  {rawFileList.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant">raw/ 里还没有原始资料。</p>
                   ) : (
-                    attachments.map((file) => (
+                    rawFileList.map((file) => (
+                      <div key={file.relative_path} className="flex items-center gap-1.5 py-1">
+                        <span className="min-w-0 flex-1 mono text-[10px] text-on-surface-variant break-all">
+                          {file.relative_path}
+                          <span className="ml-1 text-outline">({formatBytes(file.bytes)})</span>
+                        </span>
+                        <button
+                          className="flex-none rounded border border-outline-variant/50 px-1.5 py-0.5 text-[10px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+                          onClick={() =>
+                            file.kind === "note" ? void loadNote(file.relative_path) : void openAttachment(file)
+                          }
+                          disabled={attachmentBusy !== null}
+                          data-testid="vault-open-attachment"
+                          data-path={file.relative_path}
+                        >
+                          {file.kind === "note" ? "查看" : attachmentBusy === file.relative_path ? "打开中…" : "打开"}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              {otherAttachments.length > 0 ? (
+                <section className="rounded-2xl bg-white/80 border border-white/90 p-3 flex flex-col max-h-[22vh] xl:max-h-[22%]">
+                  <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
+                    <h2 className="text-[12.5px] font-semibold text-on-surface">其他附件</h2>
+                    <span className="mono text-[10px] text-outline">{otherAttachments.length}</span>
+                  </div>
+                  <div className="pt-2 min-h-0 overflow-y-auto">
+                    {otherAttachments.slice(0, 30).map((file) => (
                       <div key={file.relative_path} className="flex items-center gap-1.5 py-1">
                         <span className="min-w-0 flex-1 mono text-[10px] text-on-surface-variant break-all">
                           {file.relative_path}
@@ -821,10 +1150,13 @@ export function KnowledgeVaultPage({
                           {attachmentBusy === file.relative_path ? "打开中…" : "打开"}
                         </button>
                       </div>
-                    ))
-                  )}
-                </div>
-              </section>
+                    ))}
+                    {otherAttachments.length > 30 ? (
+                      <p className="text-[9.5px] text-outline">另有 {otherAttachments.length - 30} 个附件未展开。</p>
+                    ) : null}
+                  </div>
+                </section>
+              ) : null}
 
               {attachmentMessage || attachmentError ? (
                 <p

@@ -30,6 +30,12 @@ import type {
   KnowledgeIngestApplyReport,
   KnowledgeIngestInit,
   KnowledgeIngestPrepare,
+  KnowledgeGovernanceRecord,
+  KnowledgeRawAdmitReport,
+  KnowledgeReviewDecision,
+  KnowledgeReviewItem,
+  KnowledgeReviewListing,
+  KnowledgeQualityReport,
   LocalRootInfo,
   MaterialRead,
   OfflineFlowResponse,
@@ -1080,6 +1086,69 @@ export const shell = {
     return invoke<KnowledgeIngestApplyReport>("knowledge_ingest_apply", {
       resultText,
     }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 把文件字节列表准入 raw/（S1 宿主命令；前端通常走路径版本）。 */
+  knowledgeRawAdmit(
+    files: Array<{ name: string; bytes: number[] }>,
+  ): Promise<KnowledgeRawAdmitReport> {
+    return invoke<KnowledgeRawAdmitReport>("knowledge_raw_admit", { files }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 从系统文件选择框给出的绝对路径读取并准入 raw/。 */
+  knowledgeRawAdmitPaths(paths: string[]): Promise<KnowledgeRawAdmitReport> {
+    return invoke<KnowledgeRawAdmitReport>("knowledge_raw_admit_paths", { paths }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只读治理记录。写治理文件没有前端命令。 */
+  knowledgeGovernanceList(kind: string): Promise<KnowledgeGovernanceRecord[]> {
+    return invoke<KnowledgeGovernanceRecord[]>("knowledge_governance_list", { kind }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 整理结果先进入待审核队列，不直接写知识库。 */
+  knowledgeReviewStage(resultText: string, sourcePaths: string[] = []): Promise<KnowledgeReviewItem> {
+    return invoke<KnowledgeReviewItem>("knowledge_review_stage", { resultText, sourcePaths }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  knowledgeReviewList(): Promise<KnowledgeReviewListing> {
+    return invoke<KnowledgeReviewListing>("knowledge_review_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  knowledgeReviewDecide(id: string, decision: string): Promise<KnowledgeReviewDecision> {
+    return invoke<KnowledgeReviewDecision>("knowledge_review_decide", { id, decision }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  knowledgeConflictResolve(
+    subject: string,
+    decision: "resolved" | "deferred" | "needs_more",
+    note = "",
+  ): Promise<KnowledgeGovernanceRecord> {
+    return invoke<KnowledgeGovernanceRecord>("knowledge_conflict_resolve", {
+      subject,
+      decision,
+      note,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 确定性过期检查；不调用模型。 */
+  knowledgeQualityReport(): Promise<KnowledgeQualityReport> {
+    return invoke<KnowledgeQualityReport>("knowledge_quality_report").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

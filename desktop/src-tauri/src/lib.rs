@@ -19,6 +19,9 @@ pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod external_open;
 pub mod flow_pack;
+pub mod knowledge_governance;
+pub mod knowledge_quality;
+pub mod knowledge_review;
 pub mod knowledge_vault;
 pub mod knowledge_ingest;
 mod local_http;
@@ -3347,6 +3350,179 @@ fn knowledge_ingest_apply(
     Ok(knowledge_ingest::apply_payload(&root, &value, &scan))
 }
 
+/// 把一批原始资料字节准入到 raw/，并记录哈希、准入时间与字节数。
+/// 先幂等初始化骨架；同哈希拒绝，同名不同内容换名，raw 永不覆盖。
+#[tauri::command(async)]
+fn knowledge_raw_admit(
+    state: State<'_, SharedHost>,
+    files: Vec<knowledge_ingest::RawFileInput>,
+) -> Result<knowledge_ingest::RawAdmitReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths)?;
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    knowledge_ingest::init_vault(&root)?;
+    Ok(knowledge_ingest::admit_raw_files_with_policy(
+        &root, &files, &policy, offset,
+    ))
+}
+
+/// 从系统文件选择框给出的绝对路径读取并准入 raw/。前端不直接读文件字节。
+#[tauri::command(async)]
+fn knowledge_raw_admit_paths(
+    state: State<'_, SharedHost>,
+    paths: Vec<String>,
+) -> Result<knowledge_ingest::RawAdmitReport, String> {
+    let paths_state = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths_state)?;
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    knowledge_ingest::init_vault(&root)?;
+    let mut files = Vec::new();
+    let mut rejected = Vec::new();
+    for raw in &paths {
+        match knowledge_ingest::read_raw_file(std::path::Path::new(raw)) {
+            Ok(file) => files.push(file),
+            Err(reason) => rejected.push(knowledge_ingest::IngestRejection {
+                relative_path: raw.clone(),
+                reason,
+            }),
+        }
+    }
+    let mut report = knowledge_ingest::admit_raw_files_with_policy(
+        &root, &files, &policy, offset,
+    );
+    if !rejected.is_empty() {
+        report.rejected.splice(0..0, rejected);
+        if report.admitted.is_empty() {
+            report.ok = false;
+        }
+    }
+    Ok(report)
+}
+
+/// 读取人工治理记录（只读）。治理文件没有对前端的写命令；写入只发生在宿主内部。
+#[tauri::command(async)]
+fn knowledge_governance_list(
+    state: State<'_, SharedHost>,
+    kind: String,
+) -> Result<Vec<knowledge_governance::GovernanceRecord>, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths)?;
+    knowledge_governance::list_records(&root, &kind)
+}
+
+/// 把模型整理结果暂存为人工审核项；未通过校验时不进入队列。
+#[tauri::command(async)]
+fn knowledge_review_stage(
+    state: State<'_, SharedHost>,
+    result_text: String,
+    source_paths: Option<Vec<String>>,
+) -> Result<knowledge_review::ReviewItem, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    let root = configured_vault_root(&paths)?;
+    knowledge_ingest::init_vault(&root)?;
+    let review_dir = knowledge_review::dir(&paths.engine_state);
+    knowledge_review::stage(
+        &root,
+        &review_dir,
+        &result_text,
+        source_paths.as_deref().unwrap_or(&[]),
+        &policy,
+        offset,
+    )
+}
+
+#[tauri::command(async)]
+fn knowledge_review_list(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_review::ReviewListing, String> {
+    let engine_state = {
+        let host = state.lock().unwrap();
+        host.paths.engine_state.clone()
+    };
+    Ok(knowledge_review::list(&knowledge_review::dir(&engine_state)))
+}
+
+#[tauri::command(async)]
+fn knowledge_review_decide(
+    state: State<'_, SharedHost>,
+    id: String,
+    decision: String,
+) -> Result<knowledge_review::ReviewDecisionReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    let root = configured_vault_root(&paths)?;
+    let review_dir = knowledge_review::dir(&paths.engine_state);
+    knowledge_review::decide(
+        &root,
+        &review_dir,
+        &id,
+        &decision,
+        &policy,
+        offset,
+        Some(&paths.root),
+    )
+}
+
+/// 冲突/异常的人工裁决；只写治理记录，不改知识文件。
+#[tauri::command(async)]
+fn knowledge_conflict_resolve(
+    state: State<'_, SharedHost>,
+    subject: String,
+    decision: String,
+    note: String,
+) -> Result<knowledge_governance::GovernanceRecord, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    let root = configured_vault_root(&paths)?;
+    knowledge_review::resolve_conflict(
+        &root, &subject, &decision, &note, &policy, offset,
+    )
+}
+
+/// 确定性过期检查：索引日期 + raw 准入日期，不调用模型。
+#[tauri::command(async)]
+fn knowledge_quality_report(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_quality::QualityReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    let root = configured_vault_root(&paths)?;
+    let config = knowledge_quality::load_config(&paths.config)?;
+    knowledge_quality::check_expiry(
+        &root,
+        task_shell::now_secs() as i64,
+        offset,
+        config.expiry_days,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // 工作记录确定性落盘（OD-ARCH-089 S2）
 //
@@ -5447,6 +5623,14 @@ pub fn run() {
             knowledge_ingest_init,
             knowledge_ingest_prepare,
             knowledge_ingest_apply,
+            knowledge_raw_admit,
+            knowledge_raw_admit_paths,
+            knowledge_governance_list,
+            knowledge_review_stage,
+            knowledge_review_list,
+            knowledge_review_decide,
+            knowledge_conflict_resolve,
+            knowledge_quality_report,
             thread_store_load,
             thread_store_save,
             thread_store_delete,

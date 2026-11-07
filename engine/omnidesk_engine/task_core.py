@@ -210,6 +210,8 @@ class TaskRecordSummary:
     persistence: str
     session_mode: str = "new"
     ttfb_seconds: Optional[float] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -222,6 +224,8 @@ class TaskRecordSummary:
             "persistence": self.persistence,
             "session_mode": self.session_mode,
             "ttfb_seconds": self.ttfb_seconds,
+            "error_code": self.error_code,
+            "error_message": self.error_message,
         }
 
 
@@ -707,6 +711,16 @@ class TaskCoreBase:
                     ttfb_seconds=(
                         float(data["ttfb_seconds"])
                         if isinstance(data.get("ttfb_seconds"), (int, float))
+                        else None
+                    ),
+                    error_code=(
+                        str(data.get("error_code"))
+                        if data.get("error_code")
+                        else None
+                    ),
+                    error_message=(
+                        str(data.get("error_message"))
+                        if data.get("error_message")
                         else None
                     ),
                 )

@@ -9,6 +9,7 @@ import {
   detectKnowledgeIntent,
   filterKnowledgeHits,
   knowledgeContextFor,
+  knowledgeNoticeText,
   knowledgeSearchKeyword,
 } from "./knowledgeRetrieval.ts";
 
@@ -83,4 +84,13 @@ test("知识上下文只引用前两张卡", () => {
   const result = knowledgeContextFor({ hits }, []);
   assert.equal(result.citations.length, 2);
   assert.deepEqual(result.citations.map((c) => c.relative_path), ["知识库/概念/a.md", "知识库/方法/b.md"]);
+});
+
+test("S5：检索 notice 区分知识卡与原始资料/索引行", () => {
+  assert.match(knowledgeNoticeText(0, 0, 0), /没有命中相关条目/);
+  assert.match(knowledgeNoticeText(2, 0, 0), /原始资料\/索引行/);
+  assert.match(knowledgeNoticeText(2, 0, 0), /未注入卡片上下文/);
+  const mixed = knowledgeNoticeText(3, 2, 2);
+  assert.match(mixed, /2 张知识卡命中/);
+  assert.match(mixed, /1 条原始资料\/索引行/);
 });
