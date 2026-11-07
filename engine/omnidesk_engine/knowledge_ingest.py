@@ -21,9 +21,9 @@ JSON_OUTPUT_SPEC = """只输出一个 JSON 对象，不要 Markdown 代码围栏
   "cards": [
     {
       "relative_path": "知识库/概念/卡片标题.md 或 知识库/方法/卡片标题.md",
-      "title": "卡片标题",
+      "title": "卡片标题（拆分时用 标题（上）/（中）/（下））",
       "content": "完整的 Markdown 卡片（含 frontmatter 与正文）",
-      "sources": ["知识库/原文/来源文件.md"]
+      "sources": ["inbox/来源文件.md 或 raw/来源文件.pdf"]
     }
   ],
   "index_lines": [
@@ -35,9 +35,11 @@ JSON_OUTPUT_SPEC = """只输出一个 JSON 对象，不要 Markdown 代码围栏
 }
 
 约束：
-- 卡片只能落在 知识库/概念/ 或 知识库/方法/；正文不超过 300 字（不含 frontmatter）。
+- 卡片只能落在 知识库/概念/ 或 知识库/方法/；正文不超过 320 字（不含 frontmatter）。
+- 320 字是写作目标也是拆卡触发点：超过 320 字时必须拆成多张卡，标题统一用「原标题（上）/（中）/（下）」后缀；每张拆分卡必须有独立 title、relative_path、index_line、sources，并在 index_lines 用「参见：」互相链接。宿主只在单卡超过 420 字时拒收该卡。
+- 拆出的每张卡正文同样 ≤320 字；长文按主题段先拆再压，不允许拆完仍超。
 - 一张卡只回答一个问题；标题不要与现有索引重复。
-- sources 必须指向收件箱或原文目录中真实存在的文件。
+- sources 必须指向本批次真实存在的文件（inbox/ 或 raw/），不得指向尚未归档的 知识库/原文/。
 - index_lines 必须与 cards 一一对应；archive_moves 只允许把 inbox/ 下的原文移到 知识库/原文/。
 """
 
@@ -85,7 +87,7 @@ def assemble_ingest_prompt(
         "【当前索引】",
         index.strip() or "（索引为空）",
         "",
-        "【收件箱材料（已脱敏；占位符不是原文，不得自行还原或猜测）】",
+        "【待整理材料（inbox/ 与 raw/；已脱敏；占位符不是原文，不得自行还原或猜测）】",
     ]
     for relative_path, text in masked:
         parts.extend(["## 文件：" + relative_path, text.rstrip(), ""])

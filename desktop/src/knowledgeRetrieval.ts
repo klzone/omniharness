@@ -67,6 +67,19 @@ export function filterKnowledgeHits(hits: KnowledgeVaultSearchHit[]): KnowledgeV
   return hits.filter((hit) => isKnowledgeCardPath(hit.relative_path));
 }
 
+/** OD-KB-201 S5：命中口径必须区分「知识卡」与「原始资料/索引行」。 */
+export function knowledgeNoticeText(totalHits: number, cardHits: number, cited: number): string {
+  if (totalHits <= 0) {
+    return "知识库没有命中相关条目；本轮未注入知识库上下文。";
+  }
+  if (cardHits <= 0) {
+    return `知识库检索命中 ${totalHits} 条原始资料/索引行，但未命中 AI 知识卡；本轮未注入卡片上下文。`;
+  }
+  const extra = Math.max(0, totalHits - cardHits);
+  const suffix = extra > 0 ? `另有 ${extra} 条原始资料/索引行命中，未注入。` : "";
+  return `已检索知识库：${cardHits} 张知识卡命中，引用 ${cited} 张卡。${suffix}`;
+}
+
 export function citationTitle(hit: KnowledgeVaultSearchHit | KnowledgeVaultNote): string {
   const name = hit.file_name;
   return name.replace(/\.(md|markdown|txt)$/i, "");

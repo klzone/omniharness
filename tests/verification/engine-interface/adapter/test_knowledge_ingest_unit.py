@@ -23,13 +23,13 @@ class IngestPromptTests(unittest.TestCase):
         self.masker = DataMasker(entries=[DictEntry("PERSON", "林青禾")])
         self.files = [{"relative_path": "inbox/合成材料.md", "content": "林青禾 负责专项检查。\n\n```\n林青禾\n```\n"}]
         self.index = "# 知识库索引\n\n## 概念\n- [旧卡](概念/旧卡.md) | 标签：监督 | 旧卡摘要\n"
-        self.card_spec = "卡片格式：frontmatter tags/sources/date；正文≤300字。"
+        self.card_spec = "卡片格式：frontmatter tags/sources/date；正文≤320字。"
 
     def test_prompt_contains_card_spec_and_index(self):
         result = assemble_ingest_prompt(self.files, self.index, self.card_spec, self.masker)
         self.assertIn(self.card_spec, result.prompt)
         self.assertIn("旧卡摘要", result.prompt)
-        self.assertIn("收件箱材料", result.prompt)
+        self.assertIn("待整理材料", result.prompt)
 
     def test_file_content_is_masked(self):
         result = assemble_ingest_prompt(self.files, self.index, self.card_spec, self.masker)
@@ -50,6 +50,10 @@ class IngestPromptTests(unittest.TestCase):
         self.assertIn(JSON_OUTPUT_SPEC.strip(), result.prompt)
         self.assertIn("relative_path", result.prompt)
         self.assertIn("archive_moves", result.prompt)
+        self.assertIn("inbox/ 或 raw/", JSON_OUTPUT_SPEC)
+        self.assertIn("正文不超过 320 字", JSON_OUTPUT_SPEC)
+        self.assertIn("原标题（上）/（中）/（下）", JSON_OUTPUT_SPEC)
+        self.assertIn("参见", JSON_OUTPUT_SPEC)
 
     def test_multiple_files_keep_order(self):
         files = [

@@ -8,6 +8,9 @@ import {
   retagThread,
   saveThreadMessages,
   setThreadEngineSession,
+  setThreadInflightTask,
+  clearInflightTasks,
+  onThreadStoreChange,
   takePendingThreadRequest,
   type SceneThread,
   type ThreadTag,
@@ -282,6 +285,9 @@ export function HomeCanvas({
 
   const refresh = useCallback(() => setThreads(listThreads()), []);
 
+  // OD-ARCH-146 S1：线程档案被别处写入（例如切页期间任务号才返回）时同步列表。
+  useEffect(() => onThreadStoreChange(refresh), [refresh]);
+
   // 从场景页「去对话」过来：一次性请求槽决定是打开旧对话还是新建。
   // OD-ARCH-091：请求可以带一句预填草稿（例如「整理成周报」），只放进输入框，不自动发送。
   const [initialInput, setInitialInput] = useState<string>("");
@@ -484,6 +490,16 @@ export function HomeCanvas({
           initialMessages={active?.messages ?? []}
           initialInput={initialInput}
           engineSessionId={active?.engineSessionId ?? null}
+          inflightTaskId={active?.inflightTaskId ?? null}
+          onInflightTaskChange={(taskId) => {
+            if (taskId) {
+              const id = ensureThread();
+              setThreadInflightTask(id, taskId);
+            } else {
+              clearInflightTasks();
+            }
+            refresh();
+          }}
           onEngineSessionId={(sid) => {
             const id = ensureThread();
             setThreadEngineSession(id, sid);

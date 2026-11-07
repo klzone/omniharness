@@ -44,6 +44,11 @@ export interface SceneThread {
    * 没有这一项的旧线程在首次续聊时会自动降级为新建会话，并从那一刻起开始持有它。
    */
   engineSessionId?: string | null;
+  /**
+   * 在途任务号（OD-ARCH-146 S1）：提交后写入，终态后清空。切页卸载对话组件
+   * 后回来，HomeChat 据此恢复轮询并回读结果。任务本身不因卸载而取消。
+   */
+  inflightTaskId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -52,6 +57,17 @@ let cache: SceneThread[] = [];
 let hydrated = false;
 let storageNote: string | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
+/** 线程档案变化订阅（OD-ARCH-146 S1）：组件重挂后也能收到别处写入的在途任务号。 */
+const threadStoreListeners = new Set<() => void>();
+
+function notifyThreadStore() {
+  for (const listener of threadStoreListeners) listener();
+}
+
+export function onThreadStoreChange(listener: () => void): () => void {
+  threadStoreListeners.add(listener);
+  return () => threadStoreListeners.delete(listener);
+}
 
 /**
  * 首屏兜底（OD-ARCH-048 卡死修复）：读数据根的最长等待时间。
@@ -115,6 +131,8 @@ function normalizeThread(value: unknown): SceneThread | null {
     messages: raw.messages as ChatMessage[],
     engineSessionId:
       typeof raw.engineSessionId === "string" ? raw.engineSessionId : null,
+    inflightTaskId:
+      typeof raw.inflightTaskId === "string" ? raw.inflightTaskId : null,
     createdAt: typeof raw.createdAt === "number" ? raw.createdAt : 0,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : 0,
   };
@@ -350,6 +368,33 @@ export function setThreadEngineSession(id: string, engineSessionId: string | nul
   write(next);
   const changed = next.find((t) => t.id === id);
   if (changed) persist(changed);
+}
+
+/**
+ * 记录线程的在途任务号（OD-ARCH-146 S1）。null = 已终态/无在途任务。
+ * 与引擎会话号同一存储通道；切页回来时由 HomeChat 读出并恢复等待。
+ */
+export function setThreadInflightTask(id: string, taskId: string | null): void {
+  const next = read().map((t) =>
+    t.id === id ? { ...t, inflightTaskId: taskId, updatedAt: Date.now() } : t,
+  );
+  write(next);
+  const changed = next.find((t) => t.id === id);
+  if (changed) persist(changed);
+  notifyThreadStore();
+}
+
+/** 任务终态后清掉所有线程的在途任务号（同一时刻只有一个对话在等结果）。 */
+export function clearInflightTasks(): void {
+  const current = read();
+  const next = current.map((t) =>
+    t.inflightTaskId ? { ...t, inflightTaskId: null, updatedAt: Date.now() } : t,
+  );
+  write(next);
+  current.forEach((thread, i) => {
+    if (thread.inflightTaskId) persist(next[i]);
+  });
+  notifyThreadStore();
 }
 
 export function removeThread(id: string): void {

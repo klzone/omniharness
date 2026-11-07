@@ -1,5 +1,256 @@
 # 执行状态
 
+## OD-KB-201 S5：真实端到端三缺陷修复与收口准备（执行会话实施，2026-11-07）
+
+> 本轮工作区 HEAD `177a8292ea`；按 PLANS.md S5 修订版修复用户实测缺陷 A/B/C。**真实端到端复测仍待用户重跑；未提交、未推送。**
+
+### 修复
+
+- **缺陷 A（阻断整理）：** 建卡规范与宿主校验统一到审核暂存流程。 [knowledge_ingest.py](/Users/yvan/Code/MyWorkStation/engine/omnidesk_engine/knowledge_ingest.py:18) 的 sources 改为 `inbox/ 或 raw/`，正文规范 320 字并加入「原标题（上）/（中）/（下）」自动拆卡规范；knowledge-search 与 knowledge-agent 同步。
+- **缺陷 A（宿主）：** [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:32) 卡片上限放宽到 420 字；来源校验放行扫描结果中的 inbox/ 与 raw/ 文件（含 PDF 等附件）；审核通过归档时，`rewrite_archived_sources` 把卡片 frontmatter 的 inbox 来源改写到 知识库/原文/。宿主不强制拆卡，单卡超 420 才拒绝该卡。
+- **缺陷 B：** [knowledgeHub.ts](/Users/yvan/Code/MyWorkStation/desktop/src/shell/knowledgeHub.ts:1) 的冲突构建排除 `知识库/索引.md` 指向 raw/ 的未解析/歧义链接；vault_index 未改动（按计划选择最小改动面）。
+- **缺陷 C：** [knowledgeRetrieval.ts](/Users/yvan/Code/MyWorkStation/desktop/src/knowledgeRetrieval.ts:1) 新增 `knowledgeNoticeText`，[HomeChat.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx:1) 的 notice 区分知识卡命中与原始资料/索引行命中；检索逻辑未改。
+- **复测追加（raw 可见性）：** 用户上传的 `raw/03-辅导报告要点.md` 已在 raw/（重复上传提示正确），但整理批次原先只读 inbox/，所以看不到。现 `prepare_inbox` 改为 `select_ingest_notes`：inbox/ 全部优先，raw/ 仅取可读文本（.md/.txt）并按修改时间新→旧，每批最多 5 份；面板按钮改为「整理材料」，明确扫 inbox/ 与 raw/。
+- **复测追加（单卡超长不挡整批）：** stage 只保留通过校验的卡片进入审核，超限/重复卡作为 `rejected_cards` 警告随审核项展示且不落盘；全部卡都无效时才整批拒绝。S5 补充二按用户批准把 320/420 与自动拆卡规范写进 engine 与两份 skill；模型拆卡，宿主只负责 420 字硬拒。
+- **复测追加（整理轮询误报）：** 用户首次重试在约 180 秒时收到「整理任务未完成：running」，任务实际仍在跑。面板轮询从 180 秒延长到 900 秒，期间显示已等待秒数，明确不自动取消；15 分钟后仍非终态才如实提示。
+- **S5 补充三（已处理排除）：** `select_ingest_notes` 读 raw_admissions 与 review_decisions；raw 文件存在 `approve_raw` 且当前哈希与准入/审核登记一致时从批次排除，哈希变化重新入批；批次回执显示「已处理跳过 N 份」。审核通过时为每个 raw 来源写 `approve_raw` 记录。
+- **S5 补充三（拆卡自指）：** JSON_OUTPUT_SPEC、knowledge-search、knowledge-agent 补「拆出的每张卡正文同样 ≤320 字；长文按主题段先拆再压」。宿主保留兜底切分：420–1260 字的单卡按句/段拆成 2–3 张，仍超 420 才跳过并警告。
+- **S5 补充三（来源兜底）：** 模型漏写 `sources` 时，`fill_missing_sources` 先从卡片 frontmatter 恢复，再回退到本批次实际送入的 inbox/raw 文件；审核暂存新增 `source_paths` 入参。
+- **S5 补充三（拆分链接展开）：** 模型把卡片拆成（上）/（中）/（下）后，正文仍常引用基名 `[[原标题]]`，被 vault_index 报未解析。`normalize_split_links` 在暂存前把基名引用展开为真实拆分卡链接；本轮同时修复现有库 4 个文件、7 处链接（备份 `/Users/yvan/OmniDesk/backups/kb-split-links-20261107-233646/`）。修复后需重建关系索引，旧冲突才会从审核队列消失。
+- **附带修复：** HomeChat 载入旧线程时给重复 message id 重新分配唯一 key，新消息 id 加时间前缀，消除开发版控制台持续刷新的 duplicate key 警告。
+- **隐私回归修复：** 任务台账仍不暴露私有 `intent`；S4 只补 `error_code` / `error_message`，`verify_session_continuity.py` 37/37 恢复通过。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `~/.cargo/bin/cargo test --offline` | lib 563/563；集成 2+1+13+1+6+5+10+21+4+3+1 全绿；合计 630 |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过 |
+| `node --experimental-strip-types --test knowledgeHub.test.mjs knowledgeRetrieval.test.mjs` | 12/12 |
+| `python3 -m unittest test_knowledge_ingest_unit` | 8/8 |
+| `python3 -m unittest test_web_api_unit` | 89/89 |
+| `python3 -m unittest test_task_ledger_summary_s4` | 2/2 |
+| `python3 tests/verification/desktop/verify_knowledge_s5.py` | 32/32 |
+| 其中 review 单测 | 6/6（新增：部分有效卡暂存、全部无效卡拒绝） |
+| `verify_knowledge_hub_ui_s3.py` / `verify_knowledge_quality_s4.py` / `verify_knowledge_governance_s2.py` / `verify_knowledge_ingest_ui_141.py` / `verify_chat_recovery_146.py` | 46/21/18/22/16 全过 |
+| 静态 verify 批量（49 个非窗口脚本） | 41 通过、8 个既有/环境型失败（见下） |
+
+**批量失败清单（未改这些测试或对应产品，不属 S5 改动面）：** `verify_hover_hint_101.py`（旧计数 94/23/23 已与当前 125/24/24 不符，另有 3 处既有原生 title）、`verify_multiturn_unit.py`（resume 参数键集旧断言 1 项）、`verify_plugin_scope_104.py`（/home/kevin 旧路径 3 项）、`verify_profile_presets_082.py`（1 项旧夹具）、`verify_project_102.py`（50/51）、`verify_scenario_materials.py`、`verify_weekly_099.py`（41/42）、`verify_windows_packaging_134.py`（35/36）。34 个窗口自动化脚本需 Xvfb/窗口 harness，本机未跑；真实界面端到端由用户执行。
+
+### 未完成 / 收口条件
+
+- 用户最新复测：审核通过 1 张，2 张 DSH 卡（448/446 字）按旧二进制跳过；当前源码已有宿主兜底切分（420–1260 字自动拆 2–3 张）与已处理排除，需重启开发版后重新整理验证。首次 180 秒「running」误报已改为 900 秒等待。
+- 当前开发版已重启并加载 S5 代码（Vite 5273 + target/debug/omnidesk-desktop）。
+- `rustfmt` 仍未安装，未运行 `cargo fmt --check`。
+- 提交信息与提交批次尚未生成；按计划等用户复测通过并明确批准后一次性提交 S1-S4 改动。
+
+## OD-KB-201 S4：任务记录 / 过期检查 / 检索抽检（执行会话实施，2026-11-07）
+
+> 本轮工作区 HEAD `177a8292ea`；按 PLANS.md S4 执行要点实施，并入驾驶舱、不设独立质量页。**前置真实界面端到端验证仍待用户确认**：本轮未把 S4 标为已通过真实界面验收。未提交。
+
+### 改动
+
+- **过期检查：** 新增 [knowledge_quality.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_quality.rs:1)。确定性解析索引行 `YYYY-MM-DD` 与 raw 准入治理记录日期，超过阈值标记「可能过期」；不调用模型，不新增依赖。
+- **阈值配置：** `<应用数据根>/config/knowledge-quality.v1.json`，schema `omnidesk.knowledge-quality.v1`，`expiry_days` 默认 180、允许 1–3650；文件缺失用默认，格式错误明确报错。
+- **任务记录：** [task_core.py](/Users/yvan/Code/MyWorkStation/engine/omnidesk_engine/task_core.py:200) 的 `TaskRecordSummary` 对外补 `error_code` / `error_message`（`intent` 仍为私有分类，不进入台账响应）；[KnowledgeDashboard.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeDashboard.tsx:1) 任务列表可展开滚动并显示失败原因。
+- **驾驶舱：** AI 任务健康四格改为「过期 + 失败」风险口径；「需要你处理」增加过期事项入口；新增可展开的过期清单与检索抽检卡（复用 `vault_search`，显示命中、区域与上下文，可跳资产页）。
+- **IPC/类型：** 新增只读 `knowledge_quality_report`；api/types 补 `KnowledgeQualityReport` / `KnowledgeExpiredItem` 与任务失败字段。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `~/.cargo/bin/cargo test --offline` | lib 552/552；集成 2+1+13+1+6+5+10+21+4+3+1 全绿；合计 619 |
+| 其中 quality 单测 | 4/4：固定时间过期、阈值边界、非法日期、配置默认/损坏 |
+| `python3 -m unittest -v test_task_ledger_summary_s4` | 2/2（摘要与台账读取均保留失败原因/意图） |
+| `python3 -m unittest test_web_api_unit` | 89/89（适配层回归） |
+| `python3 tests/verification/desktop/verify_knowledge_quality_s4.py` | 21/21 |
+| `python3 tests/verification/desktop/verify_knowledge_hub_ui_s3.py` | 46/46 |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 22/22 |
+| `python3 tests/verification/desktop/verify_knowledge_governance_s2.py` | 18/18 |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过（既有 chunk 体积提示） |
+
+### 边界与未验证
+
+- **S4 前置未完成：** 真实窗口「上传 raw - 整理收件箱 - 审核通过 - 资产可见 - 对话检索引用」仍需用户实测；如发现缺陷，应先修复再验收 S4。
+- 过期阈值只能改配置文件，暂无界面编辑器；驾驶舱显示当前阈值。
+- 来源可追溯率仍按 raw 准入覆盖率计算（S3 口径），未逐卡读取 sources。
+- `rustfmt` 组件仍未安装，未运行 `cargo fmt --check`。
+
+### 计划偏差
+
+- 过期阈值落在独立 `knowledge-quality.v1.json`（计划只要求可配置，未指定载体）；默认 180 天。
+- 为补失败原因，引擎任务台账摘要新增两个错误字段；`intent` 未暴露（保持既有隐私哨兵断言）。未改提交/取消协议与 runtime。
+- 为支持 raw 二进制上传，S3 已采用宿主路径读取命令，S4 未再改动上传链路。
+
+## OD-KB-201 S3：知识驾驶舱 / 知识审核 / 知识资产（执行会话实施，2026-11-07）
+
+> 本轮工作区 HEAD `177a8292ea`；按 PLANS.md S3 执行要点实施，界面以 `.preview/od-kb-201.html` v2 为基准。S1/S2 已审查通过，本轮未提交。
+
+### 界面参考（screenshots-design-inspiration，2026-11-07）
+
+- Crunchbase：顶部指标条 + 卡片栅格，数字先于说明；用于驾驶舱五格指标与健康卡的信息层级。
+- When I Work：同页内状态 checklist 与行内动作、按状态分区；用于审核项就地展开与“通过/修改/驳回”动作排布。
+
+### 改动
+
+- **三页骨架：** [KnowledgeVaultPage.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeVaultPage.tsx:1) 顶部胶囊页签改为知识驾驶舱（默认）/ 知识审核 / 知识资产；图谱不再是一级页签，只能从驾驶舱健康卡“查看链接索引图”进入只读视图。
+- **驾驶舱：** 新增 [KnowledgeDashboard.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeDashboard.tsx:1)。五格指标取 scan（raw/、wiki 条目）、review 暂存、冲突检测、任务台账真实数据；“需要你处理”与“AI 最近工作”并排；健康卡四格（来源可追溯 / 关联覆盖 / 索引完整性 / AI 任务健康）均带动作入口，空态显示 0 或“暂无”。
+- **审核前置：** 新增 [knowledge_review.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_review.rs:1)。模型整理结果先暂存到 `<app>/engine-state/knowledge-reviews/`，同时写 governance `propose`；审核通过后才调用既有 `apply_payload` 落卡、更新索引、归档原文。驳回/需要修改只写治理决策记录，不写知识库。
+- **审核中心：** 新增 [KnowledgeReviewCenter.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeReviewCenter.tsx:1)。两个队列（新知识确认 / 冲突与异常）；进度就地展开，新增项显示 AI 提取卡与原文片段，冲突项显示 A/B 来源；通过、需要修改、驳回与冲突标记均走宿主命令。
+- **知识资产：** 默认只读预览，`loadNote` 不再自动进入编辑态；顶部“编辑此条”显式进入编辑器。左列表分组为 Wiki 知识条目 / raw/ 原始资料 / 其他附件；详情复用现有读取、属性、标签与链接关系链路。
+- **raw 上传：** 顶部新增系统文件选择入口，调用新命令 `knowledge_raw_admit_paths`（宿主读取绝对路径字节后走 S1 准入）；回执展示准入、拒绝与索引状态。前端不直接读文件字节，保留原 `knowledge_raw_admit` 字节命令。
+- **API/类型：** [api.ts](/Users/yvan/Code/MyWorkStation/desktop/src/api.ts:1) / [types.ts](/Users/yvan/Code/MyWorkStation/desktop/src/types.ts:1) 补齐 raw、治理只读、审核暂存/列表/裁决、冲突裁决调用与类型；治理通用写命令仍不存在。
+- **整理入口：** [KnowledgeIngestPanel.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeIngestPanel.tsx:1) 从直接 apply 改为 stage 进入审核队列；审核通过后才真正落盘。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `~/.cargo/bin/cargo test --offline` | lib 548/548；集成 2+1+13+1+6+5+10+21+4+3+1 全绿；doc 0；合计 615 |
+| 其中 S3 Rust 单测 | 5 项：暂存/驳回、通过落卡+检索命中、损坏记录跳过、冲突裁决、raw 路径读取 |
+| `python3 tests/verification/desktop/verify_knowledge_hub_ui_s3.py` | 46/46 |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 22/22 |
+| `python3 tests/verification/desktop/verify_knowledge_governance_s2.py` | 18/18 |
+| `python3 tests/verification/desktop/verify_chat_recovery_146.py` | 16/16 |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过（既有 chunk 体积提示） |
+
+### 边界与未验证
+
+- 真实界面手动验证未做：三页签切换、审核展开/裁决、raw 文件选择、驾驶舱空态与计数需用户实机确认。
+- 审核结果是否已写入以宿主回执为准；通过后会自动重建一次内存索引，失败会在索引区可见。
+- 治理记录写入失败会在审核回执的 `governance_errors` 中如实回报；知识卡已落盘时不回滚。
+- `rustfmt` 组件仍未安装，未运行 `cargo fmt --check`。
+- 计划偏差（实现层）：计划写“文件字节经 IPC 准入”，但前端未安装 fs 插件；为支持 PDF 等二进制且避免大字节走 JSON，新增路径读取命令，原字节命令保留。审核暂存目录是宿主内部实现细化，未改治理格式。
+- 本轮未提交；既有未提交改动与用户成果目录原样保留。
+
+## OD-KB-201 S2：治理层 governance/（执行会话实施，2026-11-07）
+
+> 本轮工作区 HEAD `177a8292ea`；按 PLANS.md S2 执行要点实施。S1 已由用户审查通过，本轮未改动 S1 的准入语义。未提交。
+
+### 改动
+
+- **新模块：** [knowledge_governance.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_governance.rs:1) 实现 `append_record` / `append_record_at` / `list_records`。治理目录为 vault 根下 `governance/`，与 `raw/` 平级（PLANS 写的 `knowledge/governance/` 在此显式按“vault 根下、非仓库 knowledge 目录”解释）。
+- **三类文件：** `raw_admissions.v1.md`、`review-decisions.v1.md`、`admission-rules.v1.md`；Markdown 标题 + 单行记录，行格式为 `- RFC3339 | 动作 | 对象 | sha256:<前12位> | 说明`。
+- **原子追加与脱敏：** 目录幂等创建；记录经 `vault_write::create_note/save_note` 原子落盘，失败不写半截；动作/对象/说明先清洗换行、竖线与控制字符，再经 `profile_rules::mask_privacy`。
+- **raw 挂钩：** [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:524) 新增 `admit_raw_files_with_policy`；S1 的 `admit_raw_files` 保持原签名并以 clean policy 调用。每次准入、索引更新成功后，为每个文件追加一条 `raw_admissions` 记录（含实际路径、sha256 与原名）。
+- **IPC：** [lib.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/lib.rs:3373) 新增只读 `knowledge_governance_list(kind)` 并注册；`knowledge_raw_admit` 改为加载当前 Profile 规则策略后准入。没有治理写命令、API 写入口或引擎写入口。
+- **扫描排除：** [knowledge_vault.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_vault.rs:301) 只跳过 vault 根下的 `governance/`，不按任意同名目录全局排除；治理记录不进入笔记扫描、链接索引与检索。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `~/.cargo/bin/cargo test --offline` | lib 543/543；集成 2+1+13+1+6+5+10+21+4+3+1 全绿；doc 0 |
+| 其中 governance 单测 | 6/6：目录幂等、追加读回、损坏行跳过、扫描排除、脱敏、字段清洗 |
+| 其中 ingest 集成断言 | `admit_raw_writes_governance_admission_record` 通过 |
+| `python3 tests/verification/desktop/verify_knowledge_governance_s2.py` | 18/18（含 AI 无写权、引擎无治理路径断言） |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 22/22 |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过（既有 chunk 体积提示） |
+
+### 边界与未验证
+
+- 无治理写 IPC；`review-decisions` 与 `admission-rules` 目前只有宿主 Rust 写入口，等 S3 审核动作接入。真实界面治理记录展示未做。
+- 治理记录写入失败会在 `RawAdmitReport.errors` 中如实回报；已落盘的 raw 与已更新索引不回滚（跨文件事务不在 S2 范围）。
+- `rustfmt` 组件仍未安装，未运行 `cargo fmt --check`；编译与测试无警告。
+- 本轮未提交；既有未提交改动与用户成果目录原样保留。
+
+## OD-KB-201 S1：资料接入层 raw/（执行会话实施，2026-11-07）
+
+> 本轮工作区 HEAD `177a8292ea`；执行会话按 PLANS.md「S1 执行要点」实施，未提交。上一条同阶段记录及其回退记录保留为历史，当前源码状态以本条为准。
+
+### 改动
+
+- **目录骨架与索引模板：** [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:25) 新增 `RAW_DIR = "raw"`；`init_vault` 骨架由 5 目录扩为 6，索引模板新增 `## 原始资料` 小节，重复初始化不重写现有索引。
+- **raw 准入：** 新增 `admit_raw_files(root, files, utc_offset_minutes)`。内容 SHA-256 复用 `crate::sha256::sha256_hex`；索引「原始资料」小节已有同哈希则拒绝；同名不同内容以「原名-哈希前12位」换名；临时文件 + fsync + 硬链接发布，目标存在即失败，不覆盖；不限制 Markdown 扩展名。索引行记录实际文件名、`raw/` 链接、RFC3339 准入时间、sha256 与字节数。索引保存失败时删除本轮已发布的 raw 文件。
+- **时间戳：** 新增纯函数 `rfc3339_local`（civil 历法，不引时间库），支持正/负偏移、纪元与闰日；命令侧偏移复用 `worklog_offset_minutes` 的 `utc_offset_minutes` 读取逻辑。
+- **IPC：** [lib.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/lib.rs:3353) 新增 `knowledge_raw_admit`（入参 `files: Vec<RawFileInput>`，先 `init_vault` 再准入），已注册进 `invoke_handler`。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `~/.cargo/bin/cargo test --offline` | lib 536/536；集成 2+1+13+1+6+5+10+21+4+3+1 全绿；doc 0 |
+| 其中 knowledge_ingest 单测 | 21/21（新增 7 项：RFC3339、准入落盘记索引、同哈希拒绝、同名换名不覆盖、非法名拒绝、批内重复、索引失败回滚） |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 22/22（新增 3 项 raw 目录/准入函数/IPC 注册断言） |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过（保留既有 chunk 体积提示） |
+
+### 边界与未验证
+
+- `runtime/` 零改动；引擎协议、红线机制、现有 inbox 整理链路未改；本轮未提交。
+- 前端尚未接 `knowledge_raw_admit`（S1 执行要点只列宿主函数与 IPC；面板入口保持现状）；真实界面上传 raw 附件的手动验证未做。
+- 既有未提交改动（146 前端、文档、.preview、用户成果目录等）原样保留。
+
+## OD-KB-201 S1：资料接入层 raw/（2026-11-07，已实施）
+
+### 改动
+
+- **目录骨架**：[knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:24) 新增 `RAW_DIR = "raw"`；`init_vault` 骨架从 5 目录扩为 6（幂等，不触碰既有文件）。索引模板新增「## 原始资料」小节。
+- **准入函数 `admit_raw_files`**：内容 SHA-256（复用自研 sha256 模块）→ 同哈希已在索引「原始资料」小节则拒绝（重复资料）→ 同名不同内容以「原名-哈希前12位」换名新增 → 专用原子写入（临时文件 + fsync + 硬链接发布，目标已存在即拒绝，与 vault_write 同哲学，不做 .md 形态限制）→ 追加索引行（`- [原名](raw/原名) | 准入：<RFC3339> | sha256:<hex> | <bytes> 字节`）。索引写入失败时回滚本轮已落盘文件，不允许「文件在、索引没记」的中间态。raw/ 没有覆盖或删除通道。
+- **时间戳**：新增 `rfc3339_local`（纯函数，civil 历法，不引第三方时间库），偏移来自宿主配置 `utc_offset_minutes`。
+- **IPC**：[lib.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/lib.rs:3350) 新增 `knowledge_raw_admit` 命令（文件字节经 IPC 传入；调 init_vault 幂等建目录后准入）。
+- **新测试 5 项**：rfc3339 格式（含负偏移/纪元）、准入建文件并记索引、重复哈希拒绝 + 同名换名不覆盖、非法文件名拒绝（路径逃逸/隐藏/空名）、重复准入幂等（索引不变）。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `cargo test --offline`（全量 lib + 集成） | 534 lib + 集成 2+13+1+6+5+10+21+4+3+1 全绿 |
+| `python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py` | 19/19 |
+| `npm --prefix desktop run build` | 通过（既有 chunk 体积提示，非本轮引入） |
+
+### 边界确认
+
+- `runtime/` 零改动；引擎协议未动；红线机制未动。
+- 工作区所有既有未提交改动原样保留；本轮未提交。
+
+## OD-KB-201 S1：实施回退记录（2026-11-07）
+
+- S1 曾在本会话被直接实施（knowledge_ingest.rs 与 lib.rs 共约 400 行，cargo 全量验证全绿）；经用户纠正，实施职责归属另开的执行会话。已将两处源码改动 git restore 回退，工作区回到只含此前既有改动与规划/预览产物的状态。
+- S1 实施要点与验证数据已在另开会话前以规划形式移交执行会话；本文件不再把本会话记为 S1 实施者。
+
+## OD-KB-201 阶段 0：产品预览页（2026-11-07，已实施）
+
+- 计划 OD-KB-201 已获用户批准，先做产品预览，用户修正后再进入正式开发（S1 资料接入层）。
+- 产出：`.preview/od-kb-201.html` 单文件高保真预览（驾驶舱 / 审核中心 / 知识资产 / AI 运行与质量 / 配置 五页），数据为占位示意，未接入任何宿主命令或引擎。
+- 验证方式：本地静态服务器已启动（http://127.0.0.1:8765/od-kb-201.html），页面 200 可访问；用户在浏览器查看并反馈修正意见。
+
+### v2 修订（2026-11-07，按用户反馈）
+
+- 配置页移除：知识库配置融入 OmniDesk 顶栏设置（既有 vault root 目录选项）。
+- 「AI 运行与质量」独立页移除：质量指标并入驾驶舱「知识库健康 · AI 运行质量」卡（四格：来源可追溯 / 关联覆盖率 / 索引完整性 / AI 任务健康，每格带管理动作入口）；AI 任务失败并入顶部指标行与「需要你处理」。
+- 页面精简为三页：知识驾驶舱（默认）/ 知识审核 / 知识资产。
+- 驾驶舱顶部指标行改为五格：原始资料数 / Wiki 知识条目数 / 待审核 / 待处理冲突 / AI 任务失败。
+- 「需要你处理」与「AI 最近工作」左右并排。
+- UI 样式改为对齐 OmniDesk 既有设计（Aetheria OS）：浅色 MD3 色板、玻璃观感卡片（半透明白 + 白描边 + 柔影，无背景 blur）、左侧悬浮胶囊 Dock + 悬浮提示、知识库内部为顶部胶囊页签；字体 Inter + IBM Plex Mono，与 theme.css 令牌一致。
+
+## OD-ARCH-146 · 对话后台存活 + 输入框换行 + 整理入口迁移（2026-11-06；已实施）
+
+> 用户实测四项反馈中的 ①②③；④ 知识库页面重构经用户决定另行立项，本轮只迁移整理入口。
+
+### 改动
+
+- **S1 对话后台存活：** [sceneThreads.ts](/Users/yvan/Code/MyWorkStation/desktop/src/sceneThreads.ts:51) 的 SceneThread 新增 `inflightTaskId`，提交拿到任务号即写入线程档案、终态清空；新增线程档案变更订阅。 [HomeChat.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx:726) 挂载时按在途任务号恢复轮询与等待状态，缺少助手占位消息时补建；卸载不取消任务，终态结果由 task_result 回读。 [HomeCanvas.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeCanvas.tsx:490) 负责写入/清空并订阅档案变化。
+- **S2 输入框换行：** [HomeChat.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx:2969) 单行 input 改为自适应 textarea；1 行起，超过 4 行（约 96px）后内部滚动；Enter 发送、Shift+Enter 换行沿用原逻辑。
+- **S3 整理入口迁移：** 移除对话工具行的 KnowledgeIngestPanel，迁入 [KnowledgeVaultPage.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeVaultPage.tsx:658) 顶部操作区；整理完成后触发一次扫描刷新。入口按钮样式与知识库顶部按钮统一。
+
+### 验证（本人实际运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过 |
+| `verify_chat_recovery_146.py`（新增静态接线 16 项） | 16/16 通过 |
+| `verify_knowledge_ingest_ui_141.py`（更新入口归属断言） | 19/19 通过 |
+| `verify_starting_145.py` | 12/12 通过 |
+| `verify_attachments_077.py` / `verify_conversation_prompt.py` | 25/25、26/26 通过 |
+| `cargo test --offline`（~/.cargo/bin/cargo） | 全量通过，0 failed |
+
+### 未验证 / 边界
+
+- 真实界面手动验证未跑：需要在打包后的应用里实测「提交后切到知识库再切回，回复正常出现」「粘贴长文本自动换行」「知识库页面整理收件箱走通」。
+- 重启应用后若档案里残留旧任务号，宿主查不到该任务；轮询连续失败 5 次后会停下并提示，不假装成功。
+- 知识库页面结构重构未做（用户决定先看案例）；本轮未改数据格式与引擎协议。
+
 ## v0.2.10 发布（2026-11-06；包含 OD-ARCH-145 + 144）
 
 - 提交：`d846af3a89`（145 实现 + 144 复核随行）、`03ce33e0c9`（版本号 0.2.10）、`daf6caa9f3`（CI macOS runner 升级 macos-15：macos-14 镜像已下线导致首轮 macos job 被取消）

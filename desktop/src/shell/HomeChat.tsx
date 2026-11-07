@@ -18,6 +18,7 @@ import {
   detectKnowledgeIntent,
   filterKnowledgeHits,
   KNOWLEDGE_MAX_CARDS,
+  knowledgeNoticeText,
   knowledgeSearchKeyword,
   type KnowledgeCitation,
 } from "../knowledgeRetrieval";
@@ -59,7 +60,6 @@ import {
 } from "../types";
 import { Icon } from "../components/Icon";
 import { BrandMark } from "../components/BrandMark";
-import { KnowledgeIngestPanel } from "./KnowledgeIngestPanel";
 import { CategoryPicker } from "./CategoryPicker";
 import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
@@ -183,7 +183,23 @@ const RESULT_RETRIES = 3;
 type AdmissionState = "checking" | "ready" | "blocked";
 
 let seq = 0;
-const nextId = () => "m" + ++seq;
+// 开发版热重载会重置模块级 seq；用时间前缀避免新消息与旧档案里的 m1/m2 撞 key。
+const nextId = () => `m${Date.now().toString(36)}-${++seq}`;
+
+/** 旧档案里可能已有重复 id（历史热重载累积）；载入时只给重复项换新 key。 */
+function normalizeLoadedMessages(messages: ChatMessage[]): ChatMessage[] {
+  const seen = new Set<string>();
+  const stamp = Date.now().toString(36);
+  return messages.map((message, index) => {
+    if (message.id && !seen.has(message.id)) {
+      seen.add(message.id);
+      return message;
+    }
+    const id = `load-${stamp}-${index}`;
+    seen.add(id);
+    return { ...message, id };
+  });
+}
 
 function enabledCategories(facts: AdmissionFacts): string[] {
   const p = facts.permissions;
@@ -333,6 +349,10 @@ export interface HomeChatProps {
   onMessagesChange?: (messages: ChatMessage[]) => void;
   /** 引擎产生了新的 DSH 会话（第一轮提交后）时回调，供模块把它关联到引擎会话。 */
   onTaskCreated?: (omniTaskId: string) => void;
+  /** 本线程在途任务号（OD-ARCH-146 S1）：非空 = 有未收尾的任务，挂载时恢复等待。 */
+  inflightTaskId?: string | null;
+  /** 在途任务号变化（拿到任务号 / 终态清空）时回调，供上层写线程档案。 */
+  onInflightTaskChange?: (taskId: string | null) => void;
   /**
    * 既有引擎会话号（OD-ARCH-034）：给出即续接同一会话（真多轮，引擎自己持有上文）。
    * 没有时本组件在本次运行内自行记住第一轮拿到的会话号。
@@ -366,12 +386,16 @@ export function HomeChat({
   initialMessages = [],
   onMessagesChange,
   onTaskCreated,
+  inflightTaskId = null,
+  onInflightTaskChange,
   onBranchNewThread,
   engineSessionId = null,
   onEngineSessionId,
   initialInput = "",
 }: HomeChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    normalizeLoadedMessages(initialMessages),
+  );
 
   // 记录上一次真正触发滚动的检索目标 (query + index) 与上一次查询词，避免流式输出时反复抢视口
   const lastScrollTargetRef = useRef<{ query: string; index: number }>({ query: "", index: -1 });
@@ -513,8 +537,17 @@ export function HomeChat({
   // 输入框是否有焦点：上报给骨架（输入框有焦点时不把顶部卡片放回来，OD-ARCH-042）。
   const reportInputFocus = useChatInputFocus();
   const [input, setInput] = useState(initialInput);
-  const [busy, setBusy] = useState(false);
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  /** 输入框引用（OD-ARCH-146 S2）：内容变化时自适应高度，最多 4 行后内部滚动。 */
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [busy, setBusy] = useState(Boolean(inflightTaskId));
+  /** 在途任务号回调的最新引用（避免轮询 effect 因父组件内联函数反复重订阅）。 */
+  const inflightCbRef = useRef(onInflightTaskChange);
+  useEffect(() => {
+    inflightCbRef.current = onInflightTaskChange;
+  }, [onInflightTaskChange]);
+  /** 本组件自己提交的任务号：恢复 effect 不覆盖它正在维护的实时状态。 */
+  const ownInflightRef = useRef<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(inflightTaskId);
   /**
    * OD-ARCH-062 S2：取消入口与任务工作台页面共用同一套取消状态模型
    * （src/engineCancelModel.ts）。首页不再自己拼取消文案与放行条件。
@@ -698,12 +731,44 @@ export function HomeChat({
 
   // 切换会话（threadKey 变化）时载入该会话的消息。
   useEffect(() => {
-    setMessages(initialMessages);
+    setMessages(normalizeLoadedMessages(initialMessages));
     setSkillHint(null);
     // 换会话后，上一轮还没执行的判定不再适用：丢掉，免得旧索引落到新对话里。
     notePendingRef.current.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
+
+  /**
+   * OD-ARCH-146 S1：切页回来恢复在途任务。
+   *
+   * 任务从未因卸载而取消；这里只把线程档案里的任务号接回轮询。卸载期间
+   * 错过的流式事件不重放，终态结果由 task_result 兜底取回。
+   */
+  useEffect(() => {
+    if (!inflightTaskId) return;
+    const taskId = inflightTaskId;
+    setMessages((prev) =>
+      prev.some((m) => m.taskId === taskId)
+        ? prev
+        : [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "",
+              taskId,
+              state: "running",
+              startedAtMs: Date.now(),
+              endedAtMs: null,
+            },
+          ],
+    );
+    // 自己提交的任务已经在轮询里，不重复接管；只有切页回来才恢复等待状态。
+    if (ownInflightRef.current === taskId) return;
+    setActiveTaskStatus("running");
+    setActiveTaskId(taskId);
+    setBusy(true);
+  }, [inflightTaskId]);
 
   /**
    * OD-ARCH-088 S4：场景规则已加载、但该场景没有可注入的 Skill 时，如实说明
@@ -1504,6 +1569,7 @@ export function HomeChat({
     const settle = () => {
       setActiveTaskId(null);
       setBusy(false);
+      inflightCbRef.current?.(null);
     };
 
     const markNotice = (notice: string) => {
@@ -1674,6 +1740,14 @@ export function HomeChat({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // OD-ARCH-146 S2：输入框自适应高度——1 行起，超过 4 行后内部滚动（约 96px）。
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 96) + "px";
+  }, [input]);
+
   // 生成中的计时：让等待可见
   useEffect(() => {
     if (!activeTaskId) {
@@ -1797,9 +1871,10 @@ export function HomeChat({
                 properties: [],
               });
               // 宿主搜索是字面子串匹配，且会扫到 inbox/索引/用户笔记；这里只保留 AI 建的知识卡。
-              const hits = filterKnowledgeHits(search.hits).slice(0, 3);
-              if (hits.length === 0) {
-                knowledgeNotice = "知识库没有命中相关卡片；本轮未注入知识库上下文。";
+              const cardHits = filterKnowledgeHits(search.hits);
+              const hits = cardHits.slice(0, 3);
+              if (cardHits.length === 0) {
+                knowledgeNotice = knowledgeNoticeText(search.hits.length, 0, 0);
               } else {
                 const notes: KnowledgeVaultNote[] = [];
                 for (const hit of hits.slice(0, KNOWLEDGE_MAX_CARDS)) {
@@ -1814,7 +1889,11 @@ export function HomeChat({
                   hits.slice(0, KNOWLEDGE_MAX_CARDS),
                   KNOWLEDGE_MAX_CARDS,
                 );
-                knowledgeNotice = `已检索知识库：${hits.length} 条命中，引用 ${knowledgeCitations.length} 张卡。`;
+                knowledgeNotice = knowledgeNoticeText(
+                  search.hits.length,
+                  cardHits.length,
+                  knowledgeCitations.length,
+                );
               }
             } catch (e) {
               knowledgeNotice = "知识库检索失败：" + String(e) + "；本轮未注入知识库上下文。";
@@ -1942,6 +2021,8 @@ export function HomeChat({
           });
         }
         setActiveTaskId(receipt.omni_task_id);
+        ownInflightRef.current = receipt.omni_task_id;
+        inflightCbRef.current?.(receipt.omni_task_id);
         // 这一轮由引擎新建了一个 DSH 会话：把任务号报给上层，便于在工作台里关联到
         // 「项目与会话」里的引擎会话（引擎会话号从任务台账读，不改宿主协议）。
         onTaskCreated?.(receipt.omni_task_id);
@@ -2909,8 +2990,11 @@ export function HomeChat({
           >
             <Icon name="plus" className="w-[15px] h-[15px]" />
           </button>
-          <input
-            className="w-full bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none"
+          <textarea
+            ref={inputRef}
+            data-testid="chat-input"
+            rows={1}
+            className="w-full max-h-[7.5rem] resize-none bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none overflow-y-auto leading-relaxed"
             placeholder={
               canSubmit
                 ? "与 OmniDesk 协同探索、下达任务或记录灵感…"
@@ -3009,7 +3093,6 @@ export function HomeChat({
                 <span>新对话</span>
               </button>
             ) : null}
-            <KnowledgeIngestPanel />
             {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
             <button
               onClick={() => setVoiceNote((v) => !v)}

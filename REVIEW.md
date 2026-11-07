@@ -1,3 +1,297 @@
+## OD-KB-201 最终复测确认（用户实测，2026-11-07/08）——四步全通，收口条件达成
+
+**用户复测结果：** ① 已处理材料不占批次；② DSH 长文成功拆卡；（③ 索引冲突消失（重建后）；④ 对话检索命中并带引用（用户贴出真实回答，引用两张方法卡且 sources 指回原始资料）。
+
+**用户追问的检索行为边界（ARCHITECT 核对源码后确认）：**
+
+- 检索是**本地字面匹配**（vault_search），不联网、不调用外部搜索；命中后把卡片原文拼进本轮提示词（buildKnowledgeContext，注明「引用必须与卡片原文一致，不得编造条文」），模型基于卡文回答。
+- **知识库内容错误会如实传导到回答**：卡片说错的，回答大概率跟着错——检索注入的上下文对模型是「权威输入」，没有事实校验环节。已有的兜底是：卡片经人工审核才入库（准入闸门）、卡片带 sources 可回溯原文、S4 过期检查标记超龄条目、界面回答标注「模型输出 · 未复核」。这些是治理机制，不是回答时的实时校验。
+- 这是定位使然：LLM-Wiki 的正确性责任链是「人审准入 + 来源可溯 + 过期标记」，不是模型答前查证。若要答前实时校验（联网核对），属新增能力，须单独规划与授权。
+
+**收口状态：** S1-S5（含补充一/二/三）代码与测试层面全部通过审查，用户四步复测全通。剩余：用户批准后一次性提交（执行会话准备提交批次与信息）。
+
+
+
+## OD-KB-201 S5 补充三审查结论（ARCHITECT，2026-11-07）——通过（待用户重启开发版后重新整理复测，通过即收口）
+
+**结论：通过。** 执行会话按 PLANS.md「S5 补充三」完成缺陷 D 修复并额外加固三处；本人逐行审查实际 diff（select_ingest_notes 重写为读双台账的三态过滤；knowledge_review.rs 新增 auto_split_overlong / normalize_split_links / fill_missing_sources；审核通过写 approve_raw 记录）并亲自复跑验证。
+
+**修复核对（逐项对照缺陷 D 清单）：**
+
+- 已处理排除（选材三态）：select_ingest_notes 现在读 raw_admissions（admit 登记）+ review_decisions（approve_raw 登记），兼容旧卡（从 approve_card 对应卡片的 frontmatter.sources 回收 raw 来源并取最新审核时间）；raw 文件「哈希与准入登记一致 且（有 approve_raw 或 approve_card 晚于准入）」→ 跳过并计入 skipped_processed；哈希变化 → 重新进批；无登记 → 进批。面板显示「已处理跳过 N 份」。与批准方案一致，且旧数据兼容做得比要求多一层。
+- 拆卡上限自指：三处规范都补了「拆出的每张卡正文同样 ≤320 字；长文按主题段先拆再压」。
+- 宿主兜底切分（计划外新增，审查后接受）：420–1260 字的单卡按句/段自动拆成 2–3 张「（上）（中）（下）」，索引行继承并互链「参见」，产生警告如实标注「由宿主自动拆分」；>1260 字（3×420）不拆直接跳过。理由：模型拆分纪律不可靠（448/446 字实例），兜底把「拆了还超」从静默丢卡变成可用拆分；语义仍经 validate_payload 全量校验后才进审核，人仍是最终裁决者。边界内（不碰 vault_index、不碰检索预算、不碰红线）。
+- 来源兜底（计划外新增，接受）：模型漏写 sources 时先从卡片 frontmatter 恢复、再回退本批次实际文件（fill_missing_sources），避免整批因缺字段被拒；stage 增加 batch_sources 入参，前端把实际送入文件传入。
+- 拆分卡基名链接展开（计划外新增，接受）：模型拆卡后正文常留 [[原标题]] 基名引用导致未解析链接；normalize_split_links 在暂存前展开为真实拆分卡链接；执行会话顺带修复现有库 4 文件 7 处链接，**动用户真实 vault 前有备份**（/Users/yvan/OmniDesk/backups/kb-split-links-20261107-233646/），符合「覆盖用户数据须单独评估并授权」的边界——本次改动是链接规范化（语义不变），且有备份可回滚，记录在案。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline 全量 | 630 passed / 0 failed（S5 主轮 625 + 补充三 5 项：已处理三态、宿主拆分、approve_raw 记录等） |
+| python3 tests/verification/desktop/verify_knowledge_s5.py（新增） | 32/32（A/B/C 缺陷回归 + 补充三接线 + 三处 320/420 口径一致 + 拆卡自指 + 宿主兜底 + 已处理排除 + 来源兜底） |
+| knowledgeHub.test.mjs / knowledgeRetrieval.test.mjs | 全过（含索引行 raw 冲突排除、notice 区分断言） |
+| verify hub_s3 / quality_s4 / governance_s2 / ingest_ui_141 | 46 + 21 + 18 + 22 全过 |
+| test_knowledge_ingest_unit.py / test_task_ledger_summary_s4.py | OK / OK |
+| npm --prefix desktop run build | tsc + vite build 通过 |
+
+**复测操作指引（给用户，重启开发版后执行）：**
+
+1. 点「整理材料」：DSH 配置卡（已 approve_card）应显示「已处理跳过」，不再占批次名额；若有 pending 的 kr-1794055842 审核项可先裁决。
+2. 重新整理 DSH 长文：预期模型拆卡或宿主兜底拆分，产出（上）（中）（下）多卡且全部 ≤420 字，进入审核。
+3. 审核通过后重建关系索引：旧「链接未解析」冲突应从审核队列消失（normalize_split_links 已修 7 处基名引用）。
+4. 对话检索提问验证命中带引用。四步全通 → OD-KB-201 收口提交（用户批准批次与信息）。
+
+
+
+## OD-KB-201 复测缺陷 D（用户复测，2026-11-07）——已整理材料会重复进入整理批次；S5 补充三修复要求
+
+**现象（用户复测）：** raw/ 里已审核纳入的两份材料（03-辅导报告要点.md、DSH自定义模型配置）每次点「整理材料」都再次进批次；模型对已建卡内容再次提取，重复卡因标题重复被拒、新卡（宣讲报告部门化落实样板）重复消耗整理额度；两份 DSH 配置拆分卡 448/446 字仍超 420 上限被跳过。
+
+**根因核对（源码确认）：** select_ingest_notes（knowledge_ingest.rs:1035）按「inbox 全部 + raw 按修改时间新到旧、每批 5 份」选材，**没有任何已处理标记**——治理记录里有完整 admit/approve_card 台账，但选材路径不读它。inbox 材料靠审核通过时归档移走实现「处理完就消失」，raw/ 是原始资料层设计上不移走，于是永久重复。这不是回归，是 S5 补充（raw 进批次）时未闭环「处理过的不再进」。
+
+**次生现象核对：** 拆卡规范 320 触发后，模型对 9401 字的 DSH 长文拆出 448/446 字的卡——拆卡发生了，但每段仍超 420。9401 字拆三段本就每段 3000+ 字，模型压缩到 420 内需要更强的拆分指令（拆卡上限应写明「每张 ≤320 字是拆分后的目标」），当前规范只说「超过 320 必须拆」未说「拆出的每张也要 ≤320」。
+
+**S5 补充三修复要求（交执行会话）：**
+
+1. 已处理材料自动排除：选材时读治理台账——review-decisions 里存在以该 raw 路径为 sources 的 approve_card 记录（或独立 processed_raws.v1.md 登记表，执行会话二选一并写明理由），且该路径内容哈希未变化（比对 raw_admissions 的 sha256 与当前文件哈希）→ 跳过不进批次；哈希变了（文件更新过）→ 重新进批次。inbox 归档机制不变。面板与批次明细里显示「已处理跳过」计数，用户知道为什么少了。
+2. 拆卡上限自指：三处规范补一句「拆出的每张卡正文同样 ≤320 字；长文按主题段拆，先拆再压，不允许拆完仍超」；把 448 字这类「拆了还超」的卡挡在模型侧。
+3. 测试：Rust 单测——同一路径有 approve_card 且哈希未变 → select 不含；哈希变 → 重新入选；无记录 → 入选。verify 断言批次明细含「已处理跳过」。
+
+
+
+## OD-KB-201 S5 补充二审查结论（ARCHITECT，2026-11-07）——通过（最终闭环复测与收口提交待用户）
+
+**结论：通过。** 执行会话按 PLANS.md「S5 补充二」完成长度上调与自动拆卡规范；本人逐行核对实际 diff 并亲自复跑验证。
+
+**核对要点：**
+
+- 数值三处同改且一致：JSON_OUTPUT_SPEC 320（明确「320 是写作目标也是拆卡触发点」）、宿主 CARD_MAX_CHARS=420（knowledge_ingest.rs:33，约 100 字容差）、skills/knowledge-agent 第三节「长度与拆分」与 skills/knowledge-search 卡片规范同步 320。verify 断言与 engine 接口单测同步更新。
+- 自动拆卡规范：超 320 必须拆卡，标题统一「原标题（上）/（中）/（下）」，每张独立 title / relative_path / index_line / sources，索引行「参见：」互链；宿主不强制拆卡，单卡超 420 拒收该卡（rejected_cards 警告随审核项展示）。与批准方案一致。
+- 新增 Rust 单测 validator_accepts_three_split_cards_with_cross_references：三张拆分卡（上）（中）（下）同批校验通过、三行索引互含「参见：」，覆盖拆分批次的宿主验收路径。
+- 检索预算不变：KNOWLEDGE_MAX_CARDS=2、KNOWLEDGE_CONTEXT_MAX_CHARS=3000（knowledgeRetrieval.ts:34）；2×420=840 < 3000，上下文不超限。
+- 旧 350 上限下被跳过的 377 字卡：新口径 420 落地后重新整理即可进入审核，STATUS 已写明两条路径（通过现有 2 卡 / 重新整理）。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline 全量 | 625 passed / 0 failed（S5 主轮 624 + 拆分卡单测 1） |
+| test_knowledge_ingest_unit.py | 8/8（含「正文不超过 320 字」断言） |
+| verify_knowledge_ingest_ui_141 / hub_s3 / quality_s4 / governance_s2 | 22 + 46 + 21 + 18 全过 |
+| npm --prefix desktop run build | 通过 |
+
+**收口前置（待用户）：** ① 真实窗口复测「整理（触发一次拆卡更佳）→ 审核通过 → 检索命中带引用」闭环；② 复测通过后批准一次性提交 S1-S5 全部改动（提交批次与信息由执行会话准备，用户批准后执行）。
+
+
+
+## OD-KB-201 S5 审查结论（ARCHITECT，2026-11-07）——通过（代码与测试层面；最终收口待用户复测闭环 + 批准提交）
+
+**结论：通过。** 执行会话按 PLANS.md「S5 修订版」修复用户实测三缺陷，并追加三项复测改进。本人逐行审查实际 diff（engine/knowledge_ingest.py、knowledge_ingest.rs、knowledge_review.rs、knowledgeHub.ts、knowledgeRetrieval.ts、HomeChat.tsx、KnowledgeIngestPanel.tsx、skills/knowledge-search）并亲自复跑验证。
+
+**修复核对（逐项对照缺陷清单）：**
+
+- 缺陷 A（阻断整理）：规范与校验两端同口径——JSON_OUTPUT_SPEC sources 改为「本批次真实存在的文件（inbox/ 或 raw/）」，宿主 validate_payload 放行 inbox/ 与 raw/（含 PDF 附件）；审核通过归档时 rewrite_archived_sources 把卡内 inbox 来源改写到 知识库/原文/，保证归档后引用仍可解析。长度 280（模型）/350（宿主，70 字容差）。
+- 缺陷 B（链接误报）：knowledgeHub.ts 冲突构建排除「索引.md 原始资料小节指向 raw/」的未解析/歧义项；vault_index 未动，改动面最小，与计划选择一致。
+- 缺陷 C（口径混淆）：knowledgeNoticeText 区分「知识卡命中」与「原始资料/索引行命中」，明确「未命中 AI 知识卡时本轮未注入卡片上下文」；检索逻辑本身未改。
+
+**复测追加的三项改进（对照用户真实使用暴露的问题）：**
+
+- raw 可见性：整理批次从只读 inbox/ 改为 select_ingest_notes——inbox 全部优先，raw/ 只取可读文本（.md/.txt）按修改时间新到旧，每批最多 5 份；按钮改「整理材料」。用户上传的 raw 材料现在能被整理链路看到。
+- 单卡超长不挡整批：stage 只保留通过校验的卡进审核，超限/重复卡作为 rejected_cards 警告随审核项展示且不落盘；全部无效才整批拒绝。用户复测 413 字卡被跳过、2 张有效卡正常暂存——行为符合预期。
+- 整理轮询误报：面板轮询从 180 秒延长到 900 秒，显示已等待秒数、不自动取消，15 分钟后仍非终态才如实提示。与 OD-ARCH-145「不自动停止」哲学一致。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline 全量（lib + 全部集成） | 624 passed / 0 failed（S4 后 619，S5 新增 5 项：stage 跳过超长卡保留有效卡、全部无效才拒绝等） |
+| verify_knowledge_hub_ui_s3.py / quality_s4 / governance_s2 / ingest_ui_141 | 46 + 21 + 18 + 22 全过 |
+| python3 tests/verification/engine-interface/adapter/test_knowledge_ingest_unit.py | 8/8（规范文案与 sources 约束断言同步） |
+| npm --prefix desktop run build | tsc + vite build 通过 |
+
+**已知批量失败（不属于 S5 改动面，记录在案）：** verify_hover_hint_101（旧计数）、verify_multiturn_unit、verify_plugin_scope_104（旧路径）、verify_profile_presets_082、verify_project_102、verify_scenario_materials、verify_weekly_099、verify_windows_packaging_134——均为历史脚本与当前产品状态脱节，执行会话未改动这些测试或对应产品代码；34 个窗口自动化脚本需窗口 harness 未在本机跑。这些不阻断 S5，但 S5 收口提交前应明确「哪些要在收口内修、哪些记为已知脱节」。
+
+**收口前置（待用户完成）：** 用户最后一次复测确认「审核项通过并纳入 → 检索命中带引用」闭环；然后按用户批准一次性提交 S1-S5 全部改动。
+
+
+
+## OD-KB-201 真实界面端到端验证（用户实测，2026-11-07）——发现 3 个缺陷，S5 前必须修复
+
+**实测结果（用户真实窗口，2026-11-07）：** 步骤 1 成功；步骤 2 失败（缺陷 A）；步骤 3 有缺陷表现（缺陷 B）；步骤 4 成功；步骤 5 可用但路径描述有偏差（缺陷 C，模型行为非代码缺陷）；步骤 6 成功。
+
+- **缺陷 A（高，阻断整理链路）：模型按提示词规范把 sources 写成 `知识库/原文/...`，但真实材料在 inbox/ 未归档时 validate_payload 要求 sources 指向扫描结果中真实存在的文件 → 来源不存在，整批卡片被拒。同时 300 字上限按 frontmatter 之外正文计，模型不易精确控制（本次 326 字被拒）。两项共同导致：真实材料第一次整理必然失败或高概率失败。** 根因：141 时代的建卡规范（engine/omnidesk_engine/knowledge_ingest.py JSON_OUTPUT_SPEC）写死 sources 指向「收件箱或原文目录」，与 S3 引入的「先暂存审核、通过才归档」新流程脱节——审核发生时原文还在 inbox/（或已是 raw/），卡片却声称来源在 原文/。
+- **缺陷 B（中，干扰审核）：原始资料准入后索引行链接指向 raw/<文件名>，vault_index 的 resolve_target 按「笔记路径」解析（raw/ 文件不是 LoadedNote，也不在附件白名单口径），索引行被报「链接未解析」进审核冲突队列。raw 索引行的链接目标不是普通 wiki 链接，不应按未解析链接计。**
+- **缺陷 C（低，记录在案）：对话检索命中 raw/ 索引行后，模型答文里说「索引指向的知识库/raw/ 目录不存在」——目录确实不存在（raw/ 在库根），模型推断正确但口径易混淆；filterKnowledgeHits 已把 raw/ 排除在引用卡之外，用户看到的「命中一张卡」实为索引行上下文命中。属提示词/检索口径的表述问题，不阻断。
+
+**S5 修复要求（进入收口前必须完成）：**
+
+1. 建卡规范与校验口径统一到新流程：sources 允许指向本次整理批次实际存在的文件（inbox/ 与 raw/），JSON_OUTPUT_SPEC 与 validate_payload 同步改；归档动作改为「审核通过时由宿主把 inbox 原文移 原文/，并回写卡片 sources 或保持相对引用」。
+2. 卡片长度上限给模型可操作的指引（如「正文 280 字内」或放宽宿主校验至 350），规范与校验必须同口径，不允许必然失败的组合。
+3. raw 索引行不进链接解析：buildKnowledgeConflicts 排除「索引.md 原始资料小节指向 raw/」的未解析项；或 vault_index 对 raw/ 目标标 attachment/ignore。二选一，执行会话写明选择。
+4. 修复后重跑本端到端（重点：同一份真实材料整理 → 审核 → 检索全通）。
+
+
+
+## OD-KB-201 S4 审查结论（ARCHITECT，2026-11-07）——通过（真实界面端到端验证仍为前置遗留）
+
+**结论：通过（代码与测试层面）。** 执行会话按 PLANS.md「S4 执行要点」实施；本人逐行审查实际 diff（新增 knowledge_quality.rs 253 行与 verify_knowledge_quality_s4.py；KnowledgeDashboard.tsx 三项增强；types/api 接线；task_core.py 补错误字段）并亲自复跑验证。
+
+**审查要点（逐项核对源码）：**
+
+- 三项增强都在驾驶舱健康卡内，无独立质量页（verify 脚本 three_tabs_only / no_quality_page_tab 断言）——与定稿结构一致。
+- 过期检查（knowledge_quality.rs）是纯确定性实现：解析索引行与 raw 准入治理记录里的 YYYY-MM-DD，超阈值标「可能过期」；不调模型、不加依赖；有固定时间注入测试、阈值边界测试（恰好 N 天不过期、N+1 天过期）、非法日期忽略测试。阈值配置在应用数据根 config/knowledge-quality.v1.json（缺失用默认 180 天，损坏明确报错不静默放宽，1-3650 天范围校验）——计划只要求「可配置」，执行会话选独立配置文件并在 STATUS 写明理由，接受。
+- 检索抽检：复用既有 vault_search 全文检索（卡片明确标注「全文检索 · 非向量」），显示命中数、检查范围、命中区域与原文上下文，可跳资产页；预算耗尽时如实标注「结果不完整」。无向量/嵌入，与计划边界一致。
+- 任务记录补全：引擎 TaskRecordSummary 增加 error_code / error_message / intent 字段（task_core.py），驾驶舱任务列表显示失败原因；这是引擎读侧的窄扩展，不改提交/取消协议。
+- 数据诚实：过期清单、抽检结果均为可复算的确定性产物；无数据时空态如实。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline 全量（lib + 全部集成） | 619 passed / 0 failed（S3 后 615，S4 新增 4 项 quality 单测全过） |
+| python3 tests/verification/desktop/verify_knowledge_quality_s4.py | 21/21 |
+| python3 tests/verification/desktop/verify_knowledge_hub_ui_s3.py | 46/46 |
+| python3 tests/verification/desktop/verify_knowledge_governance_s2.py | 18/18 |
+| python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py | 22/22 |
+| npm --prefix desktop run build | tsc + vite build 通过 |
+
+**限制与后续（不阻断本轮通过）：**
+
+- **真实界面端到端验证仍是前置遗留**（S3 审查时已列为第一优先项，本轮执行会话也在 STATUS 如实标注「待用户确认」）：需用户在真实窗口走「上传 raw - 整理收件箱 - 审核通过 - 资产可见 - 对话检索引用 - 检索抽检」。此项通过后 S1-S4 才算产品级验收，之后做 S5 收口提交。
+- 过期阈值暂无界面编辑器（改配置文件生效）；驾驶舱显示当前阈值。
+- S2 跨文件事务限制延续；检索抽检依赖全文检索质量，若实测发现命中率不足，向量化议题再议（需单独计划与批准）。
+
+
+
+## OD-KB-201 S3 审查结论（ARCHITECT，2026-11-07）——通过（待真实界面验证）
+
+**结论：通过。** 执行会话按 PLANS.md「S3 执行要点」实施；本人逐行审查实际 diff（新增 knowledge_review.rs、KnowledgeDashboard.tsx、KnowledgeReviewCenter.tsx、knowledgeHub.ts、verify_knowledge_hub_ui_s3.py；KnowledgeVaultPage.tsx 重构、lib.rs +119、api.ts/types.ts 接线）并亲自复跑验证。
+
+**审查要点（逐项核对源码）：**
+
+- 三页结构：KnowledgeVaultPage 改为 dashboard / review / assets 三页签（HubPage），与定稿预览一致；图谱从一级入口撤下，只在驾驶舱健康卡动作内打开（graphOpen 状态 + 返回驾驶舱按钮 + 图谱节点跳资产页），不再是独立页签。
+- 审核暂存是本轮最重要的架构改进：新增 knowledge_review.rs，模型整理结果先 stage 到仓库外 engine-state/knowledge-reviews/*.json 并记一条 propose 治理记录，未经人工裁决不写知识库；approve 才走既有 apply_payload 落卡 + 更新索引 + 归档原文；驳回/需要修改只落治理记录。前端整理面板已从「apply 直接落盘」改为「stage 等审核」，141 时代的直落链路按计划关闭。
+- 记录健壮性：审核记录 ID 白名单（字母数字-_、80 字符内）；损坏记录跳过并计数（broken 字段）不阻断列表；schema 版本校验。
+- 冲突裁决：resolve_conflict 落 governance 记录；buildKnowledgeConflicts 从扫描重名/索引问题构建冲突清单，已 resolved 的不再显示；deferred / needs_more 保留待定。
+- raw 上传接前端：Tauri 文件选择框给绝对路径，宿主 read_raw_file 校验（绝对路径、普通文件、大小上限）后读字节准入；前端不读文件字节。
+- 驾驶舱数据全部真实：五格指标取自 vault scan、governance 记录、taskRecords（engine_task_records 既有命令）；来源可追溯率按「治理准入记录里出现过该 raw 路径」计算，是真实登记率不是估算；无数据时显示「暂无」。
+- 资产默认只读：loadNote 后 setMode(preview)，编辑必须显式点「编辑此条」（既有编辑器/冲突检测链路不变）。
+- 治理只读边界保持：前端无治理写命令（verify 脚本 no_governance_write_ipc 等断言通过）。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline 全量（lib + 全部集成） | 615 passed / 0 failed（S2 后 610，S3 新增 5 项 Rust 测试全过：暂存/驳回、通过落卡+检索命中、损坏记录跳过、冲突裁决、raw 路径读取） |
+| python3 tests/verification/desktop/verify_knowledge_hub_ui_s3.py | 46/46（三页签、审核暂存语义、冲突裁决、治理只读、raw 上传接线） |
+| python3 tests/verification/desktop/verify_knowledge_governance_s2.py | 18/18 |
+| python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py | 22/22 |
+| npm --prefix desktop run build | tsc + vite build 通过 |
+
+**限制与后续（不阻断本轮通过）：**
+
+- S1-S3 已构成完整闭环（资料准入 raw/ - 整理暂存审核 - 通过落卡 - 检索引用），但真实界面端到端仍未做：需要用户在真实窗口走一遍「上传 raw - 整理收件箱 - 审核通过 - 资产可见 - 对话检索引用」。这是 S4 的第一优先验证项。
+- 驾驶舱「AI 最近工作」数据源为任务台账最近记录，台账为空显示空态——与数据诚实约束一致。
+- 治理记录写入失败不回滚 raw/ 与索引的 S2 限制延续；S3 decide 链路同样如实回报 governance_errors。
+
+
+
+## OD-KB-201 S2 审查结论（ARCHITECT，2026-11-07）——通过（待真实界面验证）
+
+**结论：通过。** 执行会话按 PLANS.md「S2 执行要点」实施；本人逐行审查实际 diff（新增 knowledge_governance.rs 318 行；knowledge_ingest.rs、knowledge_vault.rs、lib.rs 的 S2 增量）并亲自复跑验证。
+
+**审查要点（逐项核对源码）：**
+
+- 位置与形态：治理目录为 vault 根下 governance/，与 raw/ 平级，不是仓库 knowledge/ 目录——与计划一致；三类文件（raw_admissions / review-decisions / admission-rules）均为 Markdown 单行元数据，未引入数据库。
+- AI 无写权（代码级）：写入口只有宿主函数 append_record / append_record_at；IPC 只暴露 knowledge_governance_list（只读）；静态断言验证前端 api.ts 与 engine/ 全部 Python 源码中不存在治理写命令名，engine 源码不含 governance/ 路径。
+- 脱敏钩子：三个文本字段写入前都过 mask_privacy（与工作记录同一 RulePolicy）；有专门测试断言手机号以打码形态落盘、明文不出现在文件里；字段清洗把竖线转全角、控制字符转空格，保住单行格式。
+- 原子性：追加走 vault_write::save_note（冲突检测 + 临时文件 + rename），新建走 create_note（硬链接发布），失败不留半截行。
+- 扫描排除：scan_vault 只在 vault 根层跳过 governance/（不做全树同名排除），有测试断言治理文件不进扫描结果、skip 明细带 governance 原因——执行会话选了「排除目录」方案并写明理由，符合计划二选一要求。
+- S1 挂钩：admit_raw_files_with_policy 每次准入成功后记一条准入记录（action=admit，subject=raw/实际名，sha256 前 12 位，note 含原名与字节数）；换名时治理记录保留原名（AdmittedRawFile 增加 original_name）；IPC knowledge_raw_admit 现在经 current_rule_policy 装载真实 Profile 隐私策略——S1 遗留的策略缺口顺带补上。
+- 诚实边界：治理记录写入失败在 RawAdmitReport.errors 如实回报，已落盘 raw 与索引不回滚（跨文件事务明确不在 S2 范围）——这是记录在案的限制，不是缺陷。
+
+**本人复跑的验证（实际运行）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline --lib | 543/543（S1 后 536，S2 新增 7 项治理测试全过） |
+| cargo test --offline 全量（lib + 全部集成） | 610 passed / 0 failed |
+| python3 tests/verification/desktop/verify_knowledge_governance_s2.py | 18/18（含 AI 无写权、engine 无治理路径、扫描排除断言） |
+| python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py | 22/22 |
+| npm --prefix desktop run build | 通过 |
+
+**限制与后续（不阻断本轮通过）：**
+
+- 治理记录写入失败时 raw/ 与索引不回滚：单条准入可能出现「raw 在、治理记录缺」的组合；S3 审核中心接入后若实测影响裁决追溯，再评估跨文件事务。
+- 治理文件的并发追加窗口（读-改-写之间）沿用 vault_write 既有 race window 说明，S2 未扩大。
+
+
+
+## OD-KB-201 S1 审查结论（ARCHITECT，2026-11-07）——通过（待真实界面验证）
+
+**结论：通过。** 执行会话按 PLANS.md「S1 执行要点」实施；本人逐行审查实际 diff（knowledge_ingest.rs +594、lib.rs +18）并亲自复跑验证。
+
+**审查要点（逐项核对源码）：**
+
+- 目录骨架：RAW_DIR 加入 init_vault 六目录幂等骨架；索引模板追加「## 原始资料」小节；重复 init 不重写既有索引。
+- 准入安全：validate_raw_name 拒绝路径片段（../、dir/）、隐藏名、控制字符与破坏 Markdown 链接的字符；raw 目标为符号链接或非常规文件时拒绝；写入走「临时文件 + fsync + 硬链接发布」，目标已存在原子失败，绝不覆盖。
+- 去重：索引「原始资料」小节既有哈希 + 批内累积哈希双重比对（批内同内容第二个文件也被拒）；同时核对 raw/ 磁盘上同名文件的实际内容哈希，磁盘已有同内容文件即使索引无记录也拒绝——预研时记录的「只读索引」去重盲区已被执行会话补上。
+- 换名：同名不同内容以「原名-哈希前12位」换名新增，原文件字节级不动（有专门断言读到旧内容）。
+- 原子性与回滚：索引保存失败时删除本轮已发布 raw 文件；有强制回滚测试（索引撑超单文件上限后准入，断言 raw 目录为空、索引未变）。
+- 索引行：准入时间（RFC3339，含 +08:00 断言）、sha256、字节数；链接目标用尖括号包裹，文件名含空格仍是合法 Markdown 链接。
+- IPC：knowledge_raw_admit 只做「读配置 - 校验根 - init_vault - admit」，无额外写通道；已注册 invoke_handler。
+
+**本人复跑的验证（实际运行，非转述执行会话输出）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline --lib（复跑 4 次，其中一次单线程全量） | 536/536（首次出现 1 failed，复跑未再现；判定为环境偶发，非本轮代码缺陷） |
+| cargo test --offline 全量（lib + 全部集成） | 603 passed / 0 failed |
+| python3 tests/verification/desktop/verify_knowledge_ingest_ui_141.py | 22/22（含新增 3 项 raw 断言） |
+| npm --prefix desktop run build | tsc + vite build 通过 |
+
+**限制与后续（不阻断本轮通过）：**
+
+- 前端尚未接 knowledge_raw_admit（S1 范围本就不含前端入口）；真实界面上传 raw 附件的手动验证归 S3。
+- 工作区含 146 既有前端改动与本轮 S1 改动，均未提交，验收后由用户决定提交时机。
+
+## OD-KB-201 规划登记（ARCHITECT，2026-11-07）——规划完成，未实施、未验收
+
+**本条是规划登记，不是验收结论。** OD-KB-201 为知识库重构（LLM-Wiki 定位）规划：先读仓库现状（PLANS/GOALS/decisions、knowledge/README、knowledge_ingest.rs、knowledge_vault.rs、vault_index.rs、vault_search.rs、KnowledgeVaultPage.tsx、App.tsx、REVIEW.md 的 141–146 条目），再写入 PLANS.md 的 OD-KB-201 条目。事实依据：OD-ARCH-141/144 已建立「宿主校验落盘 + 脱敏 + 两跳检索引用」链路，OD-ARCH-146 S3 已完成整理入口迁移，与规划中「复用现有链路、只补 Raw/Governance 目录与审核界面」的判断一致。引用产品截图库（screenshots-design-inspiration）的 Shopify 管理后台作为审核队列布局参考（借鉴要点：左队列右详情、批量操作与状态徽标）。本条仅记录规划依据与证据边界；实施后按各阶段写入独立审查结论。
+
+## OD-ARCH-146 审查结论（ARCHITECT，2026-11-06）——通过（待真实界面验证）
+
+**结论：通过。** S1（对话后台存活）、S2（输入框 4 行自适应）、S3（整理入口迁移）与批准后的计划一致；S4 知识库页面重构按用户决定未做，仅保留入口迁移。
+
+**复核范围：** HEAD `177a8292ea` + 工作区改动（PLANS.md、STATUS.md、sceneThreads.ts、HomeCanvas.tsx、HomeChat.tsx、KnowledgeVaultPage.tsx、KnowledgeIngestPanel.tsx、两个验证脚本）。逐行检查了任务号写入与清空的时机、卸载期间 promise 继续回调的路径、重挂后的恢复顺序（先载入消息再补占位再轮询）、textarea 高度上限与键位逻辑、整理面板落点与扫描刷新。`runtime/` 零差异，零提交，零推送。
+
+**关键判断：**
+
+1. **恢复顺序正确。** threadKey effect 先载入档案消息，恢复 effect 再补缺失的助手占位；轮询 effect 声明在后，首轮 tick 就能对上 taskId。终态回读走 task_result，不依赖卸掉的事件监听。
+2. **任务不会被卸载取消。** 卸载只停止本组件的轮询；引擎侧任务照常执行。切页发生在拿到任务号之前时，提交 promise 的回调仍把任务号写入档案，HomeCanvas 通过档案订阅同步到新挂载的组件。
+3. **清理路径完整。** 终态 settle 与最大轮询失败都会清空在途任务号；不会出现「任务已结束但档案仍显示等待」的滞留。
+4. **输入框键位未变。** Enter 发送、Shift+Enter 换行保留；高度在约 96px（约 4 行）封顶后内部滚动。
+5. **整理入口归属修正。** 对话工具行不再渲染面板；知识库顶部操作区提供入口，整理成功后刷新扫描结果。
+
+**本人实跑结果：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过 |
+| `verify_chat_recovery_146.py` | 16/16 通过 |
+| `verify_knowledge_ingest_ui_141.py` | 19/19 通过 |
+| `verify_starting_145.py` | 12/12 通过 |
+| `verify_attachments_077.py` / `verify_conversation_prompt.py` | 25/25、26/26 通过 |
+| `cargo test --offline` | 全量通过，0 failed |
+
+**风险与未验证：**
+
+- **[P2] 真实界面复测未跑。** 需要用户在打包版本里实测三条路径：提交后切页再切回、粘贴长文本、知识库内整理收件箱。静态接线不能替代真实交互。
+- **[P3] 应用重启后的残留任务号。** 档案里若有上次进程的任务号，宿主查不到；轮询连续失败 5 次后停下并提示「任务状态未知」，不会误报成功，也不会自动重发。
+- **[P3] 返回首页仍打开线程列表第一条。** 这是既有行为；若在途任务属于较旧线程，需要用户打开该线程才看到恢复后的结果。
+- **[P3] 知识库脚本 p3/p4/059 在本机跑不了。** 脚本按字面 `/tmp` 校验，macOS 上 `/tmp` 解析为 `/private/tmp`，属既有环境限制，与本轮改动无关。
+
 ## OD-ARCH-145 审查结论（ARCHITECT，2026-11-06）——通过（附 2 条基线风险记录）
 
 **结论：通过。** A（stderr 落盘）、B（starting 兜底提示）、C（starting 取消可恢复）三项实现与计划一致，实现代码逐行核对无误，回归全绿。真实复现验证仍待用户实测，与本计划"待真实复现验证"的口径一致。
@@ -3631,5 +3925,3 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 **已知限制（不作缺陷计）：** 修复不装插件（联网，必须独立触发）；修复不改 `runtime/`、不碰 `~/.dsh`；改 `skills/` 后仍需重建二进制才进用户机器；真实模型端到端仍未测；`worklog.rs::AppendReceipt::failure` 的 dead_code 告警与本轮无关。
 
 **未提交未推送：** 按批准范围只执行，工作区改动原样保留。
-
-

@@ -1,25 +1,25 @@
 import { useState } from "react";
 
 import { host, shell } from "../api";
-import { TERMINAL_STATES, type KnowledgeIngestApplyReport, type KnowledgeIngestPrepare } from "../types";
+import { TERMINAL_STATES, type KnowledgeIngestPrepare, type KnowledgeReviewItem } from "../types";
 import { Icon } from "../components/Icon";
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 type Phase = "idle" | "preparing" | "running" | "applying" | "done" | "error";
 
-/** 首页/工作记录场景的「整理收件箱」入口（OD-ARCH-141 S6）。 */
-export function KnowledgeIngestPanel() {
+/** 知识库页面的「整理材料」入口：inbox/ 与 raw/ 可读文本进入审核队列。 */
+export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } = {}) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [prepared, setPrepared] = useState<KnowledgeIngestPrepare | null>(null);
-  const [report, setReport] = useState<KnowledgeIngestApplyReport | null>(null);
+  const [staged, setStaged] = useState<KnowledgeReviewItem | null>(null);
   const [message, setMessage] = useState("");
 
   const prepare = async () => {
     setPhase("preparing");
-    setReport(null);
-    setMessage("正在扫描收件箱并组装整理提示词…");
+    setStaged(null);
+    setMessage("正在扫描 inbox/ 与 raw/ 并组装整理提示词…");
     try {
       await shell.knowledgeIngestInit();
       const result = await shell.knowledgeIngestPrepare();
@@ -27,8 +27,12 @@ export function KnowledgeIngestPanel() {
       setPhase("idle");
       setMessage(
         result.files.length > 0
-          ? `收件箱 ${result.files.length} 份材料待整理（最多每批 5 份）。`
-          : "收件箱没有可整理的材料。",
+          ? `待整理 ${result.files.length} 份材料（inbox 优先，raw 新→旧，最多每批 5 份）` +
+              (result.skipped_processed > 0
+                ? `；已处理跳过 ${result.skipped_processed} 份`
+                : "") +
+              "。"
+          : "inbox/ 与 raw/ 没有可整理的可读文本（.md/.txt）。",
       );
     } catch (e) {
       setPhase("error");
@@ -38,7 +42,7 @@ export function KnowledgeIngestPanel() {
 
   const run = async () => {
     setPhase("running");
-    setReport(null);
+    setStaged(null);
     setMessage("正在提交整理任务…");
     try {
       const prep = prepared ?? (await shell.knowledgeIngestPrepare());
@@ -54,27 +58,45 @@ export function KnowledgeIngestPanel() {
         userInputText: prep.user_input_text,
       });
       let status = await host.taskStatus(receipt.omni_task_id);
-      for (let i = 0; i < 180 && !TERMINAL_STATES.includes(status.status); i += 1) {
+      // 真实材料可能让模型整理超过 3 分钟；这里不再按 180 秒误报「未完成」。
+      // 不自动取消任务；15 分钟仍非终态时如实提示，用户可关闭面板后稍后重试。
+      for (let i = 0; i < 900 && !TERMINAL_STATES.includes(status.status); i += 1) {
         await sleep(1000);
         status = await host.taskStatus(receipt.omni_task_id);
+        if (i % 10 === 0) {
+          setMessage(`模型正在整理材料…已等待 ${i + 1} 秒（不会自动取消）`);
+        }
       }
       if (status.status !== "succeeded") {
-        throw new Error(`整理任务未完成：${status.status}${status.note ? " · " + status.note : ""}`);
+        throw new Error(
+          `整理任务仍未完成：${status.status}${status.note ? " · " + status.note : ""}` +
+            (TERMINAL_STATES.includes(status.status)
+              ? ""
+              : "；已等待 900 秒，任务没有自动取消，可关闭面板后稍后再试。"),
+        );
       }
       const result = await host.taskResult(receipt.omni_task_id);
       if (!result.content.trim()) {
         throw new Error("模型没有返回整理结果。");
       }
       setPhase("applying");
-      setMessage("正在校验并落盘…");
-      const applied = await shell.knowledgeIngestApply(result.content);
-      setReport(applied);
-      setPhase(applied.ok ? "done" : "error");
-      setMessage(
-        applied.ok
-          ? `已建 ${applied.created.length} 张卡，索引${applied.index_updated ? "已更新" : "未更新"}。`
-          : "整理结果已校验，但有卡片未通过；请看下方报告。",
+      setMessage("正在校验并送入人工审核…");
+      // OD-KB-201 S3：apply 前必须先出审核卡；这里只暂存，不写知识库。
+      const item = await shell.knowledgeReviewStage(
+        result.content,
+        prep.files.map((file) => file.relative_path),
       );
+      setStaged(item);
+      setPhase("done");
+      setMessage(
+        `已生成待审核项：${item.card_count} 张卡` +
+          (item.rejected_cards.length > 0
+            ? `；${item.rejected_cards.length} 张未通过校验已跳过`
+            : "") +
+          "。请到「知识审核」裁决后落盘。",
+      );
+      // 通知知识库页面刷新审核队列与扫描结果。
+      onApplied?.();
     } catch (e) {
       setPhase("error");
       setMessage(String(e));
@@ -94,11 +116,11 @@ export function KnowledgeIngestPanel() {
             void prepare();
           }
         }}
-        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
-        data-hover-hint="把 inbox/ 里的材料交给模型整理成知识卡，并由工作台校验落盘"
+        className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-45"
+        data-hover-hint="把 inbox/ 与 raw/ 里的可读文本交给模型整理成知识卡；未经审核不落盘"
       >
         <Icon name="spark" className="w-[13px] h-[13px]" />
-        <span>整理收件箱</span>
+        <span>整理材料</span>
       </button>
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4">
@@ -108,14 +130,14 @@ export function KnowledgeIngestPanel() {
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[14px] font-medium text-on-surface">整理收件箱</p>
-                <p className="text-[11px] text-outline">只处理 inbox/ 前 5 份材料；模型结果必须通过宿主校验。</p>
+                <p className="text-[14px] font-medium text-on-surface">整理材料</p>
+                <p className="text-[11px] text-outline">inbox/ 全部优先，raw/ 只取可读文本并按新→旧；每批最多 5 份。</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 className="text-outline hover:text-on-surface"
-                aria-label="关闭整理收件箱"
+                aria-label="关闭整理材料"
               >
                 ×
               </button>
@@ -135,21 +157,16 @@ export function KnowledgeIngestPanel() {
               {message || "准备就绪。"}
             </p>
 
-            {report ? (
+            {staged ? (
               <div data-testid="knowledge-ingest-report" className="rounded-lg bg-surface-container-low p-2.5 text-[11.5px] space-y-1">
-                <p>新建 {report.created.length} 张；跳过 {report.rejected_cards.length} 张；归档 {report.moved.length} 份。</p>
-                {report.created.map((card) => (
-                  <p key={card.relative_path} className="truncate text-on-surface-variant">✓ {card.relative_path}</p>
+                <p>待审核 {staged.card_count} 张；尚未写入知识库。</p>
+                {staged.cards.map((card) => (
+                  <p key={card.relative_path} className="truncate text-on-surface-variant">◦ {card.title} · {card.relative_path}</p>
                 ))}
-                {report.rejected_cards.map((card) => (
-                  <p key={card.relative_path} className="text-error">× {card.relative_path}：{card.reason}</p>
+                {staged.rejected_cards.slice(0, 5).map((rejected) => (
+                  <p key={rejected.relative_path} className="text-error">× 跳过 {rejected.relative_path}：{rejected.reason}</p>
                 ))}
-                {report.move_errors.map((item) => (
-                  <p key={item.relative_path} className="text-error">× 归档 {item.relative_path}：{item.reason}</p>
-                ))}
-                {report.errors.map((error) => (
-                  <p key={error} className="text-error">× {error}</p>
-                ))}
+                {staged.parse_error ? <p className="text-error">× {staged.parse_error}</p> : null}
               </div>
             ) : null}
 

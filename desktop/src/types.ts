@@ -569,6 +569,8 @@ export interface KnowledgeIngestPrepare {
   /** OD-ARCH-144：inbox 原文，提交时作为红线扫描对象；与 prompt 同批。 */
   user_input_text: string;
   index_path: string;
+  /** S5 补充三：已 approve 且哈希未变、已从 raw/ 批次排除的数量。 */
+  skipped_processed: number;
 }
 
 export interface KnowledgeIngestApplyReport {
@@ -579,6 +581,83 @@ export interface KnowledgeIngestApplyReport {
   moved: Array<{ from: string; to: string }>;
   move_errors: Array<{ relative_path: string; reason: string }>;
   errors: string[];
+}
+
+/** OD-KB-201 S1/S3：raw 准入回执与上传结果。 */
+export interface KnowledgeRawAdmittedFile {
+  original_name: string;
+  relative_path: string;
+  sha256: string;
+  bytes: number;
+  renamed: boolean;
+}
+
+export interface KnowledgeRawAdmitReport {
+  ok: boolean;
+  admitted: KnowledgeRawAdmittedFile[];
+  rejected: Array<{ relative_path: string; reason: string }>;
+  index_updated: boolean;
+  index_path: string;
+  errors: string[];
+}
+
+/** OD-KB-201 S2：治理文件中的一行。 */
+export interface KnowledgeGovernanceRecord {
+  at: string;
+  action: string;
+  subject: string;
+  sha256: string;
+  note: string;
+}
+
+/** OD-KB-201 S3：待审核的模型整理结果。 */
+export interface KnowledgeReviewCard {
+  relative_path: string;
+  title: string;
+  content: string;
+  sources: string[];
+}
+
+export interface KnowledgeReviewItem {
+  id: string;
+  status: "pending" | "approved" | "request_changes" | "rejected" | string;
+  created_at: number;
+  decided_at: number | null;
+  card_count: number;
+  cards: KnowledgeReviewCard[];
+  source_paths: string[];
+  parse_error: string | null;
+  /** 阶段校验中未进入审核的卡片（如超长/重复），不落盘。 */
+  rejected_cards: Array<{ relative_path: string; reason: string }>;
+  warnings: string[];
+}
+
+export interface KnowledgeReviewListing {
+  items: KnowledgeReviewItem[];
+  broken: number;
+}
+
+export interface KnowledgeReviewDecision {
+  review: KnowledgeReviewItem;
+  apply: KnowledgeIngestApplyReport | null;
+  governance_errors: string[];
+}
+
+/** OD-KB-201 S4：确定性过期检查结果。 */
+export interface KnowledgeExpiredItem {
+  kind: "card" | "raw" | string;
+  subject: string;
+  date: string;
+  age_days: number;
+  source: string;
+}
+
+export interface KnowledgeQualityReport {
+  threshold_days: number;
+  scanned_at: number;
+  expired: KnowledgeExpiredItem[];
+  index_lines: number;
+  raw_records: number;
 }
 
 /** P3-S02：索引里的一个笔记节点。orphan = 没有其他笔记指向它。 */
@@ -1145,6 +1224,10 @@ export interface TaskRecordSummary {
   engine_session_id: string | null;
   cancel_phase: string;
   persistence: string;
+  session_mode: string;
+  ttfb_seconds: number | null;
+  error_code: string | null;
+  error_message: string | null;
 }
 
 export interface TaskLedgerListing {
