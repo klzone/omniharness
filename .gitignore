@@ -34,6 +34,7 @@ knowledge/regulations/*
 !knowledge/regulations/README.md
 
 # Personal original documents (require no desensitization but stay local-only)
+用户成果/
 knowledge/reflections/*
 !knowledge/reflections/README.md
 !knowledge/reflections/**/

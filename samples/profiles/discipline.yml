@@ -5,7 +5,7 @@
 # 声明随 Profile 挂载：基础标准（omnidesk-base）没有这份文件，只有平台固有入口；
 # 改那里的文件、重启应用即可看到变化，不需要改代码。
 #
-# 允许的 id：home / report / writing / project / sessions
+# 允许的 id：home / report / writing / project
 # 允许的 icon：brand / note / book / checklist / history
 
 schema: omnidesk.profile-decl.v1
@@ -18,16 +18,9 @@ scenes:
   - id: report
     label: 工作记录
     icon: note
-    note: 模型起草
   - id: writing
     label: 文案写作
     icon: book
-    note: 模型起草
   - id: project
     label: 项目跟踪
     icon: checklist
-    note: 模型起草
-  - id: sessions
-    label: 历史会话
-    icon: history
-    note: 引擎会话 · 本机对话

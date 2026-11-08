@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OD-KB-201 知识库重构 · 高保真预览 v2</title>
+<style>
+  :root{
+    --surface:#faf8ff; --surface-dim:#d2d9f4;
+    --container-lowest:#ffffff; --container-low:#f2f3ff; --container:#eaedff; --container-high:#e2e7ff; --container-highest:#dae2fd;
+    --on-surface:#131b2e; --on-surface-variant:#464555; --outline:#777587; --outline-variant:#c7c4d8;
+    --primary:#3525cd; --primary-container:#4f46e5; --on-primary-container:#dad7ff;
+    --error:#ba1a1a; --error-container:#ffdad6;
+    --tertiary:#313ba4;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Inter Variable","Inter","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--surface);color:var(--on-surface);font-family:var(--sans);font-size:14px;line-height:1.55;overflow:hidden}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(60rem 50rem at 20% -10%, rgba(79,70,229,.10), transparent 60%),
+      radial-gradient(50rem 40rem at 90% 50%, rgba(87,223,254,.08), transparent 60%),
+      radial-gradient(40rem 30rem at 30% 100%, rgba(74,85,190,.07), transparent 60%);
+  }
+  .app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+  /* 顶栏 */
+  .topbar{height:44px;display:flex;align-items:center;gap:10px;padding:0 16px;flex-shrink:0}
+  .topbar .logo{font-size:13px;font-weight:600;letter-spacing:-.01em;color:var(--on-surface)}
+  .topbar .logo .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary-container);margin-right:7px;vertical-align:1px}
+  .topbar .crumb{font-family:var(--mono);font-size:11px;color:var(--outline);letter-spacing:.04em}
+  .topbar .spacer{flex:1}
+  .topbar .btn{background:none;border:none;color:var(--on-surface-variant);font-size:14px;padding:0 6px;cursor:pointer;opacity:.6}
+  .topbar .btn:hover{opacity:1}
+  /* 左侧悬浮 Dock（与 OmniDesk 一致：胶囊浮条，图标+悬浮提示） */
+  .dock{position:fixed;left:20px;top:50%;transform:translateY(-50%);z-index:40;display:flex;flex-direction:column;gap:10px;
+    background:rgba(255,255,255,.95);border-radius:9999px;padding:12px 8px;box-shadow:0 16px 40px -8px rgba(79,70,229,.12),0 4px 16px rgba(0,0,0,.04);border:1px solid rgba(255,255,255,.95)}
+  .dock button{width:40px;height:40px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--on-surface-variant);background:none;transition:all .15s;position:relative;font-size:16px}
+  .dock button:hover{color:var(--primary);background:var(--container)}
+  .dock button.active{background:var(--primary);color:#fff;box-shadow:0 4px 12px rgba(53,37,205,.25)}
+  .dock button .tip{position:absolute;left:56px;top:50%;transform:translateY(-50%);white-space:nowrap;background:var(--on-surface);color:var(--surface);font-size:11px;font-weight:500;padding:6px 12px;border-radius:9999px;opacity:0;pointer-events:none;transition:opacity .2s;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+  .dock button:hover .tip{opacity:1}
+  .dock .divider{height:1px;background:var(--outline-variant);margin:2px 6px}
+  main{flex:1;min-width:0;overflow-y:auto;padding:18px 28px 60px 76px}
+  .page-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+  .page-head h1{font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--on-surface)}
+  .page-head .sub{font-family:var(--mono);font-size:11px;color:var(--outline);letter-spacing:.05em}
+  .page-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--on-surface-variant);border:1px solid var(--outline-variant);border-radius:8px;padding:3px 10px;background:rgba(255,255,255,.7)}
+  .btn-primary{font-family:var(--sans);font-size:12.5px;font-weight:500;color:#fff;background:var(--primary);border:none;border-radius:10px;padding:7px 14px;cursor:pointer;box-shadow:0 2px 8px rgba(53,37,205,.15)}
+  .btn-primary:hover{background:var(--primary-container)}
+  .btn-secondary{font-family:var(--sans);font-size:12.5px;color:var(--on-surface-variant);background:rgba(255,255,255,.75);border:1px solid var(--outline-variant);border-radius:10px;padding:7px 14px;cursor:pointer}
+  .btn-secondary:hover{background:var(--container-low)}
+  .btn-ghost{font-family:var(--sans);font-size:12.5px;color:var(--on-surface-variant);background:none;border:none;border-radius:8px;padding:6px 10px;cursor:pointer}
+  .btn-ghost:hover{background:var(--container-low);color:var(--on-surface)}
+  /* 卡片：Aetheria 风格——白底半透明 + 柔和描边 + 大圆角，无重阴影 */
+  .card{background:rgba(255,255,255,.72);border-radius:20px;border-top:1px solid rgba(255,255,255,.95);border-left:1px solid rgba(255,255,255,.8);border-right:1px solid rgba(255,255,255,.4);border-bottom:1px solid rgba(255,255,255,.3);
+    box-shadow:0 16px 40px -12px rgba(15,23,42,.04),0 4px 16px -2px rgba(79,70,229,.03);overflow:hidden}
+  .card + .card{margin-top:14px}
+  .card-head{display:flex;align-items:center;gap:10px;padding:13px 18px 10px}
+  .card-head h3{font-size:13px;font-weight:600;color:var(--on-surface)}
+  .card-head .more{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--outline);cursor:pointer}
+  .card-head .more:hover{color:var(--primary)}
+  .card-body{padding:12px 18px 16px}
+  /* 驾驶舱顶部指标行 */
+  .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .stat{background:rgba(255,255,255,.72);border-radius:18px;border-top:1px solid rgba(255,255,255,.95);border-left:1px solid rgba(255,255,255,.8);
+    box-shadow:0 12px 32px -10px rgba(15,23,42,.04),0 3px 12px -2px rgba(79,70,229,.02);padding:14px 16px;cursor:pointer;transition:border-color .15s,transform .15s}
+  .stat:hover{transform:translateY(-1px)}
+  .stat .num{font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:-.02em;color:var(--on-surface)}
+  .stat .num.warn{color:#a16207} .stat .num.err{color:var(--error)} .stat .num.ok{color:#047857}
+  .stat .label{font-size:12px;color:var(--on-surface-variant);margin-top:3px}
+  .stat .hint{font-family:var(--mono);font-size:10px;margin-top:5px;color:var(--outline)}
+  .stat .hint.up{color:#047857}.stat .hint.down{color:var(--error)}
+  /* 需要你处理 + AI 工作并排 */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .todo-item{display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid rgba(199,196,216,.3);cursor:pointer;transition:background .12s}
+  .todo-item:last-child{border-bottom:none}
+  .todo-item:hover{background:rgba(226,231,255,.35)}
+  .todo-item .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .todo-item .dot.warn{background:#f59e0b}.todo-item .dot.err{background:var(--error)}.todo-item .dot.info{background:var(--primary-container)}
+  .todo-item .title{font-size:13px;color:var(--on-surface);font-weight:500}
+  .todo-item .desc{font-size:12px;color:var(--outline);margin-top:1px}
+  .todo-item .meta{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--outline);flex-shrink:0}
+  .todo-item .arrow{color:var(--outline);font-size:13px}
+  /* 健康管理卡（合并质量与运行） */
+  .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:6px 18px 18px}
+  .health-item .label{font-size:12px;color:var(--on-surface-variant)}
+  .health-item .val{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--on-surface);margin-top:2px}
+  .health-item .val.warn{color:#a16207}.health-item .val.err{color:var(--error)}
+  .health-item .bar{height:4px;border-radius:2px;background:var(--container-high);margin-top:8px;overflow:hidden}
+  .health-item .bar i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,var(--primary-container),#818cf8)}
+  .health-item .bar i.warn{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+  .health-item .bar i.err{background:linear-gradient(90deg,var(--error),#f87171)}
+  .health-item .sub{font-size:11px;color:var(--outline);margin-top:4px;font-family:var(--mono)}
+  .health-item .action{font-size:11px;color:var(--primary);cursor:pointer;margin-top:6px;font-family:var(--mono)}
+  .health-item .action:hover{text-decoration:underline}
+  /* 审核中心 */
+  .queue-tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--outline-variant);padding-bottom:0}
+  .queue-tabs button{font-family:var(--sans);font-size:13px;color:var(--on-surface-variant);background:none;border:none;padding:9px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
+  .queue-tabs button:hover{color:var(--on-surface)}
+  .queue-tabs button.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:500}
+  .queue-tabs .count{font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:7px;background:var(--container-high);color:var(--on-surface-variant);margin-left:5px}
+  .review-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid rgba(199,196,216,.3);cursor:pointer;transition:background .12s}
+  .review-row:last-child{border-bottom:none}
+  .review-row:hover{background:rgba(226,231,255,.35)}
+  .review-row .tag{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:6px;flex-shrink:0}
+  .review-row .tag.new{background:rgba(79,70,229,.1);color:var(--primary)}
+  .review-row .tag.update{background:rgba(245,158,11,.12);color:#a16207}
+  .review-row .tag.conflict{background:var(--error-container);color:var(--error)}
+  .review-row .title{font-size:13px;color:var(--on-surface);font-weight:500}
+  .review-row .desc{font-size:12px;color:var(--outline);margin-top:1px}
+  .review-row .meta{margin-left:auto;display:flex;gap:10px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--outline);flex-shrink:0}
+  .review-row .arrow{color:var(--outline)}
+  .review-detail{background:rgba(242,243,255,.5);border-top:1px solid rgba(199,196,216,.3);padding:14px 20px;display:none}
+  .review-detail.open{display:block}
+  .review-detail .label{font-family:var(--mono);font-size:10px;color:var(--outline);letter-spacing:.08em;margin-bottom:5px}
+  .review-detail .quote{background:rgba(255,255,255,.8);border-left:2px solid var(--primary-container);padding:9px 12px;border-radius:0 8px 8px 0;font-size:12px;color:var(--on-surface-variant);margin-bottom:10px}
+  .review-detail .ref{font-family:var(--mono);font-size:11px;color:var(--primary);cursor:pointer}
+  .review-detail .actions{display:flex;gap:8px;margin-top:4px}
+  /* 知识资产 */
+  .asset-layout{display:grid;grid-template-columns:300px 1fr;gap:0;background:rgba(255,255,255,.72);border-radius:20px;overflow:hidden;
+    border-top:1px solid rgba(255,255,255,.95);box-shadow:0 16px 40px -12px rgba(15,23,42,.04)}
+  .asset-list{border-right:1px solid rgba(199,196,216,.3);max-height:calc(100vh - 150px);overflow-y:auto}
+  .asset-list .item{padding:10px 18px;border-bottom:1px solid rgba(199,196,216,.25);cursor:pointer;font-size:13px;color:var(--on-surface-variant);transition:background .12s}
+  .asset-list .item:hover{background:rgba(226,231,255,.35)}
+  .asset-list .item.active{background:var(--container-high);color:var(--on-surface);font-weight:500}
+  .asset-list .item .path{font-family:var(--mono);font-size:10px;color:var(--outline);margin-top:2px}
+  .asset-list .search{padding:10px 14px;border-bottom:1px solid rgba(199,196,216,.3)}
+  .asset-list .search input{width:100%;background:rgba(255,255,255,.8);border:1px solid var(--outline-variant);border-radius:10px;padding:7px 11px;font-size:13px;color:var(--on-surface);font-family:var(--sans);outline:none}
+  .asset-list .search input::placeholder{color:var(--outline)}
+  .asset-list .search input:focus{border-color:var(--primary-container);box-shadow:0 0 0 3px rgba(79,70,229,.08)}
+  .asset-view{padding:20px 26px;max-height:calc(100vh - 150px);overflow-y:auto}
+  .asset-view h2{font-size:17px;font-weight:600;margin-bottom:5px;letter-spacing:-.01em}
+  .asset-view .path{font-family:var(--mono);font-size:11px;color:var(--outline);margin-bottom:14px}
+  .asset-view .meta-row{display:flex;gap:16px;padding:9px 0;border-bottom:1px solid rgba(199,196,216,.3);margin-bottom:14px;flex-wrap:wrap}
+  .asset-view .meta-row .item{font-size:12px}
+  .asset-view .meta-row .item .k{color:var(--outline);margin-right:5px}
+  .asset-view .meta-row .item .v{color:var(--on-surface-variant);font-family:var(--mono)}
+  .asset-view h3{font-size:12px;font-weight:600;color:var(--primary);margin:16px 0 7px;font-family:var(--mono);letter-spacing:.04em}
+  .asset-view p{font-size:13px;color:var(--on-surface-variant);margin-bottom:9px;line-height:1.7}
+  .asset-view .ref{font-family:var(--mono);font-size:11px;color:var(--primary);opacity:.75;cursor:pointer}
+  .asset-view .ref:hover{opacity:1;text-decoration:underline}
+  .asset-view .wikilink{color:var(--primary);cursor:pointer;border-bottom:1px dotted rgba(53,37,205,.35)}
+  .asset-view .wikilink:hover{border-bottom-color:var(--primary)}
+  /* 空态 */
+  .empty{padding:28px 18px;text-align:center;color:var(--outline);font-size:12.5px}
+  @media(max-width:1000px){.stats-row{grid-template-columns:repeat(2,1fr)}.duo{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 顶栏（与 OmniDesk 同构） -->
+  <div class="topbar">
+    <span class="logo"><span class="dot"></span>OmniDesk</span>
+    <span class="crumb">/ 知识库</span>
+    <span class="spacer"></span>
+    <button class="btn" title="搜索">⌕</button>
+    <button class="btn" title="设置">⚙</button>
+  </div>
+
+  <!-- 左侧悬浮 Dock（与 OmniDesk 首页一致） -->
+  <nav class="dock">
+    <button onclick="alert('回首页')"><span>⌂</span><span class="tip">工作台首页</span></button>
+    <button onclick="alert('历史会话')"><span>◷</span><span class="tip">历史会话</span></button>
+    <button class="active"><span>▤</span><span class="tip">知识库</span></button>
+    <div class="divider"></div>
+    <button onclick="alert('设置页（知识库配置已融入）')"><span>⚙</span><span class="tip">设置</span></button>
+  </nav>
+
+  <main>
+    <!-- 知识库内页签导航 -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;background:rgba(255,255,255,.6);border-radius:9999px;padding:4px;width:fit-content;border:1px solid rgba(255,255,255,.8)">
+      <button class="tab active" data-page="dashboard" onclick="go('dashboard')" style="border:none;background:var(--primary);color:#fff;font-size:12.5px;font-weight:500;padding:6px 16px;border-radius:9999px;cursor:pointer;font-family:var(--sans)">知识驾驶舱</button>
+      <button class="tab" data-page="review" onclick="go('review')" style="border:none;background:none;color:var(--on-surface-variant);font-size:12.5px;padding:6px 16px;border-radius:9999px;cursor:pointer;font-family:var(--sans)">知识审核 <span style="font-family:var(--mono);font-size:10px;background:rgba(245,158,11,.15);color:#a16207;padding:1px 6px;border-radius:7px;margin-left:2px">15</span></button>
+      <button class="tab" data-page="assets" onclick="go('assets')" style="border:none;background:none;color:var(--on-surface-variant);font-size:12.5px;padding:6px 16px;border-radius:9999px;cursor:pointer;font-family:var(--sans)">知识资产</button>
+    </div>
+
+<!-- ============ 驾驶舱 ============ -->
+<section id="page-dashboard">
+  <div class="page-head">
+    <h1>知识驾驶舱</h1>
+    <span class="sub">AI Knowledge Operations</span>
+    <div class="right"><span class="chip">最近同步 2 分钟前</span></div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat" onclick="go('assets')"><div class="num">342</div><div class="label">原始资料</div><div class="hint">raw/</div></div>
+    <div class="stat" onclick="go('assets')"><div class="num">1,286</div><div class="label">Wiki 知识条目</div><div class="hint up">本周 +12</div></div>
+    <div class="stat" onclick="go('review')"><div class="num warn">12</div><div class="label">待审核</div><div class="hint">较昨日 +3</div></div>
+    <div class="stat" onclick="go('review')"><div class="num err">3</div><div class="label">待处理冲突</div><div class="hint">需裁决</div></div>
+    <div class="stat" onclick="health()"><div class="num err">1</div><div class="label">AI 任务失败</div><div class="hint">昨日</div></div>
+  </div>
+
+  <div class="duo">
+    <div class="card">
+      <div class="card-head"><h3>需要你处理</h3><span class="more" onclick="go('review')">全部 →</span></div>
+      <div class="todo-item" onclick="go('review')">
+        <div class="dot warn"></div>
+        <div><div class="title">知识审核 · 12 项待确认</div><div class="desc">制度规范 5 · 技术资料 4 · 工作经验 3</div></div>
+        <span class="meta">今日</span><span class="arrow">›</span>
+      </div>
+      <div class="todo-item" onclick="go('review')">
+        <div class="dot err"></div>
+        <div><div class="title">知识冲突 · 3 项</div><div class="desc">不同来源对同一概念存在不一致</div></div>
+        <span class="meta">今日</span><span class="arrow">›</span>
+      </div>
+      <div class="todo-item" onclick="health()">
+        <div class="dot info"></div>
+        <div><div class="title">AI 任务失败 · 1 项</div><div class="desc">T-2026-11-06-09 · 模型超时，已重试成功</div></div>
+        <span class="meta">昨日</span><span class="arrow">›</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>AI 最近工作</h3><span class="more" onclick="health()">运行记录 →</span></div>
+      <div class="todo-item" style="cursor:default">
+        <div class="dot" style="background:var(--primary-container)"></div>
+        <div><div class="title">完成一批制度资料整理</div><div class="desc">新增 8 条知识 · 更新 3 条关联</div></div>
+        <span class="meta">14:32</span>
+      </div>
+      <div class="todo-item" style="cursor:default">
+        <div class="dot" style="background:var(--primary-container)"></div>
+        <div><div class="title">完成知识关联维护</div><div class="desc">建立 26 条关联关系</div></div>
+        <span class="meta">13:08</span>
+      </div>
+      <div class="todo-item" style="cursor:default">
+        <div class="dot" style="background:var(--primary-container)"></div>
+        <div><div class="title">完成知识质量检查</div><div class="desc">发现 2 条过期风险 · 1 条低置信</div></div>
+        <span class="meta">11:45</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="health-card">
+    <div class="card-head"><h3>知识库健康 · AI 运行质量</h3><span class="more">检测历史 →</span></div>
+    <div class="health-grid">
+      <div class="health-item">
+        <div class="label">来源可追溯率</div>
+        <div class="val">98.6%</div>
+        <div class="bar"><i style="width:98.6%"></i></div>
+        <div class="sub">1,268 / 1,286</div>
+        <div class="action" onclick="go('assets')">查看缺失 →</div>
+      </div>
+      <div class="health-item">
+        <div class="label">知识关联覆盖率</div>
+        <div class="val">94.2%</div>
+        <div class="bar"><i style="width:94.2%"></i></div>
+        <div class="sub">孤立条目 74</div>
+        <div class="action">触发关联维护 →</div>
+      </div>
+      <div class="health-item">
+        <div class="label">索引完整性</div>
+        <div class="val">100%</div>
+        <div class="bar"><i style="width:100%"></i></div>
+        <div class="sub">1,286 / 1,286</div>
+        <div class="action">重建索引 →</div>
+      </div>
+      <div class="health-item">
+        <div class="label">AI 任务健康</div>
+        <div class="val warn">2 项风险</div>
+        <div class="bar"><i class="warn" style="width:82%"></i></div>
+        <div class="sub">过期 2 · 低置信 1 · 失败 1</div>
+        <div class="action">查看运行记录 →</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 审核中心 ============ -->
+<section id="page-review" style="display:none">
+  <div class="page-head">
+    <h1>知识审核</h1>
+    <span class="sub">Review Center</span>
+    <div class="right"><button class="btn-secondary">批量通过</button><button class="btn-primary">开始审核</button></div>
+  </div>
+
+  <div class="queue-tabs">
+    <button class="active" data-queue="new" onclick="switchQueue('new')">新知识确认<span class="count">8</span></button>
+    <button data-queue="update" onclick="switchQueue('update')">知识更新<span class="count">4</span></button>
+    <button data-queue="conflict" onclick="switchQueue('conflict')">冲突与异常<span class="count">3</span></button>
+  </div>
+
+  <div id="queue-new">
+    <div class="card">
+      <div class="review-row" onclick="toggleDetail(this)">
+        <span class="tag new">新增</span>
+        <div><div class="title">制度：公务接待管理办法（2025 修订版）</div><div class="desc">来源 regulations/接待办法-2025.pdf · AI 提取 6 条知识 · 1 处低置信</div></div>
+        <span class="meta">今日 14:32<span class="arrow">›</span></span>
+      </div>
+      <div class="review-detail">
+        <div class="label">AI 提取结果（供审核）</div>
+        <div class="quote">公务接待应当坚持有利公务、简朴节约、公开透明原则… <span class="ref">PDF 第 4 页</span></div>
+        <div class="actions"><button class="btn-primary">通过并纳入</button><button class="btn-secondary">需要修改</button><button class="btn-ghost">驳回</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="review-row" onclick="toggleDetail(this)">
+        <span class="tag new">新增</span>
+        <div><div class="title">方法：材料结构三段式</div><div class="desc">来源 reflections/speech-2026-11.md · 置信度高 · 已关联 5 篇同类</div></div>
+        <span class="meta">今日 11:08<span class="arrow">›</span></span>
+      </div>
+      <div class="review-detail">
+        <div class="label">AI 提取结果（供审核）</div>
+        <div class="quote">总结部署类材料通常采用「成绩—问题—打算」三段式结构… <span class="ref">原文第 3 段</span></div>
+        <div class="actions"><button class="btn-primary">通过并纳入</button><button class="btn-secondary">需要修改</button><button class="btn-ghost">驳回</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="queue-update" style="display:none">
+    <div class="card">
+      <div class="review-row" onclick="toggleDetail(this)">
+        <span class="tag update">更新</span>
+        <div><div class="title">事实：年度考核等次比例</div><div class="desc">新资料与现有记录不一致 · AI 建议「优秀 25%」取代原「20%」</div></div>
+        <span class="meta">昨日<span class="arrow">›</span></span>
+      </div>
+      <div class="review-detail">
+        <div class="label">变更对照</div>
+        <div class="quote"><del style="color:var(--error)">优秀比例不超过 20%</del> → <ins style="color:#047857;text-decoration:none">优秀比例一般控制在 25% 以内</ins>　<span class="ref">新资料 · 2025 修订通知</span></div>
+        <div class="actions"><button class="btn-primary">接受修改</button><button class="btn-secondary">保留原值</button><button class="btn-ghost">需要更多依据</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="queue-conflict" style="display:none">
+    <div class="card">
+      <div class="review-row" onclick="toggleDetail(this)">
+        <span class="tag conflict">冲突</span>
+        <div><div class="title">制度：文件传阅时限（两份文件不一致）</div><div class="desc">A 文件写「5 个工作日」 · B 文件写「7 个工作日」 · 需人工裁决权威来源</div></div>
+        <span class="meta">2 天前<span class="arrow">›</span></span>
+      </div>
+      <div class="review-detail">
+        <div class="label">冲突来源</div>
+        <div class="quote">来源 A（2024 试行办法 · regulations/a.pdf 第 12 页）：5 个工作日</div>
+        <div class="quote">来源 B（2025 修订通知 · regulations/b.pdf 第 3 页）：7 个工作日</div>
+        <div class="actions"><button class="btn-primary">以 B 为准</button><button class="btn-secondary">以 A 为准</button><button class="btn-ghost">都保留，标记待定</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 知识资产 ============ -->
+<section id="page-assets" style="display:none">
+  <div class="page-head">
+    <h1>知识资产</h1>
+    <span class="sub">Read-only · Browse</span>
+    <div class="right"><span class="chip">wiki/ 1,286 · raw/ 342</span><button class="btn-ghost">编辑此条</button></div>
+  </div>
+
+  <div class="asset-layout">
+    <div class="asset-list">
+      <div class="search"><input placeholder="搜索知识条目…"/></div>
+      <div class="item active"><div>制度：公务接待管理办法</div><div class="path">wiki/regulations/reception-2025.md</div></div>
+      <div class="item"><div>制度：文件传阅时限</div><div class="path">wiki/regulations/document-circulation.md</div></div>
+      <div class="item"><div>概念：三段式结构</div><div class="path">wiki/methodology/three-part-structure.md</div></div>
+      <div class="item"><div>方法：材料结构三段式</div><div class="path">wiki/methodology/material-structure.md</div></div>
+      <div class="item"><div>经验：会议纪要写作要点</div><div class="path">wiki/experience/meeting-notes.md</div></div>
+      <div class="item"><div>技术：知识库同步机制</div><div class="path">wiki/tech/kb-sync.md</div></div>
+      <div class="item"><div>事实：年度考核等次比例</div><div class="path">wiki/facts/assessment-ratio.md</div></div>
+      <div class="item"><div>项目：OmniDesk 0.2.x</div><div class="path">wiki/project/omnidesk-02x.md</div></div>
+    </div>
+    <div class="asset-view">
+      <h2>制度：公务接待管理办法</h2>
+      <div class="path">wiki/regulations/reception-2025.md · 最近更新 2026-11-06 · 来源 3 份</div>
+      <div class="meta-row">
+        <span class="item"><span class="k">类型</span><span class="v">制度知识</span></span>
+        <span class="item"><span class="k">知识域</span><span class="v">regulations</span></span>
+        <span class="item"><span class="k">状态</span><span class="v" style="color:#047857">已审核</span></span>
+        <span class="item"><span class="k">关联</span><span class="v">7 条</span></span>
+      </div>
+      <h3>核心规定</h3>
+      <p>公务接待坚持有利公务、简朴节约、公开透明原则。接待单位应当严格控制接待范围和标准，不得超范围、超标准接待。<span class="ref">[原文 · 2025 修订版 第 4 页]</span></p>
+      <p>接待清单应当包括对象、事由、费用等要素，并在接待结束后及时归档。<span class="ref">[原文 · 第 6 页]</span></p>
+      <h3>关联知识</h3>
+      <p><span class="wikilink">制度：文件传阅时限</span> · <span class="wikilink">事实：年度考核等次比例</span> · <span class="wikilink">经验：会议纪要写作要点</span> · <span class="wikilink">方法：材料结构三段式</span></p>
+      <h3>反向链接</h3>
+      <p><span class="wikilink">知识审核 · 资料准入记录 #142</span> · <span class="wikilink">AI 运行 · 整理任务 T-2026-11-07-01</span></p>
+    </div>
+  </div>
+</section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+function go(page){
+  document.querySelectorAll('main section').forEach(s=>s.style.display='none');
+  document.getElementById('page-'+page).style.display='block';
+  document.querySelectorAll('.tab').forEach(b=>{
+    const on=b.dataset.page===page;
+    b.style.background=on?'var(--primary)':'none';
+    b.style.color=on?'#fff':'var(--on-surface-variant)';
+  });
+  document.getElementById('main').scrollTop=0;
+}
+function health(){
+  go('dashboard');
+  document.getElementById('health-card').scrollIntoView({behavior:'smooth',block:'start'});
+  const c=document.getElementById('health-card');
+  c.style.outline='2px solid rgba(79,70,229,.25)'; c.style.outlineOffset='2px';
+  setTimeout(()=>{c.style.outline='none'},1200);
+}
+function toggleDetail(row){
+  const d=row.nextElementSibling;
+  const wasOpen=d.classList.contains('open');
+  row.parentElement.parentElement.querySelectorAll('.review-detail').forEach(x=>x.classList.remove('open'));
+  if(!wasOpen)d.classList.add('open');
+}
+function switchQueue(q){
+  document.querySelectorAll('.queue-tabs button').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.queue-tabs button[data-queue="'+q+'"]').classList.add('active');
+  ['new','update','conflict'].forEach(x=>document.getElementById('queue-'+x).style.display = x===q?'block':'none');
+}
+</script>
+</body>
+</html>

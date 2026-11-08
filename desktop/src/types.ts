@@ -765,6 +765,19 @@ export interface LibraryRootInfo {
   error: string | null;
 }
 
+/** 工作记录临时层根（OD-WR-315）：工作记录、任务与回收目录的共同根。 */
+export interface WorkingRootInfo {
+  resolved: boolean;
+  working_root: string | null;
+  /** env_override = 环境变量覆盖；user = 设置里选的；default = 默认 ~/OmniDesk/work */
+  source: "env_override" | "user" | "default" | null;
+  configured_root: string | null;
+  env_override: string | null;
+  default_root: string | null;
+  settings_path: string;
+  error: string | null;
+}
+
 /**
  * 随手记追加回执（OD-ARCH-089 S2）。
  *
@@ -1418,7 +1431,7 @@ export interface HeartbeatScan {
 
 /** 纪检 Profile 声明里的一个场景入口（OD-ARCH-051 S3）。 */
 export interface ProfileSceneEntry {
-  id: "home" | "report" | "writing" | "project" | "sessions";
+  id: "home" | "report" | "writing" | "project";
   label: string;
   icon: "brand" | "note" | "book" | "checklist" | "history";
   note?: string;
@@ -2114,4 +2127,282 @@ export interface EnvironmentReport {
   python: EnvironmentDependency;
   /** 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。 */
   assets: EnvironmentDependency;
+}
+
+// ---------------------------------------------------------------------------
+// OD-WR-302：工作记录 / 任务 / 候选（IPC-1）
+//
+// 存储层在仓库外的 work/ 临时层；这里只描述宿主返回/接收的形状。
+// 红线扫描与 mask_privacy 由宿主执行，界面只看 masked 计数，不看原文。
+// ---------------------------------------------------------------------------
+
+export type WorkRecordAiStatus = "unanalyzed" | "analyzed" | "failed";
+
+export interface WorkRecord {
+  id: string;
+  title: string;
+  /** 本地日期，YYYY-MM-DD。 */
+  record_date: string;
+  /** UTC ISO8601。 */
+  created_at: string;
+  updated_at: string;
+  category: string | null;
+  tags: string[];
+  source: string | null;
+  /** 随手记的去向标签（OD-WR-310）；普通记录为 null。 */
+  destination: string | null;
+  ai_analysis_status: WorkRecordAiStatus;
+  linked_task_ids: string[];
+  draft: boolean;
+  body: string;
+}
+
+/** 新建记录入参；id 省略由宿主生成，title 省略时取正文首行。 */
+export interface RecordDraft {
+  id?: string | null;
+  title?: string | null;
+  record_date?: string | null;
+  category?: string | null;
+  tags?: string[];
+  source?: string | null;
+  destination?: string | null;
+  draft?: boolean;
+  body?: string;
+  linked_task_ids?: string[];
+}
+
+/** 更新补丁；undefined = 不修改，空字符串 = 清空可选项。 */
+export interface RecordPatch {
+  title?: string;
+  record_date?: string;
+  category?: string;
+  tags?: string[];
+  source?: string;
+  destination?: string;
+  ai_analysis_status?: WorkRecordAiStatus;
+  linked_task_ids?: string[];
+  draft?: boolean;
+  body?: string;
+}
+
+/** 列表过滤；日期为闭区间。 */
+export interface RecordFilter {
+  from_date?: string;
+  to_date?: string;
+  category?: string;
+  keyword?: string;
+  ai_analysis_status?: WorkRecordAiStatus;
+  draft?: boolean;
+}
+
+export interface RecordListing {
+  items: WorkRecord[];
+  /** 读不出或 frontmatter 不合法的文件数。 */
+  broken: number;
+}
+
+export interface WorkRecordSaved {
+  record: WorkRecord;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 解析准备回执（OD-WR-304/306）：提示词与送模型前的原文。 */
+export interface AnalyzePrompt {
+  record_id: string;
+  prompt: string;
+  user_input_text: string;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 解析落地回执：暂存了哪些候选、去重跳过哪些键。 */
+export interface AnalyzeApplied {
+  staged: TaskCandidate[];
+  skipped_duplicates: string[];
+  record: WorkRecord;
+}
+
+export interface TrashMove {
+  id: string;
+  path: string;
+}
+
+/** 任务六状态。待确认只用于未确认的候选；正式任务从待开始起步。 */
+export type WorkTaskState =
+  | "待确认"
+  | "待开始"
+  | "进行中"
+  | "已完成"
+  | "已取消"
+  | "暂停";
+
+export const WORK_TASK_STATES: readonly WorkTaskState[] = [
+  "待确认",
+  "待开始",
+  "进行中",
+  "已完成",
+  "已取消",
+  "暂停",
+];
+
+export interface ProgressEntry {
+  at: string;
+  text: string;
+}
+
+export interface StateChange {
+  at: string;
+  from: WorkTaskState;
+  to: WorkTaskState;
+  note: string | null;
+}
+
+export interface WorkTask {
+  id: string;
+  title: string;
+  state: WorkTaskState;
+  created_at: string;
+  updated_at: string;
+  source_record_id: string | null;
+  source_quote: string | null;
+  /** 与该任务关联过的记录（OD-WR-307 双向回写）。 */
+  linked_record_ids: string[];
+  category: string | null;
+  due_date: string | null;
+  /** 扩展位，本期只存不用。 */
+  hint: string | null;
+  progress: ProgressEntry[];
+  history: StateChange[];
+}
+
+/** 新建任务入参；initial_state 只接受 待确认 / 待开始。 */
+export interface TaskDraft {
+  id?: string | null;
+  title: string;
+  initial_state?: WorkTaskState | null;
+  source_record_id?: string | null;
+  source_quote?: string | null;
+  category?: string | null;
+  due_date?: string | null;
+  hint?: string | null;
+}
+
+export interface TaskPatch {
+  title?: string;
+  category?: string;
+  due_date?: string;
+  hint?: string;
+}
+
+export interface TaskFilter {
+  state?: WorkTaskState;
+  category?: string;
+  keyword?: string;
+  source_record_id?: string;
+}
+
+export interface TaskListing {
+  items: WorkTask[];
+  broken: number;
+}
+
+export interface TaskSaved {
+  task: WorkTask;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface TaskDeleted {
+  id: string;
+  path: string;
+}
+
+export type TaskCandidateStatus = "pending" | "confirmed" | "linked" | "rejected";
+
+export interface TaskCandidate {
+  schema: string;
+  id: string;
+  record_id: string;
+  source_quote: string;
+  title: string;
+  category: string | null;
+  due_date: string | null;
+  note: string | null;
+  confidence: number | null;
+  uncertainty: string | null;
+  /** 模型建议关联的已有任务（OD-WR-307）。 */
+  match_task_id: string | null;
+  match_confidence: number | null;
+  match_reason: string | null;
+  /** AI 建议的目标状态；只作建议，不自动应用。 */
+  suggested_state: WorkTaskState | null;
+  /** (record_id, quote 哈希) 去重键。 */
+  dedup_key: string;
+  status: TaskCandidateStatus;
+  created_at: string;
+  decided_at: string | null;
+  confirmed_task_id: string | null;
+  decision_note: string | null;
+}
+
+export interface CandidateListing {
+  items: TaskCandidate[];
+  broken: number;
+}
+
+/** 采纳关联建议后的回执。ok=false 时按标志与 warnings 明确告知半完成状态。 */
+export interface LinkReport {
+  ok: boolean;
+  task: WorkTask | null;
+  record: WorkRecord | null;
+  candidate: TaskCandidate | null;
+  progress_added: boolean;
+  task_linked: boolean;
+  record_linked: boolean;
+  candidate_archived: boolean;
+  partial: boolean;
+  warnings: string[];
+  error: string | null;
+}
+
+/** 一条待迁移的周记录（OD-WR-309）。 */
+export interface PlannedEntry {
+  date: string;
+  text: string;
+  destination: string | null;
+}
+
+export interface WeekMigrationPlan {
+  week: string;
+  source: string;
+  entries: PlannedEntry[];
+}
+
+export interface MigrationPreview {
+  weeks: WeekMigrationPlan[];
+  entry_count: number;
+  skipped: string[];
+  archive_dir: string;
+}
+
+export interface MigrationReport {
+  ok: boolean;
+  records_created: number;
+  weeks_archived: number;
+  record_paths: string[];
+  archived_files: string[];
+  skipped: string[];
+  error: string | null;
+}
+
+/** 确认候选时可改字段；undefined = 沿用候选原值。 */
+export interface ConfirmEdits {
+  title?: string;
+  category?: string;
+  due_date?: string;
+  note?: string;
 }

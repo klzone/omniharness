@@ -353,7 +353,7 @@ def main() -> int:
 
         def send_prompt(text: str = PROMPT) -> bool:
             nodes_now = app_nodes(app_pid)
-            box = find(nodes_now, "与 OmniDesk 协同探索", contains=True)
+            box = find(nodes_now, "输入消息", contains=True)
             if box is not None:
                 ax.invoke(box)
             time.sleep(0.6)

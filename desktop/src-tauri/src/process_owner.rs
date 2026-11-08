@@ -276,6 +276,41 @@ mod tests {
         dir
     }
 
+    /// OD-WR-314：找一个从 exec 起 argv 就稳定的 Python 解释器。
+    ///
+    /// macOS 的 /usr/bin/python3 与 framework 的 bin/pythonX 都是 launcher，
+    /// 启动后会把进程 exec 成 Python.app，argv 途中改变；身份核验会因此判成
+    /// 「无法核验身份」。先解析 realpath，再直接指向 Python.app（存在时）。
+    fn engine_stub_python() -> String {
+        let base = std::env::var("OMNIDESK_PYTHON")
+            .ok()
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty())
+            .unwrap_or_else(|| "python3".to_string());
+        let Ok(output) = Command::new(&base)
+            .arg("-c")
+            .arg("import os,sys; print(os.path.realpath(sys.executable))")
+            .output()
+        else {
+            return base;
+        };
+        if !output.status.success() {
+            return base;
+        }
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() {
+            return base;
+        }
+        let Some(parent) = std::path::Path::new(&path).parent() else {
+            return path;
+        };
+        let app = parent.join("../Resources/Python.app/Contents/MacOS/Python");
+        if app.is_file() {
+            return app.display().to_string();
+        }
+        path
+    }
+
     #[test]
     fn missing_owner_is_noop() {
         let dir = temp_state("none");
@@ -346,11 +381,13 @@ mod tests {
         let dir = temp_state("shared");
         // 用一个子进程冒充「另一个宿主仍在使用的引擎」：cmdline 与登记完全一致，
         // 但登记里的 host_pid 指向别的存活进程。
-        // `sleep 30 omnidesk_engine` 在 GNU 实现里是非法时长、会立刻报错退出（旧夹具因此
-        // 偶发/必现失败）。这里改用 sh 常驻 30 秒，cmdline 里仍带 omnidesk_engine 字样。
-        let mut child = Command::new("sh")
+        // OD-WR-314：旧夹具用 sh -c "sleep 30"，sh 可能以 exec 方式执行单条命令，
+        // argv 会在登记与 reclaim 之间变成 sleep 30，测试偶发落到「身份不符」分支。
+        // 改用 python 常驻：解释器持住 argv，不会把自己替换成 sleep。
+        let python = engine_stub_python();
+        let mut child = Command::new(&python)
             .arg("-c")
-            .arg("sleep 30")
+            .arg("import time; time.sleep(30)")
             .arg("omnidesk_engine")
             .spawn()
             .expect("spawn sh");
@@ -377,7 +414,7 @@ mod tests {
         });
         std::fs::write(owner_path(&dir), record.to_string()).unwrap();
         let err = reclaim_before_start(&dir, Duration::from_millis(50)).unwrap_err();
-        assert!(err.contains("另一个 OmniDesk 实例"));
+        assert!(err.contains("另一个 OmniDesk 实例"), "实际错误：{err}");
         assert!(is_alive(pid), "另一实例的引擎不得被回收");
         assert!(owner_path(&dir).exists(), "另一实例的登记不得被删除");
         let _ = child.kill();

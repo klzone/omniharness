@@ -271,11 +271,11 @@ def main() -> int:
                 return False
             ax.invoke(go)
             time.sleep(4.0)
-            return find(app_nodes(app_pid), "与 OmniDesk 协同探索") is not None
+            return find(app_nodes(app_pid), "输入消息") is not None
 
         def send(text: str | None) -> bool:
             if text is not None:
-                box = find(app_nodes(app_pid), "与 OmniDesk 协同探索")
+                box = find(app_nodes(app_pid), "输入消息")
                 if box is not None:
                     ax.invoke(box)
                 time.sleep(0.6)

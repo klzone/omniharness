@@ -6,10 +6,10 @@
 不打印凭证、不改动用户正在运行的实例。
 
 抓帧与断言：
-  01 宽窗三栏（四卡 + 继续创作 / 灵感架 + 状态管线 + 成果库）
+  01 宽窗三栏（四卡 + 继续创作 / 写作对话 + 稿件 + 成果库）
   02 状态筛选（草稿组）
   03 90 天未动提醒点击筛选
-  04 灵感架点击回首页并定位对应会话
+  04 写作对话点击回首页并定位对应会话
   05 窄窗 1000 单列
 
 用法：python3 preview_writing_094.py [--display :129] [--root /tmp/od094-preview]
@@ -164,7 +164,7 @@ def write_artifacts(data_root: Path) -> dict:
 
 
 def write_threads(app_data: Path) -> list[dict]:
-    """两条合成写作会话：一条用于灵感架跳转，一条更早。"""
+    """两条合成写作会话：一条用于写作对话跳转，一条更早。"""
     root = app_data / "threads" / "_unassigned"
     root.mkdir(parents=True, exist_ok=True)
     now = int(time.time())
@@ -278,7 +278,7 @@ def main() -> int:
             label: label in text for label in ("本月成文", "进行中草稿", "灵感待用", "最近更新")
         }
         facts["board_present"] = all(
-            label in text for label in ("继续创作", "灵感架", "状态管线", "成果文档库")
+            label in text for label in ("继续创作", "写作对话", "稿件", "成果文档库")
         )
         facts["default_note_present"] = "按「成文」显示" in text
         facts["stage_counts"] = stage_counts(text)
@@ -362,7 +362,7 @@ def main() -> int:
             facts["stale_filter_applied"] = False
             facts["stale_filter_kept_only_stale"] = False
 
-        # 04：灵感架点击回首页并定位对应会话。
+        # 04：写作对话点击回首页并定位对应会话。
         nodes = app_nodes(pid)
         inspiration_btn = next(
             (
@@ -399,7 +399,7 @@ def main() -> int:
         narrow = app_nodes(pid)
         dump(narrow, EVID / "05-narrow-ax.json")
         positions = []
-        for label in ("继续创作", "灵感架", "状态管线", "成果文档库"):
+        for label in ("继续创作", "写作对话", "稿件", "成果文档库"):
             hit = next(
                 (
                     n

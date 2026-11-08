@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""OD-ARCH-094：文案写作页改版——创作管线与灵感架（静态断言 + 纯函数实测）。
+"""OD-ARCH-094：文案写作页改版——稿件与写作对话（静态断言 + 纯函数实测）。
 
 证据等级：
-  * 静态代码检查：写作页四卡来源、三栏骨架、状态管线、类型标签、英文副标题可配置、
+  * 静态代码检查：写作页四卡来源、三栏骨架、稿件分组、类型标签、无英文副标题、
     加载态不把「还没读到」写成 0；
   * 脚本运行：编译真实的 `desktop/src/writingStudio.ts`，用合成条目断言状态分组、
     缺省口径、90 天判定与「继续创作」选择。
@@ -129,9 +129,6 @@ check("fallback_title_is_not_body_title",
   ws.fallbackTitle("offline-material-writing-20261020-090000.md").includes("2026-10-20"),
   ws.fallbackTitle("offline-material-writing-20261020-090000.md"));
 
-// 缺省口径文案必须与界面读数同源，不能前端另写一套。
-check("default_note_mentions_finished", ws.STATUS_DEFAULT_NOTE === "未标注状态的成果按「成文」显示",
-  ws.STATUS_DEFAULT_NOTE);
 check("stale_days_90", ws.STALE_DAYS === 90, ws.STALE_DAYS);
 
 process.stdout.write(JSON.stringify({ cases }) + "\n");
@@ -177,7 +174,7 @@ def main() -> int:
     writing_branch = strip_tsx.split('scene.key === "writing" ? (')[1].split("</>")[0]
     check("band_four_writing_metrics", writing_branch.count("<WritingMetric") == 4,
           str(writing_branch.count("<WritingMetric")))
-    for label in ("本月成文", "进行中草稿", "灵感待用", "最近更新"):
+    for label in ("本月成文", "进行中草稿", "写作对话", "最近更新"):
         check("metric_" + label, f'label="{label}"' in writing_branch, "")
     for icon in ("book", "edit", "spark", "clock"):
         check("metric_icon_" + icon, f'icon="{icon}"' in writing_branch, "")
@@ -192,8 +189,8 @@ def main() -> int:
     check("metric_distinct_from_weekly_tones",
           all(t in strip_tsx for t in ("violet: {", "cyan: {", "ink: {", "ochre: {")),
           "写作页用墨色/青绿/琥珀，不复用周报的紫青靛")
-    check("metric_warm_paper_surface",
-          "#fbf9f4" in strip_tsx and "border-on-surface/8" in strip_tsx, "暖纸底")
+    check("metric_unified_light_surface",
+          "bg-white/78" in strip_tsx and "border-white/90" in strip_tsx, "与知识库统一的浅色卡面")
     check("metric_no_zero_before_load",
           'scene === "writing" && artifactsLoaded && !artifactsError' in scene_tsx
           and "writingCounts ? writingCounts.draft : null" in scene_tsx,
@@ -213,7 +210,7 @@ def main() -> int:
           "窄窗 左 → 中 → 右")
     check("writing_continue_and_shelf_in_left",
           scene_tsx.index("<WritingContinueCard") < scene_tsx.index("<WritingInspirationShelf")
-          < scene_tsx.index("<WritingPipeline"), "左栏上继续创作、下灵感架")
+          < scene_tsx.index("<WritingPipeline"), "左栏上继续创作、下写作对话")
     check("writing_page_has_no_extra_thread_block",
           'scene === "weekly" || scene === "writing" || scene === "project" ? null' in scene_tsx,
           "写作页不在底部重复渲染会话历史")
@@ -225,14 +222,15 @@ def main() -> int:
           "textarea" not in studio_tsx.lower() and "contentEditable" not in studio_tsx,
           "本页不承载编辑器")
 
-    # ---- S02/S04 状态管线 ----
+    # ---- S02/S04 稿件分组 ----
     check("pipeline_three_groups",
           all(f'key: "{k}"' in (SRC / "writingStudio.ts").read_text(encoding="utf-8")
               for k in ("draft", "finished", "published")), "")
     check("pipeline_groups_clickable",
           "onStatusFilter(active ? null : s.key)" in studio_tsx, "再点取消")
-    check("pipeline_default_note_on_screen",
-          "STATUS_DEFAULT_NOTE" in studio_tsx and "口径：" in studio_tsx, "")
+    check("pipeline_no_default_note",
+          "STATUS_DEFAULT_NOTE" not in studio_tsx and "口径：" not in studio_tsx,
+          "不在页面上堆口径说明")
     check("pipeline_directory_rows_excluded",
           "files.filter((f) => !f.is_dir)" in studio_tsx, "")
     check("pipeline_two_line_titles",
@@ -247,30 +245,23 @@ def main() -> int:
           "showTypeLabels = false" in art_tsx and "showTypeLabels" in scene_tsx, "")
     check("artifact_type_from_host_first",
           "typeLabel(r.artifact_type ?? m?.type ?? null)" in art_tsx, "宿主字段优先")
-    check("artifact_accent_secondary",
-          'accent="secondary"' in scene_tsx and 'accent?: "primary" | "secondary"' in art_tsx, "")
+    check("artifact_accent_primary",
+          'accent="primary"' in scene_tsx and 'accent?: "primary" | "secondary"' in art_tsx, "")
     check("artifact_stale_marker",
           "stalePaths" in art_tsx and "data-artifact-stale" in art_tsx, "")
     check("artifact_writing_keeps_toolbar",
           'compactToolbar' not in scene_tsx.split('data-writing-board=""')[1].split("</>")[0],
           "写作页保留时间筛选（固定近一月的规则只属于工作记录页）")
 
-    # ---- 英文副标题可配置 ----
-    for key in ("studio", "overview", "recent", "continue", "inspiration", "pipeline", "stale", "draft", "finished", "published"):
-        check("subtitle_key_" + key, f'"{key}"' in scenes_ts.split("subtitles?: Partial<")[1].split(">;")[0], "")
-    check("subtitle_continue_wired",
-          "subtitle={def.subtitles?.continue}" in scene_tsx, "")
-    check("subtitle_inspiration_wired",
-          "subtitle={def.subtitles?.inspiration}" in scene_tsx, "")
-    check("subtitle_pipeline_wired",
-          "subtitle={def.subtitles?.pipeline}" in scene_tsx, "")
-    check("subtitle_recent_used_by_card4",
-          "subtitle={scene.subtitles?.recent}" in strip_tsx, "")
-    check("no_hardcoded_english_subtitles",
-          not any(f'subtitle="{v}"' in studio_tsx for v in ("CONTINUE", "INSPIRATION", "PIPELINE")),
-          "组件里的英文小标都来自场景配置")
-    check("subtitle_optional_in_studio",
-          "subtitle ? (" in studio_tsx, "缺省不渲染")
+    # ---- 写作页不再有英文副标题或解释性标题 ----
+    check("no_subtitle_props_in_studio",
+          "subtitle" not in studio_tsx, "区块标题只用中文")
+    check("no_subtitle_props_in_scene",
+          "def.subtitles" not in scene_tsx.split('scene === "writing" ? (')[1].split('scene === "weekly" ? (')[0],
+          "写作页不接场景副标题")
+    check("no_writing_english_keys",
+          "studio:" not in scenes_ts.split('writing: {')[1].split("project: {")[0],
+          "写作场景配置不再带英文小标")
 
     # ---- 编译并执行真实派生模块 ----
     tmp = Path(tempfile.mkdtemp(prefix="od094-"))

@@ -480,13 +480,13 @@ def main() -> int:
             facts["list_view_clicked"] = False
             facts["list_view_confirmed"] = False
 
-        # 11：四象限轴标（OD-ARCH-097 S01）。轴标是矩阵外的英文标签，
+        # 11：四象限轴标（OD-ARCH-097 S01）。轴标是矩阵外的中文标签，
         # 格子内不应再有「已过日期 · 进周报」这类说明文字与统计数字。
         nodes = app_nodes(pid)
         xs.shot(EVID / "11-quadrant-axes.png")
         axes_text = "\n".join((n.name or "") + (n.text or "") for n in nodes)
-        facts["axes_urgent"] = "URGENT" in axes_text
-        facts["axes_important"] = "IMPORTANT" in axes_text
+        facts["axes_urgent"] = "紧急" in axes_text
+        facts["axes_important"] = "重要" in axes_text
         facts["quadrant_action_text_gone"] = "已过日期 · 进周报" not in axes_text
 
         # 10：打开本周原文 → 贴底卡片（OD-ARCH-097 S03），关闭后主区高度不变。

@@ -1,9 +1,9 @@
 //! 自建 Profile 的起步骨架（OD-ARCH-122）。
 //!
 //! 产品口径：「OmniDesk 是干净底座，Profile 是定制工作台」。从基础标准新建一个
-//! Profile 时，如果只复制 DSH 的配置，切过去之后只有平台固有入口（首页 / 历史会话），
+//! Profile 时，如果只复制 DSH 的配置，切过去之后只有平台固有入口（首页 / 知识库），
 //! 用户还得自己从零写一整份 decl.yml 才有业务场景。这里给一份最小、可改的骨架：
-//!   * decl.yml：五个标准场景入口，名字取自用户填的显示名；
+//!   * decl.yml：四个标准场景入口，名字取自用户填的显示名；
 //!   * rules.json：schema v2、空 global、空 scenes、空 skill_bindings —— 零预注入。
 //!
 //! 边界：
@@ -18,16 +18,15 @@ use std::path::{Path, PathBuf};
 use crate::profile_decl::{parse_decl, PROFILE_DECL_FILE, PROFILE_DECL_SCHEMA};
 use crate::profile_rules::{parse_rules, PROFILE_RULES_FILE, PROFILE_RULES_SCHEMA_V2};
 
-/// 起步声明里固定的五个入口。顺序即 Dock 顺序，与出厂 Profile 一致。
+/// 起步声明里固定的四个入口。顺序即 Dock 顺序，与出厂 Profile 一致。
 ///
 /// 图标只用 ALLOWED_ICONS 里的名字；这些场景 id 都在 ALLOWED_SCENES 内，
 /// 这里仍走一次真实解析与校验，避免「模板自己不合规」。
 const STARTER_SCENES: &[(&str, &str, &str, &str)] = &[
     ("home", "工作台首页", "brand", ""),
-    ("report", "工作记录", "note", "模型起草"),
-    ("writing", "文案写作", "book", "模型起草"),
-    ("project", "项目跟踪", "checklist", "模型起草"),
-    ("sessions", "历史会话", "history", "引擎会话 · 本机对话"),
+    ("report", "工作记录", "note", ""),
+    ("writing", "文案写作", "book", ""),
+    ("project", "项目跟踪", "checklist", ""),
 ];
 
 /// 起步声明的显示名：压成单行、去掉首尾空白，最长 64 字（与声明校验同口径）。
@@ -128,14 +127,14 @@ mod tests {
     }
 
     #[test]
-    fn decl_template_parses_and_covers_five_scenes() {
+    fn decl_template_parses_and_covers_four_scenes() {
         let text = decl_text("我的工作台").unwrap();
         let decl = parse_decl(&text).unwrap();
         decl.validate().unwrap();
         assert_eq!(decl.display_name, "我的工作台");
         assert_eq!(
             decl.scenes.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
-            vec!["home", "report", "writing", "project", "sessions"]
+            vec!["home", "report", "writing", "project"]
         );
     }
 

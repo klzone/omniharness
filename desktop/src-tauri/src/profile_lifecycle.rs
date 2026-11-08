@@ -1799,7 +1799,8 @@ mod tests {
         let parsed = crate::profile_decl::parse_decl(&decl).unwrap();
         parsed.validate().unwrap();
         assert_eq!(parsed.display_name, "我的工作台");
-        assert_eq!(parsed.scenes.len(), 5);
+        assert_eq!(parsed.scenes.len(), 4);
+        assert!(parsed.scenes.iter().all(|s| s.id != "sessions"), "起手不再带历史会话");
         let rules = fs::read_to_string(app_dir.join("rules.json")).expect("起手要有规则包");
         let parsed_rules = crate::profile_rules::parse_rules(&rules).unwrap();
         assert_eq!(parsed_rules.profile, "my-work");

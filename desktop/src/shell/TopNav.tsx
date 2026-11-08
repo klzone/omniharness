@@ -820,22 +820,15 @@ export function TopNav({
           <ProfileBadge onProfileChanged={onProfileChanged} />
 
           <span
+            data-testid="engine-status-dot"
+            role="status"
+            aria-label={engineHealthy ? "已连接" : "未连接"}
             data-hover-hint={engineLabel}
             className={
-              "hidden md:inline-flex items-center space-x-1 px-2 py-0.5 rounded-full font-label-caps text-[9.5px] tracking-wide border whitespace-nowrap " +
-              (engineHealthy
-                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-600 border-amber-500/20")
+              "hidden md:inline-flex h-2 w-2 rounded-full " +
+              (engineHealthy ? "bg-emerald-500 status-dot-pulse" : "bg-amber-500")
             }
-          >
-            <span
-              className={
-                "w-1.5 h-1.5 rounded-full " +
-                (engineHealthy ? "bg-emerald-500 status-dot-pulse" : "bg-amber-500")
-              }
-            />
-            <span>{engineHealthy ? "IPC ON" : "IPC OFF"}</span>
-          </span>
+          />
         </div>
 
         {/* 当前会话内查找（OD-ARCH-082 S8） */}

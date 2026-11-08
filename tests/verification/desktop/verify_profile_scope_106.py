@@ -150,19 +150,13 @@ def main() -> int:
     check("preset_requires_declared_scene", "declaredScenes" in preset_fn and "some((s) => s.id === declId)" in preset_fn, "场景预设须要求入口真的挂在 Profile 上")
     check("preset_requires_loaded_rules", "!rulesView?.loaded" in preset_fn and "return null" in preset_fn, "规则未加载不套场景预设")
 
-    # ---- 5b. 首页把「标准模式」说清楚（S5 界面口径） -------------------------------
+    # ---- 5b. 首页不再靠说明文字解释模式 -----------------------------------------
     check(
-        "home_shows_standard_mode_copy",
-        'data-testid="home-standard-mode"' in canvas
-        and "标准模式：DSH 底座 + OmniDesk UI，无业务场景" in canvas,
-        "首页应显示标准模式说明",
+        "home_has_no_standard_mode_banner",
+        'data-testid="home-standard-mode"' not in canvas
+        and "标准模式：DSH 底座" not in canvas,
+        "首页不常驻模式说明；入口有无由 Dock 本身表达",
     )
-    check(
-        "home_standard_copy_gated",
-        "declReady && !declFailed && declaredScenes === null" in canvas,
-        "标准模式说明须等声明读取完成且确认无声明后才显示",
-    )
-    check("app_passes_decl_ready", "declReady={declReady}" in app, "App 应把声明读取完成状态传给首页")
 
     # ---- 6. 基础标准插件面回归官方 ---------------------------------------------
     for plugin in ("skill-filesystem", "tool-skill"):

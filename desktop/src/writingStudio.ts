@@ -19,19 +19,15 @@ export const STALE_DAYS = 90;
 
 export const STALE_SECONDS = STALE_DAYS * 24 * 60 * 60;
 
-/** 缺省口径写成常量，界面与验证脚本引用同一句话。 */
-export const STATUS_DEFAULT_NOTE = "未标注状态的成果按「成文」显示";
-
 export const WRITING_STATUSES: Array<{
   key: WritingStatus;
   label: string;
-  subtitle: string;
-  /** 状态的一句话说明，写在中栏组头下面。 */
+  /** 状态的一句话说明，作为筛选片的悬停提示。 */
   hint: string;
 }> = [
-  { key: "draft", label: "草稿", subtitle: "DRAFTS", hint: "还在写，或等下一次继续" },
-  { key: "finished", label: "成文", subtitle: "FINISHED", hint: "已经成稿，可以回顾或发布" },
-  { key: "published", label: "已发布", subtitle: "PUBLISHED", hint: "已经对外发出" },
+  { key: "draft", label: "草稿", hint: "还在写，或等下一次继续" },
+  { key: "finished", label: "成文", hint: "已经成稿，可以回顾或发布" },
+  { key: "published", label: "已发布", hint: "已经对外发出" },
 ];
 
 const STATUS_ALIASES: Record<string, WritingStatus> = {

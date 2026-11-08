@@ -18,6 +18,10 @@ import type {
   EnvironmentReport,
   ExplanationSource,
   LibraryRootInfo,
+  LinkReport,
+  MigrationPreview,
+  MigrationReport,
+  WorkingRootInfo,
   KnowledgeVaultNote,
   KnowledgeVaultIndex,
   KnowledgeVaultNoteLinks,
@@ -89,6 +93,26 @@ import type {
   UsageRecord,
   WeeklySummary,
   WorkflowSample,
+  CandidateListing,
+  AnalyzeApplied,
+  AnalyzePrompt,
+  ConfirmEdits,
+  RecordDraft,
+  RecordFilter,
+  RecordListing,
+  RecordPatch,
+  TaskCandidate,
+  TaskDeleted,
+  TaskDraft,
+  TaskFilter,
+  TaskListing,
+  TaskPatch,
+  TaskSaved,
+  TrashMove,
+  WorkRecord,
+  WorkRecordSaved,
+  WorkTask,
+  WorkTaskState,
   WorklogAppendReceipt,
   WorklogDestinationReceipt,
   WorklogRedateReceipt,
@@ -589,6 +613,168 @@ export const shell = {
     });
   },
 
+  // -------------------------------------------------------------------------
+  // 工作记录 / 任务 / 候选（OD-WR-302）
+  //
+  // 红线扫描与 mask_privacy 由宿主执行：命中红线时 invoke 直接 reject，
+  // 错误里不回显原文；成功时回执带 masked 计数。
+  // -------------------------------------------------------------------------
+
+  workRecordCreate(draft: RecordDraft): Promise<WorkRecordSaved> {
+    return invoke<WorkRecordSaved>("work_record_create", { draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  workRecordRead(id: string): Promise<WorkRecord> {
+    return invoke<WorkRecord>("work_record_read", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  workRecordUpdate(id: string, patch: RecordPatch): Promise<WorkRecordSaved> {
+    return invoke<WorkRecordSaved>("work_record_update", { id, patch }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 解析准备：宿主校验门禁、过红线与掩码后返回提示词。 */
+  workRecordAnalyzePrepare(recordId: string): Promise<AnalyzePrompt> {
+    return invoke<AnalyzePrompt>("worklog_record_analyze", { recordId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 解析落地：校验模型输出并暂存候选；失败时宿主把记录置为解析失败。 */
+  workRecordAnalyzeApply(recordId: string, resultText: string): Promise<AnalyzeApplied> {
+    return invoke<AnalyzeApplied>("worklog_record_analyze_apply", {
+      recordId,
+      resultText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 模型调用失败或超时：只把记录置为解析失败，正文不动。 */
+  workRecordAnalyzeFailed(recordId: string): Promise<WorkRecord> {
+    return invoke<WorkRecord>("worklog_record_analyze_failed", { recordId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  workRecordDelete(id: string): Promise<TrashMove> {
+    return invoke<TrashMove>("work_record_delete", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  workRecordList(filter: RecordFilter = {}): Promise<RecordListing> {
+    return invoke<RecordListing>("work_record_list", { filter }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskCreate(draft: TaskDraft): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_create", { draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskRead(id: string): Promise<WorkTask> {
+    return invoke<WorkTask>("task_read", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskUpdate(id: string, patch: TaskPatch): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_update", { id, patch }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskTransition(
+    id: string,
+    toState: WorkTaskState,
+    note?: string,
+  ): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_transition", {
+      id,
+      toState,
+      note: note ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskAppendProgress(id: string, text: string): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_append_progress", { id, text }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskDelete(id: string): Promise<TaskDeleted> {
+    return invoke<TaskDeleted>("task_delete", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskList(filter: TaskFilter = {}): Promise<TaskListing> {
+    return invoke<TaskListing>("task_list", { filter }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskCandidateList(): Promise<CandidateListing> {
+    return invoke<CandidateListing>("task_candidate_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskCandidateConfirm(
+    candidateId: string,
+    edits: ConfirmEdits = {},
+  ): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_candidate_confirm", {
+      candidateId,
+      edits,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  taskCandidateReject(candidateId: string, note?: string): Promise<TaskCandidate> {
+    return invoke<TaskCandidate>("task_candidate_reject", {
+      candidateId,
+      note: note ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 采纳关联建议：追加进展并双向回写任务/记录 ID（OD-WR-307）。 */
+  taskCandidateLink(
+    candidateId: string,
+    progressText?: string,
+    note?: string,
+  ): Promise<LinkReport> {
+    return invoke<LinkReport>("task_candidate_link", {
+      candidateId,
+      progressText: progressText ?? null,
+      note: note ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 拒绝关联建议：清空匹配字段，候选继续留在待审核。 */
+  taskCandidateDismissMatch(candidateId: string): Promise<TaskCandidate> {
+    return invoke<TaskCandidate>("task_candidate_dismiss_match", {
+      candidateId,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 对话分类（OD-ARCH-062 S1）：读宿主持久化的分类表。
    *
@@ -934,6 +1120,41 @@ export const shell = {
   }> {
     return invoke<{ ok: boolean; library_root: string; note: string }>(
       "task_set_library_root",
+      { path },
+    ).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 工作记录根信息（OD-WR-315）：当前生效路径、来源与已保存选择。 */
+  workRootInfo(): Promise<WorkingRootInfo> {
+    return invoke<WorkingRootInfo>("work_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 存量周文件迁移预览：只解析、不写盘（OD-WR-309）。 */
+  worklogMigratePreview(): Promise<MigrationPreview> {
+    return invoke<MigrationPreview>("worklog_migrate_preview").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 执行存量周文件迁移；confirm 必须为 true。 */
+  worklogMigrateApply(confirm: boolean): Promise<MigrationReport> {
+    return invoke<MigrationReport>("worklog_migrate_apply", { confirm }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存工作记录根。只影响之后新建的记录与任务。 */
+  setWorkingRoot(path: string): Promise<{
+    ok: boolean;
+    working_root: string;
+    note: string;
+  }> {
+    return invoke<{ ok: boolean; working_root: string; note: string }>(
+      "task_set_working_root",
       { path },
     ).catch((e) => {
       throw new Error(normalizeError(e));

@@ -7,7 +7,7 @@ import { Dock, type Scene } from "./shell/Dock";
 import { HomeCanvas } from "./shell/HomeCanvas";
 import { ConfirmDialog } from "./shell/ConfirmDialog";
 import { ScenePage } from "./shell/ScenePage";
-import { Workspace } from "./shell/Workspace";
+import { WorkRecordPage } from "./shell/WorkRecordPage";
 import { TopNav } from "./shell/TopNav";
 import { EnvironmentCheck } from "./shell/EnvironmentCheck";
 import { WindowResizeHandles } from "./shell/WindowChrome";
@@ -130,7 +130,7 @@ export default function App() {
   // 绝不能因为声明晚到就把用户从设置页拽走——实测过这个跳转，判定为缺陷。
   useEffect(() => {
     if (!declReady) return;
-    const managed = ["home", "report", "writing", "project", "sessions"] as const;
+    const managed = ["home", "report", "writing", "project"] as const;
     if (!(managed as readonly string[]).includes(scene)) return;
     const ids = decl ? decl.decl.scenes.map((s) => s.id as string) : [];
     if (!ids.includes(scene)) setScene((decl?.decl.scenes[0]?.id as Scene) ?? "home");
@@ -304,7 +304,7 @@ export default function App() {
           // 下面那个校准 effect 会自己落回首页。
           loadDecl();
           setProfileEpoch((n) => n + 1);
-          // 分类表也随 Profile 走（OD-ARCH-116）：不重读的话，首页胶囊与历史会话
+          // 分类表也随 Profile 走（OD-ARCH-116）：不重读的话，首页胶囊与场景对话
           // 会继续显示上一个 Profile 的业务分类，切回基础标准后尤其明显。
           void refreshThreadCategories();
           // 旧引擎已停：重新检测一次描述，顶栏不再显示上一个 Profile 的引擎状态。
@@ -398,7 +398,6 @@ export default function App() {
             onNavigate={selectScene}
             declaredScenes={decl?.decl.scenes ?? null}
             declFailed={Boolean(declError)}
-            declReady={declReady}
             searchQuery={searchQuery}
             searchCurrentIndex={searchCurrentIndex}
             onSearchMatchesChange={(count) => {
@@ -411,15 +410,13 @@ export default function App() {
               });
             }}
           />
-        ) : scene === "report" || scene === "writing" || scene === "project" ? (
+        ) : scene === "report" ? (
+          <WorkRecordPage onNavigate={selectScene} />
+        ) : scene === "writing" || scene === "project" ? (
           <ScenePage
-            scene={scene === "report" ? "weekly" : scene === "writing" ? "writing" : "project"}
+            scene={scene === "writing" ? "writing" : "project"}
             onNavigate={selectScene}
           />
-        ) : scene === "sessions" ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <Workspace onNavigate={selectScene} />
-          </div>
         ) : scene === "knowledge" ? (
           <Suspense
             fallback={

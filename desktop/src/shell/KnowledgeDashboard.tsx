@@ -160,7 +160,8 @@ export function KnowledgeDashboard({
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-3.5">
+      <section className="mb-3.5 overflow-hidden rounded-[22px] border border-white/85 bg-white/72 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]">
+        <div className="grid grid-cols-2 divide-y divide-outline-variant/20 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
         {[
           { id: "dashboard-stat-raw", value: raw.length, label: "原始资料", hint: "raw/", action: onOpenAssets },
           { id: "dashboard-stat-wiki", value: wiki.length, label: "Wiki 知识条目", hint: "知识库/", action: onOpenAssets },
@@ -173,16 +174,17 @@ export function KnowledgeDashboard({
             type="button"
             data-testid={stat.id}
             onClick={stat.action}
-            className="rounded-[18px] border-t border-l border-white/90 bg-white/70 px-4 py-3.5 text-left shadow-[0_12px_32px_-10px_rgba(15,23,42,0.05)] hover:border-primary/35 transition-colors"
+            className="group min-w-0 px-4 py-3.5 text-left transition-colors hover:bg-primary/[0.035]"
           >
-            <span className="block mono text-[22px] font-semibold tracking-tight text-on-surface">{stat.value}</span>
+            <span className="block mono text-[25px] font-semibold tracking-[-0.03em] text-on-surface group-hover:text-primary">{stat.value}</span>
             <span className="mt-0.5 block text-[11.5px] text-on-surface-variant">{stat.label}</span>
             <span className="mt-1 block mono text-[9.5px] text-outline">{stat.hint}</span>
           </button>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-3.5" data-testid="dashboard-duo">
+      <div className="grid grid-cols-1 gap-3.5 mb-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" data-testid="dashboard-duo">
         <section className="rounded-[20px] border border-white/80 bg-white/70 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]" data-testid="dashboard-todo-card">
           <div className="flex items-center gap-2 px-4 py-3">
             <h3 className="text-[12.5px] font-semibold text-on-surface">需要你处理</h3>
