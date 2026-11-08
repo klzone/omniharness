@@ -1,0 +1,27 @@
+PASS  gate_definition
+PASS  gate_error_does_not_echo_text
+PASS  gate_covers_material_create
+PASS  gate_covers_material_edit
+PASS  gate_covers_material_review_confirm
+PASS  gate_covers_knowledge_link
+PASS  gate_covers_project_text
+PASS  phase3_ipc_registered
+PASS  material_review_only_user_command
+PASS  ai_output_only_stages_candidates
+PASS  candidate_defaults_pending
+PASS  knowledge_write_paths_untouched
+PASS  knowledge_link_is_read_only
+PASS  material_query_read_only
+PASS  cleanup_excludes_material_dir
+PASS  cleanup_material_test_exists
+PASS  cleanup_scope_does_not_scan_link_dir
+PASS  rebuild_index_separated_from_work
+PASS  vault_root_outside_app_root
+PASS  rebuild_links_recoverable_test
+PASS  no_sensitive_logs
+PASS  tests_use_temp_roots
+PASS  test_data_fictional_declared
+PASS  no_forbidden_material_terms
+PASS  no_new_waivers
+
+25/25 通过

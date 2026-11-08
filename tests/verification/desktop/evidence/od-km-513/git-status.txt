@@ -1,0 +1,42 @@
+HEAD 836c230fb2e7c4a2c6057b1922948f68add0e7f7
+
+ M PLANS.md
+ M REVIEW.md
+ M desktop/src-tauri/src/lib.rs
+ M desktop/src-tauri/src/task_extract.rs
+ M desktop/src-tauri/src/task_store.rs
+ M desktop/src-tauri/src/work_cleanup.rs
+ M desktop/src-tauri/src/worklog_records.rs
+ M desktop/src/api.ts
+ M desktop/src/shell/KnowledgeVaultPage.tsx
+ M desktop/src/shell/ProjectBoard.tsx
+ M desktop/src/shell/TaskManager.tsx
+ M desktop/src/shell/WorkRecordLibrary.tsx
+ M desktop/src/shell/WritingStudio.tsx
+ M desktop/src/types.ts
+ M engine/omnidesk_engine/task_extract.py
+ M tests/verification/engine-interface/adapter/test_task_extract_unit.py
+?? desktop/src-tauri/src/knowledge_link.rs
+?? desktop/src-tauri/src/knowledge_link_store.rs
+?? desktop/src-tauri/src/material_query.rs
+?? desktop/src-tauri/src/material_store.rs
+?? desktop/src-tauri/src/project_store.rs
+?? desktop/src/shell/KnowledgeLinkPanel.tsx
+?? desktop/src/shell/WritingMaterialBasket.tsx
+?? tests/verification/desktop/evidence/od-km-501/
+?? tests/verification/desktop/evidence/od-km-504/
+?? tests/verification/desktop/evidence/od-km-505/
+?? tests/verification/desktop/evidence/od-km-506/
+?? tests/verification/desktop/evidence/od-km-508/
+?? tests/verification/desktop/evidence/od-km-509/
+?? tests/verification/desktop/evidence/od-km-510/
+?? tests/verification/desktop/evidence/od-km-511/
+?? tests/verification/desktop/evidence/od-km-513/
+?? tests/verification/desktop/verify_linkage_ui_511.json
+?? tests/verification/desktop/verify_linkage_ui_511.py
+?? tests/verification/desktop/verify_material_store_501.json
+?? tests/verification/desktop/verify_material_store_501.py
+?? tests/verification/desktop/verify_material_ui_510.py
+?? tests/verification/desktop/verify_project_ui_512.json
+?? tests/verification/desktop/verify_project_ui_512.py
+?? tests/verification/desktop/verify_security_phase3.py

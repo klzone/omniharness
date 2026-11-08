@@ -1,0 +1,139 @@
+{
+  "plan": "OD-KM-513",
+  "evidence_level": "静态源码检查 + 既有测试覆盖断言",
+  "passed": true,
+  "total": 25,
+  "failed": [],
+  "declarations": {
+    "test_data": "全部虚构/合成，未使用真实业务材料",
+    "new_waivers": "无",
+    "business_code_changed_by_513": "无"
+  },
+  "checks": [
+    {
+      "name": "gate_definition",
+      "ok": true,
+      "detail": "统一闸门仍是红线扫描 + 隐私掩码"
+    },
+    {
+      "name": "gate_error_does_not_echo_text",
+      "ok": true,
+      "detail": "拒绝信息只报命中标签与次数，不回显原文"
+    },
+    {
+      "name": "gate_covers_material_create",
+      "ok": true,
+      "detail": "material_create 的标题/正文/来源引用/定位/标签全部落盘前过闸门"
+    },
+    {
+      "name": "gate_covers_material_edit",
+      "ok": true,
+      "detail": "material_edit 的全部落盘文本（含编辑理由）过闸门"
+    },
+    {
+      "name": "gate_covers_material_review_confirm",
+      "ok": true,
+      "detail": "material_review 的退回/拒绝理由过闸门；确认动作走同一用户审核入口"
+    },
+    {
+      "name": "gate_covers_knowledge_link",
+      "ok": true,
+      "detail": "知识关联推荐提示与用户确认理由过闸门"
+    },
+    {
+      "name": "gate_covers_project_text",
+      "ok": true,
+      "detail": "项目名称与目标过统一闸门"
+    },
+    {
+      "name": "phase3_ipc_registered",
+      "ok": true,
+      "detail": "第三阶段 15 个新 IPC 全部注册"
+    },
+    {
+      "name": "material_review_only_user_command",
+      "ok": true,
+      "detail": "审核状态只在 material_review 用户命令里推进，AI 链路无写入口"
+    },
+    {
+      "name": "ai_output_only_stages_candidates",
+      "ok": true,
+      "detail": "模型输出只落 work/素材篮/.candidates/，不生成正式素材、不写审核状态"
+    },
+    {
+      "name": "candidate_defaults_pending",
+      "ok": true,
+      "detail": "候选暂存默认「待审核」；提取准备命令只产提示词，不落盘"
+    },
+    {
+      "name": "knowledge_write_paths_untouched",
+      "ok": true,
+      "detail": "素材/项目/关联模块不调用 vault_write、知识入库落盘或知识笔记写函数"
+    },
+    {
+      "name": "knowledge_link_is_read_only",
+      "ok": true,
+      "detail": "知识推荐只读扫描与词法检索，无写回知识库"
+    },
+    {
+      "name": "material_query_read_only",
+      "ok": true,
+      "detail": "第四阶段查询只读已确认素材，不产生写入"
+    },
+    {
+      "name": "cleanup_excludes_material_dir",
+      "ok": true,
+      "detail": "work_cleanup 显式排除素材篮，预览与执行移动前都检查路径"
+    },
+    {
+      "name": "cleanup_material_test_exists",
+      "ok": true,
+      "detail": "既有测试覆盖预览不选素材、执行不搬素材、字节不变、不建素材回收目录"
+    },
+    {
+      "name": "cleanup_scope_does_not_scan_link_dir",
+      "ok": true,
+      "detail": "清理只列记录与任务，不遍历 work/知识关联/ 或素材篮目录"
+    },
+    {
+      "name": "rebuild_index_separated_from_work",
+      "ok": true,
+      "detail": "重建只读知识库根并重建链接快照，不进入 work/ 数据"
+    },
+    {
+      "name": "vault_root_outside_app_root",
+      "ok": true,
+      "detail": "知识库根被拒绝放在应用数据目录（work/ 所在根）内"
+    },
+    {
+      "name": "rebuild_links_recoverable_test",
+      "ok": true,
+      "detail": "既有测试覆盖重建后链接恢复、外部编辑可见；原始笔记未被改写"
+    },
+    {
+      "name": "no_sensitive_logs",
+      "ok": true,
+      "detail": "新模块与界面无调试日志；合成身份证/电话样本不出现在业务源码"
+    },
+    {
+      "name": "tests_use_temp_roots",
+      "ok": true,
+      "detail": "各新模块测试只落系统临时目录，不写仓库或用户数据"
+    },
+    {
+      "name": "test_data_fictional_declared",
+      "ok": true,
+      "detail": "Python 单测声明全部虚构；Rust 夹具使用「虚构/合成」标记"
+    },
+    {
+      "name": "no_forbidden_material_terms",
+      "ok": true,
+      "detail": "新模块与提取提示词不含案件/线索/人物画像字样或字段"
+    },
+    {
+      "name": "no_new_waivers",
+      "ok": true,
+      "detail": "本阶段新增源码与测试未添加 lint/测试豁免或跳过标记"
+    }
+  ]
+}

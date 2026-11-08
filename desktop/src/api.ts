@@ -32,6 +32,10 @@ import type {
   KnowledgeVaultScan,
   KnowledgeVaultSearchQuery,
   KnowledgeVaultSearchResponse,
+  KnowledgeLinkReferences,
+  KnowledgeLinkReport,
+  KnowledgeLinkStageReport,
+  KnowledgeLinkSubjectKind,
   KnowledgeIngestApplyReport,
   KnowledgeIngestInit,
   KnowledgeIngestPrepare,
@@ -47,7 +51,21 @@ import type {
   ProjectItemRecord,
   ProjectItemsListing,
   ProjectItemsSaveReceipt,
+  ProjectDraftInput,
+  ProjectInfo,
+  ProjectListing,
+  ProjectOverview,
+  ProjectPatchInput,
   ProjectSummary,
+  MaterialDetail,
+  MaterialDraftInput,
+  MaterialFilter,
+  MaterialListing,
+  MaterialPatchInput,
+  MaterialQueryInput,
+  MaterialQueryResponse,
+  MaterialReviewAction,
+  WritingMaterial,
   ProfileDeclPayload,
   ParkedSkillView,
   ProfileAssetsView,
@@ -952,6 +970,61 @@ export const shell = {
   taskCandidateDismissMatch(candidateId: string): Promise<TaskCandidate> {
     return invoke<TaskCandidate>("task_candidate_dismiss_match", {
       candidateId,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 知识关联推荐（OD-KM-507）：只产生候选，落 work/知识关联/.candidates/。
+   * knowledgeHints 来自 504 的 knowledge_hints（字符串数组，最多 8 条）。
+   */
+  knowledgeLinkSuggest(
+    subjectKind: KnowledgeLinkSubjectKind,
+    subjectId: string,
+    knowledgeHints: string[] = [],
+  ): Promise<KnowledgeLinkStageReport> {
+    return invoke<KnowledgeLinkStageReport>("knowledge_link_suggest", {
+      subjectKind,
+      subjectId,
+      knowledgeHints,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户确认候选：理由必填并过宿主闸门，写入 related_knowledge。 */
+  knowledgeLinkConfirm(
+    candidateId: string,
+    reason: string,
+  ): Promise<KnowledgeLinkReport> {
+    return invoke<KnowledgeLinkReport>("knowledge_link_confirm", {
+      candidateId,
+      reason,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 移除记录/任务的一条知识关联；不移除时原文件字节不变。 */
+  knowledgeLinkRemove(
+    subjectKind: KnowledgeLinkSubjectKind,
+    subjectId: string,
+    knowledgeId: string,
+  ): Promise<KnowledgeLinkReport> {
+    return invoke<KnowledgeLinkReport>("knowledge_link_remove", {
+      subjectKind,
+      subjectId,
+      knowledgeId,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 反向查询：知识条目相对路径 → 引用它的记录/任务/素材（读取时派生）。 */
+  knowledgeLinkByKnowledge(knowledgeId: string): Promise<KnowledgeLinkReferences> {
+    return invoke<KnowledgeLinkReferences>("knowledge_link_by_knowledge", {
+      knowledgeId,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -2056,6 +2129,94 @@ export const shell = {
 
   projectItemsSave(items: ProjectItemRecord[]): Promise<ProjectItemsSaveReceipt> {
     return invoke<ProjectItemsSaveReceipt>("project_items_save", { items }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 新建项目（OD-KM-508）：名称与目标过宿主闸门后才落盘。 */
+  projectCreate(draft: ProjectDraftInput): Promise<ProjectInfo> {
+    return invoke<ProjectInfo>("project_create", { draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  projectUpdate(id: string, patch: ProjectPatchInput): Promise<ProjectInfo> {
+    return invoke<ProjectInfo>("project_update", { id, patch }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  projectList(): Promise<ProjectListing> {
+    return invoke<ProjectListing>("project_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 项目概览：任务/记录/素材/知识全部反向派生，素材计数来自素材篮只读查询。 */
+  projectOverview(projectId: string): Promise<ProjectOverview> {
+    return invoke<ProjectOverview>("project_overview", { projectId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // 写作素材（OD-KM-506）。AI 只经既有分析链路暂存候选，审核状态只由用户动作推进。
+  // -------------------------------------------------------------------------
+
+  /**
+   * AI 素材提取准备：复用 worklog_record_analyze 的门禁与提示词（已注入既有素材清单）。
+   * 模型调用仍由界面提交；结果经 workRecordAnalyzeApply 落暂存候选，不写正式素材。
+   */
+  materialExtractFromRecord(recordId: string): Promise<AnalyzePrompt> {
+    return invoke<AnalyzePrompt>("material_extract_from_record", { recordId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户主动收藏；标题、正文、来源引用与标签过宿主闸门后才落盘。 */
+  materialCreate(draft: MaterialDraftInput): Promise<WritingMaterial> {
+    return invoke<WritingMaterial>("material_create", { draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  materialList(filter: MaterialFilter = {}): Promise<MaterialListing> {
+    return invoke<MaterialListing>("material_list", { filter }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 素材详情：带来源追溯（源记录/任务/知识定位与引用原文）。 */
+  materialGet(id: string): Promise<MaterialDetail> {
+    return invoke<MaterialDetail>("material_get", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 审核：confirm / return / reject / defer / archive；退回与拒绝必须给理由。 */
+  materialReview(
+    id: string,
+    action: MaterialReviewAction,
+    reason?: string | null,
+  ): Promise<WritingMaterial> {
+    return invoke<WritingMaterial>("material_review", { id, action, reason }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 编辑正文/类型/标签等；用户文本过闸门，并追加一条审核记录。 */
+  materialEdit(id: string, patch: MaterialPatchInput): Promise<WritingMaterial> {
+    return invoke<WritingMaterial>("material_edit", { id, patch }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 第四阶段素材查询（OD-KM-509）：默认只返回已确认素材。
+   * 关键词只在宿主本地匹配标题与正文，不落盘、不外发。
+   */
+  materialQuery(query: MaterialQueryInput = {}): Promise<MaterialQueryResponse> {
+    return invoke<MaterialQueryResponse>("material_query", { query }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

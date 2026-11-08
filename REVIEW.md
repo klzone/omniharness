@@ -1,5 +1,77 @@
 ## OD-QS-413 审查（ARCHITECT，2026-11-09）——通过。第二阶段（OD-QS-401～413）全部竣工
 
+### OD-KM-513 复检通过 + 第三阶段（OD-KM-500）竣工（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 收口执行代理（Kepler）交付的全量回归、verify_security_phase3.py（25 项）与十二场景对照。
+
+**核对结果：**
+1. 本会话独立复跑全量：cargo --tests = 13 目标 950 passed / 0 failed（EXIT 0，首轮无偶发）；pytest = 200 passed + 30 subtests；npm build exit 0；verify_security_phase3 = 25/25。四项全量命令 + 安全脚本全部为 ARCHITECT 实跑，非转述。
+2. 安全八项口径核对：素材流新 IPC 闸门 7/7、AI 无审核写通道 3/3、知识库写路径零改动 3/3、素材篮清理排除 3/3、索引重建不损 work/ 3/3、无敏感日志、测试数据全虚构、无新增豁免——全部 PASS。
+3. 十二场景对照（方案 §十）：12/12 覆盖有证据；未验证事项如实登记（真实模型素材提取质量、推荐相关性、三张 UI 卡真实窗口目视、大量素材性能、真实知识库索引重建）。
+4. 遗留登记确认：verify_ui_simplify_v1.py 陈旧引用属 OD-QS-410 遗留非本阶段引入（照卡不修，已留证）；work/知识关联/ 清理排除口径核实通过（当前清理不遍历该目录，范围扩大时须补测试）。
+5. 收口裁决 4 条复核认可（全量首轮 0 failed 不复跑/静态+既有测试断言的安全脚本模式/知识关联清理口径/tsc 真实性确认）。
+
+**阶段结论：** 第三阶段（OD-KM-501～513，13 项任务）全部竣工并通过逐任务独立复检。待办：① 用户批准后提交推送（工作区含 501-513 全部交付，未提交未推送）；② 用户真实窗口目视素材篮/关联视图/项目视图三处新 UI 后追认；③ 真实模型素材提取与推荐质量待真实使用验证。
+### OD-KM-509 / OD-KM-510 / OD-KM-511 / OD-KM-512 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 四路并行执行代理（deepseek-v4.1-flash-eco/high）交付：509 material_query 接口（McClintock）、510 素材篮页（Carson）、511 关联视图（Avicenna）、512 项目视图（Lorentz）。
+
+**核对结果：**
+1. diff 允许清单核对：509 新增 material_query.rs + lib.rs 一命令 + types/api；510 改 WritingStudio.tsx（页签组）+ 新增 WritingMaterialBasket.tsx + verify 脚本；511 新增 KnowledgeLinkPanel.tsx + 改 WorkRecordLibrary/TaskManager/KnowledgeVaultPage 追加区块；512 改 ProjectBoard.tsx 追加概览区块 + verify 脚本。四者文件零交叠；runtime/ 零改动；501-508 交付物结构零修改。
+2. 独立复跑：cargo lib = 883 passed / 0 failed（净增 7：509 七项含场景十二 payload 测试）；tsc exit 0；build exit 0；verify 510 = 23/23、511 = 25/25、512 = 26/26（全部本会话实跑）。
+3. UI 参考核对：510（Iris AI/Questia/Apple News）、512（Flow/Inex One）、511（Evernote/Additor/Wonder）均有检索留痕与 ≤2 句借鉴要点，符合 BUILDER 模板条款。
+4. 执行裁决复核认可：509 五条（独立薄模块/时间口径沿用/默认已确认/关键词只匹配标题正文/容错不失败）；510 五条（页签挂稿件卡内/SourcePeekSheet 只读预览/客户端筛选/收藏口径/合法流转按钮）；511 六条（详情面板落 WorkRecordLibrary——WorkRecordPage 只是壳，处置正确/反向区块定位信息/已关联原文前 60 行/候选合并/回执刷新/无跨页跳转）；512 四条（保留最小素材列表不改 510 文件/计数与行列表口径分离/不新增创建入口/失败显示「—」不回落 0）。
+5. 遗留登记至 513：a) 510 发现 verify_ui_simplify_v1.py 仍引用 410 已删除的 WeeklyQuadrants.tsx（既有陈旧脚本，属既有债务，513 核对不属本阶段引入）；b) 素材编辑界面（material_edit）未接 UI，属任务卡未要求，后续按需补；c) 三张 UI 卡均未做真实窗口目视（统一列入 513 未验证事项）。
+
+**结论：** 四卡均通过。最后一张任务卡 OD-KM-513（全量回归+安全核对+收口）可派发。
+### OD-KM-506 / OD-KM-507 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：506 素材 IPC 六命令（Bohr）、507 知识关联 IPC 四命令（Hooke）。
+
+**核对结果：**
+1. diff 允许清单核对：506 改 lib.rs（六命令+注册+analyze 注入素材清单）/task_extract.rs（build_prompt_with_materials 追加式）/task_extract.py（materials 渲染）/types.ts/api.ts；507 新增 knowledge_link_store.rs + lib.rs 四命令 + types/api。501-505 交付物结构零修改；runtime/ 与 knowledge_vault 写路径零改动。
+2. 独立复跑：cargo lib = 876 passed / 0 failed（净增 20：506 七项 IPC 测试 + 507 十三项）；tsc exit 0；npm build exit 0；pytest 200 passed + 30 subtests（506 补 3 项注入用例）。全部为本会话实跑。
+3. 安全核对：AI 无写通道双向核实——506 material_extract_from_record 只返回分析准备（模型调用仍在界面侧、落暂存候选走既有 apply），507 suggest 只产候选；审核状态仅 material_review 用户触发；知识库只读。红线闸门覆盖六命令落盘文本（查询过滤参数不落盘不走闸门，裁决合理）。
+4. 并发纪律：lib.rs 双代理并行追加无冲突（506 报告与 507 报告互证）；507 观察到的 506 中间态测试失败已随最终复跑消解。
+5. 执行裁决复核认可：506 R1（user 来源 quote 必填不放宽，界面传正文作引用）、R2（extract 返回 AnalyzePrompt 不代调模型）、R4（中英审核动作）、R5（过滤参数不走闸门）；507 R1（候选独立 .candidates/）、R2（frontmatter 定向写回保字节）、R3（移除留痕 JSONL）、R4（半完成回执）。
+6. 登记遗留：507 移除留痕 JSONL 无轮转（低风险，个人规模）；关联写入不推进 updated_at（界面按更新时间排序看不到此变更，511 界面需注意）；work_cleanup 未对 work/知识关联/ 加显式排除测试（513 收口补验）。
+
+**结论：** 两卡均通过。批次四（509 ∥ 510 ∥ 511 ∥ 512）可派发。
+### OD-KM-504 / OD-KM-505 / OD-KM-508 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 三路并行执行代理（deepseek-v4.1-flash-eco/high）交付：504 AI 素材提取搭车（Herschel）、505 知识检索器（Hilbert）、508 项目 IPC（Darwin）。
+
+**核对结果：**
+1. diff 允许清单核对：504 改 engine/omnidesk_engine/task_extract.py + task_extract.rs + engine 侧测试；505 新增 knowledge_link.rs + lib.rs 挂 mod；508 改 lib.rs（四命令+注册）/task_store.rs（TaskDraft/TaskPatch 追加 project_id）/api.ts/types.ts。三者零越界；501/502/503 交付物未被修改；runtime/ 零改动。
+2. 独立复跑：cargo lib = 856 passed / 0 failed（净增 35：504 16 + 505 14 + 508 5）；pytest = 197 passed + 30 subtests（基线 187 净增 10）；tsc exit 0。全部为本会话实跑。
+3. 安全核对：敏感词扫描 0 命中；task_extract.py 静态核对仍只读 stdin 只写 stdout；零新增模型调用（搭既有分析调用，宿主校验权威）；素材候选落 素材篮/.candidates/（该目录已整体被清理排除）；AI 无审核状态写通道（504 暂存不改 review_status）。
+4. 执行裁决复核认可：504 四条（候选暂存位置/指纹复用/两级复制检查/宿主算位置）；505 五条（LinkSubject 包装/实体关联确定性定义/关键词切分/相对路径 id+上限 8/读取失败退回）；508 四条（单项目 overview/TaskDraft 扩字段/记录经任务链派生项目/broken 上报）。
+5. 登记待 506/507 消化事项：504 R2——worklog_record_analyze 在 lib.rs 属 504 允许清单外，提示词未注入既有素材清单，match_material_id 由宿主校验兜底；506 卡应把该注入补上（属 506 允许范围）。
+
+**结论：** 三卡均通过。批次三（506 ∥ 507）可派发。
+### OD-KM-502 / OD-KM-503 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：502 project_store.rs 项目实体（Socrates）、503 关联字段扩展（Beauvoir）。
+
+**核对结果：**
+1. diff 允许清单核对：502 仅新增 project_store.rs + lib.rs 挂 mod + evidence；503 仅改 task_store.rs / worklog_records.rs（全为新增行）。两者与 501 交付零交叠；project_items.rs / runtime / knowledge_vault 零改动。
+2. 独立复跑：cargo test --offline --lib = 821 passed / 0 failed（基线 792 → 净增 29：502 项 14 + 503 项 15）。字节不变测试（legacy_task/legacy_record）实跑通过。
+3. 并发纪律核对：两代理在共享工作区并行，互未触碰对方文件；502 报告如实登记了 503 的并发改动；503 报告如实登记了 502 的 project_store.rs。engine_ipc 偶发 PermissionDenied 属 macOS 已知噪音口径（单测复跑即过）。
+4. 执行裁决复核：502 R2（补 created_at/updated_at 与长度上限）认可——照既有实体先例；R3（ProjectRefItem 解耦）认可——纯函数骨架不绑具体结构。503 R1（字节不变走 render 入口）认可——更新函数推进 updated_at 是既有语义；R2（知识编号取相对路径形式）认可——与 501 related_knowledge_ids 口径一致，507 若收紧需同步；R4（空值省略不写 null）认可——保字节不变的必要实现。
+5. 敏感词扫描 0 命中。
+
+**结论：** 两卡均通过。503 R2 登记一条口径：知识编号当前为相对路径形状校验，507 确认流与 505 检索器沿用该口径；若改统一 ID 规范须同步三处。
+### OD-KM-501 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（deepseek-v4.1-flash-eco/high，agent Meitner）交付的 material_store.rs 素材实体。
+
+**核对结果：**
+1. diff 允许清单核对：新增 material_store.rs / verify_material_store_501.py / evidence、修改 lib.rs（仅挂 mod 一行）与 work_cleanup.rs（素材篮排除），无范围外改动；runtime/ 零改动；状态文件未动。
+2. 独立复跑：cargo test --offline --lib = 792 passed / 0 failed（基线 770 净增 22）；verify_material_store_501.py = 19/19（本会话独立复跑，非转述）。
+3. 安全核对：新增文件敏感词扫描 0 命中；素材篮清理排除有实测断言（素材篮文件不得被清理移动 + 字节不变断言）；review_status 不经创建/编辑通道写入（AI 无审核状态写通道）有测试。
+4. 执行裁决 4 条复核认可：source_quote 全来源必填（指纹依赖）；confirmation_status 两值字符串；创建一律待审核；删除走 work/.trash/ 可恢复先例。
+
+**结论：** 通过。执行代理裁决 R1（user 来源 quote 必填）如与 506 交互冲突，在 506 卡内显式放宽并补指纹规则，属计划内调整。
 **结论：通过。** 本审查基于实际源码、git diff、证据文件与本会话独立复跑；runtime/ 零改动。
 
 **独立复跑（本会话实跑，2026-11-09）：** cargo test --offline --lib → 770 passed / 0 failed；cargo test --offline --tests → EXIT=0、13 个测试目标全部 0 failed；pytest tests -q → 187 passed + 30 subtests；npx tsc --noEmit → exit 0；npm --prefix desktop run build → exit 0。专项 verify（全部本会话复跑）：verify_priority_rules_401 11/11、verify_task_quadrant_ui_402 11/11、verify_schedule_ui_403 11/11、verify_security_phase2 **14/14**、verify_ui_neumorphism_202 **29/29**（412 时的 19/19 → 后续界面扩展 29/29，全绿）。

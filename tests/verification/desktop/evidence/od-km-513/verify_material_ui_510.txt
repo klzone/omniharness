@@ -1,0 +1,25 @@
+PASS  material_tab_in_writing_studio
+PASS  tab_group_keeps_pipeline
+PASS  basket_no_direct_invoke
+PASS  list_uses_material_list
+PASS  status_filter_all_five
+PASS  type_grouping_all_ten
+PASS  pending_section_first_and_explicit
+PASS  row_status_label_text
+PASS  detail_uses_material_get
+PASS  detail_shows_body_and_quote
+PASS  source_trace_original_by_type
+PASS  source_peek_sheet_reused
+PASS  quote_missing_is_reported
+PASS  review_uses_material_review
+PASS  review_four_inline_actions
+PASS  return_reject_reason_required
+PASS  create_uses_material_create
+PASS  create_requires_text
+PASS  empty_state_is_real
+PASS  loading_and_error_not_empty
+PASS  no_fixture_data
+PASS  api_types_from_506_reused
+PASS  style_uses_theme_tokens
+
+23/23 通过

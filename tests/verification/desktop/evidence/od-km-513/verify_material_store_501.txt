@@ -1,0 +1,21 @@
+PASS  module_registered
+PASS  schema_and_dir
+PASS  struct_fields
+PASS  material_types_ten
+PASS  review_statuses_five
+PASS  source_types_five
+PASS  fingerprint_sha256
+PASS  duplicate_uniqueness
+PASS  review_section_append_only
+PASS  crud_surface
+PASS  filters
+PASS  atomic_writes
+PASS  cleanup_exclusion
+PASS  cleanup_exclusion_test
+PASS  vault_read_only
+PASS  no_database_dependency
+PASS  source_quote_required
+PASS  review_status_not_ai_writable
+PASS  tests_minimum_15
+
+19/19 通过

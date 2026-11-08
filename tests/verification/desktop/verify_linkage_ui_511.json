@@ -1,0 +1,134 @@
+{
+  "plan": "OD-KM-511",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 25,
+  "failed": [],
+  "checks": [
+    {
+      "name": "panel_module_present",
+      "ok": true,
+      "detail": "新增 KnowledgeLinkPanel，记录/任务详情共用同一关联区块"
+    },
+    {
+      "name": "source_peek_reused",
+      "ok": true,
+      "detail": "知识原文定位复用 SourcePeekSheet，按候选行号截取上下文"
+    },
+    {
+      "name": "suggest_ipc",
+      "ok": true,
+      "detail": "推荐候选调用 507 的 knowledge_link_suggest"
+    },
+    {
+      "name": "confirm_ipc",
+      "ok": true,
+      "detail": "确认调用 knowledge_link_confirm"
+    },
+    {
+      "name": "remove_ipc",
+      "ok": true,
+      "detail": "移除调用 knowledge_link_remove"
+    },
+    {
+      "name": "confirm_reason_required",
+      "ok": true,
+      "detail": "确认理由必填：空理由在界面直接拦住"
+    },
+    {
+      "name": "candidate_reason_and_location",
+      "ok": true,
+      "detail": "候选附理由与 路径·行号 定位，可打开原文"
+    },
+    {
+      "name": "ai_user_labels_distinct",
+      "ok": true,
+      "detail": "AI 推荐与用户确认分别标注，不用同一视觉标签混在一起"
+    },
+    {
+      "name": "receipt_updates_local_state",
+      "ok": true,
+      "detail": "确认/移除后从回执直接更新本地关联清单"
+    },
+    {
+      "name": "no_updated_at_refresh",
+      "ok": true,
+      "detail": "关联区块不依赖 updated_at，也不触发整页刷新"
+    },
+    {
+      "name": "linked_empty_state",
+      "ok": true,
+      "detail": "无关联时有真实空态"
+    },
+    {
+      "name": "panel_resets_on_subject_change",
+      "ok": true,
+      "detail": "切换记录/任务时清空上一条的候选与理由"
+    },
+    {
+      "name": "candidate_empty_states",
+      "ok": true,
+      "detail": "未推荐与无新候选分别空态"
+    },
+    {
+      "name": "work_record_detail_panel",
+      "ok": true,
+      "detail": "工作记录详情追加关联知识区块，保留原详情结构"
+    },
+    {
+      "name": "task_detail_panel",
+      "ok": true,
+      "detail": "任务详情追加关联知识区块，保留原详情结构"
+    },
+    {
+      "name": "parents_update_listing_from_receipt",
+      "ok": true,
+      "detail": "记录与任务都用回执更新详情和列表里的同一对象"
+    },
+    {
+      "name": "vault_reverse_query",
+      "ok": true,
+      "detail": "知识条目详情调用 knowledge_link_by_knowledge 反向查询"
+    },
+    {
+      "name": "vault_reverse_block",
+      "ok": true,
+      "detail": "知识条目详情追加「引用它的工作事实」反向区块"
+    },
+    {
+      "name": "vault_reverse_three_groups",
+      "ok": true,
+      "detail": "反向区块覆盖记录、任务、素材三类来源"
+    },
+    {
+      "name": "vault_reverse_locating_info",
+      "ok": true,
+      "detail": "每条引用显示标题、编号、理由与关联时间"
+    },
+    {
+      "name": "vault_reverse_empty_and_broken",
+      "ok": true,
+      "detail": "无引用空态与损坏引用提示都真实可见"
+    },
+    {
+      "name": "vault_reverse_clears_stale",
+      "ok": true,
+      "detail": "切换知识条目时先清空上一条的引用，避免显示过期列表"
+    },
+    {
+      "name": "api_types_reuse_507",
+      "ok": true,
+      "detail": "直接复用 507 的 api.ts / types.ts，不另造协议"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "新增界面代码未引入类型或 lint 豁免"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "runtime/ 无改动"
+    }
+  ]
+}

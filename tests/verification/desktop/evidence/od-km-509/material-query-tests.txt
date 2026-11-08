@@ -1,0 +1,14 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.42s
+     Running unittests src/lib.rs (target/debug/deps/omnidesk_desktop_lib-2987307d49efb4d8)
+
+running 7 tests
+test material_query::tests::keyword_query_does_not_rewrite_material_files ... ok
+test material_query::tests::missing_related_entities_are_reported_without_failing ... ok
+test material_query::tests::invalid_filters_are_rejected_and_broken_files_are_counted ... ok
+test material_query::tests::defaults_to_confirmed_and_explicit_status_overrides ... ok
+test material_query::tests::scene12_payload_contains_content_source_location_status_and_related_entities ... ok
+test material_query::tests::keyword_matches_title_and_content_case_insensitively ... ok
+test material_query::tests::filters_type_date_and_project_together ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 876 filtered out; finished in 0.12s
+

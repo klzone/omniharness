@@ -1,0 +1,104 @@
+{
+  "plan": "OD-KM-501",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 19,
+  "failed": [],
+  "checks": [
+    {
+      "name": "module_registered",
+      "ok": true,
+      "detail": "lib.rs 已挂 material_store，模块导出 WritingMaterial"
+    },
+    {
+      "name": "schema_and_dir",
+      "ok": true,
+      "detail": "work/素材篮/<material_id>.md，schema omnidesk.material.v1"
+    },
+    {
+      "name": "struct_fields",
+      "ok": true,
+      "detail": "WritingMaterial 含任务卡列出的全部字段"
+    },
+    {
+      "name": "material_types_ten",
+      "ok": true,
+      "detail": "十类素材类型白名单完整"
+    },
+    {
+      "name": "review_statuses_five",
+      "ok": true,
+      "detail": "审核状态五态白名单"
+    },
+    {
+      "name": "source_types_five",
+      "ok": true,
+      "detail": "来源类型白名单 work_record/task/project/knowledge/user"
+    },
+    {
+      "name": "fingerprint_sha256",
+      "ok": true,
+      "detail": "指纹复用 sha256.rs，输入 source_id + 归一化引用"
+    },
+    {
+      "name": "duplicate_uniqueness",
+      "ok": true,
+      "detail": "创建与编辑都校验同指纹唯一性"
+    },
+    {
+      "name": "review_section_append_only",
+      "ok": true,
+      "detail": "## 审核记录 只追加：创建写首条，后续 push，不清空历史"
+    },
+    {
+      "name": "crud_surface",
+      "ok": true,
+      "detail": "创建/读取/列表/编辑/删除/审核 六类入口齐全"
+    },
+    {
+      "name": "filters",
+      "ok": true,
+      "detail": "按类型/状态/时间区间/项目/任务过滤"
+    },
+    {
+      "name": "atomic_writes",
+      "ok": true,
+      "detail": "新建与改写都用 worklog_records 的原子写"
+    },
+    {
+      "name": "cleanup_exclusion",
+      "ok": true,
+      "detail": "清理预览/执行路径显式排除 work/素材篮/"
+    },
+    {
+      "name": "cleanup_exclusion_test",
+      "ok": true,
+      "detail": "素材篮清理排除有模块内测试"
+    },
+    {
+      "name": "vault_read_only",
+      "ok": true,
+      "detail": "素材存储不引用知识库写路径"
+    },
+    {
+      "name": "no_database_dependency",
+      "ok": true,
+      "detail": "不引入数据库"
+    },
+    {
+      "name": "source_quote_required",
+      "ok": true,
+      "detail": "来源引用必填"
+    },
+    {
+      "name": "review_status_not_ai_writable",
+      "ok": true,
+      "detail": "创建一律待审核，状态只经 review_material 推进"
+    },
+    {
+      "name": "tests_minimum_15",
+      "ok": true,
+      "detail": "模块内测试 21 项（≥15）"
+    }
+  ]
+}

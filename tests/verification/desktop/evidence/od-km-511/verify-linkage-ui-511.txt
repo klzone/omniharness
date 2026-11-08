@@ -1,0 +1,27 @@
+PASS  panel_module_present
+PASS  source_peek_reused
+PASS  suggest_ipc
+PASS  confirm_ipc
+PASS  remove_ipc
+PASS  confirm_reason_required
+PASS  candidate_reason_and_location
+PASS  ai_user_labels_distinct
+PASS  receipt_updates_local_state
+PASS  no_updated_at_refresh
+PASS  linked_empty_state
+PASS  panel_resets_on_subject_change
+PASS  candidate_empty_states
+PASS  work_record_detail_panel
+PASS  task_detail_panel
+PASS  parents_update_listing_from_receipt
+PASS  vault_reverse_query
+PASS  vault_reverse_block
+PASS  vault_reverse_three_groups
+PASS  vault_reverse_locating_info
+PASS  vault_reverse_empty_and_broken
+PASS  vault_reverse_clears_stale
+PASS  api_types_reuse_507
+PASS  no_new_exemptions
+PASS  runtime_untouched
+
+25/25 通过

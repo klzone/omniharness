@@ -1,0 +1,124 @@
+{
+  "plan": "OD-KM-510",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 23,
+  "failed": [],
+  "checks": [
+    {
+      "name": "material_tab_in_writing_studio",
+      "ok": true,
+      "detail": "写作页稿件卡内新增「素材篮」页签，并渲染独立素材组件"
+    },
+    {
+      "name": "tab_group_keeps_pipeline",
+      "ok": true,
+      "detail": "页签只切换视图，稿件流程与筛选状态原样保留"
+    },
+    {
+      "name": "basket_no_direct_invoke",
+      "ok": true,
+      "detail": "素材组件只经 shell/api 封装，不直连 Tauri invoke"
+    },
+    {
+      "name": "list_uses_material_list",
+      "ok": true,
+      "detail": "素材列表经 506 的 materialList 读取"
+    },
+    {
+      "name": "status_filter_all_five",
+      "ok": true,
+      "detail": "五个审核状态都可筛选，选中态可再次取消"
+    },
+    {
+      "name": "type_grouping_all_ten",
+      "ok": true,
+      "detail": "按素材十类分组渲染，分组只显示实际有内容的类型"
+    },
+    {
+      "name": "pending_section_first_and_explicit",
+      "ok": true,
+      "detail": "待审核单独成段并排在类型分组之前，有文字标签不只靠颜色"
+    },
+    {
+      "name": "row_status_label_text",
+      "ok": true,
+      "detail": "每条素材显示审核状态文字标签"
+    },
+    {
+      "name": "detail_uses_material_get",
+      "ok": true,
+      "detail": "详情经 materialGet 读取素材与追溯 payload"
+    },
+    {
+      "name": "detail_shows_body_and_quote",
+      "ok": true,
+      "detail": "详情展示正文与素材保存的引用原文"
+    },
+    {
+      "name": "source_trace_original_by_type",
+      "ok": true,
+      "detail": "「打开原文」按来源记录/任务/知识读取原件"
+    },
+    {
+      "name": "source_peek_sheet_reused",
+      "ok": true,
+      "detail": "原文预览复用既有 SourcePeekSheet"
+    },
+    {
+      "name": "quote_missing_is_reported",
+      "ok": true,
+      "detail": "引用定位失败时如实提示，不静默替换"
+    },
+    {
+      "name": "review_uses_material_review",
+      "ok": true,
+      "detail": "审核动作全部经 material_review IPC，不留前端直写"
+    },
+    {
+      "name": "review_four_inline_actions",
+      "ok": true,
+      "detail": "批准/退回/拒绝/暂缓在详情面板就地完成"
+    },
+    {
+      "name": "return_reject_reason_required",
+      "ok": true,
+      "detail": "退回与拒绝先展开理由输入，空理由不能提交"
+    },
+    {
+      "name": "create_uses_material_create",
+      "ok": true,
+      "detail": "用户收藏新建走 material_create，来源为 user 且正文同时作为 source_quote"
+    },
+    {
+      "name": "create_requires_text",
+      "ok": true,
+      "detail": "空内容不会提交，界面不预填示例素材"
+    },
+    {
+      "name": "empty_state_is_real",
+      "ok": true,
+      "detail": "空态区分「本来为空」与「筛选为空」，不展示占位素材"
+    },
+    {
+      "name": "loading_and_error_not_empty",
+      "ok": true,
+      "detail": "读取中/失败与空态分开呈现"
+    },
+    {
+      "name": "no_fixture_data",
+      "ok": true,
+      "detail": "组件内没有虚构素材或演示数据"
+    },
+    {
+      "name": "api_types_from_506_reused",
+      "ok": true,
+      "detail": "复用 506 的 api/types 封装，不新增重复类型"
+    },
+    {
+      "name": "style_uses_theme_tokens",
+      "ok": true,
+      "detail": "输入与收藏按钮直接使用既有 theme.css 新拟物令牌"
+    }
+  ]
+}

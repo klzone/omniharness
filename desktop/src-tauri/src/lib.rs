@@ -25,12 +25,17 @@ pub mod knowledge_quality;
 pub mod knowledge_review;
 pub mod knowledge_vault;
 pub mod knowledge_ingest;
+pub mod knowledge_link;
+pub mod knowledge_link_store;
+pub mod material_store;
+pub mod material_query;
 mod local_http;
 pub mod model_settings;
 pub mod model_routes;
 pub mod pending_writes;
 pub mod platform;
 pub mod project_items;
+pub mod project_store;
 pub mod process_owner;
 pub mod profile_decl;
 pub mod profile_choice;
@@ -2718,6 +2723,779 @@ fn project_items_save(
     store.save(items, task_shell::now_secs())
 }
 
+// ---------------------------------------------------------------------------
+// 项目实体与项目概览（OD-KM-508）
+//
+// 薄封装 project_store.rs：项目文件仍是 work/项目/<project_id>.md。项目与
+// 任务/记录/素材/知识的关联不存项目文件，全部在读取时反向派生；素材来自
+// material_store.rs（只读），知识计数来自任务与记录 frontmatter 的
+// related_knowledge 字段。名称/目标属于用户文本，落盘前过统一闸门。
+// ---------------------------------------------------------------------------
+
+/// 知识条目在项目概览中的一条引用来源。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectKnowledgeReference {
+    /// task / record。
+    pub source_kind: String,
+    pub source_id: String,
+    pub source_title: String,
+    pub reason: String,
+    pub linked_at: String,
+}
+
+/// 按知识条目去重后的项目知识引用。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectKnowledgeRef {
+    pub knowledge_id: String,
+    pub references: Vec<ProjectKnowledgeReference>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectOverview {
+    pub project: project_store::Project,
+    pub tasks: Vec<project_store::ProjectRefItem>,
+    pub records: Vec<project_store::ProjectRefItem>,
+    pub materials: Vec<project_store::ProjectRefItem>,
+    pub knowledge: Vec<ProjectKnowledgeRef>,
+    pub task_count: usize,
+    pub record_count: usize,
+    pub material_count: usize,
+    pub knowledge_count: usize,
+    /// 读取失败、未进入列表的文件数（如实上报，不静默丢弃）。
+    pub broken_tasks: usize,
+    pub broken_records: usize,
+    pub broken_materials: usize,
+}
+
+fn clean_project_ref(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// 任务保存路径的项目存在性校验。空编号视为未关联；错误信息带项目提示。
+fn ensure_project_exists(root: &std::path::Path, value: &str) -> Result<(), String> {
+    let id = value.trim();
+    if id.is_empty() {
+        return Ok(());
+    }
+    let path = project_store::project_path(root, id).map_err(|err| {
+        format!("关联项目编号不合法：{id}；{err}。请在「项目」中选择已有项目。")
+    })?;
+    if !path.exists() {
+        return Err(format!(
+            "关联项目不存在：{id}。请先在「项目」中创建该项目，或在任务中选择已有项目后再保存。"
+        ));
+    }
+    project_store::read_project(root, id)
+        .map(|_| ())
+        .map_err(|err| format!("关联项目无法读取：{id}；{err}"))
+}
+
+fn project_create_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut draft: project_store::ProjectDraft,
+    now: f64,
+) -> Result<project_store::Project, String> {
+    let (name, _) = gate_user_text(&draft.name, policy, "项目名称")?;
+    draft.name = name;
+    let (goal, _) = gate_user_text(&draft.goal, policy, "项目目标")?;
+    draft.goal = goal;
+    project_store::create_project(root, &draft, now)
+}
+
+fn project_update_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    mut patch: project_store::ProjectPatch,
+    now: f64,
+) -> Result<project_store::Project, String> {
+    if let Some(name) = patch.name.clone() {
+        let (masked, _) = gate_user_text(&name, policy, "项目名称")?;
+        patch.name = Some(masked);
+    }
+    if let Some(goal) = patch.goal.clone() {
+        let (masked, _) = gate_user_text(&goal, policy, "项目目标")?;
+        patch.goal = Some(masked);
+    }
+    project_store::update_project(root, id, &patch, now)
+}
+
+fn project_overview_impl(
+    root: &std::path::Path,
+    project_id: &str,
+) -> Result<ProjectOverview, String> {
+    let id = project_id.trim();
+    let project = project_store::read_project(root, id)?;
+    let tasks = task_store::list_tasks(root, &task_store::TaskFilter::default())?;
+    let records = worklog_records::list_records(root, &worklog_records::RecordFilter::default())?;
+    let materials = material_store::list_materials(root, &material_store::MaterialFilter::default())?;
+
+    let task_refs: Vec<project_store::ProjectRefItem> = tasks
+        .items
+        .iter()
+        .map(|task| project_store::ProjectRefItem {
+            project_id: clean_project_ref(task.project_id.as_deref()).map(str::to_string),
+            id: task.id.clone(),
+            title: task.title.clone(),
+        })
+        .collect();
+
+    // 记录自身没有 project_id：经 linked_task_ids 指向的任务派生所属项目。
+    let task_projects: std::collections::BTreeMap<&str, &str> = tasks
+        .items
+        .iter()
+        .filter_map(|task| {
+            clean_project_ref(task.project_id.as_deref())
+                .map(|project| (task.id.as_str(), project))
+        })
+        .collect();
+    let mut record_refs: Vec<project_store::ProjectRefItem> = Vec::new();
+    let mut record_projects: std::collections::BTreeMap<&str, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for record in &records.items {
+        let mut projects: Vec<&str> = Vec::new();
+        for task_id in &record.linked_task_ids {
+            if let Some(project) = task_projects.get(task_id.as_str()) {
+                if !projects.contains(project) {
+                    projects.push(project);
+                }
+            }
+        }
+        for project in &projects {
+            record_refs.push(project_store::ProjectRefItem {
+                project_id: Some(project.to_string()),
+                id: record.id.clone(),
+                title: record.title.clone(),
+            });
+        }
+        record_projects.insert(record.id.as_str(), projects);
+    }
+
+    let material_refs: Vec<project_store::ProjectRefItem> = materials
+        .items
+        .iter()
+        .map(|material| project_store::ProjectRefItem {
+            project_id: clean_project_ref(material.related_project_id.as_deref())
+                .map(str::to_string),
+            id: material.material_id.clone(),
+            title: material.title.clone(),
+        })
+        .collect();
+
+    let groups = project_store::project_refs(&project_store::ProjectRefsInput {
+        tasks: task_refs,
+        materials: material_refs,
+        records: record_refs,
+    });
+    let group = groups
+        .into_iter()
+        .find(|group| group.project_id == id)
+        .unwrap_or_else(|| project_store::ProjectRefsGroup {
+            project_id: id.to_string(),
+            tasks: Vec::new(),
+            materials: Vec::new(),
+            records: Vec::new(),
+        });
+
+    let mut knowledge: std::collections::BTreeMap<String, ProjectKnowledgeRef> =
+        std::collections::BTreeMap::new();
+    let mut push_link = |link: &task_store::KnowledgeLink,
+                         source_kind: &str,
+                         source_id: &str,
+                         source_title: &str| {
+        knowledge
+            .entry(link.id.clone())
+            .or_insert_with(|| ProjectKnowledgeRef {
+                knowledge_id: link.id.clone(),
+                references: Vec::new(),
+            })
+            .references
+            .push(ProjectKnowledgeReference {
+                source_kind: source_kind.to_string(),
+                source_id: source_id.to_string(),
+                source_title: source_title.to_string(),
+                reason: link.reason.clone(),
+                linked_at: link.linked_at.clone(),
+            });
+    };
+    for task in &tasks.items {
+        if clean_project_ref(task.project_id.as_deref()) != Some(id) {
+            continue;
+        }
+        for link in &task.related_knowledge {
+            push_link(link, "task", &task.id, &task.title);
+        }
+    }
+    for record in &records.items {
+        let in_project = record_projects
+            .get(record.id.as_str())
+            .map(|projects| projects.contains(&id))
+            .unwrap_or(false);
+        if !in_project {
+            continue;
+        }
+        for link in &record.related_knowledge {
+            push_link(link, "record", &record.id, &record.title);
+        }
+    }
+    drop(push_link);
+
+    Ok(ProjectOverview {
+        project,
+        task_count: group.tasks.len(),
+        record_count: group.records.len(),
+        material_count: group.materials.len(),
+        knowledge_count: knowledge.len(),
+        tasks: group.tasks,
+        records: group.records,
+        materials: group.materials,
+        knowledge: knowledge.into_values().collect(),
+        broken_tasks: tasks.broken,
+        broken_records: records.broken,
+        broken_materials: materials.broken,
+    })
+}
+
+#[tauri::command(async)]
+fn project_create(
+    state: State<'_, SharedHost>,
+    draft: project_store::ProjectDraft,
+) -> Result<project_store::Project, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    project_create_impl(&root, &policy, draft, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn project_update(
+    state: State<'_, SharedHost>,
+    id: String,
+    patch: project_store::ProjectPatch,
+) -> Result<project_store::Project, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    project_update_impl(&root, &policy, &id, patch, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn project_list(
+    state: State<'_, SharedHost>,
+) -> Result<project_store::ProjectListing, String> {
+    let root = work_root(&state)?;
+    project_store::list_projects(&root)
+}
+
+#[tauri::command(async)]
+fn project_overview(
+    state: State<'_, SharedHost>,
+    project_id: String,
+) -> Result<ProjectOverview, String> {
+    let root = work_root(&state)?;
+    project_overview_impl(&root, &project_id)
+}
+
+// ---------------------------------------------------------------------------
+// 写作素材 IPC 六命令（OD-KM-506）
+//
+// 薄封装 material_store.rs（501）。所有用户文本（标题/正文/来源引用/标签/
+// 编辑理由/审核理由）落盘前过统一闸门；查询条件不落盘，只做白名单与形状校验。
+// AI 只能经既有分析链路暂存素材候选，正式素材与审核状态没有 AI 写通道。
+// ---------------------------------------------------------------------------
+
+/// 来源追溯中的单个实体：记录 / 任务 / 项目 / 知识条目。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MaterialTraceEntity {
+    pub id: String,
+    /// 文件是否读到；false 时 note 说明原因，不静默丢掉。
+    pub found: bool,
+    pub title: Option<String>,
+    /// work/ 内相对路径或知识库内相对路径；读不到时为可推断的位置。
+    pub location: Option<String>,
+    pub note: Option<String>,
+}
+
+/// 素材来源追溯：来源实体 + 素材保存的原始引用。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MaterialSourceTrace {
+    pub source_type: String,
+    pub source_id: String,
+    /// 素材保存的原始引用原文。
+    pub quote: String,
+    /// 引用是否能按原文在来源实体里定位。
+    pub quote_found: bool,
+    /// 素材自带的 source_location 优先，否则用来源实体位置。
+    pub location: Option<String>,
+    pub entity: MaterialTraceEntity,
+    /// 引用前后的原文片段（有界），供界面展示来源上下文。
+    pub excerpt: Option<String>,
+}
+
+/// material_get 回执：素材本身 + 来源与关联实体定位。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MaterialDetail {
+    pub material: material_store::WritingMaterial,
+    pub source: MaterialSourceTrace,
+    pub related_tasks: Vec<MaterialTraceEntity>,
+    pub related_project: Option<MaterialTraceEntity>,
+    pub related_knowledge: Vec<MaterialTraceEntity>,
+}
+
+fn gate_material_text(
+    value: &str,
+    policy: &profile_rules::RulePolicy,
+    target: &str,
+) -> Result<String, String> {
+    Ok(gate_user_text(value, policy, target)?.0)
+}
+
+fn gate_material_tags(
+    tags: &[String],
+    policy: &profile_rules::RulePolicy,
+) -> Result<Vec<String>, String> {
+    let mut out = Vec::with_capacity(tags.len());
+    for tag in tags {
+        out.push(gate_material_text(tag, policy, "素材标签")?);
+    }
+    Ok(out)
+}
+
+fn material_create_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut draft: material_store::MaterialDraft,
+    now: f64,
+) -> Result<material_store::WritingMaterial, String> {
+    draft.title = gate_material_text(&draft.title, policy, "素材标题")?;
+    draft.content = gate_material_text(&draft.content, policy, "素材正文")?;
+    if draft.source_type.trim().is_empty() {
+        // 用户主动收藏不指定来源时按 user 收藏落盘；source_quote 仍必填（501 R1）。
+        draft.source_type = material_store::SOURCE_USER.to_string();
+    }
+    draft.source_quote = gate_material_text(&draft.source_quote, policy, "素材来源引用")?;
+    if let Some(location) = draft.source_location.clone() {
+        draft.source_location = Some(gate_material_text(&location, policy, "素材来源定位")?);
+    }
+    draft.tags = gate_material_tags(&draft.tags, policy)?;
+    // user 来源的 source_quote 仍必填（501 裁决 R1）；界面可把正文作为引用传入。
+    material_store::create_material(root, &draft, now)
+}
+
+fn material_edit_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    mut patch: material_store::MaterialPatch,
+    now: f64,
+) -> Result<material_store::WritingMaterial, String> {
+    if let Some(value) = patch.title.clone() {
+        patch.title = Some(gate_material_text(&value, policy, "素材标题")?);
+    }
+    if let Some(value) = patch.content.clone() {
+        patch.content = Some(gate_material_text(&value, policy, "素材正文")?);
+    }
+    if let Some(value) = patch.source_quote.clone() {
+        patch.source_quote = Some(gate_material_text(&value, policy, "素材来源引用")?);
+    }
+    if let Some(value) = patch.source_location.clone() {
+        patch.source_location = Some(gate_material_text(&value, policy, "素材来源定位")?);
+    }
+    if let Some(tags) = patch.tags.clone() {
+        patch.tags = Some(gate_material_tags(&tags, policy)?);
+    }
+    if let Some(reason) = patch.reason.clone() {
+        patch.reason = Some(gate_material_text(&reason, policy, "素材编辑理由")?);
+    }
+    material_store::update_material(root, id, &patch, now)
+}
+
+fn normalize_material_review_action(action: &str) -> Result<String, String> {
+    let action = action.trim();
+    let mapped = match action {
+        "confirm" | material_store::ACTION_CONFIRM => material_store::ACTION_CONFIRM,
+        "return" | material_store::ACTION_RETURN => material_store::ACTION_RETURN,
+        "reject" | material_store::ACTION_REJECT => material_store::ACTION_REJECT,
+        "defer" | material_store::ACTION_DEFER => material_store::ACTION_DEFER,
+        "archive" | material_store::ACTION_ARCHIVE => material_store::ACTION_ARCHIVE,
+        other => return Err(format!("审核动作不认识：{other}")),
+    };
+    Ok(mapped.to_string())
+}
+
+fn material_review_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    action: &str,
+    reason: Option<String>,
+    now: f64,
+) -> Result<material_store::WritingMaterial, String> {
+    let action = normalize_material_review_action(action)?;
+    let reason = match reason {
+        Some(value) if !value.trim().is_empty() => {
+            Some(gate_material_text(&value, policy, "素材审核理由")?)
+        }
+        _ => None,
+    };
+    // 退回/拒绝的理由必填由 501 流转函数统一强制。
+    material_store::review_material(root, id, &action, reason.as_deref(), now)
+}
+
+fn relative_work_path(root: &std::path::Path, path: &std::path::Path) -> String {
+    path.strip_prefix(root)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned())
+}
+
+fn truncate_chars(value: &str, limit: usize) -> String {
+    let count = value.chars().count();
+    if count <= limit {
+        return value.to_string();
+    }
+    let head: String = value.chars().take(limit).collect();
+    format!("{head}…")
+}
+
+/// 在原文里围绕引用位置截取有界上下文；引用不在原文里时返回 None。
+fn excerpt_around(text: &str, quote: &str, radius: usize) -> Option<String> {
+    let needle = quote.trim();
+    if needle.is_empty() {
+        return None;
+    }
+    let start = text.find(needle)?;
+    let match_start = text[..start].chars().count();
+    let match_len = needle.chars().count();
+    let chars: Vec<char> = text.chars().collect();
+    let begin = match_start.saturating_sub(radius);
+    let end = (match_start + match_len + radius).min(chars.len());
+    let slice: String = chars[begin..end].iter().collect();
+    let mut out = String::new();
+    if begin > 0 {
+        out.push('…');
+    }
+    out.push_str(&slice);
+    if end < chars.len() {
+        out.push('…');
+    }
+    Some(out)
+}
+
+fn trace_work_record(root: &std::path::Path, id: &str) -> MaterialTraceEntity {
+    let location = worklog_records::record_path(root, id)
+        .ok()
+        .map(|path| relative_work_path(root, &path));
+    match worklog_records::read_record(root, id) {
+        Ok(record) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: true,
+            title: Some(record.title),
+            location,
+            note: None,
+        },
+        Err(error) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: false,
+            title: None,
+            location,
+            note: Some(error),
+        },
+    }
+}
+
+fn trace_task(root: &std::path::Path, id: &str) -> MaterialTraceEntity {
+    let location = task_store::task_path(root, id)
+        .ok()
+        .map(|path| relative_work_path(root, &path));
+    match task_store::read_task(root, id) {
+        Ok(task) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: true,
+            title: Some(task.title),
+            location,
+            note: None,
+        },
+        Err(error) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: false,
+            title: None,
+            location,
+            note: Some(error),
+        },
+    }
+}
+
+fn trace_project(root: &std::path::Path, id: &str) -> MaterialTraceEntity {
+    let location = project_store::project_path(root, id)
+        .ok()
+        .map(|path| relative_work_path(root, &path));
+    match project_store::read_project(root, id) {
+        Ok(project) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: true,
+            title: Some(project.name),
+            location,
+            note: None,
+        },
+        Err(error) => MaterialTraceEntity {
+            id: id.to_string(),
+            found: false,
+            title: None,
+            location,
+            note: Some(error),
+        },
+    }
+}
+
+/// 知识条目只读定位；vault 未配置时如实返回未找到，不让整条素材详情失败。
+fn trace_knowledge(
+    vault: Option<&std::path::Path>,
+    id: &str,
+) -> (MaterialTraceEntity, Option<String>) {
+    let Some(vault) = vault else {
+        return (
+            MaterialTraceEntity {
+                id: id.to_string(),
+                found: false,
+                title: None,
+                location: Some(id.to_string()),
+                note: Some("知识库未配置或不可读，无法定位知识条目。".to_string()),
+            },
+            None,
+        );
+    };
+    match knowledge_vault::read_vault_note(vault, id) {
+        Ok(note) => (
+            MaterialTraceEntity {
+                id: id.to_string(),
+                found: true,
+                title: Some(note.file_name),
+                // 以调用方引用的知识编号为准；不依赖 VaultNote 在符号链接根下
+                // 可能退化成的绝对路径。
+                location: Some(id.to_string()),
+                note: None,
+            },
+            Some(note.content),
+        ),
+        Err(error) => (
+            MaterialTraceEntity {
+                id: id.to_string(),
+                found: false,
+                title: None,
+                location: Some(id.to_string()),
+                note: Some(error),
+            },
+            None,
+        ),
+    }
+}
+
+fn material_source_trace(
+    root: &std::path::Path,
+    vault: Option<&std::path::Path>,
+    material: &material_store::WritingMaterial,
+) -> MaterialSourceTrace {
+    let id = material.source_id.clone();
+    let quote = material.source_quote.clone();
+    let mut quote_found = false;
+    let mut excerpt: Option<String> = None;
+    let entity = match material.source_type.as_str() {
+        material_store::SOURCE_WORK_RECORD => {
+            match worklog_records::read_record(root, &id) {
+                Ok(record) => {
+                    quote_found = record.body.contains(&quote);
+                    excerpt = excerpt_around(&record.body, &quote, 60);
+                }
+                Err(_) => {}
+            }
+            trace_work_record(root, &id)
+        }
+        material_store::SOURCE_TASK => {
+            match task_store::read_task(root, &id) {
+                Ok(task) => {
+                    quote_found = task
+                        .source_quote
+                        .as_deref()
+                        .map(|value| value.contains(&quote) || quote.contains(value))
+                        .unwrap_or(false);
+                    excerpt = task.source_quote.as_deref().map(|value| truncate_chars(value, 400));
+                }
+                Err(_) => {}
+            }
+            trace_task(root, &id)
+        }
+        material_store::SOURCE_PROJECT => {
+            match project_store::read_project(root, &id) {
+                Ok(project) => {
+                    quote_found = project.goal.contains(&quote);
+                    excerpt = excerpt_around(&project.goal, &quote, 60);
+                }
+                Err(_) => {}
+            }
+            trace_project(root, &id)
+        }
+        material_store::SOURCE_KNOWLEDGE => {
+            let (entity, content) = trace_knowledge(vault, &id);
+            if let Some(content) = content.as_deref() {
+                quote_found = content.contains(&quote);
+                excerpt = excerpt_around(content, &quote, 60);
+            }
+            entity
+        }
+        material_store::SOURCE_USER => {
+            quote_found = true;
+            MaterialTraceEntity {
+                id: if id.trim().is_empty() {
+                    material_store::SOURCE_USER.to_string()
+                } else {
+                    id.clone()
+                },
+                found: true,
+                title: Some("用户收藏".to_string()),
+                location: None,
+                note: None,
+            }
+        }
+        _ => MaterialTraceEntity {
+            id,
+            found: false,
+            title: None,
+            location: None,
+            note: Some("未知来源类型。".to_string()),
+        },
+    };
+    MaterialSourceTrace {
+        source_type: material.source_type.clone(),
+        source_id: material.source_id.clone(),
+        quote,
+        quote_found,
+        location: material
+            .source_location
+            .clone()
+            .or_else(|| entity.location.clone()),
+        entity,
+        excerpt,
+    }
+}
+
+fn material_get_impl(
+    root: &std::path::Path,
+    vault: Option<&std::path::Path>,
+    id: &str,
+) -> Result<MaterialDetail, String> {
+    let material = material_store::read_material(root, id)?;
+    let source = material_source_trace(root, vault, &material);
+    let related_tasks = material
+        .related_task_ids
+        .iter()
+        .map(|task_id| trace_task(root, task_id))
+        .collect();
+    let related_project = material
+        .related_project_id
+        .as_deref()
+        .map(|project_id| trace_project(root, project_id));
+    let related_knowledge = material
+        .related_knowledge_ids
+        .iter()
+        .map(|knowledge_id| trace_knowledge(vault, knowledge_id).0)
+        .collect();
+    Ok(MaterialDetail {
+        material,
+        source,
+        related_tasks,
+        related_project,
+        related_knowledge,
+    })
+}
+
+/// AI 素材提取准备：复用既有分析链路（同一门禁、同一提示词），
+/// 提示词已注入既有素材清单。模型调用仍由界面随后提交；
+/// 本命令不写正式素材，结果只能经 worklog_record_analyze_apply 落暂存候选。
+#[tauri::command(async)]
+fn material_extract_from_record(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<task_extract::AnalyzePrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    worklog_record_analyze_impl(&root, &app_root, &policy, &record_id)
+}
+
+#[tauri::command(async)]
+fn material_create(
+    state: State<'_, SharedHost>,
+    draft: material_store::MaterialDraft,
+) -> Result<material_store::WritingMaterial, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    material_create_impl(&root, &policy, draft, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn material_list(
+    state: State<'_, SharedHost>,
+    filter: material_store::MaterialFilter,
+) -> Result<material_store::MaterialListing, String> {
+    let root = work_root(&state)?;
+    material_store::list_materials(&root, &filter)
+}
+
+#[tauri::command(async)]
+fn material_get(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<MaterialDetail, String> {
+    let root = work_root(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths).ok();
+    material_get_impl(&root, vault.as_deref(), &id)
+}
+
+#[tauri::command(async)]
+fn material_review(
+    state: State<'_, SharedHost>,
+    id: String,
+    action: String,
+    reason: Option<String>,
+) -> Result<material_store::WritingMaterial, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    material_review_impl(&root, &policy, &id, &action, reason, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn material_edit(
+    state: State<'_, SharedHost>,
+    id: String,
+    patch: material_store::MaterialPatch,
+) -> Result<material_store::WritingMaterial, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    material_edit_impl(&root, &policy, &id, patch, task_shell::now_secs())
+}
+
+/// 第四阶段接口：纯只读素材查询（OD-KM-509）。
+/// 默认只返回已确认素材；关键词只在宿主本地匹配标题与正文，不落盘、不外发。
+#[tauri::command(async)]
+fn material_query(
+    state: State<'_, SharedHost>,
+    query: material_query::MaterialQueryInput,
+) -> Result<material_query::MaterialQueryResponse, String> {
+    let root = work_root(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths).ok();
+    material_query::query_materials(&root, vault.as_deref(), &query)
+}
+
 /// 模型端点与授权现状（只读，不启动引擎）。
 ///
 /// 即使准入被拒绝也照常返回：用户必须先看到“端点在哪里、是否离开本机”，
@@ -3535,6 +4313,140 @@ fn knowledge_quality_report(
 }
 
 // ---------------------------------------------------------------------------
+// 知识关联 IPC（OD-KM-507）
+//
+// 组合 505 的只读检索与 503 的 related_knowledge 字段。AI 只产生候选，落
+// work/知识关联/.candidates/；用户确认后宿主写记录/任务 frontmatter。
+// 知识库只读，本组命令不触碰 knowledge_vault 的写路径。
+// ---------------------------------------------------------------------------
+
+fn knowledge_link_suggest_impl(
+    root: &std::path::Path,
+    vault_root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    subject_kind: knowledge_link_store::LinkSubjectKind,
+    subject_id: &str,
+    knowledge_hints: Vec<String>,
+    now: f64,
+) -> Result<knowledge_link_store::KnowledgeLinkStageReport, String> {
+    let mut gated = Vec::with_capacity(knowledge_hints.len());
+    for hint in knowledge_hints {
+        let (masked, _) = gate_user_text(&hint, policy, "知识主题提示")?;
+        gated.push(masked);
+    }
+    knowledge_link_store::suggest_and_stage(
+        root,
+        vault_root,
+        subject_kind,
+        subject_id.trim(),
+        &gated,
+        now,
+    )
+}
+
+fn knowledge_link_confirm_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    candidate_id: &str,
+    reason: &str,
+    now: f64,
+) -> Result<knowledge_link_store::KnowledgeLinkReport, String> {
+    let (reason, _) = gate_user_text(reason, policy, "关联理由")?;
+    knowledge_link_store::confirm_candidate(root, candidate_id.trim(), &reason, now)
+}
+
+fn knowledge_link_remove_impl(
+    root: &std::path::Path,
+    subject_kind: knowledge_link_store::LinkSubjectKind,
+    subject_id: &str,
+    knowledge_id: &str,
+    now: f64,
+) -> Result<knowledge_link_store::KnowledgeLinkReport, String> {
+    knowledge_link_store::remove_link(
+        root,
+        subject_kind,
+        subject_id.trim(),
+        knowledge_id.trim(),
+        now,
+    )
+}
+
+fn knowledge_link_by_knowledge_impl(
+    root: &std::path::Path,
+    knowledge_id: &str,
+) -> Result<knowledge_link_store::KnowledgeLinkReferences, String> {
+    knowledge_link_store::references_for_knowledge(root, knowledge_id.trim())
+}
+
+#[tauri::command(async)]
+fn knowledge_link_suggest(
+    state: State<'_, SharedHost>,
+    subject_kind: knowledge_link_store::LinkSubjectKind,
+    subject_id: String,
+    knowledge_hints: Vec<String>,
+) -> Result<knowledge_link_store::KnowledgeLinkStageReport, String> {
+    let root = work_root(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths)?;
+    let policy = current_rule_policy(&state)?;
+    knowledge_link_suggest_impl(
+        &root,
+        &vault,
+        &policy,
+        subject_kind,
+        &subject_id,
+        knowledge_hints,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn knowledge_link_confirm(
+    state: State<'_, SharedHost>,
+    candidate_id: String,
+    reason: String,
+) -> Result<knowledge_link_store::KnowledgeLinkReport, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    knowledge_link_confirm_impl(
+        &root,
+        &policy,
+        &candidate_id,
+        &reason,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn knowledge_link_remove(
+    state: State<'_, SharedHost>,
+    subject_kind: knowledge_link_store::LinkSubjectKind,
+    subject_id: String,
+    knowledge_id: String,
+) -> Result<knowledge_link_store::KnowledgeLinkReport, String> {
+    let root = work_root(&state)?;
+    knowledge_link_remove_impl(
+        &root,
+        subject_kind,
+        &subject_id,
+        &knowledge_id,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn knowledge_link_by_knowledge(
+    state: State<'_, SharedHost>,
+    knowledge_id: String,
+) -> Result<knowledge_link_store::KnowledgeLinkReferences, String> {
+    let root = work_root(&state)?;
+    knowledge_link_by_knowledge_impl(&root, &knowledge_id)
+}
+
+// ---------------------------------------------------------------------------
 // 工作记录确定性落盘（OD-ARCH-089 S2）
 //
 // 界面在收到随手记时**先调这里写盘，成功后才叫模型做缺项分析**。
@@ -4268,6 +5180,9 @@ fn task_create_impl(
 ) -> Result<TaskSaved, String> {
     let (title, counts) = gate_user_text(&draft.title, policy, "任务标题")?;
     draft.title = title;
+    if let Some(project_id) = draft.project_id.as_deref() {
+        ensure_project_exists(root, project_id)?;
+    }
     let task = task_store::create_task(root, &draft, now)?;
     Ok(TaskSaved {
         task,
@@ -4291,6 +5206,9 @@ fn task_update_impl(
             add_counts(&mut counts, extra);
             patch.title = Some(masked);
         }
+    }
+    if let Some(project_id) = patch.project_id.as_deref() {
+        ensure_project_exists(root, project_id)?;
     }
     let task = task_store::update_task(root, id, &patch, now)?;
     Ok(TaskSaved {
@@ -4520,39 +5438,57 @@ fn availability_set(
 }
 
 /// 解析准备：校验门禁、过红线与掩码、组装提示词。模型调用由界面随后提交。
-#[tauri::command(async)]
-fn worklog_record_analyze(
-    state: State<'_, SharedHost>,
-    record_id: String,
+fn worklog_record_analyze_impl(
+    root: &std::path::Path,
+    app_root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    record_id: &str,
 ) -> Result<task_extract::AnalyzePrompt, String> {
-    let root = work_root(&state)?;
-    let record = worklog_records::read_record(&root, &record_id)?;
+    let record = worklog_records::read_record(root, record_id)?;
     task_extract::assert_analysis_allowed(&record)?;
-    let policy = current_rule_policy(&state)?;
-    let (title, title_counts) = gate_user_text(&record.title, &policy, "记录标题")?;
-    let (body, body_counts) = gate_user_text(&record.body, &policy, "记录正文")?;
-    let app_root = {
-        let host = state.lock().unwrap();
-        host.paths.root.clone()
-    };
-    let config = EngineConfig::from_env(&app_root)?;
-    let tasks = task_store::unfinished_tasks(&root)?;
-    let prompt = task_extract::build_prompt(
+    let (title, title_counts) = gate_user_text(&record.title, policy, "记录标题")?;
+    let (body, body_counts) = gate_user_text(&record.body, policy, "记录正文")?;
+    let config = EngineConfig::from_env(app_root)?;
+    let tasks = task_store::unfinished_tasks(root)?;
+    // OD-KM-506：把既有素材 id+title 注入提示词，模型才能正确给 match_material_id。
+    // 素材正文不外发；宿主随后仍按素材篮里的真实编号校验候选。
+    let materials = material_store::list_materials(
+        root,
+        &material_store::MaterialFilter::default(),
+    )?
+    .items;
+    let prompt = task_extract::build_prompt_with_materials(
         &config.python,
         &config.engine_dir,
         &record,
         &tasks,
+        &materials,
         &title,
         &body,
     )?;
     Ok(task_extract::AnalyzePrompt {
-        record_id,
+        record_id: record_id.to_string(),
         prompt,
         user_input_text: format!("{title}\n{body}"),
         masked: title_counts.any() || body_counts.any(),
         masked_id_card: title_counts.id_card + body_counts.id_card,
         masked_phone: title_counts.phone + body_counts.phone,
     })
+}
+
+/// 解析准备：校验门禁、过红线与掩码、组装提示词。模型调用由界面随后提交。
+#[tauri::command(async)]
+fn worklog_record_analyze(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<task_extract::AnalyzePrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    worklog_record_analyze_impl(&root, &app_root, &policy, &record_id)
 }
 
 /// 解析落地：校验模型输出、暂存候选、记录标记为已解析；失败只改状态。
@@ -6778,6 +7714,21 @@ pub fn run() {
             task_candidate_reject,
             task_candidate_link,
             task_candidate_dismiss_match,
+            project_create,
+            project_update,
+            project_list,
+            project_overview,
+            knowledge_link_suggest,
+            knowledge_link_confirm,
+            knowledge_link_remove,
+            knowledge_link_by_knowledge,
+            material_extract_from_record,
+            material_create,
+            material_list,
+            material_get,
+            material_review,
+            material_edit,
+            material_query,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。
@@ -8655,5 +9606,905 @@ mod work_store_ipc_tests {
         let resolved =
             settings::resolve_working_root(&app_root, Some(base.root().join("work"))).unwrap();
         assert!(resolved.starts_with(base.root()));
+    }
+}
+
+#[cfg(test)]
+mod project_ipc_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    const NOW: f64 = 1_796_000_000.0;
+
+    struct TempRoot {
+        path: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "omnidesk-km508-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn root(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn policy_with(redline: &[&str], mask: bool) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        let mode = if mask { "mask" } else { "off" };
+        rules.global.privacy.id_card = mode.to_string();
+        rules.global.privacy.phone = mode.to_string();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn project_draft(name: &str) -> project_store::ProjectDraft {
+        project_store::ProjectDraft {
+            name: name.to_string(),
+            goal: "虚构项目目标。".to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// 在 frontmatter 结束围栏前追加字段，用来构造 503 交付的关联字段。
+    fn add_frontmatter_fields(raw: &str, extra: &str) -> String {
+        let close = 4 + raw[4..]
+            .find("\n---\n")
+            .expect("必须存在 frontmatter 结束围栏")
+            + 1;
+        format!("{}{}{}", &raw[..close], extra, &raw[close..])
+    }
+
+    fn add_knowledge_link(path: &Path, knowledge_id: &str) {
+        let raw = std::fs::read_to_string(path).unwrap();
+        let extra = format!(
+            "related_knowledge:\n  - id: \"{knowledge_id}\"\n    reason: \"虚构关联依据\"\n    linked_at: \"2026-02-02T08:15:00Z\"\n"
+        );
+        std::fs::write(path, add_frontmatter_fields(&raw, &extra)).unwrap();
+    }
+
+    #[test]
+    fn project_create_gates_user_text_without_writing_on_red_line() {
+        let temp = TempRoot::new("project-gate");
+        let policy = policy_with(&["机密"], false);
+        let mut draft = project_draft("虚构项目");
+        draft.goal = "虚构目标包含机密样例".to_string();
+        let err = project_create_impl(temp.root(), &policy, draft, NOW).unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!err.contains("机密样例"), "错误不得回显命中原文：{err}");
+        assert!(
+            !project_store::project_dir(temp.root()).exists(),
+            "被拒绝时不得创建项目目录"
+        );
+    }
+
+    #[test]
+    fn task_create_rejects_missing_project_with_project_hint() {
+        let temp = TempRoot::new("task-missing-project");
+        let policy = policy_with(&[], false);
+        let err = task_create_impl(
+            temp.root(),
+            &policy,
+            task_store::TaskDraft {
+                title: "虚构任务".to_string(),
+                project_id: Some("p-missing-508".to_string()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("关联项目不存在"), "{err}");
+        assert!(err.contains("项目"), "错误必须带项目提示：{err}");
+        let listing =
+            task_store::list_tasks(temp.root(), &task_store::TaskFilter::default()).unwrap();
+        assert!(listing.items.is_empty(), "被拒绝时不得写任务文件");
+    }
+
+    #[test]
+    fn task_update_rejects_missing_project_and_leaves_file_unchanged() {
+        let temp = TempRoot::new("task-update-missing-project");
+        let policy = policy_with(&[], false);
+        let saved = task_create_impl(
+            temp.root(),
+            &policy,
+            task_store::TaskDraft {
+                title: "虚构任务".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let path = task_store::tasks_dir(temp.root()).join(format!("{}.md", saved.task.id));
+        let before = std::fs::read(&path).unwrap();
+        let err = task_update_impl(
+            temp.root(),
+            &policy,
+            &saved.task.id,
+            task_store::TaskPatch {
+                project_id: Some("p-missing-508".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("关联项目不存在"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), before, "拒绝时任务文件字节不变");
+        let stored = task_store::read_task(temp.root(), &saved.task.id).unwrap();
+        assert_eq!(stored.project_id, None);
+    }
+
+    #[test]
+    fn task_save_accepts_existing_project_and_overview_counts_it() {
+        let temp = TempRoot::new("task-existing-project");
+        let policy = policy_with(&[], false);
+        let project = project_create_impl(temp.root(), &policy, project_draft("虚构项目甲"), NOW)
+            .unwrap();
+        let saved = task_create_impl(
+            temp.root(),
+            &policy,
+            task_store::TaskDraft {
+                title: "虚构任务".to_string(),
+                project_id: Some(project.project_id.clone()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(saved.task.project_id.as_deref(), Some(project.project_id.as_str()));
+
+        let overview = project_overview_impl(temp.root(), &project.project_id).unwrap();
+        assert_eq!(overview.project.project_id, project.project_id);
+        assert_eq!(overview.task_count, 1);
+        assert_eq!(overview.tasks[0].id, saved.task.id);
+        assert_eq!(overview.record_count, 0);
+        assert_eq!(overview.material_count, 0);
+        assert_eq!(overview.knowledge_count, 0);
+    }
+
+    #[test]
+    fn project_overview_derives_records_materials_and_knowledge() {
+        let temp = TempRoot::new("overview");
+        let policy = policy_with(&[], false);
+        let project_a =
+            project_create_impl(temp.root(), &policy, project_draft("虚构项目甲"), NOW).unwrap();
+        let project_b =
+            project_create_impl(temp.root(), &policy, project_draft("虚构项目乙"), NOW).unwrap();
+
+        let task = task_create_impl(
+            temp.root(),
+            &policy,
+            task_store::TaskDraft {
+                title: "虚构任务".to_string(),
+                project_id: Some(project_a.project_id.clone()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let task_path = task_store::tasks_dir(temp.root()).join(format!("{}.md", task.task.id));
+        add_knowledge_link(&task_path, "notes/synthetic-508.md");
+
+        let record = worklog_records::create_record(
+            temp.root(),
+            &worklog_records::RecordDraft {
+                title: Some("虚构记录".to_string()),
+                body: "虚构工作事实。".to_string(),
+                linked_task_ids: vec![task.task.id.clone()],
+                ..Default::default()
+            },
+            NOW,
+            480,
+        )
+        .unwrap();
+        let record_path =
+            worklog_records::records_dir(temp.root()).join(format!("{}.md", record.id));
+        add_knowledge_link(&record_path, "notes/synthetic-508.md");
+
+        material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构素材".to_string(),
+                content: "虚构素材正文。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_USER.to_string(),
+                source_quote: "虚构来源引用。".to_string(),
+                related_project_id: Some(project_a.project_id.clone()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+
+        let overview = project_overview_impl(temp.root(), &project_a.project_id).unwrap();
+        assert_eq!(overview.task_count, 1);
+        assert_eq!(overview.record_count, 1);
+        assert_eq!(overview.material_count, 1);
+        assert_eq!(overview.materials[0].title, "虚构素材");
+        assert_eq!(overview.knowledge_count, 1, "同一知识条目按 id 去重");
+        assert_eq!(overview.knowledge[0].knowledge_id, "notes/synthetic-508.md");
+        assert_eq!(overview.knowledge[0].references.len(), 2);
+        assert!(overview
+            .knowledge[0]
+            .references
+            .iter()
+            .any(|reference| reference.source_kind == "task"));
+        assert!(overview
+            .knowledge[0]
+            .references
+            .iter()
+            .any(|reference| reference.source_kind == "record"));
+
+        let other = project_overview_impl(temp.root(), &project_b.project_id).unwrap();
+        assert_eq!(other.task_count, 0);
+        assert_eq!(other.record_count, 0);
+        assert_eq!(other.material_count, 0);
+        assert_eq!(other.knowledge_count, 0);
+    }
+}
+
+#[cfg(test)]
+mod material_ipc_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    const NOW: f64 = 1_796_000_000.0;
+
+    struct TempRoot {
+        path: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "omnidesk-km506-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn root(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn policy_with(redline: &[&str], mask: bool) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        let mode = if mask { "mask" } else { "off" };
+        rules.global.privacy.id_card = mode.to_string();
+        rules.global.privacy.phone = mode.to_string();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn user_draft(content: &str) -> material_store::MaterialDraft {
+        material_store::MaterialDraft {
+            title: "虚构素材标题".to_string(),
+            content: content.to_string(),
+            material_type: material_store::TYPE_WORK_FACT.to_string(),
+            source_type: material_store::SOURCE_USER.to_string(),
+            // 501 R1：user 来源引用必填，界面可把正文作为引用传入。
+            source_quote: content.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn material_file(root: &Path, id: &str) -> PathBuf {
+        material_store::material_path(root, id).unwrap()
+    }
+
+    #[test]
+    fn material_create_gates_text_and_requires_user_quote() {
+        let temp = TempRoot::new("create-gate");
+        let redline = policy_with(&["机密"], false);
+        let mut draft = user_draft("虚构正文包含机密样例");
+        draft.title = "虚构标题".to_string();
+        let err = material_create_impl(temp.root(), &redline, draft, NOW).unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!err.contains("机密样例"), "错误不得回显命中原文：{err}");
+        assert!(
+            !material_store::material_dir(temp.root()).exists(),
+            "被拒绝时不得创建素材篮目录"
+        );
+
+        let clean = policy_with(&[], false);
+        let mut missing_quote = user_draft("虚构正文");
+        missing_quote.source_quote = String::new();
+        let err = material_create_impl(temp.root(), &clean, missing_quote, NOW).unwrap_err();
+        assert!(err.contains("缺少来源原文引用"), "{err}");
+        assert!(!material_store::material_dir(temp.root()).exists());
+
+        let saved = material_create_impl(temp.root(), &clean, user_draft("虚构正文"), NOW).unwrap();
+        assert_eq!(saved.source_id, material_store::SOURCE_USER);
+        assert_eq!(saved.source_quote, "虚构正文");
+        assert_eq!(saved.review_status, material_store::REVIEW_PENDING);
+        let duplicate = material_create_impl(temp.root(), &clean, user_draft("虚构正文"), NOW + 1.0)
+            .unwrap_err();
+        assert!(duplicate.contains("同指纹素材"), "{duplicate}");
+
+        let mut no_source = user_draft("虚构无来源正文");
+        no_source.source_type = String::new();
+        let collected =
+            material_create_impl(temp.root(), &clean, no_source, NOW + 2.0).unwrap();
+        assert_eq!(
+            collected.source_type,
+            material_store::SOURCE_USER,
+            "不指定来源时按用户收藏落盘"
+        );
+    }
+
+    #[test]
+    fn material_list_supports_type_status_date_project_and_task_filters() {
+        let temp = TempRoot::new("list-filter");
+        let policy = policy_with(&[], false);
+        let task = task_store::create_task(
+            temp.root(),
+            &task_store::TaskDraft {
+                title: "虚构任务".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let project_b = project_store::create_project(
+            temp.root(),
+            &project_store::ProjectDraft {
+                name: "虚构项目乙".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+
+        let first = material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构素材甲".to_string(),
+                content: "虚构素材甲正文。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_USER.to_string(),
+                source_quote: "虚构素材甲正文。".to_string(),
+                related_task_ids: vec![task.id.clone()],
+                event_date: Some("2026-10-01".to_string()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let second = material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构素材乙".to_string(),
+                content: "虚构素材乙正文。".to_string(),
+                material_type: material_store::TYPE_WORK_RESULT.to_string(),
+                source_type: material_store::SOURCE_USER.to_string(),
+                source_quote: "虚构素材乙正文。".to_string(),
+                related_project_id: Some(project_b.project_id.clone()),
+                event_date: Some("2026-10-05".to_string()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_review_impl(
+            temp.root(),
+            &policy,
+            &second.material_id,
+            "confirm",
+            None,
+            NOW + 10.0,
+        )
+        .unwrap();
+
+        let by_type = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter {
+                material_type: Some(material_store::TYPE_WORK_FACT.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_type.items.len(), 1);
+        assert_eq!(by_type.items[0].material_id, first.material_id);
+
+        let by_status = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter {
+                review_status: Some(material_store::REVIEW_CONFIRMED.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_status.items.len(), 1);
+        assert_eq!(by_status.items[0].material_id, second.material_id);
+
+        let by_date = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter {
+                date_from: Some("2026-10-04".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_date.items.len(), 1, "只保留事件日期在区间内的素材");
+        assert_eq!(by_date.items[0].material_id, second.material_id);
+
+        let by_project = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter {
+                project_id: Some(project_b.project_id.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_project.items.len(), 1);
+
+        let by_task = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter {
+                task_id: Some(task.id.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_task.items.len(), 1);
+        assert_eq!(by_task.items[0].material_id, first.material_id);
+
+        let all = material_store::list_materials(
+            temp.root(),
+            &material_store::MaterialFilter::default(),
+        )
+        .unwrap();
+        assert_eq!(all.items.len(), 2);
+        assert_eq!(all.items[0].review_status, material_store::REVIEW_PENDING, "待审核置顶");
+    }
+
+    #[test]
+    fn material_review_flow_requires_reasons_and_appends_records() {
+        let temp = TempRoot::new("review-flow");
+        let policy = policy_with(&[], false);
+        let saved = material_create_impl(temp.root(), &policy, user_draft("虚构审核正文甲"), NOW)
+            .unwrap();
+
+        let err = material_review_impl(
+            temp.root(),
+            &policy,
+            &saved.material_id,
+            "return",
+            None,
+            NOW + 1.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("退回素材必须填写理由"), "{err}");
+
+        let returned = material_review_impl(
+            temp.root(),
+            &policy,
+            &saved.material_id,
+            "return",
+            Some("虚构退回理由".to_string()),
+            NOW + 2.0,
+        )
+        .unwrap();
+        assert_eq!(returned.review_status, material_store::REVIEW_RETURNED);
+        let last = returned.review_records.last().unwrap();
+        assert_eq!(last.action, material_store::ACTION_RETURN);
+        assert_eq!(last.reason, "虚构退回理由");
+
+        let err = material_review_impl(
+            temp.root(),
+            &policy,
+            &saved.material_id,
+            "reject",
+            None,
+            NOW + 3.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("拒绝素材必须填写理由"), "{err}");
+        let rejected = material_review_impl(
+            temp.root(),
+            &policy,
+            &saved.material_id,
+            "reject",
+            Some("虚构拒绝理由".to_string()),
+            NOW + 4.0,
+        )
+        .unwrap();
+        assert_eq!(rejected.review_status, material_store::REVIEW_REJECTED);
+        assert_eq!(rejected.review_records.len(), 3, "创建 + 退回 + 拒绝");
+
+        let pending = material_create_impl(temp.root(), &policy, user_draft("虚构审核正文乙"), NOW + 5.0)
+            .unwrap();
+        let err = material_review_impl(
+            temp.root(),
+            &policy,
+            &pending.material_id,
+            "archive",
+            None,
+            NOW + 6.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("只有已确认素材可以归档"), "{err}");
+        let confirmed = material_review_impl(
+            temp.root(),
+            &policy,
+            &pending.material_id,
+            "confirm",
+            None,
+            NOW + 7.0,
+        )
+        .unwrap();
+        assert_eq!(confirmed.review_status, material_store::REVIEW_CONFIRMED);
+        assert_eq!(confirmed.confirmation_status, material_store::CONFIRMATION_CONFIRMED);
+        let archived = material_review_impl(
+            temp.root(),
+            &policy,
+            &pending.material_id,
+            "archive",
+            None,
+            NOW + 8.0,
+        )
+        .unwrap();
+        assert_eq!(archived.review_status, material_store::REVIEW_ARCHIVED);
+        assert_eq!(archived.review_records.last().unwrap().action, material_store::ACTION_ARCHIVE);
+    }
+
+    #[test]
+    fn material_review_gates_reason_without_writing() {
+        let temp = TempRoot::new("review-gate");
+        let clean = policy_with(&[], false);
+        let saved = material_create_impl(temp.root(), &clean, user_draft("虚构审核正文"), NOW)
+            .unwrap();
+        let path = material_file(temp.root(), &saved.material_id);
+        let before = std::fs::read(&path).unwrap();
+
+        let redline = policy_with(&["机密"], false);
+        let err = material_review_impl(
+            temp.root(),
+            &redline,
+            &saved.material_id,
+            "confirm",
+            Some("理由包含机密样例".to_string()),
+            NOW + 1.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!err.contains("机密样例"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), before, "被拒时素材文件字节不变");
+        let stored = material_store::read_material(temp.root(), &saved.material_id).unwrap();
+        assert_eq!(stored.review_status, material_store::REVIEW_PENDING);
+    }
+
+    #[test]
+    fn material_edit_gates_text_and_appends_edit_record() {
+        let temp = TempRoot::new("edit");
+        let clean = policy_with(&[], false);
+        let saved = material_create_impl(temp.root(), &clean, user_draft("虚构编辑正文"), NOW)
+            .unwrap();
+        let path = material_file(temp.root(), &saved.material_id);
+        let before = std::fs::read(&path).unwrap();
+
+        let redline = policy_with(&["机密"], false);
+        let err = material_edit_impl(
+            temp.root(),
+            &redline,
+            &saved.material_id,
+            material_store::MaterialPatch {
+                content: Some("虚构正文包含机密样例".to_string()),
+                ..Default::default()
+            },
+            NOW + 1.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+
+        let edited = material_edit_impl(
+            temp.root(),
+            &clean,
+            &saved.material_id,
+            material_store::MaterialPatch {
+                content: Some("虚构编辑后的正文。".to_string()),
+                material_type: Some(material_store::TYPE_WORK_RESULT.to_string()),
+                tags: Some(vec!["虚构标签".to_string()]),
+                reason: Some("按用户要求整理".to_string()),
+                ..Default::default()
+            },
+            NOW + 2.0,
+        )
+        .unwrap();
+        assert_eq!(edited.content, "虚构编辑后的正文。");
+        assert_eq!(edited.material_type, material_store::TYPE_WORK_RESULT);
+        assert_eq!(edited.tags, vec!["虚构标签".to_string()]);
+        let last = edited.review_records.last().unwrap();
+        assert_eq!(last.action, material_store::ACTION_EDIT);
+        assert_eq!(last.reason, "按用户要求整理");
+    }
+
+    #[test]
+    fn material_get_returns_source_and_related_trace_payload() {
+        let temp = TempRoot::new("trace");
+        let record = worklog_records::create_record(
+            temp.root(),
+            &worklog_records::RecordDraft {
+                title: Some("虚构来源记录".to_string()),
+                body: "虚构工作事实：完成季度巡检，并形成三页记录。".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            480,
+        )
+        .unwrap();
+        let task = task_store::create_task(
+            temp.root(),
+            &task_store::TaskDraft {
+                title: "虚构关联任务".to_string(),
+                source_quote: Some("完成季度巡检".to_string()),
+                source_record_id: Some(record.id.clone()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let project = project_store::create_project(
+            temp.root(),
+            &project_store::ProjectDraft {
+                name: "虚构关联项目".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let vault_root = temp.root().join("synthetic-vault");
+        std::fs::create_dir_all(vault_root.join("notes")).unwrap();
+        std::fs::write(
+            vault_root.join("notes").join("知识甲.md"),
+            "知识甲正文：完成季度巡检属于可复用事实。",
+        )
+        .unwrap();
+
+        let material = material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构巡检素材".to_string(),
+                content: "虚构正文：季度巡检已完成。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: record.id.clone(),
+                source_quote: "完成季度巡检".to_string(),
+                source_location: Some("记录第 2 段".to_string()),
+                related_task_ids: vec![task.id.clone()],
+                related_project_id: Some(project.project_id.clone()),
+                related_knowledge_ids: vec!["notes/知识甲.md".to_string()],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+
+        let detail = material_get_impl(temp.root(), Some(&vault_root), &material.material_id).unwrap();
+        assert_eq!(detail.material.material_id, material.material_id);
+        assert_eq!(detail.source.source_type, material_store::SOURCE_WORK_RECORD);
+        assert_eq!(detail.source.quote, "完成季度巡检");
+        assert!(detail.source.quote_found, "引用必须能在来源记录正文里定位");
+        assert_eq!(detail.source.location.as_deref(), Some("记录第 2 段"));
+        assert!(detail.source.entity.found);
+        assert_eq!(detail.source.entity.title.as_deref(), Some("虚构来源记录"));
+        assert!(detail
+            .source
+            .entity
+            .location
+            .as_deref()
+            .unwrap_or("")
+            .contains("记录"));
+        let excerpt = detail.source.excerpt.as_deref().unwrap_or("");
+        assert!(excerpt.contains("完成季度巡检"), "{excerpt}");
+        assert_eq!(detail.related_tasks.len(), 1);
+        assert!(detail.related_tasks[0].found);
+        assert_eq!(detail.related_tasks[0].title.as_deref(), Some("虚构关联任务"));
+        assert_eq!(detail.related_project.as_ref().unwrap().title.as_deref(), Some("虚构关联项目"));
+        assert_eq!(detail.related_knowledge.len(), 1);
+        assert!(detail.related_knowledge[0].found);
+        assert_eq!(detail.related_knowledge[0].location.as_deref(), Some("notes/知识甲.md"));
+    }
+
+    #[test]
+    fn material_get_reports_missing_source_and_user_trace_truthfully() {
+        let temp = TempRoot::new("trace-missing");
+        let missing = material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构缺失来源素材".to_string(),
+                content: "虚构正文。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "r-missing-km506".to_string(),
+                source_quote: "虚构引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let detail = material_get_impl(temp.root(), None, &missing.material_id).unwrap();
+        assert!(!detail.source.entity.found, "缺失来源必须如实报告");
+        assert!(detail.source.entity.note.is_some());
+        assert!(!detail.source.quote_found);
+
+        let user = material_store::create_material(
+            temp.root(),
+            &material_store::MaterialDraft {
+                title: "虚构用户素材".to_string(),
+                content: "虚构用户收藏正文。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_USER.to_string(),
+                source_quote: "虚构用户收藏正文。".to_string(),
+                ..Default::default()
+            },
+            NOW + 1.0,
+        )
+        .unwrap();
+        let detail = material_get_impl(temp.root(), None, &user.material_id).unwrap();
+        assert!(detail.source.entity.found);
+        assert_eq!(detail.source.entity.title.as_deref(), Some("用户收藏"));
+        assert!(detail.source.quote_found);
+    }
+}
+
+#[cfg(test)]
+mod knowledge_link_ipc_tests {
+    //! OD-KM-507：知识关联 IPC 的闸门与写回路径。
+
+    use super::*;
+    use knowledge_link_store::LinkSubjectKind;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_100_000.0;
+    const OFFSET: i32 = 480;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+        vault: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-knowledge-link-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            let vault = base.join("vault");
+            std::fs::create_dir_all(&work).unwrap();
+            std::fs::create_dir_all(vault.join("notes")).unwrap();
+            Self { base, work, vault }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str], mask: bool) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        let mode = if mask { "mask" } else { "off" };
+        rules.global.privacy.id_card = mode.to_string();
+        rules.global.privacy.phone = mode.to_string();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn record(root: &Path) -> worklog_records::WorkRecord {
+        worklog_records::create_record(
+            root,
+            &worklog_records::RecordDraft {
+                title: Some("虚构记录".to_string()),
+                body: "虚构工作事实。".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            OFFSET,
+        )
+        .unwrap()
+    }
+
+    fn vault_note(temp: &TempRoot) {
+        std::fs::write(
+            temp.vault.join("notes/alpha.md"),
+            "---\ntitle: Alpha 项目复盘\n---\n\nAlpha 复盘提到了关键决策。\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn knowledge_link_suggest_gates_hints_before_staging() {
+        let temp = TempRoot::new("hint-redline");
+        let record = record(temp.root());
+        let policy = policy_with(&["机密"], false);
+        let err = knowledge_link_suggest_impl(
+            temp.root(),
+            &temp.vault,
+            &policy,
+            LinkSubjectKind::Record,
+            &record.id,
+            vec!["机密".to_string()],
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!knowledge_link_store::candidates_dir(temp.root()).exists());
+    }
+
+    #[test]
+    fn knowledge_link_confirm_gates_reason_and_leaves_candidate_pending() {
+        let temp = TempRoot::new("reason-redline");
+        vault_note(&temp);
+        let record = record(temp.root());
+        let open_policy = policy_with(&[], false);
+        let staged = knowledge_link_suggest_impl(
+            temp.root(),
+            &temp.vault,
+            &open_policy,
+            LinkSubjectKind::Record,
+            &record.id,
+            vec!["Alpha".to_string()],
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(staged.staged.len(), 1);
+        let candidate_id = staged.staged[0].id.clone();
+
+        let policy = policy_with(&["机密"], false);
+        let err = knowledge_link_confirm_impl(
+            temp.root(),
+            &policy,
+            &candidate_id,
+            "虚构机密关联依据",
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        let stored = worklog_records::read_record(temp.root(), &record.id).unwrap();
+        assert!(stored.related_knowledge.is_empty());
+        assert!(knowledge_link_store::candidates_dir(temp.root())
+            .join(format!("{candidate_id}.json"))
+            .exists(), "闸门拒绝后候选仍待处理");
     }
 }

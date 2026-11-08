@@ -1,0 +1,139 @@
+{
+  "plan": "OD-KM-512",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 26,
+  "failed": [],
+  "checks": [
+    {
+      "name": "project_insight_mounted",
+      "ok": true,
+      "detail": "ProjectBoard 内挂载项目概览与素材区块"
+    },
+    {
+      "name": "project_items_kept",
+      "ok": true,
+      "detail": "既有项目事项表、甘特与保存/删除路径未被重做"
+    },
+    {
+      "name": "project_list_called",
+      "ok": true,
+      "detail": "概览通过 shell.projectList 读取项目列表"
+    },
+    {
+      "name": "overview_called",
+      "ok": true,
+      "detail": "选中项目后调用 508 project_overview"
+    },
+    {
+      "name": "materials_filtered_by_project",
+      "ok": true,
+      "detail": "素材列表按选中项目过滤，未在客户端另行编造归属"
+    },
+    {
+      "name": "material_detail_called",
+      "ok": true,
+      "detail": "点开素材时调用 material_get 读取正文与来源追溯"
+    },
+    {
+      "name": "project_selector",
+      "ok": true,
+      "detail": "项目选择器以 project_id 驱动概览与素材"
+    },
+    {
+      "name": "overview_fields",
+      "ok": true,
+      "detail": "概览展示目标、状态与起止日期，缺省值如实说明"
+    },
+    {
+      "name": "four_counts",
+      "ok": true,
+      "detail": "任务/记录/素材/知识四类计数均来自 project_overview"
+    },
+    {
+      "name": "association_lists",
+      "ok": true,
+      "detail": "任务/记录/知识列表完整展示反向派生结果"
+    },
+    {
+      "name": "review_grouping",
+      "ok": true,
+      "detail": "素材在客户端按审核状态分组"
+    },
+    {
+      "name": "pending_first",
+      "ok": true,
+      "detail": "待审核分组置顶"
+    },
+    {
+      "name": "overview_material_count",
+      "ok": true,
+      "detail": "素材区块标题计数取概览全审核状态口径，分组另行标注"
+    },
+    {
+      "name": "material_rows",
+      "ok": true,
+      "detail": "素材行按审核状态标注并可展开详情"
+    },
+    {
+      "name": "material_detail_view",
+      "ok": true,
+      "detail": "素材详情展示正文、来源引用与原文定位"
+    },
+    {
+      "name": "project_jump_from_material",
+      "ok": true,
+      "detail": "素材详情提供项目跳转入口，并校验目标项目在列表中"
+    },
+    {
+      "name": "empty_no_projects",
+      "ok": true,
+      "detail": "无项目时给出独立空态"
+    },
+    {
+      "name": "empty_no_associations",
+      "ok": true,
+      "detail": "项目存在但无关联时给出独立空态"
+    },
+    {
+      "name": "empty_no_materials",
+      "ok": true,
+      "detail": "项目存在但无素材时给出独立空态"
+    },
+    {
+      "name": "errors_not_empty",
+      "ok": true,
+      "detail": "读取失败与空态分开呈现"
+    },
+    {
+      "name": "broken_counts_surfaced",
+      "ok": true,
+      "detail": "损坏文件数与静默丢弃区分"
+    },
+    {
+      "name": "api_wrappers",
+      "ok": true,
+      "detail": "复用 508/506 的 api 封装，不新增重复 IPC"
+    },
+    {
+      "name": "type_contract",
+      "ok": true,
+      "detail": "项目概览与素材详情类型契约齐全"
+    },
+    {
+      "name": "no_direct_invoke",
+      "ok": true,
+      "detail": "页面只经 shell 封装调用，不直连 IPC"
+    },
+    {
+      "name": "no_model_call",
+      "ok": true,
+      "detail": "本视图只读；不触发模型、不在本区块推进审核状态"
+    },
+    {
+      "name": "no_exemptions",
+      "ok": true,
+      "detail": "未新增类型检查或测试豁免"
+    }
+  ]
+}
