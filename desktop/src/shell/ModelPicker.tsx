@@ -99,7 +99,7 @@ export function ModelPicker({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] transition-colors disabled:opacity-60"
         data-hover-hint={currentProvider ? `当前路由：${label}（可切换模型与思考等级）` : "当前端点尚未识别"}
       >
         <Icon name="spark" className="w-[13px] h-[13px]" />
@@ -108,7 +108,7 @@ export function ModelPicker({
       </button>
 
       {open ? (
-        <div className="absolute right-0 bottom-full mb-2 w-[330px] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-3 z-50">
+        <div className="neu-popover absolute right-0 bottom-full mb-2 w-[330px] rounded-2xl p-3 z-50">
           <div className="pb-2 mb-2 border-b border-surface-variant/20">
             <button
               type="button"

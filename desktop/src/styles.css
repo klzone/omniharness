@@ -39,7 +39,7 @@ body {
 }
 
 .mono {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "IBM Plex Mono", "Source Han Sans SC", "思源黑体", "PingFang SC", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
 
@@ -346,7 +346,7 @@ button.ghost {
 }
 
 .scope-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Source Han Sans SC", "思源黑体", "PingFang SC", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   color: var(--fg-dim);
   overflow-wrap: anywhere;
@@ -447,7 +447,7 @@ button.ghost {
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.28);
   color: var(--fg-dim);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: "IBM Plex Mono", "Source Han Sans SC", "思源黑体", "PingFang SC", ui-monospace, monospace;
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

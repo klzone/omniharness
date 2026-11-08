@@ -28,7 +28,9 @@ JSON_OUTPUT_SPEC = """只输出一个 JSON 对象，不要 Markdown 代码围栏
       "match_task_id": null,
       "match_confidence": null,
       "match_reason": null,
-      "suggested_state": null
+      "suggested_state": null,
+      "importance": null,
+      "importance_reason": null
     }
   ]
 }
@@ -41,6 +43,8 @@ JSON_OUTPUT_SPEC = """只输出一个 JSON 对象，不要 Markdown 代码围栏
 - 如果记录与「已有未完成任务」中的某一项明显是同一件事，填 match_task_id、match_confidence（0 到 1）与 match_reason；否则三个都留 null。
 - 不要因为标题相似就强行关联；把握不大时降低 match_confidence，最终由人决定。
 - suggested_state 只能填该关联任务当前状态允许的下一步；不确定就留 null。状态建议不会自动应用。
+- importance 只能填 高 / 中 / 低 或 null，判断依据是这件事的影响与后果；不要仅因为领导提出就判「高」，也不要仅因为没有截止日期就判「低」。
+- importance 非 null 时，importance_reason 用一句话（不超过 100 字）写清依据；importance 为 null 时 importance_reason 也留 null。
 - 没有可执行事项时输出 {"candidates": []}。
 """
 

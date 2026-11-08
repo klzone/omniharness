@@ -9,6 +9,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-family: var(--font-body-md);
   font-size: 15px;
   line-height: 1.75;
 }
@@ -128,7 +129,7 @@
 }
 
 .md-body code {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "IBM Plex Mono", "Source Han Sans SC", "思源黑体", "PingFang SC", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.86em;
   padding: 0.12em 0.38em;
   border-radius: 5px;
@@ -204,6 +205,7 @@
 
 .md-table-scroll th,
 .md-table-scroll td {
+  font-family: var(--font-body-sm);
   padding: 0.5em 0.75em;
   text-align: left;
   border-bottom: 1px solid var(--color-outline-variant);

@@ -28,6 +28,7 @@ const MAX_QUOTE_CHARS: usize = 500;
 const MAX_CATEGORY_CHARS: usize = 32;
 const MAX_NOTE_CHARS: usize = 500;
 const MAX_UNCERTAINTY_CHARS: usize = 200;
+const MAX_IMPORTANCE_REASON_CHARS: usize = 100;
 
 /// 解析准备结果：提示词与送模型前的原文（已过红线与掩码）。
 #[derive(Debug, Clone, Serialize)]
@@ -77,6 +78,10 @@ struct RawCandidate {
     match_reason: Option<String>,
     #[serde(default)]
     suggested_state: Option<String>,
+    #[serde(default)]
+    importance: Option<String>,
+    #[serde(default)]
+    importance_reason: Option<String>,
 }
 
 fn trim_opt(value: Option<String>) -> Option<String> {
@@ -272,6 +277,32 @@ fn validate_candidate(
             ));
         }
     }
+    let importance = trim_opt(raw.importance);
+    let importance_reason = trim_opt(raw.importance_reason);
+    match importance.as_deref() {
+        Some(level) => {
+            if !matches!(level, "高" | "中" | "低") {
+                return Err(format!(
+                    "第 {ordinal} 条候选的重要性只能是 高 / 中 / 低 或 null。"
+                ));
+            }
+            let reason = importance_reason.as_deref().ok_or_else(|| {
+                format!("第 {ordinal} 条候选给了重要性，却没有一句话依据。")
+            })?;
+            if reason.chars().count() > MAX_IMPORTANCE_REASON_CHARS || reason.contains('\n') {
+                return Err(format!(
+                    "第 {ordinal} 条候选的重要性依据过长或含换行（最多 {MAX_IMPORTANCE_REASON_CHARS} 字）。"
+                ));
+            }
+        }
+        None => {
+            if importance_reason.is_some() {
+                return Err(format!(
+                    "第 {ordinal} 条候选没有重要性判断，却给了依据。"
+                ));
+            }
+        }
+    }
     Ok(task_store::CandidateInput {
         title,
         source_quote: quote,
@@ -284,6 +315,8 @@ fn validate_candidate(
         match_confidence: raw.match_confidence,
         match_reason,
         suggested_state,
+        importance,
+        importance_reason,
     })
 }
 
@@ -765,5 +798,107 @@ mod tests {
         assert_eq!(report.staged[0].match_task_id.as_deref(), Some(task.id.as_str()));
         let stored = task_store::read_task(temp.root(), &task.id).unwrap();
         assert!(stored.progress.is_empty(), "阶段化候选不得自动改任务");
+    }
+
+    #[test]
+    fn validate_accepts_importance_with_reason() {
+        let temp = TempRoot::new("importance");
+        let record = seed(&temp);
+        let text = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "importance": "高",
+                "importance_reason": "本周评审要用",
+            }]
+        })
+        .to_string();
+        let candidates = validate_task_payload(&text, &record, &[]).unwrap();
+        assert_eq!(candidates[0].importance.as_deref(), Some("高"));
+        assert_eq!(candidates[0].importance_reason.as_deref(), Some("本周评审要用"));
+    }
+
+    #[test]
+    fn validate_rejects_unknown_importance_level() {
+        let temp = TempRoot::new("importance-level");
+        let record = seed(&temp);
+        let text = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "importance": "待评估",
+                "importance_reason": "不确定",
+            }]
+        })
+        .to_string();
+        let err = validate_task_payload(&text, &record, &[]).unwrap_err();
+        assert!(err.contains("只能是 高 / 中 / 低"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_importance_without_reason_or_too_long() {
+        let temp = TempRoot::new("importance-reason");
+        let record = seed(&temp);
+        let mut value = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "importance": "中",
+            }]
+        });
+        let text = value.to_string();
+        let err = validate_task_payload(&text, &record, &[]).unwrap_err();
+        assert!(err.contains("没有一句话依据"), "{err}");
+        value["candidates"][0]["importance_reason"] =
+            serde_json::json!("这句依据写得过长".repeat(20));
+        let err = validate_task_payload(&value.to_string(), &record, &[]).unwrap_err();
+        assert!(err.contains("过长"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_reason_without_importance() {
+        let temp = TempRoot::new("importance-orphan");
+        let record = seed(&temp);
+        let text = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "importance": null,
+                "importance_reason": "多余依据",
+            }]
+        })
+        .to_string();
+        let err = validate_task_payload(&text, &record, &[]).unwrap_err();
+        assert!(err.contains("没有重要性判断"), "{err}");
+    }
+
+    #[test]
+    fn confirm_candidate_writes_ai_importance_source() {
+        let temp = TempRoot::new("importance-confirm");
+        let record = seed(&temp);
+        let text = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "importance": "高",
+                "importance_reason": "本周评审要用",
+            }]
+        })
+        .to_string();
+        let report = apply_analysis(temp.root(), &record.id, &text, NOW).unwrap();
+        let candidate = &report.staged[0];
+        let confirmed = task_store::confirm_candidate(
+            temp.root(),
+            &candidate.id,
+            &task_store::ConfirmEdits::default(),
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(confirmed.importance, task_store::IMPORTANCE_HIGH);
+        assert_eq!(
+            confirmed.importance_source.as_deref(),
+            Some(task_store::IMPORTANCE_SOURCE_AI)
+        );
+        assert_eq!(confirmed.importance_reason.as_deref(), Some("本周评审要用"));
     }
 }

@@ -20,12 +20,10 @@ import {
   isEmptyTimeline,
   localToday,
   parseWorklog,
+  REPORT_DESTINATION,
   shortDate,
   weekdayLabel,
 } from "../weekTimeline";
-import { REPORT_DESTINATION } from "../weeklyQuadrants";
-
-
 /**
  * 一条记录的去向开关（OD-ARCH-099 S03）。
  *

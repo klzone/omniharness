@@ -1,5 +1,40 @@
 # 执行状态
 
+## OD-UI-202 新拟物第一阶段实施（2026-11-08，未提交）
+
+按用户裁决「品牌靛 + 先做顶栏/首页」实施；只改材质、颜色与少量占位文字对比，不改业务逻辑、IPC、数据模型、权限、模型路由或固定/滚动基线。
+
+### 改动
+
+- **材质令牌：** `desktop/src/theme.css` 新增 `--od-neu-*`（暖白灰底材、内容面、凹陷面、品牌靛焦点、L1–L3 成对凸起阴影、L1–L2 成对凹陷阴影）与 `.neu-app/.neu-nav/.neu-inset-field/.neu-chip/.neu-icon-btn/.neu-popover/.neu-composer/.neu-msg-accent/.neu-msg-assistant/.neu-dock-btn/.neu-dock-active/.neu-window-btn` 等类；旧 `plate-sculpted` / `plate-soft-inset` 切到同一材质，共享胶囊自动统一。
+- **顶栏：** `TopNav.tsx` 改为 64px 凸起圆角长条；搜索与 Profile 徽标凹陷；日期、设置、通知、窗口按钮凸起；日期与 Profile 弹层改实色 `neu-popover`，移除 `backdrop-blur`；搜索占位文字提高对比。
+- **应用底材：** `App.tsx` 换 `neu-app` 暖底，保留静态暖色光晕（`neu-glow-a/b/c`，不用 blur 滤镜）。
+- **首页：** `HomeChat.tsx` 输入区改凹陷 `neu-composer`，发送钮凸起；用户消息加轻凸阴影，助手消息改浅面；归类/模型弹层同步实色材质。试装时撤掉了第一版整幅对话大面板，避免空态出现巨大空白卡片。输入占位文字提高对比。
+- **Dock：** `Dock.tsx` 去掉玻璃胶囊容器，入口改独立凸起圆钮；当前项凹陷 + 3px 品牌靛标记。
+- **窗口控制：** `WindowChrome.tsx` 三个按钮改凸起材质，关闭按钮保留浅红危险色悬停。
+- **归类/模型选择：** `CategoryPicker.tsx` / `ModelPicker.tsx` 胶囊沿用统一凹陷材质，弹层改 `neu-popover`，去掉 `backdrop-blur`。
+- **中文界面字体（2026-11-09 修订）：** 用户反馈宋体不适合界面，改为统一黑体：大标题思源柔黑（缺字体回退思源黑），界面标题、正文、控件、表格都用思源黑；行楷只保留为标语，首页“欢迎回到 OmniDesk”使用 700 加粗行楷；方正楷体只留给长引用/落款，思源宋体只用于导出报告和打印文档。英文仍 Inter / IBM Plex Mono；`font-slogan` 仍把 Inter 放最前，避免混排英文被手写体覆盖。等宽/标签字体（IBM Plex Mono / `font-mono` / `font-label-caps`）显式接中文黑体，日历中文标签由 9px 提到 10px，避免中文回退到宋体。
+
+### 验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `npm run build`（tsc + vite） | 通过；仅既有 >500 kB chunk 提示 |
+| `npx tsc --noEmit` | 通过，无输出 |
+| `python3 tests/verification/desktop/verify_ui_neumorphism_202.py --json tests/verification/desktop/verify_ui_neumorphism_202.json` | **29/29 通过** |
+| macOS debug App 重建后真实窗口 | 1280×820 目视核对顶栏、凹陷搜索/Profile、凸起日期/窗口按钮、Dock 当前项凹陷、输入区压入、发送钮凸起 |
+| 键盘 Tab | 焦点落在 Dock 项/搜索框时蓝色 2px 焦点环可见 |
+| 静态边界 | `TopNav.tsx` / `CategoryPicker.tsx` / `ModelPicker.tsx` 无 `backdrop-blur`；顶栏无旧玻璃底色与白色 ring |
+
+### 已知限制
+
+- 只在 macOS debug 窗口目视核对；未在 Linux/WebKitGTK 或 release 包量测阴影重绘成本。
+- CUA 截图 API 不回写文件，真实窗口截图只在会话工具记录；静态检查 JSON 已落盘。
+- 本机字体清单只有 Songti SC / STSong / Heiti SC；未找到思源柔黑、思源黑体、演示夏行楷。应用已按字体栈优先引用，装字体后生效；当前真实窗口是系统黑体回退，思源柔黑与行楷实际字形尚未验证。没有把字体文件复制进仓库或安装包，避免改变授权边界。
+- 构建中途曾被并发 OD-QS 的 `TaskManager.tsx` 未使用导入阻塞；待对方修复后本会话复跑通过。该文件不在本轮改动内。
+- 第二阶段（工作记录/写作/项目/设置/知识库）尚未开始；这些页面仍为旧平面材质。
+- 未提交、未推送；既有未提交与未跟踪改动原样保留。
+
 ## OD-UI-201 界面精简实施（2026-11-08，未提交）
 
 按用户三条指令完成：①全应用去掉「历史会话」；②文案写作、首页、工作记录版式与文案规范；③删除英文副标题、卡序号与解释性说明。

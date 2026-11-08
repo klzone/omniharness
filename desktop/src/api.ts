@@ -8,6 +8,7 @@ import { currentEngineSubmitDecision } from "./engineAdmission";
 import type {
   AdmissionStatusResponse,
   AnalysisRunResponse,
+  AvailabilityConfig,
   CancelOutcome,
   CapabilityReceipt,
   CapabilityView,
@@ -104,12 +105,20 @@ import type {
   RecordFilter,
   RecordListing,
   RecordPatch,
+  ScheduleAdjustmentReport,
+  ScheduleEntry,
+  ScheduleGenerateReport,
+  ScheduleListing,
   TaskCandidate,
   TaskDeleted,
   TaskDraft,
+  TaskDueKind,
   TaskFilter,
+  TaskImportance,
   TaskListing,
   TaskPatch,
+  TaskQuadrant,
+  TaskQuadrantView,
   TaskSaved,
   TrashMove,
   WorkRecord,
@@ -657,6 +666,20 @@ export const shell = {
     });
   },
 
+  /** 工作时间配置（OD-QS-406）：没有文件时返回默认值，不写盘。 */
+  availabilityGet(): Promise<AvailabilityConfig> {
+    return invoke<AvailabilityConfig>("availability_get").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存工作时间配置：宿主校验后原子替换，失败时旧文件保持不变。 */
+  availabilitySet(config: AvailabilityConfig): Promise<AvailabilityConfig> {
+    return invoke<AvailabilityConfig>("availability_set", { config }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   // -------------------------------------------------------------------------
   // 工作记录 / 任务 / 候选（OD-WR-302）
   //
@@ -752,6 +775,121 @@ export const shell = {
 
   taskAppendProgress(id: string, text: string): Promise<TaskSaved> {
     return invoke<TaskSaved>("task_append_progress", { id, text }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户调整重要性（OD-QS-405）：source 固定 user，理由必填。 */
+  taskSetImportance(id: string, importance: TaskImportance, reason: string): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_set_importance", { id, importance, reason }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户指定或清除象限；quadrant 为 null 表示回到规则派生。 */
+  taskSetQuadrant(
+    id: string,
+    quadrant: TaskQuadrant | null,
+    reason?: string,
+  ): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_set_quadrant", {
+      id,
+      quadrant,
+      reason: reason ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户调整截止日期与性质；理由必填。 */
+  taskSetDue(
+    id: string,
+    dueDate: string | null,
+    dueKind: TaskDueKind,
+    reason: string,
+  ): Promise<TaskSaved> {
+    return invoke<TaskSaved>("task_set_due", {
+      id,
+      dueDate,
+      dueKind,
+      reason,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户补充预计耗时；null 表示清除。 */
+  taskSetEstimated(id: string, minutes: number | null): Promise<WorkTask> {
+    return invoke<WorkTask>("task_set_estimated", { id, minutes }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户设置前置任务；存在性与无环由宿主校验。 */
+  taskSetDependency(id: string, dependsOn: string[]): Promise<WorkTask> {
+    return invoke<WorkTask>("task_set_dependency", { id, dependsOn }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 任务四象限视图（OD-QS-410）：只读派生，不落盘。 */
+  taskQuadrantViews(utcOffsetMinutes?: number): Promise<TaskQuadrantView[]> {
+    return invoke<TaskQuadrantView[]>("task_quadrant_views", {
+      utcOffsetMinutes: utcOffsetMinutes ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 重新生成排期建议（OD-QS-409）：不动已确认/锁定，只补新建议。 */
+  scheduleGenerate(utcOffsetMinutes?: number): Promise<ScheduleGenerateReport> {
+    return invoke<ScheduleGenerateReport>("schedule_generate", {
+      utcOffsetMinutes: utcOffsetMinutes ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  scheduleConfirm(id: string): Promise<ScheduleEntry> {
+    return invoke<ScheduleEntry>("schedule_confirm", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  scheduleAdjust(
+    id: string,
+    startAt: string,
+    endAt: string,
+    reason: string,
+  ): Promise<ScheduleAdjustmentReport> {
+    return invoke<ScheduleAdjustmentReport>("schedule_adjust", {
+      id,
+      startAt,
+      endAt,
+      reason,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  scheduleCancel(id: string, reason?: string): Promise<ScheduleEntry> {
+    return invoke<ScheduleEntry>("schedule_cancel", {
+      id,
+      reason: reason ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  scheduleLock(id: string): Promise<ScheduleEntry> {
+    return invoke<ScheduleEntry>("schedule_lock", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 列出排期条目及派生状态；任务完成/取消后显示「已失效」。 */
+  scheduleList(): Promise<ScheduleListing> {
+    return invoke<ScheduleListing>("schedule_list").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

@@ -50,7 +50,7 @@ export function ThreeWeekCalendar({ now = new Date() }: { now?: Date }) {
       {/* 星期表头 */}
       <div className="flex items-center gap-1">
         <span className="w-9 shrink-0" />
-        <div className="grid grid-cols-7 gap-1 flex-1 text-center font-label-caps text-[9px] text-outline">
+        <div className="grid grid-cols-7 gap-1 flex-1 text-center font-label-caps text-[10px] text-outline">
           {WEEK_LABELS.map((w) => (
             <span key={w}>{w}</span>
           ))}
@@ -59,7 +59,7 @@ export function ThreeWeekCalendar({ now = new Date() }: { now?: Date }) {
 
       {weeks.map((week) => (
         <div key={week.label} className="flex items-center gap-1">
-          <span className="w-9 shrink-0 font-label-caps text-[9px] text-outline">
+          <span className="w-9 shrink-0 font-label-caps text-[10px] text-outline">
             {week.label}
           </span>
           <div className="grid grid-cols-7 gap-1 flex-1">
@@ -93,7 +93,7 @@ export function ThreeWeekCalendar({ now = new Date() }: { now?: Date }) {
       ))}
 
       {/* 图例 */}
-      <div className="pt-1.5 mt-0.5 border-t border-surface-variant/20 flex items-center gap-3 font-label-caps text-[9px] text-outline">
+      <div className="pt-1.5 mt-0.5 border-t border-surface-variant/20 flex items-center gap-3 font-label-caps text-[10px] text-outline">
         <span className="inline-flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-outline-variant/60" />
           已过
@@ -108,7 +108,7 @@ export function ThreeWeekCalendar({ now = new Date() }: { now?: Date }) {
         </span>
       </div>
 
-      <p className="font-label-caps text-[9px] text-outline leading-relaxed">
+      <p className="font-label-caps text-[10px] text-outline leading-relaxed">
         任务与日程数据源尚未接入；这里只按本机日期区分已过 / 今天 / 将来，
         不显示“做了什么、正在做什么”的业务内容。
       </p>

@@ -190,7 +190,7 @@ export function CategoryPicker({
         aria-label={`本次对话归到哪一类，当前：${currentLabel}`}
         data-testid="scene-category-picker"
         data-tag={value}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[12px] hover:bg-surface-container transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[12px] transition-colors disabled:opacity-60"
         data-hover-hint="归类只改这段对话的组织方式，不改模型与路由；可选分类在设置页维护"
       >
         <span
@@ -210,7 +210,7 @@ export function CategoryPicker({
         <div
           ref={menuRef}
           style={{ left: anchor.left, top: anchor.top, width: anchor.width }}
-          className="fixed z-[95] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2"
+          className="neu-popover fixed z-[95] rounded-2xl p-2"
           data-testid="scene-chips"
         >
           <div className="px-1.5 pb-1.5 text-[12px] uppercase tracking-wide text-outline">

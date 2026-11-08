@@ -91,7 +91,7 @@ export function Dock({
     : [...declaredItems, BUILTIN_KNOWLEDGE_ITEM];
 
   return (
-    <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center bg-surface-container-lowest/95 ring-1 ring-white/95 rounded-full py-3 px-2 shadow-[0_16px_40px_-8px_rgba(79,70,229,0.12),0_4px_16px_rgba(0,0,0,0.04)] space-y-2.5">
+    <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center space-y-2.5">
       {items.map((item) => {
         const active = item.scene === scene;
         return (
@@ -106,10 +106,10 @@ export function Dock({
               // 内部场景键不会。纯属性，不影响布局与可访问名。
               data-scene={item.scene}
               className={
-                "w-10 h-10 rounded-full flex items-center justify-center transition-all " +
+                "neu-dock-btn w-11 h-11 rounded-full flex items-center justify-center " +
                 (active
-                  ? "bg-primary text-on-primary shadow-md"
-                  : "text-on-surface-variant hover:text-primary hover:bg-surface-container active:scale-90")
+                  ? "neu-dock-active"
+                  : "text-on-surface-variant hover:text-primary")
               }
             >
               <Icon name={item.icon} className="w-5 h-5" />

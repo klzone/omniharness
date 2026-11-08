@@ -86,18 +86,18 @@ function Glyph({ children }: { children: ReactNode }) {
 export function WindowControls() {
   const maximized = useMaximized();
   const base =
-    "w-7 h-7 rounded-full flex items-center justify-center transition-colors text-on-surface-variant";
+    "neu-window-btn w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant";
 
   return (
     <div
-      className="flex items-center space-x-0.5 pl-2 ml-1 border-l border-outline-variant/25"
+      className="neu-win-cluster flex items-center space-x-1 pl-2 ml-1"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <button
         type="button"
         data-hover-hint="最小化"
         aria-label="最小化"
-        className={`${base} hover:bg-surface-container`}
+        className={base}
         onClick={() => void appWindow().minimize()}
       >
         <Glyph>
@@ -108,7 +108,7 @@ export function WindowControls() {
         type="button"
         data-hover-hint={maximized ? "还原" : "最大化"}
         aria-label={maximized ? "还原" : "最大化"}
-        className={`${base} hover:bg-surface-container`}
+        className={base}
         onClick={() => void appWindow().toggleMaximize()}
       >
         <Glyph>
@@ -126,7 +126,7 @@ export function WindowControls() {
         type="button"
         data-hover-hint="关闭"
         aria-label="关闭"
-        className={`${base} hover:bg-red-500 hover:text-white`}
+        className={`${base} neu-window-close`}
         onClick={() => void appWindow().close()}
       >
         <Glyph>

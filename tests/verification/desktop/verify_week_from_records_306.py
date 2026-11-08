@@ -65,8 +65,9 @@ def main() -> int:
     )
     check(
         "quadrants_use_records",
-        "classifyWorklog(parsedWeek" in scene,
-        "四象限消费同一份记录解析结果",
+        "countReportEntries(parsedWeek" in scene
+        and "weekReportEntries={weekReportEntries}" in scene,
+        "记录四象限占位已由任务象限替换；进周报统计仍消费同一份解析结果",
     )
     check(
         "timeline_accepts_parsed",

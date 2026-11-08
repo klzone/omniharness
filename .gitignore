@@ -62,3 +62,6 @@ runtime/dsh-home-seed/
 # 本地知识库抽取的纯文本缓存（由真实文档生成，含业务内容，只留本机）
 .kb_extract/
 desktop/tsconfig.tsbuildinfo
+
+# Codex 会话附件缓存（设计参考图等临时材料，不入库）
+.codex-attachments/

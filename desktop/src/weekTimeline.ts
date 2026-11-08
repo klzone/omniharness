@@ -48,6 +48,20 @@ export interface ParsedWorklog {
   entryCount: number;
 }
 
+/** 记录去向是否会被周报引用（与 `skills/memory-report` 一致；OD-QS-410 移入本周文件）。 */
+export const REPORT_DESTINATION = "本周报引用";
+
+/** 统计「去向 = 本周报引用」的条目数。 */
+export function countReportEntries(parsed: ParsedWorklog): number {
+  let count = 0;
+  for (const day of parsed.days) {
+    for (const entry of day.entries) {
+      if ((entry.destination ?? "").trim() === REPORT_DESTINATION) count += 1;
+    }
+  }
+  return count;
+}
+
 /** 结构化周视图 → 与 parseWorklog 相同的时间线结构（OD-WR-311）。 */
 export function parseWeekView(view: import("./types").WorklogWeekView): ParsedWorklog {
   const out: ParsedWorklog = {

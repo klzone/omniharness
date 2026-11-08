@@ -1,0 +1,79 @@
+{
+  "plan": "OD-QS-413",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 14,
+  "failed": [],
+  "checks": [
+    {
+      "name": "gate_definition",
+      "ok": true,
+      "detail": "统一闸门仍由红线扫描 + mask_privacy 组成"
+    },
+    {
+      "name": "gate_covers_importance",
+      "ok": true,
+      "detail": "task_set_importance 的自由文本经过统一闸门"
+    },
+    {
+      "name": "gate_covers_quadrant",
+      "ok": true,
+      "detail": "task_set_quadrant 的自由文本经过统一闸门"
+    },
+    {
+      "name": "gate_covers_due",
+      "ok": true,
+      "detail": "task_set_due 的自由文本经过统一闸门"
+    },
+    {
+      "name": "estimated_is_typed_only",
+      "ok": true,
+      "detail": "task_set_estimated 只收可空 u32，没有自由文本可绕过闸门"
+    },
+    {
+      "name": "dependency_is_typed_only",
+      "ok": true,
+      "detail": "task_set_dependency 只收任务编号数组；存在性/无环由存储层校验"
+    },
+    {
+      "name": "dependency_validated",
+      "ok": true,
+      "detail": "依赖写入前校验存在、无环与不自依赖"
+    },
+    {
+      "name": "ai_has_no_schedule_write",
+      "ok": true,
+      "detail": "AI 提取链路只产任务候选，不写排期"
+    },
+    {
+      "name": "no_auto_generate_on_startup",
+      "ok": true,
+      "detail": "启动流程不自动生成排期；只有用户命令触发"
+    },
+    {
+      "name": "schedule_failure_does_not_touch_tasks",
+      "ok": true,
+      "detail": "排期写入与生成都不改任务文件"
+    },
+    {
+      "name": "schedule_writes_limited_to_generate_and_adjust",
+      "ok": true,
+      "detail": "新建排期只经 schedule_generate / adjust 两条路径"
+    },
+    {
+      "name": "no_sensitive_logs",
+      "ok": true,
+      "detail": "新模块与任务界面不写调试日志"
+    },
+    {
+      "name": "tests_use_temp_roots",
+      "ok": true,
+      "detail": "测试数据只落临时目录，不写仓库或用户数据"
+    },
+    {
+      "name": "no_waivers_added",
+      "ok": true,
+      "detail": "新模块没有 lint/检查豁免"
+    }
+  ]
+}

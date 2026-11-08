@@ -284,14 +284,14 @@ export default function App() {
   };
 
   return (
-    <div className="relative flex flex-col h-screen w-full bg-background text-on-surface font-body-md overflow-hidden">
+    <div className="neu-app relative flex flex-col h-screen w-full text-on-surface font-body-md leading-[1.65] overflow-hidden">
       {/* 全局悬停说明（OD-ARCH-101）：接管 window 的原生 title，统一为方角白底卡片。 */}
       <HoverHint />
       {/* 柔和背景层（纯装饰，不承载信息）。OD-ARCH-027 Step 2：由高半径 filter: blur 改为静态径向渐变光晕。 */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute -top-[15%] left-[20%] w-[60rem] h-[50rem] rounded-full ambient-glow ambient-glow-a" />
-        <div className="absolute top-[45%] -right-[10%] w-[48rem] h-[48rem] rounded-full ambient-glow ambient-glow-b" />
-        <div className="absolute -bottom-[20%] left-[8%] w-[42rem] h-[42rem] rounded-full ambient-glow ambient-glow-c" />
+        <div className="absolute -top-[15%] left-[20%] w-[60rem] h-[50rem] rounded-full ambient-glow neu-glow-a" />
+        <div className="absolute top-[45%] -right-[10%] w-[48rem] h-[48rem] rounded-full ambient-glow neu-glow-b" />
+        <div className="absolute -bottom-[20%] left-[8%] w-[42rem] h-[42rem] rounded-full ambient-glow neu-glow-c" />
       </div>
 
       <TopNav
