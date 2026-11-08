@@ -96,6 +96,9 @@ import type {
   CandidateListing,
   AnalyzeApplied,
   AnalyzePrompt,
+  ArchiveReceipt,
+  CleanupPreview,
+  CleanupReport,
   ConfirmEdits,
   RecordDraft,
   RecordFilter,
@@ -119,6 +122,7 @@ import type {
   WorklogMoveManyReceipt,
   WorklogMergeReceipt,
   WorklogWeekRead,
+  WorklogWeekView,
   WorklogArchiveList,
   WorklogReportRead,
   ModelRouteListing,
@@ -588,6 +592,13 @@ export const shell = {
     });
   },
 
+  /** 结构化周视图（OD-WR-311）：按记录库 ISO 周过滤，不解析 Markdown。 */
+  worklogWeekView(week?: string): Promise<WorklogWeekView> {
+    return invoke<WorklogWeekView>("worklog_week_view", { week: week ?? null }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 列周记录与周报归档（OD-ARCH-091 W3）。
    *
@@ -609,6 +620,39 @@ export const shell = {
    */
   worklogReadReport(fileName: string): Promise<WorklogReportRead> {
     return invoke<WorklogReportRead>("worklog_read_report", { fileName }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 报告归档进知识库「报告/」；同名同来源幂等（OD-WR-312）。 */
+  archiveReportToVault(fileName: string, period?: string): Promise<ArchiveReceipt> {
+    return invoke<ArchiveReceipt>("archive_report_to_vault", {
+      fileName,
+      period: period ?? null,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 已发布成果归档进知识库「归档成果/」；草稿拒绝。 */
+  archiveArtifactToVault(relativePath: string): Promise<ArchiveReceipt> {
+    return invoke<ArchiveReceipt>("archive_artifact_to_vault", {
+      relativePath,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 临时层清理预览：只读，不写盘（OD-WR-313）。 */
+  workCleanupPreview(): Promise<CleanupPreview> {
+    return invoke<CleanupPreview>("work_cleanup_preview").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 临时层清理执行：必须 confirm；只移动到 .trash/。 */
+  workCleanupApply(confirm: boolean): Promise<CleanupReport> {
+    return invoke<CleanupReport>("work_cleanup_apply", { confirm }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

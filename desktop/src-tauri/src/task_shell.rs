@@ -2267,7 +2267,7 @@ fn frontmatter_field(meta: &str, key: &str) -> Option<String> {
 }
 
 /// 解析一段 frontmatter 文本，返回归一后的 `(status, type)`。
-fn parse_writing_frontmatter(text: &str) -> (String, String) {
+pub(crate) fn parse_writing_frontmatter(text: &str) -> (String, String) {
     let body = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n"));
     let Some(body) = body else {
         return ("finished".to_string(), "uncategorized".to_string());

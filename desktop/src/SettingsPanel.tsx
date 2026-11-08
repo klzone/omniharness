@@ -26,6 +26,8 @@ import type {
   KnowledgeVaultRootStatus,
   KnowledgeVaultScan,
   LibraryRootInfo,
+  CleanupPreview,
+  CleanupReport,
   MigrationPreview,
   MigrationReport,
   WorkingRootInfo,
@@ -380,6 +382,13 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [migrationConfirmed, setMigrationConfirmed] = useState(false);
+
+  // —— 临时层清理（OD-WR-313）：先预览，再勾选确认 ——
+  const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(null);
+  const [cleanupReport, setCleanupReport] = useState<CleanupReport | null>(null);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
 
   // —— 知识库根（OD-KB-001 P1）：只读，独立于库根 ——
   const [vaultStatus, setVaultStatus] = useState<KnowledgeVaultRootStatus | null>(null);
@@ -1832,6 +1841,39 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       setMigrationBusy(false);
     }
   }, [migrationConfirmed]);
+
+  const previewCleanup = useCallback(async () => {
+    setCleanupBusy(true);
+    setCleanupError(null);
+    setCleanupReport(null);
+    try {
+      const r = await shell.workCleanupPreview();
+      setCleanupPreview(r);
+      setCleanupConfirmed(false);
+    } catch (e) {
+      setCleanupPreview(null);
+      setCleanupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCleanupBusy(false);
+    }
+  }, []);
+
+  const applyCleanup = useCallback(async () => {
+    if (!cleanupConfirmed) return;
+    setCleanupBusy(true);
+    setCleanupError(null);
+    try {
+      const report = await shell.workCleanupApply(true);
+      setCleanupReport(report);
+      setCleanupConfirmed(false);
+      const next = await shell.workCleanupPreview();
+      setCleanupPreview(next);
+    } catch (e) {
+      setCleanupError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCleanupBusy(false);
+    }
+  }, [cleanupConfirmed]);
 
   const openArtifacts = useCallback(async () => {
     setError(null);
@@ -4078,6 +4120,90 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             </p>
           ) : null}
           {migrationError ? <div className="alert">{migrationError}</div> : null}
+        </details>
+
+        <details className="tech">
+          <summary>临时层清理</summary>
+          <p className="hint">
+            只圈定两类：已归档报告覆盖期内的记录，以及完成/取消超过
+            {cleanupPreview ? " " + cleanupPreview.retention_days : " 90"} 天的任务。
+            草稿、被未完成任务引用的记录、还有待审核候选的记录永不入选。清理只移到
+            work/.trash/，不直接删除。
+          </p>
+          <div className="actions">
+            <button
+              className="ghost"
+              onClick={() => void previewCleanup()}
+              disabled={cleanupBusy}
+            >
+              {cleanupBusy ? "读取中…" : "预览可清理内容"}
+            </button>
+          </div>
+          {cleanupPreview ? (
+            <>
+              <div className="status-card">
+                <div className="status-row">
+                  <span className="k">保留期</span>
+                  <span className="v">{cleanupPreview.retention_days} 天</span>
+                </div>
+                <div className="status-row">
+                  <span className="k">记录</span>
+                  <span className="v">{cleanupPreview.records.length} 条</span>
+                </div>
+                <div className="status-row">
+                  <span className="k">任务</span>
+                  <span className="v">{cleanupPreview.tasks.length} 个</span>
+                </div>
+                <div className="status-row">
+                  <span className="k">已归档周期</span>
+                  <span className="v mono">
+                    {cleanupPreview.archived_periods.join("、") || "无"}
+                  </span>
+                </div>
+              </div>
+              {[...cleanupPreview.records, ...cleanupPreview.tasks]
+                .slice(0, 6)
+                .map((item) => (
+                  <p className="hint" key={item.kind + ":" + item.id}>
+                    {item.kind === "record" ? "记录" : "任务"} · {item.title} · {item.date}
+                    · {item.reason}
+                  </p>
+                ))}
+              {cleanupPreview.warnings.length > 0 ? (
+                <p className="hint">{cleanupPreview.warnings.join("；")}</p>
+              ) : null}
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={cleanupConfirmed}
+                  onChange={(e) => setCleanupConfirmed(e.target.checked)}
+                />
+                <span>我已确认：这些内容只会移到回收目录，不会直接删除。</span>
+              </label>
+              <div className="actions">
+                <button
+                  className="primary"
+                  onClick={() => void applyCleanup()}
+                  disabled={
+                    cleanupBusy ||
+                    !cleanupConfirmed ||
+                    cleanupPreview.records.length + cleanupPreview.tasks.length === 0
+                  }
+                >
+                  {cleanupBusy ? "执行中…" : "执行清理"}
+                </button>
+              </div>
+            </>
+          ) : null}
+          {cleanupReport ? (
+            <p className="hint" role="status" aria-live="polite">
+              已移动 {cleanupReport.moved.length} 项
+              {cleanupReport.failures.length > 0
+                ? "；失败 " + cleanupReport.failures.length + " 项：" + cleanupReport.failures.join("；")
+                : "。"}
+            </p>
+          ) : null}
+          {cleanupError ? <div className="alert">{cleanupError}</div> : null}
         </details>
 
         <details className="tech">

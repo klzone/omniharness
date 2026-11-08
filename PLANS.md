@@ -31,6 +31,14 @@
 
 > **执行进展（2026-11-08 七）：** OD-WR-316 与 OD-WR-309 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：316 交付半完成回执（LinkReport ok/partial + 四项写入标志 + warnings，界面显示补救提示，不引入跨文件事务）；309 交付 worklog_migrate.rs（预览/迁移/回滚/幂等 + 8 项单测 + 设置页迁移入口），**真实一次性迁移已在用户授权下完成**：2026-W45.md（1127 字节 4 条）拆条写入 work/工作记录/，原文件字节不动移入 work/周文件存档/（SHA-256 本会话独立核验一致），源目录 8 个 .bak 未触碰，重跑为空操作。lib 653 passed（净增 10）+ verify 304 升级 18/18 全部独立复跑通过。**下一任务：OD-WR-310（随手记链路切换到记录库）→ 311 → 312 → 313。**
 
+> **执行进展（2026-11-08 八）：** OD-WR-310 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：新增 quicklog.rs（append/set_destination/redate/move_many/merge 改写记录库 + ISO 周聚合 + 旧周文件形状渲染），判定块协议与回执形状不变，周索引从记录库聚合、记录为空时回退旧周文件；**随手记主链路的周文件写路径就此退役**。lib 660 passed（净增 7）+ verify_worklog_unify_305 15/15 独立复跑全绿。**阶段性提交与推送已完成（用户执行）**：d8486784c8（127 文件，含 301–310/314–316、OD-UI-201、308 四文档与全部证据；用户成果/ 已入 .gitignore，敏感词扫描零命中）。**下一任务：OD-WR-311（周视图与周报改读记录库）→ 312 → 313。**
+
+> **执行进展（2026-11-08 九）：** OD-WR-311 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：quicklog 新增结构化 week_view + worklog_week_view IPC；ScenePage 时间线/四象限/指标带优先消费结构化记录条目，记录为空或读取失败才回退旧周文件；WeeklyTimeline 接 parsed 入参不再只依赖 Markdown；周报经 310 的 worklogReadWeek 已走记录库渲染。lib 660 passed + verify_week_from_records_306 12/12 + build/tsc 全部独立复跑通过。**下一任务：OD-WR-312（报告与成果归档知识库）→ 313（清理，须用户授权）。**
+
+> **执行进展（2026-11-08 十）：** OD-WR-312 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：新增 vault_archive.rs（报告/成果归档 + frontmatter 来源五字段 + 同名同源幂等/异源拒绝 + 越界/符号链接防护 + 6 项单测），两个 IPC 注册，前端类型成套。lib 666 passed（净增 6）+ tsc 独立复跑通过。本轮只交付宿主能力与 IPC，界面归档按钮后置（由用户显式触发才有归档动作，符合单向流动口径）。**最后一项：OD-WR-313（临时层清理——动工前须用户单独授权）。**
+
+> **执行进展（2026-11-08 十一，阶段全部收口）：** OD-WR-313 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：新增 work_cleanup.rs（圈定函数含 draft/被未完成任务引用/待审核候选三重保护 + retention 配置 1–3650 天默认 90 + 预览零写入 + apply 显式 confirm 门禁 + 移 .trash/ 不直接删除 + 6 项单测），IPC 与设置页预览/勾选确认入口成套。lib 672 passed（净增 6）+ verify_work_cleanup_307 15/15 + build/tsc 独立复跑通过。本轮未在真实数据执行清理（符合授权边界——代码就绪，动作等用户逐次触发）。**第一阶段 301–313 + 314–316 全部竣工。待办：最终提交推送（用户批准后执行）。**
+
 1. **OD-WR-301 存储层**（worklog_records.rs + task_store.rs）：记录 CRUD（草稿态 frontmatter、删除进 .trash/）、列表过滤、Task CRUD + 六状态迁移校验（待确认/待开始/进行中/已完成/已取消/暂停，非法迁移拒绝）、状态历史追加段、候选暂存结构、去重键。验收：cargo test --offline --lib（新增 ≥22 项全绿）；cargo test --offline --tests。阻塞 302/304/309；无前置。
 2. **OD-WR-302 IPC 接线**（lib.rs + api.ts + types.ts）：记录与任务/候选全部 IPC 命令注册 + 前端类型；候选确认前不进正式清单（集成断言）。验收：cargo test --offline --lib；npx tsc --noEmit；npm --prefix desktop run build。阻塞 303/305/306/309；阻塞于 301。
 3. **OD-WR-303 工作记录页面**：列表（日期排列 + 日期/分类筛选 + 关键词检索 + 解析状态 + 关联任务数）、快速记录（自由文本/可选日期/草稿）、详情（Markdown 渲染/编辑/删除/解析入口）。Aetheria 样式，动工前按 OD-ARCH-035 搜 2–3 个同类布局。验收：npm build；新增 verify_work_record_ui_301.py。阻塞于 302；与 304/305 并行。

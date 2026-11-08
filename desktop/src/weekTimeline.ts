@@ -48,6 +48,28 @@ export interface ParsedWorklog {
   entryCount: number;
 }
 
+/** 结构化周视图 → 与 parseWorklog 相同的时间线结构（OD-WR-311）。 */
+export function parseWeekView(view: import("./types").WorklogWeekView): ParsedWorklog {
+  const out: ParsedWorklog = {
+    week: view.week || null,
+    days: [],
+    preamble: [],
+    entryCount: 0,
+  };
+  const byDate = new Map<string, TimelineDay>();
+  for (const entry of view.entries) {
+    let day = byDate.get(entry.date);
+    if (!day) {
+      day = { date: entry.date, entries: [], raw: [], continued: false };
+      byDate.set(entry.date, day);
+      out.days.push(day);
+    }
+    day.entries.push({ text: entry.text, destination: entry.destination });
+    out.entryCount += 1;
+  }
+  return out;
+}
+
 const DATE_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})(?:\s*[（(]续[）)])?\s*$/;
 const WEEK_HEADING = /^#\s+(\d{4}-W\d{2})\s*$/;
 const ITEM_LINE = /^-\s+\*\*事\*\*[：:]\s?(.*)$/;

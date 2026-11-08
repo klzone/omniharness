@@ -903,6 +903,20 @@ export interface WorklogWeekRead {
   error: string | null;
 }
 
+/** 结构化周视图（OD-WR-311）：直接来自记录库的条目。 */
+export interface WorklogWeekEntry {
+  record_id: string;
+  date: string;
+  created_at: string;
+  text: string;
+  destination: string | null;
+}
+
+export interface WorklogWeekView {
+  week: string;
+  entries: WorklogWeekEntry[];
+}
+
 /**
  * 一份周文件 / 周报文件的元数据（OD-ARCH-091 W3）。
  *
@@ -2397,6 +2411,48 @@ export interface MigrationReport {
   archived_files: string[];
   skipped: string[];
   error: string | null;
+}
+
+/** 报告/成果归档进知识库的回执（OD-WR-312）。 */
+export interface ArchiveReceipt {
+  ok: boolean;
+  target_path: string;
+  bytes: number;
+  source_sha256: string;
+  source_period: string | null;
+  already_archived: boolean;
+  error: string | null;
+}
+
+/** 临时层清理候选（OD-WR-313）。 */
+export interface CleanupItem {
+  kind: "record" | "task";
+  id: string;
+  title: string;
+  /** 记录日期或任务最后更新时间。 */
+  date: string;
+  reason: string;
+}
+
+export interface CleanupPreview {
+  retention_days: number;
+  records: CleanupItem[];
+  tasks: CleanupItem[];
+  archived_periods: string[];
+  warnings: string[];
+}
+
+export interface CleanupMoved {
+  kind: "record" | "task";
+  id: string;
+  path: string;
+}
+
+export interface CleanupReport {
+  ok: boolean;
+  moved: CleanupMoved[];
+  failures: string[];
+  warnings: string[];
 }
 
 /** 确认候选时可改字段；undefined = 沿用候选原值。 */
