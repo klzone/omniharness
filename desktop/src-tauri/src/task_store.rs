@@ -52,6 +52,8 @@ pub const CANDIDATE_REJECTED: &str = "rejected";
 const MAX_TITLE_CHARS: usize = 200;
 const MAX_ESTIMATED_MINUTES: u32 = 1440;
 const MAX_IMPORTANCE_REASON_CHARS: usize = 100;
+const MAX_KNOWLEDGE_ID_CHARS: usize = 200;
+const MAX_KNOWLEDGE_REASON_CHARS: usize = 100;
 
 pub const IMPORTANCE_HIGH: &str = "高";
 pub const IMPORTANCE_MEDIUM: &str = "中";
@@ -116,6 +118,15 @@ pub struct TaskAdjustment {
     pub reason: Option<String>,
 }
 
+/// 任务/记录对知识条目的关联（OD-KM-503）。id 为知识条目的稳定编号，
+/// reason 为一句关联依据，linked_at 为宿主写入时的 UTC 时间。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KnowledgeLink {
+    pub id: String,
+    pub reason: String,
+    pub linked_at: String,
+}
+
 /// 一个正式任务。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
@@ -156,6 +167,12 @@ pub struct Task {
     /// 用户指定的象限（Q1–Q4）；为空表示按规则派生。
     #[serde(default)]
     pub quadrant_override: Option<String>,
+    /// 所属项目编号（D-078 单向挂接）；存在性校验由 508 IPC 层做。
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// 关联的知识条目；旧文件缺该字段时为空。
+    #[serde(default)]
+    pub related_knowledge: Vec<KnowledgeLink>,
     pub progress: Vec<ProgressEntry>,
     pub history: Vec<StateChange>,
     /// 优先级调整记录；只追加，不改写。旧文件缺该分区时为空。
@@ -175,6 +192,8 @@ pub struct TaskDraft {
     pub category: Option<String>,
     pub due_date: Option<String>,
     pub hint: Option<String>,
+    /// 所属项目编号（OD-KM-508）；存在性由 IPC 层校验。
+    pub project_id: Option<String>,
 }
 
 /// 任务元数据更新补丁。None = 不修改；空字符串 = 清空。
@@ -185,6 +204,8 @@ pub struct TaskPatch {
     pub category: Option<String>,
     pub due_date: Option<String>,
     pub hint: Option<String>,
+    /// 所属项目编号（OD-KM-508）；None = 不修改，空字符串 = 清空。
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -414,6 +435,17 @@ fn render_task(task: &Task) -> String {
         "quadrant_override: {}\n",
         yaml_opt(&task.quadrant_override)
     ));
+    if let Some(project_id) = task.project_id.as_deref() {
+        fm.push_str(&format!("project_id: {}\n", yaml_scalar(project_id)));
+    }
+    if !task.related_knowledge.is_empty() {
+        fm.push_str("related_knowledge:\n");
+        for link in &task.related_knowledge {
+            fm.push_str(&format!("  - id: {}\n", yaml_scalar(&link.id)));
+            fm.push_str(&format!("    reason: {}\n", yaml_scalar(&link.reason)));
+            fm.push_str(&format!("    linked_at: {}\n", yaml_scalar(&link.linked_at)));
+        }
+    }
     let mut out = format!("---\n{fm}---\n\n## 进展\n\n");
     for entry in &task.progress {
         out.push_str(&format!("- {} | {}\n", entry.at, entry.text));
@@ -587,6 +619,10 @@ struct TaskFront {
     parent_id: Option<String>,
     #[serde(default)]
     quadrant_override: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    related_knowledge: Vec<KnowledgeLink>,
 }
 
 fn validate_importance_pair(
@@ -646,6 +682,110 @@ fn validate_quadrant_override(value: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// 知识编号形状：去空白后非空、不超过 200 字符、不含控制字符。
+/// 与 OD-KM-501 素材的 related_knowledge_ids 保持同一宽松度，允许相对路径形式。
+pub fn validate_knowledge_id(id: &str) -> Result<(), String> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err("知识编号不能为空。".to_string());
+    }
+    if trimmed.chars().count() > MAX_KNOWLEDGE_ID_CHARS {
+        return Err(format!(
+            "知识编号过长（最多 {MAX_KNOWLEDGE_ID_CHARS} 字符）：{trimmed:?}"
+        ));
+    }
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err(format!("知识编号含控制字符：{trimmed:?}"));
+    }
+    Ok(())
+}
+
+/// 关联理由与 importance_reason 同一口径：去空白后必填，最多 100 字。
+pub fn validate_knowledge_reason(reason: &str) -> Result<(), String> {
+    let trimmed = reason.trim();
+    if trimmed.is_empty() {
+        return Err("关联知识必须填写理由。".to_string());
+    }
+    if trimmed.chars().count() > MAX_KNOWLEDGE_REASON_CHARS {
+        return Err(format!(
+            "关联理由过长（最多 {MAX_KNOWLEDGE_REASON_CHARS} 字）：{trimmed:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// 关联时间形状：UTC ISO8601，YYYY-MM-DDTHH:MM:SSZ。
+pub fn validate_linked_at(value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    let bytes = trimmed.as_bytes();
+    let shape_ok = trimmed.is_ascii()
+        && bytes.len() == 20
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':'
+        && bytes[19] == b'Z'
+        && bytes[0..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+        && bytes[11..13].iter().all(u8::is_ascii_digit)
+        && bytes[14..16].iter().all(u8::is_ascii_digit)
+        && bytes[17..19].iter().all(u8::is_ascii_digit);
+    if !shape_ok {
+        return Err(format!(
+            "关联时间格式不正确（应为 UTC YYYY-MM-DDTHH:MM:SSZ）：{trimmed:?}"
+        ));
+    }
+    let month: u32 = trimmed[5..7].parse().unwrap_or(0);
+    let day: u32 = trimmed[8..10].parse().unwrap_or(0);
+    let hour: u32 = trimmed[11..13].parse().unwrap_or(0);
+    let minute: u32 = trimmed[14..16].parse().unwrap_or(0);
+    let second: u32 = trimmed[17..19].parse().unwrap_or(0);
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(format!(
+            "关联时间取值不正确（应为 UTC YYYY-MM-DDTHH:MM:SSZ）：{trimmed:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// 项目编号形状：沿用文件实体编号规则（ASCII 字母数字与 - / _，最多 80 字符）。
+/// 项目是否存在由 508 IPC 层校验，本函数只做形状。
+pub fn validate_project_id(value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if !is_safe_id(trimmed) {
+        return Err(format!("项目编号形状不正确：{trimmed:?}"));
+    }
+    Ok(())
+}
+
+/// 归一化并校验关联知识列表：去空白、按 id 去重（保留首次出现），逐项形状校验。
+pub fn normalize_knowledge_links(links: &[KnowledgeLink]) -> Result<Vec<KnowledgeLink>, String> {
+    let mut out: Vec<KnowledgeLink> = Vec::new();
+    for link in links {
+        let id = link.id.trim().to_string();
+        validate_knowledge_id(&id)?;
+        let reason = link.reason.trim().to_string();
+        validate_knowledge_reason(&reason)?;
+        let linked_at = link.linked_at.trim().to_string();
+        validate_linked_at(&linked_at)?;
+        if !out.iter().any(|existing| existing.id == id) {
+            out.push(KnowledgeLink {
+                id,
+                reason,
+                linked_at,
+            });
+        }
+    }
+    Ok(out)
 }
 
 fn normalize_task_references(values: &[String], owner: &str, field: &str) -> Result<Vec<String>, String> {
@@ -734,6 +874,11 @@ fn parse_task(raw: &str) -> Result<Task, String> {
     if let Some(override_value) = quadrant_override.as_deref() {
         validate_quadrant_override(override_value)?;
     }
+    let project_id = normalize_opt(front.project_id);
+    if let Some(project) = project_id.as_deref() {
+        validate_project_id(project)?;
+    }
+    let related_knowledge = normalize_knowledge_links(&front.related_knowledge)?;
     let (progress, history, adjustments) = parse_sections(&body)?;
     Ok(Task {
         id: front.id,
@@ -755,6 +900,8 @@ fn parse_task(raw: &str) -> Result<Task, String> {
         estimated_minutes: front.estimated_minutes,
         parent_id,
         quadrant_override,
+        project_id,
+        related_knowledge,
         progress,
         history,
         adjustments,
@@ -825,6 +972,10 @@ pub fn create_task(root: &Path, draft: &TaskDraft, now: f64) -> Result<Task, Str
     if let Some(date) = due_date.as_deref() {
         validate_due_date(date)?;
     }
+    let project_id = normalize_opt(draft.project_id.clone());
+    if let Some(project) = project_id.as_deref() {
+        validate_project_id(project)?;
+    }
     let created_at = crate::task_shell::utc_iso8601(now);
     let task = Task {
         id: id.clone(),
@@ -846,6 +997,8 @@ pub fn create_task(root: &Path, draft: &TaskDraft, now: f64) -> Result<Task, Str
         estimated_minutes: None,
         parent_id: None,
         quadrant_override: None,
+        project_id,
+        related_knowledge: Vec::new(),
         progress: Vec::new(),
         history: Vec::new(),
         adjustments: Vec::new(),
@@ -981,6 +1134,13 @@ pub fn update_task(
     }
     if let Some(hint) = patch.hint.clone() {
         task.hint = normalize_opt(Some(hint));
+    }
+    if let Some(project_id) = patch.project_id.clone() {
+        let project_id = normalize_opt(Some(project_id));
+        if let Some(project) = project_id.as_deref() {
+            validate_project_id(project)?;
+        }
+        task.project_id = project_id;
     }
     task.updated_at = crate::task_shell::utc_iso8601(now);
     write_replace_atomically(&task_path(root, &task.id)?, render_task(&task).as_bytes())?;
@@ -1574,6 +1734,7 @@ pub fn confirm_candidate(
         category,
         due_date,
         hint: None,
+        project_id: None,
     };
     let created = create_task(root, &draft, now)?;
     let task = match candidate.importance.as_deref() {
@@ -2792,5 +2953,154 @@ mod tests {
         seed_legacy_task(&temp, "t-legacy-adjust");
         let task = read_task(temp.root(), "t-legacy-adjust").unwrap();
         assert!(task.adjustments.is_empty());
+    }
+
+    fn seed_task_without_links(temp: &TempRoot, id: &str) {
+        fs::create_dir_all(tasks_dir(temp.root())).unwrap();
+        let raw = format!(
+            "---\nschema: \"omnidesk.task.v1\"\nid: \"{id}\"\ntitle: \"旧任务\"\nstate: \"进行中\"\ncreated_at: \"2026-01-01T00:00:00Z\"\nupdated_at: \"2026-02-01T09:30:00Z\"\nsource_record_id: \"wr-503-1\"\nsource_quote: \"整理虚构周报\"\nlinked_record_ids:\n  - \"wr-503-1\"\ncategory: \"写作\"\ndue_date: \"2026-02-28\"\nhint: \"本月底前\"\nimportance: \"中\"\nimportance_source: \"user\"\nimportance_reason: \"评审要用\"\ndue_kind: \"target\"\ndepends_on: []\nestimated_minutes: 90\nparent_id: null\nquadrant_override: \"Q2\"\n---\n\n## 进展\n\n- 2026-02-01T09:30:00Z | 已整理提纲\n\n## 状态历史\n\n- 2026-01-02T09:30:00Z | 待开始 → 进行中 | 开工\n\n## 调整记录\n\n- 2026-01-03T09:30:00Z | estimated_minutes | 90 分钟\n"
+        );
+        fs::write(task_path(temp.root(), id).unwrap(), raw).unwrap();
+    }
+
+    fn seed_task_with_links(temp: &TempRoot, id: &str) {
+        seed_task_without_links(temp, id);
+        let path = task_path(temp.root(), id).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let raw = raw.replace(
+            "quadrant_override: \"Q2\"\n",
+            "quadrant_override: \"Q2\"\nproject_id: \"p-503\"\nrelated_knowledge:\n  - id: \"notes/synthetic-knowledge.md\"\n    reason: \"该条目提供虚构背景\"\n    linked_at: \"2026-02-02T08:15:00Z\"\n",
+        );
+        fs::write(&path, raw).unwrap();
+    }
+
+    #[test]
+    fn legacy_task_without_503_fields_reads_defaults() {
+        let temp = TempRoot::new("links-legacy-defaults");
+        seed_task_without_links(&temp, "t-503-legacy");
+        let task = read_task(temp.root(), "t-503-legacy").unwrap();
+        assert_eq!(task.project_id, None);
+        assert!(task.related_knowledge.is_empty());
+    }
+
+    #[test]
+    fn legacy_task_load_save_is_byte_identical() {
+        let temp = TempRoot::new("links-legacy-bytes");
+        seed_task_without_links(&temp, "t-503-legacy-bytes");
+        let path = task_path(temp.root(), "t-503-legacy-bytes").unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        let task = read_task(temp.root(), "t-503-legacy-bytes").unwrap();
+        write_replace_atomically(&path, render_task(&task).as_bytes()).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "旧任务文件 load→save 应逐字节一致");
+    }
+
+    #[test]
+    fn task_with_project_and_knowledge_links_round_trips() {
+        let temp = TempRoot::new("links-round-trip");
+        seed_task_with_links(&temp, "t-503-links");
+        let path = task_path(temp.root(), "t-503-links").unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        let task = read_task(temp.root(), "t-503-links").unwrap();
+        assert_eq!(task.project_id.as_deref(), Some("p-503"));
+        assert_eq!(task.related_knowledge.len(), 1);
+        assert_eq!(task.related_knowledge[0].id, "notes/synthetic-knowledge.md");
+        assert_eq!(task.related_knowledge[0].reason, "该条目提供虚构背景");
+        assert_eq!(task.related_knowledge[0].linked_at, "2026-02-02T08:15:00Z");
+        write_replace_atomically(&path, render_task(&task).as_bytes()).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "带关联字段的任务应稳定往返");
+    }
+
+    #[test]
+    fn task_parse_rejects_bad_project_id_shape() {
+        let temp = TempRoot::new("links-bad-project");
+        seed_task_with_links(&temp, "t-503-bad-project");
+        let path = task_path(temp.root(), "t-503-bad-project").unwrap();
+        let raw = fs::read_to_string(&path)
+            .unwrap()
+            .replace("project_id: \"p-503\"", "project_id: \"p 503\"");
+        fs::write(&path, raw).unwrap();
+        let err = read_task(temp.root(), "t-503-bad-project").unwrap_err();
+        assert!(err.contains("项目编号形状不正确"), "{err}");
+    }
+
+    #[test]
+    fn task_parse_rejects_empty_knowledge_reason() {
+        let temp = TempRoot::new("links-empty-reason");
+        seed_task_with_links(&temp, "t-503-empty-reason");
+        let path = task_path(temp.root(), "t-503-empty-reason").unwrap();
+        let raw = fs::read_to_string(&path)
+            .unwrap()
+            .replace("该条目提供虚构背景", "");
+        fs::write(&path, raw).unwrap();
+        let err = read_task(temp.root(), "t-503-empty-reason").unwrap_err();
+        assert!(err.contains("必须填写理由"), "{err}");
+    }
+
+    #[test]
+    fn task_parse_rejects_empty_knowledge_id() {
+        let temp = TempRoot::new("links-empty-id");
+        seed_task_with_links(&temp, "t-503-empty-id");
+        let path = task_path(temp.root(), "t-503-empty-id").unwrap();
+        let raw = fs::read_to_string(&path)
+            .unwrap()
+            .replace("notes/synthetic-knowledge.md", "");
+        fs::write(&path, raw).unwrap();
+        let err = read_task(temp.root(), "t-503-empty-id").unwrap_err();
+        assert!(err.contains("知识编号不能为空"), "{err}");
+    }
+
+    #[test]
+    fn task_parse_rejects_bad_linked_at() {
+        let temp = TempRoot::new("links-bad-time");
+        seed_task_with_links(&temp, "t-503-bad-time");
+        let path = task_path(temp.root(), "t-503-bad-time").unwrap();
+        let raw = fs::read_to_string(&path)
+            .unwrap()
+            .replace("2026-02-02T08:15:00Z", "2026-02-02 08:15:00");
+        fs::write(&path, raw).unwrap();
+        let err = read_task(temp.root(), "t-503-bad-time").unwrap_err();
+        assert!(err.contains("关联时间格式不正确"), "{err}");
+    }
+
+    #[test]
+    fn task_related_knowledge_dedupes_by_id() {
+        let temp = TempRoot::new("links-dedupe");
+        seed_task_with_links(&temp, "t-503-dedupe");
+        let path = task_path(temp.root(), "t-503-dedupe").unwrap();
+        let raw = fs::read_to_string(&path).unwrap().replace(
+            "    linked_at: \"2026-02-02T08:15:00Z\"\n",
+            "    linked_at: \"2026-02-02T08:15:00Z\"\n  - id: \"notes/synthetic-knowledge.md\"\n    reason: \"重复理由\"\n    linked_at: \"2026-02-03T08:15:00Z\"\n",
+        );
+        fs::write(&path, raw).unwrap();
+        let task = read_task(temp.root(), "t-503-dedupe").unwrap();
+        assert_eq!(task.related_knowledge.len(), 1);
+        assert_eq!(task.related_knowledge[0].reason, "该条目提供虚构背景");
+    }
+
+    #[test]
+    fn knowledge_link_validators_enforce_shape_and_reason() {
+        assert!(validate_knowledge_id("notes/虚构条目.md").is_ok());
+        assert!(validate_knowledge_id("   ").is_err());
+        assert!(validate_knowledge_reason("引用依据").is_ok());
+        assert!(validate_knowledge_reason("  ").is_err());
+        assert!(validate_knowledge_reason(&"字".repeat(100)).is_ok());
+        assert!(validate_knowledge_reason(&"字".repeat(101)).is_err());
+        assert!(validate_linked_at("2026-02-02T08:15:00Z").is_ok());
+        assert!(validate_linked_at("2026-13-02T08:15:00Z").is_err());
+        assert!(validate_project_id("p-503").is_ok());
+        assert!(validate_project_id("../p-503").is_err());
+    }
+
+    #[test]
+    fn new_task_omits_link_fields_until_set() {
+        let temp = TempRoot::new("links-new-task");
+        let task = create_task(temp.root(), &task_draft("虚构任务"), NOW).unwrap();
+        let raw = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert!(!raw.contains("project_id"), "{raw}");
+        assert!(!raw.contains("related_knowledge"), "{raw}");
+        assert_eq!(task.project_id, None);
+        assert!(task.related_knowledge.is_empty());
     }
 }

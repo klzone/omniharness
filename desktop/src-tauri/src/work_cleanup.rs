@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::material_store;
 use crate::task_store;
 use crate::vault_archive::frontmatter_value;
 use crate::worklog;
@@ -21,6 +22,18 @@ pub const RETENTION_FILE: &str = "retention.v1.json";
 pub const RETENTION_SCHEMA: &str = "omnidesk.work-retention.v1";
 pub const DEFAULT_RETENTION_DAYS: i64 = 90;
 pub const REPORT_ARCHIVE_DIR: &str = "报告";
+/// 清理永远不触碰的 work/ 子目录（素材篮是用户长期资产，不参与定期清理）。
+pub const CLEANUP_EXCLUDED_DIRS: &[&str] = &[material_store::MATERIAL_DIR];
+
+/// 路径是否落在清理排除目录内（按任意路径段匹配，防止换目录后误清）。
+pub fn is_cleanup_excluded(path: &Path) -> bool {
+    path.components().any(|component| match component {
+        std::path::Component::Normal(name) => CLEANUP_EXCLUDED_DIRS
+            .iter()
+            .any(|dir| name.to_string_lossy() == *dir),
+        _ => false,
+    })
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CleanupItem {
@@ -292,6 +305,17 @@ pub fn cleanup_apply(
     let mut moved = Vec::new();
     let mut failures = Vec::new();
     for item in &preview.records {
+        let source = match worklog_records::record_path(root, &item.id) {
+            Ok(path) => path,
+            Err(message) => {
+                failures.push(format!("记录 {}：{message}", item.id));
+                continue;
+            }
+        };
+        if is_cleanup_excluded(&source) {
+            failures.push(format!("记录 {}：位于清理排除目录，未移动。", item.id));
+            continue;
+        }
         match worklog_records::delete_record(root, &item.id, now) {
             Ok(trash) => moved.push(CleanupMoved {
                 kind: "record".to_string(),
@@ -302,6 +326,17 @@ pub fn cleanup_apply(
         }
     }
     for item in &preview.tasks {
+        let source = match task_store::task_path(root, &item.id) {
+            Ok(path) => path,
+            Err(message) => {
+                failures.push(format!("任务 {}：{message}", item.id));
+                continue;
+            }
+        };
+        if is_cleanup_excluded(&source) {
+            failures.push(format!("任务 {}：位于清理排除目录，未移动。", item.id));
+            continue;
+        }
         match task_store::delete_task(root, &item.id, now) {
             Ok(path) => moved.push(CleanupMoved {
                 kind: "task".to_string(),
@@ -532,5 +567,41 @@ mod tests {
         assert!(period_range("2026").is_some());
         assert!(period_range("2026-W45").is_some());
         assert!(period_range("随便写").is_none());
+    }
+
+    #[test]
+    fn materials_dir_is_excluded_from_preview_and_apply() {
+        let temp = Temp::new("materials-excluded");
+        temp.add_report("2026-W45-周报.md", "2026-W45");
+        let doomed = record(&temp, "2026-11-02", "周期内记录", false);
+        let material = material_store::create_material(
+            &temp.work,
+            &material_store::MaterialDraft {
+                title: "素材篮资产".to_string(),
+                content: "合成素材正文。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "r-synthetic".to_string(),
+                source_quote: "合成素材原文。".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let path = material_store::material_path(&temp.work, &material.material_id).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(is_cleanup_excluded(&path));
+        assert!(!is_cleanup_excluded(&temp.work.join("工作记录").join("r.md")));
+
+        let preview = cleanup_preview(&temp.work, Some(&temp.vault), NOW).unwrap();
+        assert_eq!(preview.records.len(), 1);
+        assert_eq!(preview.records[0].id, doomed.id);
+        let report = cleanup_apply(&temp.work, Some(&temp.vault), NOW).unwrap();
+        assert!(report.ok, "{:?}", report.failures);
+        assert_eq!(report.moved.len(), 1);
+        assert!(path.exists(), "素材篮文件不得被清理移动");
+        assert_eq!(fs::read(&path).unwrap(), before, "素材篮文件字节不得变化");
+        let material_trash = material_store::trash_material_dir(&temp.work);
+        assert!(!material_trash.exists(), "清理不得移动素材到回收目录");
     }
 }

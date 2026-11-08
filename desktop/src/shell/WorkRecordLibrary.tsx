@@ -11,6 +11,7 @@ import type {
   WorkRecordAiStatus,
   WorkRecordSaved,
 } from "../types";
+import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
 import { MarkdownText } from "./MarkdownText";
 
 type Notice = { kind: "ok" | "err"; text: string };
@@ -636,6 +637,25 @@ export function WorkRecordLibrary({
                   ))}
                 </div>
               ) : null}
+              <KnowledgeLinkPanel
+                subjectKind="record"
+                subjectId={selected.id}
+                links={selected.related_knowledge}
+                onNotice={setNotice}
+                onLinksChanged={(links) => {
+                  setSelected((prev) =>
+                    prev && prev.id === selected.id
+                      ? { ...prev, related_knowledge: links }
+                      : prev,
+                  );
+                  setListing((prev) => ({
+                    ...prev,
+                    items: prev.items.map((item) =>
+                      item.id === selected.id ? { ...item, related_knowledge: links } : item,
+                    ),
+                  }));
+                }}
+              />
               <div className="mt-3 pt-3 border-t border-surface-variant/25 flex-1 min-h-0 overflow-y-auto">
                 <MarkdownText text={selected.body} />
               </div>

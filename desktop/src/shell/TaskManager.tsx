@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { shell } from "../api";
 import { Icon } from "../components/Icon";
+import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
 import type {
   AvailabilityConfig,
   ScheduleEntryView,
@@ -682,6 +683,21 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
                   </div>
                 )}
               </section>
+
+              <KnowledgeLinkPanel
+                subjectKind="task"
+                subjectId={selected.id}
+                links={selected.related_knowledge}
+                onNotice={setNotice}
+                onLinksChanged={(links) => {
+                  setListing((prev) => ({
+                    ...prev,
+                    items: prev.items.map((item) =>
+                      item.id === selected.id ? { ...item, related_knowledge: links } : item,
+                    ),
+                  }));
+                }}
+              />
 
               <div className="mt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-3">
                 <section aria-label="进展">

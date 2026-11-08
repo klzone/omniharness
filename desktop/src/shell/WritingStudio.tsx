@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
 import type { SceneThread } from "../sceneThreads";
 import type { OfflineArtifactEntry } from "../types";
+import { WritingMaterialBasket } from "./WritingMaterialBasket";
 import {
   WRITING_STATUSES,
   continueTarget,
@@ -272,6 +273,8 @@ export function WritingPipeline({
   const stale = staleFiles(files, nowSeconds);
   const stalePaths = new Set(stale.map((s) => s.relative_path));
   const total = files.filter((f) => !f.is_dir).length;
+  /** 写作内容页签：稿件 / 素材篮（OD-KM-510）。只改本卡片视图，不动页面三栏。 */
+  const [workspaceTab, setWorkspaceTab] = useState<"pipeline" | "materials">("pipeline");
 
   /** 视图派生的筛选：先按状态分组，再按「仅看久未修改」收窄；不修改原数据。 */
   const base = statusFilter ? groups[statusFilter] : files.filter((f) => !f.is_dir);
@@ -321,11 +324,59 @@ export function WritingPipeline({
       : "bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container");
 
   return (
-    <section aria-label="稿件" className={CARD + " flex flex-col"} data-writing-pipeline="">
-      <CardHead
-        title="稿件"
-        count={metadataLoading ? "读取中" : `${total} 份稿件`}
-      />
+    <section
+      aria-label={workspaceTab === "pipeline" ? "稿件" : "素材篮"}
+      className={CARD + " flex flex-col"}
+      data-writing-pipeline=""
+    >
+      <div
+        className="flex items-center gap-1.5 pb-3.5 border-b border-surface-variant/25"
+        role="tablist"
+        aria-label="写作内容"
+        data-writing-tabs=""
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspaceTab === "pipeline"}
+          onClick={() => setWorkspaceTab("pipeline")}
+          className={
+            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            (workspaceTab === "pipeline"
+              ? "bg-primary text-on-primary"
+              : "text-on-surface-variant hover:bg-surface-container")
+          }
+          data-writing-tab="pipeline"
+        >
+          稿件
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspaceTab === "materials"}
+          onClick={() => setWorkspaceTab("materials")}
+          className={
+            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            (workspaceTab === "materials"
+              ? "bg-primary text-on-primary"
+              : "text-on-surface-variant hover:bg-surface-container")
+          }
+          data-writing-tab="materials"
+          data-material-tab=""
+        >
+          素材篮
+        </button>
+        {workspaceTab === "pipeline" ? (
+          <span className="mono ml-auto shrink-0 text-[10.5px] text-outline">
+            {metadataLoading ? "读取中" : `${total} 份稿件`}
+          </span>
+        ) : null}
+      </div>
+
+      {workspaceTab === "materials" ? (
+        <WritingMaterialBasket />
+      ) : (
+        <>
 
       {/*
        * 稿件流程：三格阶段 + 连接符，先给出「一批稿子在哪一段」的整体画面，
@@ -460,7 +511,9 @@ export function WritingPipeline({
             })}
           </ul>
         )}
-      </div>
+        </div>
+        </>
+      )}
     </section>
   );
 }

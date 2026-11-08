@@ -1090,6 +1090,299 @@ export interface ProjectItemsSaveReceipt {
   items: ProjectItemRecord[];
 }
 
+/** 项目实体（OD-KM-508）：work/项目/<project_id>.md。 */
+export type ProjectStatus = "进行中" | "已完成" | "已搁置";
+
+export interface ProjectInfo {
+  schema: string;
+  project_id: string;
+  name: string;
+  goal: string;
+  status: ProjectStatus;
+  /** YYYY-MM-DD；未设置时为 null。 */
+  start: string | null;
+  /** YYYY-MM-DD；未设置时为 null。 */
+  end: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 新建项目入参；project_id 省略由宿主生成。 */
+export interface ProjectDraftInput {
+  project_id?: string | null;
+  name: string;
+  goal?: string;
+  status?: ProjectStatus | null;
+  start?: string | null;
+  end?: string | null;
+}
+
+/** 更新补丁；undefined = 不修改，空字符串 = 清空可选项。 */
+export interface ProjectPatchInput {
+  name?: string;
+  goal?: string;
+  status?: ProjectStatus;
+  start?: string;
+  end?: string;
+}
+
+export interface ProjectListing {
+  items: ProjectInfo[];
+  /** 读不出或 frontmatter 不合法的文件数。 */
+  broken: number;
+}
+
+/** 反向派生出的单个关联条目；project_id 为空表示不关联项目。 */
+export interface ProjectRefItem {
+  project_id: string | null;
+  id: string;
+  title: string;
+}
+
+export interface ProjectKnowledgeReference {
+  /** task / record。 */
+  source_kind: "task" | "record";
+  source_id: string;
+  source_title: string;
+  reason: string;
+  linked_at: string;
+}
+
+export interface ProjectKnowledgeRef {
+  knowledge_id: string;
+  references: ProjectKnowledgeReference[];
+}
+
+/** 项目概览（OD-KM-508）：关联全部反向派生，不存项目文件。 */
+export interface ProjectOverview {
+  project: ProjectInfo;
+  tasks: ProjectRefItem[];
+  records: ProjectRefItem[];
+  materials: ProjectRefItem[];
+  knowledge: ProjectKnowledgeRef[];
+  task_count: number;
+  record_count: number;
+  material_count: number;
+  knowledge_count: number;
+  broken_tasks: number;
+  broken_records: number;
+  broken_materials: number;
+}
+
+/** 素材十类（OD-KM-501 白名单）。 */
+export type WritingMaterialType =
+  | "工作事实"
+  | "工作成果"
+  | "数据素材"
+  | "经验做法"
+  | "典型案例"
+  | "问题不足"
+  | "制度依据"
+  | "工作计划"
+  | "领导部署"
+  | "特色亮点";
+
+export type WritingMaterialReviewStatus =
+  | "待审核"
+  | "已确认"
+  | "已退回"
+  | "已拒绝"
+  | "已归档";
+
+export type WritingMaterialSourceType =
+  | "work_record"
+  | "task"
+  | "project"
+  | "knowledge"
+  | "user";
+
+export interface WritingMaterialReviewRecord {
+  at: string;
+  action: string;
+  reason: string;
+}
+
+/** 写作素材实体（OD-KM-501）：work/素材篮/<material_id>.md。 */
+export interface WritingMaterial {
+  schema: string;
+  material_id: string;
+  title: string;
+  content: string;
+  material_type: WritingMaterialType;
+  source_type: WritingMaterialSourceType;
+  source_id: string;
+  /** 来源原文引用；user 来源收藏时可把正文作为引用传入。 */
+  source_quote: string;
+  source_location: string | null;
+  related_task_ids: string[];
+  related_project_id: string | null;
+  related_knowledge_ids: string[];
+  /** YYYY-MM-DD；未设置时为 null。 */
+  event_date: string | null;
+  created_at: string;
+  updated_at: string;
+  confidence: number;
+  review_status: WritingMaterialReviewStatus;
+  confirmation_status: "未确认" | "已确认";
+  tags: string[];
+  /** 审核记录只追加；不落 frontmatter。 */
+  review_records: WritingMaterialReviewRecord[];
+}
+
+/** 用户主动收藏入参；source_id 省略时 user 来源自动记为 user。 */
+export interface MaterialDraftInput {
+  material_id?: string | null;
+  title: string;
+  content: string;
+  material_type: WritingMaterialType;
+  /** 省略时按 user 收藏落盘；指定其他来源时 source_id 应同时给出。 */
+  source_type?: WritingMaterialSourceType;
+  source_id?: string;
+  /** source_type 为 user 时仍必填；可传 content。 */
+  source_quote: string;
+  source_location?: string | null;
+  related_task_ids?: string[];
+  related_project_id?: string | null;
+  related_knowledge_ids?: string[];
+  event_date?: string | null;
+  confidence?: number | null;
+  tags?: string[];
+}
+
+/** 编辑补丁；undefined = 不修改，空字符串 = 清空可选项。 */
+export interface MaterialPatchInput {
+  title?: string;
+  content?: string;
+  material_type?: WritingMaterialType;
+  source_id?: string;
+  source_quote?: string;
+  source_location?: string;
+  related_task_ids?: string[];
+  related_project_id?: string;
+  related_knowledge_ids?: string[];
+  event_date?: string;
+  confidence?: number;
+  tags?: string[];
+  /** 写入审核记录的一句话理由。 */
+  reason?: string;
+}
+
+/** 素材列表过滤；日期按事件日期闭区间。 */
+export interface MaterialFilter {
+  material_type?: WritingMaterialType;
+  review_status?: WritingMaterialReviewStatus;
+  date_from?: string;
+  date_to?: string;
+  project_id?: string;
+  task_id?: string;
+}
+
+export interface MaterialListing {
+  items: WritingMaterial[];
+  /** 读不出或 frontmatter 不合法的文件数。 */
+  broken: number;
+}
+
+/** 来源追溯中的单个实体；found=false 时 note 说明原因。 */
+export interface MaterialTraceEntity {
+  id: string;
+  found: boolean;
+  title: string | null;
+  location: string | null;
+  note: string | null;
+}
+
+export interface MaterialSourceTrace {
+  source_type: WritingMaterialSourceType;
+  source_id: string;
+  quote: string;
+  quote_found: boolean;
+  location: string | null;
+  entity: MaterialTraceEntity;
+  excerpt: string | null;
+}
+
+/** material_get 回执：素材 + 来源与关联实体定位。 */
+export interface MaterialDetail {
+  material: WritingMaterial;
+  source: MaterialSourceTrace;
+  related_tasks: MaterialTraceEntity[];
+  related_project: MaterialTraceEntity | null;
+  related_knowledge: MaterialTraceEntity[];
+}
+
+/** 第四阶段素材查询入参（OD-KM-509）。审核状态省略时只返回已确认素材。 */
+export interface MaterialQueryInput {
+  keyword?: string;
+  material_type?: WritingMaterialType;
+  date_from?: string;
+  date_to?: string;
+  project_id?: string;
+  review_status?: WritingMaterialReviewStatus;
+}
+
+export interface MaterialQuerySource {
+  source_type: WritingMaterialSourceType;
+  source_id: string;
+  source_quote: string;
+  source_location: string | null;
+}
+
+/** 关联实体定位；found=false 时 note 说明原因。 */
+export interface MaterialQueryEntity {
+  id: string;
+  found: boolean;
+  title: string | null;
+  location: string | null;
+  note: string | null;
+}
+
+export interface MaterialQueryRelations {
+  tasks: MaterialQueryEntity[];
+  project: MaterialQueryEntity | null;
+  knowledge: MaterialQueryEntity[];
+}
+
+/** 关键词命中事实；关键词为空时全部为默认值。 */
+export interface MaterialQueryMatch {
+  title_hit: boolean;
+  content_hit: boolean;
+  keyword_hits: number;
+  snippet: string | null;
+}
+
+/** 单条素材查询结果，含正文、来源、审核状态与关联实体。 */
+export interface MaterialQueryItem {
+  material_id: string;
+  title: string;
+  content: string;
+  material_type: WritingMaterialType;
+  source: MaterialQuerySource;
+  review_status: WritingMaterialReviewStatus;
+  confirmation_status: "未确认" | "已确认";
+  event_date: string | null;
+  tags: string[];
+  related: MaterialQueryRelations;
+  match_info: MaterialQueryMatch;
+}
+
+export interface MaterialQueryResponse {
+  /** 归一化后的生效条件；review_status 已填入默认「已确认」。 */
+  query: MaterialQueryInput & { review_status: WritingMaterialReviewStatus };
+  items: MaterialQueryItem[];
+  matched: number;
+  /** 读不出或 frontmatter 不合法的素材文件数。 */
+  broken: number;
+}
+
+/** 审核动作（OD-KM-506）：宿主同时接受英文与中文动作名。 */
+export type MaterialReviewAction =
+  | "confirm"
+  | "return"
+  | "reject"
+  | "defer"
+  | "archive";
+
 /** 三个离线流程共用的响应外壳：model_step 恒为「受准入阻塞、未验证」。 */
 export interface OfflineFlowResponse<T> {
   ok: boolean;
@@ -2152,6 +2445,14 @@ export interface EnvironmentReport {
 
 export type WorkRecordAiStatus = "unanalyzed" | "analyzed" | "failed";
 
+/** 任务/记录对知识条目的关联（OD-KM-503）。id 为知识库内相对路径。 */
+export interface KnowledgeLink {
+  id: string;
+  reason: string;
+  /** 宿主写入时的 UTC ISO8601。 */
+  linked_at: string;
+}
+
 export interface WorkRecord {
   id: string;
   title: string;
@@ -2168,6 +2469,8 @@ export interface WorkRecord {
   ai_analysis_status: WorkRecordAiStatus;
   linked_task_ids: string[];
   draft: boolean;
+  /** 关联的知识条目（OD-KM-503）；旧文件缺该字段时为空。 */
+  related_knowledge: KnowledgeLink[];
   body: string;
 }
 
@@ -2236,7 +2539,39 @@ export interface AnalyzePrompt {
 export interface AnalyzeApplied {
   staged: TaskCandidate[];
   skipped_duplicates: string[];
+  /** AI 素材候选（OD-KM-504/506）：只落暂存，不写正式素材。 */
+  material_staged: MaterialCandidate[];
+  material_skipped_duplicates: string[];
+  material_duplicates: MaterialDuplicateLink[];
   record: WorkRecord;
+}
+
+/** 暂存的 AI 素材候选（work/素材篮/.candidates/<id>.json）。 */
+export interface MaterialCandidate {
+  schema: string;
+  id: string;
+  record_id: string;
+  material_type: WritingMaterialType;
+  content: string;
+  source_quote: string;
+  source_location: string | null;
+  event_date: string | null;
+  match_material_id: string | null;
+  match_reason: string | null;
+  knowledge_hints: string[];
+  confidence: number | null;
+  fingerprint: string;
+  status: string;
+  created_at: string;
+}
+
+/** 同指纹命中的既有素材或候选。 */
+export interface MaterialDuplicateLink {
+  source_quote: string;
+  fingerprint: string;
+  existing_id: string;
+  /** material = 正式素材；candidate = 尚未处理的候选。 */
+  existing_kind: "material" | "candidate";
 }
 
 export interface TrashMove {
@@ -2324,6 +2659,10 @@ export interface WorkTask {
   estimated_minutes: number | null;
   parent_id: string | null;
   quadrant_override: TaskQuadrant | null;
+  /** 所属项目编号（OD-KM-508）；为空表示未挂接项目。 */
+  project_id: string | null;
+  /** 关联的知识条目（OD-KM-503）；旧文件缺该字段时为空。 */
+  related_knowledge: KnowledgeLink[];
   progress: ProgressEntry[];
   history: StateChange[];
   adjustments: TaskAdjustment[];
@@ -2339,6 +2678,8 @@ export interface TaskDraft {
   category?: string | null;
   due_date?: string | null;
   hint?: string | null;
+  /** 所属项目编号（OD-KM-508）；宿主校验项目存在。 */
+  project_id?: string | null;
 }
 
 export interface TaskPatch {
@@ -2346,6 +2687,8 @@ export interface TaskPatch {
   category?: string;
   due_date?: string;
   hint?: string;
+  /** 所属项目编号；空字符串 = 取消挂接，宿主校验存在性。 */
+  project_id?: string;
 }
 
 export interface TaskFilter {
@@ -2421,6 +2764,78 @@ export interface LinkReport {
   partial: boolean;
   warnings: string[];
   error: string | null;
+}
+
+/** 知识关联对象（OD-KM-507）：记录或任务。 */
+export type KnowledgeLinkSubjectKind = "record" | "task";
+
+/** 505 推荐候选的依据来源。 */
+export type KnowledgeLinkReason = "实体关联" | "AI 主题建议" | "记录关键词检索";
+
+/** 暂存在 work/知识关联/.candidates/ 的知识关联候选。 */
+export interface KnowledgeLinkCandidate {
+  schema: string;
+  id: string;
+  subject_kind: KnowledgeLinkSubjectKind;
+  subject_id: string;
+  subject_title: string;
+  /** 知识库内相对路径，可直接写成 KnowledgeLink.id。 */
+  knowledge_id: string;
+  title: string;
+  reason: KnowledgeLinkReason;
+  reason_text: string;
+  path: string;
+  /** 原始文件行号，1 起。 */
+  line: number;
+  dedup_key: string;
+  status: "pending" | "confirmed";
+  created_at: string;
+  decided_at: string | null;
+  decision_note: string | null;
+}
+
+export interface KnowledgeLinkStageReport {
+  subject_kind: KnowledgeLinkSubjectKind;
+  subject_id: string;
+  staged: KnowledgeLinkCandidate[];
+  /** 已关联、已有待处理候选等被跳过的键。 */
+  skipped_duplicates: string[];
+}
+
+/** 确认/移除回执。ok=false 时按 partial 与 warnings 说明半完成状态。 */
+export interface KnowledgeLinkReport {
+  ok: boolean;
+  partial: boolean;
+  warnings: string[];
+  error: string | null;
+  subject_kind: KnowledgeLinkSubjectKind;
+  subject_id: string;
+  link: KnowledgeLink | null;
+  record: WorkRecord | null;
+  task: WorkTask | null;
+  candidate: KnowledgeLinkCandidate | null;
+  candidate_archived: boolean;
+  removed: boolean;
+}
+
+export interface KnowledgeReference {
+  source_kind: "record" | "task" | "material";
+  source_id: string;
+  source_title: string;
+  /** 素材的 related_knowledge_ids 没有理由与时间，返回 null。 */
+  reason: string | null;
+  linked_at: string | null;
+}
+
+/** 反向查询：引用某知识条目的记录/任务/素材，全部读取时派生。 */
+export interface KnowledgeLinkReferences {
+  knowledge_id: string;
+  records: KnowledgeReference[];
+  tasks: KnowledgeReference[];
+  materials: KnowledgeReference[];
+  broken_records: number;
+  broken_tasks: number;
+  broken_materials: number;
 }
 
 /** 一条待迁移的周记录（OD-WR-309）。 */

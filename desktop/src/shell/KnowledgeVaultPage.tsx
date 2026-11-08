@@ -3,9 +3,11 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, shell } from "../api";
 import type {
   KnowledgeGovernanceRecord,
+  KnowledgeLinkReferences,
   KnowledgeQualityReport,
   KnowledgeRawAdmitReport,
   KnowledgeReviewItem,
+  KnowledgeReference,
   KnowledgeVaultFile,
   KnowledgeVaultIndex,
   KnowledgeVaultIndexLink,
@@ -146,6 +148,10 @@ export function KnowledgeVaultPage({
   const [relations, setRelations] = useState<KnowledgeVaultNoteLinks | null>(null);
   const [relationsBusy, setRelationsBusy] = useState(false);
   const [relationsError, setRelationsError] = useState<string | null>(null);
+  // OD-KM-511：引用当前知识条目的工作记录/任务/素材，读取时由 507 派生。
+  const [workReferences, setWorkReferences] = useState<KnowledgeLinkReferences | null>(null);
+  const [workReferencesBusy, setWorkReferencesBusy] = useState(false);
+  const [workReferencesError, setWorkReferencesError] = useState<string | null>(null);
   // 已解析链接的跳转定位：行号在目标笔记加载后滚动并显示。
   const [focus, setFocus] = useState<VaultFocus | null>(null);
   const [focusNotice, setFocusNotice] = useState<string | null>(null);
@@ -511,6 +517,35 @@ export function KnowledgeVaultPage({
       cancelled = true;
     };
   }, [selectedPath, index]);
+
+  useEffect(() => {
+    if (!selectedPath || !status?.configured) {
+      setWorkReferences(null);
+      setWorkReferencesError(null);
+      return;
+    }
+    let cancelled = false;
+    setWorkReferencesBusy(true);
+    setWorkReferences(null);
+    setWorkReferencesError(null);
+    shell
+      .knowledgeLinkByKnowledge(selectedPath)
+      .then((references) => {
+        if (!cancelled) setWorkReferences(references);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setWorkReferences(null);
+          setWorkReferencesError(errText(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWorkReferencesBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPath, status?.configured]);
 
   /** 放弃草稿：说明写的是「恢复成磁盘版本」，所以必须回到宿主重新读取。 */
   const discardDraftToDisk = async () => {
@@ -1704,6 +1739,107 @@ export function KnowledgeVaultPage({
                     ) : null}
                   </div>
                 )}
+              </section>
+
+              <section
+                className="rounded-2xl bg-white/80 border border-white/90 p-3"
+                data-testid="vault-work-references"
+              >
+                <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
+                  <h2 className="text-[12.5px] font-semibold text-on-surface">引用它的工作事实</h2>
+                  <span className="mono text-[10px] text-outline">
+                    {(workReferences?.records.length ?? 0) +
+                      (workReferences?.tasks.length ?? 0) +
+                      (workReferences?.materials.length ?? 0)}
+                  </span>
+                </div>
+                {!selectedPath ? (
+                  <p className="pt-2 text-[11px] text-outline">选中一篇笔记后显示引用它的记录、任务与素材。</p>
+                ) : workReferencesBusy && !workReferences ? (
+                  <p className="pt-2 text-[10.5px] text-outline">读取引用…</p>
+                ) : workReferencesError ? (
+                  <p className="pt-2 text-[10.5px] leading-relaxed text-error" role="alert">
+                    读取引用失败：{workReferencesError}
+                  </p>
+                ) : workReferences ? (
+                  (() => {
+                    const total =
+                      workReferences.records.length +
+                      workReferences.tasks.length +
+                      workReferences.materials.length;
+                    const broken =
+                      workReferences.broken_records +
+                      workReferences.broken_tasks +
+                      workReferences.broken_materials;
+                    if (total === 0) {
+                      return (
+                        <p
+                          className="pt-2 text-[11px] leading-relaxed text-on-surface-variant"
+                          data-testid="vault-work-references-empty"
+                        >
+                          还没有记录、任务或素材引用这篇知识条目。
+                        </p>
+                      );
+                    }
+                    const groups: Array<{
+                      kind: "record" | "task" | "material";
+                      label: string;
+                      items: KnowledgeReference[];
+                    }> = [
+                      { kind: "record", label: "工作记录", items: workReferences.records },
+                      { kind: "task", label: "任务", items: workReferences.tasks },
+                      { kind: "material", label: "素材", items: workReferences.materials },
+                    ];
+                    return (
+                      <div className="pt-2 space-y-2">
+                        {groups.map((group) => (
+                          <div key={group.kind} data-work-reference-group={group.kind}>
+                            <h3 className="text-[10.5px] font-semibold text-on-surface">
+                              {group.label}{" "}
+                              <span className="mono text-[9.5px] text-outline">{group.items.length}</span>
+                            </h3>
+                            {group.items.length === 0 ? (
+                              <p className="mt-0.5 text-[10px] text-outline">无</p>
+                            ) : (
+                              <ul className="mt-1 space-y-1">
+                                {group.items.map((reference) => (
+                                  <li
+                                    key={`${reference.source_kind}-${reference.source_id}`}
+                                    className="rounded-lg bg-surface-container-low px-2 py-1.5"
+                                    data-work-reference={group.kind}
+                                    data-source-id={reference.source_id}
+                                  >
+                                    <span className="block text-[10.5px] text-on-surface break-words">
+                                      {reference.source_title}
+                                    </span>
+                                    <span className="block mono text-[9px] text-outline break-all">
+                                      {reference.source_id}
+                                    </span>
+                                    {reference.reason ? (
+                                      <span className="mt-0.5 block text-[9.5px] leading-relaxed text-on-surface-variant break-words">
+                                        {reference.reason}
+                                      </span>
+                                    ) : null}
+                                    {reference.linked_at ? (
+                                      <span className="mt-0.5 block mono text-[9px] text-outline">
+                                        {reference.linked_at.replace("T", " ").slice(0, 16)}
+                                      </span>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                        {broken > 0 ? (
+                          <p className="text-[9.5px] leading-relaxed text-outline">
+                            另有 {broken} 条引用无法读取，未计入列表。
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })()
+                ) : null}
               </section>
 
               <section className="rounded-2xl bg-white/80 border border-white/90 p-3">

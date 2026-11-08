@@ -15,7 +15,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "../components/Icon";
-import type { ProjectItem, ProjectItemRecord, ProjectItemStatus } from "../types";
+import { shell } from "../api";
+import type {
+  MaterialDetail,
+  ProjectInfo,
+  ProjectKnowledgeRef,
+  ProjectOverview,
+  ProjectRefItem,
+  ProjectStatus,
+  ProjectItem,
+  ProjectItemRecord,
+  ProjectItemStatus,
+  WritingMaterial,
+  WritingMaterialReviewStatus,
+} from "../types";
 import {
   filterItems,
   ganttTicks,
@@ -242,6 +255,9 @@ export function ProjectBoard({
       data-project-board=""
       data-board-width="nav"
     >
+      {/* 项目概览（OD-KM-512）：选择器 + 508 反向派生计数 + 506 素材列表；不接管事项表。 */}
+      <ProjectInsight />
+
       {/* ---------- 左栏：上「项目事项」、下「历史对话」（OD-ARCH-102 S02） ---------- */}
       <div className="min-w-0 flex flex-col gap-4 max-lg:order-1 lg:max-h-[74vh] lg:overflow-y-auto">
         <section
@@ -692,6 +708,616 @@ export function ProjectBoard({
         onCancel={() => setPendingDelete(null)}
         testId="project-delete-dialog"
       />
+    </div>
+  );
+}
+
+/* ============================== 项目概览与素材 =============================== */
+
+/** 素材审核状态的展示顺序：待审核置顶，其余按用户决策路径排列。 */
+const REVIEW_ORDER: WritingMaterialReviewStatus[] = [
+  "待审核",
+  "已确认",
+  "已退回",
+  "已拒绝",
+  "已归档",
+];
+
+const REVIEW_STYLE: Record<
+  WritingMaterialReviewStatus,
+  { chip: string; dot: string }
+> = {
+  待审核: { chip: "bg-amber-500/15 text-amber-700", dot: "bg-amber-500" },
+  已确认: { chip: "bg-secondary/10 text-secondary", dot: "bg-secondary" },
+  已退回: { chip: "bg-error/10 text-error", dot: "bg-error" },
+  已拒绝: { chip: "bg-surface-container text-on-surface-variant", dot: "bg-outline" },
+  已归档: { chip: "bg-surface-container text-outline", dot: "bg-outline/60" },
+};
+
+const PROJECT_STATUS_STYLE: Record<ProjectStatus, string> = {
+  进行中: "bg-primary/10 text-primary",
+  已完成: "bg-secondary/10 text-secondary",
+  已搁置: "bg-surface-container text-on-surface-variant",
+};
+
+function projectDateText(value: string | null | undefined): string {
+  if (!value) return "未设";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : value;
+}
+
+function readError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function knowledgeLabel(id: string): string {
+  const parts = id.split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : id;
+}
+
+/** 项目概览：只读选择既有项目，计数与列表全部来自 508 反向派生。 */
+function ProjectInsight() {
+  const [projects, setProjects] = useState<ProjectInfo[] | null>(null);
+  const [projectListError, setProjectListError] = useState<string | null>(null);
+  const [projectListBroken, setProjectListBroken] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+
+  const [materials, setMaterials] = useState<WritingMaterial[]>([]);
+  const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [materialsError, setMaterialsError] = useState<string | null>(null);
+  const [materialsBroken, setMaterialsBroken] = useState(0);
+
+  const [openMaterialId, setOpenMaterialId] = useState<string | null>(null);
+  const [materialDetail, setMaterialDetail] = useState<MaterialDetail | null>(null);
+  const [materialDetailError, setMaterialDetailError] = useState<string | null>(null);
+  const [jumpError, setJumpError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    shell
+      .projectList()
+      .then((listing) => {
+        if (!alive) return;
+        setProjects(listing.items);
+        setProjectListBroken(listing.broken);
+        setSelectedId((previous) => {
+          if (previous && listing.items.some((p) => p.project_id === previous)) {
+            return previous;
+          }
+          return listing.items[0]?.project_id ?? null;
+        });
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setProjectListError(readError(error));
+        setProjects(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setOverview(null);
+      setOverviewError(null);
+      setOverviewLoading(false);
+      return;
+    }
+    let alive = true;
+    const id = selectedId;
+    setOverviewLoading(true);
+    setOverviewError(null);
+    setOverview(null);
+    shell
+      .projectOverview(id)
+      .then((value) => {
+        if (alive) setOverview(value);
+      })
+      .catch((error) => {
+        if (alive) setOverviewError(readError(error));
+      })
+      .finally(() => {
+        if (alive) setOverviewLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setMaterials([]);
+      setMaterialsError(null);
+      setMaterialsLoading(false);
+      setMaterialsBroken(0);
+      return;
+    }
+    let alive = true;
+    setMaterialsLoading(true);
+    setMaterialsError(null);
+    setMaterials([]);
+    shell
+      .materialList({ project_id: selectedId })
+      .then((listing) => {
+        if (!alive) return;
+        setMaterials(listing.items);
+        setMaterialsBroken(listing.broken);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setMaterialsError(readError(error));
+        setMaterialsBroken(0);
+      })
+      .finally(() => {
+        if (alive) setMaterialsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!openMaterialId) {
+      setMaterialDetail(null);
+      setMaterialDetailError(null);
+      return;
+    }
+    let alive = true;
+    const id = openMaterialId;
+    setMaterialDetail(null);
+    setMaterialDetailError(null);
+    setJumpError(null);
+    shell
+      .materialGet(id)
+      .then((detail) => {
+        if (alive) setMaterialDetail(detail);
+      })
+      .catch((error) => {
+        if (alive) setMaterialDetailError(readError(error));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [openMaterialId]);
+
+  const selected = projects?.find((project) => project.project_id === selectedId) ?? null;
+  const shownProject = overview?.project ?? selected;
+  const associations = overview
+    ? overview.tasks.length + overview.records.length + overview.knowledge.length
+    : 0;
+
+  const materialGroups = useMemo(() => {
+    return REVIEW_ORDER.map((status) => ({
+      status,
+      items: materials.filter((material) => material.review_status === status),
+    })).filter((group) => group.items.length > 0);
+  }, [materials]);
+
+  function selectProject(id: string | null) {
+    setSelectedId(id);
+    setOpenMaterialId(null);
+    setMaterialDetail(null);
+    setMaterialDetailError(null);
+    setJumpError(null);
+  }
+
+  function jumpToProject(projectId: string) {
+    const exists = projects?.some((project) => project.project_id === projectId) ?? false;
+    if (!exists) {
+      setJumpError("该项目不在当前项目列表中，无法跳转。");
+      return;
+    }
+    selectProject(projectId);
+  }
+
+  return (
+    <>
+      <section
+        aria-label="项目概览"
+        data-project-overview=""
+        className="lg:col-span-2 bg-white/85 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
+      >
+        <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
+          <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
+            项目概览
+          </h2>
+          {projects ? (
+            <span className="mono text-[12px] text-outline ml-auto shrink-0">
+              {projects.length} 个项目
+            </span>
+          ) : null}
+        </div>
+
+        {projectListError ? (
+          <p
+            className="pt-3 text-[12px] text-error leading-relaxed"
+            data-project-overview-error="list"
+          >
+            读取项目列表失败：{projectListError}。这里不把它当成「没有项目」。
+          </p>
+        ) : projects === null ? (
+          <p className="pt-3 text-[12px] text-outline leading-relaxed">正在读取项目…</p>
+        ) : projects.length === 0 ? (
+          <div className="pt-3 flex flex-col gap-1.5" data-project-overview-empty="">
+            <p className="text-[13px] text-on-surface-variant leading-relaxed">
+              还没有项目。
+            </p>
+            <p className="text-[12px] text-outline leading-relaxed">
+              创建项目并关联任务、记录或知识后，这里会按项目归集成果。
+            </p>
+          </div>
+        ) : (
+          <div className="pt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.95fr)]">
+            <div className="min-w-0">
+              <label className="block">
+                <span className="block text-[11.5px] text-outline">项目</span>
+                <select
+                  value={selectedId ?? ""}
+                  onChange={(event) => selectProject(event.target.value || null)}
+                  aria-label="选择项目"
+                  data-project-selector=""
+                  className={FIELD + " mt-1"}
+                >
+                  {projects.map((project) => (
+                    <option key={project.project_id} value={project.project_id}>
+                      {project.name + " · " + project.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {shownProject ? (
+                <div className="mt-3" data-project-summary="">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    <span
+                      className={
+                        "shrink-0 px-1.5 py-[1px] text-[11.5px] " +
+                        PROJECT_STATUS_STYLE[shownProject.status]
+                      }
+                      data-project-status={shownProject.status}
+                    >
+                      {shownProject.status}
+                    </span>
+                    <span
+                      className="mono text-[12px] text-outline"
+                      data-project-dates=""
+                    >
+                      {projectDateText(shownProject.start)} → {projectDateText(shownProject.end)}
+                    </span>
+                  </div>
+                  <p
+                    className="mt-2 text-[12.5px] text-on-surface-variant leading-[1.65] break-words"
+                    data-project-goal=""
+                  >
+                    {shownProject.goal || "未填写目标"}
+                  </p>
+                  <p className="mt-1.5 mono text-[11px] text-outline/80 break-all">
+                    {shownProject.project_id}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-w-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-project-counts="">
+                <ProjectCount label="任务" kind="tasks" value={overview?.task_count} />
+                <ProjectCount label="记录" kind="records" value={overview?.record_count} />
+                <ProjectCount label="素材" kind="materials" value={overview?.material_count} />
+                <ProjectCount label="知识" kind="knowledge" value={overview?.knowledge_count} />
+              </div>
+
+              {overviewLoading ? (
+                <p className="mt-3 text-[12px] text-outline leading-relaxed">正在读取关联…</p>
+              ) : overviewError ? (
+                <p
+                  className="mt-3 text-[12px] text-error leading-relaxed"
+                  data-project-overview-error="detail"
+                >
+                  读取项目概览失败：{overviewError}。这里不把它当成「没有关联」。
+                </p>
+              ) : overview ? (
+                associations === 0 ? (
+                  <p className="mt-3 text-[12px] text-outline leading-relaxed" data-project-refs-empty="">
+                    这个项目还没有关联任务、记录或知识。
+                  </p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <ProjectRefGroup title="任务" items={overview.tasks} />
+                    <ProjectRefGroup title="记录" items={overview.records} />
+                    <ProjectKnowledgeGroup knowledge={overview.knowledge} />
+                  </div>
+                )
+              ) : null}
+
+              {overview &&
+              overview.broken_tasks + overview.broken_records + overview.broken_materials > 0 ? (
+                <p className="mt-2 text-[11.5px] text-outline leading-relaxed">
+                  另有 {overview.broken_tasks} 个任务、{overview.broken_records} 条记录、
+                  {overview.broken_materials} 条素材读取失败，未计入统计。
+                </p>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {projectListBroken > 0 ? (
+          <p className="mt-2 text-[11.5px] text-outline leading-relaxed">
+            另有 {projectListBroken} 个项目文件读取失败，未进入选择器。
+          </p>
+        ) : null}
+      </section>
+
+      {selectedId ? (
+        <section
+          aria-label="项目素材"
+          data-project-materials=""
+          className="lg:col-span-2 bg-white/85 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
+        >
+          <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
+            <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
+              素材
+            </h2>
+            <span className="mono text-[12px] text-outline ml-auto shrink-0">
+              {overview ? overview.material_count : materialsLoading ? "—" : materials.length} 条
+            </span>
+          </div>
+
+          {materialsError ? (
+            <p className="pt-3 text-[12px] text-error leading-relaxed" data-project-materials-error="">
+              读取素材失败：{materialsError}。这里不把它当成「没有素材」。
+            </p>
+          ) : materialsLoading ? (
+            <p className="pt-3 text-[12px] text-outline leading-relaxed">正在读取素材…</p>
+          ) : materials.length === 0 ? (
+            <p className="pt-3 text-[12px] text-outline leading-relaxed" data-project-materials-empty="">
+              这个项目没有可展示的素材。记录分析或手动收藏的素材会归集到这里。
+            </p>
+          ) : (
+            <div
+              className={
+                "pt-3 grid grid-cols-1 gap-4 " +
+                (openMaterialId ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]" : "")
+              }
+            >
+              <div className="min-w-0 flex flex-col gap-3 max-h-[360px] overflow-y-auto pr-1">
+                {materialGroups.map((group) => {
+                  const style = REVIEW_STYLE[group.status];
+                  return (
+                    <div key={group.status} data-project-material-group={group.status}>
+                      <div className="flex items-center gap-2 pb-1.5 border-b border-surface-variant/25">
+                        <span aria-hidden="true" className={"w-2 h-2 " + style.dot} />
+                        <span className="text-[12px] font-semibold text-on-surface">
+                          {group.status}
+                        </span>
+                        <span className="mono text-[11.5px] text-outline">{group.items.length}</span>
+                      </div>
+                      <div className="mt-1 flex flex-col">
+                        {group.items.map((material) => {
+                          const active = openMaterialId === material.material_id;
+                          return (
+                            <button
+                              key={material.material_id}
+                              onClick={() =>
+                                setOpenMaterialId(active ? null : material.material_id)
+                              }
+                              aria-pressed={active}
+                              data-project-material-item={material.review_status}
+                              className={
+                                "min-w-0 text-left px-2 py-1.5 border-b border-surface-variant/15 last:border-b-0 transition " +
+                                (active
+                                  ? "bg-primary/5 ring-1 ring-primary/40"
+                                  : "hover:bg-surface-container-low/60")
+                              }
+                            >
+                              <span className="flex items-baseline gap-2 min-w-0">
+                                <span className="min-w-0 flex-1 text-[12.5px] text-on-surface leading-[1.5] truncate">
+                                  {material.title}
+                                </span>
+                                <span className="shrink-0 mono text-[11px] text-outline">
+                                  {material.material_type}
+                                </span>
+                                {material.event_date ? (
+                                  <span className="shrink-0 mono text-[11px] text-outline">
+                                    {projectDateText(material.event_date)}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {openMaterialId ? (
+                <div
+                  className="min-w-0 border border-outline-variant/50 bg-surface-container-low/45 px-3 py-3"
+                  data-project-material-detail=""
+                >
+                  {materialDetailError ? (
+                    <p className="text-[12px] text-error leading-relaxed">
+                      读取素材详情失败：{materialDetailError}
+                    </p>
+                  ) : !materialDetail ? (
+                    <p className="text-[12px] text-outline leading-relaxed">
+                      正在读取素材详情…
+                    </p>
+                  ) : (
+                    <MaterialDetailView
+                      detail={materialDetail}
+                      jumpError={jumpError}
+                      onJumpProject={jumpToProject}
+                      onClose={() => setOpenMaterialId(null)}
+                    />
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {materialsBroken > 0 ? (
+            <p className="mt-2 text-[11.5px] text-outline leading-relaxed">
+              另有 {materialsBroken} 条素材读取失败，未进入列表。
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+function ProjectCount({
+  label,
+  kind,
+  value,
+}: {
+  label: string;
+  kind: string;
+  value: number | undefined;
+}) {
+  return (
+    <div
+      className="border border-outline-variant/40 bg-surface-container-low/45 px-2.5 py-1.5"
+      data-project-count={kind}
+    >
+      <span className="block mono text-[18px] leading-none text-on-surface">
+        {value === undefined ? "—" : value}
+      </span>
+      <span className="block mt-1 text-[11.5px] text-outline">{label}</span>
+    </div>
+  );
+}
+
+function ProjectRefGroup({ title, items }: { title: string; items: ProjectRefItem[] }) {
+  return (
+    <div className="min-w-0" data-project-ref-group={title}>
+      <div className="flex items-baseline gap-2 pb-1 border-b border-surface-variant/25">
+        <span className="text-[11.5px] text-outline">{title}</span>
+        <span className="mono text-[11.5px] text-outline ml-auto">{items.length}</span>
+      </div>
+      {items.length > 0 ? (
+        <div className="mt-1 max-h-[108px] overflow-y-auto">
+          {items.map((item) => (
+            <p
+              key={item.id}
+              className="text-[12px] text-on-surface-variant leading-[1.5] truncate"
+              data-hover-hint={item.id}
+            >
+              {item.title}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProjectKnowledgeGroup({ knowledge }: { knowledge: ProjectKnowledgeRef[] }) {
+  return (
+    <div className="min-w-0" data-project-ref-group="知识">
+      <div className="flex items-baseline gap-2 pb-1 border-b border-surface-variant/25">
+        <span className="text-[11.5px] text-outline">知识</span>
+        <span className="mono text-[11.5px] text-outline ml-auto">{knowledge.length}</span>
+      </div>
+      {knowledge.length > 0 ? (
+        <div className="mt-1 max-h-[108px] overflow-y-auto">
+          {knowledge.map((entry) => (
+            <p
+              key={entry.knowledge_id}
+              className="flex items-baseline gap-2 text-[12px] text-on-surface-variant leading-[1.5]"
+              data-hover-hint={entry.knowledge_id}
+            >
+              <span className="min-w-0 flex-1 truncate mono">{knowledgeLabel(entry.knowledge_id)}</span>
+              <span className="shrink-0 mono text-[11px] text-outline">
+                {entry.references.length} 引用
+              </span>
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MaterialDetailView({
+  detail,
+  jumpError,
+  onJumpProject,
+  onClose,
+}: {
+  detail: MaterialDetail;
+  jumpError: string | null;
+  onJumpProject: (projectId: string) => void;
+  onClose: () => void;
+}) {
+  const material = detail.material;
+  const review = REVIEW_STYLE[material.review_status];
+  const project = detail.related_project;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-[13px] font-semibold text-on-surface leading-[1.5] break-words">
+          {material.title}
+        </p>
+        <button
+          onClick={onClose}
+          className="shrink-0 text-[11.5px] text-outline hover:text-on-surface"
+          aria-label="关闭素材详情"
+        >
+          关闭
+        </button>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11.5px]">
+        <span className={"px-1.5 py-[1px] " + review.chip}>{material.review_status}</span>
+        <span className="text-outline">{material.material_type}</span>
+        {material.event_date ? (
+          <span className="mono text-outline">{projectDateText(material.event_date)}</span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-[12px] text-on-surface leading-[1.7] whitespace-pre-wrap break-words max-h-[180px] overflow-y-auto">
+        {material.content}
+      </p>
+      {detail.source.quote ? (
+        <div className="mt-2 pl-2 border-l-2 border-outline-variant/60">
+          <p className="text-[11.5px] text-outline">来源引用</p>
+          <p className="mt-0.5 text-[12px] text-on-surface-variant leading-[1.6] whitespace-pre-wrap break-words max-h-[108px] overflow-y-auto">
+            {detail.source.quote}
+          </p>
+        </div>
+      ) : null}
+      {detail.source.entity.title ? (
+        <p className="mt-2 text-[11.5px] text-outline leading-relaxed break-words">
+          来源 · {detail.source.entity.title}
+          {detail.source.location ? " · " + detail.source.location : ""}
+        </p>
+      ) : null}
+      {project ? (
+        project.found && project.id ? (
+          <div className="mt-3">
+            <button
+              onClick={() => onJumpProject(project.id)}
+              data-material-project-jump={project.id}
+              className="border border-primary/40 px-2 py-[3px] text-[11.5px] text-primary hover:bg-primary/5"
+            >
+              查看项目 · {project.title ?? project.id}
+            </button>
+            {jumpError ? (
+              <p className="mt-1 text-[11.5px] text-error leading-relaxed">{jumpError}</p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-[11.5px] text-outline leading-relaxed">
+            {project.note ?? "所属项目文件未找到。"}
+          </p>
+        )
+      ) : null}
     </div>
   );
 }

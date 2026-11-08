@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+use crate::task_store::KnowledgeLink;
+
 /// 临时层根目录名（$HOME/OmniDesk/work）。仅用于文档与调用方约定。
 pub const WORK_DIR: &str = "work";
 /// 工作记录目录（work 根下）。
@@ -57,6 +59,9 @@ pub struct WorkRecord {
     pub ai_analysis_status: String,
     pub linked_task_ids: Vec<String>,
     pub draft: bool,
+    /// 关联的知识条目（OD-KM-503）；旧文件缺该字段时为空。
+    #[serde(default)]
+    pub related_knowledge: Vec<KnowledgeLink>,
     pub body: String,
 }
 
@@ -388,6 +393,14 @@ fn render_record(record: &WorkRecord) -> String {
         }
     }
     fm.push_str(&format!("draft: {}\n", record.draft));
+    if !record.related_knowledge.is_empty() {
+        fm.push_str("related_knowledge:\n");
+        for link in &record.related_knowledge {
+            fm.push_str(&format!("  - id: {}\n", yaml_scalar(&link.id)));
+            fm.push_str(&format!("    reason: {}\n", yaml_scalar(&link.reason)));
+            fm.push_str(&format!("    linked_at: {}\n", yaml_scalar(&link.linked_at)));
+        }
+    }
     let body = record
         .body
         .trim_end_matches(|c: char| c == '\n' || c == '\r');
@@ -451,6 +464,8 @@ struct RecordFront {
     linked_task_ids: Vec<String>,
     #[serde(default)]
     draft: bool,
+    #[serde(default)]
+    related_knowledge: Vec<KnowledgeLink>,
 }
 
 fn parse_record(raw: &str) -> Result<WorkRecord, String> {
@@ -481,6 +496,7 @@ fn parse_record(raw: &str) -> Result<WorkRecord, String> {
     }
     let tags = normalize_tags(&front.tags)?;
     let linked_task_ids = normalize_link_ids(&front.linked_task_ids)?;
+    let related_knowledge = crate::task_store::normalize_knowledge_links(&front.related_knowledge)?;
     Ok(WorkRecord {
         id: front.id,
         title: front.title.trim().to_string(),
@@ -494,6 +510,7 @@ fn parse_record(raw: &str) -> Result<WorkRecord, String> {
         ai_analysis_status: status,
         linked_task_ids,
         draft: front.draft,
+        related_knowledge,
         body,
     })
 }
@@ -557,6 +574,7 @@ pub fn create_record(
         ai_analysis_status: AI_UNANALYZED.to_string(),
         linked_task_ids: normalize_link_ids(&draft.linked_task_ids)?,
         draft: draft.draft,
+        related_knowledge: Vec::new(),
         body,
     };
     fs::create_dir_all(records_dir(root))
@@ -1239,5 +1257,81 @@ mod tests {
             .collect();
         assert_eq!(names.len(), 1, "{names:?}");
         assert!(names[0].ends_with(".md"));
+    }
+
+    fn seed_record_without_links(temp: &TempRoot, id: &str) {
+        fs::create_dir_all(records_dir(temp.root())).unwrap();
+        let raw = format!(
+            "---\nschema: \"omnidesk.worklog-record.v1\"\nid: \"{id}\"\ntitle: \"旧记录\"\nrecord_date: \"2026-02-01\"\ncreated_at: \"2026-02-01T09:00:00Z\"\nupdated_at: \"2026-02-01T10:00:00Z\"\ncategory: \"写作\"\ntags:\n  - \"虚构\"\nsource: \"手动\"\ndestination: null\nai_analysis_status: \"analyzed\"\nlinked_task_ids:\n  - \"t-503-1\"\ndraft: false\n---\n\n今天整理虚构周报。\n"
+        );
+        fs::write(record_path(temp.root(), id).unwrap(), raw).unwrap();
+    }
+
+    fn seed_record_with_links(temp: &TempRoot, id: &str) {
+        seed_record_without_links(temp, id);
+        let path = record_path(temp.root(), id).unwrap();
+        let raw = fs::read_to_string(&path).unwrap().replace(
+            "draft: false\n---\n",
+            "draft: false\nrelated_knowledge:\n  - id: \"notes/synthetic-knowledge.md\"\n    reason: \"做法被该条目引用\"\n    linked_at: \"2026-02-02T08:15:00Z\"\n---\n",
+        );
+        fs::write(&path, raw).unwrap();
+    }
+
+    #[test]
+    fn legacy_record_without_related_knowledge_reads_default() {
+        let temp = TempRoot::new("links-legacy-default");
+        seed_record_without_links(&temp, "wr-503-legacy");
+        let record = read_record(temp.root(), "wr-503-legacy").unwrap();
+        assert!(record.related_knowledge.is_empty());
+    }
+
+    #[test]
+    fn legacy_record_load_save_is_byte_identical() {
+        let temp = TempRoot::new("links-legacy-bytes");
+        seed_record_without_links(&temp, "wr-503-legacy-bytes");
+        let path = record_path(temp.root(), "wr-503-legacy-bytes").unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        let record = read_record(temp.root(), "wr-503-legacy-bytes").unwrap();
+        write_replace_atomically(&path, render_record(&record).as_bytes()).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "旧记录文件 load→save 应逐字节一致");
+    }
+
+    #[test]
+    fn record_with_related_knowledge_round_trips() {
+        let temp = TempRoot::new("links-round-trip");
+        seed_record_with_links(&temp, "wr-503-links");
+        let path = record_path(temp.root(), "wr-503-links").unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        let record = read_record(temp.root(), "wr-503-links").unwrap();
+        assert_eq!(record.related_knowledge.len(), 1);
+        assert_eq!(record.related_knowledge[0].id, "notes/synthetic-knowledge.md");
+        assert_eq!(record.related_knowledge[0].reason, "做法被该条目引用");
+        assert_eq!(record.related_knowledge[0].linked_at, "2026-02-02T08:15:00Z");
+        write_replace_atomically(&path, render_record(&record).as_bytes()).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "带关联字段的记录应稳定往返");
+    }
+
+    #[test]
+    fn record_parse_rejects_empty_knowledge_reason() {
+        let temp = TempRoot::new("links-empty-reason");
+        seed_record_with_links(&temp, "wr-503-empty-reason");
+        let path = record_path(temp.root(), "wr-503-empty-reason").unwrap();
+        let raw = fs::read_to_string(&path)
+            .unwrap()
+            .replace("做法被该条目引用", "");
+        fs::write(&path, raw).unwrap();
+        let err = read_record(temp.root(), "wr-503-empty-reason").unwrap_err();
+        assert!(err.contains("必须填写理由"), "{err}");
+    }
+
+    #[test]
+    fn new_record_omits_related_knowledge_until_set() {
+        let temp = TempRoot::new("links-new-record");
+        let record = create_record(temp.root(), &draft("虚构记录", "虚构正文"), NOW, OFFSET).unwrap();
+        let raw = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert!(!raw.contains("related_knowledge"), "{raw}");
+        assert!(record.related_knowledge.is_empty());
     }
 }
