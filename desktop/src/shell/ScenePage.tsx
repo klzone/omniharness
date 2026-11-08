@@ -23,7 +23,7 @@ import { CategoryPicker } from "./CategoryPicker";
 import type { Scene } from "./Dock";
 import { SceneStatusStrip } from "./SceneStatusStrip";
 import { WeeklyTimeline } from "./WeeklyTimeline";
-import { WeeklyQuadrants } from "./WeeklyQuadrants";
+import { TaskQuadrantBoard } from "./TaskManager";
 import { SourcePeekSheet } from "./SourcePeekSheet";
 import { ProjectBoard } from "./ProjectBoard";
 import { WeeklyReportStatus } from "./WeeklyReportPanel";
@@ -34,14 +34,14 @@ import {
 } from "./WritingStudio";
 import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
 import type { WorklogArchiveList, WorklogWeekFile, WorklogWeekView } from "../types";
-import { localToday, parseWeekView, parseWorklog, reportState } from "../weekTimeline";
 import {
-  QUADRANTS,
+  countReportEntries,
+  localToday,
+  parseWeekView,
+  parseWorklog,
   REPORT_DESTINATION,
-  classifyWorklog,
-  visibleIdsFor,
-  type QuadrantKey,
-} from "../weeklyQuadrants";
+  reportState,
+} from "../weekTimeline";
 
 /** 每个场景独立的「是否含下级目录」偏好，仅写在本机浏览器缓存里。 */
 const SUBDIRS_KEY_PREFIX = "omnidesk.scene.include-subdirs.";
@@ -168,8 +168,6 @@ export function ScenePage({
   const [pendingTick, setPendingTick] = useState(0);
   /** 会话历史默认收起（OD-ARCH-060 S3）。 */
   const [showThreads, setShowThreads] = useState(false);
-  /** 四象限选中格（OD-ARCH-093 S03）：只影响中栏显示，不写任何文件。 */
-  const [quadrant, setQuadrant] = useState<QuadrantKey | null>(null);
   /** 写作页（OD-ARCH-094）：稿件状态筛选与 90 天提醒筛选，都只改视图。 */
   const [writingStatusFilter, setWritingStatusFilter] = useState<WritingStatus | null>(null);
   const [writingStaleOnly, setWritingStaleOnly] = useState(false);
@@ -193,7 +191,6 @@ export function ScenePage({
    */
   useEffect(() => {
     setOpened(null);
-    setQuadrant(null);
     setWritingStatusFilter(null);
     setWritingStaleOnly(false);
     setProjectRightView("timeline");
@@ -494,24 +491,10 @@ export function ScenePage({
         : "已归档";
   }, [scene, archive, archiveError, reportNow]);
 
-  /**
-   * 四象限归类（OD-ARCH-093 S02）：与时间线共用同一份解析结果，避免两边数字打架。
-   * 归类只用「日期是否已过」与「去向是否为本周报引用」，不调模型、不新增字段。
-   */
-  const classified = useMemo(
-    () => classifyWorklog(parsedWeek, localToday()),
-    [parsedWeek],
-  );
-
-  /** 进周报条数：四象限里「去向 = 本周报引用」的两格之和。 */
+  /** 进周报条数：只看去向是否为「本周报引用」，与时间线共用同一份解析结果。 */
   const weekReportEntries = useMemo(
-    () => (scene === "weekly" ? classified.counts["past-report"] + classified.counts["future-report"] : null),
-    [scene, classified],
-  );
-
-  const quadrantName = useMemo(
-    () => QUADRANTS.find((q) => q.key === quadrant)?.title ?? null,
-    [quadrant],
+    () => (scene === "weekly" ? countReportEntries(parsedWeek) : null),
+    [scene, parsedWeek],
   );
 
   /**
@@ -547,10 +530,6 @@ export function ScenePage({
       }));
     return [...reports, ...weekSources];
   }, [scene, archive, openReport, openWeekSource]);
-
-  const selectQuadrant = useCallback((key: QuadrantKey) => {
-    setQuadrant((prev) => (prev === key ? null : key));
-  }, []);
 
   /**
    * 点选某条记录「进周报 / 不进周报」（OD-ARCH-099 S03）。
@@ -789,13 +768,7 @@ export function ScenePage({
            */}
           <div className="min-w-0 max-lg:contents lg:flex lg:flex-col lg:gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:[grid-area:left]">
           <div className="min-w-0 max-lg:order-1">
-            <WeeklyQuadrants
-              classified={classified}
-              active={quadrant}
-              onSelect={selectQuadrant}
-              loading={weekLoading}
-              error={weekError}
-            />
+            <TaskQuadrantBoard />
           </div>
 
           {/* 四象限正下方就是历史对话（用户点名顺序）。 */}
@@ -811,9 +784,6 @@ export function ScenePage({
               loading={weekLoading}
               onOpenSource={() => void openWeekSource()}
               onRequestReport={requestWeeklyReport}
-              visibleIds={visibleIdsFor(classified, quadrant)}
-              filterLabel={quadrantName}
-              onClearFilter={() => setQuadrant(null)}
               onToggleDestination={toggleDestination}
               statusRow={
                 <WeeklyReportStatus

@@ -2648,7 +2648,7 @@ export function HomeChat({
                 <div className="flex items-start space-x-3">
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
                       remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
-                  <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
+                  <div className="neu-msg-accent bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
                     <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
                   </div>
                   <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
@@ -2673,7 +2673,7 @@ export function HomeChat({
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
                   <Icon name="bot" className="w-[15px] h-[15px]" />
                 </div>
-                <div className="plate-sculpted rounded-2xl rounded-tl-sm p-4 text-[15px] text-on-surface shadow-sm space-y-2.5 min-w-0">
+                <div className="neu-msg-assistant rounded-2xl rounded-tl-sm p-4 text-[15px] text-on-surface space-y-2.5 min-w-0">
                   <div className="flex items-center space-x-2 text-primary font-medium">
                     <Icon name="shield-check" className="w-[15px] h-[15px]" />
                     <span>
@@ -2932,7 +2932,7 @@ export function HomeChat({
 
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
-      <div className="plate-sculpted p-3 sm:p-3.5 flex-shrink-0 rounded-[20px]">
+      <div className="neu-composer p-3 sm:p-3.5 flex-shrink-0">
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
             来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (
@@ -2981,7 +2981,7 @@ export function HomeChat({
             data-hover-hint={`添加文件（最多 ${ATTACHMENT_MAX_FILES} 个）：也可以直接拖进来，或输入 @ 引用成果目录/库根`}
             aria-label="添加文件"
             data-testid="attachment-pick"
-            className="w-7 h-7 rounded-full plate-soft-inset text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-7 h-7 rounded-full plate-soft-inset text-on-surface-variant hover:text-primary flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Icon name="plus" className="w-[15px] h-[15px]" />
           </button>
@@ -2989,7 +2989,7 @@ export function HomeChat({
             ref={inputRef}
             data-testid="chat-input"
             rows={1}
-            className="w-full max-h-[7.5rem] resize-none bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none overflow-y-auto leading-relaxed"
+            className="w-full max-h-[7.5rem] resize-none bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-on-surface-variant/70 focus:ring-0 focus:outline-none overflow-y-auto leading-relaxed"
             placeholder={
               canSubmit
                 ? "输入消息…"
@@ -3076,7 +3076,7 @@ export function HomeChat({
               <button
                 onClick={onNewThread}
                 disabled={busy}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px]"
                 data-hover-hint="开一段新对话（当前这段已自动保存在本机）"
               >
                 <Icon name="note" className="w-[13px] h-[13px]" />
@@ -3111,7 +3111,7 @@ export function HomeChat({
                   ? !engineCancelView.enabled
                   : !canSubmit || !input.trim()
               }
-              className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="neu-send-btn w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               data-hover-hint={
                 generating
                   ? (engineCancelView.hint ?? engineCancelView.label)

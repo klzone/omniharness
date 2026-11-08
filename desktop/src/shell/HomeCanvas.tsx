@@ -430,9 +430,9 @@ export function HomeCanvas({
       */}
       <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
         <div className="pb-1 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-          <h1 className="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-tight">
+          <h1 className="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-[0.01em]">
             {greeting(now)}
-            <span className="text-on-surface-variant font-light text-base ml-3 tracking-normal">
+            <span className="font-slogan text-on-surface-variant text-[18px] ml-3 tracking-normal">
               · 欢迎回到 OmniDesk
             </span>
           </h1>

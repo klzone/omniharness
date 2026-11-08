@@ -1,5 +1,85 @@
 # 当前实施计划
 
+### OD-UI-202：新拟物设计语言落地（第一阶段已实施；第二阶段待批准，2026-11-08）
+
+> **触发：** 用户指出当前页面过于扁平，要求把参考图的新拟物（Neumorphism / Soft UI）风格用于 OmniDesk，首页顶栏也采用该风格；并到 OpenDesign 中查找现成设计系统。
+
+> **本会话已完成（只读研究 + 设计交付，未改真实界面）：** ① 梳理新拟物的定义、光影语法、令牌、组件配方、可访问性与性能门槛，落盘 `docs/brand-and-ui/neumorphism-guideline.md`；② 制作可直接打开对照的 `docs/brand-and-ui/neumorphism-preview.html`（暖蜜 / 品牌靛两套强调色、增强边界模式、首页顶栏与控件状态）；③ 在 OpenDesign 本地官方库确认存在 `design-system-neumorphism`（0.1.0，MIT，Primary #006666 / Surface #E7E5E4），没有现成 OmniDesk 项目；④ 按 OD-ARCH-035 检索同类布局：Navigator（窄日历栏 + 搜索顶栏）、Craft（低 chrome 白底画布）、Notion（底部固定输入条），仅借鉴布局，不照搬材质。**真实页面改动尚未开始，等待用户批准与强调色选择。**
+
+**现状核查（2026-11-08 实读源码，HEAD 38d839c）：** 当前 Aetheria 是“平面 + 玻璃 + 细描边”：顶栏在 `TopNav.tsx` 使用 `bg-surface-container-lowest/80` + `backdrop-blur-2xl` + `ring-1 ring-white/90`；首页对话使用 `plate-sculpted`（半透明白底 + 较小阴影）；Dock 与多数按钮处于同一视觉高度。设计令牌集中在 `desktop/src/theme.css`，可新增 `neu-*` 层而不动业务样式。工作区已有 OD-QS-4xx 未提交改动，本次预计触及 `theme.css`、`TopNav.tsx`、`App.tsx`、`HomeCanvas.tsx`、`HomeChat.tsx`、`Dock.tsx`，与既有修改不重叠。
+
+**批准后的第一阶段范围（只做顶栏 + 首页，不一次重写全站）：**
+
+1. **设计令牌层**（`desktop/src/theme.css`）：新增暖白灰底材、内容面、凹陷面、石墨文字、蜂蜜强调、双向外/内阴影、焦点环令牌；保留现有 Aetheria 令牌供未迁移页面使用，不做全局删改。
+2. **首页顶栏**（`desktop/src/shell/TopNav.tsx`）：只改 className 与必要的局部样式，不改结构、事件、Profile 切换、搜索、日期弹层、窗口控制、`data-testid` 与拖拽区。顶栏改为 64–68px 凸起长条，搜索与 Profile 徽标为凹陷，日期/设置/通知为凸起；移除顶栏 `backdrop-blur`。
+3. **应用底材与光晕**（`desktop/src/App.tsx`）：把淡紫玻璃光晕替换为静态暖色径向光晕（不使用 `filter: blur`），保持现有布局与滚动边界。
+4. **首页主面**（`HomeCanvas.tsx` / `HomeChat.tsx`）：问候保持轻字重；对话主面改为一层 `raise-3`；输入区改为 `inset-2`；用户消息用蜂蜜浅底轻凸，助手消息不加阴影。保持“固定顶栏/输入、只有对话滚动”的既有基线。
+5. **Dock**（`Dock.tsx`）：未选中为凸起圆钮，当前项为凹陷 + 蜂蜜标记；悬停只上浮 1px。
+6. **可访问性补足**：所有控件保留文字/图标线索；焦点 2px、对比 ≥3:1；新增内部“增强边界”样式开关（默认关闭，仅用于低视力环境，不改变默认观感）。
+7. **验证**：`npm --prefix desktop run build`、`npx tsc --noEmit`；新增 `tests/verification/desktop/verify_ui_neumorphism_202.py` 检查令牌存在、顶栏无 `backdrop-blur`、焦点环与凹陷/凸起类可被实际引用；真实窗口 1280×820 截图目视核对顶栏、首页、Dock、键盘焦点；`prefers-reduced-motion` 与增强边界各截图一次。证据放 `tests/verification/desktop/`。
+
+**暂不纳入第一阶段：** 工作记录、文案写作、项目跟踪、设置、知识库的页面卡片迁移（另立第二阶段，避免一次性大改与回归面过大）；任何业务逻辑、IPC、数据模型、模型路由、权限、布局行为、固定/滚动基线；不引入第三方 UI 库；不做持续动画、不做渐变金属感。
+
+**用户裁决（2026-11-08）：** 强调色采用品牌靛；批准先做“顶栏 + 首页”第一阶段，全部页面延后另批。
+
+> **执行进展（2026-11-08，用户选定「品牌靛 + 先做顶栏/首页」）：** 已实施第一阶段。新增 `theme.css` 的 `--od-neu-*` 材质令牌与凸起/凹陷/焦点/弹层类；顶栏改为 64px 凸起长条，搜索与 Profile 徽标压入，日期/设置/通知/窗口按钮凸起，日期与 Profile 弹层改为实色无模糊；App 底材换暖白灰并保留静态暖色光晕；Dock 改为无容器浮动圆钮，当前项凹陷 + 品牌靛标记；首页输入区压入、发送钮凸起、用户消息轻凸、助手消息浅面；归类与模型弹层同步材质。真实窗口试装时曾出现“整幅对话面板”在空态下像巨大空白卡片，已撤掉该包裹，只保留导航、Dock、输入与消息的材质层级。2026-11-09 用户否决宋体界面后，中文统一改为黑体：大标题思源柔黑（回退思源黑），界面标题/正文/控件/表格思源黑；行楷只做标语，首页欢迎短句使用加粗；方正楷体仅长引用/落款，思源宋体仅导出报告/打印。**未改动**业务逻辑、IPC、数据模型、权限、模型路由、布局固定/滚动基线；未动并发中的 TaskManager 等 OD-QS 文件。
+
+> **验证（本会话实跑）：** `npm run build` 通过（tsc + vite，仅既有 >500kB chunk 提示；中途曾被并发 OD-QS 的 TaskManager 未使用导入阻塞，待对方修复后本会话复跑通过）；`npx tsc --noEmit` 通过；新增 `verify_ui_neumorphism_202.py` **29/29**，JSON 证据 `tests/verification/desktop/verify_ui_neumorphism_202.json`；重建 macOS debug App（1280×820）实窗口目视核对顶栏、搜索/Profile 凹陷、日期/窗口按钮凸起、Dock 当前项凹陷、输入区压入、焦点环和系统黑体回退。真实窗口截图见本会话工具记录；CUA 截图 API 不回写文件，故未落盘到 tests/verification。**本机未找到思源柔黑/思源黑/演示夏行楷字体文件**；应用只引用字体名，不复制或分发字体，装入后生效，柔黑/行楷实际字形待装字体后再验。
+
+**风险与边界：** R1 全局底材变暖会同时影响未迁移页面，第一阶段先用暖底 + 现有靛蓝文字/按钮，避免中途出现两套不协调的强调色；R2 新拟物边界弱，必须用焦点环、文字标签与增强边界补足；R3 大面积 `box-shadow` 可能拖慢 WebKitGTK，限制 L3 数量并禁止动画化阴影；R4 OD-QS-4xx 未提交改动须原样保留，动手前再核对 diff。
+
+### OD-QS-4xx：第二阶段——任务四象限 + 智能排期（竣工：401～413 全部实施并复检通过，2026-11-09；待用户批准提交推送）
+
+> **触发：** 用户《OmniDesk 第二阶段总任务：任务四象限 + 智能排期》方案。在第一阶段任务数据之上建立重要性 / 紧急性 / 四象限 / 个人排期能力。核心口径：AI 只建议、规则引擎计算、用户拥有最终决定权；四象限是解决工作中拖延问题的梳理工具，不是展示页面。
+
+> **已批准裁决（2026-11-08）：** ① 技术决策 D-069～D-075 照草案批准（全文见 docs/decisions.md；用户预期任务量不大——任务过多说明工作本身有问题，象限正是用来梳理拖延的）；② 前端既有工作记录四象限占位（weeklyQuadrants.ts / WeeklyQuadrants.tsx，OD-ARCH-093）由本阶段任务四象限直接替换，不并存；③ 执行全部由用户新开会话派发任务卡，本会话只做规划与复检，不派子代理。
+
+**第一阶段现状核查（2026-11-08 实读源码）：** 可复用——Task 实体（due_date 仅 YYYY-MM-DD、六状态白名单迁移、候选去重键、.candidates/ 暂存）、task_extract 提示词链路与 validate_task_payload、gate_user_text 安全闸门、Markdown+frontmatter 原子写纪律、work/ 临时层结构。需最小补齐——Task 无 importance/urgency/due_kind/depends_on/estimated_minutes/parent_id/quadrant_override 字段；无个人工作时间配置；无排期实体；GOALS.md 数据边界措辞修订（第一阶段裁决①遗留，已随本次批准补做）。
+
+**技术决策（D-069～D-075，全文见 docs/decisions.md）：** D-069 importance 落盘 / urgency 派生不落盘（仅 override 落盘）；D-070 象限纯规则计算、AI importance 建议搭既有提取调用顺车（零新增模型调用）；D-071 排期实体 work/排期/ 独立文件、状态与任务状态解耦；D-072 工作时间配置 work/availability.v1.json（无文件=默认零写入）；D-073 确定性贪心排期（截止升序 × 重要性降序 × 象限序），锁定/已确认不可动、冲突显式报告不强塞；D-074 任务拆分最小实现（超最大时段报「建议拆分」，实际拆分=用户手动建子任务+parent_id，不做 AI 自动拆分）；D-075 模糊时间封闭模式集推定（明天/后天/下周X/本月底/下月底/X月X日前）标「推定」，模式外一律待评估。
+
+**任务卡（IMPLEMENTED_RULES §1 模板；编号 OD-QS-401 起）：**
+
+> **执行进展（2026-11-08）：** OD-QS-401 与 OD-QS-406 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：401 交付八个 Task 字段（importance/importance_source/importance_reason/due_kind/depends_on/estimated_minutes/parent_id/quadrant_override），旧文件 serde default 零迁移（字节不变有测试），用户重要性必填理由，依赖/父任务的存在性+环校验成套（15 项新测试）；406 交付 availability.rs（schema omnidesk.availability.v1，无文件=默认零写入、原子保存失败不破坏旧文件，11 项测试）+ availability_get/set IPC（unavailable 原因过 gate_user_text）+ 设置页完整编辑区。本会话独立复跑：lib 698 passed / 0 failed（净增 26）、--tests 13 目标全绿、tsc exit 0、build exit 0。**下一批（可并行）：OD-QS-402（紧急性引擎）∥ OD-QS-404（AI 重要性建议）∥ OD-QS-407（排期实体）；406 已就绪，408 待 403/406/407 齐备。**
+
+> **执行进展（2026-11-08 续）：** OD-QS-402 / 404 / 407 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：402 交付 priority_rules.rs（逾期→高、工作日 2/5 分档、target 降档、封闭模式集推定标「推定」、模式外待评估、显式偏移接口，15 项测试 + verify 11/11）；404 交付候选 importance 字段（spec 约束 + 宿主成对校验 + 确认落 Task 写 source=ai，零新增模型调用，pytest 187 passed）；407 交付 schedule_store.rs（排期条目 Markdown + 状态机与任务解耦 + 调整留痕 + 派生已失效不改写文件 + 同任务重叠拒绝，15 项测试）。本会话独立复跑：lib 733 passed / 0 failed（净增 35）、--tests 13 目标全绿、verify_priority_rules_401 11/11。**下一任务：OD-QS-403（四象限分类引擎）→ 405 ∥ 408 → 409 → 410/411 → 412 → 413。**
+
+> **执行进展（2026-11-08 三）：** OD-QS-403 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：QuadrantView 十字段 + classify_quadrant（待评估不强行归类 / override 优先标「用户指定」/ done+cancelled+暂停 active=false 且暂停保留重要性 / 逾期低重要→Q3 不强制 Q1 / target 变象限）+ list_quadrant_views_at（显式偏移 + active→象限序→标题稳定排序）；方案 §十二.1 十三场景全部有测试。本会话独立复跑：lib 746 passed / 0 failed（净增 13）、--tests 13 目标全绿。**附：verify_priority_rules_401 的 pure_function_no_io 断言对 std::path 误报（403 合法路径参数），随 405 修正为两项真 IO 判据。执行裁决「只有高算重要/紧急」已在 REVIEW 登记，中档归类如实测偏差属 D-069 复审触发。** 408 前置全部就绪。**下一批：OD-QS-405 ∥ OD-QS-408 可并行派发。**
+
+> **执行进展（2026-11-08 四）：** OD-QS-405 与 OD-QS-408 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：405 交付五条 IPC（set_importance/quadrant/due/estimated/dependency，理由过 gate_user_text）+ Task 调整记录追加段（## 调整记录，只追加）+ 前端类型与调用封装（401 登记的前端映射欠账补齐、403 登记的 verify 断言修正完成，verify 11/11）；408 交付 scheduling.rs（十一优先序：锁定/已确认 fixed 不可覆盖、硬截止优先、Kahn 依赖拓扑+环冲突、容量 80% 缓冲+Q4 25% 上限+不抢 Q2、待评估不排、超时长建议拆分；17 项测试，§十二.3 十六场景全覆盖）。本会话独立复跑：lib 766 passed / 0 failed（净增 20）、--tests 13 目标全绿（首轮 1 failed 复跑即过，按 macOS 偶发噪音登记）、tsc/build exit 0。子裁决：待确认任务不入排期候选（比任务卡更严，符合 D-063）。**下一任务：OD-QS-409（排期 IPC 与确认流）→ 410/411 → 412 → 413。**
+
+> **执行进展（2026-11-08 五）：** OD-QS-409 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：六条命令（generate/confirm/adjust/cancel/lock/list）+ 前端类型成套；生成幂等（既有建议视作占位防重叠、二跑 created 为空有测试）、锁定+已确认保护落实、generation.v1.json + stale 标志（任务改于生成后即提示重新生成）、过期处理只动已建议且锁定豁免（有测试）。本会话独立复跑：lib 770 passed / 0 failed（净增 4）、--tests 13 目标全绿 EXIT=0、tsc exit 0。登记一项待 413 复核：schedule_adjust/cancel 理由未过 gate_user_text（与 302 闸门边界一致判定通过，413 显式检查项）。工作区另有 OD-UI-202 设计稿两文件（未跟踪、与本任务无关），提交时用户裁决。**下一批：OD-QS-410 ∥ OD-QS-411 可并行派发 → 412 → 413。**
+
+> **执行进展（2026-11-08 六）：** OD-QS-410 与 OD-QS-411 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：410 完成旧占位替换（weeklyQuadrants.ts/WeeklyQuadrants.tsx 删除、无引用残留 verify 断言、REPORT_DESTINATION 移入 weekTimeline）+ TaskQuadrantBoard 五列（Q1–Q4+待评估文字标题、双依据、用户指定/已确认/已建议标注、调整走 405 IPC）；411 交付 SchedulePlanner 今日/本周双模式（可用时段+剩余容量实算、已确认/已建议分组+就地确认、冲突显式、七日分布、截止/未排期/逾期风险、stale 提示、空态真实、显式本地偏移）。本会话独立复跑：lib 770 passed、--tests 13 目标全绿、两份 verify 各 11/11、tsc/build exit 0。**附：OD-UI-202 新拟物第一阶段（顶栏+首页+Dock+底材，纯样式层）被执行会话同批实施，与 OD-QS 无交叠、不要求回滚，验收状态「待用户追认」（真实窗口目视 + 本会话 19/19 复跑通过）。** **下一任务：OD-QS-412（任务详情扩展，最后一项功能任务）→ 413（收口）。**
+
+> **执行进展（2026-11-08 七）：** OD-QS-412 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：详情面板四个新区块全部落地——优先级与依据（双徽标+source+用户指定标注+双依据文本）、截止与预计耗时（hard/target 下拉+理由必填 disabled 门禁+耗时留空清除）、依赖与父子（depends_on 编辑+父任务标题解析）、排期历史与调整记录（派生已失效可见+adjustments 逐条展示）；五个调整入口全走 405 IPC 无前端直写。本会话独立复跑：lib 770 passed / --tests 13 目标全绿 / 三份 verify（11/11、11/11、19/19）/ tsc / build 全部 exit 0。OD-UI-202 新拟物第一阶段执行会话已在 STATUS.md 记录真实窗口目视（品牌靛+顶栏/首页范围），PLANS 状态改「已实施，待用户最终追认」。**最后一项：OD-QS-413（全量回归+安全核对+收口）可派发。**
+
+> **执行进展（2026-11-09，阶段竣工）：** OD-QS-413 已实施并通过 ARCHITECT 独立复检（REVIEW.md 2026-11-09 条）：全量命令全绿（cargo --tests EXIT=0、pytest 187+30、tsc、build）；verify_security_phase2 14/14（五 IPC 闸门、AI 无排期写通道、排期仅两条用户触发路径、无敏感日志、无新增豁免）；409 登记的 schedule_adjust/cancel 闸门口径已复核闭环；12 份 verify 全绿；证据落 tests/verification/desktop/evidence/od-qs-413/。未验证事项如实登记（真实模型 importance 质量、OD-QS 新页签真实窗口目视、大量任务性能）。**第二阶段（OD-QS-401～413，13 项任务）全部竣工。待办：用户批准后提交推送（含 OD-UI-202 一阶段，待用户窗口追认）；.codex-attachments/ 建议入 .gitignore 不入库。**
+
+1. **OD-QS-401 Task 字段扩展**（task_store.rs）：新增 importance（高/中/低/待评估，默认待评估）、importance_source（ai/user/rule）、importance_reason、due_kind（hard/target，默认 hard）、depends_on（存在性+无环校验）、estimated_minutes、parent_id、quadrant_override（Q1–Q4）；serde default 兼容旧文件，零迁移；hint 注释改为「模糊时间解析输入（402 启用）」。验收：cargo test --offline --lib（新增 ≥14 项全绿）；cargo test --offline --tests。无前置；阻塞 402/403/404/405/407。
+2. **OD-QS-402 紧急性规则引擎**（新增 priority_rules.rs，纯函数无 IO）：compute_urgency(task, now) →（等级+依据文本）：逾期→高（附逾期天数）；hard due 按工作日节奏分档（阈值常量注明依据，不用固定 24/48h）；target due 降档；due 为空时对 hint 封闭模式集推定日期并标「推定」，模式外待评估。测试覆盖方案 §十二.2 全部 12 个时间场景（明确日期/本月底/下周三/明天下午/近期/尽快/无时间/跨月/跨年/闰年/时区/模糊不确定性）。验收：cargo test --offline --lib；新增 tests/verification/desktop/verify_priority_rules_401.py 全绿。阻塞于 401；与 403/404/406/407 并行。
+3. **OD-QS-403 四象限分类引擎**（并入 priority_rules.rs）：classify_quadrant：importance 或 urgency 待评估→象限「待评估」不强行归类；override 非空→返回 override 标「用户指定」；已完成/已取消/暂停→active=false（暂停保留重要性）；QuadrantView{象限/重要性/紧急性/双依据/evaluated_at/is_override} + list_quadrant_views 批量。测试覆盖方案 §十二.1 全部 13 场景（含逾期但低重要→紧急高但不强制 Q1、目标时间非硬截止、暂停任务）。验收：cargo test --offline --lib。阻塞于 402；与 404/406/407 并行。
+4. **OD-QS-404 AI 重要性建议**（task_extract.py + validate_task_payload，零新增模型调用）：候选 JSON 增 importance（高/中/低/null）+ importance_reason（≤100 字）；提示词补约束：不得仅因领导提出即判高、无截止日期不判低；确认候选落 Task 时写 importance_source=ai。验收：pytest tests -q；cargo test --offline --lib。阻塞于 401；与 402/403/406/407 并行。
+5. **OD-QS-405 优先级 IPC 与用户调整**（lib.rs + api.ts + types.ts）：task_set_importance（source=user，reason 必填，追加调整记录）、task_set_quadrant（override 设置/清除+记录）、task_set_due（date+kind+reason）、task_set_estimated、task_set_dependency（存在+无环+不自依赖）；全部过 gate_user_text；拒绝理由对界面可见。验收：cargo test --offline --lib；npx tsc --noEmit。阻塞于 401–403；阻塞 410/412。
+6. **OD-QS-406 工作时间配置**（新增 availability.rs + 设置页区块，照 retention.v1.json 模式）：work/availability.v1.json（schema omnidesk.availability.v1）：workdays（默认周一–五）、daily_windows（默认 09:00–12:00 / 14:00–18:00）、breaks、unavailable（日期+时段+原因）、daily_capacity_hours（默认 6、上限 12）、timezone；availability_get / availability_set IPC；无文件=默认值且零写入。验收：cargo test --offline --lib；npx tsc --noEmit。无前置（可与 401 并行开工）；阻塞 408。
+7. **OD-QS-407 排期实体**（新增 schedule_store.rs，照 task_store.rs 模式）：work/排期/<entry_id>.md（schema omnidesk.schedule.v1）：id/task_id/start_at/end_at/duration/status（已建议|已确认|已调整|已取消|已完成）/is_locked/created_at/updated_at/adjustment_reason + ## 调整记录 追加段；同任务同时段唯一活跃条目；已确认不可就地改（调整=旧条目置已调整+新条目）；任务完成/取消后未来条目读取时派生「已失效」，文件不改写。验收：cargo test --offline --lib（新增 ≥12 项）。阻塞于 401；与 402–406 并行。
+8. **OD-QS-408 排期引擎**（新增 scheduling.rs，纯函数不落盘，落盘归 407/409）：generate_suggestions：输入=活跃任务+象限视图+availability+既有已确认条目+依赖图；按方案 §八.3 十一条优先序（锁定不可覆盖 > 已确认不动 > 硬截止优先 > 依赖先行 > 高重要保留连续时段 > Q2 保底投入 > Q3 批量 > Q4 少占 > 每日容量上限 > 保留机动时间）；产出 suggestions + conflicts（时间重叠/超容量/截止不可满足/依赖倒置/锁定冲突）+ unscheduled（附原因，超最大时段→建议拆分）。测试覆盖方案 §十二.3 全部 16 场景。验收：cargo test --offline --lib。阻塞于 403/406/407；阻塞 409。
+9. **OD-QS-409 排期 IPC 与确认流**（lib.rs + schedule_store.rs 状态迁移入口 + api/types）：schedule_generate（重新生成不动已确认/锁定，仅补新建议+过期旧建议）、schedule_confirm、schedule_adjust、schedule_cancel、schedule_lock；任务列表变化检测（generated_at vs 任务最大 updated_at）返回 stale 标志供界面提示。验收：cargo test --offline --lib；npx tsc --noEmit。阻塞于 408；阻塞 411/412。
+10. **OD-QS-410 任务四象限页 + 旧占位替换**（TaskManager 新页签 + 删除 weeklyQuadrants 占位）：四格（Q1–Q4+待评估区，文字标识不只靠颜色）；每任务显示重要性/紧急性/截止/状态/确认标记与依据摘要；手动调整走 405 IPC 并标注「用户指定」。**替换范围（用户裁决②）：** 删除 weeklyQuadrants.ts 的条目归类函数与 WeeklyQuadrants.tsx 组件，ScenePage 四象限页签改用任务象限视图；仍被引用的 REPORT_DESTINATION 等常量移至 weekTimeline.ts；动工前按 OD-ARCH-035 搜 2–3 个同类产品布局（借鉴要点 ≤2 句）。验收：npm --prefix desktop run build；新增 verify_task_quadrant_ui_402.py（断言 weeklyQuadrants.ts 已删除且无引用残留）。阻塞于 405；与 411 并行。
+11. **OD-QS-411 今日 / 本周计划页**（任务页新页签组，复用象限视图与排期回执类型，不另建数据层）：今日（可用时段/已确认/AI 建议/剩余容量/冲突）+ 本周（七日分布/截止/未排期重要任务/逾期风险）+ 重新生成入口 + stale 提示；空态真实不造数。验收：npm --prefix desktop run build；新增 verify_schedule_ui_403.py。阻塞于 409；与 410 并行。
+12. **OD-QS-412 任务详情扩展**（现有 TaskManager 详情面板追加，不重做）：重要/紧急/象限与依据、预计耗时、依赖（父子）、排期历史与调整记录、手动调整入口。验收：npm --prefix desktop run build；npx tsc --noEmit。阻塞于 405/409。
+13. **OD-QS-413 全量回归 + 安全核对 + 阶段收口**（照 OD-WR-308 模式）：全量命令；新增 verify_security_phase2.py（红线+掩码覆盖五个新 IPC、AI 无排期写通道、排期失败不影响任务状态、无敏感日志、测试数据全虚构）；证据落 tests/verification/desktop/evidence/od-qs-*/；如实登记未验证事项（真实模型 importance 建议质量、真实窗口目视、大量任务性能）。验收：cargo test --offline --tests；pytest tests -q；npm --prefix desktop run build；npx tsc --noEmit；全部 verify 全绿。阻塞于 401–412，最后执行。
+
+**依赖图：** 401 → 402 → 403 → 405 → {410, 412}；401 → 404（与 402/403 并行）；401 → 407 与 406 → 408 → 409 → {411, 412} → 413。并行线：402/404/407 三路并行（只阻塞于 401）；406 可与 401 同日开工；410 与 411 可并行。串行主线：401 → 402 → 403 → 408 → 409 → 413。
+
+**风险清单：** 分类误判（AI 只建议+依据可解释+用户 override 持续生效）；模糊时间误判（封闭模式集+「推定」标注+模式外待评估）；重要任务被低估（提示词约束+修正通道+待评估不强行归类）；Q2 被挤占（排期规则第 7 条保底投入）；已确认/锁定被覆盖（双保护+生成器永不改写）；重排历史丢失（调整=旧置已调整+新条目，永不删除）；Token 消耗（零新增模型调用）；旧任务兼容（serde default 零迁移）。
+
+**边界：** 不修改 runtime/；不重建任务管理模块；不接外部日历；不自动改用户已确认安排；测试一律虚构数据；四象限页替换旧占位但不动 WeeklyTimeline 时间线本身。
+
+**验证总口径：** 每任务按卡验收命令执行并保留证据至 tests/verification/；阶段收尾（413）跑全量。本会话逐任务独立复检 diff 与测试证据（复跑验收命令，不信转述），结论入 REVIEW.md。
+
+**规划文档：** 已随批准落盘 docs/plans/OD-QS-400/（TASK_PRIORITY_ARCHITECTURE / SCHEDULING_ENGINE_DESIGN / PHASE2_TASK_PLAN / PHASE2_ACCEPTANCE_CRITERIA / PHASE2_ROADMAP，含三、四阶段衔接：任务与排期为 work/ 下稳定形状文件，知识库与文案模块届时只读引用，不预建接口）。
+
 ### OD-WR-3xx：第一阶段——工作记录 + AI 任务提取（已批准，2026-11-08；执行会话从 OD-WR-301 派发，本会话负责逐任务复检）
 
 > **触发：** 用户《OmniDesk 第一阶段总任务：工作记录 + AI 任务提取》方案。核心：通过自然语言工作记录，AI 提取任务候选，用户确认后形成可持续管理的任务清单；工作记录与任务分层存储，报告/成果经显式归档进知识库，临时层定期用户确认清理。

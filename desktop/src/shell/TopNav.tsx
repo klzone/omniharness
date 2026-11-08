@@ -126,7 +126,7 @@ function DateFlip({ now }: { now: Date }) {
         aria-expanded={visible}
         aria-label={"日期与三周节律，今天 " + dateLabel(now)}
         data-testid="topnav-date"
-        className="hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full bg-surface-container-low/70 border border-white/80 hover:bg-surface-container-low transition-colors"
+        className="neu-chip hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full transition-colors"
       >
         <Icon name="calendar" className="w-4 h-4 text-primary/70" />
         <span className="font-label-caps text-[12px] font-medium text-on-surface">
@@ -142,7 +142,7 @@ function DateFlip({ now }: { now: Date }) {
         <div
           data-testid="topnav-calendar-popover"
           className={
-            "absolute right-0 top-full mt-2 w-[320px] rounded-2xl bg-white/95 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-3.5 z-50 origin-top-right transition-all duration-200 " +
+            "neu-popover absolute right-0 top-full mt-2 w-[320px] rounded-2xl p-3.5 z-50 origin-top-right transition-all duration-200 " +
             (visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none")
           }
         >
@@ -154,7 +154,7 @@ function DateFlip({ now }: { now: Date }) {
               </span>
             </div>
             <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-surface-container text-outline font-label-caps text-[9px]"
+              className="neu-inset-pill inline-flex items-center px-1.5 py-0.5 rounded-full text-outline font-label-caps text-[9px]"
               data-hover-hint="日程同步未实现：这里只按本机日期给出时间骨架"
             >
               未同步
@@ -481,7 +481,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="topnav-profile-badge"
-        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft text-primary hover:bg-surface-container transition-colors shadow-sm"
+        className="neu-inset-pill inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-primary transition-colors"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-primary/70 flex-shrink-0" />
         <span className="font-label-caps text-[10.5px] tracking-wide whitespace-nowrap">
@@ -498,7 +498,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
           role="dialog"
           aria-label="选择引擎 Profile"
           data-testid="topnav-profile-popover"
-          className="absolute left-0 top-full mt-2 w-[300px] rounded-2xl bg-white/97 backdrop-blur-sm ring-1 ring-outline-variant/30 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] p-2.5 z-50"
+          className="neu-popover absolute left-0 top-full mt-2 w-[300px] rounded-2xl p-2.5 z-50"
         >
           {receipt ? (
             <p
@@ -636,7 +636,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
                             <span className="block text-[11.5px] font-medium truncate">
                               {o.label}
                             </span>
-                            <span className="block text-[10px] text-outline truncate font-mono">
+                            <span className="block text-[10px] text-outline truncate font-label-caps">
                               {o.standard ? `通道默认 (${o.name})` : o.name}
                             </span>
                           </span>
@@ -799,7 +799,7 @@ export function TopNav({
   return (
     <header className="w-full pt-4 px-6 sm:px-10 z-40 flex-shrink-0" data-tauri-drag-region>
       <nav
-        className="bg-surface-container-lowest/80 backdrop-blur-2xl ring-1 ring-white/90 shadow-[0_8px_30px_-6px_rgba(15,23,42,0.04),0_2px_8px_rgba(79,70,229,0.02)] rounded-full w-full max-w-7xl mx-auto flex items-center justify-between px-6 py-2.5 gap-4"
+        className="neu-nav w-full max-w-7xl mx-auto flex items-center justify-between rounded-[26px] px-5 py-2.5 gap-4"
         data-tauri-drag-region
       >
         {/* 品牌（固定软件名） + Profile 徽标 + 本地 IPC 状态 */}
@@ -810,7 +810,7 @@ export function TopNav({
               alt="OmniDesk"
               draggable={false}
               decoding="async"
-              className="w-8 h-8 rounded-[7px] ring-1 ring-black/5 shadow-xs object-cover flex-shrink-0"
+              className="neu-brand-mark w-8 h-8 rounded-[9px] object-cover flex-shrink-0"
             />
             <span className="font-headline-md text-[17px] font-semibold tracking-tight text-on-surface hidden sm:inline">
               OmniDesk
@@ -833,7 +833,7 @@ export function TopNav({
 
         {/* 当前会话内查找（OD-ARCH-082 S8） */}
         <div className="flex-1 max-w-md mx-6 hidden sm:block">
-          <div className="flex items-center plate-soft-inset rounded-full px-3.5 py-1 text-on-surface transition-all focus-within:ring-1 focus-within:ring-primary/40">
+          <div className="neu-inset-field flex items-center rounded-full px-3.5 py-1 text-on-surface">
             <Icon name="search" className="w-[16px] h-[16px] text-outline mr-2 shrink-0" />
             <input
               ref={searchInputRef}
@@ -852,7 +852,7 @@ export function TopNav({
                   searchInputRef.current?.blur();
                 }
               }}
-              className="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none w-full"
+              className="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-on-surface-variant/75 focus:ring-0 focus:outline-none w-full"
               placeholder="当前会话内查找"
               type="text"
               aria-label="当前会话内查找"
@@ -901,7 +901,7 @@ export function TopNav({
                 </button>
               </div>
             ) : (
-              <kbd className="font-label-caps text-[10px] text-outline bg-white/80 px-2 py-0.5 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-surface-container ml-2 shrink-0">
+              <kbd className="neu-kbd font-label-caps text-[10px] px-2 py-0.5 rounded-md ml-2 shrink-0">
                 ⌘K
               </kbd>
             )}
@@ -914,7 +914,7 @@ export function TopNav({
 
           <button
             onClick={onOpenSettings}
-            className="w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 flex items-center justify-center"
+            className="neu-icon-btn w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface flex items-center justify-center"
             data-hover-hint="系统偏好设置"
             aria-label="系统偏好设置"
           >
@@ -923,7 +923,7 @@ export function TopNav({
 
           <button
             disabled
-            className="w-8 h-8 rounded-full text-on-surface-variant/40 flex items-center justify-center cursor-not-allowed"
+            className="neu-icon-btn w-8 h-8 rounded-full text-on-surface-variant flex items-center justify-center cursor-not-allowed"
             data-hover-hint="未实现：通知与待办"
             aria-label="未实现：通知与待办"
           >

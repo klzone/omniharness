@@ -50,6 +50,46 @@ pub const CANDIDATE_LINKED: &str = "linked";
 pub const CANDIDATE_REJECTED: &str = "rejected";
 
 const MAX_TITLE_CHARS: usize = 200;
+const MAX_ESTIMATED_MINUTES: u32 = 1440;
+const MAX_IMPORTANCE_REASON_CHARS: usize = 100;
+
+pub const IMPORTANCE_HIGH: &str = "高";
+pub const IMPORTANCE_MEDIUM: &str = "中";
+pub const IMPORTANCE_LOW: &str = "低";
+pub const IMPORTANCE_PENDING: &str = "待评估";
+pub const IMPORTANCE_LEVELS: &[&str] = &[
+    IMPORTANCE_HIGH,
+    IMPORTANCE_MEDIUM,
+    IMPORTANCE_LOW,
+    IMPORTANCE_PENDING,
+];
+
+pub const IMPORTANCE_SOURCE_AI: &str = "ai";
+pub const IMPORTANCE_SOURCE_USER: &str = "user";
+pub const IMPORTANCE_SOURCE_RULE: &str = "rule";
+pub const IMPORTANCE_SOURCES: &[&str] = &[
+    IMPORTANCE_SOURCE_AI,
+    IMPORTANCE_SOURCE_USER,
+    IMPORTANCE_SOURCE_RULE,
+];
+
+pub const DUE_KIND_HARD: &str = "hard";
+pub const DUE_KIND_TARGET: &str = "target";
+pub const DUE_KINDS: &[&str] = &[DUE_KIND_HARD, DUE_KIND_TARGET];
+
+pub const QUADRANT_Q1: &str = "Q1";
+pub const QUADRANT_Q2: &str = "Q2";
+pub const QUADRANT_Q3: &str = "Q3";
+pub const QUADRANT_Q4: &str = "Q4";
+pub const QUADRANT_OVERRIDES: &[&str] = &[QUADRANT_Q1, QUADRANT_Q2, QUADRANT_Q3, QUADRANT_Q4];
+
+pub fn default_importance() -> String {
+    IMPORTANCE_PENDING.to_string()
+}
+
+pub fn default_due_kind() -> String {
+    DUE_KIND_HARD.to_string()
+}
 
 /// 任务进展条目。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +107,15 @@ pub struct StateChange {
     pub note: Option<String>,
 }
 
+/// 用户调整记录。reason 可为空（耗时、依赖这类数值调整）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskAdjustment {
+    pub at: String,
+    pub field: String,
+    pub action: String,
+    pub reason: Option<String>,
+}
+
 /// 一个正式任务。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
@@ -81,10 +130,37 @@ pub struct Task {
     pub linked_record_ids: Vec<String>,
     pub category: Option<String>,
     pub due_date: Option<String>,
-    /// R8：本期只存不用。
+    /// 模糊时间解析输入（402 启用）；原样保存，不在这里换算成日期。
     pub hint: Option<String>,
+    /// 重要性等级：高 / 中 / 低 / 待评估（D-069）。
+    #[serde(default = "default_importance")]
+    pub importance: String,
+    /// 重要性来源：ai / user / rule；待评估且未经判断时为空。
+    #[serde(default)]
+    pub importance_source: Option<String>,
+    /// 一句话依据；重要性非待评估时必填。
+    #[serde(default)]
+    pub importance_reason: Option<String>,
+    /// 截止性质：hard（硬截止）/ target（目标时间）。
+    #[serde(default = "default_due_kind")]
+    pub due_kind: String,
+    /// 前置任务编号；写入时校验存在且无环。
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// 预计耗时（分钟）；用户补充为主。
+    #[serde(default)]
+    pub estimated_minutes: Option<u32>,
+    /// 父任务编号（任务拆分用）。
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// 用户指定的象限（Q1–Q4）；为空表示按规则派生。
+    #[serde(default)]
+    pub quadrant_override: Option<String>,
     pub progress: Vec<ProgressEntry>,
     pub history: Vec<StateChange>,
+    /// 优先级调整记录；只追加，不改写。旧文件缺该分区时为空。
+    #[serde(default)]
+    pub adjustments: Vec<TaskAdjustment>,
 }
 
 /// 新建任务入参。initial_state 只接受 待确认 / 待开始，缺省 待开始。
@@ -143,6 +219,10 @@ pub struct CandidateInput {
     pub match_reason: Option<String>,
     /// AI 建议的目标状态；只作建议，不自动应用。
     pub suggested_state: Option<String>,
+    /// AI 重要性建议：高 / 中 / 低；None 表示不判断（落盘为待评估）。
+    pub importance: Option<String>,
+    /// 一句话依据；importance 非空时必填，≤100 字。
+    pub importance_reason: Option<String>,
 }
 
 /// 暂存的候选。
@@ -166,6 +246,10 @@ pub struct TaskCandidate {
     pub match_reason: Option<String>,
     #[serde(default)]
     pub suggested_state: Option<String>,
+    #[serde(default)]
+    pub importance: Option<String>,
+    #[serde(default)]
+    pub importance_reason: Option<String>,
     pub dedup_key: String,
     pub status: String,
     pub created_at: String,
@@ -300,6 +384,36 @@ fn render_task(task: &Task) -> String {
     fm.push_str(&format!("category: {}\n", yaml_opt(&task.category)));
     fm.push_str(&format!("due_date: {}\n", yaml_opt(&task.due_date)));
     fm.push_str(&format!("hint: {}\n", yaml_opt(&task.hint)));
+    fm.push_str(&format!("importance: {}\n", yaml_scalar(&task.importance)));
+    fm.push_str(&format!(
+        "importance_source: {}\n",
+        yaml_opt(&task.importance_source)
+    ));
+    fm.push_str(&format!(
+        "importance_reason: {}\n",
+        yaml_opt(&task.importance_reason)
+    ));
+    fm.push_str(&format!("due_kind: {}\n", yaml_scalar(&task.due_kind)));
+    if task.depends_on.is_empty() {
+        fm.push_str("depends_on: []\n");
+    } else {
+        fm.push_str("depends_on:\n");
+        for task_id in &task.depends_on {
+            fm.push_str(&format!("  - {}\n", yaml_scalar(task_id)));
+        }
+    }
+    fm.push_str(&format!(
+        "estimated_minutes: {}\n",
+        match task.estimated_minutes {
+            Some(minutes) => minutes.to_string(),
+            None => "null".to_string(),
+        }
+    ));
+    fm.push_str(&format!("parent_id: {}\n", yaml_opt(&task.parent_id)));
+    fm.push_str(&format!(
+        "quadrant_override: {}\n",
+        yaml_opt(&task.quadrant_override)
+    ));
     let mut out = format!("---\n{fm}---\n\n## 进展\n\n");
     for entry in &task.progress {
         out.push_str(&format!("- {} | {}\n", entry.at, entry.text));
@@ -317,12 +431,28 @@ fn render_task(task: &Task) -> String {
             )),
         }
     }
+    out.push_str("\n## 调整记录\n\n");
+    for record in &task.adjustments {
+        match record.reason.as_deref() {
+            Some(reason) => out.push_str(&format!(
+                "- {} | {} | {} | {}\n",
+                record.at, record.field, record.action, reason
+            )),
+            None => out.push_str(&format!(
+                "- {} | {} | {}\n",
+                record.at, record.field, record.action
+            )),
+        }
+    }
     out
 }
 
-fn parse_sections(body: &str) -> Result<(Vec<ProgressEntry>, Vec<StateChange>), String> {
+fn parse_sections(
+    body: &str,
+) -> Result<(Vec<ProgressEntry>, Vec<StateChange>, Vec<TaskAdjustment>), String> {
     let mut progress = Vec::new();
     let mut history = Vec::new();
+    let mut adjustments = Vec::new();
     let mut section = "";
     let mut seen_progress = false;
     let mut seen_history = false;
@@ -339,6 +469,10 @@ fn parse_sections(body: &str) -> Result<(Vec<ProgressEntry>, Vec<StateChange>), 
         if line == "## 状态历史" {
             section = "history";
             seen_history = true;
+            continue;
+        }
+        if line == "## 调整记录" {
+            section = "adjustments";
             continue;
         }
         if line.starts_with("## ") {
@@ -388,13 +522,32 @@ fn parse_sections(body: &str) -> Result<(Vec<ProgressEntry>, Vec<StateChange>), 
                     note,
                 });
             }
+            "adjustments" => {
+                let mut parts = item.splitn(4, '|');
+                let at = parts.next().unwrap_or("").trim().to_string();
+                let field = parts.next().unwrap_or("").trim().to_string();
+                let action = parts.next().unwrap_or("").trim().to_string();
+                let reason = parts
+                    .next()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty());
+                if at.is_empty() || field.is_empty() || action.is_empty() {
+                    return Err(format!("调整记录不完整：{line}"));
+                }
+                adjustments.push(TaskAdjustment {
+                    at,
+                    field,
+                    action,
+                    reason,
+                });
+            }
             _ => return Err("任务内容不在任何分区里".to_string()),
         }
     }
     if !seen_progress || !seen_history {
         return Err("任务文件缺少 进展 或 状态历史 分区".to_string());
     }
-    Ok((progress, history))
+    Ok((progress, history, adjustments))
 }
 
 #[derive(Debug, Deserialize)]
@@ -418,6 +571,101 @@ struct TaskFront {
     due_date: Option<String>,
     #[serde(default)]
     hint: Option<String>,
+    #[serde(default)]
+    importance: Option<String>,
+    #[serde(default)]
+    importance_source: Option<String>,
+    #[serde(default)]
+    importance_reason: Option<String>,
+    #[serde(default)]
+    due_kind: Option<String>,
+    #[serde(default)]
+    depends_on: Vec<String>,
+    #[serde(default)]
+    estimated_minutes: Option<u32>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    quadrant_override: Option<String>,
+}
+
+fn validate_importance_pair(
+    importance: &str,
+    source: Option<&str>,
+    reason: Option<&str>,
+) -> Result<(), String> {
+    if !IMPORTANCE_LEVELS.contains(&importance) {
+        return Err(format!(
+            "重要性等级不认识：{importance}（只接受 高 / 中 / 低 / 待评估）"
+        ));
+    }
+    if let Some(source) = source {
+        if !IMPORTANCE_SOURCES.contains(&source) {
+            return Err(format!(
+                "重要性来源不认识：{source}（只接受 ai / user / rule）"
+            ));
+        }
+    }
+    if source == Some(IMPORTANCE_SOURCE_USER) && reason.is_none() {
+        return Err("用户调整重要性必须填写理由。".to_string());
+    }
+    if importance == IMPORTANCE_PENDING {
+        return Ok(());
+    }
+    if source.is_none() {
+        return Err(format!("重要性为 {importance} 时必须标注来源（ai / user / rule）。"));
+    }
+    if reason.is_none() {
+        return Err(format!("重要性为 {importance} 时必须给出一句话依据。"));
+    }
+    Ok(())
+}
+
+fn validate_due_kind(kind: &str) -> Result<(), String> {
+    if !DUE_KINDS.contains(&kind) {
+        return Err(format!(
+            "截止性质不认识：{kind}（只接受 hard / target）"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_estimated_minutes(minutes: u32) -> Result<(), String> {
+    if minutes == 0 || minutes > MAX_ESTIMATED_MINUTES {
+        return Err(format!(
+            "预计耗时必须在 1 到 {MAX_ESTIMATED_MINUTES} 分钟之间：{minutes}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_quadrant_override(value: &str) -> Result<(), String> {
+    if !QUADRANT_OVERRIDES.contains(&value) {
+        return Err(format!(
+            "象限指定不认识：{value}（只接受 Q1 / Q2 / Q3 / Q4）"
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_task_references(values: &[String], owner: &str, field: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for raw in values {
+        let id = raw.trim();
+        if id.is_empty() {
+            return Err(format!("{field}里有空的任务编号。"));
+        }
+        if !is_safe_id(id) {
+            return Err(format!("{field}里的任务编号不合法：{id:?}"));
+        }
+        if id == owner {
+            return Err(format!("任务不能把自身写进{field}：{id}"));
+        }
+        if !out.iter().any(|existing| existing == id) {
+            out.push(id.to_string());
+        }
+    }
+    Ok(out)
 }
 
 fn parse_task(raw: &str) -> Result<Task, String> {
@@ -459,7 +707,34 @@ fn parse_task(raw: &str) -> Result<Task, String> {
             return Err(format!("任务截止日期形状不正确：{date}"));
         }
     }
-    let (progress, history) = parse_sections(&body)?;
+    let importance = normalize_opt(front.importance).unwrap_or_else(default_importance);
+    let importance_source = normalize_opt(front.importance_source);
+    let importance_reason = normalize_opt(front.importance_reason);
+    validate_importance_pair(
+        &importance,
+        importance_source.as_deref(),
+        importance_reason.as_deref(),
+    )?;
+    let due_kind = normalize_opt(front.due_kind).unwrap_or_else(default_due_kind);
+    validate_due_kind(&due_kind)?;
+    let depends_on = normalize_task_references(&front.depends_on, &front.id, "依赖")?;
+    if let Some(minutes) = front.estimated_minutes {
+        validate_estimated_minutes(minutes)?;
+    }
+    let parent_id = normalize_opt(front.parent_id);
+    if let Some(parent) = parent_id.as_deref() {
+        if !is_safe_id(parent) {
+            return Err(format!("父任务编号不合法：{parent:?}"));
+        }
+        if parent == front.id {
+            return Err(format!("任务不能把自身设为父任务：{parent}"));
+        }
+    }
+    let quadrant_override = normalize_opt(front.quadrant_override);
+    if let Some(override_value) = quadrant_override.as_deref() {
+        validate_quadrant_override(override_value)?;
+    }
+    let (progress, history, adjustments) = parse_sections(&body)?;
     Ok(Task {
         id: front.id,
         title: front.title.trim().to_string(),
@@ -472,8 +747,17 @@ fn parse_task(raw: &str) -> Result<Task, String> {
         category: normalize_opt(front.category),
         due_date,
         hint: normalize_opt(front.hint),
+        importance,
+        importance_source,
+        importance_reason,
+        due_kind,
+        depends_on,
+        estimated_minutes: front.estimated_minutes,
+        parent_id,
+        quadrant_override,
         progress,
         history,
+        adjustments,
     })
 }
 
@@ -554,8 +838,17 @@ pub fn create_task(root: &Path, draft: &TaskDraft, now: f64) -> Result<Task, Str
         category: normalize_opt(draft.category.clone()),
         due_date,
         hint: normalize_opt(draft.hint.clone()),
+        importance: default_importance(),
+        importance_source: None,
+        importance_reason: None,
+        due_kind: default_due_kind(),
+        depends_on: Vec::new(),
+        estimated_minutes: None,
+        parent_id: None,
+        quadrant_override: None,
         progress: Vec::new(),
         history: Vec::new(),
+        adjustments: Vec::new(),
     };
     fs::create_dir_all(tasks_dir(root)).map_err(|e| format!("创建任务目录失败：{e}"))?;
     write_new_atomically(&task_path(root, &id)?, render_task(&task).as_bytes())?;
@@ -692,6 +985,211 @@ pub fn update_task(
     task.updated_at = crate::task_shell::utc_iso8601(now);
     write_replace_atomically(&task_path(root, &task.id)?, render_task(&task).as_bytes())?;
     Ok(task)
+}
+
+fn persist_task(root: &Path, mut task: Task, now: f64) -> Result<Task, String> {
+    task.updated_at = crate::task_shell::utc_iso8601(now);
+    write_replace_atomically(&task_path(root, &task.id)?, render_task(&task).as_bytes())?;
+    Ok(task)
+}
+
+fn push_adjustment(
+    task: &mut Task,
+    field: &str,
+    action: String,
+    reason: Option<String>,
+    now: f64,
+) {
+    task.adjustments.push(TaskAdjustment {
+        at: crate::task_shell::utc_iso8601(now),
+        field: field.to_string(),
+        action,
+        reason,
+    });
+}
+
+/// 设置重要性。非待评估时必须同时给出来源与一句话依据（D-069）。
+pub fn set_importance(
+    root: &Path,
+    id: &str,
+    importance: &str,
+    source: &str,
+    reason: Option<&str>,
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    let importance = importance.trim().to_string();
+    let source = source.trim().to_string();
+    let reason = reason
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    validate_importance_pair(&importance, Some(&source), reason.as_deref())?;
+    let action = importance.clone();
+    let record_reason = reason.clone();
+    task.importance = importance;
+    task.importance_source = Some(source);
+    task.importance_reason = reason;
+    push_adjustment(&mut task, "importance", action, record_reason, now);
+    persist_task(root, task, now)
+}
+
+/// 设置或清除用户指定的象限。空值表示回到规则派生。
+pub fn set_quadrant_override(
+    root: &Path,
+    id: &str,
+    quadrant: Option<&str>,
+    reason: Option<&str>,
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    let quadrant = quadrant
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(value) = quadrant.as_deref() {
+        validate_quadrant_override(value)?;
+    }
+    let action = quadrant.clone().unwrap_or_else(|| "清除".to_string());
+    let record_reason = reason
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    task.quadrant_override = quadrant;
+    push_adjustment(&mut task, "quadrant", action, record_reason, now);
+    persist_task(root, task, now)
+}
+
+/// 设置截止日期与截止性质。日期为空时 due_kind 仍保留给 402 判断 hint。
+pub fn set_due(
+    root: &Path,
+    id: &str,
+    due_date: Option<&str>,
+    due_kind: &str,
+    reason: &str,
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    let due_date = due_date
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(date) = due_date.as_deref() {
+        validate_due_date(date)?;
+    }
+    let due_kind = due_kind.trim().to_string();
+    validate_due_kind(&due_kind)?;
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err("调整截止日期必须填写理由。".to_string());
+    }
+    let action = match due_date.as_deref() {
+        Some(date) => format!("{date}（{due_kind}）"),
+        None => format!("清除（{due_kind}）"),
+    };
+    task.due_date = due_date;
+    task.due_kind = due_kind;
+    push_adjustment(&mut task, "due", action, Some(reason.to_string()), now);
+    persist_task(root, task, now)
+}
+
+/// 设置预计耗时（分钟）。None 表示清除。
+pub fn set_estimated_minutes(
+    root: &Path,
+    id: &str,
+    minutes: Option<u32>,
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    if let Some(minutes) = minutes {
+        validate_estimated_minutes(minutes)?;
+    }
+    let action = match minutes {
+        Some(minutes) => format!("{minutes} 分钟"),
+        None => "清除".to_string(),
+    };
+    task.estimated_minutes = minutes;
+    push_adjustment(&mut task, "estimated_minutes", action, None, now);
+    persist_task(root, task, now)
+}
+
+fn assert_task_exists(root: &Path, id: &str, field: &str) -> Result<(), String> {
+    if !task_path(root, id)?.is_file() {
+        return Err(format!("{field}指向的任务不存在：{id}"));
+    }
+    Ok(())
+}
+
+fn assert_no_dependency_cycle(root: &Path, owner: &str, deps: &[String]) -> Result<(), String> {
+    let mut stack: Vec<String> = deps.to_vec();
+    let mut seen: HashSet<String> = HashSet::new();
+    while let Some(node) = stack.pop() {
+        if node == owner {
+            return Err(format!("依赖关系形成环：{owner} 经由依赖链回到自身。"));
+        }
+        if !seen.insert(node.clone()) {
+            continue;
+        }
+        if let Ok(task) = read_task(root, &node) {
+            for next in &task.depends_on {
+                stack.push(next.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 设置前置任务。每个前置必须存在，且调用方到前置之间不能形成环。
+pub fn set_depends_on(
+    root: &Path,
+    id: &str,
+    deps: &[String],
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    let deps = normalize_task_references(deps, id, "依赖")?;
+    for dep in &deps {
+        assert_task_exists(root, dep, "依赖")?;
+        read_task(root, dep)?;
+    }
+    assert_no_dependency_cycle(root, id, &deps)?;
+    let action = if deps.is_empty() {
+        "清除".to_string()
+    } else {
+        deps.join("、")
+    };
+    task.depends_on = deps;
+    push_adjustment(&mut task, "depends_on", action, None, now);
+    persist_task(root, task, now)
+}
+
+/// 设置父任务。父任务必须存在，且父链不能回到自身。
+pub fn set_parent_id(
+    root: &Path,
+    id: &str,
+    parent: Option<&str>,
+    now: f64,
+) -> Result<Task, String> {
+    let mut task = read_task(root, id)?;
+    let parent = parent
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(parent_id) = parent.as_deref() {
+        if parent_id == id {
+            return Err(format!("任务不能把自身设为父任务：{parent_id}"));
+        }
+        assert_task_exists(root, parent_id, "父任务")?;
+        read_task(root, parent_id)?;
+        let mut cursor = Some(parent_id.to_string());
+        let mut seen: HashSet<String> = HashSet::new();
+        while let Some(current) = cursor {
+            if current == id {
+                return Err(format!("父任务链形成环：{id} 经由 {parent_id} 回到自身。"));
+            }
+            if !seen.insert(current.clone()) {
+                break;
+            }
+            cursor = read_task(root, &current).ok().and_then(|task| task.parent_id);
+        }
+    }
+    task.parent_id = parent;
+    persist_task(root, task, now)
 }
 
 /// 状态迁移：白名单外一律拒绝，且不写文件。
@@ -902,6 +1400,32 @@ pub fn stage_candidates(
                 ));
             }
         }
+        let importance = normalize_opt(input.importance.clone());
+        if let Some(level) = importance.as_deref() {
+            if !matches!(level, IMPORTANCE_HIGH | IMPORTANCE_MEDIUM | IMPORTANCE_LOW) {
+                return Err(format!(
+                    "第 {} 个候选的重要性只能是 高 / 中 / 低 或 null。",
+                    index + 1
+                ));
+            }
+        }
+        let importance_reason = normalize_opt(input.importance_reason.clone());
+        if importance.is_some() {
+            let reason = importance_reason.as_deref().ok_or_else(|| {
+                format!("第 {} 个候选给了重要性，却没有一句话依据。", index + 1)
+            })?;
+            if reason.chars().count() > MAX_IMPORTANCE_REASON_CHARS || reason.contains('\n') {
+                return Err(format!(
+                    "第 {} 个候选的重要性依据过长或含换行（最多 {MAX_IMPORTANCE_REASON_CHARS} 字）。",
+                    index + 1
+                ));
+            }
+        } else if importance_reason.is_some() {
+            return Err(format!(
+                "第 {} 个候选没有重要性判断，却给了依据。",
+                index + 1
+            ));
+        }
         let dedup_key = candidate_dedup_key(record_id, &quote);
         if existing.contains(&dedup_key) {
             report.skipped_duplicates.push(dedup_key);
@@ -923,6 +1447,8 @@ pub fn stage_candidates(
             match_confidence: input.match_confidence,
             match_reason,
             suggested_state,
+            importance,
+            importance_reason,
             dedup_key: dedup_key.clone(),
             status: CANDIDATE_PENDING.to_string(),
             created_at: crate::task_shell::utc_iso8601(now),
@@ -1049,7 +1575,18 @@ pub fn confirm_candidate(
         due_date,
         hint: None,
     };
-    let task = create_task(root, &draft, now)?;
+    let created = create_task(root, &draft, now)?;
+    let task = match candidate.importance.as_deref() {
+        Some(level) => set_importance(
+            root,
+            &created.id,
+            level,
+            IMPORTANCE_SOURCE_AI,
+            candidate.importance_reason.as_deref(),
+            now,
+        )?,
+        None => created,
+    };
     let mut decided = candidate.clone();
     decided.status = CANDIDATE_CONFIRMED.to_string();
     decided.decided_at = Some(crate::task_shell::utc_iso8601(now));
@@ -1932,5 +2469,328 @@ mod tests {
         assert_eq!(task_after.progress.len(), 1);
         let record_after = crate::worklog_records::read_record(temp.root(), &record.id).unwrap();
         assert!(record_after.linked_task_ids.contains(&task.id));
+    }
+
+    fn seed_legacy_task(temp: &TempRoot, id: &str) {
+        fs::create_dir_all(tasks_dir(temp.root())).unwrap();
+        let raw = format!(
+            "---\nschema: \"omnidesk.task.v1\"\nid: \"{id}\"\ntitle: \"旧任务\"\nstate: \"待开始\"\ncreated_at: \"2026-01-01T00:00:00Z\"\nupdated_at: \"2026-01-01T00:00:00Z\"\nsource_record_id: null\nsource_quote: null\nlinked_record_ids: []\ncategory: null\ndue_date: null\nhint: null\n---\n\n## 进展\n\n## 状态历史\n\n"
+        );
+        fs::write(task_path(temp.root(), id).unwrap(), raw).unwrap();
+    }
+
+    #[test]
+    fn new_task_has_priority_defaults() {
+        let temp = TempRoot::new("priority-defaults");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        assert_eq!(task.importance, IMPORTANCE_PENDING);
+        assert_eq!(task.importance_source, None);
+        assert_eq!(task.importance_reason, None);
+        assert_eq!(task.due_kind, DUE_KIND_HARD);
+        assert!(task.depends_on.is_empty());
+        assert_eq!(task.estimated_minutes, None);
+        assert_eq!(task.parent_id, None);
+        assert_eq!(task.quadrant_override, None);
+        let raw = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert!(raw.contains("importance: \"待评估\""), "{raw}");
+        assert!(raw.contains("due_kind: \"hard\""), "{raw}");
+        assert!(raw.contains("depends_on: []"), "{raw}");
+        assert!(raw.contains("estimated_minutes: null"), "{raw}");
+    }
+
+    #[test]
+    fn legacy_task_file_reads_priority_defaults_without_migration() {
+        let temp = TempRoot::new("priority-legacy");
+        seed_legacy_task(&temp, "t-legacy");
+        let before = fs::read_to_string(task_path(temp.root(), "t-legacy").unwrap()).unwrap();
+        let task = read_task(temp.root(), "t-legacy").unwrap();
+        assert_eq!(task.importance, IMPORTANCE_PENDING);
+        assert_eq!(task.due_kind, DUE_KIND_HARD);
+        assert!(task.depends_on.is_empty());
+        assert_eq!(task.estimated_minutes, None);
+        assert_eq!(task.quadrant_override, None);
+        let after = fs::read_to_string(task_path(temp.root(), "t-legacy").unwrap()).unwrap();
+        assert_eq!(before, after, "读取不应触发迁移写盘");
+    }
+
+    #[test]
+    fn set_importance_records_level_source_and_reason() {
+        let temp = TempRoot::new("importance");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let updated = set_importance(
+            temp.root(),
+            &task.id,
+            " 高 ",
+            IMPORTANCE_SOURCE_USER,
+            Some(" 周五评审要用 "),
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(updated.importance, IMPORTANCE_HIGH);
+        assert_eq!(updated.importance_source.as_deref(), Some(IMPORTANCE_SOURCE_USER));
+        assert_eq!(updated.importance_reason.as_deref(), Some("周五评审要用"));
+        assert_eq!(updated.updated_at, crate::task_shell::utc_iso8601(NOW + 60.0));
+        let raw = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert!(raw.contains("importance: \"高\""), "{raw}");
+    }
+
+    #[test]
+    fn user_importance_requires_reason_and_does_not_write() {
+        let temp = TempRoot::new("importance-reason");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let err = set_importance(
+            temp.root(),
+            &task.id,
+            IMPORTANCE_HIGH,
+            IMPORTANCE_SOURCE_USER,
+            None,
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("必须填写理由"), "{err}");
+        let stored = read_task(temp.root(), &task.id).unwrap();
+        assert_eq!(stored.importance, IMPORTANCE_PENDING);
+    }
+
+    #[test]
+    fn importance_rejects_unknown_level_or_source() {
+        let temp = TempRoot::new("importance-enum");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let err = set_importance(
+            temp.root(),
+            &task.id,
+            "很高",
+            IMPORTANCE_SOURCE_RULE,
+            Some("x"),
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("重要性等级不认识"), "{err}");
+        let err = set_importance(
+            temp.root(),
+            &task.id,
+            IMPORTANCE_MEDIUM,
+            "model",
+            Some("x"),
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("重要性来源不认识"), "{err}");
+    }
+
+    #[test]
+    fn due_kind_accepts_target_and_rejects_unknown() {
+        let temp = TempRoot::new("due-kind");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let updated = set_due(
+            temp.root(),
+            &task.id,
+            Some("2026-12-31"),
+            DUE_KIND_TARGET,
+            "目标时间",
+            NOW + 30.0,
+        )
+        .unwrap();
+        assert_eq!(updated.due_kind, DUE_KIND_TARGET);
+        assert_eq!(updated.due_date.as_deref(), Some("2026-12-31"));
+        let err = set_due(
+            temp.root(),
+            &task.id,
+            Some("2026-12-31"),
+            "soft",
+            "调整",
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("截止性质不认识"), "{err}");
+    }
+
+    #[test]
+    fn estimated_minutes_rejects_zero_and_out_of_range() {
+        let temp = TempRoot::new("estimate");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let err = set_estimated_minutes(temp.root(), &task.id, Some(0), NOW).unwrap_err();
+        assert!(err.contains("1 到 1440"), "{err}");
+        let err = set_estimated_minutes(temp.root(), &task.id, Some(1441), NOW).unwrap_err();
+        assert!(err.contains("1 到 1440"), "{err}");
+        let updated = set_estimated_minutes(temp.root(), &task.id, Some(90), NOW).unwrap();
+        assert_eq!(updated.estimated_minutes, Some(90));
+        let raw = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert!(raw.contains("estimated_minutes: 90"), "{raw}");
+    }
+
+    #[test]
+    fn dependency_requires_existing_task_and_rejects_self() {
+        let temp = TempRoot::new("dep-exist");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let err = set_depends_on(temp.root(), &task.id, &["t-missing".to_string()], NOW).unwrap_err();
+        assert!(err.contains("不存在"), "{err}");
+        let err = set_depends_on(temp.root(), &task.id, &[task.id.clone()], NOW).unwrap_err();
+        assert!(err.contains("自身"), "{err}");
+    }
+
+    #[test]
+    fn dependency_rejects_cycle() {
+        let temp = TempRoot::new("dep-cycle");
+        let first = create_task(temp.root(), &task_draft("任务甲"), NOW).unwrap();
+        let second = create_task(temp.root(), &task_draft("任务乙"), NOW).unwrap();
+        set_depends_on(temp.root(), &first.id, &[second.id.clone()], NOW).unwrap();
+        let err = set_depends_on(temp.root(), &second.id, &[first.id.clone()], NOW).unwrap_err();
+        assert!(err.contains("形成环"), "{err}");
+        assert!(read_task(temp.root(), &second.id).unwrap().depends_on.is_empty());
+    }
+
+    #[test]
+    fn dependency_accepts_valid_edge_and_dedupes() {
+        let temp = TempRoot::new("dep-valid");
+        let first = create_task(temp.root(), &task_draft("前置"), NOW).unwrap();
+        let second = create_task(temp.root(), &task_draft("后置"), NOW).unwrap();
+        let updated = set_depends_on(
+            temp.root(),
+            &second.id,
+            &[first.id.clone(), first.id.clone()],
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(updated.depends_on, vec![first.id.clone()]);
+        let raw = fs::read_to_string(task_path(temp.root(), &second.id).unwrap()).unwrap();
+        assert!(raw.contains(&format!("  - \"{}\"", first.id)), "{raw}");
+    }
+
+    #[test]
+    fn parent_requires_existing_task_and_rejects_self() {
+        let temp = TempRoot::new("parent");
+        let task = create_task(temp.root(), &task_draft("子任务"), NOW).unwrap();
+        let err = set_parent_id(temp.root(), &task.id, Some("t-missing"), NOW).unwrap_err();
+        assert!(err.contains("不存在"), "{err}");
+        let err = set_parent_id(temp.root(), &task.id, Some(&task.id), NOW).unwrap_err();
+        assert!(err.contains("自身"), "{err}");
+    }
+
+    #[test]
+    fn parent_chain_rejects_cycle() {
+        let temp = TempRoot::new("parent-cycle");
+        let first = create_task(temp.root(), &task_draft("任务甲"), NOW).unwrap();
+        let second = create_task(temp.root(), &task_draft("任务乙"), NOW).unwrap();
+        set_parent_id(temp.root(), &first.id, Some(&second.id), NOW).unwrap();
+        let err = set_parent_id(temp.root(), &second.id, Some(&first.id), NOW).unwrap_err();
+        assert!(err.contains("形成环"), "{err}");
+    }
+
+    #[test]
+    fn quadrant_override_accepts_and_clears() {
+        let temp = TempRoot::new("quadrant");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let updated =
+            set_quadrant_override(temp.root(), &task.id, Some("Q2"), None, NOW).unwrap();
+        assert_eq!(updated.quadrant_override.as_deref(), Some(QUADRANT_Q2));
+        let cleared =
+            set_quadrant_override(temp.root(), &task.id, None, None, NOW + 30.0).unwrap();
+        assert_eq!(cleared.quadrant_override, None);
+        let err = set_quadrant_override(temp.root(), &task.id, Some("Q5"), None, NOW).unwrap_err();
+        assert!(err.contains("象限指定不认识"), "{err}");
+    }
+
+    #[test]
+    fn parse_rejects_unknown_importance_in_file() {
+        let temp = TempRoot::new("bad-importance");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let path = task_path(temp.root(), &task.id).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let broken = raw.replace("importance: \"待评估\"", "importance: \"很高\"");
+        fs::write(&path, broken).unwrap();
+        let err = read_task(temp.root(), &task.id).unwrap_err();
+        assert!(err.contains("重要性等级不认识"), "{err}");
+    }
+
+    #[test]
+    fn priority_update_bumps_updated_at() {
+        let temp = TempRoot::new("priority-bump");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let later = set_importance(
+            temp.root(),
+            &task.id,
+            IMPORTANCE_LOW,
+            IMPORTANCE_SOURCE_RULE,
+            Some("没有明确截止日期"),
+            NOW + 120.0,
+        )
+        .unwrap();
+        assert_eq!(later.updated_at, crate::task_shell::utc_iso8601(NOW + 120.0));
+        assert!(later.updated_at > task.updated_at);
+    }
+
+    #[test]
+    fn user_adjustments_are_appended_and_read_back() {
+        let temp = TempRoot::new("adjustments");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let dependency = create_task(temp.root(), &task_draft("前置任务"), NOW).unwrap();
+        set_importance(
+            temp.root(),
+            &task.id,
+            IMPORTANCE_HIGH,
+            IMPORTANCE_SOURCE_USER,
+            Some("评审要用"),
+            NOW + 10.0,
+        )
+        .unwrap();
+        set_quadrant_override(
+            temp.root(),
+            &task.id,
+            Some(QUADRANT_Q2),
+            Some("先放重要不紧急"),
+            NOW + 20.0,
+        )
+        .unwrap();
+        set_due(
+            temp.root(),
+            &task.id,
+            Some("2026-12-31"),
+            DUE_KIND_TARGET,
+            "年底前给结论",
+            NOW + 30.0,
+        )
+        .unwrap();
+        set_estimated_minutes(temp.root(), &task.id, Some(90), NOW + 40.0).unwrap();
+        set_depends_on(temp.root(), &task.id, &[dependency.id.clone()], NOW + 50.0).unwrap();
+        let stored = read_task(temp.root(), &task.id).unwrap();
+        assert_eq!(stored.adjustments.len(), 5);
+        assert_eq!(stored.adjustments[0].field, "importance");
+        assert_eq!(stored.adjustments[0].action, "高");
+        assert_eq!(stored.adjustments[0].reason.as_deref(), Some("评审要用"));
+        assert_eq!(stored.adjustments[1].field, "quadrant");
+        assert_eq!(stored.adjustments[2].field, "due");
+        assert_eq!(stored.adjustments[3].field, "estimated_minutes");
+        assert_eq!(stored.adjustments[4].field, "depends_on");
+        let raw = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert!(raw.contains("## 调整记录"), "{raw}");
+        assert!(raw.contains("importance | 高 | 评审要用"), "{raw}");
+    }
+
+    #[test]
+    fn due_adjustment_requires_reason_without_writing() {
+        let temp = TempRoot::new("due-reason");
+        let task = create_task(temp.root(), &task_draft("写周报"), NOW).unwrap();
+        let before = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        let err = set_due(
+            temp.root(),
+            &task.id,
+            Some("2026-12-31"),
+            DUE_KIND_HARD,
+            "   ",
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("必须填写理由"), "{err}");
+        let after = fs::read_to_string(task_path(temp.root(), &task.id).unwrap()).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn legacy_task_without_adjustments_section_still_reads() {
+        let temp = TempRoot::new("legacy-adjust");
+        seed_legacy_task(&temp, "t-legacy-adjust");
+        let task = read_task(temp.root(), "t-legacy-adjust").unwrap();
+        assert!(task.adjustments.is_empty());
     }
 }

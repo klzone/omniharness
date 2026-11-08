@@ -2274,6 +2274,34 @@ export interface StateChange {
   note: string | null;
 }
 
+/** 用户调整记录（OD-QS-405）；只追加。 */
+export interface TaskAdjustment {
+  at: string;
+  field: string;
+  action: string;
+  reason: string | null;
+}
+
+export type TaskImportance = "高" | "中" | "低" | "待评估";
+export type TaskImportanceSource = "ai" | "user" | "rule";
+export type TaskDueKind = "hard" | "target";
+export type TaskQuadrant = "Q1" | "Q2" | "Q3" | "Q4";
+export type TaskUrgency = "高" | "中" | "低" | "待评估";
+
+/** 四象限视图（OD-QS-403/410）：读取时派生，不落盘。 */
+export interface TaskQuadrantView {
+  task_id: string;
+  title: string;
+  quadrant: TaskQuadrant | "待评估";
+  importance: TaskImportance;
+  urgency: TaskUrgency;
+  importance_reason: string | null;
+  urgency_reason: string;
+  evaluated_at: string;
+  is_override: boolean;
+  active: boolean;
+}
+
 export interface WorkTask {
   id: string;
   title: string;
@@ -2286,10 +2314,19 @@ export interface WorkTask {
   linked_record_ids: string[];
   category: string | null;
   due_date: string | null;
-  /** 扩展位，本期只存不用。 */
+  /** 模糊时间解析输入（402 启用）。 */
   hint: string | null;
+  importance: TaskImportance;
+  importance_source: TaskImportanceSource | null;
+  importance_reason: string | null;
+  due_kind: TaskDueKind;
+  depends_on: string[];
+  estimated_minutes: number | null;
+  parent_id: string | null;
+  quadrant_override: TaskQuadrant | null;
   progress: ProgressEntry[];
   history: StateChange[];
+  adjustments: TaskAdjustment[];
 }
 
 /** 新建任务入参；initial_state 只接受 待确认 / 待开始。 */
@@ -2354,6 +2391,9 @@ export interface TaskCandidate {
   match_reason: string | null;
   /** AI 建议的目标状态；只作建议，不自动应用。 */
   suggested_state: WorkTaskState | null;
+  /** AI 重要性建议（OD-QS-404）；确认后写入 source=ai。 */
+  importance: TaskImportance | null;
+  importance_reason: string | null;
   /** (record_id, quote 哈希) 去重键。 */
   dedup_key: string;
   status: TaskCandidateStatus;
@@ -2453,6 +2493,94 @@ export interface CleanupReport {
   moved: CleanupMoved[];
   failures: string[];
   warnings: string[];
+}
+
+/** 一个连续时段，HH:MM。 */
+export interface AvailabilityWindow {
+  start: string;
+  end: string;
+}
+
+export interface AvailabilityUnavailable {
+  date: string;
+  start: string;
+  end: string;
+  reason: string;
+}
+
+/** 工作时间配置（OD-QS-406）；没有配置文件时宿主返回默认值，不写盘。 */
+export interface AvailabilityConfig {
+  schema: string;
+  /** 1=周一 … 7=周日。 */
+  workdays: number[];
+  daily_windows: AvailabilityWindow[];
+  breaks: AvailabilityWindow[];
+  unavailable: AvailabilityUnavailable[];
+  daily_capacity_hours: number;
+  timezone: string;
+}
+
+export type ScheduleStatus = "已建议" | "已确认" | "已调整" | "已取消" | "已完成";
+export type ScheduleEffectiveStatus = ScheduleStatus | "已失效";
+
+export interface ScheduleAdjustmentRecord {
+  at: string;
+  action: string;
+  reason: string;
+}
+
+/** 排期条目（OD-QS-407/409）；时间均为 ISO 8601 UTC。 */
+export interface ScheduleEntry {
+  schema: string;
+  id: string;
+  task_id: string;
+  start_at: string;
+  end_at: string;
+  duration: number;
+  status: ScheduleStatus;
+  is_locked: boolean;
+  created_at: string;
+  updated_at: string;
+  adjustment_reason: string | null;
+  adjustments: ScheduleAdjustmentRecord[];
+}
+
+export interface ScheduleEntryView extends ScheduleEntry {
+  effective_status: ScheduleEffectiveStatus;
+}
+
+export interface ScheduleListing {
+  items: ScheduleEntryView[];
+  broken: number;
+  generated_at: string | null;
+  stale: boolean;
+}
+
+export interface SchedulingConflict {
+  kind: string;
+  task_ids: string[];
+  message: string;
+}
+
+export interface UnscheduledTask {
+  task_id: string;
+  title: string;
+  reason: string;
+}
+
+export interface ScheduleGenerateReport {
+  created: ScheduleEntry[];
+  expired: string[];
+  conflicts: SchedulingConflict[];
+  unscheduled: UnscheduledTask[];
+  stale: boolean;
+  warnings: string[];
+  generated_at: string | null;
+}
+
+export interface ScheduleAdjustmentReport {
+  old: ScheduleEntry;
+  new: ScheduleEntry;
 }
 
 /** 确认候选时可改字段；undefined = 沿用候选原值。 */

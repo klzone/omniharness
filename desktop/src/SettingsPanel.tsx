@@ -20,6 +20,7 @@ import { refreshThreadCategories } from "./threadCategories";
 import { SCENES } from "./scenes";
 import type {
   AdmissionFacts,
+  AvailabilityConfig,
   CapabilityView,
   CapabilitySkill,
   CategoryInitReceipt,
@@ -97,6 +98,17 @@ const API_CHOICES: Array<{ value: string; label: string }> = [
   { value: "openai-completions", label: "openai-completions（兼容 /chat/completions）" },
   { value: "openai-responses", label: "openai-responses（兼容 /responses）" },
   { value: "anthropic-messages", label: "anthropic-messages（Anthropic 原生）" },
+];
+
+/** 工作日取值与宿主一致：1=周一 … 7=周日。 */
+const WEEKDAY_CHOICES: Array<{ value: number; label: string }> = [
+  { value: 1, label: "周一" },
+  { value: 2, label: "周二" },
+  { value: 3, label: "周三" },
+  { value: 4, label: "周四" },
+  { value: 5, label: "周五" },
+  { value: 6, label: "周六" },
+  { value: 7, label: "周日" },
 ];
 
 const EFFORT_CHOICES: Array<{ value: string; label: string }> = [
@@ -389,6 +401,12 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
+
+  // —— 工作时间配置（OD-QS-406）：草稿编辑，显式保存后才写盘 ——
+  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityConfig | null>(null);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [availabilityNote, setAvailabilityNote] = useState<string | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
 
   // —— 知识库根（OD-KB-001 P1）：只读，独立于库根 ——
   const [vaultStatus, setVaultStatus] = useState<KnowledgeVaultRootStatus | null>(null);
@@ -1253,6 +1271,41 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     }
   }, []);
 
+  const refreshAvailability = useCallback(async () => {
+    try {
+      const r = await shell.availabilityGet();
+      setAvailabilityDraft(r);
+      setAvailabilityError(null);
+    } catch (e) {
+      setAvailabilityDraft(null);
+      setAvailabilityError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const patchAvailabilityDraft = useCallback(
+    (update: (draft: AvailabilityConfig) => AvailabilityConfig) => {
+      setAvailabilityDraft((draft) => (draft ? update(draft) : draft));
+      setAvailabilityNote(null);
+    },
+    [],
+  );
+
+  const saveAvailability = useCallback(async () => {
+    if (!availabilityDraft) return;
+    setAvailabilityBusy(true);
+    setAvailabilityNote(null);
+    setAvailabilityError(null);
+    try {
+      const r = await shell.availabilitySet(availabilityDraft);
+      setAvailabilityDraft(r);
+      setAvailabilityNote("已保存；下一次生成排期建议时生效。");
+    } catch (e) {
+      setAvailabilityError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }, [availabilityDraft]);
+
   const refreshVault = useCallback(async () => {
     try {
       const r = await shell.knowledgeVaultStatus();
@@ -1433,6 +1486,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     void refresh();
     void refreshLibrary();
     void refreshWorking();
+    void refreshAvailability();
     void refreshAdmission();
     void refreshScheduler();
     void refreshModel();
@@ -1441,6 +1495,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     refresh,
     refreshLibrary,
     refreshWorking,
+    refreshAvailability,
     refreshAdmission,
     refreshScheduler,
     refreshModel,
@@ -4204,6 +4259,357 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             </p>
           ) : null}
           {cleanupError ? <div className="alert">{cleanupError}</div> : null}
+        </details>
+
+        <details className="tech">
+          <summary>工作时间配置（排期用）</summary>
+          <p className="hint">
+            排期只使用这里配置的可用时间；从未保存过时按默认工作日的
+            <span className="mono"> 09:00–12:00 / 14:00–18:00 </span>
+            计算。改动只影响之后生成的建议，已确认的安排不会移动。
+          </p>
+          {availabilityDraft ? (
+            <>
+              <div className="field">
+                <label className="field-label">工作日</label>
+                <div className="actions">
+                  {WEEKDAY_CHOICES.map((day) => {
+                    const active = availabilityDraft.workdays.includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        className={active ? "primary" : "ghost"}
+                        aria-pressed={active}
+                        disabled={availabilityBusy}
+                        onClick={() =>
+                          patchAvailabilityDraft((draft) => ({
+                            ...draft,
+                            workdays: active
+                              ? draft.workdays.filter((value) => value !== day.value)
+                              : [...draft.workdays, day.value].sort((a, b) => a - b),
+                          }))
+                        }
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="field-label">每日工作时段</label>
+                {availabilityDraft.daily_windows.map((window, index) => (
+                  <div className="actions" key={"availability-window-" + String(index)}>
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "8rem" }}
+                      value={window.start}
+                      aria-label={"每日时段 " + String(index + 1) + " 开始"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          daily_windows: draft.daily_windows.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, start: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <span>–</span>
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "8rem" }}
+                      value={window.end}
+                      aria-label={"每日时段 " + String(index + 1) + " 结束"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          daily_windows: draft.daily_windows.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, end: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <button
+                      className="ghost"
+                      type="button"
+                      disabled={availabilityBusy}
+                      onClick={() =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          daily_windows: draft.daily_windows.filter(
+                            (_item, itemIndex) => itemIndex !== index,
+                          ),
+                        }))
+                      }
+                    >
+                      移除
+                    </button>
+                  </div>
+                ))}
+                <div className="actions">
+                  <button
+                    className="ghost"
+                    type="button"
+                    disabled={availabilityBusy}
+                    onClick={() =>
+                      patchAvailabilityDraft((draft) => ({
+                        ...draft,
+                        daily_windows: [...draft.daily_windows, { start: "09:00", end: "10:00" }],
+                      }))
+                    }
+                  >
+                    添加时段
+                  </button>
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="field-label">休息时段（可选）</label>
+                {availabilityDraft.breaks.map((window, index) => (
+                  <div className="actions" key={"availability-break-" + String(index)}>
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "8rem" }}
+                      value={window.start}
+                      aria-label={"休息时段 " + String(index + 1) + " 开始"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          breaks: draft.breaks.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, start: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <span>–</span>
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "8rem" }}
+                      value={window.end}
+                      aria-label={"休息时段 " + String(index + 1) + " 结束"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          breaks: draft.breaks.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, end: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <button
+                      className="ghost"
+                      type="button"
+                      disabled={availabilityBusy}
+                      onClick={() =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          breaks: draft.breaks.filter((_item, itemIndex) => itemIndex !== index),
+                        }))
+                      }
+                    >
+                      移除
+                    </button>
+                  </div>
+                ))}
+                <div className="actions">
+                  <button
+                    className="ghost"
+                    type="button"
+                    disabled={availabilityBusy}
+                    onClick={() =>
+                      patchAvailabilityDraft((draft) => ({
+                        ...draft,
+                        breaks: [...draft.breaks, { start: "12:00", end: "13:00" }],
+                      }))
+                    }
+                  >
+                    添加休息
+                  </button>
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="field-label">不可用日期</label>
+                {availabilityDraft.unavailable.map((block, index) => (
+                  <div className="actions" key={"availability-unavailable-" + String(index)}>
+                    <input
+                      className="text-input"
+                      type="date"
+                      style={{ width: "10rem" }}
+                      value={block.date}
+                      aria-label={"不可用日期 " + String(index + 1)}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          unavailable: draft.unavailable.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, date: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "7rem" }}
+                      value={block.start}
+                      aria-label={"不可用时段 " + String(index + 1) + " 开始"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          unavailable: draft.unavailable.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, start: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <span>–</span>
+                    <input
+                      className="text-input"
+                      type="time"
+                      style={{ width: "7rem" }}
+                      value={block.end}
+                      aria-label={"不可用时段 " + String(index + 1) + " 结束"}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          unavailable: draft.unavailable.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, end: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <input
+                      className="text-input"
+                      type="text"
+                      style={{ width: "auto", flex: "1 1 12rem" }}
+                      value={block.reason}
+                      placeholder="原因（例如休假）"
+                      aria-label={"不可用原因 " + String(index + 1)}
+                      disabled={availabilityBusy}
+                      onChange={(e) =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          unavailable: draft.unavailable.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, reason: e.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <button
+                      className="ghost"
+                      type="button"
+                      disabled={availabilityBusy}
+                      onClick={() =>
+                        patchAvailabilityDraft((draft) => ({
+                          ...draft,
+                          unavailable: draft.unavailable.filter(
+                            (_item, itemIndex) => itemIndex !== index,
+                          ),
+                        }))
+                      }
+                    >
+                      移除
+                    </button>
+                  </div>
+                ))}
+                <div className="actions">
+                  <button
+                    className="ghost"
+                    type="button"
+                    disabled={availabilityBusy}
+                    onClick={() =>
+                      patchAvailabilityDraft((draft) => ({
+                        ...draft,
+                        unavailable: [
+                          ...draft.unavailable,
+                          { date: "", start: "09:00", end: "18:00", reason: "" },
+                        ],
+                      }))
+                    }
+                  >
+                    添加不可用日期
+                  </button>
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="field-label">每日容量（小时，最多 12）</label>
+                <input
+                  className="text-input"
+                  type="number"
+                  min={0.5}
+                  max={12}
+                  step={0.5}
+                  value={availabilityDraft.daily_capacity_hours}
+                  aria-label="每日容量小时"
+                  disabled={availabilityBusy}
+                  onChange={(e) => {
+                    const hours = Number(e.target.value);
+                    if (Number.isFinite(hours)) {
+                      patchAvailabilityDraft((draft) => ({
+                        ...draft,
+                        daily_capacity_hours: hours,
+                      }));
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="field">
+                <label className="field-label">时区</label>
+                <input
+                  className="text-input"
+                  value={availabilityDraft.timezone}
+                  aria-label="时区名"
+                  disabled={availabilityBusy}
+                  onChange={(e) =>
+                    patchAvailabilityDraft((draft) => ({ ...draft, timezone: e.target.value }))
+                  }
+                />
+                <p className="hint">时段按本地时间解释；这里只保存系统时区名，不做换算。</p>
+              </div>
+
+              <div className="actions">
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => void saveAvailability()}
+                  disabled={availabilityBusy}
+                >
+                  {availabilityBusy ? "保存中…" : "保存工作时间"}
+                </button>
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => void refreshAvailability()}
+                  disabled={availabilityBusy}
+                >
+                  重新读取
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="hint">读取中…</p>
+          )}
+          {availabilityNote ? (
+            <p className="hint" role="status" aria-live="polite">
+              {availabilityNote}
+            </p>
+          ) : null}
+          {availabilityError ? <div className="alert">{availabilityError}</div> : null}
         </details>
 
         <details className="tech">

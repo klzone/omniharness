@@ -66,15 +66,24 @@
   --color-on-background: #131b2e;
 
   /* ---- 字体（含系统回退；字体文件可后补） ---- */
-  --font-display-hero: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-headline-xl: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
-  --font-headline-lg: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
-  --font-headline-md: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
-  --font-body-lg: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-body-md: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-body-sm: "Inter Variable", "Inter", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
-  --font-label-caps: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-label-sm: "Inter Variable", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  /* 大标题：思源柔黑优先，给新拟物一点柔和曲面；缺字体回退思源黑/系统黑。 */
+  --font-display-hero: "Inter Variable", "Inter", "Source Han Sans Rounded SC", "思源柔黑", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-headline-xl: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-headline-lg: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-headline-md: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-lg: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-md: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-body-sm: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  /* 中文标签不能让 IBM Plex Mono 回退到宋体：等宽拉丁之后立刻接黑体。 */
+  --font-label-caps: "IBM Plex Mono", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-label-sm: "Inter Variable", "Inter", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Source Han Sans SC", "思源黑体", "Noto Sans SC", "PingFang SC", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* 楷体不进界面层级；仅留给长引用、书信或落款等极少数场景。 */
+  --font-accent-kai: "Inter Variable", "Inter", "FZKai-Z03", "方正楷体", "KaiTi", "STKaiti", "Source Han Sans SC", "PingFang SC", sans-serif;
+  /* 宋体不进界面；保留给导出报告、正式文档、打印页。 */
+  --font-report-serif: "Inter Variable", "Inter", "Source Han Serif SC", "思源宋体", "Noto Serif SC", "Songti SC", "STSong", serif;
+  /* 设计标语 / 品牌类中文：演示夏行楷，缺字体回退黑体，绝不拖累正文。 */
+  --font-slogan: "Inter Variable", "Inter", "Yanshi Xiaxingkai", "演示夏行楷", "YanshiXiaxingkai", "STXingkai", "Xingkai SC", "Kaiti SC", "Source Han Sans SC", "PingFang SC", cursive;
 
   /* ---- 圆角（对齐 Stitch 的 borderRadius 配置） ---- */
   --radius-lg: 2rem;
@@ -95,26 +104,280 @@
 }
 
 /* ------------------------------------------------------------------ *
+ * 新拟物材质令牌（OD-UI-202 第一阶段）
+ *
+ * 只新增材质层，不替换业务色板。底材为暖白灰，强调色沿用品牌靛蓝；
+ * 凸起 = 左上高光 + 右下暖灰暗影，凹陷 = 反向内阴影。
+ * 参考：docs/brand-and-ui/neumorphism-guideline.md
+ * ------------------------------------------------------------------ */
+:root {
+  --font-display: var(--font-headline-lg);
+  --od-neu-bg: #edecea;
+  --od-neu-surface: #f0efec;
+  --od-neu-surface-high: #f3f2ef;
+  --od-neu-sunken: #e8e6e1;
+  --od-neu-sunken-deep: #e2dfd9;
+  --od-neu-ink: #3b3a37;
+  --od-neu-ink-2: #666563;
+  --od-neu-ink-3: #8a877f;
+  --od-neu-accent: #4f46e5;
+  --od-neu-accent-soft: #e5e2ff;
+  --od-neu-accent-ink: #3525cd;
+  --od-neu-focus: #3525cd;
+  --od-neu-hi: rgba(255, 255, 255, 0.92);
+  --od-neu-hi-soft: rgba(255, 255, 255, 0.78);
+  --od-neu-lo: rgba(172, 166, 154, 0.48);
+  --od-neu-lo-soft: rgba(172, 166, 154, 0.30);
+  --od-neu-line-dark: rgba(150, 144, 132, 0.20);
+  --od-neu-raise-1:
+    3px 3px 7px var(--od-neu-lo-soft),
+    -3px -3px 7px var(--od-neu-hi);
+  --od-neu-raise-2:
+    8px 8px 20px var(--od-neu-lo-soft),
+    -8px -8px 20px var(--od-neu-hi);
+  --od-neu-raise-3:
+    14px 14px 34px var(--od-neu-lo),
+    -12px -12px 30px var(--od-neu-hi);
+  --od-neu-inset-1:
+    inset 2px 2px 5px var(--od-neu-lo),
+    inset -2px -2px 5px var(--od-neu-hi);
+  --od-neu-inset-2:
+    inset 4px 4px 10px var(--od-neu-lo),
+    inset -4px -4px 10px var(--od-neu-hi);
+}
+
+.neu-app {
+  background-color: var(--od-neu-bg);
+}
+
+.font-slogan {
+  font-family: var(--font-slogan);
+  font-weight: 700;
+  text-rendering: optimizeLegibility;
+}
+
+.neu-nav {
+  min-height: 64px;
+  border-radius: 26px;
+  background: var(--od-neu-surface);
+  box-shadow:
+    var(--od-neu-raise-2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -1px 0 rgba(150, 144, 132, 0.12);
+}
+
+.neu-inset-pill,
+.neu-inset-field {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.neu-inset-field {
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.neu-inset-field:focus-within {
+  background: var(--od-neu-surface-high);
+  box-shadow:
+    var(--od-neu-inset-1),
+    0 0 0 2px var(--od-neu-focus);
+}
+
+.neu-chip {
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.neu-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.neu-icon-btn,
+.neu-window-btn,
+.neu-dock-btn {
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 180ms ease,
+    background-color 180ms ease;
+}
+
+.neu-icon-btn:hover,
+.neu-window-btn:hover,
+.neu-dock-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.neu-icon-btn:active,
+.neu-window-btn:active,
+.neu-dock-btn:active {
+  transform: none;
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.neu-icon-btn:disabled {
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.4;
+}
+
+.neu-window-close:hover {
+  background: #efc9c4;
+  color: #b4443c;
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.neu-win-cluster {
+  border-left: 1px solid var(--od-neu-line-dark);
+}
+
+.neu-popover {
+  background: var(--od-neu-surface-high);
+  box-shadow:
+    var(--od-neu-raise-3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.neu-kbd {
+  color: var(--od-neu-ink-3);
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.neu-brand-mark {
+  box-shadow:
+    var(--od-neu-raise-1),
+    0 0 0 1px rgba(150, 144, 132, 0.14);
+}
+
+.neu-composer {
+  border-radius: 18px;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-2);
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.neu-composer:focus-within {
+  background: var(--od-neu-sunken-deep);
+  box-shadow:
+    var(--od-neu-inset-2),
+    0 0 0 2px var(--od-neu-focus);
+}
+
+.neu-msg-assistant {
+  background: var(--od-neu-surface);
+  box-shadow:
+    var(--od-neu-raise-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.neu-msg-accent {
+  box-shadow:
+    var(--od-neu-raise-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.neu-send-btn {
+  box-shadow:
+    var(--od-neu-raise-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.neu-send-btn:active {
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.neu-dock-btn {
+  position: relative;
+}
+
+.neu-dock-active {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
+}
+
+.neu-dock-active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 3px;
+  background: var(--od-neu-accent);
+}
+
+.neu-nav button:focus-visible,
+.neu-dock-btn:focus-visible,
+.neu-icon-btn:focus-visible,
+.neu-window-btn:focus-visible,
+.neu-chip:focus-visible {
+  outline: 2px solid var(--od-neu-focus);
+  outline-offset: 3px;
+}
+
+/* 搜索框的焦点由 .neu-inset-field:focus-within 统一画在整颗胶囊上，
+   不再给内部 input 叠第二道环。 */
+.neu-nav input:focus-visible {
+  outline: none;
+}
+
+/* 暖色底材上的静态光晕：不使用 blur 滤镜，也不承载信息。 */
+.neu-glow-a {
+  background-image: radial-gradient(
+    closest-side,
+    rgba(199, 196, 255, 0.30) 0%,
+    rgba(255, 247, 224, 0.24) 58%,
+    transparent 100%
+  );
+}
+
+.neu-glow-b {
+  background-image: radial-gradient(
+    closest-side,
+    rgba(255, 246, 222, 0.42) 0%,
+    rgba(199, 196, 255, 0.18) 62%,
+    transparent 100%
+  );
+}
+
+.neu-glow-c {
+  background-image: radial-gradient(
+    closest-side,
+    rgba(199, 196, 255, 0.16) 0%,
+    rgba(255, 248, 232, 0.28) 58%,
+    transparent 100%
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * 玻璃拟态构件（来自 Stitch code.html 的 <style>，改为本地类）
  * ------------------------------------------------------------------ */
 .plate-sculpted {
-  /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter: blur(28px)（合成成本高、低收益）。
-     保留原有半透明底色与描边，玻璃观感由「半透明 + 阴影 + 描边」表达。 */
-  background: rgba(255, 255, 255, 0.72);
+  /* OD-UI-202：旧玻璃构件切换为新拟物凸起面。名称保留，避免大面积改类名。 */
+  background: var(--od-neu-surface);
   box-shadow:
-    0 16px 40px -12px rgba(15, 23, 42, 0.04),
-    0 4px 16px -2px rgba(79, 70, 229, 0.03);
-  border-top: 1px solid rgba(255, 255, 255, 0.95);
-  border-left: 1px solid rgba(255, 255, 255, 0.8);
-  border-right: 1px solid rgba(255, 255, 255, 0.4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    var(--od-neu-raise-2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .plate-soft-inset {
-  background: rgba(235, 240, 248, 0.55);
-  box-shadow:
-    inset 0 2px 4px rgba(15, 23, 42, 0.03),
-    inset 0 1px 2px rgba(79, 70, 229, 0.02);
+  /* OD-UI-202：与顶栏搜索、分类胶囊、附件按钮共用同一凹陷材质。 */
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
 }
 
 /* ------------------------------------------------------------------ *

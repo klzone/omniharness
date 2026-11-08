@@ -18,6 +18,7 @@ pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod external_open;
+pub mod availability;
 pub mod flow_pack;
 pub mod knowledge_governance;
 pub mod knowledge_quality;
@@ -39,8 +40,11 @@ pub mod profile_seed;
 pub mod profile_lifecycle;
 pub mod profile_starter;
 pub mod profile_rules;
+pub mod priority_rules;
 pub mod quicklog;
 pub mod route_classifier;
+pub mod schedule_store;
+pub mod scheduling;
 pub mod scene_overview;
 pub mod scheduler;
 pub mod settings;
@@ -4491,6 +4495,30 @@ fn work_cleanup_apply(
     work_cleanup::cleanup_apply(&work, vault.as_deref(), task_shell::now_secs())
 }
 
+/// 读取工作时间配置（OD-QS-406）。没有文件时返回默认值且不写盘。
+#[tauri::command(async)]
+fn availability_get(
+    state: State<'_, SharedHost>,
+) -> Result<availability::AvailabilityConfig, String> {
+    let work = work_root(&state)?;
+    availability::load(&work)
+}
+
+/// 保存工作时间配置。先校验后原子替换，失败时旧文件保持不变。
+#[tauri::command(async)]
+fn availability_set(
+    state: State<'_, SharedHost>,
+    mut config: availability::AvailabilityConfig,
+) -> Result<availability::AvailabilityConfig, String> {
+    let work = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    for block in config.unavailable.iter_mut() {
+        let (masked, _counts) = gate_user_text(&block.reason, &policy, "不可用原因")?;
+        block.reason = masked;
+    }
+    availability::save(&work, config)
+}
+
 /// 解析准备：校验门禁、过红线与掩码、组装提示词。模型调用由界面随后提交。
 #[tauri::command(async)]
 fn worklog_record_analyze(
@@ -4603,6 +4631,286 @@ fn task_append_progress(
     let root = work_root(&state)?;
     let policy = current_rule_policy(&state)?;
     task_append_progress_impl(&root, &policy, &id, &text, task_shell::now_secs())
+}
+
+/// 用户调整重要性（OD-QS-405）：source 固定为 user，理由必填并过统一闸门。
+#[tauri::command(async)]
+fn task_set_importance(
+    state: State<'_, SharedHost>,
+    id: String,
+    importance: String,
+    reason: String,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let mut counts = profile_rules::MaskCounts::default();
+    let (reason, extra) = gate_user_text(&reason, &policy, "重要性理由")?;
+    add_counts(&mut counts, extra);
+    let task = task_store::set_importance(
+        &root,
+        &id,
+        &importance,
+        task_store::IMPORTANCE_SOURCE_USER,
+        Some(&reason),
+        task_shell::now_secs(),
+    )?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// 用户指定或清除象限。quadrant 为 None 表示回到规则派生。
+#[tauri::command(async)]
+fn task_set_quadrant(
+    state: State<'_, SharedHost>,
+    id: String,
+    quadrant: Option<String>,
+    reason: Option<String>,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let mut counts = profile_rules::MaskCounts::default();
+    let reason = match reason {
+        Some(text) => {
+            let (masked, extra) = gate_user_text(&text, &policy, "象限调整理由")?;
+            add_counts(&mut counts, extra);
+            Some(masked)
+        }
+        None => None,
+    };
+    let task = task_store::set_quadrant_override(
+        &root,
+        &id,
+        quadrant.as_deref(),
+        reason.as_deref(),
+        task_shell::now_secs(),
+    )?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// 用户调整截止日期与性质。理由必填。
+#[tauri::command(async)]
+fn task_set_due(
+    state: State<'_, SharedHost>,
+    id: String,
+    due_date: Option<String>,
+    due_kind: String,
+    reason: String,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let mut counts = profile_rules::MaskCounts::default();
+    let (reason, extra) = gate_user_text(&reason, &policy, "截止调整理由")?;
+    add_counts(&mut counts, extra);
+    let task = task_store::set_due(
+        &root,
+        &id,
+        due_date.as_deref(),
+        &due_kind,
+        &reason,
+        task_shell::now_secs(),
+    )?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// 用户补充预计耗时；None 表示清除。无自由文本入参。
+#[tauri::command(async)]
+fn task_set_estimated(
+    state: State<'_, SharedHost>,
+    id: String,
+    minutes: Option<u32>,
+) -> Result<task_store::Task, String> {
+    let root = work_root(&state)?;
+    task_store::set_estimated_minutes(&root, &id, minutes, task_shell::now_secs())
+}
+
+/// 用户设置前置任务；存在性、无环与不自依赖由存储层校验。
+#[tauri::command(async)]
+fn task_set_dependency(
+    state: State<'_, SharedHost>,
+    id: String,
+    depends_on: Vec<String>,
+) -> Result<task_store::Task, String> {
+    let root = work_root(&state)?;
+    task_store::set_depends_on(&root, &id, &depends_on, task_shell::now_secs())
+}
+
+/// 任务四象限视图（OD-QS-410）：只读派生，不落盘。
+#[tauri::command(async)]
+fn task_quadrant_views(
+    state: State<'_, SharedHost>,
+    utc_offset_minutes: Option<i32>,
+) -> Result<Vec<priority_rules::QuadrantView>, String> {
+    let root = work_root(&state)?;
+    priority_rules::list_quadrant_views_at(
+        &root,
+        task_shell::now_secs(),
+        utc_offset_minutes.unwrap_or(0),
+    )
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ScheduleGenerateReport {
+    created: Vec<schedule_store::ScheduleEntry>,
+    expired: Vec<String>,
+    conflicts: Vec<scheduling::SchedulingConflict>,
+    unscheduled: Vec<scheduling::UnscheduledTask>,
+    stale: bool,
+    warnings: Vec<String>,
+    generated_at: Option<String>,
+}
+
+fn schedule_generate_impl(
+    root: &std::path::Path,
+    now: f64,
+    utc_offset_minutes: i32,
+) -> Result<ScheduleGenerateReport, String> {
+    let tasks = task_store::list_tasks(root, &task_store::TaskFilter::default())?.items;
+    let views = priority_rules::list_quadrant_views_at(root, now, utc_offset_minutes)?;
+    let availability = availability::load(root)?;
+    let expired = schedule_store::expire_stale_suggestions(root, &tasks, now)?;
+    let entries = schedule_store::list_entries(root)?;
+    let mut occupied: Vec<schedule_store::ScheduleEntry> = entries
+        .into_iter()
+        .filter(|entry| {
+            entry.is_locked
+                || matches!(
+                    entry.status.as_str(),
+                    schedule_store::STATUS_SUGGESTED | schedule_store::STATUS_CONFIRMED
+                )
+        })
+        .collect();
+    let mut existing_tasks = std::collections::HashSet::new();
+    for entry in &occupied {
+        if matches!(
+            entry.status.as_str(),
+            schedule_store::STATUS_SUGGESTED | schedule_store::STATUS_CONFIRMED
+        ) {
+            existing_tasks.insert(entry.task_id.clone());
+        }
+    }
+    // 408 只把已确认/锁定当固定层；增量生成时把既有建议也视为已占位，避免新建议重叠。
+    for entry in &mut occupied {
+        if entry.status == schedule_store::STATUS_SUGGESTED {
+            entry.is_locked = true;
+        }
+    }
+    let generated = scheduling::generate_suggestions_at(
+        &tasks,
+        &views,
+        &availability,
+        &occupied,
+        now,
+        utc_offset_minutes,
+    );
+    let mut created = Vec::new();
+    let mut warnings = Vec::new();
+    for suggestion in &generated.suggestions {
+        if existing_tasks.contains(&suggestion.task_id) {
+            continue;
+        }
+        let draft = schedule_store::ScheduleDraft {
+            id: None,
+            task_id: suggestion.task_id.clone(),
+            start_at: suggestion.start_at.clone(),
+            end_at: suggestion.end_at.clone(),
+            duration: Some(suggestion.duration),
+            is_locked: Some(false),
+        };
+        match schedule_store::create_entry(root, &draft, now) {
+            Ok(entry) => created.push(entry),
+            Err(error) => warnings.push(format!("{}：{error}", suggestion.task_id)),
+        }
+    }
+    let generated_at = schedule_store::mark_generated_at(root, now)?;
+    let stale = schedule_store::is_stale(root, &tasks)?;
+    Ok(ScheduleGenerateReport {
+        created,
+        expired,
+        conflicts: generated.conflicts,
+        unscheduled: generated.unscheduled,
+        stale,
+        warnings,
+        generated_at: Some(generated_at),
+    })
+}
+
+/// 重新生成建议：不动已确认/锁定，过期已结束任务的旧建议，只补新建议。
+#[tauri::command(async)]
+fn schedule_generate(
+    state: State<'_, SharedHost>,
+    utc_offset_minutes: Option<i32>,
+) -> Result<ScheduleGenerateReport, String> {
+    let root = work_root(&state)?;
+    schedule_generate_impl(&root, task_shell::now_secs(), utc_offset_minutes.unwrap_or(0))
+}
+
+#[tauri::command(async)]
+fn schedule_confirm(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<schedule_store::ScheduleEntry, String> {
+    let root = work_root(&state)?;
+    schedule_store::confirm_entry(&root, &id, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn schedule_adjust(
+    state: State<'_, SharedHost>,
+    id: String,
+    start_at: String,
+    end_at: String,
+    reason: String,
+) -> Result<schedule_store::AdjustmentReport, String> {
+    let root = work_root(&state)?;
+    schedule_store::adjust_entry(
+        &root,
+        &id,
+        &start_at,
+        &end_at,
+        &reason,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn schedule_cancel(
+    state: State<'_, SharedHost>,
+    id: String,
+    reason: Option<String>,
+) -> Result<schedule_store::ScheduleEntry, String> {
+    let root = work_root(&state)?;
+    schedule_store::cancel_entry(&root, &id, reason.as_deref(), task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn schedule_lock(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<schedule_store::ScheduleEntry, String> {
+    let root = work_root(&state)?;
+    schedule_store::lock_entry(&root, &id, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn schedule_list(
+    state: State<'_, SharedHost>,
+) -> Result<schedule_store::ScheduleListing, String> {
+    let root = work_root(&state)?;
+    schedule_store::list_entry_views(&root, task_shell::now_secs())
 }
 
 #[tauri::command(async)]
@@ -6441,6 +6749,8 @@ pub fn run() {
             worklog_migrate_apply,
             work_cleanup_preview,
             work_cleanup_apply,
+            availability_get,
+            availability_set,
             worklog_record_analyze,
             worklog_record_analyze_apply,
             worklog_record_analyze_failed,
@@ -6449,6 +6759,18 @@ pub fn run() {
             task_update,
             task_transition,
             task_append_progress,
+            task_set_importance,
+            task_set_quadrant,
+            task_set_due,
+            task_set_estimated,
+            task_set_dependency,
+            task_quadrant_views,
+            schedule_generate,
+            schedule_confirm,
+            schedule_adjust,
+            schedule_cancel,
+            schedule_lock,
+            schedule_list,
             task_delete,
             task_list,
             task_candidate_list,
@@ -7205,6 +7527,96 @@ mod host_wrapper_tests {
             "窗口销毁收尾后不得再报告引擎在运行：{}",
             health
         );
+    }
+}
+
+#[cfg(test)]
+mod schedule_ipc_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    const NOW: f64 = 1_791_000_000.0;
+
+    struct TempRoot {
+        path: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "omnidesk-qs409-{tag}-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn root(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn generate_persists_suggestions_and_stale_tracks_task_updates() {
+        let temp = TempRoot::new("generate");
+        let task = task_store::create_task(
+            temp.root(),
+            &task_store::TaskDraft {
+                title: "写周报".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        task_store::set_importance(
+            temp.root(),
+            &task.id,
+            task_store::IMPORTANCE_HIGH,
+            task_store::IMPORTANCE_SOURCE_RULE,
+            Some("本周评审要用"),
+            NOW,
+        )
+        .unwrap();
+        task_store::set_estimated_minutes(temp.root(), &task.id, Some(60), NOW).unwrap();
+        task_store::set_due(
+            temp.root(),
+            &task.id,
+            Some("2026-11-20"),
+            task_store::DUE_KIND_HARD,
+            "评审日期",
+            NOW,
+        )
+        .unwrap();
+
+        let first = schedule_generate_impl(temp.root(), NOW, 0).unwrap();
+        assert!(!first.created.is_empty(), "{first:?}");
+        assert!(!first.stale);
+        assert!(first.generated_at.is_some());
+
+        let second = schedule_generate_impl(temp.root(), NOW + 1.0, 0).unwrap();
+        assert!(second.created.is_empty(), "已建议条目不应被重复补建");
+
+        task_store::update_task(
+            temp.root(),
+            &task.id,
+            &task_store::TaskPatch {
+                title: Some("改过标题".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap();
+        let tasks = task_store::list_tasks(temp.root(), &task_store::TaskFilter::default())
+            .unwrap()
+            .items;
+        assert!(schedule_store::is_stale(temp.root(), &tasks).unwrap());
     }
 }
 

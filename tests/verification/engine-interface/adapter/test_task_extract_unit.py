@@ -81,6 +81,13 @@ class TaskExtractPromptTests(unittest.TestCase):
         self.assertIn("suggested_state", JSON_OUTPUT_SPEC)
         self.assertIn("不会自动应用", JSON_OUTPUT_SPEC)
 
+    def test_spec_requires_importance_fields_and_constraints(self):
+        self.assertIn('"importance"', JSON_OUTPUT_SPEC)
+        self.assertIn('"importance_reason"', JSON_OUTPUT_SPEC)
+        self.assertIn("不要仅因为领导提出就判「高」", JSON_OUTPUT_SPEC)
+        self.assertIn("不要仅因为没有截止日期就判「低」", JSON_OUTPUT_SPEC)
+        self.assertIn("100 字", JSON_OUTPUT_SPEC)
+
     def test_cli_returns_prompt_json(self):
         payload = {
             "schema": EXTRACT_SCHEMA,

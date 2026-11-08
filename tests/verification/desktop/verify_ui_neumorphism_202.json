@@ -1,0 +1,152 @@
+{
+  "task": "OD-UI-202",
+  "passed": 29,
+  "total": 29,
+  "checks": [
+    {
+      "name": "theme_warm_tokens",
+      "ok": true,
+      "detail": "暖白灰底材、凹陷面与品牌靛焦点色齐备"
+    },
+    {
+      "name": "theme_raise_pair",
+      "ok": true,
+      "detail": "凸起 L1/L2/L3 成对阴影令牌存在"
+    },
+    {
+      "name": "theme_inset_pair",
+      "ok": true,
+      "detail": "凹陷 L1/L2 成对内阴影存在"
+    },
+    {
+      "name": "theme_focus_visible",
+      "ok": true,
+      "detail": "控件焦点环 2px 且使用品牌靛"
+    },
+    {
+      "name": "theme_legacy_plate_materials",
+      "ok": true,
+      "detail": "旧玻璃构件切到新拟物材质，共享胶囊自动统一"
+    },
+    {
+      "name": "theme_no_dead_chat_panel",
+      "ok": true,
+      "detail": "未使用的整幅对话面板类已移除，避免空态出现巨大空白卡片"
+    },
+    {
+      "name": "type_soft_display_heading",
+      "ok": true,
+      "detail": "大标题优先思源柔黑，缺字体回退思源黑"
+    },
+    {
+      "name": "type_body_sans",
+      "ok": true,
+      "detail": "正文与控件优先思源黑体，宋体不进入界面"
+    },
+    {
+      "name": "type_kai_out_of_ui",
+      "ok": true,
+      "detail": "方正楷体只保留为引用/落款字体，不进入标题层级"
+    },
+    {
+      "name": "type_serif_export_only",
+      "ok": true,
+      "detail": "思源宋体只留给导出报告与打印文档"
+    },
+    {
+      "name": "type_cjk_brush_slogan",
+      "ok": true,
+      "detail": "标语优先演示夏行楷，但拉丁先走 Inter，避免英文变成手写体"
+    },
+    {
+      "name": "type_body_line_height",
+      "ok": true,
+      "detail": "全局正文行高 1.65"
+    },
+    {
+      "name": "type_slogan_bold_header",
+      "ok": true,
+      "detail": "首页欢迎句使用加粗行楷，标语不再发虚"
+    },
+    {
+      "name": "type_table_controls_sans",
+      "ok": true,
+      "detail": "Markdown 表格回到无衬线，避免密集数据用宋体"
+    },
+    {
+      "name": "type_mono_cjk_fallback",
+      "ok": true,
+      "detail": "等宽/标签字体都接中文黑体回退，避免日历与卡片标签落到宋体"
+    },
+    {
+      "name": "type_markdown_body_font",
+      "ok": true,
+      "detail": "Markdown 正文显式使用界面字体，不依赖父级继承"
+    },
+    {
+      "name": "topnav_raised_bar",
+      "ok": true,
+      "detail": "顶栏为凸起圆角长条"
+    },
+    {
+      "name": "topnav_inset_search",
+      "ok": true,
+      "detail": "搜索与 Profile 徽标为凹陷材质"
+    },
+    {
+      "name": "topnav_tactile_buttons",
+      "ok": true,
+      "detail": "日期、设置/通知与快捷键键帽为凸起"
+    },
+    {
+      "name": "topnav_popovers_solid",
+      "ok": true,
+      "detail": "日期与 Profile 弹层使用实色凸起面，不再模糊"
+    },
+    {
+      "name": "topnav_no_glass",
+      "ok": true,
+      "detail": "顶栏不再使用玻璃拟态"
+    },
+    {
+      "name": "app_warm_base",
+      "ok": true,
+      "detail": "应用底材换暖白灰，光晕保留但改为静态暖色"
+    },
+    {
+      "name": "home_composer_inset",
+      "ok": true,
+      "detail": "输入区压入、发送按钮凸起"
+    },
+    {
+      "name": "home_messages_materials",
+      "ok": true,
+      "detail": "用户消息轻凸、助手消息浅面，不全做成厚卡片"
+    },
+    {
+      "name": "home_no_backdrop",
+      "ok": true,
+      "detail": "首页对话与画布不再使用背景模糊"
+    },
+    {
+      "name": "pickers_match_topnav",
+      "ok": true,
+      "detail": "归类与模型弹层与顶栏弹层同材质"
+    },
+    {
+      "name": "dock_free_floating",
+      "ok": true,
+      "detail": "Dock 入口凸起，当前项凹陷并保留品牌靛标记"
+    },
+    {
+      "name": "dock_no_container_glass",
+      "ok": true,
+      "detail": "Dock 不再有玻璃胶囊容器"
+    },
+    {
+      "name": "window_controls_tactile",
+      "ok": true,
+      "detail": "窗口按钮凸起，关闭按钮保留危险色悬停"
+    }
+  ]
+}
