@@ -15,7 +15,7 @@
   3. 点「复制」→ 出现「已复制」或「复制失败（系统未允许剪贴板）」之一，二者都如实记录；
   4. 点「朗读」→ 出现「开始朗读」或「本机没有可用的语音朗读能力」之一；
   5. 点「分支到新对话」→ 数据根里真的出现一条带全部上文的新线程（文件事实）；
-  6. 顶栏：徽标只显示「专业」/「标准」，「IPC ON/OFF」，无人物头像占位（静态源码 + 截图）；
+  6. 顶栏：徽标只显示「专业」/「标准」，连接状态只用一个小圆点，无人物头像占位（静态源码 + 截图）；
   7. 点输入区「+」→ 真的弹出系统文件选择框（宿主 dialog 插件生效），点 Cancel 关闭；
   8. 源隔离根与 ~/.dsh、~/.agents 指纹前后一致。
 
@@ -189,7 +189,9 @@ def source_checks() -> dict:
         "tips_assistant": 'data-testid="assistant-message-tips"' in home,
         "picker_button": 'data-testid="attachment-pick"' in home,
         "profile_badge_short": 'return view.saved ? "专业" : "标准";' in top,
-        "ipc_pill": "IPC ON" in top and "IPC OFF" in top,
+        "engine_status_dot": 'data-testid="engine-status-dot"' in top
+        and '"已连接"' in top and '"未连接"' in top
+        and "IPC ON" not in top,
         "no_avatar_block": "rounded-full bg-surface-container-high ring-1" not in top,
         "no_mascot": "mascot" not in canvas,
         "dialog_plugin": "tauri_plugin_dialog::init()" in rust,

@@ -571,7 +571,6 @@ export function HomeChat({
     setActiveTaskStatus(null);
   }, []);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
-  const [workspaceNote, setWorkspaceNote] = useState<string | null>(null);
   /** 引擎上报的上下文用量（ACP `usage_update` → progress/usage 的 used/size）；未上报时为 null。 */
   const [usage, setUsage] = useState<{ used: number; size: number } | null>(null);
   const [admission, setAdmission] = useState<AdmissionState>("checking");
@@ -640,7 +639,6 @@ export function HomeChat({
   const [mentionItems, setMentionItems] = useState<ReferenceCandidate[]>([]);
   const [mentionBusy, setMentionBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [voiceNote, setVoiceNote] = useState(false);
   /** 生成中再次发送时的可见提示（不再静默丢弃）。 */
   const [sendNote, setSendNote] = useState<string | null>(null);
   /** OD-ARCH-142：回程有未识别占位符时，页面顶部提示一次。 */
@@ -965,17 +963,14 @@ export function HomeChat({
     try {
       const prep = await shell.prepareWorkspaceDir();
       if (prep.ok && prep.workspace_dir) {
-        setWorkspaceNote(null);
         workspaceNoteRef.current = null;
         return prep.workspace_dir;
       }
       const reason = prep.error ?? "宿主未返回可用的工作目录。";
-      setWorkspaceNote(reason);
       workspaceNoteRef.current = reason;
       return null;
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
-      setWorkspaceNote(reason);
       workspaceNoteRef.current = reason;
       return null;
     }
@@ -2937,7 +2932,7 @@ export function HomeChat({
 
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
-      <div className="plate-sculpted p-3 sm:p-3.5 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.06)] border border-white flex-shrink-0 rounded-xl">
+      <div className="plate-sculpted p-3 sm:p-3.5 flex-shrink-0 rounded-[20px]">
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
             来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (
@@ -2997,7 +2992,7 @@ export function HomeChat({
             className="w-full max-h-[7.5rem] resize-none bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-outline/60 focus:ring-0 focus:outline-none overflow-y-auto leading-relaxed"
             placeholder={
               canSubmit
-                ? "与 OmniDesk 协同探索、下达任务或记录灵感…"
+                ? "输入消息…"
                 : factsLoading && !facts
                   ? "正在读取模型端点信息…"
                   : "模型权限未开启：可在设置中确认端点后启用"
@@ -3061,11 +3056,6 @@ export function HomeChat({
             {attachNote}
           </p>
         ) : null}
-        {voiceNote ? (
-          <p className="mt-2 px-1 text-[11px] text-outline" data-testid="voice-note">
-            语音输入需要配置语音模型端点，当前版本未开放。可以先用系统听写或文字输入。
-          </p>
-        ) : null}
         <div className="mt-2.5 pt-2 border-t border-surface-variant/30 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5">
             {/* 对话归类（OD-ARCH-063 S1）：单枚下拉胶囊（色点 + 当前分类 + 箭头），
@@ -3093,17 +3083,6 @@ export function HomeChat({
                 <span>新对话</span>
               </button>
             ) : null}
-            {/* 语音（OD-ARCH-077 S2）：当前没有语音端点，如实说明，不再灰成“即将可用”。 */}
-            <button
-              onClick={() => setVoiceNote((v) => !v)}
-              data-hover-hint="语音输入尚未开放：需要先配置语音模型端点"
-              aria-expanded={voiceNote}
-              data-testid="voice-button"
-              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] hover:bg-surface-container"
-            >
-              <Icon name="mic" className="w-[13px] h-[13px]" />
-              <span>语音</span>
-            </button>
           </div>
           <div className="flex items-center space-x-2">
             {/* 模型选择（自绘下拉 + 思考等级）：与工作台同一套视觉。 */}
@@ -3178,64 +3157,38 @@ export function HomeChat({
         </p>
       ) : null}
 
-      {/* 底部状态行：模型权限 + Token 上下文用量，一行显示。
-          顶部「LOCAL IPC ACTIVE」表示引擎 IPC 健康；这里表示权限与用量，含义不同。
-          Token 只显示引擎通过 progress/usage 上报的真实 used/size，不自行估算。 */}
-      <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 px-1 flex-shrink-0">
-        <span className="inline-flex items-center gap-1.5 min-w-0">
-          <Icon name="shield-check" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
-          <span className="font-label-caps text-[10px] text-outline truncate" data-hover-hint={permissionDetail}>
-            {admission === "checking"
-              ? "模型权限：正在读取宿主事实…"
-              : admission === "ready"
-                ? `模型权限：已开启 · ${categoryText}`
-                : facts && facts.configurable
-                  ? `模型权限：未开启（当前端点：${categoryText}）——请到设置里开启对应类别`
-                  : "模型权限：未开启，提交已关闭"}
+      {/* 底部只留真正需要用户处理的状态：模型未开启时给出入口，其余不常驻。 */}
+      {admission === "blocked" || admission === "checking" ? (
+        <div className="mt-1.5 flex items-center justify-center gap-3 px-1 flex-shrink-0">
+          <span className="inline-flex items-center gap-1.5 min-w-0" data-hover-hint={permissionDetail}>
+            <Icon name="shield-check" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
+            <span className="text-[10.5px] text-outline truncate">
+              {admission === "checking" ? "正在连接模型…" : "模型未开启"}
+            </span>
           </span>
           {admission === "blocked" ? (
             <button
               onClick={() => onNavigate("settings")}
-              className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container text-primary font-label-caps text-[10px] hover:bg-surface-container-high transition-colors"
+              className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container text-primary text-[10.5px] hover:bg-surface-container-high transition-colors"
             >
               去设置
             </button>
           ) : null}
-        </span>
-        <span
-          className="inline-flex items-center gap-1.5 min-w-0"
-          data-hover-hint="引擎上报的上下文用量（used / size tokens）；未上报时显示「—」，不自行估算。"
+        </div>
+      ) : null}
+      {usage && usage.size > 0 && usage.used / usage.size >= 0.8 ? (
+        <p className="text-[10.5px] text-amber-700 text-center pb-1 flex-shrink-0">
+          上下文接近上限
+        </p>
+      ) : null}
+      {engineCancel !== null ? (
+        <p
+          className="text-[10.5px] text-outline text-center pb-1 flex-shrink-0"
+          data-hover-hint={describeEngineCancelOutcome(engineCancel).message}
         >
-          <Icon name="trend-up" className="w-[13px] h-[13px] text-primary/80 flex-shrink-0" />
-          <span className="font-label-caps text-[10px] text-outline tabular-nums truncate">
-            {usage
-              ? `Token 上下文：${usage.used.toLocaleString()} / ${usage.size.toLocaleString()}`
-              : "Token 上下文：—（引擎未上报）"}
-          </span>
-        </span>
-        {/* 没加载 Profile 规则 = 纯净底座：必须说清楚，不能让用户以为拦截还在（OD-ARCH-068）。 */}
-        {admission === "ready" && preset !== null ? (
-          <span
-            className="font-label-caps text-[10px] text-outline truncate"
-            data-hover-hint="规则资产随 Profile 挂载（应用数据根下的 profiles/<Profile 名>/rules.json）；可在设置 →「规则资产」查看和修改。"
-          >
-            规则：{preset.rulesLoaded ? "已加载 Profile 规则" : "未加载（纯净底座）"}
-          </span>
-        ) : null}
-        {engineCancel !== null ? (
-          <span
-            className="font-label-caps text-[10px] text-outline truncate"
-            data-hover-hint={describeEngineCancelOutcome(engineCancel).message}
-          >
-            取消：{describeEngineCancelOutcome(engineCancel).message}
-          </span>
-        ) : null}
-        {workspaceNote ? (
-          <span className="font-label-caps text-[10px] text-outline truncate" data-hover-hint={workspaceNote}>
-            工作目录：{workspaceNote}
-          </span>
-        ) : null}
-      </div>
+          已取消
+        </p>
+      ) : null}
 
       {/* 空对话时的下方留白：与上方留白等分，输入区才真正落在竖直中部
           （只留上方一条会把输入框顶到底部——OD-ARCH-072 首轮实测发现）。 */}

@@ -26,6 +26,9 @@ import type {
   KnowledgeVaultRootStatus,
   KnowledgeVaultScan,
   LibraryRootInfo,
+  MigrationPreview,
+  MigrationReport,
+  WorkingRootInfo,
   LocalRootInfo,
   ModelCategory,
   ModelEntry,
@@ -362,6 +365,21 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryMessage, setLibraryMessage] = useState<string | null>(null);
   const [librarySaveError, setLibrarySaveError] = useState<string | null>(null);
+
+  // —— 工作记录根（OD-WR-315）：记录、任务与回收目录的共同根 ——
+  const [workingInfo, setWorkingInfo] = useState<WorkingRootInfo | null>(null);
+  const [workingError, setWorkingError] = useState<string | null>(null);
+  const [workingInput, setWorkingInput] = useState("");
+  const [workingBusy, setWorkingBusy] = useState(false);
+  const [workingMessage, setWorkingMessage] = useState<string | null>(null);
+  const [workingSaveError, setWorkingSaveError] = useState<string | null>(null);
+
+  // —— 存量周文件迁移（OD-WR-309）：用户先预览、勾选确认后才移动 ——
+  const [migrationPreview, setMigrationPreview] = useState<MigrationPreview | null>(null);
+  const [migrationReport, setMigrationReport] = useState<MigrationReport | null>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [migrationConfirmed, setMigrationConfirmed] = useState(false);
 
   // —— 知识库根（OD-KB-001 P1）：只读，独立于库根 ——
   const [vaultStatus, setVaultStatus] = useState<KnowledgeVaultRootStatus | null>(null);
@@ -1215,6 +1233,17 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     }
   }, []);
 
+  const refreshWorking = useCallback(async () => {
+    try {
+      const r = await shell.workRootInfo();
+      setWorkingInfo(r);
+      setWorkingError(r.resolved ? null : r.error);
+    } catch (e) {
+      setWorkingInfo(null);
+      setWorkingError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   const refreshVault = useCallback(async () => {
     try {
       const r = await shell.knowledgeVaultStatus();
@@ -1394,11 +1423,20 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   useEffect(() => {
     void refresh();
     void refreshLibrary();
+    void refreshWorking();
     void refreshAdmission();
     void refreshScheduler();
     void refreshModel();
     void refreshDecl();
-  }, [refresh, refreshLibrary, refreshAdmission, refreshScheduler, refreshModel, refreshDecl]);
+  }, [
+    refresh,
+    refreshLibrary,
+    refreshWorking,
+    refreshAdmission,
+    refreshScheduler,
+    refreshModel,
+    refreshDecl,
+  ]);
 
   // 知识库根只在打开成果页时读一次状态；扫描必须由用户手动触发。
   useEffect(() => {
@@ -1745,6 +1783,55 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       setLibraryBusy(false);
     }
   }, [libraryInput, refreshLibrary]);
+
+  const saveWorkingRoot = useCallback(async () => {
+    setWorkingBusy(true);
+    setWorkingSaveError(null);
+    setWorkingMessage(null);
+    try {
+      const r = await shell.setWorkingRoot(workingInput);
+      setWorkingMessage(r.note + " 当前目录：" + r.working_root);
+      setWorkingInput("");
+      await refreshWorking();
+    } catch (e) {
+      setWorkingSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkingBusy(false);
+    }
+  }, [workingInput, refreshWorking]);
+
+  const previewMigration = useCallback(async () => {
+    setMigrationBusy(true);
+    setMigrationError(null);
+    setMigrationReport(null);
+    try {
+      const r = await shell.worklogMigratePreview();
+      setMigrationPreview(r);
+      setMigrationConfirmed(false);
+    } catch (e) {
+      setMigrationPreview(null);
+      setMigrationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMigrationBusy(false);
+    }
+  }, []);
+
+  const applyMigration = useCallback(async () => {
+    if (!migrationConfirmed) return;
+    setMigrationBusy(true);
+    setMigrationError(null);
+    try {
+      const report = await shell.worklogMigrateApply(true);
+      setMigrationReport(report);
+      setMigrationConfirmed(false);
+      const next = await shell.worklogMigratePreview();
+      setMigrationPreview(next);
+    } catch (e) {
+      setMigrationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMigrationBusy(false);
+    }
+  }, [migrationConfirmed]);
 
   const openArtifacts = useCallback(async () => {
     setError(null);
@@ -3062,7 +3149,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
           </div>
         ) : declError ? null : (
           <p className="hint">
-            当前 Profile 没有场景声明，Dock 只显示平台固有入口（首页 / 历史会话 / 知识库）。
+            当前 Profile 没有场景声明，Dock 只显示平台固有入口（首页 / 知识库）。
             需要业务场景时，在下方填入声明并保存，或先在顶栏切到带场景的 Profile。
           </p>
         )}
@@ -3829,6 +3916,168 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             环境变量 <span className="mono">OMNIDESK_KNOWLEDGE_ROOT</span> 优先级高于这里的设置，
             用于开发/测试隔离；取消该变量后，这里的保存选择才会生效。
           </p>
+        </details>
+
+        <details className="tech">
+          <summary>工作记录临时层</summary>
+          <p className="hint">
+            工作记录、任务与回收目录都放在默认
+            <span className="mono"> {workingInfo?.default_root ?? "~/OmniDesk/work"}</span>。
+            这里改的是之后新建记录与任务的位置；既有文件不迁移、不覆盖、不删除。
+          </p>
+          {workingError ? (
+            <div className="alert">当前工作记录目录不可用：{workingError}</div>
+          ) : null}
+          {workingInfo && workingInfo.resolved ? (
+            <div
+              className="status-card"
+              role="group"
+              aria-label={"工作记录根状态：当前生效 " + (workingInfo.working_root ?? "不可用")}
+            >
+              <div className="status-row">
+                <span className="k">当前生效</span>
+                <span className="v mono">{workingInfo.working_root ?? "不可用"}</span>
+              </div>
+              <div className="status-row">
+                <span className="k">来源</span>
+                <span className="v">
+                  {workingInfo.source
+                    ? SOURCE_LABEL[workingInfo.source] ?? workingInfo.source
+                    : "未知"}
+                </span>
+              </div>
+              <div className="status-row">
+                <span className="k">已保存的选择</span>
+                <span className="v mono">
+                  {workingInfo.configured_root ?? "未设置（使用默认）"}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          {workingInfo?.source === "env_override" ? (
+            <div className="alert">
+              工作记录根被环境变量 OMNIDESK_WORK_ROOT 覆盖为
+              {workingInfo.env_override ?? "（未知）"}，此处保存的选择要等该变量取消后才会生效。
+            </div>
+          ) : null}
+          <div className="field">
+            <label className="field-label">
+              改为新的绝对路径（例如 /home/you/OmniDesk/work）
+            </label>
+            <input
+              className="text-input"
+              value={workingInput}
+              onChange={(e) => setWorkingInput(e.target.value)}
+              placeholder="/home/you/OmniDesk/work"
+              aria-label="工作记录根绝对路径"
+            />
+            <p className="hint">
+              会被拒绝：仓库内、原版 DSH / agent / Codex 的私有目录、应用自身数据目录、
+              非绝对路径，以及指向这些位置的软链接。保存前会在目标目录做一次写入探针并立即清理。
+            </p>
+          </div>
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => void saveWorkingRoot()}
+              disabled={workingBusy || workingInput.trim().length === 0}
+            >
+              {workingBusy ? "校验并保存中…" : "校验并保存"}
+            </button>
+            <button className="ghost" onClick={() => void refreshWorking()}>
+              刷新状态
+            </button>
+          </div>
+          {workingMessage ? (
+            <p className="hint" role="status" aria-live="polite">
+              {workingMessage}
+            </p>
+          ) : null}
+          {workingSaveError ? <div className="alert">{workingSaveError}</div> : null}
+        </details>
+
+        <details className="tech">
+          <summary>迁移旧周文件（一次性）</summary>
+          <p className="hint">
+            把库根「工作记录」下的周文件拆成一条条记录，原文件按字节不动地移入工作记录临时层的
+            「周文件存档」。任一步失败会整体回滚；成功后重跑是空操作。
+          </p>
+          <div className="actions">
+            <button
+              className="ghost"
+              onClick={() => void previewMigration()}
+              disabled={migrationBusy}
+            >
+              {migrationBusy ? "读取中…" : "预览待迁移内容"}
+            </button>
+          </div>
+          {migrationPreview ? (
+            <>
+              <div className="status-card">
+                <div className="status-row">
+                  <span className="k">周文件</span>
+                  <span className="v">{migrationPreview.weeks.length} 个</span>
+                </div>
+                <div className="status-row">
+                  <span className="k">记录条数</span>
+                  <span className="v">{migrationPreview.entry_count} 条</span>
+                </div>
+                <div className="status-row">
+                  <span className="k">存档目录</span>
+                  <span className="v mono">{migrationPreview.archive_dir}</span>
+                </div>
+              </div>
+              {migrationPreview.weeks.length > 0 ? (
+                <ul className="hint">
+                  {migrationPreview.weeks.map((plan) => (
+                    <li key={plan.week}>
+                      <span className="mono">{plan.week}</span> · {plan.entries.length} 条
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">没有可迁移的周文件。</p>
+              )}
+              {migrationPreview.skipped.length > 0 ? (
+                <p className="hint">
+                  跳过 {migrationPreview.skipped.length} 个非周文件（例如
+                  {migrationPreview.skipped.slice(0, 3).join("、")}
+                  {migrationPreview.skipped.length > 3 ? "…" : ""}）。
+                </p>
+              ) : null}
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={migrationConfirmed}
+                  onChange={(e) => setMigrationConfirmed(e.target.checked)}
+                />
+                <span>
+                  我已确认：会新建 {migrationPreview.entry_count} 条记录，并把
+                  {migrationPreview.weeks.length} 个周文件移入存档。
+                </span>
+              </label>
+              <div className="actions">
+                <button
+                  className="primary"
+                  onClick={() => void applyMigration()}
+                  disabled={
+                    migrationBusy ||
+                    !migrationConfirmed ||
+                    migrationPreview.entry_count === 0
+                  }
+                >
+                  {migrationBusy ? "执行中…" : "执行迁移"}
+                </button>
+              </div>
+            </>
+          ) : null}
+          {migrationReport ? (
+            <p className="hint" role="status" aria-live="polite">
+              已新建 {migrationReport.records_created} 条记录，归档{" "}
+              {migrationReport.weeks_archived} 个周文件。
+            </p>
+          ) : null}
+          {migrationError ? <div className="alert">{migrationError}</div> : null}
         </details>
 
         <details className="tech">

@@ -144,8 +144,8 @@ def main() -> int:
           str(weekly_branch.count("<BandMetric")))
     for icon in ('icon="note"', 'icon="checklist"', 'icon="clock"', 'icon="trend-up"'):
         check("band_icon" + icon.split('"')[1], icon in weekly_branch, "")
-    check("band_has_subtitle_slot", "subtitle" in strip_tsx and "subtitle ?" in strip_tsx,
-          "optional english subtitle")
+    check("band_has_no_subtitle", "subtitle" not in strip_tsx,
+          "指标卡不再有英文副标题")
     check("band_ratio_hidden_without_data",
           "width === null ? null :" in strip_tsx and "ratio={reportShare}" in strip_tsx,
           "no progress bar without numerator/denominator")
@@ -168,7 +168,7 @@ def main() -> int:
           and "relative mt-auto pt-2 flex items-center" in strip_tsx,
           "横向长方形：左侧图标列、右侧内容列，底行说明")
     check("band_card_compact_height",
-          "rounded-2xl border px-4 py-3 " in strip_tsx
+          "rounded-[20px] border border-white/90 bg-white/78 px-4 py-3 " in strip_tsx
           and "relative mt-1.5 h-[4px]" in strip_tsx,
           "内边距与柔光斑收紧，卡高约 100px")
     check("board_matches_nav_width",
@@ -201,9 +201,9 @@ def main() -> int:
           all(t in strip_tsx for t in ("violet: {", "cyan: {", "indigo: {", "amber: {"))
           and all(f'color="{c}"' in weekly_branch for c in ("violet", "cyan", "indigo", "amber")),
           "四张卡各一色")
-    check("band_index_numbers",
-          all(f'index="0{i}"' in weekly_branch for i in (1, 2, 3, 4)),
-          "卡序号 01–04")
+    check("band_no_index_numbers",
+          'index="' not in weekly_branch and "index:" not in strip_tsx,
+          "卡面不再叠 01–04 序号")
     check("other_scenes_unchanged_metrics",
           'scene.key === "project" ? "本月阶段成果" : "本周产出"' in strip_tsx, "")
 
@@ -251,8 +251,8 @@ def main() -> int:
     check("timeline_no_nested_scroll_when_narrow",
           "max-h-[70vh] max-lg:max-h-none" in tl_tsx,
           "single column page does not nest a scrolling timeline")
-    check("history_heading_chinese", "历史对话" in scene_tsx, "")
-    check("threads_actions_kept", "去对话 · 新开" in scene_tsx and "scene-category-picker" in (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8"), "")
+    check("history_heading_chinese", "本场景对话" in scene_tsx, "")
+    check("threads_actions_kept", "新对话" in scene_tsx and "scene-category-picker" in (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8"), "")
     check("history_category_picker_styled", "<CategoryPicker" in scene_tsx and "scene-category-picker" in (SRC / "shell" / "CategoryPicker.tsx").read_text(encoding="utf-8"), "")
 
     # ---- S04 中栏两行截断 + 右栏编号卡 ----
@@ -350,36 +350,26 @@ def main() -> int:
     check("section_title_hierarchy",
           all("text-[16px] font-semibold tracking-tight" in t for t in (quad_tsx, tl_tsx, scene_tsx)),
           "区块标题三级层级中的一级")
-    check("subtitle_tracking",
-          "tracking-[0.16em]" in quad_tsx and "tracking-[0.16em]" in tl_tsx,
-          "英文副标题拉开字距")
     # OD-ARCH-097 S01 去掉格内说明行后格子自然变矮（128px → 112px），轴标占用了列间距。
     check("quadrant_roomier",
           "min-h-[112px]" in quad_tsx and "gap-2.5" in quad_tsx and "pt-3.5" in quad_tsx,
           "四象限留白")
     check("timeline_roomier", "gap-2.5" in tl_tsx and "leading-[1.7]" in tl_tsx, "条目行距")
 
-    # ---- 英文副标题可配置、缺省不渲染 ----
-    check("subtitle_configurable", "subtitles?: Partial<" in scenes_ts, "scene config field")
-    check("subtitle_optional_render",
-          all(f"{name} ? (" in text for name, text in (
-              ("subtitle", tl_tsx),
-              ("def.subtitles?.artifacts", scene_tsx),
-              ("def.subtitles?.history", scene_tsx),
-          )) and "{subtitle ? (" in strip_tsx, "empty subtitle leaves no row")
-    check("band_subtitles_from_scene_config",
-          all(f"subtitle={{scene.subtitles?.{k}}}" in strip_tsx
-              for k in ("records", "weekly", "report", "overdue")),
-          "four band subtitles are configurable, not hard-coded")
+    # ---- 工作记录页不再有英文副标题 ----
+    check("weekly_no_subtitles", "subtitle" not in quad_tsx and "subtitle" not in tl_tsx,
+          "区块标题不再带英文小标")
+    check("weekly_band_no_subtitles",
+          "subtitle" not in strip_tsx.split('scene.key === "weekly" ? (')[1].split("</>")[0],
+          "四格指标不再带英文小标")
+    check("weekly_no_english_defaults",
+          not any(s in scenes_ts for s in ("WEEKLY LOG", "ARTIFACTS", "RECORDS", "OVERDUE")), "")
     check("band_metric_ax_group",
           'role="group"' in strip_tsx and 'aria-label={`${label}' in strip_tsx,
           "WebKit 不单列四栏段落，用 group + aria-label 合成可读节点")
     check("timeline_ax_count_label",
           "aria-label=" in tl_tsx and '"本周记录 " + week' in tl_tsx,
           "卡片头用 aria-label 暴露可见/总数")
-    check("subtitle_defaults",
-          all(s in scenes_ts for s in ("WEEKLY LOG", "ARTIFACTS", "RECORDS", "OVERDUE")), "")
-
     # ---- 编译并执行真实归类模块 ----
     tmp = Path(tempfile.mkdtemp(prefix="od093-"))
     compiled = compile_ts([SRC / "weekTimeline.ts", SRC / "weeklyQuadrants.ts"], tmp / "q")

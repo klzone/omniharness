@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OD-ARCH-077 S1/S2 真实窗口验收：@ 引用 → 附件 chip → 正文送达模型 → 语音说明 → 能力冻结。
+"""OD-ARCH-077 S1/S2 真实窗口验收：@ 引用 → 附件 chip → 正文送达模型 → 未开放入口移除 → 能力冻结。
 
 与旧版的区别：每一条结论都由真实布尔判定，界面元素通过 AT-SPI 按名称定位，
 不再用「进程还活着」冒充通过。旧版点击了输入框下方的空白处，候选列表根本没打开。
@@ -10,7 +10,7 @@
   2. 点候选 → 出现 attachment chip，输入框文字含文件名；
   3. 发送 → 回环合成端点实际收到附件正文里的唯一标记（证明正文进了模型请求）；
   4. 移除 chip → 原文件仍在磁盘；
-  5. 点「语音」→ 出现“当前版本未开放”说明（界面文字或可见变化）；
+  5. 指令坞不再出现未开放的「语音」按钮；
   6. 设置 → 能力管理：冻结文案可见、没有插件市场入口；
   7. 源隔离根、`~/.dsh`、`~/.agents` 指纹前后一致。
 
@@ -127,7 +127,8 @@ def source_checks() -> dict:
         "no_capability_market_cmd": "capability_market" not in rust,
         "mention_ui": "data-testid=\"mention-list\"" in home,
         "chip_ui": "data-testid=\"attachment-chips\"" in home,
-        "voice_copy": "当前版本未开放" in home,
+        "voice_entry_removed": "data-testid=\"voice-button\"" not in home
+        and "语音输入需要配置语音模型端点" not in home,
         "attachment_body_in_prompt": "正文开始" in attach and "sha256" in attach,
     }
 
@@ -281,21 +282,9 @@ def main(argv: list[str]) -> int:
         if not sample.is_file():
             gate_errors.append("引用后原文件被删除")
 
-        # --- 5. 语音说明 ---------------------------------------------------
-        xs.shot(EVID / "06-voice-before.png")
-        voice = ax.find("语音", role="button")
-        facts["checks"]["voice_button"] = voice is not None
-        if voice is not None:
-            ax.invoke(voice)
-        time.sleep(2.0)
-        xs.shot(EVID / "07-voice-note.png")
-        voice_text = ax.has_text("语音输入需要配置语音模型端点")
-        voice_diff = diff_ratio(EVID / "06-voice-before.png", EVID / "07-voice-note.png")
-        facts["voice_note_ax_text"] = voice_text
-        facts["voice_note_pixel_diff"] = voice_diff
-        # AT-SPI 对 WebKit 的行内提示文字不可见，以「指令坞区域像素确实变化」为可见性证据，
-        # 并保留截图供人工核对具体文案（源码断言另有 voice_copy）。
-        facts["checks"]["voice_note_visible"] = bool(voice_text or voice_diff > 0.002)
+        # --- 5. 未开放的语音入口不再出现在指令坞 -------------------------------
+        xs.shot(EVID / "06-voice-removed.png")
+        facts["checks"]["voice_button_removed"] = ax.find("语音", role="button") is None
 
         # --- 6. 设置 → 能力管理 --------------------------------------------
         gear = ax.find("系统偏好设置", role="push button") or ax.find(
@@ -363,8 +352,7 @@ def main(argv: list[str]) -> int:
         "attachment_body_reached_model",
         "source_file_intact",
         "chip_cleared_after_send",
-        "voice_button",
-        "voice_note_visible",
+        "voice_button_removed",
         "settings_gear",
         "capability_tab",
         "capability_freeze_copy",
@@ -372,7 +360,7 @@ def main(argv: list[str]) -> int:
         "no_capability_market_cmd",
         "mention_ui",
         "chip_ui",
-        "voice_copy",
+        "voice_entry_removed",
         "attachment_body_in_prompt",
         "alive",
         "source_unchanged",

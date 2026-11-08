@@ -12,7 +12,6 @@ export type Scene =
   | "report"
   | "writing"
   | "project"
-  | "sessions"
   | "knowledge"
   | "settings";
 
@@ -20,7 +19,6 @@ interface DockItem {
   scene: Scene;
   icon: IconName;
   label: string;
-  note?: string;
 }
 
 /**
@@ -29,36 +27,28 @@ interface DockItem {
  */
 export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
   { scene: "home", icon: "brand", label: "工作台首页" },
-  { scene: "report", icon: "note", label: "工作记录", note: "模型起草" },
-  { scene: "writing", icon: "book", label: "文案写作", note: "模型起草" },
-  { scene: "project", icon: "checklist", label: "项目跟踪", note: "模型起草" },
-  {
-    scene: "sessions",
-    icon: "history",
-    label: "历史会话",
-    note: "引擎会话 · 本机对话",
-  },
+  { scene: "report", icon: "note", label: "工作记录" },
+  { scene: "writing", icon: "book", label: "文案写作" },
+  { scene: "project", icon: "checklist", label: "项目跟踪" },
 ];
 
 /**
  * 知识库是应用内置入口（OD-KB-001 P2-S04），不写入用户 Profile 声明：
- * 声明只描述模型整理的三个业务场景与历史会话，知识库由宿主文件边界直接支撑。
+ * 声明只描述模型整理的三个业务场景，知识库由宿主文件边界直接支撑。
  * 追加在声明入口之后，既有入口顺序与声明语义保持不变。
  */
 export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
   scene: "knowledge",
   icon: "book",
   label: "知识库",
-  note: "本机 Markdown",
 };
 
 /**
  * 平台固有入口（OD-ARCH-106）：不受 Profile 声明管辖，任何 Profile 下都在。
- * 基础标准（无场景声明）时 Dock 只有这三项：首页、历史会话、知识库。
+ * 基础标准（无场景声明）时 Dock 只有两项：首页、知识库。
  */
 export const BUILTIN_PLATFORM_ITEMS: DockItem[] = [
   { scene: "home", icon: "brand", label: "工作台首页" },
-  { scene: "sessions", icon: "history", label: "历史会话", note: "引擎会话 · 本机对话" },
   BUILTIN_KNOWLEDGE_ITEM,
 ];
 
@@ -85,12 +75,13 @@ export function Dock({
 }) {
   const declaredItems: DockItem[] =
     declared && declared.length > 0
-      ? declared.map((s) => ({
-          scene: s.id as Scene,
-          icon: s.icon as IconName,
-          label: s.label,
-          note: s.note || undefined,
-        }))
+      ? declared
+          .filter((s) => (s.id as string) !== "sessions")
+          .map((s) => ({
+            scene: s.id as Scene,
+            icon: s.icon as IconName,
+            label: s.label,
+          }))
       : declFailed
         ? DEFAULT_BUSINESS_ITEMS
         : BUILTIN_PLATFORM_ITEMS;
@@ -110,7 +101,7 @@ export function Dock({
               aria-current={active ? "page" : undefined}
               // 用 aria-label 而不是 title：title 会让浏览器再弹一个大号原生提示，
               // 与图标旁边那条小字提示重复（OD-ARCH-044）。可访问名保持不变。
-              aria-label={item.note ? `${item.label}（${item.note}）` : item.label}
+              aria-label={item.label}
               // data-scene 是稳定的自动化定位锚点（OD-ARCH-056）：展示名会随声明改，
               // 内部场景键不会。纯属性，不影响布局与可访问名。
               data-scene={item.scene}
@@ -125,11 +116,6 @@ export function Dock({
             </button>
             <div className="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/95 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg flex items-center space-x-1.5 z-50">
               <span>{item.label}</span>
-              {item.note ? (
-                <span className="font-label-caps text-[9px] opacity-70">
-                  · {item.note}
-                </span>
-              ) : null}
             </div>
           </div>
         );

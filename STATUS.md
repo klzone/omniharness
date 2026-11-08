@@ -1,5 +1,70 @@
 # 执行状态
 
+## OD-UI-201 界面精简实施（2026-11-08，未提交）
+
+按用户三条指令完成：①全应用去掉「历史会话」；②文案写作、首页、工作记录版式与文案规范；③删除英文副标题、卡序号与解释性说明。
+
+### 改动
+
+- **历史会话：** Dock / App 路由 / 默认入口 / 起手骨架 / 出厂声明移除 sessions；旧 decl.yml 仍可解析，载入后隐藏；删除 Workspace / ProjectRail / Sessions 组件。用户数据目录未改动。
+- **文案写作：** WritingStudio / ScenePage / SceneStatusStrip 去掉英文副标题、01–04 序号与口径行；「状态管线」→「稿件」、「灵感架」→「写作对话」；指标卡不再渲染说明行；空态压到「还没有稿件。」
+- **工作记录：** 四格指标卡统一为白色浅卡；去掉英文副标题与序号；四象限轴标改中文；「历史对话」→「本场景对话」；周报提示缩短为「尚无周报文件」，避免截断。
+- **首页：** 删除标准模式说明条与待办「查看」；移除未开放语音按钮及说明；占位改「输入消息…」；底部状态行只在模型未开启时出现；顶栏 IPC 文字改连接圆点。
+- **Dock：** 悬停提示只显示入口名；decl 的 note 字段保留但不再渲染。
+
+### 验证
+
+| 验证 | 结果 |
+| --- | --- |
+| npm --prefix desktop run build | 通过 |
+| cargo test --offline | 通过（565 lib + 集成 + doc） |
+| verify_ui_simplify_v1.py（新增） | 24/24 |
+| verify_writing_094.py | 84/84 |
+| verify_weekly_093 / 097 / 100 | 106 / 34 / 32 全过 |
+| verify_worklog_089 / 132 | 83 / 43 全过 |
+| verify_knowledge_hub_ui_s3 / quality_s4 / s5 | 46 / 21 / 32 全过 |
+| verify_ui_beautify_v1.py | 17/17 |
+| verify_profile_scope_106.py | 43/43 |
+| 真实窗口目视 | debug bundle 中核对文案写作、工作记录、首页；历史会话入口不存在，写作/工作记录无英文副标题，首页无语音与长状态行 |
+
+### 已知既有失败（非本轮引入）
+
+- verify_weekly_099.py 41/42：skill_documents_new_value 期望 skills/memory-agent/SKILL.md 含「仅记录」，HEAD 版本同样不含该串。
+- verify_home_polish_078.py 的 chat_font_no_13px、profile_badge_short 两项源码断言在 HEAD 上即为 false；本轮相关项 engine_status_dot 已通过。
+
+### 未验证 / 状态
+
+- 真实窗口自动化脚本（055 / 078 / 077 / 122 / 123）依赖 Xvfb，本轮未在 macOS 重跑。
+- 本轮未提交、未推送；既有 .preview/ 与 用户成果/ 保持未跟踪。
+
+## OD-KB-201 UI 美化实施（2026-11-08，未提交）
+
+按 [OD-KB-201-UI-Beautification-Plan.md](/Users/yvan/Code/MyWorkStation/docs/OD-KB-201-UI-Beautification-Plan.md:1) 完成知识库与材料写作页的视觉统一。
+
+### 改动
+
+- **驾驶舱：** [KnowledgeDashboard.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeDashboard.tsx:1) 五格指标合并为一块横向数据带，竖线分列；待办/AI 工作改为 1.35:1 主次双列；健康卡与检索抽检沿用真实数据。
+- **知识审核：** [KnowledgeReviewCenter.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeReviewCenter.tsx:1) 改为左队列 + 右详情主从布局；右栏固定动作条、来源对照、跳过卡警告与原文片段保持。
+- **知识资产：** [KnowledgeVaultPage.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeVaultPage.tsx:1) 默认两栏（列表 + 正文，正文上限 860px）；≥1400px 才显示第三栏；更窄窗口用滑出式「关系与属性」检查器。只读、显式编辑、raw/其他附件分组保持。
+- **材料写作：** [WritingStudio.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/WritingStudio.tsx:1)、[SceneStatusStrip.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/SceneStatusStrip.tsx:1)、[ScenePage.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/ScenePage.tsx:1) 的写作页分支统一为 Aetheria 白色卡面、靛青主色、20px 圆角与轻阴影；暖纸底、青绿 accent、左侧色条撤下。
+- **边界：** 周报、工作记录、首页组件未改；ScenePage/SceneStatusStrip 仅改 `writing` 分支/写作专属组件。
+
+### 验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `npm --prefix desktop run build` | tsc --noEmit + vite build 通过 |
+| `verify_ui_beautify_v1.py` | 17/17 |
+| `verify_knowledge_hub_ui_s3.py` / `verify_knowledge_quality_s4.py` / `verify_knowledge_s5.py` | 46 / 21 / 32 全过 |
+| `verify_writing_094.py` | 98/98（按新统一卡面更新旧断言） |
+| `verify_weekly_091/092/093.py` | 67 / 29 / 108 全过 |
+| `verify_worklog_089.py` / `verify_worklog_132.py` | 83 / 43 全过 |
+
+### 未验证 / 状态
+
+- 真实窗口逐页视觉验收未做；Tauri 开发版已启动可人工查看。
+- 本轮未提交、未推送；既有 `.preview/` 与 `用户成果/` 保持未跟踪。
+
 ## OD-KB-201 收口提交（2026-11-08）
 
 - 提交：`59ad3f55aa`（`feat(knowledge): 完成 LLM-Wiki 知识库闭环与治理界面（OD-KB-201 S1-S5）`）。

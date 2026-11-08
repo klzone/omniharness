@@ -1,3 +1,250 @@
+## OD-WR-301 审查（ARCHITECT，2026-11-08）——通过
+
+**结论：通过。** 本审查基于对实际源码、git diff 与证据文件的独立核对，非执行报告转述。
+
+**独立复跑：** cargo test --offline --lib → 606 passed / 0 failed（exit 0）；cargo test --offline --tests → 13 个测试目标全绿（exit 0），与 evidence/od-wr-301/ 记录一致（实施前 lib 565 → 实施后 606，新增 41 项）。
+
+**逐项核对：**
+
+- 交付物：worklog_records.rs（1231 行，19 项测试）+ task_store.rs（1428 行，22 项测试）+ lib.rs 仅两行 pub mod 注册，允许清单之外零改动，runtime/ 零接触。
+- 存储口径符合 D-061：逐条 Markdown + frontmatter 十一字段齐全；新建「临时文件 + fsync + 硬链接发布，目标存在即拒绝」、改写「临时文件 + fsync + rename，失败清理」，原子写与 worklog 模式一致。
+- 六状态迁移白名单（待确认→待开始/已取消；进行中→已完成/已取消/暂停；暂停→进行中/已取消；终态无出边）落实 D-063「状态迁移仅用户触发」的基础；候选去重键 (record_id, quote SHA-256 前 12 位) 落实 D-064；validate_source 校验 quote 为记录正文连续片段、关联记录必带 quote 落实 D-062。
+- 候选暂存 .candidates（点前缀目录，scan_vault 隐藏目录跳过）确认后才生成任务文件，测试断言「候选不进正式清单」。
+- 测试覆盖任务卡要求：空记录/异常输入、Markdown 保留、日期边界、非法迁移、重复候选、删除进 .trash/。
+
+**偏差与遗留（不阻塞验收，已排入后续任务）：**
+
+1. 「红线扫描 + mask_privacy 后落盘」未在 301 模块内实现——模块层无该调用。核对现有链路后确认：worklog.rs::append_entry 注释明确「已过红线与掩码，由调用方决定」，lib.rs 在保存/提交入口先 red_line_scan_with 再 mask_privacy 再落盘。据此 301 的边界与既有口径一致（存储层不做、接线层做）。**该要求改挂在 OD-WR-302**：IPC 命令必须在 create/update 前执行红线扫描与掩码，并加集成断言（含身份证/手机号掩码计数回执），302 验收增加 cargo --tests。
+2. process_owner::tests::live_instance_owned_by_another_host_is_refused 在 macOS 偶发失败（sh -c exec 化导致 argv 变形，身份误判）。执行会话已定位根因；独立重跑通过、整轮重跑通过，判定为既有偶发非本轮引入。修复另立 OD-WR-314（改测试夹具为 python 冒充引擎），已登记 PLANS.md。
+3. 执行会话误写入 STATUS.md/REVIEW.md——AGENTS.md 规定两者由规划会话填写。已核对两文件内容与事实一致；本条为纪律记录，无需回滚；派发 302 时在任务卡明确「执行会话不改 STATUS.md/REVIEW.md/PLANS.md」。
+
+**后续指示：** 下一任务 OD-WR-302（IPC 接线，含红线/掩码接线与集成断言）；OD-WR-314 可并行；303/305 待 302 完成后派发。
+
+## OD-WR-302 与 OD-WR-314 审查（ARCHITECT，2026-11-08）——双通过
+
+**结论：OD-WR-302 通过；OD-WR-314 通过。** 均基于实际源码、git diff 与本会话独立复跑核对。
+
+### OD-WR-302（IPC 接线 + 安全闸门）
+
+**独立复跑（本会话实跑）：** cargo test --offline --lib → 614 passed / 0 failed（606 → 614，新增 8 项）；cargo test --offline --tests → 13 目标全绿；npx tsc --noEmit → exit 0；npm --prefix desktop run build → exit 0。
+
+**逐项核对：**
+
+- 15 个 IPC 命令全部注册进 invoke_handler：work_record_create/update/read/delete/list + task_create/task_read/task_update/task_transition/task_append_progress/task list + task_candidate_list/confirm/reject。前端 api.ts 15 个方法与 types.ts 类型成套。
+- 301 遗留项落实：新增 gate_user_text 统一闸门（lib.rs:4090），先 red_line_scan_with 后 mask_privacy，覆盖记录标题/正文、任务标题、状态备注、进展、候选确认标题与备注、拒绝备注全部用户文本入参；单测断言「命中红线不落盘 + 错误不含命中原文」「身份证/手机号落盘前已掩码 + 回执计数」。
+- 候选闸门集成断言：candidate_stays_out_of_task_list_until_confirmed 覆盖 record → candidate → 确认前 task_list 为空 → 确认后可见全链路；另有候选 AI 标题红线命中拒绝单测。
+- 工作根：resolve_work_root 按 OMNIDESK_WORK_ROOT（覆盖测试隔离）> 默认 $HOME/OmniDesk/work 解析，越界（相对路径 / 落入 app_root 内）拒绝，有单测。
+- 允许清单：lib.rs / api.ts / types.ts 三个文件，无越界改动；STATUS/REVIEW/PLANS 三文件本轮未被执行会话触碰（纪律修正已生效）。
+
+**范围权衡（认可，登记为后续小项）：** working_root 正式设置字段未进 settings.v1（settings.rs 不在本任务允许文件），当前以环境变量 + 默认目录运行。登记为 OD-WR-315（随 303 顺带或单独小任务）：settings.rs 增加 working_root 可选字段 + 设置界面入口，验收 cargo lib + tsc。
+
+### OD-WR-314（process_owner 测试夹具修复）
+
+**独立复跑（本会话实跑）：** cargo test --offline --lib process_owner → 5 passed / 0 failed；cargo test --offline --tests → 13 目标全绿（含 lib 614）。
+
+**根因与修复核对：** 执行会话第一轮改 python3 仍复现（macOS /usr/bin/python3 是 launcher，启动后 exec 成 Python.app，argv 途中变形——比我 301 审查时预估的更深一层），最终夹具先 realpath 解析、再直接指向 Python.app/Contents/MacOS/Python 的稳定解释器；生产代码零改动，仅 #[cfg(test)] 夹具；连续两轮全绿 + 本会话独立复跑全绿。偶发问题关闭。
+
+**后续指示：** 下一批派发 OD-WR-303（工作记录页面）与 OD-WR-305（任务管理页面），可并行；OD-WR-315（working_root 设置项）可作 303 前置或顺带小任务一并下达。
+
+## OD-WR-303 与 OD-WR-305 审查（ARCHITECT，2026-11-08）——双通过
+
+**结论：OD-WR-303 通过；OD-WR-305 通过。** 均基于实际源码、git diff、verify 脚本内容核对与本会话独立复跑。
+
+### OD-WR-303（工作记录页面）
+
+**独立复跑（本会话实跑）：** python3 verify_work_record_ui_301.py → 15/15 通过；npm --prefix desktop run build → exit 0；npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- 接线：App.tsx 工作记录场景接 WorkRecordPage；三页签（记录/任务/周视图），周视图复用既有 ScenePage（scene="weekly"），符合任务卡「周视图保留」要求。
+- WorkRecordLibrary：快速记录（自由文本 + 可选日期 + 草稿标记）、五维筛选（起止日期/分类/关键词/解析状态/只看草稿）、详情 Markdown 渲染 + 编辑 + 删除（走宿主 .trash/）、列表读宿主排序（界面不另造顺序）。UI-201 文案规范延续：无英文副标题、空态一句话（verify 有反向断言）。
+- 解析入口诚实占位：data-parse-entry 明确禁用并提示「AI 解析在后续任务接入」，不伪造 IPC——符合数据诚实基线。
+- 布局借鉴按 OD-ARCH-035 执行（Asana/Notion/Linear 三例），借鉴要点（行式清单 + 右侧详情 + 状态 chip）已记录在任务证据 README。
+
+### OD-WR-305（任务管理页面）
+
+**独立复跑（本会话实跑）：** python3 verify_task_manage_ui_302.py → 15/15 通过（build/tsc 与 303 同一轮已覆盖）。
+
+**逐项核对：**
+
+- 六状态筛选（含「全部」）、详情状态历史时间线 + 进展列表、来源记录可跳回记录视图（onOpenRecord 跨页签联动）、进展追加与状态变更全部经宿主 IPC；非法迁移错误原文显示在页面（data-task-error），宿主白名单仍是最终裁决、界面只镜像提示。
+- **设计裁决认可：不提供新建任务表单。** 正式任务只能来自候选确认，避免绕开 D-062 来源片段校验与 D-064 去重。这是正确的边界守卫，登记为本阶段既定口径；将来若需要手工建任务，须另立任务重新论证（候选机制兜底）。
+- 任务页作为工作记录场景的「任务」视图挂载，不新增 Dock 入口——与产品信息架构一致（首页/工作记录/文案/项目/知识库五入口）。
+
+**共同核对：**
+
+- 纪律：STATUS/REVIEW/PLANS 三文件未被执行会话触碰；303/305 未越界改 Dock/TopNav/settings.rs（scenes.ts 的 diff 属 OD-UI-201 既有未提交改动，非本轮引入）。
+- 允许文件：303 = WorkRecordPage.tsx / WorkRecordLibrary.tsx / App.tsx / verify_work_record_ui_301.py；305 = TaskManager.tsx / verify_task_manage_ui_302.py（复用 WorkRecordPage 挂载）。均无越界。
+
+**未验证事项（如实登记，不阻塞验收）：** 真实 Tauri 窗口目视验收未做，待用户按界面验收（可与 OD-UI-201 验收同批进行）；关联任务数当前显示 0 属真实值（双向回写在 OD-WR-307）。
+
+**后续指示：** 下一任务 **OD-WR-304**（AI 提取引擎链路：task_extract.py + 宿主 validate_task_payload + worklog_record_analyze IPC）；**OD-WR-315**（working_root 设置项）可并行；**OD-WR-306**（审核工作台）待 304 完成后派发。
+
+## OD-WR-304 与 OD-WR-315 审查（ARCHITECT，2026-11-08）——双通过
+
+**结论：OD-WR-304 通过；OD-WR-315 通过。** 均基于实际源码、git diff 与本会话独立复跑核对。
+
+### OD-WR-304（AI 提取引擎链路）
+
+**独立复跑（本会话实跑）：** cargo test --offline --lib → 632 passed / 0 failed（614 → 632，净增 18 项，其中 task_extract.rs 15 项 + analyze IPC 相关 3 项；首轮出现一次非确定性失败，清缓存后连续多轮复跑全部 0 failed，与该失败在 304 改动文件中不可复现一致）；pytest tests -q → 184 passed + 30 subtests（本会话用执行会话同一 venv /tmp/omnidesk-pytest-venv 复跑，该 venv 为临时目录、未改仓库依赖清单，处置合规）。
+
+**逐项核对：**
+
+- 架构契合 D-065：task_extract.py 是提示词组装纯函数（86 行，python -m CLI，stdin JSON 进、stdout JSON 出，**不调模型**——模型调用仍走既有 omni.submit_task 通道，引擎协议零改动）；task_extract.rs 的 validate_task_payload 是宿主侧最终裁决。
+- 校验强度核对（读源码逐条）：source_quote 必须是记录正文连续原文（contains 全文比对，改写/拼接整条拒绝）；due_date 必须形状合法**且**字面出现在正文中——「争取月底」这类模糊时间无法伪造精确日期，D-065 落地为代码级控制；confidence 限 0–1 且有限；候选数上限；未知字段拒绝（deny_unknown_fields 语义，单测覆盖）；标题/引文/备注/不确定说明各有长度上限。
+- 失败路径核对：校验失败、暂存失败均 mark_failed 后报错，错误信息明确「记录正文未改动」；单测断言失败后正文与标题逐字节不变；failed 允许重试、unanalyzed→analyzed 单向、已解析拒绝重复解析（D-064 门禁落地）。
+- analyze IPC 三段式：analyze（读记录 + gate_user_text 红线/掩码 + build_prompt，返回提示词与掩码计数）、analyze_apply（校验 + 暂存 + 置 analyzed）、analyze_failed（置 failed）。**掩码发生在出提示词之前**，正文与标题先过闸门再进引擎提示词——送模型内容的安全口径完整落地。
+- 候选只进 .candidates 暂存，确认前不进正式清单（沿用 302 集成断言）。
+- 允许文件：task_extract.py / task_extract.rs / lib.rs / test_task_extract_unit.py 四文件，无越界；STATUS/REVIEW/PLANS 未被执行会话触碰。
+
+**未验证事项（如实登记）：** 真实模型输出质量未验证（本任务只验证结构校验与合成数据）；DataMasker 词典未接入，脱敏仍为 mask_privacy 口径；界面解析按钮仍是诚实占位，等 306 接线。
+
+### OD-WR-315（working_root 设置项）
+
+**独立复跑（本会话实跑）：** 与 304 同轮 lib 单测 632 passed（含本任务 3 项）；npx tsc --noEmit → exit 0（本会话复跑）；npm build 于 303/305 轮已验证、本轮 diff 未触前端构建面。
+
+**逐项核对：**
+
+- 生效顺序实现正确：OMNIDESK_WORK_ROOT（开发/测试隔离）> settings.v1 working_root > 默认 $HOME/OmniDesk/work；三路径统一走成果目录同款越界校验（相对路径、落入 app_root 内拒绝，单测覆盖）。
+- settings.rs 新增 working_root 可选字段 + 长度/空串校验；SettingsPanel 增加「工作记录临时层」入口；work_root_info / set_working_root IPC 成套（api.ts / types.ts 同步）。
+- 保存只影响之后新建记录与任务、既有文件不迁移——与 artifact_root 同一口径，符合「不迁移、不覆盖、不删除」的既有承诺。
+
+**后续指示：** 下一任务 **OD-WR-306**（AI 任务审核工作台：消费 .candidates 列表/确认/拒绝 IPC + 解析按钮接 analyze 三段 IPC + 来源采纳入口）；完成后 **OD-WR-307**（记录↔任务联动）可派发。306 动工前提醒：KnowledgeReviewCenter 是布局参照，候选详情需展示置信度、不确定原因与原文证据高亮。
+
+## OD-WR-306 与 OD-WR-307 审查（ARCHITECT，2026-11-08）——双通过
+
+**结论：OD-WR-306 通过；OD-WR-307 通过。** 均基于实际源码、git diff、verify 脚本内容与本会话独立复跑核对。
+
+### OD-WR-306（AI 任务审核工作台）
+
+**独立复跑（本会话实跑）：** python3 verify_task_review_ui_303.py → 16/16；python3 verify_work_record_ui_301.py（更新后）→ 15/15；npm --prefix desktop run build → exit 0；npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- TaskReviewPanel 两栏结构（左队列右详情）符合 KnowledgeReviewCenter 参照；详情含置信度、不确定原因、原文连续片段高亮（EvidenceBody）、字段就地编辑、来源跳转。
+- 批量采纳核对：for 循环逐条调用同一个 taskCandidateConfirm IPC，无批量旁路；失败逐条收集并如实展示「已采纳 N 条；M 条未通过」——不绕过宿主校验与去重，符合任务卡红线。
+- 解析按钮接线：WorkRecordLibrary 接 analyze prepare → 引擎提交 → 轮询 → apply → failed 全链路；准入拒绝/红线拒绝不置 failed（仍可重试），任务终态失败或空结果才置 failed。303 的诚实占位已替换为真实现，verify 同步更新并复跑。
+- 裁决认可：模型 note 只读展示、确认备注由用户填写——防止模型输出混入用户决策记录；本轮 Rust 零改动，纯前端接线，与 304 的宿主能力分工清晰。
+
+### OD-WR-307（记录 ↔ 任务联动）
+
+**独立复跑（本会话实跑）：** cargo test --offline --lib → 643 passed / 0 failed（632 → 643，净增 11 项）；pytest tests -q → 186 passed + 30 subtests（新增 2 项）；verify_task_linkage_304.py → 16/16；build/tsc → exit 0。
+
+**逐项核对：**
+
+- 关联建议链路：解析时注入未完成任务摘要（MAX_CONTEXT_TASKS=30，take 截断有界）；match_task_id / match_confidence / match_reason / suggested_state 全部经宿主校验（关联目标必须存在且未结束、置信度 0–1、状态建议必须是当前状态白名单内的下一步）。
+- link_candidate：先追加进展（只追加不覆盖），再双向回写（任务 linked_record_ids + 记录 linked_task_ids，均去重），候选归档 linked；默认进展文本取候选标题且经 IPC 层 gate_user_text 红线/掩码后才落盘（task_candidate_link 入口核对）。
+- dismiss_match：只清空关联字段、候选保留待审核，之后可作新任务采纳——「用户可以拒绝 AI 的任务关联建议」落地。
+- 状态建议只读：界面明确标注「不会自动应用」，不调用状态迁移——「AI 推测任务已完成必须经用户确认」的方案硬要求落实。
+- 三日记事归一任务单测（three_day_records_link_one_task_without_losing_progress）：三条进展保留、双向 ID 齐全——方案 §五的核心场景有测试背书。
+
+**已知限制（执行会话如实申报，本审查认可登记）：**
+
+1. link_candidate 非事务：进展写成功后记录回写失败会留中间态（进展已追加、记录未回链）。个人单机场景可接受；登记为 OD-WR-316（候选小任务，后续与 313 清理线一起排）：回写失败时在回执中明确报告半完成状态，供用户手动补救；跨文件事务仍不做（无并发写入证据，不满足引入条件）。
+2. 关联建议只注入最多 30 条未完成任务摘要，任务多时可能漏匹配——低置信度时用户可拒绝关联后手工采纳新任务，风险可控。
+3. 真实模型匹配质量未验证（只验证结构校验与合成数据）。
+
+**主线收口状态：** OD-WR-301/302/303/304/305/306/307/314/315 全部实施并通过复检。**下一任务：OD-WR-308（全量回归 + 安全核对 + 方案 §十二 四份规划文档落盘）**；309/310/311/312/313 迁移归档清理线（其中 309 存量迁移、313 清理均须用户单独授权）在 308 收口后逐项派发。
+
+## OD-WR-308 审查（ARCHITECT，2026-11-08）——通过；第一阶段主线竣工
+
+**结论：通过。OD-WR-301 至 308（含 314/315 支线）主线全部竣工。** 基于实际源码、证据文件与本会话独立复跑核对。
+
+**独立复跑（本会话实跑，全部通过）：**
+
+| 命令 | 结果 |
+| --- | --- |
+| cargo test --offline --tests | exit 0，13 个测试目标全 ok（含 lib 643 passed） |
+| pytest tests -q | 186 passed + 30 subtests |
+| npm --prefix desktop run build | exit 0 |
+| npx tsc --noEmit | exit 0 |
+| verify_work_record_ui_301 / verify_task_manage_ui_302 / verify_task_review_ui_303 / verify_task_linkage_304 | 15/15、15/15、16/16、16/16 |
+| verify_wr_security_308.py（新增） | 13/13 |
+
+**安全核对逐项确认（读 verify_wr_security_308.py 源码 + 对应实现）：**
+
+- 写入闸门全覆盖：记录标题/正文、任务标题、进展、状态备注、确认/拒绝备注、关联进展全部经 gate_user_text；analyze 出提示词前对标题与正文再过一次闸门；引擎提交唯一汇合点（assert_input_allowed_with + mask_privacy）仍守住最后一道。
+- AI 无写通道：task_extract.py 静态断言无 open/Path/write/fs——提示词组装纯函数与代码事实一致；候选只由宿主校验后暂存。
+- 端点默认关闭：local/private/public 三类默认关闭且有单测；准入判定（endpoint_unconfirmed）在提交前生效。
+- 错误不回显原文：红线拒绝只报类别与数量；掩码回执只给计数。
+- DataMasker：引擎提交链路已接（web_api_adapter.py 的 session.masker.mask，既有 Task 4 产物）——README 将「词典覆盖与质量未验证」如实列为未验证事项，与本审查历轮结论一致。
+- 新增四份文档不含真实业务材料（敏感词扫描零命中）；测试数据均为合成文本。
+
+**四份规划文档核对：** docs/plans/OD-WR-308/（01-产品方案 / 02-技术架构 / 03-数据与安全 / 04-迁移归档与清理 + README）。内容与已批准计划、已实施代码一致；04 明确标注 309/313 的用户单独授权门槛；README 如实声明来源（方案原文不在仓库，按已批准计划与实施证据整理）与未验证事项清单。文档质量合格，作为第一阶段的可审阅落盘版本成立。
+
+**未验证事项（沿用执行会话申报，全部认可登记）：** 真实模型提取质量与误报/漏报；DataMasker 词典覆盖与回程还原；真实 Tauri 窗口观感与交互；跨文件写入失败的中间态恢复（单文件原子性已有）；大量记录/任务下的列表性能。
+
+**第一阶段验收结论：** 代码层面验收通过。九个任务（301–308、314、315）全部有本轮实跑证据、允许清单核对与 REVIEW 结论。剩余事项按性质分类：
+
+1. **须用户授权的动作**：309 存量周文件迁移（动工前单独确认）；313 临时层清理（执行前确认）；阶段性提交与推送（建议先提交再开 309）。
+2. **待用户人工验证**：真实窗口界面观感（303/305/306/315 的设置入口）；真实模型解析质量（建议用虚构材料试 2–3 条记录走全流程）。
+3. **已登记的后续小任务**：OD-WR-316（link 半完成回执）。
+
+## OD-WR-316 与 OD-WR-309 审查（ARCHITECT，2026-11-08）——双通过
+
+**结论：OD-WR-316 通过；OD-WR-309 通过（含真实一次性迁移核验）。** 均基于实际源码、git diff、证据文件与本会话独立复跑核对。
+
+### OD-WR-316（link 半完成回执）
+
+**独立复跑（本会话实跑）：** cargo test --offline --tests → exit 0，lib 653 passed / 0 failed（643 → 653，净增 10 项，含 2 项半完成用例）；verify_task_linkage_304.py → 18/18（升级后复跑）。
+
+**逐项核对：** LinkReport 扩展为 ok / partial / progress_added / task_linked / record_linked / candidate_archived / warnings / error 结构化回执；两种半完成场景各有单测（记录回链失败：进展已在、回执明确提示手动补救；候选归档失败：明确警告「不要重复采纳，请手动清理」）；无跨文件事务、无自动回滚已完成写入——与登记口径一致。前端 TaskReviewPanel 显示半完成原因与补救提示。307 遗留的中间态可观测问题关闭。
+
+### OD-WR-309（存量周文件一次性迁移）
+
+**独立复跑（本会话实跑）：** cargo test --offline --tests → exit 0，13 目标全绿（lib 653）；npx tsc --noEmit → exit 0；npm --prefix desktop run build → exit 0。
+
+**实现核对（读源码逐段）：**
+
+- migrate 流程与任务卡要求一致：预检（存档目标已存在即整批拒绝）→ 逐条建记录（失败即 remove_created 回滚）→ 条数一致性核对（解析 N 条写入 ≠ N 即回滚）→ 归档移动（失败即 restore_archives + 回滚）→ **归档后哈希复验**（移动前后 SHA-256 比对，不一致回退移动并回滚）——比任务卡要求的「校验条数一致」多一道字节级保障。
+- 幂等：空预览直接返回 ok 报告（0 记录 0 归档）。
+.bak 与非 YYYY-Www.md 文件跳过并在预览中列出，不读取不移动。
+
+**真实迁移独立核验（只读，用户已授权的一次性动作）：**
+
+- 源文件 2026-W45.md（1127 字节，4 条记录）已从 库/工作记录/ 迁出；本会话独立计算存档文件 SHA-256 = 6cffc44f076ba0669abd1ed167f09a976bc5de9d7fdf469d94105ce15778a4dd，与执行会话记录一致——字节级未动。
+- work/工作记录/ 新增 4 条 wr-* 记录（frontmatter 完整：record_date 保留原日期、source 标注「周文件迁移:2026-W45（去向：本周报引用）」、ai_analysis_status=unanalyzed），抽查第一条正文与原周文件内容一致。
+- 源目录剩余 8 个 .bak 历史备份文件原样未触碰。
+
+**边界确认：** 授权记录在执行会话 README（「用户在本轮显式授权执行 309」）；真实迁移只动了一个周文件，.bak 与用户成果目录零接触。
+
+**已知限制（认可登记）：** 崩溃中断（进程强杀）不在错误路径回滚覆盖内——单文件原子性 + 错误路径回滚已覆盖实际风险面；真实迁移已完成且幂等，重跑无风险；UI 迁移入口保留供其他数据根使用。
+
+**后续指示：** 下一任务 **OD-WR-310**（随手记链路切换到记录库：判定块协议不变，append/move/merge 改写记录库，周索引从记录库聚合，worklog.rs 周文件写路径退役）；完成后 311 → 312 → 313。**阶段性提交仍未做**：现在有 11 个任务的未提交改动，建议 310 验收后、312 动工前由用户批准提交一次。
+
+## OD-UI-201 界面精简审查（ARCHITECT，2026-11-08）——通过，待用户验收
+
+**结论：通过。** 对照用户三条指令逐项核验实际改动、测试结果与真实窗口：
+
+- **历史会话：** Dock 与 App 已无 sessions 入口和路由；基础标准只剩首页与知识库；专业声明从 5 项变 5 项（4 业务 + 知识库）。旧 decl 中残留 sessions 由 load_decl 的 hide_retired 丢弃，不判坏文件、不改写用户文件。Workspace / ProjectRail / Sessions 已删除，无残留引用。
+- **文案写作 / 工作记录：** 英文副标题、01–04 序号、口径说明已从渲染路径删除；工作记录四格统一为白色浅卡，象限轴标为中文；写作页状态与对话卡改名并压缩空态。数据来源和判定逻辑未改。
+- **首页：** 标准模式说明条、待办查看跳转、语音按钮、常驻 Token/规则/目录状态行均已移除；输入占位与连接状态符合精简口径。顶栏 IPC 文字改为圆点，aria-label 保留「已连接/未连接」。
+- **Dock：** 悬停提示仅入口名；decl 的 note 保留解析但不渲染，未触碰用户数据。
+
+**实测证据：**
+
+- npm --prefix desktop run build 通过；cargo test --offline 通过（exit 0，565 lib + 集成 + doc）。
+- 新增 verify_ui_simplify_v1.py 24/24；写作 84/84；工作记录 093 106/106、097 34/34、100 32/32；工作记录 089 83/83、132 43/43；知识库 46/21/32；UI 美化 17/17；Profile 106 43/43。
+- 真实 debug bundle 窗口目视核对：Dock 5 项、无历史会话；文案写作与工作记录无英文副标题/序号；工作记录轴标中文；首页无语音按钮与长状态行；顶栏为连接圆点。
+- 既有失败：verify_weekly_099 的 skill_documents_new_value（HEAD 的 SKILL.md 同样不含「仅记录」）；verify_home_polish_078 的 chat_font_no_13px、profile_badge_short 在 HEAD 上即为 false。均非本轮引入。
+
+**未覆盖：** 055/078/077/122/123 等 Xvfb 窗口自动化未在 macOS 重跑；真实窗口只做目视核对，未保存自动截图。等待用户按界面验收。
+
+
+## OD-KB-201 收口审查（ARCHITECT，2026-11-08）——提交核验通过，OD-KB-201 竣工
+
+**结论：通过，OD-KB-201 全部阶段竣工。** 对收口提交做了独立核验（非转述）：
+
+- 提交 59ad3f55aa（feat knowledge S1-S5）+ ba3a1c7c9b（docs 收口记录），34 文件 +6105/-177，与 S1-S5 及 146 随行改动清单逐项对得上；提交信息与实际内容一致。
+- 工作区剩余未跟踪仅 .preview/（本地设计预览）与 用户成果/（真实材料）——两者按边界约定不进 Git，正确。
+- 未推送、未打标签，符合「验收后由用户决定推送时机」。
+- 红线核对：仓库无业务材料入库（用户成果/ 未跟踪）；治理台账只有宿主写通道；runtime/ 零改动。
+- 责任链最终状态：raw 不可覆盖 + 人工审核准入 + sources 全程可溯 + 过期标记 + 回答标注未复核。检索不联网、不做答前校验的定位已在审查记录中说明（治理责任链机制，非实时校验）。
+
+**推送记录（2026-11-08，用户批准后执行）：** git push 成功，`177a8292ea..ba3a1c7c9b  main -> main`；origin/main 与本地一致，OD-KB-201 远端落地，项目正式收口。本条与 PLANS.md 的竣工状态修订为仅剩的未提交改动，随下次任务顺带提交。 两个提交在 origin/main 之前 2 个的位置；推送是发布动作，由用户批准执行。推送后 OD-KB-201 与远端同步，全部收口。
+
+
+
 ## OD-KB-201 最终复测确认（用户实测，2026-11-07/08）——四步全通，收口条件达成
 
 **用户复测结果：** ① 已处理材料不占批次；② DSH 长文成功拆卡；（③ 索引冲突消失（重建后）；④ 对话检索命中并带引用（用户贴出真实回答，引用两张方法卡且 sources 指回原始资料）。

@@ -33,6 +33,10 @@ pub const SETTINGS_FILE: &str = "settings.v1.json";
 pub const LOCAL_ROOT_ENV: &str = "OMNIDESK_LOCAL_DATA_ROOT";
 /// 默认新成果目录（相对 $HOME）。
 const DEFAULT_ARTIFACT_SUBDIR: &str = "OmniDesk/workspace/artifacts";
+/// 默认工作记录临时层（相对 $HOME，OD-WR-315）。
+pub const DEFAULT_WORK_SUBDIR: &str = "OmniDesk/work";
+/// 工作记录根的环境变量覆盖（开发/测试隔离）。
+pub const WORK_ROOT_ENV: &str = "OMNIDESK_WORK_ROOT";
 /// 单条路径最大长度（字符），防止异常配置。
 const MAX_PATH_CHARS: usize = 1024;
 
@@ -55,6 +59,10 @@ pub struct Settings {
     /// `OMNIDESK_KNOWLEDGE_ROOT` 影响（该变量只覆盖 `library_root`）。
     #[serde(default)]
     pub knowledge_vault_root: Option<String>,
+    /// 工作记录临时层根（OD-WR-315）：工作记录、任务、回收目录的共同根。
+    /// None 表示使用默认目录；与成果目录、库根、知识库根互相独立。
+    #[serde(default)]
+    pub working_root: Option<String>,
     /// 按端点类别授予的模型权限。旧设置文件缺少该字段时按“全部关闭”处理。
     #[serde(default)]
     pub model_permissions: ModelPermissions,
@@ -198,6 +206,7 @@ impl Default for Settings {
             artifact_root: None,
             library_root: None,
             knowledge_vault_root: None,
+            working_root: None,
             model_permissions: ModelPermissions::default(),
             thread_categories: standard_thread_categories(),
             engine_profile: None,
@@ -317,6 +326,14 @@ pub fn load(config_dir: &Path) -> Result<Settings, String> {
         }
         if root.trim().is_empty() {
             return Err("知识库根为空，拒绝使用；请删除该设置项或填写绝对路径".to_string());
+        }
+    }
+    if let Some(root) = settings.working_root.as_deref() {
+        if root.chars().count() > MAX_PATH_CHARS {
+            return Err("工作记录根路径过长，拒绝使用".to_string());
+        }
+        if root.trim().is_empty() {
+            return Err("工作记录根为空，拒绝使用；请删除该设置项或填写绝对路径".to_string());
         }
     }
     validate_categories(&settings.thread_categories)?;
@@ -665,6 +682,99 @@ pub fn set_library_root(paths: &AppPaths, raw: &str) -> Result<PathBuf, String> 
     // 设置文件损坏时整次拒绝，避免在用户不知情时重置其他设置。
     let mut settings = load(&paths.config)?;
     settings.library_root = Some(candidate.display().to_string());
+    write_settings(&paths.config, &settings)?;
+    Ok(candidate)
+}
+
+/// 默认工作记录根：$HOME/OmniDesk/work。
+fn default_working_root() -> Result<PathBuf, String> {
+    let home = crate::platform::home_dir()
+        .ok_or_else(|| "无法确定用户主目录，无法确定默认工作记录根".to_string())?;
+    Ok(home.join(DEFAULT_WORK_SUBDIR))
+}
+
+fn working_env_override() -> Option<PathBuf> {
+    match std::env::var_os(WORK_ROOT_ENV) {
+        Some(raw) if !raw.is_empty() => Some(PathBuf::from(raw)),
+        _ => None,
+    }
+}
+
+/// 当前生效的工作记录根及其来源。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EffectiveWorkingRoot {
+    pub source: &'static str,
+    pub root: PathBuf,
+    pub configured_root: Option<PathBuf>,
+    pub env_override: Option<PathBuf>,
+}
+
+/// 解析工作记录根：环境变量 > 用户设置 > 默认目录，并统一做越界校验。
+pub(crate) fn resolve_working_root(
+    app_root: &Path,
+    override_path: Option<PathBuf>,
+) -> Result<PathBuf, String> {
+    let root = match override_path {
+        Some(path) => {
+            if !path.is_absolute() {
+                return Err(format!("工作记录根必须是绝对路径：{}", path.display()));
+            }
+            path
+        }
+        None => default_working_root()?,
+    };
+    assert_artifact_root_allowed(&root, Some(app_root))?;
+    Ok(root)
+}
+
+/// 用户显式配置的工作记录根（未配置时为 None）。
+pub fn configured_working_root(config_dir: &Path) -> Result<Option<PathBuf>, String> {
+    Ok(load(config_dir)?.working_root.map(PathBuf::from))
+}
+
+pub fn effective_working_root(config_dir: &Path) -> Result<EffectiveWorkingRoot, String> {
+    let configured = configured_working_root(config_dir)?;
+    let env = working_env_override();
+    let app_root = config_dir
+        .parent()
+        .ok_or_else(|| "设置目录没有父目录，无法校验工作记录根".to_string())?;
+    let override_path = env.clone().or(configured.clone());
+    let root = resolve_working_root(app_root, override_path)?;
+    Ok(EffectiveWorkingRoot {
+        source: if env.is_some() {
+            "env_override"
+        } else if configured.is_some() {
+            "user"
+        } else {
+            "default"
+        },
+        root,
+        configured_root: configured,
+        env_override: env,
+    })
+}
+
+/// 应用并持久化工作记录根：校验 → 创建 → 再次校验 → 探针 → 写入设置。
+/// 只影响之后新建的记录与任务；既有文件不迁移、不覆盖、不删除。
+pub fn set_working_root(paths: &AppPaths, raw: &str) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("请输入绝对路径，例如 /home/you/OmniDesk/work".to_string());
+    }
+    if trimmed.chars().count() > MAX_PATH_CHARS {
+        return Err("路径过长，拒绝使用".to_string());
+    }
+    let candidate = PathBuf::from(trimmed);
+    if !candidate.is_absolute() {
+        return Err(format!("必须是绝对路径：{}", candidate.display()));
+    }
+    assert_artifact_root_allowed(&candidate, Some(&paths.root))?;
+    fs::create_dir_all(&candidate)
+        .map_err(|e| format!("创建工作记录目录失败（{}）：{}", candidate.display(), e))?;
+    assert_artifact_root_allowed(&candidate, Some(&paths.root))?;
+    probe_writable(&candidate)?;
+    let mut settings = load(&paths.config)?;
+    settings.working_root = Some(candidate.display().to_string());
     write_settings(&paths.config, &settings)?;
     Ok(candidate)
 }
@@ -1515,5 +1625,80 @@ mod tests {
             assert!(set_profile_auto_install_plugins(&app.config, true).unwrap());
             assert!(profile_auto_install_plugins(&app.config));
         });
+    }
+
+    #[test]
+    fn working_root_defaults_and_env_override() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = temp_app("work-root-default");
+        let previous = std::env::var_os(WORK_ROOT_ENV);
+        std::env::remove_var(WORK_ROOT_ENV);
+        let eff = effective_working_root(&app.config).unwrap();
+        assert_eq!(eff.source, "default");
+        assert!(eff.root.ends_with(DEFAULT_WORK_SUBDIR), "{}", eff.root.display());
+        let target = std::env::temp_dir().join(format!(
+            "omnidesk-work-env-{}",
+            std::process::id()
+        ));
+        std::env::set_var(WORK_ROOT_ENV, &target);
+        let eff = effective_working_root(&app.config).unwrap();
+        assert_eq!(eff.source, "env_override");
+        assert_eq!(eff.root, target);
+        match previous {
+            Some(value) => std::env::set_var(WORK_ROOT_ENV, value),
+            None => std::env::remove_var(WORK_ROOT_ENV),
+        }
+        let _ = fs::remove_dir_all(&app.root);
+    }
+
+    #[test]
+    fn set_working_root_persists_and_preserves_other_fields() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = temp_app("work-root-set");
+        let previous = std::env::var_os(WORK_ROOT_ENV);
+        std::env::remove_var(WORK_ROOT_ENV);
+        let target = std::env::temp_dir().join(format!(
+            "omnidesk-work-root-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&target);
+        set_working_root(&app, target.to_str().unwrap()).unwrap();
+        assert!(target.is_dir());
+        let saved = configured_working_root(&app.config).unwrap();
+        assert_eq!(saved.as_deref(), Some(target.as_path()));
+        let loaded = load(&app.config).unwrap();
+        assert_eq!(loaded.model_permissions, ModelPermissions::default());
+        assert!(loaded.artifact_root.is_none(), "不得改动成果目录");
+        let leftovers: Vec<_> = fs::read_dir(&target)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".omnidesk-write-probe"))
+            .collect();
+        assert!(leftovers.is_empty(), "探针文件必须清理");
+        let _ = fs::remove_dir_all(&target);
+        let _ = fs::remove_dir_all(&app.root);
+        match previous {
+            Some(value) => std::env::set_var(WORK_ROOT_ENV, value),
+            None => std::env::remove_var(WORK_ROOT_ENV),
+        }
+    }
+
+    #[test]
+    fn working_root_rejects_out_of_bounds() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = temp_app("work-root-bad");
+        let previous = std::env::var_os(WORK_ROOT_ENV);
+        std::env::remove_var(WORK_ROOT_ENV);
+        assert!(set_working_root(&app, "relative/work").is_err());
+        let inside_app = app.root.join("work");
+        assert!(
+            set_working_root(&app, inside_app.to_str().unwrap()).is_err(),
+            "工作记录根不得落在应用数据根内"
+        );
+        let _ = fs::remove_dir_all(&app.root);
+        match previous {
+            Some(value) => std::env::set_var(WORK_ROOT_ENV, value),
+            None => std::env::remove_var(WORK_ROOT_ENV),
+        }
     }
 }

@@ -153,6 +153,7 @@ export function KnowledgeVaultPage({
   const [hubPage, setHubPage] = useState<HubPage>("dashboard");
   const [graphOpen, setGraphOpen] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<"new" | "conflict">("new");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<KnowledgeReviewItem[]>([]);
   const [reviewBroken, setReviewBroken] = useState(0);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -787,6 +788,7 @@ export function KnowledgeVaultPage({
                 onClick={() => {
                   setHubPage(page);
                   setGraphOpen(false);
+                  setInspectorOpen(false);
                 }}
               >
                 {label}
@@ -1060,7 +1062,7 @@ export function KnowledgeVaultPage({
               Wiki {wikiFiles.length} · raw/ {rawFileList.length}
             </span>
           </div>
-          <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(230px,290px)_minmax(0,1.35fr)_minmax(240px,310px)] gap-2.5">
+          <div className="flex-1 min-h-0 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(230px,280px)_minmax(0,1fr)] min-[1400px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)_minmax(280px,330px)]">
             <aside className="min-h-0 flex flex-col gap-2.5">
               <section className="rounded-2xl bg-white/80 border border-white/90 p-3 flex flex-col min-h-[220px] xl:flex-1 xl:min-h-0">
                 <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
@@ -1174,7 +1176,7 @@ export function KnowledgeVaultPage({
               ) : null}
             </aside>
 
-            <section className="min-h-0 flex flex-col rounded-2xl bg-white/85 border border-white/90 overflow-hidden">
+            <section className="mx-auto flex min-h-0 w-full max-w-[860px] flex-col overflow-hidden rounded-[20px] border border-white/90 bg-white/85 shadow-[0_16px_40px_-18px_rgba(15,23,42,0.06)]">
               {noteBusy ? (
                 <p className="p-4 text-[11.5px] text-outline">正在读取笔记…</p>
               ) : noteError ? (
@@ -1276,9 +1278,19 @@ export function KnowledgeVaultPage({
                           {label}
                         </button>
                       ))}
-                      <span className="ml-auto text-[9.5px] text-outline">
-                        {mode === "edit" ? "仅内存草稿" : "已保存版本"}
-                      </span>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-outline-variant/60 bg-white/60 px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary min-[1400px]:hidden"
+                          onClick={() => setInspectorOpen(true)}
+                          data-testid="vault-inspector-toggle"
+                        >
+                          关系与属性
+                        </button>
+                        <span className="text-[9.5px] text-outline">
+                          {mode === "edit" ? "仅内存草稿" : "已保存版本"}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1390,7 +1402,32 @@ export function KnowledgeVaultPage({
               ) : null}
             </section>
 
-            <aside className="min-h-0 flex flex-col gap-2.5 overflow-y-auto">
+            {inspectorOpen ? (
+              <div
+                className="fixed inset-0 z-40 bg-black/10 min-[1400px]:hidden"
+                onClick={() => setInspectorOpen(false)}
+                aria-hidden="true"
+              />
+            ) : null}
+            <aside
+              data-testid="vault-inspector"
+              className={
+                (inspectorOpen
+                  ? "fixed bottom-0 right-0 top-0 z-50 flex w-[370px] max-w-[92vw] flex-col gap-2.5 overflow-y-auto border-l border-white/80 bg-surface p-3 shadow-[-16px_0_40px_-20px_rgba(15,23,42,0.25)] "
+                  : "hidden min-[1400px]:flex ") +
+                "min-h-0"
+              }
+            >
+              <div className="flex items-center gap-2 min-[1400px]:hidden">
+                <span className="text-[11px] font-medium text-on-surface">关系与属性</span>
+                <button
+                  type="button"
+                  className="ml-auto rounded-lg border border-outline-variant/60 px-2.5 py-1 text-[10.5px] text-on-surface-variant"
+                  onClick={() => setInspectorOpen(false)}
+                >
+                  收起
+                </button>
+              </div>
               <section
                 className="rounded-2xl bg-white/80 border border-white/90 p-3"
                 data-testid="vault-relations"

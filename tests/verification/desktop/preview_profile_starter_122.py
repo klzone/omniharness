@@ -5,7 +5,7 @@
 
 一条链路走完：
   1. 以基础标准冷启动 → 顶栏新建一个「从基础标准起手」的 Profile；
-  2. 断言应用数据根落下 decl.yml（五个标准场景）与 rules.json（零预注入）；
+  2. 断言应用数据根落下 decl.yml（四个标准场景）与 rules.json（零预注入）；
   3. 切过去 → Dock 出现工作记录 / 文案写作 / 项目跟踪，设置页「场景声明」可填起步模板；
   4. 在 rules.json 里加一条 Skill 绑定（模拟用户定制）→「Profile 资产」列出该 Skill，
      目录未就位时状态是「缺失」；
@@ -126,9 +126,9 @@ def main() -> int:
         facts["decl_sample"] = decl_text
         facts["checks"]["decl_has_schema"] = "schema: omnidesk.profile-decl.v1" in decl_text
         facts["checks"]["decl_has_label"] = f"display_name: {LABEL}" in decl_text
-        facts["checks"]["decl_has_five_scenes"] = all(
-            f"id: {sid}" in decl_text for sid in ("home", "report", "writing", "project", "sessions")
-        )
+        facts["checks"]["decl_has_four_scenes"] = all(
+            f"id: {sid}" in decl_text for sid in ("home", "report", "writing", "project")
+        ) and "id: sessions" not in decl_text
         rules = json.loads(read_text(rules_path) or "{}")
         facts["rules_sample"] = read_text(rules_path)
         facts["checks"]["rules_zero_injection"] = rules.get("skill_bindings") == {}
@@ -139,7 +139,7 @@ def main() -> int:
         )
         xs.shot(SHOTS / "02-created.png")
 
-        # --- 3. 切过去：Dock 出现五个场景入口 ----------------------------
+        # --- 3. 切过去：Dock 出现四个场景入口 ----------------------------
         facts["checks"]["switch_confirmed"] = click_text(pid, "确认")
         facts["checks"]["switched_to_custom"] = bool(
             wait_for(lambda: (read_settings(root) or {}).get("engine_profile") == NAME, 40.0, 0.5)

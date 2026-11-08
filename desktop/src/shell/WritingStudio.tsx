@@ -1,17 +1,15 @@
 // 写作页三栏（OD-ARCH-094 S02/S04）。
 //
-// 视觉定位与「工作记录」页区分开：这里是**创作台**，用暖纸色 + 墨色正文 +
-// 青绿强调，区块标题带编辑式英文小标题；骨架、圆角、栏宽仍沿用 093 的统一体系。
+// 视觉定位：创作台与知识库统一为 Aetheria 浅色卡面、靛青主色和细分隔线；
+// 区块标题只用中文；状态用短标签，不再叠英文副标题或解释性说明。
 //
 // 边界：本组件不承载编辑器，也不承载对话；打开成果只读宿主文件，续写回首页对话。
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
-import { Icon } from "../components/Icon";
 import type { SceneThread } from "../sceneThreads";
 import type { OfflineArtifactEntry } from "../types";
 import {
-  STATUS_DEFAULT_NOTE,
   WRITING_STATUSES,
   continueTarget,
   fallbackTitle,
@@ -28,17 +26,15 @@ import {
 } from "../writingStudio";
 
 const CARD =
-  "bg-[linear-gradient(172deg,rgba(253,252,248,0.96)_0%,rgba(255,255,255,0.82)_46%,rgba(255,255,255,0.86)_100%)] " +
-  "border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] " +
+  "bg-white/78 " +
+  "border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] " +
   "px-4 py-4 lg:px-5 lg:py-5 min-w-0";
 
 function CardHead({
   title,
-  subtitle,
   count,
 }: {
   title: string;
-  subtitle?: string;
   count?: string;
 }) {
   return (
@@ -46,21 +42,17 @@ function CardHead({
       <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
         {title}
       </h2>
-      {subtitle ? (
-        <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
-      ) : null}
       {count ? (
         <span className="mono text-[10.5px] text-outline ml-auto shrink-0">{count}</span>
       ) : null}
     </div>
   );
 }
-
 function TypeChip({ value }: { value: string | null | undefined }) {
   const label = typeLabel(value);
   return (
     <span
-      className="shrink-0 px-1.5 py-[1px] rounded-full text-[9.5px] text-secondary bg-secondary/10"
+      className="shrink-0 px-1.5 py-[1px] rounded-full text-[9.5px] text-primary bg-primary/10"
       data-hover-hint={"内容类型：" + label}
       data-type-label={label}
     >
@@ -96,7 +88,6 @@ export function WritingContinueCard({
   files,
   nowSeconds,
   loading = false,
-  subtitle,
   onOpen,
   onContinueThread,
   onNewThread,
@@ -105,7 +96,6 @@ export function WritingContinueCard({
   nowSeconds: number;
   /** 成果元数据还没读到：给占位，不说成「还没有稿件」。 */
   loading?: boolean;
-  subtitle?: string;
   onOpen: (relativePath: string) => void;
   onContinueThread: () => void;
   onNewThread: () => void;
@@ -134,16 +124,12 @@ export function WritingContinueCard({
   }, [targetPath]);
   return (
     <section aria-label="继续创作" className={CARD} data-writing-continue="">
-      <CardHead
-        title="继续创作"
-        subtitle={subtitle}
-        count={loading ? "读取中" : target ? "最近一稿" : "待开始"}
-      />
+      <CardHead title="继续创作" count={loading ? "读取中" : target ? "最近一稿" : "待开始"} />
       {loading ? (
         <p className="mt-3.5 text-[12px] text-outline leading-relaxed">正在读取本机成果…</p>
       ) : target ? (
         <div
-          className="mt-3.5 rounded-2xl border border-amber-500/15 bg-[linear-gradient(158deg,#fff8eb_0%,#fffcf5_62%,#ffffff_100%)] px-4 py-4"
+          className="mt-3.5 rounded-2xl border border-amber-500/20 bg-white/82 px-4 py-4"
           data-continue-target={target.relative_path}
         >
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -170,7 +156,7 @@ export function WritingContinueCard({
               打开这一稿
             </button>
             <button
-              className="px-3 py-1.5 rounded-full text-[11px] border border-secondary/30 text-secondary hover:bg-secondary/10"
+              className="px-3 py-1.5 rounded-full text-[11px] border border-primary/30 text-primary hover:bg-primary/10"
               onClick={onContinueThread}
               data-hover-hint="回首页，接着最近一段写作对话往下写"
             >
@@ -180,14 +166,12 @@ export function WritingContinueCard({
         </div>
       ) : (
         <div className="mt-3.5">
-          <p className="text-[12px] text-on-surface-variant leading-relaxed">
-            还没有可以续写的稿件。去首页开一段「文案写作」对话，把想法聊成形，保存后就会回到这里。
-          </p>
+          <p className="text-[12px] text-on-surface-variant leading-relaxed">还没有稿件。</p>
           <button
-            className="mt-3 px-3.5 py-1.5 rounded-full text-[11px] bg-secondary text-on-secondary hover:opacity-90"
+            className="mt-3 px-3.5 py-1.5 rounded-full text-[11px] bg-primary text-on-primary hover:opacity-90"
             onClick={onNewThread}
           >
-            去写点什么
+            去写作
           </button>
         </div>
       )}
@@ -196,39 +180,34 @@ export function WritingContinueCard({
 }
 
 /**
- * 左栏下：灵感架。
- * 数据就是既有的 writing 场景会话，不新建「灵感」存储；常显、可继续对话。
+ * 左栏下：写作对话。
+ * 数据就是既有的 writing 场景会话，不新建存储；常显、可继续对话。
  */
 export function WritingInspirationShelf({
   threads,
   nowSeconds,
-  subtitle,
   onOpenThread,
   onNewThread,
 }: {
   threads: SceneThread[];
   nowSeconds: number;
-  subtitle?: string;
   onOpenThread: (id: string) => void;
   onNewThread: () => void;
 }) {
   return (
-    <section aria-label="灵感架" className={CARD} data-writing-inspiration="">
+    <section aria-label="写作对话" className={CARD} data-writing-inspiration="">
       <CardHead
-        title="灵感架"
-        subtitle={subtitle}
+        title="写作对话"
         count={threads.length > 0 ? `${threads.length} 段` : "空"}
       />
       {threads.length === 0 ? (
         <div className="pt-3.5">
-          <p className="text-[11.5px] text-outline leading-relaxed">
-            这里会放本场景最近的对话。灵感往往是一句没写完的话——先开一段对话存住它。
-          </p>
+          <p className="text-[11.5px] text-outline leading-relaxed">还没有写作对话。</p>
           <button
-            className="mt-2.5 text-[11px] text-secondary hover:underline"
+            className="mt-2.5 text-[11px] text-primary hover:underline"
             onClick={onNewThread}
           >
-            去对话 · 新开
+            新对话
           </button>
         </div>
       ) : (
@@ -237,7 +216,7 @@ export function WritingInspirationShelf({
             <li key={t.id}>
               <button
                 onClick={() => onOpenThread(t.id)}
-                className="group w-full text-left rounded-xl px-2.5 py-2 hover:bg-surface-container-low border border-transparent hover:border-secondary/20 min-w-0"
+                className="group w-full text-left rounded-xl px-2.5 py-2 hover:bg-surface-container-low border border-transparent hover:border-primary/20 min-w-0"
                 data-hover-hint={t.title}
                 data-inspiration-thread={t.id}
               >
@@ -251,7 +230,7 @@ export function WritingInspirationShelf({
                 </span>
                 <span className="mt-1 flex items-center gap-2 pl-[22px] text-[10px] text-outline">
                   <span>{relativeUpdated(t.updatedAt, nowSeconds)}</span>
-                  <span className="ml-auto text-secondary opacity-0 group-hover:opacity-100">
+                  <span className="ml-auto text-primary opacity-0 group-hover:opacity-100">
                     继续对话 →
                   </span>
                 </span>
@@ -265,7 +244,7 @@ export function WritingInspirationShelf({
 }
 
 /**
- * 中栏：状态管线。
+ * 中栏：稿件。
  * 组头同时是筛选器（再点一次取消）；缺省口径直接写在组头下面，
  * 「超过 90 天未动」的提醒可以独立筛出条目。
  */
@@ -273,8 +252,6 @@ export function WritingPipeline({
   files,
   nowSeconds,
   metadataLoading = false,
-  subtitle,
-  staleSubtitle,
   statusFilter,
   staleOnly,
   onStatusFilter,
@@ -285,9 +262,6 @@ export function WritingPipeline({
   nowSeconds: number;
   /** 成果元数据还没读到：三组计数显示「—」，不显示 0。 */
   metadataLoading?: boolean;
-  subtitle?: string;
-  /** 「90 天未动」提醒的英文小标（OD-ARCH-093 约定：缺省不渲染）。 */
-  staleSubtitle?: string;
   statusFilter: WritingStatus | null;
   staleOnly: boolean;
   onStatusFilter: (next: WritingStatus | null) => void;
@@ -347,10 +321,9 @@ export function WritingPipeline({
       : "bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container");
 
   return (
-    <section aria-label="状态管线" className={CARD + " flex flex-col"} data-writing-pipeline="">
+    <section aria-label="稿件" className={CARD + " flex flex-col"} data-writing-pipeline="">
       <CardHead
-        title="状态管线"
-        subtitle={subtitle}
+        title="稿件"
         count={metadataLoading ? "读取中" : `${total} 份稿件`}
       />
 
@@ -366,9 +339,9 @@ export function WritingPipeline({
               ? "border-amber-500/25 bg-amber-500/5"
               : s.key === "published"
                 ? "border-tertiary/20 bg-tertiary/5"
-                : "border-secondary/20 bg-secondary/5";
+                : "border-primary/20 bg-primary/5";
           const numTone =
-            s.key === "draft" ? "text-amber-700" : s.key === "published" ? "text-tertiary" : "text-secondary";
+            s.key === "draft" ? "text-amber-700" : s.key === "published" ? "text-tertiary" : "text-primary";
           return (
             <button
               key={s.key}
@@ -398,9 +371,6 @@ export function WritingPipeline({
                 <span className="text-[10.5px] text-on-surface-variant">份</span>
               </span>
               <span className="mt-1 block text-[11.5px] font-medium text-on-surface">{s.label}</span>
-              <span className="mt-0.5 block mono text-[8px] uppercase tracking-[0.14em] text-outline/70">
-                {s.subtitle}
-              </span>
             </button>
           );
         })}
@@ -414,15 +384,12 @@ export function WritingPipeline({
         >
           全部 {total}
         </button>
-        <span className="text-[10px] text-outline truncate">
-          {statusFilter ? `只看${statusLabel(statusFilter)}` : "三段都在这里"}
-        </span>
+        {statusFilter ? (
+          <span className="text-[10px] text-outline truncate">只看{statusLabel(statusFilter)}</span>
+        ) : null}
       </div>
 
       <div className="pt-2 flex items-center gap-2 min-w-0">
-        <p className="text-[10px] text-outline leading-relaxed truncate" data-hover-hint={STATUS_DEFAULT_NOTE}>
-          口径：{STATUS_DEFAULT_NOTE}；解析只读文件，不回写。
-        </p>
         {stale.length > 0 ? (
           <button
             className={
@@ -435,19 +402,16 @@ export function WritingPipeline({
             aria-pressed={staleOnly}
             data-stale-filter={staleOnly ? "on" : "off"}
           >
-            {staleSubtitle ? <span className="mono mr-1 text-[8px] tracking-[0.12em]">{staleSubtitle}</span> : null}
             {stale.length} 篇超过 90 天未动
           </button>
-        ) : (
-          <span className="shrink-0 ml-auto text-[10px] text-outline">没有久未修改的稿件</span>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-3.5 flex-1 min-h-0 max-h-[52vh] overflow-y-auto pr-0.5">
         {sorted.length === 0 ? (
           <p className="text-[11.5px] text-outline leading-relaxed">
             {statusFilter === null && !staleOnly
-              ? "还没有写作成果。首页对话里保存的稿件会自动归到这里。"
+              ? "还没有稿件。"
               : staleOnly
                 ? "没有超过 90 天未动的稿件，先放下这条提醒。"
                 : "这一组还没有稿件。"}
@@ -464,7 +428,7 @@ export function WritingPipeline({
                       "group w-full text-left rounded-xl border px-3.5 py-2.5 min-w-0 transition " +
                       (staleFile
                         ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
-                        : "border-surface-variant/25 bg-surface-container-low/40 hover:bg-surface-container-low hover:border-secondary/25")
+                        : "border-surface-variant/25 bg-surface-container-low/40 hover:bg-surface-container-low hover:border-primary/25")
                     }
                     data-hover-hint={f.relative_path}
                     data-pipeline-item={f.relative_path}
@@ -486,7 +450,7 @@ export function WritingPipeline({
                           90 天未动
                         </span>
                       ) : null}
-                      <span className="ml-auto text-secondary opacity-0 group-hover:opacity-100">
+                      <span className="ml-auto text-primary opacity-0 group-hover:opacity-100">
                         打开
                       </span>
                     </span>
@@ -498,20 +462,5 @@ export function WritingPipeline({
         )}
       </div>
     </section>
-  );
-}
-
-/** 左栏「继续创作」上方的一行栏目说明（编辑式小标，不占一张卡）。 */
-export function WritingStudioHead({ subtitle }: { subtitle?: string }) {
-  return (
-    <div className="flex items-center gap-2.5 mb-3 max-w-7xl mx-auto md:-translate-x-8">
-      <Icon name="edit" className="w-4 h-4 text-secondary" />
-      <span className="text-[12px] font-medium text-on-surface">创作台</span>
-      {subtitle ? (
-        <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
-      ) : null}
-      <span className="h-px flex-1 bg-surface-variant/40" />
-      <span className="text-[10.5px] text-outline shrink-0">这一页只回顾与选题，写作在对话里发生</span>
-    </div>
   );
 }

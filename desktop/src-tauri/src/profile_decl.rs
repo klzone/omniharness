@@ -29,7 +29,12 @@ pub const PROFILE_DECL_FILE: &str = "decl.yml";
 /// OD-ARCH-106 之前的单文件落点，只用于一次性兼容迁移（不删除、不覆盖）。
 pub const LEGACY_PROFILE_DECL_FILE: &str = "discipline.yml";
 /// 允许出现在 Dock 上的场景标识。不在表里的一律拒绝——声明不能凭空造入口。
+///
+/// `sessions` 是已下线的「历史会话」入口：仍允许解析，避免既有用户声明被判为坏文件，
+/// 但载入时会被 `hide_retired` 丢弃，不再出现在界面上。
 pub const ALLOWED_SCENES: &[&str] = &["home", "report", "writing", "project", "sessions"];
+/// 已下线、但仍兼容旧声明解析的场景标识。载入后一律从入口列表移除。
+pub const RETIRED_SCENES: &[&str] = &["sessions"];
 /// 每个场景可选的图标名（取值与前端 `IconName` 对齐，前端另有校验）。
 pub const ALLOWED_ICONS: &[&str] = &["brand", "note", "book", "checklist", "history"];
 /// 单个字段最大字符数。
@@ -65,6 +70,12 @@ pub struct ProfileDecl {
 }
 
 impl ProfileDecl {
+    /// 去掉已下线的入口（历史会话）。兼容旧声明时使用，不改用户的声明文件。
+    pub fn hide_retired(&mut self) {
+        self.scenes
+            .retain(|scene| !RETIRED_SCENES.contains(&scene.id.as_str()));
+    }
+
     /// 校验：schema 一致、至少一个场景、字段非空且有界、标识与图标在白名单内、无重复。
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != PROFILE_DECL_SCHEMA {
@@ -216,7 +227,7 @@ pub fn load_decl(profile_dir: &Path) -> Result<Option<LoadedDecl>, String> {
         }
     };
     let content_sha256 = sha256_hex(text.as_bytes());
-    let decl = parse_decl(&text).map_err(|e| {
+    let mut decl = parse_decl(&text).map_err(|e| {
         format!(
             "Profile 声明格式错误（{}）：{}。该声明已被拒绝，界面使用内置默认入口。",
             path.display(),
@@ -230,6 +241,7 @@ pub fn load_decl(profile_dir: &Path) -> Result<Option<LoadedDecl>, String> {
             e
         )
     })?;
+    decl.hide_retired();
 
     Ok(Some(LoadedDecl {
         decl,
@@ -439,6 +451,31 @@ mod tests {
         decl.validate().expect("内嵌默认声明必须通过校验");
         assert_eq!(decl.display_name, "OmniDesk Discipline");
         assert!(decl.scenes.iter().any(|s| s.id == "report"));
+        assert!(!decl.scenes.iter().any(|s| s.id == "sessions"), "出厂声明不再包含历史会话");
+    }
+
+    #[test]
+    fn retired_sessions_entry_is_accepted_then_hidden() {
+        // 既有用户声明里可能还留着 sessions：不能让整份声明变坏文件，
+        // 但载入后的入口列表里不能再出现它。
+        let text = "schema: omnidesk.profile-decl.v1\ndisplay_name: T\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n  - id: sessions\n    label: 历史会话\n    icon: history\n";
+        let mut decl = parse_decl(text).unwrap();
+        decl.validate().expect("兼容期允许解析 sessions");
+        decl.hide_retired();
+        assert_eq!(decl.scenes.len(), 1);
+        assert_eq!(decl.scenes[0].id, "home");
+    }
+
+    #[test]
+    fn load_decl_hides_retired_sessions() {
+        let root = temp_profiles_dir("retired-sessions");
+        fs::create_dir_all(&root).unwrap();
+        let text = "schema: omnidesk.profile-decl.v1\ndisplay_name: 我的工作台\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n  - id: sessions\n    label: 历史会话\n    icon: history\n";
+        fs::write(decl_path(&root), text).unwrap();
+        let loaded = load_decl(&root).expect("旧声明应能载入").expect("文件存在应返回 Some");
+        assert!(loaded.decl.scenes.iter().all(|s| s.id != "sessions"));
+        assert_eq!(loaded.decl.scenes.len(), 1);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

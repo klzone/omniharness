@@ -73,75 +73,55 @@ type BandTone = "violet" | "cyan" | "indigo" | "amber";
 const BAND_TONES: Record<
   BandTone,
   {
-    shell: string;
     chip: string;
-    glow: string;
-    subtitle: string;
     number: string;
     track: string;
     bar: string;
   }
 > = {
   violet: {
-    shell: "border-primary/15 bg-[linear-gradient(158deg,#f4f1ff_0%,#faf8ff_62%,#ffffff_100%)]",
     chip: "text-primary",
-    glow: "bg-primary/15",
-    subtitle: "text-primary/55",
     number: "text-primary",
     track: "bg-primary/10",
     bar: "bg-primary/85",
   },
   cyan: {
-    shell: "border-secondary/15 bg-[linear-gradient(158deg,#eafafc_0%,#f7fdfe_62%,#ffffff_100%)]",
     chip: "text-secondary",
-    glow: "bg-secondary/15",
-    subtitle: "text-secondary/60",
     number: "text-secondary",
     track: "bg-secondary/10",
     bar: "bg-secondary/85",
   },
   indigo: {
-    shell: "border-tertiary/15 bg-[linear-gradient(158deg,#eef0ff_0%,#f8f8ff_62%,#ffffff_100%)]",
     chip: "text-tertiary",
-    glow: "bg-tertiary/15",
-    subtitle: "text-tertiary/55",
     number: "text-tertiary",
     track: "bg-tertiary/10",
     bar: "bg-tertiary/85",
   },
   amber: {
-    shell: "border-amber-500/15 bg-[linear-gradient(158deg,#fff8eb_0%,#fffcf5_62%,#ffffff_100%)]",
     chip: "text-amber-600",
-    glow: "bg-amber-400/15",
-    subtitle: "text-amber-700/55",
     number: "text-amber-600",
     track: "bg-amber-500/10",
     bar: "bg-amber-500/80",
   },
 };
 
-/** 逾期真的存在时整张卡切成告警色，盖掉它原本的琥珀底。 */
+/** 逾期真的存在时，图标与数字转告警色；卡面保持统一的浅色。 */
 const BAND_ALERT = {
-  shell: "border-error/20 bg-[linear-gradient(158deg,#fff0ef_0%,#fffafa_64%,#ffffff_100%)]",
   chip: "text-error",
-  glow: "bg-error/10",
-  subtitle: "text-error/55",
   number: "text-error",
   track: "bg-error/10",
   bar: "bg-error/80",
 };
 
 /**
- * 指标带一格（OD-ARCH-099 S01）：左侧图标独占一列，右侧内容列自上而下放标题、
- * 英文副标题与序号、数字与单位、底行提示与进度轨。图标下方不再叠任何文字，
- * 四张卡等高，扫读时先认色相再读数值。图标不带底色座，仅用色相文字着色。
+ * 指标带一格：左侧图标独占一列，右侧内容列自上而下放标题、数字与单位、底行状态。
+ * 卡面统一为白色浅卡，只有图标与数字用色相区分；默认扫读先看数字。
+ * 图标下方不叠任何文字，四张卡等高。
  * 进度条只在分子分母都真实存在时绘制，否则整条隐藏——不拿 0 或满格假装有数据。
  */
 function BandMetric({
   icon,
-  index,
   label,
-  subtitle,
   value,
   unit,
   hint,
@@ -151,10 +131,7 @@ function BandMetric({
   action,
 }: {
   icon: IconName;
-  /** 卡序号（01–04）：做成右上角等宽小标，给整排一个编辑式节奏。 */
-  index: string;
   label: string;
-  subtitle?: string;
   value: string;
   unit?: string;
   hint: string;
@@ -166,10 +143,7 @@ function BandMetric({
 }) {
   const width = typeof ratio === "number" && Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : null;
   const skin = tone === "alert" ? BAND_ALERT : BAND_TONES[color];
-  /*
-   * 数值字号随长度收缩：状态值可能是「未生成」这种三字短语，固定 30px 会把左侧
-   * 标题和英文副标题挤成省略号。数字卡保持大字号，短状态字降两档仍然醒目。
-   */
+  /* 数值字号随长度收缩：状态值可能是「未生成」这种三字短语，固定 30px 会挤到标题。 */
   const valueSize =
     value.length >= 4
       ? "text-[20px] leading-[1.05]"
@@ -179,17 +153,13 @@ function BandMetric({
   return (
     <article
       role="group"
-      aria-label={`${label}${subtitle ? " " + subtitle : ""}：${value}${unit ? " " + unit : ""}，${hint}`}
+      aria-label={`${label}：${value}${unit ? " " + unit : ""}，${hint}`}
       data-band-card={color}
       className={
-        "relative overflow-hidden min-w-0 rounded-2xl border px-4 py-3 " +
-        "flex items-stretch gap-3.5 shadow-[0_8px_22px_-18px_rgba(35,32,80,0.5)] " + skin.shell
+        "relative overflow-hidden min-w-0 rounded-[20px] border border-white/90 bg-white/78 px-4 py-3 " +
+        "flex items-stretch gap-3.5 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]"
       }
     >
-      <span
-        aria-hidden="true"
-        className={"pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full blur-2xl " + skin.glow}
-      />
       <div
         data-band-icon-column
         className="relative shrink-0 w-14 flex flex-col items-center justify-start"
@@ -204,21 +174,6 @@ function BandMetric({
               data-hover-hint={label}
             >
               {label}
-            </div>
-            <div className="mt-1 flex items-baseline gap-1.5 min-w-0">
-              <span className="mono shrink-0 text-[12px] tracking-[0.12em] text-on-surface-variant/40">
-                {index}
-              </span>
-              {subtitle ? (
-                <span
-                  data-hover-hint={subtitle}
-                  className={
-                    "mono text-[12px] uppercase tracking-[0.12em] truncate " + skin.subtitle
-                  }
-                >
-                  {subtitle}
-                </span>
-              ) : null}
             </div>
           </div>
           <div className="shrink-0 flex items-baseline justify-end gap-1 text-right pl-1">
@@ -260,15 +215,11 @@ function BandMetric({
 /**
  * 写作页专属指标卡（OD-ARCH-094 S01）。
  *
- * 与工作记录页的四色卡刻意区分：这里统一暖纸底 + 墨色字，只用一条左侧色标和
- * 顶部极细的印刷线做层次——像稿纸，而不是仪表盘。数字仍然横向右置，卡片尺寸与
- * 093 一致（整排略窄于导航、卡间留白），保证两个页面是同一个产品。
+ * 与工作记录、知识库统一为 Aetheria 浅色卡面与靛青主色；数字横向右置。
  */
 function WritingMetric({
   icon,
-  index,
   label,
-  subtitle,
   value,
   unit,
   hint,
@@ -276,9 +227,7 @@ function WritingMetric({
   action,
 }: {
   icon: IconName;
-  index: string;
   label: string;
-  subtitle?: string;
   value: string;
   unit?: string;
   hint: string;
@@ -286,9 +235,9 @@ function WritingMetric({
   action?: ReactNode;
 }) {
   const skin = {
-    ink: { rule: "bg-on-surface", dot: "text-on-surface", chip: "border-on-surface/25" },
-    teal: { rule: "bg-secondary", dot: "text-secondary", chip: "border-secondary/30" },
-    ochre: { rule: "bg-amber-500", dot: "text-amber-700", chip: "border-amber-500/35" },
+    ink: { rule: "bg-primary", dot: "text-primary", chip: "border-primary/20" },
+    teal: { rule: "bg-primary", dot: "text-primary", chip: "border-primary/20" },
+    ochre: { rule: "bg-amber-500", dot: "text-amber-700", chip: "border-amber-500/30" },
     stone: {
       rule: "bg-on-surface-variant/40",
       dot: "text-on-surface-variant",
@@ -304,16 +253,13 @@ function WritingMetric({
   return (
     <article
       role="group"
-      aria-label={`${label}${subtitle ? " " + subtitle : ""}：${value}${unit ? " " + unit : ""}，${hint}`}
+      aria-label={`${label}：${value}${unit ? " " + unit : ""}，${hint}`}
       data-writing-metric={accent}
       className={
-        "relative overflow-hidden min-w-0 rounded-2xl border border-on-surface/8 " +
-        "bg-[linear-gradient(168deg,#fbf9f4_0%,#fdfcf9_58%,#ffffff_100%)] " +
-        "px-4 py-3 flex flex-col shadow-[0_10px_24px_-22px_rgba(35,32,26,0.55)]"
+        "relative overflow-hidden min-w-0 rounded-[20px] border border-white/90 " +
+        "bg-white/78 px-4 py-3 flex flex-col shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]"
       }
     >
-      <span aria-hidden="true" className={"absolute left-0 top-0 h-full w-[3px] " + skin.rule} />
-      <span aria-hidden="true" className="absolute left-0 top-0 h-px w-full bg-on-surface/10" />
       <div className="relative flex items-start justify-between gap-3 min-w-0 pl-1.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <span
@@ -327,19 +273,6 @@ function WritingMetric({
             <div className="text-[13px] font-semibold leading-tight tracking-tight text-on-surface truncate" data-hover-hint={label}>
               {label}
             </div>
-            <div className="mt-1 flex items-baseline gap-1.5 min-w-0">
-              <span className="mono shrink-0 text-[8.5px] tracking-[0.12em] text-on-surface-variant/40">
-                {index}
-              </span>
-              {subtitle ? (
-                <span
-                  data-hover-hint={subtitle}
-                  className="mono text-[8.5px] uppercase tracking-[0.12em] text-on-surface-variant/55 truncate"
-                >
-                  {subtitle}
-                </span>
-              ) : null}
-            </div>
           </div>
         </div>
         <div className="shrink-0 flex items-baseline justify-end gap-1 text-right">
@@ -349,12 +282,11 @@ function WritingMetric({
           {unit ? <span className="text-[10px] text-on-surface-variant/70">{unit}</span> : null}
         </div>
       </div>
-      <div className="relative mt-auto pt-2 flex items-center gap-2 min-w-0 pl-1.5">
-        <span className="text-[10.5px] text-on-surface-variant/80 leading-snug truncate" data-hover-hint={hint}>
-          {hint}
-        </span>
-        {action ? <span className="ml-auto shrink-0">{action}</span> : null}
-      </div>
+      {action ? (
+        <div className="relative mt-auto pt-2 flex items-center justify-end min-w-0 pl-1.5">
+          <span className="shrink-0">{action}</span>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -461,20 +393,16 @@ export function SceneStatusStrip({
           <>
             <BandMetric
               icon="note"
-              index="01"
               color="violet"
               label="本期工作记录"
-              subtitle={scene.subtitles?.records}
               value={weekEntries === null ? "—" : String(weekEntries)}
               unit={weekEntries === null ? undefined : "条"}
               hint={weekEntries === null ? "正在读取本周记录…" : cycleHint}
             />
             <BandMetric
               icon="checklist"
-              index="02"
               color="cyan"
               label="进周报条目"
-              subtitle={scene.subtitles?.weekly}
               value={weekReportEntries === null ? "—" : String(weekReportEntries)}
               unit={weekReportEntries === null ? undefined : "条"}
               hint={
@@ -488,17 +416,15 @@ export function SceneStatusStrip({
             />
             <BandMetric
               icon="clock"
-              index="03"
               color="indigo"
               label="本周周报"
-              subtitle={scene.subtitles?.report}
               value={reportLabel ?? "—"}
               hint={
                 reportLabel === null
                   ? "正在检查周报目录…"
                   : reportLabel === "未生成"
-                    ? "说「整理成周报」才会生成"
-                    : "可到右栏成果库查看"
+                    ? "尚无周报文件"
+                    : "已保存，可在成果库查看"
               }
               action={
                 onRequestReport ? (
@@ -514,10 +440,8 @@ export function SceneStatusStrip({
             />
             <BandMetric
               icon="trend-up"
-              index="04"
               color="amber"
               label="逾期"
-              subtitle={scene.subtitles?.overdue}
               value={overview ? String(expired) : "—"}
               unit={overview ? "条" : undefined}
               hint={expiredHint}
@@ -543,50 +467,44 @@ export function SceneStatusStrip({
           <>
             <WritingMetric
               icon="book"
-              index="01"
               accent="ink"
               label="本月成文"
-              subtitle={scene.subtitles?.finished ?? scene.subtitles?.overview}
               value={overview ? String(overview.artifacts_this_month) : "—"}
               unit={overview ? "份" : undefined}
               hint={
                 overview
                   ? overview.artifacts_this_month === 0
-                    ? "本月还没有保存的写作成果"
-                    : "本自然月保存的写作成果"
+                    ? "本月暂无"
+                    : "本月保存的成果"
                   : overviewError ?? "正在读取本机数据…"
               }
             />
             <WritingMetric
               icon="edit"
-              index="02"
               accent="teal"
               label="进行中草稿"
-              subtitle={scene.subtitles?.draft}
               value={writingDraftCount === null ? "—" : String(writingDraftCount)}
               unit={writingDraftCount === null ? undefined : "份"}
               hint={
                 writingDraftCount === null
                   ? "正在读取成果元数据…"
                   : writingDraftCount === 0
-                    ? "没有标为草稿的成果"
-                    : "frontmatter 标为草稿的成果"
+                    ? "暂无草稿"
+                    : "标注为草稿的成果"
               }
             />
             <WritingMetric
               icon="spark"
-              index="03"
               accent="ochre"
-              label="灵感待用"
-              subtitle={scene.subtitles?.inspiration}
+              label="写作对话"
               value={writingInspirationCount === null ? "—" : String(writingInspirationCount)}
               unit={writingInspirationCount === null ? undefined : "段"}
               hint={
                 writingInspirationCount === null
                   ? "正在读取对话记录…"
                   : writingInspirationCount === 0
-                    ? "灵感架还空着，去聊一句就存住了"
-                    : "本场景最近的对话，可随时接着写"
+                    ? "还没有写作对话"
+                    : "最近更新在前"
               }
               action={
                 onRequestWriting ? (
@@ -598,10 +516,8 @@ export function SceneStatusStrip({
             />
             <WritingMetric
               icon="clock"
-              index="04"
               accent="stone"
               label="最近更新"
-              subtitle={scene.subtitles?.recent}
               value={relativeUpdated(overview?.latest_artifact_at ?? null, writingNow)}
               hint={
                 overview?.latest_artifact_at

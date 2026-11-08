@@ -243,7 +243,7 @@ def main() -> int:
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline and dock is None:
             nodes = app_nodes(pid)
-            # 侧栏按钮的无障碍名带场景后缀（如「项目跟踪（模型起草）」），按包含匹配。
+            # 侧栏按钮无障碍名就是入口名（如「项目跟踪」），按包含匹配。
             dock = find(nodes, "项目跟踪", contains=True) or find(nodes, "项目跟进", contains=True)
             if dock is None:
                 time.sleep(2.0)

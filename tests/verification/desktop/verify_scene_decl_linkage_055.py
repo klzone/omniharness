@@ -3,7 +3,7 @@
 
 只做三件事，全部在 /tmp 下的一次性根里：
 
-  1. 默认声明启动，截图（5 个声明入口 + 内置知识库，共 6 个；OD-ARCH-061 后无基础设施图标）；
+  1. 默认声明启动，截图（4 个声明入口 + 内置知识库，共 5 个；OD-ARCH-061 后无基础设施图标）；
   2. 在副本声明里隐藏「文案写作」→ 重启 → 截图，并点原「文案写作」位置的 Dock 图标，
      确认落到的是剩余入口（无 router / 无深链，界面没有可直达已隐藏场景的路径）；
   3. 把声明恢复为初始字节 → 重启 → 截图，并比对前后 sha256 完全一致。
@@ -94,10 +94,6 @@ scenes:
     label: 项目跟踪
     icon: checklist
     note: 模型起草
-  - id: sessions
-    label: 历史会话
-    icon: history
-    note: 引擎会话 · 本机对话
 """
 
 
@@ -204,7 +200,7 @@ def main(argv: list[str]) -> int:
         report["decl_sha256_before"] = initial_sha
         # A 侧：点第 3 个入口（默认声明下是「文案写作」）。
         win = mount_window(session, xs)
-        centers = detect_dock_centers(xs, win, SHOTS / "00-default-dock.png", expect=6)
+        centers = detect_dock_centers(xs, win, SHOTS / "00-default-dock.png", expect=5)
         report["rounds"]["default"]["dock_centers"] = centers
         report["rounds"]["default"]["click_point"] = list(
             click_slot3(xs, win, centers[2])
@@ -228,7 +224,7 @@ def main(argv: list[str]) -> int:
         # B 侧：同一个序号（第 3 项），隐藏后应落到「项目跟踪」而不是被隐藏的场景。
         # 界面无 router / hash / 深链，因此不存在用 URL 或命令直达被隐藏页面的路径。
         win = mount_window(session, xs)
-        centers = detect_dock_centers(xs, win, SHOTS / "03b-hidden-dock.png", expect=5)
+        centers = detect_dock_centers(xs, win, SHOTS / "03b-hidden-dock.png", expect=4)
         report["rounds"]["hidden"]["dock_centers"] = centers
         report["rounds"]["hidden"]["click_point"] = list(
             click_slot3(xs, win, centers[2])

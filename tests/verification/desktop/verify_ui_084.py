@@ -183,9 +183,9 @@ def main() -> int:
             last_msg_node = ax.find("以上为多元素测试对比", contains=True)
 
         # 定位底部指令输入框（composer）节点
-        composer_node = find_session_node(app_pid, "与 OmniDesk 协同探索", contains=True)
+        composer_node = find_session_node(app_pid, "输入消息", contains=True)
         if not composer_node:
-            composer_node = ax.find("与 OmniDesk 协同探索", contains=True)
+            composer_node = ax.find("输入消息", contains=True)
 
         last_msg_bottom = None
         composer_top = None

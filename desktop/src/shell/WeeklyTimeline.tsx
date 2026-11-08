@@ -128,7 +128,6 @@ export function WeeklyTimeline({
   onOpenSource,
   onRequestReport,
   statusRow,
-  subtitle,
   visibleIds,
   filterLabel,
   onClearFilter,
@@ -143,7 +142,6 @@ export function WeeklyTimeline({
   /** 卡片头的动作行（OD-ARCH-092：周报状态并入这里，不再单独占一块）。 */
   statusRow?: ReactNode;
   /** 可选英文副标题（OD-ARCH-093，场景配置，缺省不渲染）。 */
-  subtitle?: string;
   /** 四象限筛选：只显示这些条目 id；null 表示不筛选（OD-ARCH-093 S03）。 */
   visibleIds?: Set<string> | null;
   /** 当前筛选的中文说明，仅在筛选时显示。 */
@@ -205,9 +203,6 @@ export function WeeklyTimeline({
         <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
           本周记录
         </h2>
-        {subtitle ? (
-          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
-        ) : null}
         <span className="mono text-[12px] text-outline">
           {week}
           {empty ? "" : filtered ? ` · ${filteredCount}/${parsed.entryCount} 条` : ` · ${parsed.entryCount} 条`}

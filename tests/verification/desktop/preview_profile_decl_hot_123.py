@@ -182,9 +182,9 @@ def main() -> int:
         facts["checks"]["save_clicked"] = click_text(pid, "\u6821\u9a8c\u5e76\u4fdd\u5b58")
         facts["checks"]["decl_written"] = bool(wait_for(lambda: decl_path.is_file(), 30.0, 0.5))
         decl_text = decl_path.read_text(encoding="utf-8") if decl_path.is_file() else ""
-        facts["checks"]["decl_saved_five_scenes"] = all(
-            f"id: {sid}" in decl_text for sid in ("home", "report", "writing", "project", "sessions")
-        )
+        facts["checks"]["decl_saved_four_scenes"] = all(
+            f"id: {sid}" in decl_text for sid in ("home", "report", "writing", "project")
+        ) and "id: sessions" not in decl_text
         facts["decl_digest_on_disk"] = decl_text[:0] or f"{len(decl_text)}B"
         xs.shot(SHOTS / "02b-decl-saved.png")
         # 不重启：直接回工作台首页看 Dock。

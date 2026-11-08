@@ -55,8 +55,8 @@ def main() -> int:
     art_jsx = strip_comments(art)
 
     # --- S01 四象限：轴标在框外、格内只剩标题与条目 ---
-    check("axes_outside_grid", 'label: "URGENT"' in quad and 'label: "NOT URGENT"' in quad)
-    check("row_axes_outside_grid", 'label: "IMPORTANT"' in quad and 'label: "NOT IMPORTANT"' in quad)
+    check("axes_outside_grid", 'label: "紧急"' in quad and 'label: "不紧急"' in quad)
+    check("row_axes_outside_grid", 'label: "重要"' in quad and 'label: "一般"' in quad)
     check("row_axes_vertical", "[writing-mode:vertical-rl]" in quad)
     check("axes_keep_chinese_title", "cn: \"紧急 · 已过日期\"" in quad and "cn: \"重要 · 进周报\"" in quad)
     check(

@@ -70,12 +70,10 @@ function TodoTicker({
   items,
   error,
   loading,
-  onOpen,
 }: {
   items: PendingWriteView[];
   error: string | null;
   loading: boolean;
-  onOpen: () => void;
 }) {
   const [index, setIndex] = useState(0);
   const [shown, setShown] = useState(true);
@@ -134,13 +132,6 @@ function TodoTicker({
           {index + 1}/{items.length}
         </span>
       ) : null}
-      <button
-        type="button"
-        onClick={onOpen}
-        className="ml-auto text-[10.5px] text-primary hover:underline flex-shrink-0"
-      >
-        查看
-      </button>
     </div>
   );
 }
@@ -191,8 +182,6 @@ export interface HomeCanvasProps {
   declaredScenes?: ProfileSceneEntry[] | null;
   /** 声明读取失败。只有这种情况才回退完整场景列表。 */
   declFailed?: boolean;
-  /** 声明是否已读取完成。读取完成前不显示「标准模式」说明，避免启动瞬间误报。 */
-  declReady?: boolean;
   searchQuery?: string;
   searchCurrentIndex?: number;
   onSearchMatchesChange?: (count: number) => void;
@@ -202,7 +191,6 @@ export function HomeCanvas({
   onNavigate,
   declaredScenes = null,
   declFailed = false,
-  declReady = true,
   searchQuery = "",
   searchCurrentIndex = 0,
   onSearchMatchesChange,
@@ -449,25 +437,10 @@ export function HomeCanvas({
             </span>
           </h1>
         </div>
-        {/*
-          OD-ARCH-106 S5：基础标准下把「现在是什么模式」说清楚。
-          无声明是正常状态（不是读取失败）：只有平台固有入口，对话按普通对话处理。
-          声明读取完成前不显示，避免启动瞬间误报。
-        */}
-        {declReady && !declFailed && declaredScenes === null ? (
-          <p
-            className="text-[11.5px] text-outline pb-1 flex items-center gap-1.5"
-            data-testid="home-standard-mode"
-          >
-            <Icon name="brand" className="w-[12px] h-[12px] text-primary/60 flex-shrink-0" />
-            标准模式：DSH 底座 + OmniDesk UI，无业务场景
-          </p>
-        ) : null}
         <TodoTicker
           items={todos}
           error={todoError}
           loading={todoLoading}
-          onOpen={() => onNavigate("sessions")}
         />
       </section>
         </>

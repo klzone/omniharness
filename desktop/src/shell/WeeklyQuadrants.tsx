@@ -1,12 +1,12 @@
 /**
  * 事项四象限（OD-ARCH-093 S02；OD-ARCH-097 S01 重绘）。
  *
- * 版式：2×2 矩阵，**轴标放在矩阵框外**——上方 URGENT / NOT URGENT，左侧
- * IMPORTANT / NOT IMPORTANT（竖排）。参考图的骨架就在这里：轴标承担语义，
+ * 版式：2×2 矩阵，**轴标放在矩阵框外**——上方「紧急 / 不紧急」，左侧
+ * 「重要 / 一般」（竖排）。参考图的骨架就在这里：轴标承担语义，
  * 格子里就只剩标题与条目，不需要再写一行「已过日期 · 进周报」的说明。
  *
  * 诚实性：格子里的分法是**规则推导**，不是模型判断；没有「去向」的条目不硬塞进四格。
- * 英文轴标只是版式语言，中文语义仍写在 `title` 与 `aria-label` 里，读屏不丢信息。
+ * 轴标只用中文；详细语义仍写在 `title` 与 `aria-label` 里，读屏不丢信息。
  */
 
 import { useMemo } from "react";
@@ -21,14 +21,14 @@ const CELL_STYLE: Record<QuadrantKey, string> = {
 
 /** 两列轴标：左列=紧急（已过日期），右列=不急。 */
 const COLUMNS = [
-  { key: "urgent", label: "URGENT", cn: "紧急 · 已过日期" },
-  { key: "not-urgent", label: "NOT URGENT", cn: "不紧急 · 今天及以后" },
+  { key: "urgent", label: "紧急", cn: "紧急 · 已过日期" },
+  { key: "not-urgent", label: "不紧急", cn: "不紧急 · 今天及以后" },
 ];
 
 /** 两行轴标：上排=重要（进周报），下排=不重要。 */
 const ROWS = [
-  { key: "important", label: "IMPORTANT", cn: "重要 · 进周报" },
-  { key: "not-important", label: "NOT IMPORTANT", cn: "一般 · 其它去向" },
+  { key: "important", label: "重要", cn: "重要 · 进周报" },
+  { key: "not-important", label: "一般", cn: "一般 · 其它去向" },
 ];
 
 /** 行 × 列 → 格子键，与 `QUADRANTS` 的顺序一致。 */
@@ -41,7 +41,6 @@ export function WeeklyQuadrants({
   classified,
   active,
   onSelect,
-  subtitle,
   loading,
   error,
 }: {
@@ -50,7 +49,6 @@ export function WeeklyQuadrants({
   active: QuadrantKey | null;
   onSelect: (key: QuadrantKey) => void;
   /** 可选英文副标题（场景配置，缺省不渲染）。 */
-  subtitle?: string;
   loading: boolean;
   error: string | null;
 }) {
@@ -73,9 +71,6 @@ export function WeeklyQuadrants({
         <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
           事项四象限
         </h2>
-        {subtitle ? (
-          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">{subtitle}</span>
-        ) : null}
         <span className="mono text-[12px] text-outline ml-auto shrink-0">
           {classified.items.length} 条
         </span>
@@ -95,7 +90,7 @@ export function WeeklyQuadrants({
         {COLUMNS.map((col) => (
           <span
             key={col.key}
-            className="pb-0.5 text-center mono text-[11px] uppercase tracking-[0.18em] text-outline"
+            className="pb-0.5 text-center text-[11px] tracking-[0.18em] text-outline"
             data-hover-hint={col.cn}
             role="group"
             aria-label={`${col.label} · ${col.cn}`}
@@ -113,7 +108,7 @@ export function WeeklyQuadrants({
               role="group"
               aria-label={`${row.label} · ${row.cn}`}
             >
-              <span className="mono text-[11px] uppercase tracking-[0.18em] text-outline [writing-mode:vertical-rl] rotate-180 whitespace-nowrap">
+              <span className="text-[11px] tracking-[0.18em] text-outline [writing-mode:vertical-rl] rotate-180 whitespace-nowrap">
                 {row.label}
               </span>
             </span>

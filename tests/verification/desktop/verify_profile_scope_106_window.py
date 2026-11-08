@@ -4,8 +4,8 @@
 一次性数据根 + 合成端点 + 一次性 Xvfb，两轮对照：
 
   1. 基础标准（OMNIDESK_DSH_PROFILE=omnidesk-base，且数据根下没有任何 decl.yml）：
-     Dock 只有 3 项（首页 / 历史会话 / 知识库），宿主不会写默认声明；
-  2. 同一数据根切到 discipline 并预置声明：Dock 出现 6 项（5 个声明入口 + 知识库），
+     Dock 只有 2 项（首页 / 知识库），宿主不会写默认声明；
+  2. 同一数据根切到 discipline 并预置声明：Dock 出现 5 项（4 个声明入口 + 知识库），
      证明场景是「随 Profile 挂载」而不是平台固定。
 
 入口数量由截图里 Dock 图标带自动统计（与 055 同一套量法），不依赖 DOM。
@@ -110,7 +110,7 @@ def main(argv: list[str]) -> int:
             std_decl = root / "app-data" / "profiles" / "omnidesk-base" / "decl.yml"
             report["rounds"]["standard"]["decl_path"] = str(std_decl)
             report["rounds"]["standard"]["decl_absent"] = not std_decl.exists()
-            report["checks"]["standard_dock_is_three"] = report["rounds"]["standard"]["dock_bands"] == 3
+            report["checks"]["standard_dock_is_two"] = report["rounds"]["standard"]["dock_bands"] == 2
             report["checks"]["standard_no_decl_created"] = not std_decl.exists()
         finally:
             std.stop_all()
@@ -130,7 +130,7 @@ def main(argv: list[str]) -> int:
             xs = XSession(args.display)
             prof.start()
             report["rounds"]["discipline"] = count_dock(prof, xs, SHOTS / "02-discipline.png")
-            report["checks"]["discipline_dock_is_six"] = report["rounds"]["discipline"]["dock_bands"] == 6
+            report["checks"]["discipline_dock_is_five"] = report["rounds"]["discipline"]["dock_bands"] == 5
             report["checks"]["discipline_decl_untouched"] = decl.read_text(encoding="utf-8") == DEFAULT_DECL
         finally:
             prof.stop_all()

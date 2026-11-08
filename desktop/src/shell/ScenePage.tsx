@@ -31,7 +31,6 @@ import {
   WritingContinueCard,
   WritingInspirationShelf,
   WritingPipeline,
-  WritingStudioHead,
 } from "./WritingStudio";
 import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
 import type { WorklogArchiveList, WorklogWeekFile } from "../types";
@@ -170,7 +169,7 @@ export function ScenePage({
   const [showThreads, setShowThreads] = useState(false);
   /** 四象限选中格（OD-ARCH-093 S03）：只影响中栏显示，不写任何文件。 */
   const [quadrant, setQuadrant] = useState<QuadrantKey | null>(null);
-  /** 写作页（OD-ARCH-094）：状态管线筛选与 90 天提醒筛选，都只改视图。 */
+  /** 写作页（OD-ARCH-094）：稿件状态筛选与 90 天提醒筛选，都只改视图。 */
   const [writingStatusFilter, setWritingStatusFilter] = useState<WritingStatus | null>(null);
   const [writingStaleOnly, setWritingStaleOnly] = useState(false);
   /** 写作页的「现在」：一次渲染内固定，避免相对时间在每次重绘时抖动。 */
@@ -441,7 +440,7 @@ export function ScenePage({
     onNavigate("home");
   }, [onNavigate]);
 
-  /** 写作页最近的写作对话：灵感架「继续对话」与「继续创作」的对话入口。 */
+  /** 写作页最近的写作对话：写作对话卡「继续对话」与「继续创作」的入口。 */
   const latestWritingThread = useMemo(
     () => [...threads].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
     [threads],
@@ -582,18 +581,13 @@ export function ScenePage({
    */
   const threadsSection = (
     <section
-      aria-label="历史对话"
+      aria-label="本场景对话"
       className="bg-white/85 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
     >
       <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
         <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
-          历史对话
+          本场景对话
         </h2>
-        {def.subtitles?.history ? (
-          <span className="text-[12px] uppercase tracking-[0.16em] text-outline">
-            {def.subtitles.history}
-          </span>
-        ) : null}
         <span className="mono text-[12px] text-outline ml-auto shrink-0">{threads.length} 条</span>
       </div>
       <div className="flex items-center gap-2 pt-3.5">
@@ -604,13 +598,12 @@ export function ScenePage({
         >
           {showThreads ? "▾" : "▸"} {showThreads ? "收起" : "展开"}对话列表
         </button>
-        <span className="text-[12px] text-outline truncate">对话只在首页发生</span>
         <button
           className="ml-auto text-[12px] text-primary hover:underline shrink-0"
           onClick={newThread}
           data-hover-hint="回首页，按本场景开一段新对话"
         >
-          去对话 · 新开
+          新对话
         </button>
       </div>
       {showThreads ? (
@@ -680,12 +673,11 @@ export function ScenePage({
 
       {scene === "writing" ? (
         /*
-         * 文案写作主区（OD-ARCH-094 S02）：三栏同屏——左「继续创作 + 灵感架」、
-         * 中「状态管线」、右「成果文档库」。窄窗按 左 → 中 → 右 单列堆叠。
-         * 与工作记录页共享栏宽、圆角与间距，但用暖纸色 / 青绿强调区分气质。
+         * 文案写作主区（OD-ARCH-094 S02）：三栏同屏——左「继续创作 + 写作对话」、
+         * 中「稿件」、右「成果文档库」。窄窗按 左 → 中 → 右 单列堆叠。
+         * 与知识库统一为 Aetheria 浅色卡面与靛青主色；工作记录页保持原有四色区分。
          */
         <>
-          <WritingStudioHead subtitle={def.subtitles?.studio} />
           <div
             className={
               "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
@@ -700,7 +692,6 @@ export function ScenePage({
                 files={artifacts.filter((f) => !f.is_dir)}
                 nowSeconds={writingNow}
                 loading={!artifactsLoaded && !artifactsError}
-                subtitle={def.subtitles?.continue}
                 onOpen={(p) => void openArtifact(p)}
                 onContinueThread={continueWritingThread}
                 onNewThread={newWritingThread}
@@ -708,7 +699,6 @@ export function ScenePage({
               <WritingInspirationShelf
                 threads={threads}
                 nowSeconds={writingNow}
-                subtitle={def.subtitles?.inspiration}
                 onOpenThread={openThread}
                 onNewThread={newWritingThread}
               />
@@ -717,8 +707,8 @@ export function ScenePage({
             <div className="min-w-0 max-lg:order-2 lg:[grid-area:pipeline]">
               {artifactsError ? (
                 <section
-                  aria-label="状态管线"
-                  className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-5 py-6"
+                  aria-label="稿件"
+                  className="bg-white/80 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] px-5 py-6"
                 >
                   <p className="text-[11.5px] text-error leading-relaxed">
                     读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
@@ -729,8 +719,6 @@ export function ScenePage({
                   files={artifacts}
                   nowSeconds={writingNow}
                   metadataLoading={!artifactsLoaded && !artifactsError}
-                  subtitle={def.subtitles?.pipeline}
-                  staleSubtitle={def.subtitles?.stale}
                   statusFilter={writingStatusFilter}
                   staleOnly={writingStaleOnly}
                   onStatusFilter={setWritingStatusFilter}
@@ -742,17 +730,12 @@ export function ScenePage({
 
             <section
               aria-label="成果文档库"
-              className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
+              className="bg-white/80 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
             >
               <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
                 <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
                   成果文档库
                 </h2>
-                {def.subtitles?.artifacts ? (
-                  <span className="text-[9.5px] uppercase tracking-[0.16em] text-outline">
-                    {def.subtitles.artifacts}
-                  </span>
-                ) : null}
                 <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
                   {artifacts.filter((f) => !f.is_dir).length} 条
                 </span>
@@ -770,7 +753,7 @@ export function ScenePage({
                   onToggleSubdirs={toggleSubdirs}
                   showTypeLabels
                   stalePaths={writingStalePaths}
-                  accent="secondary"
+                  accent="primary"
                   onOpen={(p) => void openArtifact(p)}
                 />
               </div>
@@ -804,7 +787,6 @@ export function ScenePage({
               classified={classified}
               active={quadrant}
               onSelect={selectQuadrant}
-              subtitle={def.subtitles?.priority}
               loading={weekLoading}
               error={weekError}
             />
@@ -822,7 +804,6 @@ export function ScenePage({
               loading={weekLoading}
               onOpenSource={() => void openWeekSource()}
               onRequestReport={requestWeeklyReport}
-              subtitle={def.subtitles?.log}
               visibleIds={visibleIdsFor(classified, quadrant)}
               filterLabel={quadrantName}
               onClearFilter={() => setQuadrant(null)}
@@ -847,11 +828,6 @@ export function ScenePage({
               <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
                 成果文档库
               </h2>
-              {def.subtitles?.artifacts ? (
-                <span className="text-[12px] uppercase tracking-[0.16em] text-outline">
-                  {def.subtitles.artifacts}
-                </span>
-              ) : null}
               <span className="mono text-[12px] text-outline ml-auto shrink-0">
                 {artifacts.filter((f) => !f.is_dir).length + archiveEntries.length} 条
               </span>

@@ -39,12 +39,15 @@ pub mod profile_seed;
 pub mod profile_lifecycle;
 pub mod profile_starter;
 pub mod profile_rules;
+pub mod quicklog;
 pub mod route_classifier;
 pub mod scene_overview;
 pub mod scheduler;
 pub mod settings;
 pub mod sha256;
 pub mod task_shell;
+pub mod task_store;
+pub mod task_extract;
 pub mod thread_store;
 pub mod vault_note;
 pub mod vault_link;
@@ -53,6 +56,8 @@ pub mod vault_open;
 pub mod vault_search;
 pub mod vault_write;
 pub mod worklog;
+pub mod worklog_records;
+pub mod worklog_migrate;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -3585,7 +3590,7 @@ fn worklog_append(
         }
     }
     let date = requested.unwrap_or(today.as_str()).to_string();
-    let root = match worklog_library_root(&state) {
+    let root = match work_root(&state) {
         Ok(root) => root,
         Err(message) => {
             return serde_json::json!({
@@ -3652,13 +3657,15 @@ fn worklog_append(
         });
     }
     let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
-    let dest = destination
-        .as_deref()
-        .map(|d| d.trim())
-        .filter(|d| !d.is_empty())
-        .unwrap_or(worklog::DEFAULT_DESTINATION);
-    match worklog::append_entry(&root, &week, &date, &masked_text, dest) {
-        Ok((mut receipt, _payload)) => {
+    match quicklog::append(
+        &root,
+        &date,
+        &masked_text,
+        destination.as_deref(),
+        now,
+        offset,
+    ) {
+        Ok(mut receipt) => {
             receipt.masked = counts.any();
             receipt.masked_id_card = counts.id_card;
             receipt.masked_phone = counts.phone;
@@ -3666,7 +3673,7 @@ fn worklog_append(
         }
         Err(message) => serde_json::json!({
             "ok": false,
-            "path": worklog::week_path(&root, &week).display().to_string(),
+            "path": worklog_records::records_dir(&root).display().to_string(),
             "week": week,
             "date": date,
             "appended": false,
@@ -3695,7 +3702,7 @@ fn worklog_set_destination(
     destination: String,
     expect_text: String,
 ) -> serde_json::Value {
-    let root = match worklog_library_root(&state) {
+    let root = match work_root(&state) {
         Ok(root) => root,
         Err(message) => {
             return serde_json::json!({
@@ -3711,11 +3718,19 @@ fn worklog_set_destination(
             })
         }
     };
-    match worklog::set_destination(&root, &week, &date, index, &destination, &expect_text) {
+    match quicklog::set_destination(
+        &root,
+        &week,
+        &date,
+        index,
+        &destination,
+        &expect_text,
+        task_shell::now_secs(),
+    ) {
         Ok(receipt) => serde_json::json!(receipt),
         Err(message) => serde_json::json!({
             "ok": false,
-            "path": worklog::week_path(&root, &week).display().to_string(),
+            "path": worklog_records::records_dir(&root).display().to_string(),
             "week": week,
             "date": date,
             "index": index,
@@ -3742,8 +3757,7 @@ fn worklog_redate(
     expect_text: String,
 ) -> serde_json::Value {
     let offset = worklog_offset_minutes(&state);
-    let today = worklog::date_label(task_shell::now_secs(), offset);
-    let root = match worklog_library_root(&state) {
+    let root = match work_root(&state) {
         Ok(root) => root,
         Err(message) => {
             return serde_json::json!({
@@ -3759,11 +3773,20 @@ fn worklog_redate(
             })
         }
     };
-    match worklog::move_entry(&root, &week, &from_date, index, &to_date, &expect_text, &today) {
+    match quicklog::redate(
+        &root,
+        &week,
+        &from_date,
+        index,
+        &to_date,
+        &expect_text,
+        task_shell::now_secs(),
+        offset,
+    ) {
         Ok(receipt) => serde_json::json!(receipt),
         Err(message) => serde_json::json!({
             "ok": false,
-            "path": worklog::week_path(&root, &week).display().to_string(),
+            "path": worklog_records::records_dir(&root).display().to_string(),
             "week": week,
             "from_date": from_date,
             "to_date": to_date,
@@ -3789,7 +3812,7 @@ fn worklog_move_many(
 ) -> serde_json::Value {
     let offset = worklog_offset_minutes(&state);
     let today = worklog::date_label(task_shell::now_secs(), offset);
-    let root = match worklog_library_root(&state) {
+    let root = match work_root(&state) {
         Ok(root) => root,
         Err(message) => {
             return serde_json::json!({
@@ -3812,11 +3835,11 @@ fn worklog_move_many(
             "error": message,
         });
     }
-    match worklog::move_entries(&root, &week, &moves, &today) {
+    match quicklog::move_many(&root, &week, &moves, &today, task_shell::now_secs()) {
         Ok(receipt) => serde_json::json!(receipt),
         Err(message) => serde_json::json!({
             "ok": false,
-            "path": worklog::week_path(&root, &week).display().to_string(),
+            "path": worklog_records::records_dir(&root).display().to_string(),
             "week": week,
             "moves": [],
             "backup": null,
@@ -3855,11 +3878,11 @@ fn worklog_merge(
             "error": message,
         })
     };
-    let root = match worklog_library_root(&state) {
+    let root = match work_root(&state) {
         Ok(root) => root,
         Err(message) => return failure(None, message, (0, 0, false)),
     };
-    let path = worklog::week_path(&root, &week).display().to_string();
+    let path = worklog_records::records_dir(&root).display().to_string();
     let policy = match current_rule_policy(&state) {
         Ok(policy) => policy,
         Err(message) => return failure(Some(path), message, (0, 0, false)),
@@ -3881,7 +3904,15 @@ fn worklog_merge(
     }
     let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
     let counts = (counts.id_card, counts.phone, counts.any());
-    match worklog::merge_entry(&root, &week, &date, index, &expect_text, &masked_text) {
+    match quicklog::merge(
+        &root,
+        &week,
+        &date,
+        index,
+        &expect_text,
+        &masked_text,
+        task_shell::now_secs(),
+    ) {
         Ok(mut receipt) => {
             receipt.masked = counts.2;
             receipt.masked_id_card = counts.0;
@@ -3900,7 +3931,7 @@ fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serd
         Some(w) => w.to_string(),
         None => worklog::week_label(task_shell::now_secs(), offset),
     };
-    let root = match worklog_library_root(&state) {
+    let work = match work_root(&state) {
         Ok(root) => root,
         Err(message) => {
             return serde_json::json!({
@@ -3913,20 +3944,66 @@ fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serd
             })
         }
     };
-    match worklog::read_week(&root, &resolved_week) {
-        Ok((exists, content, path)) => serde_json::json!({
-            "ok": true,
-            "exists": exists,
+    if let Err(message) = worklog::assert_week_label(&resolved_week) {
+        return serde_json::json!({
+            "ok": false,
+            "exists": false,
             "week": resolved_week,
-            "path": path.display().to_string(),
-            "content": content,
-            "error": null,
-        }),
+            "path": null,
+            "content": "",
+            "error": message,
+        });
+    }
+    match quicklog::week_entries(&work, &resolved_week) {
+        Ok(entries) if !entries.is_empty() => {
+            let content = quicklog::render_week_markdown(&work, &resolved_week)
+                .unwrap_or_default();
+            serde_json::json!({
+                "ok": true,
+                "exists": true,
+                "week": resolved_week,
+                "path": worklog_records::records_dir(&work).display().to_string(),
+                "content": content,
+                "error": null,
+                "source": "records",
+            })
+        }
+        Ok(_) => match worklog_library_root(&state) {
+            Ok(root) => match worklog::read_week(&root, &resolved_week) {
+                Ok((exists, content, path)) => serde_json::json!({
+                    "ok": true,
+                    "exists": exists,
+                    "week": resolved_week,
+                    "path": path.display().to_string(),
+                    "content": content,
+                    "error": null,
+                    "source": "legacy",
+                }),
+                Err(message) => serde_json::json!({
+                    "ok": false,
+                    "exists": false,
+                    "week": resolved_week,
+                    "path": worklog::week_path(&root, &resolved_week).display().to_string(),
+                    "content": "",
+                    "error": message,
+                    "source": "legacy",
+                }),
+            },
+            Err(_) => serde_json::json!({
+                "ok": true,
+                "exists": false,
+                "week": resolved_week,
+                "path": null,
+                "content": "",
+                "error": null,
+                "source": "none",
+            }),
+        },
         Err(message) => serde_json::json!({
             "ok": false,
             "exists": false,
             "week": resolved_week,
-            "path": worklog::week_path(&root, &resolved_week).display().to_string(),
+            "path": null,
             "content": "",
             "error": message,
         }),
@@ -3952,16 +4029,46 @@ fn worklog_archive_list(state: State<'_, SharedHost>) -> serde_json::Value {
             })
         }
     };
+    let work = match work_root(&state) {
+        Ok(work) => work,
+        Err(message) => {
+            return serde_json::json!({
+                "ok": false,
+                "library_root": root.display().to_string(),
+                "current_week": current,
+                "weeks": [],
+                "reports": [],
+                "skipped": 0,
+                "error": message,
+            })
+        }
+    };
+    let record_weeks = quicklog::list_record_weeks(&work).unwrap_or_default();
     match (worklog::list_weeks(&root), worklog::list_reports(&root)) {
-        (Ok((weeks, skipped_weeks)), Ok((reports, skipped_reports))) => serde_json::json!({
-            "ok": true,
-            "library_root": root.display().to_string(),
-            "current_week": current,
-            "weeks": weeks,
-            "reports": reports,
-            "skipped": skipped_weeks + skipped_reports,
-            "error": null,
-        }),
+        (Ok((mut weeks, skipped_weeks)), Ok((reports, skipped_reports))) => {
+            for record_week in record_weeks {
+                if weeks.iter().any(|week| week.week == record_week.week) {
+                    continue;
+                }
+                weeks.push(worklog::WeekFile {
+                    week: record_week.week.clone(),
+                    file_name: format!("{}.md", record_week.week),
+                    path: worklog_records::records_dir(&work).display().to_string(),
+                    bytes: 0,
+                    modified_at: 0.0,
+                });
+            }
+            weeks.sort_by(|a, b| a.week.cmp(&b.week));
+            serde_json::json!({
+                "ok": true,
+                "library_root": root.display().to_string(),
+                "current_week": current,
+                "weeks": weeks,
+                "reports": reports,
+                "skipped": skipped_weeks + skipped_reports,
+                "error": null,
+            })
+        }
         (Err(message), _) | (_, Err(message)) => serde_json::json!({
             "ok": false,
             "library_root": root.display().to_string(),
@@ -4013,6 +4120,530 @@ fn worklog_read_report(
     }
 }
 
+// ---------------------------------------------------------------------------
+// 工作记录 / 任务 / 候选 IPC（OD-WR-302）
+//
+// 存储层只认绝对根与已校验编号；工作根由 settings 解析（OD-WR-315）：
+//   OMNIDESK_WORK_ROOT > settings.v1 working_root > 默认 $HOME/OmniDesk/work。
+// 写入前统一过红线扫描与 mask_privacy；命中红线整次拒绝，错误里不回显原文。
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkRecordSaved {
+    pub record: worklog_records::WorkRecord,
+    pub masked: bool,
+    pub masked_id_card: u64,
+    pub masked_phone: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskSaved {
+    pub task: task_store::Task,
+    pub masked: bool,
+    pub masked_id_card: u64,
+    pub masked_phone: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskDeleted {
+    pub id: String,
+    pub path: String,
+}
+
+fn work_root(state: &State<'_, SharedHost>) -> Result<std::path::PathBuf, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    settings::effective_working_root(&config_dir).map(|eff| eff.root)
+}
+
+/// 红线扫描 + 隐私掩码的统一入口。命中红线直接拒绝；返回掩码后的文本与计数。
+fn gate_user_text(
+    text: &str,
+    policy: &profile_rules::RulePolicy,
+    target: &str,
+) -> Result<(String, profile_rules::MaskCounts), String> {
+    let hits = task_shell::red_line_scan_with(text, policy);
+    if !hits.is_empty() {
+        let mut detail = String::new();
+        for hit in &hits {
+            detail.push_str(&format!("{}（{} 处）；", hit.label, hit.count));
+        }
+        return Err(format!(
+            "{target}命中红线扫描，已拒绝写入：{detail}该扫描仅为启发式，不代表合规判断。"
+        ));
+    }
+    Ok(profile_rules::mask_privacy(text, policy))
+}
+
+fn add_counts(total: &mut profile_rules::MaskCounts, extra: profile_rules::MaskCounts) {
+    total.id_card += extra.id_card;
+    total.phone += extra.phone;
+}
+
+fn work_record_create_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut draft: worklog_records::RecordDraft,
+    now: f64,
+    utc_offset_minutes: i32,
+) -> Result<WorkRecordSaved, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    if let Some(title) = draft.title.clone() {
+        if !title.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&title, policy, "记录标题")?;
+            add_counts(&mut counts, extra);
+            draft.title = Some(masked);
+        }
+    }
+    let (body, extra) = gate_user_text(&draft.body, policy, "记录正文")?;
+    add_counts(&mut counts, extra);
+    draft.body = body;
+    let record = worklog_records::create_record(root, &draft, now, utc_offset_minutes)?;
+    Ok(WorkRecordSaved {
+        record,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn work_record_update_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    mut patch: worklog_records::RecordPatch,
+    now: f64,
+) -> Result<WorkRecordSaved, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    if let Some(title) = patch.title.clone() {
+        if !title.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&title, policy, "记录标题")?;
+            add_counts(&mut counts, extra);
+            patch.title = Some(masked);
+        }
+    }
+    if let Some(body) = patch.body.clone() {
+        let (masked, extra) = gate_user_text(&body, policy, "记录正文")?;
+        add_counts(&mut counts, extra);
+        patch.body = Some(masked);
+    }
+    let record = worklog_records::update_record(root, id, &patch, now)?;
+    Ok(WorkRecordSaved {
+        record,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_create_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut draft: task_store::TaskDraft,
+    now: f64,
+) -> Result<TaskSaved, String> {
+    let (title, counts) = gate_user_text(&draft.title, policy, "任务标题")?;
+    draft.title = title;
+    let task = task_store::create_task(root, &draft, now)?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_update_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    mut patch: task_store::TaskPatch,
+    now: f64,
+) -> Result<TaskSaved, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    if let Some(title) = patch.title.clone() {
+        if !title.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&title, policy, "任务标题")?;
+            add_counts(&mut counts, extra);
+            patch.title = Some(masked);
+        }
+    }
+    let task = task_store::update_task(root, id, &patch, now)?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_transition_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    to_state: &str,
+    note: Option<String>,
+    now: f64,
+) -> Result<TaskSaved, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    let note = match note {
+        Some(raw) => {
+            let (masked, extra) = gate_user_text(&raw, policy, "状态备注")?;
+            add_counts(&mut counts, extra);
+            Some(masked)
+        }
+        None => None,
+    };
+    let task = task_store::transition_task(root, id, to_state, note.as_deref(), now)?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_append_progress_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    text: &str,
+    now: f64,
+) -> Result<TaskSaved, String> {
+    let (masked, counts) = gate_user_text(text, policy, "任务进展")?;
+    let task = task_store::append_progress(root, id, &masked, now)?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_candidate_confirm_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    candidate_id: &str,
+    mut edits: task_store::ConfirmEdits,
+    now: f64,
+) -> Result<TaskSaved, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    // 候选标题来自模型；确认落盘前同样要过红线与掩码，不能因为「用户没改」就跳过。
+    let final_title = match edits.title.clone() {
+        Some(title) => title,
+        None => task_store::read_pending_candidate(root, candidate_id)?.title,
+    };
+    if !final_title.trim().is_empty() {
+        let (masked, extra) = gate_user_text(&final_title, policy, "任务标题")?;
+        add_counts(&mut counts, extra);
+        edits.title = Some(masked);
+    }
+    if let Some(note) = edits.note.clone() {
+        let (masked, extra) = gate_user_text(&note, policy, "确认备注")?;
+        add_counts(&mut counts, extra);
+        edits.note = Some(masked);
+    }
+    let task = task_store::confirm_candidate(root, candidate_id, &edits, now)?;
+    Ok(TaskSaved {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn task_candidate_reject_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    candidate_id: &str,
+    note: Option<String>,
+    now: f64,
+) -> Result<task_store::TaskCandidate, String> {
+    let note = match note {
+        Some(raw) => Some(gate_user_text(&raw, policy, "拒绝备注")?.0),
+        None => None,
+    };
+    task_store::reject_candidate(root, candidate_id, note.as_deref(), now)
+}
+
+#[tauri::command(async)]
+fn work_record_create(
+    state: State<'_, SharedHost>,
+    draft: worklog_records::RecordDraft,
+) -> Result<WorkRecordSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let offset = worklog_offset_minutes(&state);
+    work_record_create_impl(&root, &policy, draft, task_shell::now_secs(), offset)
+}
+
+#[tauri::command(async)]
+fn work_record_read(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<worklog_records::WorkRecord, String> {
+    let root = work_root(&state)?;
+    worklog_records::read_record(&root, &id)
+}
+
+#[tauri::command(async)]
+fn work_record_update(
+    state: State<'_, SharedHost>,
+    id: String,
+    patch: worklog_records::RecordPatch,
+) -> Result<WorkRecordSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    work_record_update_impl(&root, &policy, &id, patch, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn work_record_delete(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<worklog_records::TrashMove, String> {
+    let root = work_root(&state)?;
+    worklog_records::delete_record(&root, &id, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn work_record_list(
+    state: State<'_, SharedHost>,
+    filter: worklog_records::RecordFilter,
+) -> Result<worklog_records::RecordListing, String> {
+    let root = work_root(&state)?;
+    worklog_records::list_records(&root, &filter)
+}
+
+/// 存量周文件迁移预览：只解析、不写盘。
+#[tauri::command(async)]
+fn worklog_migrate_preview(
+    state: State<'_, SharedHost>,
+) -> Result<worklog_migrate::MigrationPreview, String> {
+    let library = worklog_library_root(&state)?;
+    let work = work_root(&state)?;
+    worklog_migrate::preview(&library, &work)
+}
+
+/// 执行存量周文件迁移。必须显式 confirm；成功后源文件移入 work/周文件存档/。
+#[tauri::command(async)]
+fn worklog_migrate_apply(
+    state: State<'_, SharedHost>,
+    confirm: bool,
+) -> Result<worklog_migrate::MigrationReport, String> {
+    if !confirm {
+        return Err("迁移会移动周文件，必须显式确认后才能执行。".to_string());
+    }
+    let library = worklog_library_root(&state)?;
+    let work = work_root(&state)?;
+    worklog_migrate::migrate(&library, &work, task_shell::now_secs())
+}
+
+/// 解析准备：校验门禁、过红线与掩码、组装提示词。模型调用由界面随后提交。
+#[tauri::command(async)]
+fn worklog_record_analyze(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<task_extract::AnalyzePrompt, String> {
+    let root = work_root(&state)?;
+    let record = worklog_records::read_record(&root, &record_id)?;
+    task_extract::assert_analysis_allowed(&record)?;
+    let policy = current_rule_policy(&state)?;
+    let (title, title_counts) = gate_user_text(&record.title, &policy, "记录标题")?;
+    let (body, body_counts) = gate_user_text(&record.body, &policy, "记录正文")?;
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let config = EngineConfig::from_env(&app_root)?;
+    let tasks = task_store::unfinished_tasks(&root)?;
+    let prompt = task_extract::build_prompt(
+        &config.python,
+        &config.engine_dir,
+        &record,
+        &tasks,
+        &title,
+        &body,
+    )?;
+    Ok(task_extract::AnalyzePrompt {
+        record_id,
+        prompt,
+        user_input_text: format!("{title}\n{body}"),
+        masked: title_counts.any() || body_counts.any(),
+        masked_id_card: title_counts.id_card + body_counts.id_card,
+        masked_phone: title_counts.phone + body_counts.phone,
+    })
+}
+
+/// 解析落地：校验模型输出、暂存候选、记录标记为已解析；失败只改状态。
+#[tauri::command(async)]
+fn worklog_record_analyze_apply(
+    state: State<'_, SharedHost>,
+    record_id: String,
+    result_text: String,
+) -> Result<task_extract::AnalyzeApplied, String> {
+    let root = work_root(&state)?;
+    task_extract::apply_analysis(&root, &record_id, &result_text, task_shell::now_secs())
+}
+
+/// 模型调用失败或超时时把记录置为解析失败；正文不动。
+#[tauri::command(async)]
+fn worklog_record_analyze_failed(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<worklog_records::WorkRecord, String> {
+    let root = work_root(&state)?;
+    task_extract::mark_analysis_failed(&root, &record_id, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn task_create(
+    state: State<'_, SharedHost>,
+    draft: task_store::TaskDraft,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_create_impl(&root, &policy, draft, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn task_read(state: State<'_, SharedHost>, id: String) -> Result<task_store::Task, String> {
+    let root = work_root(&state)?;
+    task_store::read_task(&root, &id)
+}
+
+#[tauri::command(async)]
+fn task_update(
+    state: State<'_, SharedHost>,
+    id: String,
+    patch: task_store::TaskPatch,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_update_impl(&root, &policy, &id, patch, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn task_transition(
+    state: State<'_, SharedHost>,
+    id: String,
+    to_state: String,
+    note: Option<String>,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_transition_impl(
+        &root,
+        &policy,
+        &id,
+        &to_state,
+        note,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn task_append_progress(
+    state: State<'_, SharedHost>,
+    id: String,
+    text: String,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_append_progress_impl(&root, &policy, &id, &text, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn task_delete(state: State<'_, SharedHost>, id: String) -> Result<TaskDeleted, String> {
+    let root = work_root(&state)?;
+    let path = task_store::delete_task(&root, &id, task_shell::now_secs())?;
+    Ok(TaskDeleted { id, path })
+}
+
+#[tauri::command(async)]
+fn task_list(
+    state: State<'_, SharedHost>,
+    filter: task_store::TaskFilter,
+) -> Result<task_store::TaskListing, String> {
+    let root = work_root(&state)?;
+    task_store::list_tasks(&root, &filter)
+}
+
+#[tauri::command(async)]
+fn task_candidate_list(
+    state: State<'_, SharedHost>,
+) -> Result<task_store::CandidateListing, String> {
+    let root = work_root(&state)?;
+    task_store::list_candidates(&root)
+}
+
+#[tauri::command(async)]
+fn task_candidate_confirm(
+    state: State<'_, SharedHost>,
+    candidate_id: String,
+    edits: task_store::ConfirmEdits,
+) -> Result<TaskSaved, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_candidate_confirm_impl(
+        &root,
+        &policy,
+        &candidate_id,
+        edits,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn task_candidate_reject(
+    state: State<'_, SharedHost>,
+    candidate_id: String,
+    note: Option<String>,
+) -> Result<task_store::TaskCandidate, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    task_candidate_reject_impl(&root, &policy, &candidate_id, note, task_shell::now_secs())
+}
+
+/// 采纳关联建议：追加进展并双向回写；进展文本同样过红线与掩码。
+#[tauri::command(async)]
+fn task_candidate_link(
+    state: State<'_, SharedHost>,
+    candidate_id: String,
+    progress_text: Option<String>,
+    note: Option<String>,
+) -> Result<task_store::LinkReport, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let progress = match progress_text {
+        Some(raw) => Some(gate_user_text(&raw, &policy, "任务进展")?.0),
+        None => None,
+    };
+    let note = match note {
+        Some(raw) => Some(gate_user_text(&raw, &policy, "关联备注")?.0),
+        None => None,
+    };
+    task_store::link_candidate(
+        &root,
+        &candidate_id,
+        progress.as_deref(),
+        note.as_deref(),
+        task_shell::now_secs(),
+    )
+}
+
+/// 拒绝关联建议：清空匹配字段，候选继续留在待审核。
+#[tauri::command(async)]
+fn task_candidate_dismiss_match(
+    state: State<'_, SharedHost>,
+    candidate_id: String,
+) -> Result<task_store::TaskCandidate, String> {
+    let root = work_root(&state)?;
+    task_store::dismiss_match(&root, &candidate_id, task_shell::now_secs())
+}
+
 /// 保存新的库根。只影响之后的 @ 引用：不迁移、不覆盖、不删除旧文件。
 #[tauri::command(async)]
 fn task_set_library_root(
@@ -4028,6 +4659,61 @@ fn task_set_library_root(
         "ok": true,
         "library_root": root.display().to_string(),
         "note": "仅影响之后的 @ 引用；既有文件不会移动、覆盖或删除。",
+    }))
+}
+
+/// 工作记录根信息（OD-WR-315）：当前生效路径、来源与已保存选择。
+#[tauri::command(async)]
+fn work_root_info(state: State<'_, SharedHost>) -> serde_json::Value {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let settings_path = settings::settings_path(&config_dir).display().to_string();
+    let default_root = platform::home_dir().map(|home| {
+        home.join(settings::DEFAULT_WORK_SUBDIR)
+            .display()
+            .to_string()
+    });
+    match settings::effective_working_root(&config_dir) {
+        Ok(eff) => serde_json::json!({
+            "resolved": true,
+            "working_root": eff.root.display().to_string(),
+            "source": eff.source,
+            "configured_root": eff.configured_root.as_ref().map(|p| p.display().to_string()),
+            "env_override": eff.env_override.as_ref().map(|p| p.display().to_string()),
+            "default_root": default_root,
+            "settings_path": settings_path,
+            "error": null,
+        }),
+        Err(message) => serde_json::json!({
+            "resolved": false,
+            "working_root": null,
+            "source": null,
+            "configured_root": null,
+            "env_override": null,
+            "default_root": default_root,
+            "settings_path": settings_path,
+            "error": message,
+        }),
+    }
+}
+
+/// 保存工作记录根（OD-WR-315）。只影响之后新建的记录与任务。
+#[tauri::command(async)]
+fn task_set_working_root(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = settings::set_working_root(&paths, &path)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "working_root": root.display().to_string(),
+        "note": "仅影响之后新建的工作记录与任务；既有文件不会移动、覆盖或删除。",
     }))
 }
 
@@ -5572,6 +6258,8 @@ pub fn run() {
             task_set_artifact_root,
             task_library_root_info,
             task_set_library_root,
+            work_root_info,
+            task_set_working_root,
             task_open_artifact_root,
             open_external_url,
             environment_check,
@@ -5655,6 +6343,28 @@ pub fn run() {
             worklog_read_week,
             worklog_archive_list,
             worklog_read_report,
+            work_record_create,
+            work_record_read,
+            work_record_update,
+            work_record_delete,
+            work_record_list,
+            worklog_migrate_preview,
+            worklog_migrate_apply,
+            worklog_record_analyze,
+            worklog_record_analyze_apply,
+            worklog_record_analyze_failed,
+            task_create,
+            task_read,
+            task_update,
+            task_transition,
+            task_append_progress,
+            task_delete,
+            task_list,
+            task_candidate_list,
+            task_candidate_confirm,
+            task_candidate_reject,
+            task_candidate_link,
+            task_candidate_dismiss_match,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。
@@ -7113,5 +7823,334 @@ mod profile_skill_bindings_tests {
             .is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before, "被拒时文件逐字节不变");
         std::fs::remove_dir_all(&root).ok();
+    }
+}
+
+#[cfg(test)]
+mod work_store_ipc_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    const NOW: f64 = 1_780_100_000.0;
+    const OFFSET: i32 = 480;
+    const BODY: &str = "今天整理周报，明天写总结。";
+
+    struct TempRoot {
+        path: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "omnidesk-wr302-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn root(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn policy_with(redline: &[&str], mask: bool) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        let mode = if mask { "mask" } else { "off" };
+        rules.global.privacy.id_card = mode.to_string();
+        rules.global.privacy.phone = mode.to_string();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn record_draft(title: &str, body: &str) -> worklog_records::RecordDraft {
+        worklog_records::RecordDraft {
+            title: Some(title.to_string()),
+            body: body.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn record_create_masks_privacy_and_reports_counts() {
+        let temp = TempRoot::new("mask");
+        let policy = policy_with(&[], true);
+        let saved = work_record_create_impl(
+            temp.root(),
+            &policy,
+            record_draft("隐私记录", "身份证 110101199003077777，电话 13800138000"),
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        assert!(saved.record.body.contains("110*************77"), "{}", saved.record.body);
+        assert!(saved.record.body.contains("138******00"), "{}", saved.record.body);
+        assert!(saved.masked);
+        assert_eq!(saved.masked_id_card, 1);
+        assert_eq!(saved.masked_phone, 1);
+        let stored =
+            worklog_records::read_record(temp.root(), &saved.record.id).expect("落盘记录必须可读");
+        assert!(stored.body.contains("110*************77"));
+        assert!(!stored.body.contains("110101199003077777"));
+    }
+
+    #[test]
+    fn record_create_rejects_red_line_without_writing() {
+        let temp = TempRoot::new("redline");
+        let policy = policy_with(&["机密"], false);
+        let err = work_record_create_impl(
+            temp.root(),
+            &policy,
+            record_draft("命中", "这段包含机密信息"),
+            NOW,
+            OFFSET,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!err.contains("机密信息"), "错误不得回显命中原文：{err}");
+        let listing = worklog_records::list_records(
+            temp.root(),
+            &worklog_records::RecordFilter::default(),
+        )
+        .unwrap();
+        assert!(listing.items.is_empty(), "{:?}", listing.items);
+    }
+
+    #[test]
+    fn record_crud_round_trip_through_ipc_impl() {
+        let temp = TempRoot::new("crud");
+        let policy = policy_with(&[], false);
+        let saved = work_record_create_impl(
+            temp.root(),
+            &policy,
+            worklog_records::RecordDraft {
+                title: Some("周一复盘".to_string()),
+                record_date: Some("2026-11-02".to_string()),
+                category: Some("项目".to_string()),
+                body: "讨论了验收口径".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        let listing = worklog_records::list_records(
+            temp.root(),
+            &worklog_records::RecordFilter {
+                keyword: Some("验收".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(listing.items.len(), 1);
+        let updated = work_record_update_impl(
+            temp.root(),
+            &policy,
+            &saved.record.id,
+            worklog_records::RecordPatch {
+                title: Some("周一复盘（已归档）".to_string()),
+                draft: Some(false),
+                ai_analysis_status: Some(worklog_records::AI_ANALYZED.to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(updated.record.created_at, saved.record.created_at);
+        assert_eq!(updated.record.ai_analysis_status, worklog_records::AI_ANALYZED);
+        let moved = worklog_records::delete_record(temp.root(), &saved.record.id, NOW).unwrap();
+        assert!(Path::new(&moved.path).exists());
+        assert!(worklog_records::read_record(temp.root(), &saved.record.id).is_err());
+        let listing = worklog_records::list_records(
+            temp.root(),
+            &worklog_records::RecordFilter::default(),
+        )
+        .unwrap();
+        assert!(listing.items.is_empty());
+    }
+
+    #[test]
+    fn candidate_stays_out_of_task_list_until_confirmed() {
+        let temp = TempRoot::new("candidate");
+        let policy = policy_with(&[], false);
+        let saved = work_record_create_impl(
+            temp.root(),
+            &policy,
+            record_draft("工作记录", BODY),
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        let staged = task_store::stage_candidates(
+            temp.root(),
+            &saved.record.id,
+            &[task_store::CandidateInput {
+                title: "整理周报".to_string(),
+                source_quote: "整理周报".to_string(),
+                confidence: Some(0.7),
+                ..Default::default()
+            }],
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(staged.staged.len(), 1);
+        let tasks =
+            task_store::list_tasks(temp.root(), &task_store::TaskFilter::default()).unwrap();
+        assert!(tasks.items.is_empty(), "候选确认前不得进入正式清单");
+        let candidates = task_store::list_candidates(temp.root()).unwrap();
+        assert_eq!(candidates.items.len(), 1);
+        let confirmed = task_candidate_confirm_impl(
+            temp.root(),
+            &policy,
+            &staged.staged[0].id,
+            task_store::ConfirmEdits::default(),
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(confirmed.task.state, task_store::STATE_NOT_STARTED);
+        assert_eq!(
+            confirmed.task.source_record_id.as_deref(),
+            Some(saved.record.id.as_str())
+        );
+        let tasks =
+            task_store::list_tasks(temp.root(), &task_store::TaskFilter::default()).unwrap();
+        assert_eq!(tasks.items.len(), 1);
+        let candidates = task_store::list_candidates(temp.root()).unwrap();
+        assert!(candidates.items.is_empty());
+    }
+
+    #[test]
+    fn task_flows_mask_title_note_and_progress() {
+        let temp = TempRoot::new("task-mask");
+        let policy = policy_with(&[], true);
+        let saved = task_create_impl(
+            temp.root(),
+            &policy,
+            task_store::TaskDraft {
+                title: "联系 13800138000".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(saved.task.title, "联系 138******00");
+        assert_eq!(saved.masked_phone, 1);
+        let moved = task_transition_impl(
+            temp.root(),
+            &policy,
+            &saved.task.id,
+            task_store::STATE_IN_PROGRESS,
+            Some("回电 13800138000".to_string()),
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert_eq!(
+            moved.task.history[0].note.as_deref(),
+            Some("回电 138******00")
+        );
+        let progressed = task_append_progress_impl(
+            temp.root(),
+            &policy,
+            &saved.task.id,
+            "身份证 110101199003077777",
+            NOW + 120.0,
+        )
+        .unwrap();
+        assert_eq!(progressed.task.progress[0].text, "身份证 110*************77");
+    }
+
+    #[test]
+    fn red_line_blocks_task_progress_without_changing_task() {
+        let temp = TempRoot::new("task-redline");
+        let clean = policy_with(&[], false);
+        let saved = task_create_impl(
+            temp.root(),
+            &clean,
+            task_store::TaskDraft {
+                title: "写周报".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let redline = policy_with(&["机密"], false);
+        let err = task_append_progress_impl(
+            temp.root(),
+            &redline,
+            &saved.task.id,
+            "记录机密内容",
+            NOW + 60.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        let stored = task_store::read_task(temp.root(), &saved.task.id).unwrap();
+        assert!(stored.progress.is_empty());
+    }
+
+    #[test]
+    fn candidate_confirm_rejects_red_line_in_ai_title() {
+        let temp = TempRoot::new("candidate-redline");
+        let clean = policy_with(&[], false);
+        let saved = work_record_create_impl(
+            temp.root(),
+            &clean,
+            record_draft("工作记录", BODY),
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        let staged = task_store::stage_candidates(
+            temp.root(),
+            &saved.record.id,
+            &[task_store::CandidateInput {
+                title: "机密事项".to_string(),
+                source_quote: "整理周报".to_string(),
+                ..Default::default()
+            }],
+            NOW,
+        )
+        .unwrap();
+        let redline = policy_with(&["机密"], false);
+        let err = task_candidate_confirm_impl(
+            temp.root(),
+            &redline,
+            &staged.staged[0].id,
+            task_store::ConfirmEdits::default(),
+            NOW + 60.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        let tasks =
+            task_store::list_tasks(temp.root(), &task_store::TaskFilter::default()).unwrap();
+        assert!(tasks.items.is_empty());
+        let candidates = task_store::list_candidates(temp.root()).unwrap();
+        assert_eq!(candidates.items.len(), 1, "被拒后候选仍留在待确认");
+    }
+
+    #[test]
+    fn work_root_boundary_matches_artifact_rules() {
+        let base = TempRoot::new("root");
+        let app_root = base.root().join("app");
+        std::fs::create_dir_all(&app_root).unwrap();
+        let err =
+            settings::resolve_working_root(&app_root, Some(PathBuf::from("relative/work")))
+                .unwrap_err();
+        assert!(err.contains("绝对路径"), "{err}");
+        let err =
+            settings::resolve_working_root(&app_root, Some(app_root.join("work"))).unwrap_err();
+        assert!(err.contains("应用自身数据目录"), "{err}");
+        let resolved =
+            settings::resolve_working_root(&app_root, Some(base.root().join("work"))).unwrap();
+        assert!(resolved.starts_with(base.root()));
     }
 }
