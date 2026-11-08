@@ -123,6 +123,7 @@ function DestinationSwitch({
 export function WeeklyTimeline({
   week,
   content,
+  parsed,
   error,
   loading,
   onOpenSource,
@@ -135,6 +136,8 @@ export function WeeklyTimeline({
 }: {
   week: string;
   content: string;
+  /** 结构化周视图（OD-WR-311）：优先于 content，避免界面再解析渲染文本。 */
+  parsed?: ReturnType<typeof parseWorklog>;
   error: string | null;
   loading: boolean;
   onOpenSource: () => void;
@@ -161,9 +164,9 @@ export function WeeklyTimeline({
     next: boolean;
   }) => Promise<void>;
 }) {
-  const parsed = useMemo(() => parseWorklog(content), [content]);
-  const rows = useMemo(() => buildTimeline(parsed, week), [parsed, week]);
-  const empty = useMemo(() => isEmptyTimeline(parsed.days), [parsed]);
+  const parsedWeek = useMemo(() => parsed ?? parseWorklog(content), [parsed, content]);
+  const rows = useMemo(() => buildTimeline(parsedWeek, week), [parsedWeek, week]);
+  const empty = useMemo(() => isEmptyTimeline(parsedWeek.days), [parsedWeek]);
   const today = localToday();
   const filtered = visibleIds != null;
   /** 筛选后仍然显示的空日期行：不在筛选结果里就不占位置，避免大半屏空点。 */
@@ -196,7 +199,7 @@ export function WeeklyTimeline({
       data-weekly-timeline=""
       aria-label={
         "本周记录 " + week + " · " +
-        (empty ? "暂无记录" : filtered ? `${filteredCount}/${parsed.entryCount} 条` : `${parsed.entryCount} 条`)
+        (empty ? "暂无记录" : filtered ? `${filteredCount}/${parsedWeek.entryCount} 条` : `${parsedWeek.entryCount} 条`)
       }
     >
       <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
@@ -205,7 +208,7 @@ export function WeeklyTimeline({
         </h2>
         <span className="mono text-[12px] text-outline">
           {week}
-          {empty ? "" : filtered ? ` · ${filteredCount}/${parsed.entryCount} 条` : ` · ${parsed.entryCount} 条`}
+          {empty ? "" : filtered ? ` · ${filteredCount}/${parsedWeek.entryCount} 条` : ` · ${parsedWeek.entryCount} 条`}
         </span>
         <button
           className="ml-auto text-[12px] text-outline hover:text-primary hover:underline shrink-0"
@@ -362,11 +365,11 @@ export function WeeklyTimeline({
         </ol>
       )}
 
-      {parsed.preamble.length > 0 ? (
+      {parsedWeek.preamble.length > 0 ? (
         <div className="mt-2 border-t border-surface-variant/25 pt-1.5">
           <p className="text-[12px] text-outline pb-1">文件里这些内容不在任何日期下，原样显示：</p>
           <pre className="mono text-[12px] text-outline whitespace-pre-wrap leading-relaxed">
-            {parsed.preamble.join("\n")}
+            {parsedWeek.preamble.join("\n")}
           </pre>
         </div>
       ) : null}

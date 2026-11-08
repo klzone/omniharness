@@ -55,9 +55,11 @@ pub mod vault_index;
 pub mod vault_open;
 pub mod vault_search;
 pub mod vault_write;
+pub mod vault_archive;
 pub mod worklog;
 pub mod worklog_records;
 pub mod worklog_migrate;
+pub mod work_cleanup;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -4010,6 +4012,22 @@ fn worklog_read_week(state: State<'_, SharedHost>, week: Option<String>) -> serd
     }
 }
 
+/// 结构化周视图（OD-WR-311）：按记录库的 ISO 周过滤，供时间线与四象限直接消费。
+#[tauri::command(async)]
+fn worklog_week_view(
+    state: State<'_, SharedHost>,
+    week: Option<String>,
+) -> Result<quicklog::WeekView, String> {
+    let offset = worklog_offset_minutes(&state);
+    let resolved = match week.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => value.to_string(),
+        None => worklog::week_label(task_shell::now_secs(), offset),
+    };
+    worklog::assert_week_label(&resolved)?;
+    let root = work_root(&state)?;
+    quicklog::week_view(&root, &resolved)
+}
+
 /// 列工作记录与周报归档（OD-ARCH-091）。只读文件系统元数据，不读正文、不调模型。
 #[tauri::command(async)]
 fn worklog_archive_list(state: State<'_, SharedHost>) -> serde_json::Value {
@@ -4441,6 +4459,38 @@ fn worklog_migrate_apply(
     worklog_migrate::migrate(&library, &work, task_shell::now_secs())
 }
 
+/// 临时层清理预览：只读，不创建目录、不移动文件（OD-WR-313）。
+#[tauri::command(async)]
+fn work_cleanup_preview(
+    state: State<'_, SharedHost>,
+) -> Result<work_cleanup::CleanupPreview, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let work = work_root(&state)?;
+    let vault = configured_vault_root(&paths).ok();
+    work_cleanup::cleanup_preview(&work, vault.as_deref(), task_shell::now_secs())
+}
+
+/// 临时层清理执行：必须显式 confirm；只移动到 .trash/。
+#[tauri::command(async)]
+fn work_cleanup_apply(
+    state: State<'_, SharedHost>,
+    confirm: bool,
+) -> Result<work_cleanup::CleanupReport, String> {
+    if !confirm {
+        return Err("清理会移动记录与任务，必须显式确认后才能执行。".to_string());
+    }
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let work = work_root(&state)?;
+    let vault = configured_vault_root(&paths).ok();
+    work_cleanup::cleanup_apply(&work, vault.as_deref(), task_shell::now_secs())
+}
+
 /// 解析准备：校验门禁、过红线与掩码、组装提示词。模型调用由界面随后提交。
 #[tauri::command(async)]
 fn worklog_record_analyze(
@@ -4642,6 +4692,42 @@ fn task_candidate_dismiss_match(
 ) -> Result<task_store::TaskCandidate, String> {
     let root = work_root(&state)?;
     task_store::dismiss_match(&root, &candidate_id, task_shell::now_secs())
+}
+
+/// 把一份报告复制进知识库「报告/」（OD-WR-312）。同名同来源幂等，不同来源拒绝。
+#[tauri::command(async)]
+fn archive_report_to_vault(
+    state: State<'_, SharedHost>,
+    file_name: String,
+    period: Option<String>,
+) -> Result<vault_archive::ArchiveReceipt, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths)?;
+    let library = settings::effective_library_root(&paths.config)?.root;
+    vault_archive::archive_report(
+        &vault,
+        &library,
+        &file_name,
+        period.as_deref(),
+        task_shell::now_secs(),
+    )
+}
+
+/// 把一条已发布成果复制进知识库「归档成果/」；草稿与未发布成文拒绝。
+#[tauri::command(async)]
+fn archive_artifact_to_vault(
+    state: State<'_, SharedHost>,
+    relative_path: String,
+) -> Result<vault_archive::ArchiveReceipt, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths)?;
+    vault_archive::archive_artifact(&vault, &relative_path, task_shell::now_secs())
 }
 
 /// 保存新的库根。只影响之后的 @ 引用：不迁移、不覆盖、不删除旧文件。
@@ -6341,8 +6427,11 @@ pub fn run() {
             worklog_move_many,
             worklog_merge,
             worklog_read_week,
+            worklog_week_view,
             worklog_archive_list,
             worklog_read_report,
+            archive_report_to_vault,
+            archive_artifact_to_vault,
             work_record_create,
             work_record_read,
             work_record_update,
@@ -6350,6 +6439,8 @@ pub fn run() {
             work_record_list,
             worklog_migrate_preview,
             worklog_migrate_apply,
+            work_cleanup_preview,
+            work_cleanup_apply,
             worklog_record_analyze,
             worklog_record_analyze_apply,
             worklog_record_analyze_failed,

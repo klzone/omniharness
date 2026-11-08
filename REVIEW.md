@@ -212,6 +212,103 @@
 
 **后续指示：** 下一任务 **OD-WR-310**（随手记链路切换到记录库：判定块协议不变，append/move/merge 改写记录库，周索引从记录库聚合，worklog.rs 周文件写路径退役）；完成后 311 → 312 → 313。**阶段性提交仍未做**：现在有 11 个任务的未提交改动，建议 310 验收后、312 动工前由用户批准提交一次。
 
+## OD-WR-310 审查（ARCHITECT，2026-11-08）——通过；提交推送已核验
+
+**结论：通过。** 基于实际源码、git diff、证据文件与本会话独立复跑核对。
+
+**独立复跑（本会话实跑，全部通过）：** cargo test --offline --tests → exit 0，lib 660 passed / 0 failed（653 → 660，净增 7 项）；verify_worklog_unify_305.py → 15/15；npm build / npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- 架构契合：新增 quicklog.rs（684 行）承接 append / set_destination / redate / move_many / merge 五个随手记动作，判定块协议与 IPC 参数/回执形状不变——workRecordVerdict.ts 的前端校验与界面定位逻辑（week/date/index/expect_text）零改动，符合任务卡「只换存储后端」要求。
+- 周索引切换：read_week 把记录库按 ISO 周聚合并渲染成旧周文件形状，WeeklyTimeline 与 buildWorklogIndex 无需改协议；记录为空时回退旧周文件读函数（迁移期与旧数据回看兼容）。archive_list 合并记录周。
+- 红线闸门保留核对（读 lib.rs worklog_append 全路径）：日期合法性 → red_line_scan_with（命中拒绝、不回显原文）→ mask_privacy → quicklog::append——随手记新路径的安全口径与 302/304 同一标准，掩码计数回执保持。
+- 批量移动非事务如实申报：任一条失败回滚本批 record_date 改动；跨文件事务仍不做（与 307/316 同一口径）。
+- 309 迁移出的 4 条 W45 记录补写了 destination（来自存档去向），抽查 wr-…-0.md 的 destination: "本周报引用" 与原周文件一致。
+- worklog.rs 旧写函数保留源码但不再被命令调用——退役而非删除，旧数据回看路径保留，符合任务卡「读函数保留」要求。
+
+**提交与推送核验（用户已执行）：**
+
+- 提交 d8486784c8「feat(workdesk): 工作记录与任务闭环、界面精简、迁移收口」：127 文件 +12581/-1551，覆盖 OD-WR-301..310/314..316 全部任务改动 + OD-UI-201 + OD-KB-201 UI 美化 + 308 四份规划文档 + 全部验收证据；本地 main 与 origin/main 同步（已推送）。
+- 安全核对：提交内容敏感词扫描零命中；.preview/ 设计预览与 用户成果/ 目录的处理符合边界（后者已入 .gitignore，提交说明明确「不提交个人文档」）；STATUS/REVIEW/PLANS 的状态更新内容与事实一致。
+
+**已知限制（认可登记）：** worklog.rs 旧写函数待后续清理任务删除；周报正文生成与周视图深度切换属 311；真实窗口未目视核对。
+
+**后续指示：** 下一任务 **OD-WR-311**（周视图与周报改读记录库：WeeklyTimeline/四象限数据源换记录库按周过滤，周报整理源切换；验收 npm build + verify_week_from_records_306.py）；完成后 312（报告/成果归档知识库）→ 313（清理，须用户授权）。
+
+## OD-WR-311 审查（ARCHITECT，2026-11-08）——通过
+
+**结论：通过。** 基于实际源码、git diff、证据文件与本会话独立复跑核对。基线为 310 提交后的 d8486784c8，干净。
+
+**独立复跑（本会话实跑，全部通过）：** cargo test --offline --lib → exit 0，660 passed / 0 failed（本任务无新增 cargo 用例，符合预期——纯接线任务不造冗余测试）；verify_week_from_records_306.py → 12/12；npm build / npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- 结构化周视图：quicklog.rs 新增 WeekView / week_view（按记录库 ISO 周返回条目）+ worklog_week_view IPC 注册 + 前端客户端/类型成套。
+- 数据源切换：ScenePage 时间线、四象限、指标带统一从 worklog_week_view 的结构化条目计算（classifyWorklog(parsedWeek) 同源）；仅当记录为空或读取失败时回退 worklog_read_week 旧周文件——迁移期旧数据仍可看，符合任务卡「周视图与周报改读记录库」的主体要求。
+- WeeklyTimeline 新增可选 parsed 入参（parsed ?? parseWorklog(content)），不再只依赖 Markdown 解析；协议兼容无破坏。
+- 周报：HomeChat 经 310 已改为记录库优先的 worklogReadWeek 渲染输出，周报源同为记录库；提示词仍接收 Markdown 形状——模型协议不变，符合任务卡「周报源切换、输出格式不变」。
+- 允许文件：quicklog.rs / lib.rs / api.ts / types.ts / weekTimeline.ts / ScenePage.tsx / WeeklyTimeline.tsx / verify_week_from_records_306.py，无越界；STATUS/REVIEW/PLANS 未被执行会话触碰。
+
+**已知限制（认可登记）：** 旧周文件回退保留至旧数据全部迁移并经用户确认；周报提示词仍接收 Markdown 而非结构化字段（保持模型协议，属合理取舍）；真实窗口未目视核对。
+
+**后续指示：** 下一任务 **OD-WR-312**（报告与成果归档知识库：archive_report_to_vault + archive_artifact_to_vault IPC，同名拒绝同内容幂等、草稿态拒绝；验收 cargo lib + tsc）；完成后 **OD-WR-313**（临时层清理——**动工前须用户单独授权**）。
+
+## OD-WR-312 审查（ARCHITECT，2026-11-08）——通过
+
+**结论：通过。** 基于实际源码、git diff、证据文件与本会话独立复跑核对。
+
+**独立复跑（本会话实跑，全部通过）：** cargo test --offline --lib → exit 0，666 passed / 0 failed（660 → 666，净增 6 项）；npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- 新增 vault_archive.rs（归档报告 + 归档已发布成果）：目标目录 报告/ 与 归档成果/（vault 根下）；frontmatter 追加 source_type / source_file / source_period / source_sha256 / archived_at 五字段——「归档带来源可溯」落实。
+- 幂等与冲突：同名且 source_sha256 相同 → already_archived=true 不重写；同名异源 → 拒绝覆盖。符合任务卡「同名拒绝、同内容幂等」。
+- 发布态门禁：成果只放行 scenario=material_writing 且 status=published；draft 与 finished（成文未发布）均拒绝——「草稿永不进知识库」的硬边界落地为代码。
+- 安全防护（超出任务卡最低要求，认可）：文件名拒绝路径分隔/隐藏名/非 .md；归档子目录真实落点必须 在知识库根内；目标是符号链接时拒绝（symlink_metadata 双处检查——源与目标）。
+- 越界校验：vault root 走 configured_vault_root 既有解析。
+- task_shell.rs 改动仅为 parse_writing_frontmatter 从私有改 pub(crate)——最小可见性变更，无行为改动，允许范围认可。
+
+**范围说明（认可）：** 本轮只交付宿主能力与 IPC + 前端类型，未做界面归档按钮——归档是用户显式动作，没有按钮就不会有意外归档；界面入口后置到需要时再立项，符合「没有真实触发条件不加 UI」的产品原则。
+
+**已知限制（认可登记）：** 报告来源周期可从周报名推断，月报/年报/项目总结须调用方显式传 period——313 的清理圈定如需按报告归档期判断，届时补 period 传递。
+
+**后续指示：** 最后一个任务 **OD-WR-313**（临时层清理：圈定函数含 draft 与被引用保护 → work_cleanup_preview 零写入预览 → work_cleanup_apply 确认后移 .trash/ → retention 配置；验收 cargo lib + 新增 verify_work_cleanup_307.py）。**动工前须用户单独授权。** 313 验收后本阶段（301–313 + 314–316）全部收口，建议做最终提交推送。
+
+## OD-WR-313 审查（ARCHITECT，2026-11-08）——通过；第一阶段 301–316 全部竣工
+
+**结论：通过。** 基于实际源码、git diff、证据文件与本会话独立复跑核对。
+
+**独立复跑（本会话实跑）：** cargo test --offline --lib 首轮出现 1 项环境性失败（engine_ipc::spawn_with_stderr_log 的合成子进程 PermissionDenied——macOS 对 /tmp 下 python -c 的偶发拦截，单独复跑 5/5 通过、整轮复跑 672/0 全绿、与 313 改动文件无关，判定环境噪音非代码缺陷）；verify_work_cleanup_307.py → 15/15；npm build / npx tsc --noEmit → exit 0。
+
+**逐项核对：**
+
+- 圈定函数（D-068 落地）：记录 = record_date 落在已归档报告 source_period 覆盖区间；任务 = 已完成/已取消且 updated_at 超过 retention 天数（默认 90，配置范围 1–3650，损坏配置整次拒绝）。**三重保护逐条有单测**：draft 记录不入选、被未完成任务引用（linked_task_ids 指向未完结任务）的记录不入选、还有待审核候选的记录不入选——「清理不破坏进行中工作」的硬边界成立。
+- 预览零写入：cleanup_preview 只读，不建 .trash、不写 retention 文件（单测覆盖）。
+- apply 门禁：IPC 层显式 confirm=true 否则拒绝（错误信息明确「必须显式确认」）；启动流程无自动清理；执行时重新计算候选（预览与执行之间数据变化不会误移）；逐项移动只进 .trash/（复用 delete_record/delete_task 的回收目录语义），无直接删除；部分失败如实列 failures 且 ok=false，不假装成功。
+- 设置页入口：预览 + 勾选确认两段，与「用户预览 → 确认 → 可恢复」的登记口径一致。
+
+**授权与执行边界确认：** 本轮未在真实数据上执行清理——代码能力就绪，实际清理动作等用户在设置页逐次预览并勾选确认后触发。授权边界处置正确：313 的「授权」指动工实现（已批准），真实数据清理是运行时动作（用户逐次显式触发，无需本轮授权）。
+
+**已知限制（认可登记）：** 报告 source_period 缺失或无法解析时该报告覆盖期不参与圈定（宁漏勿错，方向正确）；任务年龄取 updated_at（完成后追加进展会延后清理）；跨文件移动非事务、部分失败只报告不回滚（与 307/316 同口径）。
+
+---
+
+## 第一阶段（OD-WR-3xx）最终验收结论
+
+**全部 16 个任务（301/302/303/304/305/306/307/308/309/310/311/312/313/314/315/316）实施完成、逐卡复检通过、证据齐备。**
+
+- **主线能力**：工作记录逐条 Markdown 管理 → AI 任务提取（宿主强校验）→ 审核工作台（批量逐条过闸）→ 任务六状态管理（白名单迁移 + 状态历史）→ 记录↔任务联动（关联建议 + 双向回写 + 三日记事归一）。
+- **数据分层**：临时层 work/（记录、任务、候选、清理）与知识层 vault/（知识卡、归档报告/成果）分离；报告与发布成果经显式归档进知识层；临时层保留期 90 天（可配）+ 用户逐次确认清理。
+- **安全链路**：全部用户文本写入/出提示词前过红线 + mask_privacy；AI 无文件写通道；端点默认关闭；错误不回显原文；测试数据全虚构。
+- **迁移收尾**：真实 W45 周文件已授权迁移（字节级核验一致）；随手记与周视图/周报均改读记录库；旧周文件读路径保留至旧数据确认清理。
+
+**遗留事项（不阻塞收口）：**
+
+1. **待用户动作**：最终提交推送（311–313 的未提交改动）；真实窗口界面验收（记录/任务/审核/周视图/设置页清理入口）；真实模型解析质量试用（虚构材料 2–3 条全流程）。
+2. **未验证事项（历轮累计）**：真实模型提取/匹配质量与误报漏报；DataMasker 词典覆盖与回程还原质量；大量记录下的列表性能；跨文件写入失败的中间态恢复（单文件原子性已有）。
+3. **后续阶段衔接**：二阶段四象限/排期（hint 字段已预留）；三阶段知识库深度联动（Task frontmatter 引用位已预留，复用 vault_search）；文案写作联动（source_evidence/进展为素材，经既有写作链路）。
+
 ## OD-UI-201 界面精简审查（ARCHITECT，2026-11-08）——通过，待用户验收
 
 **结论：通过。** 对照用户三条指令逐项核验实际改动、测试结果与真实窗口：

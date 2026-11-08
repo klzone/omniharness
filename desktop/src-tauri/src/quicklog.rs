@@ -32,6 +32,12 @@ pub struct RecordWeek {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct WeekView {
+    pub week: String,
+    pub entries: Vec<WeekEntry>,
+}
+
 fn date_days(date: &str) -> Result<i64, String> {
     if !worklog_records::is_date_shape(date) {
         return Err(format!("日期格式不正确（应为 YYYY-MM-DD）：{date}"));
@@ -69,6 +75,14 @@ pub fn week_entries(root: &Path, week: &str) -> Result<Vec<WeekEntry>, String> {
             .then_with(|| a.record_id.cmp(&b.record_id))
     });
     Ok(entries)
+}
+
+/// 结构化周视图（OD-WR-311）：界面直接消费记录条目，不再解析渲染文本。
+pub fn week_view(root: &Path, week: &str) -> Result<WeekView, String> {
+    Ok(WeekView {
+        week: week.to_string(),
+        entries: week_entries(root, week)?,
+    })
 }
 
 pub fn list_record_weeks(root: &Path) -> Result<Vec<RecordWeek>, String> {

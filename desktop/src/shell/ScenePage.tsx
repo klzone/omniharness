@@ -33,8 +33,8 @@ import {
   WritingPipeline,
 } from "./WritingStudio";
 import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
-import type { WorklogArchiveList, WorklogWeekFile } from "../types";
-import { localToday, parseWorklog, reportState } from "../weekTimeline";
+import type { WorklogArchiveList, WorklogWeekFile, WorklogWeekView } from "../types";
+import { localToday, parseWeekView, parseWorklog, reportState } from "../weekTimeline";
 import {
   QUADRANTS,
   REPORT_DESTINATION,
@@ -141,6 +141,7 @@ export function ScenePage({
   const [opened, setOpened] = useState<{ name: string; body: string } | null>(null);
   /** 本周记录原文与归档清单（OD-ARCH-091）：都是宿主只读命令，不调模型。 */
   const [weekContent, setWeekContent] = useState<string>("");
+  const [weekView, setWeekView] = useState<WorklogWeekView | null>(null);
   /** 宿主算出的当周标签（读周记录时一并拿到，归档命令也会给同一份）。 */
   const [weekLabel, setWeekLabel] = useState<string>("");
   const [weekLoading, setWeekLoading] = useState(false);
@@ -307,44 +308,44 @@ export function ScenePage({
    * 重读当周记录（OD-ARCH-099 S03）：改完一条去向之后，统计卡、四象限与时间线
    * 都从这一份新内容重新算，不各自维护一套计数。
    */
-  const reloadWeek = useCallback(async () => {
+  const loadWeek = useCallback(async () => {
     setWeekLoading(true);
     try {
-      const r = await shell.worklogReadWeek();
-      setWeekContent(r.content ?? "");
-      if (r.week) setWeekLabel(r.week);
-      setWeekError(r.ok ? null : (r.error ?? "读不到本周记录"));
+      const view = await shell.worklogWeekView();
+      setWeekView(view);
+      setWeekLabel(view.week);
+      if (view.entries.length > 0) {
+        setWeekContent("");
+        setWeekError(null);
+        return;
+      }
+      const legacy = await shell.worklogReadWeek();
+      setWeekContent(legacy.content ?? "");
+      setWeekError(legacy.ok ? null : (legacy.error ?? "读不到本周记录"));
     } catch (e) {
-      setWeekContent("");
-      setWeekError(e instanceof Error ? e.message : String(e));
+      setWeekView(null);
+      try {
+        const legacy = await shell.worklogReadWeek();
+        setWeekContent(legacy.content ?? "");
+        if (legacy.week) setWeekLabel(legacy.week);
+        setWeekError(legacy.ok ? null : (legacy.error ?? String(e)));
+      } catch (fallbackError) {
+        setWeekContent("");
+        setWeekError(
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        );
+      }
     } finally {
       setWeekLoading(false);
     }
   }, []);
 
+  const reloadWeek = loadWeek;
+
   useEffect(() => {
     if (scene !== "weekly") return;
-    let alive = true;
-    setWeekLoading(true);
-    shell
-      .worklogReadWeek()
-      .then((r) => {
-        if (!alive) return;
-        setWeekContent(r.content ?? "");
-        if (r.week) setWeekLabel(r.week);
-        setWeekError(r.ok ? null : (r.error ?? "读不到本周记录"));
-        setWeekLoading(false);
-      })
-      .catch((e) => {
-        if (!alive) return;
-        setWeekContent("");
-        setWeekError(e instanceof Error ? e.message : String(e));
-        setWeekLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [scene, pendingTick]);
+    void loadWeek();
+  }, [scene, pendingTick, loadWeek]);
 
   useEffect(() => {
     if (scene !== "weekly") return;
@@ -472,11 +473,16 @@ export function ScenePage({
    *   * 本周记录条数取时间线解析结果，**不是**成果文件数——用户问的「我记了几条」；
    *   * 周报状态取确定性文件检查，未读到时给 null，界面显示占位而不是 0。
    */
+  const parsedWeek = useMemo(() => {
+    if (weekView && weekView.entries.length > 0) return parseWeekView(weekView);
+    return parseWorklog(weekContent);
+  }, [weekView, weekContent]);
+
   const weekEntries = useMemo(() => {
     if (scene !== "weekly") return null;
-    if (weekError && !weekContent) return null;
-    return parseWorklog(weekContent).entryCount;
-  }, [scene, weekContent, weekError]);
+    if (weekError && !weekContent && !weekView) return null;
+    return parsedWeek.entryCount;
+  }, [scene, weekContent, weekError, weekView, parsedWeek]);
 
   const reportLabel = useMemo(() => {
     if (scene !== "weekly") return null;
@@ -493,8 +499,8 @@ export function ScenePage({
    * 归类只用「日期是否已过」与「去向是否为本周报引用」，不调模型、不新增字段。
    */
   const classified = useMemo(
-    () => classifyWorklog(parseWorklog(weekContent), localToday()),
-    [weekContent],
+    () => classifyWorklog(parsedWeek, localToday()),
+    [parsedWeek],
   );
 
   /** 进周报条数：四象限里「去向 = 本周报引用」的两格之和。 */
@@ -800,6 +806,7 @@ export function ScenePage({
             <WeeklyTimeline
               week={currentWeek}
               content={weekContent}
+              parsed={parsedWeek}
               error={weekError}
               loading={weekLoading}
               onOpenSource={() => void openWeekSource()}
