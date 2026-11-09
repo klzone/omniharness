@@ -1375,6 +1375,369 @@ export interface MaterialQueryResponse {
   broken: number;
 }
 
+/** 智能素材收集的五类区分标注（OD-WT-605）。 */
+export type WritingCollectClass =
+  | "confirmed_fact"
+  | "ai_recommended"
+  | "pending_review"
+  | "reference_only"
+  | "user_external";
+
+/** 推荐依据类型（D-079 组合口径）。 */
+export type WritingRecommendationBasis =
+  | "已确认匹配"
+  | "主题相关"
+  | "项目关联"
+  | "知识支撑";
+
+export interface WritingCollectReason {
+  basis: WritingRecommendationBasis;
+  detail: string;
+}
+
+/** 同一标题关键词、不同年月的事件日期冲突对；只提示不合并。 */
+export interface WritingCollectConflict {
+  left_id: string;
+  left_title: string;
+  left_period: string;
+  right_id: string;
+  right_title: string;
+  right_period: string;
+  hint: string;
+}
+
+/** 一条推荐候选：素材（kind=material）或知识支撑（kind=knowledge）。 */
+export interface WritingCollectItem {
+  kind: "material" | "knowledge";
+  class: WritingCollectClass;
+  class_label: string;
+  material_id: string | null;
+  knowledge_id: string | null;
+  title: string;
+  content_summary: string;
+  source: MaterialQuerySource;
+  event_date: string | null;
+  updated_at: string | null;
+  review_status: string;
+  related: MaterialQueryRelations;
+  reasons: WritingCollectReason[];
+  reason_text: string;
+  conflict_ids: string[];
+  conflict_hint: string | null;
+  /** 仅「已确认」且正文与引用原文不同时为 true。 */
+  suitable_for_direct_quote: boolean;
+  pending_review: boolean;
+  selected: boolean;
+}
+
+export interface WritingCollectInput {
+  writing_id: string;
+  filter?: MaterialFilter;
+  /** 504/604 主题提示词；只在宿主本地词法检索。 */
+  knowledge_hints?: string[];
+  /** 默认 false：待审核素材不进推荐列表。 */
+  include_pending?: boolean;
+}
+
+export interface WritingCollectResponse {
+  writing_id: string;
+  writing_title: string;
+  topic: string;
+  filter: MaterialFilter;
+  include_pending: boolean;
+  items: WritingCollectItem[];
+  conflicts: WritingCollectConflict[];
+  selected_material_ids: string[];
+  selected_knowledge_ids: string[];
+  material_count: number;
+  knowledge_count: number;
+  pending_count: number;
+  conflict_count: number;
+  broken_materials: number;
+  knowledge_note: string | null;
+}
+
+/** 用户采纳/排除/标注重点。说明会过宿主闸门并写入追加状态记录。 */
+export interface WritingSelectInput {
+  writing_id: string;
+  adopt_material_ids?: string[];
+  adopt_knowledge_ids?: string[];
+  exclude_material_ids?: string[];
+  exclude_knowledge_ids?: string[];
+  highlight_material_ids?: string[];
+  highlight_knowledge_ids?: string[];
+  note?: string | null;
+}
+
+export interface WritingSelectStatusRecord {
+  at: string;
+  action: string;
+  reason: string;
+}
+
+export interface WritingSelectResult {
+  writing_id: string;
+  selected_material_ids: string[];
+  selected_knowledge_ids: string[];
+  status: string;
+  updated_at: string;
+  status_records: WritingSelectStatusRecord[];
+  changed: boolean;
+  summary: string;
+}
+
+/** 文稿十二类（OD-WT-601 白名单）。 */
+export type WritingDocumentType =
+  | "月度总结"
+  | "年度总结"
+  | "专项汇报"
+  | "经验交流"
+  | "典型案例"
+  | "调研报告"
+  | "工作方案"
+  | "领导讲话"
+  | "工作简报"
+  | "专题分析"
+  | "会议发言"
+  | "个人述职";
+
+/** 写作任务九态（OD-WT-601 白名单）。 */
+export type WritingTaskStatus =
+  | "需求待整理"
+  | "素材收集中"
+  | "大纲待确认"
+  | "写作中"
+  | "待核验"
+  | "待审核"
+  | "已定稿"
+  | "已归档"
+  | "已取消";
+
+export interface WritingStatusRecord {
+  at: string;
+  action: string;
+  reason: string;
+}
+
+/** 写作任务实体（OD-WT-601）：work/写作/<writing_id>.md。 */
+export interface WritingTask {
+  schema: string;
+  writing_id: string;
+  title: string;
+  document_type: WritingDocumentType;
+  writing_purpose: string;
+  audience: string;
+  writing_period: string;
+  topic: string;
+  requirements: string;
+  expected_length: string;
+  writing_style: string;
+  selected_material_ids: string[];
+  selected_knowledge_ids: string[];
+  document_id: string | null;
+  status: WritingTaskStatus;
+  created_at: string;
+  updated_at: string;
+  /** 状态记录只追加；不落 frontmatter。 */
+  status_records: WritingStatusRecord[];
+}
+
+/**
+ * 写作需求解析草稿（OD-WT-604）。
+ * null = 用户没有说到或无法确定；缺失的关键条件在 questions 里逐条列出。
+ */
+export interface WritingRequirementDraft {
+  document_type: WritingDocumentType | null;
+  title: string | null;
+  topic: string | null;
+  writing_purpose: string | null;
+  audience: string | null;
+  writing_period: string | null;
+  expected_length: string | null;
+  writing_style: string | null;
+  requirements: string[];
+  questions: string[];
+  confidence: number | null;
+}
+
+/** 解析准备回执：提示词与送模型前的原文（已过红线与掩码）。 */
+export interface WritingRequirementPrompt {
+  prompt: string;
+  user_input_text: string;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 解析落地回执：草稿 + 是否已具备创建任务的最低条件。 */
+export interface WritingRequirementApplied {
+  draft: WritingRequirementDraft;
+  ready_to_create: boolean;
+}
+
+/** 用户确认创建后的回执：任务实体 + 掩码计数。 */
+export interface WritingTaskCreated {
+  task: WritingTask;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 大纲单章（OD-WT-606）：每章带写作重点、素材映射与预计字数。 */
+export interface WritingOutlineSection {
+  no: number;
+  heading: string;
+  sub_headings: string[];
+  focus: string;
+  material_ids: string[];
+  knowledge_ids: string[];
+  expected_words: number;
+}
+
+/** 可编辑大纲 JSON。确认前由用户核对，确认后成为 outline.md。 */
+export interface WritingOutline {
+  title: string;
+  writing_purpose: string;
+  core_points: string[];
+  sections: WritingOutlineSection[];
+}
+
+export interface WritingOutlineGenerateInput {
+  writing_id: string;
+}
+
+/** 大纲提示词回执：宿主过闸门后返回，模型调用由界面侧提交。 */
+export interface WritingOutlinePrompt {
+  prompt: string;
+  template_key: string;
+  template_label: string;
+  material_count: number;
+  knowledge_count: number;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface WritingOutlineConfirmInput {
+  writing_id: string;
+  outline: WritingOutline;
+  note?: string | null;
+}
+
+/** 大纲确认/读取回执：结构化大纲、落盘 Markdown 与版本信息。 */
+export interface WritingOutlineConfirmed {
+  writing_id: string;
+  status: WritingTaskStatus;
+  outline: WritingOutline;
+  markdown: string;
+  version: number;
+  updated_at: string;
+  status_records: WritingStatusRecord[];
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 章节稿引用（OD-WT-607）：来源必须是任务已选素材或知识。 */
+export interface WritingSectionCitation {
+  source_kind: "material" | "knowledge";
+  source_id: string;
+  quote: string;
+}
+
+/** material-writing Skill 四分法。 */
+export type WritingSectionSegmentKind = "事实" | "分析" | "判断" | "建议";
+
+export interface WritingSectionSegment {
+  kind: WritingSectionSegmentKind;
+  text: string;
+  quote?: string | null;
+}
+
+/** 章节稿候选：模型输出经宿主校验后才可确认。 */
+export interface WritingSectionDraft {
+  section_no: number;
+  content: string;
+  citations: WritingSectionCitation[];
+  segments: WritingSectionSegment[];
+}
+
+export interface WritingSectionGenerateInput {
+  writing_id: string;
+  section_no: number;
+}
+
+/** 章节提示词回执：宿主过闸门后返回，模型调用由界面侧提交。 */
+export interface WritingSectionPrompt {
+  prompt: string;
+  section_no: number;
+  heading: string;
+  material_count: number;
+  knowledge_count: number;
+  previous_summary: string;
+  next_summary: string;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface WritingSectionConfirmInput {
+  writing_id: string;
+  draft: WritingSectionDraft;
+  note?: string | null;
+}
+
+/** 章节确认/读取回执。content 为 null 表示该章尚未确认。 */
+export interface WritingSectionState {
+  writing_id: string;
+  section_no: number;
+  heading: string;
+  content: string | null;
+  confirmed: boolean;
+  status: WritingTaskStatus;
+  version: number;
+  updated_at: string;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface WritingSectionConfirmed {
+  writing_id: string;
+  section_no: number;
+  heading: string;
+  content: string;
+  status: WritingTaskStatus;
+  version: number;
+  updated_at: string;
+  citations_added: number;
+  all_sections_confirmed: boolean;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export type WritingReviseKind = "精简" | "扩展" | "语气" | "术语统一" | "消除重复";
+
+export interface WritingSectionReviseInput {
+  writing_id: string;
+  section_no: number;
+  paragraph_no?: number | null;
+  instruction_kind: WritingReviseKind;
+  instruction?: string;
+}
+
+export interface WritingSectionRevisePrompt {
+  prompt: string;
+  section_no: number;
+  heading: string;
+  paragraph_no: number | null;
+  instruction_kind: WritingReviseKind;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
 /** 审核动作（OD-KM-506）：宿主同时接受英文与中文动作名。 */
 export type MaterialReviewAction =
   | "confirm"

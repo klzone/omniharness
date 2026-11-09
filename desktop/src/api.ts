@@ -65,7 +65,26 @@ import type {
   MaterialQueryInput,
   MaterialQueryResponse,
   MaterialReviewAction,
+  WritingCollectInput,
+  WritingCollectResponse,
+  WritingSelectInput,
+  WritingSelectResult,
   WritingMaterial,
+  WritingRequirementApplied,
+  WritingRequirementDraft,
+  WritingRequirementPrompt,
+  WritingTaskCreated,
+  WritingOutlineConfirmInput,
+  WritingOutlineConfirmed,
+  WritingOutlineGenerateInput,
+  WritingOutlinePrompt,
+  WritingSectionConfirmInput,
+  WritingSectionConfirmed,
+  WritingSectionGenerateInput,
+  WritingSectionPrompt,
+  WritingSectionReviseInput,
+  WritingSectionRevisePrompt,
+  WritingSectionState,
   ProfileDeclPayload,
   ParkedSkillView,
   ProfileAssetsView,
@@ -2219,6 +2238,122 @@ export const shell = {
     return invoke<MaterialQueryResponse>("material_query", { query }).catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /**
+   * 智能素材收集（OD-WT-605）：默认只返回已确认素材；待审核需显式打开。
+   * 查询条件不落盘、不外发；写作任务编号在宿主侧过闸门。
+   */
+  writingCollectMaterials(input: WritingCollectInput): Promise<WritingCollectResponse> {
+    return invoke<WritingCollectResponse>("writing_collect_materials", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 用户采纳/排除/标注重点：写回素材包，状态记录只追加。 */
+  writingSelectMaterials(input: WritingSelectInput): Promise<WritingSelectResult> {
+    return invoke<WritingSelectResult>("writing_select_materials", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 写作需求解析准备（OD-WT-604）：宿主过门禁、红线与掩码后返回提示词。
+   * 模型调用由界面侧提交，与工作记录解析同一条既有通道。
+   */
+  writingRequirementPrepare(text: string): Promise<WritingRequirementPrompt> {
+    return invoke<WritingRequirementPrompt>("writing_parse_requirement", { text }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 解析落地：校验模型输出并返回草稿；不落盘，等待用户确认补全。 */
+  writingRequirementApply(resultText: string): Promise<WritingRequirementApplied> {
+    return invoke<WritingRequirementApplied>("writing_parse_requirement_apply", {
+      resultText,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户确认后创建写作任务，初始状态＝需求待整理。 */
+  writingCreateFromRequirement(
+    draft: WritingRequirementDraft,
+  ): Promise<WritingTaskCreated> {
+    return invoke<WritingTaskCreated>("writing_create_from_requirement", { draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 大纲生成准备（OD-WT-606）：宿主校验任务状态与素材包后返回提示词。
+   * 模型调用仍由界面侧提交；本命令不写文件。
+   */
+  writingOutlineGenerate(input: WritingOutlineGenerateInput): Promise<WritingOutlinePrompt> {
+    return invoke<WritingOutlinePrompt>("writing_outline_generate", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 确认可编辑大纲：写 outline.md + 版本快照，并迁移到写作中。 */
+  writingOutlineConfirm(input: WritingOutlineConfirmInput): Promise<WritingOutlineConfirmed> {
+    return invoke<WritingOutlineConfirmed>("writing_outline_confirm", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 读取已确认大纲；未确认时返回明确错误。 */
+  writingOutlineGet(writingId: string): Promise<WritingOutlineConfirmed> {
+    return invoke<WritingOutlineConfirmed>("writing_outline_get", { writingId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 章节生成准备（OD-WT-607）：宿主校验任务状态、已确认大纲与本章素材后返回
+   * 提示词。模型调用仍由界面侧提交；本命令不写文件。
+   */
+  writingSectionGenerate(input: WritingSectionGenerateInput): Promise<WritingSectionPrompt> {
+    return invoke<WritingSectionPrompt>("writing_section_generate", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 用户确认章节稿：写正文.md + 完整正文快照，并追加本章引用。 */
+  writingSectionConfirm(input: WritingSectionConfirmInput): Promise<WritingSectionConfirmed> {
+    return invoke<WritingSectionConfirmed>("writing_section_confirm", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 读取当前正文中的指定章节；未确认时 content 为 null。 */
+  writingSectionGet(writingId: string, sectionNo: number): Promise<WritingSectionState> {
+    return invoke<WritingSectionState>("writing_section_get", { writingId, sectionNo }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 构建章节修订提示词；应用修订仍走 writingSectionConfirm。 */
+  writingSectionRevise(input: WritingSectionReviseInput): Promise<WritingSectionRevisePrompt> {
+    return invoke<WritingSectionRevisePrompt>("writing_section_revise", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
   },
 
   /** 保存离线成果：必须人工确认，不覆盖已有文件，落仓库外本地数据目录。 */

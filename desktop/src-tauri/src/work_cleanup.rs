@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::material_store;
+use crate::writing_store;
 use crate::task_store;
 use crate::vault_archive::frontmatter_value;
 use crate::worklog;
@@ -22,8 +23,9 @@ pub const RETENTION_FILE: &str = "retention.v1.json";
 pub const RETENTION_SCHEMA: &str = "omnidesk.work-retention.v1";
 pub const DEFAULT_RETENTION_DAYS: i64 = 90;
 pub const REPORT_ARCHIVE_DIR: &str = "报告";
-/// 清理永远不触碰的 work/ 子目录（素材篮是用户长期资产，不参与定期清理）。
-pub const CLEANUP_EXCLUDED_DIRS: &[&str] = &[material_store::MATERIAL_DIR];
+/// 清理永远不触碰的 work/ 子目录（素材篮与写作任务是用户长期资产，不参与定期清理）。
+pub const CLEANUP_EXCLUDED_DIRS: &[&str] =
+    &[material_store::MATERIAL_DIR, writing_store::WRITING_DIR];
 
 /// 路径是否落在清理排除目录内（按任意路径段匹配，防止换目录后误清）。
 pub fn is_cleanup_excluded(path: &Path) -> bool {
@@ -603,5 +605,41 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), before, "素材篮文件字节不得变化");
         let material_trash = material_store::trash_material_dir(&temp.work);
         assert!(!material_trash.exists(), "清理不得移动素材到回收目录");
+    }
+
+    #[test]
+    fn writing_dir_is_excluded_from_preview_and_apply() {
+        let temp = Temp::new("writing-excluded");
+        temp.add_report("2026-W45-周报.md", "2026-W45");
+        let doomed = record(&temp, "2026-11-02", "周期内记录", false);
+        let writing = writing_store::create_writing_task(
+            &temp.work,
+            &writing_store::WritingTaskDraft {
+                title: "写作任务资产".to_string(),
+                document_type: writing_store::TYPE_MONTHLY_SUMMARY.to_string(),
+                writing_purpose: "合成写作目的".to_string(),
+                audience: "合成受众".to_string(),
+                writing_period: "2026-11".to_string(),
+                topic: "合成写作主题".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let path = writing_store::writing_path(&temp.work, &writing.writing_id).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(is_cleanup_excluded(&path));
+        assert!(!is_cleanup_excluded(&temp.work.join("工作记录").join("r.md")));
+
+        let preview = cleanup_preview(&temp.work, Some(&temp.vault), NOW).unwrap();
+        assert_eq!(preview.records.len(), 1);
+        assert_eq!(preview.records[0].id, doomed.id);
+        let report = cleanup_apply(&temp.work, Some(&temp.vault), NOW).unwrap();
+        assert!(report.ok, "{:?}", report.failures);
+        assert_eq!(report.moved.len(), 1);
+        assert!(path.exists(), "写作任务文件不得被清理移动");
+        assert_eq!(fs::read(&path).unwrap(), before, "写作任务文件字节不得变化");
+        let writing_trash = writing_store::trash_writing_dir(&temp.work);
+        assert!(!writing_trash.exists(), "清理不得移动写作任务到回收目录");
     }
 }
