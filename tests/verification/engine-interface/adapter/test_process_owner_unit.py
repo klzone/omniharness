@@ -114,10 +114,23 @@ class ProcessOwnerTests(unittest.TestCase):
         self.assertTrue(path.exists())
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(record.pid, os.getpid())
-        self.assertEqual(record.pgid, os.getpgrp())
+        self.assertEqual(record.pgid, po.current_pgid())
         self.assertEqual(po.inspect_owner(self.root).status, "active_engine")
         po.release_ownership(self.root)
         self.assertFalse(path.exists())
+
+    def test_claim_without_posix_getpgrp_records_zero(self):
+        """Windows 没有 os.getpgrp；登记必须降级为 0 而不是启动崩溃。"""
+        saved = getattr(os, "getpgrp", None)
+        if saved is not None:
+            delattr(os, "getpgrp")
+        try:
+            record = po.claim_ownership(self.root, "web-api")
+        finally:
+            if saved is not None:
+                setattr(os, "getpgrp", saved)
+        self.assertEqual(record.pgid, 0)
+        self.assertEqual(record.pid, os.getpid())
 
     def test_release_never_deletes_foreign_record(self):
         self.write_record(pid=os.getpid() + 999999, cmdline=["other"])
