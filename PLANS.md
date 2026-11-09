@@ -10,6 +10,34 @@
 
 > **执行进展（2026-11-09）：** OD-WT-601 与 OD-WT-603 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：601 writing_store.rs（WritingTask 九态/十二类文体白名单、状态迁移合法性表+拒绝留痕、状态记录只追加、work_cleanup 排除有测试，21 项测试）；603 writing_records.rs（citations/factcheck JSONL、八类结论十类对象、处理状态按行重写、recompute 稳定骨架，18 项测试）。本会话独立复跑 lib 922/0、verify 23/23。OD-WT-602 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：document_store.rs（outline/正文读写、唯一写入口 save_with_snapshot、快照/恢复/manifest/sha256、段落级 diff、路径三层安全校验，17 项测试）。本会话独立复跑 lib 939/0（RUST_TEST_THREADS=4，规避既有 OMNIDESK_PYTHON 竞态——602 定位的既有债务，登记至 615 核对）。OD-WT-604 与 OD-WT-605 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：604 writing_extract.py + writing_parse.rs（解析提示词+宿主校验、缺失项进 questions、parse/apply/create 三命令、创建路径再过闸门，cargo 10 项+pytest 16 项）；605 writing_collect.rs（只读组装器、五类标注、冲突检测、collect/select 两命令、场景三断言，17 项测试）。本会话独立复跑 lib 966/0、pytest 216+30、tsc 0。OD-WT-606 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：writing_outline.rs（WritingOutline 结构校验、四套类型模板覆盖 12 类、confirm 两段状态迁移+outline.md+版本快照、生成门禁含未确认素材拒绝进提示词，19 项测试含场景四）。本会话独立复跑 lib 985/0。OD-WT-607 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：writing_section.rs（SectionDraft 四分法标注、生成门禁校验大纲已确认、confirm 落正文节+快照+citations 追加、全文组合未确认占位、修订复用确认路径，19 项测试含场景五与门禁断言）。本会话独立复跑 lib 1004/0、tsc 0、build 0。OD-WT-608 与 OD-WT-609 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：608 writing_review.rs（十维审阅检查单、应用问题复用 607 唯一写路径、版本列表/对比/恢复，15 项测试含场景八）；609 fact_check.rs（确定性提取+八类结论+口径冲突不合并+重跑去重+用户处理，26 项测试含场景六/七，verify 31/31）。本会话独立复跑 lib 1045/0、tsc 0。附：执行期间出现用户侧提交 821b1a4cf3（wip 快照+VERSION 0.2.12 CI 出包），内容与已复检交付一致，如实登记不推送。OD-WT-610 / 611 / 612 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：610 WritingWorkbench 工作台（九态分组/新建流程/详情入口，挂载任务页签，26/26）；611 大纲编辑器+章节编辑器组件（确认流/AI 建议标注/自动核验随车标注，28/28）；612 核验面板+版本面板组件（八类筛选/定位/处理/版本对比恢复/定稿门禁，27/28 附断言修正项）。5 项集成缺口（组件挂载/状态迁移 IPC/记录读取 IPC/断言修正）汇总至 613 修补。OD-WT-613 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条；首代理中断由补完代理接续闭环）：export_engine.rs（MD 三态/敏感扫描/DOCX 双路径/PDF soffice+fallback/公众号 HTML/样式包三套，25 项测试）+ 三命令（status_transition/records_query/export）+ 前端封装与四组件挂载（WritingWorkbench 任务详情四页签）+ verify 29/29、612 断言修正 28/28。本会话独立复跑 lib 1070/0、tsc 0、build 0。OD-WT-614 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：vault_archive 文稿入口（仅 MD 进报告目录）+ writing_archive（已定稿门禁/敏感扫描/回执关联素材知识核验版本导出清单/已归档终态）+ writing_knowledge_feedback（用户勾选→gate→raw 收件待审）+ WritingArchivePanel（导出清单软引导/归档确认/回流勾选，12 项测试，verify 23/23 含场景十/十一）。本会话独立复跑 lib 1082/0、tsc 0。OD-WT-615 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：全量命令全绿（cargo --tests 13 目标 1149/0、pytest 217+30、build/tsc）；verify_security_phase4 35/35（十项安全口径全 PASS）；十三场景 13/13 有证据；专项 verify 7 份全绿；证据落 od-wt-615/。**第四阶段（OD-WT-601～615，15 项任务）全部竣工（2026-11-09）。** 待办：用户批准后提交推送；六处新 UI 真实窗口目视追认；真实模型质量与 DOCX 兼容列未验证事项。
 
+### OD-SYS-700：运行环境与进程管理修复（已批准，2026-11-09；待实施）
+
+> **触发：** 用户实测报告四项问题：①首页对话联网检索 600 秒无响应（anysearch 的 requests 依赖缺失 + 续接会话偶发不响应叠加）；②工具调用无详情展示（OD-ARCH-069 有意设计，非缺陷）；③切页回来等待计时器归零（界面缺陷：未读任务真实开始时间）；④Windows 退出后 node 进程残留（Windows 无 POSIX 进程组，兜底回收失效）。
+
+> **用户裁决（2026-11-09）：** 退出时完全清理全部自启进程；运行中闲置/过期进程及时清理；依赖维持单包全内置（不拆两步安装），补齐缺失依赖并做依赖自检报告；批准 OD-SYS-701/702/703 三卡，701∥702 并行、703 收尾。
+
+> **任务卡：**
+
+**OD-SYS-701 Windows 进程树回收与僵尸会话清理**
+- 架构契合：沿用 engine_supervisor 生命周期与 process_owner 登记机制，补 Windows 侧进程树治理；不改引擎协议。
+- 实施步骤：① engine 启动路径（engine_supervisor.rs spawn 处）Windows 侧创建 Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE）并把引擎子进程挂入，句柄由 EngineChannel 持有（Drop 即系统回收整棵进程树）；② engine_ipc.rs terminate/hard_kill 后补 Job Object 关闭兜底；③ app 退出路径（on_window_destroyed_shutdown / RunEvent::Exit）验证回收完整（关闭 Job 句柄）；④ process_owner.py Windows 侧 current_pgid 返回 0 的语义改为「无组可回收」，宿主侧不再依赖 pgid 回收（避免空操作误导日志）；⑤ task_core/serve 启动时清理 engine-state 中超过 48 小时仍非终态的僵尸任务记录（标记 stale 并登记日志，不删文件）；⑥ 测试：Job Object 挂接与回收在 Windows CI 出包验证（本机 macOS 用 cfg(windows) 静态断言 + 单测覆盖配置路径）；僵尸清理单测。
+- 验收命令：export PATH="$HOME/.cargo/bin:$PATH" && cd desktop/src-tauri && RUST_TEST_THREADS=4 cargo test --offline --lib（0 failed，新增 ≥6 项）；新增 tests/verification/desktop/verify_sys_process_701.py 全绿（Windows 路径静态断言+清理逻辑测试存在性）。
+- 依赖：无前置；与 702 并行。
+
+**OD-SYS-702 Python 依赖补齐与依赖自检扩展**
+- 架构契合：照 OD-ARCH-134 依赖探测模式扩展；打包脚本补 Python 依赖清单。
+- 实施步骤：① 定位打包流水线中 primary-runtime python 的依赖清单文件，补 requests + certifi（anysearch 需要）；② 若无清单文件则在打包脚本显式 pip install 环节补齐并留注释；③ platform.rs environment_report 扩展 python_modules: DependencyStatus（探测 requests 可导入性，缺失时 hint 给出修复方式）；④ 前端环境检查面板（EnvironmentCheck.tsx）显示 Python 模块项；⑤ 顺带：anysearch SKILL.md 补一行「依赖 requests，缺则需要装」的说明；⑥ 测试：探测函数单测（mock 导入结果）。
+- 验收命令：export PATH="$HOME/.cargo/bin:$PATH" && cd desktop/src-tauri && RUST_TEST_THREADS=4 cargo test --offline --lib（0 failed，新增 ≥4 项）；cd desktop && npx tsc --noEmit；cd desktop && npm --prefix . run build；新增 tests/verification/desktop/verify_sys_deps_702.py 全绿。
+- 依赖：无前置；与 701 并行。
+
+**OD-SYS-703 等待计时器与引擎空闲巡检**
+- 架构契合：小修；复用消息上已有的 startedAtMs。
+- 实施步骤：① HomeChat.tsx 等待计时器改为基于 activeTask 的 startedAtMs 计算（切页回来恢复真实已等待秒数）；② 引擎空闲巡检：HomeChat 或 SettingsPanel 增加引擎空闲状态显示（无活跃任务且引擎空闲超阈值时提示「引擎闲置中，可到设置页停止以释放内存」——只提示不自动停，符合状态仅用户触发纪律）；③ 测试：计时恢复逻辑静态断言。
+- 验收命令：cd desktop && npx tsc --noEmit；cd desktop && npm --prefix . run build；新增 tests/verification/desktop/verify_sys_timer_703.py 全绿。
+- 依赖：阻塞于 701（避免同文件冲突）；与 702 无依赖。
+
+> **执行进展：** 待实施。
+
 ### OD-KM-500：第三阶段——知识库联动 + 写作素材篮（已批准，2026-11-09；待实施）
 
 > **触发：** 用户《OmniDesk 第三阶段总任务：知识库联动 + 写作素材篮》方案。建立工作事实、任务、项目、知识依据与写作素材的关联体系，素材经人工审核成为第四阶段文稿生成的可信输入。核心口径：AI 只建议、宿主落盘、用户拥有最终决定权；work/ 临时层永不进知识库。
