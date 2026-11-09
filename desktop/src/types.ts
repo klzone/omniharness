@@ -3180,7 +3180,7 @@ export interface ProfilePluginAddReceipt {
  * 这样界面能区分「没装」和「装了但版本太低」两种修法。
  */
 export interface EnvironmentDependency {
-  name: "node" | "python" | "assets";
+  name: "node" | "python" | "assets" | "requests";
   ok: boolean;
   found: boolean;
   path: string | null;
@@ -3195,6 +3195,8 @@ export interface EnvironmentReport {
   ok: boolean;
   node: EnvironmentDependency;
   python: EnvironmentDependency;
+  /** anysearch 联网检索依赖的 Python 模块；缺失时 ok 为 false，由检查页提示。 */
+  python_modules: EnvironmentDependency;
   /** 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。 */
   assets: EnvironmentDependency;
 }

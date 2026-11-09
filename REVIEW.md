@@ -1,5 +1,28 @@
 ## OD-QS-413 审查（ARCHITECT，2026-11-09）——通过。第二阶段（OD-QS-401～413）全部竣工
 
+### OD-SYS-703 复检通过 + OD-SYS-700 竣工（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Poincare）交付的等待计时器修复与引擎空闲提示。
+
+**核对结果：**
+1. diff 允许清单核对：HomeChat.tsx 计时器起点改读 startedAtMs（切页回来恢复真实等待秒数，找不到时显示 0 不伪造）+ 引擎闲置提示（终态后 30 秒去抖、engine_health 确认、60 秒复核、只提示不自动停）+ SettingsPanel 手动停止按钮补齐 + verify 脚本；701/702 交付零重写；runtime/ 零改动。
+2. 独立复跑：tsc exit 0、build exit 0、verify_sys_timer_703 = 13/13；cargo lib = 1093 passed / 0 failed（与 701/702 收口一致，本卡无 Rust 改动）。
+3. 执行裁决复核认可：空闲证据口径（终态轮询+engine_health.running）；去抖 30 秒/复核 60 秒；找不到 startedAtMs 宁可显示 0 不伪造；设置页手动停止按钮补齐（提示指向真实可用的动作）。
+4. 登记未验证：真实窗口计时恢复与提示时机（静态检查+构建覆盖，真实窗口随下次使用验证）。
+
+**OD-SYS-700 阶段结论：** 三卡全部竣工。四项用户报告问题的处置：①检索卡死=702 依赖补齐+依赖自检（附 701 识别的续接会话僵尸记录标记）；②工具详情=OD-ARCH-069 有意设计（维持）；③计时归零=703 修复；④Windows 进程残留=701 Job Object 方案（真实回收行为待 Windows 出包人工验证——下次出包验收时做：启动引擎→跑任务→关窗→确认无残留 node/python）。
+### OD-SYS-701 / OD-SYS-702 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：701 Windows 进程树回收与僵尸会话清理（Newton）、702 Python 依赖补齐与依赖自检扩展（Boole）。
+
+**核对结果：**
+1. diff 允许清单核对：701 新增 job_object.rs（kernel32 FFI，Windows Job Object kill-on-close）+ engine_ipc 挂接 + supervisor 日志措辞 + process_owner pgid=0 跳过 + task_core 僵尸扫描（48h 阈值，标记不删除）+ verify 脚本；702 platform.rs python_modules 探测 + EnvironmentCheck 显示项 + types 同步 + SKILL 依赖说明 + scripts/python-requirements.txt + 打包准备脚本补装步骤。两卡文件零交叠；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 1093 passed / 0 failed（净增 11：701 项 6 + 702 项 5）；verify 701 = 40/40、702 = 13/13；stale 单测 9 项 OK；tsc exit 0；build exit 0。敏感词 0 命中。
+3. Windows 行为登记：Job Object 无法在 macOS 真实运行验证，已用 x86_64-pc-windows-msvc 对 job_object.rs 单独类型检查通过；真实回收行为待 Windows 出包后人工验证（启动引擎→跑任务→关窗→确认无残留 node/python）——如实登记不夸大。
+4. 关键裁决复核认可：701 fail-closed（挂接失败拒绝启动引擎，避免无保护孤儿树）；不引 windows-sys 依赖（kernel32 FFI）；僵尸扫描放 TaskCoreBase（两条通道都经过）。702 依赖清单实位裁决（DSH runtime.json 是上游产物，仓库侧补 requirements + 打包脚本补装，当前包不带 primary-runtime 时由环境检查给 pip 命令）。
+5. 遗留登记：a) Windows 真实回收验证（出包后人工，用户下个 Windows 包验收时做）；b) requests 彻底内置需把 Python payload 纳包（超出本卡，单独立项再议——与用户「单包全内置」方向一致，放下一轮打包任务）。
+
+**结论：** 两卡均通过。OD-SYS-703（等待计时器+空闲巡检）可派发。
 ### OD-WT-615 复检通过 + 第四阶段（OD-WT-600）竣工（2026-11-09，ARCHITECT 独立复核）
 
 **审查对象：** 收口执行代理（Sartre）交付的全量回归、verify_security_phase4.py（35 项）与十三场景对照。

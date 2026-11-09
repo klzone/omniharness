@@ -179,6 +179,10 @@ const POLL_INTERVAL_MS = 300;
 const MAX_POLL_FAILURES = 5;
 /** 终态后读取结果的重试次数。 */
 const RESULT_RETRIES = 3;
+/** OD-SYS-703：任务结束后静默多久再提示「引擎闲置中」，避免刚完成就打扰。 */
+const ENGINE_IDLE_HINT_DELAY_MS = 30_000;
+/** OD-SYS-703：提示出现后多久核对一次引擎是否仍在运行（只提示，不自动停止）。 */
+const ENGINE_IDLE_RECHECK_MS = 60_000;
 
 type AdmissionState = "checking" | "ready" | "blocked";
 
@@ -661,6 +665,21 @@ export function HomeChat({
   const [elapsed, setElapsed] = useState(0);
   const startingTooLong =
     slowStarting || (activeTaskStatus === "starting" && elapsed >= 120);
+  /**
+   * OD-SYS-703：本轮真实起点取当前活跃任务消息上的 startedAtMs。
+   * 切页回来组件重建时，消息从线程档案恢复，这里读到的是真实提交时刻，而不是挂载时刻。
+   */
+  const activeStartedAtMs = useMemo(() => {
+    if (!activeTaskId) return null;
+    const hit = messages.find(
+      (m) => m.taskId === activeTaskId && typeof m.startedAtMs === "number",
+    );
+    return hit?.startedAtMs ?? null;
+  }, [activeTaskId, messages]);
+  /** 引擎闲置提示：只提示，不自动停止；停不停由用户在设置页决定。 */
+  const [engineIdleHint, setEngineIdleHint] = useState(false);
+  /** 最近一次 taskStatus 轮询到达终态的时刻：作为「引擎此刻空闲」的界面侧证据。 */
+  const lastTerminalPollRef = useRef<number | null>(null);
   /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
   const [thoughts, setThoughts] = useState<Record<string, string>>({});
   /**
@@ -756,7 +775,8 @@ export function HomeChat({
               text: "",
               taskId,
               state: "running",
-              startedAtMs: Date.now(),
+              // 找不到持久化消息时也不伪造挂载时刻；宁可先不显示已等待秒数。
+              startedAtMs: null,
               endedAtMs: null,
             },
           ],
@@ -1613,6 +1633,8 @@ export function HomeChat({
           ),
         );
         if (TERMINAL_STATES.includes(status.status)) {
+          // OD-SYS-703：终态轮询是「引擎此刻没有活跃任务」的界面侧证据。
+          lastTerminalPollRef.current = Date.now();
           // 任务已终态：引擎不再需要这些审批。若没收到撤回收到的通知，
           // 也要把仍挂着的卡片标为失效，避免界面一直显示「待决定」。
           setApprovals((prev) => {
@@ -1743,16 +1765,53 @@ export function HomeChat({
     el.style.height = Math.min(el.scrollHeight, 96) + "px";
   }, [input]);
 
-  // 生成中的计时：让等待可见
+  // 生成中的计时：让等待可见。起点是消息上的真实提交时刻（OD-SYS-703），
+  // 这样切页卸载再回来时显示的是真实已等待秒数，而不是从本次挂载重新归零。
   useEffect(() => {
     if (!activeTaskId) {
       setElapsed(0);
       return;
     }
-    const started = Date.now();
-    setElapsed(0);
-    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
+    if (!activeStartedAtMs) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () =>
+      setElapsed(Math.max(0, Math.floor((Date.now() - activeStartedAtMs) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 500);
     return () => window.clearInterval(timer);
+  }, [activeTaskId, activeStartedAtMs]);
+
+  // OD-SYS-703：无活跃任务且最近一次状态轮询已到终态时，引擎此刻空闲。
+  // 只显示一行提示，不自动停止引擎；释放内存由用户到设置页手动触发。
+  useEffect(() => {
+    if (activeTaskId) {
+      setEngineIdleHint(false);
+      return;
+    }
+    const terminalAt = lastTerminalPollRef.current;
+    if (!terminalAt) return;
+    let cancelled = false;
+    let recheck: number | null = null;
+    const check = async () => {
+      try {
+        const health = await host.health();
+        if (!cancelled) setEngineIdleHint(Boolean(health.running));
+      } catch {
+        if (!cancelled) setEngineIdleHint(false);
+      }
+    };
+    const delay = Math.max(0, ENGINE_IDLE_HINT_DELAY_MS - (Date.now() - terminalAt));
+    const start = window.setTimeout(() => {
+      void check();
+      recheck = window.setInterval(() => void check(), ENGINE_IDLE_RECHECK_MS);
+    }, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(start);
+      if (recheck !== null) window.clearInterval(recheck);
+    };
   }, [activeTaskId]);
 
   useEffect(() => {
@@ -3174,6 +3233,23 @@ export function HomeChat({
               去设置
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {/* OD-SYS-703：引擎闲置只提示，不自动停止（状态变更仅用户触发）。 */}
+      {engineIdleHint ? (
+        <div
+          className="mt-1.5 flex items-center justify-center gap-3 px-1 flex-shrink-0"
+          data-testid="engine-idle-hint"
+        >
+          <span className="text-[10.5px] text-outline truncate">
+            引擎闲置中，不占用后台计算；可到设置页停止引擎释放内存
+          </span>
+          <button
+            onClick={() => onNavigate("settings")}
+            className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container text-primary text-[10.5px] hover:bg-surface-container-high transition-colors"
+          >
+            去设置
+          </button>
         </div>
       ) : null}
       {usage && usage.size > 0 && usage.used / usage.size >= 0.8 ? (

@@ -1,0 +1,69 @@
+{
+  "task": "OD-SYS-701 Windows 进程树回收与僵尸会话清理",
+  "date": "2026-11-09",
+  "baseline": {
+    "expected_head": "07b1b0d6c4",
+    "actual_head": "f4422b1da7",
+    "explanation": "f4422b1da7 = 07b1b0d6c4 + OD-SYS-700 计划文档提交（仅 PLANS.md 28 行）；任务卡点名的代码基线仍是 07b1b0d6c4。",
+    "worktree": "开工时 git status --porcelain 为空；main 领先 origin/main 1 个未推送提交。"
+  },
+  "commands": [
+    {
+      "command": "RUST_TEST_THREADS=4 cargo test --offline --lib",
+      "cwd": "desktop/src-tauri",
+      "exit_code": 0,
+      "result": "1093 passed; 0 failed; 0 ignored",
+      "log": "cargo-test-lib.log"
+    },
+    {
+      "command": "python3 tests/verification/desktop/verify_sys_process_701.py",
+      "exit_code": 0,
+      "result": "40 checks, 0 failed",
+      "log": "verify-sys-process-701.log"
+    },
+    {
+      "command": "python3 tests/verification/desktop/test_sys_process_701_stale.py -v",
+      "exit_code": 0,
+      "result": "Ran 9 tests; OK",
+      "log": "stale-unittest.log"
+    },
+    {
+      "command": "python3 -m unittest -v test_web_api_unit test_writing_extract_unit",
+      "cwd": "tests/verification/engine-interface/adapter",
+      "exit_code": 0,
+      "result": "Ran 105 tests; OK（TaskCore 启动扫描未破坏现有适配器行为）",
+      "log": "engine-adapter-unittest.log"
+    },
+    {
+      "command": "rustc --edition 2021 --crate-type lib --target x86_64-pc-windows-msvc --emit metadata (job_object.rs standalone)",
+      "exit_code": 0,
+      "result": "Windows cfg 分支通过类型检查；仅验证模块本身，不代表完整 Tauri 出包。",
+      "log": "windows-target-job-object-check.log"
+    }
+  ],
+  "new_rust_tests": [
+    "job_object::tests::create_for_process_is_noop_without_windows",
+    "job_object::tests::job_object_is_zero_sized_without_windows",
+    "job_object::tests::dropping_job_object_without_windows_is_safe",
+    "process_owner::tests::cleanup_skips_posix_group_reclaim_when_pgid_is_zero",
+    "process_owner::tests::cleanup_skips_when_registered_pid_differs",
+    "process_owner::tests::cleanup_skips_negative_pgid_without_noop_log"
+  ],
+  "python_tests": [
+    "expired_running_is_marked_and_content_preserved",
+    "fresh_running_is_left_alone",
+    "old_terminal_record_is_not_marked",
+    "already_stale_record_is_not_rewritten",
+    "malformed_record_is_skipped_without_blocking_others",
+    "sweep_prints_exactly_one_line",
+    "missing_directory_is_noop",
+    "task_core_startup_sweeps_state_dir",
+    "marked_record_keeps_original_permissions"
+  ],
+  "limitations": [
+    "macOS 无法真实创建 Windows Job Object；整棵进程树被回收的行为需 Windows 出包后人工验证。",
+    "完整 cargo check --target x86_64-pc-windows-msvc 在 build script 阶段被 tauri-winres 的 llvm-rc 缺失阻断，未进入本 crate 编译；Job Object 模块已单独用 Windows target 通过类型检查。",
+    "本机 rustfmt 组件未安装，cargo fmt --check 不可用；改动按仓库现有风格手工排版。",
+    "共享工作区同时出现 OD-SYS-702 的改动（platform.rs、EnvironmentCheck.tsx、types.ts、scripts、anysearch SKILL.md 等），本轮未触碰、未回退。"
+  ]
+}

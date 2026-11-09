@@ -1,0 +1,15 @@
+PASS timer_reads_message_started_at — 计时起点来自 activeTaskId 对应消息的 startedAtMs
+PASS timer_uses_active_start_not_mount_time — 计时公式为 now - startedAtMs，不再以本次挂载时刻为起点
+PASS timer_rebuilds_on_active_start — effect 依赖 activeStartedAtMs，重建时先立即算一次真实等待秒数
+PASS no_mount_time_start_fallback — 恢复在途任务时不再伪造挂载时刻作为起点
+PASS idle_hint_text — 提示文案与任务卡一致
+PASS idle_hint_condition — 无活跃任务 + 最近一次 taskStatus 轮询到终态才进入提示；新任务开始即收起
+PASS idle_hint_checks_engine_running — 显示前读宿主健康事实，引擎未运行时不算闲置
+PASS idle_hint_debounced — 任务结束后静默 30 秒再提示，此后每 60 秒复核引擎是否仍在运行
+PASS idle_hint_render_and_entry — 提示为轻量一行，并提供用户主动去设置页的入口
+PASS no_auto_stop_logic — HomeChat 不包含自动停止引擎的调用；状态变更只由用户触发
+PASS settings_manual_stop_entry — 设置页的引擎诊断区提供手动停止入口；shutdownEngine 只在一次点击回调里调用
+PASS runtime_unchanged — runtime/ 零改动
+PASS no_new_exemptions — 本次新增行未加入 lint/类型检查豁免
+
+13/13 passed

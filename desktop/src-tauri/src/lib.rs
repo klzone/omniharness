@@ -17,6 +17,7 @@ pub mod engine_bridge;
 pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
+pub mod job_object;
 pub mod external_open;
 pub mod availability;
 pub mod flow_pack;

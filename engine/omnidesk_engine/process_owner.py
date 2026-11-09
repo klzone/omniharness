@@ -344,7 +344,10 @@ def ensure_process_group() -> None:
 
 
 def current_pgid() -> int:
-    """当前进程组号；Windows 没有 POSIX 进程组，返回 0（不伪装成真实组号）。"""
+    """当前进程组号；Windows 没有 POSIX 进程组，返回 0 表示「无组可回收」。
+
+    Windows 的整棵进程树由宿主的 Job Object 负责回收，宿主不得把 0 当作真实组号。
+    """
     try:
         return os.getpgrp()
     except AttributeError:

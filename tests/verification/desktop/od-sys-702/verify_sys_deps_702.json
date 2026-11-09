@@ -1,0 +1,74 @@
+{
+  "plan": "OD-SYS-702",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 13,
+  "failed": [],
+  "checks": [
+    {
+      "name": "platform_python_modules_field",
+      "ok": true,
+      "detail": "EnvironmentReport 已带 python_modules 字段并随构造返回"
+    },
+    {
+      "name": "platform_requests_probe",
+      "ok": true,
+      "detail": "照 PY_VERSION_PROBE 模式用 -c 探针试导入 requests"
+    },
+    {
+      "name": "platform_dependency_shape",
+      "ok": true,
+      "detail": "DependencyStatus 名称/要求/缺失提示/下载页齐全且可 mock"
+    },
+    {
+      "name": "platform_ok_includes_modules",
+      "ok": true,
+      "detail": "requests 缺失时整体 ok 为 false，由环境检查页显式提示（引擎本身不受影响）"
+    },
+    {
+      "name": "probe_mock_tests",
+      "ok": true,
+      "detail": "探测函数 mock 单测 5 项（任务卡要求 ≥2，新增 ≥4）"
+    },
+    {
+      "name": "frontend_env_check_row",
+      "ok": true,
+      "detail": "环境检查面板照 node/python 行样式显示 Python 模块项"
+    },
+    {
+      "name": "frontend_types_synced",
+      "ok": true,
+      "detail": "types.ts 的 EnvironmentDependency/EnvironmentReport 已同步"
+    },
+    {
+      "name": "skill_dependency_note",
+      "ok": true,
+      "detail": "anysearch SKILL.md 末尾说明 requests 依赖与缺失表现"
+    },
+    {
+      "name": "repo_requirements_manifest",
+      "ok": true,
+      "detail": "仓库侧清单 scripts/python-requirements.txt 含 requests 与 certifi"
+    },
+    {
+      "name": "packaging_install_step",
+      "ok": true,
+      "detail": "打包准备脚本对随包 primary-runtime 解释器显式补装；无 payload 时提示系统 Python"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "runtime/ 零改动"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "未新增类型/lint 豁免"
+    },
+    {
+      "name": "evidence_dir",
+      "ok": true,
+      "detail": "证据目录 tests/verification/desktop/od-sys-702/ 存在"
+    }
+  ]
+}

@@ -1232,7 +1232,12 @@ impl EngineSupervisor {
             engine_pid,
             Duration::from_secs(3),
         ) {
-            eprintln!("[omnidesk] 引擎进程组兜底回收未完成：{}", problem);
+            // OD-SYS-701：Windows 没有 POSIX 进程组，pgid=0 时 cleanup 直接跳过，
+            // 由 Job Object 在句柄关闭时回收整棵树；这里只报告真正失败的组回收。
+            eprintln!(
+                "[omnidesk] 引擎进程组兜底回收未完成（Windows 由 Job Object 负责回收）：{}",
+                problem
+            );
         }
         Ok((forced, channel.exit_code()))
     }

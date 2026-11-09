@@ -1,0 +1,4 @@
+# OD-SYS-702：OmniDesk 打包时补装到随包 Python 的模块清单。
+# anysearch 联网检索 CLI 需要 requests；certifi 提供 HTTPS 证书链。
+requests>=2.31,<3
+certifi>=2024.2.2

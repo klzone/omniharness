@@ -69,6 +69,8 @@ pub fn hide_console(command: &mut Command) -> &mut Command {
 const PY_VERSION_PROBE: &str = "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)";
 /// 取解释器版本号（major.minor.patch）。
 const PY_VERSION_PRINT: &str = "import sys; print('%d.%d.%d' % sys.version_info[:3])";
+/// anysearch CLI 的必需模块（OD-SYS-702）：能导入 requests 才算联网检索可用。
+const PY_REQUESTS_PROBE: &str = "import requests";
 
 /// 解析 Python 解释器的绝对路径，逻辑与 node 解析一致：
 /// GUI 启动不继承 shell PATH，裸 "python3" 在 Finder 启动的 app 里会 ENOENT。
@@ -173,12 +175,16 @@ pub struct DependencyStatus {
     pub download: &'static str,
 }
 
-/// 引擎启动的两个前置依赖。
+/// 引擎启动的前置依赖，以及不阻塞引擎、但会影响联网检索的 Python 模块。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct EnvironmentReport {
     pub ok: bool,
     pub node: DependencyStatus,
     pub python: DependencyStatus,
+    /// anysearch CLI 依赖 requests（HTTP 与证书链），缺失时检索会报
+    /// ModuleNotFoundError。它不影响引擎启动；纳入 `ok` 是为了让环境检查页
+    /// 显式提示修复，而不是让检索静默失败。
+    pub python_modules: DependencyStatus,
     /// 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。
     pub assets: DependencyStatus,
 }
@@ -245,6 +251,16 @@ pub fn environment_report() -> EnvironmentReport {
             download: "https://www.python.org/downloads/",
         },
     };
+    // Python 模块探针：用引擎同一个解释器试导入。只读、不装包、不改环境；
+    // 失败时把安装命令直接写进 hint，用户不必去翻引擎日志。
+    let python_modules = python_modules_status(
+        python.path.clone(),
+        python
+            .path
+            .as_deref()
+            .map(python_imports_requests)
+            .unwrap_or(false),
+    );
     // 安装完整性：Windows 安装器曾只装 exe，引擎目录根本不存在。这里把
     // 「包是不是完整的」也作为一项前置条件，缺了就让用户重装，而不是看着
     // 窗口发呆。仓库开发态天然命中，不影响本机构建。
@@ -276,11 +292,41 @@ pub fn environment_report() -> EnvironmentReport {
         },
     };
     EnvironmentReport {
-        ok: node.ok && python.ok && assets.ok,
+        ok: node.ok && python.ok && assets.ok && python_modules.ok,
         node,
         python,
+        python_modules,
         assets,
     }
+}
+
+/// 把「解释器路径」与「requests 能否导入」组装成一项依赖状态（可 mock 测试）。
+fn python_modules_status(python_path: Option<String>, importable: bool) -> DependencyStatus {
+    DependencyStatus {
+        name: "requests",
+        ok: importable,
+        found: importable,
+        path: python_path,
+        version: None,
+        requirement: "可导入",
+        hint: if importable {
+            ""
+        } else {
+            "打包 python 缺 requests：anysearch 联网检索不可用。修复：在引擎使用的 Python 中执行 pip install requests certifi，或重新安装完整包。"
+        },
+        download: "https://pypi.org/project/requests/",
+    }
+}
+
+/// 用给定解释器试导入 requests；退出码 0 即可用。
+fn python_imports_requests(program: &str) -> bool {
+    let mut cmd = Command::new(program);
+    cmd.arg("-c").arg(PY_REQUESTS_PROBE);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console(&mut cmd);
+    cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// 运行一个只读版本命令，返回去掉首尾空白的 stdout。失败返回 None。
@@ -897,6 +943,56 @@ mod tests {
         assert_eq!(run_version("omnidesk-nonexistent-probe", &["--version"]), None);
     }
 
+    /// requests 可导入时模块项就绪，hint 为空（不打扰用户）。
+    #[test]
+    fn python_modules_ready_when_requests_imports() {
+        let item = python_modules_status(Some("python3".to_string()), true);
+        assert_eq!(item.name, "requests");
+        assert!(item.ok);
+        assert!(item.found);
+        assert_eq!(item.requirement, "可导入");
+        assert!(item.hint.is_empty());
+    }
+
+    /// 缺 requests 时 hint 必须给出可执行的修复命令与影响范围。
+    #[test]
+    fn python_modules_missing_hint_is_actionable() {
+        let item = python_modules_status(Some("python3".to_string()), false);
+        assert!(!item.ok);
+        assert!(!item.found);
+        assert!(item.hint.contains("requests"));
+        assert!(item.hint.contains("anysearch"));
+        assert!(item.hint.contains("pip install requests certifi"));
+        assert!(item.download.starts_with("https://"));
+    }
+
+    /// 连解释器都没有时仍然给出同一套安装提示，不能静默。
+    #[test]
+    fn python_modules_missing_python_still_hints_install() {
+        let item = python_modules_status(None, false);
+        assert!(!item.ok);
+        assert!(!item.found);
+        assert!(item.path.is_none());
+        assert!(item.hint.contains("pip install requests certifi"));
+    }
+
+    /// 依赖状态自洽：ok 蕴含 found，避免界面把「可用」与「找不到」并列。
+    #[test]
+    fn python_modules_ok_implies_found() {
+        for importable in [false, true] {
+            let item = python_modules_status(Some("python3".to_string()), importable);
+            assert!(item.found || !item.ok);
+            assert_eq!(item.ok, importable);
+            assert_eq!(item.found, importable);
+        }
+    }
+
+    /// 探针命令跑不起来（解释器不存在）时按「未导入」处理，不 panic。
+    #[test]
+    fn requests_probe_returns_false_for_missing_program() {
+        assert!(!python_imports_requests("omnidesk-nonexistent-probe"));
+    }
+
     /// 体检结果必须自洽：ok 蕴含 found；缺依赖时仍带下载页与修复提示。
     #[test]
     fn environment_report_is_consistent() {
@@ -915,14 +1011,22 @@ mod tests {
                 assert!(item.hint.contains("OMNIDESK_"), "{}：缺依赖时要给可操作的修复路径", item.name);
             }
         }
+        // Python 模块项同样要自洽并可操作；缺失时整体 ok 为 false，由环境页提示。
+        assert_eq!(report.python_modules.name, "requests");
+        assert_eq!(report.python_modules.requirement, "可导入");
+        assert!(report.python_modules.download.starts_with("https://"));
+        assert!(!report.python_modules.ok || report.python_modules.found);
+        if !report.python_modules.ok {
+            assert!(report.python_modules.hint.contains("pip install requests certifi"));
+        }
         assert_eq!(
             report.ok,
-            report.node.ok && report.python.ok && report.assets.ok
+            report.node.ok && report.python.ok && report.assets.ok && report.python_modules.ok
         );
     }
 
     /// 安装完整性是第三项：仓库开发态天然带 engine/ 与 runtime/RUNTIME.lock，
-    /// 因此这里必须判为完整；整体 ok 要同时看三项。
+    /// 因此这里必须判为完整；整体 ok 还要看 Python 模块是否可导入。
     #[test]
     fn environment_report_includes_install_assets() {
         let _guard = crate::test_env_lock::ENV_LOCK
@@ -945,7 +1049,7 @@ mod tests {
         assert!(report.assets.ok, "仓库根应包含 engine/ 与 runtime/RUNTIME.lock");
         assert_eq!(
             report.ok,
-            report.node.ok && report.python.ok && report.assets.ok
+            report.node.ok && report.python.ok && report.assets.ok && report.python_modules.ok
         );
     }
 

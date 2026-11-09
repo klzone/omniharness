@@ -1,0 +1,74 @@
+{
+  "task": "OD-SYS-703",
+  "evidence_level": "static-source",
+  "passed": 13,
+  "total": 13,
+  "failed": [],
+  "checks": [
+    {
+      "name": "timer_reads_message_started_at",
+      "ok": true,
+      "detail": "计时起点来自 activeTaskId 对应消息的 startedAtMs"
+    },
+    {
+      "name": "timer_uses_active_start_not_mount_time",
+      "ok": true,
+      "detail": "计时公式为 now - startedAtMs，不再以本次挂载时刻为起点"
+    },
+    {
+      "name": "timer_rebuilds_on_active_start",
+      "ok": true,
+      "detail": "effect 依赖 activeStartedAtMs，重建时先立即算一次真实等待秒数"
+    },
+    {
+      "name": "no_mount_time_start_fallback",
+      "ok": true,
+      "detail": "恢复在途任务时不再伪造挂载时刻作为起点"
+    },
+    {
+      "name": "idle_hint_text",
+      "ok": true,
+      "detail": "提示文案与任务卡一致"
+    },
+    {
+      "name": "idle_hint_condition",
+      "ok": true,
+      "detail": "无活跃任务 + 最近一次 taskStatus 轮询到终态才进入提示；新任务开始即收起"
+    },
+    {
+      "name": "idle_hint_checks_engine_running",
+      "ok": true,
+      "detail": "显示前读宿主健康事实，引擎未运行时不算闲置"
+    },
+    {
+      "name": "idle_hint_debounced",
+      "ok": true,
+      "detail": "任务结束后静默 30 秒再提示，此后每 60 秒复核引擎是否仍在运行"
+    },
+    {
+      "name": "idle_hint_render_and_entry",
+      "ok": true,
+      "detail": "提示为轻量一行，并提供用户主动去设置页的入口"
+    },
+    {
+      "name": "no_auto_stop_logic",
+      "ok": true,
+      "detail": "HomeChat 不包含自动停止引擎的调用；状态变更只由用户触发"
+    },
+    {
+      "name": "settings_manual_stop_entry",
+      "ok": true,
+      "detail": "设置页的引擎诊断区提供手动停止入口；shutdownEngine 只在一次点击回调里调用"
+    },
+    {
+      "name": "runtime_unchanged",
+      "ok": true,
+      "detail": "runtime/ 零改动"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "本次新增行未加入 lint/类型检查豁免"
+    }
+  ]
+}

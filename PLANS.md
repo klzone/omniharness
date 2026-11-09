@@ -36,7 +36,7 @@
 - 验收命令：cd desktop && npx tsc --noEmit；cd desktop && npm --prefix . run build；新增 tests/verification/desktop/verify_sys_timer_703.py 全绿。
 - 依赖：阻塞于 701（避免同文件冲突）；与 702 无依赖。
 
-> **执行进展：** 待实施。
+> **执行进展（2026-11-09）：** OD-SYS-701 与 OD-SYS-702 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：701 job_object.rs（Windows Job Object kill-on-close，挂接失败拒绝启动，engine_ipc 持有句柄 Drop 回收）+ process_owner pgid=0 跳过 + task_core 48h 僵尸任务扫描（11 项测试，verify 40/40；Windows 真实回收行为待出包人工验证）；702 python_modules 依赖探测（requests/certifi）+ EnvironmentCheck 显示 + 仓库侧 requirements 清单与打包补装步骤（5 项测试，verify 13/13）。本会话独立复跑 lib 1093/0、tsc/build 0。OD-SYS-703 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：HomeChat 计时器读任务真实 startedAtMs（切页恢复）+ 引擎闲置提示（30 秒去抖/60 秒复核/只提示不自动停）+ SettingsPanel 手动停止按钮补齐（verify 13/13）。**OD-SYS-700 三卡全部竣工（2026-11-09）。** 遗留：Windows Job Object 真实回收行为待出包人工验证；requests 彻底内置待下一轮打包任务（Python payload 纳包）。
 
 ### OD-KM-500：第三阶段——知识库联动 + 写作素材篮（已批准，2026-11-09；待实施）
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -35,6 +36,89 @@ from .contract import (
     TaskStatus,
     now,
 )
+
+
+# OD-SYS-701：超过 48 小时仍停在非终态的任务记录视为僵尸会话。
+# 只加 stale=true 标记并保留文件与 content，绝不在这里删除或改写任务正文。
+STALE_TASK_RECORD_SECONDS = 48 * 60 * 60
+
+
+def _record_last_activity(data: Mapping[str, Any], path: Path) -> Optional[float]:
+    """取记录最后一次活动时间；没有可用时间戳时退回文件 mtime。"""
+    candidates: list[float] = []
+    for key in ("persisted_at", "state_since", "created_at"):
+        value = data.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = float(value)
+            if value > 0:
+                candidates.append(value)
+    if candidates:
+        return max(candidates)
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def mark_stale_task_records(
+    state_dir: str | os.PathLike[str],
+    *,
+    now_ts: Optional[float] = None,
+    max_age_seconds: float = STALE_TASK_RECORD_SECONDS,
+) -> list[str]:
+    """把长期停在非终态的任务记录标记为 stale=true，并打一行日志。
+
+    只扫描 ``omni-*.json``；只新增 ``stale`` 字段，不删除文件、不改 content。
+    已经标记过的记录跳过，避免每次启动重复改写和刷日志。
+    """
+    base = Path(state_dir)
+    if not base.is_dir():
+        return []
+    current = time.time() if now_ts is None else float(now_ts)
+    cutoff = current - float(max_age_seconds)
+    terminal = {state.value for state in TERMINAL_STATES}
+    marked: list[str] = []
+    for path in sorted(base.glob("omni-*.json")):
+        if path.name.endswith(".json.tmp"):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        state = str(data.get("state") or "")
+        if not state or state in terminal or data.get("stale") is True:
+            continue
+        last_activity = _record_last_activity(data, path)
+        if last_activity is None or last_activity >= cutoff:
+            continue
+        data["stale"] = True
+        tmp = path.with_name(path.name + ".tmp")
+        try:
+            mode = path.stat().st_mode & 0o7777
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            # 保留原文件权限，避免仅加标记就把记录变成更宽松的默认 mode。
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            continue
+        marked.append(str(data.get("omni_task_id") or path.stem))
+    if marked:
+        preview = ", ".join(marked[:3])
+        if len(marked) > 3:
+            preview += " 等"
+        print(
+            "[omnidesk-engine] 已将 %d 条超过 %d 小时仍非终态的任务记录标记为 stale（文件与正文保留）：%s"
+            % (len(marked), int(max_age_seconds // 3600), preview),
+            file=sys.stderr,
+            flush=True,
+        )
+    return marked
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +434,18 @@ class TaskCoreBase:
         self._idempotency: dict = {}
         self._descriptor: Optional[EngineDescriptor] = None
         self._closed = False
+        # OD-SYS-701：引擎启动时清理上一次会话留下的僵尸任务记录。
+        # 扫描失败绝不能阻断引擎启动；失败只留一行 stderr 诊断。
+        if self._state_dir is not None:
+            try:
+                mark_stale_task_records(self._state_dir)
+            except Exception as exc:
+                print(
+                    "[omnidesk-engine] stale 任务记录扫描失败：%s: %s"
+                    % (type(exc).__name__, exc),
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     # -- 事件与终态 ---------------------------------------------------------
     def _emit(self, record: _TaskRecord, event_type: EventType, payload: Mapping[str, Any]) -> None:

@@ -52,3 +52,8 @@ python3 "$ANYSEARCH_SKILL_DIR/scripts/anysearch_cli.py" extract "https://example
 
 若上述目录或 CLI 不存在，明确回报「AnySearch 未安装或路径不可用」，不要尝试安装、下载或改写上游技能包，也不要凭空返回检索结果。
 
+## 六、依赖
+
+脚本需要 Python 的 `requests` 库（HTTPS 证书链由 `certifi` 提供）。缺失时检索会报 `ModuleNotFoundError: No module named 'requests'`。
+先执行 `python3 -m pip install requests certifi` 安装再检索；打包脚本会为随包 Python 补装这两项。
+
