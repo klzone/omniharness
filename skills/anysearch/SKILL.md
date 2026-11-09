@@ -54,6 +54,5 @@ python3 "$ANYSEARCH_SKILL_DIR/scripts/anysearch_cli.py" extract "https://example
 
 ## 六、依赖
 
-脚本需要 Python 的 `requests` 库（HTTPS 证书链由 `certifi` 提供）。缺失时检索会报 `ModuleNotFoundError: No module named 'requests'`。
-先执行 `python3 -m pip install requests certifi` 安装再检索；打包脚本会为随包 Python 补装这两项。
+脚本需要 Python 的 `requests` 库（HTTPS 证书链由 `certifi` 提供）。发布包已在 `runtime/python-vendor` 内置这两项，宿主会把该目录加入 `PYTHONPATH`，无需用户再执行 pip。只有开发态缺少内置目录时，才在引擎所用 Python 中执行 `pip install requests certifi`。
 

@@ -369,7 +369,7 @@ impl EngineConfig {
             .unwrap_or(&self.engine_state_dir)
             .join("config")
             .join("sensitive-dict.v1.json");
-        vec![
+        let mut envs = vec![
             ("OMNIDESK_DSH_HOME".to_string(), self.dsh_home.display().to_string()),
             ("OMNIDESK_AGENTS_HOME".to_string(), self.agents_home.display().to_string()),
             ("OMNIDESK_DSH_CLI".to_string(), self.dsh_cli.display().to_string()),
@@ -383,7 +383,29 @@ impl EngineConfig {
                 "OMNIDESK_SENSITIVE_DICT".to_string(),
                 sensitive_dict.display().to_string(),
             ),
-        ]
+        ];
+        // OD-SYS-704：发布包内置纯 Python 依赖（requests/certifi）。
+        // 引擎与它拉起的检索子进程都走同一份 PYTHONPATH，不要求用户装系统包。
+        if let Some(vendor) = self
+            .engine_dir
+            .parent()
+            .map(|root| root.join("runtime").join("python-vendor"))
+            .filter(|path| path.is_dir())
+        {
+            let separator = if cfg!(windows) { ";" } else { ":" };
+            let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+            let mut value = vendor.display().to_string();
+            if !existing.trim().is_empty() {
+                value.push_str(separator);
+                value.push_str(&existing);
+            }
+            envs.push(("PYTHONPATH".to_string(), value));
+            envs.push((
+                "OMNIDESK_PYTHON_VENDOR".to_string(),
+                vendor.display().to_string(),
+            ));
+        }
+        envs
     }
 
     /// omni.initialize 的 params。

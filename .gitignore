@@ -29,6 +29,9 @@ tmp/
 __pycache__/
 *.pyc
 
+# 构建时生成的 Python 依赖（发布包内置，不入库）
+runtime/python-vendor/
+
 # Real business documents / regulations imported locally
 knowledge/regulations/*
 !knowledge/regulations/README.md

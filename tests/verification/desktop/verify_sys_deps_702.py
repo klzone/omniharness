@@ -124,9 +124,10 @@ def main() -> int:
     check(
         "skill_dependency_note",
         "## 六、依赖" in skill
-        and "ModuleNotFoundError" in skill
+        and "runtime/python-vendor" in skill
+        and "PYTHONPATH" in skill
         and "pip install requests certifi" in skill,
-        "anysearch SKILL.md 末尾说明 requests 依赖与缺失表现",
+        "anysearch SKILL.md 说明内置依赖与开发态回退",
     )
     check(
         "repo_requirements_manifest",
@@ -136,9 +137,10 @@ def main() -> int:
     check(
         "packaging_install_step",
         "scripts/python-requirements.txt" in prep
-        and '-m pip install --no-input --disable-pip-version-check -r' in prep
-        and "primary-runtime/dependencies/python" in prep,
-        "打包准备脚本对随包 primary-runtime 解释器显式补装；无 payload 时提示系统 Python",
+        and '-m pip install --no-input --disable-pip-version-check' in prep
+        and '--target "$VENDOR"' in prep
+        and "python-vendor" in prep,
+        "打包准备脚本把 requests/certifi 内置到 runtime/python-vendor",
     )
     check("runtime_untouched", git_status("runtime") == "", "runtime/ 零改动")
     check(
