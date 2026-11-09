@@ -36,6 +36,10 @@ mod imp {
     // Win32 常量与结构布局见 jobapi2.h / winnt.h。
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: u32 = 9;
+    // AssignProcessToJobObject 文档要求 PROCESS_SET_QUOTA + PROCESS_TERMINATE；
+    // 之前只申请 PROCESS_SET_INFORMATION，OpenProcess 返回的句柄权限不足，
+    // Windows 会以 ERROR_ACCESS_DENIED（Win32 5）拒绝挂接。
+    const PROCESS_SET_QUOTA: u32 = 0x0100;
     const PROCESS_SET_INFORMATION: u32 = 0x0200;
     const PROCESS_TERMINATE: u32 = 0x0001;
     const FALSE: i32 = 0;
@@ -133,7 +137,7 @@ mod imp {
                 }
 
                 let process = OpenProcess(
-                    PROCESS_SET_INFORMATION | PROCESS_TERMINATE,
+                    PROCESS_SET_QUOTA | PROCESS_SET_INFORMATION | PROCESS_TERMINATE,
                     FALSE,
                     pid,
                 );
