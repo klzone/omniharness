@@ -1,5 +1,68 @@
 ## OD-QS-413 审查（ARCHITECT，2026-11-09）——通过。第二阶段（OD-QS-401～413）全部竣工
 
+### OD-WT-607 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Bernoulli，deepseek-v4.1-flash-eco/high）交付的 writing_section.rs 分章节写作。
+
+**核对结果：**
+1. diff 允许清单核对：新增 writing_section.rs + lib.rs 四命令 + types/api + evidence；601-606 交付物只读零修改；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 1004 passed / 0 failed（净增 19）；tsc exit 0；敏感词 0 命中。
+3. 大纲确认门禁核对（安全断言核心）：writing_section_generate 前置校验任务状态=写作中 且已确认大纲该节存在——「大纲未确认不得生成正文」在 IPC 层落实；生成只允许写作中、确认/修订允许三状态（607 R4 核验审核返修闭环，认可）。
+4. AI 无写通道核对：模型输出只进提示词回执侧（界面侧调用），落盘走 writing_section_confirm 用户命令；未确认章节不写入正文.md（607 R2——正文.md 只含已确认内容，导出走组合函数，认可）。
+5. 执行裁决复核认可：R1（章节素材回退 selected 集）、R3（修订复用 confirm 产生快照+追加引用历史）。
+6. 登记待 608/609 消化：多次修订后 citations.jsonl 旧引用与最新版本的对应关系（603 记录含 linked_at 可按时间取最新，609 对账时按 record_id 处理）。
+
+**结论：** 通过。批次三余下两卡可并行派发：OD-WT-608（审阅修改）∥ OD-WT-609（事实核验）。
+### OD-WT-606 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Volta，deepseek-v4.1-flash-eco/high）交付的 writing_outline.rs 大纲生成与确认。
+
+**核对结果：**
+1. diff 允许清单核对：新增 writing_outline.rs + writing-templates.v1.json + lib.rs 三命令 + types/api + evidence；601-605 交付物只读零修改；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 985 passed / 0 failed（净增 19）；verify_writing_store_601 回归 23/23；敏感词 0 命中。
+3. 场景四断言实跑确认：各章有目标/重点/素材映射；material_ids/knowledge_ids 必须来自任务 selected_* 集；未确认素材拒绝进提示词（606 R1 把场景三口径延伸到大纲生成，认可）。
+4. 大纲确认门禁核对：状态=大纲待确认或素材收集中才可生成；confirm 两段迁移（经 601 迁移表 is_outline_confirmed）+ outline.md 落盘 + 版本快照——「大纲未确认不得生成正文」的门禁数据基础就绪（607 生成前置校验将断言任务状态=写作中）。
+5. 执行裁决复核认可：R2（confirm 两段迁移）、R3（12 类全覆盖绑定）、R4（候选留界面侧）、R5（从 outline.md 反解，不建 JSON 旁路——避免双写源）。
+6. 模板机制核对：config 无文件用内嵌默认零写入（照 availability 先例）；坏配置拒绝。
+
+**结论：** 通过。OD-WT-607（分章节写作，批次三主线）可派发。
+### OD-WT-604 / OD-WT-605 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：604 写作需求解析（Confucius）、605 智能素材收集（Ohm）。
+
+**核对结果：**
+1. diff 允许清单核对：604 新增 engine writing_extract.py + writing_parse.rs + lib.rs 三命令 + types/api + engine 测试；605 新增 writing_collect.rs + lib.rs 两命令 + types/api。两者与 601-603 交付零交叠；runtime/ 零改动；lib.rs/api/types 并行追加无覆盖。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 966 passed / 0 failed（净增 27：604 项 10 + 605 项 17）；pytest = 216 passed + 30 subtests（净增 16）；tsc exit 0。敏感词 0 命中。
+3. 场景三断言实跑确认：默认结果不含待审核素材；include_pending 时 pending_review=true 且 suitable_for_direct_quote=false；选择命令拒绝待审核素材入可信包。
+4. 安全链路核对：writing_parse_requirement 与 writing_create_from_requirement 过 gate_user_text（604 R4 创建路径再过闸门防 AI 草稿绕过，认可）；collect 查询过滤参数不落盘不走闸门（506 R5 口径）；writing_select_materials 逐条校验已确认（605 R6 比卡面更严，认可）。
+5. 执行裁决复核认可：604 R1（apply 只校验不落盘、确认后显式创建）、R2（questions 语义）；605 R1（五类标注映射）、R4（显式待审核未开开关直接报错防漏查）、R5（重点标注只留痕不加字段）。
+6. 既有 OMNIDESK_PYTHON 并发竞态（602 发现）在 604/605 复现，均按 RUST_TEST_THREADS=4 复跑口径处理，登记至 615。
+
+**结论：** 两卡均通过。OD-WT-606（大纲生成与确认）可派发。
+### OD-WT-602 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Singer，deepseek-v4.1-flash-eco/high）交付的 document_store.rs 文稿与版本存储。
+
+**核对结果：**
+1. diff 允许清单核对：新增 document_store.rs + lib.rs 挂 mod + evidence；601/603 交付物与 work_cleanup 零修改；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 939 passed / 0 failed（净增 17）；快照-恢复-历史保留与段落 diff 测试实跑通过。敏感词 0 命中。
+3. 重要发现（执行代理定位、本会话复核认可）：默认并行测试下 3 项既有引擎测试失败，根因是既有 command_tests 的 OMNIDESK_PYTHON 环境变量竞态（未加执行位的 stub），非本任务引入；单跑即过，限制 4 线程全量即过。该竞态属既有债务，登记待 615 收口统一核对（不属第四阶段引入，不阻塞）。
+4. 执行裁决复核认可：manifest schema/sha256/高版本拒绝写入（防碰撞）；当前文件带 frontmatter、快照存纯正文（利于 diff 与导出）；label ASCII 安全校验；read_* 返回 Option 区分未创建。
+5. 路径安全三层校验（is_safe_id/assert_under/符号链接拒绝）核对通过。
+
+**结论：** 通过。批次二（604 ∥ 605 → 606）可派发。
+### OD-WT-601 / OD-WT-603 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：601 writing_store.rs 写作任务实体（Maxwell）、603 writing_records.rs 引用核验记录（Boyle）。
+
+**核对结果：**
+1. diff 允许清单核对：601 新增 writing_store.rs + lib.rs 挂 mod + work_cleanup.rs 排除 work/写作/ + verify 脚本；603 新增 writing_records.rs + lib.rs 挂 mod。两者与前三阶段交付零交叠；runtime/ 零改动。
+2. 独立复跑：cargo lib = 922 passed / 0 failed（基线 883 净增 39：601 项 21 + 603 项 18）；verify_writing_store_601 = 23/23（本会话实跑）。敏感词扫描 0 命中。
+3. 并发纪律：两代理共享工作区，互未触碰对方文件（两份报告互证）；601 报告如实登记 603 并发改动，反之亦然。
+4. 执行裁决复核认可：601 四条（时间过滤按 created_at/迁移表加退回路径/拒绝迁移留痕/删除走 .trash）；603 八条（JSONL 落 <wid>/ 目录/编号从 1 起/追加前校验换行/fact_text 可选/有来源必带 basis/按行重写处理状态/任务作用域查询/重算骨架稳定 id）。其中 601 R2 退回路径（待核验→写作中、待审核→写作中）符合核验审核返修闭环，属合理补全；603 R5 有来源必带 basis 防空依据，属合理收紧。
+5. 登记待 602 消化：603 R1 记录目录约定 work/写作/<writing_id>/，602 须沿用；编号从 1 起，602 正文段落定位须对齐。
+
+**结论：** 两卡均通过。OD-WT-602（文稿与版本存储）可派发。
 ### OD-KM-513 复检通过 + 第三阶段（OD-KM-500）竣工（2026-11-09，ARCHITECT 独立复核）
 
 **审查对象：** 收口执行代理（Kepler）交付的全量回归、verify_security_phase3.py（25 项）与十二场景对照。

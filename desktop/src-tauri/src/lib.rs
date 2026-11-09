@@ -69,6 +69,14 @@ pub mod worklog;
 pub mod worklog_records;
 pub mod worklog_migrate;
 pub mod work_cleanup;
+pub mod writing_store;
+pub mod writing_records;
+pub mod writing_collect;
+pub mod document_store;
+pub mod writing_parse;
+pub mod writing_outline;
+pub mod writing_section;
+pub mod writing_review;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -3496,6 +3504,516 @@ fn material_query(
     material_query::query_materials(&root, vault.as_deref(), &query)
 }
 
+// ---------------------------------------------------------------------------
+// 第四阶段：智能素材收集 IPC（OD-WT-605）
+//
+// 组合 509 material_query、知识库词法检索与 508 项目概览的只读查询，不落盘。
+// `writing_id` 是用户可见编号，过统一闸门；过滤条件不落盘，按 506 R5 口径
+// 只做白名单与形状校验，不进入红线扫描。用户选择走 601 写作任务更新，
+// 采纳/排除/重点说明写进追加状态记录。
+// ---------------------------------------------------------------------------
+
+fn writing_collect_materials_impl(
+    root: &std::path::Path,
+    vault: Option<&std::path::Path>,
+    policy: &profile_rules::RulePolicy,
+    request: writing_collect::CollectRequest,
+) -> Result<writing_collect::CollectedMaterials, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    writing_collect::collect_materials_from(
+        root,
+        vault,
+        &request.filter,
+        &writing_id,
+        &request.knowledge_hints,
+        request.include_pending,
+    )
+}
+
+fn writing_select_materials_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_collect::SelectionRequest,
+    now: f64,
+) -> Result<writing_collect::SelectionOutcome, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    if let Some(note) = request.note.clone() {
+        if !note.trim().is_empty() {
+            let (masked, _) = gate_user_text(&note, policy, "素材选择说明")?;
+            request.note = Some(masked);
+        }
+    }
+    writing_collect::apply_selection(root, &request, now)
+}
+
+#[tauri::command(async)]
+fn writing_collect_materials(
+    state: State<'_, SharedHost>,
+    request: writing_collect::CollectRequest,
+) -> Result<writing_collect::CollectedMaterials, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths).ok();
+    writing_collect_materials_impl(&root, vault.as_deref(), &policy, request)
+}
+
+#[tauri::command(async)]
+fn writing_select_materials(
+    state: State<'_, SharedHost>,
+    request: writing_collect::SelectionRequest,
+) -> Result<writing_collect::SelectionOutcome, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_select_materials_impl(&root, &policy, request, task_shell::now_secs())
+}
+
+// ---------------------------------------------------------------------------
+// 第四阶段：大纲生成与确认 IPC（OD-WT-606）
+//
+// 宿主组提示词，模型调用仍在界面侧；生成命令不写文件。确认命令先把用户
+// 可编辑的大纲文本全部过红线与掩码，再由 602 写 outline.md 与快照，最后经
+// 601 状态表迁移到「写作中」（必须带 is_outline_confirmed=true）。
+// 类型模板从应用数据根 config/ 读取；文件不存在时使用内嵌默认，零写入。
+// ---------------------------------------------------------------------------
+
+fn writing_outline_generate_impl(
+    root: &std::path::Path,
+    config_dir: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: writing_outline::OutlineGenerateRequest,
+) -> Result<writing_outline::WritingOutlinePrompt, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let mut prompt = writing_outline::generate_outline_prompt(
+        root,
+        config_dir,
+        &writing_outline::OutlineGenerateRequest { writing_id },
+    )?;
+    prompt.masked = counts.any();
+    prompt.masked_id_card = counts.id_card;
+    prompt.masked_phone = counts.phone;
+    Ok(prompt)
+}
+
+fn gate_outline_text(
+    outline: &mut writing_outline::WritingOutline,
+    policy: &profile_rules::RulePolicy,
+) -> Result<profile_rules::MaskCounts, String> {
+    let mut total = profile_rules::MaskCounts::default();
+    let mut apply = |value: &mut String, target: &str| -> Result<(), String> {
+        let (masked, extra) = gate_user_text(value, policy, target)?;
+        *value = masked;
+        add_counts(&mut total, extra);
+        Ok(())
+    };
+    apply(&mut outline.title, "大纲标题")?;
+    apply(&mut outline.writing_purpose, "大纲写作目的")?;
+    for point in outline.core_points.iter_mut() {
+        apply(point, "大纲核心观点")?;
+    }
+    for section in outline.sections.iter_mut() {
+        apply(&mut section.heading, "大纲章节标题")?;
+        apply(&mut section.focus, "大纲章节写作重点")?;
+        for value in section.sub_headings.iter_mut() {
+            apply(value, "大纲小节标题")?;
+        }
+    }
+    Ok(total)
+}
+
+fn writing_outline_confirm_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_outline::OutlineConfirmRequest,
+    now: f64,
+) -> Result<writing_outline::WritingOutlineConfirmed, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    let mut total = counts;
+    if let Some(note) = request.note.clone() {
+        if !note.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&note, policy, "大纲确认说明")?;
+            request.note = Some(masked);
+            add_counts(&mut total, extra);
+        }
+    }
+    let outline_counts = gate_outline_text(&mut request.outline, policy)?;
+    add_counts(&mut total, outline_counts);
+    let mut confirmed = writing_outline::confirm_outline(root, &request, now)?;
+    confirmed.masked = total.any();
+    confirmed.masked_id_card = total.id_card;
+    confirmed.masked_phone = total.phone;
+    Ok(confirmed)
+}
+
+fn writing_outline_get_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    writing_id: &str,
+) -> Result<writing_outline::WritingOutlineConfirmed, String> {
+    let (writing_id, counts) = gate_user_text(writing_id, policy, "写作任务编号")?;
+    let mut confirmed = writing_outline::read_confirmed_outline(root, &writing_id)?;
+    confirmed.masked = counts.any();
+    confirmed.masked_id_card = counts.id_card;
+    confirmed.masked_phone = counts.phone;
+    Ok(confirmed)
+}
+
+/// OD-WT-606：生成大纲提示词。只读任务与素材包，不写任何文件。
+#[tauri::command(async)]
+fn writing_outline_generate(
+    state: State<'_, SharedHost>,
+    request: writing_outline::OutlineGenerateRequest,
+) -> Result<writing_outline::WritingOutlinePrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    writing_outline_generate_impl(&root, &config_dir, &policy, request)
+}
+
+/// OD-WT-606：用户确认可编辑大纲 → outline.md + 快照 → 写作中。
+#[tauri::command(async)]
+fn writing_outline_confirm(
+    state: State<'_, SharedHost>,
+    request: writing_outline::OutlineConfirmRequest,
+) -> Result<writing_outline::WritingOutlineConfirmed, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_outline_confirm_impl(&root, &policy, request, task_shell::now_secs())
+}
+
+/// OD-WT-606：读取已确认大纲；未确认时明确报错。
+#[tauri::command(async)]
+fn writing_outline_get(
+    state: State<'_, SharedHost>,
+    writing_id: String,
+) -> Result<writing_outline::WritingOutlineConfirmed, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_outline_get_impl(&root, &policy, &writing_id)
+}
+
+// ---------------------------------------------------------------------------
+// 第四阶段：分章节写作 IPC（OD-WT-607）
+//
+// 照 606 模式：宿主组提示词，模型调用仍在界面侧；生成/修订命令不写文件。
+// 确认命令先把章节稿正文、引用原文、四分法文本与说明全部过红线与掩码，
+// 再由 602 写正文.md 与完整正文快照，由 603 追加本章引用。AI 没有直接
+// 定稿写通道，章节稿只有用户调用 confirm 才会落盘。
+// ---------------------------------------------------------------------------
+
+fn gate_section_draft(
+    draft: &mut writing_section::SectionDraft,
+    policy: &profile_rules::RulePolicy,
+) -> Result<profile_rules::MaskCounts, String> {
+    let mut total = profile_rules::MaskCounts::default();
+    let (content, extra) = gate_user_text(&draft.content, policy, "章节稿正文")?;
+    draft.content = content;
+    add_counts(&mut total, extra);
+    for citation in draft.citations.iter_mut() {
+        let (quote, extra) = gate_user_text(&citation.quote, policy, "章节引用原文")?;
+        citation.quote = quote;
+        add_counts(&mut total, extra);
+    }
+    for segment in draft.segments.iter_mut() {
+        let (text, extra) = gate_user_text(&segment.text, policy, "四分法标注文本")?;
+        segment.text = text;
+        add_counts(&mut total, extra);
+        if let Some(quote) = segment.quote.clone() {
+            let (masked, extra) = gate_user_text(&quote, policy, "四分法标注引用")?;
+            segment.quote = Some(masked);
+            add_counts(&mut total, extra);
+        }
+    }
+    Ok(total)
+}
+
+fn writing_section_generate_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: writing_section::SectionGenerateRequest,
+) -> Result<writing_section::WritingSectionPrompt, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let mut prompt = writing_section::generate_section_prompt(
+        root,
+        &writing_section::SectionGenerateRequest {
+            writing_id,
+            section_no: request.section_no,
+        },
+    )?;
+    prompt.masked = counts.any();
+    prompt.masked_id_card = counts.id_card;
+    prompt.masked_phone = counts.phone;
+    Ok(prompt)
+}
+
+fn writing_section_confirm_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_section::SectionConfirmRequest,
+    now: f64,
+) -> Result<writing_section::WritingSectionConfirmed, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    let mut total = counts;
+    if let Some(note) = request.note.clone() {
+        if !note.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&note, policy, "章节确认说明")?;
+            request.note = Some(masked);
+            add_counts(&mut total, extra);
+        }
+    }
+    let draft_counts = gate_section_draft(&mut request.draft, policy)?;
+    add_counts(&mut total, draft_counts);
+    let mut confirmed = writing_section::confirm_section(root, &request, now)?;
+    confirmed.masked = total.any();
+    confirmed.masked_id_card = total.id_card;
+    confirmed.masked_phone = total.phone;
+    Ok(confirmed)
+}
+
+fn writing_section_get_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    writing_id: &str,
+    section_no: u32,
+) -> Result<writing_section::WritingSectionState, String> {
+    let (writing_id, counts) = gate_user_text(writing_id, policy, "写作任务编号")?;
+    let mut state = writing_section::read_section_state(root, &writing_id, section_no)?;
+    state.masked = counts.any();
+    state.masked_id_card = counts.id_card;
+    state.masked_phone = counts.phone;
+    Ok(state)
+}
+
+fn writing_section_revise_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_section::SectionReviseRequest,
+) -> Result<writing_section::WritingSectionRevisePrompt, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    let mut total = counts;
+    if !request.instruction.trim().is_empty() {
+        let (instruction, extra) = gate_user_text(&request.instruction, policy, "修订补充说明")?;
+        request.instruction = instruction;
+        add_counts(&mut total, extra);
+    }
+    let mut prompt = writing_section::revise_section_prompt(root, &request)?;
+    prompt.masked = total.any();
+    prompt.masked_id_card = total.id_card;
+    prompt.masked_phone = total.phone;
+    Ok(prompt)
+}
+
+/// OD-WT-607：生成章节提示词。只读任务、大纲与本章素材，不写任何文件。
+#[tauri::command(async)]
+fn writing_section_generate(
+    state: State<'_, SharedHost>,
+    request: writing_section::SectionGenerateRequest,
+) -> Result<writing_section::WritingSectionPrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_section_generate_impl(&root, &policy, request)
+}
+
+/// OD-WT-607：用户确认章节稿 → 正文.md + 快照 + 本章引用。
+#[tauri::command(async)]
+fn writing_section_confirm(
+    state: State<'_, SharedHost>,
+    request: writing_section::SectionConfirmRequest,
+) -> Result<writing_section::WritingSectionConfirmed, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_section_confirm_impl(&root, &policy, request, task_shell::now_secs())
+}
+
+/// OD-WT-607：读取当前正文中的指定章节。
+#[tauri::command(async)]
+fn writing_section_get(
+    state: State<'_, SharedHost>,
+    writing_id: String,
+    section_no: u32,
+) -> Result<writing_section::WritingSectionState, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_section_get_impl(&root, &policy, &writing_id, section_no)
+}
+
+/// OD-WT-607：构建章节修订提示词；应用修订仍走 writing_section_confirm。
+#[tauri::command(async)]
+fn writing_section_revise(
+    state: State<'_, SharedHost>,
+    request: writing_section::SectionReviseRequest,
+) -> Result<writing_section::WritingSectionRevisePrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_section_revise_impl(&root, &policy, request)
+}
+
+// ---------------------------------------------------------------------------
+// 第四阶段：审阅修改与版本 IPC（OD-WT-608）
+//
+// 架构契合：薄封装 607 的修订确认通道 + 602 版本存储 + 603 记录；十维审阅
+// 检查单只作为宿主组提示词，模型调用仍在界面侧，零新增模型通道。审阅结果
+// 只是问题清单，不写正文；用户应用某条问题后，修订稿仍经 607 confirm_section
+// 同一路径写入正文与快照，再经 601 追加应用留痕。版本恢复必须显式确认，
+// 状态不变、只追加「恢复 vX」状态记录。
+// ---------------------------------------------------------------------------
+
+fn writing_review_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: writing_review::ReviewRequest,
+) -> Result<writing_review::WritingReviewPrompt, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let mut total = counts;
+    let mut instruction = request.instruction;
+    if !instruction.trim().is_empty() {
+        let (masked, extra) = gate_user_text(&instruction, policy, "审阅补充说明")?;
+        instruction = masked;
+        add_counts(&mut total, extra);
+    }
+    let mut prompt = writing_review::build_review_prompt(
+        root,
+        &writing_review::ReviewRequest {
+            writing_id,
+            instruction,
+        },
+    )?;
+    prompt.masked = total.any();
+    prompt.masked_id_card = total.id_card;
+    prompt.masked_phone = total.phone;
+    Ok(prompt)
+}
+
+fn writing_review_apply_finding_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_review::ReviewApplyRequest,
+    now: f64,
+) -> Result<writing_review::ReviewFindingApplied, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    let mut total = counts;
+    if let Some(note) = request.note.clone() {
+        if !note.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&note, policy, "审阅修订说明")?;
+            request.note = Some(masked);
+            add_counts(&mut total, extra);
+        }
+    }
+    let (description, extra) =
+        gate_user_text(&request.finding.description, policy, "审阅问题描述")?;
+    request.finding.description = description;
+    add_counts(&mut total, extra);
+    if !request.finding.suggestion.trim().is_empty() {
+        let (suggestion, extra) =
+            gate_user_text(&request.finding.suggestion, policy, "审阅修改建议")?;
+        request.finding.suggestion = suggestion;
+        add_counts(&mut total, extra);
+    }
+    let draft_counts = gate_section_draft(&mut request.draft, policy)?;
+    add_counts(&mut total, draft_counts);
+    let mut applied = writing_review::apply_finding(root, &request, now)?;
+    applied.masked = total.any();
+    applied.masked_id_card = total.id_card;
+    applied.masked_phone = total.phone;
+    Ok(applied)
+}
+
+fn writing_version_list_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    writing_id: &str,
+) -> Result<writing_review::WritingVersionList, String> {
+    let (writing_id, _) = gate_user_text(writing_id, policy, "写作任务编号")?;
+    writing_review::list_version_summaries(root, &writing_id)
+}
+
+fn writing_version_diff_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_review::VersionDiffRequest,
+) -> Result<writing_review::WritingVersionDiff, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    writing_review::diff_versions(root, &request)
+}
+
+fn writing_version_restore_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_review::VersionRestoreRequest,
+    now: f64,
+) -> Result<writing_review::WritingVersionRestored, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    request.writing_id = writing_id;
+    writing_review::restore_version(root, &request, now)
+}
+
+/// OD-WT-608：构建十维审阅提示词。只读任务、大纲与正文，不写任何文件。
+#[tauri::command(async)]
+fn writing_review(
+    state: State<'_, SharedHost>,
+    request: writing_review::ReviewRequest,
+) -> Result<writing_review::WritingReviewPrompt, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_review_impl(&root, &policy, request)
+}
+
+/// OD-WT-608：用户应用某条审阅问题 → 607 确认通道写正文/快照 + 状态记录留痕。
+#[tauri::command(async)]
+fn writing_review_apply_finding(
+    state: State<'_, SharedHost>,
+    request: writing_review::ReviewApplyRequest,
+) -> Result<writing_review::ReviewFindingApplied, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_review_apply_finding_impl(&root, &policy, request, task_shell::now_secs())
+}
+
+/// OD-WT-608：版本列表（含每版说明与段落差异摘要）。
+#[tauri::command(async)]
+fn writing_version_list(
+    state: State<'_, SharedHost>,
+    writing_id: String,
+) -> Result<writing_review::WritingVersionList, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_version_list_impl(&root, &policy, &writing_id)
+}
+
+/// OD-WT-608：两份历史版本的段落级对比。
+#[tauri::command(async)]
+fn writing_version_diff(
+    state: State<'_, SharedHost>,
+    request: writing_review::VersionDiffRequest,
+) -> Result<writing_review::WritingVersionDiff, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_version_diff_impl(&root, &policy, request)
+}
+
+/// OD-WT-608：恢复历史版本（须用户确认；状态不变，追加「恢复 vX」留痕）。
+#[tauri::command(async)]
+fn writing_version_restore(
+    state: State<'_, SharedHost>,
+    request: writing_review::VersionRestoreRequest,
+) -> Result<writing_review::WritingVersionRestored, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_version_restore_impl(&root, &policy, request, task_shell::now_secs())
+}
+
 /// 模型端点与授权现状（只读，不启动引擎）。
 ///
 /// 即使准入被拒绝也照常返回：用户必须先看到“端点在哪里、是否离开本机”，
@@ -5510,6 +6028,92 @@ fn worklog_record_analyze_failed(
 ) -> Result<worklog_records::WorkRecord, String> {
     let root = work_root(&state)?;
     task_extract::mark_analysis_failed(&root, &record_id, task_shell::now_secs())
+}
+
+/// OD-WT-604：写作需求解析准备。宿主过红线与掩码后组装提示词；
+/// 模型调用仍由界面侧 submitTask 提交，本命令不写任何文件。
+#[tauri::command(async)]
+fn writing_parse_requirement(
+    state: State<'_, SharedHost>,
+    text: String,
+) -> Result<writing_parse::WritingParsePrompt, String> {
+    let policy = current_rule_policy(&state)?;
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (masked_text, counts) = gate_user_text(&text, &policy, "写作需求")?;
+    let config = EngineConfig::from_env(&app_root)?;
+    let prompt = writing_parse::build_requirement_prompt(
+        &config.python,
+        &config.engine_dir,
+        &masked_text,
+    )?;
+    Ok(writing_parse::WritingParsePrompt {
+        prompt,
+        user_input_text: masked_text,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// OD-WT-604：解析落地。校验模型输出并返回草稿；本命令不落盘，
+/// 用户确认后才经 writing_create_from_requirement 创建任务。
+#[tauri::command(async)]
+fn writing_parse_requirement_apply(
+    result_text: String,
+) -> Result<writing_parse::WritingRequirementApplied, String> {
+    writing_parse::validate_requirement_payload(&result_text)
+}
+
+/// 用户确认草稿后的创建路径：所有字段再过一次红线与掩码，
+/// 再交给 writing_store 落盘，初始状态固定为「需求待整理」。
+fn writing_create_from_requirement_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut draft: writing_parse::WritingRequirementDraft,
+    now: f64,
+) -> Result<writing_parse::WritingTaskCreated, String> {
+    let mut counts = profile_rules::MaskCounts::default();
+    for (value, target) in [
+        (&mut draft.title, "写作标题"),
+        (&mut draft.topic, "写作主题"),
+        (&mut draft.writing_purpose, "写作目的"),
+        (&mut draft.audience, "目标受众"),
+        (&mut draft.writing_period, "写作周期"),
+        (&mut draft.expected_length, "预计篇幅"),
+        (&mut draft.writing_style, "写作风格"),
+    ] {
+        if let Some(text) = value.as_mut() {
+            let (masked, extra) = gate_user_text(text, policy, target)?;
+            *text = masked;
+            add_counts(&mut counts, extra);
+        }
+    }
+    for item in draft.requirements.iter_mut() {
+        let (masked, extra) = gate_user_text(item, policy, "写作要求")?;
+        *item = masked;
+        add_counts(&mut counts, extra);
+    }
+    let task = writing_parse::create_writing_task_from_requirement(root, &draft, now)?;
+    Ok(writing_parse::WritingTaskCreated {
+        task,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// OD-WT-604：用户确认后创建写作任务（调 601 writing_store create）。
+#[tauri::command(async)]
+fn writing_create_from_requirement(
+    state: State<'_, SharedHost>,
+    draft: writing_parse::WritingRequirementDraft,
+) -> Result<writing_parse::WritingTaskCreated, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_create_from_requirement_impl(&root, &policy, draft, task_shell::now_secs())
 }
 
 #[tauri::command(async)]
@@ -7690,6 +8294,21 @@ pub fn run() {
             worklog_record_analyze,
             worklog_record_analyze_apply,
             worklog_record_analyze_failed,
+            writing_parse_requirement,
+            writing_parse_requirement_apply,
+            writing_create_from_requirement,
+            writing_outline_generate,
+            writing_outline_confirm,
+            writing_outline_get,
+            writing_section_generate,
+            writing_section_confirm,
+            writing_section_get,
+            writing_section_revise,
+            writing_review,
+            writing_review_apply_finding,
+            writing_version_list,
+            writing_version_diff,
+            writing_version_restore,
             task_create,
             task_read,
             task_update,
@@ -7729,6 +8348,8 @@ pub fn run() {
             material_review,
             material_edit,
             material_query,
+            writing_collect_materials,
+            writing_select_materials,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。
@@ -10506,5 +11127,594 @@ mod knowledge_link_ipc_tests {
         assert!(knowledge_link_store::candidates_dir(temp.root())
             .join(format!("{candidate_id}.json"))
             .exists(), "闸门拒绝后候选仍待处理");
+    }
+}
+
+#[cfg(test)]
+mod writing_collect_ipc_tests {
+    //! OD-WT-605：收集命令的写入口径与选择命令的闸门。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_300_000.0;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-collect-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            std::fs::create_dir_all(&work).unwrap();
+            Self { base, work }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn writing(root: &Path) -> writing_store::WritingTask {
+        writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-ipc".to_string()),
+                title: "虚构月度总结".to_string(),
+                document_type: writing_store::TYPE_MONTHLY_SUMMARY.to_string(),
+                topic: "虚构主题".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap()
+    }
+
+    fn confirmed_material(root: &Path) -> String {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-ipc".to_string()),
+                title: "虚构素材".to_string(),
+                content: "虚构正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-ipc".to_string(),
+                source_quote: "虚构引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        material.material_id
+    }
+
+    #[test]
+    fn collect_gates_writing_id_before_any_read() {
+        let temp = TempRoot::new("collect-gate");
+        let err = writing_collect_materials_impl(
+            temp.root(),
+            None,
+            &policy_with(&["机密"]),
+            writing_collect::CollectRequest {
+                writing_id: "机密写作编号".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+    }
+
+    #[test]
+    fn query_filters_and_hints_do_not_enter_red_line_gate() {
+        let temp = TempRoot::new("filter-not-gated");
+        let task = writing(temp.root());
+        let response = writing_collect_materials_impl(
+            temp.root(),
+            None,
+            &policy_with(&["机密"]),
+            writing_collect::CollectRequest {
+                writing_id: task.writing_id.clone(),
+                filter: material_store::MaterialFilter {
+                    date_from: Some("2025-01-01".to_string()),
+                    ..Default::default()
+                },
+                knowledge_hints: vec!["机密主题提示".to_string()],
+                include_pending: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(response.writing_id, task.writing_id);
+        assert_eq!(response.material_count, 0);
+        assert!(response
+            .knowledge_note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("知识库未配置"));
+    }
+
+    #[test]
+    fn select_gates_note_and_leaves_selection_unchanged_on_red_line() {
+        let temp = TempRoot::new("select-gate");
+        let task = writing(temp.root());
+        let material_id = confirmed_material(temp.root());
+        let before = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        let err = writing_select_materials_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_collect::SelectionRequest {
+                writing_id: task.writing_id.clone(),
+                adopt_material_ids: vec![material_id],
+                note: Some("虚构机密说明".to_string()),
+                ..Default::default()
+            },
+            NOW + 2.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        let after = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert!(after.selected_material_ids.is_empty());
+        assert_eq!(after.status_records.len(), before.status_records.len());
+    }
+}
+
+#[cfg(test)]
+mod writing_outline_ipc_tests {
+    //! OD-WT-606：生成/确认/读取命令的红线与写入顺序。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_500_000.0;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+        config: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-outline-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            let config = base.join("config");
+            std::fs::create_dir_all(&work).unwrap();
+            std::fs::create_dir_all(&config).unwrap();
+            Self { base, work, config }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+
+        fn config(&self) -> &Path {
+            &self.config
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn confirmed_material(root: &Path) -> String {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-outline-ipc".to_string()),
+                title: "虚构素材".to_string(),
+                content: "虚构正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-outline-ipc".to_string(),
+                source_quote: "虚构引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        material.material_id
+    }
+
+    fn collecting_task(root: &Path, material_id: String) -> writing_store::WritingTask {
+        let task = writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-outline-ipc".to_string()),
+                title: "虚构年度总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                topic: "虚构主题".to_string(),
+                selected_material_ids: vec![material_id],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap()
+    }
+
+    fn outline(task: &writing_store::WritingTask) -> writing_outline::WritingOutline {
+        writing_outline::WritingOutline {
+            title: task.title.clone(),
+            writing_purpose: "虚构写作目的".to_string(),
+            core_points: vec!["虚构核心观点".to_string()],
+            sections: vec![writing_outline::OutlineSection {
+                no: 1,
+                heading: "工作概况".to_string(),
+                sub_headings: vec![],
+                focus: "虚构写作重点".to_string(),
+                material_ids: task.selected_material_ids.clone(),
+                knowledge_ids: vec![],
+                expected_words: 500,
+            }],
+        }
+    }
+
+    #[test]
+    fn generate_gates_writing_id_before_any_read() {
+        let temp = TempRoot::new("generate-gate");
+        let err = writing_outline_generate_impl(
+            temp.root(),
+            temp.config(),
+            &policy_with(&["机密"]),
+            writing_outline::OutlineGenerateRequest {
+                writing_id: "机密写作编号".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+    }
+
+    #[test]
+    fn confirm_gates_editable_outline_before_writing() {
+        let temp = TempRoot::new("confirm-gate");
+        let material_id = confirmed_material(temp.root());
+        let task = collecting_task(temp.root(), material_id);
+        let mut edited = outline(&task);
+        edited.title = "虚构机密标题".to_string();
+        let err = writing_outline_confirm_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_outline::OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: edited,
+                note: Some("虚构确认说明".to_string()),
+            },
+            NOW + 3.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        let after = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(after.status, writing_store::STATUS_COLLECTING_MATERIALS);
+        assert!(!document_store::outline_path(temp.root(), &task.writing_id)
+            .unwrap()
+            .exists());
+    }
+
+    #[test]
+    fn get_gates_writing_id_before_read() {
+        let temp = TempRoot::new("get-gate");
+        let err = writing_outline_get_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            "机密写作编号",
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod writing_section_ipc_tests {
+    //! OD-WT-607：章节生成/确认/读取/修订命令的红线与写入顺序。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_600_000.0;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-section-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            std::fs::create_dir_all(&work).unwrap();
+            Self { base, work }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn ready_task(root: &Path) -> writing_store::WritingTask {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-section-ipc".to_string()),
+                title: "虚构素材".to_string(),
+                content: "虚构正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-section-ipc".to_string(),
+                source_quote: "虚构引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        let task = writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-section-ipc".to_string()),
+                title: "虚构年度总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                topic: "虚构主题".to_string(),
+                selected_material_ids: vec![material.material_id.clone()],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let task = writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap();
+        writing_outline::confirm_outline(
+            root,
+            &writing_outline::OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: writing_outline::WritingOutline {
+                    title: task.title.clone(),
+                    writing_purpose: "虚构写作目的".to_string(),
+                    core_points: vec!["虚构核心观点".to_string()],
+                    sections: vec![writing_outline::OutlineSection {
+                        no: 1,
+                        heading: "工作概况".to_string(),
+                        sub_headings: vec![],
+                        focus: "虚构写作重点".to_string(),
+                        material_ids: task.selected_material_ids.clone(),
+                        knowledge_ids: vec![],
+                        expected_words: 500,
+                    }],
+                },
+                note: None,
+            },
+            NOW + 3.0,
+        )
+        .unwrap();
+        writing_store::read_writing_task(root, &task.writing_id).unwrap()
+    }
+
+    fn draft(content: &str) -> writing_section::SectionDraft {
+        writing_section::SectionDraft {
+            section_no: 1,
+            content: content.to_string(),
+            citations: vec![writing_section::SectionCitation {
+                source_kind: writing_records::CitationSourceKind::Material,
+                source_id: "m-section-ipc".to_string(),
+                quote: "虚构引用".to_string(),
+            }],
+            segments: vec![writing_section::SectionSegment {
+                kind: "事实".to_string(),
+                text: "虚构正文".to_string(),
+                quote: Some("虚构引用".to_string()),
+            }],
+        }
+    }
+
+    #[test]
+    fn generate_gates_writing_id_before_any_read() {
+        let temp = TempRoot::new("generate-gate");
+        let err = writing_section_generate_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_section::SectionGenerateRequest {
+                writing_id: "机密写作编号".to_string(),
+                section_no: 1,
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+    }
+
+    #[test]
+    fn confirm_gates_content_before_writing() {
+        let temp = TempRoot::new("confirm-content-gate");
+        let task = ready_task(temp.root());
+        let err = writing_section_confirm_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: draft("虚构机密内容"),
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!document_store::body_path(temp.root(), &task.writing_id)
+            .unwrap()
+            .exists());
+    }
+
+    #[test]
+    fn confirm_gates_citation_and_segment_text_before_writing() {
+        let temp = TempRoot::new("confirm-quote-gate");
+        let task = ready_task(temp.root());
+        let mut bad_citation = draft("虚构正常正文。");
+        bad_citation.citations[0].quote = "机密引用".to_string();
+        let err = writing_section_confirm_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: bad_citation,
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+
+        let mut bad_segment = draft("虚构正常正文。");
+        bad_segment.segments[0].text = "机密标注文本".to_string();
+        let err = writing_section_confirm_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: bad_segment,
+                note: None,
+            },
+            NOW + 5.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+        assert!(!document_store::body_path(temp.root(), &task.writing_id)
+            .unwrap()
+            .exists());
+    }
+
+    #[test]
+    fn revise_and_get_gate_user_text_before_read_or_prompt() {
+        let temp = TempRoot::new("revise-gate");
+        let task = ready_task(temp.root());
+        writing_section_confirm_impl(
+            temp.root(),
+            &policy_with(&[]),
+            writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: draft("虚构正文段落。"),
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap();
+
+        let err = writing_section_revise_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_section::SectionReviseRequest {
+                writing_id: task.writing_id.clone(),
+                section_no: 1,
+                paragraph_no: None,
+                instruction_kind: "精简".to_string(),
+                instruction: "机密修订说明".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
+
+        let err = writing_section_get_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            "机密写作编号",
+            1,
+        )
+        .unwrap_err();
+        assert!(err.contains("红线扫描"), "{err}");
     }
 }

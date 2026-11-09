@@ -1,0 +1,26 @@
+   Compiling omnidesk-desktop v0.1.0 (/Users/yvan/Code/MyWorkStation/desktop/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.21s
+     Running unittests src/lib.rs (target/debug/deps/omnidesk_desktop_lib-2987307d49efb4d8)
+
+running 18 tests
+test writing_records::tests::object_and_conclusion_labels_cover_whitelists ... ok
+test writing_records::tests::recompute_hint_skips_absent_and_empty_quotes ... ok
+test writing_records::tests::append_citation_rejects_empty_quote_and_unsafe_source ... ok
+test writing_records::tests::recompute_hint_normalizes_whitespace_and_dedupes ... ok
+test writing_records::tests::recompute_hint_finds_quotes_and_is_deterministic ... ok
+test writing_records::tests::missing_record_files_read_as_empty_for_queries ... ok
+test writing_records::tests::record_paths_require_safe_writing_id ... ok
+test writing_records::tests::append_refuses_truncated_tail_without_touching_bytes ... ok
+test writing_records::tests::append_citation_honors_caller_record_id ... ok
+test writing_records::tests::append_citation_writes_one_jsonl_line_and_roundtrips ... ok
+test writing_records::tests::citations_query_by_source_kind_and_id ... ok
+test writing_records::tests::append_fact_check_roundtrips_fields_and_defaults_unresolved ... ok
+test writing_records::tests::citations_query_by_paragraph_and_section ... ok
+test writing_records::tests::fact_checks_query_by_conclusion_and_paragraph ... ok
+test writing_records::tests::update_resolution_rejects_unknown_status_and_record ... ok
+test writing_records::tests::update_resolution_preserves_other_lines_byte_for_byte ... ok
+test writing_records::tests::supported_conclusions_require_basis ... ok
+test writing_records::tests::update_resolution_rewrites_only_target_line ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 904 filtered out; finished in 0.08s
+

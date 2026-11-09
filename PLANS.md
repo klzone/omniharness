@@ -8,7 +8,7 @@
 
 > **任务卡（601–615）：** 全文见 docs/plans/OD-WT-600/PHASE4_IMPLEMENTATION_PLAN.md。批次：601∥603→602 → 604∥605→606 → 607→608∥609 → 610∥611∥612→613→614 → 615。技术决策 D-083～D-091 已落 docs/decisions.md。验收对照见 PHASE4_ACCEPTANCE_CRITERIA.md（十三场景）。
 
-> **执行进展：** 待实施。
+> **执行进展（2026-11-09）：** OD-WT-601 与 OD-WT-603 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：601 writing_store.rs（WritingTask 九态/十二类文体白名单、状态迁移合法性表+拒绝留痕、状态记录只追加、work_cleanup 排除有测试，21 项测试）；603 writing_records.rs（citations/factcheck JSONL、八类结论十类对象、处理状态按行重写、recompute 稳定骨架，18 项测试）。本会话独立复跑 lib 922/0、verify 23/23。OD-WT-602 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：document_store.rs（outline/正文读写、唯一写入口 save_with_snapshot、快照/恢复/manifest/sha256、段落级 diff、路径三层安全校验，17 项测试）。本会话独立复跑 lib 939/0（RUST_TEST_THREADS=4，规避既有 OMNIDESK_PYTHON 竞态——602 定位的既有债务，登记至 615 核对）。OD-WT-604 与 OD-WT-605 已并行实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：604 writing_extract.py + writing_parse.rs（解析提示词+宿主校验、缺失项进 questions、parse/apply/create 三命令、创建路径再过闸门，cargo 10 项+pytest 16 项）；605 writing_collect.rs（只读组装器、五类标注、冲突检测、collect/select 两命令、场景三断言，17 项测试）。本会话独立复跑 lib 966/0、pytest 216+30、tsc 0。OD-WT-606 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：writing_outline.rs（WritingOutline 结构校验、四套类型模板覆盖 12 类、confirm 两段状态迁移+outline.md+版本快照、生成门禁含未确认素材拒绝进提示词，19 项测试含场景四）。本会话独立复跑 lib 985/0。OD-WT-607 已实施并通过 ARCHITECT 独立复检（REVIEW.md 同日条）：writing_section.rs（SectionDraft 四分法标注、生成门禁校验大纲已确认、confirm 落正文节+快照+citations 追加、全文组合未确认占位、修订复用确认路径，19 项测试含场景五与门禁断言）。本会话独立复跑 lib 1004/0、tsc 0、build 0。下一批（可并行）：OD-WT-608（审阅修改）∥ OD-WT-609（事实核验）。
 
 ### OD-KM-500：第三阶段——知识库联动 + 写作素材篮（已批准，2026-11-09；待实施）
 
