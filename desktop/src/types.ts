@@ -1738,6 +1738,406 @@ export interface WritingSectionRevisePrompt {
   masked_phone: number;
 }
 
+/** 核验对象十类（D-086，与 603 CheckObject 同口径）。 */
+export type FactCheckObject =
+  | "时间"
+  | "数字"
+  | "机构名"
+  | "人员职务"
+  | "工作事项"
+  | "完成情况"
+  | "工作成果"
+  | "政策依据"
+  | "案例事实"
+  | "统计口径";
+
+/** 核验结论八类（D-087）。 */
+export type FactCheckConclusion =
+  | "有直接来源支持"
+  | "有间接来源支持"
+  | "来源存在冲突"
+  | "来源已过期"
+  | "无法找到来源"
+  | "属于分析判断"
+  | "属于工作计划"
+  | "属于表达性概括";
+
+export type FactCheckResolution = "未处理" | "已接受" | "已修改" | "已删除来源项";
+
+export interface FactCheckBasis {
+  source_kind: "material" | "knowledge";
+  source_id: string;
+  quote: string;
+}
+
+/** factcheck.jsonl 的单条记录（603 结构）。 */
+export interface FactCheckRecord {
+  record_id: string;
+  section_no: number;
+  paragraph_no: number;
+  check_object: FactCheckObject;
+  conclusion: FactCheckConclusion;
+  basis: FactCheckBasis[];
+  fact_text: string | null;
+  resolution: FactCheckResolution;
+  checked_at: string;
+}
+
+/** 章节生成侧四分法标注；607 未落盘，界面把最近稿件的标注随核验传入。 */
+export interface FactCheckAnnotationInput {
+  section_no: number;
+  paragraph_no?: number | null;
+  kind: "事实" | "分析" | "判断" | "建议" | "计划" | "概括";
+  text: string;
+}
+
+export interface FactCheckKnowledgeEvidenceInput {
+  source_id: string;
+  quote: string;
+  outdated?: boolean;
+}
+
+export interface FactCheckRunInput {
+  writing_id: string;
+  knowledge_evidence?: FactCheckKnowledgeEvidenceInput[];
+  annotations?: FactCheckAnnotationInput[];
+}
+
+export interface FactCheckConflictSide {
+  section_no: number;
+  paragraph_no: number;
+  fact_text: string;
+  value: string;
+  time_scope: string | null;
+  stat_scope: string | null;
+}
+
+/** 同一指标不同时间范围/统计口径/取值的并列提示；只提示，不合并。 */
+export interface FactCheckScopeConflict {
+  metric: string;
+  reason: string;
+  left: FactCheckConflictSide;
+  right: FactCheckConflictSide;
+}
+
+export interface FactCheckStats {
+  candidates: number;
+  findings: number;
+  scope_conflicts: number;
+  annotations_used: number;
+  annotations_skipped: number;
+  direct_source: number;
+  indirect_source: number;
+  source_conflict: number;
+  source_outdated: number;
+  source_missing: number;
+  analysis_judgment: number;
+  work_plan: number;
+  expressive_summary: number;
+}
+
+export interface FactCheckRunResult {
+  writing_id: string;
+  status: WritingTaskStatus;
+  /** 运行后 factcheck.jsonl 的完整清单（含历史处理状态）。 */
+  records: FactCheckRecord[];
+  conflicts: FactCheckScopeConflict[];
+  stats: FactCheckStats;
+  appended: number;
+  skipped_existing: number;
+  warnings: string[];
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface FactCheckResolveInput {
+  writing_id: string;
+  record_id: string;
+  resolution: "已接受" | "已修改" | "已删除来源项";
+  note?: string | null;
+}
+
+export interface FactCheckResolveResult {
+  record: FactCheckRecord;
+  note: string | null;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+/** 十维审阅维度（OD-WT-608 白名单），顺序与宿主一致。 */
+export type WritingReviewDimension =
+  | "事实准确性"
+  | "数据准确性"
+  | "政策制度表述"
+  | "逻辑结构"
+  | "章节衔接"
+  | "内容重复"
+  | "语言表达"
+  | "文字规范"
+  | "篇幅"
+  | "与写作要求一致性";
+
+/** 一条审阅问题：章节号 + 章节内段落号（从 1 起）。 */
+export interface WritingReviewFinding {
+  finding_id: string;
+  dimension: WritingReviewDimension;
+  section_no: number;
+  paragraph_no: number;
+  description: string;
+  suggestion: string;
+}
+
+export interface WritingReviewInput {
+  writing_id: string;
+  /** 用户补充说明：审阅重点、必须核对的口径等。 */
+  instruction?: string;
+}
+
+/** 十维审阅提示词回执；模型调用仍由界面侧提交，本命令不写文件。 */
+export interface WritingReviewPrompt {
+  prompt: string;
+  writing_id: string;
+  status: WritingTaskStatus;
+  section_count: number;
+  confirmed_section_count: number;
+  dimension_count: number;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export interface WritingReviewApplyInput {
+  writing_id: string;
+  finding: WritingReviewFinding;
+  /** 修订后的整章稿（用户编辑或经 607 修订通道产生）。 */
+  draft: WritingSectionDraft;
+  note?: string | null;
+}
+
+export interface WritingReviewApplied {
+  writing_id: string;
+  finding_id: string;
+  dimension: WritingReviewDimension;
+  section_no: number;
+  paragraph_no: number;
+  status: WritingTaskStatus;
+  version: number;
+  updated_at: string;
+  citations_added: number;
+  all_sections_confirmed: boolean;
+  /** 「应用审阅问题 …」状态记录。 */
+  trace: string;
+  masked: boolean;
+  masked_id_card: number;
+  masked_phone: number;
+}
+
+export type WritingVersionSource = "user" | "ai";
+export type WritingVersionScope = "outline" | "section" | "full";
+
+/** manifest.json 的一条版本记录（OD-WT-602）。 */
+export interface WritingVersionEntry {
+  version: number;
+  at: string;
+  source: WritingVersionSource;
+  scope: WritingVersionScope;
+  note: string;
+  content_sha256: string;
+}
+
+export interface WritingVersionDiffSummary {
+  previous_version: number;
+  changed_paragraphs: number;
+  added: number;
+  removed: number;
+  modified: number;
+  changed_paragraph_nos: number[];
+}
+
+/** 版本列表条目：manifest 元数据 + 相对上一同类型版本的段落差异摘要。 */
+export interface WritingVersionSummary extends WritingVersionEntry {
+  current: boolean;
+  diff: WritingVersionDiffSummary | null;
+}
+
+export interface WritingVersionList {
+  writing_id: string;
+  current_version: number;
+  updated_at: string;
+  versions: WritingVersionSummary[];
+}
+
+export type WritingParagraphChangeKind = "新增" | "删除" | "修改";
+
+export interface WritingParagraphChange {
+  paragraph_no: number;
+  kind: WritingParagraphChangeKind;
+  before: string | null;
+  after: string | null;
+}
+
+export interface WritingParagraphDiff {
+  changed_paragraph_nos: number[];
+  changes: WritingParagraphChange[];
+}
+
+export interface WritingVersionDiffInput {
+  writing_id: string;
+  from_version: number;
+  to_version: number;
+}
+
+export interface WritingVersionDiff {
+  writing_id: string;
+  from: WritingVersionEntry;
+  to: WritingVersionEntry;
+  diff: WritingParagraphDiff;
+}
+
+export interface WritingVersionRestoreInput {
+  writing_id: string;
+  version: number;
+  /** 恢复必须由用户显式确认。 */
+  confirmed: boolean;
+}
+
+export interface WritingVersionRestored {
+  writing_id: string;
+  restored_version: number;
+  new_version: WritingVersionEntry;
+  status: WritingTaskStatus;
+  updated_at: string;
+  status_records: WritingStatusRecord[];
+}
+
+/** 文稿导出格式（OD-WT-613）：Markdown 三态，其余固定正式稿。 */
+export type WritingExportFormat = "md" | "docx" | "pdf" | "html";
+export type WritingExportMode = "formal" | "review" | "working";
+
+export interface WritingExportInput {
+  writing_id: string;
+  format: WritingExportFormat;
+  mode?: WritingExportMode;
+  /** 绝对路径；缺省时写入应用数据根 exports/写作/<writing_id>/。 */
+  target_dir?: string | null;
+}
+
+/** manifest.json 的 export_receipts 条目（602 结构）。 */
+export interface WritingExportReceipt {
+  format: string;
+  at: string;
+  path: string;
+}
+
+export interface WritingExportOutcome {
+  writing_id: string;
+  format: WritingExportFormat;
+  mode: WritingExportMode;
+  path: string;
+  engine: string;
+  simplified: boolean;
+  receipt: WritingExportReceipt;
+  notes: string[];
+}
+
+/** 归档回执里的核验统计（OD-WT-614）：八类结论固定全量返回，缺省为 0。 */
+export interface WritingFactCheckCount {
+  conclusion: FactCheckConclusion;
+  count: number;
+}
+
+/** 用户勾选的可复用内容；未勾选项不进入治理通道。 */
+export interface WritingKnowledgeSelection {
+  title: string;
+  content: string;
+  source_quote?: string;
+}
+
+export interface WritingArchiveInput {
+  writing_id: string;
+  /** true 只读预览归档清单；false 才写知识库并推进状态。 */
+  preview?: boolean;
+}
+
+/** 归档记录关联：任务、素材、知识、核验统计、版本与导出清单。 */
+export interface WritingArchiveAssociation {
+  writing_id: string;
+  title: string;
+  status: WritingTaskStatus;
+  version: number;
+  selected_material_ids: string[];
+  selected_knowledge_ids: string[];
+  factcheck_counts: WritingFactCheckCount[];
+  export_receipts: WritingExportReceipt[];
+  already_archived: boolean;
+  archive_path: string | null;
+  knowledge_candidates: WritingKnowledgeSelection[];
+}
+
+export interface WritingArchiveOutcome {
+  preview: boolean;
+  can_archive: boolean;
+  blocked_reason: string | null;
+  association: WritingArchiveAssociation;
+  /** 归档执行后的知识库回执；预览时为 null。 */
+  vault: ArchiveReceipt | null;
+  manifest_receipt: WritingExportReceipt | null;
+  status_after: WritingTaskStatus;
+}
+
+export interface WritingKnowledgeFeedbackInput {
+  writing_id: string;
+  selections: WritingKnowledgeSelection[];
+}
+
+export interface WritingKnowledgeFeedbackOutcome {
+  writing_id: string;
+  ok: boolean;
+  selected_count: number;
+  admitted: KnowledgeRawAdmittedFile[];
+  rejected: Array<{ relative_path: string; reason: string }>;
+  index_updated: boolean;
+  index_path: string;
+  errors: string[];
+  note: string;
+}
+
+/** 用户触发的状态迁移（OD-WT-613）：宿主按 601 合法表校验。 */
+export interface WritingStatusTransitionInput {
+  writing_id: string;
+  to: WritingTaskStatus;
+  reason?: string | null;
+}
+
+/** citations.jsonl 的单条记录（603 结构）。 */
+export interface WritingCitationRecord {
+  record_id: string;
+  section_no: number;
+  paragraph_no: number;
+  source_kind: "material" | "knowledge";
+  source_id: string;
+  quote: string;
+  linked_at: string;
+}
+
+/** citations / factcheck 只读查询（OD-WT-613）。 */
+export interface WritingRecordsQueryInput {
+  writing_id: string;
+  kind?: "citations" | "factcheck" | null;
+  section_no?: number | null;
+  paragraph_no?: number | null;
+  conclusion?: FactCheckConclusion | null;
+  resolution?: FactCheckResolution | null;
+}
+
+export interface WritingRecordsQueryResult {
+  writing_id: string;
+  citations: WritingCitationRecord[];
+  fact_checks: FactCheckRecord[];
+}
+
 /** 审核动作（OD-KM-506）：宿主同时接受英文与中文动作名。 */
 export type MaterialReviewAction =
   | "confirm"

@@ -16,7 +16,9 @@ use crate::worklog_records::{write_new_atomically, yaml_scalar};
 
 pub const REPORT_ARCHIVE_DIR: &str = "报告";
 pub const ARTIFACT_ARCHIVE_DIR: &str = "归档成果";
+pub const WRITING_ARCHIVE_SCHEMA: &str = "omnidesk.writing-archive.v1";
 const MAX_NAME_CHARS: usize = 200;
+const MAX_WRITING_TITLE_CHARS: usize = 100;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ArchiveReceipt {
@@ -27,6 +29,17 @@ pub struct ArchiveReceipt {
     pub source_period: Option<String>,
     pub already_archived: bool,
     pub error: Option<String>,
+}
+
+/// 文稿归档的关联元数据；写入目标 Markdown 的 frontmatter，供知识库追溯。
+#[derive(Debug, Clone)]
+pub struct WritingArchiveMeta {
+    pub version: u64,
+    pub selected_material_ids: Vec<String>,
+    pub selected_knowledge_ids: Vec<String>,
+    /// 八类核验结论计数，按 603 白名单顺序落 frontmatter。
+    pub factcheck_counts: Vec<(String, u64)>,
+    pub export_receipts: usize,
 }
 
 fn assert_archive_name(name: &str) -> Result<(), String> {
@@ -53,6 +66,34 @@ fn assert_vault_dir(root: &Path) -> Result<(), String> {
         return Err(format!("知识库根不是目录：{}", root.display()));
     }
     Ok(())
+}
+
+fn writing_archive_date(now: f64) -> String {
+    let stamp = task_shell::utc_iso8601(now);
+    stamp.chars().take(10).collect()
+}
+
+/// 文稿标题只用于文件名：去掉路径片段、控制字符与连续点，保留中文与空格。
+fn writing_archive_file_name(title: &str, now: f64) -> String {
+    let mut cleaned: String = title
+        .chars()
+        .map(|ch| {
+            if ch == '/' || ch == '\\' || ch.is_control() {
+                '-'
+            } else {
+                ch
+            }
+        })
+        .collect();
+    while cleaned.contains("..") {
+        cleaned = cleaned.replace("..", ".");
+    }
+    cleaned = cleaned.trim().trim_start_matches('.').trim().to_string();
+    if cleaned.is_empty() {
+        cleaned = "未命名".to_string();
+    }
+    let cleaned: String = cleaned.chars().take(MAX_WRITING_TITLE_CHARS).collect();
+    format!("文稿-{cleaned}-{}.md", writing_archive_date(now))
 }
 
 /// 读取正文开头 frontmatter 里的一个字段；只认第一段围栏。
@@ -272,6 +313,83 @@ pub fn archive_artifact(
     archive_artifact_text(vault_root, &file_name, &artifact.content, now)
 }
 
+/// 归档一份已定稿文稿：只接受干净 Markdown，落 `<vault_root>/报告/`。
+///
+/// 内部编号、AI 调试行、来源标记等由 613 的正式稿剥离函数判定；传入内容
+/// 若仍含这些标记就拒绝，避免把工作稿或带 AI 调试信息的正文写进知识库。
+pub fn archive_writing_final(
+    vault_root: &Path,
+    writing_id: &str,
+    title: &str,
+    content_md: &str,
+    meta: &WritingArchiveMeta,
+    now: f64,
+) -> Result<ArchiveReceipt, String> {
+    let writing_id = writing_id.trim();
+    if !crate::worklog_records::is_safe_id(writing_id) {
+        return Err(format!("写作任务编号不合法：{writing_id:?}"));
+    }
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("文稿标题不能为空，拒绝归档。".to_string());
+    }
+    let normalized = content_md
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim()
+        .to_string();
+    if normalized.is_empty() {
+        return Err("文稿正文为空，拒绝归档。".to_string());
+    }
+    let stripped = crate::export_engine::strip_internal(&normalized);
+    if stripped != normalized {
+        return Err(
+            "文稿不是干净 Markdown：仍含内部编号、来源标记或 AI 调试信息，拒绝归档。"
+                .to_string(),
+        );
+    }
+    let file_name = writing_archive_file_name(title, now);
+    assert_archive_name(&file_name)?;
+    let source_hash = sha256_hex(normalized.as_bytes());
+    let fields = vec![
+        ("source_type".to_string(), "writing".to_string()),
+        ("source_file".to_string(), writing_id.to_string()),
+        ("source_sha256".to_string(), source_hash.clone()),
+        ("archived_at".to_string(), task_shell::utc_iso8601(now)),
+        ("archive_schema".to_string(), WRITING_ARCHIVE_SCHEMA.to_string()),
+        ("writing_id".to_string(), writing_id.to_string()),
+        ("writing_title".to_string(), title.to_string()),
+        ("writing_version".to_string(), meta.version.to_string()),
+        (
+            "selected_material_ids".to_string(),
+            serde_json::to_string(&meta.selected_material_ids)
+                .unwrap_or_else(|_| "[]".to_string()),
+        ),
+        (
+            "selected_knowledge_ids".to_string(),
+            serde_json::to_string(&meta.selected_knowledge_ids)
+                .unwrap_or_else(|_| "[]".to_string()),
+        ),
+        (
+            "factcheck_counts".to_string(),
+            serde_json::to_string(&meta.factcheck_counts).unwrap_or_else(|_| "[]".to_string()),
+        ),
+        (
+            "export_receipt_count".to_string(),
+            meta.export_receipts.to_string(),
+        ),
+    ];
+    let archived = with_archive_fields(&normalized, &fields)?;
+    archive_text(
+        vault_root,
+        REPORT_ARCHIVE_DIR,
+        &file_name,
+        &archived,
+        &source_hash,
+        None,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,5 +529,108 @@ mod tests {
         assert!(err.contains("不合法"), "{err}");
         let err = archive_report(&temp.vault, &temp.library, "总结.txt", None, NOW).unwrap_err();
         assert!(err.contains("Markdown"), "{err}");
+    }
+
+    fn writing_meta() -> WritingArchiveMeta {
+        WritingArchiveMeta {
+            version: 7,
+            selected_material_ids: vec!["m-synthetic-1".to_string()],
+            selected_knowledge_ids: vec!["k-synthetic-1".to_string()],
+            factcheck_counts: vec![
+                ("有直接来源支持".to_string(), 2),
+                ("无法找到来源".to_string(), 1),
+            ],
+            export_receipts: 3,
+        }
+    }
+
+    #[test]
+    fn writing_archive_writes_markdown_with_associations_and_is_idempotent() {
+        let temp = Temp::new("writing");
+        let receipt = archive_writing_final(
+            &temp.vault,
+            "w-synthetic-614",
+            "虚构年度总结",
+            "# 虚构年度总结\n\n合成正文。",
+            &writing_meta(),
+            NOW,
+        )
+        .unwrap();
+        assert!(receipt.ok);
+        assert!(!receipt.already_archived);
+        let target = temp
+            .vault
+            .join("报告")
+            .join("文稿-虚构年度总结-2026-06-01.md");
+        assert_eq!(receipt.target_path, target.display().to_string());
+        let archived = fs::read_to_string(&target).unwrap();
+        assert!(archived.contains("source_type: \"writing\""), "{archived}");
+        assert!(archived.contains("writing_id: \"w-synthetic-614\""));
+        assert!(archived.contains("writing_version: \"7\""));
+        assert!(archived.contains("selected_material_ids: \"[\\\"m-synthetic-1\\\"]\""));
+        assert!(archived.contains("export_receipt_count: \"3\""));
+        assert!(archived.contains("# 虚构年度总结"));
+        let second = archive_writing_final(
+            &temp.vault,
+            "w-synthetic-614",
+            "虚构年度总结",
+            "# 虚构年度总结\n\n合成正文。",
+            &writing_meta(),
+            NOW + 60.0,
+        )
+        .unwrap();
+        assert!(second.already_archived);
+        assert_eq!(fs::read_to_string(&target).unwrap(), archived);
+    }
+
+    #[test]
+    fn writing_archive_rejects_dirty_markdown_and_empty_body() {
+        let temp = Temp::new("writing-dirty");
+        let err = archive_writing_final(
+            &temp.vault,
+            "w-synthetic-614",
+            "虚构文稿",
+            "# 标题\n\n内部编号: wt-614\n\n正文",
+            &writing_meta(),
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("干净 Markdown"), "{err}");
+        assert!(!temp.vault.join("报告").join("文稿-虚构文稿-2026-06-01.md").exists());
+        let err = archive_writing_final(
+            &temp.vault,
+            "w-synthetic-614",
+            "虚构文稿",
+            "   \n",
+            &writing_meta(),
+            NOW,
+        )
+        .unwrap_err();
+        assert!(err.contains("正文为空"), "{err}");
+    }
+
+    #[test]
+    fn writing_archive_sanitizes_title_paths_and_only_writes_markdown() {
+        let temp = Temp::new("writing-name");
+        let receipt = archive_writing_final(
+            &temp.vault,
+            "w-synthetic-614",
+            "虚构/标题",
+            "# 虚构\n\n合成正文。",
+            &writing_meta(),
+            NOW,
+        )
+        .unwrap();
+        assert!(receipt.target_path.contains("文稿-虚构-标题-2026-06-01.md"), "{}", receipt.target_path);
+        assert!(receipt.target_path.starts_with(&temp.vault.join("报告").display().to_string()));
+        let entries: Vec<String> = fs::read_dir(temp.vault.join("报告"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].ends_with(".md"));
+        assert!(!entries[0].ends_with(".docx"));
+        assert!(!entries[0].ends_with(".pdf"));
+        assert!(!entries[0].ends_with(".html"));
     }
 }

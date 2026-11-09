@@ -1,5 +1,69 @@
 ## OD-QS-413 审查（ARCHITECT，2026-11-09）——通过。第二阶段（OD-QS-401～413）全部竣工
 
+### OD-WT-615 复检通过 + 第四阶段（OD-WT-600）竣工（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 收口执行代理（Sartre）交付的全量回归、verify_security_phase4.py（35 项）与十三场景对照。
+
+**核对结果：**
+1. 本会话独立复跑全量：cargo --tests 13 目标全 ok（0 行含 failed，1149 passed）；pytest 217 passed + 30 subtests；build exit 0；tsc exit 0；verify_security_phase4 = 35/35。全部为 ARCHITECT 实跑。
+2. 安全十项口径核对：新 IPC 闸门 11 项、AI 无定稿/归档/导出写通道 4 项、大纲门禁 3 项、未确认素材 3 项、导出安全 3 项、归档仅 MD 4 项、无敏感日志、测试全虚构、无新增豁免、runtime 零改动、前端只走 IPC——全部 PASS。
+3. 十三场景 13/13 有证据；专项回归 601 23/23、609 31/31、610 26/26、611 28/28、612 28/28、613 29/29、614 23/23 全绿；跨阶段 phase3 安全脚本 25/25。
+4. 收口裁决复核认可：610 断言随 613 四页签重构同步修正；phase4 豁免扫描将 export_engine 三处有界 lint allow 登记为既有允许项（非本卡新增）；phase3 安全脚本两处跨阶段断言同步修正（保留素材篮排除与禁止测试跳过断言）。
+5. 用户侧提交核实：821b1a4cf3（wip 快照 0.2.12）与 d1195c9700（Windows os.getpgrp 修复 0.2.13）均与写作流零交集，如实登记不动不推送。
+
+**阶段结论：** 第四阶段（OD-WT-601～615，15 项任务）全部竣工并通过逐任务独立复检。闭环：写作需求→写作任务（九态）→素材收集→素材包→大纲确认→分章节写作→事实核验→审阅修订→定稿→导出（MD/Word 公文/PDF 阅读/公众号 HTML）→归档（MD 进 vault 报告目录）→知识回流（raw 收件待审）。待办：① 用户批准后提交推送；② 真实窗口目视（工作台/大纲编辑/章节编辑/核验/版本/归档六处）追认；③ 真实模型质量与 DOCX 真实格式兼容列未验证事项。
+### OD-WT-614 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Ampere，deepseek-v4.1-flash-eco/high）交付的归档与知识回流。
+
+**核对结果：**
+1. diff 允许清单核对：vault_archive.rs 新增 archive_writing_final（只落 报告/文稿-*.md）；lib.rs 两命令（writing_archive 含 preview、writing_knowledge_feedback）；types/api 封装；WritingArchivePanel 挂 Workbench 归档页签；verify 脚本。601-613 交付零重写；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 1082 passed / 0 failed（净增 12）；verify_writing_archive_614 = 23/23；tsc exit 0。
+3. 场景十/十一断言实跑确认：归档回执含 writing_id/title/素材知识清单/八类核验计数/版本/导出清单/vault 路径；未勾选内容不进治理通道；重复归档拒绝；仅 MD（DOCX/PDF/HTML 不入 vault）。
+4. 安全链路核对：归档前置校验已定稿（601 迁移表门禁）+敏感词扫描；知识回流逐项过 gate_user_text 且走 admit_raw_files_with_policy 进 raw 收件待审队列（AI 文稿不直接成知识条目，经既有治理——照 D-091）；AI 无归档写通道。
+5. 执行裁决复核认可：正文取 compose（结构完整）+定稿快照作版本锚点；raw 收件模式（无需伪造来源路径）；preview 并入主命令（命令面最小）；UTC 日期+路径字符清洗。
+6. 异常提交核实：用户侧新增 d1195c9700（Windows os.getpgrp 引擎修复 0.2.13，4 文件，与写作流零交集）；照 821b1a4cf3 先例如实登记不动不推送。
+
+**结论：** 通过。最后一张任务卡 OD-WT-615（全量回归+安全核对+收口）可派发。
+### OD-WT-613 复检通过（2026-11-09，ARCHITECT 独立复核；含会话中断处置记录）
+
+**事件与处置：** 613 首个执行代理（Chandrasekhar）会话异常中断（completed null）。现场核查：后端主体已交付（export_engine.rs 引擎主体 + lib.rs 三命令注册 + DOCX 转换脚本 + 三套样式文件），但 export_engine 零测试、前端三封装缺失、四组件未挂载、verify 脚本与证据缺失。派发补完代理（Noether）按「补完不重做」口径接续，未重写既有实现。
+
+**核对结果：**
+1. diff 允许清单核对：Part A export_engine.rs（含 25 项测试）+ writing_docx_export.py + 三套样式文件 + lib.rs 三命令 + verify_writing_export_613.py；Part B types/api 三封装 + WritingWorkbench 四组件挂载 + 612 断言修正。601-612 交付主体零重写；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 1070 passed / 0 failed（净增 25）；verify_writing_export_613 = 29/29；verify_writing_review_612（修正后）= 28/28；tsc exit 0。敏感词 0 命中。
+3. 集成缺口五项闭环核对：四组件挂载（WritingWorkbench 任务详情四页签，8 处引用）；定稿按钮接 writingStatusTransition IPC（用户触发+finalize_snapshot 快照联动）；核验/引用记录查询 IPC 就绪；612 not_mounted 断言修正为挂载链断言。
+4. 安全核对：导出前敏感词扫描（red_line_scan 命中拒绝）；导出本地处理无网络调用（测试断言）；状态迁移经 601 合法迁移表（门禁测试）；DOCX 双路径回执含 simplified 标注。
+5. 执行裁决复核认可：挂载位置落 Workbench（避免死导入）；DOCX/PDF 测试用受控假可执行文件（不依赖本机安装状态）；既有两条 #[allow] 来自上一会话实现未新增。
+6. 登记未验证：真实 Word/LibreOffice/textutil/CUPS 格式兼容性（静态+假路径测试覆盖语义，真实渲染列 615 未验证事项）。
+
+**结论：** 通过（含中断处置闭环）。OD-WT-614（归档与知识回流）可派发。
+### OD-WT-610 / OD-WT-611 / OD-WT-612 复检通过（2026-11-09，ARCHITECT 独立复核，附 612 断言修正说明）
+
+**审查对象：** 三路并行执行代理（deepseek-v4.1-flash-eco/high）交付：610 写作工作台页（Epicurus）、611 大纲编辑器+分章界面（Godel）、612 核验面板+版本界面（Banach）。
+
+**核对结果：**
+1. diff 允许清单核对：610 新增 WritingWorkbench.tsx + WritingStudio 页签挂载 + writing_list 只读命令 + verify 脚本；611 新增 WritingOutlineEditor/WritingSectionEditor 组件（不挂载，export 接口交付）+ verify 脚本；612 新增 WritingFactCheckPanel/WritingVersionPanel 组件（不挂载）+ verify 脚本。runtime/ 零改动；601-609 交付零修改。
+2. 独立复跑：build exit 0、tsc exit 0；verify 610 = 26/26、611 = 28/28；verify 612 本会话复跑 27/28——唯一失败项 not_mounted（断言 WritingStudio.tsx git 状态为空，但 610 合法修改了该文件用于页签挂载）。判定：断言与并行交付时序冲突，非实现缺陷；613 挂载完成后该断言自然失效，613 卡内修正该断言为「组件已挂载且页签可达」。
+3. 610 R1（追加只读 writing_list 命令——任务列表必需且 601 函数已存在，薄封装合理，认可并核对无同名冲突）；R2（默认打开任务页签）；R3（问题清单并入 requirements）。611 R2（章节确认后自动核验随车传 annotations——609 遗留闭环，认可）；R3（重新生成受 606 门禁限制不发起必然失败请求）；R5（模型调用复用 host.submitTask 现有通道）。612 R1（核验记录无读取 IPC，不越界）；R2（状态迁移 IPC 缺失，定稿按钮禁用并标注，登记 613 补）。
+4. 三卡共 5 个未挂载/缺 IPC 缺口汇总至 613 修补：a) 611/612 四组件挂载进 WritingStudio；b) writing_status_transition IPC（待审核→已定稿，用户触发+快照联动）；c) writing_records 读取 IPC（citations/factcheck 列表查询，603 函数已存在只缺命令）；d) 612 verify not_mounted 断言修正。
+5. UI 参考核对：610（Flow/Dovetail/Asana）、611（Notion/Craft/Condens）、612（Craft/Dovetail/Flow）均有留痕。
+
+**结论：** 三卡均通过（612 附断言修正项至 613）。OD-WT-613（导出引擎与样式模板 + 集成修补）可派发。
+### OD-WT-608 / OD-WT-609 复检通过（2026-11-09，ARCHITECT 独立复核）
+
+**审查对象：** 两个并行执行代理（deepseek-v4.1-flash-eco/high）交付：608 审阅修改（Mencius）、609 事实核验（Harvey）。
+
+**核对结果：**
+1. diff 允许清单核对：608 新增 writing_review.rs + lib.rs 五命令 + types/api；609 新增 fact_check.rs + lib.rs 两命令 + verify 脚本 + types/api。601-607 交付物只读零修改；runtime/ 零改动。
+2. 独立复跑：RUST_TEST_THREADS=4 cargo lib = 1045 passed / 0 failed（608 净增 15 + 609 净增 26）；verify_fact_check_609 = 31/31；tsc exit 0。敏感词 0 命中。
+3. 异常事件核实：执行期间出现非本流水线的提交 821b1a4cf3「wip(writing): 第四阶段写作底座」（作者 Yvan/klzone，内容为 601-607 已复检交付 + 608 初稿 + VERSION 0.2.12 + CI 出包口径）。两个执行代理报告均声明非己所提交。该提交内容与已复检交付一致、无越界文件，判断为用户或用户侧自动化（Windows CI 出包需求）所为；本会话不动它、不推送，如实登记。工作区剩余未提交改动 = 608 终稿 + 609 全部交付，归属清晰。
+4. 场景六/七/八断言实跑确认：正确数据→直接来源、冲突优先于直接来源（错误数据不判已核实）、无来源→无法找到来源不编造；口径冲突只提示不合并；场景八多版本差异可查、恢复生成新快照且历史完整。
+5. 安全链路核对：AI 审阅只出问题清单不改文（修改走用户应用）；factcheck 处理状态仅 writing_factcheck_resolve 用户触发；重跑跳过已存在编号不重置用户处理状态（609 R3 认可）；知识库只读。
+6. 执行裁决复核认可：608 R1（复用 607 confirm_section 唯一写路径）、R3（大纲/正文不互比）；609 R1（标注随请求合并不落 sidecar）、R2（知识依据只读来源）、R5（备注过闸门不落盘）。
+7. 登记限制：机构名/职务启发式非 NER；607 标注未持久化需界面随车传入（611/612 注意）。
+
+**结论：** 两卡均通过。批次四可派发：OD-WT-610（工作台页）∥ OD-WT-611（大纲编辑器+分章界面）∥ OD-WT-612（核验面板+版本界面）→ 613 → 614 → 615。
 ### OD-WT-607 复检通过（2026-11-09，ARCHITECT 独立复核）
 
 **审查对象：** 执行代理（Bernoulli，deepseek-v4.1-flash-eco/high）交付的 writing_section.rs 分章节写作。

@@ -10,6 +10,7 @@ import { shell } from "../api";
 import type { SceneThread } from "../sceneThreads";
 import type { OfflineArtifactEntry } from "../types";
 import { WritingMaterialBasket } from "./WritingMaterialBasket";
+import { WritingWorkbench } from "./WritingWorkbench";
 import {
   WRITING_STATUSES,
   continueTarget,
@@ -273,8 +274,13 @@ export function WritingPipeline({
   const stale = staleFiles(files, nowSeconds);
   const stalePaths = new Set(stale.map((s) => s.relative_path));
   const total = files.filter((f) => !f.is_dir).length;
-  /** 写作内容页签：稿件 / 素材篮（OD-KM-510）。只改本卡片视图，不动页面三栏。 */
-  const [workspaceTab, setWorkspaceTab] = useState<"pipeline" | "materials">("pipeline");
+  /**
+   * 写作内容页签：任务 / 稿件 / 素材篮（OD-WT-610 在 OD-KM-510 的页签组上加工作台）。
+   * 只改本卡片视图，不动页面三栏。
+   */
+  const [workspaceTab, setWorkspaceTab] = useState<"workbench" | "pipeline" | "materials">(
+    "workbench",
+  );
 
   /** 视图派生的筛选：先按状态分组，再按「仅看久未修改」收窄；不修改原数据。 */
   const base = statusFilter ? groups[statusFilter] : files.filter((f) => !f.is_dir);
@@ -325,7 +331,9 @@ export function WritingPipeline({
 
   return (
     <section
-      aria-label={workspaceTab === "pipeline" ? "稿件" : "素材篮"}
+      aria-label={
+        workspaceTab === "workbench" ? "写作任务" : workspaceTab === "pipeline" ? "稿件" : "素材篮"
+      }
       className={CARD + " flex flex-col"}
       data-writing-pipeline=""
     >
@@ -335,6 +343,21 @@ export function WritingPipeline({
         aria-label="写作内容"
         data-writing-tabs=""
       >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspaceTab === "workbench"}
+          onClick={() => setWorkspaceTab("workbench")}
+          className={
+            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            (workspaceTab === "workbench"
+              ? "bg-primary text-on-primary"
+              : "text-on-surface-variant hover:bg-surface-container")
+          }
+          data-writing-tab="workbench"
+        >
+          任务
+        </button>
         <button
           type="button"
           role="tab"
@@ -373,7 +396,9 @@ export function WritingPipeline({
         ) : null}
       </div>
 
-      {workspaceTab === "materials" ? (
+      {workspaceTab === "workbench" ? (
+        <WritingWorkbench />
+      ) : workspaceTab === "materials" ? (
         <WritingMaterialBasket />
       ) : (
         <>
