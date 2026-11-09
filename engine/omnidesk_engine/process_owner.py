@@ -343,6 +343,14 @@ def ensure_process_group() -> None:
         pass
 
 
+def current_pgid() -> int:
+    """当前进程组号；Windows 没有 POSIX 进程组，返回 0（不伪装成真实组号）。"""
+    try:
+        return os.getpgrp()
+    except AttributeError:
+        return 0
+
+
 def _write_record(state_dir: Path, record: OwnerRecord) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     path = owner_path(state_dir)
@@ -375,7 +383,7 @@ def claim_ownership(state_dir: str | os.PathLike[str], channel: str) -> OwnerRec
         terminate_group(pgid, grace=3.0)
     record = OwnerRecord(
         pid=os.getpid(),
-        pgid=os.getpgrp(),
+        pgid=current_pgid(),
         host_pid=os.getppid(),
         boot_id=boot_id(),
         channel=str(channel),
