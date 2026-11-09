@@ -54,4 +54,32 @@ for skill_dir in "$ROOT"/skills/*/; do
 done
 prune "$SEED"
 
+# ---------------------------------------------------------------------------
+# Python 模块补齐（OD-SYS-702）
+#
+# 随包的 primary-runtime payload 由 DSH 官方构建器生成，它的 runtime.json
+# pythonPackages 是唯一清单来源；本仓库不维护那份清单，也不生成该 payload。
+# anysearch CLI 额外需要 requests + certifi：payload 存在时就地补装，
+# 不存在时只提示——OmniDesk 当前使用系统 Python，环境检查会给出 pip 命令。
+# ---------------------------------------------------------------------------
+PY_REQS="$ROOT/scripts/python-requirements.txt"
+PR_PY=""
+for candidate in \
+  "$TARGET/primary-runtime/dependencies/python/bin/python3" \
+  "$TARGET/primary-runtime/dependencies/python/bin/python" \
+  "$TARGET/primary-runtime/dependencies/python/python.exe"
+do
+  if [ -f "$candidate" ]; then PR_PY="$candidate"; break; fi
+done
+if [ ! -f "$PY_REQS" ]; then
+  say "警告：缺少 $PY_REQS，跳过 Python 模块补齐"
+elif [ -n "$PR_PY" ]; then
+  say "补装 Python 模块（requests/certifi）到随包解释器：$PR_PY"
+  if ! "$PR_PY" -m pip install --no-input --disable-pip-version-check -r "$PY_REQS" >/dev/null 2>&1; then
+    say "警告：Python 模块安装失败，anysearch 联网检索可能不可用（环境检查会标出）"
+  fi
+else
+  say "未发现随包 primary-runtime；当前使用系统 Python，requests 缺失时由环境检查提示 pip install"
+fi
+
 say "seed 就绪：$(find "$SEED" -type f | wc -l | tr -d ' ') 个文件"

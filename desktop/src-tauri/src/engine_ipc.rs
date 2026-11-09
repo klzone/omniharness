@@ -117,6 +117,11 @@ impl std::error::Error for EngineRpcError {}
 /// 引擎子进程通道。
 pub struct EngineChannel {
     child: Child,
+    /// OD-SYS-701：Windows 上引擎及孙进程所在的 Job Object。
+    ///
+    /// 句柄随本通道 Drop 关闭；kill-on-close 让系统回收整棵进程树。
+    /// 非 Windows 是零大小空实现，不产生任何系统调用。
+    job: crate::job_object::JobObject,
     stdin: Option<ChildStdin>,
     pending: Arc<Mutex<HashMap<u64, Sender<serde_json::Value>>>>,
     /// 通知接收端。用 `Arc<Mutex<..>>` 是为了让事件泵能拿到一个**独立句柄**，
@@ -165,6 +170,20 @@ impl EngineChannel {
 
         let mut child = cmd.spawn()?;
         let pid = child.id();
+        // OD-SYS-701：spawn 后立刻挂进 Job Object。Windows 没有 POSIX 进程组，
+        // 这是退出/强杀时回收 node 孙进程的唯一系统级保证；挂接失败则不继续
+        // 运行无保护的引擎。非 Windows 分支为零开销空操作。
+        let job = match crate::job_object::JobObject::create_for_process(pid) {
+            Ok(job) => job,
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(std::io::Error::other(format!(
+                    "引擎子进程 Job Object 挂接失败：{}",
+                    err
+                )));
+            }
+        };
         let stdin = child
             .stdin
             .take()
@@ -251,6 +270,7 @@ impl EngineChannel {
 
         Ok(Self {
             child,
+            job,
             stdin: Some(stdin),
             pending,
             notif_rx: Arc::new(Mutex::new(notif_rx)),
@@ -264,6 +284,11 @@ impl EngineChannel {
 
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// 是否由 Windows Job Object 保护（非 Windows 恒为 false，仅供测试断言）。
+    pub fn job_protected(&self) -> bool {
+        self.job.attached()
     }
 
     pub fn is_running(&mut self) -> bool {

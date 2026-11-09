@@ -1808,7 +1808,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     setPermissionBusy(true);
     try {
       const r = await host.shutdownEngine();
-      setPermissionNote("已停止引擎：" + r.note + " 屏障已解除，可重新尝试权限变更。");
+      setPermissionNote("已停止引擎：" + r.note);
     } catch (e) {
       setPermissionNote("停止引擎失败：" + String(e));
     } finally {
@@ -4756,13 +4756,19 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
         </details>
       </section>
 
-      {/* ============ 7. 引擎诊断（只读，自引擎页迁入） ============ */}
+      {/* ============ 7. 引擎诊断（状态只读，停止引擎由用户手动触发） ============ */}
       <section className="pane" hidden={tab !== "engine"}>
-        <CardHead title="引擎诊断" status="只读" />
+        <CardHead title="引擎诊断">
+          <button className="ghost" onClick={() => void stopEngine()} disabled={permissionBusy}>
+            停止引擎释放内存
+          </button>
+        </CardHead>
         <p className="hint">
           这里只读取引擎状态，不能发起任务，也不会把任何文本送给模型。诊断信息用于排查
-          "任务没跑起来"这类问题；日常使用不需要打开。
+          "任务没跑起来"这类问题；日常使用不需要打开。停止引擎只在你点击上方按钮时发生，
+          不会自动执行。
         </p>
+        {permissionNote ? <p className="hint">{permissionNote}</p> : null}
         {/* OD-ARCH-075：当前运行通道是启动参数决定的只读事实，界面不提供切换。 */}
         <details className="tech" open>
           <summary>当前通道与能力差异</summary>

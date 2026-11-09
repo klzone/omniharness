@@ -23,9 +23,9 @@ export function EnvironmentCheck({
       data-testid="environment-check"
     >
       <div className="w-full max-w-2xl mt-6 rounded-2xl bg-surface-container-high px-6 py-5 ring-1 ring-outline-variant/50">
-        <p className="text-[15px] font-semibold text-on-surface">引擎环境未就绪</p>
+        <p className="text-[15px] font-semibold text-on-surface">运行环境未就绪</p>
         <p className="mt-1.5 text-[12px] leading-relaxed text-on-surface-variant">
-          OmniDesk 的对话与场景都需要本机的 Node.js 与 Python。装好下面缺的组件后点「重新检测」，
+          OmniDesk 的对话、联网检索与场景依赖本机的运行组件。装好下面缺的组件后点「重新检测」，
           不用重装应用。
         </p>
 
@@ -33,6 +33,7 @@ export function EnvironmentCheck({
           <DependencyRow item={report.assets} />
           <DependencyRow item={report.node} />
           <DependencyRow item={report.python} />
+          <DependencyRow item={report.python_modules} />
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -64,9 +65,25 @@ export function EnvironmentCheck({
 
 function DependencyRow({ item }: { item: EnvironmentDependency }) {
   const isAssets = item.name === "assets";
-  const title = item.name === "node" ? "Node.js" : item.name === "python" ? "Python" : "运行时目录";
+  const isModule = item.name === "requests";
+  const title =
+    item.name === "node"
+      ? "Node.js"
+      : item.name === "python"
+        ? "Python"
+        : isModule
+          ? "Python 模块 requests"
+          : "运行时目录";
   // 「版本过低」只对 node / python 成立；运行时目录要么在，要么缺。
-  const state = item.ok ? "就绪" : item.found ? (isAssets ? "不完整" : "版本过低") : "未找到";
+  const state = item.ok
+    ? "就绪"
+    : isModule
+      ? "缺失"
+      : item.found
+        ? isAssets
+          ? "不完整"
+          : "版本过低"
+        : "未找到";
   return (
     <div className="rounded-xl bg-surface px-4 py-3 ring-1 ring-outline-variant/40">
       <div className="flex items-center gap-2">
@@ -75,7 +92,7 @@ function DependencyRow({ item }: { item: EnvironmentDependency }) {
           className={`inline-block h-2 w-2 rounded-full ${item.ok ? "bg-primary" : "bg-error"}`}
         />
         <span className="text-[12.5px] font-medium text-on-surface">{title}</span>
-        {isAssets ? null : (
+        {isAssets || isModule ? null : (
           <span className="text-[11.5px] text-outline">需要 {item.requirement}</span>
         )}
         <span

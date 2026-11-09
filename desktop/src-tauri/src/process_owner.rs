@@ -240,6 +240,12 @@ pub fn cleanup_engine_group(state_dir: &Path, engine_pid: i32, grace: Duration) 
     if record.pid != engine_pid {
         return None;
     }
+    // OD-SYS-701：pgid=0 是「没有 POSIX 进程组可回收」（Windows 语义），
+    // 不是「有一个 0 号组」。此时跳过按组兜底，进程树由 Windows Job Object
+    // 在句柄关闭时回收；不在这里反复打印无意义日志。
+    if record.pgid <= 0 {
+        return None;
+    }
     let mut notes = Vec::new();
     if record.child_pgid > 1 && record.child_pgid != record.pgid {
         if let Err(err) = terminate_group(record.child_pgid, Some(record.child_pid), grace) {
@@ -317,6 +323,59 @@ mod tests {
         let out = reclaim_before_start(&dir, Duration::from_millis(50)).unwrap();
         assert_eq!(out.status, "none");
         assert!(!owner_path(&dir).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// OD-SYS-701：写一份最小 owner.json（只填 cleanup 会读的字段）。
+    fn write_owner_for_cleanup(dir: &Path, pid: i32, pgid: i32, child_pgid: i32) {
+        let record = serde_json::json!({
+            "pid": pid,
+            "pgid": pgid,
+            "host_pid": 0,
+            "boot_id": "test-boot",
+            "channel": "web-api",
+            "started_at": 0.0,
+            "cmdline": ["python3", "-m", "omnidesk_engine"],
+            "child_pid": 0,
+            "child_pgid": child_pgid,
+        });
+        std::fs::write(owner_path(dir), record.to_string()).unwrap();
+    }
+
+    #[test]
+    fn cleanup_skips_posix_group_reclaim_when_pgid_is_zero() {
+        // Windows 的 current_pgid() 返回 0：语义是「无组可回收」，不是 0 号进程组。
+        let dir = temp_state("pgid-zero");
+        write_owner_for_cleanup(&dir, 4321, 0, 0);
+        assert_eq!(
+            cleanup_engine_group(&dir, 4321, Duration::from_millis(50)),
+            None,
+            "pgid=0 必须跳过兜底回收且不产生错误日志"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_skips_when_registered_pid_differs() {
+        let dir = temp_state("pid-mismatch");
+        write_owner_for_cleanup(&dir, 1111, 0, 0);
+        assert_eq!(
+            cleanup_engine_group(&dir, 2222, Duration::from_millis(50)),
+            None,
+            "登记不属于当前引擎时不得回收"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_skips_negative_pgid_without_noop_log() {
+        let dir = temp_state("pgid-negative");
+        write_owner_for_cleanup(&dir, 3333, -1, 0);
+        assert_eq!(
+            cleanup_engine_group(&dir, 3333, Duration::from_millis(50)),
+            None,
+            "负 pgid 同样表示无组可回收"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
