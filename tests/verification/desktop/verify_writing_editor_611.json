@@ -1,0 +1,149 @@
+{
+  "plan": "OD-WT-611",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 28,
+  "failed": [],
+  "checks": [
+    {
+      "name": "components_exist",
+      "ok": true,
+      "detail": "两个组件文件在 desktop/src/shell/"
+    },
+    {
+      "name": "outline_export_interface",
+      "ok": true,
+      "detail": "导出组件与挂载 props（writingId / onOutlineConfirmed / className）"
+    },
+    {
+      "name": "section_export_interface",
+      "ok": true,
+      "detail": "导出组件与挂载 props（writingId / onSectionConfirmed / className）"
+    },
+    {
+      "name": "outline_uses_606_api",
+      "ok": true,
+      "detail": "只经 writingOutlineGenerate/Confirm/Get 三条 606 IPC"
+    },
+    {
+      "name": "outline_tree_fields",
+      "ok": true,
+      "detail": "左栏树展示章节/子标题/重点/素材映射/预计字数"
+    },
+    {
+      "name": "outline_form_editable",
+      "ok": true,
+      "detail": "确认前按 JSON 字段拆表单编辑，可增删章节"
+    },
+    {
+      "name": "outline_lock_after_confirm",
+      "ok": true,
+      "detail": "确认后 mode=confirmed，整块字段锁定"
+    },
+    {
+      "name": "outline_regenerate_gate",
+      "ok": true,
+      "detail": "锁定后换稿必须显式「重新生成」并经应用内确认弹窗"
+    },
+    {
+      "name": "outline_ai_vs_user_badge",
+      "ok": true,
+      "detail": "大纲建议与用户确认状态显式区分（照 410 标注先例）"
+    },
+    {
+      "name": "outline_real_empty_state",
+      "ok": true,
+      "detail": "空态区分读取中与尚未生成，不伪造默认大纲"
+    },
+    {
+      "name": "outline_model_call_pattern",
+      "ok": true,
+      "detail": "宿主返回提示词后，界面侧走既有 submitTask 轮询取结果"
+    },
+    {
+      "name": "outline_source_peek",
+      "ok": true,
+      "detail": "右栏素材映射可点开原素材与知识原文"
+    },
+    {
+      "name": "section_uses_607_api",
+      "ok": true,
+      "detail": "只经 607 Generate/Confirm/Get/Revise 四条 IPC"
+    },
+    {
+      "name": "section_chapter_select",
+      "ok": true,
+      "detail": "左栏章节选择驱动中栏与右栏"
+    },
+    {
+      "name": "section_generate_preview_confirm",
+      "ok": true,
+      "detail": "生成→预览→用户确认链路完整"
+    },
+    {
+      "name": "section_revise_kinds",
+      "ok": true,
+      "detail": "修订下拉五类 + 自由文本补充说明"
+    },
+    {
+      "name": "section_revise_apply_flow",
+      "ok": true,
+      "detail": "修订建议同样先预览，确认应用才写正文"
+    },
+    {
+      "name": "section_ai_vs_user_badge",
+      "ok": true,
+      "detail": "未确认稿标 AI 建议，已确认正文标用户确认"
+    },
+    {
+      "name": "section_right_materials",
+      "ok": true,
+      "detail": "右栏本章素材列表；章节未映射时显式沿用任务已选素材"
+    },
+    {
+      "name": "section_citations_603",
+      "ok": true,
+      "detail": "右栏本章引用列表按 603 来源类型区分素材/知识"
+    },
+    {
+      "name": "section_factcheck_annotations",
+      "ok": true,
+      "detail": "609 遗留：确认后自动核验并随车传入四分法 annotations"
+    },
+    {
+      "name": "section_source_peek",
+      "ok": true,
+      "detail": "右栏素材与引用来源都可点开 SourcePeekSheet"
+    },
+    {
+      "name": "section_real_empty_states",
+      "ok": true,
+      "detail": "大纲缺失、章节无稿、无素材、无引用均有真实空态"
+    },
+    {
+      "name": "no_direct_tauri_invoke",
+      "ok": true,
+      "detail": "组件只经 api.ts 的 shell/host，不直连 Tauri"
+    },
+    {
+      "name": "no_window_confirm",
+      "ok": true,
+      "detail": "应用内确认框替代 window.confirm"
+    },
+    {
+      "name": "no_runtime_reference",
+      "ok": true,
+      "detail": "不引用 runtime/ 内 DSH Runtime"
+    },
+    {
+      "name": "no_direct_writes",
+      "ok": true,
+      "detail": "没有绕过确认门的直接写路径"
+    },
+    {
+      "name": "no_commit_or_push",
+      "ok": true,
+      "detail": "组件源码不含提交/推送动作"
+    }
+  ]
+}

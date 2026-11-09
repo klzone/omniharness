@@ -1,0 +1,195 @@
+{
+  "plan": "OD-WT-615",
+  "evidence_level": "静态源码检查 + 既有测试覆盖断言",
+  "passed": true,
+  "total": 35,
+  "failed": [],
+  "declarations": {
+    "test_data": "全部虚构/合成，未使用真实业务材料",
+    "new_waivers": "615 未改业务代码；无新增豁免",
+    "registered_allows": [
+      "/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(clippy::too_many_arguments)]",
+      "/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(dead_code)]",
+      "/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(dead_code)]"
+    ],
+    "business_code_changed_by_615": "无",
+    "runtime_changed": "无"
+  },
+  "checks": [
+    {
+      "name": "gate_definition",
+      "ok": true,
+      "detail": "统一闸门仍是红线扫描 + 隐私掩码"
+    },
+    {
+      "name": "gate_error_does_not_echo_text",
+      "ok": true,
+      "detail": "拒绝信息只报命中标签与次数，不回显原文"
+    },
+    {
+      "name": "gate_covers_parse",
+      "ok": true,
+      "detail": "writing_parse_requirement 的需求原文过闸门"
+    },
+    {
+      "name": "gate_covers_create",
+      "ok": true,
+      "detail": "writing_create_from_requirement 的七个可编辑字段与要求列表全部过闸门"
+    },
+    {
+      "name": "gate_covers_collect_select",
+      "ok": true,
+      "detail": "collect 的任务编号与 select 的采纳说明过闸门"
+    },
+    {
+      "name": "gate_covers_outline",
+      "ok": true,
+      "detail": "大纲生成只接编号；确认的标题/目的/观点/章节/小节全部过闸门"
+    },
+    {
+      "name": "gate_covers_section",
+      "ok": true,
+      "detail": "章节确认的正文/引用/四分法文本与修订说明全部过闸门"
+    },
+    {
+      "name": "gate_covers_review",
+      "ok": true,
+      "detail": "审阅说明、问题编号/描述/建议与修订稿全部过闸门"
+    },
+    {
+      "name": "gate_covers_transition_records_export",
+      "ok": true,
+      "detail": "状态迁移理由、记录查询编号、导出编号均过闸门"
+    },
+    {
+      "name": "gate_covers_archive_feedback",
+      "ok": true,
+      "detail": "归档编号与知识回流的标题/正文/来源原文过闸门"
+    },
+    {
+      "name": "phase4_ipc_registered",
+      "ok": true,
+      "detail": "第四阶段 25 个 IPC 全部注册到 generate_handler"
+    },
+    {
+      "name": "ai_no_finalize_channel",
+      "ok": true,
+      "detail": "定稿快照只在用户状态迁移命令里写；模型提示构建/确认路径无通道"
+    },
+    {
+      "name": "ai_no_archive_channel",
+      "ok": true,
+      "detail": "归档只在 writing_archive 用户命令里写；AI 链路无入口"
+    },
+    {
+      "name": "ai_no_export_channel",
+      "ok": true,
+      "detail": "导出只在 writing_export 用户命令里执行；AI 链路无入口"
+    },
+    {
+      "name": "finalize_requires_pending_review",
+      "ok": true,
+      "detail": "定稿快照只在 待审核 → 已定稿 的合法迁移时写"
+    },
+    {
+      "name": "outline_confirmed_required_for_section",
+      "ok": true,
+      "detail": "章节生成前要求任务在写作中，并强制读取已确认大纲"
+    },
+    {
+      "name": "unconfirmed_outline_is_absent",
+      "ok": true,
+      "detail": "没有 outline.md 时读取已确认大纲直接报错"
+    },
+    {
+      "name": "transition_requires_outline",
+      "ok": true,
+      "detail": "大纲待确认 → 写作中 必须已确认大纲，迁移表与命令双重校验"
+    },
+    {
+      "name": "unconfirmed_material_rejected_on_adopt",
+      "ok": true,
+      "detail": "用户采纳素材前校验已确认；未确认素材不能进 selected_material_ids"
+    },
+    {
+      "name": "unconfirmed_material_rejected_in_prompts",
+      "ok": true,
+      "detail": "大纲与章节提示词组装时再次拒绝非已确认素材"
+    },
+    {
+      "name": "query_defaults_to_confirmed",
+      "ok": true,
+      "detail": "查询/收集默认只取已确认；事实核验只读用户已选可信集合"
+    },
+    {
+      "name": "export_sensitive_scan",
+      "ok": true,
+      "detail": "导出前对标题+正文做红线扫描，命中即拒绝且不回显原文"
+    },
+    {
+      "name": "export_no_network",
+      "ok": true,
+      "detail": "导出只走本地 Markdown/HTML 渲染与 textutil/soffice/python-docx 本机进程，无 HTTP 客户端；远程资源被模板校验拒绝"
+    },
+    {
+      "name": "export_receipt_local_only",
+      "ok": true,
+      "detail": "导出结果只写用户指定目录或默认导出目录，并追加本地 manifest 回执"
+    },
+    {
+      "name": "archive_only_markdown",
+      "ok": true,
+      "detail": "归档文件名强制 .md，落知识库 报告/ 目录"
+    },
+    {
+      "name": "archive_rejects_docx_pdf_html",
+      "ok": true,
+      "detail": "既有测试断言归档目录只有 .md，DOCX/PDF/HTML 不进入 vault"
+    },
+    {
+      "name": "archive_rejects_dirty_markdown",
+      "ok": true,
+      "detail": "归档前剥离校验与敏感词扫描双门禁，脏稿与命中稿都拒绝"
+    },
+    {
+      "name": "archive_request_has_no_format",
+      "ok": true,
+      "detail": "归档请求只有 writing_id/preview，不接受文档格式参数"
+    },
+    {
+      "name": "no_sensitive_logs",
+      "ok": true,
+      "detail": "新模块与界面无调试日志；合成身份证/电话样本不出现在业务源码"
+    },
+    {
+      "name": "no_forbidden_material_terms",
+      "ok": true,
+      "detail": "第四阶段源码/界面/提示词不含案件/线索/人物画像字样"
+    },
+    {
+      "name": "tests_use_temp_roots",
+      "ok": true,
+      "detail": "所有落盘测试只写系统临时目录；纯函数模块不触碰文件系统"
+    },
+    {
+      "name": "test_data_fictional_declared",
+      "ok": true,
+      "detail": "Python 单测声明全部虚构；Rust 夹具使用「虚构/合成」标记"
+    },
+    {
+      "name": "no_new_waivers",
+      "ok": true,
+      "detail": "615 未改业务代码，diff/新代码无测试跳过或阈值降低；已登记有界 lint allow: /Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(clippy::too_many_arguments)]；/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(dead_code)]；/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/export_engine.rs: #[allow(dead_code)]"
+    },
+    {
+      "name": "runtime_zero_changes",
+      "ok": true,
+      "detail": "runtime/ 无工作区改动、无 HEAD 差异"
+    },
+    {
+      "name": "ui_ipc_only",
+      "ok": true,
+      "detail": "前端状态迁移/导出/归档/回流均经 api.ts invoke，无直接文件系统写"
+    }
+  ]
+}

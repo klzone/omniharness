@@ -1,0 +1,5 @@
+OD-WT-615 全量命令退出码（同一轮实跑）
+cargo test --offline --tests: EXIT=0
+pytest tests -q: EXIT=0
+npm --prefix desktop run build: EXIT=0
+npx tsc --noEmit: EXIT=0

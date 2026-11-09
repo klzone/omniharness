@@ -1,0 +1,50 @@
+# OD-WT-615 baseline 2026-11-09 11:30:08 CST
+
+HEAD=d1195c9700130bd7c6a240236067f828d74416b3
+## main...origin/main
+
+recent commits:
+d1195c9700 fix(engine): Windows 缺少 os.getpgrp 导致引擎启动失败（0.2.13）
+821b1a4cf3 wip(writing): 第四阶段写作底座 601-607 与 608 审阅/版本后端（待 608/609 复检）
+ab000dfb01 docs(phase4): OD-WT-600 第四阶段规划落盘（15 卡/决策 D-083~091/验收标准/路线图）
+a632af4369 feat(workstation): 写作素材篮与知识关联、最小项目实体、AI 素材提取（OD-KM-501~513）
+
+working tree (porcelain):
+ M PLANS.md
+ M REVIEW.md
+ M desktop/src-tauri/src/lib.rs
+ M desktop/src-tauri/src/vault_archive.rs
+ M desktop/src-tauri/src/writing_review.rs
+ M desktop/src/api.ts
+ M desktop/src/shell/WritingStudio.tsx
+ M desktop/src/types.ts
+ M tests/verification/desktop/evidence/od-arch-094/verify_writing_094.json
+?? desktop/src-tauri/scripts/writing_docx_export.py
+?? desktop/src-tauri/src/export_engine.rs
+?? desktop/src-tauri/src/fact_check.rs
+?? desktop/src/shell/WritingArchivePanel.tsx
+?? desktop/src/shell/WritingFactCheckPanel.tsx
+?? desktop/src/shell/WritingOutlineEditor.tsx
+?? desktop/src/shell/WritingSectionEditor.tsx
+?? desktop/src/shell/WritingVersionPanel.tsx
+?? desktop/src/shell/WritingWorkbench.tsx
+?? samples/workflows/export-styles/
+?? tests/verification/desktop/od-wt-608/
+?? tests/verification/desktop/od-wt-609/
+?? tests/verification/desktop/od-wt-610/
+?? tests/verification/desktop/od-wt-612/
+?? tests/verification/desktop/od-wt-613/
+?? tests/verification/desktop/od-wt-614/
+?? tests/verification/desktop/od-wt-615/
+?? tests/verification/desktop/verify_fact_check_609.py
+?? tests/verification/desktop/verify_security_phase4.py
+?? tests/verification/desktop/verify_writing_archive_614.py
+?? tests/verification/desktop/verify_writing_editor_611.json
+?? tests/verification/desktop/verify_writing_editor_611.py
+?? tests/verification/desktop/verify_writing_export_613.py
+?? tests/verification/desktop/verify_writing_review_612.py
+?? tests/verification/desktop/verify_writing_ui_610.json
+?? tests/verification/desktop/verify_writing_ui_610.py
+
+runtime status:
+runtime diff:

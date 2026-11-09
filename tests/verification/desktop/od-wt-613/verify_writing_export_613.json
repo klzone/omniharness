@@ -1,0 +1,154 @@
+{
+  "plan": "OD-WT-613",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 29,
+  "failed": [],
+  "checks": [
+    {
+      "name": "module_registered",
+      "ok": true,
+      "detail": "lib.rs 已挂 export_engine，导出入口与入参存在"
+    },
+    {
+      "name": "ipc_commands_registered",
+      "ok": true,
+      "detail": "三条 IPC 已定义并注册到 generate_handler"
+    },
+    {
+      "name": "outcome_fields",
+      "ok": true,
+      "detail": "回执含路径、引擎、简化标记、manifest 回执与说明"
+    },
+    {
+      "name": "format_and_mode_whitelists",
+      "ok": true,
+      "detail": "四种格式与三种 Markdown 模式的封闭白名单"
+    },
+    {
+      "name": "markdown_three_states",
+      "ok": true,
+      "detail": "正式稿剥离 / 审阅稿来源标记 / 工作稿核验摘要三条分支"
+    },
+    {
+      "name": "formal_strip_markers",
+      "ok": true,
+      "detail": "正式稿剥离 frontmatter、内部编号、来源标记与全部内部前缀"
+    },
+    {
+      "name": "review_markers_and_details",
+      "ok": true,
+      "detail": "审阅稿逐段加来源标记，文末来源明细，未匹配显式说明"
+    },
+    {
+      "name": "working_summary",
+      "ok": true,
+      "detail": "工作稿带核验统计、逐条摘要与 200 条展开上限"
+    },
+    {
+      "name": "export_status_gate",
+      "ok": true,
+      "detail": "只有已定稿或已归档的任务可导出"
+    },
+    {
+      "name": "redline_scan_before_render",
+      "ok": true,
+      "detail": "渲染前先过当前 Profile 敏感词扫描；命中即拒绝且不回显原文"
+    },
+    {
+      "name": "manifest_receipt",
+      "ok": true,
+      "detail": "导出后写 manifest export_receipts，三态 MD 分别记 md-formal/review/working"
+    },
+    {
+      "name": "target_dir_guard",
+      "ok": true,
+      "detail": "目标目录只接受绝对路径、拒绝 ..，缺省落应用数据根 exports/写作/<id>/"
+    },
+    {
+      "name": "docx_dual_path",
+      "ok": true,
+      "detail": "DOCX 优先 python-docx，失败如实标注 textutil 简化版"
+    },
+    {
+      "name": "pdf_soffice_timeout_and_fallback",
+      "ok": true,
+      "detail": "PDF 走 soffice headless，超时/失败回执并转打印流，校验 PDF 签名"
+    },
+    {
+      "name": "wechat_html_render",
+      "ok": true,
+      "detail": "公众号 HTML 由宿主确定性渲染并转义；模板拒绝脚本、iframe 与远程资源"
+    },
+    {
+      "name": "style_loading",
+      "ok": true,
+      "detail": "样式包可编辑副本优先、编译期默认兜底，字段与大小上限齐全"
+    },
+    {
+      "name": "style_files_complete",
+      "ok": true,
+      "detail": "三套样式文件存在且含必需键与 HTML 占位符"
+    },
+    {
+      "name": "docx_helper_contract",
+      "ok": true,
+      "detail": "DOCX 脚本设置 eastAsia 字体、行距与重开校验，不调模型/网络"
+    },
+    {
+      "name": "status_transition_gate_and_snapshot",
+      "ok": true,
+      "detail": "状态迁移按 601 合法表，待审核→已定稿先写 final 快照，理由过闸门"
+    },
+    {
+      "name": "records_query_filters",
+      "ok": true,
+      "detail": "citations/factcheck 只读查询支持类型、章节、段落、结论与处理状态过滤"
+    },
+    {
+      "name": "api_wrappers",
+      "ok": true,
+      "detail": "前端三条封装与类型 import 齐全，不绕过 api 客户端"
+    },
+    {
+      "name": "frontend_types",
+      "ok": true,
+      "detail": "前端类型与 613 IPC 回执同口径"
+    },
+    {
+      "name": "required_tests_present",
+      "ok": true,
+      "detail": "八项任务卡验收点均有模块内测试，含真实导出临时目录用例"
+    },
+    {
+      "name": "test_count_at_least_20",
+      "ok": true,
+      "detail": "export_engine 模块内测试 25 项（任务卡要求 ≥14，交付 ≥20）"
+    },
+    {
+      "name": "no_network_or_vault_write",
+      "ok": true,
+      "detail": "导出引擎不发起网络请求，不写知识库"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "runtime/ 零改动"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "导出引擎、脚本与前端封装未新增类型/lint 豁免"
+    },
+    {
+      "name": "synthetic_only",
+      "ok": true,
+      "detail": "测试数据全部虚构，不含真实个人号码或姓名夹具"
+    },
+    {
+      "name": "evidence_dir",
+      "ok": true,
+      "detail": "证据目录 tests/verification/desktop/od-wt-613/ 存在"
+    }
+  ]
+}

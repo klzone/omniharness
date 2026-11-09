@@ -1,0 +1,164 @@
+{
+  "plan": "OD-WT-609",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 31,
+  "failed": [],
+  "checks": [
+    {
+      "name": "module_registered",
+      "ok": true,
+      "detail": "lib.rs 已挂 fact_check，模块导出 run_fact_check"
+    },
+    {
+      "name": "pure_engine_no_io",
+      "ok": true,
+      "detail": "确定性引擎不读写文件"
+    },
+    {
+      "name": "no_model_channel",
+      "ok": true,
+      "detail": "不新增模型通道，核验只在宿主确定性执行"
+    },
+    {
+      "name": "reuses_501_normalization",
+      "ok": true,
+      "detail": "复用 501 normalize_quote，再叠加全角/空白/数字日期等价化"
+    },
+    {
+      "name": "extracts_dates",
+      "ok": true,
+      "detail": "支持 YYYY-MM-DD 与 YYYY年X月"
+    },
+    {
+      "name": "extracts_numbers",
+      "ok": true,
+      "detail": "数字含百分比/金额/单位，千分位与全角归一"
+    },
+    {
+      "name": "extracts_institutions",
+      "ok": true,
+      "detail": "机构名按「局/厅/处/科/中心/办」后缀启发式提取"
+    },
+    {
+      "name": "extracts_person_roles",
+      "ok": true,
+      "detail": "人员职务按「职务+姓名」模式提取，姓名受姓氏/边界约束"
+    },
+    {
+      "name": "conclusions_eight_wired",
+      "ok": true,
+      "detail": "八类结论与十类对象均走 603 白名单"
+    },
+    {
+      "name": "direct_and_indirect_sources",
+      "ok": true,
+      "detail": "素材命中→直接来源；知识命中→间接来源"
+    },
+    {
+      "name": "conflict_and_outdated",
+      "ok": true,
+      "detail": "同指标不同值→来源冲突；知识过期标记→来源已过期"
+    },
+    {
+      "name": "missing_without_fabrication",
+      "ok": true,
+      "detail": "无命中只落无法找到来源，不把未核实写成已核实"
+    },
+    {
+      "name": "annotations_merge_four_part",
+      "ok": true,
+      "detail": "分析/判断不伪装事实，建议/计划落工作计划；事实标注不覆盖确定性结论"
+    },
+    {
+      "name": "expressive_summary",
+      "ok": true,
+      "detail": "无具体事实的概括句落表达性概括"
+    },
+    {
+      "name": "scope_conflict_no_merge",
+      "ok": true,
+      "detail": "场景七只输出冲突对，不合并数值"
+    },
+    {
+      "name": "location_fields",
+      "ok": true,
+      "detail": "结论附章节号+段落序号+被核验片段（603 R4）"
+    },
+    {
+      "name": "stable_record_ids",
+      "ok": true,
+      "detail": "记录编号按位置/对象/取值/结论稳定生成，重跑可去重"
+    },
+    {
+      "name": "records_append_via_603",
+      "ok": true,
+      "detail": "落盘只经 603 追加/按行重写函数，不直接写 JSONL"
+    },
+    {
+      "name": "run_command_and_status_gate",
+      "ok": true,
+      "detail": "writing_factcheck_run 限 写作中|待核验|待审核"
+    },
+    {
+      "name": "run_reads_607_full_text",
+      "ok": true,
+      "detail": "正文取 607 compose_full_text，依据取任务已选素材"
+    },
+    {
+      "name": "resolve_command_and_note_gate",
+      "ok": true,
+      "detail": "单条处理只允许三个用户动作，备注过红线/掩码闸门"
+    },
+    {
+      "name": "rerun_dedupes_existing",
+      "ok": true,
+      "detail": "重跑跳过已存在记录，不重置用户处理状态"
+    },
+    {
+      "name": "no_source_deletion",
+      "ok": true,
+      "detail": "无法核实不自动删除来源"
+    },
+    {
+      "name": "frontend_types",
+      "ok": true,
+      "detail": "前端类型覆盖记录/结论/冲突/运行回执"
+    },
+    {
+      "name": "frontend_api",
+      "ok": true,
+      "detail": "前端只封装两条 IPC，不新增模型调用"
+    },
+    {
+      "name": "scenario_six_tests",
+      "ok": true,
+      "detail": "场景六：正确→直接来源、错误→冲突、无来源→无法找到来源"
+    },
+    {
+      "name": "scenario_seven_tests",
+      "ok": true,
+      "detail": "场景七：数值/时间范围/统计口径冲突均只提示"
+    },
+    {
+      "name": "tests_minimum_14",
+      "ok": true,
+      "detail": "新增测试 26 项（≥14）"
+    },
+    {
+      "name": "test_data_fictional",
+      "ok": true,
+      "detail": "测试数据全虚构，来源编号显式 synthetic"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "引擎不引用 runtime/"
+    },
+    {
+      "name": "records_contract_untouched",
+      "ok": true,
+      "detail": "609 只消费 603 契约，不修改记录结构"
+    }
+  ]
+}

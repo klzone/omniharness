@@ -72,11 +72,13 @@ pub mod work_cleanup;
 pub mod writing_store;
 pub mod writing_records;
 pub mod writing_collect;
+pub mod export_engine;
 pub mod document_store;
 pub mod writing_parse;
 pub mod writing_outline;
 pub mod writing_section;
 pub mod writing_review;
+pub mod fact_check;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -3859,6 +3861,304 @@ fn writing_section_revise(
 }
 
 // ---------------------------------------------------------------------------
+// 第四阶段：事实核验 IPC（OD-WT-609）
+//
+// 确定性引擎在 fact_check.rs（纯函数、无 IO）；本组命令只负责闸门、读取
+// 已选素材/知识依据、调用 603 追加核验记录与用户处理单条结论。无法核实
+// 只落「无法找到来源」，不删除来源、不编造依据；口径冲突只提示不合并。
+// ---------------------------------------------------------------------------
+
+fn knowledge_subject_matches(subject: &str, source_id: &str) -> bool {
+    let subject = subject.trim().trim_start_matches("知识库/");
+    let source_id = source_id.trim();
+    !subject.is_empty()
+        && !source_id.is_empty()
+        && (subject == source_id || subject.ends_with(source_id) || source_id.ends_with(subject))
+}
+
+fn fact_check_knowledge_evidence(
+    root: &std::path::Path,
+    task: &writing_store::WritingTask,
+    request_evidence: &[fact_check::KnowledgeEvidenceInput],
+    vault: Option<&std::path::Path>,
+    config_dir: &std::path::Path,
+    now: f64,
+    offset_minutes: i32,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<fact_check::FactEvidence>, String> {
+    let mut evidence: Vec<fact_check::FactEvidence> = Vec::new();
+    for item in request_evidence {
+        let source_id = item.source_id.trim();
+        if source_id.is_empty() {
+            return Err("知识核验依据编号不能为空。".to_string());
+        }
+        let quote = item.quote.trim();
+        if quote.is_empty() {
+            continue;
+        }
+        if quote.chars().count() > 200_000 {
+            return Err(format!("知识核验依据 {source_id} 的引用原文过长。"));
+        }
+        evidence.push(fact_check::FactEvidence {
+            source_kind: writing_records::CitationSourceKind::Knowledge,
+            source_id: source_id.to_string(),
+            quote: quote.to_string(),
+            outdated: item.outdated,
+        });
+    }
+    let citations = writing_records::list_citations(root, &task.writing_id)?;
+    let mut knowledge_ids: Vec<String> = task.selected_knowledge_ids.clone();
+    for citation in &citations {
+        if citation.source_kind == writing_records::CitationSourceKind::Knowledge {
+            knowledge_ids.push(citation.source_id.clone());
+            evidence.push(fact_check::FactEvidence {
+                source_kind: writing_records::CitationSourceKind::Knowledge,
+                source_id: citation.source_id.clone(),
+                quote: citation.quote.clone(),
+                outdated: false,
+            });
+        }
+    }
+    knowledge_ids.retain(|id| !id.trim().is_empty());
+    knowledge_ids.sort();
+    knowledge_ids.dedup();
+    let expired_subjects: Vec<String> = match vault {
+        Some(vault) => match knowledge_quality::load_config(config_dir) {
+            Ok(config) => knowledge_quality::check_expiry(
+                vault,
+                now as i64,
+                offset_minutes,
+                config.expiry_days,
+            )
+            .map(|report| report.expired.into_iter().map(|item| item.subject).collect())
+            .unwrap_or_default(),
+            Err(error) => {
+                warnings.push(format!("知识过期配置读取失败：{error}"));
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+    if let Some(vault) = vault {
+        for id in &knowledge_ids {
+            if evidence
+                .iter()
+                .any(|item| item.source_id == *id && !item.quote.trim().is_empty())
+            {
+                continue;
+            }
+            match knowledge_vault::read_vault_note(vault, id) {
+                Ok(note) => evidence.push(fact_check::FactEvidence {
+                    source_kind: writing_records::CitationSourceKind::Knowledge,
+                    source_id: id.clone(),
+                    quote: note.content,
+                    outdated: false,
+                }),
+                Err(error) => warnings.push(format!("知识条目 {id} 读取失败：{error}")),
+            }
+        }
+    }
+    let mut merged: Vec<fact_check::FactEvidence> = Vec::new();
+    for item in evidence {
+        if let Some(existing) = merged.iter_mut().find(|existing| {
+            existing.source_kind == item.source_kind
+                && existing.source_id == item.source_id
+                && existing.quote == item.quote
+        }) {
+            existing.outdated |= item.outdated;
+        } else {
+            merged.push(item);
+        }
+    }
+    for item in merged.iter_mut() {
+        if item.source_kind == writing_records::CitationSourceKind::Knowledge
+            && expired_subjects
+                .iter()
+                .any(|subject| knowledge_subject_matches(subject, &item.source_id))
+        {
+            item.outdated = true;
+        }
+    }
+    Ok(merged)
+}
+
+fn writing_factcheck_run_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: fact_check::FactCheckRunRequest,
+    now: f64,
+    vault: Option<&std::path::Path>,
+    config_dir: &std::path::Path,
+    offset_minutes: i32,
+) -> Result<fact_check::FactCheckRunResponse, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let task = writing_store::read_writing_task(root, &writing_id)?;
+    let allowed = task.status == writing_store::STATUS_WRITING
+        || task.status == writing_store::STATUS_FACT_CHECKING
+        || task.status == writing_store::STATUS_PENDING_REVIEW;
+    if !allowed {
+        return Err(format!(
+            "写作任务当前状态为「{}」；只有「{}」「{}」或「{}」可以运行事实核验。",
+            task.status,
+            writing_store::STATUS_WRITING,
+            writing_store::STATUS_FACT_CHECKING,
+            writing_store::STATUS_PENDING_REVIEW
+        ));
+    }
+    let full_text = writing_section::compose_full_text_for(root, &writing_id)?;
+    let mut warnings = Vec::new();
+    let mut evidence = Vec::new();
+    for id in &task.selected_material_ids {
+        let material = material_store::read_material(root, id)
+            .map_err(|error| format!("读取已选素材 {id} 失败：{error}"))?;
+        let quote = if material.source_quote.trim().is_empty() {
+            material.content.clone()
+        } else {
+            material.source_quote.clone()
+        };
+        if quote.trim().is_empty() {
+            warnings.push(format!("素材 {id} 没有可核验的来源原文。"));
+            continue;
+        }
+        evidence.push(fact_check::FactEvidence {
+            source_kind: writing_records::CitationSourceKind::Material,
+            source_id: id.clone(),
+            quote,
+            outdated: false,
+        });
+    }
+    evidence.extend(fact_check_knowledge_evidence(
+        root,
+        &task,
+        &request.knowledge_evidence,
+        vault,
+        config_dir,
+        now,
+        offset_minutes,
+        &mut warnings,
+    )?);
+    let outcome = fact_check::run_fact_check(&full_text, &evidence, &request.annotations)?;
+    let existing_ids: Vec<String> = writing_records::list_fact_checks(root, &writing_id)?
+        .into_iter()
+        .map(|record| record.record_id)
+        .collect();
+    let mut appended = 0usize;
+    let mut skipped_existing = 0usize;
+    for finding in &outcome.findings {
+        if existing_ids
+            .iter()
+            .any(|record_id| record_id == &finding.record_id)
+        {
+            skipped_existing += 1;
+            continue;
+        }
+        writing_records::append_fact_check(
+            root,
+            &writing_id,
+            &writing_records::FactCheckDraft {
+                record_id: Some(finding.record_id.clone()),
+                section_no: finding.section_no,
+                paragraph_no: finding.paragraph_no,
+                check_object: finding.check_object,
+                conclusion: finding.conclusion,
+                basis: finding.basis.clone(),
+                fact_text: Some(finding.fact_text.clone()),
+            },
+            now,
+        )?;
+        appended += 1;
+    }
+    let records = writing_records::list_fact_checks(root, &writing_id)?;
+    Ok(fact_check::FactCheckRunResponse {
+        writing_id: task.writing_id,
+        status: task.status,
+        records,
+        conflicts: outcome.conflicts,
+        stats: outcome.stats,
+        appended,
+        skipped_existing,
+        warnings,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+fn writing_factcheck_resolve_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: fact_check::FactCheckResolveRequest,
+) -> Result<fact_check::FactCheckResolveResponse, String> {
+    let (writing_id, mut counts) =
+        gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let resolution = writing_records::ResolutionStatus::from_label(&request.resolution)?;
+    if resolution == writing_records::ResolutionStatus::Unresolved {
+        return Err("核验处理状态只能由用户改为「已接受」「已修改」或「已删除来源项」。"
+            .to_string());
+    }
+    let note = match request.note {
+        Some(note) if !note.trim().is_empty() => {
+            if note.chars().count() > 500 {
+                return Err("核验处理备注最多 500 字符。".to_string());
+            }
+            let (masked, extra) = gate_user_text(&note, policy, "核验处理备注")?;
+            add_counts(&mut counts, extra);
+            Some(masked)
+        }
+        _ => None,
+    };
+    let record = writing_records::update_resolution(
+        root,
+        &writing_id,
+        &request.record_id,
+        &request.resolution,
+    )?;
+    Ok(fact_check::FactCheckResolveResponse {
+        record,
+        note,
+        masked: counts.any(),
+        masked_id_card: counts.id_card,
+        masked_phone: counts.phone,
+    })
+}
+
+/// OD-WT-609：运行事实核验。只读正文与已选依据，结论经 603 追加落盘。
+#[tauri::command(async)]
+fn writing_factcheck_run(
+    state: State<'_, SharedHost>,
+    request: fact_check::FactCheckRunRequest,
+) -> Result<fact_check::FactCheckRunResponse, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths).ok();
+    let offset = worklog_offset_minutes(&state);
+    writing_factcheck_run_impl(
+        &root,
+        &policy,
+        request,
+        task_shell::now_secs(),
+        vault.as_deref(),
+        &paths.config,
+        offset,
+    )
+}
+
+/// OD-WT-609：用户处理单条核验结论，走 603 按行重写。
+#[tauri::command(async)]
+fn writing_factcheck_resolve(
+    state: State<'_, SharedHost>,
+    request: fact_check::FactCheckResolveRequest,
+) -> Result<fact_check::FactCheckResolveResponse, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_factcheck_resolve_impl(&root, &policy, request)
+}
+
+// ---------------------------------------------------------------------------
 // 第四阶段：审阅修改与版本 IPC（OD-WT-608）
 //
 // 架构契合：薄封装 607 的修订确认通道 + 602 版本存储 + 603 记录；十维审阅
@@ -3910,6 +4210,10 @@ fn writing_review_apply_finding_impl(
             add_counts(&mut total, extra);
         }
     }
+    let (finding_id, extra) =
+        gate_user_text(&request.finding.finding_id, policy, "审阅问题编号")?;
+    request.finding.finding_id = finding_id;
+    add_counts(&mut total, extra);
     let (description, extra) =
         gate_user_text(&request.finding.description, policy, "审阅问题描述")?;
     request.finding.description = description;
@@ -6116,6 +6420,580 @@ fn writing_create_from_requirement(
     writing_create_from_requirement_impl(&root, &policy, draft, task_shell::now_secs())
 }
 
+/// OD-WT-610：写作任务列表（只读）。
+///
+/// 604-609 提供了解析、素材、大纲与章节命令，但没有把 601 的
+/// list_writing_tasks 暴露给界面；工作台需要按状态/类型分组展示任务，
+/// 因此补一条只读命令。过滤条件不落盘，排序与白名单校验沿用 601。
+#[tauri::command(async)]
+fn writing_list(
+    state: State<'_, SharedHost>,
+    filter: Option<writing_store::WritingTaskFilter>,
+) -> Result<writing_store::WritingTaskListing, String> {
+    let root = work_root(&state)?;
+    writing_store::list_writing_tasks(&root, &filter.unwrap_or_default())
+}
+
+/// OD-WT-613：用户触发的写作状态迁移。
+///
+/// 状态迁移只接受 601 的合法表；从「待审核」进入「已定稿」时先写
+/// label=final 的正文快照，再推进状态。AI 与本命令无调用通道。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WritingStatusTransitionRequest {
+    writing_id: String,
+    to: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+fn writing_status_transition_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: WritingStatusTransitionRequest,
+    now: f64,
+) -> Result<writing_store::WritingTask, String> {
+    let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let _ = counts;
+    let reason = match request.reason {
+        Some(value) if !value.trim().is_empty() => {
+            let (masked, _) = gate_user_text(&value, policy, "状态迁移理由")?;
+            Some(masked)
+        }
+        _ => None,
+    };
+    let to = request.to.trim().to_string();
+    let task = writing_store::read_writing_task(root, &writing_id)?;
+    let outline_confirmed = if task.status == writing_store::STATUS_OUTLINE_PENDING
+        && to == writing_store::STATUS_WRITING
+    {
+        writing_outline::read_confirmed_outline(root, &writing_id).is_ok()
+    } else {
+        false
+    };
+    if to == writing_store::STATUS_FINALIZED
+        && task.status == writing_store::STATUS_PENDING_REVIEW
+        && writing_store::is_allowed_transition(&task.status, &to, outline_confirmed)
+    {
+        export_engine::finalize_snapshot(root, &writing_id, now)?;
+    }
+    writing_store::transition_writing_status(
+        root,
+        &writing_id,
+        &to,
+        outline_confirmed,
+        reason.as_deref(),
+        now,
+    )
+}
+
+/// OD-WT-613：用户触发任务状态迁移（600 迁移表门禁）。
+#[tauri::command(async)]
+fn writing_status_transition(
+    state: State<'_, SharedHost>,
+    request: WritingStatusTransitionRequest,
+) -> Result<writing_store::WritingTask, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    writing_status_transition_impl(&root, &policy, request, task_shell::now_secs())
+}
+
+/// OD-WT-613：citations / factcheck 只读查询。
+#[tauri::command(async)]
+fn writing_records_query(
+    state: State<'_, SharedHost>,
+    request: export_engine::RecordsQueryRequest,
+) -> Result<export_engine::RecordsQueryResult, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let (writing_id, _) = gate_user_text(&request.writing_id, &policy, "写作任务编号")?;
+    let mut request = request;
+    request.writing_id = writing_id;
+    export_engine::query_records(&root, &request)
+}
+
+/// OD-WT-613：文稿导出。MD 三态、公文 DOCX、阅读 PDF、公众号 HTML。
+///
+/// 导出前先过当前 Profile 的敏感词扫描；导出只写用户指定目录或默认
+/// 导出目录，随后经 602 追加 manifest 回执，不触达网络。
+#[tauri::command(async)]
+fn writing_export(
+    state: State<'_, SharedHost>,
+    request: export_engine::ExportRequest,
+) -> Result<export_engine::ExportOutcome, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let (writing_id, _) = gate_user_text(&request.writing_id, &policy, "写作任务编号")?;
+    let (app_root, config_dir) = {
+        let host = state.lock().unwrap();
+        (host.paths.root.clone(), host.paths.config.clone())
+    };
+    let mut request = request;
+    request.writing_id = writing_id;
+    let tools = export_engine::ExportTools::discover();
+    export_engine::export_writing(
+        &root,
+        &app_root,
+        &config_dir,
+        &request,
+        &policy,
+        &tools,
+        task_shell::now_secs(),
+    )
+}
+
+/// OD-WT-614：归档预览/执行入参。preview=true 只读清单，不写知识库。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WritingArchiveRequest {
+    writing_id: String,
+    #[serde(default)]
+    preview: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WritingFactCheckCount {
+    pub conclusion: String,
+    pub count: u64,
+}
+
+/// 知识回流候选：用户勾选后才提交，未勾选内容不进任何治理通道。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WritingKnowledgeSelection {
+    pub title: String,
+    pub content: String,
+    #[serde(default)]
+    pub source_quote: String,
+}
+
+/// 归档记录关联：写作任务、素材、知识、核验统计、版本与导出清单。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WritingArchiveAssociation {
+    pub writing_id: String,
+    pub title: String,
+    pub status: String,
+    pub version: u64,
+    pub selected_material_ids: Vec<String>,
+    pub selected_knowledge_ids: Vec<String>,
+    pub factcheck_counts: Vec<WritingFactCheckCount>,
+    pub export_receipts: Vec<document_store::ExportReceipt>,
+    pub already_archived: bool,
+    pub archive_path: Option<String>,
+    pub knowledge_candidates: Vec<WritingKnowledgeSelection>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WritingArchiveOutcome {
+    pub preview: bool,
+    pub can_archive: bool,
+    pub blocked_reason: Option<String>,
+    pub association: WritingArchiveAssociation,
+    pub vault: Option<vault_archive::ArchiveReceipt>,
+    pub manifest_receipt: Option<document_store::ExportReceipt>,
+    pub status_after: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WritingKnowledgeFeedbackRequest {
+    writing_id: String,
+    selections: Vec<WritingKnowledgeSelection>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WritingKnowledgeFeedbackOutcome {
+    pub writing_id: String,
+    pub ok: bool,
+    pub selected_count: usize,
+    pub admitted: Vec<knowledge_ingest::AdmittedRawFile>,
+    pub rejected: Vec<knowledge_ingest::IngestRejection>,
+    pub index_updated: bool,
+    pub index_path: String,
+    pub errors: Vec<String>,
+    pub note: String,
+}
+
+fn writing_archive_factcheck_counts(
+    root: &std::path::Path,
+    writing_id: &str,
+) -> Result<Vec<WritingFactCheckCount>, String> {
+    let records = writing_records::list_fact_checks(root, writing_id)?;
+    Ok(writing_records::CHECK_CONCLUSIONS
+        .iter()
+        .map(|conclusion| WritingFactCheckCount {
+            conclusion: conclusion.as_str().to_string(),
+            count: records
+                .iter()
+                .filter(|record| record.conclusion == *conclusion)
+                .count() as u64,
+        })
+        .collect())
+}
+
+fn writing_archive_candidates(
+    root: &std::path::Path,
+    writing_id: &str,
+    outline: &writing_outline::WritingOutline,
+) -> Vec<WritingKnowledgeSelection> {
+    let mut candidates = Vec::new();
+    for section in &outline.sections {
+        let Ok(state) = writing_section::read_section_state(root, writing_id, section.no) else {
+            continue;
+        };
+        let Some(content) = state.content else {
+            continue;
+        };
+        let content = export_engine::strip_internal(&content);
+        if content.trim().is_empty() {
+            continue;
+        }
+        let quote: String = content
+            .split("\n\n")
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .chars()
+            .take(160)
+            .collect();
+        candidates.push(WritingKnowledgeSelection {
+            title: state.heading,
+            content,
+            source_quote: quote,
+        });
+    }
+    candidates
+}
+
+fn writing_archive_association(
+    root: &std::path::Path,
+    task: &writing_store::WritingTask,
+) -> Result<WritingArchiveAssociation, String> {
+    // 预览允许未确认大纲的任务查看归档入口；执行时 status 门禁与正文读取仍会拒绝。
+    let confirmed = writing_outline::read_confirmed_outline(root, &task.writing_id).ok();
+    let manifest = document_store::read_manifest(root, &task.writing_id)?;
+    let version = manifest
+        .versions
+        .iter()
+        .filter(|entry| entry.note.contains("定稿快照"))
+        .map(|entry| entry.version)
+        .max()
+        .unwrap_or(manifest.current_version);
+    let exports: Vec<document_store::ExportReceipt> = manifest
+        .export_receipts
+        .iter()
+        .filter(|receipt| receipt.format != "archive")
+        .cloned()
+        .collect();
+    let archive_path = manifest
+        .export_receipts
+        .iter()
+        .rev()
+        .find(|receipt| receipt.format == "archive")
+        .map(|receipt| receipt.path.clone());
+    let title = confirmed
+        .as_ref()
+        .map(|outline| outline.outline.title.trim().to_string())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| task.title.clone());
+    let knowledge_candidates = confirmed
+        .as_ref()
+        .map(|outline| writing_archive_candidates(root, &task.writing_id, &outline.outline))
+        .unwrap_or_default();
+    Ok(WritingArchiveAssociation {
+        writing_id: task.writing_id.clone(),
+        title,
+        status: task.status.clone(),
+        version,
+        selected_material_ids: task.selected_material_ids.clone(),
+        selected_knowledge_ids: task.selected_knowledge_ids.clone(),
+        factcheck_counts: writing_archive_factcheck_counts(root, &task.writing_id)?,
+        export_receipts: exports,
+        already_archived: archive_path.is_some(),
+        archive_path,
+        knowledge_candidates,
+    })
+}
+
+fn writing_archive_impl(
+    root: &std::path::Path,
+    vault: Option<&std::path::Path>,
+    policy: &profile_rules::RulePolicy,
+    request: WritingArchiveRequest,
+    now: f64,
+) -> Result<WritingArchiveOutcome, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let task = writing_store::read_writing_task(root, &writing_id)?;
+    let association = writing_archive_association(root, &task)?;
+    if request.preview {
+        let blocked_reason = if association.already_archived {
+            Some("该写作任务已有归档回执；归档为终态，不重复写入。".to_string())
+        } else if task.status != writing_store::STATUS_FINALIZED {
+            Some(format!(
+                "只有「{}」的写作任务可以归档；当前状态为「{}」。",
+                writing_store::STATUS_FINALIZED,
+                task.status
+            ))
+        } else {
+            None
+        };
+        return Ok(WritingArchiveOutcome {
+            preview: true,
+            can_archive: blocked_reason.is_none(),
+            blocked_reason,
+            association,
+            vault: None,
+            manifest_receipt: None,
+            status_after: task.status,
+        });
+    }
+    if task.status == writing_store::STATUS_ARCHIVED {
+        return Err("写作任务已归档：归档为终态，不重复写入知识库。".to_string());
+    }
+    if task.status != writing_store::STATUS_FINALIZED {
+        return Err(format!(
+            "只有「{}」的写作任务可以归档；当前状态为「{}」。",
+            writing_store::STATUS_FINALIZED,
+            task.status
+        ));
+    }
+    if !writing_store::is_allowed_transition(
+        &task.status,
+        writing_store::STATUS_ARCHIVED,
+        false,
+    ) {
+        return Err(format!(
+            "601 迁移表不允许 {} → {}。",
+            task.status,
+            writing_store::STATUS_ARCHIVED
+        ));
+    }
+    let vault = vault.ok_or_else(|| "还没有选择知识库目录；归档前请先在设置里选择知识库。".to_string())?;
+    let raw = writing_section::compose_full_text_for(root, &writing_id)?;
+    let content = export_engine::strip_internal(&raw);
+    if content.trim().is_empty() {
+        return Err("文稿正文为空，拒绝归档。".to_string());
+    }
+    let title = {
+        let clean = export_engine::strip_internal(&association.title);
+        if clean.trim().is_empty() {
+            export_engine::strip_internal(&task.title)
+        } else {
+            clean
+        }
+    };
+    let hits = task_shell::red_line_scan_with(&format!("{title}\n{content}"), policy);
+    if !hits.is_empty() {
+        let total: u64 = hits.iter().map(|hit| hit.count).sum();
+        return Err(format!(
+            "归档前敏感词扫描命中 {total} 处，已拒绝归档（不回显命中原文）。"
+        ));
+    }
+    let meta = vault_archive::WritingArchiveMeta {
+        version: association.version,
+        selected_material_ids: association.selected_material_ids.clone(),
+        selected_knowledge_ids: association.selected_knowledge_ids.clone(),
+        factcheck_counts: association
+            .factcheck_counts
+            .iter()
+            .map(|count| (count.conclusion.clone(), count.count))
+            .collect(),
+        export_receipts: association.export_receipts.len(),
+    };
+    let vault_receipt =
+        vault_archive::archive_writing_final(vault, &writing_id, &title, &content, &meta, now)?;
+    let (_manifest, manifest_receipt) = document_store::record_export_receipt(
+        root,
+        &writing_id,
+        "archive",
+        &vault_receipt.target_path,
+        now,
+    )
+    .map_err(|error| {
+        format!(
+            "归档文件已写入 {}，但 manifest 归档回执写入失败：{error}",
+            vault_receipt.target_path
+        )
+    })?;
+    let task_after = writing_store::transition_writing_status(
+        root,
+        &writing_id,
+        writing_store::STATUS_ARCHIVED,
+        false,
+        Some("用户归档"),
+        now,
+    )?;
+    Ok(WritingArchiveOutcome {
+        preview: false,
+        can_archive: false,
+        blocked_reason: None,
+        association,
+        vault: Some(vault_receipt),
+        manifest_receipt: Some(manifest_receipt),
+        status_after: task_after.status,
+    })
+}
+
+fn knowledge_feedback_file_name(title: &str, now: f64, index: usize) -> String {
+    let mut cleaned: String = title
+        .chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch == ' ' || ch == '-' || ch == '_' || ch == '.' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    while cleaned.contains("..") {
+        cleaned = cleaned.replace("..", ".");
+    }
+    cleaned = cleaned.trim().trim_start_matches('.').trim().to_string();
+    if cleaned.is_empty() {
+        cleaned = "未命名".to_string();
+    }
+    let cleaned: String = cleaned.chars().take(80).collect();
+    let date: String = task_shell::utc_iso8601(now).chars().take(10).collect();
+    format!("文稿回流-{cleaned}-{date}-{index}.md")
+}
+
+fn writing_knowledge_feedback_impl(
+    root: &std::path::Path,
+    vault: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    request: WritingKnowledgeFeedbackRequest,
+    now: f64,
+    utc_offset_minutes: i32,
+) -> Result<WritingKnowledgeFeedbackOutcome, String> {
+    let (writing_id, _) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
+    let task = writing_store::read_writing_task(root, &writing_id)?;
+    if !matches!(
+        task.status.as_str(),
+        writing_store::STATUS_FINALIZED | writing_store::STATUS_ARCHIVED
+    ) {
+        return Err(format!(
+            "只有「{}」或「{}」的文稿可以回流知识；当前状态为「{}」。",
+            writing_store::STATUS_FINALIZED,
+            writing_store::STATUS_ARCHIVED,
+            task.status
+        ));
+    }
+    if request.selections.is_empty() {
+        return Err("没有勾选的可复用内容；未提交任何治理通道。".to_string());
+    }
+    let mut files = Vec::new();
+    for (index, selection) in request.selections.iter().enumerate() {
+        if selection.title.trim().is_empty() {
+            return Err(format!("第 {} 条知识回流缺少标题。", index + 1));
+        }
+        let (title, _) = gate_user_text(&selection.title, policy, "知识回流标题")?;
+        let (content, _) = gate_user_text(&selection.content, policy, "知识回流内容")?;
+        if content.trim().is_empty() {
+            return Err(format!("第 {} 条知识回流内容为空。", index + 1));
+        }
+        let source_quote = if selection.source_quote.trim().is_empty() {
+            String::new()
+        } else {
+            gate_user_text(&selection.source_quote, policy, "知识回流来源原文")?.0
+        };
+        let note = format!(
+            "---\nschema: \"omnidesk.writing-knowledge-feedback.v1\"\ntitle: {}\nsource_writing_id: {}\nsource_quote: {}\n---\n\n{content}\n",
+            worklog_records::yaml_scalar(title.trim()),
+            worklog_records::yaml_scalar(&writing_id),
+            worklog_records::yaml_scalar(source_quote.trim()),
+        );
+        files.push(knowledge_ingest::RawFileInput {
+            name: knowledge_feedback_file_name(title.trim(), now, index + 1),
+            bytes: note.into_bytes(),
+        });
+    }
+    knowledge_ingest::init_vault(vault)?;
+    let report = knowledge_ingest::admit_raw_files_with_policy(
+        vault,
+        &files,
+        policy,
+        utc_offset_minutes,
+    );
+    if report.admitted.is_empty() {
+        let detail = report
+            .errors
+            .iter()
+            .chain(report.rejected.iter().map(|item| &item.reason))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("；");
+        return Err(format!(
+            "知识回流未进入治理队列：{}",
+            if detail.is_empty() {
+                "raw 准入没有接收任何文件".to_string()
+            } else {
+                detail
+            }
+        ));
+    }
+    Ok(WritingKnowledgeFeedbackOutcome {
+        writing_id,
+        ok: report.ok,
+        selected_count: request.selections.len(),
+        admitted: report.admitted,
+        rejected: report.rejected,
+        index_updated: report.index_updated,
+        index_path: report.index_path,
+        errors: report.errors,
+        note: "已入 raw 收件待审队列；不自动生成知识条目，仍须既有审核裁决。".to_string(),
+    })
+}
+
+/// OD-WT-614：用户触发归档；preview=true 只读归档清单，AI 无调用通道。
+#[tauri::command(async)]
+fn writing_archive(
+    state: State<'_, SharedHost>,
+    request: WritingArchiveRequest,
+) -> Result<WritingArchiveOutcome, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let vault = if request.preview {
+        None
+    } else {
+        let paths = {
+            let host = state.lock().unwrap();
+            host.paths.clone()
+        };
+        Some(configured_vault_root(&paths)?)
+    };
+    writing_archive_impl(
+        &root,
+        vault.as_deref(),
+        &policy,
+        request,
+        task_shell::now_secs(),
+    )
+}
+
+/// OD-WT-614：用户勾选的可复用内容进入既有 raw 收件治理队列；不自动定稿。
+#[tauri::command(async)]
+fn writing_knowledge_feedback(
+    state: State<'_, SharedHost>,
+    request: WritingKnowledgeFeedbackRequest,
+) -> Result<WritingKnowledgeFeedbackOutcome, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let vault = configured_vault_root(&paths)?;
+    let offset = worklog_offset_minutes(&state);
+    writing_knowledge_feedback_impl(
+        &root,
+        &vault,
+        &policy,
+        request,
+        task_shell::now_secs(),
+        offset,
+    )
+}
+
 #[tauri::command(async)]
 fn task_create(
     state: State<'_, SharedHost>,
@@ -8297,6 +9175,12 @@ pub fn run() {
             writing_parse_requirement,
             writing_parse_requirement_apply,
             writing_create_from_requirement,
+            writing_list,
+            writing_status_transition,
+            writing_records_query,
+            writing_export,
+            writing_archive,
+            writing_knowledge_feedback,
             writing_outline_generate,
             writing_outline_confirm,
             writing_outline_get,
@@ -8309,6 +9193,8 @@ pub fn run() {
             writing_version_list,
             writing_version_diff,
             writing_version_restore,
+            writing_factcheck_run,
+            writing_factcheck_resolve,
             task_create,
             task_read,
             task_update,
@@ -11716,5 +12602,1181 @@ mod writing_section_ipc_tests {
         )
         .unwrap_err();
         assert!(err.contains("红线扫描"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod writing_review_ipc_tests {
+    //! OD-WT-608：审阅/应用/版本命令的红线与写入顺序。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_600_000.0;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-review-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            std::fs::create_dir_all(&work).unwrap();
+            Self { base, work }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn ready_task(root: &Path) -> writing_store::WritingTask {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-review-ipc".to_string()),
+                title: "虚构素材".to_string(),
+                content: "虚构正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-review-ipc".to_string(),
+                source_quote: "虚构引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        let task = writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-review-ipc".to_string()),
+                title: "虚构年度总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                topic: "虚构主题".to_string(),
+                requirements: "只写已确认事实".to_string(),
+                selected_material_ids: vec![material.material_id.clone()],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let task = writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap();
+        writing_outline::confirm_outline(
+            root,
+            &writing_outline::OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: writing_outline::WritingOutline {
+                    title: task.title.clone(),
+                    writing_purpose: "虚构写作目的".to_string(),
+                    core_points: vec!["虚构核心观点".to_string()],
+                    sections: vec![writing_outline::OutlineSection {
+                        no: 1,
+                        heading: "工作概况".to_string(),
+                        sub_headings: vec![],
+                        focus: "虚构写作重点".to_string(),
+                        material_ids: task.selected_material_ids.clone(),
+                        knowledge_ids: vec![],
+                        expected_words: 500,
+                    }],
+                },
+                note: None,
+            },
+            NOW + 3.0,
+        )
+        .unwrap();
+        writing_store::read_writing_task(root, &task.writing_id).unwrap()
+    }
+
+    fn draft(content: &str) -> writing_section::SectionDraft {
+        writing_section::SectionDraft {
+            section_no: 1,
+            content: content.to_string(),
+            citations: vec![writing_section::SectionCitation {
+                source_kind: writing_records::CitationSourceKind::Material,
+                source_id: "m-review-ipc".to_string(),
+                quote: "虚构引用".to_string(),
+            }],
+            segments: vec![writing_section::SectionSegment {
+                kind: "事实".to_string(),
+                text: "虚构正文".to_string(),
+                quote: Some("虚构引用".to_string()),
+            }],
+        }
+    }
+
+    fn finding(description: &str) -> writing_review::ReviewFinding {
+        writing_review::ReviewFinding {
+            finding_id: "F1".to_string(),
+            dimension: writing_review::ReviewDimension::FactAccuracy,
+            section_no: 1,
+            paragraph_no: 1,
+            description: description.to_string(),
+            suggestion: "虚构修改建议".to_string(),
+        }
+    }
+
+    #[test]
+    fn review_gates_writing_id_and_instruction_before_read() {
+        let temp = TempRoot::new("review-gate");
+        let error = writing_review_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_review::ReviewRequest {
+                writing_id: "机密写作编号".to_string(),
+                instruction: String::new(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+
+        let task = ready_task(temp.root());
+        let error = writing_review_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_review::ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: "机密审阅说明".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+    }
+
+    #[test]
+    fn apply_finding_gates_description_and_draft_before_writing() {
+        let temp = TempRoot::new("apply-gate");
+        let task = ready_task(temp.root());
+        writing_section_confirm_impl(
+            temp.root(),
+            &policy_with(&[]),
+            writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: draft("虚构正常正文。"),
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap();
+        let before = document_store::read_manifest(temp.root(), &task.writing_id)
+            .unwrap()
+            .current_version;
+
+        let error = writing_review_apply_finding_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_review::ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding: finding("机密问题描述"),
+                draft: draft("虚构修订正文。"),
+                note: None,
+            },
+            NOW + 5.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+
+        let error = writing_review_apply_finding_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_review::ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding: finding("虚构问题描述"),
+                draft: draft("虚构机密修订正文。"),
+                note: None,
+            },
+            NOW + 6.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        assert_eq!(
+            document_store::read_manifest(temp.root(), &task.writing_id)
+                .unwrap()
+                .current_version,
+            before
+        );
+        let body = document_store::read_body(temp.root(), &task.writing_id)
+            .unwrap()
+            .unwrap();
+        assert!(!body.contains("虚构机密修订正文"), "{body}");
+    }
+
+    #[test]
+    fn version_commands_gate_writing_id_before_read() {
+        let temp = TempRoot::new("version-gate");
+        let error = writing_version_list_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            "机密写作编号",
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+
+        let error = writing_version_restore_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            writing_review::VersionRestoreRequest {
+                writing_id: "机密写作编号".to_string(),
+                version: 1,
+                confirmed: true,
+            },
+            NOW,
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+    }
+}
+
+#[cfg(test)]
+mod writing_factcheck_ipc_tests {
+    //! OD-WT-609：事实核验运行/处理命令的红线、状态门禁与 603 落盘顺序。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_790_000_000.0;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+        config: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-factcheck-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            let config = base.join("config");
+            std::fs::create_dir_all(&work).unwrap();
+            std::fs::create_dir_all(&config).unwrap();
+            Self { base, work, config }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+
+        fn config(&self) -> &Path {
+            &self.config
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn ready_task(root: &Path, content: &str) -> writing_store::WritingTask {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-factcheck-ipc".to_string()),
+                title: "虚构核验素材".to_string(),
+                content: "虚构正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-factcheck-ipc".to_string(),
+                source_quote: "2026年3月完成投资1200万元。".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        let task = writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-factcheck-ipc".to_string()),
+                title: "虚构核验年度总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                topic: "虚构核验主题".to_string(),
+                selected_material_ids: vec![material.material_id.clone()],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let task = writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap();
+        writing_outline::confirm_outline(
+            root,
+            &writing_outline::OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: writing_outline::WritingOutline {
+                    title: task.title.clone(),
+                    writing_purpose: "虚构核验目的".to_string(),
+                    core_points: vec!["虚构核验观点".to_string()],
+                    sections: vec![writing_outline::OutlineSection {
+                        no: 1,
+                        heading: "工作概况".to_string(),
+                        sub_headings: vec![],
+                        focus: "虚构核验重点".to_string(),
+                        material_ids: task.selected_material_ids.clone(),
+                        knowledge_ids: vec![],
+                        expected_words: 500,
+                    }],
+                },
+                note: None,
+            },
+            NOW + 3.0,
+        )
+        .unwrap();
+        writing_section::confirm_section(
+            root,
+            &writing_section::SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: writing_section::SectionDraft {
+                    section_no: 1,
+                    content: content.to_string(),
+                    citations: vec![],
+                    segments: vec![],
+                },
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap();
+        writing_store::read_writing_task(root, &task.writing_id).unwrap()
+    }
+
+    fn run(
+        root: &Path,
+        policy: &profile_rules::RulePolicy,
+        request: fact_check::FactCheckRunRequest,
+        now: f64,
+        config: &Path,
+    ) -> Result<fact_check::FactCheckRunResponse, String> {
+        writing_factcheck_run_impl(
+            root,
+            policy,
+            request,
+            now,
+            None,
+            config,
+            480,
+        )
+    }
+
+    fn request(writing_id: &str) -> fact_check::FactCheckRunRequest {
+        fact_check::FactCheckRunRequest {
+            writing_id: writing_id.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn run_gates_writing_id_and_status_before_reading_body() {
+        let temp = TempRoot::new("run-gate");
+        let error = writing_factcheck_run_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            request("机密写作编号"),
+            NOW,
+            None,
+            temp.config(),
+            480,
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        assert!(!writing_store::writing_dir(temp.root()).exists());
+
+        let task = writing_store::create_writing_task(
+            temp.root(),
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-factcheck-unready".to_string()),
+                title: "虚构未就绪任务".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        let error = writing_factcheck_run_impl(
+            temp.root(),
+            &policy_with(&[]),
+            request(&task.writing_id),
+            NOW + 1.0,
+            None,
+            temp.config(),
+            480,
+        )
+        .unwrap_err();
+        assert!(error.contains("需求待整理"), "{error}");
+        assert!(error.contains("只有"), "{error}");
+    }
+
+    #[test]
+    fn run_appends_records_and_rerun_skips_existing_ids() {
+        let temp = TempRoot::new("run-append");
+        let content = "2026年3月完成投资1200万元。\n\n完成投资1500万元。\n\n完成培训480人次。\n\n总体来看，各项工作取得明显成效。";
+        let task = ready_task(temp.root(), content);
+        let response = run(
+            temp.root(),
+            &policy_with(&[]),
+            request(&task.writing_id),
+            NOW + 5.0,
+            temp.config(),
+        )
+            .unwrap();
+        assert!(response.appended >= 4, "{:?}", response.stats);
+        assert_eq!(response.appended, response.records.len());
+        assert_eq!(response.stats.direct_source, 2);
+        assert_eq!(response.stats.source_conflict, 1);
+        assert_eq!(response.stats.source_missing, 1);
+        assert_eq!(response.stats.expressive_summary, 1);
+        assert!(response.records.iter().any(|record| {
+            record.conclusion == writing_records::CheckConclusion::DirectSource
+        }));
+        assert!(response
+            .records
+            .iter()
+            .all(|record| record.resolution == writing_records::ResolutionStatus::Unresolved));
+        let path = writing_records::factcheck_path(temp.root(), &task.writing_id).unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(raw.lines().count(), response.appended);
+
+        let again = run(
+            temp.root(),
+            &policy_with(&[]),
+            request(&task.writing_id),
+            NOW + 6.0,
+            temp.config(),
+        )
+        .unwrap();
+        assert_eq!(again.appended, 0);
+        assert_eq!(again.skipped_existing, response.appended);
+        let raw_again = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(raw_again.lines().count(), response.appended);
+    }
+
+    #[test]
+    fn run_merges_analysis_annotations_and_outdated_knowledge() {
+        let temp = TempRoot::new("run-merge");
+        let content = "预计明年完成投资2000万元。\n\n2026年4月完成投资800万元。";
+        let task = ready_task(temp.root(), content);
+        let mut input = request(&task.writing_id);
+        input.annotations = vec![fact_check::FactAnnotationInput {
+            section_no: 1,
+            paragraph_no: Some(1),
+            kind: "判断".to_string(),
+            text: "预计明年完成投资2000万元。".to_string(),
+        }];
+        input.knowledge_evidence = vec![fact_check::KnowledgeEvidenceInput {
+            source_id: "notes/synthetic-609.md".to_string(),
+            quote: "2026年4月完成投资800万元。".to_string(),
+            outdated: true,
+        }];
+        let response = run(
+            temp.root(),
+            &policy_with(&[]),
+            input,
+            NOW + 5.0,
+            temp.config(),
+        )
+        .unwrap();
+        assert_eq!(response.stats.analysis_judgment, 1);
+        assert_eq!(response.stats.source_outdated, 1);
+        let analysis: Vec<_> = response
+            .records
+            .iter()
+            .filter(|record| {
+                record.conclusion == writing_records::CheckConclusion::AnalysisJudgment
+            })
+            .collect();
+        assert_eq!(analysis.len(), 1);
+        assert!(analysis[0].basis.is_empty());
+        assert!(!response.records.iter().any(|record| {
+            record.conclusion == writing_records::CheckConclusion::DirectSource
+                && record.fact_text.as_deref().is_some_and(|text| text.contains("2000"))
+        }));
+    }
+
+    #[test]
+    fn resolve_updates_only_target_and_gates_note() {
+        let temp = TempRoot::new("resolve");
+        let task = ready_task(temp.root(), "2026年3月完成投资1200万元。");
+        let response = run(
+            temp.root(),
+            &policy_with(&[]),
+            request(&task.writing_id),
+            NOW + 5.0,
+            temp.config(),
+        )
+            .unwrap();
+        assert!(response.records.len() >= 2);
+        let target = response.records[0].record_id.clone();
+        let resolved = writing_factcheck_resolve_impl(
+            temp.root(),
+            &policy_with(&[]),
+            fact_check::FactCheckResolveRequest {
+                writing_id: task.writing_id.clone(),
+                record_id: target.clone(),
+                resolution: "已接受".to_string(),
+                note: Some("虚构处理备注".to_string()),
+            },
+        )
+        .unwrap();
+        assert_eq!(resolved.record.resolution, writing_records::ResolutionStatus::Accepted);
+        assert_eq!(resolved.note.as_deref(), Some("虚构处理备注"));
+        let listed = writing_records::list_fact_checks(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|record| record.resolution == writing_records::ResolutionStatus::Accepted)
+                .count(),
+            1
+        );
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|record| record.resolution == writing_records::ResolutionStatus::Unresolved)
+                .count(),
+            listed.len() - 1
+        );
+
+        let error = writing_factcheck_resolve_impl(
+            temp.root(),
+            &policy_with(&["机密"]),
+            fact_check::FactCheckResolveRequest {
+                writing_id: task.writing_id.clone(),
+                record_id: target,
+                resolution: "已修改".to_string(),
+                note: Some("机密备注".to_string()),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        let listed = writing_records::list_fact_checks(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|record| record.resolution == writing_records::ResolutionStatus::Modified)
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn resolve_rejects_unresolved_and_missing_record() {
+        let temp = TempRoot::new("resolve-invalid");
+        let task = ready_task(temp.root(), "2026年3月完成投资1200万元。");
+        let response = run(
+            temp.root(),
+            &policy_with(&[]),
+            request(&task.writing_id),
+            NOW + 5.0,
+            temp.config(),
+        )
+            .unwrap();
+        let record_id = response.records[0].record_id.clone();
+        let error = writing_factcheck_resolve_impl(
+            temp.root(),
+            &policy_with(&[]),
+            fact_check::FactCheckResolveRequest {
+                writing_id: task.writing_id.clone(),
+                record_id: record_id.clone(),
+                resolution: "未处理".to_string(),
+                note: None,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("只能由用户改为"), "{error}");
+        let error = writing_factcheck_resolve_impl(
+            temp.root(),
+            &policy_with(&[]),
+            fact_check::FactCheckResolveRequest {
+                writing_id: task.writing_id.clone(),
+                record_id: "fact-does-not-exist".to_string(),
+                resolution: "已接受".to_string(),
+                note: None,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("找不到核验记录"), "{error}");
+    }
+}
+
+#[cfg(test)]
+mod writing_archive_ipc_tests {
+    //! OD-WT-614：归档门禁、回执字段、敏感拒绝、终态与知识回流范围。
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const NOW: f64 = 1_780_700_000.0;
+    const OFFSET: i32 = 480;
+
+    struct TempRoot {
+        base: PathBuf,
+        work: PathBuf,
+        vault: PathBuf,
+    }
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-archive-ipc-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&base);
+            let work = base.join("work");
+            let vault = base.join("vault");
+            std::fs::create_dir_all(&work).unwrap();
+            std::fs::create_dir_all(&vault).unwrap();
+            Self { base, work, vault }
+        }
+
+        fn root(&self) -> &Path {
+            &self.work
+        }
+
+        fn vault(&self) -> &Path {
+            &self.vault
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn policy_with(redline: &[&str]) -> profile_rules::RulePolicy {
+        let mut rules = profile_rules::parse_rules(profile_rules::DEFAULT_RULES_JSON)
+            .expect("默认规则包必须可解析");
+        rules.global.redline_keywords = redline.iter().map(|k| (*k).to_string()).collect();
+        profile_rules::RulePolicy::from_rules(&rules)
+    }
+
+    fn clean_policy() -> profile_rules::RulePolicy {
+        policy_with(&[])
+    }
+
+    fn create_task(root: &Path) -> writing_store::WritingTask {
+        let material = material_store::create_material(
+            root,
+            &material_store::MaterialDraft {
+                material_id: Some("m-archive-ipc".to_string()),
+                title: "虚构归档素材".to_string(),
+                content: "虚构素材正文".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: "src-archive-ipc".to_string(),
+                source_quote: "虚构素材引用".to_string(),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        let task = writing_store::create_writing_task(
+            root,
+            &writing_store::WritingTaskDraft {
+                writing_id: Some("w-archive-ipc".to_string()),
+                title: "虚构归档年度总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                topic: "虚构归档主题".to_string(),
+                writing_period: "2026 年度".to_string(),
+                selected_material_ids: vec![material.material_id.clone()],
+                selected_knowledge_ids: vec!["k-archive-ipc".to_string()],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap()
+    }
+
+    fn outlined_task(root: &Path, sections: &[(&str, &str)]) -> writing_store::WritingTask {
+        let task = create_task(root);
+        writing_outline::confirm_outline(
+            root,
+            &writing_outline::OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: writing_outline::WritingOutline {
+                    title: task.title.clone(),
+                    writing_purpose: "虚构归档目的".to_string(),
+                    core_points: vec!["虚构归档观点".to_string()],
+                    sections: sections
+                        .iter()
+                        .enumerate()
+                        .map(|(index, (heading, _))| writing_outline::OutlineSection {
+                            no: index as u32 + 1,
+                            heading: heading.to_string(),
+                            sub_headings: vec![],
+                            focus: "虚构章节重点".to_string(),
+                            material_ids: task.selected_material_ids.clone(),
+                            knowledge_ids: vec![],
+                            expected_words: 300,
+                        })
+                        .collect(),
+                },
+                note: None,
+            },
+            NOW + 3.0,
+        )
+        .unwrap();
+        writing_store::read_writing_task(root, &task.writing_id).unwrap()
+    }
+
+    fn finalized_task(root: &Path, sections: &[(&str, &str)]) -> writing_store::WritingTask {
+        let task = outlined_task(root, sections);
+        for (index, (_, content)) in sections.iter().enumerate() {
+            writing_section::confirm_section(
+                root,
+                &writing_section::SectionConfirmRequest {
+                    writing_id: task.writing_id.clone(),
+                    draft: writing_section::SectionDraft {
+                        section_no: index as u32 + 1,
+                        content: content.to_string(),
+                        citations: vec![],
+                        segments: vec![],
+                    },
+                    note: None,
+                },
+                NOW + 4.0 + index as f64,
+            )
+            .unwrap();
+        }
+        let task = writing_store::read_writing_task(root, &task.writing_id).unwrap();
+        assert_eq!(task.status, writing_store::STATUS_FACT_CHECKING, "{}", task.status);
+        writing_store::transition_writing_status(
+            root,
+            &task.writing_id,
+            writing_store::STATUS_PENDING_REVIEW,
+            false,
+            None,
+            NOW + 8.0,
+        )
+        .unwrap();
+        writing_status_transition_impl(
+            root,
+            &clean_policy(),
+            WritingStatusTransitionRequest {
+                writing_id: task.writing_id.clone(),
+                to: writing_store::STATUS_FINALIZED.to_string(),
+                reason: Some("用户定稿".to_string()),
+            },
+            NOW + 9.0,
+        )
+        .unwrap()
+    }
+
+    fn preview(root: &Path, writing_id: &str, preview: bool) -> Result<WritingArchiveOutcome, String> {
+        writing_archive_impl(
+            root,
+            None,
+            &clean_policy(),
+            WritingArchiveRequest {
+                writing_id: writing_id.to_string(),
+                preview,
+            },
+            NOW + 20.0,
+        )
+    }
+
+    fn archive(
+        root: &Path,
+        vault: &Path,
+        policy: &profile_rules::RulePolicy,
+        writing_id: &str,
+        now: f64,
+    ) -> Result<WritingArchiveOutcome, String> {
+        writing_archive_impl(
+            root,
+            Some(vault),
+            policy,
+            WritingArchiveRequest {
+                writing_id: writing_id.to_string(),
+                preview: false,
+            },
+            now,
+        )
+    }
+
+    fn add_factchecks(root: &Path, writing_id: &str) {
+        writing_records::append_fact_check(
+            root,
+            writing_id,
+            &writing_records::FactCheckDraft {
+                record_id: None,
+                section_no: 1,
+                paragraph_no: 1,
+                check_object: writing_records::CheckObject::Number,
+                conclusion: writing_records::CheckConclusion::DirectSource,
+                basis: vec![writing_records::FactBasis {
+                    source_kind: writing_records::CitationSourceKind::Material,
+                    source_id: "m-archive-ipc".to_string(),
+                    quote: "虚构素材引用".to_string(),
+                }],
+                fact_text: Some("虚构数字".to_string()),
+            },
+            NOW + 10.0,
+        )
+        .unwrap();
+        writing_records::append_fact_check(
+            root,
+            writing_id,
+            &writing_records::FactCheckDraft {
+                record_id: None,
+                section_no: 1,
+                paragraph_no: 2,
+                check_object: writing_records::CheckObject::Time,
+                conclusion: writing_records::CheckConclusion::SourceMissing,
+                basis: vec![],
+                fact_text: Some("虚构日期".to_string()),
+            },
+            NOW + 11.0,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn archive_rejects_before_finalized_and_leaves_vault_empty() {
+        let temp = TempRoot::new("not-final");
+        let task = outlined_task(temp.root(), &[("工作概况", "虚构正文。")]);
+        let error = archive(temp.root(), temp.vault(), &clean_policy(), &task.writing_id, NOW)
+            .unwrap_err();
+        assert!(error.contains("已定稿"), "{error}");
+        assert!(error.contains(&task.status), "{error}");
+        assert!(!temp.vault().join("报告").exists());
+        assert!(!document_store::read_manifest(temp.root(), &task.writing_id)
+            .unwrap()
+            .export_receipts
+            .iter()
+            .any(|receipt| receipt.format == "archive"));
+    }
+
+    #[test]
+    fn archive_preview_before_outline_is_read_only_and_blocked() {
+        let temp = TempRoot::new("preview-early");
+        let task = create_task(temp.root());
+        let before = preview(temp.root(), &task.writing_id, true).unwrap();
+        assert!(!before.can_archive);
+        assert!(before.blocked_reason.unwrap().contains("已定稿"));
+        assert_eq!(before.association.title, task.title);
+        assert!(before.association.knowledge_candidates.is_empty());
+        assert!(!temp.vault().join("报告").exists());
+        assert!(!document_store::read_manifest(temp.root(), &task.writing_id)
+            .unwrap()
+            .export_receipts
+            .iter()
+            .any(|receipt| receipt.format == "archive"));
+    }
+
+    #[test]
+    fn archive_preview_soft_lists_exports_and_allows_without_export() {
+        let temp = TempRoot::new("preview");
+        let task = finalized_task(temp.root(), &[("工作概况", "虚构正文。")]);
+        let before = preview(temp.root(), &task.writing_id, true).unwrap();
+        assert!(before.can_archive);
+        assert!(before.blocked_reason.is_none());
+        assert!(before.association.export_receipts.is_empty());
+        assert_eq!(before.association.status, writing_store::STATUS_FINALIZED);
+        document_store::record_export_receipt(
+            temp.root(),
+            &task.writing_id,
+            "md-formal",
+            "/tmp/omnidesk-synthetic-export.md",
+            NOW + 12.0,
+        )
+        .unwrap();
+        let after = preview(temp.root(), &task.writing_id, true).unwrap();
+        assert_eq!(after.association.export_receipts.len(), 1);
+        assert_eq!(after.association.export_receipts[0].format, "md-formal");
+        assert!(after.can_archive, "未导出或未全部导出不阻止归档");
+    }
+
+    #[test]
+    fn archive_receipt_has_scene_ten_associations_and_terminal_status() {
+        let temp = TempRoot::new("fields");
+        let task = finalized_task(
+            temp.root(),
+            &[("工作概况", "虚构正文一。"), ("重点任务", "虚构正文二。")],
+        );
+        add_factchecks(temp.root(), &task.writing_id);
+        document_store::record_export_receipt(
+            temp.root(),
+            &task.writing_id,
+            "docx",
+            "/tmp/omnidesk-synthetic-export.docx",
+            NOW + 12.0,
+        )
+        .unwrap();
+        let outcome = archive(temp.root(), temp.vault(), &clean_policy(), &task.writing_id, NOW + 21.0)
+            .unwrap();
+        assert!(!outcome.preview);
+        assert_eq!(outcome.status_after, writing_store::STATUS_ARCHIVED);
+        assert_eq!(outcome.association.writing_id, task.writing_id);
+        assert!(!outcome.association.title.is_empty());
+        assert_eq!(outcome.association.selected_material_ids, vec!["m-archive-ipc"]);
+        assert_eq!(outcome.association.selected_knowledge_ids, vec!["k-archive-ipc"]);
+        assert_eq!(outcome.association.factcheck_counts.len(), 8);
+        assert_eq!(
+            outcome
+                .association
+                .factcheck_counts
+                .iter()
+                .map(|count| count.count)
+                .sum::<u64>(),
+            2
+        );
+        assert!(outcome.association.version > 0);
+        assert_eq!(outcome.association.export_receipts.len(), 1);
+        let vault = outcome.vault.expect("归档必须返回知识库回执");
+        assert!(vault.target_path.contains("/报告/文稿-"), "{}", vault.target_path);
+        assert!(vault.target_path.ends_with(".md"));
+        assert_eq!(outcome.manifest_receipt.unwrap().format, "archive");
+        let stored = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(stored.status, writing_store::STATUS_ARCHIVED);
+        let manifest = document_store::read_manifest(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(
+            manifest
+                .export_receipts
+                .iter()
+                .filter(|receipt| receipt.format == "archive")
+                .count(),
+            1
+        );
+        let entries = std::fs::read_dir(temp.vault().join("报告")).unwrap();
+        for entry in entries {
+            let name = entry.unwrap().file_name().to_string_lossy().to_string();
+            assert!(name.ends_with(".md"), "归档目录只允许 Markdown：{name}");
+        }
+    }
+
+    #[test]
+    fn archive_rejects_sensitive_content_before_writing() {
+        let temp = TempRoot::new("sensitive");
+        let task = finalized_task(temp.root(), &[("工作概况", "机密虚构正文。")]);
+        let error = archive(
+            temp.root(),
+            temp.vault(),
+            &policy_with(&["机密"]),
+            &task.writing_id,
+            NOW + 21.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("敏感词扫描命中"), "{error}");
+        assert!(error.contains("不回显"), "{error}");
+        assert!(!temp.vault().join("报告").exists());
+        let stored = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(stored.status, writing_store::STATUS_FINALIZED);
+        assert!(!document_store::read_manifest(temp.root(), &task.writing_id)
+            .unwrap()
+            .export_receipts
+            .iter()
+            .any(|receipt| receipt.format == "archive"));
+    }
+
+    #[test]
+    fn archive_second_attempt_is_rejected_without_duplicate_receipt() {
+        let temp = TempRoot::new("terminal");
+        let task = finalized_task(temp.root(), &[("工作概况", "虚构正文。")]);
+        archive(temp.root(), temp.vault(), &clean_policy(), &task.writing_id, NOW + 21.0)
+            .unwrap();
+        let error = archive(temp.root(), temp.vault(), &clean_policy(), &task.writing_id, NOW + 22.0)
+            .unwrap_err();
+        assert!(error.contains("已归档"), "{error}");
+        let stored = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(stored.status, writing_store::STATUS_ARCHIVED);
+        let manifest = document_store::read_manifest(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(
+            manifest
+                .export_receipts
+                .iter()
+                .filter(|receipt| receipt.format == "archive")
+                .count(),
+            1
+        );
+        let after = preview(temp.root(), &task.writing_id, true).unwrap();
+        assert!(after.association.already_archived);
+        assert!(!after.can_archive);
+    }
+
+    fn feedback(
+        root: &Path,
+        vault: &Path,
+        policy: &profile_rules::RulePolicy,
+        writing_id: &str,
+        selections: Vec<WritingKnowledgeSelection>,
+    ) -> Result<WritingKnowledgeFeedbackOutcome, String> {
+        writing_knowledge_feedback_impl(
+            root,
+            vault,
+            policy,
+            WritingKnowledgeFeedbackRequest {
+                writing_id: writing_id.to_string(),
+                selections,
+            },
+            NOW + 30.0,
+            OFFSET,
+        )
+    }
+
+    #[test]
+    fn knowledge_feedback_admits_only_selected_content_and_does_not_publish() {
+        let temp = TempRoot::new("feedback");
+        let task = finalized_task(
+            temp.root(),
+            &[("已勾选", "已勾选虚构内容。"), ("未勾选", "未勾选虚构内容。")],
+        );
+        let outcome = feedback(
+            temp.root(),
+            temp.vault(),
+            &clean_policy(),
+            &task.writing_id,
+            vec![WritingKnowledgeSelection {
+                title: "已勾选".to_string(),
+                content: "已勾选虚构内容。".to_string(),
+                source_quote: "已勾选虚构内容。".to_string(),
+            }],
+        )
+        .unwrap();
+        assert!(outcome.ok);
+        assert_eq!(outcome.selected_count, 1);
+        assert_eq!(outcome.admitted.len(), 1);
+        let raw = temp.vault().join("raw");
+        let entries: Vec<PathBuf> = std::fs::read_dir(&raw)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(entries.len(), 1, "未勾选内容不得进入 raw 收件");
+        let text = std::fs::read_to_string(&entries[0]).unwrap();
+        assert!(text.contains("已勾选虚构内容"));
+        assert!(!text.contains("未勾选虚构内容"), "{text}");
+        assert!(!temp.vault().join("知识库/概念").read_dir().unwrap().any(|_| true));
+        assert!(!temp.vault().join("知识库/方法").read_dir().unwrap().any(|_| true));
+        let governance = knowledge_governance::list_records(
+            temp.vault(),
+            knowledge_governance::KIND_RAW_ADMISSIONS,
+        )
+        .unwrap();
+        assert!(governance.iter().any(|record| record.action == "admit"));
+        let stored = writing_store::read_writing_task(temp.root(), &task.writing_id).unwrap();
+        assert_eq!(stored.status, writing_store::STATUS_FINALIZED, "回流不自动归档或定稿");
+    }
+
+    #[test]
+    fn knowledge_feedback_rejects_sensitive_selection_before_any_vault_write() {
+        let temp = TempRoot::new("feedback-sensitive");
+        let task = finalized_task(temp.root(), &[("工作概况", "虚构正文。")]);
+        let error = feedback(
+            temp.root(),
+            temp.vault(),
+            &policy_with(&["机密"]),
+            &task.writing_id,
+            vec![WritingKnowledgeSelection {
+                title: "机密回流".to_string(),
+                content: "机密虚构内容。".to_string(),
+                source_quote: String::new(),
+            }],
+        )
+        .unwrap_err();
+        assert!(error.contains("红线扫描"), "{error}");
+        assert!(!temp.vault().join("raw").exists());
+        assert!(!temp.vault().join("知识库").exists());
+    }
+
+    #[test]
+    fn knowledge_feedback_empty_selection_submits_nothing() {
+        let temp = TempRoot::new("feedback-empty");
+        let task = finalized_task(temp.root(), &[("工作概况", "虚构正文。")]);
+        let error = feedback(
+            temp.root(),
+            temp.vault(),
+            &clean_policy(),
+            &task.writing_id,
+            vec![],
+        )
+        .unwrap_err();
+        assert!(error.contains("没有勾选"), "{error}");
+        assert!(!temp.vault().join("raw").exists());
     }
 }

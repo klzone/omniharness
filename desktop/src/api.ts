@@ -73,6 +73,7 @@ import type {
   WritingRequirementApplied,
   WritingRequirementDraft,
   WritingRequirementPrompt,
+  WritingTask,
   WritingTaskCreated,
   WritingOutlineConfirmInput,
   WritingOutlineConfirmed,
@@ -85,6 +86,28 @@ import type {
   WritingSectionReviseInput,
   WritingSectionRevisePrompt,
   WritingSectionState,
+  FactCheckRunInput,
+  FactCheckRunResult,
+  FactCheckResolveInput,
+  FactCheckResolveResult,
+  WritingReviewApplyInput,
+  WritingReviewApplied,
+  WritingReviewInput,
+  WritingReviewPrompt,
+  WritingVersionDiff,
+  WritingVersionDiffInput,
+  WritingVersionList,
+  WritingVersionRestoreInput,
+  WritingVersionRestored,
+  WritingExportInput,
+  WritingExportOutcome,
+  WritingArchiveInput,
+  WritingArchiveOutcome,
+  WritingKnowledgeFeedbackInput,
+  WritingKnowledgeFeedbackOutcome,
+  WritingStatusTransitionInput,
+  WritingRecordsQueryInput,
+  WritingRecordsQueryResult,
   ProfileDeclPayload,
   ParkedSkillView,
   ProfileAssetsView,
@@ -2289,6 +2312,22 @@ export const shell = {
     });
   },
 
+  /** 写作任务列表（OD-WT-610 只读）：排序与状态/类型白名单由 601 宿主校验。 */
+  writingList(
+    filter: {
+      status?: string;
+      document_type?: string;
+      date_from?: string;
+      date_to?: string;
+    } = {},
+  ): Promise<{ items: WritingTask[]; broken: number }> {
+    return invoke<{ items: WritingTask[]; broken: number }>("writing_list", {
+      filter,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 大纲生成准备（OD-WT-606）：宿主校验任务状态与素材包后返回提示词。
    * 模型调用仍由界面侧提交；本命令不写文件。
@@ -2354,6 +2393,132 @@ export const shell = {
         throw new Error(normalizeError(e));
       },
     );
+  },
+
+  /**
+   * 运行事实核验（OD-WT-609）：确定性引擎读正文与已选素材/知识依据，
+   * 结论经 603 追加到 factcheck.jsonl；返回完整清单、本次新追加数与统计。
+   * annotations 为章节生成侧四分法标注，由界面把最近稿件标注随车传入。
+   */
+  writingFactcheckRun(input: FactCheckRunInput): Promise<FactCheckRunResult> {
+    return invoke<FactCheckRunResult>("writing_factcheck_run", { request: input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用户处理单条核验结论：已接受/已修改/已删除来源项，走 603 按行重写。 */
+  writingFactcheckResolve(input: FactCheckResolveInput): Promise<FactCheckResolveResult> {
+    return invoke<FactCheckResolveResult>("writing_factcheck_resolve", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 十维审阅准备（OD-WT-608）：宿主校验任务状态（写作中/待核验/待审核）后
+   * 返回提示词。AI 只产出问题清单，不改写正文；模型调用仍由界面侧提交。
+   */
+  writingReview(input: WritingReviewInput): Promise<WritingReviewPrompt> {
+    return invoke<WritingReviewPrompt>("writing_review", { request: input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 用户应用某条审阅问题：修订稿走 607 同一确认路径写正文与快照，
+   * 并在写作任务状态记录追加「应用审阅问题 …」留痕。
+   */
+  writingReviewApplyFinding(
+    input: WritingReviewApplyInput,
+  ): Promise<WritingReviewApplied> {
+    return invoke<WritingReviewApplied>("writing_review_apply_finding", {
+      request: input,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 版本列表：manifest 每版说明 note + 相对上一同类型版本的段落差异摘要。 */
+  writingVersionList(writingId: string): Promise<WritingVersionList> {
+    return invoke<WritingVersionList>("writing_version_list", { writingId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 两份历史版本的段落级对比；不同文稿类型（大纲/正文）会被拒绝。 */
+  writingVersionDiff(input: WritingVersionDiffInput): Promise<WritingVersionDiff> {
+    return invoke<WritingVersionDiff>("writing_version_diff", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /** 恢复历史版本（须显式确认）：新增快照，历史保留，状态不变并追加「恢复 vX」。 */
+  writingVersionRestore(
+    input: WritingVersionRestoreInput,
+  ): Promise<WritingVersionRestored> {
+    return invoke<WritingVersionRestored>("writing_version_restore", {
+      request: input,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 用户触发的写作状态迁移（OD-WT-613）：合法迁移表由 601 宿主校验；
+   * 待审核→已定稿先写 label=final 的正文快照。AI 无调用通道。
+   */
+  writingStatusTransition(
+    input: WritingStatusTransitionInput,
+  ): Promise<WritingTask> {
+    return invoke<WritingTask>("writing_status_transition", { request: input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** citations / factcheck 只读查询（OD-WT-613）：按类型、章节、段落与结论收窄。 */
+  writingRecordsQuery(input: WritingRecordsQueryInput): Promise<WritingRecordsQueryResult> {
+    return invoke<WritingRecordsQueryResult>("writing_records_query", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
+  /**
+   * 文稿导出（OD-WT-613）：MD 三态 / 公文 DOCX / 阅读 PDF / 公众号 HTML。
+   * 导出前宿主做敏感词扫描，产物只写本地目标目录并追加 manifest 回执。
+   */
+  writingExport(input: WritingExportInput): Promise<WritingExportOutcome> {
+    return invoke<WritingExportOutcome>("writing_export", { request: input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 文稿归档（OD-WT-614）：preview 只读清单；执行时宿主校验已定稿、敏感扫描、
+   * 写知识库「报告/」、追加 manifest archive 回执并推进到已归档。AI 无调用通道。
+   */
+  writingArchive(input: WritingArchiveInput): Promise<WritingArchiveOutcome> {
+    return invoke<WritingArchiveOutcome>("writing_archive", { request: input }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 知识回流（OD-WT-614）：只提交用户勾选内容，进既有 raw 收件待审队列；
+   * 不自动生成知识条目，也不自动定稿。
+   */
+  writingKnowledgeFeedback(
+    input: WritingKnowledgeFeedbackInput,
+  ): Promise<WritingKnowledgeFeedbackOutcome> {
+    return invoke<WritingKnowledgeFeedbackOutcome>("writing_knowledge_feedback", {
+      request: input,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
   },
 
   /** 保存离线成果：必须人工确认，不覆盖已有文件，落仓库外本地数据目录。 */

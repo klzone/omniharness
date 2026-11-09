@@ -1,0 +1,149 @@
+{
+  "plan": "OD-WT-612",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 28,
+  "failed": [],
+  "checks": [
+    {
+      "name": "components_exist",
+      "ok": true,
+      "detail": "两个组件文件存在并导出命名函数"
+    },
+    {
+      "name": "props_exports",
+      "ok": true,
+      "detail": "组件对外导出 props 类型，供 610 挂载时引用"
+    },
+    {
+      "name": "factcheck_api_reuse",
+      "ok": true,
+      "detail": "只经 api 客户端调用 609 两条命令"
+    },
+    {
+      "name": "eight_conclusion_tabs",
+      "ok": true,
+      "detail": "八类结论筛选页签顺序与 609 白名单一致，另设全部"
+    },
+    {
+      "name": "stats_strip",
+      "ok": true,
+      "detail": "统计条含候选/结论/冲突对/标注与八类结论计数"
+    },
+    {
+      "name": "run_and_busy_state",
+      "ok": true,
+      "detail": "运行核验按钮有忙碌态且空任务禁用"
+    },
+    {
+      "name": "no_auto_run_on_mount",
+      "ok": true,
+      "detail": "挂载只回填 initialResult，不自动写核验记录"
+    },
+    {
+      "name": "fact_text_and_location",
+      "ok": true,
+      "detail": "单条展示 fact_text 与章节/段落定位，点击交给编辑器跳转"
+    },
+    {
+      "name": "three_resolutions",
+      "ok": true,
+      "detail": "三种用户处理动作均走 writing_factcheck_resolve"
+    },
+    {
+      "name": "resolution_visible",
+      "ok": true,
+      "detail": "记录显示处理状态并统计待处理数"
+    },
+    {
+      "name": "conflicts_explicit_no_merge",
+      "ok": true,
+      "detail": "口径冲突逐对并列、红点标注、两侧可定位，明确不合并"
+    },
+    {
+      "name": "empty_states_factcheck",
+      "ok": true,
+      "detail": "无记录/当前筛选无记录/全部已处理三种空态各自成句"
+    },
+    {
+      "name": "factcheck_no_ai_write",
+      "ok": true,
+      "detail": "核验面板不碰审阅、生成或模型通道"
+    },
+    {
+      "name": "version_api_reuse",
+      "ok": true,
+      "detail": "版本列表/对比/恢复均复用 608 三个命令"
+    },
+    {
+      "name": "version_list_fields",
+      "ok": true,
+      "detail": "版本条目显示编号、说明、时间、来源、快照类型与当前标记"
+    },
+    {
+      "name": "two_version_select_and_diff",
+      "ok": true,
+      "detail": "两版选择后走 writing_version_diff"
+    },
+    {
+      "name": "paragraph_diff_display",
+      "ok": true,
+      "detail": "段落级变更按新增/删除/修改展示原文与新文"
+    },
+    {
+      "name": "diff_empty_state",
+      "ok": true,
+      "detail": "对比无变化时给真实空态"
+    },
+    {
+      "name": "restore_confirm_gate",
+      "ok": true,
+      "detail": "列表按钮只打开确认弹窗；confirmed=true 仅出现在用户确认后的恢复调用"
+    },
+    {
+      "name": "version_empty_state",
+      "ok": true,
+      "detail": "无版本时给真实空态"
+    },
+    {
+      "name": "finalize_status_gate",
+      "ok": true,
+      "detail": "只有待审核状态允许点定稿"
+    },
+    {
+      "name": "finalize_missing_channel_marked",
+      "ok": true,
+      "detail": "宿主无状态迁移 IPC 时不伪造成功，交由 610/613 接入 onFinalize"
+    },
+    {
+      "name": "no_ai_finalize_channel",
+      "ok": true,
+      "detail": "定稿只调用外部传入的用户动作回调，不走 AI/审阅/生成通道"
+    },
+    {
+      "name": "no_new_status_ipc",
+      "ok": true,
+      "detail": "未擅自新增写作任务状态 IPC（登记为 613/614 补口）"
+    },
+    {
+      "name": "not_mounted",
+      "ok": true,
+      "detail": "只交付组件，不挂载到 WritingStudio.tsx"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "runtime/ 零改动"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "两个组件未新增 lint/类型豁免"
+    },
+    {
+      "name": "no_fake_test_data",
+      "ok": true,
+      "detail": "组件源码不含真实或虚构的个人数据夹具"
+    }
+  ]
+}

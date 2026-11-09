@@ -1,0 +1,123 @@
+{
+  "task": "OD-WT-614",
+  "passed": 23,
+  "total": 23,
+  "ok": true,
+  "checks": [
+    {
+      "name": "vault_writing_entry",
+      "ok": true,
+      "detail": "vault_archive 新增文稿入口，目标 <vault_root>/报告/文稿-<title>-<date>.md"
+    },
+    {
+      "name": "clean_markdown_gate",
+      "ok": true,
+      "detail": "复用 613 正式稿剥离函数校验干净 MD；内部编号/AI 标记拒绝"
+    },
+    {
+      "name": "writing_frontmatter_associations",
+      "ok": true,
+      "detail": "归档 Markdown frontmatter 记录任务/素材/知识/核验/版本/导出关联"
+    },
+    {
+      "name": "archive_only_markdown",
+      "ok": true,
+      "detail": "文稿归档入口只接受 .md；DOCX/PDF/HTML 无写入路径"
+    },
+    {
+      "name": "ipc_commands_registered",
+      "ok": true,
+      "detail": "两条 IPC 已定义并注册到 generate_handler"
+    },
+    {
+      "name": "archive_status_gate",
+      "ok": true,
+      "detail": "硬门禁只校验已定稿，并复核 601 已定稿→已归档迁移合法性"
+    },
+    {
+      "name": "archive_sensitive_reject",
+      "ok": true,
+      "detail": "归档前与导出同口径敏感词扫描；命中拒绝且不回显原文"
+    },
+    {
+      "name": "manifest_archive_receipt",
+      "ok": true,
+      "detail": "归档后按 602 追加 manifest export_receipts（format=archive），再推进已归档"
+    },
+    {
+      "name": "scene_ten_receipt_fields",
+      "ok": true,
+      "detail": "场景十：回执含任务/标题/素材/知识/核验八类统计/版本/导出清单/vault 路径"
+    },
+    {
+      "name": "scene_ten_terminal",
+      "ok": true,
+      "detail": "归档成功后推进已归档；重复归档拒绝且不追加回执"
+    },
+    {
+      "name": "soft_export_guidance",
+      "ok": true,
+      "detail": "归档页显示导出清单；未导出时软引导，不阻止归档"
+    },
+    {
+      "name": "archive_confirm_dialog",
+      "ok": true,
+      "detail": "归档按钮只在确认弹窗后调用执行入口"
+    },
+    {
+      "name": "frontend_mounted",
+      "ok": true,
+      "detail": "归档区块已挂载写作任务详情页签"
+    },
+    {
+      "name": "knowledge_feedback_gate",
+      "ok": true,
+      "detail": "知识回流只接收 request.selections，标题/内容/来源原文均过 gate_user_text"
+    },
+    {
+      "name": "scene_eleven_raw_only",
+      "ok": true,
+      "detail": "场景十一：只入既有 raw 收件治理队列；不自动建卡/裁决/定稿"
+    },
+    {
+      "name": "knowledge_feedback_frontend",
+      "ok": true,
+      "detail": "知识回流只提交勾选项；未勾选时禁用提交"
+    },
+    {
+      "name": "api_types_wrappers",
+      "ok": true,
+      "detail": "types/api 封装归档回执与知识回流结果"
+    },
+    {
+      "name": "new_rust_tests",
+      "ok": true,
+      "detail": "614 新增 Rust 用例 12 项（要求 ≥8）"
+    },
+    {
+      "name": "scene_ten_eleven_test_assertions",
+      "ok": true,
+      "detail": "测试覆盖场景十（回执字段/终态）与场景十一（未勾选不进治理）"
+    },
+    {
+      "name": "runtime_untouched",
+      "ok": true,
+      "detail": "runtime/ 本轮零改动"
+    },
+    {
+      "name": "ai_no_archive_channel",
+      "ok": true,
+      "detail": "引擎侧无 writing_archive 调用通道"
+    },
+    {
+      "name": "no_new_exemptions",
+      "ok": true,
+      "detail": "新增测试无 ignore/skip 豁免"
+    },
+    {
+      "name": "cargo_targeted_tests",
+      "ok": true,
+      "detail": "未运行（静态检查）"
+    }
+  ]
+}

@@ -753,3 +753,707 @@ pub fn restore_version(
         status_records: task.status_records,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::material_store::{self, MaterialDraft};
+    use crate::writing_outline::{OutlineConfirmRequest, OutlineSection};
+    use crate::writing_store::{WritingTaskDraft, STATUS_COLLECTING_MATERIALS};
+
+    const NOW: f64 = 1_780_600_000.0;
+
+    struct Fixture {
+        base: PathBuf,
+        work: PathBuf,
+    }
+
+    impl Fixture {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-writing-review-{tag}-{}-{}",
+                std::process::id(),
+                SEQ.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = fs::remove_dir_all(&base);
+            let work = base.join("work");
+            fs::create_dir_all(&work).unwrap();
+            Self { base, work }
+        }
+
+        fn work(&self) -> &Path {
+            &self.work
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn confirmed_material(root: &Path, id: &str, title: &str) -> String {
+        let material = material_store::create_material(
+            root,
+            &MaterialDraft {
+                material_id: Some(id.to_string()),
+                title: title.to_string(),
+                content: "虚构素材正文：本期完成三处试点，覆盖两个班组。".to_string(),
+                material_type: material_store::TYPE_WORK_FACT.to_string(),
+                source_type: material_store::SOURCE_WORK_RECORD.to_string(),
+                source_id: format!("src-{id}"),
+                source_quote: "完成三处试点。".to_string(),
+                event_date: Some("2026-10-20".to_string()),
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap();
+        material_store::review_material(
+            root,
+            &material.material_id,
+            material_store::ACTION_CONFIRM,
+            None,
+            NOW + 1.0,
+        )
+        .unwrap();
+        material.material_id
+    }
+
+    fn writing_task(root: &Path, material_ids: Vec<String>) -> WritingTask {
+        writing_store::create_writing_task(
+            root,
+            &WritingTaskDraft {
+                writing_id: Some("w-608".to_string()),
+                title: "虚构年度工作总结".to_string(),
+                document_type: writing_store::TYPE_ANNUAL_SUMMARY.to_string(),
+                writing_purpose: "向上级汇报本年度试点进展".to_string(),
+                audience: "部门同事".to_string(),
+                writing_period: "2026 年度".to_string(),
+                topic: "试点推进".to_string(),
+                requirements: "只写已确认事实\n三点以内".to_string(),
+                expected_length: "1500 字".to_string(),
+                writing_style: "简洁平实".to_string(),
+                selected_material_ids: material_ids,
+                selected_knowledge_ids: vec![],
+                ..Default::default()
+            },
+            NOW,
+        )
+        .unwrap()
+    }
+
+    fn sample_outline(task: &WritingTask) -> WritingOutline {
+        let material_id = task
+            .selected_material_ids
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        WritingOutline {
+            title: task.title.clone(),
+            writing_purpose: task.writing_purpose.clone(),
+            core_points: vec!["试点总体平稳".to_string()],
+            sections: vec![
+                OutlineSection {
+                    no: 1,
+                    heading: "工作概况".to_string(),
+                    sub_headings: vec!["总体进展".to_string()],
+                    focus: "概括本年度试点完成情况".to_string(),
+                    material_ids: if material_id.is_empty() {
+                        vec![]
+                    } else {
+                        vec![material_id]
+                    },
+                    knowledge_ids: vec![],
+                    expected_words: 300,
+                },
+                OutlineSection {
+                    no: 2,
+                    heading: "问题与不足".to_string(),
+                    sub_headings: vec![],
+                    focus: "只写素材中明确记录的问题".to_string(),
+                    material_ids: vec![],
+                    knowledge_ids: vec![],
+                    expected_words: 200,
+                },
+            ],
+        }
+    }
+
+    fn ready_fixture(tag: &str) -> (Fixture, WritingTask, WritingOutline) {
+        let fixture = Fixture::new(tag);
+        let material_id = confirmed_material(fixture.work(), "m-608", "虚构试点素材");
+        let task = writing_task(fixture.work(), vec![material_id]);
+        let task = writing_store::transition_writing_status(
+            fixture.work(),
+            &task.writing_id,
+            STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap();
+        let outline = sample_outline(&task);
+        writing_outline::confirm_outline(
+            fixture.work(),
+            &OutlineConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                outline: outline.clone(),
+                note: Some("虚构大纲确认".to_string()),
+            },
+            NOW + 3.0,
+        )
+        .unwrap();
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        (fixture, task, outline)
+    }
+
+    fn draft(section_no: u32, content: &str) -> SectionDraft {
+        SectionDraft {
+            section_no,
+            content: content.to_string(),
+            citations: vec![writing_section::SectionCitation {
+                source_kind: crate::writing_records::CitationSourceKind::Material,
+                source_id: "m-608".to_string(),
+                quote: "完成三处试点。".to_string(),
+            }],
+            segments: vec![
+                writing_section::SectionSegment {
+                    kind: "事实".to_string(),
+                    text: "本期完成三处试点。".to_string(),
+                    quote: Some("完成三处试点。".to_string()),
+                },
+                writing_section::SectionSegment {
+                    kind: "分析".to_string(),
+                    text: "试点推进总体平稳。".to_string(),
+                    quote: None,
+                },
+            ],
+        }
+    }
+
+    fn confirm(
+        fixture: &Fixture,
+        task: &WritingTask,
+        draft: SectionDraft,
+        at: f64,
+    ) -> writing_section::WritingSectionConfirmed {
+        writing_section::confirm_section(
+            fixture.work(),
+            &SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft,
+                note: Some("虚构章节确认".to_string()),
+            },
+            at,
+        )
+        .unwrap()
+    }
+
+    fn finding(section_no: u32, paragraph_no: u32) -> ReviewFinding {
+        ReviewFinding {
+            finding_id: "F1".to_string(),
+            dimension: ReviewDimension::FactAccuracy,
+            section_no,
+            paragraph_no,
+            description: "试点覆盖范围表述不完整。".to_string(),
+            suggestion: "补充班组范围，避免读者误以为覆盖全部班组。".to_string(),
+        }
+    }
+
+    fn apply(
+        fixture: &Fixture,
+        task: &WritingTask,
+        finding: ReviewFinding,
+        content: &str,
+        at: f64,
+    ) -> ReviewFindingApplied {
+        let section_no = finding.section_no;
+        apply_finding(
+            fixture.work(),
+            &ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding,
+                draft: draft(section_no, content),
+                note: None,
+            },
+            at,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn dimensions_match_ten_item_whitelist() {
+        assert_eq!(REVIEW_DIMENSIONS.len(), 10);
+        for (index, dimension) in ReviewDimension::ALL.iter().enumerate() {
+            assert_eq!(dimension.label(), REVIEW_DIMENSIONS[index]);
+        }
+        assert_eq!(
+            ReviewDimension::from_label(" 数据准确性 ").unwrap(),
+            ReviewDimension::DataAccuracy
+        );
+        let error = ReviewDimension::from_label("自造维度").unwrap_err();
+        assert!(error.contains("不在允许范围"), "{error}");
+    }
+
+    #[test]
+    fn review_prompt_lists_ten_dimensions_and_only_confirmed_text() {
+        let (fixture, task, _outline) = ready_fixture("prompt");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let prompt = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: "重点核对数据与口径。".to_string(),
+            },
+        )
+        .unwrap();
+        for dimension in REVIEW_DIMENSIONS {
+            assert!(prompt.prompt.contains(dimension), "缺少维度 {dimension}");
+        }
+        assert!(prompt.prompt.contains("本期完成三处试点"), "{}", prompt.prompt);
+        assert!(
+            prompt.prompt.contains("本章尚未确认") && prompt.prompt.contains("（本章待写作）"),
+            "{}",
+            prompt.prompt
+        );
+        assert!(prompt.prompt.contains("重点核对数据与口径"), "{}", prompt.prompt);
+        assert!(prompt.prompt.contains("只写已确认事实"), "{}", prompt.prompt);
+        assert!(prompt.prompt.contains("不得输出修改后的正文"), "{}", prompt.prompt);
+        assert!(prompt.prompt.contains("\"findings\""), "{}", prompt.prompt);
+        assert_eq!(prompt.status, writing_store::STATUS_WRITING);
+        assert_eq!(prompt.section_count, 2);
+        assert_eq!(prompt.confirmed_section_count, 1);
+        assert_eq!(prompt.dimension_count, 10);
+        assert!(!prompt.masked);
+    }
+
+    #[test]
+    fn review_prompt_rejects_wrong_status_empty_id_and_unconfirmed_outline() {
+        let empty = Fixture::new("prompt-empty");
+        let error = build_review_prompt(
+            empty.work(),
+            &ReviewRequest {
+                writing_id: "   ".to_string(),
+                instruction: String::new(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("不能为空"), "{error}");
+
+        let fixture = Fixture::new("prompt-status");
+        let material_id = confirmed_material(fixture.work(), "m-608-status", "虚构素材");
+        let task = writing_task(fixture.work(), vec![material_id]);
+        let error = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: String::new(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("需求待整理"), "{error}");
+        assert!(error.contains("可以发起审阅"), "{error}");
+
+        let task = writing_store::transition_writing_status(
+            fixture.work(),
+            &task.writing_id,
+            STATUS_COLLECTING_MATERIALS,
+            false,
+            None,
+            NOW + 2.0,
+        )
+        .unwrap();
+        let task = writing_store::transition_writing_status(
+            fixture.work(),
+            &task.writing_id,
+            writing_store::STATUS_OUTLINE_PENDING,
+            false,
+            None,
+            NOW + 3.0,
+        )
+        .unwrap();
+        // 仅迁移状态、不写 outline.md，模拟状态已进入写作中但大纲文件缺失。
+        let task = writing_store::transition_writing_status(
+            fixture.work(),
+            &task.writing_id,
+            writing_store::STATUS_WRITING,
+            true,
+            Some("测试用状态迁移"),
+            NOW + 4.0,
+        )
+        .unwrap();
+        let error = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: String::new(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("尚未确认大纲"), "{error}");
+    }
+
+    #[test]
+    fn review_instruction_length_and_control_chars_are_rejected() {
+        let (fixture, task, _outline) = ready_fixture("instruction");
+        let long = "说明".repeat(300);
+        let error = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: long,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("最多 500 字"), "{error}");
+
+        let error = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: "说明\u{0007}".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("控制字符"), "{error}");
+    }
+
+    #[test]
+    fn finding_rejects_unknown_dimension_and_bad_locations() {
+        let (_fixture, _task, outline) = ready_fixture("finding");
+        let raw = serde_json::json!({
+            "finding_id": "F1",
+            "dimension": "自造维度",
+            "section_no": 1,
+            "paragraph_no": 1,
+            "description": "虚构问题",
+            "suggestion": "虚构建议"
+        });
+        let error = serde_json::from_value::<ReviewFinding>(raw)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("自造维度"), "{error}");
+
+        let mut unknown_field = serde_json::json!({
+            "finding_id": "F1",
+            "dimension": "事实准确性",
+            "section_no": 1,
+            "paragraph_no": 1,
+            "description": "虚构问题",
+            "suggestion": "虚构建议",
+            "extra": 1
+        });
+        assert!(serde_json::from_value::<ReviewFinding>(unknown_field.clone()).is_err());
+        assert!(unknown_field.as_object_mut().unwrap().remove("extra").is_some());
+
+        let mut bad = finding(1, 1);
+        bad.description = "   ".to_string();
+        let error = validate_finding(&bad, &outline).unwrap_err();
+        assert!(error.contains("问题描述不能为空"), "{error}");
+
+        let mut bad = finding(99, 1);
+        let error = validate_finding(&bad, &outline).unwrap_err();
+        assert!(error.contains("大纲中没有第 99 章"), "{error}");
+
+        bad = finding(1, 0);
+        let error = validate_finding(&bad, &outline).unwrap_err();
+        assert!(error.contains("段落序号从 1 起"), "{error}");
+    }
+
+    #[test]
+    fn apply_finding_confirms_via_section_path_and_appends_trace() {
+        let (fixture, task, _outline) = ready_fixture("apply");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let applied = apply(
+            &fixture,
+            &task,
+            finding(1, 1),
+            "本期完成三处试点，覆盖两个班组。\n\n试点推进总体平稳。",
+            NOW + 5.0,
+        );
+        assert_eq!(applied.finding_id, "F1");
+        assert_eq!(applied.dimension, "事实准确性");
+        assert_eq!(applied.version, 3);
+        assert_eq!(applied.citations_added, 1);
+        assert_eq!(applied.status, writing_store::STATUS_WRITING);
+        assert!(applied.trace.contains("应用审阅问题 F1"), "{}", applied.trace);
+        assert!(applied.trace.contains("事实准确性"), "{}", applied.trace);
+
+        let state = writing_section::read_section_state(fixture.work(), &task.writing_id, 1).unwrap();
+        assert!(state.content.unwrap().contains("覆盖两个班组"));
+        let versions = document_store::list_versions(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(versions.len(), 3);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(task.status, writing_store::STATUS_WRITING);
+        assert_eq!(task.status_records.len(), 5);
+        let last = task.status_records.last().unwrap();
+        assert!(last.reason.contains("应用审阅问题 F1"), "{}", last.reason);
+    }
+
+    #[test]
+    fn apply_finding_rejects_section_mismatch_unconfirmed_and_bad_paragraph() {
+        let (fixture, task, _outline) = ready_fixture("apply-reject");
+        let error = apply_finding(
+            fixture.work(),
+            &ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding: finding(1, 1),
+                draft: draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"),
+                note: None,
+            },
+            NOW + 4.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("尚未确认正文"), "{error}");
+
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 5.0);
+        let error = apply_finding(
+            fixture.work(),
+            &ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding: finding(1, 1),
+                draft: draft(2, "第二章虚构正文。"),
+                note: None,
+            },
+            NOW + 6.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("问题定位在第 1 章"), "{error}");
+
+        let error = apply_finding(
+            fixture.work(),
+            &ReviewApplyRequest {
+                writing_id: task.writing_id.clone(),
+                finding: finding(1, 5),
+                draft: draft(1, "本期完成三处试点。"),
+                note: None,
+            },
+            NOW + 7.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("只有 2 个段落"), "{error}");
+    }
+
+    #[test]
+    fn version_list_includes_note_and_paragraph_diff_summary() {
+        let (fixture, task, _outline) = ready_fixture("version-list");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        confirm(&fixture, &task, draft(2, "仍有三项试点待补齐。"), NOW + 5.0);
+        let list = list_version_summaries(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(list.versions.len(), 3);
+        assert_eq!(list.current_version, 3);
+        assert!(list.versions.iter().all(|version| !version.note.trim().is_empty()));
+        assert_eq!(list.versions[0].scope, VersionScope::Outline);
+        assert_eq!(list.versions[0].note, "大纲确认");
+        assert_eq!(list.versions[1].scope, VersionScope::Section);
+        assert_eq!(list.versions[1].note, "虚构章节确认");
+        assert!(list.versions[1].diff.is_none());
+        let diff = list.versions[2].diff.as_ref().expect("第二版正文应有差异摘要");
+        assert_eq!(diff.previous_version, 2);
+        assert!(diff.added >= 1, "{diff:?}");
+        assert!(diff.changed_paragraphs >= 1);
+        assert!(list.versions[2].current);
+    }
+
+    #[test]
+    fn version_diff_compares_body_versions_and_rejects_cross_kind() {
+        let (fixture, task, _outline) = ready_fixture("version-diff");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        confirm(&fixture, &task, draft(2, "仍有三项试点待补齐。"), NOW + 5.0);
+        let diff = diff_versions(
+            fixture.work(),
+            &VersionDiffRequest {
+                writing_id: task.writing_id.clone(),
+                from_version: 2,
+                to_version: 3,
+            },
+        )
+        .unwrap();
+        assert_eq!(diff.from.version, 2);
+        assert_eq!(diff.to.version, 3);
+        assert!(!diff.diff.changes.is_empty());
+        let error = diff_versions(
+            fixture.work(),
+            &VersionDiffRequest {
+                writing_id: task.writing_id.clone(),
+                from_version: 1,
+                to_version: 2,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("不同文稿类型"), "{error}");
+        let error = diff_versions(
+            fixture.work(),
+            &VersionDiffRequest {
+                writing_id: task.writing_id.clone(),
+                from_version: 2,
+                to_version: 99,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("不在 manifest"), "{error}");
+    }
+
+    #[test]
+    fn restore_requires_confirmation_and_keeps_status_with_trace() {
+        let (fixture, task, _outline) = ready_fixture("restore");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        confirm(&fixture, &task, draft(2, "仍有三项试点待补齐。"), NOW + 5.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(task.status, writing_store::STATUS_FACT_CHECKING);
+        let error = restore_version(
+            fixture.work(),
+            &VersionRestoreRequest {
+                writing_id: task.writing_id.clone(),
+                version: 2,
+                confirmed: false,
+            },
+            NOW + 6.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("需要用户显式确认"), "{error}");
+        assert_eq!(
+            document_store::read_manifest(fixture.work(), &task.writing_id)
+                .unwrap()
+                .current_version,
+            3
+        );
+
+        let restored = restore_version(
+            fixture.work(),
+            &VersionRestoreRequest {
+                writing_id: task.writing_id.clone(),
+                version: 2,
+                confirmed: true,
+            },
+            NOW + 7.0,
+        )
+        .unwrap();
+        assert_eq!(restored.restored_version, 2);
+        assert_eq!(restored.new_version.version, 4);
+        assert_eq!(restored.new_version.note, "恢复自版本 2");
+        assert_eq!(restored.status, writing_store::STATUS_FACT_CHECKING);
+        assert_eq!(
+            restored.status_records.last().unwrap().reason,
+            "恢复 v2"
+        );
+        let list = list_version_summaries(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(list.versions.len(), 4);
+        assert_eq!(list.current_version, 4);
+        assert!(list.versions.iter().any(|version| version.version == 2));
+        assert!(list.versions.iter().any(|version| version.version == 3));
+        let state = writing_section::read_section_state(fixture.work(), &task.writing_id, 2).unwrap();
+        assert!(!state.confirmed);
+    }
+
+    #[test]
+    fn scenario_eight_versions_queryable_restorable_and_history_kept() {
+        let (fixture, task, _outline) = ready_fixture("scenario8");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        confirm(&fixture, &task, draft(2, "仍有三项试点待补齐。"), NOW + 5.0);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        let first = apply(
+            &fixture,
+            &task,
+            finding(1, 1),
+            "本期完成三处试点，覆盖两个班组。\n\n试点推进总体平稳。",
+            NOW + 6.0,
+        );
+        assert_eq!(first.version, 4);
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        let second = apply(
+            &fixture,
+            &task,
+            ReviewFinding {
+                finding_id: "F2".to_string(),
+                dimension: ReviewDimension::LanguageExpression,
+                section_no: 1,
+                paragraph_no: 2,
+                description: "结论表述偏口语。".to_string(),
+                suggestion: "改为书面表述。".to_string(),
+            },
+            "本期完成三处试点，覆盖两个班组。\n\n试点工作总体平稳推进。",
+            NOW + 7.0,
+        );
+        assert_eq!(second.version, 5);
+
+        let diff = diff_versions(
+            fixture.work(),
+            &VersionDiffRequest {
+                writing_id: task.writing_id.clone(),
+                from_version: 2,
+                to_version: 4,
+            },
+        )
+        .unwrap();
+        assert!(!diff.diff.changes.is_empty());
+
+        let restored = restore_version(
+            fixture.work(),
+            &VersionRestoreRequest {
+                writing_id: task.writing_id.clone(),
+                version: 2,
+                confirmed: true,
+            },
+            NOW + 8.0,
+        )
+        .unwrap();
+        assert_eq!(restored.new_version.version, 6);
+        assert_eq!(restored.status, writing_store::STATUS_FACT_CHECKING);
+
+        let list = list_version_summaries(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(list.current_version, 6);
+        assert_eq!(list.versions.len(), 6);
+        assert!(list.versions.iter().all(|version| !version.note.trim().is_empty()));
+        for version in 1..=6 {
+            assert!(
+                list.versions.iter().any(|item| item.version == version),
+                "版本 v{version} 不应丢失"
+            );
+        }
+        assert_eq!(list.versions[5].note, "恢复自版本 2");
+        assert!(list.versions.iter().any(|item| item.version == 4));
+        assert!(list.versions.iter().any(|item| item.version == 5));
+
+        let current = document_store::read_body(fixture.work(), &task.writing_id)
+            .unwrap()
+            .unwrap();
+        assert!(current.contains("本期完成三处试点。"), "{current}");
+        assert!(!current.contains("问题与不足"), "恢复后应回到 v2 的正文结构");
+        let old = document_store::read_version(fixture.work(), &task.writing_id, 4).unwrap();
+        assert!(old.content.contains("覆盖两个班组"), "历史版本不应被改写");
+        let task = writing_store::read_writing_task(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(task.status, writing_store::STATUS_FACT_CHECKING);
+        assert!(task
+            .status_records
+            .iter()
+            .any(|record| record.reason == "恢复 v2"));
+    }
+
+    #[test]
+    fn restore_current_version_is_rejected() {
+        let (fixture, task, _outline) = ready_fixture("restore-current");
+        confirm(&fixture, &task, draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"), NOW + 4.0);
+        let error = restore_version(
+            fixture.work(),
+            &VersionRestoreRequest {
+                writing_id: task.writing_id.clone(),
+                version: 2,
+                confirmed: true,
+            },
+            NOW + 5.0,
+        )
+        .unwrap_err();
+        assert!(error.contains("就是当前版本"), "{error}");
+    }
+}

@@ -1,0 +1,139 @@
+{
+  "plan": "OD-WT-610",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 26,
+  "failed": [],
+  "checks": [
+    {
+      "name": "workbench_component_exists",
+      "ok": true,
+      "detail": "新增 WritingWorkbench.tsx 并导出工作台组件"
+    },
+    {
+      "name": "writing_studio_tab_integration",
+      "ok": true,
+      "detail": "WritingStudio 页签组新增「任务」页签并渲染工作台"
+    },
+    {
+      "name": "tab_group_keeps_pipeline_and_materials",
+      "ok": true,
+      "detail": "原稿件与素材篮页签保留，只新增任务视图"
+    },
+    {
+      "name": "workbench_no_direct_invoke",
+      "ok": true,
+      "detail": "工作台只经 shell/api 封装，不直连 Tauri invoke"
+    },
+    {
+      "name": "list_uses_writing_list",
+      "ok": true,
+      "detail": "任务列表经 writingList 读取并落入列表状态"
+    },
+    {
+      "name": "api_wrapper_and_command",
+      "ok": true,
+      "detail": "api 封装 writingList 与宿主 writing_list 命令注册齐全"
+    },
+    {
+      "name": "status_grouping_all_nine",
+      "ok": true,
+      "detail": "九个写作状态都进入分组渲染"
+    },
+    {
+      "name": "active_before_closed",
+      "ok": true,
+      "detail": "进行中状态排在已定稿/已归档之前"
+    },
+    {
+      "name": "type_filter_all_twelve",
+      "ok": true,
+      "detail": "十二类文体都可筛选"
+    },
+    {
+      "name": "type_filter_toggle",
+      "ok": true,
+      "detail": "类型筛选选中态可再次取消"
+    },
+    {
+      "name": "create_flow_parse",
+      "ok": true,
+      "detail": "自然语言先经 604 准备提示词、模型解析、宿主校验落地"
+    },
+    {
+      "name": "create_flow_questions",
+      "ok": true,
+      "detail": "问题清单逐项渲染并可补全"
+    },
+    {
+      "name": "create_flow_confirm",
+      "ok": true,
+      "detail": "用户确认后调用 604 创建，类型与标题未定不能提交"
+    },
+    {
+      "name": "list_refresh_after_create",
+      "ok": true,
+      "detail": "创建成功后刷新任务列表"
+    },
+    {
+      "name": "detail_meta",
+      "ok": true,
+      "detail": "详情显示状态/类型/周期/素材与知识数量"
+    },
+    {
+      "name": "detail_outline_entry",
+      "ok": true,
+      "detail": "大纲入口调用 606 只读命令，能读则显示章节简表"
+    },
+    {
+      "name": "detail_section_entry",
+      "ok": true,
+      "detail": "正文入口调用 607 只读命令，能读则显示正文简表"
+    },
+    {
+      "name": "empty_state_no_tasks",
+      "ok": true,
+      "detail": "无任务空态真实，不展示占位任务"
+    },
+    {
+      "name": "empty_state_filter",
+      "ok": true,
+      "detail": "类型筛选为空单独提示"
+    },
+    {
+      "name": "empty_state_list_error",
+      "ok": true,
+      "detail": "读取中、读取失败与空态分开呈现"
+    },
+    {
+      "name": "empty_state_parse_error",
+      "ok": true,
+      "detail": "解析失败有独立错误态与重试入口"
+    },
+    {
+      "name": "broken_files_reported",
+      "ok": true,
+      "detail": "损坏任务文件如实计数，不静默丢弃"
+    },
+    {
+      "name": "sort_by_updated",
+      "ok": true,
+      "detail": "同状态内按更新时间倒序"
+    },
+    {
+      "name": "material_count_helper",
+      "ok": true,
+      "detail": "素材包数量由任务已选素材与知识计数派生"
+    },
+    {
+      "name": "no_fixture_data",
+      "ok": true,
+      "detail": "组件内没有虚构任务或演示数据"
+    },
+    {
+      "name": "style_uses_theme_tokens",
+      "ok": true,
+      "detail": "输入与新建表单使用既有 theme.css 新拟物令牌"
+    }
+  ]
+}

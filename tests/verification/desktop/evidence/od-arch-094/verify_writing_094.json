@@ -51,7 +51,7 @@
       "detail": ""
     },
     {
-      "name": "metric_灵感待用",
+      "name": "metric_写作对话",
       "ok": true,
       "detail": ""
     },
@@ -106,9 +106,9 @@
       "detail": "写作页用墨色/青绿/琥珀，不复用周报的紫青靛"
     },
     {
-      "name": "metric_warm_paper_surface",
+      "name": "metric_unified_light_surface",
       "ok": true,
-      "detail": "暖纸底"
+      "detail": "与知识库统一的浅色卡面"
     },
     {
       "name": "metric_no_zero_before_load",
@@ -143,7 +143,7 @@
     {
       "name": "writing_continue_and_shelf_in_left",
       "ok": true,
-      "detail": "左栏上继续创作、下灵感架"
+      "detail": "左栏上继续创作、下写作对话"
     },
     {
       "name": "writing_page_has_no_extra_thread_block",
@@ -176,9 +176,9 @@
       "detail": "再点取消"
     },
     {
-      "name": "pipeline_default_note_on_screen",
+      "name": "pipeline_no_default_note",
       "ok": true,
-      "detail": ""
+      "detail": "不在页面上堆口径说明"
     },
     {
       "name": "pipeline_directory_rows_excluded",
@@ -211,7 +211,7 @@
       "detail": "宿主字段优先"
     },
     {
-      "name": "artifact_accent_secondary",
+      "name": "artifact_accent_primary",
       "ok": true,
       "detail": ""
     },
@@ -226,84 +226,19 @@
       "detail": "写作页保留时间筛选（固定近一月的规则只属于工作记录页）"
     },
     {
-      "name": "subtitle_key_studio",
+      "name": "no_subtitle_props_in_studio",
       "ok": true,
-      "detail": ""
+      "detail": "区块标题只用中文"
     },
     {
-      "name": "subtitle_key_overview",
+      "name": "no_subtitle_props_in_scene",
       "ok": true,
-      "detail": ""
+      "detail": "写作页不接场景副标题"
     },
     {
-      "name": "subtitle_key_recent",
+      "name": "no_writing_english_keys",
       "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_continue",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_inspiration",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_pipeline",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_stale",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_draft",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_finished",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_key_published",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_continue_wired",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_inspiration_wired",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_pipeline_wired",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "subtitle_recent_used_by_card4",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "name": "no_hardcoded_english_subtitles",
-      "ok": true,
-      "detail": "组件里的英文小标都来自场景配置"
-    },
-    {
-      "name": "subtitle_optional_in_studio",
-      "ok": true,
-      "detail": "缺省不渲染"
+      "detail": "写作场景配置不再带英文小标"
     },
     {
       "name": "writing_module_compiles",
@@ -479,11 +414,6 @@
       "name": "fallback_title_is_not_body_title",
       "ok": true,
       "detail": "2026-10-20 09:00 的稿件"
-    },
-    {
-      "name": "default_note_mentions_finished",
-      "ok": true,
-      "detail": "未标注状态的成果按「成文」显示"
     },
     {
       "name": "stale_days_90",
