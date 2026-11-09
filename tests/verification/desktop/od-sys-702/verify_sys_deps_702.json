@@ -43,7 +43,7 @@
     {
       "name": "skill_dependency_note",
       "ok": true,
-      "detail": "anysearch SKILL.md 末尾说明 requests 依赖与缺失表现"
+      "detail": "anysearch SKILL.md 说明内置依赖与开发态回退"
     },
     {
       "name": "repo_requirements_manifest",
@@ -53,7 +53,7 @@
     {
       "name": "packaging_install_step",
       "ok": true,
-      "detail": "打包准备脚本对随包 primary-runtime 解释器显式补装；无 payload 时提示系统 Python"
+      "detail": "打包准备脚本把 requests/certifi 内置到 runtime/python-vendor"
     },
     {
       "name": "runtime_untouched",

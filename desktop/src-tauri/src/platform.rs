@@ -319,9 +319,33 @@ fn python_modules_status(python_path: Option<String>, importable: bool) -> Depen
 }
 
 /// 用给定解释器试导入 requests；退出码 0 即可用。
+fn python_vendor_dir() -> Option<std::path::PathBuf> {
+    if let Some(raw) = std::env::var_os("OMNIDESK_PYTHON_VENDOR") {
+        let path = std::path::PathBuf::from(raw);
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    repo_root()
+        .map(|root| root.join("runtime").join("python-vendor"))
+        .filter(|path| path.is_dir())
+}
+
+/// 用给定解释器试导入 requests；退出码 0 即可用。
 fn python_imports_requests(program: &str) -> bool {
     let mut cmd = Command::new(program);
     cmd.arg("-c").arg(PY_REQUESTS_PROBE);
+    // OD-SYS-704：优先使用随包内置依赖；开发态没有 vendor 时回退系统 Python。
+    if let Some(vendor) = python_vendor_dir() {
+        let separator = if cfg!(windows) { ";" } else { ":" };
+        let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+        let mut value = vendor.display().to_string();
+        if !existing.trim().is_empty() {
+            value.push_str(separator);
+            value.push_str(&existing);
+        }
+        cmd.env("PYTHONPATH", value);
+    }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

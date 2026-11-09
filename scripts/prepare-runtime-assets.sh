@@ -55,31 +55,38 @@ done
 prune "$SEED"
 
 # ---------------------------------------------------------------------------
-# Python 模块补齐（OD-SYS-702）
+# Python 模块内置（OD-SYS-704）
 #
-# 随包的 primary-runtime payload 由 DSH 官方构建器生成，它的 runtime.json
-# pythonPackages 是唯一清单来源；本仓库不维护那份清单，也不生成该 payload。
-# anysearch CLI 额外需要 requests + certifi：payload 存在时就地补装，
-# 不存在时只提示——OmniDesk 当前使用系统 Python，环境检查会给出 pip 命令。
+# anysearch CLI 需要 requests + certifi。发布包不再要求用户往系统 Python
+# 里 pip install：构建时把纯 Python 依赖装进 runtime/python-vendor，运行时由
+# 宿主把该目录加进 PYTHONPATH，引擎与它拉起的检索子进程都能直接 import。
 # ---------------------------------------------------------------------------
 PY_REQS="$ROOT/scripts/python-requirements.txt"
-PR_PY=""
-for candidate in \
-  "$TARGET/primary-runtime/dependencies/python/bin/python3" \
-  "$TARGET/primary-runtime/dependencies/python/bin/python" \
-  "$TARGET/primary-runtime/dependencies/python/python.exe"
-do
-  if [ -f "$candidate" ]; then PR_PY="$candidate"; break; fi
-done
+VENDOR="$TARGET/python-vendor"
 if [ ! -f "$PY_REQS" ]; then
-  say "警告：缺少 $PY_REQS，跳过 Python 模块补齐"
-elif [ -n "$PR_PY" ]; then
-  say "补装 Python 模块（requests/certifi）到随包解释器：$PR_PY"
-  if ! "$PR_PY" -m pip install --no-input --disable-pip-version-check -r "$PY_REQS" >/dev/null 2>&1; then
-    say "警告：Python 模块安装失败，anysearch 联网检索可能不可用（环境检查会标出）"
-  fi
+  say "警告：缺少 $PY_REQS，跳过 Python 模块内置"
+elif [ -d "$ROOT/runtime/python-vendor" ] && [ "$TARGET" != "$ROOT/runtime" ]; then
+  say "复用已构建的 python-vendor：$ROOT/runtime/python-vendor"
+  rm -rf "$VENDOR"
+  cp -R "$ROOT/runtime/python-vendor" "$VENDOR"
 else
-  say "未发现随包 primary-runtime；当前使用系统 Python，requests 缺失时由环境检查提示 pip install"
+  PY_HOST="$(command -v python3 || command -v python || true)"
+  if [ -z "$PY_HOST" ]; then
+    say "警告：构建机没有 python3，无法内置 requests/certifi"
+  else
+    say "内置 Python 模块（requests/certifi）→ $VENDOR"
+    rm -rf "$VENDOR"
+    mkdir -p "$VENDOR"
+    if ! "$PY_HOST" -m pip install --no-input --disable-pip-version-check \
+      --no-compile --target "$VENDOR" -r "$PY_REQS" >/dev/null 2>&1; then
+      say "警告：Python 模块内置失败，anysearch 联网检索可能不可用"
+    else
+      # universal macOS 包会同时含 arm64/x86_64 两个切片；随构建机架构编译的
+      # charset_normalizer 扩展在另一架构上无法加载。删除扩展，走纯 Python 回退。
+      find "$VENDOR" -name '*.so' -type f -delete 2>/dev/null || true
+      find "$VENDOR" -name '*.pyd' -type f -delete 2>/dev/null || true
+    fi
+  fi
 fi
 
 say "seed 就绪：$(find "$SEED" -type f | wc -l | tr -d ' ') 个文件"
