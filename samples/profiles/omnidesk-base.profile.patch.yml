@@ -11,10 +11,16 @@
     id: standard
     order: 1
     plugins:
+      # OD-ARCH-147c：检索收敛规则由 persona.suffix 承载。
       - id: persona
         name: '@deepseek-ai/dsh-persona'
         config:
           prefix: You are a coding agent powered by the {{model}} model.
+          suffix: |-
+            检索收敛规则：
+            - 不要给 web_fetch 的 URL 拼接 r.jina.ai 等第三方 reader 代理前缀。web_fetch 已内置直连、无头浏览器、云端抓取的回退链；遇到反爬页面改用 web_search 或换其它来源。
+            - 连续 3 次工具调用都没有带来新的可用事实时，停止检索，直接基于已有信息作答。
+            - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:
@@ -138,4 +144,15 @@
       - id: tool-plugin-manager
         name: '@deepseek-ai/dsh-plugin-manager/tools'
         disabled: true
+# 免 key 基础搜索与费用统计随所有出厂 Profile 装配（OD-ARCH-147a）。
+# profile 只绑定业务技能与场景规则；这两个插件属于底座能力。
+- insert:
+    - id: web-search-free
+      name: dsh-free-search
+      config:
+        provider: bing
+        disabledEngines: []
+        bingMarket: zh-CN
+    - id: cost-meter
+      name: dsh-cost-meter
 

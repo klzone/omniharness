@@ -57,7 +57,22 @@ def main() -> int:
             encoding="utf-8",
         )
         (root / "logs" / "engine-stderr.log").write_text(
-            "synthetic error line\n" + SECRET + "\n",
+            "synthetic error line\n"
+            + 'free-search: taking over from the default provider "deepseek-official" as "ddg" (direct)'
+            + "\n"
+            + SECRET
+            + "\n",
+            encoding="utf-8",
+        )
+        profile_dir = root / "runtime" / "dsh-home" / "profiles" / "diag-test"
+        profile_dir.mkdir(parents=True)
+        (profile_dir / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "dsh-profile-diag-test",
+                    "dsh": {"profile": {"bundles": ["@deepseek-ai/dsh-base", "dsh-free-search"]}},
+                }
+            ),
             encoding="utf-8",
         )
         proc = subprocess.run(
@@ -89,6 +104,13 @@ def main() -> int:
               "模型标识可见，便于判断 thinking 配置")
         check("reasoning_efforts_visible", model.get("reasoning_efforts") == ["low"],
               "思考档位可见，便于判断模型是否声明该档")
+        web = report.get("web", {})
+        check("search_provider_effective", web.get("search_provider_effective") == "ddg",
+              "搜索 provider 实际生效值来自引擎日志接管行")
+        check("profile_bundles_visible", web.get("profile_bundles") == ["@deepseek-ai/dsh-base", "dsh-free-search"],
+              "当前 profile 的 bundles 可见，便于判断插件挂载")
+        check("takeover_line_captured", bool(web.get("free_search_takeover_lines")),
+              "接管证据行已捕获（截断至 160 字符）")
         check("no_secret_in_json", "supersecret" not in proc.stdout and SECRET not in proc.stdout,
               "JSON 输出不含凭证或任务正文")
         text_proc = subprocess.run(

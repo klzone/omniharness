@@ -1,0 +1,79 @@
+{
+  "plan": "OD-DOCX-148a",
+  "evidence_level": "静态源码检查 + 合成 docx helper 实跑",
+  "passed": true,
+  "total": 14,
+  "failed": [],
+  "checks": [
+    {
+      "name": "material_kind_fields",
+      "ok": true,
+      "detail": "MaterialRead 带 content_kind/note，文本路径仍返回 text"
+    },
+    {
+      "name": "docx_uses_embedded_helper",
+      "ok": true,
+      "detail": "docx 使用 include_str! 内置 helper"
+    },
+    {
+      "name": "pdf_optional_pypdf",
+      "ok": true,
+      "detail": "PDF 走可选 pypdf，失败降级 metadata_only"
+    },
+    {
+      "name": "images_degrade_to_metadata",
+      "ok": true,
+      "detail": "图片与未知二进制不再拒收，改为元数据降级"
+    },
+    {
+      "name": "no_save_as_wording",
+      "ok": true,
+      "detail": "附件通道移除「另存为 / 只收文本」话术"
+    },
+    {
+      "name": "over_limit_still_rejected",
+      "ok": true,
+      "detail": "超单文件上限仍拒绝"
+    },
+    {
+      "name": "python_candidates_reused",
+      "ok": true,
+      "detail": "候选解释器沿用 export_engine 顺序"
+    },
+    {
+      "name": "vendor_pythonpath_two_platforms",
+      "ok": true,
+      "detail": "PYTHONPATH 注入 vendor，Windows 用分号、POSIX 用冒号"
+    },
+    {
+      "name": "timeout_degrade",
+      "ok": true,
+      "detail": "helper 超时被终止并降级，不阻塞发送"
+    },
+    {
+      "name": "front_types",
+      "ok": true,
+      "detail": "ts MaterialRead 同步 content_kind/note"
+    },
+    {
+      "name": "prompt_metadata_only",
+      "ok": true,
+      "detail": "提示词块对 metadata_only 给明确路径读取指引"
+    },
+    {
+      "name": "chip_status",
+      "ok": true,
+      "detail": "前端 chip 显示「正文未提取」状态"
+    },
+    {
+      "name": "helper_runs_synthetic_docx",
+      "ok": true,
+      "detail": "helper 文件存在"
+    },
+    {
+      "name": "helper_returns_text",
+      "ok": true,
+      "detail": "helper 输出：{\"kind\": \"text\", \"content\": \"合成正文 VERIFY-148A\\n甲\\t乙\"}"
+    }
+  ]
+}

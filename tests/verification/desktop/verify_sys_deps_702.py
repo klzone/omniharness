@@ -71,7 +71,8 @@ def main() -> int:
         "platform_requests_probe",
         'const PY_REQUESTS_PROBE: &str = "import requests";' in production
         and "fn python_imports_requests(" in production
-        and "cmd.arg(\"-c\").arg(PY_REQUESTS_PROBE)" in production,
+        and "python_imports_code(program, PY_REQUESTS_PROBE)" in production
+        and "cmd.arg(\"-c\").arg(probe)" in production,
         "照 PY_VERSION_PROBE 模式用 -c 探针试导入 requests",
     )
     check(
@@ -111,8 +112,8 @@ def main() -> int:
     check(
         "frontend_env_check_row",
         "<DependencyRow item={report.python_modules} />" in env_check
-        and "Python 模块 requests" in env_check
-        and 'isModule' in env_check,
+        and "isModule" in env_check
+        and "Python 模块" in env_check,
         "环境检查面板照 node/python 行样式显示 Python 模块项",
     )
     check(

@@ -254,6 +254,54 @@ def log_snapshot(app_root: Path) -> list[dict[str, object]]:
     return rows
 
 
+def web_snapshot(app_root: Path) -> dict[str, object]:
+    """Search-provider evidence: takeover lines from engine stderr + profile bundles.
+
+    Metadata only: provider ids and bundle names, never task bodies or keys.
+    """
+    info: dict[str, object] = {}
+    engine_profile = model_snapshot(app_root).get("engine_profile")
+    info["engine_profile"] = engine_profile
+
+    stderr_path = app_root / "logs" / "engine-stderr.log"
+    takeover_lines: list[str] = []
+    provider_effective: str | None = None
+    if stderr_path.is_file():
+        try:
+            text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        lines = text.splitlines()[-500:]
+        for line in lines:
+            if "free-search" not in line:
+                continue
+            takeover_lines.append(line.strip()[:160])
+            match = re.search(r"taking over .*?as \"([^\"]+)\"", line)
+            if match:
+                provider_effective = match.group(1)
+            served = re.search(r"search is served by provider \"([^\"]+)\"", line)
+            if served:
+                provider_effective = served.group(1)
+    info["free_search_takeover_lines"] = takeover_lines[-5:]
+    info["search_provider_effective"] = provider_effective
+
+    bundles: list[str] = []
+    if isinstance(engine_profile, str) and engine_profile:
+        candidates = [
+            app_root.parent / "runtime" / "dsh-home" / "profiles" / engine_profile / "package.json",
+            app_root / "runtime" / "dsh-home" / "profiles" / engine_profile / "package.json",
+        ]
+        manifest = next((c for c in candidates if c.is_file()), None)
+        if manifest is not None:
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                bundles = list(((data.get("dsh") or {}).get("profile") or {}).get("bundles", []))
+            except (OSError, ValueError):
+                bundles = []
+    info["profile_bundles"] = bundles
+    return info
+
+
 def build_report(app_root: Path, latest: int) -> dict[str, object]:
     return {
         "budget": {
@@ -274,6 +322,7 @@ def build_report(app_root: Path, latest: int) -> dict[str, object]:
         "ports": port_snapshot(),
         "network": network_snapshot(),
         "model": model_snapshot(app_root),
+        "web": web_snapshot(app_root),
         "tasks": task_snapshot(app_root, latest),
         "logs": log_snapshot(app_root),
     }
@@ -332,6 +381,14 @@ def print_text(report: dict[str, object]) -> None:
         )
     if not report["logs"]:
         print("(none)")
+
+    print("\n== web search provider ==")
+    web = report["web"]
+    print(f"engine_profile: {web.get('engine_profile')}")
+    print(f"search_provider_effective: {web.get('search_provider_effective')}")
+    print(f"profile_bundles: {web.get('profile_bundles')}")
+    for line in web.get("free_search_takeover_lines") or []:
+        print(f"takeover: {line}")
 
 
 def main() -> int:

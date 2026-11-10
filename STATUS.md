@@ -1,5 +1,19 @@
 # 执行状态
 
+## OD-ARCH-147 免 key 搜索全局生效与检索收敛（2026-11-10，进行中）
+
+**OD-ARCH-147b 诊断脚本补 searchProvider 实际生效值（已由 ARCHITECT 亲自实施）：**
+
+- `scripts/diagnose-omnidesk.py` 新增 `web_snapshot`：读 engine-stderr.log 最近 500 行匹配 free-search 接管行（taking over / search is served），输出 `search_provider_effective`、`free_search_takeover_lines`（截断 160 字符，最多 5 行）、`profile_bundles`（读 profiles/<engine_profile>/package.json）；manifest 定位先试 app_root.parent/runtime 再试 app_root/runtime（兼容真实布局与测试沙箱）；仅输出 provider id 与 bundle 名，不含任务正文/凭证。
+- `verify_diagnose_omnidesk.py` 由 10 断言扩至 **15/15**：新增 search_provider_effective（合成 ddg 接管行）、profile_bundles_visible、takeover_line_captured；no_secret 两项保持通过。真实机运行验证：discipline profile bundles 仅 [dsh-base, dsh-web-app]，search_provider_effective=None——与排查结论一致（插件未挂载、未接管）。
+
+**OD-ARCH-147a / 147c（子代理已完成，2026-11-10 21:40 前后）：** 已派发两个并行 BUILDER（OpenDesign/deepseek-v4.1-flash + reasoning high；注：派工目录无 -eco 变体，可用路由为 deepseek-v4.1-flash，历史 OD-KM-500 同路由）。
+
+- **147c（Lorentz，完整交付）**：dsh-agent-injections 无注入字段（Config 实读核实），改用 persona.suffix 承载三条收敛规则；dsh-app-boot 的 applyEntryPatches 只索引顶层行，preset-standard 非 group，定向 patch 会报 entry not found（隔离实测），故 web/discipline 需整段 restate 上游 standard.patch.yml 的 config.plugins（与上游逐字段一致，仅 persona 加 suffix，js-yaml 结构化对比实证）。证据：tests/verification/desktop/evidence/od-arch-147/147c-summary.md。代理自跑：cargo lib 沙箱外 1093/1（唯一失败 HEAD 既有 desktop_user_name）、tsc 0、隔离 --dump-config 三 profile rc=0 且含规则文本。
+- **147a（Pauli，改动落盘但会话关闭未交报告）**：三个 profile json 的 dependencies、base/discipline patch 的 insert 块、prepare-runtime-assets.sh seed 清单均已落盘且内容正确；ARCHITECT 补齐计划内遗漏（profile_assets.rs DISCIPLINE_PLUGINS 加两插件）。证据由 ARCHITECT 复原：tests/verification/desktop/evidence/od-arch-147/147a-summary.md。
+
+**ARCHITECT 独立复检（实跑）：** cargo test --offline --lib 1090 passed / 4 failed（4 项均与本改动无关：desktop_user_name 为 HEAD 既有同步命令、process_owner 3 项为沙箱进程表限制）；tsc --noEmit exit 0；verify_diagnose_omnidesk.py 15/15。verify_plugin_scope_104.py 6 项失败：3 项为 104 时代纪律断言（insert 唯一性/不得顶层覆盖/不得 disabled）与本次获批的机制变更冲突，3 项为环境路径失败——脚本适配待用户裁定。
+
 ## OD-DIAG-001 诊断预算与聚合脚本（2026-11-10，未提交）
 
 - 新增 `scripts/diagnose-omnidesk.py`：一次收集进程、相关监听端口、默认网络接口、模型配置元数据（endpoint 仅 host）与最近任务快照；任务 JSON 只输出 state/seq/age/pending/error_code 等元数据，不输出 content、error_message、workspace_dir 或凭证。
@@ -7416,3 +7430,4 @@ Rust 测试前需 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"
 - 最近完成的 ARCHITECT 工作：OD-ARCH-001 独立审查与共享文档基线收敛；审查结论 MVP 不通过（R1–R4）。
 - 5 份历史规划材料移至 `docs/archive/` 保留，未删除；协作基线集中在仓库根 `AGENTS.md`、`GOALS.md`、`PLANS.md`、`STATUS.md`、`REVIEW.md` 与 `docs/decisions.md`。
 - 审查时 HEAD `17efd20`；工作区 175→181 项，暂存区为空；所有差异保留，未提交、未推送、未打标签。
+\n## OD-DOCX-148 附件广收窄取（2026-11-10，用户另一会话实施；本会话 ARCHITECT 独立复核）\n\n- **148b helper**：scripts/reading_attachment_extract.py（include_str! 内置 task_shell）；docx 走 stdlib zipfile+ElementTree（w:t/w:tab/w:br/w:tbl，tab 分隔单元格）；pdf 仅 pypdf 可导入时逐页提取；两档输出 {kind:text|metadata}；上限三道（文件 50MB/解压总量/document.xml 单件，env 可调）；DOCTYPE/ENTITY 头拒绝解析（XXE 防护）；只读不联网。\n- **148a 通道**：read_attachment 重构——文本扩展与 UTF-8 严格解码维持现状；.docx/.pdf 走 helper；其余二进制（图片/doc/wps/音视频等）一律 metadata_only 降级不拒收；「另存为 txt/md/csv」话术删除；超上限拒绝维持；断言被禁目录/resolve_real_path 校验先于 helper 不变；sha256 改为对原始字节计算（更准确）。attachmentPrompt.ts：metadata_only 附件块只含路径+sha256+「按路径自行读取」指引，attachmentScanText 相应只扫文件名与 note。HomeChat chip 显示「正文未提取」徽标。MaterialRead/content_kind/note 三端同步（Rust/types.ts/api）。\n- **148c**：python-requirements.txt 加 python-docx>=1.1,<2 与 lxml>=5,<7；prepare-runtime-assets.sh 的 universal 包删 .so 范围收窄到 charset_normalizer（保 lxml C 扩展）。\n- **148d**：platform.rs 环境报告加 python_docx/python_pypdf 两项（optional_module_status，requirement=可选，缺失只提示不进整体 ok）；EnvironmentCheck.tsx 显示；types.ts 同步。\n- 另：lib.rs desktop_user_name 改 #[tauri::command(async)]（修复 147 复检时发现的 HEAD 既有 UI 线程测试失败）；release.yml 两平台加 vendor import 探针步（requests+docx+lxml）。\n\n**ARCHITECT 独立复检（实跑，非引用对方自述）：**\n\n| 验证 | 结果 |\n| --- | --- |\n| cargo test --offline --lib | **1094 passed / 3 failed**；3 项全为 process_owner 沙箱进程表限制（本机已知，与 147 复检同因），新增 attachment/docx/平台测试全部 ok |\n| tsc --noEmit | exit 0 |\n| verify_docx_attachment_148.py | 14/14 |\n| verify_docx_vendor_148cd.py | 9/9 |\n| verify_diagnose_omnidesk.py | 15/15（不回归） |\n| vendor 探针 | PYTHONPATH=runtime/python-vendor python3 -c "import docx, lxml" 实测通过（python-docx 1.2.0 / lxml 6.1.3） |\n\n**安全复核：** 路径校验先于 helper；helper 临时目录用 pid+序号且 finally 清理；XML 拒 DOCTYPE/ENTITY；解压总量/单件双上限；超时 6s try_wait+kill 轮询不阻塞 UI；候选 python 顺序 OMNIDESK_EXPORT_PYTHON→OMNIDESK_PYTHON→PATH；PYTHONPATH vendor 注入两平台分隔符正确。\n**已知限制（与用户自诊口径一致）：** .doc/.docm/.wps 旧格式不提取（提示转换）；扫描件 PDF 无文本层时如实降级；OCR 未做；lxml ABI 绑构建机 Python 版本（148 证据 README 已登记）。\n**未验证项：** Windows 真实安装包上的 helper 与 vendor 探针（CI 日志待出包确认）；真实模型对 metadata_only 附件的按路径读取行为（待用户下次会话实测）。\n

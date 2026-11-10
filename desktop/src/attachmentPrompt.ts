@@ -5,7 +5,7 @@
 // 事实与边界：
 //   * 附件正文**原样**进提示词，并带上路径与 sha256，便于用户核对模型看到的是哪一份；
 //   * 附件正文同时进入红线扫描的扫描对象（由宿主把 `userInputText` 当作扫描文本）；
-//   * 只支持宿主白名单里的文本/表格类型；二进制不猜内容、不生成假摘要；
+//   * 文本原样进提示词；容器/二进制能提取就提取，不能提取就只给路径与哈希，不猜内容；
 //   * 有总长上限，超限就在发送前拒绝，而不是悄悄截断。
 
 export interface AttachmentInput {
@@ -13,6 +13,9 @@ export interface AttachmentInput {
   fileName: string;
   sha256: string;
   content: string;
+  /** text = 正文已提取；metadata_only = 正文未提取，代理可按路径自行读取。 */
+  contentKind?: "text" | "metadata_only";
+  note?: string | null;
 }
 
 /** 单轮最多引用几个文件。 */
@@ -35,7 +38,7 @@ export function checkAttachments(items: AttachmentInput[]): AttachmentCheck {
   }
   let total = 0;
   for (const item of items) {
-    if (!item.content.trim()) {
+    if (item.contentKind !== "metadata_only" && !item.content.trim()) {
       return { ok: false, reason: `${item.fileName} 是空文件，已停止发送。` };
     }
     total += item.content.length;
@@ -58,16 +61,21 @@ export function checkAttachments(items: AttachmentInput[]): AttachmentCheck {
 export function formatAttachmentBlock(items: AttachmentInput[]): string {
   if (items.length === 0) return "";
   const lines: string[] = [];
-  lines.push(`用户本轮引用了 ${items.length} 个文件。请以这些原文为依据；原文没有的内容不要补造。`);
+  lines.push(`用户本轮引用了 ${items.length} 个文件。已提取的正文以原文为依据；正文未提取的文件请按路径自行读取。原文没有的内容不要补造。`);
   lines.push("数字与条款以原文为准。需要引用时，请指出文件名与原文中的位置。");
   items.forEach((item, index) => {
     lines.push("");
     lines.push(`--- 附件 ${index + 1}：${item.fileName} ---`);
     lines.push(`路径：${item.path}`);
     lines.push(`sha256：${item.sha256}`);
-    lines.push("正文开始");
-    lines.push(item.content);
-    lines.push("正文结束");
+    if (item.contentKind === "metadata_only") {
+      lines.push("正文未提取；如需正文，请用文件工具按上述路径自行读取（是否支持该格式由你当前能力决定）。");
+      if (item.note) lines.push(`说明：${item.note}`);
+    } else {
+      lines.push("正文开始");
+      lines.push(item.content);
+      lines.push("正文结束");
+    }
   });
   return lines.join("\n");
 }
@@ -86,7 +94,14 @@ export function composeWithAttachments(text: string, items: AttachmentInput[]): 
  */
 export function attachmentScanText(text: string, items: AttachmentInput[]): string {
   if (items.length === 0) return text;
-  return [text, ...items.map((item) => item.content)].join("\n");
+  return [
+    text,
+    ...items.map((item) =>
+      item.contentKind === "metadata_only"
+        ? [item.fileName, item.note ?? "正文未提取"].join("\n")
+        : item.content,
+    ),
+  ].join("\n");
 }
 
 /** 从输入框当前内容里解析 @ 查询词；没有触发时返回 null。 */

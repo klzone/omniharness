@@ -38,7 +38,7 @@ say "裁剪完成：$(find "$RUNTIME" -type f | wc -l | tr -d ' ') 个文件"
 # seed 每次重建：Profile 的 node_modules 要按当前清单重装，残留的旧依赖会让人
 # 以为包已经更新，实际跑的还是上一版插件。
 rm -rf "$SEED"
-for profile in omnidesk-base web; do
+for profile in omnidesk-base web discipline; do
   mkdir -p "$SEED/profiles/$profile"
   cp "$ROOT/samples/profiles/$profile.profile.json" "$SEED/profiles/$profile/package.json"
   cp "$ROOT/samples/profiles/$profile.profile.patch.yml" "$SEED/profiles/$profile/cordis.patch.yml"
@@ -74,17 +74,18 @@ else
   if [ -z "$PY_HOST" ]; then
     say "警告：构建机没有 python3，无法内置 requests/certifi"
   else
-    say "内置 Python 模块（requests/certifi）→ $VENDOR"
+    say "内置 Python 模块（requests/certifi + python-docx/lxml）→ $VENDOR"
     rm -rf "$VENDOR"
     mkdir -p "$VENDOR"
     if ! "$PY_HOST" -m pip install --no-input --disable-pip-version-check \
       --no-compile --target "$VENDOR" -r "$PY_REQS" >/dev/null 2>&1; then
       say "警告：Python 模块内置失败，anysearch 联网检索可能不可用"
     else
-      # universal macOS 包会同时含 arm64/x86_64 两个切片；随构建机架构编译的
-      # charset_normalizer 扩展在另一架构上无法加载。删除扩展，走纯 Python 回退。
-      find "$VENDOR" -name '*.so' -type f -delete 2>/dev/null || true
-      find "$VENDOR" -name '*.pyd' -type f -delete 2>/dev/null || true
+      # universal macOS 包会同时含 arm64/x86_64 两个切片；只删除 charset_normalizer
+      # 的架构相关扩展，让它走纯 Python 回退。lxml 的 C 扩展必须保留，否则
+      # python-docx 无法 import。
+      find "$VENDOR/charset_normalizer" -name '*.so' -type f -delete 2>/dev/null || true
+      find "$VENDOR/charset_normalizer" -name '*.pyd' -type f -delete 2>/dev/null || true
     fi
   fi
 fi

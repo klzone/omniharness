@@ -848,7 +848,7 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
 ///
 /// 只读系统信息：macOS 取 `id -F`（全名），失败时回退 `USER` / `USERNAME` 环境变量。
 /// 读不到返回空串，界面就不带称呼；不落盘、不联网，也不参与任何权限判断。
-#[tauri::command]
+#[tauri::command(async)]
 fn desktop_user_name() -> String {
     #[cfg(target_os = "macos")]
     {

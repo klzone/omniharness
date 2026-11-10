@@ -18,10 +18,12 @@
 //! 证据等级：本文件为 static（源码事实）；文件内单元测试为 script（脚本/Rust 测试运行）。
 
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::app_paths::resolve_real_path;
 use crate::flow_pack::FlowPack;
@@ -2518,6 +2520,9 @@ pub struct MaterialRead {
     pub extension: String,
     pub sha256: String,
     pub content: String,
+    /// text = 正文已提取；metadata_only = 只带路径与哈希，正文留给引擎按路径读取。
+    pub content_kind: String,
+    pub note: Option<String>,
 }
 
 /// 只读读取用户**明确给出路径**的一个材料文件。
@@ -2599,6 +2604,8 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
         extension,
         sha256: sha256_hex(content.as_bytes()),
         content,
+        content_kind: "text".to_string(),
+        note: None,
     })
 }
 
@@ -2816,24 +2823,140 @@ pub const ATTACHMENT_TEXT_EXTS: &[&str] = &[
     "html", "htm", "srt", "vtt",
 ];
 
-/// 按文本扩展开头的二进制类型：用于把「读不出来」说得具体一点，而不是笼统报错。
-fn attachment_format_hint(ext: &str) -> &'static str {
-    match ext {
-        "pdf" => "PDF",
-        "doc" | "docx" | "wps" | "odt" | "rtf" => "Word/WPS 文档",
-        "xls" | "xlsx" | "et" | "ods" => "Excel/表格工作簿",
-        "ppt" | "pptx" | "dps" | "odp" => "演示文稿",
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "tif" | "tiff" => "图片",
-        "mp4" | "mov" | "mkv" | "avi" | "webm" | "mp3" | "wav" | "m4a" | "flac" => "音视频",
-        "zip" | "7z" | "rar" | "gz" | "tar" => "压缩包",
-        _ => "二进制",
+const READING_HELPER: &str = include_str!("../../../scripts/reading_attachment_extract.py");
+const ATTACHMENT_HELPER_TIMEOUT: Duration = Duration::from_secs(6);
+
+#[derive(Debug, serde::Deserialize)]
+struct AttachmentExtractOutput {
+    kind: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+fn attachment_vendor_dir() -> Option<PathBuf> {
+    if let Some(raw) = std::env::var_os("OMNIDESK_PYTHON_VENDOR") {
+        let path = PathBuf::from(raw);
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    crate::platform::repo_root()
+        .map(|root| root.join("runtime").join("python-vendor"))
+        .filter(|path| path.is_dir())
+}
+
+fn is_ooxml_word_container(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"PK\x03\x04")
+}
+
+/// 写入临时 helper 并调用候选 Python；返回 JSON 结果；任何失败都返回 None 由上层降级。
+fn run_attachment_extract_helper(path: &Path, format: &str) -> Option<AttachmentExtractOutput> {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let candidates = crate::export_engine::ExportTools::discover().python_candidates;
+    if candidates.is_empty() {
+        return None;
+    }
+    let temp = std::env::temp_dir().join(format!(
+        "omnidesk-attachment-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    if fs::create_dir_all(&temp).is_err() {
+        return None;
+    }
+    let helper = temp.join("reading_attachment_extract.py");
+    let output = temp.join("stdout.json");
+    if fs::write(&helper, READING_HELPER).is_err() {
+        let _ = fs::remove_dir_all(&temp);
+        return None;
+    }
+    let vendor = attachment_vendor_dir();
+    let mut parsed: Option<AttachmentExtractOutput> = None;
+    for python in candidates {
+        let out_file = match File::create(&output) {
+            Ok(file) => file,
+            Err(_) => continue,
+        };
+        let mut command = Command::new(&python);
+        command
+            .arg(&helper)
+            .arg(path)
+            .arg("--format")
+            .arg(format)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(out_file))
+            .stderr(Stdio::null());
+        if let Some(vendor) = vendor.as_deref() {
+            let separator = if cfg!(windows) { ";" } else { ":" };
+            let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+            let mut value = vendor.display().to_string();
+            if !existing.trim().is_empty() {
+                value.push_str(separator);
+                value.push_str(&existing);
+            }
+            command.env("PYTHONPATH", value);
+            command.env("OMNIDESK_PYTHON_VENDOR", vendor.display().to_string());
+        }
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(_) => continue,
+        };
+        let deadline = Instant::now() + ATTACHMENT_HELPER_TIMEOUT;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if status.success() {
+                        if let Ok(text) = fs::read_to_string(&output) {
+                            if let Ok(value) = serde_json::from_str::<AttachmentExtractOutput>(&text) {
+                                parsed = Some(value);
+                            }
+                        }
+                    }
+                    break;
+                }
+                Ok(None) if Instant::now() >= deadline => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+                Err(_) => break,
+            }
+        }
+        if parsed.is_some() {
+            break;
+        }
+    }
+    let _ = fs::remove_dir_all(&temp);
+    parsed
+}
+
+fn metadata_reason(extension: &str, file_name: &str, helper_reason: Option<String>) -> String {
+    if let Some(reason) = helper_reason {
+        return format!("{reason}；可按文件路径自行读取（是否支持该格式由当前能力决定）。");
+    }
+    match extension {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "heic" | "tif" | "tiff" => {
+            "图片正文未提取（未做 OCR）；如当前模型具备视觉能力，可用文件工具按路径读取。"
+                .to_string()
+        }
+        "doc" | "docm" | "wps" | "odt" | "rtf" => {
+            "Word/WPS 旧格式正文未提取；如需正文，需先转换为 docx 或 txt 再用文件工具读取。"
+                .to_string()
+        }
+        _ => format!(
+            "「{}」是二进制或未识别格式，正文未提取；可用文件工具按路径读取（若当前能力支持）。",
+            file_name
+        ),
     }
 }
 
 /// 读取用户通过文件选择框显式给出的一个附件。
 ///
-/// 成功时 `content` 就是文件正文（已确认是 UTF-8 文本）；失败时返回可读原因，
-/// 由界面原样展示给用户。绝不返回「假的摘要」冒充文件内容。
+/// 成功时返回正文或可核验的元数据降级（content_kind=metadata_only）；
+/// 超出单文件上限等硬边界仍返回错误。绝不返回「假的摘要」冒充文件内容。
 pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
     let raw = path_text.trim();
     if raw.is_empty() {
@@ -2881,24 +3004,105 @@ pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
     }
     let bytes = fs::read(&resolved)
         .map_err(|e| format!("无法读取文件 {}：{}", resolved.display(), e))?;
-    // 先看有没有 NUL 字节（压缩包/图片/文档容器的典型特征），再做严格 UTF-8 解码。
     let has_nul = bytes.iter().take(8192).any(|b| *b == 0);
-    let content = match String::from_utf8(bytes) {
-        Ok(text) if !has_nul => text,
-        Ok(_) | Err(_) => {
-            let kind = attachment_format_hint(&extension);
-            let ext = if extension.is_empty() {
-                "无扩展名".to_string()
-            } else {
-                format!(".{}", extension)
-            };
-            return Err(format!(
-                "「{}」是{}（{}），本版本没有它的解析器，读不出正文。请另存为 txt/md/csv 后再引用，或直接把要点写进对话；我不会凭文件名猜内容。",
-                file_name, kind, ext
-            ));
+    let sha256 = sha256_hex(&bytes);
+    let force_binary = matches!(
+        extension.as_str(),
+        "pdf"
+            | "docx"
+            | "doc"
+            | "docm"
+            | "wps"
+            | "odt"
+            | "rtf"
+            | "xls"
+            | "xlsx"
+            | "et"
+            | "ods"
+            | "ppt"
+            | "pptx"
+            | "dps"
+            | "odp"
+            | "jpg"
+            | "jpeg"
+            | "png"
+            | "gif"
+            | "webp"
+            | "bmp"
+            | "heic"
+            | "tif"
+            | "tiff"
+            | "mp4"
+            | "mov"
+            | "mkv"
+            | "avi"
+            | "webm"
+            | "mp3"
+            | "wav"
+            | "m4a"
+            | "flac"
+    );
+    if !force_binary {
+        if let Ok(text) = String::from_utf8(bytes.clone()) {
+            if !has_nul {
+                if text.trim().is_empty() {
+                    return Err(format!("「{}」没有可读的文字内容。", file_name));
+                }
+                return Ok(MaterialRead {
+                    path: resolved.display().to_string(),
+                    file_name,
+                    bytes: meta.len(),
+                    chars: text.chars().count(),
+                    extension,
+                    sha256,
+                    content: text,
+                    content_kind: "text".to_string(),
+                    note: None,
+                });
+            }
         }
+    }
+
+    // docx / OOXML Word 容器：stdlib helper 提取；失败则元数据降级。
+    let docx_candidate = extension == "docx" || (is_ooxml_word_container(&bytes) && extension != "docm");
+    let (kind, content, helper_note) = if docx_candidate {
+        match run_attachment_extract_helper(&resolved, "docx") {
+            Some(output) if output.kind == "text" => (
+                "text",
+                output.content.unwrap_or_default(),
+                None,
+            ),
+            Some(output) => ("metadata_only", String::new(), output.reason),
+            None => (
+                "metadata_only",
+                String::new(),
+                Some("Python 提取器不可用，docx 正文未提取".to_string()),
+            ),
+        }
+    } else if extension == "pdf" {
+        match run_attachment_extract_helper(&resolved, "pdf") {
+            Some(output) if output.kind == "text" => (
+                "text",
+                output.content.unwrap_or_default(),
+                None,
+            ),
+            Some(output) => ("metadata_only", String::new(), output.reason),
+            None => (
+                "metadata_only",
+                String::new(),
+                Some("Python 提取器不可用，PDF 正文未提取".to_string()),
+            ),
+        }
+    } else {
+        ("metadata_only", String::new(), None)
     };
-    if content.trim().is_empty() {
+
+    let note = if kind == "metadata_only" {
+        Some(metadata_reason(&extension, &file_name, helper_note))
+    } else {
+        None
+    };
+    if kind == "text" && content.trim().is_empty() {
         return Err(format!("「{}」没有可读的文字内容。", file_name));
     }
     Ok(MaterialRead {
@@ -2907,8 +3111,10 @@ pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
         bytes: meta.len(),
         chars: content.chars().count(),
         extension,
-        sha256: sha256_hex(content.as_bytes()),
+        sha256,
         content,
+        content_kind: kind.to_string(),
+        note,
     })
 }
 
@@ -4915,24 +5121,81 @@ mod material_tests {
     }
 
     #[test]
-    fn rejects_binary_attachment_with_honest_hint() {
-        // 二进制不猜内容、不生成假摘要：明确说读不出并给出可行动的替代方式。
+    fn binary_attachment_degrades_to_metadata() {
+        // 二进制不再拒收：带路径、sha256 与明确的「正文未提取」说明。
         let dir = material_dir("attach_bin");
         let pdf = dir.join("合成制度.pdf");
         fs::write(&pdf, b"%PDF-1.7\x00\x01\x02binary").unwrap();
-        let err = read_attachment(pdf.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("PDF"), "{}", err);
-        assert!(err.contains("另存为"), "{}", err);
+        let read = read_attachment(pdf.to_str().unwrap()).unwrap();
+        assert_eq!(read.content_kind, "metadata_only");
+        assert!(read.content.is_empty());
+        assert!(read.note.as_deref().unwrap_or("").contains("PDF"), "{:?}", read.note);
 
         let docx = dir.join("材料.docx");
         fs::write(&docx, b"PK\x03\x04\x00\x00docx").unwrap();
-        let err = read_attachment(docx.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("Word/WPS"), "{}", err);
+        let read = read_attachment(docx.to_str().unwrap()).unwrap();
+        assert_eq!(read.content_kind, "metadata_only");
+        assert!(read.note.is_some());
 
         let shot = dir.join("截图.png");
         fs::write(&shot, b"\x89PNG\r\n\x1a\n\x00").unwrap();
-        let err = read_attachment(shot.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("图片"), "{}", err);
+        let read = read_attachment(shot.to_str().unwrap()).unwrap();
+        assert_eq!(read.content_kind, "metadata_only");
+        assert!(read.note.as_deref().unwrap_or("").contains("图片"), "{:?}", read.note);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn write_synthetic_docx(path: &Path) {
+        let script = r#"
+import pathlib, sys, zipfile
+doc = '''<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:t>合成正文 DOCX-ATTACH</w:t></w:r></w:p>
+<w:tbl><w:tr><w:tc><w:p><w:r><w:t>甲</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>乙</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+</w:body></w:document>'''
+with zipfile.ZipFile(pathlib.Path(sys.argv[1]), 'w') as archive:
+    archive.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types/>')
+    archive.writestr('word/document.xml', doc)
+"#;
+        let python = ["python3", "python"]
+            .into_iter()
+            .find(|candidate| {
+                Command::new(candidate)
+                    .arg("--version")
+                    .output()
+                    .map(|output| output.status.success())
+                    .unwrap_or(false)
+            })
+            .expect("测试需要 python3 或 python 生成最小 docx 夹具");
+        let status = Command::new(python)
+            .arg("-c")
+            .arg(script)
+            .arg(path)
+            .status()
+            .expect("测试需要 python3 生成最小 docx 夹具");
+        assert!(status.success());
+    }
+
+    #[test]
+    fn extracts_docx_attachment_with_stdlib_helper() {
+        let dir = material_dir("attach_docx_extract");
+        let docx = dir.join("合成材料.docx");
+        write_synthetic_docx(&docx);
+        let read = read_attachment(docx.to_str().unwrap()).unwrap();
+        assert_eq!(read.content_kind, "text", "{:?}", read.note);
+        assert!(read.content.contains("DOCX-ATTACH"), "{}", read.content);
+        assert!(read.content.contains("甲\t乙"), "{}", read.content);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn attachment_over_limit_still_rejects() {
+        let dir = material_dir("attach_over_limit");
+        let file = dir.join("too-big.txt");
+        let body = vec![b'x'; (ATTACHMENT_MAX_BYTES + 1) as usize];
+        fs::write(&file, body).unwrap();
+        let err = read_attachment(file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("超过单文件上限"), "{}", err);
         let _ = fs::remove_dir_all(&dir);
     }
 

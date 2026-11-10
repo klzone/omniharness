@@ -2196,6 +2196,9 @@ export interface MaterialRead {
   extension: string;
   sha256: string;
   content: string;
+  /** text = 正文已提取；metadata_only = 只引用路径与哈希，正文留给引擎按路径读取。 */
+  content_kind: "text" | "metadata_only";
+  note: string | null;
 }
 
 /** 可作为 @ 引用的文件（只含元数据；OD-ARCH-077 S1）。 */
@@ -3183,7 +3186,7 @@ export interface ProfilePluginAddReceipt {
  * 这样界面能区分「没装」和「装了但版本太低」两种修法。
  */
 export interface EnvironmentDependency {
-  name: "node" | "python" | "assets" | "requests";
+  name: "node" | "python" | "assets" | "requests" | "python-docx" | "pypdf";
   ok: boolean;
   found: boolean;
   path: string | null;
@@ -3200,6 +3203,9 @@ export interface EnvironmentReport {
   python: EnvironmentDependency;
   /** anysearch 联网检索依赖的 Python 模块；缺失时 ok 为 false，由检查页提示。 */
   python_modules: EnvironmentDependency;
+  /** 增量写作/PDF 能力；缺失只提示，不影响整体 ok（OD-DOCX-148d）。 */
+  python_docx: EnvironmentDependency;
+  python_pypdf: EnvironmentDependency;
   /** 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。 */
   assets: EnvironmentDependency;
 }

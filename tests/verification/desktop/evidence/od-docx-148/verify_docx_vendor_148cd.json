@@ -1,0 +1,54 @@
+{
+  "plan": "OD-DOCX-148c/148d",
+  "evidence_level": "静态检查 + vendor 导入探针",
+  "passed": true,
+  "total": 9,
+  "failed": [],
+  "checks": [
+    {
+      "name": "requirements_docx_lxml",
+      "ok": true,
+      "detail": "requirements 含 python-docx 与 lxml"
+    },
+    {
+      "name": "so_delete_limited_to_charset",
+      "ok": true,
+      "detail": "universal 删除 .so 只作用于 charset_normalizer"
+    },
+    {
+      "name": "vendor_docx_imports",
+      "ok": true,
+      "detail": "PYTHONPATH=vendor python3 -c 'import docx' 通过（0）"
+    },
+    {
+      "name": "lxml_extension_present",
+      "ok": true,
+      "detail": "lxml C 扩展未被误删"
+    },
+    {
+      "name": "platform_probes",
+      "ok": true,
+      "detail": "platform 探测 python-docx 与 pypdf"
+    },
+    {
+      "name": "platform_fields",
+      "ok": true,
+      "detail": "EnvironmentReport 增加两项可选依赖"
+    },
+    {
+      "name": "optional_not_blocking",
+      "ok": true,
+      "detail": "可选模块不参与整体 ok"
+    },
+    {
+      "name": "frontend_rows",
+      "ok": true,
+      "detail": "环境检查页显示两项"
+    },
+    {
+      "name": "types_synced",
+      "ok": true,
+      "detail": "ts 类型同步"
+    }
+  ]
+}

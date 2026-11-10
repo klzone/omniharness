@@ -2,3 +2,6 @@
 # anysearch 联网检索 CLI 需要 requests；certifi 提供 HTTPS 证书链。
 requests>=2.31,<3
 certifi>=2024.2.2
+# OD-DOCX-148c：DSH 沙箱里代理可直接 import docx；lxml 是 python-docx 的硬依赖。
+python-docx>=1.1,<2
+lxml>=5,<7

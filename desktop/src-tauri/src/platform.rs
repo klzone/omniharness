@@ -71,6 +71,8 @@ const PY_VERSION_PROBE: &str = "import sys; raise SystemExit(0 if sys.version_in
 const PY_VERSION_PRINT: &str = "import sys; print('%d.%d.%d' % sys.version_info[:3])";
 /// anysearch CLI 的必需模块（OD-SYS-702）：能导入 requests 才算联网检索可用。
 const PY_REQUESTS_PROBE: &str = "import requests";
+const PY_DOCX_PROBE: &str = "import docx";
+const PY_PYPDF_PROBE: &str = "import pypdf";
 
 /// 解析 Python 解释器的绝对路径，逻辑与 node 解析一致：
 /// GUI 启动不继承 shell PATH，裸 "python3" 在 Finder 启动的 app 里会 ENOENT。
@@ -185,6 +187,9 @@ pub struct EnvironmentReport {
     /// ModuleNotFoundError。它不影响引擎启动；纳入 `ok` 是为了让环境检查页
     /// 显式提示修复，而不是让检索静默失败。
     pub python_modules: DependencyStatus,
+    /// 增量写作/PDF 能力；缺失只提示，不影响引擎启动与整体 ok（OD-DOCX-148d）。
+    pub python_docx: DependencyStatus,
+    pub python_pypdf: DependencyStatus,
     /// 安装完整性：engine/ 与 runtime/ 是否随包就位（OD-ARCH-135）。
     pub assets: DependencyStatus,
 }
@@ -261,6 +266,28 @@ pub fn environment_report() -> EnvironmentReport {
             .map(python_imports_requests)
             .unwrap_or(false),
     );
+    let python_docx = optional_module_status(
+        "python-docx",
+        python.path.clone(),
+        python
+            .path
+            .as_deref()
+            .map(|program| python_imports_code(program, PY_DOCX_PROBE))
+            .unwrap_or(false),
+        "未内置 python-docx：Word 编辑类能力不可用；不影响对话与附件引用。",
+        "https://pypi.org/project/python-docx/",
+    );
+    let python_pypdf = optional_module_status(
+        "pypdf",
+        python.path.clone(),
+        python
+            .path
+            .as_deref()
+            .map(|program| python_imports_code(program, PY_PYPDF_PROBE))
+            .unwrap_or(false),
+        "未内置 pypdf：PDF 正文提取会降级为路径引用；不影响对话。",
+        "https://pypi.org/project/pypdf/",
+    );
     // 安装完整性：Windows 安装器曾只装 exe，引擎目录根本不存在。这里把
     // 「包是不是完整的」也作为一项前置条件，缺了就让用户重装，而不是看着
     // 窗口发呆。仓库开发态天然命中，不影响本机构建。
@@ -296,7 +323,28 @@ pub fn environment_report() -> EnvironmentReport {
         node,
         python,
         python_modules,
+        python_docx,
+        python_pypdf,
         assets,
+    }
+}
+
+fn optional_module_status(
+    name: &'static str,
+    python_path: Option<String>,
+    importable: bool,
+    missing_hint: &'static str,
+    download: &'static str,
+) -> DependencyStatus {
+    DependencyStatus {
+        name,
+        ok: importable,
+        found: importable,
+        path: python_path,
+        version: None,
+        requirement: "可选",
+        hint: if importable { "" } else { missing_hint },
+        download,
     }
 }
 
@@ -333,8 +381,12 @@ fn python_vendor_dir() -> Option<std::path::PathBuf> {
 
 /// 用给定解释器试导入 requests；退出码 0 即可用。
 fn python_imports_requests(program: &str) -> bool {
+    python_imports_code(program, PY_REQUESTS_PROBE)
+}
+
+fn python_imports_code(program: &str, probe: &str) -> bool {
     let mut cmd = Command::new(program);
-    cmd.arg("-c").arg(PY_REQUESTS_PROBE);
+    cmd.arg("-c").arg(probe);
     // OD-SYS-704：优先使用随包内置依赖；开发态没有 vendor 时回退系统 Python。
     if let Some(vendor) = python_vendor_dir() {
         let separator = if cfg!(windows) { ";" } else { ":" };
@@ -1017,6 +1069,33 @@ mod tests {
         assert!(!python_imports_requests("omnidesk-nonexistent-probe"));
     }
 
+    #[test]
+    fn optional_modules_are_informational_only() {
+        for importable in [false, true] {
+            let docx = optional_module_status(
+                "python-docx",
+                Some("python3".to_string()),
+                importable,
+                "未内置 python-docx",
+                "https://pypi.org/project/python-docx/",
+            );
+            let pypdf = optional_module_status(
+                "pypdf",
+                Some("python3".to_string()),
+                importable,
+                "未内置 pypdf",
+                "https://pypi.org/project/pypdf/",
+            );
+            for item in [&docx, &pypdf] {
+                assert_eq!(item.requirement, "可选");
+                assert_eq!(item.ok, importable);
+                assert_eq!(item.found, importable);
+                assert!(item.download.starts_with("https://"));
+                assert!(item.ok || item.hint.contains("未内置"));
+            }
+        }
+    }
+
     /// 体检结果必须自洽：ok 蕴含 found；缺依赖时仍带下载页与修复提示。
     #[test]
     fn environment_report_is_consistent() {
@@ -1047,6 +1126,11 @@ mod tests {
             report.ok,
             report.node.ok && report.python.ok && report.assets.ok && report.python_modules.ok
         );
+        // 148d 两项增量能力只显示，不参与整体 ok。
+        assert_eq!(report.python_docx.name, "python-docx");
+        assert_eq!(report.python_pypdf.name, "pypdf");
+        assert!(!report.python_docx.ok || report.python_docx.found);
+        assert!(!report.python_pypdf.ok || report.python_pypdf.found);
     }
 
     /// 安装完整性是第三项：仓库开发态天然带 engine/ 与 runtime/RUNTIME.lock，
