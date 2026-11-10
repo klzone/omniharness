@@ -1,0 +1,52 @@
+[pass] homechat_exists /Users/yvan/Code/MyWorkStation/desktop/src/shell/HomeChat.tsx
+[pass] timeline_model_exists /Users/yvan/Code/MyWorkStation/desktop/src/shell/timelineModel.ts
+[pass] theme_exists /Users/yvan/Code/MyWorkStation/desktop/src/theme.css
+[pass] message_has_optional_timeline
+[pass] timeline_kinds
+[pass] tool_activity_appends
+[pass] thought_delta_appends
+[pass] unknown_chunk_aggregates
+[pass] old_thought_state_removed
+[pass] text_delta_not_in_timeline
+[pass] tool_payload_has_no_input_or_result
+[pass] timeline_component
+[pass] timeline_before_body
+[pass] tool_glyph
+[pass] thought_glyph
+[pass] tool_kind_word
+[pass] thought_kind_word
+[pass] chevron_expand
+[pass] entry_aria_expanded
+[pass] summary_aria_expanded
+[pass] status_history_render
+[pass] thought_text_render
+[pass] summary_copy
+[pass] summary_collapse
+[pass] notes_hidden
+[pass] old_message_fallback
+[pass] empty_timeline_returns_null
+[pass] timeline_no_auto_stop
+[pass] timeline_model_no_io
+[pass] theme_timeline_classes
+[pass] theme_uses_tokens
+[pass] timeline_model_compiles
+[pass] timeline_behavior_runs
+[pass] tool_result_merges_without_call_id
+[pass] tool_history_labels
+[pass] tool_history_has_time
+[pass] tool_call_id_merge
+[pass] tool_separate_calls
+[pass] thought_accumulates
+[pass] thought_new_segment_after_tool
+[pass] unknown_chunk_aggregates
+[pass] unknown_chunk_count_label
+[pass] unknown_chunk_not_rendered
+[pass] summary_counts
+[pass] summary_excludes_notes
+[pass] format_time_seconds
+[pass] format_time_missing
+[pass] append_does_not_mutate_input
+[pass] runtime_no_diff
+[pass] runtime_no_status
+合计 50 项，失败 0 项
+{"total": 50, "failed": 0}

@@ -1,0 +1,6 @@
+## main...origin/main
+ M REVIEW.md
+ M engine/omnidesk_engine/web_api_adapter.py
+ M tests/verification/engine-interface/adapter/test_web_api_unit.py
+?? tests/verification/desktop/od-ui-710/
+149df677dba6ced26d522415f83de6bb00c4c295

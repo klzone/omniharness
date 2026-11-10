@@ -1,5 +1,11 @@
 # 当前实施计划
 
+### OD-UI-710/711：对话执行时间线（已实施并复检通过，2026-11-11）
+
+> **触发：** 用户对照 dsh-desktop 原版执行过程显示（思考/命令按时间线可见可展开），要求复刻同等透明过程。
+
+> **实施（子代理实施 + ARCHITECT 逐卡独立复检，REVIEW.md 2026-11-11 条）：** 710 web_api_adapter 思考块映射（DSH reasoning-delta→thought_delta，字段名实读 DSH 运行时类型声明）、unknown_chunk 诊断透出、tool title 防御取值（pytest 234+35）；711 HomeChat timeline 追加式状态 + 正文前时间线渲染（四类条目/展开/终态摘要折叠）+ timelineModel.ts 归并纯函数 + theme 样式（verify 50/50，tsc/build 0）。切页离开期间事件不补录（前端无回放接口）；工具标题当前回退工具名（DSH tool/call 无 title 字段）。
+
 ### OD-PROC-149：进程名归一 omnidesk-*（已实施并复检通过，2026-11-11）
 
 > **触发：** 用户 Windows 实测退出后进程回收正常（OD-SYS-701 Job Object 生效），但任务管理器显示 node.exe/python.exe，希望像 ima.copilot 一样把 OmniDesk 相关进程统一命名并视觉分组。ARCHITECT 判定：进程链为 OmniDesk.exe → python -m omnidesk_engine → node bin.js；Electron 式"同镜像归组"对异构解释器进程不可实现，采用"副本改名+进程标题"方案。Windows 镜像名运行时不可改，需复制 node.exe/python.exe 为 omnidesk-node.exe/omnidesk-python.exe；macOS 可运行时改（node process.title + python setproctitle）。资源占用零变化；风险集中在 Windows python 副本 DLL 解析，以首启探针+回退兜底。
