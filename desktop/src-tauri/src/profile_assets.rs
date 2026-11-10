@@ -73,10 +73,21 @@ pub struct AssetProfile {
     pub plugins: &'static [PluginRequirement],
 }
 
-const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[PluginRequirement {
-    package: "@deepseek-ai/dsh-skill-office",
-    version: None,
-}];
+// OD-ARCH-147a：免 key 搜索与费用统计属于基础插件，随所有出厂 Profile 装配。
+const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[
+    PluginRequirement {
+        package: "@deepseek-ai/dsh-skill-office",
+        version: None,
+    },
+    PluginRequirement {
+        package: "dsh-free-search",
+        version: None,
+    },
+    PluginRequirement {
+        package: "dsh-cost-meter",
+        version: None,
+    },
+];
 
 const DISCIPLINE_SKILLS: &[&str] = &[
     "anysearch",

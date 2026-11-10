@@ -2280,7 +2280,14 @@ export function HomeChat({
       }
       const next = [
         ...attachmentsRef.current,
-        { path: read.path, fileName: read.file_name, sha256: read.sha256, content: read.content },
+        {
+          path: read.path,
+          fileName: read.file_name,
+          sha256: read.sha256,
+          content: read.content,
+          contentKind: read.content_kind,
+          note: read.note,
+        },
       ];
       attachmentsRef.current = next;
       setAttachments(next);
@@ -3265,10 +3272,19 @@ export function HomeChat({
               <span
                 key={a.path}
                 className="inline-flex items-center gap-1 max-w-[240px] px-2 py-0.5 rounded-full bg-surface-container text-[11px] text-on-surface-variant"
-                data-hover-hint={`${a.path}\nsha256: ${a.sha256}\n${a.content.length} 字，随本轮发送，不单独存盘`}
+                data-hover-hint={`${a.path}\nsha256: ${a.sha256}\n${
+                  a.contentKind === "metadata_only"
+                    ? `正文未提取：${a.note ?? "可按路径让引擎自行读取"}`
+                    : `${a.content.length} 字，随本轮发送`
+                }，不单独存盘`}
               >
                 <Icon name="note" className="w-[12px] h-[12px] flex-shrink-0" />
                 <span className="truncate">{a.fileName}</span>
+                {a.contentKind === "metadata_only" ? (
+                  <span className="shrink-0 text-[9.5px] text-outline" data-attachment-kind="metadata_only">
+                    正文未提取
+                  </span>
+                ) : null}
                 <button
                   onClick={() => removeAttachment(a.path)}
                   disabled={busy}
@@ -3281,13 +3297,13 @@ export function HomeChat({
               </span>
             ))}
             <span className="text-[10.5px] text-outline">
-              {attachments.length} 个文件，正文随本轮发送
+              {attachments.length} 个文件已引用
             </span>
           </div>
         ) : null}
         {dragging ? (
           <p className="mt-2 px-1 text-[11px] text-primary">
-            松开即可引用文件（{ATTACHMENT_MAX_FILES} 个以内，只收文本与表格）
+            松开即可引用文件（{ATTACHMENT_MAX_FILES} 个以内，常用格式均可）
           </p>
         ) : null}
         {attachNote ? (

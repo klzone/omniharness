@@ -34,6 +34,8 @@ export function EnvironmentCheck({
           <DependencyRow item={report.node} />
           <DependencyRow item={report.python} />
           <DependencyRow item={report.python_modules} />
+          <DependencyRow item={report.python_docx} />
+          <DependencyRow item={report.python_pypdf} />
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -65,14 +67,14 @@ export function EnvironmentCheck({
 
 function DependencyRow({ item }: { item: EnvironmentDependency }) {
   const isAssets = item.name === "assets";
-  const isModule = item.name === "requests";
+  const isModule = item.name === "requests" || item.name === "python-docx" || item.name === "pypdf";
   const title =
     item.name === "node"
       ? "Node.js"
       : item.name === "python"
         ? "Python"
         : isModule
-          ? "Python 模块 requests"
+          ? `Python 模块 ${item.name}`
           : "运行时目录";
   // 「版本过低」只对 node / python 成立；运行时目录要么在，要么缺。
   const state = item.ok

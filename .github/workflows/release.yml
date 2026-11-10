@@ -72,6 +72,10 @@ jobs:
       # .app 自带的资源清单引用这些目录，必须先就位（OD-ARCH-136）。
       - name: 准备运行时资产（裁剪 + 首启 seed）
         run: bash scripts/prepare-runtime-assets.sh
+      - name: 校验内置 Python 模块
+        run: |
+          PY=python3; command -v "$PY" >/dev/null || PY=python
+          PYTHONPATH="$PWD/runtime/python-vendor" "$PY" -c "import requests, docx, lxml; print('vendor imports ok')"
       - name: 生成应用图标
         working-directory: desktop
         run: npx tauri icon src-tauri/icons/icon-512.png
@@ -123,6 +127,11 @@ jobs:
       - name: 准备运行时资产（裁剪 + 首启 seed）
         shell: bash
         run: bash scripts/prepare-runtime-assets.sh
+      - name: 校验内置 Python 模块
+        shell: bash
+        run: |
+          PY=python3; command -v "$PY" >/dev/null || PY=python
+          PYTHONPATH="$PWD/runtime/python-vendor" "$PY" -c "import requests, docx, lxml; print('vendor imports ok')"
       - name: 生成应用图标
         working-directory: desktop
         shell: bash

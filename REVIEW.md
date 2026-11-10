@@ -1,3 +1,28 @@
+\n# OD-DOCX-148 审查：附件广收窄取（ARCHITECT，2026-11-10）——通过\n\n**结论：通过。** 用户另一会话实施的 148a-d 与获批计划一致且质量良好；本会话独立复检全部实跑验证通过，可进入用户实测与出包。\n\n**计划符合性（逐卡核对 diff）：**\n\n- 148a：接收层不再有格式白名单拒收（除硬边界），MaterialRead.content_kind/note 三端同步，「另存为」话术删除，前端 chip 带「正文未提取」徽标。✔\n- 148b：stdlib docx 提取（w:t/tab/br/表格）+ 可选 pypdf；JSON 契约 {kind, content/reason}；include_str! 内置。✔\n- 148c：requirements 加 python-docx+lxml；universal 包删 .so 收窄到 charset_normalizer（计划内指定的坑已修）。✔\n- 148d：python_docx/python_pypdf 环境项 optional（requirement=可选，不进整体 ok）。✔\n\n**独立验证（本会话实跑）：** cargo lib **1094/3**（3 项 process_owner 沙箱限制，与本次改动无关；新增 attachment/docx/平台测试全 ok）；tsc 0；verify_docx_attachment_148 **14/14**；verify_docx_vendor_148cd **9/9**；verify_diagnose 15/15 不回归；vendor 探针 import docx+lxml 实测通过（1.2.0/6.1.3）。\n\n**安全复核要点：** 禁用目录断言与 resolve_real_path 先于 helper；helper 拒绝 DOCTYPE/ENTITY（XXE）；解压总量与 document.xml 双上限（env 可调）；6 秒 try_wait+kill 超时不阻塞；临时目录 pid+序号、失败清理；sha256 改为原始字节（比原实现更准确）。\n\n**偏差与增项登记：** ①lib.rs desktop_user_name 改 async——不在 148 计划内，属修复 147 复检发现的 HEAD 既有测试失败，方向正确予以追认；②release.yml 加两平台 vendor 探针步——148c 验收要求的 CI 证据，追认；③另一会话未更新 STATUS/REVIEW/PLANS 状态行，由本次复检补齐。\n\n**未验证项（用户侧）：** Windows 安装包 helper/vendor 探针（CI 出包日志确认）；真实模型对 metadata_only 附件按路径读取的行为；.doc/.wps 转换仍属增量能力。\n
+# OD-ARCH-147 审查：免 key 搜索全局生效与检索收敛（ARCHITECT，2026-11-10）——通过（附遗留）
+
+**结论：通过。** 三张任务卡均已实施并经独立复检；可进入用户实测。遗留两项待裁定事项见文末，不阻塞生效。
+
+**复核范围（实读 diff + 实跑命令，非仅凭代理自述）：**
+
+- 147b（ARCHITECT 亲自实施）：`scripts/diagnose-omnidesk.py` 新增 web_snapshot（search_provider_effective / takeover 行 / profile_bundles，仅元数据）；verify_diagnose_omnidesk.py 扩至 15/15。真实机运行输出 discipline profile bundles=[dsh-base, dsh-web-app]、provider=None，与排查结论一致。
+- 147a：三 profile json dependencies、base/discipline patch insert 块（内容与 web 出厂条目一致）、prepare-runtime-assets.sh seed 加 discipline；147a 代理会话关闭未交报告，ARCHITECT 补齐计划内遗漏 DISCIPLINE_PLUGINS 两插件并复原证据 147a-summary.md。
+- 147c：代理完整交付。机制核实链：dsh-agent-instructions Config 无注入字段（实读）→ 改用 persona.suffix → applyEntryPatches 只索引顶层行、preset-standard 非 group，定向 patch 实测报 entry not found → web/discipline 整段 restate 上游 standard.patch.yml（js-yaml 结构化对比仅 persona suffix 差异）。隔离 DSH_HOME --dump-config 三 profile rc=0 且含规则文本。
+
+**独立验证（本会话实跑）：**
+
+| 验证 | 结果 | 证据等级 |
+| --- | --- | --- |
+| cargo test --offline --lib（RUST_TEST_THREADS=4） | 1090 passed / 4 failed；4 项失败均与本改动无关（desktop_user_name 为 HEAD 既有同步命令，git show HEAD:lib.rs:852 实证；process_owner 3 项为沙箱进程表限制） | 脚本运行 |
+| tsc --noEmit | exit 0 | 脚本运行 |
+| verify_diagnose_omnidesk.py | 15/15 | 脚本运行 |
+| verify_plugin_scope_104.py | 6 failed：3 项 104 时代纪律断言（insert 唯一性/不得顶层覆盖/不得 disabled）与获批机制变更冲突；3 项环境路径失败 | 脚本运行 |
+| 真实模型行为（无 r.jina.ai、3 次/15 步收敛） | 未验证，待用户下次会话实测 | 未验证 |
+
+**待用户裁定：** verify_plugin_scope_104.py 的三项纪律断言按旧设计钉死「补丁只能加 insert」，与本次批准的全局装配+persona restate 机制冲突；需决定是修订断言口径（推荐：改为「新增 insert 允许多条；顶层 id 覆盖仅限 preset-standard/persona」）还是回退机制。脚本本身不在本次授权修改范围，未动。
+
+**派工偏差登记：** 用户指定 deepseek-v4.1-flash-eco；派工系统可用清单无 -eco 变体（ OmniDesk 自身模型目录中有该 id，属产品路由，非子代理路由），按最接近的 OpenDesign/deepseek-v4.1-flash + high 执行，与 OD-KM-500 历史口径一致。
+
 ## OD-ARCH-079 补充审查：线程分支来源（ARCHITECT，2026-11-10）——通过
 
 **结论：通过。** 分支到新对话后，线程记录保存父会话与切点，新线程顶部显示一行灰色来源说明；普通新建线程不显示。复核中发现并修复一个边界：`createThread` 原先直接写入 `input.forkOrigin`，畸形对象虽然读回时会被丢弃，但当前会话仍可能短暂显示空父会话号。现改为写入端也走 `normalizeForkOrigin`。

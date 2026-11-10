@@ -1,5 +1,69 @@
 # 当前实施计划
 
+### OD-DOCX-148：附件通道广收窄取——常用格式全接收、提取尽力而为（已实施并复检通过，2026-11-10）
+
+> **触发：** 用户 Windows 实测两个问题：①拖 docx 进输入框被附件系统拦下，提示"另存为 txt/md/csv"，而引擎侧文件工具按路径直读成功；②会话代理自装 python-docx 用 pip --target .deps，装出的文件权限只有 SYSTEM/Administrators/OWNER RIGHTS，DSH 沙箱读不到（ImportError），改 pip --user 后绕过。用户让 OmniDesk 自诊后由 ARCHITECT 复核定案。
+
+**ARCHITECT 判断（对 OmniDesk 自诊的复核）：**
+
+1. 自诊的权限分析正确：pip --target 装出的目录默认 ACL 不含沙箱访问主体是 Windows 真实行为，--user 安装可绕过；.deps/.deps2 已由用户删除，结论"是文件权限问题不是软件缺失"成立。
+2. 自诊有一处定性偏差：输入框"拦截"不是 bug，是 OD-ARCH-077 的既定设计——附件通道只收文本（二进制不猜内容、不生成假摘要），docx 是 ZIP+XML 落入二进制分支才提示另存为。真正的问题是**产品能力缺口**：docx 这类容器格式应该有确定性正文提取，而不是让用户手工转换。两条通道要分清：附件通道（拼提示词正文）与引擎文件工具通道（代理按路径读）是两回事，用户实测里前者失败后者成功正是这个原因。
+3. 仓库实读发现上游能力已存在但未接通：DSH 的 office-docx skill 设计依赖 load_workspace_dependencies 提供含 python-docx 的内置 Python payload，但该 payload 由 DSH_PRIMARY_RUNTIME 环境变量控制，OmniDesk 从未设置（desktop/src-tauri/src 全仓 grep 无此变量），代理只能自行 pip——这正是 .deps 事件的根因。
+4. OmniDesk 已有 python-vendor 内置机制（OD-SYS-704，requests/certifi）与宿主注入 PYTHONPATH 的通道（engine_supervisor.rs:388-402，DSH 子进程继承），加 python-docx 是顺路扩展；宿主附件读取侧已有 export_engine 的 python 候选探测与辅助脚本先例（python_has_docx / DOCX_HELPER include_str!）。
+
+**用户口径裁决（2026-11-10，优先于上节历史分析）：** 不管 Windows 还是 Mac 用户，安装完不装任何插件，前端附件通道都必须接收 pdf、md、word、wps、jpg 等常用格式；后端插件能否解析该格式属用户增量安装事项，OmniDesk 不得在通道层限定死。据此设计从"补 docx 提取"升级为"广收窄取"：
+
+- **接收层不设格式白名单**：任何常规文件（不超单文件上限）都可进入附件引用；"另存为 txt/md/csv"类话术从产品中移除。
+- **提取层尽力而为、如实降级**：零依赖可提取的格式（docx 用 Python 标准库 zipfile+xml 即可解析 w:t 正文，不需要 python-docx）直接提取；需要增量能力的格式（pdf→pypdf、图片→模型视觉/OCR、.doc/.wps→LibreOffice/WPS 转换）探测到能力就提取，探测不到就带元数据降级——附件块始终含绝对路径+sha256，明确告知代理"正文未提取，可用文件工具按路径读取（若你具备该格式能力）"，能力延伸交给引擎侧会话代理，符合"后端增量安装"口径。
+- **两平台零额外安装可用的底线**：md/txt/csv/json 等文本原样；docx 靠标准库提取（引擎 Python 两平台随包必有）；其余格式元数据引用兜底。任何格式都不因"宿主没装解析器"被拒收。
+
+**任务卡：**
+
+**OD-DOCX-148a 附件接收层广收 + MaterialRead 降级语义（核心）**
+- 范围：desktop/src-tauri/src/task_shell.rs read_attachment 重构分类：①文本扩展名维持严格 UTF-8 现状；②.docx（含 NUL 探测命中的 OOXML Word 容器）走 stdlib 提取 helper；③.pdf 探测 pypdf 可导入则提取、否则元数据降级；④.jpg/png 等图片与 .doc/.docm/.wps 及未知二进制一律元数据降级（不再拒收），提示语按格式给具体指引（图片：模型具备视觉能力时可按路径读取；.doc/.wps：需 LibreOffice/WPS 转换，属增量安装）。删除"另存为"话术。MaterialRead 增 content_kind（text/metadata_only）与可选 note 字段；api/types 与前端 chip 同步（显示"已引用·正文未提取"类状态）。
+- 提示词块（attachmentPrompt.ts formatAttachmentBlock）：metadata_only 附件明确写"正文未提取；如需正文，请用文件工具按上述路径自行读取（是否支持该格式由你当前能力决定）"，与提取型附件话术区分。
+- 安全面：helper 解压总量按单文件上限约束（zip bomb 不放大）；XML 用 stdlib 解析、不解析外部实体；提取超时按 export_engine 先例设上限，超时降级不阻塞。
+- 明确不做：不做排版保真提取；不做 OCR；不改变红线扫描对象（附件文本进扫描的逻辑不变，metadata_only 附件扫文件名与提示块，正文由代理读取路径产生的内容走引擎侧既有扫描链）。
+- 验收：cargo lib 单测（合成最小 docx 提取正文、合成 pdf 元数据降级、图片元数据降级、超上限拒绝维持）；verify_docx_attachment_148.py 全绿（两平台 python 探针路径注入断言）；tsc/build 0。
+
+**OD-DOCX-148b python 提取 helper（stdlib docx + 可选 pypdf）**
+- 范围：新增 scripts/reading_attachment_extract.py（include_str! 进 task_shell，照 export_engine::DOCX_HELPER 先例）：stdin/参数收文件路径与格式，stdout 出 JSON {kind: text|metadata, content?, reason?}。docx：zipfile+ElementTree 提取 word/document.xml 的段落与表格文本（tab 分隔单元格）；pdf：import pypdf 成功则逐页提取，失败返回 metadata；探测 python 候选顺序沿用 export_engine（OMNIDESK_EXPORT_PYTHON/OMNIDESK_PYTHON/PATH），PYTHONPATH 注入 python-vendor。
+- 与 148a 的接口对齐：helper 由 148a 的 Rust 侧调用；本卡单独可测（python3 scripts/reading_attachment_extract.py <fixture>）。
+
+**OD-DOCX-148c python-vendor 内置 python-docx（引擎侧增量能力，独立于附件通道）**
+- 范围：scripts/python-requirements.txt 加 python-docx（>=1.1）与 lxml；效果是 DSH 沙箱里代理 python 可直接 import docx（PYTHONPATH 继承链已存在），office-docx 编辑类任务与 .deps 类权限事故根因缓解。universal mac 包删 .so 逻辑收窄到 charset_normalizer（否则破坏 lxml C 扩展），该改动落 prepare-runtime-assets.sh。
+- 验收：prepare 后 PYTHONPATH=vendor python3 -c "import docx" 通过；Windows CI 出包同探针。
+
+**OD-DOCX-148d 环境检查面板补解析能力项（信息性，不阻塞）**
+- 范围：platform.rs python_modules 探测扩 python-docx、pypdf 两项可导入性（缺失仅提示"增量安装后可提取对应格式"，不是错误），EnvironmentCheck.tsx 显示。
+
+**执行派发（待批准）：** 148b 先行（helper 可独立验收）→ 148a 依赖其接口；148c∥148d 并行小改；沿用子代理 OpenDesign/deepseek-v4.1-flash + reasoning high（-eco 变体派工系统不提供，沿用 147 口径并在派单注明）；ARCHITECT 独立复检 + 证据落 tests/verification/desktop/evidence/od-docx-148/。用户 Windows 侧已做的 pip --user 修复保留不动（148c 到位后其为冗余但无害）。
+
+### OD-ARCH-147：免 key 搜索插件全局生效与检索收敛（已批准，2026-11-10；待实施）
+
+> **触发：** 用户 Windows 实测会话卡 1437 秒零文本输出。排查证据（会话日志 572 事件）定位三因：①web_search 走官方 provider 缺 DEEPSEEK_API_KEY 秒失败，dsh-free-search 未接管（插件装进的是 web profile，会话实际跑 discipline，profile 作用域不匹配）；②模型自拼 r.jina.ai 代理前缀 74 次 1244 秒；③50 步全 reasoning+tool-call 无 text 块，无收敛机制。用户裁决：基础插件不绑 profile（profile 只绑 skill）、本次执行派发子代理 OpenDesign/deepseek-v4.1-flash-eco + 思考等级 high。
+
+**决策记录：** 免 key 基础搜索插件（dsh-free-search + dsh-cost-meter）从 profile 作用域提为全局装配，挂载声明进各 profile 的 cordis.patch.yml，安装实体共享。架构依据：DSH dsh-app-boot 的 installation scope（installAnchor 双锚点解析）本就支持全局包共享，OmniDesk 只接装配层，不碰 runtime/ 内 DSH Runtime。profile 保持只绑 skill 与场景规则。
+
+**任务卡：**
+
+**OD-ARCH-147a 基础插件全局装配（核心）**
+- 范围：samples/profiles/*.profile.patch.yml、desktop/src-tauri/src/profile_assets.rs（PROFILES 清单的 manifest/plugins 字段）、scripts/prepare-runtime-assets.sh。四类 profile（omnidesk-base / web / discipline + seed 内同名）patch 各加同一条 insert：dsh-free-search（id: web-search-free，provider bing、bingMarket zh-CN）与 dsh-cost-meter；profile_assets.rs 三处出厂 manifest 的 dependencies 加 dsh-free-search@0.9.5、dsh-cost-meter@1.9.6（capabilities.rs 测试夹具同步）；prepare-runtime-assets.sh 的 seed 安装清单从 [omnidesk-base, web] 扩为含 discipline；dsh-home-seed 内两份已构建的 cordis.patch.yml 同步加 insert（git 不跟踪 node_modules，只跟踪清单与 patch）。
+- 明确不做：不改 install_plugin 的 profile 安装机制（现有按 profile 安装路径保留，全局 insert 声明使任何 profile 装一次即可生效）；不改模型路由、凭证、DSH Runtime。
+- 架构依据：patch 的 name 解析走 installAnchor（runtime/dsh-runtime/node_modules）+ profile 目录双锚点（dsh-app-boot/lib/index.js:995 resolveBundleDir 已核实）；seed 的 web profile node_modules 已随包分发，discipline insert 生效时包实体可从安装根或 web seed 命中。
+- 验收命令：cd desktop/src-tauri && RUST_TEST_THREADS=4 cargo test --offline --lib（0 failed）；cd desktop && npx tsc --noEmit；bash scripts/prepare-runtime-assets.sh 后 seed 内 discipline 目录 node_modules 存在 dsh-free-search；python3 tests/verification/desktop/verify_diagnose_omnidesk.py 保持全绿。
+
+**OD-ARCH-147b 诊断脚本补 searchProvider 实际生效值**
+- 范围：scripts/diagnose-omnidesk.py 的 log_snapshot 或新增 web_snapshot：读 engine-stderr.log 最近 500 行匹配 free-search 接管行（taking over / search is served），输出 search_provider_effective 元数据（值仅 ddg/官方 id，不含正文）；读 profiles/<engine_profile>/package.json bundles 列表输出（不含 node_modules 内容）。
+- 验收命令：python3 tests/verification/desktop/verify_diagnose_omnidesk.py 全绿（含新增断言：报告含 search_provider_effective 键且不含任务正文）。
+
+**OD-ARCH-147c agent-instructions 检索收敛规则（P1，可与 a 并行）**
+- 范围：samples/profiles/discipline.profile.patch.yml + web.profile.patch.yml + omnidesk-base.profile.patch.yml 的 agent-instructions 段（或新增插一段 persona/prompt 覆盖）：禁用 r.jina.ai 等第三方 reader 代理前缀拼 URL；连续 3 次工具调用无新增事实时必须停止检索并基于已有信息作答；连续 15 步无文本输出时下一步必须先产出阶段性文本。
+- 明确不做：不改 repeat-tool-reminder 阈值（先观察 147a/b 生效后的行为基线，确有必要另开任务卡）。
+- 验收命令：与 147a 合并跑 cargo lib + tsc（patch 内嵌编译期校验）；prompt 生效性属真实模型行为，列为未验证项由用户下次会话实测确认。
+
+**执行派发与进展（2026-11-10 已实施完毕）：** 147b 由 ARCHITECT 亲自实施（verify 15/15）；147a∥147c 并行派发子代理（注：派工目录无 -eco 变体，实际路由 OpenDesign/deepseek-v4.1-flash + 思考等级 high，按 docs/BUILDER-Task-Instruction-Template.md 授命）。147c 完整交付（persona.suffix 机制，隔离 dump-config 实证）；147a 改动落盘正确但会话关闭未交报告，ARCHITECT 补齐计划内遗漏（DISCIPLINE_PLUGINS）并复原证据。ARCHITECT 独立复检：cargo lib 1090/4（4 项均与本改动无关，见 STATUS）、tsc 0、verify_diagnose 15/15。证据落 tests/verification/desktop/evidence/od-arch-147/。遗留：verify_plugin_scope_104.py 6 项断言与获批机制变更冲突，待用户裁定脚本适配；seed discipline 安装待出包实跑；真实 Windows 会话效果（web_search 免 key 生效、无 r.jina.ai 调用、会话时长回落）列用户侧待验证项。
+
 ### OD-DIAG-001：诊断轮次预算与聚合脚本（已实施，2026-11-10）
 
 > **触发：** 用户复盘 WiFi 问答会话：24 次模型往返、34 次工具、497 秒，其中工具执行仅 11 秒；重复读取任务状态与语义猜测占主要成本。用户决定跳过 P0，从 P1 开始。
