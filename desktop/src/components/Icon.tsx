@@ -43,7 +43,12 @@ export type IconName =
   | "edit"
   | "undo"
   | "branch"
-  | "clock";
+  | "clock"
+  /** 首页 2.0 导航与卡片图标。 */
+  | "home"
+  | "grid"
+  | "star"
+  | "chat";
 
 const PATHS: Record<IconName, JSX.Element> = {
   brand: (
@@ -213,6 +218,29 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <circle cx="12" cy="12" r="8" />
       <path d="M12 7.5V12l3 2" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M4 10.6 12 4l8 6.6" />
+      <path d="M6 9.3V19a1 1 0 0 0 1 1h3.6v-5.1h2.8V20H17a1 1 0 0 0 1-1V9.3" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="4" y="4" width="6.6" height="6.6" rx="1.8" />
+      <rect x="13.4" y="4" width="6.6" height="6.6" rx="1.8" />
+      <rect x="4" y="13.4" width="6.6" height="6.6" rx="1.8" />
+      <rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.8" />
+    </>
+  ),
+  star: (
+    <path d="m12 4.2 2.3 4.9 5.3.7-3.9 3.7.98 5.2-4.6 2.1-4.68-.7L12 18l-4.68 2.1L4.6 18.7l.98-5.2-3.9-3.7 5.3-.7Z" />
+  ),
+  chat: (
+    <>
+      <path d="M19 12.4a6.6 6.6 0 0 1-6.6 6.6H9.2L5 21.4v-3.9A6.6 6.6 0 0 1 11.6 5h.8A6.6 6.6 0 0 1 19 11.6Z" />
+      <path d="M9 10.5h6M9 13.5h4" />
     </>
   ),
   "chevron-up": <path d="m18 15-6-6-6 6" />,

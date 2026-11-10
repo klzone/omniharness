@@ -844,6 +844,34 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
     })
 }
 
+/// 当前登录用户的显示名，只用于首页问候。
+///
+/// 只读系统信息：macOS 取 `id -F`（全名），失败时回退 `USER` / `USERNAME` 环境变量。
+/// 读不到返回空串，界面就不带称呼；不落盘、不联网，也不参与任何权限判断。
+#[tauri::command]
+fn desktop_user_name() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(out) = std::process::Command::new("id").arg("-F").output() {
+            if out.status.success() {
+                let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !name.is_empty() {
+                    return name;
+                }
+            }
+        }
+    }
+    for key in ["USER", "USERNAME"] {
+        if let Ok(value) = std::env::var(key) {
+            let name = value.trim().to_string();
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    String::new()
+}
+
 // ---------------------------------------------------------------------------
 // Profile 声明（OD-ARCH-051 S3 / OD-ARCH-106）
 //
@@ -9031,6 +9059,7 @@ pub fn run() {
             model_permission_set,
             model_permission_revoke_all,
             app_paths_info,
+            desktop_user_name,
             profile_decl_load,
             profile_decl_digest,
             profile_decl_open,

@@ -26,7 +26,7 @@ interface DockItem {
  * 声明文件不存在不是失败——基础标准下本来就没有业务场景声明（OD-ARCH-106）。
  */
 export const DEFAULT_BUSINESS_ITEMS: DockItem[] = [
-  { scene: "home", icon: "brand", label: "工作台首页" },
+  { scene: "home", icon: "home", label: "工作台首页" },
   { scene: "report", icon: "note", label: "工作记录" },
   { scene: "writing", icon: "book", label: "文案写作" },
   { scene: "project", icon: "checklist", label: "项目跟踪" },
@@ -48,7 +48,7 @@ export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
  * 基础标准（无场景声明）时 Dock 只有两项：首页、知识库。
  */
 export const BUILTIN_PLATFORM_ITEMS: DockItem[] = [
-  { scene: "home", icon: "brand", label: "工作台首页" },
+  { scene: "home", icon: "home", label: "工作台首页" },
   BUILTIN_KNOWLEDGE_ITEM,
 ];
 
@@ -91,7 +91,8 @@ export function Dock({
     : [...declaredItems, BUILTIN_KNOWLEDGE_ITEM];
 
   return (
-    <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center space-y-2.5">
+    <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center">
+      <div className="neu-rail flex flex-col items-center space-y-2" data-testid="dock-rail">
       {items.map((item) => {
         const active = item.scene === scene;
         return (
@@ -112,7 +113,7 @@ export function Dock({
                   : "text-on-surface-variant hover:text-primary")
               }
             >
-              <Icon name={item.icon} className="w-5 h-5" />
+              <Icon name={item.scene === "home" ? "home" : item.icon} className="w-5 h-5" />
             </button>
             <div className="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/95 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg flex items-center space-x-1.5 z-50">
               <span>{item.label}</span>
@@ -120,6 +121,7 @@ export function Dock({
           </div>
         );
       })}
+      </div>
     </aside>
   );
 }

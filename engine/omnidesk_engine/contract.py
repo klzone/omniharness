@@ -324,6 +324,8 @@ class TaskStatus:
     # 本轮 turn/end 事件在 DSH 会话里的精确序号：会话分支（session/fork）的切点。
     # 没有到达终态、或通道不提供序号时为 None，界面据此禁用「分支」按钮。
     engine_turn_end_seq: Optional[int] = None
+    # 最近一次事件的墙钟时间；用于判断宿主快照是否落后于仍在运行的任务。
+    last_event_at: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -338,6 +340,7 @@ class TaskStatus:
             "ttfb_seconds": self.ttfb_seconds,
             "pending_approvals": self.pending_approvals,
             "engine_turn_end_seq": self.engine_turn_end_seq,
+            "last_event_at": self.last_event_at,
         }
 
 

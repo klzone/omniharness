@@ -1,7 +1,7 @@
 {
   "task": "OD-UI-202",
-  "passed": 29,
-  "total": 29,
+  "passed": 36,
+  "total": 36,
   "checks": [
     {
       "name": "theme_warm_tokens",
@@ -34,6 +34,31 @@
       "detail": "未使用的整幅对话面板类已移除，避免空态出现巨大空白卡片"
     },
     {
+      "name": "global_surface_map",
+      "ok": true,
+      "detail": "全应用纯白与旧容器映射到暖灰表面"
+    },
+    {
+      "name": "global_shadow_map",
+      "ok": true,
+      "detail": "旧任意阴影与 Tailwind 阴影统一映射到新拟物成对阴影"
+    },
+    {
+      "name": "global_no_blur",
+      "ok": true,
+      "detail": "全应用移除残留背景模糊"
+    },
+    {
+      "name": "settings_pane_neu",
+      "ok": true,
+      "detail": "设置页主卡片切到暖面与新拟物阴影"
+    },
+    {
+      "name": "settings_no_lavender_fill",
+      "ok": true,
+      "detail": "设置页不再保留旧淡紫/纯白硬编码背景"
+    },
+    {
       "name": "type_soft_display_heading",
       "ok": true,
       "detail": "大标题优先思源柔黑，缺字体回退思源黑"
@@ -64,9 +89,19 @@
       "detail": "全局正文行高 1.65"
     },
     {
-      "name": "type_slogan_bold_header",
+      "name": "type_slogan_bold_empty_state",
       "ok": true,
-      "detail": "首页欢迎句使用加粗行楷，标语不再发虚"
+      "detail": "新对话空态标语使用加粗行楷，标语不再发虚"
+    },
+    {
+      "name": "type_slogan_self_hosted",
+      "ok": true,
+      "detail": "演示夏行楷已本地自托管，首页标语不依赖系统字体安装"
+    },
+    {
+      "name": "type_slogan_license",
+      "ok": true,
+      "detail": "随包保留演示夏行楷的 SIL OFL 授权文本"
     },
     {
       "name": "type_table_controls_sans",

@@ -53,6 +53,16 @@ function timeLabel(now: Date): string {
   });
 }
 
+/** 顶部周次标题：ISO 全年周次，例如 2026年第46周。 */
+function isoWeekLabel(now: Date): string {
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return String(d.getUTCFullYear()) + "年第" + String(week) + "周";
+}
+
 /**
  * 日期胶囊 + 三周节律悬浮卡。
  *
@@ -124,9 +134,9 @@ function DateFlip({ now }: { now: Date }) {
         type="button"
         onClick={() => (visible ? setVisible(false) : show())}
         aria-expanded={visible}
-        aria-label={"日期与三周节律，今天 " + dateLabel(now)}
+        aria-label={"日期与全年周次，今天 " + dateLabel(now)}
         data-testid="topnav-date"
-        className="neu-chip hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full transition-colors"
+        className="neu-chip neu-date-chip hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full transition-colors"
       >
         <Icon name="calendar" className="w-4 h-4 text-primary/70" />
         <span className="font-label-caps text-[12px] font-medium text-on-surface">
@@ -150,7 +160,7 @@ function DateFlip({ now }: { now: Date }) {
             <div className="flex items-center space-x-1.5">
               <Icon name="calendar" className="w-[13px] h-[13px] text-secondary" />
               <span className="font-headline-md text-[12px] font-semibold text-on-surface">
-                日程节律
+                {isoWeekLabel(now)}
               </span>
             </div>
             <span
@@ -498,7 +508,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
           role="dialog"
           aria-label="选择引擎 Profile"
           data-testid="topnav-profile-popover"
-          className="neu-popover absolute left-0 top-full mt-2 w-[300px] rounded-2xl p-2.5 z-50"
+          className="neu-popover absolute left-0 top-full mt-2 w-max min-w-[190px] max-w-[250px] rounded-2xl p-2.5 z-50"
         >
           {receipt ? (
             <p
@@ -545,9 +555,6 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
             </div>
           ) : (
             <>
-              <div className="px-1.5 pb-1.5 text-[10px] uppercase tracking-wide text-outline">
-                切换后立即生效 · 当前：{currentLabel}
-              </div>
               {view?.saved_out_of_whitelist ? (
                 <div className="mx-1 mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 leading-relaxed">
                   当前保存的 Profile 不在可选清单，本次使用默认。
@@ -647,11 +654,6 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
                   })}
                 </ul>
               )}
-              <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[10px] text-outline leading-relaxed">
-                {view
-                  ? "当前生效：" + view.effective + "（" + view.channel + " 通道）"
-                  : "读取隔离数据根失败时不会显示可选清单。"}
-              </p>
               {error && view ? (
                 <p className="px-1.5 pt-1 text-[10px] text-error leading-relaxed">{error}</p>
               ) : null}
@@ -799,7 +801,7 @@ export function TopNav({
   return (
     <header className="w-full pt-4 px-6 sm:px-10 z-40 flex-shrink-0" data-tauri-drag-region>
       <nav
-        className="neu-nav w-full max-w-7xl mx-auto flex items-center justify-between rounded-[26px] px-5 py-2.5 gap-4"
+        className="neu-nav w-full max-w-7xl mx-auto flex items-center justify-between rounded-[30px] px-5 py-2 gap-4"
         data-tauri-drag-region
       >
         {/* 品牌（固定软件名） + Profile 徽标 + 本地 IPC 状态 */}
@@ -810,9 +812,9 @@ export function TopNav({
               alt="OmniDesk"
               draggable={false}
               decoding="async"
-              className="neu-brand-mark w-8 h-8 rounded-[9px] object-cover flex-shrink-0"
+              className="neu-brand-mark w-9 h-9 rounded-[11px] object-cover flex-shrink-0"
             />
-            <span className="font-headline-md text-[17px] font-semibold tracking-tight text-on-surface hidden sm:inline">
+            <span className="font-headline-md text-[18px] font-semibold tracking-tight text-on-surface hidden sm:inline">
               OmniDesk
             </span>
           </div>
@@ -832,8 +834,8 @@ export function TopNav({
         </div>
 
         {/* 当前会话内查找（OD-ARCH-082 S8） */}
-        <div className="flex-1 max-w-md mx-6 hidden sm:block">
-          <div className="neu-inset-field flex items-center rounded-full px-3.5 py-1 text-on-surface">
+        <div className="flex-1 max-w-[560px] mx-5 hidden sm:block">
+          <div className="neu-inset-field flex items-center rounded-full px-3.5 py-1.5 text-on-surface">
             <Icon name="search" className="w-[16px] h-[16px] text-outline mr-2 shrink-0" />
             <input
               ref={searchInputRef}

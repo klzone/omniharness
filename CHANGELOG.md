@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] - 2026-11-10
+
+### Added
+- 首页 2.0 版式：问候带系统用户名（只读命令 `desktop_user_name`）、四张真实入口卡片、底部真实场景快捷入口、右上淡蓝山海背景插画（`desktop/public/home-scape.png`）。
+- 线程记录新增 `forkOrigin`（父会话号与切点），新分支线程顶部显示一行灰色来源说明；普通新建线程不显示。
+- 线程存储新增“未知前端字段原样保存与读回”的 Rust 回归测试。
+
+### Changed
+- 首页二次修订：去掉四张入口卡片、问候下方说明句与手掌表情；底部胶囊改为最近五个项目；对话开始后收起问候区，历史记录占满上方空间。
+- 首页按新参考图重排：顶栏 30px 圆角；左侧 Dock 收进胶囊导轨，当前项为品牌靛实心圆；输入面板改为 26px 凸起带淡紫光晕；空态标语改为两侧分隔线夹一行演示夏行楷（靛蓝灰 `#615A85`）。
+- Neo-Skeuomorphism 2.0 校准：象牙灰底材、近白凸起面、品牌靛 `#5747F8`；顶栏 34px 圆角，输入面板 24px，空态标语 30px / 0.12em 字距。
+- 首页新对话空态标语改用品牌靛蓝，不再使用黑色正文色；保持演示夏行楷与 700 加粗。
+
+### Fixed
+- 首页归类菜单、模型下拉和 Profile 弹层统一收窄：归类菜单 176px，模型 248px，Profile 190–250px。
+- 分支来源在读取与创建两端都走同一 `normalizeForkOrigin`，空父会话号或非法切点按“无来源”处理，避免当前会话谎称“由分支创建”。
+
+### Verification
+- `verify_fork_origin_202.py`：9/9。
+- `cargo test --offline --lib thread_store::tests`：13/13。
+- `npm run build`：通过。
+
 ## [0.2.1] - 2026-10-15 (discipline-v0.2 / 结构收敛)
 
 ### Changed

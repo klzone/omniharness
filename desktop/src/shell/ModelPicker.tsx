@@ -38,7 +38,6 @@ export function ModelPicker({
   loading = false,
   onSelectModel,
   onSelectEffort,
-  onFollowDsh,
 }: {
   currentProvider: string | null;
   currentModel: string | null;
@@ -57,8 +56,6 @@ export function ModelPicker({
   loading?: boolean;
   onSelectModel: (profile: string, provider: string, model: string) => void;
   onSelectEffort: (effort: string) => void;
-  /** OD-ARCH-050：改为跟随 DSH 设置（用它配的 provider 与默认模型）。 */
-  onFollowDsh?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -67,6 +64,14 @@ export function ModelPicker({
   const currentEfforts =
     catalogModels.find((m) => m.provider === currentProvider && m.id === currentModel)
       ?.efforts ?? [];
+  const effortLabel = EFFORT_LEVELS.find((x) => x.key === effort)?.label ?? effort;
+  const effortDeclared = currentEfforts.some((e) => e.id === effort);
+  const effortWarning =
+    currentEfforts.length > 0
+      ? effortDeclared
+        ? null
+        : "当前模型未声明「" + effortLabel + "」档位，这一档位可能被忽略。"
+      : "当前模型未声明思考档位，档位设置可能被忽略。";
 
   useEffect(() => {
     if (!open) return;
@@ -84,50 +89,22 @@ export function ModelPicker({
         ? "读取中…"
         : "未识别";
 
-  /** DSH 侧的默认路由（用于「跟随 DSH 设置」一项的说明）。 */
-  const dshDefault =
-    catalog?.default?.provider
-      ? {
-          provider: catalog.default.provider,
-          model: catalog.default.model ?? null,
-        }
-      : groups[0]?.default ?? null;
-
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px] transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface font-body-sm text-[12px] font-medium tracking-normal transition-colors disabled:opacity-60"
         data-hover-hint={currentProvider ? `当前路由：${label}（可切换模型与思考等级）` : "当前端点尚未识别"}
       >
         <Icon name="spark" className="w-[13px] h-[13px]" />
-        <span className="max-w-[150px] truncate">模型：{label}</span>
+        <span className="max-w-[190px] truncate">模型：{label}</span>
         <span className="text-[9px] opacity-70">{open ? "▲" : "▼"}</span>
       </button>
 
       {open ? (
-        <div className="neu-popover absolute right-0 bottom-full mb-2 w-[330px] rounded-2xl p-3 z-50">
-          <div className="pb-2 mb-2 border-b border-surface-variant/20">
-            <button
-              type="button"
-              onClick={() => {
-                onFollowDsh?.();
-                setOpen(false);
-              }}
-              disabled={busy || !onFollowDsh}
-              className="w-full text-left px-2 py-1.5 rounded-lg text-[11.5px] text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-60"
-              data-hover-hint="归档 OmniDesk 的模型覆盖文件，改用 DSH 设置里的 provider 与默认模型"
-            >
-              <span className="block truncate">跟随 DSH 设置（推荐）</span>
-              <span className="block truncate text-[10px] text-outline">
-                {dshDefault
-                  ? `DSH 默认：${dshDefault.provider} / ${dshDefault.model ?? "?"}`
-                  : "使用 DSH 里配置的 provider 与默认模型，不再单独覆盖"}
-              </span>
-            </button>
-          </div>
+        <div className="neu-popover absolute right-0 bottom-full mb-2 w-[248px] rounded-2xl p-3 z-50">
           <div className="pb-2 border-b border-surface-variant/20">
             <div className="text-[10px] uppercase tracking-wide text-outline">思考等级</div>
             <div className="pt-1.5 flex flex-wrap gap-1">
@@ -140,20 +117,24 @@ export function ModelPicker({
                     setOpen(false);
                   }}
                   className={
-                    "px-2 py-1 rounded-full text-[11px] transition-colors " +
-                    (lv.key === effort
-                      ? "bg-primary text-on-primary"
-                      : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high")
+                    "neu-effort-btn px-3 py-1.5 rounded-full text-[11.5px] font-medium " +
+                    (lv.key === effort ? "neu-effort-active" : "")
                   }
+                  aria-pressed={lv.key === effort}
                   data-hover-hint="对应 DSH 的 reasoningEffort：默认＝不传该参数，由模型/Provider 决定"
                 >
                   {lv.label}
                 </button>
               ))}
             </div>
-            <p className="pt-1.5 text-[10px] text-outline leading-relaxed">
-              思考等级是请求参数：模型/Provider 不支持时可能直接报错，界面会显示真实原因。
-            </p>
+            {effortWarning ? (
+              <p
+                className="pt-1.5 text-[10px] text-outline leading-relaxed"
+                data-testid="effort-advisory"
+              >
+                {effortWarning}
+              </p>
+            ) : null}
             {currentEfforts.length > 0 ? (
               <p className="pt-1 text-[10px] text-outline leading-relaxed">
                 当前模型目录声明的等级：
@@ -180,7 +161,7 @@ export function ModelPicker({
                           setOpen(false);
                         }}
                         className={
-                          "w-full text-left px-2 py-1.5 rounded-lg text-[11.5px] transition-colors " +
+                          "w-full text-left px-2 py-1.5 rounded-lg text-[12px] transition-colors " +
                           (active
                             ? "bg-primary/10 text-primary font-medium"
                             : "text-on-surface-variant hover:bg-surface-container")
@@ -245,15 +226,11 @@ export function ModelPicker({
               ))
             )}
           </div>
-          <p className="pt-2 border-t border-surface-variant/20 text-[10px] text-outline leading-relaxed">
-            {catalog?.available
-              ? "目录来自 DSH 本地 API 的模型目录（" + (catalog.channel || "web-api") + " 通道）。"
-              : catalog && !catalog.available
-                ? catalog.reason ?? "当前通道不支持直读模型目录。"
-                : "候选来自各 Profile 的配置转储。"}
-            切换会重启引擎（路由在引擎启动时确定），并写一份只含非机密的路由覆盖到 OmniDesk 数据根；
-            不会修改你在 DSH 里的 Profile。
-          </p>
+          {catalog && !catalog.available ? (
+            <p className="pt-2 border-t border-surface-variant/20 text-[10px] text-outline leading-relaxed">
+              {catalog.reason ?? "当前通道不支持直读模型目录。"}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

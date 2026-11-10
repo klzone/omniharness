@@ -49,8 +49,20 @@ export interface SceneThread {
    * 后回来，HomeChat 据此恢复轮询并回读结果。任务本身不因卸载而取消。
    */
   inflightTaskId?: string | null;
+  /**
+   * 分支来源（OD-ARCH-079 补充）：这条线程由「分支到新对话」建出时记录父会话与切点，
+   * 供新对话顶部显示「本对话由分支创建」的提示；普通新建线程为 null。
+   */
+  forkOrigin?: ForkOrigin | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** 一次会话分支的来源信息：父会话号 + 切点序号（null = 引擎未给出）。 */
+export interface ForkOrigin {
+  parentSessionId: string;
+  /** 本轮 turn/end 的会话事件序号（包含在内的切点）；缺省时为 null。 */
+  atSeq: number | null;
 }
 
 let cache: SceneThread[] = [];
@@ -117,6 +129,23 @@ function hostAvailable(): boolean {
   }
 }
 
+/**
+ * 归一化分支来源：只接受结构完整的对象，字段形态不对就当作没有分支来源，
+ * 不猜一个父会话号或切点（那样会让界面谎称「由分支创建」）。
+ */
+function normalizeForkOrigin(value: unknown): ForkOrigin | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as { parentSessionId?: unknown; atSeq?: unknown };
+  if (typeof raw.parentSessionId !== "string" || !raw.parentSessionId) return null;
+  return {
+    parentSessionId: raw.parentSessionId,
+    atSeq:
+      typeof raw.atSeq === "number" && Number.isSafeInteger(raw.atSeq) && raw.atSeq >= 0
+        ? raw.atSeq
+        : null,
+  };
+}
+
 function normalizeThread(value: unknown): SceneThread | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<SceneThread> & { messages?: unknown };
@@ -133,6 +162,7 @@ function normalizeThread(value: unknown): SceneThread | null {
       typeof raw.engineSessionId === "string" ? raw.engineSessionId : null,
     inflightTaskId:
       typeof raw.inflightTaskId === "string" ? raw.inflightTaskId : null,
+    forkOrigin: normalizeForkOrigin((raw as { forkOrigin?: unknown }).forkOrigin),
     createdAt: typeof raw.createdAt === "number" ? raw.createdAt : 0,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : 0,
   };
@@ -307,6 +337,7 @@ export function createThread(input: {
   tag: ThreadTag;
   projectPath?: string | null;
   preset?: string;
+  forkOrigin?: ForkOrigin | null;
 }): SceneThread {
   const now = Date.now();
   const thread: SceneThread = {
@@ -316,6 +347,8 @@ export function createThread(input: {
     title: "新对话",
     preset: input.preset ?? "plain",
     messages: [],
+    // 写入端同样走归一化：畸形对象不能只在读回时被丢弃，否则当前会话会短暂谎称“由分支创建”。
+    forkOrigin: normalizeForkOrigin(input.forkOrigin),
     createdAt: now,
     updatedAt: now,
   };

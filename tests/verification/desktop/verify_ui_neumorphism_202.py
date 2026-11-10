@@ -15,6 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 SRC = REPO / "desktop" / "src"
+PUBLIC = REPO / "desktop" / "public"
 
 CHECKS: list[tuple[str, bool, str]] = []
 
@@ -42,12 +43,13 @@ def main() -> int:
     category = read(SRC / "shell" / "CategoryPicker.tsx")
     model = read(SRC / "shell" / "ModelPicker.tsx")
     markdown = read(SRC / "markdown.css")
+    settings_css = read(SRC / "settings-panel.css")
 
     # ---- 1. 令牌与双阴影 ------------------------------------------------
     tokens = [
-        "--od-neu-bg: #edecea",
-        "--od-neu-surface: #f0efec",
-        "--od-neu-sunken: #e8e6e1",
+        "--od-neu-bg: #f0efec",
+        "--od-neu-surface: #f8f8f6",
+        "--od-neu-sunken: #e8e7e3",
         "--od-neu-focus: #3525cd",
     ]
     check("theme_warm_tokens", all(t in theme for t in tokens),
@@ -58,7 +60,9 @@ def main() -> int:
           and "var(--od-neu-raise-3)" in theme,
           "凸起 L1/L2/L3 成对阴影令牌存在")
     check("theme_inset_pair",
-          "var(--od-neu-inset-1)" in theme and "var(--od-neu-inset-2)" in theme,
+          "--od-neu-inset-1:" in theme
+          and "--od-neu-inset-2:" in theme
+          and theme.count("var(--od-neu-inset-1)") >= 2,
           "凹陷 L1/L2 成对内阴影存在")
     check("theme_focus_visible",
           "outline: 2px solid var(--od-neu-focus)" in theme,
@@ -71,6 +75,29 @@ def main() -> int:
           "旧玻璃构件切到新拟物材质，共享胶囊自动统一")
     check("theme_no_dead_chat_panel", ".neu-chat-panel" not in theme,
           "未使用的整幅对话面板类已移除，避免空态出现巨大空白卡片")
+    check("global_surface_map",
+          "[class~=\"bg-white\"]" in theme
+          and "[class*=\"bg-surface-container-low\"]" in theme
+          and "background-color: var(--od-neu-surface) !important" in theme,
+          "全应用纯白与旧容器映射到暖灰表面")
+    check("global_shadow_map",
+          "[class*=\"shadow-[\"]" in theme
+          and ".shadow-md," in theme
+          and "var(--od-neu-raise-2) !important" in theme,
+          "旧任意阴影与 Tailwind 阴影统一映射到新拟物成对阴影")
+    check("global_no_blur",
+          "[class*=\"backdrop-blur\"]" in theme
+          and "backdrop-filter: none !important" in theme,
+          "全应用移除残留背景模糊")
+    check("settings_pane_neu",
+          ".settings-surface .pane" in settings_css
+          and "var(--od-neu-raise-2)" in settings_css
+          and "var(--od-neu-surface)" in settings_css,
+          "设置页主卡片切到暖面与新拟物阴影")
+    check("settings_no_lavender_fill",
+          "rgba(242, 243, 255" not in settings_css
+          and "background: rgba(255, 255, 255" not in settings_css,
+          "设置页不再保留旧淡紫/纯白硬编码背景")
 
     # ---- 1b. 中文四层字体 ------------------------------------------------
     check("type_soft_display_heading",
@@ -99,11 +126,19 @@ def main() -> int:
           "标语优先演示夏行楷，但拉丁先走 Inter，避免英文变成手写体")
     check("type_body_line_height", "leading-[1.65]" in app,
           "全局正文行高 1.65")
-    check("type_slogan_bold_header",
-          "font-slogan" in canvas
+    check("type_slogan_bold_empty_state",
+          "font-slogan" in chat
           and "font-weight: 700" in theme
           and "font-slogan" in theme,
-          "首页欢迎句使用加粗行楷，标语不再发虚")
+          "新对话空态标语使用加粗行楷，标语不再发虚")
+    check("type_slogan_self_hosted",
+          '@font-face' in theme
+          and 'font-family: "Slidexiaxing"' in theme
+          and (PUBLIC / "fonts" / "Slidexiaxing-Regular.ttf").is_file(),
+          "演示夏行楷已本地自托管，首页标语不依赖系统字体安装")
+    check("type_slogan_license",
+          (PUBLIC / "fonts" / "OFL-SlideFont.txt").is_file(),
+          "随包保留演示夏行楷的 SIL OFL 授权文本")
     check("type_table_controls_sans",
           "font-family: var(--font-body-sm)" in markdown,
           "Markdown 表格回到无衬线，避免密集数据用宋体")
@@ -119,7 +154,7 @@ def main() -> int:
 
     # ---- 2. 顶栏 --------------------------------------------------------
     check("topnav_raised_bar",
-          "neu-nav" in top and "rounded-[26px]" in top,
+          "neu-nav" in top and "rounded-[30px]" in top,
           "顶栏为凸起圆角长条")
     check("topnav_inset_search",
           "neu-inset-field" in top and "neu-inset-pill" in top,
@@ -136,11 +171,11 @@ def main() -> int:
 
     # ---- 3. 应用底材与首页 ----------------------------------------------
     check("app_warm_base",
-          "neu-app" in app and "neu-glow-a" in app and "neu-glow-b" in app,
-          "应用底材换暖白灰，光晕保留但改为静态暖色")
+          "app-scape-base" in app and "app-scape-mist" in app and "home-scape.png" in app,
+          "应用底材为暖白风景层，首页插画单独挂载")
     check("home_composer_inset",
           "neu-composer" in chat and "neu-send-btn" in chat,
-          "输入区压入、发送按钮凸起")
+          "输入区为带光晕的凸起面板，发送按钮凸起")
     check("home_messages_materials",
           "neu-msg-accent" in chat and "neu-msg-assistant" in chat,
           "用户消息轻凸、助手消息浅面，不全做成厚卡片")
@@ -154,8 +189,8 @@ def main() -> int:
 
     # ---- 4. Dock 与窗口控制 ----------------------------------------------
     check("dock_free_floating",
-          "neu-dock-btn" in dock and "neu-dock-active" in dock,
-          "Dock 入口凸起，当前项凹陷并保留品牌靛标记")
+          "neu-rail" in dock and "neu-dock-btn" in dock and "neu-dock-active" in dock,
+          "左侧入口收进胶囊导轨，当前项为品牌靛实心圆")
     check("dock_no_container_glass",
           "bg-surface-container-lowest/95" not in dock and "shadow-[" not in dock,
           "Dock 不再有玻璃胶囊容器")
