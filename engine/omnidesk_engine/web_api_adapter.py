@@ -72,7 +72,12 @@ from .task_core import (
     TaskRecovery,
     _TaskRecord,
 )
-from .acp_adapter import canonical_cwd, workspace_label_for, workspace_token_for
+from .acp_adapter import (
+    canonical_cwd,
+    proc_title_shim_args,
+    workspace_label_for,
+    workspace_token_for,
+)
 from .process_owner import record_child_group, terminate_group
 from .security import DataMasker, MaskMapping, SessionScope
 from .security.stream_unmask import StreamUnmasker
@@ -511,7 +516,8 @@ class WebApiAdapter(TaskCoreBase):
         **kwargs: Any,
     ) -> "WebApiAdapter":
         # `--patch` 是 launcher 级参数，必须排在 web app 参数之前。
-        cmd = [resolve_node(), dsh_bin, "--profile", profile]
+        # OD-PROC-149b：darwin 下前置 --require shim，进程标题显示 omnidesk-dsh。
+        cmd = [resolve_node(), *proc_title_shim_args(), dsh_bin, "--profile", profile]
         for p in patch_files:
             cmd.extend(["--patch", p])
         cmd.extend(["--port", "0", "--no-open"])

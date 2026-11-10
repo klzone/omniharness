@@ -1,3 +1,17 @@
+# OD-PROC-149 审查：进程名归一 omnidesk-*（ARCHITECT，2026-11-11）——通过
+
+**结论：通过。** 149a/149b 两卡由并行子代理实施，独立复检全部实跑验证通过；两处打包/断言适配已由 ARCHITECT 修正。可进入用户实测与出包。
+
+**计划符合性：** 149a 副本复制+marker+探针回退+开关+非 Windows 透传，全部与获批计划一致；149b shim 外部注入（runtime/ 零改动）+darwin 分支+setproctitle 静默降级，一致。process_owner.rs 的 is_node_image 联动属任务卡正文明确要求（防回收失明），两平台分隔符兼容处理正确。
+
+**独立验证（本会话实跑）：** cargo lib **1103 passed / 3 failed**（3 项为既有 process_owner 沙箱进程表限制，与改动无关；process_alias 8 项与 engine_image_accepts_alias_names 全绿）；tsc 0；verify_proc_alias_149 **34/34**（含 node 实跑探针 title=omnidesk-dsh）；web_api adapter 单测 **89/89**（修正断言后）；verify_docx_148 14/14、verify_diagnose 15/15 不回归。
+
+**ARCHITECT 修正两处：** ①test_web_api_unit.py cmd[:4] 精确断言在 darwin shim 注入后失效，改为剔除 --require 前缀后断言相对顺序（复跑 89/89）；②tauri.macos.conf.json resources 补 scripts/proc_title_shim.cjs 映射（149b 报告指出打包后 shim 缺失会静默不注入，实查构建产物证实）。
+
+**派工偏差：** 用户指定 deepseek-v4.1-flash-eco；派工系统可用清单无 -eco 变体（该 id 仅存在于 OmniDesk 产品路由），实际按 OpenDesign/deepseek-v4.1-flash + high 派发。等派工系统补 -eco 路由后切换。
+
+**未验证项（用户实测）：** Windows 任务管理器显示 omnidesk-node.exe/omnidesk-python.exe 分组；python 副本 DLL 探针真机结果（失败自动回退原名，无回归风险）；macOS 活动监视器显示 omnidesk-engine/omnidesk-dsh。
+
 \n# OD-DOCX-148 审查：附件广收窄取（ARCHITECT，2026-11-10）——通过\n\n**结论：通过。** 用户另一会话实施的 148a-d 与获批计划一致且质量良好；本会话独立复检全部实跑验证通过，可进入用户实测与出包。\n\n**计划符合性（逐卡核对 diff）：**\n\n- 148a：接收层不再有格式白名单拒收（除硬边界），MaterialRead.content_kind/note 三端同步，「另存为」话术删除，前端 chip 带「正文未提取」徽标。✔\n- 148b：stdlib docx 提取（w:t/tab/br/表格）+ 可选 pypdf；JSON 契约 {kind, content/reason}；include_str! 内置。✔\n- 148c：requirements 加 python-docx+lxml；universal 包删 .so 收窄到 charset_normalizer（计划内指定的坑已修）。✔\n- 148d：python_docx/python_pypdf 环境项 optional（requirement=可选，不进整体 ok）。✔\n\n**独立验证（本会话实跑）：** cargo lib **1094/3**（3 项 process_owner 沙箱限制，与本次改动无关；新增 attachment/docx/平台测试全 ok）；tsc 0；verify_docx_attachment_148 **14/14**；verify_docx_vendor_148cd **9/9**；verify_diagnose 15/15 不回归；vendor 探针 import docx+lxml 实测通过（1.2.0/6.1.3）。\n\n**安全复核要点：** 禁用目录断言与 resolve_real_path 先于 helper；helper 拒绝 DOCTYPE/ENTITY（XXE）；解压总量与 document.xml 双上限（env 可调）；6 秒 try_wait+kill 超时不阻塞；临时目录 pid+序号、失败清理；sha256 改为原始字节（比原实现更准确）。\n\n**偏差与增项登记：** ①lib.rs desktop_user_name 改 async——不在 148 计划内，属修复 147 复检发现的 HEAD 既有测试失败，方向正确予以追认；②release.yml 加两平台 vendor 探针步——148c 验收要求的 CI 证据，追认；③另一会话未更新 STATUS/REVIEW/PLANS 状态行，由本次复检补齐。\n\n**未验证项（用户侧）：** Windows 安装包 helper/vendor 探针（CI 出包日志确认）；真实模型对 metadata_only 附件按路径读取的行为；.doc/.wps 转换仍属增量能力。\n
 # OD-ARCH-147 审查：免 key 搜索全局生效与检索收敛（ARCHITECT，2026-11-10）——通过（附遗留）
 

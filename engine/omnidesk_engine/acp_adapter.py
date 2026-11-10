@@ -72,6 +72,26 @@ from .task_core import (
 from .jsonrpc import JsonRpcPeer, PeerExit
 from .process_owner import record_child_group
 
+
+def proc_title_shim_args() -> list[str]:
+    """OD-PROC-149b：darwin 下给 node 命令前置 `--require` 进程标题 shim。
+
+    shim 只是一行 `process.title = ...` 的 CommonJS 文件，由外部 `--require`
+    注入，runtime/ 内 DSH 一字不改。找不到文件（例如打包后没有随包分发
+    scripts/）时返回空列表，启动命令保持原样，功能不受影响。
+
+    查找顺序：引擎包上一级（仓库根的 scripts/）→ 引擎包自身的 scripts/。
+    开发态命中仓库根，打包态若把 scripts/ 放在 engine/ 同级也能命中。
+    """
+    if sys.platform != "darwin":
+        return []
+    here = Path(__file__).resolve()
+    for base in (here.parents[2], here.parents[1]):
+        candidate = base / "scripts" / "proc_title_shim.cjs"
+        if candidate.is_file():
+            return ["--require", str(candidate)]
+    return []
+
 __all__ = [
     "ACP_PROTOCOL_VERSION",
     "CLIENT_CAPS",
@@ -216,7 +236,7 @@ class AcpEngineAdapter(TaskCoreBase):
         env: Optional[Mapping[str, str]] = None,
         **kwargs: Any,
     ) -> "AcpEngineAdapter":
-        cmd = [resolve_node(), dsh_bin, "--profile", profile]
+        cmd = [resolve_node(), *proc_title_shim_args(), dsh_bin, "--profile", profile]
         for p in patch_files:
             cmd.extend(["--patch", p])
         kwargs.setdefault("engine_profile", profile)

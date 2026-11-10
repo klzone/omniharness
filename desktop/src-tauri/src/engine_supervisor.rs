@@ -1140,17 +1140,28 @@ impl EngineSupervisor {
         if let Some(parent) = stderr_log.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+        // OD-PROC-149a：Windows 上优先用 omnidesk-python.exe / omnidesk-node.exe 副本，
+        // 让任务管理器把本产品的进程归到 omnidesk-*；其它平台与关闭开关时原样透传。
+        let data_root = self
+            .config
+            .engine_state_dir
+            .parent()
+            .unwrap_or(&self.config.engine_state_dir)
+            .to_path_buf();
+        let alias = crate::process_alias::select_for_engine(&data_root, &self.config.python);
+        let mut envs = self.config.child_env();
+        envs.extend(alias.env.iter().cloned());
         let channel = EngineChannel::spawn_with_stderr_log(
-            &self.config.python,
+            &alias.python,
             &args,
             &self.config.engine_dir,
-            &self.config.child_env(),
+            &envs,
             Some(&stderr_log),
         )
         .map_err(|e| {
             format!(
                 "启动引擎子进程失败（{} {}，cwd={}）：{}",
-                self.config.python,
+                alias.python,
                 args.join(" "),
                 self.config.engine_dir.display(),
                 e

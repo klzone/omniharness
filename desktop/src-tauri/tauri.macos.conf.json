@@ -3,6 +3,7 @@
   "bundle": {
     "resources": {
       "../../engine": "engine",
+      "../../scripts/proc_title_shim.cjs": "scripts/proc_title_shim.cjs",
       "../../runtime/RUNTIME.lock": "runtime/RUNTIME.lock",
       "../../runtime/dsh-runtime": "runtime/dsh-runtime",
       "../../runtime/dsh-home-seed": "runtime/dsh-home-seed",

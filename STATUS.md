@@ -438,7 +438,9 @@
 
 ### 改动
 
-- [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:112) 的 `PrepareResult` 新增 `user_input_text`：由同一批 inbox 文件正文按 `\n\n` 拼接，与组装提示词同源。
+- [knowledge_ingest.rs](/Users/yvan/Code/MyWorkStation/desktop/src-tauri/src/knowledge_ingest.rs:112) 的 `PrepareResult` 新增 `user_input_text`：由同一批 inbox 文件正文按 `
+
+` 拼接，与组装提示词同源。
 - [KnowledgeIngestPanel.tsx](/Users/yvan/Code/MyWorkStation/desktop/src/shell/KnowledgeIngestPanel.tsx:50) 提交时传 `userInputText: prep.user_input_text`；红线扫描落在用户材料上，而不是含“案件/线索/审查调查”等边界说明的建卡规范。
 - [types.ts](/Users/yvan/Code/MyWorkStation/desktop/src/types.ts:566) 同步字段；[verify_knowledge_ingest_ui_141.py](/Users/yvan/Code/MyWorkStation/tests/verification/desktop/verify_knowledge_ingest_ui_141.py:1) 增加两条接线断言。
 - 新增 Rust 单测：`knowledge_ingest::tests::inbox_scan_text_is_joined_from_same_batch` 与 `task_shell::tests::knowledge_ingest_scans_inbox_text_not_card_spec`。
@@ -746,7 +748,8 @@ Windows 用户拿到的发布物原来只有一个 zip：双击 `OmniDesk.exe` �
 1. **`release.yml`**：Windows job 由 `--no-bundle` 改为 `--bundles nsis`，产物上传 `dist-package/*.zip` 与 `bundle/nsis/*.exe` 两类，Release 同时挂 zip 与 `x64-setup.exe`。macOS job 保持 `--bundles app`。两个 job 在构建前都调用新的版本同步脚本。发布 job 增加「摊平产物」一步：Windows artifact 同时含 `dist-package/` 与 `bundle/nsis/`，公共祖先变成仓库根，文件被放进两层目录，不摊平的话 `artifacts/*.exe` 匹配不到安装器。
 2. **`tauri.conf.json`**：新增 `bundle.windows.nsis`（`installMode: both`、`SimpChinese`、关闭语言选择器）；版本号由半年前的 `0.2.3` 校正到与 `VERSION` 一致的 `0.2.5`。
 3. **`scripts/sync-app-version.sh`（新增）**：把 `VERSION` 写进 `tauri.conf.json`。发布产物名取自 conf、Release tag 取自 VERSION，两处各写一遍必然漂移，发布前统一一次，内容相同就不写文件。
-4. **`platform.rs`**：新增 `CREATE_NO_WINDOW` 与 `hide_console(&mut Command)`（Windows 生效，其余平台空操作）；`resolve_node` 补 `%ProgramFiles%\nodejs`、nvm-windows、scoop、用户目录解压形态；`resolve_python` 的候选拆成按平台生成，Windows 补 python.org 的两种安装落点与官方 `py -3` 启动器（问出真实解释器路径）；新增 `environment_report()` 与两个依赖状态结构（找到与否、版本、要求、修复提示、下载页）。
+4. **`platform.rs`**：新增 `CREATE_NO_WINDOW` 与 `hide_console(&mut Command)`（Windows 生效，其余平台空操作）；`resolve_node` 补 `%ProgramFiles%
+odejs`、nvm-windows、scoop、用户目录解压形态；`resolve_python` 的候选拆成按平台生成，Windows 补 python.org 的两种安装落点与官方 `py -3` 启动器（问出真实解释器路径）；新增 `environment_report()` 与两个依赖状态结构（找到与否、版本、要求、修复提示、下载页）。
 5. **子进程统一隐藏控制台**：`engine_ipc.rs`（引擎）、`dsh_settings.rs`（DSH 设置服务）、`model_routes.rs`、`route_classifier.rs`、`profile_assets.rs`（插件安装）、`platform.rs` 的 Windows 打开器。
 6. **`lib.rs`**：新增 `environment_check` 命令并注册；`profile_skill_source_open` 与 `profile_export_open` 不再各自拼 `xdg-open` / `gio` 循环，改走 `platform::open_target`（Windows 上原来这两处根本打不开）。
 7. **前端**：`types.ts` + `api.ts` 增加体检类型与调用；新增 `shell/EnvironmentCheck.tsx`（两项依赖的状态、版本、路径、修复提示、下载按钮、重新检测）；`App.tsx` 在 `envReport.ok === false` 时用它接管主区域，体检本身失败按「不确定」放行，不拦界面。
@@ -941,8 +944,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 
 本轮起的 vite（5273）、Xvfb、dbus 与预览实例已按进程收尾；正式实例（app pid 107733）未触碰；`/tmp/od130-*` 为临时日志与预览根，可由脚本清理。
 
-
-
 ## OD-ARCH-129：自建 Profile 的场景 × Skill 绑定可在界面里勾选保存（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 109–128 未提交改动，原样保留（本轮新增 1 个绑定写入纯函数与 4 个单测、1 条 Tauri 命令与 4 个行为测试、`allowed_skills` 下发、3 处前端类型/API、设置页 1 个勾选区块与其样式、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733）全程未动。
@@ -986,7 +987,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 ### 进程清理
 
 窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留（`ps` 复查为 0）；`/tmp/od129-*` 日志与隔离根在收尾时用 Python 删除（`rm -rf` 会被拒）。正式实例（app pid 107733）与引擎进程全程未动。
-
 
 ## OD-ARCH-128：Profile 装配链补两处真缺口（基础标准零写入收口 + 自建 Profile 声明插件）（2026-10-29；已实施，本人实跑验证）
 
@@ -1032,8 +1032,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 ### 进程清理
 
 窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od128-*` 日志、`/tmp/od128-preview` 隔离根与调试脚本在收尾时用 Python 删除。正式实例（app pid 107733）全程未动，`runtime/` 零差异。
-
-
 
 ## OD-ARCH-127：Profile 可导出 / 可导入（2026-10-29；已实施，本人实跑验证）
 
@@ -1081,7 +1079,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 
 窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od127-*` 日志与 `/tmp/od127-preview` 隔离根在收尾时用 Python 删除。正式实例（app pid 107733）全程未动，`runtime/` 零差异。
 
-
 ## OD-ARCH-126：自建 Profile 的显示名可改（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 109–125 未提交改动，原样保留（本轮新增 1 个 Rust 改名函数与 5 个单测、1 个 Tauri 命令、2 处前端类型/API、1 处设置页行内编辑、2 条样式、1 个窗口验收脚本）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
@@ -1124,7 +1121,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 ### 进程清理
 
 窗口脚本自带的 Xvfb、dbus 与 AppSession 随脚本退出后无残留；`/tmp/od126-*` 日志与 `/tmp/od126-preview`、`/tmp/od125-preview`、`/tmp/od124-preview`、`/tmp/od118-preview` 等隔离根在收尾时用 Python 删除。正式实例（app pid 107733、引擎 pid 107812）全程未动，`runtime/` 零差异。
-
 
 ## OD-ARCH-125：Profile 回收站（2026-10-29；已实施，本人实跑验证）
 
@@ -1169,7 +1165,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 2. **顶栏清单不刷新（真实产品缺陷）。** 恢复成功后登记与目录都对，但 `ProfileBadge` 的可选清单只在挂载时读过一次，弹层里只有「基础标准 / 纪检专业」，恢复出来的条目点不到。加 `omni://profile-registry` 事件与订阅后修复，`picked_restored` / `switched_to_restored` / `restored_dock_has_scenes` 三项转 true。
 3. **回收站行的可见性判定（两轮 `trash_section_visible=false`）。** 截图里「Trash Desk 可恢复 恢复」清清楚楚，但 WebKit 不把 `asset-row-title` 的文字与徽标放进无障碍树（118 已记录同一现象）。判定收窄为「恢复」按钮可见，磁盘侧另有 `trash_has_item` / `trash_meta_written` 两条独立断言，没有放松标准。
 4. **验收脚本必须用新构建的 debug 二进制。** `window_harness.APP_BIN` 指向 `target/debug/omnidesk-desktop`，不重建就会报 `Command profile_trash_list not found`（本轮踩过两次）。
-
 
 ## OD-ARCH-124：冷启动插件自愈（2026-10-29；已实施，本人实跑验证）
 
@@ -1278,7 +1273,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 2. **不跟着换的四项，是有意为之。** 成果根、库根、知识库根、历史会话列表都是机器级单值：`settings.rs` 三个 `Option<String>` 各存一份，`app_paths` 的 `threads` 是 `<应用数据根>/threads`（无 Profile 段）。引擎侧 `engine_supervisor` 只把 profile 名传给 DSH，不传数据根；`~/OmniDesk/runtime/dsh-home/sessions/` 实测按 cwd 分 7 个目录，没有 Profile 维度。若把这些卷进切换，「切回基础标准后你的成果去哪了」就要额外设计迁移与回滚，而磁盘上什么都没删——这属于最难排查的假故障。想按用途隔离，正确做法是在设置页给不同用途配不同的成果根与库根（切换不会覆盖这两项）。
 3. **没有发现新的产品缺陷。** 本轮自查只产出一条决策记录，没有触发代码改动，因此不重跑构建与窗口脚本；上述代码位置是直接读源码确认的。
 
-
 ## OD-ARCH-122：自建 Profile 的「体检」与「起手骨架」（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–121 未提交改动，原样保留（本轮新增 118 项未提交改动中的 4 处源码 + 1 个验收脚本 + 文档）。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
@@ -1329,7 +1323,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 真实模型端到端（OD-ARCH-080）仍未跑。
 - 起步骨架只覆盖「新建自定义 Profile」与「手动填模板」两条入口；已在运行的旧自建 Profile 不会自动获得声明（避免覆盖用户「故意不要场景」的选择）。
 
-
 ## OD-ARCH-121：切 Profile 后自动补齐缺失插件（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–120 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证；正式实例（app pid 107733、引擎 pid 107812）全程未动。
@@ -1378,7 +1371,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 断网、registry 返回 5xx、安装中途被系统杀掉这三种失败路径只有单测覆盖（超时与失败回执），没有真实网络故障注入的窗口证据。
 - 自动补齐只在「切换那一刻」触发；切换后如果用户手动删掉插件目录，需要再切一次或手动点安装才会补。
 
-
 ## OD-ARCH-120：「缺插件点安装」必须真装得上（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–119 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异。
@@ -1421,7 +1413,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 真实模型端到端（OD-ARCH-080 清单）仍未跑，等用户实测。
 - 「切换 Profile 时自动装插件」仍是设计上的不做项：联网安装只由用户点按钮触发，切换路径不联网。
 - 本机 `~/OmniDesk/runtime` 无 `dsh-runtime`，正式实例依赖 `OMNIDESK_DSH_CLI`。
-
 
 ## OD-ARCH-119：补丁里的子路径导出不是独立插件（2026-10-29；已实施，本人实跑验证）
 
@@ -1472,7 +1463,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 不自动安装任何插件（仍由用户点「安装」触发）；
 - 不改补丁文件里的 `name:`——那是 DSH 侧合法的模块入口；
 - 真实联网装插件与真实模型端到端仍未测。
-
 
 ## OD-ARCH-118：自定义 Profile 的「建 → 切 → 看 → 删」整条链路实跑（2026-10-29；已实施，本人实跑验证）
 
@@ -1526,7 +1516,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 真实模型端到端仍未测（OD-ARCH-080 实测清单待执行）；
 - 未 commit、未 push。
 
-
 ## OD-ARCH-117：复制 Profile 带上分类表，停放区在设置页可见（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–116 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
@@ -1565,7 +1554,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 停旧实例（app pid 97027）后遗留的孤儿引擎 97550 已 kill；确认无在跑任务再停止。
 - 新二进制已部署：`scripts/omnidesk.sh --no-build`，app pid **107733**。
 - 阶段性备份见本轮末条。
-
 
 ## OD-ARCH-116：对话分类随 Profile 走，干净底座不再残留业务分类（2026-10-29；已实施，本人实跑验证）
 
@@ -1613,7 +1601,6 @@ Release 资产已齐（macOS zip、Windows zip、`OmniDesk_0.2.6_x64-setup.exe`�
 - 真实联网安装插件、真实模型端到端仍未测（同 114/115）。
 - 既有无关告警：`worklog.rs::AppendReceipt::failure` dead_code。
 
-
 ## OD-ARCH-114 / 115：缺失插件摆上台面 + 切回基础标准真的收回 Skill（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–113 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
@@ -1655,7 +1642,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 - 部署后 `.omnidesk-managed` 里现在是 8 个 Skill（切到 `discipline` 的正常状态）；切回基础标准时才会被清空。
 - 真实模型端到端仍未测；既有 `worklog.rs::AppendReceipt::failure` dead_code 告警与本轮无关。
 
-
 ## OD-ARCH-113：资产页就地修复 + Skill 巡检比内容（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–112 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
@@ -1696,7 +1682,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 - 修复不改 `runtime/`、不碰 `~/.dsh`。
 - 真实模型端到端仍未测；既有 `worklog.rs::AppendReceipt::failure` dead_code 告警与本轮无关。
 
-
 ## OD-ARCH-112：引擎与插件探测同源（2026-10-29；已实施，本人实跑验证）
 
 > 起点 HEAD `7820751`，工作区含 104–111 未提交改动，原样保留。未做 commit / push / reset / clean；本助手亲自实施，未派子代理；`runtime/` 零差异；未读真实工作记录、知识库与凭证。
@@ -1728,7 +1713,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 - 兜底顺序按当前默认布局（`~/OmniDesk/{app,runtime,engine}`）设计；安装器换布局仍需 `OMNIDESK_ENGINE_DIR` / `OMNIDESK_DSH_CLI`。
 - 本机 `$HOME/OmniDesk/runtime` 下没有 `dsh-runtime`，运行时仍在仓库内，所以正式实例仍依赖 `OMNIDESK_DSH_CLI`。
 - 真实模型端到端仍未测。
-
 
 ## OD-ARCH-111：Profile 资产随二进制走（2026-10-29；已实施，本人实跑验证）
 
@@ -1789,7 +1773,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 - `default_dsh_cli()` 的兜底路径按当前默认布局（`~/OmniDesk/{app,runtime}`）设计；安装器若把运行时放到别处，仍需 `OMNIDESK_DSH_CLI` 指定。
 - 真实模型端到端仍未测。
 - `worklog.rs::AppendReceipt::failure` 的 dead_code 告警是既有问题，与本轮无关。
-
 
 ## OD-ARCH-110：切换 Profile 立即生效（2026-10-29；已实施，本人实跑验证）
 
@@ -2078,7 +2061,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 
 窗口脚本自带的 Xvfb 与 AppSession 已随脚本退出，无残留（`ps` 复核只剩一个本轮之前就存在的 `npm run dev` / vite，11:22 启动、属用户开发服务器，未动）。
 
-
 ## OD-ARCH-105：业务判断全部下放到 Skill，平台只留数据与写盘边界（2026-10-28；已实施）
 
 > 状态：**已实施，本人实跑验证通过；验收结论见 REVIEW.md 顶部。**
@@ -2168,7 +2150,6 @@ Profile 切换现在能补齐配置与 Skill，但有两处让「干净底座 + 
 
 - tests/verification/desktop/evidence/od-arch-104/verdict-104.json（67 项逐条结果）
 - tests/verification/desktop/evidence/od-arch-104/worklog-103.json、worklog-089.json
-
 
 ## OD-ARCH-103：随手记补录日期语义化（2026-10-28；已实施）
 
@@ -2433,7 +2414,6 @@ Rust 新增 11 项：`assert_entry_date` 的合法/未来/他周/格式/周标�
 
 未在用户实际显示器与真实数据上复核，本轮窗口证据均为 Xvfb + 合成数据。按用户长期偏好，本轮已提交并推送 GitHub（提交见 REVIEW 记录）。
 
-
 ## OD-ARCH-096：构建警告清理与模型切换提示条（2026-10-27；已实施，ARCHITECT 审查通过）
 
 > 状态：**已实施；ARCHITECT 独立审查通过（结论见 REVIEW.md 顶部）。本节是执行记录。**
@@ -2609,8 +2589,6 @@ Gone_after_s = 59.6 / 60.5 是两秒一次采样的窗口实测值，与 60 秒�
 - `git diff --check`：通过；`git status --porcelain -- runtime/`：空。
 - 待审查：实际源码、Git diff、测试结果与证据由 ARCHITECT 独立复核后再写入 REVIEW.md；当前不标为通过。
 
-
-
 ## OD-ARCH-094：文案写作页改版——创作管线与灵感架（2026-10-27；已实施，审查通过）
 
 > 状态：**已实施，2026-10-27 ARCHITECT 独立审查通过（结论见 REVIEW.md 顶部 094 章节）。** 审查人独立重跑窗口验证（`:194` /tmp/od094-review4b，passed: true）、98 项静态断言、091/092/093 回归、tsc/build/pytest，并逐文件核对提交 diff；cargo 全量 358+集成在本轮早前 20:04–20:05 通过（/tmp/od094-cargo.log）。
@@ -2719,7 +2697,6 @@ Gone_after_s = 59.6 / 60.5 是两秒一次采样的窗口实测值，与 60 秒�
 - 宽窗三栏下每栏 `max-h-[70vh]` 的独立滚动体验是否合适。
 - 第四次修订的三项验收点：①顶部四卡是否已足够「横向长方形」且卡高合适（实测约 90px，宽窗整排 1152px、窄于导航并在其下居中）；②三栏整体是否与顶部导航同宽（实测边界 160/1439 对导航 159/1440，差 1px）；③右栏精简后只留搜索框与卡片/列表、固定近 30 天且默认含子目录，是否满足用户对「固定显示近一个月」的意图（当前按 30 天滚动窗口而非自然月，需要 ARCHITECT 确认口径）。
 - 审查通过前，本页不得在 REVIEW.md 或其它文档中标记为通过。
-
 
 ## OD-KB-001 P4：全局/局部知识图谱与关系导航（2026-10-26～27，实施完成；已由 ARCHITECT 独立验收通过）
 
@@ -3386,7 +3363,6 @@ Skill 与配置：
 2. **注入字符数与原估算不同**：原估随手记约 1300、周报注入 3845；实际 1432 与 4553，因为拆分后两侧都补了必要小节（六要素、确认门、命名、自检）。收益方向不变：周报侧 −601 字符，随手记侧 −102 字符。
 3. **未派子代理**：按用户 2026-10-26 常驻指令「以后执行都由你自己来」，本轮由 ARCHITECT 直接实施。
 
-
 ## OD-ARCH-088：场景提问卡闭环 + 场景 intent 透传 + Skill 绑定可见性（2026-10-25，ARCHITECT 复核通过）
 
 > **ARCHITECT 复核结论：通过（2026-10-25）。** 本人独立复跑：pytest 89 passed/30 subtests、tsc exit 0、npm build exit 0、cargo 全量 0 failed、verify_intent_088 22/22、verify_ui_088 真实窗口 30/30（failures=[]）、082 绑定 35/35、sync-skills 无漂移、runtime/ 零差异。详见 REVIEW.md 顶部。另：复核时把 verify_worklog_085.py / verify_env_085.py 的冻结清单改成只放行 088 获批的两个 engine 文件，复跑 119/119 与 22/22。真实模型端到端仍未做。
@@ -3625,7 +3601,6 @@ Skill 与规则资产：
 `tests/verification/desktop/evidence/od-arch-082/scene-injection.json` 会被 082 脚本按当前 Skill 正文重写。开工时该文件已有 085 遗留改动，本轮跑前备份、跑后恢复为开工状态，未新增漂移；当前 sha256 `2c1ac8c2…`。
 
 **结论：待 ARCHITECT 独立复核。** 未提交、未推送、未打标签，未写 `REVIEW.md`。
-
 
 ## OD-ARCH-085：工作记录场景全链路——读/存/取/输出与知识库省 token 联动（2026-10-25，待 ARCHITECT 复核）
 
@@ -3912,7 +3887,6 @@ git status --porcelain runtime/ desktop/src-tauri/ engine/  → 0 行
 
 1. **真实付费模型端到端调用：** 本轮属于纯 UI 与视觉交互打磨，不涉及外部模型调用。
 2. **高分屏渲染差异：** 本次验收在标准 1x 分辨率 Xvfb 环境下完成（1440×900），HiDPI/缩放因子 > 1 时的边缘亚像素效果属于未验证项。
-
 
 ## OD-ARCH-082：三大场景 Skill 深化 + Profile 资产绑定（2026-10-25，执行完成，ARCHITECT 复核通过）
 
@@ -5781,7 +5755,6 @@ PLANS.md 写明的停止条件是：「omniharness-ui 合并若发现与主仓�
 
 - 无架构/数据模型/依赖类冲突；仅上述第 4 步落盘路径偏差，属实现层问题，按规则未自行扩大改动。
 
-
 ## OD-ARCH-044：Dock 悬停提示去重（2026-10-21，ARCHITECT 执行）
 
 - Dock 按钮的 `title`（触发浏览器原生大号提示，与图标右侧小字提示重复）改为 `aria-label`；
@@ -5832,7 +5805,6 @@ PLANS.md 写明的停止条件是：「omniharness-ui 合并若发现与主仓�
   `search_inspiration`、`get_product_screenshots`（Harvey AI 29 张）均成功，首图下载 200 并目视正常。
 - **限制：** 首次调用偶发一次 `fetch failed`，重试即恢复；`count` 参数实测不生效（恒返回 20 条）。
 - **Git：** 未提交、未推送、未打标签；`runtime/` 未改动。
-
 
 ## OD-ARCH-034：真多轮接线（2026-10-20，用户批准，ARCHITECT 执行）
 
@@ -7430,4 +7402,64 @@ Rust 测试前需 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"
 - 最近完成的 ARCHITECT 工作：OD-ARCH-001 独立审查与共享文档基线收敛；审查结论 MVP 不通过（R1–R4）。
 - 5 份历史规划材料移至 `docs/archive/` 保留，未删除；协作基线集中在仓库根 `AGENTS.md`、`GOALS.md`、`PLANS.md`、`STATUS.md`、`REVIEW.md` 与 `docs/decisions.md`。
 - 审查时 HEAD `17efd20`；工作区 175→181 项，暂存区为空；所有差异保留，未提交、未推送、未打标签。
-\n## OD-DOCX-148 附件广收窄取（2026-11-10，用户另一会话实施；本会话 ARCHITECT 独立复核）\n\n- **148b helper**：scripts/reading_attachment_extract.py（include_str! 内置 task_shell）；docx 走 stdlib zipfile+ElementTree（w:t/w:tab/w:br/w:tbl，tab 分隔单元格）；pdf 仅 pypdf 可导入时逐页提取；两档输出 {kind:text|metadata}；上限三道（文件 50MB/解压总量/document.xml 单件，env 可调）；DOCTYPE/ENTITY 头拒绝解析（XXE 防护）；只读不联网。\n- **148a 通道**：read_attachment 重构——文本扩展与 UTF-8 严格解码维持现状；.docx/.pdf 走 helper；其余二进制（图片/doc/wps/音视频等）一律 metadata_only 降级不拒收；「另存为 txt/md/csv」话术删除；超上限拒绝维持；断言被禁目录/resolve_real_path 校验先于 helper 不变；sha256 改为对原始字节计算（更准确）。attachmentPrompt.ts：metadata_only 附件块只含路径+sha256+「按路径自行读取」指引，attachmentScanText 相应只扫文件名与 note。HomeChat chip 显示「正文未提取」徽标。MaterialRead/content_kind/note 三端同步（Rust/types.ts/api）。\n- **148c**：python-requirements.txt 加 python-docx>=1.1,<2 与 lxml>=5,<7；prepare-runtime-assets.sh 的 universal 包删 .so 范围收窄到 charset_normalizer（保 lxml C 扩展）。\n- **148d**：platform.rs 环境报告加 python_docx/python_pypdf 两项（optional_module_status，requirement=可选，缺失只提示不进整体 ok）；EnvironmentCheck.tsx 显示；types.ts 同步。\n- 另：lib.rs desktop_user_name 改 #[tauri::command(async)]（修复 147 复检时发现的 HEAD 既有 UI 线程测试失败）；release.yml 两平台加 vendor import 探针步（requests+docx+lxml）。\n\n**ARCHITECT 独立复检（实跑，非引用对方自述）：**\n\n| 验证 | 结果 |\n| --- | --- |\n| cargo test --offline --lib | **1094 passed / 3 failed**；3 项全为 process_owner 沙箱进程表限制（本机已知，与 147 复检同因），新增 attachment/docx/平台测试全部 ok |\n| tsc --noEmit | exit 0 |\n| verify_docx_attachment_148.py | 14/14 |\n| verify_docx_vendor_148cd.py | 9/9 |\n| verify_diagnose_omnidesk.py | 15/15（不回归） |\n| vendor 探针 | PYTHONPATH=runtime/python-vendor python3 -c "import docx, lxml" 实测通过（python-docx 1.2.0 / lxml 6.1.3） |\n\n**安全复核：** 路径校验先于 helper；helper 临时目录用 pid+序号且 finally 清理；XML 拒 DOCTYPE/ENTITY；解压总量/单件双上限；超时 6s try_wait+kill 轮询不阻塞 UI；候选 python 顺序 OMNIDESK_EXPORT_PYTHON→OMNIDESK_PYTHON→PATH；PYTHONPATH vendor 注入两平台分隔符正确。\n**已知限制（与用户自诊口径一致）：** .doc/.docm/.wps 旧格式不提取（提示转换）；扫描件 PDF 无文本层时如实降级；OCR 未做；lxml ABI 绑构建机 Python 版本（148 证据 README 已登记）。\n**未验证项：** Windows 真实安装包上的 helper 与 vendor 探针（CI 日志待出包确认）；真实模型对 metadata_only 附件的按路径读取行为（待用户下次会话实测）。\n
+
+## OD-DOCX-148 附件广收窄取（2026-11-10，用户另一会话实施；本会话 ARCHITECT 独立复核）
+
+- **148b helper**：scripts/reading_attachment_extract.py（include_str! 内置 task_shell）；docx 走 stdlib zipfile+ElementTree（w:t/w:tab/w:br/w:tbl，tab 分隔单元格）；pdf 仅 pypdf 可导入时逐页提取；两档输出 {kind:text|metadata}；上限三道（文件 50MB/解压总量/document.xml 单件，env 可调）；DOCTYPE/ENTITY 头拒绝解析（XXE 防护）；只读不联网。
+- **148a 通道**：read_attachment 重构——文本扩展与 UTF-8 严格解码维持现状；.docx/.pdf 走 helper；其余二进制（图片/doc/wps/音视频等）一律 metadata_only 降级不拒收；「另存为 txt/md/csv」话术删除；超上限拒绝维持；断言被禁目录/resolve_real_path 校验先于 helper 不变；sha256 改为对原始字节计算（更准确）。attachmentPrompt.ts：metadata_only 附件块只含路径+sha256+「按路径自行读取」指引，attachmentScanText 相应只扫文件名与 note。HomeChat chip 显示「正文未提取」徽标。MaterialRead/content_kind/note 三端同步（Rust/types.ts/api）。
+- **148c**：python-requirements.txt 加 python-docx>=1.1,<2 与 lxml>=5,<7；prepare-runtime-assets.sh 的 universal 包删 .so 范围收窄到 charset_normalizer（保 lxml C 扩展）。
+- **148d**：platform.rs 环境报告加 python_docx/python_pypdf 两项（optional_module_status，requirement=可选，缺失只提示不进整体 ok）；EnvironmentCheck.tsx 显示；types.ts 同步。
+- 另：lib.rs desktop_user_name 改 #[tauri::command(async)]（修复 147 复检时发现的 HEAD 既有 UI 线程测试失败）；release.yml 两平台加 vendor import 探针步（requests+docx+lxml）。
+
+**ARCHITECT 独立复检（实跑，非引用对方自述）：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline --lib | **1094 passed / 3 failed**；3 项全为 process_owner 沙箱进程表限制（本机已知，与 147 复检同因），新增 attachment/docx/平台测试全部 ok |
+| tsc --noEmit | exit 0 |
+| verify_docx_attachment_148.py | 14/14 |
+| verify_docx_vendor_148cd.py | 9/9 |
+| verify_diagnose_omnidesk.py | 15/15（不回归） |
+| vendor 探针 | PYTHONPATH=runtime/python-vendor python3 -c "import docx, lxml" 实测通过（python-docx 1.2.0 / lxml 6.1.3） |
+
+**安全复核：** 路径校验先于 helper；helper 临时目录用 pid+序号且 finally 清理；XML 拒 DOCTYPE/ENTITY；解压总量/单件双上限；超时 6s try_wait+kill 轮询不阻塞 UI；候选 python 顺序 OMNIDESK_EXPORT_PYTHON→OMNIDESK_PYTHON→PATH；PYTHONPATH vendor 注入两平台分隔符正确。
+**已知限制（与用户自诊口径一致）：** .doc/.docm/.wps 旧格式不提取（提示转换）；扫描件 PDF 无文本层时如实降级；OCR 未做；lxml ABI 绑构建机 Python 版本（148 证据 README 已登记）。
+**未验证项：** Windows 真实安装包上的 helper 与 vendor 探针（CI 日志待出包确认）；真实模型对 metadata_only 附件的按路径读取行为（待用户下次会话实测）。
+
+## OD-PROC-149 进程名归一 omnidesk-*（2026-11-10，进行中）
+
+已派发两个并行 BUILDER（OpenDesign/deepseek-v4.1-flash + reasoning high，沿用 147/148 口径）：149a Windows exe 副本改名（Pauli / 01a1c62d-beb9-72d2-92ae-212cc8546841，Rust 侧 process_alias.rs + supervisor 接线 + 回退开关）、149b macOS 进程标题（Archimedes / 01a1c62e-30e6-70a0-824b-7e5911ef0b62，node --require shim + python setproctitle）。关键联动点已在派单标注：process_owner.py 的 exe.startswith("node") 判定须兼容 omnidesk-node 前缀，否则进程回收失明。完成后 ARCHITECT 独立复检 + 证据落 tests/verification/desktop/evidence/od-proc-149/。Windows 任务管理器分组与 Activity Monitor 显示属用户实测项。
+
+**OD-PROC-149b macOS 进程标题（2026-11-11 实施，待 ARCHITECT 复核）：**
+
+- `scripts/proc_title_shim.cjs` 新增：`process.title = "omnidesk-dsh"`，只经外部 `--require` 注入，runtime/ 内 DSH 未改。
+- `acp_adapter.py` 新增 `proc_title_shim_args()`：仅 darwin 返回 `["--require", <scripts/proc_title_shim.cjs 绝对路径>]`，按 `引擎包/../scripts` 与 `引擎包/scripts` 两处查找，找不到返回空列表；`for_dsh` 的 cmd 改为 `[node, *shim_args, dsh_bin, ...]`；`web_api_adapter.py` 复用同一 helper。
+- `__main__.py` 在 import `.serve` 之前执行 `setproctitle.setproctitle("omnidesk-engine")`，`except Exception: pass`；实测未安装时模块导入正常。
+- `scripts/python-requirements.txt` 加 `setproctitle>=1.3`（注释标 OD-PROC-149b）。
+- 验证：`verify_proc_alias_149.py` 149b 段 18/18 PASS（含 node 实跑探针 title=omnidesk-dsh）；`compileall` 0 error（PYTHONPYCACHEPREFIX 指向 /tmp，默认 pycache 目录在沙箱外）；`verify_diagnose_omnidesk.py` 15/15 不回归；本机 pip --target 装 setproctitle 后经 runpy 加载 `__main__`，实测 `getproctitle()=="omnidesk-engine"`。
+- **计划外发现 1（需裁定）**：`tests/verification/engine-interface/adapter/test_web_api_unit.py:464` 的 `test_for_dsh_argument_order` 精确断言 `cmd[:4]`，darwin 插入 `--require` 后失败（该文件 89 项中 1 项失败）。该文件不在获批改动范围，未修改；断言需改为兼容 `--require` 前缀。
+- **计划外发现 2（需裁定）**：macOS .app 的 `tauri.macos.conf.json` resources 只含 engine/runtime，实查 `target/release/.../Resources` 无 scripts；打包后 helper 找不到 shim 会静默不注入，149b 在发布包内不生效。需决定把 scripts/ 加入 macOS bundle resources，或把 shim 移入 engine/ 分发。
+- 未验证：Activity Monitor 真实显示（用户实测）；打包后路径解析。证据：tests/verification/desktop/evidence/od-proc-149/149b-summary.md。
+
+**OD-PROC-149a Windows exe 副本机制（2026-11-11 实施，待 ARCHITECT 复核）：**
+
+- `desktop/src-tauri/src/process_alias.rs` 新增：`omnidesk-python.exe` / `omnidesk-node.exe` 复制到 `<data_root>/runtime/bin/`；marker 记录源绝对路径+len+mtime，目标缺失或标记不符时重拷（先写 `.tmp` 再落位）；python 副本探针 `import sys, encodings`（含运行时同款 PATH 前缀）通过才启用，失败删除副本与 marker 回退原名；路径全部走 stderr + `logs/process-alias.log`；`OMNIDESK_PROC_ALIAS=off/false/0/no` 与显式 `OMNIDESK_NODE`/`OMNIDESK_PYTHON` 均跳过；非 Windows 整体透传。
+- `engine_supervisor.rs`：`start()` 处 `process_alias::select_for_engine` 转换解释器，副本选择的环境（PATH、`OMNIDESK_NODE`）并入 `child_env()` 后 spawn；`config.python` 本身不变，`resolve_python` 等只读路径无额外探测成本。
+- `process_owner.rs`（获批文件清单外的联动点，任务卡正文明确要求处理）：`is_engine_cmd` 抽出 `is_node_image`，兼容 `omnidesk-node` 前缀与反斜杠路径；`omnidesk-python -m omnidesk_engine` 仍由参数命中。新增单测 `engine_image_accepts_alias_names`。
+- `verify_proc_alias_149.py`：补齐 149a 静态段 16 项（149b 段 18 项保持并行代理交付内容）。
+- 实跑：`cargo test --offline --lib` 1103 passed / 3 failed（3 项均为既有 process_owner 沙箱进程表限制，与本次改动无关；process_alias 8 项全绿，含副本创建/标记不符刷新/探针失败回退/开关/非 Windows 透传/用户显式指定跳过/node 副本）；`npx tsc --noEmit` 0；`verify_proc_alias_149.py` 34/34；`verify_docx_attachment_148.py` 14/14；`verify_diagnose_omnidesk.py` 15/15。
+- 未验证：Windows 真机任务管理器显示（用户实测项）；Windows python 副本的 DLL/标准库解析仅由探针+PATH 兜底，真机若探针失败会静默回退原名（行为与改动前一致）。证据：tests/verification/desktop/evidence/od-proc-149/149a-summary.md。
+
+## OD-PROC-149 进程名归一 omnidesk-*（2026-11-11，两子代理实施完毕；本会话 ARCHITECT 独立复检通过）
+
+- **149a（Pauli）**：process_alias.rs（622 行，cfg(windows) 生效、其余平台透传）——副本目录 ，marker 记录源路径+len+mtime、变化时先写 .tmp 再落位；python 探针 （比计划多 encodings：sys 是内建模块，探不出标准库缺失，合理增强）；探针失败删副本回退原名；开关 OMNIDESK_PROC_ALIAS=off/false/0/no；显式 OMNIDESK_NODE/OMNIDESK_PYTHON 不接管。supervisor start() 接线（from_env 保持只读纯函数，避免设置页频繁探测）；process_owner.rs 抽 is_node_image 兼容 omnidesk-node 前缀与双平台分隔符（回收失明风险已封堵，8 项新单测含 alias 名断言）。
+- **149b（Archimedes）**：proc_title_shim.cjs 一行 process.title="omnidesk-dsh"，经 --require 外部注入（runtime/ 零改动）；proc_title_shim_args() 仅 darwin 注入、找不到 shim 返回空列表；web/acp 两 adapter 共用单实现；__main__.py setproctitle（try/except 包裹）；requirements 加 setproctitle>=1.3。
+
+**ARCHITECT 独立复检（实跑）：** cargo lib **1103 passed / 3 failed**（3 项为既有 process_owner 沙箱进程表限制，与改动无关；process_alias 8 项 + engine_image_accepts_alias_names 全绿）；tsc 0；verify_proc_alias_149 **34/34**（含 node 实跑探针 title=omnidesk-dsh）；web_api 单测修复后 **89/89**；verify_docx_148 14/14、verify_diagnose 15/15 不回归。
+
+**复检中的 ARCHITECT 修正与裁定（两处）：** ①test_web_api_unit.py 的 cmd[:4] 精确断言在 darwin 注入 shim 后失效——改为剔除 --require 前缀后断言相对顺序（我的第一版修正 slice 写错 [:3]/未改后续下标，复跑 2 次后修正为 args[:4]+args[4:8]+args[8:]，89/89 通过）；②macOS .app bundle resources 不含 scripts/，shim 打包后缺失会静默不注入——tauri.macos.conf.json 增加一行 resources 映射（最小打包修正）。
+
+**派工偏差登记：** 用户指定 deepseek-v4.1-flash-eco；派工目录可用清单无 -eco 变体（OmniDesk 产品路由目录里有该 id，子代理系统不支持），实际仍按 OpenDesign/deepseek-v4.1-flash + high 派发并在派单注明——与 147/148 同口径，等派工系统补 -eco 路由后再切换。
+
+**用户实测项：** Windows 任务管理器应显示 omnidesk-node.exe/omnidesk-python.exe 分组（python 副本 DLL 探针失败会自动回退原名，属预期降级）；macOS 活动监视器显示 omnidesk-engine/omnidesk-dsh。
+
