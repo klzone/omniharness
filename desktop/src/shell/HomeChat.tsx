@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, invalidateEngineFactsCache, onTaskEvent, scheduler, shell } from "../api";
+import type { ForkOrigin } from "../sceneThreads";
 import {
   ATTACHMENT_MAX_FILES,
   activeMentionQuery,
@@ -153,6 +162,11 @@ export interface ChatMessage {
 }
 
 /** 重放进下一轮提示的上文上限（字符）。超出时保留最近的部分。 */
+
+/** 对话滚动区是否已经贴近底部。用于决定是否显示「跳到最新」箭头。 */
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+}
 
 const STATE_LABEL: Record<TaskState, string> = {
   queued: "排队中",
@@ -330,8 +344,13 @@ export interface HomeChatProps {
   /**
    * 分支到新对话（OD-ARCH-079）：引擎侧已用 DSH 原生 session/fork 建好子会话，
    * 回调只负责把截至切点的消息带到新线程，并保存子会话号。
+   * 第三个参数是分支来源（父会话号 + 切点序号），供新对话顶部显示「本对话由分支创建」。
    */
-  onBranchNewThread?: (messages: ChatMessage[], childSessionId: string) => void;
+  onBranchNewThread?: (
+    messages: ChatMessage[],
+    childSessionId: string,
+    origin: ForkOrigin,
+  ) => void;
   /**
    * 场景选择（OD-ARCH-057）：首页是唯一的对话入口，场景在这里选。
    * 传入即显示场景 chip；选项由 Profile 声明联动（隐藏的入口不出现）。
@@ -349,6 +368,11 @@ export interface HomeChatProps {
   threadKey?: string;
   /** 线程的初始消息（从本地存储恢复）。 */
   initialMessages?: ChatMessage[];
+  /**
+   * 本线程的分支来源（OD-ARCH-079 补充）：非空时在对话顶部显示「本对话由分支创建」，
+   * 让用户一眼确认分支成功；普通新建线程为 null。
+   */
+  forkOrigin?: ForkOrigin | null;
   /** 消息变化回调（用于本地持久化）。 */
   onMessagesChange?: (messages: ChatMessage[]) => void;
   /** 引擎产生了新的 DSH 会话（第一轮提交后）时回调，供模块把它关联到引擎会话。 */
@@ -373,6 +397,8 @@ export interface HomeChatProps {
    * 只填不发，用户仍要自己按发送。
    */
   initialInput?: string;
+  /** 空对话时输入框下方的附加内容（首页的底部快捷入口）。 */
+  emptyFooter?: ReactNode;
 }
 
 export function HomeChat({
@@ -388,6 +414,7 @@ export function HomeChat({
   projectDir = null,
   threadKey = "default",
   initialMessages = [],
+  forkOrigin = null,
   onMessagesChange,
   onTaskCreated,
   inflightTaskId = null,
@@ -396,6 +423,7 @@ export function HomeChat({
   engineSessionId = null,
   onEngineSessionId,
   initialInput = "",
+  emptyFooter = null,
 }: HomeChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     normalizeLoadedMessages(initialMessages),
@@ -543,6 +571,17 @@ export function HomeChat({
   const [input, setInput] = useState(initialInput);
   /** 输入框引用（OD-ARCH-146 S2）：内容变化时自适应高度，最多 4 行后内部滚动。 */
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // 首页「开始对话」卡片：聚焦输入框，不新建线程、不改当前对话。
+  useEffect(() => {
+    const onFocusRequest = () => {
+      inputRef.current?.focus();
+    };
+    window.addEventListener("od:focus-composer", onFocusRequest as EventListener);
+    return () => {
+      window.removeEventListener("od:focus-composer", onFocusRequest as EventListener);
+    };
+  }, []);
   const [busy, setBusy] = useState(Boolean(inflightTaskId));
   /** 在途任务号回调的最新引用（避免轮询 effect 因父组件内联函数反复重订阅）。 */
   const inflightCbRef = useRef(onInflightTaskChange);
@@ -573,6 +612,17 @@ export function HomeChat({
     setCancelRequested(false);
     setEngineCancel(null);
     setActiveTaskStatus(null);
+  }, []);
+  /** 收到真实流事件即认为任务已进入运行态，即使宿主状态快照还停在 starting。 */
+  const markLiveTask = useCallback((taskId: string) => {
+    liveEventAtRef.current.set(taskId, Date.now());
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.taskId === taskId && (!m.state || m.state === "starting" || m.state === "queued")
+          ? { ...m, state: "running" }
+          : m,
+      ),
+    );
   }, []);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
   /** 引擎上报的上下文用量（ACP `usage_update` → progress/usage 的 used/size）；未上报时为 null。 */
@@ -707,6 +757,10 @@ export function HomeChat({
   /** 宿主报告的本任务待审批数量（与事件里的卡片互为佐证）。 */
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** 用户是否在对话底部；不在底部时显示「跳到最新」箭头。 */
+  const [atBottom, setAtBottom] = useState(true);
+  /** 每个任务最近一次收到真实事件的本地时间；用于避免状态轮询失败时误报“未知”。 */
+  const liveEventAtRef = useRef<Map<string, number>>(new Map());
   /** OD-ARCH-079：每条用户问句的锚点，供右侧索引条跳转与高亮。 */
   const turnAnchors = useRef<Record<string, HTMLDivElement | null>>({});
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
@@ -959,24 +1013,6 @@ export function HomeChat({
     [engineProfile, modelEffort, refreshAdmission],
   );
 
-  /**
-   * 改为跟随 DSH 设置（OD-ARCH-050）：归档 OmniDesk 覆盖文件、停掉引擎，
-   * 下次任务直接使用 DSH 里配置的 provider 与默认模型，不再要求在这里重选。
-   */
-  const followDsh = useCallback(async () => {
-    setModelBusy(true);
-    try {
-      const r = await shell.clearModelRoute();
-      setModelNote(r.note, "success");
-      invalidateEngineFactsCache();
-      await Promise.all([refreshAdmission(), loadModelRoutes()]);
-    } catch (e) {
-      setModelNote("切换失败：" + (e instanceof Error ? e.message : String(e)), "error");
-    } finally {
-      setModelBusy(false);
-    }
-  }, [refreshAdmission, loadModelRoutes]);
-
   // 引擎要求 workspace_dir 为绝对路径。宿主在端点未获准时会拒绝准备，
   // 此时如实记录拒绝原因并把工作目录置空，不用「仅解析出的路径」冒充可用目录。
   const resolveWorkspaceDir = useCallback(async (): Promise<string | null> => {
@@ -1001,6 +1037,9 @@ export function HomeChat({
     let unlisten: (() => void) | null = null;
     let closed = false;
     onTaskEvent((event) => {
+      if (event.omni_task_id && event.omni_task_id !== "unknown") {
+        markLiveTask(event.omni_task_id);
+      }
       if (event.type === "progress") {
         // 引擎上报的上下文用量（used / size tokens）。只显示宿主转发的真实数值，
         // 不自行估算或累加；未上报时界面显示「—」。
@@ -1733,6 +1772,12 @@ export function HomeChat({
         }
       } catch (e) {
         failures += 1;
+        // 如果事件流仍在给出真实增量，状态接口暂时不可用不应被写成“任务未知”。
+        const lastLive = liveEventAtRef.current.get(taskId) ?? 0;
+        if (Date.now() - lastLive < 30_000) {
+          failures = 0;
+          return;
+        }
         if (failures >= MAX_POLL_FAILURES) {
           settle();
           markNotice(
@@ -1752,10 +1797,35 @@ export function HomeChat({
     };
   }, [activeTaskId, loadResult, settleNote]);
 
+  // 只在切换线程时落到底部；生成中新增 token 不再强制滚动，保证用户能自由回看历史。
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    setAtBottom(true);
+  }, [threadKey]);
+
+  // 内容增长但用户停留在原位置时，及时显示「跳到最新」箭头，而不是把视口拽走。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) setAtBottom(isNearBottom(el));
   }, [messages]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => setAtBottom(isNearBottom(el));
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [threadKey]);
+
+  const scrollToLatest = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: prefersReduced ? "auto" : "smooth" });
+  }, []);
 
   // OD-ARCH-146 S2：输入框自适应高度——1 行起，超过 4 行后内部滚动（约 96px）。
   useEffect(() => {
@@ -2334,10 +2404,33 @@ export function HomeChat({
   const retryQuery = useCallback((taskId: string) => {
     resetCancelState();
     setMessages((prev) =>
-      prev.map((m) => (m.taskId === taskId ? { ...m, notice: null, retryable: false } : m)),
+      prev.map((m) =>
+        m.taskId === taskId
+          ? { ...m, notice: "正在重新连接任务状态…", retryable: false }
+          : m,
+      ),
     );
     setBusy(true);
     setActiveTaskId(taskId);
+    // 只重读旧快照不够；先让宿主尝试重建任务状态，再交给轮询/事件流。
+    void host
+      .recoverTask(taskId)
+      .then((recovery) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.taskId === taskId
+              ? {
+                  ...m,
+                  state: recovery.status.status,
+                  notice: null,
+                }
+              : m,
+          ),
+        );
+      })
+      .catch(() => {
+        // 事件流可能仍在继续；保留轮询，不在这里伪造失败。
+      });
   }, []);
 
   /**
@@ -2433,7 +2526,11 @@ export function HomeChat({
         }
         branchBusyRef.current = false;
         setBranchBusy(false);
-        onBranchNewThread(upto, fork.engine_session_id);
+        // 父会话号取自引擎回执（缺失时退回本次分支所用的会话号），不凭空造。
+        onBranchNewThread(upto, fork.engine_session_id, {
+          parentSessionId: fork.parent_session_id || effectiveEngineSessionId,
+          atSeq: typeof fork.at_seq === "number" ? fork.at_seq : atSeq,
+        });
       } catch (e) {
         // 失败就留在原对话，把真实原因说清楚；不退回本地重放。
         flashTip(id, "分支失败：" + String(e instanceof Error ? e.message : e));
@@ -2573,7 +2670,14 @@ export function HomeChat({
   const generating = busy;
 
   const enabled = facts ? enabledCategories(facts) : [];
-  const categoryText = facts ? (CATEGORY_LABEL[facts.category] ?? facts.category) : "类别未知";  /**
+  const categoryText = facts ? (CATEGORY_LABEL[facts.category] ?? facts.category) : "类别未知";
+  /** 对话头像用当前模型的第一个英文字母；没有模型时回退 provider，再回退 A。 */
+  const modelInitial = (
+    facts?.model?.match(/[A-Za-z0-9]/)?.[0] ??
+    facts?.provider?.match(/[A-Za-z0-9]/)?.[0] ??
+    "A"
+  ).toUpperCase();
+  /**
    * 权限细节：原先是常驻的整块 banner，现压缩为输入框底部一行状态（OD-ARCH-026 版式回归）。
    * 端点类别/主机、已开启类别与「只承载公开或合成内容」的边界说明放在 `title` 提示里，
    * 仍以宿主回报的事实为准，不在界面上伪造或缓存开关。
@@ -2662,6 +2766,29 @@ export function HomeChat({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {forkOrigin ? (
+        <div
+          className="mb-1 flex shrink-0 items-center gap-1.5 px-1 text-[10.5px] leading-relaxed text-outline"
+          role="status"
+          data-testid="fork-origin-banner"
+          data-hover-hint={
+            "父会话：" +
+            forkOrigin.parentSessionId +
+            (forkOrigin.atSeq !== null ? "；切点序号：" + forkOrigin.atSeq : "")
+          }
+          aria-label={
+            "本对话由分支创建；父会话 " +
+            forkOrigin.parentSessionId +
+            (forkOrigin.atSeq !== null ? "；切点序号 " + forkOrigin.atSeq : "")
+          }
+        >
+          <Icon name="branch" className="h-3 w-3 shrink-0" />
+          <span className="truncate">由分支创建</span>
+          {forkOrigin.atSeq !== null ? (
+            <span className="shrink-0">· 切点 {forkOrigin.atSeq}</span>
+          ) : null}
+        </div>
+      ) : null}
       {maskerWarning ? (
         <div
           className="mb-2 flex shrink-0 items-start gap-2 border border-outline-variant/70 bg-surface-container-low px-3 py-2 text-[11.5px] text-on-surface-variant"
@@ -2681,12 +2808,25 @@ export function HomeChat({
           </button>
         </div>
       ) : null}
-      {/* 空对话时的上方留白（有历史时收成 0，输入框自然落底） */}
+      {/* 空对话时的上方留白（有历史时收成 0，输入框自然落底）。
+          新对话在这里放一行标语，位置贴近输入区，不占据消息区。 */}
       <div
-        aria-hidden="true"
-        className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out"
+        className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out flex flex-col items-center justify-end pb-3"
         style={{ flexGrow: empty ? 1 : 0, flexBasis: 0 }}
-      />
+      >
+        {empty ? (
+          <div
+            className="w-full max-w-[660px] mx-auto flex items-center gap-5 pb-1"
+            data-testid="home-empty-slogan"
+          >
+            <span className="home-rule flex-1" />
+            <p className="font-slogan home-slogan-text whitespace-nowrap select-none">
+              坚持学习人生的有无限可能
+            </p>
+            <span className="home-rule-right flex-1" />
+          </div>
+        ) : null}
+      </div>
 
       {/* 对话流（=对话历史）与右侧轮次索引条 */}
       <div className="relative flex min-h-0 flex-col" style={{ flexGrow: empty ? 0 : 1, flexBasis: 0 }}>
@@ -2710,8 +2850,11 @@ export function HomeChat({
                   <div className="neu-msg-accent bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
                     <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
                   </div>
-                  <div className="w-7 h-7 rounded-full bg-surface-container-high ring-1 ring-primary/20 flex items-center justify-center text-primary flex-shrink-0">
-                    <Icon name="brand" className="w-4 h-4" />
+                  <div
+                    className="w-7 h-7 rounded-full plate-soft-inset flex items-center justify-center flex-shrink-0"
+                    aria-hidden="true"
+                  >
+                    <BrandMark className="w-[16px] h-[16px]" />
                   </div>
                 </div>
                 {/* 问句 tips：只保留实际可用的「复制」。撤回/修改需要引擎能删轮，
@@ -2729,8 +2872,13 @@ export function HomeChat({
                 id={`chat-message-${m.id}`}
                 className="flex items-start space-x-3 max-w-[80%]"
               >
-                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white flex-shrink-0 shadow-xs">
-                  <Icon name="bot" className="w-[15px] h-[15px]" />
+                <div
+                  className="w-7 h-7 rounded-full plate-soft-inset text-primary flex items-center justify-center flex-shrink-0"
+                  aria-hidden="true"
+                >
+                  <span className="font-headline-md text-[11px] font-semibold">
+                    {m.local ? "L" : modelInitial}
+                  </span>
                 </div>
                 <div className="neu-msg-assistant rounded-2xl rounded-tl-sm p-4 text-[15px] text-on-surface space-y-2.5 min-w-0">
                   <div className="flex items-center space-x-2 text-primary font-medium">
@@ -2898,6 +3046,25 @@ export function HomeChat({
                     </p>
                   ) : null}
 
+                  {m.taskId === activeTaskId &&
+                  (elapsed >= 120 || (m.toolNote ?? "").includes("未知工具")) ? (
+                    <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2 text-[11px] text-on-surface-variant">
+                      <span>
+                        {m.toolNote?.includes("未知工具")
+                          ? "引擎没有返回工具名，可能卡在工具调用上。"
+                          : "已等待较久，引擎可能仍在处理工具调用。"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={cancel}
+                        className="shrink-0 rounded-full bg-surface-container px-2.5 py-1 text-[10.5px] font-medium text-primary hover:bg-surface-container-high"
+                        data-testid="chat-stop-stuck-task"
+                      >
+                        停止本轮
+                      </button>
+                    </div>
+                  ) : null}
+
                   {m.notice ? (
                     <div className="rounded-lg bg-surface-container-low text-on-surface-variant px-3 py-2 text-[12px] leading-relaxed space-y-1.5">
                       <p>{m.notice}</p>
@@ -2987,11 +3154,22 @@ export function HomeChat({
           }
           onJump={jumpToTurn}
         />
+        {!atBottom ? (
+          <button
+            type="button"
+            onClick={scrollToLatest}
+            aria-label="跳到最新对话"
+            data-testid="chat-jump-latest"
+            className="neu-icon-btn absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-9 h-9 rounded-full text-primary flex items-center justify-center"
+          >
+            <Icon name="chevron-down" className="w-4 h-4" />
+          </button>
+        ) : null}
       </div>
 
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
-      <div className="neu-composer p-3 sm:p-3.5 flex-shrink-0">
+      <div className="neu-composer mx-auto w-full max-w-[1100px] p-3.5 sm:p-4 flex-shrink-0">
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
             来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (
@@ -3050,8 +3228,10 @@ export function HomeChat({
             rows={1}
             className="w-full max-h-[7.5rem] resize-none bg-transparent border-0 p-0 text-[14px] font-body-md text-on-surface placeholder:text-on-surface-variant/70 focus:ring-0 focus:outline-none overflow-y-auto leading-relaxed"
             placeholder={
-              canSubmit
-                ? "输入消息…"
+              busy
+                ? "正在生成…"
+                : admission === "ready"
+                  ? "输入消息…"
                 : factsLoading && !facts
                   ? "正在读取模型端点信息…"
                   : "模型权限未开启：可在设置中确认端点后启用"
@@ -3156,7 +3336,6 @@ export function HomeChat({
               loading={factsLoading && !facts}
               onSelectModel={(profile, provider, model) => void selectModel(profile, provider, model)}
               onSelectEffort={(effort) => void selectEffort(effort)}
-              onFollowDsh={() => void followDsh()}
             />
             {/*
               发送与取消是同一个按钮（对齐 DSH 交互）：
@@ -3170,7 +3349,7 @@ export function HomeChat({
                   ? !engineCancelView.enabled
                   : !canSubmit || !input.trim()
               }
-              className="neu-send-btn w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="neu-send-btn w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               data-hover-hint={
                 generating
                   ? (engineCancelView.hint ?? engineCancelView.label)
@@ -3185,6 +3364,10 @@ export function HomeChat({
           </div>
         </div>
       </div>
+
+      {/* 空态：快捷入口紧跟输入框，整组落在页面中下部；下方留白把输入区托起来。 */}
+      {empty && emptyFooter ? <div className="shrink-0">{emptyFooter}</div> : null}
+      {empty ? <div className="shrink-0" style={{ flexGrow: 0.62, flexBasis: 0 }} /> : null}
 
       {/* OD-ARCH-096：模型切换结果改走右下角提示条（60 秒自动关闭、可手动关闭）。 */}
       <StatusToast message={modelNote} onDismiss={() => setModelNote(null)} />

@@ -14,9 +14,11 @@ import {
   takePendingThreadRequest,
   type SceneThread,
   type ThreadTag,
+  type ForkOrigin,
 } from "../sceneThreads";
 import type {
   OfflineFlowPack,
+  ProjectInfo,
   PendingWriteView,
   ProfileRulesView,
   ProfileSceneEntry,
@@ -207,6 +209,29 @@ export function HomeCanvas({
   const [todoLoading, setTodoLoading] = useState(true);
   const [todoError, setTodoError] = useState<string | null>(null);
 
+  /** 系统用户名，只用于问候语；读不到就只显示问候，不编造称呼。 */
+  const [userName, setUserName] = useState("");
+  /** 最近更新的五个项目：首页底部小卡片的数据来源。 */
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  /** 对话是否已经开始：开始后收起问候区，把纵向空间让给历史记录。 */
+  const [conversationStarted, setConversationStarted] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    shell
+      .desktopUserName()
+      .then((name) => {
+        if (alive) setUserName(name.trim());
+      })
+      .catch(() => {
+        if (alive) setUserName("");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+
   useEffect(() => {
     let alive = true;
     pendingWrites
@@ -366,6 +391,31 @@ export function HomeCanvas({
     [categories, declaredScenes, declFailed],
   );
 
+  /** 最近五个项目：按更新时间倒序，读不到就留空，不编造项目名。 */
+  useEffect(() => {
+    let alive = true;
+    shell
+      .projectList()
+      .then((r) => {
+        if (!alive) return;
+        const sorted = [...(r.items ?? [])].sort((a, b) =>
+          String(b.updated_at).localeCompare(String(a.updated_at)),
+        );
+        setProjects(sorted.slice(0, 5));
+      })
+      .catch(() => {
+        if (alive) setProjects([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 线程切换或首条消息落盘时同步「对话已开始」，用于收起问候区。
+  useEffect(() => {
+    setConversationStarted((active?.messages.length ?? 0) > 0);
+  }, [activeId, active]);
+
   /** 改本段对话的场景标签：已有对话直接改挂（复用 retagThread），新对话先建再挂。 */
   const changeTag = useCallback(
     (tag: string) => {
@@ -392,10 +442,15 @@ export function HomeCanvas({
   /**
    * 分支到新对话（OD-ARCH-079）：引擎已在 DSH 侧建好子会话，这里新建一条同一场景的线程，
    * 只把截至切点的消息带过去用于展示，并保存子会话号；后续消息直接续接子会话，不重放历史。
+   * 同时记下分支来源（父会话号 + 切点），新对话顶部据此显示「本对话由分支创建」。
    */
   const branchThread = useCallback(
-    (carried: ChatMessage[], childSessionId: string) => {
-      const t = createThread({ tag: activeTag, preset: isSceneKey(activeTag) ? activeTag : "plain" });
+    (carried: ChatMessage[], childSessionId: string, origin: ForkOrigin) => {
+      const t = createThread({
+        tag: activeTag,
+        preset: isSceneKey(activeTag) ? activeTag : "plain",
+        forkOrigin: origin,
+      });
       saveThreadMessages(t.id, carried);
       setThreadEngineSession(t.id, childSessionId);
       // 先刷新线程列表，切过去时 active 能立刻带上子会话号与消息。
@@ -422,32 +477,21 @@ export function HomeCanvas({
   return (
     <SceneScaffold
       upper={
-        <>
-      {/*
-        上部（OD-ARCH-072）：只有问候 + 一条待办。
-        「今日重点推进」卡片与常驻日程卡已移除；日程改到顶栏日期悬浮卡，
-        待办改成问候语下方单条轮播，无待办时不占位。
-      */}
-      <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
-        <div className="pb-1 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-          <h1 className="font-display-hero text-2xl sm:text-3xl font-light text-on-surface tracking-[0.01em]">
-            {greeting(now)}
-            <span className="font-slogan text-on-surface-variant text-[18px] ml-3 tracking-normal">
-              · 欢迎回到 OmniDesk
-            </span>
-          </h1>
-        </div>
-        <TodoTicker
-          items={todos}
-          error={todoError}
-          loading={todoLoading}
-        />
-      </section>
-        </>
+        conversationStarted ? null : (
+          <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
+            <div className="home-hero">
+              <h1 className="home-greeting" data-testid="home-greeting">
+                {greeting(now)}
+                {userName ? "，" + userName : ""}
+              </h1>
+            </div>
+            <TodoTicker items={todos} error={todoError} loading={todoLoading} />
+          </section>
+        )
       }
       chat={
         /* 下部：对话（全宽）。OD-ARCH-078 S2：去掉左侧吉祥物图片，
-           顶部「晚上好 · 欢迎回到 OmniDesk」已经是常驻问候，不必再放一张装饰图。 */
+           顶部常驻问候已经承载状态，不必再放一张装饰图。 */
         <div className="flex flex-1 min-h-0 gap-3">
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <HomeChat
@@ -461,6 +505,7 @@ export function HomeCanvas({
           onBranchNewThread={branchThread}
           threadKey={viewKey}
           initialMessages={active?.messages ?? []}
+          forkOrigin={active?.forkOrigin ?? null}
           initialInput={initialInput}
           engineSessionId={active?.engineSessionId ?? null}
           inflightTaskId={active?.inflightTaskId ?? null}
@@ -479,6 +524,7 @@ export function HomeCanvas({
             refresh();
           }}
           onMessagesChange={(messages) => {
+            setConversationStarted(messages.length > 0);
             // 空白新对话不外建档：只在本线程已有内容时才落盘。
             if (!activeId && messages.length === 0) return;
             const id = ensureThread();
@@ -488,6 +534,38 @@ export function HomeCanvas({
           searchQuery={searchQuery}
           searchCurrentIndex={searchCurrentIndex}
           onSearchMatchesChange={onSearchMatchesChange}
+          emptyFooter={
+            projects.length > 0 ? (
+              <div
+                className="flex flex-wrap items-center justify-center gap-2 pt-16 pb-1"
+                data-testid="home-recent-projects"
+              >
+                {projects.map((project) => (
+                  <button
+                    key={project.project_id}
+                    type="button"
+                    onClick={() => onNavigate("project")}
+                    data-hover-hint={project.goal || project.name}
+                    className="home-quick-pill"
+                  >
+                    <Icon name="folder" className="w-[15px] h-[15px]" />
+                    <span className="max-w-[180px] truncate">{project.name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex justify-center pt-16 pb-1">
+                <button
+                  type="button"
+                  onClick={() => onNavigate("project")}
+                  className="home-quick-pill"
+                >
+                  <Icon name="folder" className="w-[15px] h-[15px]" />
+                  <span>项目跟踪</span>
+                </button>
+              </div>
+            )
+          }
         />
           </div>
         </div>

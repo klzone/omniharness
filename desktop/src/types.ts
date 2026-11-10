@@ -67,6 +67,9 @@ export interface TaskStatus {
   pending_approvals?: number;
   /** OD-ARCH-079：本轮 turn/end 的会话事件序号，DSH 原生 session/fork 的切点。 */
   engine_turn_end_seq?: number | null;
+  /** 最近事件序号与发生时间：用于识别宿主快照落后。 */
+  last_event_seq?: number | null;
+  last_event_at?: number | null;
 }
 
 /** OD-ARCH-079：DSH 原生 session/fork 的结果。 */

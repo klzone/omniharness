@@ -715,6 +715,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// P2/P3 回归：前端新增的 forkOrigin 字段必须原样落盘、原样读回。
+    #[test]
+    fn unknown_frontend_fields_survive_save_and_load() {
+        let (store, base) = temp_store("extra-field");
+        let mut with_origin = thread("textra", None, 1.0);
+        with_origin["forkOrigin"] = json!({
+            "parentSessionId": "session-parent",
+            "atSeq": 7,
+        });
+        let receipt = store.save(&with_origin).expect("save");
+        let listing = store.load().expect("load");
+        assert_eq!(listing.threads.len(), 1);
+        assert_eq!(
+            listing.threads[0]["forkOrigin"]["parentSessionId"],
+            json!("session-parent")
+        );
+        assert_eq!(listing.threads[0]["forkOrigin"]["atSeq"], json!(7));
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(receipt.path).unwrap()).unwrap();
+        assert_eq!(saved["version"], json!(THREAD_SCHEMA_VERSION));
+        assert_eq!(saved["forkOrigin"]["parentSessionId"], json!("session-parent"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// 未来版本不猜测、不降级：拒绝写入，并在读取时逐条报出原因。
     #[test]
     fn future_version_is_refused_and_reported() {

@@ -1,3 +1,25 @@
+## OD-ARCH-079 补充审查：线程分支来源（ARCHITECT，2026-11-10）——通过
+
+**结论：通过。** 分支到新对话后，线程记录保存父会话与切点，新线程顶部显示一行灰色来源说明；普通新建线程不显示。复核中发现并修复一个边界：`createThread` 原先直接写入 `input.forkOrigin`，畸形对象虽然读回时会被丢弃，但当前会话仍可能短暂显示空父会话号。现改为写入端也走 `normalizeForkOrigin`。
+
+**复核范围：** `sceneThreads.ts` 的字段、读取归一化与创建归一化；`HomeChat.tsx` 的回调签名、分支成功回传与 `fork-origin-banner`；`HomeCanvas.tsx` 的来源透传；`thread_store.rs` 对未知字段的原样保存约束。未修改分支引擎协议或消息内容。
+
+**验证：**
+
+| 验证 | 结果 |
+| --- | --- |
+| `verify_fork_origin_202.py` | **9/9** |
+| `cargo test --offline --lib thread_store::tests` | **13/13** |
+| `npm run build` | 通过 |
+
+**已知限制：** 当前会话内已经存在的畸形 `forkOrigin` 不会补造父会话号；读回时按缺失处理。真实窗口的分支点击与提示条外观仍需用户验收。
+
+## OD-DIAG-001 审查结论（ARCHITECT，2026-11-10）——通过
+
+**结论：通过。** 普通诊断改为“一次聚合读取 + 8 轮预算”：新增 `scripts/diagnose-omnidesk.py`，一次给出进程、相关端口、默认网络、模型 endpoint host、最近任务元数据和日志元数据；任务正文、错误正文、workspace_dir 与凭证不进入输出。`starting` 且快照超过 30 秒的任务标记 `observer_may_be_stale`，为后续 P2 状态观察器修复提供证据。
+
+**独立验证：** `verify_diagnose_omnidesk.py` **10/10**；合成任务正文与 `api_key` 均未出现在 JSON/文本输出；脚本 `--json` 与文本模式退出码 0。仅新增脚本、AGENTS 诊断预算、验证脚本与状态记录；未改 UI、引擎、模型路由或凭证。
+
 ## OD-QS-413 审查（ARCHITECT，2026-11-09）——通过。第二阶段（OD-QS-401～413）全部竣工
 
 ### OD-SYS-703 复检通过 + OD-SYS-700 竣工（2026-11-09，ARCHITECT 独立复核）
@@ -224,7 +246,7 @@
 **结论：** 通过。执行代理裁决 R1（user 来源 quote 必填）如与 506 交互冲突，在 506 卡内显式放宽并补指纹规则，属计划内调整。
 **结论：通过。** 本审查基于实际源码、git diff、证据文件与本会话独立复跑；runtime/ 零改动。
 
-**独立复跑（本会话实跑，2026-11-09）：** cargo test --offline --lib → 770 passed / 0 failed；cargo test --offline --tests → EXIT=0、13 个测试目标全部 0 failed；pytest tests -q → 187 passed + 30 subtests；npx tsc --noEmit → exit 0；npm --prefix desktop run build → exit 0。专项 verify（全部本会话复跑）：verify_priority_rules_401 11/11、verify_task_quadrant_ui_402 11/11、verify_schedule_ui_403 11/11、verify_security_phase2 **14/14**、verify_ui_neumorphism_202 **29/29**（412 时的 19/19 → 后续界面扩展 29/29，全绿）。
+**独立复跑（本会话实跑，2026-11-09）：** cargo test --offline --lib → 770 passed / 0 failed；cargo test --offline --tests → EXIT=0、13 个测试目标全部 0 failed；pytest tests -q → 187 passed + 30 subtests；npx tsc --noEmit → exit 0；npm --prefix desktop run build → exit 0。专项 verify（全部本会话复跑）：verify_priority_rules_401 11/11、verify_task_quadrant_ui_402 11/11、verify_schedule_ui_403 11/11、verify_security_phase2 **14/14**、verify_ui_neumorphism_202 **36/36**（412 时的 19/19 → 后续界面扩展 36/36，全绿）。
 
 **安全核对逐项（对照 409/412 登记项）：**
 
@@ -237,7 +259,7 @@
 
 **未验证事项（如实登记，不阻塞竣工）：** ① 真实模型 importance 建议质量（本阶段零真实调用）；② 真实窗口四象限/今日/本周页与新拟物主题观感（执行会话在 STATUS.md 记录过 OD-UI-202 顶栏/首页目视；OD-QS 三个新页签的目视待用户）；③ 数百条任务下排期生成与渲染性能；④ 真实排期冲突处理体验。
 
-**OD-UI-202：** 新拟物第一阶段（顶栏/首页/Dock/底材）已实施且静态 29/29 全绿；用户已追认并追加中文界面字体修订（统一黑体，宋体退出界面）。执行会话已做真实窗口目视并记录 STATUS.md。
+**OD-UI-202：** 新拟物第一阶段（顶栏/首页/Dock/底材）已实施且静态 36/36 全绿；用户已追认并追加中文界面字体修订（统一黑体，宋体退出界面）。执行会话已做真实窗口目视并记录 STATUS.md。
 
 **工作区清理建议（提交前）：** .codex-attachments/（52K，一张设计参考图）未被 .gitignore 覆盖且与仓库无关，建议加入 .gitignore 或删除，不随提交入库。
 
@@ -257,7 +279,7 @@
 - **排期历史与调整记录区：** 读取 scheduleList 过滤当前任务，逐条显示起止/状态/派生状态（effective_status ≠ status 时标注「派生：已失效」）/锁定/时长/adjustment_reason 与 adjustments 追加记录——「历史排期不可删、派生失效可见」在详情层闭合。
 - 五个调整函数全部走 405 IPC（diff 中 taskSet* 七处引用），无前端直写文件；保存后 reloadTick 刷新。
 
-**OD-UI-202 状态更新：** STATUS.md 新增「OD-UI-202 新拟物第一阶段实施」条目（执行会话所写，含真实窗口目视记录：顶栏/凹陷搜索与 Profile/凸起按钮/Dock 当前项/输入区压入/焦点环，品牌靛强调色）。用户此前在界面评审中认可了新拟物方向与品牌靛选择；**本会话据此把 OD-UI-202 第一阶段记为「已实施，待用户最终追认」→ 状态以 PLANS.md 更新为准**。真实窗口目视由执行会话完成并记录在 STATUS.md（证据等级：真实窗口目视，本会话未重跑窗口，静态检查已扩展复跑）。**后续（2026-11-09）：用户已追认「品牌靛 + 顶栏/首页」，随后否决宋体界面并改为统一黑体；最终状态以文末「OD-UI-202 第一阶段审查结论」为准（29/29）。**
+**OD-UI-202 状态更新：** STATUS.md 新增「OD-UI-202 新拟物第一阶段实施」条目（执行会话所写，含真实窗口目视记录：顶栏/凹陷搜索与 Profile/凸起按钮/Dock 当前项/输入区压入/焦点环，品牌靛强调色）。用户此前在界面评审中认可了新拟物方向与品牌靛选择；**本会话据此把 OD-UI-202 第一阶段记为「已实施，待用户最终追认」→ 状态以 PLANS.md 更新为准**。真实窗口目视由执行会话完成并记录在 STATUS.md（证据等级：真实窗口目视，本会话未重跑窗口，静态检查已扩展复跑）。**后续（2026-11-09）：用户已追认「品牌靛 + 顶栏/首页」，随后否决宋体界面并改为统一黑体；最终状态以文末「OD-UI-202 第一阶段审查结论」为准（36/36）。**
 
 **纪律记录（不影响 412 验收）：** 执行会话本轮写入 STATUS.md（OD-UI-202 条目）。AGENTS.md 规定 STATUS.md 由执行者填写——**STATUS.md 是执行记录，执行会话写自己的条目是合规的**；违规线只有「写 REVIEW.md / PLANS.md」（302 曾违反）。核对 STATUS.md 新增内容与 git diff 事实一致，无失实描述。
 
@@ -1675,7 +1697,8 @@
 | --- | --- |
 | `npm run build`（tsc + vite） | 通过；仅既有 >500 kB chunk 提示 |
 | `npx tsc --noEmit` | 通过，无输出 |
-| `python3 tests/verification/desktop/verify_ui_neumorphism_202.py` | **29/29 通过**，JSON 证据 `tests/verification/desktop/verify_ui_neumorphism_202.json` |
+| `python3 tests/verification/desktop/verify_ui_neumorphism_202.py` | **36/36 通过**，JSON 证据 `tests/verification/desktop/verify_ui_neumorphism_202.json` |
+| `python3 tests/verification/desktop/verify_home_refine_202.py` | **29/29 通过** |
 | macOS debug App 重建后真实窗口 | 1280×820 目视核对：暖白灰底材、凸起顶栏、凹陷搜索/Profile、凸起日期/设置/通知/窗口按钮、Dock 当前项凹陷 + 品牌靛标记、输入区凹陷、发送钮凸起 |
 | 键盘焦点 | Tab 到 Dock 项与搜索框时可见 2px 品牌靛焦点环；搜索框另有 `focus-within` 2px 环 |
 | 静态边界 | `TopNav.tsx` / `CategoryPicker.tsx` / `ModelPicker.tsx` 已无 `backdrop-blur`；顶栏无玻璃底色与白色 ring |
@@ -1686,16 +1709,25 @@
 2. **首页不再全平。** 输入区 `neu-composer` 为凹陷面，发送钮凸起；用户消息保留品牌靛填充并加轻凸阴影，助手消息用浅面 + 左缘品牌色，未把每条消息都做成厚卡片。空态没有额外整幅面板，避免了“巨大空白卡片”。
 3. **Dock 与窗口。** Dock 去掉玻璃胶囊容器，入口为独立凸起圆钮；当前项凹陷并保留 3px 品牌靛标记。窗口按钮凸起，关闭按钮悬停仍为浅红危险色。
 4. **可访问性。** 焦点环 2px、对比 `#3525cd` / `#edecea` = 7.74:1；主文字 `#131b2e` / 底材 = 14.53:1，次文字 `#464555` = 7.93:1。搜索与输入框占位文字从过淡的 `outline-variant` / 60% `outline` 提到 `on-surface-variant` 的 70%–75%，避免新凹陷面里看不清。`text-outline`（3.8:1）仍用于非必要分隔/辅助信息，未扩大使用范围。
-5. **范围克制。** 新增令牌未替换 Aetheria 业务色板；共享的 `plate-soft-inset` 只统一了胶囊/附件按钮的材质。工作记录、文案写作、项目跟踪、设置、知识库的页面卡片仍为旧平面，待第二阶段单独批准。
-6. **中文界面字体（2026-11-09 修订）。** 用户明确否决宋体界面，改为统一黑体：大标题思源柔黑，界面标题、正文、控件、表格用思源黑体；行楷只做标语，首页欢迎短句使用 700 加粗；方正楷体只留给长引用/落款，思源宋体只用于导出报告和打印文档。英文仍 Inter / IBM Plex Mono；`--font-slogan` 保留 Inter 优先，避免混排英文被手写体覆盖。等宽/标签字体（IBM Plex Mono、`font-mono`、`font-label-caps`）都显式接中文黑体，日历中文标签由 9px 提到 10px，堵住中文回退宋体的最后一条路径。字体栈只引用字体名，没有把字体文件复制进仓库或安装包。
+5. **范围克制。** 本轮只改外观与材质，未改信息架构、布局、路由、IPC、数据模型或功能逻辑。工作记录、文案写作、项目跟踪、设置、知识库的 DOM 卡片通过全局映射统一到暖面与新拟物阴影；知识图谱等 canvas 内容保持原图形实现。
+6. **中文界面字体（2026-11-09 修订）。** 用户明确否决宋体界面，改为统一黑体：大标题思源柔黑，界面标题、正文、控件、表格用思源黑体；行楷只做标语，新对话空态标语使用 700 加粗；方正楷体只留给长引用/落款，思源宋体只用于导出报告和打印文档。英文仍 Inter / IBM Plex Mono；`--font-slogan` 保留 Inter 优先，避免混排英文被手写体覆盖。等宽/标签字体（IBM Plex Mono、`font-mono`、`font-label-caps`）都显式接中文黑体，日历中文标签由 9px 提到 10px，堵住中文回退宋体的最后一条路径。演示夏行楷已按 SIL OFL 1.1 随包自托管（Slidexiaxing-Regular.ttf 与 OFL-SlideFont.txt），不再依赖系统安装；思源黑体系仍只引用字体名。
+7. **全应用材质映射。** 在 `theme.css` 用无层选择器把旧页面的 `bg-white` / `bg-surface-container-*` 统一到暖灰表面，把 `shadow-*` 与旧任意阴影统一到成对新拟物阴影，移除全部残余 `backdrop-blur`，输入框统一压入，主按钮抬起并在按下时压回。设置页主卡片、胶囊、输入、按钮、提供商列表与记录行同步材质。该层只覆盖外观，不改路由、布局、IPC、数据模型与功能逻辑。
+8. **首页细节修订。** “欢迎回到”字样移除，问候区预留最新提示；新对话空态加入自托管演示夏行楷标语“坚持学习人生将有无限可能”并加粗到 700；分类、模型、Profile 下拉的说明段落移除；模型下拉收窄到 248px，Profile 弹层 190–250px，归类菜单 176px；日历标题改为 ISO 全年第几周；搜索焦点蓝线全部移除；思考等级改为凸起按钮组；AI 回复头像改为模型首字母，用户提问头像改为 OmniDesk 小 logo。新增 `verify_home_refine_202.py` 30/30。
+9. **对话滚动与权限提示。** 取消生成中按消息增量强制滚底，只在切换线程时落底；新增“跳到最新对话”下滑箭头。生成中占位改为“正在生成…”，不再把 busy 误判为权限未开启。等待超过 120 秒或工具名未知时，消息内提供停止本轮入口；引擎工具卡住仍按真实状态暴露。
+11. **Neo-Skeuomorphism 2.0 校准。** 采用象牙灰 `#F0EFEC`、凸起面 `#F8F8F6`、内凹 `#E8E7E3`、近黑偏蓝 `#34343B`、品牌强调 `#5747F8`；顶栏 34px、输入面板 24px；空态标语 30px、0.12em 字距。ChatGPT 建议的 `#85858C` 对比不足，只作装饰，正文次文字用 `#5F5F67`。文档新增“Neo-Skeuomorphism 2.0 / Calm Intelligence 校准”章节。
+
+12. **首页 2.0 版式复刻（2026-11-10）。** 按用户参考图重排首页：顶栏 30px 圆角；问候带系统用户名；四张入口卡片（开始对话 / 打开知识库 / 进入应用 / 我的空间）；标语两侧分隔线；输入面板 26px 凸起带光晕；底部真实场景快捷入口；Dock 收进胶囊导轨；背景为暖白渐变 + 右上淡蓝山海插画（`desktop/public/home-scape.png` 裁自用户参考图，仅首页显示）。新增只读 IPC `desktop_user_name`。逐项核对：卡片与弹层只指向 `knowledge/settings/声明场景`，没有「日程/收藏/更多」这类未实现入口；插画只在 `scene === "home"` 挂载；未加设计规范条、未实现深色模式。复跑 `verify_ui_neumorphism_202.py` 36/36、`verify_home_refine_202.py` 40/40，`tsc` 与 `npm run build` 通过，debug `.app` 重建后实机截图核对。
+
+10. **P2 状态观察与 P3 思考档。** 任务事件在流式过程中持久化 seq/last_event_at（工具/启动立即、增量最多 2 秒一次），TaskStatus 暴露 last_event_at；UI 收到首条真实事件将 starting 提升为 running，状态查询失败但 30 秒内仍有真实事件时不误报 unknown；重新查询先 recoverTask。ModelPicker 对未声明的思考档显示“可能被忽略”。验证：test_task_status_snapshot 1/1、test_web_api_unit 89/89、verify_home_refine_202 29/29、verify_diagnose_omnidesk 12/12。
 
 **已知限制与未验证：**
 
 - 只在 macOS debug 窗口目视核对；未在 Linux/WebKitGTK 或 release 包上量测阴影重绘成本。按规范已限制 L3 数量并禁止动画化阴影，但未做帧率采样。
 - CUA 截图 API 不回写文件，本轮真实窗口截图只存在于会话工具记录，未复制到 `tests/verification`；静态检查 JSON 已落盘。
 - 构建中途曾被并发 OD-QS 的 `TaskManager.tsx` 未使用导入阻塞；等对方修复后本会话复跑 `npm run build` 通过。该文件不在本轮 diff 内，不能算本轮成果。
-- 本机字体清单只有 Songti SC / STSong / Heiti SC；未找到思源柔黑、思源黑体、演示夏行楷。真实窗口只验证了系统黑体回退；思源柔黑与行楷的实际字形待用户装入字体后再验。是否随安装包分发这些字体文件仍需单独确认授权与体积。
-- 第二阶段尚未开始；其他页面的暖底与旧白卡/旧胶囊会暂时存在材质差，需按 OD-UI-202 后续阶段统一。
+- 本机字体清单只有 Songti SC / STSong / Heiti SC；未找到思源柔黑、思源黑体，真实窗口回退系统黑体，柔黑待装字体。演示夏行楷已按 SIL OFL 1.1 随包自托管，行楷实际字形待窗口目视确认。
+- 全应用材质映射后，本轮 CUA 截图工具不可用，未逐页真实窗口目测；完整视觉验收待用户打开工作记录、文案写作、项目跟踪、设置、知识库逐页确认。静态检查与构建已通过。
+- 全应用外观映射已覆盖 DOM 卡片与控件；知识图谱等 canvas/图形内容没有重绘，仍沿用原图形颜色。布局、间距与页面结构本轮未改。
 
 **未提交未推送：** 按批准范围只执行第一阶段，工作区原有改动与并行任务改动原样保留。
 

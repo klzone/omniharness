@@ -35,18 +35,18 @@
 
 /* ---- 卡片 ---- */
 .settings-surface .pane {
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--od-neu-surface);
   /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter（每个面板一层，合成成本高、收益低）。 */
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 1rem;
-  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--od-neu-line-dark);
+  border-radius: 1.25rem;
+  padding: 1.35rem 1.5rem;
   box-shadow:
-    0 12px 32px -14px rgba(15, 23, 42, 0.08),
-    0 2px 8px -2px rgba(79, 70, 229, 0.04);
+    var(--od-neu-raise-2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .settings-surface .settings-pane-header {
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--od-neu-surface-high);
 }
 
 /* ---- 标题 ---- */
@@ -69,7 +69,8 @@
   font-weight: 400;
   letter-spacing: 0.02em;
   color: var(--color-on-surface-variant);
-  background: rgba(234, 237, 255, 0.9);
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
   border-radius: 9999px;
   padding: 2px 9px;
 }
@@ -124,8 +125,8 @@
 .settings-surface .tab {
   padding: 0.4rem 0.9rem;
   border-radius: 9999px;
-  border: 1px solid rgba(199, 196, 216, 0.7);
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--od-neu-line-dark);
+  background: var(--od-neu-surface);
   color: var(--color-on-surface-variant);
   font-family: var(--font-body-sm);
   font-size: 12.5px;
@@ -183,7 +184,7 @@
 .settings-surface button.primary {
   background: var(--color-primary);
   color: var(--color-on-primary);
-  box-shadow: 0 6px 16px -8px rgba(53, 37, 205, 0.55);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .settings-surface button.primary:hover:not(:disabled) {
@@ -191,18 +192,20 @@
 }
 
 .settings-surface button.ghost {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: rgba(199, 196, 216, 0.7);
+  background: var(--od-neu-surface);
+  border-color: var(--od-neu-line-dark);
   color: var(--color-on-surface);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .settings-surface button.ghost:hover:not(:disabled) {
-  background: #ffffff;
+  background: var(--od-neu-surface-high);
   border-color: rgba(53, 37, 205, 0.35);
 }
 
 .settings-surface button:active:not(:disabled) {
   transform: scale(0.98);
+  box-shadow: var(--od-neu-inset-1);
 }
 
 .settings-surface button:disabled {
@@ -227,8 +230,8 @@
   font-family: var(--font-body-sm);
   font-size: 13px;
   color: var(--color-on-surface);
-  background: rgba(242, 243, 255, 0.85);
-  border: 1px solid rgba(199, 196, 216, 0.65);
+  background: var(--od-neu-sunken);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.75rem;
   padding: 0.6rem 0.75rem;
   outline: none;
@@ -256,8 +259,8 @@
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--color-on-surface);
-  background: rgba(242, 243, 255, 0.85);
-  border: 1px solid rgba(199, 196, 216, 0.65);
+  background: var(--od-neu-sunken);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.75rem;
   padding: 0.6rem 0.75rem;
   outline: none;
@@ -276,7 +279,7 @@
 }
 
 .settings-surface textarea.text-input:focus {
-  background: #ffffff;
+  background: var(--od-neu-surface-high);
   border-color: rgba(53, 37, 205, 0.45);
   box-shadow: 0 0 0 3px rgba(53, 37, 205, 0.15);
 }
@@ -293,7 +296,7 @@
 
 .settings-surface textarea.prompt:focus,
 .settings-surface input.text-input:focus {
-  background: #ffffff;
+  background: var(--od-neu-surface-high);
   border-color: rgba(53, 37, 205, 0.45);
   box-shadow: 0 0 0 3px rgba(53, 37, 205, 0.15);
 }
@@ -334,9 +337,9 @@
   gap: 0.55rem;
   margin: 0.6rem 0 0;
   padding: 0.6rem 0.75rem;
-  border: 1px solid rgba(199, 196, 216, 0.6);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.7rem;
-  background: rgba(242, 243, 255, 0.6);
+  background: var(--od-neu-sunken);
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-on-surface);
@@ -357,8 +360,8 @@
   margin: 0.4rem 0 0;
   padding: 0.85rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(199, 196, 216, 0.5);
-  background: rgba(250, 248, 255, 0.9);
+  border: 1px solid var(--od-neu-line-dark);
+  background: var(--od-neu-surface);
   color: var(--color-on-surface);
   font-family: var(--font-label-caps);
   font-size: 11.5px;
@@ -395,8 +398,8 @@
   margin: 0.6rem 0 0;
   padding: 0.85rem 1rem;
   border-radius: 0.85rem;
-  background: rgba(242, 243, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--od-neu-sunken);
+  border: 1px solid var(--od-neu-surface);
 }
 
 .settings-surface .status-row {
@@ -443,8 +446,9 @@
   align-items: center;
   padding: 0.6rem 0.75rem;
   border-radius: 0.7rem;
-  background: rgba(242, 243, 255, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--od-neu-sunken);
+  border: 1px solid var(--od-neu-line-dark);
+  box-shadow: var(--od-neu-inset-1);
 }
 
 .settings-surface .record-item > .mono {
@@ -520,8 +524,8 @@
   font-family: var(--font-body-sm);
   font-size: 13px;
   color: var(--color-on-surface);
-  background: rgba(242, 243, 255, 0.85);
-  border: 1px solid rgba(199, 196, 216, 0.65);
+  background: var(--od-neu-sunken);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.75rem;
   padding: 0.6rem 0.75rem;
   outline: none;
@@ -560,7 +564,7 @@
 }
 
 .settings-surface .asset-row + .asset-row {
-  border-top-color: rgba(199, 196, 216, 0.4);
+  border-top-color: var(--od-neu-line-dark);
 }
 
 .settings-surface .asset-row-main {
@@ -615,9 +619,9 @@
 .settings-surface .asset-badge {
   flex: 0 0 auto;
   padding: 0.05rem 0.4rem;
-  border: 1px solid rgba(199, 196, 216, 0.7);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0;
-  background: #fff;
+  background: var(--od-neu-surface-high);
   font-family: var(--font-label-caps);
   font-size: 10px;
   letter-spacing: 0.03em;
@@ -650,8 +654,8 @@
 .settings-surface .asset-receipt {
   margin: 0.45rem 0 0;
   padding: 0.5rem 0.6rem;
-  border-left: 2px solid rgba(199, 196, 216, 0.8);
-  background: rgba(250, 250, 253, 0.95);
+  border-left: 2px solid var(--od-neu-line-dark);
+  background: var(--od-neu-surface-high);
   font-size: 11px;
   line-height: 1.6;
   color: var(--color-on-surface-variant);
@@ -681,7 +685,7 @@
 .settings-surface .asset-notes {
   margin-top: 0.75rem;
   padding-top: 0.55rem;
-  border-top: 1px solid rgba(199, 196, 216, 0.4);
+  border-top: 1px solid var(--od-neu-line-dark);
 }
 
 /* ---- 模型端点：提供商列表 + 编辑区（OD-ARCH-065）----
@@ -699,9 +703,10 @@
   flex-direction: column;
   gap: 0.375rem;
   padding: 0.75rem;
-  background: rgba(247, 248, 255, 0.9);
-  border: 1px solid rgba(199, 196, 216, 0.45);
+  background: var(--od-neu-surface);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.875rem;
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .settings-surface .provider-list-head {
@@ -712,7 +717,7 @@
   padding: 0 0 0.375rem;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-on-surface-variant, #5b5b6b);
+  color: var(--color-on-surface-variant, var(--od-neu-ink-2));
 }
 
 .settings-surface .provider-item {
@@ -749,7 +754,7 @@
 .settings-surface .provider-item .sub {
   font-size: 11px;
   line-height: 1.35;
-  color: var(--color-on-surface-variant, #6b6b7b);
+  color: var(--color-on-surface-variant, var(--od-neu-ink-2));
   overflow-wrap: anywhere;
 }
 
@@ -760,9 +765,9 @@
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.5rem;
-  border: 1px solid rgba(199, 196, 216, 0.5);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0.625rem;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--od-neu-surface);
 }
 
 .settings-surface .skill-group + .skill-group {
@@ -777,7 +782,7 @@
   padding: 0 0.25rem 0.25rem;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-on-surface-variant, #5b5b6b);
+  color: var(--color-on-surface-variant, var(--od-neu-ink-2));
 }
 
 .settings-surface .skill-tags {
@@ -789,12 +794,12 @@
 
 .settings-surface .skill-tag {
   padding: 0.0625rem 0.375rem;
-  border: 1px solid rgba(199, 196, 216, 0.7);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0;
   font-size: 10px;
   line-height: 1.5;
-  color: var(--color-on-surface-variant, #5b5b6b);
-  background: rgba(247, 248, 255, 0.9);
+  color: var(--color-on-surface-variant, var(--od-neu-ink-2));
+  background: var(--od-neu-surface);
 }
 
 .settings-surface .skill-tag.on {
@@ -809,9 +814,9 @@
    直角、白底、上下细分隔线，与设置页其它窄条列表同一套口径。 */
 .settings-surface .binding-block {
   margin-top: 0.9rem;
-  border: 1px solid rgba(199, 196, 216, 0.55);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0;
-  background: #fff;
+  background: var(--od-neu-surface-high);
   padding: 0.7rem 0.75rem 0.75rem;
 }
 
@@ -849,7 +854,7 @@
 }
 
 .settings-surface .binding-row + .binding-row {
-  border-top: 1px solid rgba(199, 196, 216, 0.4);
+  border-top: 1px solid var(--od-neu-line-dark);
 }
 
 .settings-surface .binding-row-main {
@@ -881,9 +886,9 @@
 
 .settings-surface .binding-chip {
   padding: 0.12rem 0.45rem;
-  border: 1px solid rgba(199, 196, 216, 0.85);
+  border: 1px solid var(--od-neu-line-dark);
   border-radius: 0;
-  background: #fff;
+  background: var(--od-neu-surface-high);
   font-size: 11px;
   line-height: 1.6;
   color: var(--color-on-surface-variant);
@@ -916,7 +921,7 @@
 .settings-surface .binding-source {
   margin-top: 0.55rem;
   padding-top: 0.55rem;
-  border-top: 1px solid rgba(199, 196, 216, 0.4);
+  border-top: 1px solid var(--od-neu-line-dark);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

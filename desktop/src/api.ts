@@ -510,6 +510,18 @@ export const host = {
  * 这些命令只涉及 OmniDesk 自己的概念，不接触引擎或 DSH。
  */
 export const shell = {
+  /**
+   * 当前登录用户的显示名（只用于首页问候）。
+   *
+   * 宿主只读系统信息：macOS 取 `id -F`，其他平台回退 USER/USERNAME；
+   * 读不到返回空串，界面就不带称呼，不编造名字。
+   */
+  desktopUserName(): Promise<string> {
+    return invoke<string>("desktop_user_name").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   taskTypes(): Promise<TaskTypeCatalog> {
     return invoke<TaskTypeCatalog>("task_types").catch((e) => {
       throw new Error(normalizeError(e));

@@ -77,15 +77,11 @@ jobs:
         run: npx tauri icon src-tauri/icons/icon-512.png
       - name: 构建桌面程序
         working-directory: desktop
-        run: npx tauri build --features custom-protocol --target universal-apple-darwin --bundles app
-      - name: 组装免安装包
-        env:
-          PLATFORM: macos-universal
-        run: bash scripts/build-portable-package.sh
+        run: npx tauri build --features custom-protocol --target universal-apple-darwin --bundles dmg
       - uses: actions/upload-artifact@v4
         with:
           name: macos-package
-          path: dist-package/*.zip
+          path: desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   windows:
@@ -146,15 +142,10 @@ jobs:
           done
           echo "NSIS 打包连续失败 6 次，放弃本次构建。" >&2
           exit 1
-      - name: 组装免安装包
-        shell: bash
-        run: bash scripts/build-portable-package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: windows-package
-          path: |
-            dist-package/*.zip
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   publish:
@@ -166,17 +157,14 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      # 每个 job 的 artifact 保留上传时的相对路径：macOS 只有 dist-package/*.zip，
-      # 根部就是 zip；Windows 同时有 dist-package/ 与 bundle/nsis/，公共祖先变成仓库根，
-      # 文件被放进了 artifacts/dist-package/ 与 artifacts/desktop/... 两层。
-      # 不摊平的话，下面 artifacts/*.zip、artifacts/*.exe 只能匹配到 macOS 那一个。
+      # 每个 job 的 artifact 保留上传时的相对路径（macOS 在 bundle/dmg/ 下，
+      # Windows 在 bundle/nsis/ 下），统一摊平到 artifacts 根目录再发布。
       - name: 摊平产物到 artifacts 根目录
         shell: bash
         run: |
-          mapfile -t found < <(find artifacts -type f \( -name '*.zip' -o -name '*-setup.exe' \))
+          mapfile -t found < <(find artifacts -type f \( -name '*.dmg' -o -name '*-setup.exe' \))
           for f in "${found[@]}"; do
             base="$(basename "$f")"
-            # 已经在根目录的（macOS 的 zip）不用再复制；cp 到自身会报错并让脚本退出。
             [ "$f" = "artifacts/$base" ] && continue
             cp -f "$f" "artifacts/$base"
           done
@@ -190,13 +178,13 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/*.zip
+            artifacts/*.dmg
             artifacts/*.exe
           body: |
             ## OmniDesk v${{ needs.meta.outputs.version }}
 
-            Windows 提供安装向导（`OmniDesk_*_x64-setup.exe`），也保留解压即用的 zip；
-            macOS(Universal) 为 zip 免安装包；`.app` 已自带运行时，解压后可拖入「应用程序」目录直接运行。
+            本次只发布安装包：Windows 为安装向导（`OmniDesk_*_x64-setup.exe`），
+            macOS(Universal) 为 dmg（拖入「应用程序」即可）。不再提供便携 zip。
 
             ### 使用前
             1. 装 Node.js 22.19+（https://nodejs.org）
@@ -206,7 +194,7 @@ jobs:
             macOS 包未做 Apple 签名/公证，首次打开若提示“无法验证开发者”，请右键点图标 → 打开，
             或在终端执行一次：
             ```
-            xattr -dr com.apple.quarantine /path/to/OmniDesk.app
+            xattr -dr com.apple.quarantine /Applications/OmniDesk.app
             ```
 
             Windows 包未签名，SmartScreen 可能提示“未知发布者”，选择“仍要运行”。

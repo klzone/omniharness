@@ -47,7 +47,7 @@ export function SceneScaffold({
       </div>
 
       {/* 下部：对话，占满剩余高度。 */}
-      <section className="relative z-10 flex-1 flex flex-col min-h-0 pb-3">
+      <section className="relative z-10 flex-1 flex flex-col min-h-0 pb-6">
         <div className="flex-1 flex flex-col min-h-0">{chat}</div>
       </section>
     </main>

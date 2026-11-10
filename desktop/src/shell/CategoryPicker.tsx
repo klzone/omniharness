@@ -82,7 +82,8 @@ export function CategoryPicker({
     const rect = btn.getBoundingClientRect();
     const margin = 8;
     const gap = 6;
-    const width = Math.max(220, Math.min(280, window.innerWidth - margin * 2));
+    // 归类菜单是短选项，固定取紧凑宽度；不再沿用触发按钮宽度或 220px 下限。
+    const width = Math.max(150, Math.min(176, window.innerWidth - margin * 2));
     const measured = menu?.offsetHeight ?? 0;
     const estimated = measured || 64 + Math.min(options.length, 8) * 32;
     const below = window.innerHeight - rect.bottom - gap - margin;
@@ -190,7 +191,7 @@ export function CategoryPicker({
         aria-label={`本次对话归到哪一类，当前：${currentLabel}`}
         data-testid="scene-category-picker"
         data-tag={value}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[12px] transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1 px-2 py-1.5 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11.5px] transition-colors disabled:opacity-60"
         data-hover-hint="归类只改这段对话的组织方式，不改模型与路由；可选分类在设置页维护"
       >
         <span
@@ -198,7 +199,7 @@ export function CategoryPicker({
           style={{ backgroundColor: categoryColor(value) }}
           aria-hidden="true"
         />
-        <span className="max-w-[96px] truncate">{currentLabel}</span>
+        <span className="max-w-[80px] truncate">{currentLabel}</span>
         <Icon
           name="chevron-down"
           className={"w-[12px] h-[12px] opacity-70 transition-transform " + (open ? "rotate-180" : "")}
@@ -289,9 +290,6 @@ export function CategoryPicker({
               );
             })}
           </ul>
-          <p className="mt-1.5 pt-1.5 border-t border-surface-variant/20 px-1.5 text-[12px] text-outline leading-relaxed">
-            分类可在设置里改名或新增；这里只决定这段对话怎么归类。
-          </p>
         </div>,
         document.body,
       )

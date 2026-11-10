@@ -463,6 +463,15 @@ class TaskCoreBase:
                 )
             )
             self._cond.notify_all()
+        # 任务状态快照不能只在终态落盘：否则引擎侧明明已经产生事件，
+        # 宿主或诊断脚本看到的文件仍停在 starting / seq=0。
+        # 工具活动/启动事件立即落盘；流式增量最多每 2 秒落一次，避免每次 token 写盘。
+        if (
+            event_type in (EventType.TOOL_ACTIVITY, EventType.TASK_STARTED)
+            or record.persisted_at is None
+            or (now() - (record.persisted_at or 0.0)) >= 2.0
+        ):
+            self._persist(record)
 
     def _settle(
         self,
@@ -564,6 +573,8 @@ class TaskCoreBase:
             "created_at": record.created_at,
             "state_since": record.state_since,
             "seq": record.seq,
+            "last_event_seq": record.seq,
+            "last_event_at": record.last_event_at,
             "stop_reason": record.stop_reason,
             "error_code": record.error_code,
             "error_message": record.error_message,
@@ -616,6 +627,7 @@ class TaskCoreBase:
                 ttfb_seconds=record.ttfb_seconds,
                 pending_approvals=len(record.pending_approvals),
                 engine_turn_end_seq=record.turn_end_seq,
+                last_event_at=record.last_event_at,
             )
 
     def _status_note(self, record: _TaskRecord) -> str:

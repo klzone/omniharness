@@ -1,6 +1,16 @@
 @layer legacy;
 @import "tailwindcss";
 
+/* 演示夏行楷：本地自托管，仅用于标语与首页欢迎短句。
+   来源：maoken-fonts/slidefont，SIL OFL 1.1；授权文本见 public/fonts/OFL-SlideFont.txt。 */
+@font-face {
+  font-family: "Slidexiaxing";
+  src: url("/fonts/Slidexiaxing-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 /*
  * OmniDesk UI v2 —— 设计系统 "Aetheria OS"
  * 令牌来源：_design/stitch_omnidesk/DESIGN.md（Stitch 导出）。
@@ -12,58 +22,58 @@
  */
 @theme {
   /* ---- 颜色：MD3 色调板 ---- */
-  --color-surface: #faf8ff;
-  --color-surface-dim: #d2d9f4;
-  --color-surface-bright: #faf8ff;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f2f3ff;
-  --color-surface-container: #eaedff;
-  --color-surface-container-high: #e2e7ff;
-  --color-surface-container-highest: #dae2fd;
-  --color-surface-variant: #dae2fd;
-  --color-on-surface: #131b2e;
-  --color-on-surface-variant: #464555;
-  --color-inverse-surface: #283044;
-  --color-inverse-on-surface: #eef0ff;
-  --color-outline: #777587;
-  --color-outline-variant: #c7c4d8;
-  --color-surface-tint: #4d44e3;
+  --color-surface: #f0efec;
+  --color-surface-dim: #d9d7d2;
+  --color-surface-bright: #fafaf8;
+  --color-surface-container-lowest: #f8f8f6;
+  --color-surface-container-low: #f2f1ee;
+  --color-surface-container: #e8e7e3;
+  --color-surface-container-high: #e1e0dc;
+  --color-surface-container-highest: #dad8d3;
+  --color-surface-variant: #e1dfda;
+  --color-on-surface: #34343b;
+  --color-on-surface-variant: #5f5f67;
+  --color-inverse-surface: #242530;
+  --color-inverse-on-surface: #ececf2;
+  --color-outline: #8a877f;
+  --color-outline-variant: #d0cdc6;
+  --color-surface-tint: #5747f8;
 
-  --color-primary: #3525cd;
+  --color-primary: #5747f8;
   --color-on-primary: #ffffff;
-  --color-primary-container: #4f46e5;
-  --color-on-primary-container: #dad7ff;
-  --color-inverse-primary: #c3c0ff;
-  --color-primary-fixed: #e2dfff;
-  --color-primary-fixed-dim: #c3c0ff;
-  --color-on-primary-fixed: #0f0069;
-  --color-on-primary-fixed-variant: #3323cc;
+  --color-primary-container: #6b5dff;
+  --color-on-primary-container: #f1efff;
+  --color-inverse-primary: #cbc5ff;
+  --color-primary-fixed: #e8e5ff;
+  --color-primary-fixed-dim: #c9c3ff;
+  --color-on-primary-fixed: #1b0c6b;
+  --color-on-primary-fixed-variant: #3b2ccc;
 
-  --color-secondary: #00687a;
+  --color-secondary: #5f5f67;
   --color-on-secondary: #ffffff;
-  --color-secondary-container: #57dffe;
-  --color-on-secondary-container: #006172;
-  --color-secondary-fixed: #acedff;
-  --color-secondary-fixed-dim: #4cd7f6;
-  --color-on-secondary-fixed: #001f26;
-  --color-on-secondary-fixed-variant: #004e5c;
+  --color-secondary-container: #e8e7e3;
+  --color-on-secondary-container: #34343b;
+  --color-secondary-fixed: #f0efec;
+  --color-secondary-fixed-dim: #d9d7d2;
+  --color-on-secondary-fixed: #242530;
+  --color-on-secondary-fixed-variant: #4f4f58;
 
-  --color-tertiary: #313ba4;
+  --color-tertiary: #5f5147;
   --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #4a55be;
-  --color-on-tertiary-container: #d7d8ff;
-  --color-tertiary-fixed: #e0e0ff;
-  --color-tertiary-fixed-dim: #bdc2ff;
-  --color-on-tertiary-fixed: #000767;
-  --color-on-tertiary-fixed-variant: #2f3aa3;
+  --color-tertiary-container: #e8ddd4;
+  --color-on-tertiary-container: #3b322b;
+  --color-tertiary-fixed: #efe6df;
+  --color-tertiary-fixed-dim: #d8cbc1;
+  --color-on-tertiary-fixed: #2a211b;
+  --color-on-tertiary-fixed-variant: #4a3d34;
 
   --color-error: #ba1a1a;
   --color-on-error: #ffffff;
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
 
-  --color-background: #faf8ff;
-  --color-on-background: #131b2e;
+  --color-background: #f0efec;
+  --color-on-background: #34343b;
 
   /* ---- 字体（含系统回退；字体文件可后补） ---- */
   /* 大标题：思源柔黑优先，给新拟物一点柔和曲面；缺字体回退思源黑/系统黑。 */
@@ -83,7 +93,7 @@
   /* 宋体不进界面；保留给导出报告、正式文档、打印页。 */
   --font-report-serif: "Inter Variable", "Inter", "Source Han Serif SC", "思源宋体", "Noto Serif SC", "Songti SC", "STSong", serif;
   /* 设计标语 / 品牌类中文：演示夏行楷，缺字体回退黑体，绝不拖累正文。 */
-  --font-slogan: "Inter Variable", "Inter", "Yanshi Xiaxingkai", "演示夏行楷", "YanshiXiaxingkai", "STXingkai", "Xingkai SC", "Kaiti SC", "Source Han Sans SC", "PingFang SC", cursive;
+  --font-slogan: "Inter Variable", "Inter", "Slidexiaxing", "Yanshi Xiaxingkai", "演示夏行楷", "YanshiXiaxingkai", "STXingkai", "Xingkai SC", "Kaiti SC", "Source Han Sans SC", "PingFang SC", cursive;
 
   /* ---- 圆角（对齐 Stitch 的 borderRadius 配置） ---- */
   --radius-lg: 2rem;
@@ -112,58 +122,61 @@
  * ------------------------------------------------------------------ */
 :root {
   --font-display: var(--font-headline-lg);
-  --od-neu-bg: #edecea;
-  --od-neu-surface: #f0efec;
-  --od-neu-surface-high: #f3f2ef;
-  --od-neu-sunken: #e8e6e1;
-  --od-neu-sunken-deep: #e2dfd9;
-  --od-neu-ink: #3b3a37;
-  --od-neu-ink-2: #666563;
-  --od-neu-ink-3: #8a877f;
-  --od-neu-accent: #4f46e5;
-  --od-neu-accent-soft: #e5e2ff;
-  --od-neu-accent-ink: #3525cd;
+  --od-neu-bg: #f0efec;
+  --od-neu-surface: #f8f8f6;
+  --od-neu-surface-high: #fafaf8;
+  --od-neu-sunken: #e8e7e3;
+  --od-neu-sunken-deep: #e1e0dc;
+  --od-neu-ink: #34343b;
+  --od-neu-ink-2: #5f5f67;
+  --od-neu-ink-3: #85858c;
+  --od-neu-accent: #5747f8;
+  --od-neu-accent-soft: #ece9ff;
+  --od-neu-accent-ink: #4a3ae0;
   --od-neu-focus: #3525cd;
-  --od-neu-hi: rgba(255, 255, 255, 0.92);
+  --od-neu-hi: rgba(255, 255, 255, 0.88);
   --od-neu-hi-soft: rgba(255, 255, 255, 0.78);
-  --od-neu-lo: rgba(172, 166, 154, 0.48);
-  --od-neu-lo-soft: rgba(172, 166, 154, 0.30);
-  --od-neu-line-dark: rgba(150, 144, 132, 0.20);
+  --od-neu-lo: rgba(163, 160, 152, 0.22);
+  --od-neu-lo-soft: rgba(163, 160, 152, 0.15);
+  --od-neu-line-dark: rgba(140, 136, 128, 0.18);
   --od-neu-raise-1:
-    3px 3px 7px var(--od-neu-lo-soft),
-    -3px -3px 7px var(--od-neu-hi);
+    4px 4px 10px var(--od-neu-lo-soft),
+    -4px -4px 10px var(--od-neu-hi);
   --od-neu-raise-2:
-    8px 8px 20px var(--od-neu-lo-soft),
-    -8px -8px 20px var(--od-neu-hi);
+    8px 8px 22px var(--od-neu-lo),
+    -8px -8px 22px var(--od-neu-hi);
   --od-neu-raise-3:
     14px 14px 34px var(--od-neu-lo),
-    -12px -12px 30px var(--od-neu-hi);
+    -10px -10px 26px var(--od-neu-hi);
   --od-neu-inset-1:
-    inset 2px 2px 5px var(--od-neu-lo),
-    inset -2px -2px 5px var(--od-neu-hi);
+    inset 3px 3px 8px var(--od-neu-lo-soft),
+    inset -3px -3px 8px var(--od-neu-hi);
   --od-neu-inset-2:
     inset 4px 4px 10px var(--od-neu-lo),
     inset -4px -4px 10px var(--od-neu-hi);
 }
 
 .neu-app {
-  background-color: var(--od-neu-bg);
+  /* 底材由全局背景层（app-scape-base）提供；这里保持透明，
+     否则根节点的实底会盖住负层级的风景插画。 */
+  background-color: transparent;
 }
 
 .font-slogan {
   font-family: var(--font-slogan);
   font-weight: 700;
+  color: var(--od-neu-accent);
   text-rendering: optimizeLegibility;
 }
 
 .neu-nav {
   min-height: 64px;
-  border-radius: 26px;
-  background: var(--od-neu-surface);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(252, 251, 249, 0.72));
   box-shadow:
-    var(--od-neu-raise-2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    inset 0 -1px 0 rgba(150, 144, 132, 0.12);
+    0 14px 32px rgba(150, 156, 180, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 .neu-inset-pill,
@@ -180,9 +193,7 @@
 
 .neu-inset-field:focus-within {
   background: var(--od-neu-surface-high);
-  box-shadow:
-    var(--od-neu-inset-1),
-    0 0 0 2px var(--od-neu-focus);
+  box-shadow: var(--od-neu-inset-1);
 }
 
 .neu-chip {
@@ -260,19 +271,27 @@
 }
 
 .neu-composer {
-  border-radius: 18px;
-  background: var(--od-neu-sunken);
-  box-shadow: var(--od-neu-inset-2);
+  border-radius: 26px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(247, 246, 252, 0.82) 100%
+  );
+  box-shadow:
+    0 20px 46px rgba(141, 146, 180, 0.22),
+    0 0 34px rgba(150, 140, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(213, 208, 246, 0.55);
   transition:
-    background-color 180ms ease,
     box-shadow 180ms ease;
 }
 
 .neu-composer:focus-within {
-  background: var(--od-neu-sunken-deep);
   box-shadow:
-    var(--od-neu-inset-2),
-    0 0 0 2px var(--od-neu-focus);
+    0 22px 50px rgba(141, 146, 180, 0.26),
+    0 0 34px rgba(150, 140, 255, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(196, 188, 246, 0.7);
 }
 
 .neu-msg-assistant {
@@ -296,6 +315,41 @@
 
 .neu-send-btn:active {
   box-shadow: var(--od-neu-inset-1);
+}
+
+.neu-effort-btn {
+  background: var(--od-neu-surface);
+  color: var(--od-neu-ink-2);
+  box-shadow: var(--od-neu-raise-1);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 180ms ease,
+    background-color 180ms ease;
+}
+
+.neu-effort-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--od-neu-raise-2);
+  color: var(--od-neu-ink);
+}
+
+.neu-effort-btn:active {
+  transform: none;
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.neu-effort-active {
+  background: var(--color-primary) !important;
+  color: var(--color-on-primary) !important;
+  box-shadow:
+    var(--od-neu-raise-1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+}
+
+.neu-effort-active:hover {
+  background: var(--color-primary-container) !important;
+  color: var(--color-on-primary) !important;
 }
 
 .neu-dock-btn {
@@ -333,6 +387,15 @@
    不再给内部 input 叠第二道环。 */
 .neu-nav input:focus-visible {
   outline: none;
+}
+
+/* 搜索/对话输入只保留外层胶囊的焦点环，内部输入不再画第二道蓝线。 */
+.neu-inset-field input:focus,
+.neu-inset-field input:focus-visible,
+.neu-composer textarea:focus,
+.neu-composer textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* 暖色底材上的静态光晕：不使用 blur 滤镜，也不承载信息。 */
@@ -637,4 +700,369 @@
   .status-dot-pulse {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * OD-UI-202 全应用材质映射（2026-11-09）
+ *
+ * 历史页面大量使用 bg-white / bg-surface-container-* / shadow-[...] 这类
+ * Tailwind 工具类。这里用无层选择器统一映射到暖白灰底材与新拟物阴影，
+ * 只覆盖外观，不触碰任何组件逻辑、路由或数据结构。
+ * 层叠说明：本段不带 @layer，优先于 @layer utilities；页面局部 CSS
+ * （如 settings-panel.css）仍可在其后覆盖个别组件。
+ * ------------------------------------------------------------------ */
+
+/* 背景：把纯白与旧淡紫容器映射到同一组暖灰表面。 */
+[class~="bg-white"],
+[class*="bg-white/"] {
+  background-color: var(--od-neu-surface) !important;
+}
+
+[class~="bg-background"] {
+  background-color: var(--od-neu-bg) !important;
+}
+
+[class~="bg-surface"] {
+  background-color: var(--od-neu-surface) !important;
+}
+
+[class~="bg-surface-container"] {
+  background-color: var(--od-neu-sunken) !important;
+}
+
+[class*="bg-surface-container-high"] {
+  background-color: var(--od-neu-sunken-deep) !important;
+}
+
+[class*="bg-surface-container-highest"] {
+  background-color: #d7d4cc !important;
+}
+
+[class*="bg-surface-container-low"] {
+  background-color: var(--od-neu-surface) !important;
+}
+
+/* lowest 必须在 low 之后，避免被更宽的 substring 选择器覆盖。 */
+[class*="bg-surface-container-lowest"] {
+  background-color: var(--od-neu-surface-high) !important;
+}
+
+/* 旧的任意阴影与 Tailwind 阴影统一改为成对新拟物阴影。 */
+[class*="shadow-["] {
+  box-shadow: var(--od-neu-raise-2) !important;
+}
+
+.shadow-xs,
+.shadow-sm {
+  box-shadow: var(--od-neu-raise-1) !important;
+}
+
+.shadow-md,
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: var(--od-neu-raise-2) !important;
+}
+
+/* 有背景的圆角卡片补上凸起面；rounded-full 胶囊不在此列。 */
+[class*="rounded-xl"][class*="bg-white"],
+[class*="rounded-2xl"][class*="bg-white"],
+[class*="rounded-[20px]"][class*="bg-white"],
+[class*="rounded-3xl"][class*="bg-white"],
+[class*="rounded-xl"][class*="bg-surface-container"],
+[class*="rounded-2xl"][class*="bg-surface-container"],
+[class*="rounded-[20px]"][class*="bg-surface-container"],
+[class*="rounded-3xl"][class*="bg-surface-container"] {
+  box-shadow: var(--od-neu-raise-2) !important;
+}
+
+[class~="rounded-lg"][class*="bg-white"],
+[class~="rounded-md"][class*="bg-white"],
+[class~="rounded-sm"][class*="bg-white"],
+[class~="rounded"][class*="bg-white"],
+[class~="rounded-full"][class*="bg-white"] {
+  box-shadow: var(--od-neu-raise-1) !important;
+}
+
+/* 任意圆角（如 rounded-[18px]）的浅色卡面，只要没有旧阴影，也给一层 L1。 */
+[class*="rounded-["][class*="bg-white"]:not([class*="shadow-"]),
+[class*="rounded-["][class*="bg-surface-container"]:not([class*="shadow-"]) {
+  box-shadow: var(--od-neu-raise-1) !important;
+}
+
+/* 输入类压入：排除透明搜索框与原生勾选控件。 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="bg-transparent"]),
+textarea:not([class*="bg-transparent"]),
+select:not([class*="bg-transparent"]) {
+  background-color: var(--od-neu-sunken) !important;
+  box-shadow: var(--od-neu-inset-1) !important;
+}
+
+input:focus-visible:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea:focus-visible,
+select:focus-visible {
+  outline: none !important;
+  box-shadow:
+    var(--od-neu-inset-1),
+    0 0 0 2px var(--od-neu-focus) !important;
+}
+
+/* 主操作按钮抬起，按下压回。只命中 bg-primary 这个完整工具类。 */
+button[class~="bg-primary"],
+a[class~="bg-primary"] {
+  box-shadow: var(--od-neu-raise-1) !important;
+}
+
+button[class~="bg-primary"]:active,
+a[class~="bg-primary"]:active {
+  box-shadow: var(--od-neu-inset-1) !important;
+}
+
+/* 全应用移除残留玻璃模糊；背景色由上面的表面映射接管。 */
+[class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 弹层/抽屉保持实色边缘。 */
+[role="dialog"],
+[role="alertdialog"] {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* ------------------------------------------------------------------ *
+ * 首页 2.0（2026-11-10 参考稿）：暖白底 + 淡蓝山海插画 + 半透明卡片。
+ * 只改视觉层，不改布局行为、导航与数据。
+ * ------------------------------------------------------------------ */
+
+.app-scape-base {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1100px 640px at 82% 2%, rgba(255, 247, 226, 0.6), transparent 62%),
+    linear-gradient(
+      180deg,
+      #fbf9f4 0%,
+      #f9f7f3 34%,
+      #eff2fa 58%,
+      #f5f3f0 84%,
+      #f7f5f1 100%
+    );
+}
+
+.app-scape-art {
+  position: absolute;
+  top: 84px;
+  right: 0;
+  width: min(42vw, 740px);
+  height: auto;
+  opacity: 0.92;
+  -webkit-mask-image: radial-gradient(118% 100% at 88% 18%, #000 42%, transparent 88%);
+  mask-image: radial-gradient(118% 100% at 88% 18%, #000 42%, transparent 88%);
+  transition: opacity 320ms ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.app-scape-art[data-hidden="true"] {
+  opacity: 0;
+}
+
+.app-scape-mist {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 52%;
+  background: linear-gradient(
+    180deg,
+    rgba(235, 241, 250, 0) 0%,
+    rgba(229, 236, 249, 0.26) 42%,
+    rgba(235, 240, 249, 0.1) 78%,
+    rgba(247, 245, 241, 0) 100%
+  );
+}
+
+.home-hero {
+  padding-top: 1.9rem;
+}
+
+.home-greeting {
+  font-family: var(--font-display-hero);
+  font-weight: 600;
+  font-size: clamp(26px, 2.6vw, 34px);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: #2f2f38;
+}
+
+.home-sub {
+  margin-top: 0.65rem;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: #63636e;
+}
+
+.home-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 18px;
+  text-align: left;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.48) 100%
+  );
+  box-shadow:
+    0 10px 26px rgba(148, 156, 182, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.5);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms ease;
+}
+
+.home-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 16px 34px rgba(140, 150, 180, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.home-card:active {
+  transform: translateY(0);
+  box-shadow:
+    0 6px 16px rgba(140, 150, 180, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.home-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow:
+    0 6px 14px rgba(120, 130, 170, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.home-tone-blue {
+  background: linear-gradient(150deg, #9ecbff, #5b8cf5);
+}
+
+.home-tone-green {
+  background: linear-gradient(150deg, #9be7c4, #3fc48d);
+}
+
+.home-tone-amber {
+  background: linear-gradient(150deg, #ffd894, #f7a63e);
+}
+
+.home-tone-violet {
+  background: linear-gradient(150deg, #d3bdfa, #9878f6);
+}
+
+.home-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(150, 146, 138, 0.32));
+}
+
+.home-rule-right {
+  height: 1px;
+  background: linear-gradient(270deg, transparent, rgba(150, 146, 138, 0.32));
+}
+
+.home-quick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.95rem;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: #4c4c56;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(255, 255, 255, 0.6) 100%
+  );
+  box-shadow:
+    0 8px 20px rgba(148, 156, 182, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.45);
+  transition:
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 160ms ease;
+}
+
+.home-quick-pill:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 24px rgba(140, 150, 180, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.neu-rail {
+  padding: 12px 8px;
+  border-radius: 30px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.46) 100%
+  );
+  box-shadow:
+    0 16px 36px rgba(148, 156, 182, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.neu-rail .neu-dock-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: #55555f;
+}
+
+.neu-rail .neu-dock-btn:hover {
+  transform: none;
+  color: var(--od-neu-accent-ink);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 6px 14px rgba(150, 155, 180, 0.2);
+}
+
+.neu-rail .neu-dock-active {
+  color: #fff;
+  background: linear-gradient(150deg, #8f7bff, #5747f8);
+  box-shadow:
+    0 10px 22px rgba(87, 71, 248, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.neu-rail .neu-dock-active::before {
+  display: none;
+}
+
+.home-slogan-text {
+  font-size: clamp(16px, 1.65vw, 22px);
+  line-height: 1.4;
+  letter-spacing: 0.16em;
+  color: #615a85;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.neu-date-chip {
+  background: linear-gradient(
+    180deg,
+    rgba(247, 245, 255, 0.96) 0%,
+    rgba(238, 236, 252, 0.88) 100%
+  );
+  box-shadow:
+    0 8px 18px rgba(140, 140, 180, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
