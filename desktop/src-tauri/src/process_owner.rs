@@ -59,9 +59,19 @@ fn is_engine_cmd(cmd: &[String]) -> bool {
     }
     let exe = cmd
         .first()
-        .map(|p| p.rsplit('/').next().unwrap_or(p))
+        .map(|p| p.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(p))
         .unwrap_or("");
-    exe.starts_with("node") && cmd.iter().skip(1).any(|a| a.ends_with("bin.js"))
+    is_node_image(exe) && cmd.iter().skip(1).any(|a| a.ends_with("bin.js"))
+}
+
+/// node 镜像名是否属于本产品。
+///
+/// OD-PROC-149a 之后 Windows 改用副本名 `omnidesk-node.exe` 启动 DSH；只认
+/// `node` 前缀会让子进程组身份核验失明（结果是拒绝回收，不会误杀，但遗留
+/// 进程清不掉）。两平台的分隔符都要认：owner.json 里的路径可能来自任一平台。
+fn is_node_image(exe: &str) -> bool {
+    let name = exe.to_ascii_lowercase();
+    name.starts_with("node") || name.starts_with("omnidesk-node")
 }
 
 fn group_members(pgid: i32) -> Vec<(i32, Vec<String>)> {
@@ -324,6 +334,25 @@ mod tests {
         assert_eq!(out.status, "none");
         assert!(!owner_path(&dir).exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// OD-PROC-149a：Windows 副本名必须仍被认成自家进程，否则回收失明。
+    #[test]
+    fn engine_image_accepts_alias_names() {
+        let cmd = |parts: &[&str]| parts.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(is_engine_cmd(&cmd(&["omnidesk-node.exe", "bin.js"])));
+        assert!(is_engine_cmd(&cmd(&[
+            "C:\\Program Files\\OmniDesk\\runtime\\bin\\omnidesk-node.exe",
+            "C:\\r\\bin.js",
+        ])));
+        assert!(is_engine_cmd(&cmd(&["node", "/r/bin.js"])));
+        assert!(is_engine_cmd(&cmd(&[
+            "omnidesk-python.exe",
+            "-m",
+            "omnidesk_engine",
+        ])));
+        assert!(!is_engine_cmd(&cmd(&["node", "other.js"])));
+        assert!(!is_engine_cmd(&cmd(&["python3", "-m", "other"])));
     }
 
     /// OD-SYS-701：写一份最小 owner.json（只填 cleanup 会读的字段）。

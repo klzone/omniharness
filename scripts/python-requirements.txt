@@ -5,3 +5,6 @@ certifi>=2024.2.2
 # OD-DOCX-148c：DSH 沙箱里代理可直接 import docx；lxml 是 python-docx 的硬依赖。
 python-docx>=1.1,<2
 lxml>=5,<7
+# OD-PROC-149b：macOS 把引擎进程标题显示成 omnidesk-engine（活动监视器/ps）；
+# import 失败时 __main__ 静默跳过，不影响启动。
+setproctitle>=1.3

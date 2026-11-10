@@ -1,5 +1,25 @@
 # 当前实施计划
 
+### OD-PROC-149：进程名归一 omnidesk-*（已实施并复检通过，2026-11-11）
+
+> **触发：** 用户 Windows 实测退出后进程回收正常（OD-SYS-701 Job Object 生效），但任务管理器显示 node.exe/python.exe，希望像 ima.copilot 一样把 OmniDesk 相关进程统一命名并视觉分组。ARCHITECT 判定：进程链为 OmniDesk.exe → python -m omnidesk_engine → node bin.js；Electron 式"同镜像归组"对异构解释器进程不可实现，采用"副本改名+进程标题"方案。Windows 镜像名运行时不可改，需复制 node.exe/python.exe 为 omnidesk-node.exe/omnidesk-python.exe；macOS 可运行时改（node process.title + python setproctitle）。资源占用零变化；风险集中在 Windows python 副本 DLL 解析，以首启探针+回退兜底。
+
+**任务卡：**
+
+**OD-PROC-149a Windows exe 副本机制（核心）**
+- 范围：desktop/src-tauri/src 新增 process_alias.rs（或并入 platform.rs）：①首启把 resolve_node()/resolve_python() 结果复制为 <data_root>/runtime/bin/omnidesk-node.exe / omnidesk-python.exe（源文件哈希或 Size+mtime 变化时刷新；OMNIDESK_NODE/OMNIDESK_PYTHON 显式指定时不复制直接用原名）；②副本目录放 marker 文件记录源路径与哈希；③python 副本探针：spawn 副本 ，成功才切换；失败或任何 IO 错误回退原名并记日志；④python 副本运行需原安装目录在 PATH（注入 child_env，指向用户 python 的目录）；⑤engine_supervisor 的 config.python 与 engine 的 OMNIDESK_NODE 下发改用副本路径；⑥回退开关：环境变量 OMNIDESK_PROC_ALIAS=off 或设置项关闭后完全走原名。
+- 明确不做：不改 Job Object/回收逻辑；不打包 node/python 进安装包（仍是系统依赖）；不处理签名校验。
+- 验收：cargo lib 单测（副本创建/哈希刷新/探针失败回退/mock Command）；Windows 真机任务管理器显示 omnidesk-node.exe / omnidesk-python.exe（用户实测项）；回退路径单测覆盖。
+
+**OD-PROC-149b macOS 进程标题（独立小卡）**
+- 范围：①新增 scripts/proc_title_shim.cjs（3 行：process.title = "omnidesk-dsh"），engine 侧 node spawn 命令改为 [node, "--require", shim, dsh_bin, ...]（仅 darwin；web_api_adapter.py 与 acp_adapter.py 两处 cmd 构造）；②python-vendor 加 setproctitle 依赖；engine/omnidesk_engine/__main__.py 启动最前 setproctitle.setproctitle("omnidesk-engine")（import 失败静默跳过）。
+- 验证：Activity Monitor 进程名显示 omnidesk-dsh / omnidesk-engine（用户实测）；helper 脚本/单测断言 cmd 构造含 --require。
+
+**OD-PROC-149c 汇总验证**
+- verify_proc_alias_149.py：静态断言（副本逻辑存在/回退分支/shim 引用/回退开关）+ macOS 实跑探针（spawn python 副标题后 ps 检查可延后为用户实测）；诊断脚本 diagnose-omnidesk.py 的 process_snapshot 不需改（按名字归集会自动命中 omnidesk-*）。
+- 派发：149a 与 149b 无文件交集可并行（149a Rust 侧，149b Python/engine 侧）；ARCHITECT 独立复检 + 证据落 tests/verification/desktop/evidence/od-proc-149/。
+
+
 ### OD-DOCX-148：附件通道广收窄取——常用格式全接收、提取尽力而为（已实施并复检通过，2026-11-10）
 
 > **触发：** 用户 Windows 实测两个问题：①拖 docx 进输入框被附件系统拦下，提示"另存为 txt/md/csv"，而引擎侧文件工具按路径直读成功；②会话代理自装 python-docx 用 pip --target .deps，装出的文件权限只有 SYSTEM/Administrators/OWNER RIGHTS，DSH 沙箱读不到（ImportError），改 pip --user 后绕过。用户让 OmniDesk 自诊后由 ARCHITECT 复核定案。

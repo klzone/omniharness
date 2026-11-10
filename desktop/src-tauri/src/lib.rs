@@ -46,6 +46,7 @@ pub mod profile_seed;
 pub mod profile_lifecycle;
 pub mod profile_starter;
 pub mod profile_rules;
+pub mod process_alias;
 pub mod priority_rules;
 pub mod quicklog;
 pub mod route_classifier;

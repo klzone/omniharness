@@ -463,13 +463,18 @@ class RedactionAndCommandTests(unittest.TestCase):
 
     def test_for_dsh_argument_order(self):
         # `--patch` 必须是 launcher 级参数，排在子命令参数之前。
+        # OD-PROC-149b：darwin 下 cmd 会前置 [--require, shim]；剔除后再断言，
+        # 相对顺序语义不变。
         adapter = WebApiAdapter.for_dsh(
             "/tmp/bin.js", cwd="/tmp", profile="web",
             patch_files=["/tmp/a.yml", "/tmp/b.yml"], state_dir="/tmp/s")
         cmd = adapter._command
-        self.assertEqual(cmd[:4], [resolve_node(), "/tmp/bin.js", "--profile", "web"])
-        self.assertEqual(cmd[4:8], ["--patch", "/tmp/a.yml", "--patch", "/tmp/b.yml"])
-        self.assertEqual(cmd[8:], ["--port", "0", "--no-open"])
+        args = list(cmd)
+        if args and args[0] == resolve_node() and len(args) >= 2 and args[1] == "--require":
+            args = [args[0]] + args[3:]
+        self.assertEqual(args[:4], [resolve_node(), "/tmp/bin.js", "--profile", "web"])
+        self.assertEqual(args[4:8], ["--patch", "/tmp/a.yml", "--patch", "/tmp/b.yml"])
+        self.assertEqual(args[8:], ["--port", "0", "--no-open"])
         self.assertEqual(adapter._engine_profile, "web")
 
     def test_for_dsh_rejects_relative_cwd_and_empty_command(self):
