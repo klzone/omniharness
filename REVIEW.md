@@ -1,5 +1,30 @@
 # OD-PROC-149 审查：进程名归一 omnidesk-*（ARCHITECT，2026-11-11）——通过
 
+### OD-UI-711 复检通过 + OD-UI-710/711 竣工（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Chandrasekhar）交付的前端执行时间线渲染。
+
+**核对结果：**
+1. diff 允许清单核对：HomeChat.tsx（timeline 追加式状态 + 正文前时间线渲染 + 终态摘要折叠 + toolNote 回退）+ 新增 timelineModel.ts 纯函数（工具事件按 call_id 归并、思考累积、后台块聚合）+ theme.css .od-timeline 样式 + verify 脚本；引擎侧零改动（710 已交付）；runtime/ 零改动。
+2. 独立复跑：tsc exit 0、build exit 0、verify_ui_timeline_711 = 50/50；pytest 234+35（引擎侧不变）。敏感词 0 命中。
+3. 视觉复刻核对：条目结构（左侧符号+类型词+标题+右侧展开箭头）、灰色小字缩进、终态摘要折叠（「执行了 N 条命令 · M 段思考」可展开回看）照用户截图语义落地；UI 参考留痕（AgentGPT/Superagent/Warp）。
+4. 执行裁决复核认可：「时间线区+正文区」两段式（放弃逐条交错是合理取舍——正文流式更新与逐条交错在 DOM 结构上冲突，dsh 原版的交错本质也是同一时间线容器的插入顺序）；unknown_chunk 聚合不渲染（防刷屏）；工具事件按 call_id 归并、无 call_id 挂最近命令（已登记交错错位风险）；移除「本轮没有思考内容」提示（条目即信息）。
+5. 安全边界核对：工具载荷不读入参/结果原文（verify 断言）；无自动停止调用。
+6. 登记限制：切页离开期间的事件不补录（前端无历史回放接口）；工具标题当前为工具名（DSH tool/call 无 title 字段，710 防御链就位）；真实长任务完整工具序列待真实窗口验证（随下次使用目视）。
+
+**阶段结论：** OD-UI-710/711 两卡竣工。用户报告的「静默执行、只显示正在生成/正在调用工具」问题处置：引擎思考流（reasoning-delta）与工具事件全量透出 + 前端按序时间线渲染，执行过程与 dsh 原版同为可见、可展开、可回看。待真实窗口目视追认后收口。
+### OD-UI-710 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Bohr）交付的 web_api_adapter 事件层补齐。
+
+**核对结果：**
+1. diff 允许清单核对：web_api_adapter.py（reasoning-delta→thought_delta 映射、unknown_chunk 透出、tool title 防御取值）+ engine 测试；runtime/ 零改动；ACP 通道未动。
+2. 独立复跑：pytest = 234 passed + 35 subtests（净增 7 测试）；py_compile exit 0。
+3. 关键裁决核验：思考块实际字段名 reasoning-delta/text 有据（DSH 运行时包 typert.host.js 的 StreamChunk 类型声明 + dsh-agent-loop push 原样透传——执行代理实读了本机 DSH 运行时，非猜测）；unknown_chunk 只带类型字符串不带参数/结果原文（OD-ARCH-069 边界维持）；帧级未知 type 仍忽略（避免噪音放大）。
+4. 工具标题现状登记：DSH tool/call 实际只有 name 字段，title 防御链就位但当前回退工具名——711 前端「运行命令 · title」的标题即工具名，语义与 dsh 原版一致（原版显示的也是命令摘要）。
+5. 登记给 711：unknown_chunk（block-start/end、tool-call-delta）频率可能较高，前端时间线渲染时不要把 unknown_chunk 逐条渲染成条目（只在诊断模式或聚合计数），否则长任务会刷屏。
+
+**结论：** 通过。OD-UI-711（前端时间线渲染）可派发。
 **结论：通过。** 149a/149b 两卡由并行子代理实施，独立复检全部实跑验证通过；两处打包/断言适配已由 ARCHITECT 修正。可进入用户实测与出包。
 
 **计划符合性：** 149a 副本复制+marker+探针回退+开关+非 Windows 透传，全部与获批计划一致；149b shim 外部注入（runtime/ 零改动）+darwin 分支+setproctitle 静默降级，一致。process_owner.rs 的 is_node_image 联动属任务卡正文明确要求（防回收失明），两平台分隔符兼容处理正确。

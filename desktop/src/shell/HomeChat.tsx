@@ -75,6 +75,16 @@ import { TurnRail } from "./TurnRail";
 import { MarkdownText } from "./MarkdownText";
 import { QuestionCard } from "./QuestionCard";
 import { StatusToast, type StatusToastMessage, type StatusToastTone } from "./StatusToast";
+import {
+  addUnknownChunk,
+  appendThoughtDelta,
+  appendToolActivity,
+  formatTimelineTime,
+  timelineStatusLabel,
+  timelineSummary,
+  visibleTimelineEntries,
+  type TimelineEntry,
+} from "./timelineModel";
 import { SCENES, isSceneKey } from "../scenes";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
@@ -142,6 +152,11 @@ export interface ChatMessage {
    * 只存展示用的工具名与状态，不存工具入参或结果；任务结束即清空。
    */
   toolNote?: string | null;
+  /**
+   * OD-UI-711：本轮执行时间线。事件到达时追加，不覆盖；
+   * 随消息一起持久化，旧档案没有该字段时照旧渲染。
+   */
+  timeline?: TimelineEntry[];
   /** OD-ARCH-069：本轮用户输入的原文，仅用于「重发」。 */
   sentText?: string | null;
   /** OD-ARCH-078 S3：提交时刻与到达终态的时刻（毫秒），用于显示本轮耗时。 */
@@ -217,6 +232,111 @@ function normalizeLoadedMessages(messages: ChatMessage[]): ChatMessage[] {
     seen.add(id);
     return { ...message, id };
   });
+}
+
+/** 单条时间线：类型词、标题、展开箭头；展开后才出现状态历史或思考原文。 */
+function TimelineEntryRow({
+  entry,
+}: {
+  entry: TimelineEntry & { kind: "tool" | "thought" };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isTool = entry.kind === "tool";
+  const kindLabel = isTool ? "命令" : "思考";
+  const title = (entry.title ?? "").trim() || (isTool ? "未知工具" : "思考过程");
+  const statusHistory = entry.statusHistory ?? [];
+  return (
+    <div className="od-timeline-item" data-testid={"timeline-entry-" + entry.kind}>
+      <button
+        type="button"
+        className="od-timeline-row"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="od-timeline-glyph" aria-hidden="true">
+          {isTool ? ">_" : "@@"}
+        </span>
+        <span className="od-timeline-kind">{kindLabel}</span>
+        <span className="od-timeline-title">{title}</span>
+        <Icon
+          name="chevron-down"
+          className={"od-timeline-chevron" + (expanded ? " is-open" : "")}
+        />
+      </button>
+      {expanded ? (
+        <div className="od-timeline-detail">
+          {isTool ? (
+            <div className="od-timeline-history" data-testid="timeline-status-history">
+              {statusHistory.map((change, index) => (
+                <div key={index} className="od-timeline-history-row">
+                  <span className="od-timeline-history-status">
+                    {timelineStatusLabel(change.status)}
+                  </span>
+                  <span className="od-timeline-history-time">
+                    {formatTimelineTime(change.at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="od-timeline-thought">{entry.text ?? ""}</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * OD-UI-711：助手消息正文前的执行时间线。
+ * 任务进行中直接铺开；到达终态后收成一行摘要，仍可展开回看。
+ */
+function TimelineView({
+  timeline: rawTimeline,
+  state,
+}: {
+  timeline?: TimelineEntry[] | null;
+  state?: TaskState | null;
+}) {
+  const timeline = Array.isArray(rawTimeline) ? rawTimeline : [];
+  const visible = visibleTimelineEntries(timeline);
+  const terminal = state != null && (TERMINAL_STATES as readonly string[]).includes(String(state));
+  const [open, setOpen] = useState(!terminal);
+
+  useEffect(() => {
+    setOpen(!terminal);
+  }, [terminal]);
+
+  if (visible.length === 0) return null;
+
+  const list = (
+    <div className="od-timeline-list" data-testid="timeline-list">
+      {visible.map((entry, index) => (
+        <TimelineEntryRow key={(entry.seq ?? entry.kind) + "-" + index} entry={entry} />
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="od-timeline" data-testid="activity-timeline">
+      {terminal ? (
+        <button
+          type="button"
+          className="od-timeline-summary"
+          aria-expanded={open}
+          data-testid="timeline-summary"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span>{timelineSummary(timeline)}</span>
+          <Icon
+            name="chevron-down"
+            className={"od-timeline-chevron" + (open ? " is-open" : "")}
+          />
+        </button>
+      ) : null}
+      {!terminal || open ? list : null}
+    </div>
+  );
 }
 
 function enabledCategories(facts: AdmissionFacts): string[] {
@@ -730,8 +850,6 @@ export function HomeChat({
   const [engineIdleHint, setEngineIdleHint] = useState(false);
   /** 最近一次 taskStatus 轮询到达终态的时刻：作为「引擎此刻空闲」的界面侧证据。 */
   const lastTerminalPollRef = useRef<number | null>(null);
-  /** 每个任务的思考过程（模型产出的思考，不计入最终结果）。 */
-  const [thoughts, setThoughts] = useState<Record<string, string>>({});
   /**
    * OD-ARCH-066：需要人工决定的工具审批。按任务号分组，只保存归一化字段
    * （工具名/原因/编号），不保存工具参数正文。
@@ -1261,23 +1379,76 @@ export function HomeChat({
         }
         // 思考过程（模型产出的思考，不计入最终结果）：按任务累积，单独展示。
         if (p.kind === "thought_delta" && typeof p.text === "string" && p.text) {
-          setThoughts((prev) => ({
-            ...prev,
-            [event.omni_task_id]: (prev[event.omni_task_id] ?? "") + p.text,
-          }));
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.taskId === event.omni_task_id
+                ? {
+                    ...m,
+                    timeline: appendThoughtDelta(m.timeline ?? [], {
+                      seq: event.seq,
+                      at: event.occurred_at,
+                      text: p.text as string,
+                    }),
+                  }
+                : m,
+            ),
+          );
+          return;
+        }
+        // 未知流块（block-start/end、tool-call-delta 等）频率高，不逐条建条目，
+        // 只维护一条聚合计数；正常界面不渲染 note 条目。
+        if (p.kind === "unknown_chunk") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.taskId === event.omni_task_id
+                ? {
+                    ...m,
+                    timeline: addUnknownChunk(m.timeline ?? [], {
+                      seq: event.seq,
+                      at: event.occurred_at,
+                    }),
+                  }
+                : m,
+            ),
+          );
+          return;
         }
         return;
       }
       // OD-ARCH-069：工具执行期间显示工具名与状态，让「在干活」和「卡住」可区分。
       // 只显示工具名与状态字符串，不展示工具入参/结果。
       if (event.type === "tool_activity") {
-        const tp = event.payload as { tool_name?: unknown; status?: unknown };
+        const tp = event.payload as {
+          kind?: unknown;
+          tool_name?: unknown;
+          title?: unknown;
+          status?: unknown;
+          call_id?: unknown;
+        };
         const tool = typeof tp.tool_name === "string" && tp.tool_name ? tp.tool_name : "未知工具";
+        const title = typeof tp.title === "string" && tp.title.trim() ? tp.title : tool;
         const status = typeof tp.status === "string" && tp.status ? tp.status : "";
+        const eventKind = typeof tp.kind === "string" && tp.kind ? tp.kind : "";
+        const callId = typeof tp.call_id === "string" && tp.call_id ? tp.call_id : "";
         setMessages((prev) =>
           prev.map((m) =>
             m.taskId === event.omni_task_id
-              ? { ...m, toolNote: "正在调用工具：" + tool + (status ? "（" + status + "）" : "") }
+              ? {
+                  ...m,
+                  toolNote:
+                    eventKind !== "tool/call"
+                      ? null
+                      : "正在调用工具：" + tool + (status ? "（" + status + "）" : ""),
+                  timeline: appendToolActivity(m.timeline ?? [], {
+                    seq: event.seq,
+                    at: event.occurred_at,
+                    eventKind,
+                    toolName: tool,
+                    title,
+                    status,
+                    callId,
+                  }),
+                }
               : m,
           ),
         );
@@ -2979,23 +3150,8 @@ export function HomeChat({
                     ))
                   ) : null}
 
-                  {m.taskId && thoughts[m.taskId] ? (
-                    <details
-                      className="rounded-lg bg-surface-container/70 px-3 py-2 text-[11.5px] text-on-surface-variant"
-                      open
-                    >
-                      <summary className="cursor-pointer select-none text-outline">
-                        思考过程（模型产出，不计入最终结果）
-                      </summary>
-                      <p className="pt-1.5 whitespace-pre-wrap break-words leading-relaxed">
-                        {thoughts[m.taskId]}
-                      </p>
-                    </details>
-                  ) : m.taskId && m.state && ["succeeded", "failed", "cancelled"].includes(String(m.state)) ? (
-                    <p className="text-[10.5px] text-outline">
-                      本轮没有思考内容（该模型/端点可能不返回思考过程，或思考等级为关闭）。
-                    </p>
-                  ) : null}
+                  {/* OD-UI-711：执行时间线在正文前；正文仍是流式增量，不进入时间线。 */}
+                  <TimelineView timeline={m.timeline} state={m.state} />
 
                   {m.error ? (
                     <div className="rounded-lg bg-error-container text-on-error-container px-3 py-2 text-[12px] leading-relaxed">
@@ -3046,7 +3202,8 @@ export function HomeChat({
                     </div>
                   ) : null}
 
-                  {m.toolNote ? (
+                  {(!m.timeline || m.timeline.length === 0 || (m.toolNote ?? "").includes("仍在运行")) &&
+                  m.toolNote ? (
                     <p className="flex items-center space-x-1.5 text-[11.5px] text-outline">
                       <Icon name="spark" className="w-3.5 h-3.5 animate-pulse" />
                       <span>{m.toolNote}</span>

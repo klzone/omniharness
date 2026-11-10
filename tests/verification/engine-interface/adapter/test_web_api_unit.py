@@ -233,16 +233,42 @@ class StreamFrameTests(unittest.TestCase):
         self.assertEqual(progress[0].payload["kind"], "usage")
         self.assertEqual(progress[0].payload["usage"]["inputTokens"], 3)
 
+    def test_reasoning_delta_becomes_thought_progress(self):
+        reason = self.adapter._on_stream_frame(
+            self.record, self.frame({"type": "reasoning-delta", "text": "合成思考"}))
+        self.assertIsNone(reason)
+        self.assertEqual(self.record.text_parts, [])
+        progress = [e for e in self.record.events if e.type == EventType.PROGRESS]
+        self.assertEqual(len(progress), 1)
+        self.assertEqual(progress[0].payload["kind"], "thought_delta")
+        self.assertEqual(progress[0].payload["text"], "合成思考")
+        self.assertEqual(progress[0].payload["chars"], 4)
+        self.assertEqual(progress[0].payload["note"], "思考内容不计入最终结果")
+
     def test_stream_end_non_committed_is_progress(self):
         self.adapter._on_stream_frame(self.record, {"type": "end", "outcome": {"kind": "aborted"}})
         progress = [e for e in self.record.events if e.type == EventType.PROGRESS]
         self.assertEqual(progress[0].payload["outcome"], "aborted")
 
-    def test_unknown_chunk_and_frame_are_ignored(self):
+    def test_unknown_chunk_becomes_diagnostic_progress(self):
         self.assertIsNone(self.adapter._on_stream_frame(self.record, self.frame({"type": "nope"})))
+        progress = [e for e in self.record.events if e.type == EventType.PROGRESS]
+        self.assertEqual(progress[-1].payload, {"kind": "unknown_chunk", "chunk_type": "nope"})
+        self.assertEqual(self.record.text_len, 0)
+
+    def test_unknown_frame_is_still_ignored(self):
         self.assertIsNone(self.adapter._on_stream_frame(self.record, {"type": "unknown"}))
         self.assertIsNone(self.adapter._on_stream_frame(self.record, {"type": "chunk"}))
-        self.assertEqual(self.record.text_len, 0)
+        self.assertEqual(self.record.seq, 0)
+
+    def test_progress_event_dict_includes_seq(self):
+        self.adapter._on_stream_frame(
+            self.record, self.frame({"type": "reasoning-delta", "text": "合成思考"}))
+        self.adapter._on_stream_frame(self.record, self.frame({"type": "block-start", "blockType": "text"}))
+        event_dicts = [e.to_dict() for e in self.record.events]
+        self.assertEqual([item["seq"] for item in event_dicts], [1, 2])
+        self.assertEqual(event_dicts[0]["payload"]["kind"], "thought_delta")
+        self.assertEqual(event_dicts[1]["payload"], {"kind": "unknown_chunk", "chunk_type": "block-start"})
 
     def test_message_text_joins_only_text_blocks(self):
         text = WebApiAdapter._message_text({"content": [
@@ -250,6 +276,45 @@ class StreamFrameTests(unittest.TestCase):
             {"type": "text", "text": "乙"}]})
         self.assertEqual(text, "甲乙")
         self.assertEqual(WebApiAdapter._message_text({"content": "raw"}), "")
+
+
+class ToolActivityPayloadTests(unittest.TestCase):
+    """OD-UI-710：工具事件补人类可读标题，取不到回退工具名，不碰入参原文。"""
+
+    def setUp(self):
+        self.adapter = make_adapter(tmp_state="/tmp/od710-unit-state")
+        self.record = make_record()
+
+    def test_title_prefers_display_fields(self):
+        for key in ("title", "summary", "description", "label", "displayName"):
+            with self.subTest(key=key):
+                self.assertEqual(WebApiAdapter._tool_title_of({key: " 合成标题 "}, {}), "合成标题")
+        self.assertEqual(WebApiAdapter._tool_title_of({}, {"title": "合成标题"}), "合成标题")
+        self.assertEqual(WebApiAdapter._tool_title_of({"title": 42}, {}), "")
+
+    def test_title_falls_back_to_tool_name(self):
+        payload = WebApiAdapter._tool_activity_payload("tool/call", {"name": "bash"}, {})
+        self.assertEqual(payload["tool_name"], "bash")
+        self.assertEqual(payload["title"], "bash")
+
+    def test_payload_omits_tool_input_and_result_text(self):
+        data = {
+            "name": "bash",
+            "title": "运行合成命令",
+            "arguments": {"command": "合成秘密串"},
+            "result": "合成结果秘密串",
+        }
+        payload = WebApiAdapter._tool_activity_payload("tool/call", data, {})
+        self.assertEqual(payload["title"], "运行合成命令")
+        self.assertNotIn("合成秘密串", json.dumps(payload, ensure_ascii=False))
+        self.assertNotIn("合成结果秘密串", json.dumps(payload, ensure_ascii=False))
+
+    def test_tool_activity_event_includes_seq(self):
+        payload = WebApiAdapter._tool_activity_payload("tool/call", {"name": "bash"}, {})
+        self.adapter._emit(self.record, EventType.TOOL_ACTIVITY, payload)
+        event_dict = self.record.events[-1].to_dict()
+        self.assertEqual(event_dict["seq"], 1)
+        self.assertEqual(event_dict["payload"]["title"], "bash")
 
 
 class MaskingTests(unittest.TestCase):

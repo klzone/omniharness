@@ -1692,20 +1692,10 @@ class WebApiAdapter(TaskCoreBase):
                     # 完整系统提示词：绝不进入事件、结果、日志或台账。
                     continue
                 if event_type == "tool/call" or event_type.startswith("tool/"):
-                    # OD-ARCH-069：工具名来自上游事件，字段名不完全稳定
-                    # （tool/call 用 name，其它形态可能用 toolName/tool），
-                    # 防御性取；取不到就留空，由界面显示「未知工具」。
-                    tool_name = self._tool_name_of(data, event)
                     self._emit(
                         record,
                         EventType.TOOL_ACTIVITY,
-                        {
-                            "kind": event_type,
-                            "tool_name": tool_name,
-                            "call_id": str(data.get("callId") or data.get("call_id") or ""),
-                            "status": str(data.get("status") or ""),
-                            "note": "工具被调用不等于工具已成功执行",
-                        },
+                        self._tool_activity_payload(event_type, data, event),
                     )
                     continue
                 if event_type == "turn/end":
@@ -1737,6 +1727,34 @@ class WebApiAdapter(TaskCoreBase):
                 if isinstance(value, str) and value.strip():
                     return value.strip()
         return ""
+
+    @staticmethod
+    def _tool_title_of(data: Mapping[str, Any], event: Mapping[str, Any]) -> str:
+        """从工具事件里取人类可读标题；取不到就返回空串，由调用方回退工具名。
+
+        只读展示字段，不碰 arguments、rawInput 或 result 等可能含入参原文的容器。
+        """
+        for container in (data, event):
+            for key in ("title", "summary", "description", "label", "displayName"):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return ""
+
+    @classmethod
+    def _tool_activity_payload(
+        cls, event_type: str, data: Mapping[str, Any], event: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """构造工具活动事件载荷；只带展示字段，不读入参或结果原文。"""
+        tool_name = cls._tool_name_of(data, event)
+        return {
+            "kind": event_type,
+            "tool_name": tool_name,
+            "title": cls._tool_title_of(data, event) or tool_name,
+            "call_id": str(data.get("callId") or data.get("call_id") or ""),
+            "status": str(data.get("status") or ""),
+            "note": "工具被调用不等于工具已成功执行",
+        }
 
     @staticmethod
     def _message_text(message: Mapping[str, Any]) -> str:
@@ -1793,6 +1811,34 @@ class WebApiAdapter(TaskCoreBase):
                 reason = chunk.get("reason")
                 if isinstance(reason, Mapping) and reason.get("kind"):
                     return str(reason.get("kind"))
+            elif isinstance(chunk_type, str) and any(
+                token in chunk_type.lower() for token in ("reasoning", "thought", "thinking")
+            ):
+                # DSH 的思考块实际类型是 reasoning-delta（字段 text）；照 ACP
+                # 口径单独透出，不计入最终结果。
+                text = str(chunk.get("text") or "")
+                if not text:
+                    return None
+                self._emit(
+                    record,
+                    EventType.PROGRESS,
+                    {
+                        "kind": "thought_delta",
+                        "chars": len(text),
+                        "text": text,
+                        "note": "思考内容不计入最终结果",
+                    },
+                )
+            else:
+                # 未识别的流块不再静默丢弃：带上类型字符串供诊断；不读内容字段。
+                self._emit(
+                    record,
+                    EventType.PROGRESS,
+                    {
+                        "kind": "unknown_chunk",
+                        "chunk_type": chunk_type if isinstance(chunk_type, str) else "",
+                    },
+                )
             return None
         if frame_type == "end":
             outcome = frame.get("outcome")
