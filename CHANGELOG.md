@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - 线程存储新增“未知前端字段原样保存与读回”的 Rust 回归测试。
 
 ### Changed
+- 发布形态：0.2.18 起只提供安装包（macOS universal dmg、Windows NSIS setup.exe），发布工作流不再组装便携 zip。
 - 首页二次修订：去掉四张入口卡片、问候下方说明句与手掌表情；底部胶囊改为最近五个项目；对话开始后收起问候区，历史记录占满上方空间。
 - 首页按新参考图重排：顶栏 30px 圆角；左侧 Dock 收进胶囊导轨，当前项为品牌靛实心圆；输入面板改为 26px 凸起带淡紫光晕；空态标语改为两侧分隔线夹一行演示夏行楷（靛蓝灰 `#615A85`）。
 - Neo-Skeuomorphism 2.0 校准：象牙灰底材、近白凸起面、品牌靛 `#5747F8`；顶栏 34px 圆角，输入面板 24px，空态标语 30px / 0.12em 字距。
