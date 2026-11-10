@@ -1718,6 +1718,8 @@
 
 12. **首页 2.0 版式复刻（2026-11-10）。** 按用户参考图重排首页：顶栏 30px 圆角；问候带系统用户名；四张入口卡片（开始对话 / 打开知识库 / 进入应用 / 我的空间）；标语两侧分隔线；输入面板 26px 凸起带光晕；底部真实场景快捷入口；Dock 收进胶囊导轨；背景为暖白渐变 + 右上淡蓝山海插画（`desktop/public/home-scape.png` 裁自用户参考图，仅首页显示）。新增只读 IPC `desktop_user_name`。逐项核对：卡片与弹层只指向 `knowledge/settings/声明场景`，没有「日程/收藏/更多」这类未实现入口；插画只在 `scene === "home"` 挂载；未加设计规范条、未实现深色模式。复跑 `verify_ui_neumorphism_202.py` 36/36、`verify_home_refine_202.py` 40/40，`tsc` 与 `npm run build` 通过，debug `.app` 重建后实机截图核对。
 
+13. **首页二次修订与 v0.2.18 发布（2026-11-10）。** 按用户当轮意见：四张入口卡片、说明句与手掌表情全部移除；底部胶囊改为最近五个项目（`shell.projectList()` 取更新时间最新的 5 个，点击进项目跟踪，无项目时只留「项目跟踪」入口）；新增 `conversationStarted`，线程已有消息或首条消息落盘后收起问候区。发布工作流改为只出安装包（macOS universal dmg + Windows NSIS），不再组装便携 zip。证据：`main` 已推送至 `6a0b7bd`、`b42daea`；Release 运行 42773475862 成功（macos 15m15s、windows 15m27s）；`v0.2.18` 资产仅 `OmniDesk_0.2.18_universal.dmg`（162 MB）与 `OmniDesk_0.2.18_x64-setup.exe`（96 MB）。静态检查复跑 36/36、40/40。
+
 10. **P2 状态观察与 P3 思考档。** 任务事件在流式过程中持久化 seq/last_event_at（工具/启动立即、增量最多 2 秒一次），TaskStatus 暴露 last_event_at；UI 收到首条真实事件将 starting 提升为 running，状态查询失败但 30 秒内仍有真实事件时不误报 unknown；重新查询先 recoverTask。ModelPicker 对未声明的思考档显示“可能被忽略”。验证：test_task_status_snapshot 1/1、test_web_api_unit 89/89、verify_home_refine_202 29/29、verify_diagnose_omnidesk 12/12。
 
 **已知限制与未验证：**
