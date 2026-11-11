@@ -1,5 +1,12 @@
 # OD-PROC-149 审查：进程名归一 omnidesk-*（ARCHITECT，2026-11-11）——通过
 
+### OD-ARCH-150 修复：插件安装通道缺 pnpm（2026-11-11，ARCHITECT 直接实施并验证）
+
+**问题：** 用户点「安装」缺失插件报 exit 127「pnpm was not found」。根因两层：①安装包运行时不带 pnpm，DSH 的 plugin 命令按 PATH 解析 pnpm，GUI 不继承 shell PATH；②安装器把第三方插件版本钉成 DSH 运行时版本（dsh-free-search@0.2.1-rc.5 不存在，registry 实际版本线 0.9.x/1.9.x）。
+
+**修复：** ①prepare-runtime-assets.sh 内置 pnpm@11 → runtime/pnpm；两份 tauri 资源清单加该目录；CI 增加 pnpm 存在性校验。②profile_assets：run_install_command 把随包 pnpm bin 前置进 PATH；install_version 只对 @deepseek-ai 官方包钉运行时版本，第三方用清单依赖版本（dsh-free-search 0.9.5 / dsh-cost-meter 1.9.6）。③engine_supervisor 播种升级：旧数据根已有 Profile 但缺 node_modules 时，从包内 seed 补齐（不覆盖用户文件）。
+
+**证据（本会话实跑）：** cargo lib 1109 passed / 0 failed；未知的 pnpm → 修复后 PATH 解析成功；临时 DSH_HOME 实装 dsh-free-search@0.9.5 与 dsh-cost-meter@1.9.6 均成功（pnpm v11.28.11，Done in 3.5s/1.7s）。Windows/macOS 打包路径的最终验证随 0.2.21 发布进行。
 ### OD-UI-711 复检通过 + OD-UI-710/711 竣工（2026-11-11，ARCHITECT 独立复核）
 
 **审查对象：** 执行代理（Chandrasekhar）交付的前端执行时间线渲染。

@@ -291,6 +291,26 @@ impl EngineConfig {
                 let name = entry.file_name();
                 let dst = self.dsh_home.join(sub).join(&name);
                 if dst.exists() {
+                    // 升级来的旧数据根可能只有清单、没有插件 node_modules：
+                    // 包内 seed 有就补进去（只补缺失子树，不覆盖用户文件）。
+                    if sub == "profiles" {
+                        let seed_dir = entry.path();
+                        let seed_modules = seed_dir.join("node_modules");
+                        if seed_modules.is_dir() && !dst.join("node_modules").exists() {
+                            copy_tree(&seed_modules, &dst.join("node_modules")).map_err(|e| {
+                                format!(
+                                    "补齐 Profile 插件依赖失败（{} → {}）：{}",
+                                    seed_modules.display(),
+                                    dst.join("node_modules").display(),
+                                    e
+                                )
+                            })?;
+                        }
+                        let seed_lock = seed_dir.join("package-lock.json");
+                        if seed_lock.is_file() && !dst.join("package-lock.json").exists() {
+                            let _ = std::fs::copy(&seed_lock, dst.join("package-lock.json"));
+                        }
+                    }
                     continue;
                 }
                 copy_tree(&entry.path(), &dst).map_err(|e| {
@@ -917,6 +937,46 @@ mod tests {
 
     /// OD-ARCH-137：已有数据根只补缺失项。0.2.7 可能只有 `web`，不能因此跳过
     /// `omnidesk-base`；反过来，用户已经改过的 Profile / Skill 一个字都不能动。
+    #[test]
+    fn seed_home_backfills_profile_plugin_modules_without_overwriting() {
+        let fixture = SeedFixture::new("modules-seed");
+        let seed = fixture.base.join("repo/runtime/dsh-home-seed");
+        let seed_profile = seed.join("profiles/discipline");
+        let seed_module = seed_profile.join("node_modules/dsh-free-search");
+        std::fs::create_dir_all(&seed_module).unwrap();
+        std::fs::write(seed_module.join("package.json"), "{\"name\":\"dsh-free-search\"}")
+            .unwrap();
+        std::fs::write(seed_profile.join("package.json"), "{\"name\":\"seed-discipline\"}")
+            .unwrap();
+
+        let home = fixture.base.join("dsh-home");
+        let user_profile = home.join("profiles/discipline");
+        std::fs::create_dir_all(&user_profile).unwrap();
+        std::fs::write(
+            user_profile.join("package.json"),
+            "{\"name\":\"user-discipline\"}",
+        )
+        .unwrap();
+        assert!(!user_profile.join("node_modules").exists(), "前置条件：缺插件依赖");
+
+        let mut config = fixture.config("web-api");
+        config.profile = "omnidesk-base".to_string();
+        assert!(config.seed_profile_if_missing().is_ok());
+
+        assert!(
+            user_profile
+                .join("node_modules/dsh-free-search/package.json")
+                .is_file(),
+            "应从包内 seed 补齐插件 node_modules"
+        );
+        assert!(
+            std::fs::read_to_string(user_profile.join("package.json"))
+                .unwrap()
+                .contains("user-discipline"),
+            "用户清单不得被覆盖"
+        );
+    }
+
     #[test]
     fn seed_home_fills_missing_profiles_without_overwriting_existing() {
         let fixture = SeedFixture::new("merge-seed");

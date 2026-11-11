@@ -7,7 +7,8 @@
       "../../runtime/RUNTIME.lock": "runtime/RUNTIME.lock",
       "../../runtime/dsh-runtime": "runtime/dsh-runtime",
       "../../runtime/dsh-home-seed": "runtime/dsh-home-seed",
-      "../../runtime/python-vendor": "runtime/python-vendor"
+      "../../runtime/python-vendor": "runtime/python-vendor",
+      "../../runtime/pnpm": "runtime/pnpm"
     }
   }
 }

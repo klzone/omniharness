@@ -30,7 +30,7 @@
 ## 下载与安装
 
 - 最新版本见 [Releases](https://github.com/klzone/omniharness/releases)：macOS 通用版 `.dmg` 与 Windows x64 `.exe`。
-- 安装包内置 Node.js 与 Python 运行时，无需另行安装；首次启动会做依赖自检，缺项会明确提示。
+- 安装包内置 DSH 运行时与 Python 依赖模块（requests 等）；需要系统已装 Node.js 22+ 与 Python 3.10+，首次启动会做依赖自检并明确提示缺项。
 
 从源码运行（开发）：
 

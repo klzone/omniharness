@@ -68,3 +68,6 @@ desktop/tsconfig.tsbuildinfo
 
 # Codex 会话附件缓存（设计参考图等临时材料，不入库）
 .codex-attachments/
+
+# 打包时生成的随包 pnpm（由 prepare-runtime-assets.sh 安装）
+runtime/pnpm/
