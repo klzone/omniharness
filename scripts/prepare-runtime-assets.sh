@@ -91,3 +91,24 @@ else
 fi
 
 say "seed 就绪：$(find "$SEED" -type f | wc -l | tr -d ' ') 个文件"
+
+# ---------------------------------------------------------------------------
+# 插件通道的 pnpm 内置（OD-ARCH-150）
+#
+# DSH 的 `plugin --profile <p> add <pkg>` 把参数原样转发给 pnpm，并按 PATH
+# 解析 `pnpm`。GUI 启动不继承 shell PATH，发布包必须自带一份，否则用户点
+# 「安装插件」只会看到 exit 127「pnpm was not found」。
+# ---------------------------------------------------------------------------
+PNPM_DIR="$TARGET/pnpm"
+PNPM_BIN="$PNPM_DIR/node_modules/.bin/pnpm"
+if [ -f "$PNPM_BIN" ] || [ -f "$PNPM_BIN.cmd" ]; then
+  say "复用已构建的 pnpm：$PNPM_DIR"
+else
+  say "内置 pnpm（插件安装通道）→ $PNPM_DIR"
+  rm -rf "$PNPM_DIR"
+  mkdir -p "$PNPM_DIR"
+  printf '{ "name": "omnidesk-runtime-pnpm", "private": true, "version": "0.0.0" }\n' > "$PNPM_DIR/package.json"
+  if ! ( cd "$PNPM_DIR" && npm install --no-audit --no-fund "pnpm@11" >/dev/null 2>&1 ); then
+    say "警告：pnpm 内置失败，插件安装通道将不可用（基础对话不受影响）"
+  fi
+fi

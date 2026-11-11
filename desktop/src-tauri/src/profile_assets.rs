@@ -1690,10 +1690,17 @@ pub fn dsh_runtime_version(dsh_cli: &Path) -> Option<String> {
 ///
 /// 不钉版本的后果是实测过的：registry 默认给 `0.1.6-alpha.2`，与运行中的
 /// `0.2.1-alpha.2` 不兼容，DSH 直接拒绝安装。钉版本才能让「点安装」真的装上。
-pub fn install_version(explicit: Option<&str>, dsh_cli: &Path) -> Option<String> {
+pub fn install_version(
+    explicit: Option<&str>,
+    package: &str,
+    dsh_cli: &Path,
+) -> Option<String> {
     match explicit.map(str::trim).filter(|v| !v.is_empty()) {
         Some(v) => Some(v.to_string()),
-        None => dsh_runtime_version(dsh_cli),
+        // 只有官方插件包的版本才与 DSH 运行时同号；第三方插件（dsh-free-search
+        // 等）有自己的版本线，钉运行时版本会装到不存在的版本（OD-ARCH-150）。
+        None if package.starts_with("@deepseek-ai/") => dsh_runtime_version(dsh_cli),
+        None => None,
     }
 }
 
@@ -1799,6 +1806,14 @@ impl PluginSpec {
 ///
 /// 出厂 Profile 用清单；自定义 Profile 用登记表里继承下来的依赖。
 /// 基础标准恒为空：底座不额外装任何插件。
+/// 读 Profile 清单里声明的依赖版本：安装缺失插件时优先用它，避免钉错版本。
+fn manifest_dependency_version(manifest: &str, package: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(manifest).ok()?;
+    let dependencies = value.get("dependencies")?.as_object()?;
+    let version = dependencies.get(package)?.as_str()?.trim();
+    (!version.is_empty()).then(|| version.to_string())
+}
+
 pub fn required_plugins(scope: &Scope<'_>, standard: &str) -> Vec<PluginSpec> {
     let profile = scope.profile.trim();
     if profile == standard {
@@ -1810,7 +1825,10 @@ pub fn required_plugins(scope: &Scope<'_>, standard: &str) -> Vec<PluginSpec> {
             .iter()
             .map(|p| PluginSpec {
                 package: p.package.to_string(),
-                version: p.version.map(str::to_string),
+                version: p
+                    .version
+                    .map(str::to_string)
+                    .or_else(|| manifest_dependency_version(asset.manifest, p.package)),
             })
             .collect();
     }
@@ -2181,6 +2199,26 @@ fn needs_build_relax(stderr: &str) -> bool {
     stderr.contains("ERR_PNPM_IGNORED_BUILDS") || stderr.contains("Ignored build scripts")
 }
 
+/// 随包 pnpm 的可执行目录。
+///
+/// DSH 的 `plugin` 命令默认按 PATH 解析 `pnpm`（plugin-manager 的
+/// `options.command ?? "pnpm"`），而 GUI 进程不继承 shell PATH。安装包把
+/// pnpm 放在 `<runtime>/pnpm/node_modules/.bin`，这里从 DSH CLI 的路径
+/// 逐级向上找这个目录（OD-ARCH-150）。找不到时返回 None，保持旧行为。
+pub fn bundled_pnpm_bin(dsh_cli: &Path) -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    const PNPM: &str = "pnpm.cmd";
+    #[cfg(not(windows))]
+    const PNPM: &str = "pnpm";
+    for ancestor in dsh_cli.ancestors() {
+        let candidate = ancestor.join("pnpm").join("node_modules").join(".bin");
+        if candidate.join(PNPM).is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// 一次安装命令的原始结果。超时与「命令失败」分开记：前者要说明进程被杀掉，
 /// 后者才有 DSH 的原样输出可看。
 struct InstallRun {
@@ -2223,6 +2261,17 @@ fn run_install_command(
         .arg(spec)
         // 装到隔离数据根，而不是默认的 ~/.dsh：Profile 目录由 DSH CLI 按 DSH_HOME 解析。
         .env("DSH_HOME", dsh_home);
+    // DSH 的 plugin 命令按 PATH 解析 pnpm；GUI 启动不继承 shell PATH，
+    // 随包 pnpm 必须显式加进子进程 PATH（OD-ARCH-150）。
+    if let Some(bin) = bundled_pnpm_bin(dsh_cli) {
+        let mut parts: Vec<std::path::PathBuf> = vec![bin];
+        if let Some(existing) = std::env::var_os("PATH") {
+            parts.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(parts) {
+            cmd.env("PATH", joined);
+        }
+    }
     if let Some(dir) = dsh_cli.parent().and_then(|p| p.parent()) {
         cmd.current_dir(dir);
     }
@@ -2414,7 +2463,7 @@ fn install_plugin_with_timeout(
     }
     // 不钉版本会被兼容检查拒掉（OD-ARCH-120 实测）：registry 默认给旧 alpha，
     // 与运行中的 DSH 不兼容。这里默认钉到运行时版本。
-    let pinned = install_version(version, dsh_cli);
+    let pinned = install_version(version, name, dsh_cli);
     let spec = match pinned.as_deref() {
         Some(v) => format!("{}@{}", name, v),
         None => name.to_string(),
@@ -2939,15 +2988,34 @@ mod tests {
     }
 
     #[test]
-    fn install_version_prefers_explicit_then_runtime() {
+    fn install_version_prefers_explicit_then_official_runtime() {
         let repo = repo();
         let dsh_cli = repo.join("runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
         assert_eq!(
-            install_version(Some(" 1.2.3 "), &dsh_cli).as_deref(),
+            install_version(Some(" 1.2.3 "), "dsh-free-search", &dsh_cli).as_deref(),
             Some("1.2.3")
         );
-        assert_eq!(install_version(Some("   "), &dsh_cli), dsh_runtime_version(&dsh_cli));
-        assert_eq!(install_version(None, &dsh_cli), dsh_runtime_version(&dsh_cli));
+        assert_eq!(
+            install_version(Some("   "), "@deepseek-ai/dsh-skill-office", &dsh_cli),
+            dsh_runtime_version(&dsh_cli)
+        );
+        assert_eq!(
+            install_version(None, "@deepseek-ai/dsh-skill-office", &dsh_cli),
+            dsh_runtime_version(&dsh_cli)
+        );
+        // 第三方插件不钉运行时版本，否则会装到不存在的版本（0.2.1-rc.5 事故）。
+        assert_eq!(install_version(None, "dsh-free-search", &dsh_cli), None);
+    }
+
+    #[test]
+    fn manifest_dependency_version_reads_declared_pins() {
+        let manifest = r#"{"dependencies":{"dsh-free-search":"0.9.5","dsh-cost-meter":"1.9.6"}}"#;
+        assert_eq!(
+            manifest_dependency_version(manifest, "dsh-free-search").as_deref(),
+            Some("0.9.5")
+        );
+        assert_eq!(manifest_dependency_version(manifest, "missing"), None);
+        assert_eq!(manifest_dependency_version("not-json", "dsh-free-search"), None);
     }
 
     /// pnpm 11 的构建脚本拦截：给已有配置补开关，不破坏原有键（OD-ARCH-120）。
@@ -3095,6 +3163,30 @@ mod tests {
             );
         }
         assert!(normalize_plugin_input(&"a".repeat(215)).is_err(), "超长包名要拒");
+    }
+
+    #[test]
+    fn bundled_pnpm_bin_finds_runtime_layout_and_returns_none_otherwise() {
+        let root = temp_root("pnpm-locate");
+        let runtime = root.join("runtime");
+        let bin = runtime.join("pnpm/node_modules/.bin");
+        fs::create_dir_all(&bin).unwrap();
+        #[cfg(windows)]
+        let shim = bin.join("pnpm.cmd");
+        #[cfg(not(windows))]
+        let shim = bin.join("pnpm");
+        fs::write(&shim, "#!/bin/sh\nexit 0\n").unwrap();
+
+        let dsh_cli = runtime.join("dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
+        fs::create_dir_all(dsh_cli.parent().unwrap()).unwrap();
+        fs::write(&dsh_cli, "// stub").unwrap();
+        assert_eq!(bundled_pnpm_bin(&dsh_cli), Some(bin.clone()));
+
+        // 没有随包 pnpm 的布局返回 None，调用方保持旧行为。
+        let bare = root.join("bare/cli/lib/bin.js");
+        fs::create_dir_all(bare.parent().unwrap()).unwrap();
+        fs::write(&bare, "// stub").unwrap();
+        assert_eq!(bundled_pnpm_bin(&bare), None);
     }
 
     #[test]

@@ -76,6 +76,10 @@ jobs:
         run: |
           PY=python3; command -v "$PY" >/dev/null || PY=python
           PYTHONPATH="$PWD/runtime/python-vendor" "$PY" -c "import requests, docx, lxml; print('vendor imports ok')"
+      - name: 校验插件通道 pnpm
+        run: |
+          test -f runtime/pnpm/node_modules/.bin/pnpm -o -f runtime/pnpm/node_modules/.bin/pnpm.cmd || { echo "缺少随包 pnpm"; exit 1; }
+          node runtime/pnpm/node_modules/pnpm/bin/pnpm.cjs --version
       - name: 生成应用图标
         working-directory: desktop
         run: npx tauri icon src-tauri/icons/icon-512.png
@@ -132,6 +136,11 @@ jobs:
         run: |
           PY=python3; command -v "$PY" >/dev/null || PY=python
           PYTHONPATH="$PWD/runtime/python-vendor" "$PY" -c "import requests, docx, lxml; print('vendor imports ok')"
+      - name: 校验插件通道 pnpm
+        shell: bash
+        run: |
+          test -f runtime/pnpm/node_modules/.bin/pnpm -o -f runtime/pnpm/node_modules/.bin/pnpm.cmd || { echo "缺少随包 pnpm"; exit 1; }
+          node runtime/pnpm/node_modules/pnpm/bin/pnpm.cjs --version
       - name: 生成应用图标
         working-directory: desktop
         shell: bash
