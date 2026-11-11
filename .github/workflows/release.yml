@@ -80,6 +80,18 @@ jobs:
         run: |
           test -f runtime/pnpm/node_modules/.bin/pnpm -o -f runtime/pnpm/node_modules/.bin/pnpm.cmd || { echo "缺少随包 pnpm"; exit 1; }
           node runtime/pnpm/node_modules/pnpm/bin/pnpm.cjs --version
+      # OD-ARCH-151：发版前先把清单声明过的插件实装一遍。
+      # 插件版本被下架、或与新内核不兼容时，发版必须在 CI 就失败，
+      # 而不是等用户点「安装」才发现。
+      - name: 校验插件版本可安装（临时数据根）
+        run: |
+          TESTHOME=$(mktemp -d)
+          SPECS=$(node -p "Object.entries(require('./samples/profiles/discipline.profile.json').dependencies).map(([k,v]) => k + '@' + v).join(' ')")
+          for SPEC in $SPECS; do
+            echo "安装 $SPEC"
+            PATH="$PWD/runtime/pnpm/node_modules/.bin:$PATH" DSH_HOME="$TESTHOME" \
+              node runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js plugin --profile discipline add "$SPEC"
+          done
       - name: 生成应用图标
         working-directory: desktop
         run: npx tauri icon src-tauri/icons/icon-512.png

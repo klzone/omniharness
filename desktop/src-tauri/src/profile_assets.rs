@@ -606,6 +606,66 @@ fn load_state(path: &Path) -> AssetState {
     }
 }
 
+/// 把包内清单声明的插件版本同步到本地 Profile 清单（OD-ARCH-151）。
+///
+/// 只改 dependencies 里我们声明过的包版本；其它字段与用户自定义内容保持不动。
+/// 变更前备份 \`.bak-<epoch>\`，返回 (更新的包列表, 备份路径)。
+fn sync_manifest_versions(
+    profile_dir: &Path,
+    asset_manifest: &str,
+    state: &mut AssetState,
+) -> Result<(Vec<String>, Option<PathBuf>), String> {
+    let path = profile_dir.join("package.json");
+    let live_text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((Vec::new(), None))
+        }
+        Err(e) => return Err(format!("读取本地 Profile 清单失败（{}）：{}", path.display(), e)),
+    };
+    let bundled: serde_json::Value = serde_json::from_str(asset_manifest)
+        .map_err(|e| format!("内置 Profile 清单不是合法 JSON：{e}"))?;
+    let Some(bundled_deps) = bundled.get("dependencies").and_then(|v| v.as_object()) else {
+        return Ok((Vec::new(), None));
+    };
+    // 本地清单被改坏时不动它：合并写回只会放大问题，交给资产页的 drift 提示。
+    let Ok(mut live) = serde_json::from_str::<serde_json::Value>(&live_text) else {
+        return Ok((Vec::new(), None));
+    };
+    let Some(live_deps) = live.get_mut("dependencies").and_then(|v| v.as_object_mut()) else {
+        return Ok((Vec::new(), None));
+    };
+    let mut changed: Vec<String> = Vec::new();
+    for (name, want) in bundled_deps {
+        let want = want.as_str().unwrap_or("").trim();
+        if want.is_empty() {
+            continue;
+        }
+        let differs = live_deps
+            .get(name)
+            .and_then(|v| v.as_str())
+            .map(|have| have.trim() != want)
+            .unwrap_or(true);
+        if differs {
+            live_deps.insert(name.clone(), serde_json::Value::String(want.to_string()));
+            changed.push(format!("{name} {want}"));
+        }
+    }
+    if changed.is_empty() {
+        return Ok((changed, None));
+    }
+    let backup = backup_of(&path)?;
+    let mut bytes = serde_json::to_vec_pretty(&live)
+        .map_err(|e| format!("序列化 Profile 清单失败：{e}"))?;
+    bytes.push(b'\n');
+    crate::model_settings::write_atomic(&path, &bytes)?;
+    // 记下我们刚写的内容：否则下一次装配会把这处合法更新误判成 drift。
+    state
+        .written
+        .insert("package.json".to_string(), crate::sha256::sha256_hex(&bytes));
+    Ok((changed, backup))
+}
+
 fn save_state(path: &Path, state: &mut AssetState) -> Result<(), String> {
     state.schema = ASSET_STATE_SCHEMA.to_string();
     let mut bytes = serde_json::to_vec_pretty(state)
@@ -1095,6 +1155,23 @@ pub fn materialize_with(
         &mut state,
         overwrite_drift,
     )?);
+    // OD-ARCH-151：包内清单升级后，把声明的插件版本同步到本地清单。
+    // 只改 dependencies，用户自己加的内容与其它字段保持不动；写前先备份。
+    match sync_manifest_versions(&dsh_profile_dir, asset.manifest, &mut state) {
+        Ok((changed, backup)) if !changed.is_empty() => {
+            let backup_note = backup
+                .as_ref()
+                .map(|path| format!("；旧清单备份为 {}", path.display()))
+                .unwrap_or_default();
+            notes.push(format!(
+                "插件版本声明已同步：{}{}",
+                changed.join("、"),
+                backup_note
+            ));
+        }
+        Ok(_) => {}
+        Err(message) => notes.push(format!("插件版本声明未同步：{message}")),
+    }
     items.push(record_file(
         "cordis.patch.yml",
         "patch",
@@ -3163,6 +3240,44 @@ mod tests {
             );
         }
         assert!(normalize_plugin_input(&"a".repeat(215)).is_err(), "超长包名要拒");
+    }
+
+    #[test]
+    fn sync_manifest_versions_updates_declared_plugins_and_keeps_user_fields() {
+        let root = temp_root("manifest-sync");
+        let dir = root.join("profile");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("package.json");
+        fs::write(
+            &path,
+            r#"{
+  "name": "user-profile",
+  "custom": {"keep": true},
+  "dependencies": {"dsh-free-search": "0.1.0", "user-plugin": "^2.0.0"}
+}"#,
+        )
+        .unwrap();
+        let bundled = r#"{"dependencies":{"dsh-free-search":"0.9.5","dsh-cost-meter":"1.9.6"}}"#;
+        let mut state = AssetState::default();
+        let (changed, backup) = sync_manifest_versions(&dir, bundled, &mut state).unwrap();
+        let mut sorted = changed.clone();
+        sorted.sort();
+        assert_eq!(
+            sorted,
+            vec![
+                "dsh-cost-meter 1.9.6".to_string(),
+                "dsh-free-search 0.9.5".to_string()
+            ]
+        );
+        assert!(backup.as_ref().expect("写前应备份").exists());
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("0.9.5"), "{written}");
+        assert!(written.contains("user-plugin"), "用户自有依赖必须保留：{written}");
+        assert!(written.contains("\"keep\""), "用户自定义字段必须保留：{written}");
+        assert!(
+            sync_manifest_versions(&dir, bundled, &mut state).unwrap().0.is_empty(),
+            "第二次同步不应重复写盘"
+        );
     }
 
     #[test]
