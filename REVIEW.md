@@ -1,5 +1,10 @@
 # OD-PROC-149 审查：进程名归一 omnidesk-*（ARCHITECT，2026-11-11）——通过
 
+### OD-ARCH-151 实施：插件版本更新机制（2026-11-11，ARCHITECT 直接实施并验证）
+
+**机制：** ①装配时把包内清单声明的插件版本同步进本地 Profile 清单（只改 dependencies，写前 .bak 备份，保留用户自有依赖与自定义字段；新写入登记 hash，避免下一次装配误判 drift）。②版本不一致的插件在资产页显示「已安装的版本与要求不一致」，点安装/补齐走随包 pnpm 执行 add 包@声明版本（pnpm add 即升级）。③发版 CI 增加「插件版本可安装」门禁：用临时 DSH_HOME 实装清单声明版本，装不上就让发版失败。
+
+**证据：** cargo lib 1110 passed / 0 failed（新增 manifest 同步单测：版本更新、备份、用户字段保留、二次同步不重复写）；本地 scratch 实装两个插件成功（前置 0.2.21 验证）；CI 门禁随 0.2.22 发布执行。
 ### OD-ARCH-150 修复：插件安装通道缺 pnpm（2026-11-11，ARCHITECT 直接实施并验证）
 
 **问题：** 用户点「安装」缺失插件报 exit 127「pnpm was not found」。根因两层：①安装包运行时不带 pnpm，DSH 的 plugin 命令按 PATH 解析 pnpm，GUI 不继承 shell PATH；②安装器把第三方插件版本钉成 DSH 运行时版本（dsh-free-search@0.2.1-rc.5 不存在，registry 实际版本线 0.9.x/1.9.x）。
