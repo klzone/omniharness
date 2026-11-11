@@ -6,6 +6,16 @@
 
 > **实施（子代理实施 + ARCHITECT 逐卡独立复检，REVIEW.md 2026-11-11 条）：** 710 web_api_adapter 思考块映射（DSH reasoning-delta→thought_delta，字段名实读 DSH 运行时类型声明）、unknown_chunk 诊断透出、tool title 防御取值（pytest 234+35）；711 HomeChat timeline 追加式状态 + 正文前时间线渲染（四类条目/展开/终态摘要折叠）+ timelineModel.ts 归并纯函数 + theme 样式（verify 50/50，tsc/build 0）。切页离开期间事件不补录（前端无回放接口）；工具标题当前回退工具名（DSH tool/call 无 title 字段）。
 
+### OD-WR-500：工作记录模块 1.0——时间线 / 当日摘要 / 周期复盘（已批准，2026-11-11；待实施）
+
+> **触发：** 用户《工作记录模块 1.0 总体规划与设计任务书》。定位：个人工作档案与周期复盘中心。现状审计结论：骨架完整（WorkRecord 实体/CRUD/quicklog 采集链路/memory-agent+memory-report/任务提取/关联），缺口为原始素材分离、当日摘要、月季年复盘、复盘档案、时间线 UI。
+
+> **用户裁决（2026-11-11）：** ① 原始输入与正式记录分离（raw_input 创建时写、修订不改）；② 当日摘要为聚合视图非录入入口；③ 周期复盘 Skill 合并为一个参数化 period-review（周/月/季/年模板深度不同），不拆四个；④ 全局对话采集保守不扩（采集仍只在工作记录场景与专业操作，避免任何输入误记）；⑤ 复盘重生成只对草稿，已确认版不覆盖。
+
+> **任务卡（501–508）：** 全文见 docs/plans/OD-WR-500/PLAN.md；审计 docs/plans/OD-WR-500/AUDIT.md；设计 docs/plans/OD-WR-500/DESIGN.md。批次：501 → 502 → 503 → 504 → 505 → 506 → 507 → 508。派发：子代理 deepseek-v4.1-flash-eco / high。
+
+> **执行进展：** 待实施。
+
 ### OD-PROC-149：进程名归一 omnidesk-*（已实施并复检通过，2026-11-11）
 
 > **触发：** 用户 Windows 实测退出后进程回收正常（OD-SYS-701 Job Object 生效），但任务管理器显示 node.exe/python.exe，希望像 ima.copilot 一样把 OmniDesk 相关进程统一命名并视觉分组。ARCHITECT 判定：进程链为 OmniDesk.exe → python -m omnidesk_engine → node bin.js；Electron 式"同镜像归组"对异构解释器进程不可实现，采用"副本改名+进程标题"方案。Windows 镜像名运行时不可改，需复制 node.exe/python.exe 为 omnidesk-node.exe/omnidesk-python.exe；macOS 可运行时改（node process.title + python setproctitle）。资源占用零变化；风险集中在 Windows python 副本 DLL 解析，以首启探针+回退兜底。
