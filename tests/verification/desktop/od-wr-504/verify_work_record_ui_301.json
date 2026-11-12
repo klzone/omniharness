@@ -1,0 +1,84 @@
+{
+  "plan": "OD-WR-303",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 15,
+  "failed": [],
+  "checks": [
+    {
+      "name": "app_routes_report_to_work_record_page",
+      "ok": true,
+      "detail": "App 把工作记录场景接到新页面"
+    },
+    {
+      "name": "page_has_work_views",
+      "ok": true,
+      "detail": "记录 / 审核 / 任务 / 周视图四个视图"
+    },
+    {
+      "name": "page_mounts_library",
+      "ok": true,
+      "detail": "页面挂载记录库与任务管理"
+    },
+    {
+      "name": "list_reads_host",
+      "ok": true,
+      "detail": "列表走宿主 IPC（含筛选）"
+    },
+    {
+      "name": "filters_complete",
+      "ok": true,
+      "detail": "日期、分类、关键词、解析状态筛选齐全"
+    },
+    {
+      "name": "quick_record_writes_host",
+      "ok": true,
+      "detail": "快速记录经宿主写盘并带可选日期"
+    },
+    {
+      "name": "draft_toggle_present",
+      "ok": true,
+      "detail": "快速记录可标草稿，列表可按草稿筛选"
+    },
+    {
+      "name": "detail_renders_markdown",
+      "ok": true,
+      "detail": "详情正文按 Markdown 渲染"
+    },
+    {
+      "name": "detail_edit_and_delete",
+      "ok": true,
+      "detail": "详情支持编辑与删除（进回收目录）"
+    },
+    {
+      "name": "parse_entry_wired_to_analyze",
+      "ok": true,
+      "detail": "解析入口已接上 304 的三段 IPC 与引擎提交"
+    },
+    {
+      "name": "linked_task_count_visible",
+      "ok": true,
+      "detail": "列表与详情显示关联任务数"
+    },
+    {
+      "name": "host_sorts_by_date",
+      "ok": true,
+      "detail": "宿主按记录日期排序，界面不另造顺序"
+    },
+    {
+      "name": "aetheria_card_surface",
+      "ok": true,
+      "detail": "沿用 Aetheria 浅色卡面与靛青主色"
+    },
+    {
+      "name": "load_error_is_visible",
+      "ok": true,
+      "detail": "读盘失败原样提示，不显示成空列表"
+    },
+    {
+      "name": "no_english_subtitles",
+      "ok": true,
+      "detail": "不再叠英文副标题"
+    }
+  ]
+}

@@ -1,0 +1,300 @@
+{
+  "plan": "OD-WR-506",
+  "evidence_level": "静态源码检查（运行证据见同目录 README 与命令输出）",
+  "passed": true,
+  "total": 58,
+  "passed_count": 58,
+  "failed": [],
+  "cases": [
+    {
+      "name": "tab_reviews_declared",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_review_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_archive_mounted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_focus_review_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_open_review_from_records",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tab_record_jump_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_lists_host",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_period_chips",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_period_values",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_status_chips",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_range_filter",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_range_match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_empty_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_broken_notice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive_row_three_facts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_read_host",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_markdown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_status_and_times",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_record_chips",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_task_list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_stale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_export",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "detail_export_name",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_uses_existing_chain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_uses_submit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_draft_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_disabled_confirmed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_confirmed_hint",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "regen_guard_before_submit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_api_called",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_block",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_rows",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_review_jump",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_empty",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backlink_broken",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_backlinks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_backlinks_camel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_listing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_backlinks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc_commands",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc_registered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_list_fn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backlink_fn",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backlink_reviews",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backlink_writing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backlink_validation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backlink_read_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_write_path_unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_broken_tolerant",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_tests_min",
+      "ok": true,
+      "detail": "22"
+    },
+    {
+      "name": "host_test:list_reviews_reads_documents_and_counts_broken",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_test:list_reviews_skips_backups_and_unknown_periods",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_test:record_backlinks_lists_referencing_reviews_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_test:record_backlinks_follows_writing_selected_materials",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_test:record_backlinks_counts_broken_review_files",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_test:empty_listing_and_bad_record_id_is_rejected",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

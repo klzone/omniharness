@@ -1,0 +1,36 @@
+PASS  record_button_present
+PASS  record_button_text
+PASS  record_button_style_consistent
+PASS  record_prompt_prefix
+PASS  record_prompt_object_id
+PASS  record_prompt_title
+PASS  record_prompt_source_scope
+PASS  record_prompt_read_only
+PASS  record_scene_key_weekly
+PASS  record_navigates_home
+PASS  record_no_autosend
+PASS  record_no_data_write
+PASS  review_button_present
+PASS  review_button_text
+PASS  review_button_style_consistent
+PASS  review_prompt_prefix
+PASS  review_prompt_range
+PASS  review_prompt_doc_id
+PASS  review_prompt_source_scope
+PASS  review_prompt_read_only
+PASS  review_scene_key_weekly
+PASS  review_navigates_home
+PASS  review_no_autosend
+PASS  review_navigate_prop
+PASS  review_navigate_wired
+PASS  scene_home_not_thread_tag
+PASS  scene_weekly_is_work_record
+PASS  request_new_thread_prompt_only
+PASS  request_new_thread_no_autosend
+PASS  home_consumes_as_draft
+PASS  design_comment_record
+PASS  design_comment_review
+PASS  design_comment_reason
+
+33/33 通过
+exit=0

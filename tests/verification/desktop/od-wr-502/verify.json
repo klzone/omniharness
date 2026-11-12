@@ -1,0 +1,94 @@
+{
+  "plan": "OD-WR-502",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 17,
+  "failed": [],
+  "checks": [
+    {
+      "name": "types_record_has_readonly_raw_fields",
+      "ok": true,
+      "detail": "WorkRecord 类型带 raw_input / raw_source，标注只读"
+    },
+    {
+      "name": "types_revision_summary_contract",
+      "ok": true,
+      "detail": "修订摘要类型与宿主返回结构成套"
+    },
+    {
+      "name": "api_readonly_revisions_ipc",
+      "ok": true,
+      "detail": "前端封装调用 worklog_revisions(record_id)"
+    },
+    {
+      "name": "host_revision_summary_excludes_sha",
+      "ok": true,
+      "detail": "宿主摘要只含 at / changed_fields / note，不含正文哈希"
+    },
+    {
+      "name": "host_reads_revisions_file_with_legacy_empty",
+      "ok": true,
+      "detail": "缺失 revisions.jsonl 的旧记录返回空列表"
+    },
+    {
+      "name": "host_command_registered",
+      "ok": true,
+      "detail": "只读命令已注册到 Tauri handler"
+    },
+    {
+      "name": "raw_input_section_rendered",
+      "ok": true,
+      "detail": "原始素材折叠区块显示 raw_input 与 raw_source"
+    },
+    {
+      "name": "legacy_record_hides_raw_section",
+      "ok": true,
+      "detail": "没有 raw_input 的旧记录不渲染该区块"
+    },
+    {
+      "name": "revision_history_rendered_without_sha",
+      "ok": true,
+      "detail": "修订历史只显示时间与变更字段，不显示 sha 细节"
+    },
+    {
+      "name": "revision_history_reads_selected_record",
+      "ok": true,
+      "detail": "切换记录时读取历史，失败与空态如实显示"
+    },
+    {
+      "name": "reorganize_entry_visible_for_raw_records",
+      "ok": true,
+      "detail": "有原始素材的记录显示重新整理入口"
+    },
+    {
+      "name": "reorganize_confirm_explains_body_rewrite",
+      "ok": true,
+      "detail": "确认框说明会依据原始素材重写正文"
+    },
+    {
+      "name": "reorganize_prefills_home_chat",
+      "ok": true,
+      "detail": "确认后打开首页对话并预填素材，不直接改正文"
+    },
+    {
+      "name": "category_chips_five_suggestions",
+      "ok": true,
+      "detail": "五类建议 chips 点击填入分类"
+    },
+    {
+      "name": "category_remains_free_text",
+      "ok": true,
+      "detail": "快捷 chips 不锁死分类输入，仍可自由填写"
+    },
+    {
+      "name": "page_passes_navigation",
+      "ok": true,
+      "detail": "记录库获得首页导航回调"
+    },
+    {
+      "name": "rust_tests_cover_revision_summary",
+      "ok": true,
+      "detail": "新增修订读取函数测试至少两项（实际三项）"
+    }
+  ]
+}

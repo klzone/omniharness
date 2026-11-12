@@ -1,0 +1,31 @@
+HEAD eec28fd6357b4a8490613fa4694115e6e04c42d4
+branch main
+
+基线工作区（OD-WR-504 动工前 git status --porcelain=v1）：
+ M PLANS.md
+ M REVIEW.md
+ M desktop/src-tauri/src/knowledge_link.rs
+ M desktop/src-tauri/src/lib.rs
+ M desktop/src-tauri/src/profile_assets.rs
+ M desktop/src-tauri/src/profile_rules.rs
+ M desktop/src-tauri/src/profile_seed.rs
+ M desktop/src-tauri/src/quicklog.rs
+ M desktop/src-tauri/src/worklog_migrate.rs
+ M desktop/src-tauri/src/worklog_records.rs
+ M desktop/src/api.ts
+ M desktop/src/conversationPrompt.ts
+ M desktop/src/shell/HomeCanvas.tsx
+ M desktop/src/shell/HomeChat.tsx
+ M desktop/src/shell/WorkRecordLibrary.tsx
+ M desktop/src/shell/WorkRecordPage.tsx
+ M desktop/src/types.ts
+ M desktop/src/workIntent.ts
+ M samples/profiles/discipline.rules.json
+?? desktop/src-tauri/src/daily_summary.rs
+?? desktop/src/dailySummary.ts
+?? skills/daily-summary/
+?? tests/verification/desktop/od-wr-501/
+?? tests/verification/desktop/od-wr-502/
+?? tests/verification/desktop/od-wr-503/
+?? tests/verification/desktop/verify_wr_503.py
+?? tests/verification/desktop/verify_wr_detail_502.py

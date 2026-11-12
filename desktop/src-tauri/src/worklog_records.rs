@@ -3,6 +3,8 @@
 //! 每条记录一个 Markdown 文件：<work_root>/工作记录/<record_id>.md。
 //! frontmatter 固定字段：id / title / record_date / created_at / updated_at /
 //! category / tags / source / ai_analysis_status / linked_task_ids / draft。
+//! 原始素材（raw_input / raw_source）只在创建时写入，旧文件缺字段时为空；
+//! 每次 update_record 追加 work/工作记录/<id>/revisions.jsonl 一行修订记录。
 //!
 //! 边界：
 //!   * 路径只由宿主按校验过的 id 拼接，调用方不能传相对路径或目录名；
@@ -13,7 +15,7 @@
 //! 证据等级：本文件为 static（源码事实）；模块内测试为 script（cargo test 运行）。
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -28,6 +30,8 @@ pub const RECORDS_DIR: &str = "工作记录";
 /// 回收目录（work 根下）。删除只移动，不清理。
 pub const TRASH_DIR: &str = ".trash";
 pub const RECORD_SCHEMA: &str = "omnidesk.worklog-record.v1";
+/// 修订历史文件（记录目录内，每条记录一个子目录）。
+pub const REVISIONS_FILE: &str = "revisions.jsonl";
 
 /// AI 解析状态（D-064 门禁）。unanalyzed 是新建记录的默认值。
 pub const AI_UNANALYZED: &str = "unanalyzed";
@@ -54,6 +58,12 @@ pub struct WorkRecord {
     pub category: Option<String>,
     pub tags: Vec<String>,
     pub source: Option<String>,
+    /// 创建时的原始输入（OD-WR-501）；只在创建时写入，修订不改写。
+    #[serde(default)]
+    pub raw_input: Option<String>,
+    /// 原始输入的来源描述，例如「首页对话 2026-11-11 09:30」。
+    #[serde(default)]
+    pub raw_source: Option<String>,
     /// 随手记的去向标签（OD-WR-310）；普通记录为 None。
     pub destination: Option<String>,
     pub ai_analysis_status: String,
@@ -75,6 +85,9 @@ pub struct RecordDraft {
     pub category: Option<String>,
     pub tags: Vec<String>,
     pub source: Option<String>,
+    /// 创建时的原始输入与来源；后续修订没有改写入参。
+    pub raw_input: Option<String>,
+    pub raw_source: Option<String>,
     pub destination: Option<String>,
     pub draft: bool,
     pub body: String,
@@ -82,6 +95,7 @@ pub struct RecordDraft {
 }
 
 /// 记录更新补丁。None = 不修改；空字符串 = 清空可选项。
+/// 原始素材不在补丁里：raw_input / raw_source 创建后不可被修订覆盖。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecordPatch {
@@ -95,6 +109,30 @@ pub struct RecordPatch {
     pub linked_task_ids: Option<Vec<String>>,
     pub draft: Option<bool>,
     pub body: Option<String>,
+}
+
+/// revisions.jsonl 的一行（OD-WR-501）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionEntry {
+    /// UTC ISO8601，与修订后的 updated_at 相同。
+    pub at: String,
+    /// 本次实际变化的字段名（snake_case）。
+    pub changed_fields: Vec<String>,
+    /// 修订前正文的 SHA-256（小写十六进制）。
+    pub old_body_sha256: String,
+    /// 人类可读的修订说明。
+    pub note: String,
+}
+
+/// 界面读取的修订摘要：不暴露旧正文哈希等内部细节。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionSummary {
+    /// UTC ISO8601，本次修订完成时间。
+    pub at: String,
+    /// 本次实际变化的字段名（snake_case）。
+    pub changed_fields: Vec<String>,
+    /// 人类可读的修订说明。
+    pub note: String,
 }
 
 /// 列表过滤条件。日期为闭区间，比较 record_date 字符串（形状已校验）。
@@ -126,6 +164,50 @@ pub struct TrashMove {
 /// 记录目录 <work_root>/工作记录。
 pub fn records_dir(root: &Path) -> PathBuf {
     root.join(RECORDS_DIR)
+}
+
+/// 单条记录的修订目录 <work_root>/工作记录/<id>。
+pub fn revision_dir(root: &Path, id: &str) -> Result<PathBuf, String> {
+    assert_record_id(id)?;
+    Ok(records_dir(root).join(id))
+}
+
+/// 修订历史文件 <work_root>/工作记录/<id>/revisions.jsonl。
+pub fn revisions_path(root: &Path, id: &str) -> Result<PathBuf, String> {
+    Ok(revision_dir(root, id)?.join(REVISIONS_FILE))
+}
+
+/// 读取一条记录的修订历史。没有 revisions.jsonl 是旧记录的合法状态，返回空列表；
+/// 文件存在但某一行损坏时整次读取失败，避免界面把缺失的历史误报为「没有修订」。
+pub fn read_revision_summaries(root: &Path, id: &str) -> Result<Vec<RevisionSummary>, String> {
+    assert_work_root(root)?;
+    let path = revisions_path(root, id)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("读取修订历史失败（{}）：{}", path.display(), e))?;
+    let mut summaries = Vec::new();
+    for (index, line) in raw.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry: RevisionEntry = serde_json::from_str(line).map_err(|e| {
+            format!(
+                "修订历史第 {} 行无法解析（{}）：{}",
+                index + 1,
+                path.display(),
+                e
+            )
+        })?;
+        summaries.push(RevisionSummary {
+            at: entry.at,
+            changed_fields: entry.changed_fields,
+            note: entry.note,
+        });
+    }
+    Ok(summaries)
 }
 
 /// 回收目录 <work_root>/.trash/工作记录。
@@ -270,6 +352,68 @@ pub(crate) fn write_replace_atomically(target: &Path, bytes: &[u8]) -> Result<()
     }
 }
 
+/// 追加前检查修订历史：只认普通文件，旧文件必须以换行结尾，半截行不被掩盖。
+fn prepare_revision_log(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("修订记录路径没有父目录：{}", path.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("创建修订记录目录失败（{}）：{e}", parent.display()))?;
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(format!(
+                "无法确认修订记录文件（{}）：{e}",
+                path.display()
+            ))
+        }
+    };
+    if meta.file_type().is_symlink() {
+        return Err(format!("修订记录不能是符号链接：{}", path.display()));
+    }
+    if !meta.is_file() {
+        return Err(format!("修订记录路径不是普通文件：{}", path.display()));
+    }
+    if meta.len() > 0 {
+        let mut file = fs::File::open(path)
+            .map_err(|e| format!("读取修订记录失败（{}）：{e}", path.display()))?;
+        file.seek(SeekFrom::End(-1))
+            .map_err(|e| format!("定位修订记录尾部失败（{}）：{e}", path.display()))?;
+        let mut last = [0u8; 1];
+        file.read_exact(&mut last)
+            .map_err(|e| format!("读取修订记录尾部失败（{}）：{e}", path.display()))?;
+        if last[0] != b'\n' {
+            return Err(format!(
+                "修订记录尾部不完整（{}），拒绝追加以免掩盖半截行。",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// 单次 write_all 追加整行，随后 flush + sync_all；不改写历史行。
+fn append_revision_line(path: &Path, entry: &RevisionEntry) -> Result<(), String> {
+    let line = serde_json::to_string(entry)
+        .map_err(|e| format!("序列化修订记录失败：{e}"))?;
+    if line.contains('\n') || line.contains('\r') {
+        return Err("修订记录序列化后仍含换行，拒绝写入。".to_string());
+    }
+    let mut payload = Vec::with_capacity(line.len() + 1);
+    payload.extend_from_slice(line.as_bytes());
+    payload.push(b'\n');
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("打开修订记录失败（{}）：{e}", path.display()))?;
+    file.write_all(&payload)
+        .and_then(|_| file.flush())
+        .and_then(|_| file.sync_all())
+        .map_err(|e| format!("追加修订记录失败（{}）：{e}", path.display()))
+}
+
 /// YAML 双引号标量：用 JSON 转义保证引号、换行、控制字符都能稳定往返。
 pub(crate) fn yaml_scalar(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
@@ -379,6 +523,12 @@ fn render_record(record: &WorkRecord) -> String {
         }
     }
     fm.push_str(&format!("source: {}\n", yaml_opt(&record.source)));
+    if let Some(raw_input) = record.raw_input.as_deref() {
+        fm.push_str(&format!("raw_input: {}\n", yaml_scalar(raw_input)));
+    }
+    if let Some(raw_source) = record.raw_source.as_deref() {
+        fm.push_str(&format!("raw_source: {}\n", yaml_scalar(raw_source)));
+    }
     fm.push_str(&format!("destination: {}\n", yaml_opt(&record.destination)));
     fm.push_str(&format!(
         "ai_analysis_status: {}\n",
@@ -457,6 +607,10 @@ struct RecordFront {
     #[serde(default)]
     source: Option<String>,
     #[serde(default)]
+    raw_input: Option<String>,
+    #[serde(default)]
+    raw_source: Option<String>,
+    #[serde(default)]
     destination: Option<String>,
     #[serde(default)]
     ai_analysis_status: Option<String>,
@@ -506,6 +660,8 @@ fn parse_record(raw: &str) -> Result<WorkRecord, String> {
         category: normalize_opt(front.category),
         tags,
         source: normalize_opt(front.source),
+        raw_input: normalize_opt(front.raw_input),
+        raw_source: normalize_opt(front.raw_source),
         destination: normalize_opt(front.destination),
         ai_analysis_status: status,
         linked_task_ids,
@@ -570,6 +726,8 @@ pub fn create_record(
         category: normalize_opt(draft.category.clone()),
         tags: normalize_tags(&draft.tags)?,
         source: normalize_opt(draft.source.clone()),
+        raw_input: normalize_opt(draft.raw_input.clone()),
+        raw_source: normalize_opt(draft.raw_source.clone()),
         destination: normalize_opt(draft.destination.clone()),
         ai_analysis_status: AI_UNANALYZED.to_string(),
         linked_task_ids: normalize_link_ids(&draft.linked_task_ids)?,
@@ -706,6 +864,7 @@ pub fn list_records(root: &Path, filter: &RecordFilter) -> Result<RecordListing,
 }
 
 /// 更新记录。created_at 不变；updated_at 由调用方时间推进。
+/// 成功写入后追加一条修订记录；原始素材只读，不参与补丁改写。
 pub fn update_record(
     root: &Path,
     id: &str,
@@ -713,6 +872,7 @@ pub fn update_record(
     now: f64,
 ) -> Result<WorkRecord, String> {
     let mut record = read_record(root, id)?;
+    let before = record.clone();
     if let Some(title) = patch.title.clone() {
         let title = title.trim().to_string();
         if title.is_empty() {
@@ -771,9 +931,59 @@ pub fn update_record(
         }
         record.body = body;
     }
+    let mut changed_fields: Vec<String> = Vec::new();
+    if record.title != before.title {
+        changed_fields.push("title".to_string());
+    }
+    if record.record_date != before.record_date {
+        changed_fields.push("record_date".to_string());
+    }
+    if record.category != before.category {
+        changed_fields.push("category".to_string());
+    }
+    if record.tags != before.tags {
+        changed_fields.push("tags".to_string());
+    }
+    if record.source != before.source {
+        changed_fields.push("source".to_string());
+    }
+    if record.destination != before.destination {
+        changed_fields.push("destination".to_string());
+    }
+    if record.ai_analysis_status != before.ai_analysis_status {
+        changed_fields.push("ai_analysis_status".to_string());
+    }
+    if record.linked_task_ids != before.linked_task_ids {
+        changed_fields.push("linked_task_ids".to_string());
+    }
+    if record.draft != before.draft {
+        changed_fields.push("draft".to_string());
+    }
+    if record.body != before.body {
+        changed_fields.push("body".to_string());
+    }
     record.updated_at = crate::task_shell::utc_iso8601(now);
+    let revision_path = revisions_path(root, &record.id)?;
+    prepare_revision_log(&revision_path)?;
     let path = record_path(root, &record.id)?;
     write_replace_atomically(&path, render_record(&record).as_bytes())?;
+    let note = if changed_fields.is_empty() {
+        "无字段变更".to_string()
+    } else {
+        format!("修改 {}", changed_fields.join(","))
+    };
+    let revision = RevisionEntry {
+        at: record.updated_at.clone(),
+        changed_fields,
+        old_body_sha256: crate::sha256::sha256_hex(before.body.as_bytes()),
+        note,
+    };
+    if let Err(message) = append_revision_line(&revision_path, &revision) {
+        return Err(format!(
+            "记录已更新，但修订记录没有写入：{message}。记录文件：{}",
+            path.display()
+        ));
+    }
     Ok(record)
 }
 
@@ -1333,5 +1543,281 @@ mod tests {
         let raw = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
         assert!(!raw.contains("related_knowledge"), "{raw}");
         assert!(record.related_knowledge.is_empty());
+    }
+
+    fn read_revisions(root: &Path, id: &str) -> Vec<RevisionEntry> {
+        let path = revisions_path(root, id).unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        raw.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<RevisionEntry>(line).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn legacy_record_without_raw_fields_load_save_is_byte_identical() {
+        let temp = TempRoot::new("raw-legacy-bytes");
+        seed_record_without_links(&temp, "wr-501-legacy");
+        let path = record_path(temp.root(), "wr-501-legacy").unwrap();
+        let before = fs::read_to_string(&path).unwrap();
+        let record = read_record(temp.root(), "wr-501-legacy").unwrap();
+        assert_eq!(record.raw_input, None);
+        assert_eq!(record.raw_source, None);
+        write_replace_atomically(&path, render_record(&record).as_bytes()).unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "旧记录缺 raw 字段时 load→save 应逐字节一致");
+    }
+
+    #[test]
+    fn new_record_omits_raw_fields_until_set() {
+        let temp = TempRoot::new("raw-new-record");
+        let record = create_record(temp.root(), &draft("虚构记录", "虚构正文"), NOW, OFFSET).unwrap();
+        let raw = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert!(!raw.contains("raw_input"), "{raw}");
+        assert!(!raw.contains("raw_source"), "{raw}");
+        assert_eq!(record.raw_input, None);
+        assert_eq!(record.raw_source, None);
+    }
+
+    #[test]
+    fn create_writes_raw_input_and_source_to_frontmatter() {
+        let temp = TempRoot::new("raw-create");
+        let record = create_record(
+            temp.root(),
+            &RecordDraft {
+                title: Some("整理后的记录".to_string()),
+                raw_input: Some("原始需求：整理今天的会议结论".to_string()),
+                raw_source: Some("首页对话 2026-11-11 09:30".to_string()),
+                body: "会议结论已整理。".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        let raw = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert!(raw.contains("raw_input: \"原始需求：整理今天的会议结论\""), "{raw}");
+        assert!(raw.contains("raw_source: \"首页对话 2026-11-11 09:30\""), "{raw}");
+        let read = read_record(temp.root(), &record.id).unwrap();
+        assert_eq!(read.raw_input.as_deref(), Some("原始需求：整理今天的会议结论"));
+        assert_eq!(read.raw_source.as_deref(), Some("首页对话 2026-11-11 09:30"));
+    }
+
+    #[test]
+    fn blank_raw_input_is_normalized_to_none_and_omitted() {
+        let temp = TempRoot::new("raw-blank");
+        let record = create_record(
+            temp.root(),
+            &RecordDraft {
+                title: Some("记录".to_string()),
+                raw_input: Some("   \n  ".to_string()),
+                raw_source: Some(" ".to_string()),
+                body: "正文".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        let raw = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert!(!raw.contains("raw_input"), "{raw}");
+        assert!(!raw.contains("raw_source"), "{raw}");
+        assert_eq!(record.raw_input, None);
+        assert_eq!(record.raw_source, None);
+    }
+
+    #[test]
+    fn patch_has_no_raw_input_entry_and_update_preserves_raw() {
+        let temp = TempRoot::new("raw-preserved");
+        let record = create_record(
+            temp.root(),
+            &RecordDraft {
+                title: Some("初始记录".to_string()),
+                raw_input: Some("原始素材不可被修订覆盖".to_string()),
+                raw_source: Some("首页对话 2026-11-11 09:30".to_string()),
+                body: "初始正文".to_string(),
+                ..Default::default()
+            },
+            NOW,
+            OFFSET,
+        )
+        .unwrap();
+        // 字段清单写全且不用 ..Default：若将来给 RecordPatch 增加 raw 入口，本测试无法编译。
+        let patch = RecordPatch {
+            title: None,
+            record_date: None,
+            category: None,
+            tags: None,
+            source: None,
+            destination: None,
+            ai_analysis_status: None,
+            linked_task_ids: None,
+            draft: None,
+            body: Some("修订后的正文".to_string()),
+        };
+        let updated = update_record(temp.root(), &record.id, &patch, NOW + 60.0).unwrap();
+        assert_eq!(updated.raw_input.as_deref(), Some("原始素材不可被修订覆盖"));
+        assert_eq!(updated.raw_source.as_deref(), Some("首页对话 2026-11-11 09:30"));
+        let read = read_record(temp.root(), &record.id).unwrap();
+        assert_eq!(read.raw_input.as_deref(), Some("原始素材不可被修订覆盖"));
+        assert_eq!(read.raw_source.as_deref(), Some("首页对话 2026-11-11 09:30"));
+        assert_eq!(read.body, "修订后的正文");
+    }
+
+    #[test]
+    fn update_appends_revision_with_changed_fields_and_old_body_hash() {
+        let temp = TempRoot::new("revision-line");
+        let record = create_record(temp.root(), &draft("原标题", "原正文"), NOW, OFFSET).unwrap();
+        update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                title: Some("新标题".to_string()),
+                body: Some("新正文".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap();
+        let revisions = read_revisions(temp.root(), &record.id);
+        assert_eq!(revisions.len(), 1, "每次成功修订只追加一行");
+        assert_eq!(revisions[0].at, crate::task_shell::utc_iso8601(NOW + 60.0));
+        assert_eq!(revisions[0].changed_fields, vec!["title".to_string(), "body".to_string()]);
+        assert_eq!(
+            revisions[0].old_body_sha256,
+            crate::sha256::sha256_hex("原正文".as_bytes())
+        );
+        assert!(revisions[0].note.contains("title"), "{}", revisions[0].note);
+        let raw = fs::read_to_string(revisions_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert!(raw.ends_with('\n'), "JSONL 每行都应以换行结尾");
+    }
+
+    #[test]
+    fn successive_updates_hash_the_previous_body_each_time() {
+        let temp = TempRoot::new("revision-chain");
+        let record = create_record(temp.root(), &draft("记录", "第一版正文"), NOW, OFFSET).unwrap();
+        update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                body: Some("第二版正文".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap();
+        update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                body: Some("第三版正文".to_string()),
+                ..Default::default()
+            },
+            NOW + 120.0,
+        )
+        .unwrap();
+        let revisions = read_revisions(temp.root(), &record.id);
+        assert_eq!(revisions.len(), 2);
+        assert_eq!(
+            revisions[0].old_body_sha256,
+            crate::sha256::sha256_hex("第一版正文".as_bytes())
+        );
+        assert_eq!(
+            revisions[1].old_body_sha256,
+            crate::sha256::sha256_hex("第二版正文".as_bytes())
+        );
+        assert_eq!(revisions[0].changed_fields, vec!["body".to_string()]);
+        assert_eq!(revisions[1].changed_fields, vec!["body".to_string()]);
+    }
+
+    #[test]
+    fn empty_patch_still_records_an_update() {
+        let temp = TempRoot::new("revision-empty");
+        let record = create_record(temp.root(), &draft("记录", "正文"), NOW, OFFSET).unwrap();
+        update_record(temp.root(), &record.id, &RecordPatch::default(), NOW + 60.0).unwrap();
+        let revisions = read_revisions(temp.root(), &record.id);
+        assert_eq!(revisions.len(), 1);
+        assert!(revisions[0].changed_fields.is_empty());
+        assert_eq!(revisions[0].note, "无字段变更");
+    }
+
+    #[test]
+    fn truncated_revision_tail_blocks_update_without_touching_record() {
+        let temp = TempRoot::new("revision-truncated");
+        let record = create_record(temp.root(), &draft("记录", "原正文"), NOW, OFFSET).unwrap();
+        let rev_path = revisions_path(temp.root(), &record.id).unwrap();
+        fs::create_dir_all(rev_path.parent().unwrap()).unwrap();
+        fs::write(&rev_path, "{\"at\":\"2026-11-11T00:00:00Z\"").unwrap();
+        let record_path_before = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        let err = update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                body: Some("不应写入的正文".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap_err();
+        assert!(err.contains("尾部不完整"), "{err}");
+        let record_path_after = fs::read_to_string(record_path(temp.root(), &record.id).unwrap()).unwrap();
+        assert_eq!(record_path_before, record_path_after, "修订日志不完整时记录文件不动");
+        assert_eq!(fs::read_to_string(&rev_path).unwrap(), "{\"at\":\"2026-11-11T00:00:00Z\"");
+    }
+
+    #[test]
+    fn missing_revision_history_reads_as_empty_for_legacy_record() {
+        let temp = TempRoot::new("revision-summary-missing");
+        let record = create_record(temp.root(), &draft("旧记录", "旧正文"), NOW, OFFSET).unwrap();
+        assert!(!revisions_path(temp.root(), &record.id).unwrap().exists());
+        let summaries = read_revision_summaries(temp.root(), &record.id).unwrap();
+        assert!(summaries.is_empty(), "没有修订文件不等于读取失败");
+    }
+
+    #[test]
+    fn revision_summaries_keep_order_and_omit_body_hash() {
+        let temp = TempRoot::new("revision-summary-order");
+        let record = create_record(temp.root(), &draft("记录", "第一版正文"), NOW, OFFSET).unwrap();
+        update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                body: Some("第二版正文".to_string()),
+                ..Default::default()
+            },
+            NOW + 60.0,
+        )
+        .unwrap();
+        update_record(
+            temp.root(),
+            &record.id,
+            &RecordPatch {
+                title: Some("新标题".to_string()),
+                tags: Some(vec!["复盘".to_string()]),
+                ..Default::default()
+            },
+            NOW + 120.0,
+        )
+        .unwrap();
+
+        let summaries = read_revision_summaries(temp.root(), &record.id).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].at, crate::task_shell::utc_iso8601(NOW + 60.0));
+        assert_eq!(summaries[0].changed_fields, vec!["body".to_string()]);
+        assert_eq!(summaries[1].changed_fields, vec!["title".to_string(), "tags".to_string()]);
+        let serialized = serde_json::to_string(&summaries).unwrap();
+        assert!(!serialized.contains("old_body_sha256"), "{serialized}");
+        assert!(!serialized.contains("sha"), "{serialized}");
+    }
+
+    #[test]
+    fn corrupt_revision_line_fails_instead_of_hiding_history() {
+        let temp = TempRoot::new("revision-summary-corrupt");
+        let record = create_record(temp.root(), &draft("记录", "正文"), NOW, OFFSET).unwrap();
+        let path = revisions_path(temp.root(), &record.id).unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "{not-json}\n").unwrap();
+        let err = read_revision_summaries(temp.root(), &record.id).unwrap_err();
+        assert!(err.contains("第 1 行无法解析"), "{err}");
     }
 }

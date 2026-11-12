@@ -1,0 +1,19 @@
+PASS  types_record_has_readonly_raw_fields
+PASS  types_revision_summary_contract
+PASS  api_readonly_revisions_ipc
+PASS  host_revision_summary_excludes_sha
+PASS  host_reads_revisions_file_with_legacy_empty
+PASS  host_command_registered
+PASS  raw_input_section_rendered
+PASS  legacy_record_hides_raw_section
+PASS  revision_history_rendered_without_sha
+PASS  revision_history_reads_selected_record
+PASS  reorganize_entry_visible_for_raw_records
+PASS  reorganize_confirm_explains_body_rewrite
+PASS  reorganize_prefills_home_chat
+PASS  category_chips_five_suggestions
+PASS  category_remains_free_text
+PASS  page_passes_navigation
+PASS  rust_tests_cover_revision_summary
+
+17/17 通过

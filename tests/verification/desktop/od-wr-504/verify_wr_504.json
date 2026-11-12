@@ -1,0 +1,215 @@
+{
+  "plan": "OD-WR-504",
+  "evidence_level": "脚本运行 + 静态源码检查",
+  "passed": true,
+  "total": 41,
+  "passed_count": 41,
+  "failed": [],
+  "cases": [
+    {
+      "name": "list_container_attr_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_row_attr_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_group_attr",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_group_count_attr",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "grouping_after_host_filter",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "groups_render_from_items_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "head_date",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "head_count",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "head_today_summary_entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "head_other_day_summary_entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "today_branch_generate_and_view",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "other_branch_read_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "head_no_extra_copy",
+      "ok": true,
+      "detail": "组头只保留日期、条数与摘要入口"
+    },
+    {
+      "name": "card_seven:title",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:time",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:category",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:preview",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:source",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:linked_tasks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "card_seven:status",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "today_generate_semantics",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "other_day_read_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "summary_links_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "timeline_styles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "helpers_compile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "helpers_probe_exit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "group_dates_desc",
+      "ok": true,
+      "detail": "2026-11-11,2026-11-10"
+    },
+    {
+      "name": "group_inner_created_desc",
+      "ok": true,
+      "detail": "d,b,a"
+    },
+    {
+      "name": "group_membership",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "filtered_groups_not_fabricated",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "time_local_hm",
+      "ok": true,
+      "detail": "09:05"
+    },
+    {
+      "name": "time_invalid_null",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "preview_first_line",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "preview_60_chars",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "preview_empty_fallback",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "category_null_fallback",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "category_kept",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "source_raw_fallback",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "source_prefers_source",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "source_absent_null",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "source_optional_missing",
+      "ok": true,
+      "detail": null
+    }
+  ]
+}

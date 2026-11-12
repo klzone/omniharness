@@ -1,0 +1,115 @@
+{
+  "plan": "OD-WR-508",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 21,
+  "passed_count": 21,
+  "failed": [],
+  "checks": [
+    {
+      "name": "record_patch_has_no_raw_fields",
+      "ok": true,
+      "detail": "RecordPatch 只包含可修订字段"
+    },
+    {
+      "name": "update_record_never_assigns_raw",
+      "ok": true,
+      "detail": "update_record 不写 raw_input/raw_source"
+    },
+    {
+      "name": "raw_write_only_in_create_path",
+      "ok": true,
+      "detail": "随手记创建时写入原始输入与来源"
+    },
+    {
+      "name": "summary_review_have_no_patch_channel",
+      "ok": true,
+      "detail": "摘要/复盘模块不构造记录补丁，也不调用更新记录"
+    },
+    {
+      "name": "raw_preservation_unit_test",
+      "ok": true,
+      "detail": "501 单测覆盖补丁无 raw 入口且更新后原文不变"
+    },
+    {
+      "name": "homechat_no_direct_invoke",
+      "ok": true,
+      "detail": "HomeChat 不直接调用 Tauri invoke"
+    },
+    {
+      "name": "conversation_prompt_transport_free",
+      "ok": true,
+      "detail": "conversationPrompt 只组装提示词，无传输/文件写入"
+    },
+    {
+      "name": "homechat_writes_via_host_wrappers",
+      "ok": true,
+      "detail": "正式写入只经 api 的宿主校验封装"
+    },
+    {
+      "name": "homechat_has_no_review_confirm",
+      "ok": true,
+      "detail": "AI 对话链路没有复盘确认调用"
+    },
+    {
+      "name": "daily_summary_host_validated",
+      "ok": true,
+      "detail": "摘要生成 IPC 进入宿主校验"
+    },
+    {
+      "name": "period_review_host_validated",
+      "ok": true,
+      "detail": "复盘生成 IPC 进入宿主校验"
+    },
+    {
+      "name": "confirm_review_exists",
+      "ok": true,
+      "detail": "确认流把草稿置为已确认"
+    },
+    {
+      "name": "write_review_refuses_confirmed",
+      "ok": true,
+      "detail": "已确认复盘拒绝重新生成"
+    },
+    {
+      "name": "confirmed_review_unit_test_freezes_bytes",
+      "ok": true,
+      "detail": "505 单测断言确认版字节不变"
+    },
+    {
+      "name": "review_ui_disables_regen_for_confirmed",
+      "ok": true,
+      "detail": "档案页对已确认复盘禁用重新生成"
+    },
+    {
+      "name": "daily_summary_citation_validation",
+      "ok": true,
+      "detail": "摘要校验五段结构与 #wr- 引用真实性"
+    },
+    {
+      "name": "period_review_citation_validation",
+      "ok": true,
+      "detail": "复盘校验记录/任务引用真实性与段落引用"
+    },
+    {
+      "name": "citation_validation_reached_from_ipc",
+      "ok": true,
+      "detail": "两个生成 IPC 注册且校验发生在落盘前"
+    },
+    {
+      "name": "unknown_id_tests_exist",
+      "ok": true,
+      "detail": "摘要/复盘都有未知引用拒绝单测"
+    },
+    {
+      "name": "new_tests_use_synthetic_material_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "new_tests_have_synthetic_fixtures",
+      "ok": true,
+      "detail": "摘要/复盘单测使用甲、乙等合成对象"
+    }
+  ]
+}

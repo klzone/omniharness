@@ -76,6 +76,18 @@
       ],
       "max_injected": 1
     },
+    "weekly-daily-summary": {
+      "skills": [
+        "daily-summary"
+      ],
+      "max_injected": 1
+    },
+    "weekly-period-review": {
+      "skills": [
+        "period-review"
+      ],
+      "max_injected": 1
+    },
     "writing": {
       "skills": [
         "material-writing"

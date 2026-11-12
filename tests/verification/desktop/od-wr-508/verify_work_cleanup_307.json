@@ -1,0 +1,84 @@
+{
+  "plan": "OD-WR-313",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 15,
+  "failed": [],
+  "checks": [
+    {
+      "name": "module_present",
+      "ok": true,
+      "detail": "清理模块提供预览与执行"
+    },
+    {
+      "name": "retention_default_and_config",
+      "ok": true,
+      "detail": "保留期默认 90 天并可配置"
+    },
+    {
+      "name": "records_from_archived_periods",
+      "ok": true,
+      "detail": "记录只按已归档报告覆盖期入选"
+    },
+    {
+      "name": "period_week_month_year",
+      "ok": true,
+      "detail": "周/月/年周期都能解析"
+    },
+    {
+      "name": "draft_protected",
+      "ok": true,
+      "detail": "draft 记录永不入选"
+    },
+    {
+      "name": "unfinished_task_reference_protected",
+      "ok": true,
+      "detail": "被未完成任务引用的记录永不入选"
+    },
+    {
+      "name": "pending_candidate_protected",
+      "ok": true,
+      "detail": "还有待审核候选的记录永不入选"
+    },
+    {
+      "name": "tasks_done_or_cancelled_and_old",
+      "ok": true,
+      "detail": "任务只清理完成/取消且超过保留期"
+    },
+    {
+      "name": "preview_is_read_only",
+      "ok": true,
+      "detail": "预览路径不含移动/删除动作"
+    },
+    {
+      "name": "apply_moves_to_trash",
+      "ok": true,
+      "detail": "执行只移入回收目录"
+    },
+    {
+      "name": "ipc_registered",
+      "ok": true,
+      "detail": "预览与执行 IPC 已注册"
+    },
+    {
+      "name": "apply_requires_confirm",
+      "ok": true,
+      "detail": "执行必须显式确认"
+    },
+    {
+      "name": "api_methods",
+      "ok": true,
+      "detail": "前端客户端有对应方法"
+    },
+    {
+      "name": "settings_confirm_flow",
+      "ok": true,
+      "detail": "设置页有预览与确认执行"
+    },
+    {
+      "name": "no_startup_auto_cleanup",
+      "ok": true,
+      "detail": "启动流程不自动清理"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "plan": "OD-WR-509",
+  "date": "2026-11-12",
+  "trigger": "用户设计图 + OmniDesk 工作记录模块 1.0 任务书",
+  "tabs": [
+    "records",
+    "reviews"
+  ],
+  "removed_tabs": [
+    "review",
+    "tasks",
+    "weekly"
+  ],
+  "carried_surfaces": [
+    "audit_overlay",
+    "task_manager_in_project_scene",
+    "period_review_archive"
+  ],
+  "checks": {
+    "tsc": 0,
+    "build": 0,
+    "verify_work_record_ui_301": "16/16",
+    "verify_wr_detail_502": "17/17",
+    "verify_wr_503": "58/58",
+    "verify_wr_504": "41/41",
+    "verify_wr_505": "71/71",
+    "verify_wr_506": "58/58",
+    "verify_wr_507": "33/33",
+    "verify_wr_security_508": "21/21",
+    "verify_wr_509": "40/40"
+  },
+  "screenshots": [
+    "01-record-timeline.png",
+    "02-record-detail.png",
+    "03-review-archive.png",
+    "04-review-detail.png"
+  ],
+  "screenshot_data_root": "/tmp/omnidesk-wr509",
+  "screenshot_data": "纯合成记录与复盘，未读取真实工作记录",
+  "known_limits": [
+    "记录状态沿用 ai_analysis_status，未新增确认字段",
+    "真实模型生成摘要/复盘质量未在本轮重测",
+    "快捷操作只预填首页对话，不自动发送",
+    "任务管理移至项目跟踪分页",
+    "截图首启模型提示来自隔离设置"
+  ]
+}

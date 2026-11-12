@@ -1,0 +1,297 @@
+{
+ "total": 58,
+ "passed": 58,
+ "failed": [],
+ "cases": [
+  {
+   "name": "skill_section:今日工作概况",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_section:重点事项",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_section:重要思考",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_section:需要跟进的问题",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_section:与任务管理的关联",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_requires_real_ids",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "skill_no_fabrication",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "keyword_closed:生成今日摘要",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "keyword_closed:今日摘要",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "keyword_closed:总结今天",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "keyword_closed:今天的摘要",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "keyword_closed:当日摘要",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "intent_three_values",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_schema",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_collect_today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_filters_draft",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_backup_bak",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_rejects_unknown_ids",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_requires_sections",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_honest_empty",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "host_six_tests_plus",
+   "ok": true,
+   "detail": "12"
+  },
+  {
+   "name": "module_registered",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "ipc_generate",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "ipc_read",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "ipc_generate_in_handler",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "prompt_daily_summary_mode",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "prompt_five_sections",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "home_reads_records",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "home_generate_ipc",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "home_regenerate_confirm",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "library_generate_entry",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "library_view_entry",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "library_record_links",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "api_generate",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "api_read",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "types_receipt",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "types_read",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "rules_binding",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "workIntent_compiles",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "intent_probe_exit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "summary:生成今日摘要",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:今日摘要",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:总结今天",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:今天的摘要",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:当日摘要",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:帮我生成今天的摘要",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:  生成　今日摘要  ",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "summary:总结今天的工作",
+   "ok": true,
+   "detail": "daily-summary"
+  },
+  {
+   "name": "report:生成周报",
+   "ok": true,
+   "detail": "report"
+  },
+  {
+   "name": "report:总结本周工作",
+   "ok": true,
+   "detail": "report"
+  },
+  {
+   "name": "report:今天顺便把周报写一下",
+   "ok": true,
+   "detail": "report"
+  },
+  {
+   "name": "note:总结一下这次会议",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "note:今天开了个会",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "note:今天的会议纪要",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "note:当日工作总结",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "note:记一下：周三交材料",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "note:<empty>",
+   "ok": true,
+   "detail": "note"
+  },
+  {
+   "name": "describe_summary",
+   "ok": true,
+   "detail": "按当日摘要生成"
+  }
+ ]
+}

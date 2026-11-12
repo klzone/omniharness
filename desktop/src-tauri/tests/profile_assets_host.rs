@@ -506,8 +506,8 @@ fn switching_back_to_standard_parks_managed_skills() {
     let registered = fs::read_to_string(&registry).unwrap();
     assert_eq!(
         registered.lines().filter(|l| !l.starts_with('#') && !l.trim().is_empty()).count(),
-        8,
-        "{} 应登记 8 个 Skill：{}",
+        10,
+        "{} 应登记 10 个 Skill：{}",
         registry.display(),
         registered
     );
@@ -517,7 +517,7 @@ fn switching_back_to_standard_parks_managed_skills() {
         "omnidesk-base",
     )
     .unwrap();
-    assert_eq!(report.parked.len(), 8, "{:?}", report.parked);
+    assert_eq!(report.parked.len(), 10, "{:?}", report.parked);
     assert!(report.returned.is_empty());
 
     // 全局目录里不该再有这些 Skill，也不该再留登记表。
@@ -558,7 +558,7 @@ fn switching_back_to_profile_returns_parked_skills() {
         "omnidesk-base",
     )
     .unwrap();
-    assert_eq!(report.returned.len(), 8, "{:?}", report.returned);
+    assert_eq!(report.returned.len(), 10, "{:?}", report.returned);
     assert!(report.parked.is_empty());
     for name in &report.returned {
         assert!(

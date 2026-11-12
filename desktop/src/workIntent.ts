@@ -9,7 +9,22 @@
 //
 // 判定偏保守：宁可当随手记（多记一条不会丢事实），也不要误进周报流程。
 
-export type WorkIntent = "report" | "note";
+export type WorkIntent = "report" | "note" | "daily-summary" | "period-review";
+
+/**
+ * 明确指向「当日摘要」的措辞（OD-WR-503）。
+ *
+ * 只收用户已经把范围限定在「今天 / 当日」的说法。像「总结一下这个会」这种
+ * 没有日期范围的措辞仍是随手记；宁可漏判，也不要把一条普通记录误进摘要流程。
+ * 「生成今日摘要」「今日摘要」「当日摘要」本身就是指令，不再要求额外限定词。
+ */
+export const DAILY_SUMMARY_KEYWORDS: readonly string[] = [
+  "生成今日摘要",
+  "今日摘要",
+  "总结今天",
+  "今天的摘要",
+  "当日摘要",
+];
 
 /**
  * 明确指向「周报」的措辞。出现即进周报流程。
@@ -48,6 +63,55 @@ export const REPORT_SUMMARY_WORDS: readonly string[] = [
   "梳理",
 ];
 
+/**
+ * 明确指向「周期复盘」的措辞（OD-WR-505）。
+ *
+ * 和周报一样是封闭枚举：只有用户把范围说成月/季/年（或明确说周复盘）才进
+ * 复盘流程。「总结一下本月会议」这类没有周期范围的句子仍是随手记。
+ * 词表里刻意不收「复盘」单字，避免把一次普通复盘记录误判成复盘报告。
+ */
+export const PERIOD_REVIEW_KEYWORDS: readonly string[] = [
+  "周复盘",
+  "复盘本周",
+  "本周复盘",
+  "这周复盘",
+  "上周复盘",
+  "复盘上周",
+  "月度总结",
+  "月度复盘",
+  "月报",
+  "本月复盘",
+  "复盘本月",
+  "本月总结",
+  "这个月复盘",
+  "复盘这个月",
+  "季度复盘",
+  "季度总结",
+  "复盘本季",
+  "本季复盘",
+  "本季度复盘",
+  "复盘本季度",
+  "年度总结",
+  "年度复盘",
+  "复盘今年",
+  "今年复盘",
+  "本年总结",
+  "全年总结",
+  "复盘全年",
+];
+
+export type PeriodReviewPeriod = "weekly" | "monthly" | "quarterly" | "annual";
+
+export interface PeriodReviewTarget {
+  period: PeriodReviewPeriod;
+  /** 周期起始日（含），`YYYY-MM-DD`。 */
+  start: string;
+  /** 周期结束日（含），`YYYY-MM-DD`。 */
+  end: string;
+  /** 给界面/提示词看的周期说法，例如「本月」「2026 Q4」。 */
+  label: string;
+}
+
 /** 归一化：全角转半角、去空白、统一小写。中英标点混写不影响判定。 */
 export function normalizeIntentText(input: string): string {
   return input
@@ -66,8 +130,18 @@ export function detectWorkIntent(input: string): WorkIntent {
   const text = normalizeIntentText(input || "");
   if (!text) return "note";
 
+  // 当日摘要的词表是封闭枚举：命中即走摘要；没命中就交给下面的周报/随手记判定。
+  if (DAILY_SUMMARY_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) {
+    return "daily-summary";
+  }
+
   // 「周报」二字足够明确：用户说周报就是在要周报。
   if (REPORT_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) return "report";
+
+  // 周期复盘：月度/季度/年度，或明确说周复盘。放在周报之后，周报词不会被吞。
+  if (PERIOD_REVIEW_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) {
+    return "period-review";
+  }
 
   // 没有「周报」二字时，才看「总结本周」这类措辞，且必须带周范围限定词。
   const hasScope = REPORT_WEEK_SCOPES.some((s) => text.includes(normalizeIntentText(s)));
@@ -78,7 +152,66 @@ export function detectWorkIntent(input: string): WorkIntent {
 
 /** 界面上明示本轮走哪条路：用户不必靠猜，误判一眼可见。 */
 export function describeWorkIntent(intent: WorkIntent): string {
-  return intent === "report" ? "按周报生成" : "按随手记记录";
+  if (intent === "report") return "按周报生成";
+  if (intent === "daily-summary") return "按当日摘要生成";
+  if (intent === "period-review") return "按周期复盘生成";
+  return "按随手记记录";
+}
+
+/** 由本地日历算出周期复盘的起止日期。只认完整自然周期，不猜偏移。 */
+export function detectPeriodReviewTarget(
+  input: string,
+  now: Date = new Date(),
+  offsetMinutes?: number,
+): PeriodReviewTarget | null {
+  const raw = (input || "").trim();
+  const text = normalizeIntentText(raw);
+  if (!text) return null;
+  if (!PERIOD_REVIEW_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) return null;
+
+  const cal = calendarOf(now, offsetMinutes);
+  const month = new Date(cal.todayDay * DAY_MS).getUTCMonth() + 1;
+  if (PERIOD_REVIEW_KEYWORDS.slice(0, 6).some((k) => text.includes(normalizeIntentText(k)))) {
+    let monday = mondayOf(cal);
+    if (/上周/.test(raw)) monday -= 7;
+    const endDay = monday + 6;
+    return {
+      period: "weekly",
+      start: fromDayNumber(monday),
+      end: fromDayNumber(endDay),
+      label: /上周/.test(raw) ? "上周" : "本周",
+    };
+  }
+  if (PERIOD_REVIEW_KEYWORDS.slice(6, 14).some((k) => text.includes(normalizeIntentText(k)))) {
+    const endMonth = month;
+    return {
+      period: "monthly",
+      start: `${cal.todayYear}-${String(month).padStart(2, "0")}-01`,
+      end: `${cal.todayYear}-${String(endMonth).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, endMonth)).padStart(2, "0")}`,
+      label: "本月",
+    };
+  }
+  if (PERIOD_REVIEW_KEYWORDS.slice(14, 20).some((k) => text.includes(normalizeIntentText(k)))) {
+    const quarter = Math.floor((month - 1) / 3);
+    const startMonth = quarter * 3 + 1;
+    const endMonth = startMonth + 2;
+    return {
+      period: "quarterly",
+      start: `${cal.todayYear}-${String(startMonth).padStart(2, "0")}-01`,
+      end: `${cal.todayYear}-${String(endMonth).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, endMonth)).padStart(2, "0")}`,
+      label: `${cal.todayYear} Q${quarter + 1}`,
+    };
+  }
+  return {
+    period: "annual",
+    start: `${cal.todayYear}-01-01`,
+    end: `${cal.todayYear}-12-31`,
+    label: `${cal.todayYear} 年`,
+  };
+}
+
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 // ---------------------------------------------------------------------------

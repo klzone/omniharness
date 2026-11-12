@@ -1,0 +1,84 @@
+{
+  "plan": "OD-WR-310",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 15,
+  "failed": [],
+  "checks": [
+    {
+      "name": "quicklog_module_present",
+      "ok": true,
+      "detail": "随手记记录库模块存在"
+    },
+    {
+      "name": "append_writes_records",
+      "ok": true,
+      "detail": "追加写入记录库并带去向"
+    },
+    {
+      "name": "record_destination_field",
+      "ok": true,
+      "detail": "记录 frontmatter 新增 destination"
+    },
+    {
+      "name": "commands_use_quicklog",
+      "ok": true,
+      "detail": "五个随手记命令改走记录库"
+    },
+    {
+      "name": "legacy_write_paths_retired",
+      "ok": true,
+      "detail": "旧周文件写路径不再被命令调用"
+    },
+    {
+      "name": "legacy_read_retained",
+      "ok": true,
+      "detail": "旧读函数保留作迁移回退"
+    },
+    {
+      "name": "week_index_from_records",
+      "ok": true,
+      "detail": "周索引与周内容从记录库聚合"
+    },
+    {
+      "name": "iso_week_aggregation",
+      "ok": true,
+      "detail": "按 record_date 的 ISO 周聚合"
+    },
+    {
+      "name": "protocol_and_ipc_unchanged",
+      "ok": true,
+      "detail": "判定块协议与 IPC 形状不变"
+    },
+    {
+      "name": "types_have_destination",
+      "ok": true,
+      "detail": "前端记录类型同步 destination"
+    },
+    {
+      "name": "move_batch_rolls_back",
+      "ok": true,
+      "detail": "批量改日期失败时回滚本批"
+    },
+    {
+      "name": "no_weekly_file_write_in_quicklog",
+      "ok": true,
+      "detail": "记录库模块不写周文件"
+    },
+    {
+      "name": "week_markdown_legacy_shape",
+      "ok": true,
+      "detail": "记录库可渲染旧周文件形状供周索引读取"
+    },
+    {
+      "name": "tests_cover_operations",
+      "ok": true,
+      "detail": "五个写入操作的用例齐全"
+    },
+    {
+      "name": "legacy_week_file_parser_still_present",
+      "ok": true,
+      "detail": "旧周文件读函数仍在，供迁移与回看"
+    }
+  ]
+}

@@ -3238,6 +3238,10 @@ export interface WorkRecord {
   category: string | null;
   tags: string[];
   source: string | null;
+  /** 创建时的原始素材（OD-WR-501）；只读，修订不会改写。 */
+  raw_input: string | null;
+  /** 原始素材的来源描述，例如「首页对话 2026-11-11 09:30」。 */
+  raw_source: string | null;
   /** 随手记的去向标签（OD-WR-310）；普通记录为 null。 */
   destination: string | null;
   ai_analysis_status: WorkRecordAiStatus;
@@ -3256,6 +3260,8 @@ export interface RecordDraft {
   category?: string | null;
   tags?: string[];
   source?: string | null;
+  raw_input?: string | null;
+  raw_source?: string | null;
   destination?: string | null;
   draft?: boolean;
   body?: string;
@@ -3297,6 +3303,138 @@ export interface WorkRecordSaved {
   masked: boolean;
   masked_id_card: number;
   masked_phone: number;
+}
+
+/** 一条修订摘要（OD-WR-502）：界面只需要时间、变更字段与说明。 */
+export interface WorkRecordRevision {
+  /** UTC ISO8601。 */
+  at: string;
+  /** 本次实际变化的字段名（snake_case）。 */
+  changed_fields: string[];
+  note: string;
+}
+
+/** 当日摘要落盘回执（OD-WR-503）。 */
+export interface DailySummaryReceipt {
+  ok: boolean;
+  path: string;
+  date: string;
+  record_ids: string[];
+  generated_at: string;
+  status: string;
+  /** 重新生成时旧摘要的 `.bak` 路径；首次写入为 null。 */
+  backup: string | null;
+  records: number;
+}
+
+/** 当日摘要读取结果；不存在时 exists=false，不建文件。 */
+export interface DailySummaryRead {
+  exists: boolean;
+  path: string;
+  date: string;
+  status: string | null;
+  record_ids: string[];
+  generated_at: string | null;
+  body: string;
+  /** 引用过但当前记录库已不存在的编号。 */
+  missing_record_ids: string[];
+  stale: boolean;
+}
+
+/** 复盘周期（OD-WR-505）；与 workIntent.ts 的 PeriodReviewPeriod 保持同一组取值。 */
+export type PeriodReviewPeriod = "weekly" | "monthly" | "quarterly" | "annual";
+
+export interface PeriodReviewTaskStats {
+  completed: number;
+  uncompleted: number;
+  overdue: number;
+}
+
+/** 周期汇集结果：记录与任务都是宿主读出的真实数据；material 已整理成模型材料。 */
+export interface PeriodReviewCollect {
+  period: PeriodReviewPeriod;
+  start: string;
+  end: string;
+  range: string;
+  records: WorkRecord[];
+  tasks: WorkTask[];
+  task_stats: PeriodReviewTaskStats;
+  prior_reviews: string[];
+  material: string;
+  record_count: number;
+  task_count: number;
+}
+
+/** 周期复盘落盘/确认回执。 */
+export interface PeriodReviewReceipt {
+  ok: boolean;
+  path: string;
+  period: PeriodReviewPeriod;
+  range: string;
+  record_ids: string[];
+  task_ids: string[];
+  generated_at: string;
+  status: string;
+  confirmed_at: string | null;
+  backup: string | null;
+  records: number;
+  tasks: number;
+}
+
+/** 周期复盘读取结果；不存在时 exists=false，不建文件。 */
+export interface PeriodReviewRead {
+  exists: boolean;
+  path: string;
+  period: PeriodReviewPeriod;
+  range: string;
+  status: string | null;
+  record_ids: string[];
+  task_ids: string[];
+  generated_at: string | null;
+  confirmed_at: string | null;
+  body: string;
+  missing_record_ids: string[];
+  missing_task_ids: string[];
+  stale: boolean;
+}
+
+/** 复盘档案列表项（OD-WR-506）：只含定位与状态，不含正文。 */
+export interface ReviewArchiveItem {
+  path: string;
+  period: PeriodReviewPeriod;
+  start: string;
+  end: string;
+  range: string;
+  status: string | null;
+  generated_at: string | null;
+  confirmed_at: string | null;
+  record_ids: string[];
+  task_ids: string[];
+}
+
+/** 复盘档案清单：坏文件计数后跳过，不中断列表。 */
+export interface PeriodReviewListing {
+  items: ReviewArchiveItem[];
+  broken: number;
+}
+
+/** 记录详情里的只读反向引用（OD-WR-506）。 */
+export interface RecordBacklink {
+  kind: "review" | "writing";
+  id: string;
+  path: string;
+  period: PeriodReviewPeriod | null;
+  start: string | null;
+  end: string | null;
+  range: string | null;
+  status: string | null;
+  title: string | null;
+}
+
+export interface RecordBacklinks {
+  record_id: string;
+  items: RecordBacklink[];
+  broken: number;
 }
 
 /** 解析准备回执（OD-WR-304/306）：提示词与送模型前的原文。 */

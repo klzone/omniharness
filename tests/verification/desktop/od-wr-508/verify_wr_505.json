@@ -1,0 +1,365 @@
+{
+  "plan": "OD-WR-505",
+  "evidence_level": "脚本运行 + 静态源码检查",
+  "passed": true,
+  "total": 71,
+  "passed_count": 71,
+  "failed": [],
+  "cases": [
+    {
+      "name": "skill_exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:本周期工作概况",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:重点工作事项",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:工作成果与完成情况",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:数据汇总",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:趋势对照",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:跨月对照",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:主题归纳",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:全年脉络",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_section:长期建议",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_real_ids",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "skill_no_fabrication",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_schema",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_collect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_confirm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_filters_draft",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_backup_bak",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_rejects_unknown_record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_rejects_unknown_task",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_confirmed_never_overwritten",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_confirm_timestamp",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_depth_weekly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_depth_monthly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_depth_quarterly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_depth_annual",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "host_tests_12plus",
+      "ok": true,
+      "detail": "22"
+    },
+    {
+      "name": "module_registered",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc:worklog_period_review_collect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc:worklog_period_review_generate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc:worklog_period_review_read",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ipc:worklog_period_review_confirm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_mode",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "prompt_depth",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_collect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_generate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_regenerate_dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_confirmed_reject",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_generate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "api_confirm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_receipt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "types_read",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rules_binding",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rules_weekly_report_kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "seed_skill",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "intent_compile",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "intent_probe",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "period:月度总结",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:月报",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:季度复盘",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:季度总结",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:年度总结",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:年度复盘",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:复盘本月",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:本月复盘",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:复盘本季",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:复盘今年",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:周复盘",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "period:本周复盘",
+      "ok": true,
+      "detail": "period-review"
+    },
+    {
+      "name": "report_not_swallowed:生成周报",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report_not_swallowed:总结本周工作",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report_not_swallowed:今天顺便把周报写一下",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "report_not_swallowed:周报复盘",
+      "ok": true,
+      "detail": "report"
+    },
+    {
+      "name": "note:总结一下这次会议",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:今天的会议纪要",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:当日工作总结",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:复盘一下这个方案",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "note:<empty>",
+      "ok": true,
+      "detail": "note"
+    },
+    {
+      "name": "target_monthly",
+      "ok": true,
+      "detail": "{\"period\":\"monthly\",\"start\":\"2026-11-01\",\"end\":\"2026-11-30\",\"label\":\"本月\"}"
+    },
+    {
+      "name": "target_quarterly",
+      "ok": true,
+      "detail": "{\"period\":\"quarterly\",\"start\":\"2026-10-01\",\"end\":\"2026-12-31\",\"label\":\"2026 Q4\"}"
+    },
+    {
+      "name": "target_annual",
+      "ok": true,
+      "detail": "{\"period\":\"annual\",\"start\":\"2026-01-01\",\"end\":\"2026-12-31\",\"label\":\"2026 年\"}"
+    },
+    {
+      "name": "target_weekly",
+      "ok": true,
+      "detail": "{\"period\":\"weekly\",\"start\":\"2026-11-09\",\"end\":\"2026-11-15\",\"label\":\"本周\"}"
+    }
+  ]
+}

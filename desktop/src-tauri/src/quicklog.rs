@@ -166,6 +166,12 @@ pub fn append(
         category: None,
         tags: Vec::new(),
         source: Some("随手记".to_string()),
+        raw_input: Some(text.to_string()),
+        raw_source: Some(format!(
+            "首页对话 {} {}",
+            worklog::date_label(now, offset_minutes),
+            local_clock(now, offset_minutes)
+        )),
         destination: Some(dest.clone()),
         draft: false,
         body: text.to_string(),
@@ -189,6 +195,13 @@ pub fn append(
         entry_text: text.to_string(),
         error: None,
     })
+}
+
+/// 本地 HH:MM（不引入 chrono，偏移复用调用方传入的分钟数）。
+fn local_clock(now: f64, offset_minutes: i32) -> String {
+    let shifted = now.floor() as i64 + i64::from(offset_minutes) * 60;
+    let seconds_of_day = shifted.rem_euclid(86_400);
+    format!("{:02}:{:02}", seconds_of_day / 3_600, (seconds_of_day % 3_600) / 60)
 }
 
 pub fn set_destination(
@@ -528,6 +541,23 @@ mod tests {
         let record = worklog_records::read_record(temp.root(), &first.path.split('/').last().unwrap().trim_end_matches(".md")).unwrap();
         assert_eq!(record.destination.as_deref(), Some(DEFAULT_DESTINATION));
         assert_eq!(record.source.as_deref(), Some("随手记"));
+    }
+
+    #[test]
+    fn append_records_raw_input_and_local_home_chat_source() {
+        let temp = TempRoot::new("raw");
+        let now = noon("2026-11-03");
+        let receipt = append(temp.root(), "2026-11-03", "原始输入原文", None, now, OFFSET).unwrap();
+        let record_id = receipt
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .trim_end_matches(".md");
+        let record = worklog_records::read_record(temp.root(), record_id).unwrap();
+        assert_eq!(record.raw_input.as_deref(), Some("原始输入原文"));
+        assert_eq!(record.raw_source.as_deref(), Some("首页对话 2026-11-03 20:00"));
+        assert_eq!(record.body, "原始输入原文");
     }
 
     #[test]

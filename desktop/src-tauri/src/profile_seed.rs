@@ -5,7 +5,7 @@
 //! deb / AppImage 装到用户机器上时该目录不存在，于是「干净环境 + 切换 Profile」
 //! 能装出配置、场景、规则，却一个 Skill 都补不上。
 //!
-//! 这里把 8 个 Skill 正文与写作资产在编译期嵌入二进制（约 110K），
+//! 这里把内置 Skill 正文与写作资产在编译期嵌入二进制，
 //! 仓库源不可用时用它照样装出完整的专属工作台。
 //!
 //! 一致性由 embedded_seed_matches_repo 集成测试逐字节比对兜住：两边漂移会红。
@@ -55,6 +55,8 @@ pub static SKILLS: &[SeedSkill] = &[
     SeedSkill { name: "material-writing", files: skill_md!("material-writing") },
     SeedSkill { name: "memory-agent", files: skill_md!("memory-agent") },
     SeedSkill { name: "memory-report", files: skill_md!("memory-report") },
+    SeedSkill { name: "daily-summary", files: skill_md!("daily-summary") },
+    SeedSkill { name: "period-review", files: skill_md!("period-review") },
     SeedSkill { name: "project-agent", files: skill_md!("project-agent") },
 ];
 

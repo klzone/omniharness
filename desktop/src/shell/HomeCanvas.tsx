@@ -362,13 +362,18 @@ export function HomeCanvas({
     const sceneSkills = readBinding(def.preset);
     const noteSkills = readBinding(def.preset + "-note");
     const reportSkills = readBinding(def.preset + "-report");
+    const summarySkills = readBinding(def.preset + "-daily-summary");
+    const periodReviewSkills = readBinding(def.preset + "-period-review");
     // 没有按流程拆分时，两组都回落到场景级绑定（旧规则文件的行为不变）。
     const boundSkills = sceneSkills;
     const skillsByFlow =
-      noteSkills || reportSkills
+      noteSkills || reportSkills || summarySkills
+        || periodReviewSkills
         ? {
             note: noteSkills ?? sceneSkills,
             report: reportSkills ?? sceneSkills,
+            summary: summarySkills,
+            periodReview: periodReviewSkills,
           }
         : null;
 

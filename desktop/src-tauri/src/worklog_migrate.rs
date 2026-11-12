@@ -277,6 +277,8 @@ pub fn migrate(library_root: &Path, work_root: &Path, now: f64) -> Result<Migrat
                 category: None,
                 tags: Vec::new(),
                 source: Some(source_label(&plan.week, entry.destination.as_deref())),
+                raw_input: None,
+                raw_source: None,
                 destination: entry
                     .destination
                     .clone()

@@ -21,6 +21,7 @@ import {
   type AttachmentInput,
 } from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
+import { buildDailySummaryMaterial } from "../dailySummary";
 import {
   buildKnowledgeContext,
   citationsFromHits,
@@ -35,8 +36,10 @@ import { currentEngineSubmitDecision } from "../engineAdmission";
 import {
   describeWorkIntent,
   detectWorkIntent,
+  detectPeriodReviewTarget,
   findDatePhrase,
   todayDateKey,
+  type PeriodReviewTarget,
   type WorkIntent,
 } from "../workIntent";
 import {
@@ -74,6 +77,7 @@ import { ModelPicker } from "./ModelPicker";
 import { TurnRail } from "./TurnRail";
 import { MarkdownText } from "./MarkdownText";
 import { QuestionCard } from "./QuestionCard";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusToast, type StatusToastMessage, type StatusToastTone } from "./StatusToast";
 import {
   addUnknownChunk,
@@ -132,6 +136,8 @@ export interface ChatPreset {
   skillsByFlow?: {
     note?: Array<{ id: string; content: string }> | null;
     report?: Array<{ id: string; content: string }> | null;
+    summary?: Array<{ id: string; content: string }> | null;
+    periodReview?: Array<{ id: string; content: string }> | null;
   } | null;
 }
 
@@ -896,6 +902,36 @@ export function HomeChat({
   >(new Map());
   /** 随手记这一轮的流式原文（按任务号），供终态判定用；终态处理完即清。 */
   const noteRawRef = useRef<Map<string, string>>(new Map());
+  /**
+   * 当日摘要这一轮的写入上下文（OD-WR-503）。
+   *
+   * 模型返回正文后，界面交宿主校验落盘；按任务号存，终态处理一次即清。
+   */
+  const summaryPendingRef = useRef<
+    Map<string, { date: string; recordCount: number; done: boolean }>
+  >(new Map());
+  /** 当日摘要这一轮的流式原文，供结果回读失败时兜底校验。 */
+  const summaryRawRef = useRef<Map<string, string>>(new Map());
+  /** 周期复盘这一轮的写入上下文（OD-WR-505）。 */
+  const periodPendingRef = useRef<
+    Map<
+      string,
+      { target: PeriodReviewTarget; recordCount: number; taskCount: number; done: boolean }
+    >
+  >(new Map());
+  /** 周期复盘这一轮的流式原文，供结果回读失败时兜底校验。 */
+  const periodRawRef = useRef<Map<string, string>>(new Map());
+  /** 重新生成摘要前的确认（照应用内 ConfirmDialog，不用 window.confirm）。 */
+  const [summaryConfirm, setSummaryConfirm] = useState<{
+    text: string;
+    picked: AttachmentInput[];
+  } | null>(null);
+  /** 重新生成周期复盘草稿前的确认；已确认复盘在提交前直接拒绝。 */
+  const [periodConfirm, setPeriodConfirm] = useState<{
+    text: string;
+    picked: AttachmentInput[];
+    target: PeriodReviewTarget;
+  } | null>(null);
 
   /**
    * 宿主用的时区偏移（分钟）。日期识别必须与宿主同一口径：宿主按设置里的
@@ -924,6 +960,10 @@ export function HomeChat({
     setSkillHint(null);
     // 换会话后，上一轮还没执行的判定不再适用：丢掉，免得旧索引落到新对话里。
     notePendingRef.current.clear();
+    summaryPendingRef.current.clear();
+    summaryRawRef.current.clear();
+    periodPendingRef.current.clear();
+    periodRawRef.current.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadKey]);
 
@@ -970,7 +1010,12 @@ export function HomeChat({
     // OD-ARCH-108：场景级绑定可能为空，但按流程拆的绑定仍然有效
     // （工作记录只配了 weekly-note / weekly-report 时就是这种情况）。
     const anyFlow = preset.skillsByFlow
-      ? Boolean(preset.skillsByFlow.note?.length || preset.skillsByFlow.report?.length)
+      ? Boolean(
+          preset.skillsByFlow.note?.length ||
+            preset.skillsByFlow.report?.length ||
+            preset.skillsByFlow.summary?.length ||
+            preset.skillsByFlow.periodReview?.length,
+        )
       : false;
     if (preset.skills !== null || anyFlow) return;
     const key = threadKey + ":" + preset.key;
@@ -1468,6 +1513,18 @@ export function HomeChat({
           (noteRawRef.current.get(event.omni_task_id) ?? "") + delta,
         );
       }
+      if (summaryPendingRef.current.has(event.omni_task_id)) {
+        summaryRawRef.current.set(
+          event.omni_task_id,
+          (summaryRawRef.current.get(event.omni_task_id) ?? "") + delta,
+        );
+      }
+      if (periodPendingRef.current.has(event.omni_task_id)) {
+        periodRawRef.current.set(
+          event.omni_task_id,
+          (periodRawRef.current.get(event.omni_task_id) ?? "") + delta,
+        );
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.role === "assistant" && m.taskId === event.omni_task_id
@@ -1703,6 +1760,108 @@ export function HomeChat({
   }, []);
 
   /**
+   * 当日摘要终态落盘（OD-WR-503）。
+   *
+   * 模型只交正文；五段结构、引用编号是否真实存在、空记录是否如实说明，
+   * 全部由宿主校验。校验不过时宿主拒绝落盘，界面把原因原样显示。
+   */
+  const executeDailySummary = useCallback(
+    async (ctx: { date: string; recordCount: number }, content: string): Promise<string | null> => {
+      const text = content.trim();
+      if (!text) {
+        return "模型没有返回摘要正文，本次未生成当日摘要。";
+      }
+      try {
+        const receipt = await shell.worklogDailySummaryGenerate(ctx.date, text);
+        const parts = [
+          "已写入当日摘要（" + receipt.date + "）：引用 " + receipt.record_ids.length + " 条记录。",
+          receipt.path,
+        ];
+        if (receipt.backup) {
+          parts.push("旧版已备份到 " + receipt.backup + "。");
+        }
+        if (ctx.recordCount === 0) {
+          parts.push("当天没有正式记录，摘要按「当日无记录」落盘。");
+        }
+        return parts.join("\n");
+      } catch (e) {
+        return "当日摘要没有写入：" + String(e) + "。已保留原有摘要（如有）。";
+      }
+    },
+    [],
+  );
+
+  const settleDailySummary = useCallback(
+    async (taskId: string, content: string): Promise<string | null> => {
+      const ctx = summaryPendingRef.current.get(taskId);
+      if (!ctx || ctx.done) return null;
+      ctx.done = true;
+      try {
+        const raw = content.trim() ? content : (summaryRawRef.current.get(taskId) ?? "");
+        return await executeDailySummary(ctx, raw);
+      } finally {
+        summaryPendingRef.current.delete(taskId);
+        summaryRawRef.current.delete(taskId);
+      }
+    },
+    [executeDailySummary],
+  );
+
+  /**
+   * 周期复盘终态落盘（OD-WR-505）。
+   *
+   * 模型只交正文；标题深度、引用编号真实性与空周期声明由宿主校验。已确认的
+   * 复盘在宿主侧拒绝覆盖，这里把原因原样带回。
+   */
+  const executePeriodReview = useCallback(
+    async (
+      ctx: { target: PeriodReviewTarget; recordCount: number; taskCount: number },
+      content: string,
+    ): Promise<string | null> => {
+      const text = content.trim();
+      if (!text) return "模型没有返回复盘正文，本次未生成周期复盘。";
+      try {
+        const receipt = await shell.worklogPeriodReviewGenerate(
+          ctx.target.period,
+          ctx.target.start,
+          ctx.target.end,
+          text,
+        );
+        const parts = [
+          "已写入周期复盘草稿（" + receipt.period + " " + receipt.range + "）：引用 " +
+            receipt.record_ids.length + " 条记录、" + receipt.task_ids.length + " 个任务。",
+          receipt.path,
+          "当前状态为草稿；确认后可归档。",
+        ];
+        if (receipt.backup) parts.push("旧草稿已备份到 " + receipt.backup + "。");
+        if (ctx.recordCount === 0 && ctx.taskCount === 0) {
+          parts.push("本周期没有记录或任务，复盘按「本周期无记录」落盘。");
+        }
+        return parts.join("\n");
+      } catch (e) {
+        return "周期复盘没有写入：" + String(e) + "。已保留原有文件（如有）。";
+      }
+    },
+    [],
+  );
+
+  const settlePeriodReview = useCallback(
+    async (taskId: string, content: string): Promise<string | null> => {
+      const ctx = periodPendingRef.current.get(taskId);
+      if (!ctx || ctx.done) return null;
+      ctx.done = true;
+      try {
+        const raw = content.trim() ? content : (periodRawRef.current.get(taskId) ?? "");
+        return await executePeriodReview(ctx, raw);
+      } finally {
+        periodPendingRef.current.delete(taskId);
+        periodRawRef.current.delete(taskId);
+      }
+    },
+    [executePeriodReview],
+  );
+
+  /**
    * 终态后按任务号取回这一轮的上下文，执行判定（OD-ARCH-104）。
    *
    * 每个任务只执行一次：\`done\` 置位并删除上下文后，「重新查询」再跑一遍终态
@@ -1894,6 +2053,32 @@ export function HomeChat({
                 ),
               );
             }
+            const summaryPending = summaryPendingRef.current.get(taskId);
+            if (summaryPending && !summaryPending.done) {
+              summaryPending.done = true;
+              summaryPendingRef.current.delete(taskId);
+              summaryRawRef.current.delete(taskId);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? { ...m, notice: "本轮已取消，没有生成当日摘要。" }
+                    : m,
+                ),
+              );
+            }
+            const periodPending = periodPendingRef.current.get(taskId);
+            if (periodPending && !periodPending.done) {
+              periodPending.done = true;
+              periodPendingRef.current.delete(taskId);
+              periodRawRef.current.delete(taskId);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? { ...m, notice: "本轮已取消，没有生成周期复盘。" }
+                    : m,
+                ),
+              );
+            }
           } else {
             // 回读失败时消息里可能还留着流式收到的判定块 JSON：它会被「复制」
             // 和下一轮上下文带出去。判定执行前先就地剥掉，只留给人看的那段。
@@ -1912,6 +2097,54 @@ export function HomeChat({
                 ...prev,
                 { id: nextId(), role: "assistant", local: true, text: outcome },
               ]);
+            }
+            // 当日摘要只在任务成功时落盘：失败的半截输出不写入摘要文件。
+            const summaryPending = summaryPendingRef.current.get(taskId);
+            if (summaryPending && !summaryPending.done) {
+              if (status.status === "succeeded") {
+                const summaryOutcome = await settleDailySummary(taskId, finalText ?? "");
+                if (summaryOutcome) {
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: nextId(), role: "assistant", local: true, text: summaryOutcome },
+                  ]);
+                }
+              } else {
+                summaryPending.done = true;
+                summaryPendingRef.current.delete(taskId);
+                summaryRawRef.current.delete(taskId);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.taskId === taskId
+                      ? { ...m, notice: "本轮未成功完成，没有生成当日摘要。" }
+                      : m,
+                  ),
+                );
+              }
+            }
+            // 周期复盘同样只在任务成功时落盘；失败的半截输出不写入。
+            const periodPending = periodPendingRef.current.get(taskId);
+            if (periodPending && !periodPending.done) {
+              if (status.status === "succeeded") {
+                const periodOutcome = await settlePeriodReview(taskId, finalText ?? "");
+                if (periodOutcome) {
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: nextId(), role: "assistant", local: true, text: periodOutcome },
+                  ]);
+                }
+              } else {
+                periodPending.done = true;
+                periodPendingRef.current.delete(taskId);
+                periodRawRef.current.delete(taskId);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.taskId === taskId
+                      ? { ...m, notice: "本轮未成功完成，没有生成周期复盘。" }
+                      : m,
+                  ),
+                );
+              }
             }
           }
           // OD-ARCH-069：超时（unknown）必须说清楚等了多少秒、没有自动重试，
@@ -1935,6 +2168,19 @@ export function HomeChat({
                 prev.map((m) =>
                   m.taskId === taskId
                     ? { ...m, notice: note, retryable: true, toolNote: null }
+                    : m,
+                ),
+              );
+            }
+            const periodPending = periodPendingRef.current.get(taskId);
+            if (periodPending && !periodPending.done) {
+              periodPending.done = true;
+              periodPendingRef.current.delete(taskId);
+              periodRawRef.current.delete(taskId);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? { ...m, notice: "本轮未成功完成，没有生成周期复盘。" }
                     : m,
                 ),
               );
@@ -1966,7 +2212,7 @@ export function HomeChat({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [activeTaskId, loadResult, settleNote]);
+  }, [activeTaskId, loadResult, settleNote, settleDailySummary]);
 
   // 只在切换线程时落到底部；生成中新增 token 不再强制滚动，保证用户能自由回看历史。
   useEffect(() => {
@@ -2065,7 +2311,11 @@ export function HomeChat({
   }, [starting]);
 
   const submitText = useCallback(
-    async (raw: string, picked: AttachmentInput[] = []): Promise<boolean> => {
+    async (
+      raw: string,
+      picked: AttachmentInput[] = [],
+      skipSummaryConfirm = false,
+    ): Promise<boolean> => {
       const text = raw.trim();
       if (!text || busy) return false;
       const decision = currentEngineSubmitDecision(text);
@@ -2076,6 +2326,84 @@ export function HomeChat({
           { id: nextId(), role: "assistant", text: "", error: decision.reason },
         ]);
         return false;
+      }
+      // OD-WR-503：已有当日摘要时先确认再重新生成；宿主会备份旧版，但确认这一步
+      // 仍由界面负责。这里不调模型、不写文件。
+      if (
+        preset?.key === "weekly" &&
+        detectWorkIntent(text) === "daily-summary" &&
+        !skipSummaryConfirm
+      ) {
+        try {
+          const existing = await shell.worklogDailySummaryRead(
+            todayDateKey(new Date(), tzOffsetRef.current),
+          );
+          if (existing.exists) {
+            setSummaryConfirm({ text, picked });
+            return false;
+          }
+        } catch (e) {
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: "user", text },
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "",
+              error:
+                "读取已有当日摘要失败：" + String(e) +
+                "。为避免覆盖原文件，本次没有生成。",
+            },
+          ]);
+          return false;
+        }
+      }
+      // OD-WR-505：周期复盘已有文件时，草稿先确认再重新生成；已确认直接拒绝，
+      // 不把这一轮送进模型，避免用户以为覆盖成功。
+      const reviewTarget =
+        preset?.key === "weekly" && detectWorkIntent(text) === "period-review"
+          ? detectPeriodReviewTarget(text, new Date(), tzOffsetRef.current)
+          : null;
+      if (reviewTarget && !skipSummaryConfirm) {
+        try {
+          const existing = await shell.worklogPeriodReviewRead(
+            reviewTarget.period,
+            reviewTarget.start,
+            reviewTarget.end,
+          );
+          if (existing.exists && existing.status === "已确认") {
+            setMessages((prev) => [
+              ...prev,
+              { id: nextId(), role: "user", text },
+              {
+                id: nextId(),
+                role: "assistant",
+                text: "",
+                error:
+                  "该周期复盘已确认，不能重新生成覆盖。" +
+                  "如确需更新，请换一个周期或先人工保留确认版。",
+              },
+            ]);
+            return false;
+          }
+          if (existing.exists && existing.status === "草稿") {
+            setPeriodConfirm({ text, picked, target: reviewTarget });
+            return false;
+          }
+        } catch (e) {
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: "user", text },
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "",
+              error: "读取已有周期复盘失败：" + String(e) +
+                "。为避免覆盖原文件，本次没有生成。",
+            },
+          ]);
+          return false;
+        }
       }
       resetCancelState();
       setMaskerWarning(null);
@@ -2101,6 +2429,21 @@ export function HomeChat({
         week: string;
         today: string;
         index: WorklogIndex;
+      } | null = null;
+      /** 当日摘要材料：当天正式记录（排除草稿）的全文索引。 */
+      let summaryContext: {
+        date: string;
+        material: string;
+        recordCount: number;
+      } | null = null;
+      /** 周期复盘材料（OD-WR-505）：记录、任务统计与既往复盘标题都由宿主汇集。 */
+      let periodContext: {
+        target: PeriodReviewTarget;
+        material: string;
+        recordCount: number;
+        taskCount: number;
+        taskStats: { completed: number; uncompleted: number; overdue: number };
+        priorReviews: string[];
       } | null = null;
       try {
         // note = 模型判这句怎么记，宿主校验后才落盘；
@@ -2131,6 +2474,56 @@ export function HomeChat({
           } catch (e) {
             // 读不到就说读不到：不拿空材料冒充「本周没做事」。
             worklogNotice = "读取当周工作记录失败：" + String(e) + "；本次周报不会包含本周记录。";
+          }
+        } else if (intent === "daily-summary") {
+          const date = todayDateKey(new Date(), tzOffsetRef.current);
+          try {
+            const listing = await shell.workRecordList({
+              from_date: date,
+              to_date: date,
+              draft: false,
+            });
+            const material = buildDailySummaryMaterial(date, listing.items);
+            summaryContext = {
+              date,
+              material: material.material,
+              recordCount: material.recordCount,
+            };
+            worklogNotice =
+              material.recordCount === 0
+                ? date + " 没有正式记录；摘要只能如实说明。"
+                : "已带上 " + date + " 的 " + material.recordCount + " 条正式记录（草稿已排除）。";
+          } catch (e) {
+            throw new Error("读取当天正式记录失败：" + String(e) + "；本次未生成当日摘要。");
+          }
+        } else if (intent === "period-review") {
+          if (!reviewTarget) {
+            throw new Error("没有识别出复盘周期，本次未生成周期复盘。");
+          }
+          try {
+            const collected = await shell.worklogPeriodReviewCollect(
+              reviewTarget.period,
+              reviewTarget.start,
+              reviewTarget.end,
+            );
+            periodContext = {
+              target: reviewTarget,
+              material: collected.material,
+              recordCount: collected.record_count,
+              taskCount: collected.task_count,
+              taskStats: collected.task_stats,
+              priorReviews: collected.prior_reviews,
+            };
+            worklogNotice =
+              collected.record_count === 0 && collected.task_count === 0
+                ? reviewTarget.label + "没有正式记录或任务；复盘只能如实说明。"
+                : "已带上 " + reviewTarget.label + " 的 " + collected.record_count +
+                  " 条正式记录与 " + collected.task_count + " 个任务（已完成 " +
+                  collected.task_stats.completed + " / 未完成 " +
+                  collected.task_stats.uncompleted + " / 逾期 " +
+                  collected.task_stats.overdue + "）。";
+          } catch (e) {
+            throw new Error("读取周期复盘材料失败：" + String(e) + "；本次未生成周期复盘。");
           }
         }
         let dir = workspaceDir;
@@ -2209,6 +2602,22 @@ export function HomeChat({
           continuation,
           // 意图来自本轮输入（OD-ARCH-089 S1）；其它场景恒为完整组装。
           mode: intent ?? "report",
+          // 当日摘要的材料与输出契约（OD-WR-503）。
+          dailySummary: summaryContext,
+          // 周期复盘的宿主材料与按周期深度的输出契约（OD-WR-505）。
+          periodReview: periodContext
+            ? {
+                period: periodContext.target.period,
+                label: periodContext.target.label,
+                start: periodContext.target.start,
+                end: periodContext.target.end,
+                material: periodContext.material,
+                recordCount: periodContext.recordCount,
+                taskCount: periodContext.taskCount,
+                taskStats: periodContext.taskStats,
+                priorReviews: periodContext.priorReviews,
+              }
+            : null,
           // 周报模式带上当周记录（OD-ARCH-089 S2）；随手记带索引（OD-ARCH-104）。
           worklog,
           noteIndex: noteContext
@@ -2315,6 +2724,21 @@ export function HomeChat({
             done: false,
           });
         }
+        if (summaryContext) {
+          summaryPendingRef.current.set(receipt.omni_task_id, {
+            date: summaryContext.date,
+            recordCount: summaryContext.recordCount,
+            done: false,
+          });
+        }
+        if (periodContext) {
+          periodPendingRef.current.set(receipt.omni_task_id, {
+            target: periodContext.target,
+            recordCount: periodContext.recordCount,
+            taskCount: periodContext.taskCount,
+            done: false,
+          });
+        }
         setActiveTaskId(receipt.omni_task_id);
         ownInflightRef.current = receipt.omni_task_id;
         inflightCbRef.current?.(receipt.omni_task_id);
@@ -2333,7 +2757,13 @@ export function HomeChat({
             // OD-ARCH-104：模型这一步没跑起来时什么都没写，直说即可，不要让用户
             // 以为已经记下来了。
             error:
-              (intent === "note" ? "这句还没有写入工作记录。" : "") + String(e),
+              (intent === "note"
+                ? "这句还没有写入工作记录。"
+                : intent === "daily-summary"
+                  ? "本次未生成当日摘要。"
+                  : intent === "period-review"
+                    ? "本次未生成周期复盘。"
+                  : "") + String(e),
           },
         ]);
         // 提交被拒绝常常意味着权限/准入发生了变化：重新读一遍宿主事实。
@@ -3628,6 +4058,34 @@ export function HomeChat({
         aria-hidden="true"
         className="flex-shrink-0 transition-[flex-grow] duration-200 ease-out"
         style={{ flexGrow: empty ? 1 : 0, flexBasis: 0 }}
+      />
+
+      <ConfirmDialog
+        open={summaryConfirm !== null}
+        title="重新生成当日摘要"
+        description="当天已经有一份摘要。继续生成会先用旧版备份为 .bak，再写入新版；旧备份不会删除。"
+        confirmLabel="重新生成"
+        onConfirm={() => {
+          const request = summaryConfirm;
+          setSummaryConfirm(null);
+          if (request) void submitText(request.text, request.picked, true);
+        }}
+        onCancel={() => setSummaryConfirm(null)}
+        testId="daily-summary-regenerate-dialog"
+      />
+
+      <ConfirmDialog
+        open={periodConfirm !== null}
+        title="重新生成周期复盘"
+        description="该周期已有一份复盘草稿。继续生成会先把旧草稿备份为 .bak，再写入新的草稿；已确认的复盘不会被覆盖。"
+        confirmLabel="重新生成"
+        onConfirm={() => {
+          const request = periodConfirm;
+          setPeriodConfirm(null);
+          if (request) void submitText(request.text, request.picked, true);
+        }}
+        onCancel={() => setPeriodConfirm(null)}
+        testId="period-review-regenerate-dialog"
       />
 
       {citationPreview ? (

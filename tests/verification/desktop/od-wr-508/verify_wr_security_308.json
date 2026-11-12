@@ -1,0 +1,74 @@
+{
+  "plan": "OD-WR-308",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 13,
+  "failed": [],
+  "checks": [
+    {
+      "name": "record_write_gate",
+      "ok": true,
+      "detail": "工作记录写入前统一过红线与掩码"
+    },
+    {
+      "name": "task_write_gate",
+      "ok": true,
+      "detail": "任务标题/进展/备注/关联进展都有闸门"
+    },
+    {
+      "name": "analyze_prepare_gate",
+      "ok": true,
+      "detail": "送模型前对记录标题与正文再过一次闸门"
+    },
+    {
+      "name": "engine_submit_gate",
+      "ok": true,
+      "detail": "引擎提交唯一汇合点仍有红线与掩码"
+    },
+    {
+      "name": "engine_datamasker_wired",
+      "ok": true,
+      "detail": "引擎提交链路已接 DataMasker（既有 Task 4）"
+    },
+    {
+      "name": "ai_has_no_write_channel",
+      "ok": true,
+      "detail": "task_extract.py 只组装提示词，无文件读写"
+    },
+    {
+      "name": "candidate_staging_host_only",
+      "ok": true,
+      "detail": "候选只由宿主校验后暂存"
+    },
+    {
+      "name": "endpoint_default_closed",
+      "ok": true,
+      "detail": "三类端点权限默认关闭且有单测"
+    },
+    {
+      "name": "red_line_error_no_echo",
+      "ok": true,
+      "detail": "红线拒绝只报类别与数量，不回显原文"
+    },
+    {
+      "name": "route_admission_wired",
+      "ok": true,
+      "detail": "端点准入与权限判定仍在提交前"
+    },
+    {
+      "name": "task_summary_capped",
+      "ok": true,
+      "detail": "注入未完成任务摘要有上限"
+    },
+    {
+      "name": "mask_receipts_count_only",
+      "ok": true,
+      "detail": "回执只回传掩码类别与数量"
+    },
+    {
+      "name": "no_real_material_in_new_modules",
+      "ok": true,
+      "detail": "新模块与测试不引用真实材料目录"
+    }
+  ]
+}

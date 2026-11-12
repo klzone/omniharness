@@ -1,0 +1,168 @@
+{
+  "plan": "OD-ARCH-100",
+  "passed": true,
+  "total": 32,
+  "failed": [],
+  "checks": [
+    {
+      "name": "s01_five_chips",
+      "ok": true,
+      "detail": "找到 5 个 chip 字段"
+    },
+    {
+      "name": "s01_chip_has_no_background",
+      "ok": true,
+      "detail": "chip 只剩文字色，没有任何背景色类"
+    },
+    {
+      "name": "s01_icon_full_size",
+      "ok": true,
+      "detail": "图标本体 56px"
+    },
+    {
+      "name": "s01_no_rounded_seat",
+      "ok": true,
+      "detail": "图标不再套圆角色块与投影"
+    },
+    {
+      "name": "s01_column_width_kept",
+      "ok": true,
+      "detail": "列宽仍为 56px"
+    },
+    {
+      "name": "s01_writing_metric_untouched",
+      "ok": true,
+      "detail": "写作页指标卡未改动"
+    },
+    {
+      "name": "s02_packages_declared",
+      "ok": true,
+      "detail": "Inter 与 IBM Plex Mono 进依赖"
+    },
+    {
+      "name": "s02_theme_uses_inter",
+      "ok": true,
+      "detail": "所有 sans 令牌改用 Inter，旧字族清空"
+    },
+    {
+      "name": "s02_theme_uses_plex_mono",
+      "ok": true,
+      "detail": "等宽令牌改为 IBM Plex Mono"
+    },
+    {
+      "name": "s02_styles_mono_swapped",
+      "ok": true,
+      "detail": ".mono 同步换字族"
+    },
+    {
+      "name": "s02_fonts_self_hosted",
+      "ok": true,
+      "detail": "字体来自本地包，运行时零外链"
+    },
+    {
+      "name": "s02_old_fonts_unimported",
+      "ok": true,
+      "detail": "不再引入旧字族文件"
+    },
+    {
+      "name": "s02_old_font_packages_removed",
+      "ok": true,
+      "detail": "旧字族依赖已从 package.json 移除，不再随包分发"
+    },
+    {
+      "name": "s02_markdown_code_uses_plex_mono",
+      "ok": true,
+      "detail": "正文代码块的内联等宽字体同步换族"
+    },
+    {
+      "name": "s02_cjk_fallback_kept",
+      "ok": true,
+      "detail": "中文仍走系统字体回退栈"
+    },
+    {
+      "name": "s03_round_button",
+      "ok": true,
+      "detail": "去向开关为圆形"
+    },
+    {
+      "name": "s03_no_visible_label",
+      "ok": true,
+      "detail": "不再有可见的「进周报」文字"
+    },
+    {
+      "name": "s03_tooltip_kept",
+      "ok": true,
+      "detail": "悬停提示保留两种状态的说明"
+    },
+    {
+      "name": "s03_accessibility_kept",
+      "ok": true,
+      "detail": "角色、勾选态、标签、焦点环都还在"
+    },
+    {
+      "name": "s03_failure_still_inline",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "s03_missing_destination_static",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "s04_no_search_input",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "s04_no_query_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "s04_no_text_filter",
+      "ok": true,
+      "detail": "不再按输入文本过滤"
+    },
+    {
+      "name": "s04_toolbar_single_row",
+      "ok": true,
+      "detail": "工具栏合并为一行"
+    },
+    {
+      "name": "s04_keeps_range_view_subdirs",
+      "ok": true,
+      "detail": "卡片/列表、范围与含子目录保留"
+    },
+    {
+      "name": "s04_page_resets_on_range",
+      "ok": true,
+      "detail": "翻页状态只随范围重置"
+    },
+    {
+      "name": "s04_all_reuse_sites_intact",
+      "ok": true,
+      "detail": "四个复用点仍在"
+    },
+    {
+      "name": "s05_text_gone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "s05_prop_gone",
+      "ok": true,
+      "detail": "prop 与默认值都已移除"
+    },
+    {
+      "name": "s05_caller_cleaned",
+      "ok": true,
+      "detail": "调用点不再传该 prop"
+    },
+    {
+      "name": "s05_archive_error_kept",
+      "ok": true,
+      "detail": "真正读失败的原因仍如实显示"
+    }
+  ]
+}

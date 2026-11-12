@@ -97,6 +97,8 @@ const DISCIPLINE_SKILLS: &[&str] = &[
     "material-writing",
     "memory-agent",
     "memory-report",
+    "daily-summary",
+    "period-review",
     "project-agent",
 ];
 
@@ -104,7 +106,7 @@ const DISCIPLINE_SKILLS: &[&str] = &[
 pub static PROFILES: &[AssetProfile] = &[AssetProfile {
     name: "discipline",
     label: "纪检专业",
-    summary: "工作记录 / 文案写作 / 项目跟踪三个业务场景，含行业规则、8 个 Skill 与办公插件。",
+    summary: "工作记录 / 文案写作 / 项目跟踪三个业务场景，含行业规则、10 个 Skill 与办公插件。",
     manifest: include_str!("../../../samples/profiles/discipline.profile.json"),
     patch: include_str!("../../../samples/profiles/discipline.profile.patch.yml"),
     decl: Some(include_str!("../../../samples/profiles/discipline.yml")),
@@ -764,7 +766,7 @@ fn repo_skill_files(src: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
 /// Skill 正文的三种来源（OD-ARCH-131）。
 ///
 /// 自建 Profile 可以把 Skill 放进自己的目录，此时它是**这个 Profile 的定制**，
-/// 优先级最高；内置 8 个 Skill 仍按「仓库优先、内嵌兜底」取，保持出厂行为不变。
+/// 优先级最高；内置 Skill 仍按「仓库优先、内嵌兜底」取，保持出厂行为不变。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkillSource {
     /// `<应用数据根>/profiles/<名字>/skills/<skill名>/`

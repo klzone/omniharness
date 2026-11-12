@@ -1,0 +1,175 @@
+{
+  "plan": "OD-WR-507",
+  "evidence_level": "静态源码检查（运行证据见同目录 README 与命令输出）",
+  "passed": true,
+  "total": 33,
+  "passed_count": 33,
+  "failed": [],
+  "cases": [
+    {
+      "name": "record_button_present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_button_text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_button_style_consistent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_prompt_prefix",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_prompt_object_id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_prompt_title",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_prompt_source_scope",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_prompt_read_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_scene_key_weekly",
+      "ok": true,
+      "detail": "weekly"
+    },
+    {
+      "name": "record_navigates_home",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_no_autosend",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "record_no_data_write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_button_present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_button_text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_button_style_consistent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_prompt_prefix",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_prompt_range",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_prompt_doc_id",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_prompt_source_scope",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_prompt_read_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_scene_key_weekly",
+      "ok": true,
+      "detail": "weekly"
+    },
+    {
+      "name": "review_navigates_home",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_no_autosend",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_navigate_prop",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review_navigate_wired",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "scene_home_not_thread_tag",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "scene_weekly_is_work_record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "request_new_thread_prompt_only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "request_new_thread_no_autosend",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "home_consumes_as_draft",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "design_comment_record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "design_comment_review",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "design_comment_reason",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

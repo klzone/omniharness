@@ -1,0 +1,69 @@
+{
+  "plan": "OD-WR-311",
+  "evidence_level": "静态源码检查",
+  "passed": true,
+  "total": 12,
+  "failed": [],
+  "checks": [
+    {
+      "name": "structured_week_view_exists",
+      "ok": true,
+      "detail": "宿主提供结构化周视图"
+    },
+    {
+      "name": "week_view_ipc",
+      "ok": true,
+      "detail": "结构化周视图 IPC 已注册"
+    },
+    {
+      "name": "api_and_types",
+      "ok": true,
+      "detail": "前端客户端与类型齐全"
+    },
+    {
+      "name": "scene_uses_records",
+      "ok": true,
+      "detail": "ScenePage 从记录条目构造时间线数据"
+    },
+    {
+      "name": "quadrants_use_records",
+      "ok": true,
+      "detail": "记录四象限占位已由任务象限替换；进周报统计仍消费同一份解析结果"
+    },
+    {
+      "name": "timeline_accepts_parsed",
+      "ok": true,
+      "detail": "时间线优先使用结构化条目"
+    },
+    {
+      "name": "parse_week_view_helper",
+      "ok": true,
+      "detail": "结构化条目可无损转成时间线结构"
+    },
+    {
+      "name": "report_reads_records",
+      "ok": true,
+      "detail": "周报读取走记录库渲染，不再依赖周文件"
+    },
+    {
+      "name": "records_priority_with_legacy_fallback",
+      "ok": true,
+      "detail": "记录库优先，旧周文件仅作回退"
+    },
+    {
+      "name": "archive_includes_record_weeks",
+      "ok": true,
+      "detail": "归档周列表合并记录库周"
+    },
+    {
+      "name": "no_direct_week_file_dependency",
+      "ok": true,
+      "detail": "界面不再直接依赖周文件路径"
+    },
+    {
+      "name": "empty_state_preserved",
+      "ok": true,
+      "detail": "无记录时仍如实显示空态"
+    }
+  ]
+}
