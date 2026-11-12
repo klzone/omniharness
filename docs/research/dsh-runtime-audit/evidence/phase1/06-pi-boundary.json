@@ -1,0 +1,224 @@
+{
+  "step_id": "DSH-P1-06",
+  "generated_at": "2026-11-12T07:27:00Z",
+  "evidence_levels": [
+    "F",
+    "D",
+    "U"
+  ],
+  "facts": {
+    "pi_ai_is_model_sdk": true,
+    "pi_agent_core_candidate": true,
+    "pi_coding_agent_candidate": true,
+    "local_pi_runtime_present": false,
+    "dsh_pi_ai_dependency_version": "1.4.0",
+    "exact_pi_runtime_version": "1.4.0",
+    "exact_pi_runtime_version_status": "remote_manifest_verified_not_installed",
+    "exact_pi_runtime_version_basis": "Official tag v1.4.0 at commit 4a080252f06caf63a525d7873c5d94d3c23887e0; packages/agent/package.json at that tag reports @earendil-works/pi-agent-core 1.4.0.",
+    "installation_performed": false,
+    "model_calls_made": false,
+    "official_repo": "https://github.com/earendil-works/pi",
+    "three_layers": [
+      {
+        "layer": "model_sdk",
+        "package": "@earendil-works/pi-ai",
+        "purpose": "Unified multi-provider LLM API with model discovery and provider configuration.",
+        "local_status": "installed as a DSH dependency at 1.4.0",
+        "is_pi_agent_runtime": false
+      },
+      {
+        "layer": "agent_runtime",
+        "package": "@earendil-works/pi-agent-core",
+        "purpose": "Agent runtime with tool calling and state management.",
+        "local_status": "not installed",
+        "is_pi_agent_runtime": true,
+        "phase3_candidate": true
+      },
+      {
+        "layer": "coding_agent_cli",
+        "package": "@earendil-works/pi-coding-agent",
+        "purpose": "Interactive coding agent CLI with read, bash, edit, write tools and session management.",
+        "local_status": "not installed",
+        "is_pi_agent_runtime": false,
+        "integration_shell_candidate": true
+      }
+    ],
+    "dsh_adapter_boundary": {
+      "package": "@deepseek-ai/dsh-llm-pi-ai",
+      "version": "0.2.1-rc.5",
+      "declared_pi_ai_range": "^1.1.0",
+      "resolved_pi_ai_version": "1.4.0",
+      "role": "DSH LLM seam adapter backed by pi-ai; not the Pi Agent Runtime and not a substitute for the agent loop comparison."
+    },
+    "local_availability": {
+      "command_pi_present": false,
+      "command_pi_agent_present": false,
+      "command_pi_coding_agent_present": false,
+      "command_pi_ai_present": false,
+      "global_npm_packages": [
+        "npm@11.20.0"
+      ],
+      "global_npm_root": "/Users/yvan/.nvm/versions/node/v26.13.0/lib/node_modules",
+      "pi_ai_bin_symlink_present": true,
+      "pi_ai_bin_path": "runtime/dsh-runtime/node_modules/.bin/pi-ai",
+      "pi_agent_core_dir_present": false,
+      "pi_coding_agent_dir_present": false,
+      "evidence": "PATH lookups exit 1; global npm list has only npm; local @earendil-works contains only pi-ai and pi-telemetry."
+    },
+    "remote_tags": {
+      "query_exit_code": 0,
+      "selected_candidate": {
+        "tag": "v1.4.0",
+        "commit": "4a080252f06caf63a525d7873c5d94d3c23887e0",
+        "package_versions": {
+          "@earendil-works/pi-ai": "1.4.0",
+          "@earendil-works/pi-agent-core": "1.4.0",
+          "@earendil-works/pi-coding-agent": "1.4.0"
+        }
+      },
+      "latest_observed_tag": {
+        "tag": "v1.5.2",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "selected": false,
+        "reason": "Not verified and newer than the pi-ai release DSH currently resolves; do not pin the latest tag without evidence."
+      }
+    },
+    "selection_rationale": [
+      "Pi has three distinct objects; only pi-agent-core is the agent runtime.",
+      "DSH's installed pi-ai is 1.4.0, so v1.4.0 is the coherent candidate for a like-for-like phase 3 comparison.",
+      "The tag and package manifests were verified remotely, but no Pi runtime is installed locally.",
+      "dsh-llm-pi-ai must not be used as a stand-in for Pi Agent Runtime."
+    ],
+    "phase3_preconditions": [
+      "Obtain explicit user approval before installing any Pi package.",
+      "Install into an isolated temporary directory outside the repository and outside user data roots.",
+      "Pin Pi to tag v1.4.0 / commit 4a080252f06caf63a525d7873c5d94d3c23887e0 unless the lead records a different verified version.",
+      "Do not call a model until endpoint, credential and data-use authorization are separately approved.",
+      "Use the same model, task, tool set and prompt capture for DSH and Pi; record exact tool schemas and system prompts.",
+      "Treat pi-coding-agent as an integration shell; compare agent behavior through pi-agent-core where possible."
+    ]
+  },
+  "commands": [
+    {
+      "cmd": "python3 -c \"... read dsh-llm-pi-ai package version and pi-ai range ...\"",
+      "exit_code": 0,
+      "purpose": "Read DSH adapter dependency declaration",
+      "observed": "0.2.1-rc.5 depends on @earendil-works/pi-ai ^1.1.0"
+    },
+    {
+      "cmd": "cat runtime/dsh-runtime/node_modules/@earendil-works/pi-ai/package.json",
+      "exit_code": 0,
+      "purpose": "Read installed pi-ai version and role",
+      "observed": "1.4.0; unified multi-provider LLM API; repository directory packages/ai"
+    },
+    {
+      "cmd": "command -v pi; command -v pi-agent; command -v pi-coding-agent",
+      "exit_code": 1,
+      "purpose": "Check PATH for Pi runtimes",
+      "observed": "no output"
+    },
+    {
+      "cmd": "command -v pi",
+      "exit_code": 1,
+      "purpose": "Recheck pi executable",
+      "observed": "absent"
+    },
+    {
+      "cmd": "command -v pi-ai",
+      "exit_code": 1,
+      "purpose": "Check whether pi-ai CLI is on PATH",
+      "observed": "absent on PATH, though a local package bin symlink exists"
+    },
+    {
+      "cmd": "npm ls -g --depth=0",
+      "exit_code": 0,
+      "purpose": "List global npm packages",
+      "observed": "only npm@11.20.0"
+    },
+    {
+      "cmd": "npm root -g",
+      "exit_code": 0,
+      "purpose": "Record global npm root",
+      "observed": "/Users/yvan/.nvm/versions/node/v26.13.0/lib/node_modules"
+    },
+    {
+      "cmd": "find runtime/dsh-runtime/node_modules/@earendil-works -maxdepth 2 -type d",
+      "exit_code": 0,
+      "purpose": "Inventory local Pi packages",
+      "observed": "pi-ai and pi-telemetry only"
+    },
+    {
+      "cmd": "test -d runtime/dsh-runtime/node_modules/@earendil-works/pi-agent-core",
+      "exit_code": 1,
+      "purpose": "Check for local agent runtime",
+      "observed": "absent"
+    },
+    {
+      "cmd": "test -d runtime/dsh-runtime/node_modules/@earendil-works/pi-coding-agent",
+      "exit_code": 1,
+      "purpose": "Check for local coding agent",
+      "observed": "absent"
+    },
+    {
+      "cmd": "ls -l runtime/dsh-runtime/node_modules/.bin/pi-ai",
+      "exit_code": 0,
+      "purpose": "Confirm SDK CLI symlink only",
+      "observed": "symlink to @earendil-works/pi-ai/dist/cli.js"
+    },
+    {
+      "cmd": "git ls-remote --tags https://github.com/earendil-works/pi.git",
+      "exit_code": 0,
+      "purpose": "List official tags read-only",
+      "observed": "tag list includes v1.4.0 and v1.5.2"
+    },
+    {
+      "cmd": "git ls-remote https://github.com/earendil-works/pi.git refs/tags/v1.4.0 refs/tags/v1.5.2",
+      "exit_code": 0,
+      "purpose": "Resolve candidate tags to commits",
+      "observed": "v1.4.0 -> 4a08025...; v1.5.2 -> b4afddd..."
+    },
+    {
+      "cmd": "curl -fsSL https://raw.githubusercontent.com/earendil-works/pi/main/README.md",
+      "exit_code": 0,
+      "purpose": "Read official layer description",
+      "observed": "pi-ai = unified LLM API; pi-agent-core = agent runtime; pi-coding-agent = interactive coding CLI"
+    },
+    {
+      "cmd": "curl -fsSL https://raw.githubusercontent.com/earendil-works/pi/v1.4.0/packages/agent/package.json",
+      "exit_code": 0,
+      "purpose": "Verify agent-core version at candidate tag",
+      "observed": "@earendil-works/pi-agent-core 1.4.0"
+    },
+    {
+      "cmd": "curl -fsSL https://raw.githubusercontent.com/earendil-works/pi/v1.4.0/packages/coding-agent/package.json",
+      "exit_code": 0,
+      "purpose": "Verify coding-agent version at candidate tag",
+      "observed": "@earendil-works/pi-coding-agent 1.4.0"
+    },
+    {
+      "cmd": "curl -fsSL https://raw.githubusercontent.com/earendil-works/pi/v1.4.0/packages/ai/package.json",
+      "exit_code": 0,
+      "purpose": "Verify pi-ai version at candidate tag",
+      "observed": "@earendil-works/pi-ai 1.4.0"
+    }
+  ],
+  "unknowns": [
+    "No local Pi agent runtime exists to inspect; its CLI behavior, startup contract and session format are unverified.",
+    "The exact dependency closure and install size of pi-agent-core / pi-coding-agent at v1.4.0 were not resolved.",
+    "Whether the official v1.4.0 coding agent runs unchanged on the local Node 26 / macOS host was not tested.",
+    "No package tarball hash or signature was verified; only tag and package manifest metadata were read.",
+    "The phase 3 experiment has not been approved, installed, configured or run."
+  ],
+  "boundaries": {
+    "credentials_read": false,
+    "session_bodies_read": false,
+    "product_modified": false,
+    "runtime_modified": false,
+    "installation_performed": false,
+    "model_calls_made": false,
+    "pi_package_installed": false,
+    "repo_cloned": false,
+    "service_started": false,
+    "user_data_written": false
+  }
+}

@@ -1,0 +1,383 @@
+{
+  "step_id": "DSH-P1-03",
+  "generated_at": "2026-11-12T07:16:08Z",
+  "evidence_levels": [
+    "F",
+    "S",
+    "R"
+  ],
+  "facts": {
+    "profile": "discipline",
+    "profile_path": "/Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline",
+    "requested_profile_source": "python3 read of /Users/yvan/OmniDesk/app/config/settings.v1.json engine_profile -> discipline",
+    "default_profile_resolution": {
+      "file": "desktop/src-tauri/src/engine_supervisor.rs",
+      "observed_logic": [
+        "OMNIDESK_ENGINE_CHANNEL defaults to web-api; values limited to web-api or acp.",
+        "Without OMNIDESK_DSH_PROFILE, saved settings.engine_profile is passed to profile_choice::resolve.",
+        "profile_choice::standard_profile maps web-api -> omnidesk-base, acp -> acp.",
+        "resolve returns the saved profile when whitelisted and its package.json exists."
+      ],
+      "web_api_whitelist": [
+        "omnidesk-base",
+        "discipline"
+      ],
+      "acp_whitelist": [
+        "acp"
+      ],
+      "note": "discipline is whitelisted for web-api and its manifest exists, so saved discipline resolves to discipline."
+    },
+    "profile_manifest": {
+      "path": "/Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/package.json",
+      "name": "dsh-profile-discipline",
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app"
+      ],
+      "bundle_order_matches_dump": true,
+      "dependencies": {
+        "dsh-cost-meter": "1.9.6",
+        "dsh-free-search": "0.9.5"
+      }
+    },
+    "inserted_plugins": [
+      {
+        "id": "skill-office",
+        "name": "@deepseek-ai/dsh-skill-office",
+        "source": "cordis.patch.yml insert"
+      },
+      {
+        "id": "web-search-free",
+        "name": "dsh-free-search",
+        "version": "0.9.5",
+        "source": "cordis.patch.yml insert",
+        "config_summary": "provider=bing, bingMarket=zh-CN, disabledEngines=[]"
+      },
+      {
+        "id": "cost-meter",
+        "name": "dsh-cost-meter",
+        "version": "1.9.6",
+        "source": "cordis.patch.yml insert"
+      }
+    ],
+    "assembled_dump": {
+      "command_exit_code": 0,
+      "stderr_line_count": 1,
+      "stdout_size_bytes": 46645,
+      "stdout_line_count": 1279,
+      "sha256": "2c614fa5c9d990a1ff774ce2036ee892ea8d3938e0d6f732ac9987fd065a9bd0",
+      "top_level_id_count": 194,
+      "top_level_id_count_expected": 194,
+      "count_matches_expected": true,
+      "full_dump_committed": false,
+      "temporary_path": "/tmp/omnidesk-p1-03-dump.yml",
+      "temporary_deleted_after_summary": true
+    },
+    "patch_warning": {
+      "raw": "dsh: [/Users/yvan/OmniDesk/app/config/omnidesk-model.yml] patch: entry \"acp\" not found",
+      "contains_expected_text": true,
+      "meaning": "The acp entry in omnidesk-model.yml had no matching entry in the discipline profile tree."
+    },
+    "core_plugins": [
+      {
+        "id": "session",
+        "name": "@deepseek-ai/dsh-session",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "session-persistence-jsonl",
+        "name": "@deepseek-ai/dsh-session-persistence-jsonl",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "session-projection",
+        "name": "@deepseek-ai/dsh-session-projection",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "session-projection-cache",
+        "name": "@deepseek-ai/dsh-session-projection-cache",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "tools",
+        "name": "@deepseek-ai/dsh-tools",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "system-prompt",
+        "name": "@deepseek-ai/dsh-system-prompt",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "agent-loop",
+        "name": "@deepseek-ai/dsh-agent-loop",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "subagent",
+        "name": "@deepseek-ai/dsh-subagent",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "subagent-fork-in-process",
+        "name": "@deepseek-ai/dsh-subagent-fork-in-process",
+        "present": true,
+        "top_level_disabled": false
+      },
+      {
+        "id": "web",
+        "name": "@deepseek-ai/dsh-web",
+        "present": true,
+        "top_level_disabled": false
+      }
+    ],
+    "agent_presets": [
+      {
+        "entry_id": "preset-standard",
+        "config_id": "standard",
+        "order": 1,
+        "name": "@deepseek-ai/dsh-agent-preset",
+        "patched_by": "discipline cordis.patch.yml"
+      },
+      {
+        "entry_id": "preset-ptc",
+        "config_id": "ptc",
+        "order": 2,
+        "name": "@deepseek-ai/dsh-agent-preset"
+      },
+      {
+        "entry_id": "preset-minimal",
+        "config_id": "minimal",
+        "order": 3,
+        "name": "@deepseek-ai/dsh-agent-preset"
+      },
+      {
+        "entry_id": "preset-cordis",
+        "config_id": "cordis",
+        "order": 4,
+        "name": "@deepseek-ai/dsh-agent-preset"
+      }
+    ],
+    "agent_preset_registry_default": "standard",
+    "tool_surface_summary": {
+      "declared_tool_plugin_entries_across_tree": 73,
+      "unique_tool_plugin_packages": [
+        "dsh-tool-ask-user",
+        "dsh-tool-bash",
+        "dsh-tool-bash-persistent",
+        "dsh-tool-call-timeout-policy",
+        "dsh-tool-cordis",
+        "dsh-tool-fs",
+        "dsh-tool-fs-search",
+        "dsh-tool-goal",
+        "dsh-tool-jobs",
+        "dsh-tool-present",
+        "dsh-tool-pwsh",
+        "dsh-tool-pwsh-persistent",
+        "dsh-tool-schedule",
+        "dsh-tool-skill",
+        "dsh-tool-subagent",
+        "dsh-tool-subagent-control",
+        "dsh-tool-todo",
+        "dsh-tool-web",
+        "dsh-tool-workflow",
+        "dsh-tool-working-directory"
+      ],
+      "top_level_disabled_tool_entries": [
+        "tool-bash",
+        "tool-pwsh",
+        "tool-jobs",
+        "tool-fs",
+        "tool-fs-search",
+        "tool-skill",
+        "tool-subagent-control",
+        "tool-subagent",
+        "tool-subagent-fork",
+        "tool-workflow",
+        "tool-todo",
+        "tool-goal",
+        "tool-web",
+        "tool-plugin-manager",
+        "tool-plugin-market"
+      ],
+      "note": "Many top-level tool entries are marked disabled because preset-standard re-declares the agent tool surface. Per-agent availability is not proven by this dump.",
+      "tool_availability_is_runtime_verified": false
+    },
+    "profile_filesystem_side_effect": {
+      "path": "/Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.yml",
+      "birth_time": "2026-11-05T00:28:32",
+      "modified_during_dump": "2026-11-12T15:12:45",
+      "sha256_after": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
+      "content_summary": "Generated 223-byte empty entry list [] with comments instructing edits to cordis.patch.yml.",
+      "only_file_in_profile_modified_within_20_minutes": true,
+      "manual_edit_performed": false,
+      "note": "No pre-run hash was captured, so byte-for-byte non-change cannot be proven. The file currently contains the standard generated empty entry list []; no user-authored patch file was edited. The file was not restored or edited.",
+      "pre_run_hash_captured": false,
+      "content_before_unknown": true,
+      "content_change_unproven": true,
+      "dump_runs_in_this_card": 1,
+      "user_file_restore_attempted": false,
+      "user_file_edit_attempted": false,
+      "observed_side_effect": "The permitted --dump-config refreshed the mtime of a generated profile root file under user data.",
+      "no_further_dump_after_instruction": true
+    },
+    "bundles": [
+      "@deepseek-ai/dsh-base",
+      "@deepseek-ai/dsh-web-app"
+    ],
+    "tool_availability_is_runtime_verified": false,
+    "full_dump_committed": false
+  },
+  "commands": [
+    {
+      "cmd": "cat /Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/package.json",
+      "exit_code": 0,
+      "purpose": "Read profile manifest",
+      "observed": "bundles dsh-base then dsh-web-app; deps cost-meter 1.9.6, free-search 0.9.5"
+    },
+    {
+      "cmd": "cat /Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml",
+      "exit_code": 0,
+      "purpose": "Read profile patch layer",
+      "observed": "inserts skill-office, web-search-free, cost-meter; overrides preset-standard and web providers"
+    },
+    {
+      "cmd": "cat /Users/yvan/OmniDesk/app/config/omnidesk-model.yml",
+      "exit_code": 0,
+      "purpose": "Read model overlay used as --patch",
+      "observed": "llm-pi-ai, acp, agent-default-model entries; apiKeyEnv name only"
+    },
+    {
+      "cmd": "rg -n 'discipline|engine_profile|profile' desktop/src-tauri/src/engine_supervisor.rs",
+      "exit_code": 0,
+      "purpose": "Locate default profile resolution",
+      "observed": "channel default web-api; saved engine_profile passed to profile_choice::resolve"
+    },
+    {
+      "cmd": "sed -n '110,175p' desktop/src-tauri/src/engine_supervisor.rs",
+      "exit_code": 0,
+      "purpose": "Read resolution logic",
+      "observed": "env profile overrides settings; model overlay appended to patch list"
+    },
+    {
+      "cmd": "sed -n '122,165p' desktop/src-tauri/src/profile_choice.rs",
+      "exit_code": 0,
+      "purpose": "Read resolve rules",
+      "observed": "saved whitelisted profile with existing package.json wins; web-api default is omnidesk-base"
+    },
+    {
+      "cmd": "DSH_HOME=/Users/yvan/OmniDesk/runtime/dsh-home ./runtime/dsh-runtime/node_modules/.bin/dsh --profile discipline --dump-config --patch /Users/yvan/OmniDesk/app/config/omnidesk-model.yml > /tmp/omnidesk-p1-03-dump.yml 2> /tmp/omnidesk-p1-03-dump.err",
+      "exit_code": 0,
+      "purpose": "Compose profile tree with model overlay",
+      "observed": "exit 0; one warning about acp entry"
+    },
+    {
+      "cmd": "wc -c -l /tmp/omnidesk-p1-03-dump.yml /tmp/omnidesk-p1-03-dump.err",
+      "exit_code": 0,
+      "purpose": "Measure dump",
+      "observed": "46645 bytes / 1279 lines stdout; 87 bytes / 1 line stderr"
+    },
+    {
+      "cmd": "cat /tmp/omnidesk-p1-03-dump.err",
+      "exit_code": 0,
+      "purpose": "Read patch warning",
+      "observed": "patch: entry \"acp\" not found"
+    },
+    {
+      "cmd": "rg -c '^- id:' /tmp/omnidesk-p1-03-dump.yml",
+      "exit_code": 0,
+      "purpose": "Count top-level entries",
+      "observed": "194"
+    },
+    {
+      "cmd": "shasum -a 256 /tmp/omnidesk-p1-03-dump.yml",
+      "exit_code": 0,
+      "purpose": "Hash dump without committing it",
+      "observed": "2c614fa5c9d990a1ff774ce2036ee892ea8d3938e0d6f732ac9987fd065a9bd0"
+    },
+    {
+      "cmd": "rg -n '^# ==' /tmp/omnidesk-p1-03-dump.yml",
+      "exit_code": 0,
+      "purpose": "Confirm bundle order markers",
+      "observed": "dsh-base blocks first, dsh-web-app blocks later, then discipline patch block"
+    },
+    {
+      "cmd": "python3 - <<'PY' ... parse top-level IDs/disabled ... PY",
+      "exit_code": 0,
+      "purpose": "Summarize enabled/disabled core entries",
+      "observed": "194 entries; core plugins enabled at top level; many tool entries disabled due to preset re-declaration"
+    },
+    {
+      "cmd": "rg -n '^- id: preset-' /tmp/omnidesk-p1-03-dump.yml",
+      "exit_code": 0,
+      "purpose": "List agent presets",
+      "observed": "standard(1), ptc(2), minimal(3), cordis(4)"
+    },
+    {
+      "cmd": "rg -c \"name: '@deepseek-ai/dsh-tool-\" /tmp/omnidesk-p1-03-dump.yml",
+      "exit_code": 0,
+      "purpose": "Count declared tool plugin entries",
+      "observed": "73"
+    },
+    {
+      "cmd": "python3 -c \"... read profile node_modules dsh-cost-meter/dsh-free-search versions ...\"",
+      "exit_code": 0,
+      "purpose": "Verify inserted dependency versions",
+      "observed": "1.9.6 and 0.9.5"
+    },
+    {
+      "cmd": "stat -f ... profiles/discipline/cordis.yml package.json cordis.patch.yml",
+      "exit_code": 0,
+      "purpose": "Check for profile side effects",
+      "observed": "cordis.yml mtime 15:12:45 during dump; package.json and cordis.patch.yml unchanged"
+    },
+    {
+      "cmd": "find /Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline -type f -mmin -20 -print",
+      "exit_code": 0,
+      "purpose": "Enumerate recent profile file changes",
+      "observed": "only cordis.yml"
+    },
+    {
+      "cmd": "shasum -a 256 /Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.yml",
+      "exit_code": 0,
+      "purpose": "Record generated root hash",
+      "observed": "c300dcf2..."
+    }
+  ],
+  "unknowns": [
+    "The dump proves declared composition, not per-agent runtime tool availability or actual model-visible tool schemas.",
+    "The `acp` overlay mismatch is observed, but whether any other overlay keys silently target nested entries was not exhaustively checked.",
+    "Preset-standard's effective tool set depends on preset resolution and platform JS conditions; not executed with an agent in this card.",
+    "Running --dump-config refreshed the generated cordis.yml mtime. The pre-run content was not captured, though the current content is the standard empty list; byte-level non-change cannot be proven retroactively.",
+    "The complete dump was summarized and hashed only; it is not committed and was not retained."
+  ],
+  "boundaries": {
+    "credentials_read": false,
+    "credential_values_printed": false,
+    "session_bodies_read": false,
+    "task_bodies_read": false,
+    "profile_manual_edit_performed": false,
+    "profile_patch_file_modified": false,
+    "profile_generated_root_mtime_touched_by_dump": true,
+    "product_modified": false,
+    "runtime_modified": false,
+    "web_service_started": false,
+    "model_called": false,
+    "full_dump_committed": false,
+    "install_or_upgrade_performed": false,
+    "profile_generated_root_content_change_unproven": true,
+    "profile_generated_root_restore_or_edit_attempted": false,
+    "dump_rerun_after_side_effect_discovered": false,
+    "user_data_file_mtime_refreshed": true,
+    "user_data_content_change_unproven": true
+  }
+}

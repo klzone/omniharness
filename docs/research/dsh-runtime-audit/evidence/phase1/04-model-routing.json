@@ -1,0 +1,406 @@
+{
+  "step_id": "DSH-P1-04",
+  "generated_at": "2026-11-12T07:18:40Z",
+  "evidence_levels": [
+    "F",
+    "S",
+    "R"
+  ],
+  "facts": {
+    "source_priority": {
+      "omnidesk": [
+        "Profile package.json bundles: @deepseek-ai/dsh-base, then @deepseek-ai/dsh-web-app",
+        "Profile cordis.patch.yml (discipline overrides/inserts)",
+        "/Users/yvan/OmniDesk/app/config/omnidesk-model.yml appended by engine_supervisor as --patch",
+        "Profile agent-default-model entry selects the default provider/model"
+      ],
+      "dsh_desktop": [
+        "Profile package.json bundles under ~/.dsh/profiles/desktop",
+        "~/.dsh/profiles/desktop/cordis.patch.yml overrides llm-pi-ai and agent-default-model"
+      ],
+      "evidence": "Static read of engine_supervisor.rs plus actual rc.5 --dump-config output"
+    },
+    "omnidesk": {
+      "profile": "discipline",
+      "default_provider": "opendesign",
+      "default_model": "deepseek-v4.1-flash-eco",
+      "default_source": "/Users/yvan/OmniDesk/app/config/omnidesk-model.yml -> agent-default-model",
+      "providers": [
+        {
+          "provider": "opendesign",
+          "protocol": "openai-completions",
+          "base_url": "https://amr-link.open-design.ai/v1",
+          "credential_reference_present": true,
+          "credential_reference_value_captured": false,
+          "provider_reasoning_field_present": false,
+          "models": [
+            {
+              "id": "deepseek-v4.1-flash",
+              "contextWindow": 1048576
+            },
+            {
+              "id": "deepseek-v4.1-flash-eco",
+              "contextWindow": 1048576
+            },
+            {
+              "id": "glm-5.3-flash",
+              "contextWindow": 1048576
+            },
+            {
+              "id": "minimax-m3.1-flash",
+              "contextWindow": 1048576
+            }
+          ]
+        }
+      ],
+      "route_model_count": 4,
+      "route_model_count_matches_expected": true,
+      "max_tokens_field_present": false,
+      "static_default_max_tokens_if_omitted": 32768,
+      "acp_override": {
+        "present_in_overlay": true,
+        "provider": "opendesign",
+        "model": "deepseek-v4.1-flash-eco",
+        "reasoningEffort": "low",
+        "matched_in_discipline_dump": false,
+        "warning": "patch: entry \"acp\" not found"
+      },
+      "web_api_default_reasoning": "unknown",
+      "web_api_default_reasoning_static_hint": "In rc.5 adapter code, absent model reasoningEfforts falls back to provider reasoning, and absent provider reasoning resolves to false; however no request-level or agent-loop observation was made.",
+      "composed_dump_check": {
+        "llm_pi_ai_block_present": true,
+        "agent_default_model_block_present": true,
+        "acp_block_present": false,
+        "provider_reasoning_field_in_composed_block": false,
+        "top_level_id_count": 194,
+        "dump_sha256": "2c614fa5c9d990a1ff774ce2036ee892ea8d3938e0d6f732ac9987fd065a9bd0"
+      }
+    },
+    "dsh_desktop": {
+      "profile": "desktop",
+      "profile_path": "/Users/yvan/.dsh/profiles/desktop",
+      "profile_used_by_running_process": true,
+      "process_evidence": "PID 1398 command contains /Users/yvan/.dsh/profiles/desktop",
+      "default_provider": "opendesign",
+      "default_model": "deepseek-v4.1-flash-eco",
+      "default_source": "/Users/yvan/.dsh/profiles/desktop/cordis.patch.yml -> agent-default-model",
+      "providers": [
+        {
+          "provider": "opendesign",
+          "protocol": "openai-completions",
+          "displayName": "OD",
+          "base_url": "https://amr-link.open-design.ai/v1",
+          "provider_reasoning": "high",
+          "defaultContextWindow": 1000000,
+          "defaultMaxTokens": 32000,
+          "credential_reference_present": true,
+          "credential_reference_value_captured": false,
+          "models": [
+            {
+              "id": "deepseek-v4.1-flash",
+              "contextWindow": 1000000,
+              "maxTokens": 128000,
+              "reasoningEfforts": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            {
+              "id": "glm-5.3-flash",
+              "contextWindow": 1000000,
+              "maxTokens": 32000,
+              "reasoningEfforts": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            {
+              "id": "glm-5.3-flashx",
+              "contextWindow": 1000000,
+              "maxTokens": 32000,
+              "reasoningEfforts": [
+                "low",
+                "high",
+                "max"
+              ]
+            },
+            {
+              "id": "mimo-v2.6-pro",
+              "contextWindow": 1000000,
+              "maxTokens": 32000,
+              "reasoningEfforts": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            {
+              "id": "minimax-m3.1-flash",
+              "contextWindow": 1000000,
+              "maxTokens": 32000,
+              "reasoningEfforts": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            {
+              "id": "deepseek-v4.1-flash-eco",
+              "name": "ds-v4.1-flash-eco",
+              "contextWindow": 1000000,
+              "maxTokens": 128000,
+              "reasoningEfforts": [
+                "off",
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          ]
+        },
+        {
+          "provider": "ark-plan",
+          "protocol": "openai-completions",
+          "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+          "provider_reasoning": "high",
+          "defaultContextWindow": 1000000,
+          "defaultMaxTokens": 32000,
+          "models": [
+            {
+              "id": "glm-5.3-flash",
+              "contextWindow": 1000000,
+              "maxTokens": 32000
+            }
+          ]
+        },
+        {
+          "provider": "inferx",
+          "protocol": "openai-completions",
+          "base_url": "https://model.inferx.net/endpoints/v1",
+          "models": [
+            {
+              "id": "deepseek-v4.1-flash-1017-basic"
+            }
+          ]
+        }
+      ],
+      "route_model_count": 8,
+      "note": "The desktop profile declares three providers and eight model rows; only opendesign is the default route."
+    },
+    "rc5_adapter_config_schema": {
+      "package": "@deepseek-ai/dsh-llm-pi-ai",
+      "package_version": "0.2.1-rc.5",
+      "pi_ai_dependency_range": "^1.1.0",
+      "config_declaration_file": "runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js",
+      "fields": [
+        "apiKeyEnv",
+        "displayName",
+        "api",
+        "baseURL",
+        "models",
+        "modelOverrides",
+        "compat",
+        "defaultContextWindow",
+        "defaultMaxTokens",
+        "defaultInput",
+        "headers",
+        "reasoning",
+        "thinkingBudgets",
+        "cacheRetention",
+        "transport"
+      ],
+      "model_fields": [
+        "id",
+        "name",
+        "contextWindow",
+        "maxTokens",
+        "input",
+        "reasoningEfforts",
+        "compat"
+      ],
+      "default_max_tokens": 32768,
+      "provider_reasoning_supported": true,
+      "model_reasoning_efforts_supported": true,
+      "evidence_level": "S"
+    },
+    "desktop_022_config_strings": {
+      "command": "strings -a app.asar | rg 'reasoningEfforts|defaultMaxTokens'",
+      "exit_code": 0,
+      "observed": "asar contains UI/help text about reasoningEfforts levels and editing the profile field.",
+      "model_id_present_in_asar": false,
+      "interpretation": "The 0.2.2 model routes live in the external ~/.dsh/profiles/desktop config; absence of the model ID in asar does not mean the route is absent."
+    },
+    "differences": [
+      "OmniDesk omits provider reasoning; desktop sets provider reasoning=high.",
+      "OmniDesk omits maxTokens, so the rc.5 schema default 32768 applies statically; desktop explicitly sets eco maxTokens=128000.",
+      "OmniDesk declares 4 opendesign models; desktop declares 8 rows across 3 providers.",
+      "OmniDesk's acp overlay is unmatched; desktop has no acp overlay in its inspected profile patch."
+    ],
+    "contradictions_with_baseline": [
+      "Baseline calls desktop reasoning=high a 'provider default'; the file shows it as an explicit provider field. It is a configured default for that route, not an inferred platform default.",
+      "Baseline did not state desktop's route count; the inspected profile declares 8 model rows across 3 providers.",
+      "OmniDesk's effective web-api reasoning remains unproven at request time; static adapter code hints at false, which conflicts with any assumption that reasoning defaults to high."
+    ],
+    "omnidesk_default_provider": "opendesign",
+    "omnidesk_default_model": "deepseek-v4.1-flash-eco",
+    "omnidesk_route_model_count": 4,
+    "acp_override_matched": false,
+    "web_api_default_reasoning": "unknown",
+    "credentials_values_captured": false,
+    "profile_filesystem_side_effect": {
+      "path": "/Users/yvan/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.yml",
+      "pre_run_hash_captured": false,
+      "content_before_unknown": true,
+      "content_change_unproven": true,
+      "dump_runs_in_this_card": 1,
+      "mtime_after_this_card_dump": "2026-11-12T15:15:04",
+      "earlier_run": "P1-03 dump at 2026-11-12T15:12:45 also refreshed the same generated file mtime",
+      "user_file_restore_attempted": false,
+      "user_file_edit_attempted": false,
+      "no_further_dump_after_instruction": true,
+      "note": "The permitted --dump-config refreshed the mtime of a generated profile root file under user data. No pre-run hash was captured; content is the standard empty list, but byte-for-byte non-change cannot be proven. No further dump was run after the instruction, and the file was not restored or edited."
+    }
+  },
+  "commands": [
+    {
+      "cmd": "cat /Users/yvan/OmniDesk/app/config/omnidesk-model.yml",
+      "exit_code": 0,
+      "purpose": "Read OmniDesk model overlay",
+      "observed": "opendesign default eco model; 4 models; acp reasoning low; no provider reasoning or maxTokens"
+    },
+    {
+      "cmd": "cat /Users/yvan/.dsh/profiles/desktop/package.json",
+      "exit_code": 0,
+      "purpose": "Read desktop bundle list",
+      "observed": "10 bundles starting dsh-base, dsh-web-app"
+    },
+    {
+      "cmd": "python3 sanitized read of /Users/yvan/.dsh/profiles/desktop/cordis.patch.yml",
+      "exit_code": 0,
+      "purpose": "Read desktop routing config without printing credential values",
+      "observed": "opendesign default eco; provider reasoning high; 6 opendesign models; ark-plan and inferx routes"
+    },
+    {
+      "cmd": "python3 - <<'PY' ... extract numeric routing fields from desktop patch ... PY",
+      "exit_code": 0,
+      "purpose": "Read maxTokens/reasoning numbers",
+      "observed": "defaultMaxTokens 32000; eco maxTokens 128000; contextWindow 1000000; reasoning high"
+    },
+    {
+      "cmd": "rg -n 'reasoning|contextWindow|defaultMaxTokens|maxTokens|apiKeyEnv|Config' runtime/.../dsh-llm-pi-ai/lib/types/index.d.ts",
+      "exit_code": 2,
+      "purpose": "Look for published type declarations",
+      "observed": "types directory exists but index.d.ts is absent; superseded by compiled lib/index.js inspection",
+      "failed": true
+    },
+    {
+      "cmd": "find runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-llm-pi-ai -maxdepth 3 -type f",
+      "exit_code": 0,
+      "purpose": "Inventory adapter package",
+      "observed": "lib/index.js present, lib/types is empty"
+    },
+    {
+      "cmd": "sed -n '1025,1070p' runtime/.../dsh-llm-pi-ai/lib/index.js",
+      "exit_code": 0,
+      "purpose": "Read rc.5 config schema",
+      "observed": "provider reasoning supported; model reasoningEfforts; defaultMaxTokens default; model fields"
+    },
+    {
+      "cmd": "rg -n 'DEFAULT_MAX_TOKENS|reasoning:' runtime/.../dsh-llm-pi-ai/lib/index.js",
+      "exit_code": 0,
+      "purpose": "Read schema defaults",
+      "observed": "DEFAULT_MAX_TOKENS=32768; absent efforts falls back to provider reasoning or false"
+    },
+    {
+      "cmd": "DSH_HOME=/Users/yvan/OmniDesk/runtime/dsh-home ./runtime/dsh-runtime/node_modules/.bin/dsh --profile discipline --dump-config --patch /Users/yvan/OmniDesk/app/config/omnidesk-model.yml > /tmp/omnidesk-p1-04-dump.yml 2> /tmp/omnidesk-p1-04-dump.err",
+      "exit_code": 0,
+      "purpose": "Verify composed routing entries",
+      "observed": "exit 0; dump identical hash to DSH-P1-03"
+    },
+    {
+      "cmd": "python3 - <<'PY' ... extract llm-pi-ai/acp/agent-default-model blocks ... PY",
+      "exit_code": 0,
+      "purpose": "Summarize composed model entries",
+      "observed": "llm-pi-ai with 4 models, agent-default-model eco, no acp block, no reasoning field"
+    },
+    {
+      "cmd": "cat /tmp/omnidesk-p1-04-dump.err",
+      "exit_code": 0,
+      "purpose": "Read overlay warning",
+      "observed": "patch: entry \"acp\" not found"
+    },
+    {
+      "cmd": "shasum -a 256 /tmp/omnidesk-p1-04-dump.yml; rg -c '^- id:' /tmp/omnidesk-p1-04-dump.yml",
+      "exit_code": 0,
+      "purpose": "Hash and count dump",
+      "observed": "2c614fa5...; 194"
+    },
+    {
+      "cmd": "stat -f 'modify=%Sm' .../profiles/discipline/cordis.yml",
+      "exit_code": 0,
+      "purpose": "Check profile side effect again",
+      "observed": "generated cordis.yml mtime refreshed to 15:15:04"
+    },
+    {
+      "cmd": "strings -a '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar' | rg -m 6 'deepseek-v4.1-flash-eco'",
+      "exit_code": 1,
+      "purpose": "Search asar for default model string",
+      "observed": "no match"
+    },
+    {
+      "cmd": "strings -a app.asar | rg -m 8 'reasoningEfforts|defaultMaxTokens'",
+      "exit_code": 0,
+      "purpose": "Confirm desktop 0.2.2 config/UI strings",
+      "observed": "reasoningEfforts UI text present"
+    },
+    {
+      "cmd": "python3 os.remove temp dump/err",
+      "exit_code": 0,
+      "purpose": "Delete temporary dump",
+      "observed": "removed"
+    }
+  ],
+  "unknowns": [
+    "OmniDesk web-api reasoning at request time is unverified; no model request or agent-loop state was observed. Static adapter code hints false when both fields are absent.",
+    "Whether dsh-agent-loop or a session setting overrides provider/model reasoning effort before dispatch was not traced.",
+    "Credential presence and validity were not checked; only a credential reference field was observed and its value was not captured.",
+    "The desktop asar's model route configuration is external; asar string inspection cannot prove effective desktop routing by itself.",
+    "Model alias behavior (eco id vs display name ds-v4.1-flash-eco) was not tested against a provider."
+  ],
+  "boundaries": {
+    "credentials_read": false,
+    "credential_values_printed": false,
+    "api_key_values_captured": false,
+    "session_bodies_read": false,
+    "product_modified": false,
+    "runtime_modified": false,
+    "route_modified": false,
+    "model_called": false,
+    "service_started": false,
+    "install_or_upgrade_performed": false,
+    "full_dump_committed": false,
+    "profile_generated_root_mtime_touched_by_dump": true,
+    "profile_generated_root_content_change_unproven": true,
+    "profile_generated_root_restore_or_edit_attempted": false,
+    "dump_rerun_after_side_effect_discovered": false,
+    "user_data_file_mtime_refreshed": true,
+    "user_data_content_change_unproven": true
+  },
+  "credentials_values_captured": false
+}

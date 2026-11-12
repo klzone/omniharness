@@ -1,0 +1,228 @@
+{
+  "step_id": "DSH-P1-01",
+  "generated_at": "2026-11-12T07:10:48Z",
+  "evidence_levels": [
+    "F",
+    "R"
+  ],
+  "facts": {
+    "repo_context": {
+      "repo_head": "5af890a84333a50a743347f45a66c9642b1dcf05",
+      "head_subject": "chore(release): 0.2.23",
+      "repo_product_version": "0.2.23",
+      "note": "Repository product release version is distinct from the locked DSH CLI runtime version."
+    },
+    "identities": {
+      "repo_cli": {
+        "name": "@deepseek-ai/dsh",
+        "version": "0.2.1-rc.5",
+        "path": "/Users/yvan/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh",
+        "evidence_level": "F",
+        "command": "cat runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/package.json",
+        "supporting": [
+          "RUNTIME.lock runtime.version=0.2.1-rc.5",
+          "runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js exists (test -f exit 0)"
+        ],
+        "runtime_invocation_verified_in_this_card": false
+      },
+      "installed_omnidesk": {
+        "name": "OmniDesk.app",
+        "version": "0.2.22",
+        "path": "/Applications/OmniDesk.app",
+        "evidence_level": "F",
+        "command": "plutil -extract CFBundleShortVersionString raw -o - '/Applications/OmniDesk.app/Contents/Info.plist'",
+        "bundled_runtime_lock": {
+          "path": "/Applications/OmniDesk.app/Contents/Resources/runtime/RUNTIME.lock",
+          "dsh_version": "0.2.1-rc.5",
+          "dsh_commit": "b830ec950faba0a46dda564be3e2d854afed94f1",
+          "tag": "dsh-v0.2.1-rc.5"
+        },
+        "bundled_runtime_package": {
+          "path": "/Applications/OmniDesk.app/Contents/Resources/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/package.json",
+          "version": "0.2.1-rc.5",
+          "bin_js_present": true
+        }
+      },
+      "running_dsh_desktop": {
+        "name": "DeepSeek Harness.app (DSH Desktop)",
+        "version": "0.2.2-rc.1",
+        "path": "/Applications/DeepSeek Harness.app",
+        "evidence_level": "F+R",
+        "command": "plutil -extract CFBundleShortVersionString raw -o - '/Applications/DeepSeek Harness.app/Contents/Info.plist'",
+        "processes": [
+          {
+            "pid": 743,
+            "ppid": 1,
+            "role": "main app process",
+            "command": "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness",
+            "elapsed": "01-07:35:31"
+          },
+          {
+            "pid": 1398,
+            "ppid": 743,
+            "role": "desktop host / engine host",
+            "command": "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness --expose-internals /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js /Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh /Users/yvan/.dsh/profiles/desktop /Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime /Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.mjs /Applications/DeepSeek Harness.app/Contents/Resources/runtime/bin",
+            "elapsed": "01-07:35:27"
+          }
+        ],
+        "profile_argument_observed": "/Users/yvan/.dsh/profiles/desktop (positional path; no --profile flag observed)"
+      },
+      "omnidesk_engine_selection": {
+        "name": "OmniDesk engine selection (locked DSH CLI)",
+        "version": "0.2.1-rc.5",
+        "path": "/Users/yvan/OmniDesk/app/config/settings.v1.json",
+        "engine_profile": "discipline",
+        "engine_version_field_present": false,
+        "evidence_level": "F",
+        "command": "python3 -c \"... settings.v1.json keys engine_profile ...\"",
+        "version_derivation": "No engine_version in settings; version taken from repo and installed RUNTIME.lock plus bundled/install runtime package.json, all 0.2.1-rc.5.",
+        "process_running": false,
+        "process_check": "pgrep -f omnidesk_engine -> exit 1, no output"
+      }
+    },
+    "settings_fields": {
+      "engine_profile": "discipline",
+      "engine_channel_key_present": false,
+      "engine_version_key_present": false,
+      "top_level_keys": [
+        "artifact_root",
+        "engine_profile",
+        "knowledge_vault_root",
+        "library_root",
+        "model_permissions",
+        "profile_auto_install_plugins",
+        "schema",
+        "thread_categories",
+        "working_root"
+      ]
+    },
+    "contradictions_with_baseline": [
+      "Baseline says the DSH Desktop host args specify '--profile desktop'; observed args pass '/Users/yvan/.dsh/profiles/desktop' as a positional path with no --profile flag.",
+      "Baseline labels the repo CLI version 0.2.1-rc.5 while repository HEAD is release 0.2.23. Both can be true (product release vs locked runtime), but the label 'repo_cli' must not be read as the repository product version.",
+      "Baseline claims 'dsh --version' returned 0.2.1-rc.5. This card did not execute the CLI (to avoid starting a process); only package.json and bin.js presence were verified."
+    ]
+  },
+  "commands": [
+    {
+      "cmd": "git rev-parse HEAD; git log -1 --oneline",
+      "exit_code": 0,
+      "purpose": "Record repository HEAD and release subject",
+      "observed": "5af890a84333a50a743347f45a66c9642b1dcf05; chore(release): 0.2.23"
+    },
+    {
+      "cmd": "cat runtime/RUNTIME.lock",
+      "exit_code": 0,
+      "purpose": "Read repo runtime lock",
+      "observed": "tag dsh-v0.2.1-rc.5, commit b830ec95..., version 0.2.1-rc.5"
+    },
+    {
+      "cmd": "cat runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/package.json",
+      "exit_code": 0,
+      "purpose": "Read installed repo CLI package metadata",
+      "observed": "version 0.2.1-rc.5"
+    },
+    {
+      "cmd": "test -f runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+      "exit_code": 0,
+      "purpose": "Confirm CLI entry file exists",
+      "observed": "exists"
+    },
+    {
+      "cmd": "cat /Applications/OmniDesk.app/Contents/Resources/runtime/RUNTIME.lock",
+      "exit_code": 0,
+      "purpose": "Read installed app runtime lock",
+      "observed": "version 0.2.1-rc.5, commit b830ec95..."
+    },
+    {
+      "cmd": "python3 -c \"import json;print(json.load(open('/Applications/OmniDesk.app/Contents/Resources/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/package.json'))['version'])\"",
+      "exit_code": 0,
+      "purpose": "Verify bundled installed CLI package version",
+      "observed": "0.2.1-rc.5"
+    },
+    {
+      "cmd": "test -f /Applications/OmniDesk.app/Contents/Resources/runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+      "exit_code": 0,
+      "purpose": "Confirm installed CLI entry file exists",
+      "observed": "exists"
+    },
+    {
+      "cmd": "plutil -extract CFBundleShortVersionString raw -o - '/Applications/OmniDesk.app/Contents/Info.plist'",
+      "exit_code": 0,
+      "purpose": "Read OmniDesk app version",
+      "observed": "0.2.22"
+    },
+    {
+      "cmd": "plutil -extract CFBundleShortVersionString raw -o - '/Applications/DeepSeek Harness.app/Contents/Info.plist'",
+      "exit_code": 0,
+      "purpose": "Read DSH Desktop app version",
+      "observed": "0.2.2-rc.1"
+    },
+    {
+      "cmd": "plutil -extract CFBundleVersion raw -o - '/Applications/DeepSeek Harness.app/Contents/Info.plist'",
+      "exit_code": 0,
+      "purpose": "Read DSH Desktop bundle version",
+      "observed": "0.2.2-rc.1"
+    },
+    {
+      "cmd": "/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' '/Applications/DeepSeek Harness.app/Contents/Info.plist'",
+      "exit_code": 1,
+      "purpose": "Initial version probe",
+      "observed": "Failed: PlistBuddy misparsed path; superseded by plutil",
+      "failed": true
+    },
+    {
+      "cmd": "ps -Ao pid,ppid,etime,command | grep -i 'DeepSeek Harness' | grep -v grep",
+      "exit_code": 0,
+      "purpose": "Capture running DSH Desktop process identities and args",
+      "observed": "PID 743 main + helper/renderer children + PID 1398 host"
+    },
+    {
+      "cmd": "ps -p 1398 -o pid,ppid,etime,command",
+      "exit_code": 0,
+      "purpose": "Confirm host PID and exact arguments",
+      "observed": "desktop host with profile path /Users/yvan/.dsh/profiles/desktop"
+    },
+    {
+      "cmd": "python3 -c \"... load settings.v1.json; print selected engine fields ...\"",
+      "exit_code": 0,
+      "purpose": "Read only engine profile fields from OmniDesk settings",
+      "observed": "engine_profile=discipline; engine_channel/engine_version/engine_command keys absent"
+    },
+    {
+      "cmd": "python3 -c \"... print sorted settings top-level keys ...\"",
+      "exit_code": 0,
+      "purpose": "Confirm which engine fields exist",
+      "observed": "no engine_channel or engine_version keys"
+    },
+    {
+      "cmd": "pgrep -f omnidesk_engine",
+      "exit_code": 1,
+      "purpose": "Check whether an OmniDesk engine process is running",
+      "observed": "no match; no OmniDesk engine process observed"
+    },
+    {
+      "cmd": "git status --porcelain",
+      "exit_code": 0,
+      "purpose": "Record worktree state before writing evidence",
+      "observed": "?? docs/research/"
+    }
+  ],
+  "unknowns": [
+    "Not verified by execution in this card: 'dsh --version' output. Only package.json version and bin.js presence were checked; the baseline's runtime invocation claim remains unverified here.",
+    "The exact DSH Desktop internal component versions are not proven by the outer app version 0.2.2-rc.1; only the app bundle version and process entry paths were observed.",
+    "OmniDesk settings contain no engine_version or engine_channel key, so the effective channel (baseline says web-api default) cannot be established from settings alone; deferred to DSH-P1-03/04.",
+    "No OmniDesk engine process was running at capture time; profile-to-process binding is unverified."
+  ],
+  "boundaries": {
+    "credentials_read": false,
+    "session_bodies_read": false,
+    "task_bodies_read": false,
+    "product_modified": false,
+    "runtime_modified": false,
+    "app_asar_extracted": false,
+    "install_or_upgrade_performed": false,
+    "model_called": false,
+    "service_started": false,
+    "git_submodule_updated": false
+  }
+}
