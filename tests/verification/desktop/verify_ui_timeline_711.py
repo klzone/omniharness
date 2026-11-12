@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OD-UI-711：前端执行时间线的静态接线 + 纯函数行为检查。
+"""OD-UI-711/712：执行时间线分组折叠的静态接线 + 纯函数行为检查。
 
 证据等级：文件事实 + 脚本运行。纯函数部分用 tsc 单独编译 timelineModel.ts，
 再由 node 执行追加/聚合/摘要语义；界面展开展开/收起与正文顺序用源码结构检查。
@@ -195,9 +195,13 @@ def main() -> int:
     check("summary_aria_expanded", "aria-expanded={open}" in home)
     check("status_history_render", "statusHistory.map(" in home and "formatTimelineTime(change.at)" in home)
     check("thought_text_render", 'className="od-timeline-thought"' in home)
-    check("summary_copy", "timelineSummary(timeline)" in home
-          and "执行了 ${tools} 条命令 · ${thoughts} 段思考" in model)
-    check("summary_collapse", "{terminal ? (" in home and "!terminal || open ? list : null" in home)
+    check("group_default_collapsed", home.count("const [open, setOpen] = useState(false);") >= 1
+          and "useState(!terminal)" not in home)
+    check("group_latest_only", "entries[entries.length - 1]" in home)
+    check("group_two_rows", 'kind="thought"' in home and 'kind="tool"' in home
+          and 'data-testid={"timeline-group-" + kind}' in home)
+    check("group_expand_all", "entries.map((entry, index) =>" in home)
+    check("group_count_hint", "od-timeline-tally" in home and "entries.length > 1" in home)
     check("notes_hidden", "visibleTimelineEntries" in model and 'entry.kind === "tool" || entry.kind === "thought"' in model)
     check("old_message_fallback", "!m.timeline || m.timeline.length === 0" in home and "m.toolNote" in home)
     check("empty_timeline_returns_null", "if (visible.length === 0) return null;" in home)
@@ -208,7 +212,7 @@ def main() -> int:
     check("timeline_model_no_io", all(token not in model for token in ("invoke(", "fetch(", "setInterval", "setTimeout")))
 
     check("theme_timeline_classes", all(name in theme for name in
-          (".od-timeline {", ".od-timeline-row", ".od-timeline-chevron.is-open", ".od-timeline-thought")))
+          (".od-timeline {", ".od-timeline-row", ".od-timeline-chevron.is-open", ".od-timeline-thought", ".od-timeline-group-body", ".od-timeline-tally")))
     check("theme_uses_tokens", "var(--color-outline)" in theme and "var(--color-on-surface-variant)" in theme)
 
     behavioral_checks()

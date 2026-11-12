@@ -19,6 +19,7 @@ pub mod engine_lifecycle;
 pub mod engine_supervisor;
 pub mod job_object;
 pub mod external_open;
+pub mod artifact_open;
 pub mod availability;
 pub mod flow_pack;
 pub mod knowledge_governance;
@@ -7819,6 +7820,58 @@ fn category_init_folders(
     }))
 }
 
+/// 列出本轮任务时间窗内写入成果目录的文件（OD-UI-713）。
+///
+/// 只返回相对路径、文件名与修改时间，不读正文；调用方据此把生成文件做成
+/// 可点击链接。时间窗来自消息的提交/结束时刻，避免把历史成果当成新产物。
+#[tauri::command(async)]
+fn task_list_generated_files(
+    since_ms: u64,
+    until_ms: u64,
+) -> Result<serde_json::Value, String> {
+    let root = task_shell::resolve_local_data_root()?;
+    let since = since_ms as f64 / 1000.0;
+    let until = until_ms as f64 / 1000.0 + 2.0;
+    let items = artifact_open::list_recent_files(&root, since, until, 8)?;
+    let rows: Vec<serde_json::Value> = items
+        .into_iter()
+        .map(|entry| {
+            serde_json::json!({
+                "relative_path": entry.relative_path,
+                "file_name": entry.file_name,
+                "modified_at": entry.modified_at,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({
+        "root": root.display().to_string(),
+        "items": rows,
+    }))
+}
+
+/// 打开用户点击的成果文件（OD-UI-713）。
+///
+/// 用户明确点击对话里的文件链接时才会走到这里：只接受成果目录内的普通文件，
+/// 用系统默认处理程序打开，不读取文件内容，也不接受调用方提供的命令。
+#[tauri::command(async)]
+fn task_open_local_file(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let config_dir = {
+        let host = state.lock().unwrap();
+        host.paths.config.clone()
+    };
+    let eff = settings::effective_root(&config_dir)?;
+    task_shell::assert_local_root_allowed(&eff.root)?;
+    task_shell::assert_outside_repo(&eff.root)?;
+    let opened = artifact_open::open(&eff.root, &path)?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "opened": opened.display().to_string(),
+    }))
+}
+
 /// 在系统文件管理器中打开当前成果目录（只读入口）。
 ///
 /// 不拼接 shell 命令：只执行固定的 `xdg-open` / `gio open`，目录作为单独参数传入，
@@ -9207,6 +9260,8 @@ pub fn run() {
             work_root_info,
             task_set_working_root,
             task_open_artifact_root,
+            task_open_local_file,
+            task_list_generated_files,
             open_external_url,
             environment_check,
             capability_view,

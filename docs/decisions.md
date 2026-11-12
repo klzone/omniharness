@@ -5,6 +5,52 @@
 
 ## 已确定
 
+### D-093（2026-11-13，OD-UI-712/713 已实施）：对话里的过程分组折叠，生成成果默认以可点击链接呈现
+
+**状态：** 用户批准并已实施；真实模型体验待实测。
+
+**决策：** ①助手消息前的时间线收敛为「思考 / 命令」两组：收起时各显示最新一条，点组尾箭头展开该组全部条目；正文始终位于时间线之后。②本轮生成的成果文件在回复下方以链接呈现，点击用系统默认程序打开；来源一是回复文本里出现的成果目录绝对路径，二是按消息提交/结束时间窗列出的本轮写入文件。历史成果不自动挂链接。
+
+**理由：** 过程信息只在需要时展开，避免十几行重复摘要把正文推离视口；生成文件是用户当场要用的产物，点名字即打开比让用户记路径、开文件夹更直接。
+
+**边界：** 打开只接受成果目录内的普通文件，由固定系统程序处理，不拼 shell、不读正文；识别只认成果目录内路径，跳过代码块，扩展名白名单外忽略；时间窗 ±2 秒，窗口内其它写入会一并列出（上限 8）。时间线仍只保存展示字段。
+
+**证据：** `verify_ui_timeline_711.py` 53/53；`verify_chat_artifact_links_713.py` 28/28；cargo `artifact_open` 3/3；tsc/build 0；tauri 构建 425.54 MiB；合成探针确认 `tool/call` 带工具名；证据在 `tests/verification/desktop/evidence/od-ui-712/README.md`。
+
+**复审触发：** ①用户反馈链接点击不打开或打开错文件；②生成文件未被列出（时间窗与落盘位置不一致）；③「未知工具」再次出现；④需要把链接扩展到知识库附件或历史成果。
+
+### D-092（2026-11-12，OD-PROFILE-092 已实施）：Discipline 使用精简核心 Preset，完整 standard 保留为回滚基线
+
+**状态：** 用户已批准并实施；本地 Profile、seed 与仓库 sample 已更新，启动探针通过；真实模型质量未重测。
+
+**决策：** `discipline` Profile 增加 `discipline-core` Agent preset，并把 `agent-preset-registry.default` 指向它；`preset-standard` 的配置保留在 patch 中，但在活动 Profile 中 `disabled: true`，同时停用 `preset-ptc`、`preset-minimal`、`preset-cordis`。回滚依据是完整备份和标准 preset 的保留配置。核心 preset 只保留 persona、agent-instructions、time-context、tool-fs、skill-filesystem、tool-skill、compaction、tool-ask-user、tool-web（2026-11-13 修订：`tool-fs` 恢复 write/edit，并加回平台 shell 与 `tool-fs-search`，见 D-092a）。
+
+**移除的模型可见能力：** delegation 组（`tool-subagent-control`、list-agents、`tool-subagent`、`tool-subagent-fork`、`workflow-ptc`、`tool-workflow`）、bash/pwsh、jobs、schedule、todo、goal、present、planning/plan-mode、fs-search、plugin manager/market。`skill-office`、`web-search-free`、`cost-meter` 仍在 Profile 层装配；Office Skill 按需加载。
+
+**理由：** OmniDesk 的四个业务域不需要子 Agent、通用 workflow 或 shell 集合；通用工具面会放大 Prompt/schema 成本与误调用。Profile 继续作为产品运行环境，Preset 作为模型能力面，Skill 作为流程层；不以多个 Profile 承担多个业务场景。
+
+**证据：** sample 的 `preset-standard` 有 22 个插件行，`discipline-core` 有 9 个；`--dump-config` rc=0，四个 built-in preset 均为 disabled，`agent-preset-registry.default=discipline-core`；隔离启动探针返回 web 地址。同版本空载三轮中位数：旧完整 preset RSS `377,936 KB` / footprint `334 MB`，仅 `discipline-core` RSS `361,488 KB` / footprint `316 MB`，约减 **16.1 MiB RSS / 18 MB footprint**。旧/新 Profile 均出现同一条既有 `dsh-free-search` peer import 警告；`npx tsc --noEmit`、`npm run build`、`cargo test --offline --lib profile_rules::tests`（16/16）、`verify_profile_scope_106.py`（43/43）、`verify_profile_assets_109.py`（41/41）通过。实际备份：`~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml.bak-20261112T222209`。
+
+**边界：** 不升级 DSH、不比较 Pi、不启用子 Agent、不修改 Runtime 源码、不修改用户 session/成果/知识库。该 preset 是能力选择，不是安全沙箱；Skill 仍不能替代插件或权限。本次没有删除插件包，因此整包体积不会因 preset 停用而缩小。
+
+**复审触发：** ①工作记录/复盘/写作/知识库/项目出现需要被移除工具的证据；②`selectedDefault` 或 UI preset 选择覆盖了 Profile 默认；③Skill references 因 tool-fs/fs-search 收窄而读不到；④升级 DSH 后 `agent-preset-registry` 默认或 preset 解析行为变化；⑤需要重新引入某个工具时，先加回 `tool-fs-search`/`tool-todo` 或做独立 preset，不改回完整 standard。
+
+### D-092a（2026-11-13，同 OD-PROFILE-092）：`discipline-core` 恢复写文件与平台 shell
+
+**状态：** 用户实测精简版无法导出 Excel 后选定方案 A，已实施并重建；真实模型体验待实测。
+
+**决策：** 在 `discipline-core` 内加回 `tool-bash`（win32 disabled）/ `tool-pwsh`（非 win32 disabled）、`tool-fs-search`，并把 `tool-fs` 的 `write`/`edit` 恢复为 true（`readImage` 仍为 false）。子 Agent、workflow、jobs、schedule、todo、goal、planning、present、plugin manager/market、terminal 继续不加载。
+
+**理由：** 文案写作与表格导出属于产品自带场景，模型必须具备写文件与执行脚本两条通道；只读 preset 会把「无法导出」误报成产品缺陷。写文件与 shell 是执行能力，不是通用平台扩张，因此不必恢复完整的 standard 工具面。
+
+**未加 `tool-workspace-dependencies`：** 该包 `Config` 必填 `source`，指向 primary runtime payload，OmniDesk 没有该 payload 也不设置 `DSH_PRIMARY_RUNTIME`；上游 `dsh-sdk-app` 同名行在 payload 缺失时默认 disabled。加入会因缺少必填 config 在会话组合时失败。
+
+**证据：** 临时 `DSH_HOME` `--dump-config` rc=0 且含新工具行；剪枝 runtime 启动探针返回 web 地址、stderr 为空；7 个相关包 `import()` 通过；`npx tsc --noEmit` 0；`npm run build` 0；cargo `profile_rules::tests` 16/16；scope 43/43；assets 41/41；重建 rc=0、日志记 425.52 MiB、`du -sh` 505 MB；bundle 内 seed patch 与新配置一致。备份 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml.bak-addback-20261113`。
+
+**边界：** 写入受 `workspace-write` 沙箱与审批策略约束，限制在会话 cwd；runtime 与系统 python 无 openpyxl，xlsx 仍需 LibreOffice 转换或模型自带实现（未实测）。既有 open session 保留创建时的 composition。
+
+**复审触发：** ①模型仍报缺少写文件或 shell；②写操作被沙箱或审批挡住导致导出失败；③需要 `load_workspace_dependencies` 时先补 primary runtime payload 再启用该行；④xlsx 生成失败率高，考虑随 runtime 分发表格库或补 LibreOffice 转换 Skill。
+
 ### D-069（2026-11-08，OD-QS-401 起）：重要性落盘、紧急性派生、用户覆盖落盘
 
 **状态：** 已批准；字段扩展与零迁移已随 OD-QS-401 实施并通过复检（cargo lib 698 passed，旧文件字节不变测试在案）；紧急性派生与 override 界面标注待 OD-QS-402/403/405 实施。

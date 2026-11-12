@@ -33,6 +33,10 @@ prune() {
 
 say "裁剪 $RUNTIME 中的非运行时文件…"
 prune "$RUNTIME"
+if [ -x "$SCRIPT_DIR/runtime-prune-packages.sh" ]; then
+  say "裁剪第一批/第二批未使用插件包…"
+  bash "$SCRIPT_DIR/runtime-prune-packages.sh" "$RUNTIME" >&2
+fi
 say "裁剪完成：$(find "$RUNTIME" -type f | wc -l | tr -d ' ') 个文件"
 
 # seed 每次重建：Profile 的 node_modules 要按当前清单重装，残留的旧依赖会让人

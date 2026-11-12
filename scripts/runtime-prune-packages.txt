@@ -1,0 +1,12 @@
+# 第一批/第二批剪枝说明（脚本使用 glob，保留例外）
+# 顶层
+sherpa-onnx-*
+node-pty
+# 实验能力
+node_modules/@deepseek-ai/dsh-experimental-*
+# client UI，脚本内保留 dsh-client-ui-directory-picker-native
+node_modules/@deepseek-ai/dsh-client-ui-*
+# 终端
+node_modules/@deepseek-ai/dsh-terminal
+node_modules/@deepseek-ai/dsh-terminal-bash
+node_modules/@deepseek-ai/dsh-api-terminal-controller
