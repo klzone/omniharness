@@ -1,0 +1,177 @@
+{
+  "step_id": "DSH-P1-02",
+  "generated_at": "2026-11-12T07:13:30Z",
+  "evidence_levels": [
+    "F",
+    "R"
+  ],
+  "facts": {
+    "lock": {
+      "path": "runtime/RUNTIME.lock",
+      "repo": "https://github.com/deepseek-ai/deepseek-harness.git",
+      "tag": "dsh-v0.2.1-rc.5",
+      "locked_commit": "b830ec950faba0a46dda564be3e2d854afed94f1",
+      "npm_version": "0.2.1-rc.5"
+    },
+    "submodule": {
+      "path": "runtime/deepseek-harness",
+      "gitmodules_url": "https://github.com/deepseek-ai/deepseek-harness.git",
+      "gitmodules_branch": "main",
+      "gitlink_commit": "d743267388641bc76f17c45ce8b4c231aed1d32c",
+      "git_submodule_status_line": "-d743267388641bc76f17c45ce8b4c231aed1d32c runtime/deepseek-harness",
+      "source_checkout_present": false,
+      "checkout_entry_count": 0,
+      "gitlink_matches_lock": false,
+      "reason": "Submodule status has a leading '-', directory listing is empty, and the gitlink commit differs from RUNTIME.lock."
+    },
+    "remote_reachability": {
+      "queried_remote": "upstream",
+      "remote_url": "https://github.com/deepseek-ai/deepseek-harness.git",
+      "command": "git ls-remote --tags upstream 'dsh-v0.2.1-rc.5*'",
+      "exit_code": 0,
+      "tag_ref": "refs/tags/dsh-v0.2.1-rc.5",
+      "tag_object_sha": "b830ec950faba0a46dda564be3e2d854afed94f1",
+      "peeled_commit_sha": null,
+      "remote_tag_points_to_lock": true,
+      "note": "Lightweight tag output has no '^{}' peeled line; tag ref SHA equals the lock commit.",
+      "local_origin_note": "The repo's 'origin' is https://github.com/klzone/omniharness.git; querying origin for the tag returned no rows. The lock URL matches the 'upstream' remote."
+    },
+    "rc5_runtime_artifact": {
+      "path": "runtime/dsh-runtime/node_modules/@deepseek-ai/dsh",
+      "package_version": "0.2.1-rc.5",
+      "lib_js_present": true,
+      "bin_js_present": true,
+      "rc5_npm_lib_js_present": true,
+      "installed_dependency_dirs_under_scope": 307,
+      "source_form": "Published package contents per package.json: lib/*.js and lib/types/*.d.ts; not a full TypeScript source checkout.",
+      "command": "test -f runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
+    },
+    "desktop_runtime_artifact": {
+      "path": "/Applications/DeepSeek Harness.app/Contents/Resources/app.asar",
+      "size": "203M",
+      "desktop_asar_version": "0.2.2-rc.1",
+      "version_string_matches_at_least": 8,
+      "extraction_performed": false,
+      "command": "strings -a '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar' | rg -m 8 '0\\.2\\.2-rc\\.1'",
+      "note": "strings matched version literals inside the unextracted asar; package ownership of individual matches was not proven."
+    },
+    "provenance_matrix": [
+      {
+        "object": "repo RUNTIME.lock -> rc.5",
+        "available": true,
+        "evidence": "lock file + upstream tag SHA match"
+      },
+      {
+        "object": "rc.5 full source checkout",
+        "available": false,
+        "evidence": "empty submodule dir, gitlink d7432673 != lock b830ec95"
+      },
+      {
+        "object": "rc.5 runnable compiled package",
+        "available": true,
+        "evidence": "package.json 0.2.1-rc.5 and lib/bin.js present"
+      },
+      {
+        "object": "installed OmniDesk runtime",
+        "available": true,
+        "evidence": "bundled RUNTIME.lock and bundled package.json both 0.2.1-rc.5"
+      },
+      {
+        "object": "DSH Desktop 0.2.2-rc.1 asar",
+        "available": true,
+        "evidence": "app bundle + strings version match; exact source commit unknown"
+      }
+    ],
+    "stage2_source_gate_recommendation": [
+      "Preferred: obtain the exact rc.5 source at b830ec950faba0a46dda564be3e2d854afed94f1 into a directory outside the repository, then audit read-only.",
+      "Fallback requiring explicit approval: audit rc.5 compiled lib/*.js plus lib/types/*.d.ts, accepting missing source comments/types and no guarantee of exact source layout.",
+      "Do not use current main, the d7432673 gitlink, or DSH Desktop 0.2.2-rc.1 artifacts as rc.5 source evidence."
+    ]
+  },
+  "commands": [
+    {
+      "cmd": "cat .gitmodules",
+      "exit_code": 0,
+      "purpose": "Read submodule declaration",
+      "observed": "runtime/deepseek-harness -> deepseek-harness.git, branch main"
+    },
+    {
+      "cmd": "git ls-tree HEAD runtime/deepseek-harness",
+      "exit_code": 0,
+      "purpose": "Read committed gitlink",
+      "observed": "160000 commit d743267388641bc76f17c45ce8b4c231aed1d32c"
+    },
+    {
+      "cmd": "git submodule status",
+      "exit_code": 0,
+      "purpose": "Read submodule checkout state",
+      "observed": "'-d7432673...' means not initialized"
+    },
+    {
+      "cmd": "ls -A runtime/deepseek-harness | wc -l",
+      "exit_code": 0,
+      "purpose": "Count checkout entries",
+      "observed": "0"
+    },
+    {
+      "cmd": "git remote -v",
+      "exit_code": 0,
+      "purpose": "Identify remotes before tag query",
+      "observed": "origin/omniharness -> klzone/omniharness; upstream -> deepseek-ai/deepseek-harness"
+    },
+    {
+      "cmd": "git ls-remote --tags origin 'dsh-v0.2.1-rc.5*'",
+      "exit_code": 0,
+      "purpose": "Query origin for rc.5 tag",
+      "observed": "no output"
+    },
+    {
+      "cmd": "git ls-remote --tags upstream 'dsh-v0.2.1-rc.5*'",
+      "exit_code": 0,
+      "purpose": "Query official remote for rc.5 tag",
+      "observed": "b830ec950faba0a46dda564be3e2d854afed94f1 refs/tags/dsh-v0.2.1-rc.5"
+    },
+    {
+      "cmd": "test -f runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js",
+      "exit_code": 0,
+      "purpose": "Confirm rc.5 compiled CLI entry exists",
+      "observed": "exists"
+    },
+    {
+      "cmd": "ls runtime/dsh-runtime/node_modules/@deepseek-ai | wc -l",
+      "exit_code": 0,
+      "purpose": "Count installed @deepseek-ai package dirs",
+      "observed": "307"
+    },
+    {
+      "cmd": "ls -lh '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar'",
+      "exit_code": 0,
+      "purpose": "Record asar path and size",
+      "observed": "203M, Nov 4 17:16"
+    },
+    {
+      "cmd": "strings -a '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar' | rg -m 8 '0\\.2\\.2-rc\\.1'",
+      "exit_code": 0,
+      "purpose": "Read version strings inside unextracted asar",
+      "observed": "8 matches of \"version\": \"0.2.2-rc.1\""
+    }
+  ],
+  "unknowns": [
+    "The exact source commit and package layout used to build DSH Desktop 0.2.2-rc.1 were not established; only version literals in the unextracted asar were observed.",
+    "The d7432673 gitlink's full commit identity/date was not inspected beyond the SHA, so its historical relationship to alpha.2 is carried from the baseline rather than re-proven here.",
+    "Whether b830ec95 is reachable locally (object present) was not checked; only the remote tag lookup was performed.",
+    "The rc.5 package tree's completeness was inferred from the CLI entry and dependency count; no full manifest-to-directory comparison was run."
+  ],
+  "boundaries": {
+    "credentials_read": false,
+    "session_bodies_read": false,
+    "product_modified": false,
+    "runtime_modified": false,
+    "git_submodule_updated": false,
+    "app_asar_extracted": false,
+    "app_asar_written": false,
+    "clone_or_fetch_performed": false,
+    "install_or_upgrade_performed": false,
+    "model_called": false
+  }
+}
