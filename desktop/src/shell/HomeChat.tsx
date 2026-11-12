@@ -85,10 +85,10 @@ import {
   appendToolActivity,
   formatTimelineTime,
   timelineStatusLabel,
-  timelineSummary,
   visibleTimelineEntries,
   type TimelineEntry,
 } from "./timelineModel";
+import { artifactLinksInText, type ArtifactLink } from "./artifactLinks";
 import { SCENES, isSceneKey } from "../scenes";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
@@ -294,53 +294,81 @@ function TimelineEntryRow({
 }
 
 /**
- * OD-UI-711：助手消息正文前的执行时间线。
- * 任务进行中直接铺开；到达终态后收成一行摘要，仍可展开回看。
+ * OD-UI-711 / OD-UI-712：思考与命令各自成组。
+ * 收起时每组只显示最新一条，点箭头才展开该组全部条目；正文始终在最前。
  */
-function TimelineView({
-  timeline: rawTimeline,
-  state,
+function TimelineGroup({
+  kind,
+  entries,
 }: {
-  timeline?: TimelineEntry[] | null;
-  state?: TaskState | null;
+  kind: "tool" | "thought";
+  entries: Array<TimelineEntry & { kind: "tool" | "thought" }>;
 }) {
-  const timeline = Array.isArray(rawTimeline) ? rawTimeline : [];
-  const visible = visibleTimelineEntries(timeline);
-  const terminal = state != null && (TERMINAL_STATES as readonly string[]).includes(String(state));
-  const [open, setOpen] = useState(!terminal);
-
-  useEffect(() => {
-    setOpen(!terminal);
-  }, [terminal]);
-
-  if (visible.length === 0) return null;
-
-  const list = (
-    <div className="od-timeline-list" data-testid="timeline-list">
-      {visible.map((entry, index) => (
-        <TimelineEntryRow key={(entry.seq ?? entry.kind) + "-" + index} entry={entry} />
-      ))}
+  const [open, setOpen] = useState(false);
+  if (entries.length === 0) return null;
+  const isTool = kind === "tool";
+  const latest = entries[entries.length - 1];
+  const latestText = isTool
+    ? (latest.title ?? "").trim() || "未知工具"
+    : (latest.text ?? "").replace(/\s+/g, " ").trim() || "思考过程";
+  const latestStatus = isTool ? (latest.status ?? "").trim() : "";
+  return (
+    <div className="od-timeline-group" data-testid={"timeline-group-" + kind}>
+      <button
+        type="button"
+        className="od-timeline-row"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="od-timeline-glyph" aria-hidden="true">
+          {isTool ? ">_" : "@@"}
+        </span>
+        <span className="od-timeline-kind">{isTool ? "命令" : "思考"}</span>
+        <span className="od-timeline-title">{latestText}</span>
+        {latestStatus ? <span className="od-timeline-status">{latestStatus}</span> : null}
+        {entries.length > 1 ? (
+          <span className="od-timeline-tally">{entries.length}</span>
+        ) : null}
+        <Icon
+          name="chevron-down"
+          className={"od-timeline-chevron" + (open ? " is-open" : "")}
+        />
+      </button>
+      {open ? (
+        isTool ? (
+          <div className="od-timeline-group-body" data-testid="timeline-group-entries">
+            {entries.map((entry, index) => (
+              <TimelineEntryRow key={(entry.seq ?? entry.kind) + "-" + index} entry={entry} />
+            ))}
+          </div>
+        ) : (
+          <div className="od-timeline-group-body is-thought" data-testid="timeline-group-entries">
+            {entries.map((entry, index) => (
+              <p key={(entry.seq ?? entry.kind) + "-" + index} className="od-timeline-thought">
+                {entry.text ?? ""}
+              </p>
+            ))}
+          </div>
+        )
+      ) : null}
     </div>
   );
+}
 
+/**
+ * OD-UI-711：助手消息正文前的执行时间线。
+ * 思考与命令分两组；收起时各显示最新一条，展开后回看全部条目。
+ */
+function TimelineView({ timeline: rawTimeline }: { timeline?: TimelineEntry[] | null }) {
+  const timeline = Array.isArray(rawTimeline) ? rawTimeline : [];
+  const visible = visibleTimelineEntries(timeline);
+  if (visible.length === 0) return null;
+  const thoughts = visible.filter((entry) => entry.kind === "thought");
+  const tools = visible.filter((entry) => entry.kind === "tool");
   return (
     <div className="od-timeline" data-testid="activity-timeline">
-      {terminal ? (
-        <button
-          type="button"
-          className="od-timeline-summary"
-          aria-expanded={open}
-          data-testid="timeline-summary"
-          onClick={() => setOpen((value) => !value)}
-        >
-          <span>{timelineSummary(timeline)}</span>
-          <Icon
-            name="chevron-down"
-            className={"od-timeline-chevron" + (open ? " is-open" : "")}
-          />
-        </button>
-      ) : null}
-      {!terminal || open ? list : null}
+      <TimelineGroup kind="thought" entries={thoughts} />
+      <TimelineGroup kind="tool" entries={tools} />
     </div>
   );
 }
@@ -387,6 +415,85 @@ function StreamedMarkdown({ text, live }: { text: string; live: boolean }) {
       <MarkdownText text={text.slice(0, shown)} />
       {live && shown < text.length ? <Caret /> : null}
     </>
+  );
+}
+
+/** OD-UI-713：本轮生成的成果文件；点文件名用系统默认程序打开。 */
+function ArtifactLinks({
+  text,
+  root,
+  sinceMs,
+  untilMs,
+}: {
+  text: string;
+  root: string;
+  sinceMs?: number | null;
+  untilMs?: number | null;
+}) {
+  const [resolvedRoot, setResolvedRoot] = useState("");
+  const effectiveRoot = root || resolvedRoot;
+  const textLinks = useMemo(
+    () => artifactLinksInText(text, effectiveRoot),
+    [text, effectiveRoot],
+  );
+  const [taskLinks, setTaskLinks] = useState<ArtifactLink[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sinceMs || !untilMs || untilMs <= sinceMs) {
+      setTaskLinks([]);
+      return;
+    }
+    let cancelled = false;
+    void shell
+      .listGeneratedFiles(sinceMs, untilMs)
+      .then((res) => {
+        if (cancelled) return;
+        const base = ((root || res.root) ?? "").replace(/\/+$/, "");
+        if (!root && res.root) setResolvedRoot(res.root);
+        if (!base) return;
+        setTaskLinks(
+          (res.items ?? []).map((item) => ({
+            path: base + "/" + item.relative_path,
+            name: item.file_name,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTaskLinks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [root, sinceMs, untilMs]);
+  const links = useMemo(() => {
+    const merged = [...textLinks];
+    for (const item of taskLinks) {
+      if (!merged.some((known) => known.path === item.path)) merged.push(item);
+    }
+    return merged.slice(0, 8);
+  }, [textLinks, taskLinks]);
+  if (links.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" data-testid="artifact-links">
+      {links.map((link) => (
+        <button
+          key={link.path}
+          type="button"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-primary text-[11px] hover:bg-surface-container-high transition-colors"
+          title={link.path}
+          onClick={() => {
+            setNote(null);
+            void shell.openLocalFile(link.path).catch((e: unknown) => {
+              setNote(String(e instanceof Error ? e.message : e));
+            });
+          }}
+        >
+          <Icon name="note" className="w-[12px] h-[12px]" />
+          <span className="max-w-[220px] truncate">{link.name}</span>
+        </button>
+      ))}
+      {note ? <span className="text-[10.5px] text-outline">{note}</span> : null}
+    </div>
   );
 }
 
@@ -852,6 +959,20 @@ export function HomeChat({
     );
     return hit?.startedAtMs ?? null;
   }, [activeTaskId, messages]);
+  /** 成果目录（本地数据根）：只用于把回复里的文件路径变成可点击链接。 */
+  const [artifactRoot, setArtifactRoot] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    void shell
+      .localRootInfo()
+      .then((info) => {
+        if (!cancelled && info.artifact_root) setArtifactRoot(info.artifact_root);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   /** 引擎闲置提示：只提示，不自动停止；停不停由用户在设置页决定。 */
   const [engineIdleHint, setEngineIdleHint] = useState(false);
   /** 最近一次 taskStatus 轮询到达终态的时刻：作为「引擎此刻空闲」的界面侧证据。 */
@@ -3581,7 +3702,7 @@ export function HomeChat({
                   ) : null}
 
                   {/* OD-UI-711：执行时间线在正文前；正文仍是流式增量，不进入时间线。 */}
-                  <TimelineView timeline={m.timeline} state={m.state} />
+                  <TimelineView timeline={m.timeline} />
 
                   {m.error ? (
                     <div className="rounded-lg bg-error-container text-on-error-container px-3 py-2 text-[12px] leading-relaxed">
@@ -3593,13 +3714,21 @@ export function HomeChat({
                       把这次任务号告诉我（可在应用数据根的 engine-state 里查到）。
                     </div>
                   ) : m.text ? (
-                  <div className="text-on-surface-variant leading-relaxed">
+                  <div className="space-y-2">
+                    <div className="text-on-surface-variant leading-relaxed">
                       <AssistantText
                         text={m.text}
                         live={!!m.taskId && !(TERMINAL_STATES as string[]).includes(String(m.state ?? ""))}
                         streamed={!!m.taskId && streamedTasksRef.current.has(m.taskId)}
                         highlightQuery={searchQuery}
                       />
+                    </div>
+                    <ArtifactLinks
+                      text={m.text}
+                      root={artifactRoot}
+                      sinceMs={m.startedAtMs}
+                      untilMs={m.endedAtMs}
+                    />
                   </div>
                   ) : m.notice ? (
                     <p className="text-outline leading-relaxed">未收到可显示的输出。</p>

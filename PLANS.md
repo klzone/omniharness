@@ -1,5 +1,35 @@
 # 当前实施计划
 
+### OD-UI-712：思考与命令分组折叠（待用户批准，2026-11-13）
+
+> **触发：** 用户反馈对话里的思考与工具调用逐条平铺（截图中六对「思考/命令」行），要求把思考过程与工具调用分别整合：收起时每组只显示最新一条，点对应箭头才展开全部；UI 按本 App 的规范设计。用户同轮追加：生成的文件要默认带链接，点文件名即可打开，不必去文件夹里找；该需求并入本轮一起改（OD-UI-713）。
+
+> **状态：** 用户已批准并扩展范围（2026-11-13）；由本助手亲自实施。
+
+> **范围：** `desktop/src/shell/HomeChat.tsx`（TimelineView / TimelineEntryRow 渲染层）、`desktop/src/theme.css`（分组行样式）、`desktop/src/shell/timelineModel.ts`（分组所需的纯函数）、`tests/verification/desktop/verify_ui_timeline_711.py`（结构断言同步适配）。不改事件数据模型与时间线持久化，不改引擎事件映射（除非合成探针证明 tool_name 为空）。
+
+> **设计：** 固定两条分组行——`@` 思考、`>_` 命令；附侧沿用现有 glyph 与类型词，中间显示组内最新一条（思考取最新思考文本首行截断，命令取最新工具标题与状态），右侧 chevron。条目多于一条时用既有 mono 小号计数作为次要信息，不加描述性标签。展开后按时间顺序列出该组全部条目：思考为原文块（沿用 od-timeline-thought），命令为逐条行并保留状态历史展开。空组不渲染。样式只用既有令牌（--color-outline / --color-on-surface-variant、11.5px、7px 圆角、160ms 旋转），不新增颜色或徽标。
+
+> **实施前动作：** 按 OD-ARCH-035，用 screenshots-design-inspiration MCP 搜 2–3 个同类产品的步骤/工具折叠布局，在任务记录写 2 句以内借鉴要点。
+
+> **验证：** `npx tsc --noEmit` 0；`npm run build` 0；适配后的 `verify_ui_timeline_711.py` 全通过；隔离数据根 + 现有 `_mock_model_server` 合成任务一轮，确认时间线数据与工具名；真实窗口截图核对收起/展开两态与正文顺序。
+
+> **限制：** 纯前端改动，对既有 open session 立即生效；不新增持久化字段；工具名展示仍依赖引擎传入的展示字段。
+
+### OD-PROFILE-092：Discipline 精简 Preset（已实施，2026-11-12；待真实业务实测）
+
+> **触发：** 用户确认不需要子 Agent，且多项插件/工具没有使用场景；批准一个产品 Profile、一个精简核心 Preset、按动作加载 Skill。
+
+> **范围：** `samples/profiles/discipline.profile.patch.yml`、运行时 seed `runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml`、现有 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml`，以及在 `docs/decisions.md` 登记 D-092。`preset-standard` 的配置保留在 patch 中但活动 Profile 停用，四个 built-in preset 均 disabled；Skill 绑定规则不改；不改 DSH Runtime、不升级 DSH、不比较 Pi、不启用子 Agent。
+
+> **实施：** 新增 `discipline-core`（9 个插件行），默认 `agent-preset-registry` 指向它；移除模型可见的 delegation、workflow、bash/pwsh、jobs、schedule、todo、goal、present、planning、fs-search、plugin manager/market。保留 persona、instructions、time-context、tool-fs、skill-filesystem、tool-skill、compaction、ask-user、tool-web。实际 Profile 写入前备份为 `cordis.patch.yml.bak-20261112T222209`。
+
+> **证据：** samples `--dump-config` rc=0；实际 Profile 临时副本 rc=0 且 default 为 `discipline-core`、四个 built-in preset disabled；隔离启动返回 web 地址；三轮空载中位数由标准约 369.1 MiB RSS / 334 MB footprint 降至 353.0 MiB / 316 MB（约 -16.1 MiB / -18 MB）；旧/新 Profile 同现既有 `dsh-free-search` peer import warning；`npx tsc --noEmit` 0；`npm run build` 0；`cargo test --offline --lib profile_rules::tests` 16/16；`verify_profile_scope_106.py` 43/43；`verify_profile_assets_109.py` 41/41。
+
+> **证据目录：** `tests/verification/desktop/evidence/od-profile-092/README.md`。
+
+> **限制：** 当前工作区尚无真实模型业务回归；现有已打开 session 可能按 DSH 会话绑定保留 old standard composition；UI `selectedDefault` 若曾由用户设置，可能覆盖 Profile default。真实业务 observation 与用户实测为后续验收项。
+
 ### OD-WR-509：工作记录分页双页签改造（已实施并复验，2026-11-12）
 
 > **触发：** 用户提供工作记录分页设计图，并要求按《OmniDesk 工作记录模块 1.0 总体规划与设计任务书》改造；用户请求本身构成本轮改造授权。

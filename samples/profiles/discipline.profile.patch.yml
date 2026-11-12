@@ -3,7 +3,7 @@
 #
 # 办公能力（Word / PowerPoint / Excel 工作流）只随专业 Profile 挂载：
 # dsh-skill-office 提供 office-docx / office-pptx / office-xlsx 三个候选项，
-# 配合 preset-standard 内已启用的 skill 注册表与 tool-skill 生效。
+# 配合 discipline-core 内已启用的 skill 注册表与 tool-skill 生效。
 # 基础标准（omnidesk-base）不加这条，插件面保持与官方 dsh-base 一致。
 - insert:
     - id: skill-office
@@ -20,12 +20,87 @@
     - id: cost-meter
       name: dsh-cost-meter
 
+# OmniDesk 精简 Agent preset：只暴露产品实际使用的工具面。
+# preset-standard 保留为可回滚的完整上游基线，默认 preset 指向这里。
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: discipline-core
+- insert:
+    - id: preset-discipline-core
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: discipline-core
+        name: Discipline Core
+        description: OmniDesk discipline 的最小工具面
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are a coding agent powered by the {{model}} model.
+              suffix: |-
+                检索收敛规则：
+                - 不要给 web_fetch 的 URL 拼接 r.jina.ai 等第三方 reader 代理前缀。web_fetch 已内置直连、无头浏览器、云端抓取的回退链；遇到反爬页面改用 web_search 或换其它来源。
+                - 连续 3 次工具调用都没有带来新的可用事实时，停止检索，直接基于已有信息作答。
+                - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              read: true
+              readImage: false
+              write: true
+              edit: true
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
 
 # 检索收敛规则（OD-ARCH-147c）：preset-standard 的 persona.suffix 承载三条规则。
 # 本段按上游 dsh-web-app/presets/standard.patch.yml 原样 restate config.plugins，
 # 仅追加 persona.suffix；上游预设增删插件时须同步本段。
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
+  disabled: true
   config:
     id: standard
     order: 1
@@ -154,3 +229,118 @@
       - id: tool-plugin-market
         name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: true
+# 第一批/第二批剪枝：自有 Tauri UI 不加载这些 DSH Web UI 行。
+# 例外：dsh-web-frontend 与 dsh-client-ui-directory-picker-native 仍保留。
+- id: ui-open-in-app
+  disabled: true
+- id: terminal-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: ui-theme
+  disabled: true
+- id: ui-shortcuts
+  disabled: true
+- id: ui-layout
+  disabled: true
+- id: ui-renderer
+  disabled: true
+- id: ui-session
+  disabled: true
+- id: ui-sidebar
+  disabled: true
+- id: ui-sidebar-right
+  disabled: true
+- id: ui-sidebar-documentpreview
+  disabled: true
+- id: ui-sidebar-browser
+  disabled: true
+- id: ui-sidebar-terminal
+  disabled: true
+- id: ui-sidebar-files
+  disabled: true
+- id: ui-settings
+  disabled: true
+- id: ui-settings-general
+  disabled: true
+- id: ui-settings-models
+  disabled: true
+- id: ui-plugin-manager
+  disabled: true
+- id: ui-settings-plugin-inventory
+  disabled: true
+- id: ui-conversation
+  disabled: true
+- id: ui-approval
+  disabled: true
+- id: ui-chat
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+- id: ui-attachment
+  disabled: true
+- id: ui-tool
+  disabled: true
+- id: ui-cordis
+  disabled: true
+- id: ui-deliverables
+  disabled: true
+- id: ui-workspace
+  disabled: true
+- id: ui-workflow-run
+  disabled: true
+- id: ui-input-trigger
+  disabled: true
+- id: ui-commands
+  disabled: true
+- id: ui-skill
+  disabled: true
+- id: ui-subagent
+  disabled: true
+- id: ui-reference
+  disabled: true
+- id: ui-secret-mask
+  disabled: true
+- id: ui-jobs
+  disabled: true
+- id: ui-schedule
+  disabled: true
+- id: ui-goal
+  disabled: true
+- id: ui-message-feedback
+  disabled: true
+- id: ui-model-selection
+  disabled: true
+- id: ui-deepseek-model-label-1017
+  disabled: true
+- id: ui-permission
+  disabled: true
+- id: ui-agent-preset
+  disabled: true
+- id: entry-customization
+  disabled: true
+- id: ui-settings-session-log
+  disabled: true
+- id: ui-settings-plugins
+  disabled: true
+- id: ui-settings-shell
+  disabled: true
+- id: ui-settings-agent-loop
+  disabled: true
+- id: ui-settings-subagent
+  disabled: true
+- id: ui-settings-web-search
+  disabled: true
+- id: ui-plan
+  disabled: true
+- id: ui-user-questions
+  disabled: true
+- id: ui-trajectory
+  disabled: true
+
+- id: preset-ptc
+  disabled: true
+- id: preset-minimal
+  disabled: true
+- id: preset-cordis
+  disabled: true

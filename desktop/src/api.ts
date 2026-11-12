@@ -1805,6 +1805,29 @@ export const shell = {
     });
   },
 
+  /** 列出本轮任务时间窗内生成的成果文件（只读元数据，不读正文）。 */
+  listGeneratedFiles(
+    sinceMs: number,
+    untilMs: number,
+  ): Promise<{
+    root: string;
+    items: Array<{ relative_path: string; file_name: string; modified_at: number }>;
+  }> {
+    return invoke<{
+      root: string;
+      items: Array<{ relative_path: string; file_name: string; modified_at: number }>;
+    }>("task_list_generated_files", { sinceMs, untilMs }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 用系统默认处理程序打开对话里提到的成果文件（只允许成果目录内的普通文件）。 */
+  openLocalFile(path: string): Promise<{ ok: boolean; opened: string }> {
+    return invoke<{ ok: boolean; opened: string }>("task_open_local_file", { path }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 列出各 DSH Profile 生效的 provider / 模型（只取非机密字段；不读凭证值）。
    *

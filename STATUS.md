@@ -1,5 +1,43 @@
 # 执行状态
 
+## OD-UI-712/713 时间线分组与成果文件链接（2026-11-13，已实施，待真实模型实测）
+
+- 用户反馈对话里思考与命令逐条平铺，要求分别整合：收起时各显示最新一条、点箭头展开全部；同轮追加「生成文件默认带链接、点文件名即可打开」。用户明确批准并合并执行。
+- 时间线改为两条分组行：思考组收起显示最新一段思考首行，命令组显示最新工具名与状态；组内多于一条时行尾显示小号次数。展开后：思考组铺开全部原文，命令组逐条列出（每条仍可看状态历史）。任务进行中与终态均为收起，正文顺序不变。
+- 成果文件链接：`artifactLinks.ts` 识别回复里的成果目录绝对路径（跳过代码块、扩展名白名单、去重、上限 8）；`ArtifactLinks` 同时按消息提交/结束时间窗（±2 秒）从 `task_list_generated_files` 取本轮写入的文件，合并后点击调用 `task_open_local_file`。后端只接受成果目录内普通文件，用系统默认程序打开，不读正文、不拼 shell。
+- 生成文件列举没有复用 list_offline_artifacts：该函数只认 OmniDesk 自己的 offline-<场景>-<时间戳>.md，实测对用户的 xlsx 返回 0 条。改为 artifact_open::list_recent_files 专用遍历（深度 4、扫描上限 4000、跳过隐藏与临时文件、按修改时间倒序、上限 8）。
+- 实跑：`npx tsc --noEmit` 0；`npm run build` 0；`verify_ui_timeline_711.py` 53/53；新增 `verify_chat_artifact_links_713.py` 28/28；`cargo test --offline --lib artifact_open` 3/3；`npm run tauri:build -- --bundles app` rc=0、425.54 MiB。
+- 合成模型探针（隔离 `/tmp` 根、profile=discipline、mock 端点）：任务 succeeded，`tool/call` 载荷带 `tool_name=bash`，说明当前 web-api 通道工具名正常；「未知工具」不是当前链路的稳定现象，若再现需按任务号取会话日志复核。
+- 界面侧定位：临时探针显示 root=/Users/yvan/OmniDesk/workspace/artifacts、时间窗与消息一致、items=0，据此定位到旧列举函数的文件名白名单；探针随后已移除。
+- 证据：`tests/verification/desktop/evidence/od-ui-712/README.md`。
+- 未验证：真实模型下的收起/展开视觉与点击打开（需用户实测）；历史消息中既未写路径也不在时间窗内时不会出现链接；同窗口内的其它写入会被一并列出。
+- 未改事件数据模型与时间线持久化；未改 DSH Runtime；未提交、未推送。
+
+## OD-PROFILE-092a Discipline Core 恢复写文件与 shell（2026-11-13，已实施，待用户实测）
+
+- 用户实测 0.2.23 精简版导出 Excel 失败，模型回复「当前会话只提供文件只读能力，没有写入文件或运行脚本的工具」。原因核实：`discipline-core` 中 `tool-fs` 为 `read: true, readImage: false, write: false, edit: false`，且 preset 未装配任何 shell 工具。用户选定方案 A，把写文件与 shell 直接加回核心 preset（文案写作与导出都依赖）。
+- 改动：三份 patch（`samples/profiles/discipline.profile.patch.yml`、`runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml`、`~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml`）在 `discipline-core` 内新增 `tool-bash`（`process.platform === 'win32'` 时 disabled）和 `tool-pwsh`（非 win32 时 disabled）；`tool-fs` 改为 `read: true, readImage: false, write: true, edit: true`；新增 `tool-fs-search`（`sampleOverCapGlobResults: false`）。
+- 未加 `tool-workspace-dependencies`：`runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-tool-workspace-dependencies/lib/index.js` 的 `Config` 要求必填 `source`（primary runtime payload 根），OmniDesk 没有该 payload，也不设置 `DSH_PRIMARY_RUNTIME` / `DSH_BUNDLED_PRIMARY_RUNTIME`；上游 `dsh-sdk-app/cordis.patch.yml` 同名行在 payload 缺失时直接 disabled。加进来会因缺少必填 config 在会话组合时失败。Office Skill 按 `SKILL.md` 的降级路径使用已配置环境。
+- 未恢复：delegation/subagent、workflow、jobs、schedule、todo、goal、planning/plan-mode、present、plugin manager/market、terminal 控制器与 UI。子 Agent 仍不启用。
+- 备份：实际数据根 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml.bak-addback-20261113`；仓库 sample 与 seed 的改动前副本已移到 `/tmp`（`discipline.profile.patch.yml.bak-addback-20261113-20261113`、`cordis.patch.yml.bak-addback-20261113-20261113`），不随出厂资产打包。
+- 验证（实跑）：临时 `DSH_HOME` 的 `--dump-config` rc=0，`discipline-core` 含 tool-bash、tool-pwsh、tool-fs（write/edit true）、tool-fs-search，且不含 workspace-dependencies；剪枝 runtime 启动探针返回 `dsh web: http://127.0.0.1:<port>`，stderr 为空；`import()` 探针 7/7 ok（tool-bash、tool-pwsh、tool-fs、tool-fs-search、tool-workspace-dependencies、bash-sandbox、pwsh-sandbox）；`npx tsc --noEmit` 0；`npm run build` 0；`cargo test --offline --lib profile_rules::tests` 16/16；`verify_profile_scope_106.py` 43/43；`verify_profile_assets_109.py` 41/41。
+- 构建与启动：`npm run tauri:build -- --bundles app` rc=0，日志记 **425.52 MiB**，`du -sh` **505 MB**；bundle 内 `Contents/Resources/runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml` 已含新增工具行。`open -n` 后 app pid 44208、engine pid 44263（`--profile discipline --patch ~/OmniDesk/app/config/omnidesk-model.yml`），DSH 设置服务打印本地地址，`engine-stderr.log` 与 `dsh-settings.log` 无预设组合报错。
+- 未验证：真实模型下的 Excel 导出与文案写作；既有 open session 仍保留创建时的 preset composition（须新建会话才吃到新工具面）；`write`/`bash` 受 `workspace-write` 沙箱约束，只能写会话 cwd（工作区）内的路径；runtime 与系统 python 均无 openpyxl，xlsx 需要模型改用 LibreOffice 转换或其它路径，未实测。
+- 证据：`tests/verification/desktop/evidence/od-profile-092/README.md`。
+
+## OD-PROFILE-092 Discipline 精简 Preset（2026-11-12，已实施，待用户实测）
+
+- 已新增 `discipline-core`：sample `samples/profiles/discipline.profile.patch.yml`、运行时 seed `runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml` 和实际数据根 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml` 同步更新；`preset-standard` 保留不动。
+- `agent-preset-registry.default` 已改为 `discipline-core`；核心 preset 仅保留 persona、agent-instructions、time-context、tool-fs（read-only）、skill-filesystem、tool-skill、compaction、tool-ask-user、tool-web。`preset-standard`、`preset-ptc`、`preset-minimal`、`preset-cordis` 在活动 Profile 中均 `disabled: true`；完整 backup 保留，standard 配置仍在 patch 内。delegation、workflow、bash/pwsh、jobs、schedule、todo、goal、present、planning、fs-search、plugin manager/market 不再加载。
+- 实际 Profile 写入前备份到 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml.bak-20261112T222209`；未改 session、threads、engine-state 或成果。
+- 临时隔离 `DSH_HOME` 的 `--dump-config` rc=0，`agent-preset-registry.default=discipline-core`；启动探针返回 web 地址。旧 Profile 与新 Profile 均出现同一条既有 `dsh-free-search` peer import 警告，说明不是本次新增。未调用真实模型。
+- 验证：`npx tsc --noEmit` exit 0；`npm run build` exit 0；`cargo test --offline --lib profile_rules::tests` 16/16；`verify_profile_scope_106.py` 43/43；`verify_profile_assets_109.py` 41/41；tracked `runtime/` diff 为空；`runtime/dsh-home-seed` 是 `.gitignore` 覆盖的出厂 seed，已按批准同步修改。
+- 证据：`tests/verification/desktop/evidence/od-profile-092/README.md`。
+- 体积/内存实测：0.2.23 构建包 `du -sh` 631 MB；旧 0.2.22 安装包当前不可用，未作整包 A/B。Profile patch 从 7,957 bytes 增至约 10.6 KB，未删除插件包。同版本 DSH 空载三轮中位数：旧完整 preset RSS `377,936 KB` / footprint `334 MB`，仅 `discipline-core` RSS `361,488 KB` / footprint `316 MB`，约减 **16.1 MiB RSS / 18 MB footprint**；整包体积未变，原因是插件文件仍在 runtime。
+- Runtime 剪枝实验（仅 `/tmp` 副本，未改仓库 runtime）：保留 Office 时 runtime 545→523 MB、预计 app 约 609 MB；再移除 Office/LibreOffice/office-to-pdf 后 runtime 372 MB、复制 app 435 MB（含移除 pnpm），相对完整 app 约 -196 MB（31%）。剪枝 runtime 的 DSH web 启动通过，空载三轮 median RSS 324,112 KB / footprint 278 MB；app 层 launch 受既有 seed/profile-asset 错误影响，未标通过。证据见 `tests/verification/desktop/evidence/od-profile-092/README.md`。
+- 第一批/第二批剪枝测试：移除语音/终端/inspector/agent-team/documentpreview 及大部分 client UI 后，保留 `dsh-web-frontend` 和 `dsh-client-ui-directory-picker-native` 才能启动；剪枝 runtime 420 MB、复制 app 505 MB，空载 median RSS 338,064 KB / footprint 293 MB。`dsh-web-frontend` 由 `dsh-web-app` 强制依赖，不能按“自有 Tauri UI”直接删除。
+- 未验证：真实模型下四个业务域的完整体验、现有 open session 是否保留旧 standard composition（DSH 设计上会保留）、UI preset 默认是否被用户 setting 覆盖。
+
 ## OD-WR-509 工作记录分页双页签改造（2026-11-12，已实施，未提交）
 
 - 页面收敛为「工作记录 / 周期复盘」两页签；页头、右栏本月概览、一键本月复盘、四个快捷操作、日期时间线卡与详情抽屉按设计图重排。审核候选改为浮层，任务管理不再内嵌本页。

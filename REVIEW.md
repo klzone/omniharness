@@ -1,3 +1,55 @@
+# OD-UI-712/713 审查：时间线分组与成果文件链接（亲自实施并复验，2026-11-13）——通过，真实模型体验待用户实测
+
+**审查对象：** `HomeChat.tsx` 时间线与成果链接渲染、`artifactLinks.ts` 识别纯函数、`theme.css` 分组样式、`api.ts` 两个新方法、Rust `artifact_open.rs` 与 `lib.rs` 两条命令。
+
+**核对结果：**
+1. 分组行为符合要求：思考与命令各一条分组行，默认收起、各自独立展开；收起态只显示最新一条（思考首行截断、命令显示工具名与状态）；展开态列出该组全部条目。
+2. 样式沿用既有规范：`>_` / `@@` 字符号、11.5px 行高、`--color-outline` / `--color-on-surface-variant`、7px 圆角、160ms 箭头旋转；新增的组内缩进与次数样式不引入新颜色或徽标。
+3. 链接识别边界：只认 `artifact_root` 内的绝对路径；先剔除代码块与行内代码；扩展名白名单；去重；上限 8；路径含 `..` 直接丢弃。纯函数用例覆盖这些分支。
+4. 生成文件补齐：按消息 `startedAtMs`/`endedAtMs` 时间窗调用 `task_list_generated_files`，只取元数据、按修改时间倒序、上限 8，再与文本路径合并去重；与历史成果不混淆。列举没有复用 `list_offline_artifacts`（该函数只认 `offline-<场景>-<时间戳>.md`，实测对 xlsx 返回 0），改为 `artifact_open::list_recent_files`：深度 4、扫描上限 4000、跳过隐藏与临时文件。
+5. 打开路径安全：后端先解析数据根真实路径，再要求目标真实落点仍在其内且为普通文件；拒绝 `..`、目录外、目录与缺失文件；用固定系统打开器，路径作为独立参数，不拼 shell、不读正文。
+6. 回归：`npx tsc --noEmit` 0；`npm run build` 0；`verify_ui_timeline_711.py` 53/53；`verify_chat_artifact_links_713.py` 28/28；cargo `artifact_open` 3/3；tauri 构建 rc=0、425.54 MiB；新 App 启动后引擎正常（pid 49278）。
+7. 合成探针确认 `web-api` 通道的 `tool/call` 带工具名（`bash`），`tool/result` 无名字并归入同一命令；未复现「未知工具」为稳定现象。
+
+**如实限制：**
+- 未调用真实模型：收起/展开的视觉与点击打开由用户实测确认。
+- 历史消息若既未写路径也不在任务时间窗内，不会出现链接。
+- 时间窗内其它写入会被一并列出（按修改时间倒序、上限 8）。
+- 时间线仍不保存工具入参与结果。
+
+**结论：** 通过（结构、样式、边界与构建已实证）。
+
+# OD-PROFILE-092a 审查：Discipline Core 恢复写文件与 shell（ARCHITECT 亲自实施并复验，2026-11-13）——通过，真实模型体验待用户实测
+
+**审查对象：** 三份 `discipline` Profile patch 的 `discipline-core` 插件面、剪枝 runtime 的包可用性、重建后的 `OmniDesk.app`。
+
+**用户反馈与决策：** 0.2.23 精简版导出 Excel 时模型回复只有只读能力、无写文件与脚本工具。用户选择方案 A，把写文件与 shell 加回核心 preset，理由是文案写作也依赖读写。
+
+**核对结果：**
+1. 根因成立：改动前的 `discipline-core` 只有 `tool-fs`（`write: false, edit: false`），没有任何 shell 行；`preset-standard` 里的 tool-bash/pwsh 因 preset 被 disabled 而不生效。
+2. 改动最小且平台对齐：`tool-bash` 在 win32 disabled、`tool-pwsh` 在非 win32 disabled，与 base bundle 和 standard preset 的同一条件一致；`tool-fs` 恢复 write/edit，保留 `readImage: false`；`tool-fs-search` 配置与 base 一致。
+3. 未加 `tool-workspace-dependencies` 是必要取舍：该包 `Config` 要求必填 `source`，指向 primary runtime payload；仓库与数据根都没有该 payload，也没有设置 `DSH_PRIMARY_RUNTIME`。上游 `dsh-sdk-app` 的同名行在 payload 缺失时 disabled，因此不加它等同于上游默认行为；强行加入会在会话组合时因缺少必填 config 失败。
+4. 未恢复能力保持裁剪：子 Agent/delegation、workflow、jobs、schedule、todo、goal、planning、present、plugin manager/market、terminal 控制器与 UI 均未加回。
+5. 配置与启动实证：临时 `DSH_HOME` 的 `--dump-config` rc=0 且含新的四条工具行；剪枝 runtime 启动探针返回 web 地址、stderr 为空；7 个相关包 `import()` 全部通过；构建后 bundle 内 seed patch 与新配置一致。
+6. 回归：`npx tsc --noEmit` 0；`npm run build` 0；cargo `profile_rules::tests` 16/16；`verify_profile_scope_106.py` 43/43；`verify_profile_assets_109.py` 41/41。重建 rc=0、425.52 MiB、`du -sh` 505 MB。
+7. 用户数据：实际数据根改动前已备份为 `.bak-addback-20261113`；未改 session、threads、engine-state、成果或知识库；未提交、未推送。
+
+**如实限制：**
+- 未调用真实模型，Excel 导出与文案写作只在工具面层面准备就绪。
+- 既有 open session 保留创建时的 preset composition，需新建会话才应用新工具面。
+- `write`/`bash` 受 `workspace-write` 沙箱与审批策略约束，写入限制在会话工作区内。
+- runtime 与系统 python 均没有 openpyxl，xlsx 生成仍需 LibreOffice 转换或模型自带实现；未实测。
+
+**结论：** 通过（配置、包加载、构建与启动已实证）；真实业务体验由用户实测确认。
+
+# OD-PROFILE-092 审查：Discipline 精简 Preset（ARCHITECT 亲自实施并复验，2026-11-12）——本地验证通过，待真实业务实测
+
+**审查对象：** sample、运行时 seed、现有 Profile patch 与 `agent-preset-registry` 默认切换。
+
+**结果：** 新增 `discipline-core`，默认 preset 指向它；`preset-standard` 配置仍保留但活动 Profile 停用，四个 built-in preset 均 disabled；实际 Profile 已备份后同步。隔离 dump、启动探针、旧/新 Profile 警告对比、空载内存对照、tsc/build、profile rules 16/16、scope 43/43、assets 41/41 均通过。
+
+**限制：** 未运行真实模型；未验证用户已有 open session 的 composition；未验证 UI `selectedDefault` 是否覆盖 profile default；既有 `dsh-free-search` peer import warning 在旧/新 Profile 均存在，未归因于本次改动。
+
 # OD-WR-509 审查：工作记录分页双页签改造（ARCHITECT 亲自实施并复验，2026-11-12）——通过
 
 **审查对象：** WorkRecordPage / WorkRecordLibrary / ReviewArchive / RecordTaskLinkDialog / TaskReviewPanel 的内嵌布局 / theme.css，以及 301、504、506、507、509 的验证脚本。
