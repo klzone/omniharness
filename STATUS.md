@@ -1,5 +1,14 @@
 # 执行状态
 
+## OD-WR-509 工作记录分页双页签改造（2026-11-12，已实施，未提交）
+
+- 页面收敛为「工作记录 / 周期复盘」两页签；页头、右栏本月概览、一键本月复盘、四个快捷操作、日期时间线卡与详情抽屉按设计图重排。审核候选改为浮层，任务管理不再内嵌本页。
+- 快捷操作已接线：生成周复盘/生成月总结只预填首页对话；整理选中记录携带记录编号与素材预填；关联任务弹窗只写 linked_task_ids。周期复盘页新增周/月/季/年生成入口。
+- 时间线组内改为当天时间正序（日期组仍倒序），分类 chips 按建议分类优先；未新增记录确认字段，状态如实显示已解析/未解析/解析失败。
+- 实跑：npx tsc --noEmit exit 0；npm run build exit 0；verify_work_record_ui_301=16/16；verify_wr_detail_502=17/17；verify_wr_503=58/58；verify_wr_504=41/41；verify_wr_505=71/71；verify_wr_506=58/58；verify_wr_507=33/33；verify_wr_security_508=21/21；verify_wr_509=40/40。
+- 真实窗口截图使用隔离数据根 /tmp/omnidesk-wr509 与纯合成记录；证据在 tests/verification/desktop/od-wr-509/（含 README、日志、退出码与四张截图）。未读取真实工作记录。
+- Rust、IPC、模型路由与凭证零改动；所有改动未提交、未推送。
+
 ## OD-ARCH-147 免 key 搜索全局生效与检索收敛（2026-11-10，进行中）
 
 **OD-ARCH-147b 诊断脚本补 searchProvider 实际生效值（已由 ARCHITECT 亲自实施）：**

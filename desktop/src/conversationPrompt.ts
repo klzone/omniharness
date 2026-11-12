@@ -10,6 +10,7 @@
 //   * 场景预设的规则来自可编辑的流程包；**不可关闭**的写作规则由 aiDraft 的组装器统一带上。
 
 import { buildDraftPrompt } from "./aiDraft";
+import type { PeriodReviewPeriod } from "./workIntent";
 
 export interface ConversationTurn {
   role: "user" | "assistant";
@@ -38,8 +39,62 @@ export interface ConversationPreset {
   skillsByFlow?: {
     note?: Array<{ id: string; content: string }> | null;
     report?: Array<{ id: string; content: string }> | null;
+    summary?: Array<{ id: string; content: string }> | null;
+    periodReview?: Array<{ id: string; content: string }> | null;
   } | null;
 }
+
+/** 周期复盘的标题深度（OD-WR-505），与宿主 review_store.rs 和 Skill 保持一致。 */
+export const PERIOD_REVIEW_SECTIONS: Record<PeriodReviewPeriod, readonly string[]> = {
+  weekly: [
+    "本周期工作概况",
+    "重点工作事项",
+    "工作成果与完成情况",
+    "问题与不足",
+    "经验与思考",
+    "未完成事项",
+    "下周期建议",
+  ],
+  monthly: [
+    "本周期工作概况",
+    "重点工作事项",
+    "工作成果与完成情况",
+    "数据汇总",
+    "趋势对照",
+    "问题与不足",
+    "经验与思考",
+    "未完成事项",
+    "下周期建议",
+  ],
+  quarterly: [
+    "本周期工作概况",
+    "重点工作事项",
+    "工作成果与完成情况",
+    "数据汇总",
+    "趋势对照",
+    "跨月对照",
+    "主题归纳",
+    "问题与不足",
+    "经验与思考",
+    "未完成事项",
+    "下周期建议",
+  ],
+  annual: [
+    "本周期工作概况",
+    "重点工作事项",
+    "工作成果与完成情况",
+    "数据汇总",
+    "趋势对照",
+    "跨月对照",
+    "主题归纳",
+    "全年脉络",
+    "问题与不足",
+    "经验与思考",
+    "未完成事项",
+    "下周期建议",
+    "长期建议",
+  ],
+};
 
 /** 重放进下一轮提示的上文上限（字符）。 */
 export const CONTEXT_MAX_CHARS = 2500;
@@ -91,12 +146,24 @@ export function buildContext(turns: ConversationTurn[], current: string): string
  *
  * 同一场景可以有多条流程（工作记录 = 随手记 + 周报），各自只绑自己的底线技能。
  * 按 mode 取对应那一组；该流程没有单独配置时回落到场景级 skills。
+ * 当日摘要例外：没有 weekly-daily-summary 绑定时不预注入，避免混入随手记的底线技能。
  * 空数组与 null 都表示「这一轮不注入」，不在这里补默认值——补默认会绕过规则资产。
  */
 export function presetSkillsFor(
   preset: ConversationPreset,
-  mode: "note" | "report",
+  mode: "note" | "report" | "daily-summary" | "period-review",
 ): Array<{ id: string; content: string }> | null {
+  if (mode === "daily-summary") {
+    // 摘要不复用场景级绑定：工作记录场景的通用底线是随手记的 memory-agent，
+    // 它不是摘要口径。没配 weekly-daily-summary 就不预注入，交给下方输出契约兜底。
+    const summary = preset.skillsByFlow?.summary;
+    return Array.isArray(summary) ? summary : null;
+  }
+  if (mode === "period-review") {
+    // 周期复盘只读 weekly-period-review 绑定，不借随手记的 memory-agent。
+    const review = preset.skillsByFlow?.periodReview;
+    return Array.isArray(review) ? review : null;
+  }
   const flow = preset.skillsByFlow?.[mode];
   if (Array.isArray(flow)) return flow;
   return preset.skills ?? null;
@@ -111,11 +178,34 @@ export function composeConversationPrompt(input: {
    * 本场景的输入模式（OD-ARCH-068 S3，OD-ARCH-089 改为按输入判定）：
    *   report（默认）= 完整组装（场景规则 + 章节 + Profile 写作铁律）；
    *   note = 随手记：写盘已由宿主完成，这里只带一句缺项追问指令。
+   *   daily-summary = 当日摘要：带当天正式记录、五段输出契约与摘要 Skill。
+   *   period-review = 周期复盘：带周期材料、按周期深度的标题契约与复盘 Skill。
    *
    * 随手记是「先记下来」的低负担入口：带铁律与章节会让首字明显变慢，
    * 而用户此刻要的只是把事实留住、顺带补上缺的要素。周报仍走完整组装。
    */
-  mode?: "note" | "report";
+  mode?: "note" | "report" | "daily-summary" | "period-review";
+  /**
+   * 当日摘要材料（OD-WR-503）：界面从宿主记录列表读出的当天正式记录全文索引。
+   * 模型不碰文件，材料与输出契约由此处带进提示词。
+   */
+  dailySummary?: {
+    date: string;
+    material: string;
+    recordCount: number;
+  } | null;
+  /** 周期复盘材料（OD-WR-505）：宿主汇集的记录、任务统计与既往复盘标题。 */
+  periodReview?: {
+    period: PeriodReviewPeriod;
+    label: string;
+    start: string;
+    end: string;
+    material: string;
+    recordCount: number;
+    taskCount: number;
+    taskStats: { completed: number; uncompleted: number; overdue: number };
+    priorReviews: string[];
+  } | null;
   /**
    * 当周工作记录（OD-ARCH-089 S2）：report 模式由界面先读出来传进来，
    * 模型不必猜「这周做了什么」。null = 没读（非周记录场景）。
@@ -140,6 +230,105 @@ export function composeConversationPrompt(input: {
     ? [input.knowledgeContext.trim(), ""]
     : [];
   if (!preset) return [context, ...knowledgeBlock].filter(Boolean).join("\n");
+  if (input.mode === "daily-summary") {
+    // 当日摘要：宿主已经把当天正式记录整理成全文索引；这里只给数据、输出契约与
+    // 绑定的 daily-summary Skill。写盘与引用校验由宿主完成，模型不碰文件。
+    const summary = input.dailySummary ?? null;
+    const skills = (presetSkillsFor(preset, "daily-summary") ?? [])
+      .filter((s) => s.content.trim().length > 0)
+      .slice(0, 1);
+    const skillBlock: string[] = [];
+    if (skills.length > 0) {
+      const s = skills[0];
+      const raw = s.content.trim();
+      const trimmed =
+        raw.length <= CONTEXT_MAX_CHARS
+          ? raw
+          : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
+      skillBlock.push("配套技能指引（" + s.id + "）：", trimmed, "");
+    }
+    const materialLines = summary
+      ? [
+          "当日正式记录（" + summary.date + "，已排除草稿，共 " + summary.recordCount + " 条）：",
+          summary.material.trim(),
+          "",
+        ]
+      : [
+          "当日正式记录：界面没有读出材料。",
+          "没有材料时不得生成摘要，只说明无法读取当日记录。",
+          "",
+        ];
+    const contract = [
+      "输出契约：只返回 Markdown 正文，不要 frontmatter、路径或前言。",
+      "严格使用以下五个二级标题，顺序不变：",
+      "## 今日工作概况",
+      "## 重点事项",
+      "## 重要思考",
+      "## 需要跟进的问题",
+      "## 与任务管理的关联",
+      "每段至少标注一个真实记录编号，格式为 #记录编号（例如 #wr-…）；",
+      "只能引用上面材料里出现过的编号。记录没写到的事实、进度或结论不要写。",
+      "材料为空时，五段都如实写「当日无记录」，不要编造。",
+      "",
+    ];
+    return [
+      ...contract,
+      ...materialLines,
+      ...skillBlock,
+      ...knowledgeBlock,
+      context,
+    ].join("\n");
+  }
+  if (input.mode === "period-review") {
+    // 周期复盘：材料与引用全部由宿主汇集/校验；模型只按周期深度写正文。
+    const review = input.periodReview ?? null;
+    const skills = (presetSkillsFor(preset, "period-review") ?? [])
+      .filter((s) => s.content.trim().length > 0)
+      .slice(0, 1);
+    const skillBlock: string[] = [];
+    if (skills.length > 0) {
+      const s = skills[0];
+      const raw = s.content.trim();
+      const trimmed =
+        raw.length <= CONTEXT_MAX_CHARS
+          ? raw
+          : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
+      skillBlock.push("配套技能指引（" + s.id + "）：", trimmed, "");
+    }
+    const sections = review ? PERIOD_REVIEW_SECTIONS[review.period] : [];
+    const materialLines = review
+      ? [
+          "复盘周期：" + review.period + "（" + review.label + "），" +
+            review.start + " 至 " + review.end + "。",
+          "宿主汇集：正式记录 " + review.recordCount + " 条，任务 " + review.taskCount +
+            " 条（已完成 " + review.taskStats.completed + " / 未完成 " + review.taskStats.uncompleted +
+            " / 逾期 " + review.taskStats.overdue + "）。",
+          review.material.trim(),
+          "",
+        ]
+      : [
+          "复盘材料：界面没有读出材料。",
+          "没有材料时不得生成复盘，只说明无法读取本周期记录。",
+          "",
+        ];
+    const contract = [
+      "输出契约：只返回 Markdown 正文，不要 frontmatter、路径或前言。",
+      "严格使用以下二级标题，顺序不变：",
+      ...sections.map((title) => "## " + title),
+      "每段至少标注一个真实编号，格式为 #编号（记录 #wr-…，任务 #t-…）；",
+      "只能引用上面材料里出现过的编号。材料没写到的事实、进度、数据或结论不要写。",
+      "材料为空时，逐段如实写「本周期无记录」，不要编造。",
+      "复盘建议不得自行转成任务；任务创建必须由用户另行确认。",
+      "",
+    ];
+    return [
+      ...contract,
+      ...materialLines,
+      ...skillBlock,
+      ...knowledgeBlock,
+      context,
+    ].join("\n");
+  }
   if (input.mode === "note") {
     // OD-ARCH-105：平台只给数据与写盘边界，判断口径全部来自绑定 Skill。
     //

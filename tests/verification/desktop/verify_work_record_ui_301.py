@@ -46,17 +46,24 @@ def main() -> int:
         "App 把工作记录场景接到新页面",
     )
     check(
-        "page_has_work_views",
-        all(
-            key in page
-            for key in ('key: "records"', 'key: "review"', 'key: "tasks"', 'key: "weekly"')
+        "page_has_two_work_views",
+        all(key in page for key in ('key: "records"', 'key: "reviews"'))
+        and not any(
+            key in page for key in ('key: "review"', 'key: "tasks"', 'key: "weekly"')
         ),
-        "记录 / 审核 / 任务 / 周视图四个视图",
+        "OD-WR-509：工作记录 / 周期复盘两个页签；审核改为浮层，任务回到项目跟踪",
     )
     check(
-        "page_mounts_library",
-        "<WorkRecordLibrary" in page and "<TaskManager" in page,
-        "页面挂载记录库与任务管理",
+        "page_mounts_library_and_reviews",
+        "<WorkRecordLibrary" in page and "<ReviewArchive" in page,
+        "页面挂载时间线与周期复盘档案",
+    )
+    check(
+        "audit_overlay_kept",
+        "<TaskReviewPanel" in page
+        and "embedded" in page
+        and 'data-work-audit=""' in page,
+        "审核候选保留为可打开的浮层，不占用页签",
     )
     check(
         "list_reads_host",

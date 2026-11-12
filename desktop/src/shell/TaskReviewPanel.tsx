@@ -43,8 +43,11 @@ function EvidenceBody({ record, quote }: { record: WorkRecord; quote: string }) 
 }
 
 export function TaskReviewPanel({
+  embedded = false,
   onOpenRecord,
 }: {
+  /** 浮层内使用时去掉整页留白，只保留内部滚动。 */
+  embedded?: boolean;
   onOpenRecord: (recordId: string) => void;
 }) {
   const [items, setItems] = useState<TaskCandidate[]>([]);
@@ -259,7 +262,14 @@ export function TaskReviewPanel({
   const allSelected = items.length > 0 && selectedIds.length === items.length;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
+    <div
+      className={
+        embedded
+          ? "min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+          : "flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6"
+      }
+      data-candidate-panel=""
+    >
       {notice ? (
         <div
           role="status"
@@ -275,7 +285,12 @@ export function TaskReviewPanel({
         </div>
       ) : null}
 
-      <div className="max-w-7xl mx-auto md:-translate-x-8 grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-4 lg:gap-5 items-start">
+      <div
+        className={
+          "mx-auto grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] gap-4 lg:gap-5 items-start" +
+          (embedded ? "" : " max-w-7xl md:-translate-x-8")
+        }
+      >
         <section
           aria-label="待审核候选"
           className={CARD + " px-3 py-3 flex flex-col min-h-[360px] max-h-[72vh]"}

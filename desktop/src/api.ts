@@ -157,6 +157,12 @@ import type {
   CandidateListing,
   AnalyzeApplied,
   AnalyzePrompt,
+  DailySummaryRead,
+  DailySummaryReceipt,
+  PeriodReviewCollect,
+  PeriodReviewListing,
+  PeriodReviewRead,
+  PeriodReviewReceipt,
   ArchiveReceipt,
   CleanupPreview,
   CleanupReport,
@@ -182,6 +188,8 @@ import type {
   TaskSaved,
   TrashMove,
   WorkRecord,
+  RecordBacklinks,
+  WorkRecordRevision,
   WorkRecordSaved,
   WorkTask,
   WorkTaskState,
@@ -680,6 +688,104 @@ export const shell = {
     });
   },
 
+  /** 当日摘要：界面侧模型返回的正文交给宿主校验并落盘（OD-WR-503）。 */
+  worklogDailySummaryGenerate(
+    date: string,
+    content: string,
+  ): Promise<DailySummaryReceipt> {
+    return invoke<DailySummaryReceipt>("worklog_daily_summary_generate", {
+      date,
+      content,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取当日摘要；不存在时 exists=false，不建文件。 */
+  worklogDailySummaryRead(date: string): Promise<DailySummaryRead> {
+    return invoke<DailySummaryRead>("worklog_daily_summary_read", { date }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 周期复盘：汇集正式记录、任务统计与既往复盘标题（OD-WR-505）。 */
+  worklogPeriodReviewCollect(
+    period: string,
+    start: string,
+    end: string,
+  ): Promise<PeriodReviewCollect> {
+    return invoke<PeriodReviewCollect>("worklog_period_review_collect", {
+      period,
+      start,
+      end,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 周期复盘草稿：模型正文交宿主校验后落盘。 */
+  worklogPeriodReviewGenerate(
+    period: string,
+    start: string,
+    end: string,
+    content: string,
+  ): Promise<PeriodReviewReceipt> {
+    return invoke<PeriodReviewReceipt>("worklog_period_review_generate", {
+      period,
+      start,
+      end,
+      content,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取周期复盘；不存在时 exists=false，不建文件。 */
+  worklogPeriodReviewRead(
+    period: string,
+    start: string,
+    end: string,
+  ): Promise<PeriodReviewRead> {
+    return invoke<PeriodReviewRead>("worklog_period_review_read", {
+      period,
+      start,
+      end,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 确认周期复盘草稿（草稿 → 已确认）；已确认不可被重新生成覆盖。 */
+  worklogPeriodReviewConfirm(
+    period: string,
+    start: string,
+    end: string,
+  ): Promise<PeriodReviewReceipt> {
+    return invoke<PeriodReviewReceipt>("worklog_period_review_confirm", {
+      period,
+      start,
+      end,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 复盘档案清单（OD-WR-506）：只读扫描复盘目录，坏文件计数返回。 */
+  worklogPeriodReviewList(): Promise<PeriodReviewListing> {
+    return invoke<PeriodReviewListing>("worklog_period_review_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 记录的反向引用（OD-WR-506）：只读扫描复盘文档与写作任务。 */
+  worklogRecordBacklinks(recordId: string): Promise<RecordBacklinks> {
+    return invoke<RecordBacklinks>("worklog_record_backlinks", {
+      recordId,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /**
    * 列周记录与周报归档（OD-ARCH-091 W3）。
    *
@@ -767,6 +873,13 @@ export const shell = {
 
   workRecordRead(id: string): Promise<WorkRecord> {
     return invoke<WorkRecord>("work_record_read", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 记录修订历史（OD-WR-502）：宿主只读 revisions.jsonl，缺失文件返回空列表。 */
+  workRecordRevisions(id: string): Promise<WorkRecordRevision[]> {
+    return invoke<WorkRecordRevision[]>("worklog_revisions", { recordId: id }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

@@ -1,5 +1,160 @@
+# OD-WR-509 审查：工作记录分页双页签改造（ARCHITECT 亲自实施并复验，2026-11-12）——通过
+
+**审查对象：** WorkRecordPage / WorkRecordLibrary / ReviewArchive / RecordTaskLinkDialog / TaskReviewPanel 的内嵌布局 / theme.css，以及 301、504、506、507、509 的验证脚本。
+
+**核对结果：**
+1. 页签与信息架构：页面只剩工作记录、周期复盘两个页签；审核候选以浮层挂载既有 TaskReviewPanel，任务管理回项目跟踪分页，周视图由周期复盘覆盖。旧页签字符串已从 WorkRecordPage 移除，301 的断言同步改为两页签并新增浮层检查。
+2. 工作记录页：页头/副标题/本月计数来自宿主列表实际统计；右栏总数、已解析、待解析均接真实筛选；一键本月复盘与四个快捷操作均有实际处理函数。生成/整理动作只调用 requestNewThread 预填，不自动发送。
+3. 任务关联：RecordTaskLinkDialog 读取 taskList，保存时只调用 workRecordUpdate 写 linked_task_ids；不调用任务状态写入。缺失任务如实标为「任务已不存在」。
+4. 时间线与卡面：日期倒序、组内 created_at 正序（已同步修改 504 的断言）；卡片保留标题、日期/时间、分类、摘要、来源、关联任务、状态与草稿标记等 data 属性；当日摘要入口与引用跳转未改。
+5. 详情：Markdown、原始输入只读、修订历史、关联知识、关联复盘/文稿、编辑/删除/解析/重新整理/交给 AI 均保留；新增关联任务区块与管理入口。
+6. 周期复盘：档案列表、周期/状态/日期筛选、详情、导出、草稿重生成、已确认禁用、引用记录/任务保持；新增生成菜单只预填首页对话。
+7. 视觉：真实窗口截图核对记录时间线、记录详情、复盘档案、复盘详情四态；隔离数据根使用纯合成材料，未读取真实记录。截图顶部模型提示来自空白隔离设置，不属于页面。
+8. 回归：tsc exit 0；npm run build exit 0；301=16/16；502=17/17；503=58/58；504=41/41；505=71/71；506=58/58；507=33/33；508 安全=21/21；509=40/40。
+
+**如实限制：**
+- 记录状态沿用既有 ai_analysis_status，未新增确认字段，界面不把解析状态写成「已确认」。
+- 真实模型生成摘要/复盘的质量未在本轮重测，既有 503/505 契约通过。
+- 快捷操作只预填、不发送；任务管理需从项目跟踪分页进入。
+- 本轮未改 Rust/IPC/模型路由/凭证。
+
+**结论：** 通过。证据在 tests/verification/desktop/od-wr-509/。改动未提交、未推送，待用户实测与提交裁决。
+
 # OD-PROC-149 审查：进程名归一 omnidesk-*（ARCHITECT，2026-11-11）——通过
 
+### OD-WR-504 返工：工作记录页按 DESIGN.md 重新设计（2026-11-11，ARCHITECT 直接实施）
+
+**触发（用户实测反馈）：** 504 只把列表改成按日分组，页面仍是「快速记录大输入框 + 筛选卡 + 左右两栏」的旧布局，与 DESIGN.md「时间线（默认，改造自现有记录库）」和任务书模块 A 的页面结构不一致，用户指出的五项功能在旧壳里难以发现。
+
+**返工内容：**
+1. 页面结构：单列时间线（max-w-3xl）；页头「工作记录」+ 总览（共 N 条 · 本月 · 本周 · 待解析）+「记一条」按钮（原快速记录折叠为面板）。
+2. 筛选：月份选择（全部月份 + 实际月份）、关键词、日期区间、分类 select + 分类 chips（动态收集）、解析状态、只看草稿；分类 chips 置顶不折叠。
+3. 时间线组头：大号「11月5日」+ 周几 + 年份 + 条数 + 当日摘要入口；保留左侧日期轴节点与连线（对比度提升）。
+4. 记录详情改为右侧抽屉（带遮罩、关闭按钮），详情内所有既有能力（编辑/删除/解析/原始输入/修订历史/关联知识/反链/交给 AI/重新整理）原样保留。
+5. Tab「记录」改名「时间线」，其余页签语义不变。
+
+**验证（实跑）：** tsc exit 0；vite build exit 0；cargo 未改；verify_work_record_ui_301 = 15/15；verify_wr_503 = 58/58；verify_wr_504 = 41/41；verify_wr_505 = 71/71；verify_wr_506 = 58/58；verify_wr_507 = 33/33。重新打包并覆盖安装 /Applications/OmniDesk.app（0.2.22，本地构建），实机截图核对页头/筛选/时间线/抽屉四块。
+
+**登记限制：** 摘要/复盘的模型生成质量仍需真实会话实测；旧记录无 raw_input 时详情不显示原始输入块（按设计）；抽屉为覆盖式，窄窗口下宽度 94vw。
+
+### OD-WR-508 复检通过 + OD-WR-500 批次竣工（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Meitner）交付的收口卡（全量回归 / verify_wr_security_508 / HANDOFF），及 ARCHITECT 亲自修复的陈旧集成测试断言。
+
+**核对结果：**
+1. 集成测试断言修复（ARCHITECT 亲自执行）：501-507 新增 daily-summary/period-review 后 DISCIPLINE_SKILLS 8→10，desktop/src-tauri/tests/profile_assets_host.rs 三处断言（登记表数量/parked.len/returned.len）8→10；实跑 cargo test --offline --test profile_assets_host = 21 passed / 0 failed。
+2. 独立复跑（本会话实跑，沙箱外）：cargo test --offline --tests --no-fail-fast = 1224 passed / 0 failed（lib+集成全量）；npx tsc exit 0。
+3. 执行代理交付核对：verify_wr_security_508 = 21/21（原始素材不可 Patch 覆盖 / AI 无确认态写通道 / 已确认复盘拒绝覆盖 / 引用必真实 / 测试虚构）；18 个既有 verify 脚本实跑记录在 od-wr-508/；HANDOFF.md 完整（数据流/存储接口/安全边界/已知限制 9 项/用户实测 6 项/证据索引）。
+4. 陈旧 verify 脚本核对（非本批次问题）：verify_weekly_093/097/099 读取已删除的 WeeklyQuadrants.tsx 无法运行；verify_weekly_092 的 metric_uses_entry_count 断言旧 ScenePage 结构 28/29——与 501-507 改动无关，HANDOFF 已登记，留给后续清理卡。
+5. 沙箱误报核对：cargo lib 3 项 + pytest process_owner 4 项均为受限沙箱读不到进程表；沙箱外全绿（本复核实跑 1224/0 覆盖）。
+6. diff 范围核对：508 只新增 verify_wr_security_508.py + od-wr-508/ 证据 + HANDOFF.md；实现代码零改动。
+
+**批次结论：** OD-WR-500（501-508）八卡全部实施并通过 ARCHITECT 独立复检，工作记录模块 1.0 闭环达成：原始素材分离 → 时间线 → 当日摘要 → 周期复盘（周/月/季/年参数化）→ 复盘档案 → 反向关联 → AI 继续分析衔接 → 全量回归与安全核对。全部改动未提交未推送，待用户审查后决定提交。
+
+**待用户实测项：** 见 docs/plans/OD-WR-500/HANDOFF.md「用户实测项」六条（真实模型摘要/复盘质量、时间线视觉、跳转体验、原始素材与修订、确认语义）。
+
+### OD-WR-507 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Carver）交付的「交给 AI 继续分析」+ 全局衔接。
+
+**核对结果：**
+1. 独立复跑（本会话实跑）：verify_wr_507 = 33/33；verify_wr_506 = 58/58；verify_wr_505 = 71/71；verify_wr_504 = 41/41；verify_wr_503 = 58/58；verify_work_record_ui_301 = 15/15；npx tsc exit 0；npm build exit 0（od-wr-507/README）。
+2. 预填语义核对：两处按钮均 requestNewThread("weekly", …) 预填上下文句（含对象 id/标题/周期起止）后 onNavigate("home")——照 593-603 行既有先例；预填只进输入框草稿不自动发送（verify 断言处理函数内无发送/任务提交/数据写入调用）。
+3. 裁决追认：场景键实读确认「工作记录」对应既有 weekly 键（工作记录场景历史键名）， WorkRecordPage 一行 onNavigate 透传为 ReviewArchive 跳转首页的必要配套（超出交接允许清单一行，属最小必要，予以追认）；sceneThreads 未改合理。
+4. 保守不扩登记核对：全局对话采集保持保守不扩的理由已按现有注释风格写入两处处理函数（计划要求的登记方式）。
+5. diff 范围核对：WorkRecordLibrary（详情操作区按钮）/ReviewArchive（详情操作区按钮）/WorkRecordPage（一行透传）/verify_wr_507.py——除追认透传外均在允许清单；HomeChat/数据层/IPC/runtime 零改动。
+
+**登记限制：** 纯前端卡，无 Rust 改动故未重跑 cargo（506 证据仍有效）；真实模型分析与真实窗口跳转体验待用户实测。
+
+**结论：** 通过。OD-WR-508（收口：全量回归 + 安全核对 + HANDOFF）可派发。
+
+### OD-WR-506 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Raman）交付的复盘历史档案页 + 记录↔文稿反向关联。
+
+**核对结果：**
+1. 独立复跑（本会话实跑）：cargo lib 1157 passed / 0 failed（沙箱内 ps 受限致 process_owner 3 项误报，沙箱外复跑全绿，净增 6 项反链/档案单测）；verify_wr_506 = 58/58；verify_wr_505 = 71/71；verify_wr_504 = 41/41；verify_wr_503 = 58/58；verify_work_record_ui_301 = 15/15；npx tsc exit 0；npm build exit 0（od-wr-506/build.txt）。
+2. Tab 语义核对：新增 reviews「复盘」Tab，既有 review「审核」Tab（TaskReviewPanel）语义与跳转不变；WorkRecordPage 既有四 Tab 断言未放松（301=15/15）。
+3. 档案页核对：左列列表（周期/时间/状态筛选）+ 右侧详情（版本状态、Markdown 正文、引用记录 chips 跳转记录详情、只读关联任务、导出 MD）；已确认复盘重新生成在界面与提交前双重拒绝；空态/坏文件 broken 计数不中断。
+4. 反向引用核对（关键约束）：record_backlinks 只读扫描 work/复盘/ frontmatter（+ 素材 source_type=work_record），记录文件字节不变（单测断言扫描前后一致）；无反向指针写回，符合「不在记录文件里写入反向指针」约束。
+5. 写路径不变核对：review_store 生成/确认/备份行为未改（505 断言 71/71 保持）；只新增只读 list_reviews/record_backlinks。
+6. diff 范围核对：WorkRecordPage/ReviewArchive（新）/WorkRecordLibrary（仅反链区块）/theme/api/types/lib.rs/review_store（只读函数）/verify_wr_506.py——均在允许清单；HomeChat/知识库写路径/任务创建/runtime 零改动。
+
+**登记限制：** 复盘确认动作仍走 505 对话流（档案页无确认按钮，按卡设计）；写作反链依赖素材存在（素材删除后反链消失，如实降级）；导出为浏览器 Blob 下载（文件名 <start>_<end>.md）；真实数据窗口视觉走查待用户实测。
+
+**结论：** 通过。OD-WR-507（「交给 AI 继续分析」+ 全局衔接）可派发。
+
+### OD-WR-505 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Zeno）交付的周期复盘引擎 + 参数化 Skill（period-review 周期汇集/校验/确认流/四 IPC/前端接线）。
+
+**核对结果：**
+1. 独立复跑（本会话实跑）：cargo lib 1151 passed / 0 failed（沙箱内 ps 受限致 process_owner 3 项误报，沙箱外复跑全绿，净增 16 项复盘单测）；verify_wr_505 = 71/71；verify_wr_504 = 41/41；verify_wr_503 = 58/58；verify_work_record_ui_301 = 15/15；npx tsc exit 0；npm build exit 0（od-wr-505/build.log）。
+2. 周报兼容核对：REPORT_KEYWORDS 先于 period-review 判定，「周报」词命中仍走 report（memory-report 旧入口不动，weekly-report 绑定保持）；verify 含 target_weekly 断言。
+3. 已确认不覆盖核对（关键约束）：confirm_review 置 status=已确认+confirmed_at；已确认复盘拒绝重新生成；草稿重生成先 .bak 备份再替换——与任务书「重新生成不得直接覆盖已人工确认的正式版本」一致，verify 含专项断言。
+4. 引用真实性核对：record_ids/task_ids 必须真实存在，不存在拒绝落盘；任务只统计（完成/未完成/逾期）不创建，复盘建议转任务的通道未开放（AI 无确认态写通道维持）。
+5. 模板深度核对：周/月/季/年 = 7/9/11/13 段，逐段要求真实 #wr-/#t- 编号，无记录如实说明（verify 断言）。
+6. diff 范围核对：workIntent/review_store（新）/lib IPC/skills/period-review（新）/profile 装配三件/discipline.rules.json/conversationPrompt/HomeCanvas/HomeChat/api/types/verify_wr_505.py——均在允许清单（含 503 追认过的装配先例）；WorkRecordPage/WorkRecordLibrary 复盘 UI 未动（留给 506）；知识库写路径/runtime 零改动。
+
+**登记限制：** pytest 未跑（本卡无 Python 逻辑，合理跳过）；真实模型长周期生成质量与性能未验证（列用户实测项）；复盘档案页/确认按钮 UI/任务转化按钮留给 506。
+
+**结论：** 通过。OD-WR-506（复盘历史档案页 + 记录↔文稿关联）可派发。
+
+### OD-WR-504 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Parfit）交付的时间线视图改造（按日分组、七要素卡片、主题样式、验收脚本）。
+
+**核对结果：**
+1. 独立复跑（本会话实跑）：verify_wr_504 = 41/41；verify_work_record_ui_301 = 15/15（既有断言未放松）；verify_wr_503 = 58/58；npx tsc --noEmit exit 0。执行代理另跑 npm build exit 0（od-wr-504/build.log）。
+2. 分组语义核对：分组在宿主筛选之后进行，空组不渲染；排序仍由宿主负责（list_sorts_by_record_date_desc 未动），数据层零改动。
+3. 七要素卡片核对：标题、日期时间、分类（null→「未分类」）、正文摘要（空→「（无正文）」）、来源（空省略）、关联任务数、解析状态+草稿标记，均有对应渲染与 verify 断言。
+4. 503 语义保持：当天组保留生成/查看摘要入口，非当天组只读；data-daily-summary-* 属性与 58 项断言未破坏。
+5. data 属性核对：data-work-record-list、data-record-row 保留；新增 data-record-group、data-record-group-count（值=日期/条数）。
+6. diff 范围核对：WorkRecordLibrary.tsx + theme.css + verify_wr_504.py，均在允许清单；HomeChat/数据层/知识库/任务实体/runtime 零改动。
+
+**登记限制：** 真实数据窗口人工视觉验收未执行（自动化证据为编译/构建/纯函数/静态检查）；非当天摘要展开时读取、不主动轮询外部重生成。
+
+**结论：** 通过。OD-WR-505（周期复盘引擎 + Skill）可派发。
+
+### OD-WR-503 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行会话交付的当日摘要（intent / Skill / 宿主汇集校验落盘 / IPC / 前端入口）。执行会话因上下文超限中断，本复核基于工作区实际 diff 与证据目录独立完成。
+
+**核对结果：**
+1. 独立复跑（本会话实跑）：cargo lib 1135 passed / 0 failed（沙箱内 ps 受限致 process_owner 3 项误报，沙箱外复跑全绿，非本改动引入）；npx tsc --noEmit exit 0；npm run build exit 0；verify_wr_503 = 58/58；pytest 234 passed（od-wr-503/pytest.log）。
+2. intent 封闭词表核对：daily-summary 命中「生成今日摘要/总结今天/今日摘要」类固定表达，verify 含不误判负例。
+3. 宿主校验核对：daily_summary.rs 只汇集当天正式记录（draft=false）；五段结构、引用 record_ids 真实存在、空记录如实声明均由宿主校验，AI 不得虚构；落盘 work/摘要/YYYY-MM-DD.md，重新生成先 .bak 备份（不覆盖旧备份），原子替换。
+4. 前端入口核对：时间线组头「当日摘要」入口与摘要卡展示，引用记录 chips 可点开；HomeChat intent 接线；无第二套聊天历史。
+5. diff 范围核对：新文件 daily_summary.rs / dailySummary.ts / skills/daily-summary/，修改 worklog_records/quicklog/lib/api/types/HomeChat/WorkRecordLibrary/workIntent。执行会话另报三处超字面清单的必要扩展：profile_rules/profile_seed/profile_assets（Skill 装配清单）、samples/profiles/discipline.rules.json（weekly-daily-summary 流程绑定）、HomeCanvas.tsx（Skill 绑定读取）——均为「只放 SKILL.md 不会装配」的必然配套，实改内容在装配与绑定范围内，予以追认；知识库与任务实体零改动。
+6. 安全核对：测试夹具全虚构；无真实业务材料入库。
+
+**登记限制：** 摘要生成依赖界面侧模型（Skill 模板），宿主只做结构校验——AI 推断伪装事实的风险由「引用编号必须真实存在」校验缓解，语义真实性待用户实际使用追认。
+
+**结论：** 通过。OD-WR-504（时间线视图改造）可派发。
+
+### OD-WR-502 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Schrodinger）交付的详情 UI 扩展与修订历史。
+
+**核对结果：**
+1. 独立复跑：cargo lib 1123/0（净增 3：revisions 读取）、tsc exit 0、build exit 0、verify_wr_detail_502 = 17/17、回归 verify_work_record_ui_301 = 15/15。
+2. 原始素材只读核对：raw_input 折叠区块只读展示、无编辑入口；旧记录隐藏。
+3. 执行裁决复核认可：重新整理走首页预填轻实现（worklog_append 只能新建不能定位更新——复用会产生重复记录，裁决有据）；新增只读 IPC worklog_revisions（交付要求且范围最小）；修订文件损坏报错不静默。
+4. 登记限制：重新整理不自动调模型不自动改正文（用户在对话确认后经既有链路更新）；修订对比/回滚按卡不做。
+
+**结论：** 通过。OD-WR-503（当日摘要）可派发。
+### OD-WR-501 复检通过（2026-11-11，ARCHITECT 独立复核）
+
+**审查对象：** 执行代理（Singer）交付的原始素材分离 + 修订历史。
+
+**核对结果：**
+1. 独立复跑：cargo lib 1120 passed / 0 failed（净增 10）。diff 范围核对：worklog_records/quicklog/worklog_migrate/knowledge_link 测试夹具，无越界。
+2. 原始素材不可覆盖核对（关键约束）：RecordPatch 无 raw_input 字段（编译期穷举锁），raw_input 仅创建时经 quicklog 写入；迁移记录显式 None。
+3. 修订历史：revisions.jsonl 追加（尾完整性检查+flush+sync_all），old_body_sha256 锚定；日志失败明确回报不静默。
+4. 执行裁决复核认可：R1（Patch 不加字段）、R2（raw_input 为掩码后文本——完整轮次需动 HomeChat 链路，登记给 502 评估）、R3 空补丁也追加记录。
+5. 登记给 502：raw_input 主路径是「判定后的单条文本」而非完整用户轮次——若要完整原文需在 HomeChat 传 worklog_append 前保存原文，属 502 范围裁决项。
+
+**结论：** 通过。OD-WR-502 可派发。
 ### OD-ARCH-151 实施：插件版本更新机制（2026-11-11，ARCHITECT 直接实施并验证）
 
 **机制：** ①装配时把包内清单声明的插件版本同步进本地 Profile 清单（只改 dependencies，写前 .bak 备份，保留用户自有依赖与自定义字段；新写入登记 hash，避免下一次装配误判 drift）。②版本不一致的插件在资产页显示「已安装的版本与要求不一致」，点安装/补齐走随包 pnpm 执行 add 包@声明版本（pnpm add 即升级）。③发版 CI 增加「插件版本可安装」门禁：用临时 DSH_HOME 实装清单声明版本，装不上就让发版失败。

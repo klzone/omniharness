@@ -863,6 +863,8 @@ mod tests {
             category: category.map(|value| value.to_string()),
             tags: tags.iter().map(|tag| tag.to_string()).collect(),
             source: None,
+            raw_input: None,
+            raw_source: None,
             destination: None,
             ai_analysis_status: "analyzed".to_string(),
             linked_task_ids: Vec::new(),

@@ -49,6 +49,8 @@ pub mod profile_rules;
 pub mod process_alias;
 pub mod priority_rules;
 pub mod quicklog;
+pub mod daily_summary;
+pub mod review_store;
 pub mod route_classifier;
 pub mod schedule_store;
 pub mod scheduling;
@@ -5313,6 +5315,97 @@ fn worklog_offset_minutes(state: &State<'_, SharedHost>) -> i32 {
         .unwrap_or(scheduler::DEFAULT_UTC_OFFSET_MINUTES)
 }
 
+/// 当日摘要：界面侧模型返回的正文经宿主校验后落盘（OD-WR-503）。
+///
+/// 日期、正式记录集合与引用编号全部由宿主核验；校验不过时不写任何文件。
+#[tauri::command(async)]
+fn worklog_daily_summary_generate(
+    state: State<'_, SharedHost>,
+    date: String,
+    content: String,
+) -> Result<daily_summary::DailySummaryReceipt, String> {
+    let root = work_root(&state)?;
+    daily_summary::write_summary(&root, &date, &content, task_shell::now_secs())
+}
+
+/// 读取当日摘要。文件不存在是合法状态，返回 exists=false，不建文件。
+#[tauri::command(async)]
+fn worklog_daily_summary_read(
+    state: State<'_, SharedHost>,
+    date: String,
+) -> Result<daily_summary::DailySummaryRead, String> {
+    let root = work_root(&state)?;
+    daily_summary::read_summary(&root, &date)
+}
+
+/// 周期复盘：汇集周期内正式记录、任务状态与既往复盘标题（OD-WR-505）。
+#[tauri::command(async)]
+fn worklog_period_review_collect(
+    state: State<'_, SharedHost>,
+    period: String,
+    start: String,
+    end: String,
+) -> Result<review_store::PeriodBundle, String> {
+    let root = work_root(&state)?;
+    review_store::collect_period(&root, &period, &start, &end)
+}
+
+/// 周期复盘：界面侧模型返回的正文经宿主校验后落为草稿。
+#[tauri::command(async)]
+fn worklog_period_review_generate(
+    state: State<'_, SharedHost>,
+    period: String,
+    start: String,
+    end: String,
+    content: String,
+) -> Result<review_store::PeriodReviewReceipt, String> {
+    let root = work_root(&state)?;
+    review_store::write_review(&root, &period, &start, &end, &content, task_shell::now_secs())
+}
+
+/// 读取周期复盘。文件不存在是合法状态，返回 exists=false，不建文件。
+#[tauri::command(async)]
+fn worklog_period_review_read(
+    state: State<'_, SharedHost>,
+    period: String,
+    start: String,
+    end: String,
+) -> Result<review_store::PeriodReviewRead, String> {
+    let root = work_root(&state)?;
+    review_store::read_review(&root, &period, &start, &end)
+}
+
+/// 确认周期复盘草稿；已确认复盘不可被重新生成覆盖。
+#[tauri::command(async)]
+fn worklog_period_review_confirm(
+    state: State<'_, SharedHost>,
+    period: String,
+    start: String,
+    end: String,
+) -> Result<review_store::PeriodReviewReceipt, String> {
+    let root = work_root(&state)?;
+    review_store::confirm_review(&root, &period, &start, &end, task_shell::now_secs())
+}
+
+/// 复盘档案列表（OD-WR-506）：只读扫描复盘目录，坏文件计数返回。
+#[tauri::command(async)]
+fn worklog_period_review_list(
+    state: State<'_, SharedHost>,
+) -> Result<review_store::PeriodReviewListing, String> {
+    let root = work_root(&state)?;
+    review_store::list_reviews(&root)
+}
+
+/// 记录的反向引用（OD-WR-506）：只读扫描复盘文档与写作任务，不写记录文件。
+#[tauri::command(async)]
+fn worklog_record_backlinks(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<review_store::RecordBacklinks, String> {
+    let root = work_root(&state)?;
+    review_store::record_backlinks(&root, &record_id)
+}
+
 fn worklog_library_root(state: &State<'_, SharedHost>) -> Result<std::path::PathBuf, String> {
     let config_dir = {
         let host = state.lock().unwrap();
@@ -6207,6 +6300,16 @@ fn work_record_list(
 ) -> Result<worklog_records::RecordListing, String> {
     let root = work_root(&state)?;
     worklog_records::list_records(&root, &filter)
+}
+
+/// 读取一条记录的修订历史（OD-WR-502）。只读，不创建目录、不改写记录。
+#[tauri::command(async)]
+fn worklog_revisions(
+    state: State<'_, SharedHost>,
+    record_id: String,
+) -> Result<Vec<worklog_records::RevisionSummary>, String> {
+    let root = work_root(&state)?;
+    worklog_records::read_revision_summaries(&root, &record_id)
 }
 
 /// 存量周文件迁移预览：只解析、不写盘。
@@ -9185,6 +9288,14 @@ pub fn run() {
             worklog_merge,
             worklog_read_week,
             worklog_week_view,
+            worklog_daily_summary_generate,
+            worklog_daily_summary_read,
+            worklog_period_review_collect,
+            worklog_period_review_generate,
+            worklog_period_review_read,
+            worklog_period_review_confirm,
+            worklog_period_review_list,
+            worklog_record_backlinks,
             worklog_archive_list,
             worklog_read_report,
             archive_report_to_vault,
@@ -9194,6 +9305,7 @@ pub fn run() {
             work_record_update,
             work_record_delete,
             work_record_list,
+            worklog_revisions,
             worklog_migrate_preview,
             worklog_migrate_apply,
             work_cleanup_preview,
