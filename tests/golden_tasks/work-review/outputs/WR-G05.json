@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "合成事项 D 进展",
+      "source_quote": "合成事项 D 又推进了一步",
+      "confidence": 0.78,
+      "importance": "中",
+      "importance_reason": "同一事项的连续进展",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": "t-existing-1",
+      "match_confidence": 0.85,
+      "match_reason": "标题与事项一致",
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

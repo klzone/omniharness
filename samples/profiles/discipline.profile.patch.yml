@@ -44,6 +44,13 @@
                 - 不要给 web_fetch 的 URL 拼接 r.jina.ai 等第三方 reader 代理前缀。web_fetch 已内置直连、无头浏览器、云端抓取的回退链；遇到反爬页面改用 web_search 或换其它来源。
                 - 连续 3 次工具调用都没有带来新的可用事实时，停止检索，直接基于已有信息作答。
                 - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
+                工具批处理规则：
+                - 能用一条命令完成的批量操作（多文件读写、生成后立即校验、批量重命名）不要拆成多次工具调用；写文件后用同一条命令运行并检查结果；不要为同一目标重复执行等价命令。
+                检索预算规则：
+                - 默认一轮最多 1 次 web_search 加 1 次 web_fetch；确需交叉核对时最多 3 次检索调用。
+                - 没有结果时先换一次关键词；仍没有结果就如实说明限制，不连续重试。
+                工具选择规则：
+                - advanced_search 只用于时间范围或指定站点过滤；domain_search 只用于站内检索；platform_search 只用于中文平台内容；video_search / weather 只在用户明确要求时使用；不要把 free_search_test 当作常规检索。
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -95,6 +102,77 @@
               searchTimeoutMs: 60000
 
 
+
+
+- insert:
+    - id: preset-work-review-core
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: work-review-core
+        name: Work Review Core
+        description: Work Review Agent 工具面（可写文件；无 shell）
+        order: 2
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are a coding agent powered by the {{model}} model.
+              suffix: |-
+                检索收敛规则：
+                - 不要给 web_fetch 的 URL 拼接 r.jina.ai 等第三方 reader 代理前缀。web_fetch 已内置直连、无头浏览器、云端抓取的回退链；遇到反爬页面改用 web_search 或换其它来源。
+                - 连续 3 次工具调用都没有带来新的可用事实时，停止检索，直接基于已有信息作答。
+                - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
+                工具批处理规则：
+                - 能用一条命令完成的批量操作（多文件读写、生成后立即校验、批量重命名）不要拆成多次工具调用；写文件后用同一条命令运行并检查结果；不要为同一目标重复执行等价命令。
+                检索预算规则：
+                - 默认一轮最多 1 次 web_search 加 1 次 web_fetch；确需交叉核对时最多 3 次检索调用。
+                - 没有结果时先换一次关键词；仍没有结果就如实说明限制，不连续重试。
+                工具选择规则：
+                - advanced_search 只用于时间范围或指定站点过滤；domain_search 只用于站内检索；platform_search 只用于中文平台内容；video_search / weather 只在用户明确要求时使用；不要把 free_search_test 当作常规检索。
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              read: true
+              readImage: false
+              write: true
+              edit: true
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
 # 检索收敛规则（OD-ARCH-147c）：preset-standard 的 persona.suffix 承载三条规则。
 # 本段按上游 dsh-web-app/presets/standard.patch.yml 原样 restate config.plugins，
 # 仅追加 persona.suffix；上游预设增删插件时须同步本段。
@@ -115,6 +193,13 @@
             - 不要给 web_fetch 的 URL 拼接 r.jina.ai 等第三方 reader 代理前缀。web_fetch 已内置直连、无头浏览器、云端抓取的回退链；遇到反爬页面改用 web_search 或换其它来源。
             - 连续 3 次工具调用都没有带来新的可用事实时，停止检索，直接基于已有信息作答。
             - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
+            工具批处理规则：
+            - 能用一条命令完成的批量操作（多文件读写、生成后立即校验、批量重命名）不要拆成多次工具调用；写文件后用同一条命令运行并检查结果；不要为同一目标重复执行等价命令。
+            检索预算规则：
+            - 默认一轮最多 1 次 web_search 加 1 次 web_fetch；确需交叉核对时最多 3 次检索调用。
+            - 没有结果时先换一次关键词；仍没有结果就如实说明限制，不连续重试。
+            工具选择规则：
+            - advanced_search 只用于时间范围或指定站点过滤；domain_search 只用于站内检索；platform_search 只用于中文平台内容；video_search / weather 只在用户明确要求时使用；不要把 free_search_test 当作常规检索。
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:

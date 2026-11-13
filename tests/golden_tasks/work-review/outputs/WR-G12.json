@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "检查合成附件归档",
+      "source_quote": "好像还有一份合成附件没归档",
+      "confidence": 0.4,
+      "importance": null,
+      "importance_reason": null,
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": "表述不确定，需用户确认是否存在",
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

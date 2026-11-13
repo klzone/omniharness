@@ -1,0 +1,33 @@
+{
+  "candidates": [
+    {
+      "title": "合成培训成果归档",
+      "source_quote": "合成培训完成 3 场",
+      "confidence": 0.85,
+      "importance": "高",
+      "importance_reason": "有量化成果且需归档",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": [
+    {
+      "material_type": "工作成果",
+      "content": "合成培训完成 3 场，覆盖 120 人次",
+      "source_quote": "合成培训完成 3 场，覆盖 120 人次",
+      "event_date": null,
+      "match_material_id": null,
+      "match_reason": null,
+      "knowledge_hints": [
+        "培训"
+      ],
+      "confidence": 0.8
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "提交合成材料",
+      "source_quote": "合成材料月底前要交",
+      "confidence": 0.7,
+      "importance": "中",
+      "importance_reason": "有明确时间要求但日期未定",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": "月底前是模糊时间，未换算为具体日期",
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

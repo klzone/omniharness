@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "合成报表提交",
+      "source_quote": "合成报表已按要求提交",
+      "confidence": 0.8,
+      "importance": "中",
+      "importance_reason": "任务已闭环",
+      "category": null,
+      "due_date": null,
+      "note": "已完成",
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

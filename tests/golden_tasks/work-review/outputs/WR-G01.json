@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "整理合成事项 A 台账",
+      "source_quote": "明确本周完成合成事项 A 的台账整理",
+      "category": "综合",
+      "due_date": null,
+      "note": null,
+      "confidence": 0.82,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null,
+      "importance": "中",
+      "importance_reason": "例会上明确的本周事项"
+    }
+  ],
+  "material_candidates": []
+}

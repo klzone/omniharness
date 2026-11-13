@@ -1,0 +1,35 @@
+{
+  "candidates": [
+    {
+      "title": "合成事项 B 初稿",
+      "source_quote": "合成事项 B 已完成初稿",
+      "confidence": 0.8,
+      "importance": "中",
+      "importance_reason": "已有初稿",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    },
+    {
+      "title": "跟进合成事项 C 审批",
+      "source_quote": "合成事项 C 尚待审批",
+      "confidence": 0.75,
+      "importance": "高",
+      "importance_reason": "等待审批阻塞后续",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

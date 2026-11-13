@@ -1,0 +1,528 @@
+{
+  "schema": "omnidesk.work-review-golden.v1",
+  "cases": [
+    {
+      "id": "WR-G01",
+      "kind": "single-fact",
+      "input": {
+        "id": "wr-case",
+        "title": "合成例会记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "例会",
+          "台账"
+        ],
+        "body": "上午参加合成例会，明确本周完成合成事项 A 的台账整理。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "明确本周完成合成事项 A 的台账整理"
+        ],
+        "needs_review": false
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "整理合成事项 A 台账",
+            "source_quote": "明确本周完成合成事项 A 的台账整理",
+            "category": "综合",
+            "due_date": null,
+            "note": null,
+            "confidence": 0.82,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null,
+            "importance": "中",
+            "importance_reason": "例会上明确的本周事项"
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G02",
+      "kind": "multi-merge",
+      "input": {
+        "id": "wr-case",
+        "title": "两条进展",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成事项 B 已完成初稿；合成事项 C 尚待审批。"
+      },
+      "expected": {
+        "candidate_count": 2,
+        "quotes": [
+          "合成事项 B 已完成初稿",
+          "合成事项 C 尚待审批"
+        ],
+        "needs_review": false
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "合成事项 B 初稿",
+            "source_quote": "合成事项 B 已完成初稿",
+            "confidence": 0.8,
+            "importance": "中",
+            "importance_reason": "已有初稿",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          },
+          {
+            "title": "跟进合成事项 C 审批",
+            "source_quote": "合成事项 C 尚待审批",
+            "confidence": 0.75,
+            "importance": "高",
+            "importance_reason": "等待审批阻塞后续",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G03",
+      "kind": "completed-item",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成报表已按要求提交，对方确认收到。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成报表已按要求提交"
+        ],
+        "needs_review": false
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "合成报表提交",
+            "source_quote": "合成报表已按要求提交",
+            "confidence": 0.8,
+            "importance": "中",
+            "importance_reason": "任务已闭环",
+            "category": null,
+            "due_date": null,
+            "note": "已完成",
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G04",
+      "kind": "unfinished-item",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成方案还没定稿，等下周例会讨论。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成方案还没定稿"
+        ],
+        "needs_review": false
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "合成方案定稿",
+            "source_quote": "合成方案还没定稿",
+            "confidence": 0.75,
+            "importance": "高",
+            "importance_reason": "尚未定稿且需例会讨论",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G05",
+      "kind": "continuous-progress",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成事项 D 又推进了一步，材料已补齐。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成事项 D 又推进了一步"
+        ],
+        "needs_review": false,
+        "match_task_id": "t-existing-1"
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "合成事项 D 进展",
+            "source_quote": "合成事项 D 又推进了一步",
+            "confidence": 0.78,
+            "importance": "中",
+            "importance_reason": "同一事项的连续进展",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": "t-existing-1",
+            "match_confidence": 0.85,
+            "match_reason": "标题与事项一致",
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G06",
+      "kind": "duplicate-task",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "再次确认合成事项 E 的统计口径。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "再次确认合成事项 E 的统计口径"
+        ],
+        "needs_review": false,
+        "match_task_id": "t-existing-2"
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "确认合成事项 E 口径",
+            "source_quote": "再次确认合成事项 E 的统计口径",
+            "confidence": 0.72,
+            "importance": "中",
+            "importance_reason": "同一事项的补充确认",
+            "category": null,
+            "due_date": null,
+            "note": "与既有任务重复",
+            "uncertainty": null,
+            "match_task_id": "t-existing-2",
+            "match_confidence": 0.8,
+            "match_reason": "同一统计口径事项",
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G07",
+      "kind": "vague-time",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成材料月底前要交，但具体日期未定。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成材料月底前要交"
+        ],
+        "needs_review": false,
+        "due_date": null
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "提交合成材料",
+            "source_quote": "合成材料月底前要交",
+            "confidence": 0.7,
+            "importance": "中",
+            "importance_reason": "有明确时间要求但日期未定",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": "月底前是模糊时间，未换算为具体日期",
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G08",
+      "kind": "fact-vs-inference",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成数据看起来比上月好一些，但未做正式统计。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成数据看起来比上月好一些"
+        ],
+        "needs_review": true
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "关注合成数据走势",
+            "source_quote": "合成数据看起来比上月好一些",
+            "confidence": 0.55,
+            "importance": "低",
+            "importance_reason": "尚处观察判断",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": "属于主观判断，未做正式统计",
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G09",
+      "kind": "outcome",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "合成培训完成 3 场，覆盖 120 人次。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "合成培训完成 3 场"
+        ],
+        "needs_review": false
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "合成培训成果归档",
+            "source_quote": "合成培训完成 3 场",
+            "confidence": 0.85,
+            "importance": "高",
+            "importance_reason": "有量化成果且需归档",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": [
+          {
+            "material_type": "工作成果",
+            "content": "合成培训完成 3 场，覆盖 120 人次",
+            "source_quote": "合成培训完成 3 场，覆盖 120 人次",
+            "event_date": null,
+            "match_material_id": null,
+            "match_reason": null,
+            "knowledge_hints": [
+              "培训"
+            ],
+            "confidence": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "id": "WR-G10",
+      "kind": "sensitive",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "这一段包含案件材料与线索，不进入工作台。"
+      },
+      "expected": {
+        "refused": true,
+        "candidate_count": 0
+      },
+      "output": {
+        "refused": true,
+        "candidates": [],
+        "material_candidates": []
+      }
+    },
+    {
+      "id": "WR-G11",
+      "kind": "history-link",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "按合成制度 X 的要求补充了台账字段。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "按合成制度 X 的要求补充了台账字段"
+        ],
+        "needs_review": false,
+        "knowledge_hints": [
+          "制度"
+        ]
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "补充台账字段",
+            "source_quote": "按合成制度 X 的要求补充了台账字段",
+            "confidence": 0.8,
+            "importance": "中",
+            "importance_reason": "制度要求的具体落实",
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": null,
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": [
+          {
+            "material_type": "制度依据",
+            "content": "合成制度 X 要求补充台账字段",
+            "source_quote": "按合成制度 X 的要求补充了台账字段",
+            "event_date": null,
+            "match_material_id": null,
+            "match_reason": null,
+            "knowledge_hints": [
+              "制度"
+            ],
+            "confidence": 0.7
+          }
+        ]
+      }
+    },
+    {
+      "id": "WR-G12",
+      "kind": "low-confidence",
+      "input": {
+        "id": "wr-case",
+        "title": "合成工作记录",
+        "record_date": "2026-11-12",
+        "category": "综合",
+        "tags": [
+          "合成"
+        ],
+        "body": "好像还有一份合成附件没归档。"
+      },
+      "expected": {
+        "candidate_count": 1,
+        "quotes": [
+          "好像还有一份合成附件没归档"
+        ],
+        "needs_review": true
+      },
+      "output": {
+        "candidates": [
+          {
+            "title": "检查合成附件归档",
+            "source_quote": "好像还有一份合成附件没归档",
+            "confidence": 0.4,
+            "importance": null,
+            "importance_reason": null,
+            "category": null,
+            "due_date": null,
+            "note": null,
+            "uncertainty": "表述不确定，需用户确认是否存在",
+            "match_task_id": null,
+            "match_confidence": null,
+            "match_reason": null,
+            "suggested_state": null
+          }
+        ],
+        "material_candidates": []
+      }
+    }
+  ]
+}
