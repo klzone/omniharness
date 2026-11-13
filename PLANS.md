@@ -1,5 +1,23 @@
 # 当前实施计划
 
+### OD-ARCH-150：Harness Engineering + Multi-Agent Graph 专项审计与架构规划（已批准，2026-11-13；Phase B 已实施，待复核）
+
+> **性质：** 架构专项审计与改造规划，不是功能开发。全程只读代码与数据结构，产出六份规划文档；不修改业务源代码、不迁移数据库、不创建 Agent、不安装依赖、不动 runtime/。
+>
+> **背景：** 用户要求全面检查 OmniDesk 现状，研究是否适合向「四个专业 Agent + 共享 Harness + 统一数据底座 + 事件驱动协作 Graph」演进；首个试点为 Work Review Agent。研究 Harness²（Google）设计思想但不安装、不引入代码、不替换 Runtime。
+>
+> **本轮已核实的代码基线：** main 分支，HEAD `ec519c618d87e436e09c339709de4fe2dd74c216`（docs(research): DSH Runtime 审计阶段性材料），工作区仅有既有未提交改动（STATUS.md、samples/profiles/discipline.profile.patch.yml），本轮原样保留。DSH 锁定 rc.5（RUNTIME.lock），引擎 Profile 为 discipline（discipline-core preset）。
+>
+> **Phase A 范围（仅文档）：** 新增 docs/OMNIDESK_CURRENT_ARCHITECTURE_AUDIT.md（现有架构审计）、docs/OMNIDESK_STORAGE_ARCHITECTURE_AUDIT.md（存储体系审计）、docs/OMNIDESK_HARNESS_ARCHITECTURE.md（Harness 六组件）、docs/OMNIDESK_MULTI_AGENT_GRAPH_DESIGN.md（Multi-Agent Graph）、docs/WORK_REVIEW_AGENT_DESIGN.md（试点设计）、docs/OMNIDESK_HARNESS_ROADMAP.md（最小改造路线与任务卡）。全部为规划文档，文档内候选方案不写成已决定。
+>
+> **核心结论摘要（详见各文档）：** ① OmniDesk 是「宿主编排 + 单一 DSH Agent 循环」系统：Skill 由场景绑定注入，工具与循环在 DSH 内，尚无独立 Agent Profile 概念；② 方案 B（四个逻辑 Agent + 共享 DSH Runtime + Profile/Preset/Skill 分层）可行且推荐，无需独立进程；③ Harness 六组件中 Guides（四层）、Loop（宿主状态机 + 引擎九态）、Permissions（准入 + 写确认制）已有实质实现；Sensors（独立验收器体系）、External Memory 分层登记、Observability（token 落盘 + 执行链追溯）、Event 契约、Agent 专属 Memory 视图是主要差距；④ 数据底座以本地 Markdown/frontmatter + JSON 台账为主，WorkRecord↔Task↔Material↔Knowledge 已有稳定 id 关联，唯一可信来源基本成立；素材候选与知识关联候选双暂存、旧周文件 bak 残留、backup-sessions.sh 指向 ~/.dsh 过时是已发现的存储问题；⑤ Work Review Agent 可用「独立 Agent Profile 声明 + 场景 Skill 绑定扩展 + 只读分析 + 候选写确认」最小化试点，无需新建存储。
+>
+> **验收标准：** 六份文档存在且互链一致；每份关键结论带代码路径/数据结构/测试证据；未确认项标记未知；文档内不出现「已决定/已实现」的未实施候选方案；不修改任何源代码文件（git status 除六份新文档 + 本条 PLANS/STATUS 记录外无新增差异）；全量回归不受影响（文档新增不触发构建）。
+
+> **执行结果（本助手亲自实施）：** 用户批准后按 docs/OMNIDESK_HARNESS_ROADMAP.md 的 Phase B 实施共享 Harness 基础，四张任务卡全部落地：OD-HAR-201（verdict.v1 候选验收结论随候选暂存并在审核台展示：task_store.rs / task_extract.rs / TaskReviewPanel.tsx）；OD-HAR-202（work/events.jsonl 本地事件表 + 宿主动作点接入：event_log.rs）；OD-HAR-203（rules.json v3 的 agents 段与校验，出厂包声明 work-review，v1/v2 原样可加载）；OD-HAR-204（引擎台账与 get_task_status 落 usage 与 usage_source，未知不估算）。Phase C/D/E 未开工，须另行批准。
+>
+> **Phase C/D/E 执行结果（2026-11-13）：** OD-HAR-211 终稿为 work-review-core：可读/写/编辑文件、无 bash/pwsh（D-097，删除文件仍由宿主回收站负责）；OD-HAR-212 历史检索只传元数据；OD-HAR-213 场景声明与 engine preset 映射已接线。Phase D：OD-HAR-221 确认/拒绝事件 + event_log_recent 只读命令 + 设置页交接面板；OD-HAR-222 integrity.rs 跨实体引用体检（只读）。Phase E：OD-HAR-231 12 例合成基准 + 评分脚本；OD-HAR-232 测量脚本与评测报告（真实模型评测未做）。
+
 ### OD-UI-712：思考与命令分组折叠（待用户批准，2026-11-13）
 
 > **触发：** 用户反馈对话里的思考与工具调用逐条平铺（截图中六对「思考/命令」行），要求把思考过程与工具调用分别整合：收起时每组只显示最新一条，点对应箭头才展开全部；UI 按本 App 的规范设计。用户同轮追加：生成的文件要默认带链接，点文件名即可打开，不必去文件夹里找；该需求并入本轮一起改（OD-UI-713）。
