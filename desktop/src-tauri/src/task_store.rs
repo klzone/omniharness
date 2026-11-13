@@ -244,6 +244,41 @@ pub struct CandidateInput {
     pub importance: Option<String>,
     /// 一句话依据；importance 非空时必填，≤100 字。
     pub importance_reason: Option<String>,
+    /// OD-HAR-201：验收器结论（宿主确定性检查明细，随候选一起暂存）。
+    pub verdict: Option<CandidateVerdict>,
+}
+
+/// 单条验收检查结果。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerdictCheck {
+    pub id: String,
+    pub pass: bool,
+}
+
+/// 候选验收结论（omnidesk.verdict.v1）。只存检查 id 与布尔结果，不存正文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateVerdict {
+    pub schema: String,
+    pub validator: String,
+    /// pass | needs_review
+    pub conclusion: String,
+    pub checks: Vec<VerdictCheck>,
+}
+
+impl CandidateVerdict {
+    pub fn new(validator: &str, checks: Vec<VerdictCheck>) -> Self {
+        let conclusion = if checks.iter().all(|c| c.pass) {
+            "pass"
+        } else {
+            "needs_review"
+        };
+        Self {
+            schema: "omnidesk.verdict.v1".to_string(),
+            validator: validator.to_string(),
+            conclusion: conclusion.to_string(),
+            checks,
+        }
+    }
 }
 
 /// 暂存的候选。
@@ -271,6 +306,9 @@ pub struct TaskCandidate {
     pub importance: Option<String>,
     #[serde(default)]
     pub importance_reason: Option<String>,
+    /// OD-HAR-201：验收结论；旧候选文件缺该字段时为 None。
+    #[serde(default)]
+    pub verdict: Option<CandidateVerdict>,
     pub dedup_key: String,
     pub status: String,
     pub created_at: String,
@@ -1609,6 +1647,7 @@ pub fn stage_candidates(
             suggested_state,
             importance,
             importance_reason,
+            verdict: input.verdict.clone(),
             dedup_key: dedup_key.clone(),
             status: CANDIDATE_PENDING.to_string(),
             created_at: crate::task_shell::utc_iso8601(now),
