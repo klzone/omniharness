@@ -71,13 +71,29 @@ from .task_core import (
     TaskCoreBase,
     TaskRecovery,
     _TaskRecord,
+    sanitize_usage,
 )
+
 from .acp_adapter import (
     canonical_cwd,
     proc_title_shim_args,
     workspace_label_for,
     workspace_token_for,
 )
+
+# OD-HAR-211（修订）：Work Review 会话使用「可写文件、无 shell」的工具面。
+# 只在 discipline Profile 内启用：其它 Profile 不一定装了该 preset。
+WORK_REVIEW_PRESET = "work-review-core"
+WORK_REVIEW_INTENTS = ("weekly_report",)
+
+
+def preset_for_intent(intent: Optional[str], profile: Optional[str]) -> Optional[str]:
+    """意图 → Agent preset。未知意图或非 discipline Profile 一律沿用默认。"""
+    if (profile or "").strip() != "discipline":
+        return None
+    if (intent or "").strip() in WORK_REVIEW_INTENTS:
+        return WORK_REVIEW_PRESET
+    return None
 from .process_owner import record_child_group, terminate_group
 from .security import DataMasker, MaskMapping, SessionScope
 from .security.stream_unmask import StreamUnmasker
@@ -963,10 +979,18 @@ class WebApiAdapter(TaskCoreBase):
         return descriptor
 
     # -- 会话建立 / follow 流 -----------------------------------------------
-    def _create_session(self, workspace_dir: str, omni_task_id: Optional[str]) -> str:
+    def _create_session(
+        self,
+        workspace_dir: str,
+        omni_task_id: Optional[str],
+        agent_preset: Optional[str] = None,
+    ) -> str:
+        request_body: dict[str, Any] = {"cwd": workspace_dir}
+        if agent_preset:
+            request_body["agentPreset"] = agent_preset
         value = self._rpc(
             "session/create",
-            {"request": {"cwd": workspace_dir}},
+            {"request": request_body},
             self._session_timeout,
             omni_task_id=omni_task_id,
         )
@@ -1381,7 +1405,11 @@ class WebApiAdapter(TaskCoreBase):
 
         try:
             if session_id is None:
-                session_id = self._create_session(workspace_dir, omni_task_id)
+                session_id = self._create_session(
+                    workspace_dir,
+                    omni_task_id,
+                    preset_for_intent(request.intent, self._engine_profile),
+                )
             if follow is None:
                 follow = self._open_follow(session_id, workspace_dir)
         except EngineError as error:
@@ -1801,11 +1829,15 @@ class WebApiAdapter(TaskCoreBase):
                     {"text": text, "chars": len(text), "streamed": True},
                 )
             elif chunk_type == "usage":
-                usage = chunk.get("usage")
+                usage = sanitize_usage(chunk.get("usage"))
+                if usage is not None:
+                    with self._lock:
+                        record.usage = dict(usage)
+                        record.usage_source = "web_stream"
                 self._emit(
                     record,
                     EventType.PROGRESS,
-                    {"kind": "usage", "usage": dict(usage) if isinstance(usage, Mapping) else {}},
+                    {"kind": "usage", "usage": dict(usage) if usage is not None else {}},
                 )
             elif chunk_type == "finish":
                 reason = chunk.get("reason")

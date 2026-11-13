@@ -271,6 +271,7 @@ def assemble_task_extract_prompt(
     tags: Sequence[str] = (),
     tasks: Sequence[Mapping[str, Any]] = (),
     materials: Sequence[Mapping[str, Any]] = (),
+    history: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """把一条记录组装成任务与素材提取提示词；不含任何模型调用。"""
 
@@ -314,6 +315,29 @@ def assemble_task_extract_prompt(
             )
     else:
         lines.append("已有素材：无。")
+    if history:
+        lines.append(
+            "相关历史记录（只提供元数据，供判断是否重复或延续；"
+            "不要引用未给出的正文，也不要据此编造进展）："
+        )
+        for item in history:
+            tags_text = "、".join(str(tag) for tag in (item.get("tags") or [])) or "无"
+            lines.append(
+                "- id="
+                + str(item.get("id") or "")
+                + " | 日期："
+                + str(item.get("record_date") or "")
+                + " | 标题："
+                + str(item.get("title") or "")
+                + " | 分类："
+                + str(item.get("category") or "无")
+                + " | 标签："
+                + tags_text
+                + " | 关联依据："
+                + str(item.get("reason") or "")
+            )
+    else:
+        lines.append("相关历史记录：无。")
     lines.extend(
         [
             "记录正文（以 ---BEGIN--- 与 ---END--- 为界）：",
@@ -339,6 +363,11 @@ def main() -> int:
             material
             for material in (payload.get("materials") or [])
             if isinstance(material, Mapping)
+        ],
+        history=[
+            item
+            for item in (payload.get("history") or [])
+            if isinstance(item, Mapping)
         ],
     )
     json.dump({"schema": EXTRACT_SCHEMA, "prompt": prompt}, sys.stdout, ensure_ascii=False)
