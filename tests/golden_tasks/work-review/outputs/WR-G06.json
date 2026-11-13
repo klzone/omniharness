@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "确认合成事项 E 口径",
+      "source_quote": "再次确认合成事项 E 的统计口径",
+      "confidence": 0.72,
+      "importance": "中",
+      "importance_reason": "同一事项的补充确认",
+      "category": null,
+      "due_date": null,
+      "note": "与既有任务重复",
+      "uncertainty": null,
+      "match_task_id": "t-existing-2",
+      "match_confidence": 0.8,
+      "match_reason": "同一统计口径事项",
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

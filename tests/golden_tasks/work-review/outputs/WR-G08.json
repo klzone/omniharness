@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "关注合成数据走势",
+      "source_quote": "合成数据看起来比上月好一些",
+      "confidence": 0.55,
+      "importance": "低",
+      "importance_reason": "尚处观察判断",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": "属于主观判断，未做正式统计",
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

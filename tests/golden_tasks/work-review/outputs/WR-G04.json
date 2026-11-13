@@ -1,0 +1,20 @@
+{
+  "candidates": [
+    {
+      "title": "合成方案定稿",
+      "source_quote": "合成方案还没定稿",
+      "confidence": 0.75,
+      "importance": "高",
+      "importance_reason": "尚未定稿且需例会讨论",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": []
+}

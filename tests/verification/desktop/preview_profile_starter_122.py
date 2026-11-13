@@ -133,7 +133,10 @@ def main() -> int:
         facts["rules_sample"] = read_text(rules_path)
         facts["checks"]["rules_zero_injection"] = rules.get("skill_bindings") == {}
         facts["checks"]["rules_own_profile"] = rules.get("profile") == NAME
-        facts["checks"]["rules_schema_v2"] = rules.get("schema") == "omnidesk.profile-rules.v2"
+        facts["checks"]["rules_schema_v2_or_v3"] = rules.get("schema") in (
+            "omnidesk.profile-rules.v2",
+            "omnidesk.profile-rules.v3",
+        )
         facts["checks"]["still_clean_base_before_switch"] = (
             (read_settings(root) or {}).get("engine_profile") is None
         )

@@ -1,5 +1,5 @@
 {
-  "schema": "omnidesk.profile-rules.v2",
+  "schema": "omnidesk.profile-rules.v3",
   "profile": "discipline",
   "global": {
     "writing_rules": [
@@ -99,6 +99,25 @@
         "project-agent"
       ],
       "max_injected": 1
+    }
+  },
+  "agents": {
+    "work-review": {
+      "label": "工作记录复盘",
+      "scenes": [
+        "weekly",
+        "weekly-note",
+        "weekly-report",
+        "weekly-daily-summary",
+        "weekly-period-review"
+      ],
+      "skills": [
+        "memory-agent",
+        "memory-report",
+        "daily-summary",
+        "period-review"
+      ],
+      "permission_profile": null
     }
   }
 }

@@ -1,0 +1,8 @@
+{
+  "result": "pass",
+  "terminal_state": "succeeded",
+  "session_mode": "new",
+  "agent_preset": "work-review-core",
+  "sessions_written": 1,
+  "evidence_level": "script（隔离 /tmp 数据根 + 合成端点，零真实凭证）"
+}

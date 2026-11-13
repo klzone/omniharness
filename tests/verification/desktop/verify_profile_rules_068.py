@@ -107,9 +107,21 @@ def asset_checks() -> list[dict]:
         + len(gl["privacy_keywords"]["phone"])
     )
     check(
-        "schema_is_v1_or_v2",
-        rules["schema"] in ("omnidesk.profile-rules.v1", "omnidesk.profile-rules.v2"),
+        "schema_is_v1_v2_or_v3",
+        rules["schema"]
+        in (
+            "omnidesk.profile-rules.v1",
+            "omnidesk.profile-rules.v2",
+            "omnidesk.profile-rules.v3",
+        ),
         rules["schema"],
+    )
+    check(
+        "agent_declarations_shape",
+        isinstance(rules.get("agents"), dict)
+        and "work-review" in rules["agents"]
+        and rules["agents"]["work-review"].get("scenes"),
+        json.dumps(sorted(rules.get("agents", {}))),
     )
     check("profile_name", rules["profile"] == "discipline", rules["profile"])
     check("16_keywords", total == 16, str(total))

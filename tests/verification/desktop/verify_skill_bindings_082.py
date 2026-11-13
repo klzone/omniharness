@@ -242,7 +242,11 @@ def test_rule_bindings_asset() -> list[dict]:
     def check(name: str, ok: bool, detail: str = "") -> None:
         cases.append({"name": name, "ok": bool(ok), "detail": detail})
 
-    check("schema_is_v2", rules.get("schema") == "omnidesk.profile-rules.v2", rules.get("schema"))
+    check(
+        "schema_is_v2_or_v3",
+        rules.get("schema") in ("omnidesk.profile-rules.v2", "omnidesk.profile-rules.v3"),
+        rules.get("schema"),
+    )
     bindings = rules.get("skill_bindings", {})
     check("bindings_present", isinstance(bindings, dict) and len(bindings) >= 5, str(len(bindings)))
 

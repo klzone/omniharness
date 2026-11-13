@@ -1,0 +1,33 @@
+{
+  "candidates": [
+    {
+      "title": "补充台账字段",
+      "source_quote": "按合成制度 X 的要求补充了台账字段",
+      "confidence": 0.8,
+      "importance": "中",
+      "importance_reason": "制度要求的具体落实",
+      "category": null,
+      "due_date": null,
+      "note": null,
+      "uncertainty": null,
+      "match_task_id": null,
+      "match_confidence": null,
+      "match_reason": null,
+      "suggested_state": null
+    }
+  ],
+  "material_candidates": [
+    {
+      "material_type": "制度依据",
+      "content": "合成制度 X 要求补充台账字段",
+      "source_quote": "按合成制度 X 的要求补充了台账字段",
+      "event_date": null,
+      "match_material_id": null,
+      "match_reason": null,
+      "knowledge_hints": [
+        "制度"
+      ],
+      "confidence": 0.7
+    }
+  ]
+}
