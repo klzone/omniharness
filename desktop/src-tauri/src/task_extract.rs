@@ -209,7 +209,7 @@ pub fn build_prompt(
     title: &str,
     body: &str,
 ) -> Result<String, String> {
-    build_prompt_with_materials(python, engine_dir, record, tasks, &[], title, body)
+    build_prompt_with_materials(python, engine_dir, record, tasks, &[], &[], title, body)
 }
 
 /// 与 `build_prompt` 相同，额外把既有素材 id+title 注入提示词（OD-KM-506）。
@@ -222,6 +222,7 @@ pub fn build_prompt_with_materials(
     record: &WorkRecord,
     tasks: &[task_store::Task],
     materials: &[material_store::WritingMaterial],
+    history: &[crate::worklog_search::HistoryHit],
     title: &str,
     body: &str,
 ) -> Result<String, String> {
@@ -259,6 +260,7 @@ pub fn build_prompt_with_materials(
         },
         "tasks": task_rows,
         "materials": material_rows,
+        "history": history,
     });
     let mut child = Command::new(python)
         .arg("-m")
@@ -428,6 +430,37 @@ fn validate_candidate(
             }
         }
     }
+    // OD-HAR-201：把宿主已经执行的确定性检查固化成验收结论。
+    // 硬校验不过的候选不会走到这里（已在上面 return Err）；
+    // 这里记录「过了哪些检查」与需要人工留意的软信号。
+    let confidence = raw.confidence;
+    let checks = vec![
+        task_store::VerdictCheck {
+            id: "quote_in_source".to_string(),
+            pass: true,
+        },
+        task_store::VerdictCheck {
+            id: "date_shape".to_string(),
+            pass: true,
+        },
+        task_store::VerdictCheck {
+            id: "due_date_grounded".to_string(),
+            pass: true,
+        },
+        task_store::VerdictCheck {
+            id: "confidence_band".to_string(),
+            pass: confidence.map_or(true, |value| value >= 0.6),
+        },
+        task_store::VerdictCheck {
+            id: "inference_declared".to_string(),
+            pass: confidence.map_or(true, |value| value >= 0.7) || uncertainty.is_some(),
+        },
+        task_store::VerdictCheck {
+            id: "match_consistent".to_string(),
+            pass: raw.match_confidence.is_none() || match_task_id.is_some(),
+        },
+    ];
+    let verdict = task_store::CandidateVerdict::new("task-candidate.v1", checks);
     Ok(task_store::CandidateInput {
         title,
         source_quote: quote,
@@ -442,6 +475,7 @@ fn validate_candidate(
         suggested_state,
         importance,
         importance_reason,
+        verdict: Some(verdict),
     })
 }
 
@@ -1173,6 +1207,48 @@ mod tests {
         let err =
             validate_task_payload(&payload("记录里没有这句话", None), &record, &[]).unwrap_err();
         assert!(err.contains("连续原文"), "{err}");
+    }
+
+    // OD-HAR-201：宿主校验通过后，候选必须带确定性验收结论；
+    // 低置信度且没有不确定说明时结论为 needs_review，而不是直接放行。
+    #[test]
+    fn validate_attaches_verdict_checks() {
+        let temp = TempRoot::new("verdict");
+        let record = seed(&temp);
+        let candidates = validate_task_payload(&payload("今天整理周报", None), &record, &[]).unwrap();
+        let verdict = candidates[0].verdict.as_ref().expect("候选必须带验收结论");
+        assert_eq!(verdict.schema, "omnidesk.verdict.v1");
+        assert_eq!(verdict.validator, "task-candidate.v1");
+        assert!(verdict.checks.iter().all(|check| check.pass));
+        assert_eq!(verdict.conclusion, "pass");
+        assert!(verdict.checks.iter().any(|check| check.id == "quote_in_source"));
+
+        let low = serde_json::json!({
+            "candidates": [{
+                "title": "整理周报",
+                "source_quote": "今天整理周报",
+                "category": null,
+                "due_date": null,
+                "note": null,
+                "confidence": 0.4,
+                "uncertainty": null,
+                "match_task_id": null,
+                "match_confidence": null,
+                "match_reason": null,
+                "suggested_state": null,
+                "importance": null,
+                "importance_reason": null,
+            }],
+            "material_candidates": [],
+        })
+        .to_string();
+        let low_candidates = validate_task_payload(&low, &record, &[]).unwrap();
+        let low_verdict = low_candidates[0].verdict.as_ref().unwrap();
+        assert_eq!(low_verdict.conclusion, "needs_review");
+        assert!(low_verdict
+            .checks
+            .iter()
+            .any(|check| check.id == "confidence_band" && !check.pass));
     }
 
     #[test]

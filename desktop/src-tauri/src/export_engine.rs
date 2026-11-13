@@ -1951,6 +1951,7 @@ mod tests {
             },
             scenes: Default::default(),
             skill_bindings: Default::default(),
+            agents: Default::default(),
         };
         let policy = RulePolicy::from_rules(&rules);
         let dir = target_dir(&fixture);

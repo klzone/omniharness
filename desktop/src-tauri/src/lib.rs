@@ -17,6 +17,7 @@ pub mod engine_bridge;
 pub mod engine_ipc;
 pub mod engine_lifecycle;
 pub mod engine_supervisor;
+pub mod event_log;
 pub mod job_object;
 pub mod external_open;
 pub mod artifact_open;
@@ -26,6 +27,7 @@ pub mod knowledge_governance;
 pub mod knowledge_quality;
 pub mod knowledge_review;
 pub mod knowledge_vault;
+pub mod integrity;
 pub mod knowledge_ingest;
 pub mod knowledge_link;
 pub mod knowledge_link_store;
@@ -73,6 +75,7 @@ pub mod vault_archive;
 pub mod worklog;
 pub mod worklog_records;
 pub mod worklog_migrate;
+pub mod worklog_search;
 pub mod work_cleanup;
 pub mod writing_store;
 pub mod writing_records;
@@ -6081,6 +6084,15 @@ fn work_record_create_impl(
     add_counts(&mut counts, extra);
     draft.body = body;
     let record = worklog_records::create_record(root, &draft, now, utc_offset_minutes)?;
+    // OD-HAR-202：业务事件登记；失败不影响记录落盘（事件缺席时以记录自身为准）。
+    let _ = event_log::append(
+        root,
+        "work_record.created",
+        "user",
+        ("work_record", &record.id),
+        &[],
+        None,
+    );
     Ok(WorkRecordSaved {
         record,
         masked: counts.any(),
@@ -6232,6 +6244,23 @@ fn task_candidate_confirm_impl(
         edits.note = Some(masked);
     }
     let task = task_store::confirm_candidate(root, candidate_id, &edits, now)?;
+    // OD-HAR-202：候选确认与任务创建各记一条，交接可追溯。
+    let _ = event_log::append(
+        root,
+        "task_candidate.confirmed",
+        "user",
+        ("task_candidate", candidate_id),
+        &[("task", &task.id)],
+        Some("confirmed"),
+    );
+    let _ = event_log::append(
+        root,
+        "task.confirmed",
+        "user",
+        ("task", &task.id),
+        &[("task_candidate", candidate_id)],
+        None,
+    );
     Ok(TaskSaved {
         task,
         masked: counts.any(),
@@ -6251,7 +6280,16 @@ fn task_candidate_reject_impl(
         Some(raw) => Some(gate_user_text(&raw, policy, "拒绝备注")?.0),
         None => None,
     };
-    task_store::reject_candidate(root, candidate_id, note.as_deref(), now)
+    let candidate = task_store::reject_candidate(root, candidate_id, note.as_deref(), now)?;
+    let _ = event_log::append(
+        root,
+        "task_candidate.rejected",
+        "user",
+        ("task_candidate", candidate_id),
+        &[],
+        Some("rejected"),
+    );
+    Ok(candidate)
 }
 
 #[tauri::command(async)]
@@ -6413,12 +6451,15 @@ fn worklog_record_analyze_impl(
         &material_store::MaterialFilter::default(),
     )?
     .items;
+    // OD-HAR-212：相关历史记录只传元数据（编号/标题/日期/分类/标签），不传正文。
+    let history = worklog_search::related_history(root, &record, worklog_search::MAX_HISTORY_HITS);
     let prompt = task_extract::build_prompt_with_materials(
         &config.python,
         &config.engine_dir,
         &record,
         &tasks,
         &materials,
+        &history,
         &title,
         &body,
     )?;
@@ -6455,7 +6496,27 @@ fn worklog_record_analyze_apply(
     result_text: String,
 ) -> Result<task_extract::AnalyzeApplied, String> {
     let root = work_root(&state)?;
-    task_extract::apply_analysis(&root, &record_id, &result_text, task_shell::now_secs())
+    let applied = task_extract::apply_analysis(&root, &record_id, &result_text, task_shell::now_secs())?;
+    // OD-HAR-202：候选生成的来源登记（每条候选一条事件）。
+    let _ = event_log::append(
+        &root,
+        "work_record.analyzed",
+        "agent",
+        ("work_record", &record_id),
+        &[],
+        None,
+    );
+    for candidate in &applied.staged {
+        let _ = event_log::append(
+            &root,
+            "task_candidate.created",
+            "agent",
+            ("task_candidate", &candidate.id),
+            &[("work_record", &record_id)],
+            candidate.confidence.map(|c| if c >= 0.7 { "high" } else if c >= 0.5 { "medium" } else { "low" }),
+        );
+    }
+    Ok(applied)
 }
 
 /// 模型调用失败或超时时把记录置为解析失败；正文不动。
@@ -6466,6 +6527,26 @@ fn worklog_record_analyze_failed(
 ) -> Result<worklog_records::WorkRecord, String> {
     let root = work_root(&state)?;
     task_extract::mark_analysis_failed(&root, &record_id, task_shell::now_secs())
+}
+
+/// OD-HAR-222：跨实体引用体检（只读）。只返回编号与字段，不返回标题或正文。
+#[tauri::command(async)]
+fn work_integrity_check(state: State<'_, SharedHost>) -> Result<integrity::IntegrityReport, String> {
+    let root = work_root(&state)?;
+    integrity::check(&root)
+}
+
+/// OD-HAR-221：最近业务事件（只读）。供界面与诊断查看交接链路。
+#[tauri::command(async)]
+fn event_log_recent(
+    state: State<'_, SharedHost>,
+    limit: Option<usize>,
+) -> Result<event_log::RecentEvents, String> {
+    let root = work_root(&state)?;
+    Ok(event_log::recent(
+        &root,
+        limit.unwrap_or(event_log::DEFAULT_RECENT_LIMIT),
+    ))
 }
 
 /// OD-WT-604：写作需求解析准备。宿主过红线与掩码后组装提示词；
@@ -9370,6 +9451,8 @@ pub fn run() {
             worklog_record_analyze,
             worklog_record_analyze_apply,
             worklog_record_analyze_failed,
+            work_integrity_check,
+            event_log_recent,
             writing_parse_requirement,
             writing_parse_requirement_apply,
             writing_create_from_requirement,

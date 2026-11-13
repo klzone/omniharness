@@ -24,8 +24,13 @@ use crate::sha256::sha256_hex;
 /// 规则资产 schema 标识（OD-ARCH-068 v1，OD-ARCH-082 v2）。
 pub const PROFILE_RULES_SCHEMA_V1: &str = "omnidesk.profile-rules.v1";
 pub const PROFILE_RULES_SCHEMA_V2: &str = "omnidesk.profile-rules.v2";
+/// OD-HAR-203：v3 在 v2 基础上增加 agents 段（Agent 角色声明）。
+pub const PROFILE_RULES_SCHEMA_V3: &str = "omnidesk.profile-rules.v3";
 /// 当前默认/出厂 schema。
-pub const PROFILE_RULES_SCHEMA: &str = PROFILE_RULES_SCHEMA_V2;
+pub const PROFILE_RULES_SCHEMA: &str = PROFILE_RULES_SCHEMA_V3;
+/// 已接受的历史 schema（加载时向后兼容）。
+pub const PROFILE_RULES_ACCEPTED_SCHEMAS: &[&str] =
+    &[PROFILE_RULES_SCHEMA_V1, PROFILE_RULES_SCHEMA_V2, PROFILE_RULES_SCHEMA_V3];
 
 /// 程序内置的 Skill 清单（OD-ARCH-082 S2，086 加入 anysearch，089 加入 memory-report，OD-WR-503 加入 daily-summary，OD-WR-505 加入 period-review）。
 ///
@@ -58,6 +63,11 @@ const MAX_WRITING_RULES: usize = 60;
 const MAX_RULE_CHARS: usize = 1200;
 const MAX_KEYWORD_CHARS: usize = 40;
 const MAX_SECTIONS_CHARS: usize = 400;
+const MAX_AGENTS: usize = 8;
+const MAX_AGENT_LABEL_CHARS: usize = 40;
+const MAX_AGENT_SCENES: usize = 6;
+const MAX_AGENT_SKILLS: usize = 8;
+const MAX_AGENT_PROFILE_CHARS: usize = 32;
 
 /// 隐私动作：mask=掩码后放行；reject=命中即拒绝；off=不处理。
 const PRIVACY_MODES: &[&str] = &["mask", "reject", "off"];
@@ -141,6 +151,26 @@ fn default_max_injected() -> usize {
     3
 }
 
+/// 单个 Agent 的角色声明（OD-HAR-203）。
+///
+/// 声明本身不改变运行行为：它把「哪一组场景/Skill/权限变体属于同一个专业角色」
+/// 写成可校验的数据，供后续 Agent 装配与事件归属使用。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentDecl {
+    #[serde(default)]
+    pub label: String,
+    /// 归属的场景键（场景名或流程变体键，如 weekly-note）。
+    #[serde(default)]
+    pub scenes: Vec<String>,
+    /// 该角色可用的 Skill（名字规则与场景绑定一致）。
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// 权限变体引用（如 agent preset 名）；None = 沿用 Profile 默认。
+    #[serde(default)]
+    pub permission_profile: Option<String>,
+}
+
 /// 单个场景的 Skill 绑定声明（OD-ARCH-082 S2）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -162,14 +192,18 @@ pub struct ProfileRules {
     pub scenes: BTreeMap<String, SceneRules>,
     #[serde(default)]
     pub skill_bindings: BTreeMap<String, SceneSkillBinding>,
+    /// OD-HAR-203：Agent 角色声明；v1/v2 文件缺该字段时为空。
+    #[serde(default)]
+    pub agents: BTreeMap<String, AgentDecl>,
 }
 
 impl ProfileRules {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != PROFILE_RULES_SCHEMA_V1 && self.schema != PROFILE_RULES_SCHEMA_V2 {
+        if !PROFILE_RULES_ACCEPTED_SCHEMAS.contains(&self.schema.as_str()) {
             return Err(format!(
-                "schema 必须是 {} 或 {}，实际是 {}",
-                PROFILE_RULES_SCHEMA_V1, PROFILE_RULES_SCHEMA_V2, self.schema
+                "schema 必须是 {} 之一，实际是 {}",
+                PROFILE_RULES_ACCEPTED_SCHEMAS.join(" / "),
+                self.schema
             ));
         }
         if self.profile.trim().is_empty() {
@@ -254,6 +288,60 @@ impl ProfileRules {
                 }
                 if !seen.insert(s) {
                     return Err(format!("场景 {key} 绑定的技能 {s:?} 重复"));
+                }
+            }
+        }
+        // OD-HAR-203：Agent 声明校验。键形状与 Skill 名一致；场景必须已声明
+        // （或为该场景的流程变体键，如 weekly-note）；Skill 名与权限变体引用同样受形状约束。
+        if self.agents.len() > MAX_AGENTS {
+            return Err(format!("agents 最多 {MAX_AGENTS} 个"));
+        }
+        for (agent_key, agent) in &self.agents {
+            if !is_valid_skill_name(agent_key) {
+                return Err(format!("Agent 键 {agent_key:?} 不合法"));
+            }
+            if agent.label.trim().is_empty() || agent.label.chars().count() > MAX_AGENT_LABEL_CHARS {
+                return Err(format!("Agent {agent_key} 的显示名缺失或过长"));
+            }
+            if agent.scenes.is_empty() || agent.scenes.len() > MAX_AGENT_SCENES {
+                return Err(format!("Agent {agent_key} 必须声明 1..={MAX_AGENT_SCENES} 个场景"));
+            }
+            let mut seen_scenes = std::collections::BTreeSet::new();
+            for scene in &agent.scenes {
+                let known = self.scenes.contains_key(scene)
+                    || self
+                        .scenes
+                        .keys()
+                        .any(|key| scene.starts_with(&format!("{key}-")));
+                if !known {
+                    return Err(format!(
+                        "Agent {agent_key} 声明的场景 {scene:?} 不在 scenes 里（也不是场景的流程变体）"
+                    ));
+                }
+                if !seen_scenes.insert(scene) {
+                    return Err(format!("Agent {agent_key} 声明的场景 {scene:?} 重复"));
+                }
+            }
+            if agent.skills.len() > MAX_AGENT_SKILLS {
+                return Err(format!("Agent {agent_key} 声明的 Skill 过多"));
+            }
+            let mut seen_skills = std::collections::BTreeSet::new();
+            for skill in &agent.skills {
+                if !is_valid_skill_name(skill) {
+                    return Err(format!("Agent {agent_key} 的 Skill {skill:?} 名字不合法"));
+                }
+                if !seen_skills.insert(skill) {
+                    return Err(format!("Agent {agent_key} 的 Skill {skill:?} 重复"));
+                }
+            }
+            if let Some(variant) = agent.permission_profile.as_deref() {
+                if variant.trim().is_empty()
+                    || variant.chars().count() > MAX_AGENT_PROFILE_CHARS
+                    || !variant
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+                {
+                    return Err(format!("Agent {agent_key} 的权限变体引用不合法"));
                 }
             }
         }
@@ -754,6 +842,12 @@ mod tests {
         let rules = discipline();
         assert_eq!(rules.schema, PROFILE_RULES_SCHEMA);
         assert_eq!(rules.profile, "discipline");
+        // OD-HAR-203：v3 出厂规则声明首个 Agent；声明不改变运行行为。
+        let work_review = rules.agents.get("work-review").expect("work-review 必须已声明");
+        assert_eq!(work_review.label, "工作记录复盘");
+        assert!(work_review.scenes.contains(&"weekly".to_string()));
+        assert!(work_review.skills.contains(&"memory-agent".to_string()));
+        assert!(work_review.permission_profile.is_none());
         let total = rules.global.redline_keywords.len()
             + rules.global.privacy_keywords.id_card.len()
             + rules.global.privacy_keywords.phone.len();
@@ -791,6 +885,54 @@ mod tests {
                 );
             }
         }
+    }
+
+    // OD-HAR-203：Agent 声明的确定性校验。
+    #[test]
+    fn agent_declarations_are_validated() {
+        let mut rules = discipline();
+        let mut agent = AgentDecl {
+            label: "测试角色".to_string(),
+            scenes: vec!["weekly".to_string()],
+            skills: vec!["memory-agent".to_string()],
+            permission_profile: None,
+        };
+        agent.scenes.push("not-a-scene".to_string());
+        rules.agents.insert("test-agent".to_string(), agent.clone());
+        assert!(rules.validate().unwrap_err().contains("不在 scenes"));
+
+        let mut rules = discipline();
+        agent.scenes = vec!["weekly".to_string(), "weekly-note".to_string()];
+        agent.skills = vec!["memory-agent".to_string(), "Bad Name".to_string()];
+        rules.agents.insert("test-agent".to_string(), agent);
+        assert!(rules.validate().unwrap_err().contains("名字不合法"));
+
+        let mut rules = discipline();
+        rules.agents.insert(
+            "test-agent".to_string(),
+            AgentDecl {
+                label: "测试角色".to_string(),
+                scenes: vec!["writing".to_string()],
+                skills: vec!["material-writing".to_string()],
+                permission_profile: Some("work-review-core".to_string()),
+            },
+        );
+        rules.validate().unwrap();
+    }
+
+    // OD-HAR-203：v2 规则文件没有 agents 段，必须原样可加载。
+    #[test]
+    fn v2_rules_load_without_agents() {
+        let text = r#"{
+  "schema": "omnidesk.profile-rules.v2",
+  "profile": "discipline",
+  "global": {"writing_rules": ["先核对事实"], "redline_keywords": ["秘密"]},
+  "scenes": {"weekly": {"rules": "整理周报", "sections": "概述"}},
+  "skill_bindings": {"weekly": {"skills": ["memory-agent"], "max_injected": 1}}
+}"#;
+        let rules: ProfileRules = serde_json::from_str(text).unwrap();
+        rules.validate().unwrap();
+        assert!(rules.agents.is_empty());
     }
 
     #[test]
