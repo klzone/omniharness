@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import threading
@@ -18,6 +19,37 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Optional
+
+USAGE_KEY_MAX_CHARS = 40
+USAGE_MAX_KEYS = 16
+
+
+def sanitize_usage(payload: Any) -> Optional[Mapping[str, Any]]:
+    """只保留数值型字段的用量快照（OD-HAR-204）。
+
+    通道上报的用量结构随 DSH 版本变化，因此这里不假设字段名：只收非负的
+    数值字段、限制键长与数量。返回 None 表示本轮没有可用用量——台账与界面
+    都必须显示「未知」，不得估算。
+    """
+    if not isinstance(payload, Mapping):
+        return None
+    out: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        name = key.strip()
+        if not name or len(name) > USAGE_KEY_MAX_CHARS:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if isinstance(value, float) and not math.isfinite(value):
+            continue
+        if value < 0:
+            continue
+        out[name] = value
+        if len(out) >= USAGE_MAX_KEYS:
+            break
+    return out or None
 
 from .contract import (
     EVIDENCE_PRIORITY,
@@ -296,6 +328,8 @@ class TaskRecordSummary:
     ttfb_seconds: Optional[float] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    # OD-HAR-204：台账里的用量（引擎上报值；None = 未上报）。
+    usage: Optional[Mapping[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -310,6 +344,7 @@ class TaskRecordSummary:
             "ttfb_seconds": self.ttfb_seconds,
             "error_code": self.error_code,
             "error_message": self.error_message,
+            "usage": dict(self.usage) if self.usage is not None else None,
         }
 
 
@@ -414,6 +449,9 @@ class _TaskRecord:
     unmasker: Optional[Any] = None
     unmask_report: Optional[Mapping[str, Any]] = None
     unmask_reported: bool = False
+    # OD-HAR-204：引擎上报的用量（只保留数值字段）。None = 通道未上报，不估算。
+    usage: Optional[Mapping[str, Any]] = None
+    usage_source: Optional[str] = None
 
 
 class TaskCoreBase:
@@ -585,6 +623,9 @@ class TaskCoreBase:
             "ttfb_seconds": record.ttfb_seconds,
             "pending_approvals": len(record.pending_approvals),
             "turn_end_seq": record.turn_end_seq,
+            # OD-HAR-204：用量原样落台账；None 表示「引擎未上报」，界面显示未知而不估算。
+            "usage": dict(record.usage) if record.usage is not None else None,
+            "usage_source": record.usage_source,
             "masker": dict(record.mask_stats) if record.mask_stats is not None else None,
             "unmask": dict(record.unmask_report) if record.unmask_report is not None else None,
             "content": "".join(record.text_parts),
@@ -628,6 +669,7 @@ class TaskCoreBase:
                 pending_approvals=len(record.pending_approvals),
                 engine_turn_end_seq=record.turn_end_seq,
                 last_event_at=record.last_event_at,
+                usage=record.usage,
             )
 
     def _status_note(self, record: _TaskRecord) -> str:
@@ -829,6 +871,11 @@ class TaskCoreBase:
                     error_message=(
                         str(data.get("error_message"))
                         if data.get("error_message")
+                        else None
+                    ),
+                    usage=(
+                        dict(data["usage"])
+                        if isinstance(data.get("usage"), Mapping)
                         else None
                     ),
                 )

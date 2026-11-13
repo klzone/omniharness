@@ -68,6 +68,7 @@ from .task_core import (
     TaskRecordSummary,
     TaskRecovery,
     _TaskRecord,
+    sanitize_usage,
 )
 from .jsonrpc import JsonRpcPeer, PeerExit
 from .process_owner import record_child_group
@@ -557,10 +558,21 @@ class AcpEngineAdapter(TaskCoreBase):
                 },
             )
         elif kind == "usage_update":
+            context_usage = sanitize_usage(
+                {"used": update.get("used"), "size": update.get("size")}
+            )
+            if context_usage is not None:
+                with self._lock:
+                    record.usage = dict(context_usage)
+                    record.usage_source = "acp_context"
             self._emit(
                 record,
                 EventType.PROGRESS,
-                {"kind": "usage", "used": update.get("used"), "size": update.get("size")},
+                {
+                    "kind": "usage",
+                    "used": update.get("used"),
+                    "size": update.get("size"),
+                },
             )
         elif kind == "config_option_update":
             options = update.get("configOptions") or []
