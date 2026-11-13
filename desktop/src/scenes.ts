@@ -28,6 +28,8 @@ export interface SceneDef {
   emptyHint: string;
   /** 项目跟进页可选的英文副标题；缺省不渲染，不留空行。 */
   subtitles?: Partial<Record<"projects" | "timeline" | "history", string>>;
+  /** OD-HAR-213：该场景归属的 Agent 声明键（与 rules.json 的 agents 段对齐）。 */
+  agent?: string;
 }
 
 export const SCENES: Record<SceneKey, SceneDef> = {
@@ -39,6 +41,7 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     preset: "weekly",
     hasProgress: false,
     summary: "weekly",
+    agent: "work-review",
     emptyHint: "还没有保存的成果。",
   },
   writing: {

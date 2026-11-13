@@ -38,6 +38,8 @@ import type {
   KnowledgeLinkSubjectKind,
   KnowledgeIngestApplyReport,
   KnowledgeIngestInit,
+  RecentEventListing,
+  IntegrityReport,
   KnowledgeIngestPrepare,
   KnowledgeGovernanceRecord,
   KnowledgeRawAdmitReport,
@@ -550,6 +552,20 @@ export const shell = {
 
   localRootInfo(): Promise<LocalRootInfo> {
     return invoke<LocalRootInfo>("task_local_root_info").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** OD-HAR-221：最近业务事件（只读，只含编号与枚举）。 */
+  eventLogRecent(limit?: number): Promise<RecentEventListing> {
+    return invoke<RecentEventListing>("event_log_recent", { limit }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** OD-HAR-222：跨实体引用体检（只读，不修复）。 */
+  workIntegrityCheck(): Promise<IntegrityReport> {
+    return invoke<IntegrityReport>("work_integrity_check").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
