@@ -2547,6 +2547,14 @@ export interface ProfileSceneRules {
   thinking: ThinkingLevel;
 }
 
+/** Agent 角色声明（OD-HAR-203，rules.json v3）。只描述归属，不改变运行行为。 */
+export interface ProfileAgentDecl {
+  label: string;
+  scenes: string[];
+  skills: string[];
+  permission_profile?: string | null;
+}
+
 export interface ProfileRules {
   schema: string;
   profile: string;
@@ -2558,6 +2566,8 @@ export interface ProfileRules {
   };
   scenes: Record<string, ProfileSceneRules>;
   skill_bindings?: Record<string, SceneSkillBinding>;
+  /** 旧规则文件没有该字段。 */
+  agents?: Record<string, ProfileAgentDecl>;
 }
 
 /**
@@ -3629,6 +3639,20 @@ export interface TaskDeleted {
 
 export type TaskCandidateStatus = "pending" | "confirmed" | "linked" | "rejected";
 
+/** 单条候选验收检查（OD-HAR-201）。只含检查 id 与结果，不含正文。 */
+export interface CandidateVerdictCheck {
+  id: string;
+  pass: boolean;
+}
+
+/** 候选验收结论（omnidesk.verdict.v1）。旧候选没有该字段。 */
+export interface CandidateVerdict {
+  schema: string;
+  validator: string;
+  conclusion: "pass" | "needs_review";
+  checks: CandidateVerdictCheck[];
+}
+
 export interface TaskCandidate {
   schema: string;
   id: string;
@@ -3649,6 +3673,8 @@ export interface TaskCandidate {
   /** AI 重要性建议（OD-QS-404）；确认后写入 source=ai。 */
   importance: TaskImportance | null;
   importance_reason: string | null;
+  /** 宿主确定性验收结论（OD-HAR-201）；旧候选为 null。 */
+  verdict?: CandidateVerdict | null;
   /** (record_id, quote 哈希) 去重键。 */
   dedup_key: string;
   status: TaskCandidateStatus;
@@ -3916,4 +3942,44 @@ export interface ConfirmEdits {
   category?: string;
   due_date?: string;
   note?: string;
+}
+
+// OD-HAR-221/222：业务事件与引用体检（只读，不含正文）。
+export interface BusinessEventRef {
+  kind: string;
+  id: string;
+}
+
+export interface BusinessEventRow {
+  schema: string;
+  seq: number;
+  ts: string;
+  type: string;
+  actor: string;
+  entity: BusinessEventRef;
+  refs: BusinessEventRef[];
+  status: string;
+  detail?: string | null;
+}
+
+export interface RecentEventListing {
+  items: BusinessEventRow[];
+  skipped_invalid: number;
+  limit: number;
+}
+
+export interface IntegrityIssue {
+  entity: string;
+  id: string;
+  field: string;
+  target: string;
+}
+
+export interface IntegrityReport {
+  schema: string;
+  checked: number;
+  issues: IntegrityIssue[];
+  issue_count: number;
+  truncated: boolean;
+  skipped: number;
 }

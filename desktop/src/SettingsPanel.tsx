@@ -27,6 +27,8 @@ import type {
   KnowledgeVaultRootStatus,
   KnowledgeVaultScan,
   LibraryRootInfo,
+  RecentEventListing,
+  IntegrityReport,
   CleanupPreview,
   CleanupReport,
   MigrationPreview,
@@ -366,6 +368,11 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
 
   // —— 成果目录 ——
   const [info, setInfo] = useState<LocalRootInfo | null>(null);
+  // OD-HAR-221/222：交接事件与引用体检（只读，按需刷新）。
+  const [eventsView, setEventsView] = useState<RecentEventListing | null>(null);
+  const [integrityView, setIntegrityView] = useState<IntegrityReport | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1246,6 +1253,24 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     } catch (e) {
       setInfo(null);
       setInfoError(String(e));
+    }
+  }, []);
+
+  // OD-HAR-221/222：按需读取最近事件与引用体检；失败只报错，不猜结果。
+  const loadHandoffDiagnostics = useCallback(async () => {
+    setDiagBusy(true);
+    setDiagError(null);
+    try {
+      const [events, integrity] = await Promise.all([
+        shell.eventLogRecent(20),
+        shell.workIntegrityCheck(),
+      ]);
+      setEventsView(events);
+      setIntegrityView(integrity);
+    } catch (e) {
+      setDiagError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiagBusy(false);
     }
   }, []);
 
@@ -3397,6 +3422,16 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                   : "—"}
               </span>
             </div>
+            <div className="status-row">
+              <span className="k">Agent</span>
+              <span className="v">
+                {rules.rules?.agents && Object.keys(rules.rules.agents).length > 0
+                  ? Object.entries(rules.rules.agents)
+                      .map(([key, agent]) => agent.label || key)
+                      .join(" / ")
+                  : "—"}
+              </span>
+            </div>
           </div>
         ) : null}
 
@@ -4752,6 +4787,64 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
           </div>
           <div className="pending-list">
             <PendingWritePanel refreshKey={pendingKey} />
+          </div>
+        </details>
+
+        {/* OD-HAR-221/222：交接事件与引用体检（只读，按需刷新） */}
+        <details className="tech">
+          <summary>交接与体检</summary>
+          <p className="hint">
+            事件表记录候选生成、确认与拒绝；引用体检检查任务、记录、素材与排期之间
+            是否有指向不存在实体的引用。两者都只读，不修复、不改数据。
+          </p>
+          {diagError ? <p className="hint">读取失败：{diagError}</p> : null}
+          {eventsView ? (
+            <div className="status-card">
+              <div className="status-row">
+                <span className="k">最近事件</span>
+                <span className="v">
+                  {eventsView.items.length} 条
+                  {eventsView.skipped_invalid > 0
+                    ? "（跳过 " + eventsView.skipped_invalid + " 行损坏）"
+                    : ""}
+                </span>
+              </div>
+              {eventsView.items
+                .slice(-5)
+                .reverse()
+                .map((row) => (
+                  <div className="status-row" key={row.seq}>
+                    <span className="k mono">#{row.seq}</span>
+                    <span className="v mono">
+                      {row.type} · {row.entity.kind}:{row.entity.id}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          ) : null}
+          {integrityView ? (
+            <div className="status-card">
+              <div className="status-row">
+                <span className="k">引用体检</span>
+                <span className="v">
+                  检查 {integrityView.checked} 个实体，悬空引用 {integrityView.issue_count} 处
+                  {integrityView.truncated ? "（列表已截断）" : ""}
+                </span>
+              </div>
+              {integrityView.issues.slice(0, 5).map((issue) => (
+                <div className="status-row" key={issue.entity + issue.id + issue.field + issue.target}>
+                  <span className="k mono">{issue.entity}</span>
+                  <span className="v mono">
+                    {issue.id} · {issue.field} → {issue.target}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="actions">
+            <button className="ghost" onClick={() => void loadHandoffDiagnostics()} disabled={diagBusy}>
+              {diagBusy ? "读取中…" : "刷新事件与体检"}
+            </button>
           </div>
         </details>
       </section>

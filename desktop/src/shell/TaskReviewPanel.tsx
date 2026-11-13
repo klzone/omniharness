@@ -429,6 +429,24 @@ export function TaskReviewPanel({
                 </p>
               ) : null}
 
+              {selected.verdict ? (
+                <div
+                  data-candidate-verdict=""
+                  className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-outline"
+                >
+                  <span className="mono">
+                    {selected.verdict.conclusion === "pass" ? "验收通过" : "需人工确认"}
+                  </span>
+                  {selected.verdict.checks
+                    .filter((check) => !check.pass)
+                    .map((check) => (
+                      <span key={check.id} className="mono text-error">
+                        {check.id}
+                      </span>
+                    ))}
+                </div>
+              ) : null}
+
               {selected.match_task_id ? (
                 <section
                   aria-label="关联建议"
