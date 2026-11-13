@@ -1,5 +1,69 @@
 # 执行状态
 
+## OD-HAR-211 终稿 + Phase D + Phase E（2026-11-13，已实施，待复核）
+
+- 用户口径：工作记录 Agent 可关 bash/pwsh，但新建/写入/编辑文件能力要有；随后批准 Phase D/E。
+- preset 终稿：work-review-core 恢复（tool-fs read/write/edit 全开，无 bash/pwsh，保留 fs-search/skill/compaction/ask-user/web），三份 patch 同步（数据根改前备份 .bak-har213b-20261113150012）；web_api_adapter 恢复 preset_for_intent 并在 session/create 传 agentPreset（仅 discipline + weekly_report）。删除文件不在模型工具里（tool-fs 只有 read/write/edit），继续由宿主回收站承担。
+- Phase D：OD-HAR-221 确认/拒绝事件带 decision 枚举（confirmed/rejected）；新增 Tauri 命令 event_log_recent（最近事件只读）与设置页「交接与体检」面板。OD-HAR-222 新增 integrity.rs：扫描记录/任务/素材/项目/排期的跨实体引用，报告悬空引用（上限 100 条，计数不截断），只读不修复；命令 work_integrity_check。
+- Phase E：tests/golden_tasks/work-review/ 建 12 例（cases.json + outputs/*.json），score_work_review.py 确定性评分（引用落在正文、日期有据、重要性有依据、needs_review、重复关联、敏感拒绝、知识提示），measure_work_review.py 支持 fixtures/真实候选/事件/台账四种数据源；评测报告 docs/OMNIDESK_WORK_REVIEW_EVAL_REPORT.md。
+- 实跑：cargo test --offline --lib -- --test-threads=8 → 1174 passed / 0 failed；npx tsc --noEmit 0；npm run build 成功；verify_work_review_213 25/25；verify_harness_220 14/14；verify_profile_rules_068 26/26；verify_skill_bindings_082 57/57；score_work_review 12/12（六项指标 1.0）；合成端点探针任务 succeeded 且 agentPreset=work-review-core（evidence/od-har-213/preset-probe.json）；--dump-config rc=0。
+- 真实数据基线：正式候选 2 条（1 confirmed/1 rejected，旧候选无 verdict）；work/events.jsonl 尚未产生（需新动作）；61 条台账 usage 全 unknown。
+- 未验证：真实模型 12 例表现、token 用量字段、历史检索噪音；用户修正率需真实使用累积。
+- 未修改 runtime/、凭证、模型路由；未提交、未推送。
+
+## OD-HAR-211 修订：撤销只读 preset（2026-11-13，已实施）
+
+- 用户质疑「工作记录不用写和编辑文件吗」。核对 D-092a（文案写作与表格导出需要写文件+shell，只读会把能力缺失误报成产品缺陷）后判定：同一理由适用于工作记录场景；DSH 的 preset 在会话创建时选定且首轮后锁定，无法按流程做「只读/可写」混合。
+- 措施：删除三份 patch 中的 preset-work-review-core（实际数据根从 .bak-har213-20261113140122 还原，既有的其它条目不变）；web_api_adapter.py 删除 preset_for_intent 与 session/create 的 agentPreset 传参；保留 scenes.ts 的 agent 声明、历史检索、verdict 与事件。
+- 验证：verify_work_review_213.py 20/20（改为断言无只读 preset、discipline-core 保留 write:true 与 tool-bash）；合成端点探针任务 succeeded、组合为默认（evidence/od-har-213/default-probe.json）；cargo lib 与 tsc/build 回归见同日复核记录。
+- 记录：docs/decisions.md D-096（撤销只读部分），D-095 已标注部分撤销。
+- 未修改 runtime/、凭证、模型路由；未提交、未推送。
+
+## OD-HAR-211..213 Work Review Agent Phase C（2026-11-13，已实施，待复核）
+
+- 依据：用户在 Phase B 复核后第二次批准执行；按 docs/OMNIDESK_HARNESS_ROADMAP.md Phase C 三张任务卡实施。Phase D/E 未开工。
+- OD-HAR-211 只读 preset：新增 preset-work-review-core（order 2，基于 discipline-core：tool-fs read=true/write=false/edit=false，去掉 tool-bash/tool-pwsh，保留 fs-search/skill/compaction/ask-user/web）。同步写入三份：samples/profiles/discipline.profile.patch.yml、runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml、实际数据根 ~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml（改前备份 .bak-har213-20261113140122；实际文件里既有的 preset-ptc/minimal/cordis disabled 与 web 条目原样保留）。
+- OD-HAR-212 历史检索：新增 desktop/src-tauri/src/worklog_search.rs（只读、确定性、上限 5 条/2000 字符/扫描 200 条；同标签+2/同分类+3/2 字词面重合+最多 10；排除自身与草稿）。提示词只注入元数据（编号/标题/日期/分类/标签/关联依据），不含历史正文。engine/omnidesk_engine/task_extract.py 增加 history 段与 CLI 读取；task_extract.rs 的 payload 增加 history。
+- OD-HAR-213 Agent 接线：scenes.ts 的 weekly 声明 agent="work-review"；web_api_adapter.py 增加 preset_for_intent（仅 discipline + weekly_report → work-review-core）并在 session/create 传 agentPreset；非 discipline Profile/其它意图不传。新增 verify_work_review_213.py（26 项静态/组装一致性）与 probe_work_review_preset_213.py（隔离 /tmp 根 + 合成端点）。
+- 实跑：cargo test --offline --lib -- --test-threads=8 → **1172 passed / 0 failed**（新增 worklog_search 3 项）；npx tsc --noEmit 0；npm run build 成功；verify_work_review_213 26/26；verify_profile_rules_068 26/26；verify_skill_bindings_082 57/57；verify_profile_scope_106 43/43；verify_profile_assets_109 41/41；--dump-config（真实 dsh-home）rc=0 且包含 preset-work-review-core；合成端点探针任务 succeeded、会话头部 agentPreset=work-review-core，证据 tests/verification/desktop/evidence/od-har-213/preset-probe.json。
+- 已知限制：preset 在会话首轮后锁定，续接既有工作记录会话仍用创建时的 discipline-core；工作记录场景新会话因此不能写文件/跑命令（宿主仍负责落盘）；真实模型在只读工具面下的表现未测；真实 git/工作数据未触碰。
+- 未修改 runtime/、凭证、模型路由；未提交、未推送。
+
+## OD-HAR-201..204 Harness Phase B 实施（2026-11-13，已实施，待复核）
+
+- 依据：OD-ARCH-150 获用户批准（2026-11-13「批准执行 OD-ARCH-150 规划」），按 docs/OMNIDESK_HARNESS_ROADMAP.md Phase B 四张任务卡实施；Phase C/D/E 未开工。
+- OD-HAR-202 事件表：新增 desktop/src-tauri/src/event_log.rs（work/events.jsonl，一行一事件，seq 进程内串行分配，损坏行跳过计数，detail 不存正文，单行 ≤512 字符）。接入点：work_record.created（work_record_create_impl）、work_record.analyzed + task_candidate.created（worklog_record_analyze_apply，每条候选一条）、task_candidate.confirmed + task.confirmed（task_candidate_confirm_impl）、task_candidate.rejected（拒绝链路）。事件追加失败不阻断业务动作。
+- OD-HAR-203 Agent 声明：profile_rules.rs 新增 v3 schema 与 agents 段（label/scenes/skills/permission_profile），校验场景必须已声明或是场景的流程变体键、Skill 名形状、权限变体引用形状、最多 8 个 Agent；v1/v2 原样可加载，agents 为空。出厂 samples/profiles/discipline.rules.json 升为 v3 并声明 agents.work-review（现有工作记录场景 Skill 集），行为零变化。设置页规则资产新增只读「Agent」行；types.ts 增加 ProfileAgentDecl。同步适配 verify_profile_rules_068.py、verify_skill_bindings_082.py、preview_profile_starter_122.py 的 schema 断言（接受 v3）。
+- OD-HAR-201 verdict：task_store.rs 新增 CandidateVerdict/VerdictCheck（omnidesk.verdict.v1，pass|needs_review），候选 JSON 增加 verdict 字段（serde default，旧候选为 null）；task_extract.rs 在硬校验通过后固化六项检查（quote_in_source/date_shape/due_date_grounded/confidence_band/inference_declared/match_consistent），置信度 <0.6 或 <0.7 且未写不确定说明时结论为 needs_review。TaskReviewPanel 在候选详情显示「验收通过 / 需人工确认」与未通过检查 id。
+- OD-HAR-204 用量：task_core.py 新增 sanitize_usage（只收非负数值、键长 ≤40、最多 16 项，None=未上报）；_TaskRecord/台账 payload/TaskStatus/TaskRecordSummary 增加 usage 与 usage_source；web_api_adapter usage 块落 record.usage（source=web_stream），acp_adapter usage_update 落上下文用量（source=acp_context）。界面不估算，未知保持 null。
+- 实跑：`cd desktop/src-tauri && cargo test --offline --lib -- --test-threads=8` → **1169 passed, 0 failed**（新增 4 个 event_log 用例、1 个 verdict 用例、2 个 agents 用例）；默认线程数（12）全量跑时 3 个既有假引擎/子进程用例偶发 `PermissionDenied`（单独运行与 8 线程均通过；HEAD 基线在 /tmp worktree 同一时刻也出现同类环境性失败，判为机器并发 spawn 抖动，非本轮改动引入）。
+- 其他实跑：`npx tsc --noEmit` 0；`npm run build` 0（仅既有 chunk 体积提示）；verify_profile_rules_068.py 26/26；verify_skill_bindings_082.py 57/57；verify_profile_scope_106.py 43/43；verify_profile_assets_109.py 41/41；sanitize_usage 直接调用返回预期（数值保留、字符串/负数/超长键丢弃、None 输入返回 None）。
+- 未验证：真实模型下 usage 块字段形态（仍标未知，不估算）；事件表在多宿主进程并发写的表现（当前单宿主进程设计）；verdict 在真实业务候选上的表现（需真实端点）。
+- 未修改 runtime/、凭证、模型路由、生产数据；未提交、未推送。
+
+## OD-ARCH-150 Harness + Multi-Agent 专项审计与规划（2026-11-13，已完成，待用户审阅）
+
+- 基线：main @ ec519c618d；工作区既有未提交改动（STATUS.md、discipline.profile.patch.yml）原样保留，未提交未推送。
+- 产出六份规划文档（均含代码路径/数据结构/证据，未知项显式标注）：
+  - docs/OMNIDESK_CURRENT_ARCHITECTURE_AUDIT.md（现状审计：架构图、Agent/Skill/Tool/Runtime 现状、业务能力清单、耦合与单点分析、Harness² 对照）
+  - docs/OMNIDESK_STORAGE_ARCHITECTURE_AUDIT.md（存储审计：真实结构图、实体登记表、十问十答、数据分类、问题清单 S1-S7）
+  - docs/OMNIDESK_HARNESS_ARCHITECTURE.md（Harness 六组件现状+设计、四层 Guides、verdict 验收协议、统一执行状态机、权限与可观测设计）
+  - docs/OMNIDESK_MULTI_AGENT_GRAPH_DESIGN.md（四 Agent 职责、协作模型、Event Contract、三方案对比与推荐=方案 B）
+  - docs/WORK_REVIEW_AGENT_DESIGN.md（试点设计、配置复用清单、12 项 Golden Task 用例、八项评价指标）
+  - docs/OMNIDESK_HARNESS_ROADMAP.md（Phase A-F 路线、B/C/D/E 共 11 张任务卡、风险登记）
+- 核心结论：方案 B（四逻辑 Agent+共享 DSH Runtime）推荐；六组件中 Guides/Loop/Permissions 已有实质实现，Sensors/事件表/Agent 记忆边界/观测聚合是补齐项；Work Review Agent 试点只增三处（历史检索、verdict、事件），其余复用现有链路。
+- 审计过程实读证据（只读，static）：engine/omnidesk_engine/*.py（8 模块）、desktop/src-tauri/src 关键模块 30+（admission/task_store/worklog_records/material_store/schedule_store/project_store/writing_*/knowledge_*/vault_*/profile_rules/pending_writes/task_extract/fact_check 等）、desktop/src 关键 ts（conversationPrompt/workIntent/scenes/types）、skills/ 全部 10 个 SKILL.md、docs/ 架构与规划文档、本机 ~/OmniDesk 数据根结构与样例实体（只读元数据与结构，不外发正文）。
+- 本轮验证命令与结果：`cd desktop/src-tauri && cargo test --offline --lib` → **1162 passed, 0 failed**；`cd desktop && npx tsc --noEmit` → exit 0。pytest 未运行（当前 shell 无 pytest 模块，python3=/usr/bin/python3；不影响本轮文档交付）。
+- 未修改任何业务源代码、数据库、runtime/；未创建 Agent；未安装依赖；模型路由与凭证未动。
+
+## OD-PROFILE-092b 工具预算规则（2026-11-13，已实施，待实测）
+
+- 依据：最近 6 个会话 326 次模型调用中位 7.9 秒；8 个会话工具调用 bash 803 次、read 121、edit 30，检索类 advanced_search 4、web_fetch 3、web_search 1，multi/domain/platform/video/weather/research/free_search_test 均为 0。
+- 改动：`discipline-core` 与 `preset-standard` 的 persona.suffix 增加三组规则——工具批处理（能用一条命令完成的不拆成多次）、检索预算（默认一轮 1 次 web_search + 1 次 web_fetch，交叉核对最多 3 次；无结果先换一次关键词）、工具选择（advanced_search/domain_search/platform_search/video_search/weather 仅在对应诉求使用，free_search_test 不作常规检索）。
+- 三份 patch 同步（sample、seed、实际数据根），每份两处 persona 块。
+- 验证：临时 `DSH_HOME` 的 `--dump-config` rc=0，三组规则各出现 2 次；应用重启后 app pid 57692、引擎 pid 57738。
+- 未验证：规则对真实模型的约束强度；工具注册未变，schema 成本不变。
+
 ## OD-UI-712/713 时间线分组与成果文件链接（2026-11-13，已实施，待真实模型实测）
 
 - 用户反馈对话里思考与命令逐条平铺，要求分别整合：收起时各显示最新一条、点箭头展开全部；同轮追加「生成文件默认带链接、点文件名即可打开」。用户明确批准并合并执行。

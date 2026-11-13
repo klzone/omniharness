@@ -5065,3 +5065,75 @@ OD-BUILD-002 在其计划范围内通过。当前没有已批准或执行中的�
 **已知限制（不作缺陷计）：** 修复不装插件（联网，必须独立触发）；修复不改 `runtime/`、不碰 `~/.dsh`；改 `skills/` 后仍需重建二进制才进用户机器；真实模型端到端仍未测；`worklog.rs::AppendReceipt::failure` 的 dead_code 告警与本轮无关。
 
 **未提交未推送：** 按批准范围只执行，工作区改动原样保留。
+
+## OD-HAR-201..204 复核（ARCHITECT，2026-11-13）——通过
+
+**结论：通过。** 按 OD-ARCH-150 获批路线实施 Phase B 共享 Harness 基础，四个增量均为「登记 + 校验 + 展示」，没有改变任何既有业务语义；旧候选、旧规则文件与旧台账可原样读取。
+
+**复核范围与证据（本人执行，实读 diff）：** HEAD ec519c618d + 本轮改动；逐项检查 event_log.rs 的路径/序列/校验/损坏行处理，lib.rs 五处事件接入是否在写成功之后、失败是否不阻断主流程，task_store 新增字段是否 serde default，task_extract verdict 是否只在硬校验通过后生成，profile_rules v3 校验（场景归属、流程变体前缀、Skill 名形状、权限变体形状、8 个上限），settings 页与审核台渲染，Python 侧 usage 落台账与状态。未读真实业务正文；未触碰 runtime/、~/.dsh、凭证。
+
+**独立实跑结果：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline --lib -- --test-threads=8 | 1169 passed / 0 failed |
+| cargo test --offline --lib（默认线程） | 1166 passed / 3 failed：三个假引擎/子进程用例偶发 PermissionDenied；单独运行全部通过，且 HEAD 基线 worktree 同一时段也出现同类环境性失败，判为机器并发 spawn 抖动 |
+| npx tsc --noEmit / npm run build | 0 / 成功（仅既有 chunk 体积提示） |
+| verify_profile_rules_068.py / verify_skill_bindings_082.py | 26/26 / 57/57 |
+| verify_profile_scope_106.py / verify_profile_assets_109.py | 43/43 / 41/41 |
+| Python 模块导入与 sanitize_usage 直接调用 | 导入正常；数值保留、字符串/负数/超长键丢弃、None 输入返回 None |
+| pytest（tests/verification） | 未运行：当前 shell python3 无 pytest 模块；引擎侧改动以 AST 解析 + 导入 + 直接调用验证 |
+
+**逐卡核对：** 201——verdict 字段随候选落盘，旧候选无该字段时前端显示空；六项检查不含正文，needs_review 只影响提示，不改变确认资格。202——事件 detail 不存正文，实体只存 id；seq 进程内串行；损坏行跳过并计数；追加失败被调用方忽略。203——v3 校验包含「场景必须已声明或是其流程变体」；出厂包仅声明 work-review 且与现有绑定一致，行为零变化；三个 verify 脚本的 schema 断言同步放宽。204——usage 只保留数值、非负、限长限数；台账、状态快照、摘要三处透出；未知保持 null。
+
+**残留风险（已在 STATUS 记录）：** 真实模型 usage 块字段形态仍未知（不估算）；事件表多进程并发写未覆盖（当前单宿主设计）；默认线程全量测试存在环境性 spawn 抖动，不能作为本轮回归证据，需以 8 线程或单测定向运行复核。
+
+**未提交未推送：** 按批准范围实施，工作区改动原样保留；既有未提交改动（STATUS.md、samples/profiles/discipline.profile.patch.yml）未被覆盖。
+
+## OD-HAR-211..213 复核（ARCHITECT，2026-11-13）——通过
+
+**结论：通过。** Phase C 把 Work Review 从「场景别名」推进到「有独立工具面与归属声明的 Agent」：只读 preset 由 DSH 的 session/create.agentPreset 在会话创建时生效，历史上下文只带元数据。写作与项目场景的组合未变。
+
+**复核范围与证据（本人执行，实读 diff）：** 三份 patch 的新增块逐行比对（仅新增 preset，不改既有条目；实际数据根改前备份）；worklog_search.rs 的评分、排除与预算逻辑；task_extract.rs / task_extract.py 的 history 透传；web_api_adapter.py 的 preset 映射与失败边界（非 discipline 不传）；scenes.ts 与 rules.json agents 的一致性。
+
+**独立实跑结果：**
+
+| 验证 | 结果 |
+| --- | --- |
+| cargo test --offline --lib -- --test-threads=8 | 1172 passed / 0 failed |
+| npx tsc --noEmit / npm run build | 0 / 成功 |
+| --dump-config（真实 dsh-home，profile discipline） | rc=0，含 preset-work-review-core；write/edit=false，无 bash/pwsh |
+| 合成端点探针（隔离 /tmp 根 + mock 端点） | 任务 succeeded；会话头部 agentPreset=work-review-core |
+| verify_work_review_213 / 068 / 082 / 106 / 109 | 26/26、26/26、57/57、43/43、41/41 |
+
+**刻意核对过的边界：** ①历史注入失败时不能挡住分析（检索是只读尽力而为，失败返回空列表）；②历史块不含正文，探针断言其他记录正文不会进入提示词；③非 discipline Profile 不传 preset，避免 session/create 因未知 preset 失败；④preset 只在首轮前可切换，续接旧会话保持原组合，STATUS 已写明；⑤写入数据根的改动有备份，且保留了用户既有的其它补丁条目。
+
+**残留风险：** 工作记录场景新会话变为只读（用户如需在对话里写文件/跑命令会受影响）；真实模型在只读工具面上能否完成记录整理未验证；Phase E 的 12 项 Golden Task 仍未建立。
+
+**未提交未推送：** 按批准范围实施，既有未提交改动未被覆盖。
+
+
+## 复核补记：撤销 Work Review 只读 preset（ARCHITECT，2026-11-13）
+
+**结论：纠正成立，已撤销并复验通过。** 用户指出工作记录同样需要写/编辑文件；对照 D-092a（写文件与 shell 属产品自带场景，只读会把能力缺失变成缺陷）后确认原「只读 Agent」设计与真实使用冲突。DSH 的 preset 只能在会话创建时选定、首轮后锁定，无法按流程混合只读与可写，因此不保留只读变体。
+
+**改动复核：** 三份 patch 中的 preset-work-review-core 已全部移除（实际数据根从改前备份还原）；adapter 删除 preset_for_intent 与 session/create 的 agentPreset 参数；discipline-core 的 write:true 与 tool-bash 仍在；历史检索、agent 声明、verdict、事件均保留。
+
+**实跑：** verify_work_review_213 20/20；合成端点探针任务 succeeded、组合为默认（evidence/od-har-213/default-probe.json）；cargo lib 1172 passed；tsc/build 通过。
+
+**影响：** 三个场景工具面一致；Agent 差异改为 Skill/验收/事件层。决策记录为 D-096，D-095 标注部分撤销。
+
+
+## OD-HAR-211 终稿 + Phase D/E 复核（ARCHITECT，2026-11-13）——通过
+
+**结论：通过。** Work Review 工具面定为「可写文件、无 shell」；Phase D 的事件反馈与引用体检为只读增量；Phase E 的合成基准与测量脚本可独立复跑。
+
+**复核范围（实读 diff 与实跑）：** work-review-core 块的三份一致性（write/edit=true、无 bash/pwsh）；adapter 只对 discipline + weekly_report 传 preset；event_log 决策枚举与 recent 命令注册；integrity.rs 的检查项与上限（只报编号/字段，不含标题正文）；设置页「交接与体检」只读；12 例基准的标注与 fixtures 是否满足引用/日期约束；评分与测量脚本是否只输出元数据。
+
+**实跑结果：** cargo lib 1174 passed；tsc/build 0；verify_work_review_213 25/25；verify_harness_220 14/14；verify_profile_rules_068 26/26；verify_skill_bindings_082 57/57；score_work_review 12/12；measure_work_review 输出 fixtures 与真实候选基线；--dump-config rc=0；合成端点探针 agentPreset=work-review-core 且任务 succeeded。
+
+**刻意核对的边界：** ①删除文件没有模型工具（tool-fs 仅 read/write/edit），仍由宿主回收站负责，避免破坏性操作绕过确认制；②事件 detail 只存枚举，不写备注正文；③体检与事件接口只返回编号/类型，不含标题或用户文本；④基准评分为 fixtures 口径，报告已写明不代表模型能力；⑤真实数据根只有在状态/元数据读取，无正文外发。
+
+**残留风险：** 真实模型下写文件工具的使用边界未测；真实模型 12 例质量未知；事件表尚无真实数据；用户修正率样本过小。
+
+**未提交未推送。**
