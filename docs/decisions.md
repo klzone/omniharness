@@ -5,6 +5,62 @@
 
 ## 已确定
 
+### D-097（2026-11-13，最终口径）：Work Review 使用「可写文件、无 shell」preset；删除文件仍由宿主回收站负责
+
+**状态：** 已实施。
+
+**决策：** ①work-review-core 恢复存在：tool-fs read/write/edit 全开，去掉 bash/pwsh，保留 fs-search/skill/compaction/ask-user/web；weekly_report 新会话由引擎传 agentPreset。②模型侧没有「删除文件」原语——DSH tool-fs 只提供 read/write/edit，OmniDesk 的文件删除仍走宿主回收站（用户动作），不由模型直接执行。③Phase D 接入确认/拒绝事件与引用体检；Phase E 建立 12 例合成基准、评分与测量脚本。
+
+**理由：** 用户明确要求保留新建/写入/编辑文件能力，同时认可关闭 shell 更安全；删除属于破坏性操作，保留在宿主回收站比给模型一个删除工具更符合确认制。
+
+**影响：** 工作记录会话不能执行命令，但可以生成和修改文件；既有会话保持创建时组合。
+
+**证据：** --dump-config rc=0 含 work-review-core（write/edit=true，无 bash/pwsh）；合成端点探针 agentPreset=work-review-core、任务 succeeded；cargo lib 1174 passed；verify_work_review_213 25/25；verify_harness_220 14/14；12 例基准 6 项指标全 1.0（fixtures 口径）。
+
+**复审触发：** ①需要模型直接删除文件；②用户反馈无 shell 影响某个真实流程；③真实模型评测显示写文件工具被滥用。
+
+### D-096（2026-11-13，撤销 D-095 的只读部分）：工作记录会话保留写文件、编辑与 shell，Work Review 的差异放在 Skill/验收/事件层
+
+**状态：** 同日再次修订（见 D-097）：恢复无 shell、可写文件的 preset；本条「不定义独立 preset」的结论失效。
+
+**决策：** 工作记录场景新建会话沿用 Profile 默认组合（discipline-core：可写/编辑文件、可执行 bash/pwsh），不再为 Work Review 单独定义只读工具面；Work Review 仍保留 agents.work-review 声明、场景 Skill 绑定、verdict 验收与事件登记。
+
+**理由：** 用户指出工作记录同样需要写/编辑文件（导出、批量整理、生成产物），而 D-092a 已经确认「文案写作与表格导出需要写文件与执行脚本两条通道，只读会把能力缺失误报成产品缺陷」。同一条理由适用于工作记录场景；按会话创建时选 preset 的限制，也无法做到「按流程只读、按需写」的混合模式。
+
+**影响：** 工作记录、写作、项目三个场景的工具面一致；Agent 之间的差异只体现在注入的 Skill、验收器和事件归属，不体现在权限。权限差异化留到「按流程拆分会话」具备条件时再评估。
+
+**证据：** 三份 patch 已移除 work-review-core（实际数据根从 .bak-har213-20261113140122 还原）；adapter 不再传 agentPreset；合成端点探针任务 succeeded 且组合为默认（evidence/od-har-213/default-probe.json）；cargo lib 与 tsc 回归通过。
+
+**复审触发：** ①需要按流程强制只读（例如自动定时复盘）；②用户反馈某场景因工具面相同而误操作风险上升；③DSH 支持按消息切换 preset。
+
+### D-095（2026-11-13，OD-HAR-211..213 已实施）：Work Review 会话使用独立的只读 preset，历史上下文只传元数据
+
+**状态：** 只读 preset 部分已于同日撤销（见 D-096）；历史检索与 Agent 声明保留。
+
+**决策：** ①新增 work-review-core preset（order 2）：在 discipline-core 基础上把 tool-fs 的 write/edit 关掉、去掉 bash/pwsh，保留 read、fs-search、skill、compaction、ask-user、web；work-review 场景的新会话由引擎在 session/create 的 agentPreset 字段指定该 preset。②映射只对 discipline Profile 与 intent=weekly_report 生效；其它 Profile/场景一律沿用 Profile 默认，避免引用不存在的 preset。③分析记录时注入相关历史记录，只给编号/标题/日期/分类/标签/关联依据，最多 5 条、总长 ≤2000 字符；不传历史正文。④场景归属写在 scenes.ts 的 agent 字段，与 rules.json 的 agents 段对齐。
+
+**理由：** Work Review 的产物都由宿主落盘（记录、候选、复盘草稿），模型不需要写权限或 shell；只读工具面缩小误操作面，也让权限边界与 Agent 角色一致。历史正文若整段注入，会把未选择的记录正文发给模型，超出「分析这一条记录」的范围；元数据足够判断重复与延续。
+
+**影响：** 工作记录场景的新会话工具面变窄（不能写文件、不能执行命令）；续接既有会话保持创建时的组合（DSH preset 在首轮后锁定）。写作与项目场景不变。
+
+**证据：** 三份 patch 的 --dump-config rc=0 且含 preset-work-review-core；合成端点探针（隔离 /tmp 根）任务 succeeded、会话头部 agentPreset=work-review-core（tests/verification/desktop/evidence/od-har-213/preset-probe.json）；cargo lib 1172 passed；verify_work_review_213 26/26。
+
+**复审触发：** ①用户在工作记录场景需要写文件或跑命令（例如导出）；②DSH 升级改变 session/create 的 agentPreset 语义或 preset 锁定时机；③真实模型在只读工具面下无法完成记录整理；④历史注入被反馈为噪音或泄露边界问题。
+
+### D-094（2026-11-13，OD-HAR-201..204 已实施）：共享 Harness 基础采用「事件行 + 候选验收结论 + Agent 声明」三件套，不引入新运行时
+
+**状态：** 已实施；真实模型下的 usage 字段与验收表现待实测。
+
+**决策：** ①业务事件落 `work/events.jsonl`（一行一事件，seq 进程内串行，实体只存 id，`detail` 只允许枚举短语，单行 ≤512 字符），由宿主动作点在写入成功后追加，追加失败不阻断业务；不建消息总线、不做事件溯源重建。②候选验收结论统一为 `omnidesk.verdict.v1`（validator/conclusion/checks，只存检查 id 与布尔值），随候选 JSON 暂存并在审核台展示；硬校验失败的候选仍直接拒绝、不生成 verdict。③`rules.json` 升 v3 增加 `agents` 段（label/scenes/skills/permission_profile），v1/v2 原样可加载；Agent 声明只描述归属，不改变注入与权限行为。④引擎上报的用量只落数值快照（键长 ≤40、最多 16 项）到任务台账与 `get_task_status`；未上报保持 `null`，界面不估算。
+
+**理由：** 四 Agent 共享事实的前提是「交接可追溯、验收可复核、角色可声明」，这三件事都可在 OmniDesk 层用现有文件与 IPC 完成；新增进程、消息中间件或向量库会违反「不建通用平台」和文件优先原则。事件表放 `work/` 是因为所有业务写入入口都持有该根，避免为审计日志改动大量函数签名。
+
+**影响：** 新增 `desktop/src-tauri/src/event_log.rs`；`profile_rules.rs` 接受 v3；出厂规则包声明 `agents.work-review`；候选 JSON 与台账多两个可选字段；审核台多一行验收结论。旧候选、旧规则、旧台账文件均可原样读取。
+
+**证据：** `cargo test --offline --lib -- --test-threads=8` 1169 passed；`npx tsc --noEmit` 0；`npm run build` 0；verify_profile_rules_068 26/26；verify_skill_bindings_082 57/57；verify_profile_scope_106 43/43；verify_profile_assets_109 41/41；STATUS.md 同编号记录。
+
+**复审触发：** ①真实模型 usage 块出现非数值结构或字段超限被丢弃；②事件表在日志轮转/清理时被误删（`work_cleanup` 不覆盖 events.jsonl，但新增清理规则需复核）；③Agent 声明需要驱动真实注入或权限差异（Phase C）；④升级 DSH 后 usage 事件形态变化。
+
 ### D-093（2026-11-13，OD-UI-712/713 已实施）：对话里的过程分组折叠，生成成果默认以可点击链接呈现
 
 **状态：** 用户批准并已实施；真实模型体验待实测。
