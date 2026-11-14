@@ -134,14 +134,14 @@ r = mod.validateVerdict(
   { userText: user, week: "2026-W44", today: "2026-10-28" },
   index,
 );
-check("merge_reject_cross_week", r.ok === false && r.reason.includes("不在"), r.reason);
+check("merge_reject_cross_week", r.ok === false && r.reason.includes("索引里没有"), r.reason);
 
 r = mod.validateVerdict(
   { append: [], move: [], merge: [{ date: "2026-10-30", index: 0, text: "还参观了紫金矿业生产基地" }], note: "" },
   { userText: user, week: "2026-W44", today: "2026-10-28" },
   index,
 );
-check("merge_reject_future", r.ok === false && r.reason.includes("晚于今天"), r.reason);
+check("merge_reject_future", r.ok === false && r.reason.includes("索引里没有"), r.reason);
 
 // 并入后过长 → 拒绝
 r = mod.validateVerdict(
@@ -201,7 +201,7 @@ def main() -> int:
     check("lib_merge_command", "fn worklog_merge(" in lib)
     check("lib_merge_registered", "worklog_merge," in lib)
     check("lib_merge_red_line", "red_line_scan_with(&text, &policy)" in lib)
-    check("lib_merge_masks", "mask_privacy(&text, &policy)" in lib)
+    check("lib_merge_stores_raw", "quicklog::merge(" in lib and "mask_privacy(&text, &policy)" not in lib)
 
     # ---- 静态：前端 ----
     check("api_merge", '"worklog_merge"' in api and "worklogMerge(" in api)

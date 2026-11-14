@@ -143,9 +143,11 @@ pub fn append(
     if text.is_empty() {
         return Err("记录内容为空，未写入".to_string());
     }
-    let week = worklog::week_label(now, offset_minutes);
     let today = worklog::date_label(now, offset_minutes);
-    worklog::assert_entry_date(&week, date, &today)?;
+    // 补录窗口覆盖当前与上一 ISO 周：窗口内的日期按它自己的周归属，
+    // 不再强制写进「当周」。
+    worklog::assert_backfill_date(date, &today, worklog::BACKFILL_DAYS)?;
+    let week = worklog::week_label_for_date(date)?;
     let dest = destination
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -191,6 +193,7 @@ pub fn append(
         masked: false,
         masked_id_card: 0,
         masked_phone: 0,
+        record_id: record.id.clone(),
         entry_index: index,
         entry_text: text.to_string(),
         error: None,
@@ -330,21 +333,11 @@ pub fn move_many(
                 request.index + 1
             ));
         }
-        if week_of_date(&request.date)? != week {
-            return Err(format!(
-                "原日期 {} 不属于 {week}，未改动任何记录。",
-                request.date
-            ));
-        }
-        if week_of_date(&request.to)? != week {
-            return Err(format!(
-                "目标日期 {} 不属于 {week}；跨周移动暂不支持，未改动任何记录。",
-                request.to
-            ));
-        }
-        worklog::assert_entry_date(week, &request.to, today)?;
+        worklog::assert_backfill_date(&request.to, today, worklog::BACKFILL_DAYS)?;
+        // 源日期必须在它自己所属周里有记录；目标日期允许跨周（记录本身带日期）。
+        let source_week = week_of_date(&request.date)?;
         let (entry, record) =
-            locate(root, week, &request.date, request.index, &request.expect_text)?;
+            locate(root, &source_week, &request.date, request.index, &request.expect_text)?;
         located.push(Located {
             request: request.clone(),
             entry,
@@ -389,7 +382,12 @@ pub fn move_many(
             from_date: item.request.date.clone(),
             to_date: item.request.to.clone(),
             index: item.request.index,
-            new_index: new_index_on(root, week, &item.request.to, &item.record.id)?,
+            new_index: new_index_on(
+                root,
+                &worklog::week_label_for_date(&item.request.to)?,
+                &item.request.to,
+                &item.record.id,
+            )?,
             text: item.entry.text.clone(),
         });
     }
@@ -712,6 +710,45 @@ mod tests {
         assert!(markdown.contains("- **事**：乙"));
         assert!(markdown.contains("**去向**：仅记录"));
         assert!(markdown.contains("## 2026-11-02（续）"));
+    }
+
+    #[test]
+    fn append_backfills_previous_week_with_target_week_label() {
+        let temp = TempRoot::new("backfill");
+        let now = noon("2026-11-13");
+        let receipt = append(temp.root(), "2026-11-06", "补录内容", None, now, OFFSET).unwrap();
+        assert_eq!(receipt.week, "2026-W45");
+        assert_eq!(receipt.date, "2026-11-06");
+        let entries = week_entries(temp.root(), "2026-W45").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].date, "2026-11-06");
+        let current = week_entries(temp.root(), "2026-W46").unwrap();
+        assert!(current.is_empty(), "补录不能写进当周");
+    }
+
+    #[test]
+    fn move_crosses_week_boundary() {
+        let temp = TempRoot::new("move-cross");
+        let now = noon("2026-11-13");
+        append(temp.root(), "2026-11-13", "记错日期的内容", None, now, OFFSET).unwrap();
+        let receipt = move_many(
+            temp.root(),
+            "2026-W46",
+            &[MoveRequest {
+                date: "2026-11-13".to_string(),
+                index: 0,
+                to: "2026-11-06".to_string(),
+                expect_text: "记错日期的内容".to_string(),
+            }],
+            "2026-11-13",
+            now,
+        )
+        .unwrap();
+        assert_eq!(receipt.moves.len(), 1);
+        let entries = week_entries(temp.root(), "2026-W45").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].date, "2026-11-06");
+        assert!(week_entries(temp.root(), "2026-W46").unwrap().is_empty());
     }
 
     #[test]

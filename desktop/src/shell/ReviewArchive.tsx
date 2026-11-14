@@ -12,6 +12,7 @@ import type {
   WorkTask,
 } from "../types";
 import { MarkdownText } from "./MarkdownText";
+import { stripRecordRefs } from "../displayText";
 import type { Scene } from "./Dock";
 
 type Notice = { kind: "ok" | "err"; text: string };
@@ -248,7 +249,8 @@ export function ReviewArchive({
 
   function exportMarkdown() {
     if (!detail?.exists || !selected) return;
-    const blob = new Blob([detail.body.trim() + "\n"], {
+    // 导出给人看，不把内部引用编号带出去；存储里的正文保持原样。
+    const blob = new Blob([stripRecordRefs(detail.body).trim() + "\n"], {
       type: "text/markdown;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);

@@ -24,7 +24,6 @@
 //
 // 不判断语义：这里没有「指令」「补充」「纠正」的词表。
 
-import { isoWeekKeyOf } from "./workIntent";
 import { parseWorklog } from "./weekTimeline";
 
 export const VERDICT_OPEN = "<omnidesk-verdict>";
@@ -35,7 +34,7 @@ export const INDEX_TEXT_MAX = 80;
 /** 提示词里最多带多少条索引。 */
 export const INDEX_MAX_ENTRIES = 60;
 /** 提示词里索引覆盖的天数。 */
-export const INDEX_DAYS = 7;
+export const INDEX_DAYS = 14;
 /** 单条记录正文上限（字符）。 */
 export const RECORD_TEXT_MAX = 500;
 /** 并入后整条记录上限（字符）：原句 + 分隔符 + 补充。 */
@@ -53,6 +52,8 @@ export interface WorklogIndexEntry {
   index: number;
   text: string;
   destination: string | null;
+  /** 这条记录所属的 ISO 周（YYYY-Wxx），用于跨周移动/并入时写对周文件。 */
+  week: string;
 }
 
 export interface WorklogIndex {
@@ -102,8 +103,8 @@ export interface WorkRecordVerdict {
 /** 校验通过后的执行计划：move 带上从索引取到的正文，供宿主做一致性校验。 */
 export interface VerdictPlan {
   append: VerdictAppend[];
-  move: Array<VerdictMove & { expectText: string }>;
-  merge: Array<VerdictMerge & { expectText: string }>;
+  move: Array<VerdictMove & { expectText: string; week: string }>;
+  merge: Array<VerdictMerge & { expectText: string; week: string }>;
   note: string;
 }
 
@@ -270,11 +271,14 @@ export function validateVerdict(
   if (todayDay === null) return { ok: false, reason: "今天日期不合法：" + ctx.today };
   if (!/^\d{4}-W\d{2}$/.test(ctx.week)) return { ok: false, reason: "周标签不合法：" + ctx.week };
 
-  const checkDate = (date: string, label: string): string | null => {
+  const BACKFILL_DAYS = 14;
+  const checkWindow = (date: string, label: string): string | null => {
     const day = dayNumberOf(date);
     if (day === null) return label + " 的日期不合法：" + date;
-    if (isoWeekKeyOf(date) !== ctx.week) return label + " 的日期 " + date + " 不在 " + ctx.week;
     if (day > todayDay) return label + " 的日期 " + date + " 晚于今天 " + ctx.today;
+    if (todayDay - day > BACKFILL_DAYS) {
+      return label + " 的日期 " + date + " 早于补录窗口（最近 " + BACKFILL_DAYS + " 天）";
+    }
     return null;
   };
 
@@ -287,7 +291,7 @@ export function validateVerdict(
     if (text.length > RECORD_TEXT_MAX) {
       return { ok: false, reason: "记录正文过长（" + text.length + " 字符），已拒绝" };
     }
-    const bad = checkDate(item.date, "记录");
+    const bad = checkWindow(item.date, "记录");
     if (bad) return { ok: false, reason: bad };
     const piece = comparableText(text);
     if (!piece) return { ok: false, reason: "记录正文没有实质内容" };
@@ -301,12 +305,10 @@ export function validateVerdict(
     append.push({ text, date: item.date });
   }
 
-  const move: Array<VerdictMove & { expectText: string }> = [];
+  const move: Array<VerdictMove & { expectText: string; week: string }> = [];
   const seenMoves = new Set<string>();
   for (const item of verdict.move) {
-    const fromBad = checkDate(item.date, "被移动的记录");
-    if (fromBad) return { ok: false, reason: fromBad };
-    const toBad = checkDate(item.to, "目标日期");
+    const toBad = checkWindow(item.to, "目标日期");
     if (toBad) return { ok: false, reason: toBad };
     if (item.date === item.to) {
       return { ok: false, reason: "原日期与目标日期相同：" + item.date };
@@ -331,12 +333,18 @@ export function validateVerdict(
     if (movedPiece && append.some((a) => comparableText(a.text) === movedPiece)) {
       return { ok: false, reason: "同一段话既追加又移动：" + found.text.slice(0, 40) };
     }
-    move.push({ date: item.date, index: item.index, to: item.to, expectText: found.text });
+    move.push({
+      date: item.date,
+      index: item.index,
+      to: item.to,
+      expectText: found.text,
+      week: found.week,
+    });
   }
 
   // merge：把补充并进已有条目。定位与 move 同口径；补充仍必须是用户原话，
   // 不能借「并入」把模型改写过的句子写进记录。
-  const merge: Array<VerdictMerge & { expectText: string }> = [];
+  const merge: Array<VerdictMerge & { expectText: string; week: string }> = [];
   const seenMerge = new Set<string>();
   for (const item of verdict.merge ?? []) {
     const text = item.text.trim();
@@ -344,8 +352,6 @@ export function validateVerdict(
     if (text.length > RECORD_TEXT_MAX) {
       return { ok: false, reason: "补充正文过长（" + text.length + " 字符），已拒绝" };
     }
-    const bad = checkDate(item.date, "补充的记录");
-    if (bad) return { ok: false, reason: bad };
     const key = item.date + "#" + item.index;
     if (seenMerge.has(key)) {
       return { ok: false, reason: "同一条记录被补充了两次：" + key };
@@ -379,7 +385,13 @@ export function validateVerdict(
     if (append.some((a) => comparableText(a.text) === piece)) {
       return { ok: false, reason: "同一段话既并入又追加：" + text.slice(0, 40) };
     }
-    merge.push({ date: item.date, index: item.index, text, expectText: found.text });
+    merge.push({
+      date: item.date,
+      index: item.index,
+      text,
+      expectText: found.text,
+      week: found.week,
+    });
   }
 
   // 两个数组都空 = 这一步只是回一句话（确认、追问、回答），宿主不碰文件。
@@ -387,8 +399,9 @@ export function validateVerdict(
 }
 
 /** 把当周记录解析成索引（日期按文件顺序，序号为当日第几条，0 起）。 */
-export function buildWorklogIndex(content: string): WorklogIndex {
+export function buildWorklogIndex(content: string, week?: string): WorklogIndex {
   const parsed = parseWorklog(content || "");
+  const resolved = (week ?? "").trim() || (parsed.week ?? "");
   const entries: WorklogIndexEntry[] = [];
   for (const day of parsed.days) {
     day.entries.forEach((entry, i) => {
@@ -397,10 +410,11 @@ export function buildWorklogIndex(content: string): WorklogIndex {
         index: i,
         text: entry.text.trim(),
         destination: entry.destination,
+        week: resolved,
       });
     });
   }
-  return { week: parsed.week ?? "", entries };
+  return { week: resolved, entries };
 }
 
 /**

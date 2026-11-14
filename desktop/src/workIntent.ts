@@ -293,6 +293,17 @@ function mondayOf(cal: Calendar): number {
  * 前端只用它做一件事：判断「上一条记录的日期」与今天是否属于同一个周文件。
  * 跨周时不再继承日期，交给用户说清楚，避免把上周的记录悄悄写进本周文件。
  */
+/** 由周标签推出上一周的标签（跨年时回退到上一年最后一周）。 */
+export function previousWeekLabel(week: string): string | null {
+  const m = /^(\d{4})-W(\d{2})$/.exec((week || "").trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const num = Number(m[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(num) || num < 1) return null;
+  if (num > 1) return year + "-W" + String(num - 1).padStart(2, "0");
+  return isoWeekKeyOf(String(year - 1) + "-12-28");
+}
+
 export function isoWeekKeyOf(date: string): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((date || "").trim());
   if (!m) return null;
@@ -313,13 +324,13 @@ export function todayDateKey(now: Date = new Date(), offsetMinutes?: number): st
 }
 
 function guessForDay(day: number, cal: Calendar, source: EntryDateGuess["source"]): EntryDateGuess | null {
-  const monday = mondayOf(cal);
-  // 只接受本周内、且不晚于今天：跨周与未来一律不猜，交回当天由用户口述。
-  if (day < monday || day > monday + 6) return null;
+  // 补录窗口覆盖最近 14 天（当前周与上一周）；未来日期一律不猜。
   if (day > cal.todayDay) return null;
+  if (cal.todayDay - day > 13) return null;
+  const weekdayIndex = (((day + 3) % 7) + 7) % 7;
   return {
     date: fromDayNumber(day),
-    weekday: WEEKDAY_NAMES[(day - monday) % 7] ?? WEEKDAY_NAMES[0],
+    weekday: WEEKDAY_NAMES[weekdayIndex] ?? WEEKDAY_NAMES[0],
     source,
   };
 }
@@ -395,6 +406,30 @@ function relativeDate(text: string, cal: Calendar): EntryDateGuess | null {
  * @param offsetMinutes 本地时区偏移分钟（与宿主 `utc_offset_minutes` 一致）；
  *        省略时用浏览器本地时区。
  */
+/**
+ * 是否是「直接可以落盘的陈述句」。
+ *
+ * 只排除确认、提问和明显指令；其余按陈述句处理，由宿主先原文落盘，
+ * 需要时再交给模型分析。判定偏保守：拿不准就走模型，不抢写。
+ */
+export function isPlainStatementNote(text: string): boolean {
+  const raw = (text || "").trim();
+  if (!raw) return false;
+  const flat = normalizeIntentText(raw);
+  if (flat.length < 6) return false;
+  if (/[?？]/.test(raw)) return false;
+  if (/(吗|呢|是否|什么|怎么|为什么|哪|多少|几个|几次|几天|有没有|要不要|需不需要)/.test(raw)) {
+    return false;
+  }
+  if (/^(嗯|好|好的|行|可以|对|是|不是|不用|不要|取消|确认|合并|继续|请把|帮我)/.test(flat)) {
+    return false;
+  }
+  if (/(把|将|挪|移到|改到|改成|删除|删掉|去掉|整理|生成|起草|写一份|做一份|查一下|查查|找一下|看看|总结|复盘|摘要|周报)/.test(raw)) {
+    return false;
+  }
+  return true;
+}
+
 export function extractEntryDate(
   text: string,
   now: Date = new Date(),

@@ -51,6 +51,8 @@ pub struct AppendReceipt {
     pub masked: bool,
     pub masked_id_card: u64,
     pub masked_phone: u64,
+    /// 新建的正式记录编号（wr-…）；legacy 文件路径为空串。
+    pub record_id: String,
     /// 这条记录在该日期段内的第几条（0 起）。补录纠正时用它定位（OD-ARCH-103 S3）。
     pub entry_index: usize,
     /// 实际落盘的正文（可能已掩码）。改日期时原样带回做一致性校验。
@@ -190,6 +192,42 @@ pub fn assert_entry_date(week: &str, date: &str, today: &str) -> Result<(), Stri
     Ok(())
 }
 
+/// 补录允许回溯的天数（含今天）：14 天覆盖当前与上一 ISO 周。
+pub const BACKFILL_DAYS: i64 = 14;
+
+/// 由日期算出它所属的 ISO 周标签（YYYY-Wxx）。
+pub fn week_label_for_date(date: &str) -> Result<String, String> {
+    if !is_date_shape(date) {
+        return Err(format!("日期格式不正确（应为 YYYY-MM-DD）：{date}"));
+    }
+    let day = days_from_civil(parse_year(date), parse_month(date), parse_day(date));
+    let (y, w) = iso_week_of_days(day);
+    Ok(format!("{y:04}-W{w:02}"))
+}
+
+/// 补录窗口校验：日期合法、不晚于今天、不早于 max_days_back 天前。
+///
+/// 窗口覆盖当前与上一 ISO 周，写作时由调用方按日期推导目标周文件。
+pub fn assert_backfill_date(date: &str, today: &str, max_days_back: i64) -> Result<(), String> {
+    if !is_date_shape(date) {
+        return Err(format!("补录日期格式不正确（应为 YYYY-MM-DD）：{date}"));
+    }
+    if !is_date_shape(today) {
+        return Err(format!("今天日期格式不正确（应为 YYYY-MM-DD）：{today}"));
+    }
+    let day = days_from_civil(parse_year(date), parse_month(date), parse_day(date));
+    let today_day = days_from_civil(parse_year(today), parse_month(today), parse_day(today));
+    if day > today_day {
+        return Err(format!("补录日期晚于今天（{date} > {today}），没有写盘"));
+    }
+    if today_day - day > max_days_back {
+        return Err(format!(
+            "补录日期 {date} 早于允许窗口（今天 {today} 往前 {max_days_back} 天），没有写盘"
+        ));
+    }
+    Ok(())
+}
+
 fn parse_year(date: &str) -> i64 {
     date[..4].parse().unwrap_or(0)
 }
@@ -316,6 +354,7 @@ pub fn append_entry(
             masked: false,
             masked_id_card: 0,
             masked_phone: 0,
+            record_id: String::new(),
             entry_index,
             entry_text: trimmed.to_string(),
             error: None,
@@ -1027,10 +1066,11 @@ fn assert_structure_preserved(
     allowed_removed: &[String],
     allowed_added: &[String],
     blocks: &[Vec<String>],
+    expected_item_delta: i64,
 ) -> Result<(), String> {
-    let before_items = content.matches("- **事**：").count();
-    let after_items = updated.matches("- **事**：").count();
-    if before_items != after_items {
+    let before_items = content.matches("- **事**：").count() as i64;
+    let after_items = updated.matches("- **事**：").count() as i64;
+    if after_items != before_items + expected_item_delta {
         return Err(format!(
             "改动会让条目数从 {before_items} 变成 {after_items}，已中止"
         ));
@@ -1053,7 +1093,11 @@ fn assert_structure_preserved(
         .filter(|l| !before_lines.contains(l))
         .cloned()
         .collect();
-    if !removed_set.iter().all(|l| l.starts_with("## ")) {
+    // 跨周移动允许整块摘走条目：这些行必须先由调用方显式列入 allowed_removed。
+    if !removed_set
+        .iter()
+        .all(|l| l.starts_with("## ") || allowed_removed.contains(l))
+    {
         return Err("改动会删掉条目正文或其它行，已中止".to_string());
     }
     if !added_set.iter().all(|l| l.starts_with("## ")) {
@@ -1230,6 +1274,8 @@ pub fn move_entries(
         end: usize,
         block: Vec<String>,
         text: String,
+        target_week: String,
+        cross: bool,
     }
     let mut located: Vec<Located> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
@@ -1267,12 +1313,11 @@ pub fn move_entries(
         let (ty, tw) = iso_week_of_days(to_day);
         let to_week = format!("{ty:04}-W{tw:02}");
         if to_week != week {
-            return Err(format!(
-                "目标日期 {} 属于 {to_week}，与当周文件 {week} 不同；跨周移动暂不支持，未改动文件。",
-                request.to
-            ));
+            // 跨周移动：目标落在允许的补录窗口内即可，由后面写入目标周文件。
+            assert_backfill_date(&request.to, today, BACKFILL_DAYS)?;
+        } else {
+            assert_entry_date(week, &request.to, today)?;
         }
-        assert_entry_date(week, &request.to, today)?;
         if !seen.insert((request.date.clone(), request.index)) {
             return Err(format!(
                 "{} 的第 {} 条被要求移动两次，已拒绝",
@@ -1288,6 +1333,8 @@ pub fn move_entries(
             end,
             block: lines[start..=end].to_vec(),
             text,
+            target_week: to_week.clone(),
+            cross: to_week != week,
         });
     }
 
@@ -1328,6 +1375,7 @@ pub fn move_entries(
     let mut planned: Vec<(String, usize)> = located
         .iter()
         .enumerate()
+        .filter(|(_, l)| !l.cross)
         .map(|(i, l)| (l.request.to.clone(), i))
         .collect();
     planned.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
@@ -1341,6 +1389,47 @@ pub fn move_entries(
             index: located[idx].request.index,
             new_index: before,
             text: located[idx].text.clone(),
+        });
+    }
+
+    // 5b) 跨周目标：先把条目写进目标周文件，再提交源文件。
+    //    目标写失败时源文件尚未改动，不会丢记录。
+    for item in located.iter().filter(|l| l.cross) {
+        let target_week = &item.target_week;
+        let target_path = week_path(library_root, target_week);
+        let (mut tlines, teol, toriginal) = match fs::read(&target_path) {
+            Ok(_) => {
+                let (_, orig, _content, eol, lines) = read_week_lines(library_root, target_week)?;
+                (lines, eol, orig)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (
+                vec![format!("# {target_week}"), String::new()],
+                "
+".to_string(),
+                Vec::new(),
+            ),
+            Err(e) => {
+                return Err(format!(
+                    "读取目标周文件失败（{}）：{}",
+                    target_path.display(),
+                    e
+                ))
+            }
+        };
+        let before = count_entries_on_date(&tlines.join(&teol), &item.request.to);
+        insert_block(&mut tlines, &item.request.to, &item.block);
+        let tupdated = tlines.join(&teol);
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("创建目标目录失败（{}）：{}", parent.display(), e))?;
+        }
+        commit_week_file(&target_path, target_week, &toriginal, &tupdated)?;
+        results.push(MovedEntry {
+            from_date: item.request.date.clone(),
+            to_date: item.request.to.clone(),
+            index: item.request.index,
+            new_index: before,
+            text: item.text.clone(),
         });
     }
 
@@ -1367,8 +1456,28 @@ pub fn move_entries(
             }
         }
     }
-    let blocks: Vec<Vec<String>> = located.iter().map(|l| l.block.clone()).collect();
-    assert_structure_preserved(&content, &updated, &allowed_removed, &allowed_added, &blocks)?;
+    // 跨周移动会从源文件整块摘掉条目：这些行属于被允许删除的内容。
+    for item in located.iter().filter(|l| l.cross) {
+        for line in &item.block {
+            if !allowed_removed.contains(line) {
+                allowed_removed.push(line.clone());
+            }
+        }
+    }
+    let blocks: Vec<Vec<String>> = located
+        .iter()
+        .filter(|l| !l.cross)
+        .map(|l| l.block.clone())
+        .collect();
+    let expected_delta = -(located.iter().filter(|l| l.cross).count() as i64);
+    assert_structure_preserved(
+        &content,
+        &updated,
+        &allowed_removed,
+        &allowed_added,
+        &blocks,
+        expected_delta,
+    )?;
 
     let backup = commit_week_file(&path, week, &original, &updated)?;
     Ok(MoveBatchReceipt {
@@ -1938,16 +2047,18 @@ mod tests {
     }
 
     #[test]
-    fn move_entry_rejects_cross_week_target_and_same_date() {
+    fn move_entry_supports_cross_week_and_rejects_same_date() {
         let root = temp_root("redate-cross");
-        append_entry(&root, "2026-W44", "2026-10-28", "记录", "本周报引用").unwrap();
-        let path = week_path(&root, "2026-W44");
+        append_entry(&root, "2026-W45", "2026-11-02", "记录", "本周报引用").unwrap();
+        let path = week_path(&root, "2026-W45");
         let before = fs::read(&path).unwrap();
-        let cross = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-11-02", "记录", "2026-10-28").unwrap_err();
-        assert!(cross.contains("跨周"), "应拒绝跨周：{cross}");
-        let same = move_entry(&root, "2026-W44", "2026-10-28", 0, "2026-10-28", "记录", "2026-10-28").unwrap_err();
+        let same = move_entry(&root, "2026-W45", "2026-11-02", 0, "2026-11-02", "记录", "2026-10-28").unwrap_err();
         assert!(same.contains("无需"), "同一天应说明无需改：{same}");
         assert_eq!(fs::read(&path).unwrap(), before);
+        let cross = move_entry(&root, "2026-W45", "2026-11-02", 0, "2026-10-28", "记录", "2026-10-28").unwrap();
+        assert!(cross.to_date.starts_with("2026-10-28"));
+        let target = fs::read_to_string(week_path(&root, "2026-W44")).unwrap();
+        assert!(target.contains("记录"), "跨周目标应写入上一周文件");
         fs::remove_dir_all(&root).ok();
     }
 
@@ -2070,21 +2181,25 @@ mod tests {
     }
 
     #[test]
-    fn move_entries_rejects_cross_week_and_future_targets() {
+    fn move_entries_supports_cross_week_and_rejects_future_targets() {
         let root = temp_root("batch-dates");
-        append_entry(&root, "2026-W44", "2026-10-28", "记录", "本周报引用").unwrap();
+        append_entry(&root, "2026-W45", "2026-11-02", "记录", "本周报引用").unwrap();
         let cross = move_entries(
             &root,
-            "2026-W44",
-            &[req("2026-10-28", 0, "2026-11-02", "记录")],
+            "2026-W45",
+            &[req("2026-11-02", 0, "2026-10-26", "记录")],
             "2026-10-28",
         )
-        .unwrap_err();
-        assert!(cross.contains("跨周"), "跨周应拒绝：{cross}");
+        .unwrap();
+        assert_eq!(cross.moves.len(), 1);
+        let target = fs::read_to_string(week_path(&root, "2026-W44")).unwrap();
+        assert!(target.contains("记录"), "跨周目标应写入上一周文件");
+        let source = fs::read_to_string(week_path(&root, "2026-W45")).unwrap();
+        assert!(!source.contains("- **事**：记录"), "源周文件应已移除该条");
         let future = move_entries(
             &root,
             "2026-W44",
-            &[req("2026-10-28", 0, "2026-10-30", "记录")],
+            &[req("2026-10-26", 0, "2026-11-06", "记录")],
             "2026-10-28",
         )
         .unwrap_err();
