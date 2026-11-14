@@ -37,6 +37,9 @@ import {
   describeWorkIntent,
   detectWorkIntent,
   detectPeriodReviewTarget,
+  previousWeekLabel,
+  extractEntryDate,
+  isPlainStatementNote,
   findDatePhrase,
   todayDateKey,
   type PeriodReviewTarget,
@@ -89,6 +92,7 @@ import {
   type TimelineEntry,
 } from "./timelineModel";
 import { artifactLinksInText, type ArtifactLink } from "./artifactLinks";
+import { splitRecordReview } from "../recordReview";
 import { SCENES, isSceneKey } from "../scenes";
 import type { EngineModelCatalog } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
@@ -1021,6 +1025,17 @@ export function HomeChat({
   const notePendingRef = useRef<
     Map<string, { userText: string; week: string; today: string; index: WorklogIndex; done: boolean }>
   >(new Map());
+
+  /** 落盘后等待用户回复的复核（任务建议 / 补充要素）；下一条消息优先当作答复。 */
+  const pendingReviewRef = useRef<{
+    recordId: string;
+    date: string;
+    entryIndex: number;
+    week: string;
+    index: number;
+    text: string;
+    taskTitle: string;
+  } | null>(null);
   /** 随手记这一轮的流式原文（按任务号），供终态判定用；终态处理完即清。 */
   const noteRawRef = useRef<Map<string, string>>(new Map());
   /**
@@ -1759,28 +1774,16 @@ export function HomeChat({
       ctx: { userText: string; week: string; today: string; index: WorklogIndex },
       content: string,
     ): Promise<string | null> => {
+    // 失败即不写：以前这里会把用户原话按当天原样记下，结果把「嗯，合并成一条」
+    // 这类对话也记成了工作事项。现在宁可这轮不写，也不制造错误记录。
     const fallback = async (why: string): Promise<string> => {
-      try {
-        const receipt = await shell.worklogAppend(ctx.userText, undefined, undefined);
-        if (!receipt.ok || !receipt.appended) {
-          return (
-            "模型没有给出可用的判定（" + why + "），工作台按原文原样记录也没成功：" +
-            (receipt.error || "宿主未确认写入") +
-            "。这条还没有记下来，请处理后重发。"
-          );
-        }
-        // 句子里明明有日期却没采用，必须说出来：不能让人以为已经记到那天了。
-        const phrase = findDatePhrase(ctx.userText);
-        return (
-          "模型未给出判定，已按原文原样记录到 " + receipt.date + "，未做指令识别。" +
-          (phrase
-            ? "句子里有「" + phrase + "」，但这次没有据此改日期；要补到别的日期请再说一次。"
-            : "") +
-          "（" + why + "）"
-        );
-      } catch (e) {
-        return "模型没有给出可用的判定（" + why + "），按原文兜底记录也失败：" + String(e) + "。";
-      }
+      const phrase = findDatePhrase(ctx.userText);
+      return (
+        "这轮没有写入工作记录（" + why + "）。" +
+        (phrase
+          ? "句子里有「" + phrase + "」，但判定没有通过，所以没有按那天记。"
+          : "请把要记的内容再说一次，或确认这条是不是工作事实。")
+      );
     };
 
     const split = splitVerdict(content || "");
@@ -1803,7 +1806,8 @@ export function HomeChat({
     for (const record of plan.merge) {
       try {
         const receipt = await shell.worklogMerge({
-          week: ctx.week,
+          // 跨周并入必须写回这条记录所属的周，不能固定用当周。
+          week: record.week,
           date: record.date,
           index: record.index,
           expectText: record.expectText,
@@ -1988,6 +1992,159 @@ export function HomeChat({
    * 每个任务只执行一次：\`done\` 置位并删除上下文后，「重新查询」再跑一遍终态
    * 处理也不会把同一句记两遍。
    */
+  /** OD-WR-105：按记录提取任务/素材候选（用户明确说“创建任务”时使用）。 */
+  const analyzeRecordAfterWrite = useCallback(async (recordId: string, messageId: string) => {
+    const finish = (text: string) =>
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, text: m.text + text } : m)),
+      );
+    try {
+      const prep = await shell.workRecordAnalyzePrepare(recordId);
+      const workspace = await shell.prepareWorkspaceDir();
+      if (!workspace.ok || !workspace.workspace_dir) return;
+      const receipt = await host.submitTask({
+        promptText: prep.prompt,
+        intent: "worklog_extract",
+        workspaceDir: workspace.workspace_dir,
+        userInputText: prep.user_input_text,
+      });
+      let status = await host.taskStatus(receipt.omni_task_id);
+      for (
+        let i = 0;
+        i < 600 && !(TERMINAL_STATES as readonly string[]).includes(String(status.status));
+        i += 1
+      ) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        status = await host.taskStatus(receipt.omni_task_id);
+      }
+      if (status.status !== "succeeded") {
+        await shell.workRecordAnalyzeFailed(recordId).catch(() => undefined);
+        finish("；任务候选未生成：" + status.status);
+        return;
+      }
+      const result = await host.taskResult(receipt.omni_task_id);
+      if (!result.content.trim()) {
+        await shell.workRecordAnalyzeFailed(recordId).catch(() => undefined);
+        finish("；任务候选未生成：模型没有返回结果。");
+        return;
+      }
+      const applied = await shell.workRecordAnalyzeApply(recordId, result.content);
+      finish(
+        applied.staged.length > 0
+          ? "；已生成 " + applied.staged.length + " 条任务候选，请到工作记录页审核。"
+          : "；没有提取到任务候选。",
+      );
+    } catch (e) {
+      finish("；任务候选生成失败：" + String(e));
+    }
+  }, []);
+
+  /**
+   * OD-WR-105：落盘后统一分析一次：错误、缺项、任务建议；结果进入待回复状态。
+   * 记录正文已经保存，这里只产出文字，不写文件。
+   */
+  const analyzeRecordReview = useCallback(
+    async (
+      entry: {
+        recordId: string;
+        date: string;
+        week: string;
+        index: number;
+        text: string;
+      },
+      messageId: string,
+    ) => {
+      const finish = (detail: string) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, text: m.text.replace("\n模型分析中…", "") + detail }
+              : m,
+          ),
+        );
+      if (!preset) return;
+      try {
+        const weekRead = await shell.worklogReadWeek();
+        const index = buildWorklogIndex(weekRead.content, weekRead.week);
+        const promptText =
+          composeConversationPrompt({
+            preset,
+            turns: [],
+            current: entry.text,
+            mode: "note",
+            noteIndex: {
+              week: weekRead.week,
+              today: entry.date,
+              entries: describeIndex(index, entry.date),
+            },
+          }) +
+          "\n\n补充说明：这条记录已由工作台原文保存到 " +
+          entry.date +
+          "；不要输出 append/merge/move。请判断：1）原文是否有与事实冲突或明显错误 2）缺少哪些要素（时间、地点、人物、事件、影响、感受）3）是否包含可执行任务。先用一两句话说明，然后单独一行输出 <omnidesk-review>{\"errors\":[],\"missing\":[],\"task\":{\"suggest\":false,\"title\":\"\"},\"question\":\"\"}</omnidesk-review>。";
+        const workspace = await shell.prepareWorkspaceDir();
+        if (!workspace.ok || !workspace.workspace_dir) return;
+        const receipt = await host.submitTask({
+          promptText,
+          intent: "weekly_report",
+          workspaceDir: workspace.workspace_dir,
+          userInputText: entry.text,
+        });
+        let status = await host.taskStatus(receipt.omni_task_id);
+        for (
+          let i = 0;
+          i < 300 && !(TERMINAL_STATES as readonly string[]).includes(String(status.status));
+          i += 1
+        ) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          status = await host.taskStatus(receipt.omni_task_id);
+        }
+        if (status.status !== "succeeded") {
+          finish("\n分析未完成：" + status.status + (status.note ? " · " + status.note : ""));
+          return;
+        }
+        const result = await host.taskResult(receipt.omni_task_id);
+        const split = splitRecordReview(result.content);
+        const lines: string[] = [];
+        if (split.visible) lines.push(split.visible);
+        if (split.review) {
+          if (split.review.errors.length > 0) {
+            lines.push("错误提醒：" + split.review.errors.join("；"));
+          }
+          if (split.review.missing.length > 0) {
+            lines.push("建议补充：" + split.review.missing.join("、"));
+          }
+          if (split.review.task.suggest && split.review.task.title) {
+            lines.push("发现任务：" + split.review.task.title + "。要创建任务吗？回复「创建」或「不用」。");
+          }
+          if (split.review.question) lines.push(split.review.question);
+        }
+        finish(
+          lines.length > 0
+            ? "\n" + lines.join("\n")
+            : "\n分析完成：这条记录没有需要补充的内容。",
+        );
+        if (
+          split.review &&
+          (split.review.task.suggest || split.review.errors.length > 0 ||
+            split.review.missing.length > 0 || split.review.question)
+        ) {
+          pendingReviewRef.current = {
+            recordId: entry.recordId,
+            date: entry.date,
+            entryIndex: entry.index,
+            week: entry.week,
+            index: entry.index,
+            text: entry.text,
+            taskTitle: split.review.task.title,
+          };
+        }
+      } catch (e) {
+        finish("\n分析失败：" + String(e));
+      }
+    },
+    [preset],
+  );
+
   const settleNote = useCallback(async (taskId: string, content: string): Promise<string | null> => {
     const ctx = notePendingRef.current.get(taskId);
     if (!ctx || ctx.done) return null;
@@ -2540,6 +2697,149 @@ export function HomeChat({
       // 声明在 try 之外，失败分支要能把「已落盘」和「模型失败」两件事分开说。
       const weeklyScene = preset?.key === "weekly";
       const intent: WorkIntent | null = weeklyScene ? detectWorkIntent(text) : null;
+
+      // 刚写完的记录：用户下一句若是补充/修正，交给模型做 merge/move，
+      // 不再当成新记录；若是明确要建任务，直接走候选提取。
+      let pendingHint = "";
+      const pendingReview = pendingReviewRef.current;
+      if (pendingReview) {
+        pendingReviewRef.current = null;
+        if (/(不用|不要|取消|不建|算了)/.test(text)) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              local: true,
+              state: "succeeded",
+              text: "好的，不创建任务。",
+            },
+          ]);
+          setBusy(false);
+          setStarting(false);
+          return true;
+        }
+        if (/(创建任务|建个任务|加入项目|生成任务|创建|建一个)/.test(text)) {
+          const title = (pendingReview.taskTitle || "").trim();
+          if (title) {
+            try {
+              const saved = await shell.taskCreate({
+                title,
+                source_record_id: pendingReview.recordId,
+                source_quote: pendingReview.text,
+              });
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: nextId(),
+                  role: "assistant",
+                  local: true,
+                  state: "succeeded",
+                  text: "已创建任务：" + saved.task.title + "。去「项目跟踪 → 任务」查看；关联项目后会显示在对应项目下。",
+                },
+              ]);
+            } catch (e) {
+              setMessages((prev) => [
+                ...prev,
+                { id: nextId(), role: "assistant", text: "", error: "创建任务失败：" + String(e) },
+              ]);
+            }
+            setBusy(false);
+            setStarting(false);
+            return true;
+          }
+          const noticeId = nextId();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: noticeId,
+              role: "assistant",
+              local: true,
+              state: "succeeded",
+              text: "已按这条记录生成任务候选，请到「项目跟踪 → 任务」审核。",
+            },
+          ]);
+          setBusy(false);
+          setStarting(false);
+          void analyzeRecordAfterWrite(pendingReview.recordId, noticeId);
+          return true;
+        }
+        pendingHint =
+          "上一轮刚由工作台保存的记录：" +
+          pendingReview.date +
+          " 第 " +
+          (pendingReview.entryIndex + 1) +
+          " 条（" +
+          pendingReview.recordId +
+          "）。用户这句话是在补充或修正它：优先用 merge 或 move 指向该条，不要重复 append。";
+      }
+
+      // OD-WR-105：陈述句先原文落盘，不调模型。
+      // 记录不再依赖模型的判定块；需要整理、查重或生成周报时才调用模型。
+      if (!pendingReview && intent === "note" && isPlainStatementNote(text)) {
+        const guess = extractEntryDate(text, new Date(), tzOffsetRef.current);
+        const targetDate = guess?.date ?? todayDateKey(new Date(), tzOffsetRef.current);
+        try {
+          const receipt = await shell.worklogAppend(text, undefined, targetDate);
+          if (receipt.ok && receipt.appended) {
+            const recordMessageId = nextId();
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: recordMessageId,
+                role: "assistant",
+                local: true,
+                state: "succeeded",
+text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
+              },
+            ]);
+            setBusy(false);
+            setStarting(false);
+            if (receipt.record_id) {
+              pendingReviewRef.current = {
+                recordId: receipt.record_id,
+                date: receipt.date,
+                entryIndex: receipt.entry_index,
+                week: receipt.week,
+                index: receipt.entry_index,
+                text,
+                taskTitle: "",
+              };
+              void analyzeRecordReview(
+                {
+                  recordId: receipt.record_id,
+                  date: receipt.date,
+                  week: receipt.week,
+                  index: receipt.entry_index,
+                  text,
+                },
+                recordMessageId,
+              );
+            }
+            return true;
+          }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "",
+              error: "本地记录失败：" + (receipt.error || "宿主未确认写入"),
+            },
+          ]);
+          setBusy(false);
+          setStarting(false);
+          return false;
+        } catch (e) {
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: "assistant", text: "", error: "本地记录失败：" + String(e) },
+          ]);
+          setBusy(false);
+          setStarting(false);
+          return false;
+        }
+      }
       let worklogNotice: string | null = null;
       /**
        * OD-ARCH-104：随手记交给模型的当周索引与上下文。等任务号回来后放进
@@ -2581,10 +2881,26 @@ export function HomeChat({
           // 判定到达之前，这一轮不写任何文件。
           const weekRead = await shell.worklogReadWeek();
           const today = todayDateKey(new Date(), tzOffsetRef.current);
-          const index = buildWorklogIndex(weekRead.content);
+          let index = buildWorklogIndex(weekRead.content, weekRead.week);
+          const prevLabel = previousWeekLabel(weekRead.week);
+          if (prevLabel) {
+            try {
+              const prevRead = await shell.worklogReadWeek(prevLabel);
+              if (prevRead.content.trim()) {
+                const prevIndex = buildWorklogIndex(prevRead.content, prevRead.week);
+                index = {
+                  week: weekRead.week,
+                  entries: [...prevIndex.entries, ...index.entries],
+                };
+              }
+            } catch {
+              // 上一周读不到就只用本周索引，不阻断记录。
+            }
+          }
           noteContext = { userText: text, week: weekRead.week, today, index };
           worklogNotice =
-            "已读出 " + weekRead.week + " 的 " + index.entries.length + " 条记录，交给模型判断这句该怎么记。";
+            "已读出 " + weekRead.week + (prevLabel ? " 与 " + prevLabel : "") + " 的 " +
+            index.entries.length + " 条记录，交给模型判断这句该怎么记。";
         } else if (intent === "report") {
           try {
             const week = await shell.worklogReadWeek();
@@ -2753,8 +3069,11 @@ export function HomeChat({
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
         // 扫描用户原始输入，而不是拼好之后的完整提示词）。
+        const promptTextWithPending = pendingHint
+          ? promptText + "\n\n" + pendingHint
+          : promptText;
         const receipt = await host.submitTask({
-          promptText,
+          promptText: promptTextWithPending,
           workspaceDir: dir,
           // OD-ARCH-088：把当前生效场景的 scenario 透传给宿主；无场景时保持既有默认值
           // （不传 intent，由 api 层回落 material_writing）。

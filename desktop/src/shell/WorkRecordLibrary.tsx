@@ -1254,8 +1254,10 @@ export function WorkRecordLibrary({
                                             onClick={() => void openSummaryRecord(id)}
                                             data-daily-summary-record={id}
                                             className="wr-ref-chip"
+                                            title={id}
+                                            aria-label="查看引用记录"
                                           >
-                                            #{id}
+                                            <Icon name="note" className="h-3 w-3" />
                                           </button>
                                         ))}
                                       </div>

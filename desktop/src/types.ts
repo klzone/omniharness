@@ -798,6 +798,8 @@ export interface WorklogAppendReceipt {
   masked: boolean;
   masked_id_card: number;
   masked_phone: number;
+  /** 新建的正式记录编号（wr-…）；旧文件路径可能为空。 */
+  record_id?: string;
   /** 这条记录在该日期段内的第几条（0 起）；改日期时用它定位。 */
   entry_index: number;
   /** 实际落盘的正文（可能已掩码）；改日期时原样带回做一致性校验。 */

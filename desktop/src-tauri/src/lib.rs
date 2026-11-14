@@ -5437,7 +5437,7 @@ fn worklog_append(
         .map(str::trim)
         .filter(|d| !d.is_empty());
     if let Some(day) = requested {
-        if let Err(message) = worklog::assert_entry_date(&week, day, &today) {
+        if let Err(message) = worklog::assert_backfill_date(day, &today, worklog::BACKFILL_DAYS) {
             return serde_json::json!({
                 "ok": false,
                 "path": null,
@@ -5523,19 +5523,20 @@ fn worklog_append(
             ),
         });
     }
-    let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
+    // 本地保存原文：脱敏只作用于「发给模型」的文本，不在落盘时改写。
+    // 出站掩码由引擎侧负责，回复里的占位符再还原成本地原文。
     match quicklog::append(
         &root,
         &date,
-        &masked_text,
+        &text,
         destination.as_deref(),
         now,
         offset,
     ) {
         Ok(mut receipt) => {
-            receipt.masked = counts.any();
-            receipt.masked_id_card = counts.id_card;
-            receipt.masked_phone = counts.phone;
+            receipt.masked = false;
+            receipt.masked_id_card = 0;
+            receipt.masked_phone = 0;
             serde_json::json!(receipt)
         }
         Err(message) => serde_json::json!({
@@ -5546,9 +5547,9 @@ fn worklog_append(
             "appended": false,
             "was_new_file": false,
             "continued": false,
-            "masked": counts.any(),
-            "masked_id_card": counts.id_card,
-            "masked_phone": counts.phone,
+            "masked": false,
+            "masked_id_card": 0,
+            "masked_phone": 0,
             "entry_index": 0,
             "entry_text": "",
             "error": message,
@@ -5769,24 +5770,23 @@ fn worklog_merge(
             (0, 0, false),
         );
     }
-    let (masked_text, counts) = profile_rules::mask_privacy(&text, &policy);
-    let counts = (counts.id_card, counts.phone, counts.any());
+    // 并入同样保存原文；脱敏只在出站时做。
     match quicklog::merge(
         &root,
         &week,
         &date,
         index,
         &expect_text,
-        &masked_text,
+        &text,
         task_shell::now_secs(),
     ) {
         Ok(mut receipt) => {
-            receipt.masked = counts.2;
-            receipt.masked_id_card = counts.0;
-            receipt.masked_phone = counts.1;
+            receipt.masked = false;
+            receipt.masked_id_card = 0;
+            receipt.masked_phone = 0;
             serde_json::json!(receipt)
         }
-        Err(message) => failure(Some(path), message, counts),
+        Err(message) => failure(Some(path), message, (0, 0, false)),
     }
 }
 

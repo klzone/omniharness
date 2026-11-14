@@ -58,7 +58,7 @@ check("sunday_is_today", sunday && sunday.date === "2026-11-01", sunday && sunda
 const sat = guess("昨天下午开了个会", SUN);
 check("sunday_yesterday_same_week", sat && sat.date === "2026-10-31", sat && sat.date);
 // 5) 跨周的相对日不猜
-check("monday_yesterday_cross_week", guess("昨天下午开了个会", MON) === null, "昨天跨到 W43");
+check("monday_yesterday_cross_week", (guess("昨天下午开了个会", MON) || {}).date === "2026-10-25", "昨天跨周应落到 10-25");
 // 6) 明确日期优先于星期
 const explicit = guess("10月27日（周二）对接系统方", WED);
 check("explicit_date_wins", explicit && explicit.date === "2026-10-27", explicit && explicit.date);
@@ -132,7 +132,7 @@ def main() -> int:
     # ---- 静态：宿主 ----
     check("lib_redate_command", "fn worklog_redate(" in lib)
     check("lib_registers_redate", "worklog_redate," in lib)
-    check("lib_validates_entry_date", "worklog::assert_entry_date(&week, day, &today)" in lib)
+    check("lib_validates_entry_date", "worklog::assert_backfill_date(day, &today, worklog::BACKFILL_DAYS)" in lib)
     check("lib_append_failures_have_shape", lib.count('"entry_index": 0,') >= 5)
     check("worklog_assert_entry_date", "pub fn assert_entry_date" in worklog)
     check("worklog_move_entry", "pub fn move_entry(" in worklog)
@@ -144,9 +144,9 @@ def main() -> int:
         and 'format!("## {date}（续）")' in worklog,
     )
     check("worklog_shared_commit", "fn commit_week_file(" in worklog)
-    check("worklog_conserves_items", "before_items != after_items" in worklog)
+    check("worklog_conserves_items", "after_items != before_items + expected_item_delta" in worklog)
     check("worklog_no_truncate", "truncate(true)" not in worklog)
-    check("worklog_rejects_cross_week", "跨周移动暂不支持" in worklog)
+    check("worklog_cross_week_move", "target_week" in worklog and "跨周目标" in worklog)
     check("intent_export_extract", "export function extractEntryDate(" in intent)
     check("intent_export_redate", "export function detectRedateInstruction(" in intent)
     check("intent_rejects_backreference_less", "backReference" in intent)

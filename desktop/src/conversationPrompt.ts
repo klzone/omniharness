@@ -359,11 +359,12 @@ export function composeConversationPrompt(input: {
     const indexLines = idx
       ? [
           "今天是 " + idx.today + "，当周文件是 " + idx.week + "。",
-          "当周已有记录（每行：日期 #序号 正文，序号从 0 起）：",
+          "已有记录（最近 14 天，每行：日期 #序号 正文，序号从 0 起）：",
           idx.entries.trim() || "（本周还没有记录）",
           "",
         ]
       : [];
+    indexLines.push("补录窗口：最近 14 天（含上一周）；用户给出日期时按该日期补录，跨周也照此。");
     const headLines = noteSkills.length > 0
       ? [
           "按下方「配套技能指引」处理用户这一句；需要落盘的内容按该指引约定的格式交回，",
@@ -372,6 +373,10 @@ export function composeConversationPrompt(input: {
       : ["本场景没有绑定技能：不要臆测判断口径，只用一句话说明你没有可用的处理指引。"];
     return [
       ...headLines,
+      "",
+      // 随手记只做判断：索引与技能正文已经在本消息里，模型不需要再读文件或联网。
+      "本轮只做判断，不要调用任何工具：read / grep / glob / bash / write / edit / skill 与联网工具都不要用；",
+      "下方已给出索引与技能指引，直接按它们输出判定块。",
       "",
       // 写盘边界对任何场景一致，属于平台契约，不下放给 Skill：
       // 模型没有文件通道，声称已写入只会误导用户。

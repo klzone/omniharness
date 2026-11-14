@@ -321,7 +321,7 @@ fn validate_candidate(
     if quote.chars().count() > MAX_QUOTE_CHARS {
         return Err(format!("第 {ordinal} 条候选的来源片段过长。"));
     }
-    if !record.body.contains(&quote) {
+    if !quote_matches_record(&record.body, &quote) {
         return Err(format!(
             "第 {ordinal} 条候选的来源片段不是记录正文的连续原文，已拒绝。"
         ));
@@ -505,7 +505,7 @@ fn validate_material_candidate(
     if quote.chars().count() > MAX_MATERIAL_QUOTE_CHARS {
         return Err(format!("第 {ordinal} 条素材候选的来源片段过长。"));
     }
-    if !record.body.contains(&quote) {
+    if !quote_matches_record(&record.body, &quote) {
         return Err(format!(
             "第 {ordinal} 条素材候选的来源片段不是记录正文的连续原文，已拒绝。"
         ));
@@ -1002,6 +1002,80 @@ fn mark_failed(root: &Path, record_id: &str, now: f64) {
 }
 
 /// 解析落地：校验 → 暂存候选 → 记录标记为已解析；任何失败只改状态。
+/// 出站脱敏会把人名换成「张** / 张**2」，模型会原样引用这段来源片段。
+/// 校验时把这类掩码当作姓名通配，其余字符仍必须逐字一致。
+fn quote_matches_record(body: &str, quote: &str) -> bool {
+    if body.contains(quote) {
+        return true;
+    }
+    let tokens = mask_tokens(quote);
+    if tokens.is_empty() {
+        return false;
+    }
+    let body_chars: Vec<char> = body.chars().collect();
+    match_tokens(&body_chars, &tokens)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum QuoteToken {
+    Literal(char),
+    NameMask(char),
+}
+
+fn is_cjk(ch: char) -> bool {
+    ('一'..='龥').contains(&ch)
+}
+
+fn mask_tokens(quote: &str) -> Vec<QuoteToken> {
+    let chars: Vec<char> = quote.chars().collect();
+    let mut tokens = Vec::with_capacity(chars.len());
+    let mut index = 0usize;
+    while index < chars.len() {
+        let ch = chars[index];
+        if is_cjk(ch) && index + 2 < chars.len() && chars[index + 1] == '*' && chars[index + 2] == '*' {
+            tokens.push(QuoteToken::NameMask(ch));
+            index += 3;
+            while index < chars.len() && chars[index].is_ascii_digit() {
+                index += 1;
+            }
+            continue;
+        }
+        tokens.push(QuoteToken::Literal(ch));
+        index += 1;
+    }
+    tokens
+}
+
+fn match_tokens(body: &[char], tokens: &[QuoteToken]) -> bool {
+    fn walk(body: &[char], bi: usize, tokens: &[QuoteToken], ti: usize) -> bool {
+        if ti == tokens.len() {
+            return true;
+        }
+        match tokens[ti] {
+            QuoteToken::Literal(ch) => {
+                bi < body.len() && body[bi] == ch && walk(body, bi + 1, tokens, ti + 1)
+            }
+            QuoteToken::NameMask(ch) => {
+                if bi >= body.len() || body[bi] != ch {
+                    return false;
+                }
+                if bi + 1 < body.len() && is_cjk(body[bi + 1]) && walk(body, bi + 2, tokens, ti + 1) {
+                    return true;
+                }
+                if bi + 2 < body.len()
+                    && is_cjk(body[bi + 1])
+                    && is_cjk(body[bi + 2])
+                    && walk(body, bi + 3, tokens, ti + 1)
+                {
+                    return true;
+                }
+                false
+            }
+        }
+    }
+    walk(body, 0, tokens, 0)
+}
+
 pub fn apply_analysis(
     root: &Path,
     record_id: &str,
@@ -1931,4 +2005,14 @@ mod tests {
         let read = read_material_candidate(temp.root(), &listing.items[0].id).unwrap();
         assert_eq!(read.fingerprint, listing.items[0].fingerprint);
     }
+
+    #[test]
+    fn quote_allows_masked_names() {
+        assert!(quote_matches_record("与张瑞山同志谈话，记录要点。", "与张**同志谈话，记录要点。"));
+        assert!(quote_matches_record("涉案人员张瑞山及张伟。", "涉案人员张**及张**2。"));
+        assert!(quote_matches_record("原句完全一致。", "原句完全一致。"));
+        assert!(!quote_matches_record("与张瑞山同志谈话。", "与李**同志谈话。"));
+        assert!(!quote_matches_record("与张瑞山同志谈话。", "与张**开会。"));
+    }
+
 }

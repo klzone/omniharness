@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { openExternalUrl } from "../api";
+import { stripRecordRefs } from "../displayText";
 
 /**
  * 消息正文的 Markdown 渲染（OD-ARCH-081 S3 / OD-ARCH-084 S1）。
@@ -143,6 +144,8 @@ export function MarkdownText({
   highlightQuery?: string;
 }) {
   const cls = tone === "onPrimary" ? "md-body md-compact md-on-primary" : "md-body";
+  // 记录/任务引用编号只用于宿主校验，不在任何界面正文里出现。
+  const body = stripRecordRefs(text);
   let ordinalCounter = 0;
   const nextOrdinal = () => ordinalCounter++;
   const highlight = (node: ReactNode) =>
@@ -206,7 +209,7 @@ export function MarkdownText({
             type === "checkbox" ? <input type="checkbox" checked={!!checked} disabled readOnly /> : null,
         }}
       >
-        {text}
+        {body}
       </ReactMarkdown>
     </div>
   );

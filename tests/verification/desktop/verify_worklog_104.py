@@ -129,7 +129,7 @@ r = mod.validateVerdict(
   { userText: user1, week: "2026-W44", today: "2026-10-28" },
   index,
 );
-check("reject_cross_week", r.ok === false && r.reason.includes("不在"), r.reason);
+check("reject_cross_week", r.ok === false && r.reason.includes("补录窗口"), r.reason);
 
 r = mod.validateVerdict(
   { append: [{ text: user1, date: "2026-10-30" }], move: [], note: "" },
@@ -241,12 +241,18 @@ def main() -> int:
     append_calls = [
         i for i in range(len(home)) if home.startswith("shell.worklogAppend(", i)
     ]
-    check("home_only_two_append_sites", len(append_calls) == 2, len(append_calls))
+    check("home_two_append_paths", len(append_calls) == 2, len(append_calls))
     check(
-        "home_appends_only_after_verdict",
-        all(exec_start < i < exec_end for i in append_calls),
+        "home_write_ahead_outside_settle",
+        any(i >= exec_end for i in append_calls),
         [home[max(0, i - 60):i][-40:] for i in append_calls],
     )
+    check(
+        "home_verdict_append_inside_settle",
+        any(exec_start < i < exec_end for i in append_calls),
+        len([i for i in append_calls if exec_start < i < exec_end]),
+    )
+    check("home_statement_gate", "isPlainStatementNote(text)" in home)
     check("home_validates_before_write", home.index("validateVerdict(verdict, ctx, ctx.index)") < home.index("shell.worklogMoveMany({"))
     check("home_uses_batch_move", "shell.worklogMoveMany({" in home)
     check("home_strips_verdict_buffer", "verdictDisplayText(text)" in home)
@@ -255,12 +261,12 @@ def main() -> int:
         "home_strips_before_settle",
         home.index("text: verdictDisplayText(m.text)") < home.index("await settleNote(taskId, finalText"),
     )
-    check("home_says_fallback", "模型未给出判定" in home and "未做指令识别" in home)
+    check("home_says_fail_closed", "这轮没有写入工作记录" in home and "按原文原样记录" not in home)
     check("home_local_receipt_label", '"工作台本地处理 · 未调用模型"' in home)
     check("home_cancel_writes_nothing", "本轮已取消，这句没有写入工作记录。" in home)
 
     # ---- 静态：提示词 ----
-    check("prompt_has_note_index", "noteIndex" in prompt and "当周已有记录" in prompt)
+    check("prompt_has_note_index", "noteIndex" in prompt and "最近 14 天" in prompt)
     check("prompt_keeps_skill_injection", '"配套技能指引（" + s.id + "）："' in prompt)
     # OD-ARCH-105：平台提示词只给数据 + 写盘边界，判断口径全部来自 Skill。
     # 运行时的「注意点提示词里没有业务词」由 verify_worklog_089 的探针断言
@@ -278,7 +284,7 @@ def main() -> int:
     check("lib_registers_move_many", "worklog_move_many," in lib)
     check("worklog_move_entries", "pub fn move_entries(" in worklog)
     check("worklog_batch_atomic", "locate_entry_block(&lines, &request.date, request.index, &request.expect_text)" in worklog)
-    check("worklog_batch_cross_week", "跨周移动暂不支持" in worklog)
+    check("worklog_batch_cross_week", "target_week" in worklog or "跨周目标" in worklog)
     check("worklog_batch_no_truncate", "truncate(true)" not in worklog)
 
     # ---- 静态：Skill ----

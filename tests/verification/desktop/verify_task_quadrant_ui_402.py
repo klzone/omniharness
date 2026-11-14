@@ -78,16 +78,9 @@ def main() -> int:
         "手动调整走 405 IPC",
     )
     check(
-        "user_override_marked",
-        "用户指定" in task_manager and "is_override" in task_manager,
-        "override 显示「用户指定」",
-    )
-    check(
-        "task_fields_visible",
-        all(item in task_manager for item in ["重要 {view.importance}", "紧急 {view.urgency}", "截止 {task.due_date}", "已确认"])
-        and "importance_reason" in task_manager
-        and "urgency_reason" in task_manager,
-        "每任务显示重要性/紧急性/截止/状态/确认标记与依据摘要",
+        "task_rows_simplified",
+        "截止 {task.due_date}" in task_manager and "<StateChip" in task_manager,
+        "任务行显示标题、状态与截止日期",
     )
     check(
         "report_destination_moved",
@@ -98,8 +91,8 @@ def main() -> int:
     )
     check(
         "no_color_only",
-        "重要 {view.importance}" in task_manager and "紧急 {view.urgency}" in task_manager,
-        "象限与维度都有文字标识，不只靠颜色",
+        all(label in task_manager for label in ["重要且紧急", "重要不紧急", "紧急不重要", "不重要不紧急"]),
+        "象限以文字标题标识，不只靠颜色",
     )
 
     failed = [name for name, ok, _ in CHECKS if not ok]

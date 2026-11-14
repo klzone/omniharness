@@ -33,6 +33,29 @@ _EMAIL_RE = re.compile(
     r"(?![A-Za-z0-9-])"
 )
 
+# 常见姓氏：用于「首字保留 + 星号」的人名掩码。不是姓名词典，
+# 只配合上下文线索使用，宁可少遮也不误遮普通词。
+_SURNAMES = (
+    "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜"
+    "戚谢邹喻柏水窦章苏潘葛范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑"
+    "薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元顾孟平黄和穆萧尹"
+    "姚邵汪祁毛禹狄米贝明臧计伏成戴谈宋庞熊纪舒屈项祝董梁杜阮蓝闵席季"
+    "麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万柯管卢莫"
+    "房裘解应宗丁宣邓郁单杭洪包诸左石崔吉龚程邢裴陆荣翁荀羊惠甄曲封芮"
+    "储靳松井段富巫乌焦巴牧山谷车侯全班仰秋仲伊宫宁仇栾暴甘厉戎祖武符"
+    "刘景詹束龙叶幸司韶黎蓟薄印宿白怀蒲邰鄂索咸籍赖卓蔺屠蒙池乔闻莘党"
+    "翟谭贡劳姬申扶堵冉雍桑桂牛寿通边燕浦尚农温庄晏柴瞿阎慕连茹艾鱼容"
+    "向古易慎戈廖庾居衡步都耿满弘匡国文寇广禄阙东欧沃利蔚越隆师巩聂晁"
+)
+_NAME_BEFORE_RE = re.compile(
+    r"(?:与|和|同|跟|向|对|给|找|叫|由|让|请|联系|询问|约谈|谈话|同事|"
+    r"人员|负责人|联系人|姓名|对象)\s*[:：]?\s*([" + _SURNAMES + r"][一-龥]{1,2})"
+)
+_NAME_AFTER_RE = re.compile(
+    r"([" + _SURNAMES + r"][一-龥]{1,2})(?:同志|主任|书记|行长|经理|科长|"
+    r"局长|处长|部长|队长|院长|所长|厂长|组长|老师|主席)"
+)
+
 _ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
 _ID_CHECK_CODES = "10X98765432"
 
@@ -308,6 +331,16 @@ class DataMasker:
         for match in _PHONE_RE.finditer(text):
             value = match.group(0)
             out.append(_Candidate("PHONE", match.start(), match.end(), value, value, 2))
+        # 人名：只在有明确人物上下文时遮，避免把「高效」「关于」误当姓名。
+        seen_names = set()
+        for pattern in (_NAME_BEFORE_RE, _NAME_AFTER_RE):
+            for match in pattern.finditer(text):
+                value = match.group(1)
+                if value in seen_names:
+                    continue
+                seen_names.add(value)
+                start = match.start(1)
+                out.append(_Candidate("NAME", start, start + len(value), value, value, 4))
         # 先看有没有 @：1MB 的普通文本不必让邮箱正则逐字符回溯。
         if "@" in text:
             for match in _EMAIL_RE.finditer(text):
@@ -344,13 +377,34 @@ class DataMasker:
                 return candidate
         raise RuntimeError("占位符生成冲突超过 1000 次")
 
+    @staticmethod
+    def _name_placeholder(value: str, used: Set[str]) -> str:
+        """人名占位：保留首字，其余用星号；重名加序号（张**、张**2…）。"""
+        base = (value[:1] or "某") + "**"
+        if base not in used:
+            return base
+        for index in range(2, 1000):
+            candidate = base + str(index)
+            if candidate not in used:
+                return candidate
+        raise RuntimeError("人名占位符生成冲突超过 1000 次")
+
     def mask(self, text: Optional[str], session: Optional[SessionScope] = None) -> MaskResult:
         if text is None:
             text = ""
         if not isinstance(text, str):
             raise TypeError("text 必须是 str 或 None")
         warn: Tuple[str, ...] = (self._dictionary_warn,) if self._dictionary_warn else ()
-        candidates = self._match_rules(text) + self._match_dictionary(text)
+        rules = self._match_rules(text)
+        dictionary = self._match_dictionary(text)
+        # 词典里已经登记的人名优先：启发式命中同一片段时让位，避免把
+        # 「与 林青禾」从 [PERSON_…] 改成 林**。
+        dict_spans = {(c.start, c.end) for c in dictionary}
+        rules = [
+            c for c in rules
+            if not (c.type == "NAME" and (c.start, c.end) in dict_spans)
+        ]
+        candidates = rules + dictionary
         candidates.sort(key=lambda c: (c.start, -c.length, c.priority, c.order))
 
         accepted: List[_Candidate] = []
@@ -377,7 +431,10 @@ class DataMasker:
             else:
                 used = set(session._placeholders) if session is not None else set()
                 used.update(local_used)
-                placeholder = self._placeholder(candidate.type, used)
+                if candidate.type == "NAME":
+                    placeholder = self._name_placeholder(candidate.canonical, used)
+                else:
+                    placeholder = self._placeholder(candidate.type, used)
                 local_entities[key] = placeholder
                 local_used.add(placeholder)
                 if session is not None:
@@ -436,6 +493,21 @@ class DataMasker:
         restored = 0
         unknown: List[str] = []
         exact_spans: List[Tuple[int, int]] = []
+        # 人名占位是「张** / 张**2」这种普通文本形式，先按映射整段还原。
+        name_pairs = [
+            (placeholder, entry.original)
+            for placeholder, entry in mapping._entries
+            if entry.type == "NAME"
+        ]
+        if name_pairs:
+            text_after_names = masked
+            for placeholder, original in sorted(
+                name_pairs, key=lambda pair: len(pair[0]), reverse=True
+            ):
+                if placeholder in text_after_names:
+                    restored += text_after_names.count(placeholder)
+                    text_after_names = text_after_names.replace(placeholder, original)
+            masked = text_after_names
         for match in _PLACEHOLDER_RE.finditer(masked):
             exact_spans.append((match.start(), match.end()))
             pieces.append(masked[cursor:match.start()])

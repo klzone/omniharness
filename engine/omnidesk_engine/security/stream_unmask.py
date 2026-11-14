@@ -15,6 +15,8 @@ PLACEHOLDER_RE = re.compile(
     r"\[(?:IDCARD|BANKCARD|PHONE|EMAIL|PERSON|BRANCH|ORG|CUSTOM)_[0-9A-F]{8}\]"
 )
 _PARTIAL_TAIL_RE = re.compile(r"\[(?:[A-Z]{0,8})?(?:_[0-9A-F]{0,8})?$")
+# 人名占位是普通文本（张** / 张**2），流式里可能被切在星号或序号中间。
+_NAME_TAIL_RE = re.compile(r"[一-龥]\*{1,2}\d*$")
 _MAX_HOLD_CHARS = 80
 
 
@@ -73,6 +75,12 @@ class StreamUnmasker:
     def _hold_start(text: str) -> Optional[int]:
         """只缓存最后一个可能是占位符开头、且还没有闭合的尾部。"""
 
+        name_match = _NAME_TAIL_RE.search(text[-8:])
+        if name_match is not None:
+            return len(text) - len(name_match.group(0))
+        # 人名占位可能刚露出一个姓字，下一帧才是星号：先留住最后一个汉字。
+        if text and "一" <= text[-1] <= "龥":
+            return len(text) - 1
         start = text.rfind("[")
         if start < 0:
             return None
