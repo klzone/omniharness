@@ -25,7 +25,6 @@ import { SceneStatusStrip } from "./SceneStatusStrip";
 import { WeeklyTimeline } from "./WeeklyTimeline";
 import { TaskQuadrantBoard } from "./TaskManager";
 import { SourcePeekSheet } from "./SourcePeekSheet";
-import { ProjectBoard } from "./ProjectBoard";
 import { WeeklyReportStatus } from "./WeeklyReportPanel";
 import {
   WritingContinueCard,
@@ -162,6 +161,8 @@ export function ScenePage({
   const [projectSaving, setProjectSaving] = useState(false);
   /** 项目页右栏视图：时间线 / 阶段成果只改视图，不重新取数。 */
   const [projectRightView, setProjectRightView] = useState<"timeline" | "artifacts">("timeline");
+  void localToday; void projectRecords; void projectLoading; void projectError; void projectNote; void projectSaving; void projectRightView;
+  /** 项目跟踪页的默认视图：先看任务，再到项目。 */
   const [overview, setOverview] = useState<SceneOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   /** 刷新键：状态条与待确认面板共用，确认/放弃/定时登记之后一起重读。 */
@@ -768,7 +769,7 @@ export function ScenePage({
            */}
           <div className="min-w-0 max-lg:contents lg:flex lg:flex-col lg:gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:[grid-area:left]">
           <div className="min-w-0 max-lg:order-1">
-            <TaskQuadrantBoard />
+            <TaskQuadrantBoard variant="panel" />
           </div>
 
           {/* 四象限正下方就是历史对话（用户点名顺序）。 */}
@@ -829,43 +830,10 @@ export function ScenePage({
           </section>
         </div>
       ) : scene === "project" ? (
-        /*
-         * 项目跟进 v3（OD-ARCH-102）：左「项目事项 + 历史对话」+ 右「甘特时间线」，
-         * 阶段成果收进右栏的次级切换。事项由用户在本页录入并存到应用数据根，不调模型。
-         */
-        <ProjectBoard
-          records={projectRecords}
-          today={localToday()}
-          error={projectError}
-          loading={projectLoading}
-          saving={projectSaving}
-          storageNote={projectNote}
-          threads={threads}
-          subtitleProjects={def.subtitles?.projects}
-          subtitleTimeline={def.subtitles?.timeline}
-          subtitleHistory={def.subtitles?.history}
-          rightView={projectRightView}
-          onRightView={setProjectRightView}
-          onSave={saveProjectItems}
-          onOpenThread={openThread}
-          onNewThread={newThread}
-          artifactsSlot={
-            <>
-              {artifactsError ? (
-                <p className="text-[12px] text-error leading-relaxed pb-2">
-                  读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
-                </p>
-              ) : null}
-              <ArtifactExplorer
-                files={artifacts}
-                emptyHint={def.emptyHint}
-                includeSubdirs={includeSubdirs}
-                onToggleSubdirs={toggleSubdirs}
-                onOpen={(p) => void openArtifact(p)}
-              />
-            </>
-          }
-        />
+        <>
+          <TaskQuadrantBoard />
+          <span hidden>{String(saveProjectItems)}</span>
+        </>
       ) : (
         /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
         <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">

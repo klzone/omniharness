@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { shell } from "../api";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
 import type {
   AvailabilityConfig,
   ScheduleEntryView,
   ScheduleGenerateReport,
+  TaskDueKind,
   TaskImportance,
   TaskListing,
   TaskQuadrant,
@@ -811,18 +812,99 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
   );
 }
 
-export function TaskQuadrantBoard({ onNotice }: { onNotice?: (notice: Notice | null) => void }) {
+const NEU_TILE =
+  "bg-[#F9FAFD] shadow-[3px_3px_8px_rgba(160,175,200,0.22),-3px_-3px_8px_rgba(255,255,255,0.95)]";
+const NEU_CARD =
+  "bg-[#EFF3FA] shadow-[6px_6px_16px_rgba(156,173,199,0.30),-6px_-6px_16px_rgba(255,255,255,1)]";
+const NEU_CARD_STRONG =
+  "bg-[#F9FAFD] shadow-[9px_9px_24px_rgba(160,175,200,0.26),-9px_-9px_24px_rgba(255,255,255,1)]";
+const NEU_INSET =
+  "bg-[#E3E8F2] shadow-[inset_3px_3px_7px_rgba(160,175,200,0.28),inset_-3px_-3px_7px_rgba(255,255,255,0.95)]";
+const GRAD_BLUE = "bg-[linear-gradient(90deg,#22D3EE_0%,#3B82F6_100%)]";
+const AXIS = "text-[14px] font-semibold tracking-[0.08em] text-[#2B3242]";
+
+const QUADRANT_TONE: Record<string, { icon: IconName; color: string }> = {
+  Q1: { icon: "star", color: "text-[#3B82F6]" },
+  Q2: { icon: "calendar", color: "text-[#0EA5E9]" },
+  Q3: { icon: "clock", color: "text-[#F59E0B]" },
+  Q4: { icon: "book", color: "text-[#8B5CF6]" },
+};
+
+const QUADRANT_SHORT: Record<string, string> = {
+  Q1: "重要且紧急",
+  Q2: "重要不紧急",
+  Q3: "紧急不重要",
+  Q4: "不重要不紧急",
+  待评估: "待评估",
+};
+
+const RANGE_OPTIONS = [
+  { key: "1m", label: "1 个月", months: 1 },
+  { key: "3m", label: "3 个月", months: 3 },
+  { key: "6m", label: "半年", months: 6 },
+  { key: "1y", label: "1 年", months: 12 },
+] as const;
+type RangeKey = (typeof RANGE_OPTIONS)[number]["key"];
+
+/** 按标题关键词挑图标：只做视觉区分，不参与任务语义判断。 */
+function iconForTask(title: string, fallback: IconName): IconName {
+  if (/报告|方案|提纲|模板|纪要|文稿|材料表/.test(title)) return "note";
+  if (/台账|数据|核对|统计|分解表/.test(title)) return "checklist";
+  if (/记录|归档|整理|档案/.test(title)) return "folder";
+  if (/制度|知识|规范|要点/.test(title)) return "book";
+  if (/会议|复盘|列席|排期/.test(title)) return "calendar";
+  if (/报送|催办|汇报|上报/.test(title)) return "arrow-up";
+  return fallback;
+}
+
+function statePercent(state: WorkTaskState): number {
+  if (state === "已完成") return 100;
+  if (state === "进行中") return 55;
+  if (state === "暂停") return 35;
+  if (state === "已取消") return 0;
+  return 15;
+}
+
+function dayStart(value: string | Date): Date | null {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function mmdd(date: Date): string {
+  return date.getMonth() + 1 + "/" + date.getDate();
+}
+
+function isoDay(value: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+export function TaskQuadrantBoard({
+  onNotice,
+  variant = "page",
+}: {
+  onNotice?: (notice: Notice | null) => void;
+  variant?: "page" | "panel";
+}) {
   const [views, setViews] = useState<TaskQuadrantView[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleEntryView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [range, setRange] = useState<RangeKey>("1m");
   const [importanceDraft, setImportanceDraft] = useState<TaskImportance>("待评估");
-  const [importanceReason, setImportanceReason] = useState("");
   const [quadrantDraft, setQuadrantDraft] = useState<TaskQuadrant | "自动">("自动");
-  const [quadrantReason, setQuadrantReason] = useState("");
+  const [dueDraft, setDueDraft] = useState("");
+  const [dueKindDraft, setDueKindDraft] = useState<TaskDueKind>("target");
+  const [reasonDraft, setReasonDraft] = useState("");
+  const [editorError, setEditorError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localNotice, setLocalNotice] = useState<Notice | null>(null);
 
@@ -834,16 +916,11 @@ export function TaskQuadrantBoard({ onNotice }: { onNotice?: (notice: Notice | n
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([
-      shell.taskQuadrantViews(LOCAL_OFFSET_MINUTES()),
-      shell.taskList(),
-      shell.scheduleList(),
-    ])
-      .then(([quadrants, listing, schedules]) => {
+    Promise.all([shell.taskQuadrantViews(LOCAL_OFFSET_MINUTES()), shell.taskList()])
+      .then(([quadrants, listing]) => {
         if (!alive) return;
         setViews(quadrants);
         setTasks(listing.items);
-        setSchedule(schedules.items);
         setError(null);
       })
       .catch((e) => {
@@ -858,221 +935,707 @@ export function TaskQuadrantBoard({ onNotice }: { onNotice?: (notice: Notice | n
     };
   }, [tick]);
 
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEditing(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing]);
+
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
-  const byTask = useMemo(() => {
-    const map = new Map<string, ScheduleEntryView[]>();
-    for (const entry of schedule) {
-      if (entry.effective_status === "已取消" || entry.effective_status === "已调整") continue;
-      const list = map.get(entry.task_id) ?? [];
-      list.push(entry);
-      map.set(entry.task_id, list);
-    }
-    return map;
-  }, [schedule]);
+
+  const displayViews = useMemo(
+    () =>
+      views.map((view) =>
+        view.quadrant === "待评估" ? { ...view, quadrant: "Q2" as const } : view,
+      ),
+    [views],
+  );
+
+  const visibleViews = useMemo(() => {
+    const needle = query.trim();
+    if (!needle) return displayViews;
+    return displayViews.filter((view) => {
+      const title = taskMap.get(view.task_id)?.title ?? view.title;
+      return title.includes(needle);
+    });
+  }, [displayViews, query, taskMap]);
+
+  const completed = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.state === "已完成")
+        .slice()
+        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)),
+    [tasks],
+  );
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [tick]);
+
+  const stats = useMemo(() => {
+    const todayKey = isoDay(today.toISOString());
+    const created = tasks.filter((task) => isoDay(task.created_at) === todayKey).length;
+    const running = tasks.filter((task) => task.state === "进行中").length;
+    const done = tasks.filter((task) => task.state === "已完成").length;
+    const overdue = tasks.filter(
+      (task) =>
+        task.due_date &&
+        task.state !== "已完成" &&
+        task.state !== "已取消" &&
+        (dayStart(task.due_date)?.getTime() ?? Infinity) < today.getTime(),
+    ).length;
+    return { created, running, done, overdue };
+  }, [tasks, today]);
+
+  const timeline = useMemo(() => {
+    const totalMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 1;
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = new Date(start.getFullYear(), start.getMonth() + totalMonths, 1);
+    return { start, end, span: Math.max(1, end.getTime() - start.getTime()), totalMonths };
+  }, [range, today]);
+
+  const ticks = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, index) =>
+        new Date(timeline.start.getTime() + (timeline.span * index) / 6),
+      ),
+    [timeline],
+  );
+
+  const ganttRows = useMemo(() => {
+    const rows = tasks
+      .filter((task) => task.due_date)
+      .map((task) => {
+        const start = dayStart(task.created_at) ?? timeline.start;
+        const end = dayStart(task.due_date as string);
+        if (!end) return null;
+        const from = Math.max(start.getTime(), timeline.start.getTime());
+        const to = Math.min(end.getTime(), timeline.end.getTime());
+        if (to <= timeline.start.getTime() || from >= timeline.end.getTime()) return null;
+        const left = ((from - timeline.start.getTime()) / timeline.span) * 100;
+        const width = Math.max(2, ((to - from) / timeline.span) * 100);
+        return { task, left, width, clamped: end.getTime() >= timeline.end.getTime() };
+      })
+      .filter((row): row is { task: WorkTask; left: number; width: number; clamped: boolean } => row !== null)
+      .sort((a, b) => a.left - b.left);
+    return rows.slice(0, 8);
+  }, [tasks, timeline]);
+
+  const todayPercent = ((today.getTime() - timeline.start.getTime()) / timeline.span) * 100;
 
   function openEditor(view: TaskQuadrantView) {
     const task = taskMap.get(view.task_id);
     setEditing(view.task_id);
-    setImportanceDraft(view.importance);
-    setImportanceReason(task?.importance_reason ?? "");
+    setImportanceDraft(task?.importance ?? "待评估");
     setQuadrantDraft(task?.quadrant_override ?? "自动");
-    setQuadrantReason("");
+    setDueDraft(isoDay(task?.due_date ?? null));
+    setDueKindDraft(task?.due_kind ?? "target");
+    setReasonDraft("");
+    setEditorError(null);
     announce(null);
   }
 
-  async function saveImportance(id: string) {
+  async function saveEditor() {
+    if (!editing) return;
+    const task = taskMap.get(editing);
+    if (!task) return;
+    const reason = reasonDraft.trim();
+    const importanceChanged = importanceDraft !== task.importance;
+    const quadrantChanged = (task.quadrant_override ?? "自动") !== quadrantDraft;
+    const currentDue = isoDay(task.due_date);
+    const dueChanged = currentDue !== dueDraft || (Boolean(dueDraft) && dueKindDraft !== task.due_kind);
+    if (!importanceChanged && !quadrantChanged && !dueChanged) {
+      setEditing(null);
+      return;
+    }
+    if ((importanceChanged || dueChanged) && !reason) {
+      setEditorError("调整重要性或截止日期时需要填写理由。");
+      return;
+    }
     setBusy(true);
-    announce(null);
+    setEditorError(null);
     try {
-      await shell.taskSetImportance(id, importanceDraft, importanceReason.trim());
-      announce({ kind: "ok", text: "重要性已更新，并记录调整理由。" });
+      if (importanceChanged) await shell.taskSetImportance(editing, importanceDraft, reason);
+      if (quadrantChanged) {
+        await shell.taskSetQuadrant(editing, quadrantDraft === "自动" ? null : quadrantDraft, reason || undefined);
+      }
+      if (dueChanged) {
+        await shell.taskSetDue(editing, dueDraft || null, dueKindDraft, reason);
+      }
+      announce({ kind: "ok", text: "任务已更新。" });
       setEditing(null);
       setTick((n) => n + 1);
     } catch (e) {
-      announce({ kind: "err", text: errText(e) });
+      setEditorError(errText(e));
     } finally {
       setBusy(false);
     }
   }
 
-  async function saveQuadrant(id: string) {
-    setBusy(true);
-    announce(null);
-    try {
-      await shell.taskSetQuadrant(
-        id,
-        quadrantDraft === "自动" ? null : quadrantDraft,
-        quadrantReason.trim() || undefined,
-      );
-      announce({ kind: "ok", text: "象限已更新。" });
-      setEditing(null);
-      setTick((n) => n + 1);
-    } catch (e) {
-      announce({ kind: "err", text: errText(e) });
-    } finally {
-      setBusy(false);
-    }
+  const editingTask = editing ? taskMap.get(editing) ?? null : null;
+  const compact = variant === "panel";
+
+  const arrowUp = (
+    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[#AEB9CC]" />
+  );
+  const arrowDown = (
+    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[#AEB9CC]" />
+  );
+  const arrowLeft = (
+    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[#AEB9CC]" />
+  );
+  const arrowRight = (
+    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#AEB9CC]" />
+  );
+
+  const matrix = (
+    <div
+      className="grid w-full"
+      style={{
+        gridTemplateColumns: "26px minmax(0,1fr) 20px minmax(0,1fr)",
+        gridTemplateRows: compact
+          ? "20px 126px 18px 126px"
+          : "26px 178px 20px 178px",
+      }}
+    >
+      <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 2, gridRow: 1 }}>
+        紧急
+      </span>
+      <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 4, gridRow: 1 }}>
+        不紧急
+      </span>
+      <span
+        className={AXIS + " flex items-center justify-center [writing-mode:vertical-rl] [text-orientation:upright]"}
+        style={{ gridColumn: 1, gridRow: 2, letterSpacing: "0.3em" }}
+      >
+        重要
+      </span>
+      <span
+        className={AXIS + " flex items-center justify-center [writing-mode:vertical-rl] [text-orientation:upright]"}
+        style={{ gridColumn: 1, gridRow: 4, letterSpacing: "0.3em" }}
+      >
+        不重要
+      </span>
+
+      <div
+        aria-hidden="true"
+        className="flex flex-col items-center justify-center gap-0.5"
+        style={{ gridColumn: 3, gridRow: "2 / 5" }}
+      >
+        {arrowUp}
+        <span className="w-px flex-1 bg-[#C9D3E4]" />
+        {arrowDown}
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="flex items-center justify-center gap-0.5"
+        style={{ gridColumn: "2 / 5", gridRow: 3 }}
+      >
+        {arrowLeft}
+        <span className="h-px flex-1 bg-[#C9D3E4]" />
+        {arrowRight}
+      </div>
+
+      {QUADRANT_COLUMNS.slice(0, 4).map((column) => {
+        const items = visibleViews.filter((view) => view.quadrant === column.key);
+        const tone = QUADRANT_TONE[column.key] ?? QUADRANT_TONE.Q1;
+        const selected = column.key === "Q1";
+        const leftColumn = column.key === "Q1" || column.key === "Q3";
+        const topRow = column.key === "Q1" || column.key === "Q2";
+        return (
+          <section
+            key={column.key}
+            aria-label={column.label}
+            data-quadrant-column={column.key}
+            style={{ gridColumn: leftColumn ? 2 : 4, gridRow: topRow ? 2 : 4 }}
+            className={
+              "relative flex min-w-0 flex-col overflow-hidden " +
+              (compact ? "rounded-[18px] px-3.5 py-3 " : "rounded-[22px] px-5 py-4 ") +
+              (selected ? NEU_CARD_STRONG : NEU_CARD)
+            }
+          >
+            {selected ? (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-6 left-0 top-6 w-[3px] rounded-r-[3px] bg-[linear-gradient(180deg,#22D3EE,#3B82F6)]"
+              />
+            ) : null}
+            <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
+              {items.length === 0 ? (
+                <p className="m-auto text-[11px] text-[#A6AEBF]">暂无任务</p>
+              ) : (
+                items.map((view) => {
+                  const task = taskMap.get(view.task_id);
+                  const percent = statePercent(task?.state ?? "待开始");
+                  return (
+                    <article key={view.task_id} data-task-quadrant-row={view.task_id} className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditor(view)}
+                        title={view.title}
+                        className={
+                          "grid w-full items-center rounded-2xl bg-[linear-gradient(180deg,#FFFFFF_0%,#F5F9FF_100%)] text-left transition " +
+                          "shadow-[6px_6px_14px_rgba(146,164,193,0.34),-6px_-6px_14px_rgba(255,255,255,1),inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(186,200,222,0.45)] " +
+                          "hover:-translate-y-px hover:shadow-[8px_8px_18px_rgba(146,164,193,0.42),-7px_-7px_16px_rgba(255,255,255,1)] " +
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]/40 " +
+                          (compact
+                            ? "grid-cols-[26px_minmax(0,1fr)] gap-2 px-2 py-1.5"
+                            : "grid-cols-[34px_minmax(0,1fr)_auto] gap-3 px-3 py-2.5")
+                        }
+                      >
+                        <span
+                          className={
+                            "flex shrink-0 items-center justify-center bg-[#E9EEF8] " +
+                            "shadow-[inset_2px_2px_5px_rgba(148,166,194,0.48),inset_-2px_-2px_5px_rgba(255,255,255,1)] " +
+                            (compact ? "h-[26px] w-[26px] rounded-[8px] " : "h-[34px] w-[34px] rounded-[11px] ") +
+                            tone.color
+                          }
+                        >
+                          <Icon name={iconForTask(view.title, tone.icon)} className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                        </span>
+                        <span className="min-w-0">
+                          <span
+                            title={view.title}
+                            className={
+                              "block truncate font-semibold leading-snug text-[#2B3242] " +
+                              (compact ? "text-[12px]" : "text-[13.5px]")
+                            }
+                          >
+                            {view.title}
+                          </span>
+                          <span
+                            title={task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state}
+                            className={
+                              "mt-0.5 block truncate text-[10.5px] text-[#98A1B3] " + (compact ? "hidden" : "")
+                            }
+                          >
+                            {task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state ?? "待开始"}
+                          </span>
+                        </span>
+                        <span
+                          className={
+                            "mono shrink-0 rounded-full bg-[#3B82F6]/10 px-2.5 py-1 text-[10.5px] font-medium text-[#2563EB] " +
+                            (compact ? "hidden" : "")
+                          }
+                        >
+                          {percent}%
+                        </span>
+                      </button>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+
+  const gantt = (
+    <section aria-label="任务甘特图" className={"min-w-0 rounded-[24px] px-6 py-5 " + NEU_CARD_STRONG}>
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+        <span className="text-[11px] tracking-[0.14em] text-[#98A1B3]">时间范围</span>
+        <div className="flex gap-1.5">
+          {RANGE_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setRange(option.key)}
+              aria-pressed={range === option.key}
+              className={
+                "rounded-full px-3 py-1.5 text-[11px] transition " +
+                (range === option.key
+                  ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
+                  : NEU_TILE + " text-[#5B6579]")
+              }
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 pb-3">
+        <span />
+        <div className="grid grid-cols-7">
+          {ticks.map((day, index) => (
+            <span key={index} className="mono text-[10px] text-[#98A1B3]">
+              {mmdd(day)}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {ganttRows.length === 0 ? (
+        <p className="pt-2 text-[11.5px] text-[#A6AEBF]">当前范围内没有带截止日期的任务。</p>
+      ) : (
+        <div className="relative flex flex-col">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-2 bottom-0 w-px bg-[repeating-linear-gradient(180deg,rgba(59,130,246,0.5)_0_5px,transparent_5px_11px)]"
+            style={{
+              left: "calc(min(168px, 100% - 1px) + 16px + (100% - min(168px, 100% - 1px) - 16px) * " + Math.max(0, Math.min(1, todayPercent / 100)) + ")",
+            }}
+          />
+          {ganttRows.map(({ task, left, width, clamped }) => {
+            const percent = statePercent(task.state);
+            return (
+              <div
+                key={task.id}
+                data-task-gantt-row={task.id}
+                className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[#DCE3F0] py-2.5 last:border-b-0 last:pb-0"
+              >
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span title={task.title} className="truncate text-[12px] font-medium text-[#2B3242]">
+                    {task.title}
+                  </span>
+                  <span className="mono shrink-0 text-[10px] text-[#98A1B3]">{percent}%</span>
+                </div>
+                <div className="relative h-[9px] rounded-full bg-[#E3E8F2] shadow-[inset_0_1px_2px_rgba(140,160,190,0.4)]">
+                  <div
+                    className={
+                      "absolute top-0 h-[9px] bg-[linear-gradient(90deg,rgba(34,211,238,0.18),rgba(59,130,246,0.18))] " +
+                      (clamped ? "rounded-l-full" : "rounded-full")
+                    }
+                    style={{ left: left + "%", width: width + "%" }}
+                  >
+                    <div className={"h-[9px] rounded-full " + GRAD_BLUE} style={{ width: percent + "%" }} />
+                  </div>
+                  {clamped ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#3B82F6]/70"
+                    />
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
+  const statCards = [
+    {
+      key: "created",
+      label: "今日新增",
+      value: stats.created,
+      icon: "clock" as const,
+      tone: "text-[#0891B2]",
+      tint: ["#EAF8FD", "#CFEDF8"],
+    },
+    {
+      key: "running",
+      label: "进行中",
+      value: stats.running,
+      icon: "arrow-right" as const,
+      tone: "text-[#2563EB]",
+      tint: ["#EDF3FF", "#D6E4FB"],
+    },
+    {
+      key: "done",
+      label: "已完成",
+      value: stats.done,
+      icon: "check" as const,
+      tone: "text-[#0F766E]",
+      tint: ["#EAF8F4", "#CFEDE6"],
+    },
+    {
+      key: "overdue",
+      label: "逾期",
+      value: stats.overdue,
+      icon: "clock" as const,
+      tone: "text-[#B45309]",
+      tint: ["#FDF4E6", "#F7E3C6"],
+    },
+  ];
+
+  const statsPanel = (
+    <div className="grid grid-cols-2 gap-3">
+      {statCards.map((item) => (
+        <div key={item.key} className={"relative overflow-hidden rounded-[20px] px-4 py-4 " + NEU_CARD}>
+          <div className="flex items-center gap-3">
+            <span
+              className={"relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full " + item.tone}
+              style={{
+                background:
+                  "radial-gradient(140% 140% at 32% 20%, #FFFFFF 0%, " + item.tint[0] + " 46%, " + item.tint[1] + " 100%)",
+                boxShadow:
+                  "5px 5px 12px rgba(160,175,200,0.38), -5px -5px 12px rgba(255,255,255,1), inset 0 1px 1px rgba(255,255,255,0.95), inset 0 -2px 4px rgba(160,175,200,0.32)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[20%] top-[13%] h-[26%] w-[46%] rounded-full bg-white/80 blur-[1.5px]"
+              />
+              <Icon name={item.icon} className="relative h-[17px] w-[17px] drop-shadow-[0_1px_1px_rgba(59,130,246,0.25)]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[9.5px] font-medium tracking-[0.16em] text-[#949EB1] [text-shadow:0_1px_0_rgba(255,255,255,0.95)]">
+                {item.label}
+              </span>
+              <span className="mt-1 block text-[24px] font-semibold leading-none text-[#5D687E] [text-shadow:0_1px_0_rgba(255,255,255,0.95)]">
+                {item.value}
+              </span>
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const completedPanel = (
+    <aside aria-label="已完成任务" className={"rounded-[24px] px-5 py-4 " + NEU_CARD_STRONG}>
+      <h3 className="mono pb-3 text-[10px] tracking-[0.18em] text-[#98A1B3]">已完成</h3>
+      {completed.length === 0 ? (
+        <p className="text-[11px] text-[#A6AEBF]">暂无已完成任务。</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {completed.slice(0, 5).map((task) => (
+            <li key={task.id} className="flex items-center gap-3 rounded-xl px-1 py-2">
+              <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#22D3EE,#3B82F6)] text-white shadow-[0_3px_8px_rgba(59,130,246,0.28)]">
+                <Icon name="check" className="h-3 w-3" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[#2B3242]">
+                  {task.title}
+                </span>
+                <span className="mono mt-0.5 block text-[9.5px] text-[#A6AEBF]">{isoDay(task.updated_at)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+
+  if (variant === "panel") {
+    return (
+      <section aria-label="任务四象限" data-task-quadrant="" className="min-w-0">
+        {error ? (
+          <p className="mb-2 rounded-2xl bg-error-container/70 px-3 py-2 text-[11px] text-on-error-container">
+            读取四象限失败：{error}
+          </p>
+        ) : null}
+        {matrix}
+      </section>
+    );
   }
 
   return (
-    <section aria-label="任务四象限" data-task-quadrant="">
+    <section
+      aria-label="任务四象限"
+      data-task-quadrant=""
+      className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[30px] bg-[radial-gradient(120%_110%_at_50%_-10%,#F7FAFF_0%,#EEF1F7_55%,#E7ECF6_100%)] px-5 py-5 md:px-7 md:py-6"
+    >
+      <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-[#3B82F6]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-28 -left-20 h-64 w-64 rounded-full bg-[#22D3EE]/10 blur-3xl" />
+
+      <header className="relative flex flex-wrap items-end justify-between gap-4 pb-5">
+        <div>
+          <h2 className="text-[22px] font-semibold tracking-tight text-[#232A3A]">项目跟踪</h2>
+          <p className="mt-1.5 text-[11.5px] text-[#6B7488]">
+            {today.getFullYear()} 年 {today.getMonth() + 1} 月 {today.getDate()} 日
+          </p>
+        </div>
+        <label className={"flex h-10 w-[240px] items-center gap-2 rounded-full px-4 " + NEU_INSET}>
+          <Icon name="search" className="h-4 w-4 text-[#3B82F6]/80" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索任务"
+            className="w-full bg-transparent text-[12px] text-[#2B3242] placeholder:text-[#98A1B3] focus:outline-none"
+            aria-label="搜索任务"
+          />
+        </label>
+      </header>
+
       {localNotice ? (
         <p
           role="status"
           className={
-            "mb-3 rounded-2xl px-4 py-2 text-[11.5px] leading-relaxed " +
+            "relative mb-3 rounded-2xl px-4 py-2 text-[11.5px] leading-relaxed " +
             (localNotice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-surface-container text-on-surface-variant")
+              : "bg-white/80 text-[#5B6579]")
           }
         >
           {localNotice.text}
         </p>
       ) : null}
       {error ? (
-        <p className="mb-3 rounded-2xl bg-error-container/70 px-4 py-2 text-[11.5px] leading-relaxed text-on-error-container">
+        <p className="relative mb-3 rounded-2xl bg-error-container/70 px-4 py-2 text-[11.5px] leading-relaxed text-on-error-container">
           读取四象限失败：{error}
         </p>
       ) : null}
-      {loading ? <p className="mb-3 text-[12px] text-outline">正在读取任务…</p> : null}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 items-start">
-        {QUADRANT_COLUMNS.map((column) => {
-          const items = views.filter((view) => view.quadrant === column.key);
-          return (
-            <section
-              key={column.key}
-              aria-label={column.label}
-              data-quadrant-column={column.key}
-              className={CARD + " px-3 py-3 min-w-0"}
-            >
-              <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/25">
-                <h3 className="text-[13px] font-semibold tracking-tight text-on-surface">
-                  {column.key} · {column.label}
-                </h3>
-                <span className="mono text-[10px] text-outline ml-auto">{items.length}</span>
-              </div>
-              <p className="pt-1.5 text-[10.5px] text-outline">{column.hint}</p>
-              <div className="pt-2 flex flex-col gap-2">
-                {items.length === 0 ? (
-                  <p className="text-[11px] text-outline">暂无</p>
-                ) : (
-                  items.map((view) => {
-                    const task = taskMap.get(view.task_id);
-                    const entries = byTask.get(view.task_id) ?? [];
-                    const confirmed = entries.some(
-                      (entry) => entry.is_locked || entry.status === "已确认",
-                    );
-                    const suggested = entries.some((entry) => entry.status === "已建议");
-                    return (
-                      <article
-                        key={view.task_id}
-                        data-task-quadrant-row={view.task_id}
-                        className={
-                          "rounded-xl border border-outline-variant/40 bg-white/70 px-2.5 py-2 " +
-                          (view.active ? "" : "opacity-70")
-                        }
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="min-w-0 flex-1 text-[12px] font-medium leading-snug text-on-surface">
-                            {view.title}
-                          </span>
-                          {task ? <StateChip state={task.state} /> : null}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-on-surface-variant">
-                          <span className="rounded-full bg-surface-container px-1.5 py-0.5">重要 {view.importance}</span>
-                          <span className="rounded-full bg-surface-container px-1.5 py-0.5">紧急 {view.urgency}</span>
-                          {task?.due_date ? <span>截止 {task.due_date}</span> : null}
-                          {view.is_override ? (
-                            <span className="rounded-full bg-primary-fixed/70 px-1.5 py-0.5 text-on-primary-fixed-variant">
-                              用户指定
-                            </span>
-                          ) : null}
-                          {confirmed ? (
-                            <span className="rounded-full bg-secondary-container/70 px-1.5 py-0.5">已确认</span>
-                          ) : suggested ? (
-                            <span className="rounded-full bg-surface-container px-1.5 py-0.5">已建议</span>
-                          ) : null}
-                          {!view.active ? <span className="text-outline">不参与待办</span> : null}
-                        </div>
-                        <p className="mt-1 text-[10px] leading-relaxed text-outline line-clamp-2" data-hover-hint={view.urgency_reason}>
-                          {view.importance_reason ?? "重要性待评估"} · {view.urgency_reason}
-                        </p>
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <button
-                            className="text-[10.5px] text-primary hover:underline"
-                            onClick={() => openEditor(view)}
-                          >
-                            调整
-                          </button>
-                        </div>
-                        {editing === view.task_id ? (
-                          <div className="mt-2 pt-2 border-t border-surface-variant/25 flex flex-col gap-1.5">
-                            <label className="text-[10px] text-outline" htmlFor={`imp-${view.task_id}`}>
-                              重要性
-                            </label>
-                            <select
-                              id={`imp-${view.task_id}`}
-                              className={FIELD + " w-full"}
-                              value={importanceDraft}
-                              onChange={(e) => setImportanceDraft(e.target.value as TaskImportance)}
-                            >
-                              {IMPORTANCE_CHOICES.map((level) => (
-                                <option key={level} value={level}>{level}</option>
-                              ))}
-                            </select>
-                            <input
-                              className={FIELD + " w-full"}
-                              placeholder="理由（必填）"
-                              value={importanceReason}
-                              onChange={(e) => setImportanceReason(e.target.value)}
-                              aria-label="重要性理由"
-                            />
-                            <button
-                              className="self-start rounded-full bg-primary px-3 py-1 text-[10.5px] text-on-primary disabled:opacity-40"
-                              disabled={busy || !importanceReason.trim()}
-                              onClick={() => void saveImportance(view.task_id)}
-                            >
-                              保存重要性
-                            </button>
+      {loading ? <p className="relative pb-2 text-[11.5px] text-[#98A1B3]">正在读取任务…</p> : null}
 
-                            <label className="mt-1 text-[10px] text-outline" htmlFor={`quad-${view.task_id}`}>
-                              象限指定
-                            </label>
-                            <select
-                              id={`quad-${view.task_id}`}
-                              className={FIELD + " w-full"}
-                              value={quadrantDraft}
-                              onChange={(e) => setQuadrantDraft(e.target.value as TaskQuadrant | "自动")}
-                            >
-                              {QUADRANT_CHOICES.map((choice) => (
-                                <option key={choice} value={choice}>{choice}</option>
-                              ))}
-                            </select>
-                            <input
-                              className={FIELD + " w-full"}
-                              placeholder="理由（可选）"
-                              value={quadrantReason}
-                              onChange={(e) => setQuadrantReason(e.target.value)}
-                              aria-label="象限调整理由"
-                            />
-                            <button
-                              className="self-start rounded-full bg-primary px-3 py-1 text-[10.5px] text-on-primary disabled:opacity-40"
-                              disabled={busy}
-                              onClick={() => void saveQuadrant(view.task_id)}
-                            >
-                              保存象限
-                            </button>
-                          </div>
-                        ) : null}
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          );
-        })}
+      <div className="relative grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-w-0 flex-col gap-5">
+          {matrix}
+          {gantt}
+        </div>
+        <div className="flex min-w-0 flex-col gap-5">
+          {statsPanel}
+          {completedPanel}
+        </div>
       </div>
+
+      {editingTask ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1B2434]/30 px-4"
+          role="presentation"
+          onClick={() => setEditing(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="编辑任务"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-[520px] rounded-[26px] bg-[#F7F9FD] p-6 shadow-[0_34px_80px_-30px_rgba(30,50,90,0.5)]"
+          >
+            <div className="flex items-start gap-3 pb-4">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[linear-gradient(135deg,#22D3EE,#3B82F6)] text-white shadow-[0_8px_18px_-8px_rgba(59,130,246,0.8)]">
+                <Icon name="edit" className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 title={editingTask.title} className="truncate text-[15px] font-semibold text-[#232A3A]">
+                  {editingTask.title}
+                </h3>
+                <p className="mt-1 text-[10.5px] text-[#98A1B3]">
+                  {editingTask.state} · 创建于 {isoDay(editingTask.created_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={() => setEditing(null)}
+                className={"flex h-9 w-9 items-center justify-center rounded-full text-[#6B7488] " + NEU_TILE}
+              >
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">重要性</p>
+                <div className="flex flex-wrap gap-2">
+                  {IMPORTANCE_CHOICES.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setImportanceDraft(level)}
+                      className={
+                        "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
+                        (importanceDraft === level
+                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
+                          : NEU_TILE + " text-[#5B6579]")
+                      }
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">象限</p>
+                <div className="flex flex-wrap gap-2">
+                  {QUADRANT_CHOICES.map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      onClick={() => setQuadrantDraft(choice)}
+                      className={
+                        "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
+                        (quadrantDraft === choice
+                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
+                          : NEU_TILE + " text-[#5B6579]")
+                      }
+                    >
+                      {choice === "自动" ? "自动" : QUADRANT_SHORT[choice] ?? choice}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">截止日期</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={dueDraft}
+                    onChange={(event) => setDueDraft(event.target.value)}
+                    aria-label="截止日期"
+                    className={"h-9 rounded-full px-3 text-[11.5px] text-[#2B3242] " + NEU_INSET}
+                  />
+                  {(["target", "hard"] as TaskDueKind[]).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setDueKindDraft(kind)}
+                      className={
+                        "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
+                        (dueKindDraft === kind
+                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
+                          : NEU_TILE + " text-[#5B6579]")
+                      }
+                    >
+                      {kind === "hard" ? "硬截止" : "目标日"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="block pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">调整理由</span>
+                <input
+                  value={reasonDraft}
+                  onChange={(event) => setReasonDraft(event.target.value)}
+                  placeholder="调整重要性或截止日期时必填"
+                  className={
+                    "h-10 w-full rounded-2xl px-3.5 text-[11.5px] text-[#2B3242] placeholder:text-[#A6AEBF] " +
+                    NEU_INSET
+                  }
+                />
+              </label>
+
+              {editorError ? (
+                <p className="rounded-xl bg-error-container/70 px-3 py-2 text-[11px] text-on-error-container">
+                  {editorError}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5B6579] " + NEU_TILE}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveEditor()}
+                disabled={busy}
+                className="rounded-full bg-[linear-gradient(135deg,#3B82F6,#2563EB)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.9)] disabled:opacity-50"
+              >
+                {busy ? "保存中…" : "保存修改"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
