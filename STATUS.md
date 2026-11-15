@@ -1,5 +1,13 @@
 # 执行状态
 
+## OD-ARCH-154 PTC 工具批量化与工具时间线修复（2026-11-16）
+
+- 实施：①discipline-core preset 追加 tool-presentation（mode: ptc）与 present，模型的工具面坍缩为 run_code，一次模型往返可循环调用 N 次工具（PTC 运行时由 dsh-base 全局挂载，本机已存在）；work-review-core 保持窄工具面；preset-ptc 禁用行保留。②「未知工具」修复：适配层 _tool_call_id_of 按 data.callId → data.message.toolCallId → data.message.source.callId 取调用标识；时间线只有 tool/call 能写标题、孤立结果事件忽略不再生成「未知工具」行；toolNote 仅在真实调用且有名时显示。
+- 实施者：BUILDER 子代理（OpenDesign/deepseek-v4.1-flash-eco，thinking high），用户当轮批准派工。
+- 验证（ARCHITECT 复跑）：cargo test --lib 1186 passed（BUILDER 并行实测，证据 cargo-test-lib.txt）；ARCHITECT 三次并行复跑中 2–3 个既有 engine 测试因 OMNIDESK_PYTHON 环境变量并发竞争偶发失败（OD-ARCH-152 已知问题），串行定向复跑 engine_bridge 2/2、engine_ipc 5/5、knowledge_sync 4/4 全过；node --test timelineModel 4/4；tsc 0；verify_tool_surface_154.py 7/7（含播种三态实跑与适配层合成事件单测）；adapter 既有 97 条回归全过。
+- 未验证：真实引擎重启后模型实际用 run_code 批量调工具的端到端（需重启应用后由用户实测回填）；Windows 下 PTC 与沙箱的兼容性。
+- 证据：tests/verification/desktop/evidence/od-arch-154/。
+
 ## OD-ARCH-153 思考等级 web-api 通道未实装修复（2026-11-15）
 
 - 用户指认界面可选思考等级但实际未生效。根因：覆盖文件只把 reasoningEffort 写进 acp 配置块，而默认 web-api 通道的会话读 agent-default-model（无该字段）→ 档位从未到达会话；engine 侧 session/selectModel 封装无调用方。

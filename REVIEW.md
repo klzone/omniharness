@@ -1,3 +1,18 @@
+# OD-ARCH-154 审查：PTC 工具批量化与工具时间线修复（BUILDER 实施，ARCHITECT 独立复核，2026-11-16）——通过
+
+**审查对象：** discipline.profile.patch.yml（discipline-core 挂 tool-presentation ptc + present）、web_api_adapter.py（_tool_call_id_of 提取链）、timelineModel.ts（只有 tool/call 写标题；孤立结果忽略）、HomeChat.tsx（toolNote 有名才显示）、timelineModel.test.mjs（4 条）、verify_tool_surface_154.py（7 项）。
+
+**核对结果（ARCHITECT 逐行复查 diff 并复跑验证）：**
+1. 范围符合批准：runtime/ 零改动（git diff --name-only 无 runtime 路径）；work-review-core 未动；preset-ptc 禁用行保留；模型路由与凭证零接触。
+2. PTC 配置正确：mode: ptc 写法与上游 ptc.patch.yml 一致；PTC 运行时由 dsh-base 全局挂载（dsh-base/cordis.patch.yml:397），preset 声明即生效；子调用走同一注册表，沙箱与审批逐调用仍然生效（dsh-tools collapse/collapses 语义）。
+3. 显示修复正确且有测试锁定：结果事件按 callId 挂回原条目不覆盖真实工具名；无 callId 归并最近条目；孤立结果忽略；tool/call 缺名仍显示未知工具。适配层提取链保证不读入参/结果原文（单测断言 payload 无 arguments/content 泄漏）。
+4. 复跑证据（脚本运行）：node --test 4/4；tsc 0；verify_tool_surface_154.py 7/7（含播种三态实跑）；cargo test --lib 1186 passed（BUILDER 并行，证据落盘）；ARCHITECT 并行复跑出现 2–3 个既有 engine 测试因 OMNIDESK_PYTHON 并发竞争偶发失败（OD-ARCH-152 期间已知），串行定向复跑 engine_bridge 2/2、engine_ipc 5/5 全过，判定为既有环境竞争而非本次改动回归。
+5. 证据：tests/verification/desktop/evidence/od-arch-154/（cargo-test-lib.txt、node-timeline.txt、tsc.txt、verify-154.txt、adapter-web-api-regression.txt）。
+
+**未验证项：** 真实 run_code 端到端（重启引擎后模型批量调工具）与 Windows 沙箱兼容性，需用户实测回填。
+
+**结论：** 通过。提交与推送由用户批准。
+
 # OD-ARCH-153 审查：思考等级 web-api 通道未实装（ARCHITECT 亲自修复并自审，2026-11-15）——通过（附实测限制）
 
 **审查对象：** model-routes.mjs、model_settings.rs（render_overlay + 2 条新单测）、用户数据根现行覆盖文件的补齐。

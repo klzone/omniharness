@@ -83,7 +83,7 @@ export function appendToolActivity(
   const status = rawStatus
     ? timelineStatusLabel(rawStatus)
     : eventKindStatus(input.eventKind ?? "");
-  const title = (input.title ?? "").trim() || (input.toolName ?? "").trim() || "未知工具";
+  const explicitTitle = (input.title ?? "").trim() || (input.toolName ?? "").trim();
   const callId = (input.callId ?? "").trim();
   const isCall = (input.eventKind ?? "").toLowerCase() === "tool/call";
 
@@ -109,7 +109,9 @@ export function appendToolActivity(
     const changed = status !== "" && status !== lastStatus;
     next[index] = {
       ...entry,
-      title: title || entry.title,
+      // OD-ARCH-154：只有 tool/call 能改写标题。结果事件常被上层补成
+      // 「未知工具」兜底名，不能让它覆盖上一条真实调用标题。
+      title: isCall ? explicitTitle || entry.title || "未知工具" : entry.title,
       status,
       seq: entry.seq ?? input.seq,
       at: input.at,
@@ -119,12 +121,16 @@ export function appendToolActivity(
     return next;
   }
 
+  // OD-ARCH-154：非 tool/call 事件找不到宿主条目的，直接忽略，不新建
+  // 「未知工具」行；这类结果多数来自时间线重置或会话恢复后的孤立事件。
+  if (!isCall) return next;
+
   return [
     ...next,
     {
       kind: "tool",
       seq: input.seq,
-      title,
+      title: explicitTitle || "未知工具",
       status,
       at: input.at,
       callId: callId || undefined,
