@@ -214,9 +214,9 @@ button:disabled {
 
 button.primary {
   border-color: transparent;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-  color: #06101f;
-  font-weight: 600;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 500;
 }
 
 button.ghost {

@@ -3899,7 +3899,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                 <div className="flex items-start space-x-3">
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
                       remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
-                  <div className="neu-msg-accent bg-primary text-on-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-[15px] shadow-sm leading-relaxed min-w-0">
+                  <div className="rounded-[10px] border border-outline-variant/60 border-l-2 border-l-primary/70 bg-surface-container-low px-4 py-2.5 text-[14.5px] leading-relaxed text-on-surface min-w-0">
                     <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
                   </div>
                   <div
@@ -3975,7 +3975,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                                 type="button"
                                 disabled={approvalBusy === a.approvalId}
                                 onClick={() => void respondApproval(m.taskId as string, a.approvalId, true)}
-                                className="px-3 py-1 rounded-full bg-primary text-on-primary text-[11.5px] font-medium disabled:opacity-50"
+                                className="rounded-md bg-primary px-3 py-1 text-[11.5px] font-medium text-on-primary disabled:opacity-50"
                               >
                                 允许这一次
                               </button>
@@ -4123,7 +4123,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                           <button
                             onClick={() => resend(m.sentText as string)}
                             disabled={busy}
-                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-caps text-[10px] disabled:opacity-50 hover:opacity-90 transition-opacity"
+                            className="inline-flex items-center space-x-1 rounded-md bg-primary px-2 py-0.5 text-[10px] font-label-caps text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
                           >
                             <span>重发</span>
                           </button>
