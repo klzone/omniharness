@@ -836,8 +836,8 @@ const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: strin
 
 /** 甘特条表达状态，不表达伪造的进度百分比。 */
 const TASK_STATE_BAR: Record<WorkTaskState, string> = {
-  待确认: "bg-[#c9c3ff]",
-  待开始: "bg-[#c9c5bd]",
+  待确认: "bg-[color:var(--od-neu-accent-soft)]",
+  待开始: "bg-[color:var(--od-neu-sunken-deep)]",
   进行中: "bg-[linear-gradient(90deg,#8b7cf6,#5747f8)]",
   已完成: "bg-[#7ac79b]",
   已取消: "bg-[#d0cdc6]",
@@ -1135,7 +1135,7 @@ export function TaskQuadrantBoard({
         style={{ gridColumn: 3, gridRow: "2 / 5" }}
       >
         {arrowUp}
-        <span className="w-px flex-1 bg-[#c9c5bd]" />
+        <span className="w-px flex-1 bg-[color:var(--od-neu-sunken-deep)]" />
         {arrowDown}
       </div>
 
@@ -1145,7 +1145,7 @@ export function TaskQuadrantBoard({
         style={{ gridColumn: "2 / 5", gridRow: 3 }}
       >
         {arrowLeft}
-        <span className="h-px flex-1 bg-[#c9c5bd]" />
+        <span className="h-px flex-1 bg-[color:var(--od-neu-sunken-deep)]" />
         {arrowRight}
       </div>
 
