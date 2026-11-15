@@ -95,7 +95,7 @@ export function ModelPicker({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full plate-soft-inset text-on-surface font-body-sm text-[12px] font-medium tracking-normal transition-colors disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md plate-soft-inset text-on-surface font-body-sm text-[12px] font-medium tracking-normal transition-colors disabled:opacity-60"
         data-hover-hint={currentProvider ? `当前路由：${label}（可切换模型与思考等级）` : "当前端点尚未识别"}
       >
         <Icon name="spark" className="w-[13px] h-[13px]" />
@@ -117,7 +117,7 @@ export function ModelPicker({
                     setOpen(false);
                   }}
                   className={
-                    "neu-effort-btn px-3 py-1.5 rounded-full text-[11.5px] font-medium " +
+                    "neu-effort-btn px-3 py-1.5 rounded-md text-[11.5px] font-medium " +
                     (lv.key === effort ? "neu-effort-active" : "")
                   }
                   aria-pressed={lv.key === effort}

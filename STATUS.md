@@ -4,7 +4,7 @@
 
 - theme.css 令牌层改为暖白纸面（bg #f4f2ed、surface #fbfaf7）、石墨墨色（ink #2b2b2e）与更深的品牌靛蓝（accent #4a3dd9）；新拟物大阴影改为发丝边框 + 极浅投影（raise/inset 令牌重定义）。
 - 外壳类改为纸面材质：顶栏去渐变/模糊、Dock 改 36px 方形按钮 + 选中左缘细线、输入条改 14px 圆角纸面、消息卡去高光；装饰波形与柔光底图层隐藏。
-- 组件层同批改动：BrandMark 改单色描边（去渐变与发光）；App.tsx 移除首页装饰插画与柔光层、首启提示改纸面底与中性文案；TopNav 通栏、去玻璃圆角与浮动阴影、品牌标换描边标；Dock 贴左缘、36px 方块按钮、tooltip 改纸面小卡；HomeChat 输入条改窄纸面条、发送按钮去渐变与缩放动效、spark 去脉冲。styles.css 与各业务页样式未改（阶段一逐页收口未做，阶段二未开始）。
+- 组件层同批改动：BrandMark 改单色描边（去渐变与发光）；App.tsx 移除首页装饰插画与柔光层、首启提示改纸面底与中性文案；TopNav 通栏、去玻璃圆角与浮动阴影、品牌标换描边标；Dock 贴左缘、36px 方块按钮、tooltip 改纸面小卡；HomeChat 输入条改窄纸面条、发送按钮与用户气泡去渐变圆胶囊、spark 去脉冲；ModelPicker 去胶囊；styles.css 旧主按钮去渐变。各业务页样式未改（阶段一逐页收口未做，阶段二未开始）。
 - 验证：npx tsc --noEmit 0；npm run build 通过（361 modules、962ms）；verify_ui_simplify_v1 12/12、verify_ui_sessions_714 22/22、verify_project_ui_716 7/7、verify_task_quadrant_ui_402 10/10、verify_tool_surface_154 7/7。
 - 未验证：真实窗口前后截图与目视验收（阶段一计划要求的实拍证据未补）；业务页在旧材质与新令牌并存下的观感。
 
