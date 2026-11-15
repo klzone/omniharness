@@ -1,0 +1,12 @@
+✔ 结果事件按 callId 挂回原条目，不改真实工具名 (0.698417ms)
+✔ 结果事件无 callId 并入最近命令，不产生未知工具行 (0.056959ms)
+✔ 结果事件找不到宿主条目时忽略，不新建未知工具行 (0.034792ms)
+✔ tool/call 缺名仍显示未知工具，后续结果不会覆盖它 (0.036584ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97.516625

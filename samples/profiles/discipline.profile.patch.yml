@@ -100,6 +100,14 @@
             config:
               fetch: true
               searchTimeoutMs: 60000
+          # OD-ARCH-154：discipline-core 启用 PTC 呈现，让模型以 run_code 一次往返
+          # 批量编排工具；PTC 运行时由 dsh-base 全局挂载，这里只声明呈现方式。
+          - id: tool-presentation
+            name: '@deepseek-ai/dsh-agent-tool-presentation'
+            config:
+              mode: ptc
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
 
 
 

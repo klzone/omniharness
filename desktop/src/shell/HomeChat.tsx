@@ -1606,7 +1606,11 @@ export function HomeChat({
           status?: unknown;
           call_id?: unknown;
         };
-        const tool = typeof tp.tool_name === "string" && tp.tool_name ? tp.tool_name : "未知工具";
+        // OD-ARCH-154：工具名可能为空；toolNote 只在真实的 tool/call 且有名时显示，
+        // 避免结果事件把自己补成「未知工具」后还盖住上一条命令的提示。
+        const toolName =
+          typeof tp.tool_name === "string" && tp.tool_name.trim() ? tp.tool_name.trim() : "";
+        const tool = toolName || "未知工具";
         const title = typeof tp.title === "string" && tp.title.trim() ? tp.title : tool;
         const status = typeof tp.status === "string" && tp.status ? tp.status : "";
         const eventKind = typeof tp.kind === "string" && tp.kind ? tp.kind : "";
@@ -1617,14 +1621,14 @@ export function HomeChat({
               ? {
                   ...m,
                   toolNote:
-                    eventKind !== "tool/call"
+                    eventKind !== "tool/call" || !toolName
                       ? null
                       : "正在调用工具：" + tool + (status ? "（" + status + "）" : ""),
                   timeline: appendToolActivity(m.timeline ?? [], {
                     seq: event.seq,
                     at: event.occurred_at,
                     eventKind,
-                    toolName: tool,
+                    toolName,
                     title,
                     status,
                     callId,
@@ -4088,14 +4092,9 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                     </p>
                   ) : null}
 
-                  {m.taskId === activeTaskId &&
-                  (elapsed >= 120 || (m.toolNote ?? "").includes("未知工具")) ? (
+                  {m.taskId === activeTaskId && elapsed >= 120 ? (
                     <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2 text-[11px] text-on-surface-variant">
-                      <span>
-                        {m.toolNote?.includes("未知工具")
-                          ? "引擎没有返回工具名，可能卡在工具调用上。"
-                          : "已等待较久，引擎可能仍在处理工具调用。"}
-                      </span>
+                      <span>已等待较久，引擎可能仍在处理工具调用。</span>
                       <button
                         type="button"
                         onClick={cancel}

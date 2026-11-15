@@ -1,0 +1,18 @@
+test_call_event_reads_top_level_name_and_call_id (__main__.AdapterExtractionTest) ... ok
+test_payload_never_carries_arguments_or_result_text (__main__.AdapterExtractionTest) ... ok
+test_result_event_falls_back_to_source_call_id (__main__.AdapterExtractionTest) ... ok
+test_result_event_reads_message_tool_call_id (__main__.AdapterExtractionTest) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.032s
+
+OK
+PASS  discipline_core_declares_tool_presentation_ptc
+PASS  discipline_core_declares_present_tool
+PASS  preset_ptc_remains_disabled
+PASS  work_review_core_has_no_ptc
+PASS  seed_previous_ours_is_updated
+PASS  seed_user_edited_patch_is_preserved
+PASS  adapter_extraction_chain_unit_tests
+
+7/7 通过

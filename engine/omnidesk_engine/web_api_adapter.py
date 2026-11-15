@@ -1848,6 +1848,34 @@ class WebApiAdapter(TaskCoreBase):
                 value = container.get(key)
                 if isinstance(value, str) and value.strip():
                     return value.strip()
+        # OD-ARCH-154：tool/result 事件没有顶层工具名，只在 data.message.toolCallId
+        # 里带调用标识。这里明确按「空名」处理，不读 message 内容，也不猜工具名。
+        message = data.get("message")
+        if isinstance(message, Mapping) and message.get("toolCallId"):
+            return ""
+        return ""
+
+    @staticmethod
+    def _tool_call_id_of(data: Mapping[str, Any], event: Mapping[str, Any]) -> str:
+        """取工具调用标识，供界面把结果事件挂回原调用（OD-ARCH-154）。
+
+        优先读顶层 callId；tool/result 事件的标识在 data.message.toolCallId，
+        旧形态还可能落在 data.message.source.callId。只读展示标识，不碰入参或结果。
+        """
+        for key in ("callId", "call_id"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        message = data.get("message")
+        if isinstance(message, Mapping):
+            value = message.get("toolCallId")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            source = message.get("source")
+            if isinstance(source, Mapping):
+                value = source.get("callId")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
         return ""
 
     @staticmethod
@@ -1873,7 +1901,7 @@ class WebApiAdapter(TaskCoreBase):
             "kind": event_type,
             "tool_name": tool_name,
             "title": cls._tool_title_of(data, event) or tool_name,
-            "call_id": str(data.get("callId") or data.get("call_id") or ""),
+            "call_id": cls._tool_call_id_of(data, event),
             "status": str(data.get("status") or ""),
             "note": "工具被调用不等于工具已成功执行",
         }
