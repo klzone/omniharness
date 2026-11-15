@@ -539,7 +539,7 @@
 
 /* 刻度线与 DSH 原生一致：未选中短而淡，悬停变宽，当前轮最长最深。 */
 .turn-rail-tick {
-  background: rgba(199, 196, 216, 0.75);
+  background: rgba(120, 100, 75, 0.32);
   transform: scaleX(0.6);
   transform-origin: right center;
   transition:
@@ -550,7 +550,7 @@
 .turn-rail-mark:hover .turn-rail-tick,
 .turn-rail-mark:focus-visible .turn-rail-tick {
   transform: scaleX(0.9);
-  background: rgba(120, 116, 140, 0.85);
+  background: rgba(90, 74, 56, 0.6);
 }
 
 .turn-rail-tick-active {
