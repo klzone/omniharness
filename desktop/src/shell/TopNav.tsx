@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onProfilePlugins, onProfileRegistryChanged, shell } from "../api";
+import { BrandMark } from "../components/BrandMark";
 import { Icon } from "../components/Icon";
 import type {
   ProfileChoiceOption,
@@ -136,7 +137,7 @@ function DateFlip({ now }: { now: Date }) {
         aria-expanded={visible}
         aria-label={"日期与全年周次，今天 " + dateLabel(now)}
         data-testid="topnav-date"
-        className="neu-chip neu-date-chip hidden lg:flex items-center space-x-2.5 px-3.5 py-1.5 rounded-full transition-colors"
+        className="neu-chip neu-date-chip hidden lg:flex items-center space-x-2.5 px-3 py-1.5 rounded-lg transition-colors"
       >
         <Icon name="calendar" className="w-4 h-4 text-primary/70" />
         <span className="font-label-caps text-[12px] font-medium text-on-surface">
@@ -491,7 +492,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="topnav-profile-badge"
-        className="neu-inset-pill inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-primary transition-colors"
+        className="neu-inset-pill inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-primary transition-colors"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-primary/70 flex-shrink-0" />
         <span className="font-label-caps text-[10.5px] tracking-wide whitespace-nowrap">
@@ -799,21 +800,15 @@ export function TopNav({
   const now = useNow(30_000);
 
   return (
-    <header className="w-full pt-4 px-6 sm:px-10 z-40 flex-shrink-0" data-tauri-drag-region>
+    <header className="w-full z-40 flex-shrink-0" data-tauri-drag-region>
       <nav
-        className="neu-nav w-full max-w-7xl mx-auto flex items-center justify-between rounded-[30px] px-5 py-2 gap-4"
+        className="neu-nav w-full flex items-center justify-between px-5 py-2 gap-4"
         data-tauri-drag-region
       >
         {/* 品牌（固定软件名） + Profile 徽标 + 本地 IPC 状态 */}
         <div className="flex items-center space-x-3 shrink-0" data-tauri-drag-region>
           <div className="flex items-center space-x-2.5 text-on-surface tracking-tight">
-            <img
-              src="/omnidesk-icon.svg"
-              alt="OmniDesk"
-              draggable={false}
-              decoding="async"
-              className="neu-brand-mark w-9 h-9 rounded-[11px] object-cover flex-shrink-0"
-            />
+            <BrandMark className="w-7 h-7 flex-shrink-0 text-on-surface" />
             <span className="font-headline-md text-[18px] font-semibold tracking-tight text-on-surface hidden sm:inline">
               OmniDesk
             </span>
@@ -835,7 +830,7 @@ export function TopNav({
 
         {/* 当前会话内查找（OD-ARCH-082 S8） */}
         <div className="flex-1 max-w-[560px] mx-5 hidden sm:block">
-          <div className="neu-inset-field flex items-center rounded-full px-3.5 py-1.5 text-on-surface">
+          <div className="neu-inset-field flex items-center rounded-lg px-3 py-1.5 text-on-surface">
             <Icon name="search" className="w-[16px] h-[16px] text-outline mr-2 shrink-0" />
             <input
               ref={searchInputRef}
@@ -855,7 +850,7 @@ export function TopNav({
                 }
               }}
               className="bg-transparent border-0 p-0 text-[13px] font-body-sm text-on-surface placeholder:text-on-surface-variant/75 focus:ring-0 focus:outline-none w-full"
-              placeholder="当前会话内查找"
+              placeholder="搜索"
               type="text"
               aria-label="当前会话内查找"
               data-testid="topnav-search-input"

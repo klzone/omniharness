@@ -293,15 +293,6 @@ export default function App() {
           插画只在首页显示，其他页面保留同一底色，避免每一页都压着一幅画。 */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10" aria-hidden="true">
         <div className="app-scape-base" />
-        <img
-          src="/home-scape.png"
-          alt=""
-          draggable={false}
-          decoding="async"
-          data-hidden={scene !== "home"}
-          className="app-scape-art"
-        />
-        <div className="app-scape-mist" />
       </div>
 
       <TopNav
@@ -377,14 +368,14 @@ export default function App() {
       ) : null}
 
       {firstRun && scene !== "settings" ? (
-        <div className="mx-auto mt-2 max-w-4xl w-[calc(100%-3rem)] rounded-2xl bg-surface-container-high px-4 py-3 ring-1 ring-outline-variant/50">
-          <p className="text-[12.5px] font-medium text-on-surface">先配置一个模型端点</p>
+        <div className="mx-auto mt-3 max-w-4xl w-[calc(100%-3rem)] rounded-[10px] border border-outline-variant/60 bg-surface-container-low px-4 py-3">
+          <p className="text-[12.5px] font-medium text-on-surface">模型端点未配置</p>
           <p className="mt-1 text-[11.5px] leading-relaxed text-on-surface-variant">
-            这台机器上还没有模型配置。到设置里填服务商地址、协议与密钥，点「测试连接」确认能通，
-            保存后就能在工作记录、文案写作与项目跟进里使用模型。已有配置的机器不会再看到这条提示。
+            到设置里填服务商地址、协议与密钥，点「测试连接」确认能通。保存后即可在工作记录、
+            文案写作与项目跟进中使用模型。
           </p>
           <button
-            className="mt-2 rounded-lg bg-primary px-3 py-1.5 text-[11.5px] text-on-primary"
+            className="mt-2 rounded-lg border border-outline-variant/70 bg-surface px-3 py-1.5 text-[11.5px] text-on-surface transition-colors hover:bg-surface-container"
             onClick={() => selectScene("settings")}
           >
             去设置

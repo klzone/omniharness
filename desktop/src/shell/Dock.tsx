@@ -113,8 +113,8 @@ export function Dock({
   }
 
   return (
-    <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center">
-      <div className="neu-rail flex flex-col items-center space-y-2" data-testid="dock-rail">
+    <aside className="fixed left-3 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center">
+      <div className="neu-rail flex flex-col items-center space-y-1" data-testid="dock-rail">
       {items.map((item) => {
         const active = item.scene === scene;
         return (
@@ -129,7 +129,7 @@ export function Dock({
               // 内部场景键不会。纯属性，不影响布局与可访问名。
               data-scene={item.scene}
               className={
-                "neu-dock-btn w-11 h-11 rounded-full flex items-center justify-center " +
+                "neu-dock-btn w-9 h-9 rounded-[8px] flex items-center justify-center " +
                 (active
                   ? "neu-dock-active"
                   : "text-on-surface-variant hover:text-primary")
@@ -137,7 +137,7 @@ export function Dock({
             >
               <Icon name={item.scene === "home" ? "home" : item.icon} className="w-5 h-5" />
             </button>
-            <div className="absolute left-14 px-3 py-1.5 rounded-full bg-inverse-surface/95 text-inverse-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 shadow-lg flex items-center space-x-1.5 z-50">
+            <div className="absolute left-12 px-2.5 py-1 rounded-md border border-outline-variant/60 bg-surface-bright text-on-surface text-[11px] font-medium whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 flex items-center space-x-1.5 z-50">
               <span>{item.label}</span>
             </div>
           </div>
