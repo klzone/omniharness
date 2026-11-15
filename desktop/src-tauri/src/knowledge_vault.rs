@@ -628,6 +628,461 @@ pub fn read_vault_note_within(root: &Path, relative: &str, budget: u64) -> Bound
     }
 }
 
+// ---------------------------------------------------------------------------
+// workspace 暂存 → 库根同步（OD-ARCH-152，方案 A）
+//
+// 背景：DSH 会话沙箱的可写根只有 session.cwd 与临时目录，知识库根在 workspace
+// 之外。模型直接写库根会触发一次人工提权审批，用户实测 7 个文件耗时 45 分钟。
+// 方案 A 不改 runtime/、不放宽沙箱：模型只写 <workspace>/staging/kb/，由宿主
+// 进程读取暂存卡、按既有写入通道复核后落库并合并索引。
+//
+// 边界与 `vault_write::create_note` 同一口径：只接受知识库内相对路径、仅
+// 知识库/概念/ 与 知识库/方法/、UTF-8、单卡正文不超过 CARD_MAX_CHARS；
+// 目标已存在记为冲突，绝不覆盖。
+// ---------------------------------------------------------------------------
+
+/// 暂存目录（相对本地数据根 / 引擎任务 workspace）。
+pub const SYNC_STAGING_REL: &str = "staging/kb";
+
+/// 单次同步读取的暂存卡上限，防止异常目录拖垮宿主调用。
+pub const SYNC_MAX_CARDS: usize = 200;
+
+/// 已落库的一张卡。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SyncCreatedCard {
+    pub relative_path: String,
+    pub title: String,
+    pub bytes: u64,
+}
+
+/// 冲突或错误项：相对路径 + 可读原因，和知识整理报告保持同一形状。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SyncIssue {
+    pub relative_path: String,
+    pub reason: String,
+}
+
+/// 一次 workspace 同步的结构化结果。
+///
+/// `index_updated` 表示「本次新建的卡都已经在索引里」：没有新卡时按已完成处理；
+/// 索引写入失败时会把新建卡回滚并置为 false，不留半套结果。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct SyncReport {
+    pub ok: bool,
+    pub created: Vec<SyncCreatedCard>,
+    pub conflicts: Vec<SyncIssue>,
+    pub errors: Vec<SyncIssue>,
+    pub index_updated: bool,
+    pub staging_dir: String,
+    pub note: String,
+}
+
+/// 暂存卡的相对路径只允许镜像库内位置：`知识库/概念/x.md` 或 `知识库/方法/x.md`。
+fn check_staged_card_path(relative: &str) -> Result<(String, String, String), String> {
+    let normalized = relative.replace('\\', "/");
+    let parts: Vec<&str> = normalized.split('/').collect();
+    if parts.len() != 3
+        || parts[0] != crate::knowledge_ingest::KNOWLEDGE_DIR
+        || (parts[1] != "概念" && parts[1] != "方法")
+    {
+        return Err(format!(
+            "暂存卡必须放在 staging/kb/知识库/概念/ 或 staging/kb/知识库/方法/：{relative}"
+        ));
+    }
+    let file_name = parts[2];
+    if !file_name.ends_with(".md") || file_name == ".md" {
+        return Err(format!("暂存卡必须是 .md 文件：{relative}"));
+    }
+    if file_name.starts_with('.') {
+        return Err(format!("暂存卡不能使用隐藏文件名：{relative}"));
+    }
+    if file_name.chars().any(|c| matches!(c, '[' | ']' | '|' | '\n' | '\r')) {
+        return Err(format!("文件名含索引分隔符，无法生成索引行：{relative}"));
+    }
+    let title = file_name
+        .strip_suffix(".md")
+        .unwrap_or(file_name)
+        .trim()
+        .to_string();
+    if title.is_empty() {
+        return Err(format!("卡片标题不能为空：{relative}"));
+    }
+    let section = parts[1].to_string();
+    Ok((normalized, section, title))
+}
+
+/// 索引行摘要：取正文第一段非空文字，最多 40 字。
+fn card_summary(body: &str) -> String {
+    for line in body.lines() {
+        let text = line.trim().trim_start_matches('#').trim();
+        if text.is_empty() {
+            continue;
+        }
+        let chars: Vec<char> = text.chars().take(40).collect();
+        return chars.into_iter().collect();
+    }
+    "待补充摘要".to_string()
+}
+
+/// 索引里是否已有指向这张卡的链接行。用于幂等：同标题同路径不重复追加。
+fn index_has_card_link(index: &str, section: &str, file_name: &str) -> bool {
+    let needle = format!("]({section}/{file_name})");
+    index.lines().any(|line| line.trim().contains(&needle))
+}
+
+/// 与 `knowledge_ingest::apply_payload` 的索引追加语义保持一致：向对应小节末尾
+/// 插入，忽略与现有行完全相同的条目，最后保证文件以换行结尾。那份实现是模块私有
+/// 的，这里保留同一份规则；改动其中一处时必须同步另一处。
+fn append_sync_index_lines(index: &str, entries: &[(String, String)]) -> String {
+    let mut lines: Vec<String> = index.lines().map(str::to_string).collect();
+    if lines.is_empty() {
+        lines.extend(
+            crate::knowledge_ingest::INDEX_TEMPLATE
+                .lines()
+                .map(str::to_string),
+        );
+    }
+    for section in ["概念", "方法"] {
+        let heading = format!("## {section}");
+        let additions: Vec<String> = entries
+            .iter()
+            .filter(|(s, _)| s == section)
+            .map(|(_, line)| line.clone())
+            .filter(|line| !lines.iter().any(|existing| existing.trim() == line.trim()))
+            .collect();
+        if additions.is_empty() {
+            continue;
+        }
+        if let Some(pos) = lines.iter().position(|line| line.trim() == heading) {
+            let mut insert = pos + 1;
+            while insert < lines.len() && !lines[insert].trim_start().starts_with("## ") {
+                insert += 1;
+            }
+            let mut block = Vec::new();
+            if insert > pos + 1 && !lines[insert - 1].trim().is_empty() {
+                block.push(String::new());
+            }
+            block.extend(additions);
+            lines.splice(insert..insert, block);
+        } else {
+            if lines.last().map(|l| !l.trim().is_empty()).unwrap_or(false) {
+                lines.push(String::new());
+            }
+            lines.push(heading);
+            lines.extend(additions);
+        }
+    }
+    let mut out = lines.join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// 递归收集暂存卡。符号链接计入错误并跳过；隐藏目录与排除目录整棵跳过，不跟随。
+fn collect_staged_cards(staging: &Path, report: &mut SyncReport) -> Vec<(String, PathBuf)> {
+    let mut cards = Vec::new();
+    let mut stack = vec![staging.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                report.errors.push(SyncIssue {
+                    relative_path: relative_posix(staging, &dir),
+                    reason: format!("无法读取暂存目录：{e}"),
+                });
+                continue;
+            }
+        };
+        let mut children: Vec<(fs::DirEntry, fs::FileType)> = Vec::new();
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    report.errors.push(SyncIssue {
+                        relative_path: relative_posix(staging, &dir),
+                        reason: format!("无法读取暂存目录条目：{e}"),
+                    });
+                    continue;
+                }
+            };
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(e) => {
+                    report.errors.push(SyncIssue {
+                        relative_path: relative_posix(staging, &entry.path()),
+                        reason: format!("无法读取暂存条目类型：{e}"),
+                    });
+                    continue;
+                }
+            };
+            children.push((entry, file_type));
+        }
+        children.sort_by_key(|(entry, _)| entry.file_name());
+        for (entry, file_type) in children {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if file_type.is_symlink() {
+                report.errors.push(SyncIssue {
+                    relative_path: relative_posix(staging, &path),
+                    reason: "暂存路径是符号链接，已跳过且未写入".to_string(),
+                });
+                continue;
+            }
+            if file_type.is_dir() {
+                if name.starts_with('.') || is_excluded_dir_name(&name) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                report.errors.push(SyncIssue {
+                    relative_path: relative_posix(staging, &path),
+                    reason: "暂存条目不是普通文件，已跳过".to_string(),
+                });
+                continue;
+            }
+            if !name.ends_with(".md") {
+                // 暂存目录里的非卡片文件不参与同步，也不当成失败：可能只是模型
+                // 留下的草稿；错误列表只记录会影响落库的条目。
+                continue;
+            }
+            if cards.len() >= SYNC_MAX_CARDS {
+                report.errors.push(SyncIssue {
+                    relative_path: relative_posix(staging, &path),
+                    reason: format!("单次同步最多 {SYNC_MAX_CARDS} 张卡，其余暂存卡未处理"),
+                });
+                return cards;
+            }
+            cards.push((relative_posix(staging, &path), path));
+        }
+    }
+    cards.sort_by(|a, b| a.0.cmp(&b.0));
+    cards
+}
+
+/// 从 workspace 暂存目录同步卡片到知识库根。
+///
+/// 成功的暂存卡在卡片与索引都落盘后**删除**：workspace 是任务临时区，保留副本
+/// 会与库内版本分叉，后续人工改卡也看不出哪份是准的。失败、冲突与超限的暂存卡
+/// 原样保留，供用户处理后重试，因此不会静默丢掉模型产出。
+pub fn sync_from_workspace(workspace_dir: &Path, root: &Path) -> Result<SyncReport, String> {
+    if !workspace_dir.is_absolute() {
+        return Err(format!(
+            "workspace 目录必须是绝对路径：{}",
+            workspace_dir.display()
+        ));
+    }
+    let workspace_meta = fs::symlink_metadata(workspace_dir)
+        .map_err(|e| format!("workspace 目录不可访问：{}（{e}）", workspace_dir.display()))?;
+    if workspace_meta.file_type().is_symlink() {
+        return Err(format!(
+            "workspace 目录不能是符号链接：{}",
+            workspace_dir.display()
+        ));
+    }
+    if !workspace_meta.is_dir() {
+        return Err(format!(
+            "workspace 目录必须是目录：{}",
+            workspace_dir.display()
+        ));
+    }
+    assert_local_root_allowed(workspace_dir)?;
+    assert_outside_repo(workspace_dir)?;
+
+    let root = assert_vault_root_allowed(root, None)?;
+    let staging = workspace_dir.join(SYNC_STAGING_REL);
+    let mut report = SyncReport {
+        staging_dir: staging.display().to_string(),
+        index_updated: true,
+        ..Default::default()
+    };
+    match fs::symlink_metadata(&staging) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(format!("暂存目录不能是符号链接：{}", staging.display()));
+        }
+        Ok(meta) if !meta.is_dir() => {
+            return Err(format!("暂存路径不是目录：{}", staging.display()));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            report.ok = true;
+            report.note = "workspace 里没有暂存卡，无需同步。".to_string();
+            return Ok(report);
+        }
+        Err(e) => {
+            return Err(format!("暂存目录不可访问：{}（{e}）", staging.display()));
+        }
+    }
+
+    // 与 knowledge_ingest::init_vault 同一落点：先保证写入通道需要的目录与索引存在。
+    for dir in [
+        crate::knowledge_ingest::KNOWLEDGE_DIR,
+        crate::knowledge_ingest::CONCEPT_DIR,
+        crate::knowledge_ingest::METHOD_DIR,
+    ] {
+        let path = root.join(dir);
+        if !path.is_dir() {
+            fs::create_dir_all(&path)
+                .map_err(|e| format!("创建知识库目录失败（{}）：{e}", path.display()))?;
+        }
+    }
+    let index_rel = crate::knowledge_ingest::INDEX_REL;
+    let index_path = root.join(index_rel);
+    if !index_path.is_file() {
+        crate::vault_write::create_note(&root, index_rel, crate::knowledge_ingest::INDEX_TEMPLATE)?;
+    }
+    let original_index = fs::read_to_string(&index_path)
+        .map_err(|e| format!("读取知识库索引失败（{}）：{e}", index_path.display()))?;
+
+    let staged = collect_staged_cards(&staging, &mut report);
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut synced_sources: Vec<(String, PathBuf)> = Vec::new();
+    for (relative, path) in staged {
+        let (relative, section, title) = match check_staged_card_path(&relative) {
+            Ok(value) => value,
+            Err(reason) => {
+                report.errors.push(SyncIssue {
+                    relative_path: relative,
+                    reason,
+                });
+                continue;
+            }
+        };
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(e) => {
+                report.errors.push(SyncIssue {
+                    relative_path: relative.clone(),
+                    reason: format!("无法读取暂存卡信息：{e}"),
+                });
+                continue;
+            }
+        };
+        if meta.len() > VAULT_MAX_NOTE_BYTES {
+            report.errors.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: format!(
+                    "暂存卡 {} 字节，超过单文件上限 {} 字节",
+                    meta.len(),
+                    VAULT_MAX_NOTE_BYTES
+                ),
+            });
+            continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) => {
+                report.errors.push(SyncIssue {
+                    relative_path: relative.clone(),
+                    reason: format!("暂存卡不是可读的 UTF-8 文本：{e}"),
+                });
+                continue;
+            }
+        };
+        let parsed = crate::vault_note::parse_note(&content);
+        if !parsed.has_frontmatter {
+            report.errors.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: "暂存卡缺少 frontmatter（至少需要 tags/date），未落库".to_string(),
+            });
+            continue;
+        }
+        let body_chars = parsed.body.chars().count();
+        if body_chars > crate::knowledge_ingest::CARD_MAX_CHARS {
+            report.errors.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: format!(
+                    "正文 {body_chars} 字，超过 {} 字上限；请拆卡后重试",
+                    crate::knowledge_ingest::CARD_MAX_CHARS
+                ),
+            });
+            continue;
+        }
+        if root.join(&relative).exists() {
+            report.conflicts.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: "库里已有同路径卡片，同步不覆盖；请改名或人工合并".to_string(),
+            });
+            continue;
+        }
+        let file_name = relative.rsplit('/').next().unwrap_or(relative.as_str()).to_string();
+        if index_has_card_link(&original_index, &section, &file_name) {
+            // 索引行已存在但卡文件不在：不能静默补空行，按冲突交给人工判断。
+            report.conflicts.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: "索引里已有这张卡的链接行，但库内缺文件；未自动补写".to_string(),
+            });
+            continue;
+        }
+        match crate::vault_write::create_note(&root, &relative, &content) {
+            Ok(note) => {
+                let tags = if parsed.tags.is_empty() {
+                    "未分类".to_string()
+                } else {
+                    parsed.tags.join(", ")
+                };
+                entries.push((
+                    section.clone(),
+                    format!(
+                        "- [{title}]({section}/{file_name}) | 标签：{tags} | {}",
+                        card_summary(&parsed.body)
+                    ),
+                ));
+                report.created.push(SyncCreatedCard {
+                    relative_path: relative.clone(),
+                    title,
+                    bytes: note.bytes,
+                });
+                synced_sources.push((relative, path));
+            }
+            Err(reason) => report.errors.push(SyncIssue {
+                relative_path: relative,
+                reason,
+            }),
+        }
+    }
+
+    if !entries.is_empty() {
+        let next = append_sync_index_lines(&original_index, &entries);
+        let expected = crate::vault_write::content_sha256(&original_index);
+        match crate::vault_write::save_note(&root, index_rel, &next, &expected) {
+            Ok(_) => {
+                // 只有索引也落盘后才删除暂存卡，避免「卡进了库、索引没进」的半套状态。
+                for (relative_path, source) in synced_sources {
+                    if let Err(e) = fs::remove_file(&source) {
+                        report.errors.push(SyncIssue {
+                            relative_path,
+                            reason: format!("删除已同步暂存卡失败（库内卡片已保留）：{e}"),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                report.index_updated = false;
+                report.errors.push(SyncIssue {
+                    relative_path: index_rel.to_string(),
+                    reason: format!("索引更新失败：{e}"),
+                });
+                for card in &report.created {
+                    let _ = fs::remove_file(root.join(&card.relative_path));
+                }
+                report.created.clear();
+            }
+        }
+    }
+
+    report.ok = report.errors.is_empty() && report.conflicts.is_empty();
+    report.note = format!(
+        "已同步 {} 张；冲突 {}；错误 {}",
+        report.created.len(),
+        report.conflicts.len(),
+        report.errors.len()
+    );
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

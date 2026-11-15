@@ -450,6 +450,36 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+# OD-ARCH-152：知识库写入先落 workspace/staging/kb/，由宿主「同步到知识库」
+# 入口复核后落库。终态这里只做一次只读探测：不等待、不重试、不改模型路由。
+KNOWLEDGE_STAGING_REL = ("staging", "kb")
+
+
+def staging_kb_card_count(workspace_dir: Optional[str]) -> int:
+    """数出 `<workspace>/staging/kb/` 下待同步的 .md 卡片。
+
+    只读、无副作用；目录不存在、是符号链接或不可读时返回 0，绝不阻塞终态。
+    """
+    if not workspace_dir:
+        return 0
+    base = Path(workspace_dir).joinpath(*KNOWLEDGE_STAGING_REL)
+    try:
+        if base.is_symlink() or not base.is_dir():
+            return 0
+        count = 0
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [name for name in dirs if not name.startswith(".")]
+            for name in files:
+                if not name.endswith(".md"):
+                    continue
+                if (Path(root) / name).is_symlink():
+                    continue
+                count += 1
+        return count
+    except OSError:
+        return 0
+
+
 class WebApiAdapter(TaskCoreBase):
     """DSH 本地 Web API（HTTP RPC + WebSocket）→ OmniDesk 最小引擎契约。"""
 
@@ -2656,13 +2686,25 @@ class WebApiAdapter(TaskCoreBase):
 
     # -- 4.7 session 读回 ---------------------------------------------------
     def _succeeded_provenance(self, record, *, stop_reason, persist_ok):
-        return (
+        sources = (
             (
                 {"kind": "engine_turn_end", "value": str(stop_reason)},
                 {"kind": "engine_stream", "value": "assistant-stream"},
                 {"kind": "persist", "value": "ok" if persist_ok else "failed"},
             ),
             "结果由 OmniDesk 从 assistant-stream 的 text-delta 与 assistant/message 拼装",
+        )
+        pending = staging_kb_card_count(getattr(record, "workspace_dir", None))
+        if pending <= 0:
+            return sources
+        hint_sources, note = sources
+        return (
+            hint_sources + (
+                {"kind": "pending_vault_sync", "value": f"staging/kb/{pending}"},
+            ),
+            note
+            + f"；workspace/staging/kb 有 {pending} 张知识卡待宿主同步到知识库"
+            + "（请走「同步到知识库」入口，不要直接写库根）",
         )
 
     def _probe_session(self, session_id: str, workspace_dir: str) -> None:

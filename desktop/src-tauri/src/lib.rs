@@ -4959,6 +4959,23 @@ fn knowledge_vault_note_links(
     knowledge_vault_note_links_for(&index, &root, &relative_path)
 }
 
+/// 把 workspace/staging/kb/ 里的暂存卡同步到知识库根（OD-ARCH-152，方案 A）。
+///
+/// DSH 会话只能写自己的 workspace；知识库根在 workspace 之外，模型直接写会
+/// 触发人工提权。这里由宿主进程读暂存卡、复核后落库，界面只触发一次 IPC。
+#[tauri::command(async)]
+fn knowledge_sync_to_vault(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_vault::SyncReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = configured_vault_root(&paths)?;
+    let workspace = crate::task_shell::prepare_local_data_root()?;
+    knowledge_vault::sync_from_workspace(&workspace, &root)
+}
+
 /// 建立收件箱/概念/方法/原文骨架与空索引（幂等）。
 #[tauri::command(async)]
 fn knowledge_ingest_init(
@@ -9418,6 +9435,7 @@ pub fn run() {
             knowledge_vault_rebuild_index,
             knowledge_vault_index_status,
             knowledge_vault_note_links,
+            knowledge_sync_to_vault,
             knowledge_ingest_init,
             knowledge_ingest_prepare,
             knowledge_ingest_apply,
@@ -14087,5 +14105,194 @@ mod writing_archive_ipc_tests {
         .unwrap_err();
         assert!(error.contains("没有勾选"), "{error}");
         assert!(!temp.vault().join("raw").exists());
+    }
+}
+
+/// OD-ARCH-152：workspace 暂存 → 知识库根同步。
+///
+/// 所有用例都用 temp_dir 合成根，不读取、不写入任何真实知识库。
+#[cfg(test)]
+mod knowledge_sync_152_tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    struct SyncFixture {
+        base: PathBuf,
+        workspace: PathBuf,
+        vault: PathBuf,
+    }
+
+    impl SyncFixture {
+        fn new(tag: &str) -> Self {
+            let base = std::env::temp_dir().join(format!(
+                "omnidesk-sync152-{tag}-{}-{}",
+                std::process::id(),
+                crate::task_shell::now_secs()
+            ));
+            let _ = fs::remove_dir_all(&base);
+            let workspace = base.join("workspace");
+            let vault = base.join("vault");
+            fs::create_dir_all(&workspace).unwrap();
+            fs::create_dir_all(&vault).unwrap();
+            Self {
+                base,
+                workspace,
+                vault,
+            }
+        }
+
+        fn stage(&self, relative: &str, content: &str) -> PathBuf {
+            let path = self
+                .workspace
+                .join(knowledge_vault::SYNC_STAGING_REL)
+                .join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, content).unwrap();
+            path
+        }
+
+        fn sync(&self) -> knowledge_vault::SyncReport {
+            knowledge_vault::sync_from_workspace(&self.workspace, &self.vault).unwrap()
+        }
+    }
+
+    impl Drop for SyncFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.base);
+        }
+    }
+
+    fn card(tags: &str, body: &str) -> String {
+        format!("---\ntags: [{tags}]\ndate: 2026-11-15\n---\n{body}")
+    }
+
+    fn index_line_count(index: &str, needle: &str) -> usize {
+        index.lines().filter(|line| line.contains(needle)).count()
+    }
+
+    #[test]
+    fn sync_lands_cards_updates_index_and_cleans_staging() {
+        let fx = SyncFixture::new("normal");
+        let first = fx.stage(
+            "知识库/概念/合成卡一.md",
+            &card("合成, 概念", "合成定义。\n\n## 展开\n只用于验证。"),
+        );
+        let second = fx.stage(
+            "知识库/方法/合成卡二.md",
+            &card("合成, 方法", "合成方法：先列步骤，再写结论。"),
+        );
+        let report = fx.sync();
+        assert!(report.ok, "{report:?}");
+        assert_eq!(report.created.len(), 2, "{report:?}");
+        assert!(report.index_updated, "{report:?}");
+        assert!(fx.vault.join("知识库/概念/合成卡一.md").is_file());
+        assert!(fx.vault.join("知识库/方法/合成卡二.md").is_file());
+        assert!(!first.exists(), "同步成功的暂存卡必须清理");
+        assert!(!second.exists(), "同步成功的暂存卡必须清理");
+
+        let index = fs::read_to_string(fx.vault.join("知识库/索引.md")).unwrap();
+        assert_eq!(index_line_count(&index, "(概念/合成卡一.md)"), 1, "{index}");
+        assert_eq!(index_line_count(&index, "(方法/合成卡二.md)"), 1, "{index}");
+        assert!(index.contains("标签：合成, 概念"), "{index}");
+
+        // 幂等：再次暂存同名卡不会覆盖库内内容，也不会重复追加索引行。
+        let again = fx.stage(
+            "知识库/概念/合成卡一.md",
+            &card("合成, 概念", "第二次内容，不应覆盖。"),
+        );
+        let second_report = fx.sync();
+        assert_eq!(second_report.created.len(), 0, "{second_report:?}");
+        assert_eq!(second_report.conflicts.len(), 1, "{second_report:?}");
+        assert!(again.is_file(), "冲突卡保留待人工处理");
+        let index_after = fs::read_to_string(fx.vault.join("知识库/索引.md")).unwrap();
+        assert_eq!(
+            index_before_lines(&index_after).len(),
+            index_before_lines(&index).len(),
+            "索引行不重复追加"
+        );
+        assert!(fs::read_to_string(fx.vault.join("知识库/概念/合成卡一.md"))
+            .unwrap()
+            .contains("合成定义"));
+    }
+
+    #[test]
+    fn sync_never_overwrites_existing_card() {
+        let fx = SyncFixture::new("conflict");
+        let existing = fx.vault.join("知识库/概念/已有卡.md");
+        fs::create_dir_all(existing.parent().unwrap()).unwrap();
+        fs::write(&existing, card("已有", "库内原始内容。")).unwrap();
+        let staged = fx.stage(
+            "知识库/概念/已有卡.md",
+            &card("已有", "暂存的新内容，不许覆盖。"),
+        );
+        let report = fx.sync();
+        assert!(!report.ok, "{report:?}");
+        assert_eq!(report.created.len(), 0, "{report:?}");
+        assert_eq!(report.conflicts.len(), 1, "{report:?}");
+        assert!(report.conflicts[0].reason.contains("不覆盖"));
+        assert!(fs::read_to_string(&existing).unwrap().contains("库内原始内容"));
+        assert!(staged.is_file(), "冲突的暂存卡保留");
+    }
+
+    #[test]
+    fn sync_rejects_overlong_card_and_keeps_staging_file() {
+        let fx = SyncFixture::new("overlong");
+        let body = "长".repeat(crate::knowledge_ingest::CARD_MAX_CHARS + 1);
+        let staged = fx.stage("知识库/概念/超限卡.md", &card("超限", &body));
+        let report = fx.sync();
+        assert!(!report.ok, "{report:?}");
+        assert_eq!(report.created.len(), 0, "{report:?}");
+        assert_eq!(report.errors.len(), 1, "{report:?}");
+        assert!(report.errors[0].reason.contains("超过"));
+        assert!(!fx.vault.join("知识库/概念/超限卡.md").exists());
+        assert!(staged.is_file(), "超限卡保留待拆分重试");
+    }
+
+    fn index_before_lines(index: &str) -> Vec<&str> {
+        index
+            .lines()
+            .filter(|line| line.trim_start().starts_with("- ["))
+            .collect()
+    }
+
+    /// 脚本级端到端入口：设置 OMNIDESK_SYNC152_WS / OMNIDESK_SYNC152_VAULT
+    /// 时使用合成根并打印结构化报告；未设置时自建临时根跑同一路径。
+    #[test]
+    fn knowledge_sync_152_e2e() {
+        let (workspace, vault, _owned) = match (
+            std::env::var("OMNIDESK_SYNC152_WS"),
+            std::env::var("OMNIDESK_SYNC152_VAULT"),
+        ) {
+            (Ok(ws), Ok(vault)) if !ws.is_empty() && !vault.is_empty() => {
+                (PathBuf::from(ws), PathBuf::from(vault), None)
+            }
+            _ => {
+                let fx = SyncFixture::new("e2e");
+                let ws = fx.workspace.clone();
+                let vault = fx.vault.clone();
+                let path = fx
+                    .workspace
+                    .join(knowledge_vault::SYNC_STAGING_REL)
+                    .join("知识库/概念/合成卡一.md");
+                let other = fx
+                    .workspace
+                    .join(knowledge_vault::SYNC_STAGING_REL)
+                    .join("知识库/方法/合成卡二.md");
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::create_dir_all(other.parent().unwrap()).unwrap();
+                fs::write(&path, card("合成, 概念", "合成定义。")).unwrap();
+                fs::write(&other, card("合成, 方法", "合成方法。")).unwrap();
+                (ws, vault, Some(fx))
+            }
+        };
+        let report = knowledge_vault::sync_from_workspace(&workspace, &vault).unwrap();
+        println!(
+            "SYNC152_REPORT:{}",
+            serde_json::to_string(&report).unwrap()
+        );
+        if _owned.is_some() {
+            assert!(report.created.len() >= 1, "{report:?}");
+        }
     }
 }

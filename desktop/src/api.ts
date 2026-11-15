@@ -523,6 +523,17 @@ export const host = {
  *
  * 这些命令只涉及 OmniDesk 自己的概念，不接触引擎或 DSH。
  */
+/** OD-ARCH-152：workspace/staging/kb → 知识库根的结构化同步报告。 */
+export type KnowledgeSyncReport = {
+  ok: boolean;
+  created: { relative_path: string; title: string; bytes: number }[];
+  conflicts: { relative_path: string; reason: string }[];
+  errors: { relative_path: string; reason: string }[];
+  index_updated: boolean;
+  staging_dir: string;
+  note: string;
+};
+
 export const shell = {
   /**
    * 当前登录用户的显示名（只用于首页问候）。
@@ -1791,6 +1802,13 @@ export const shell = {
 
   knowledgeReviewDecide(id: string, decision: string): Promise<KnowledgeReviewDecision> {
     return invoke<KnowledgeReviewDecision>("knowledge_review_decide", { id, decision }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** OD-ARCH-152：把模型写在 workspace/staging/kb/ 的卡同步进知识库根。 */
+  knowledgeSyncToVault(): Promise<KnowledgeSyncReport> {
+    return invoke<KnowledgeSyncReport>("knowledge_sync_to_vault").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

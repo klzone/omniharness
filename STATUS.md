@@ -1,5 +1,47 @@
 # 执行状态
 
+## OD-ARCH-152 知识库写入沙箱边界与耗时治理（2026-11-15）
+
+- 背景：Windows 实测「写 7 个文件耗时 45 分钟」（超时错误待核查.md）。归因：提权审批等待 ≈49%、模型/工具往返 ≈32%、5 次空参数 write ≈12%、二次全量重写 ≈8%。根因：知识库根在 DSH workspace-write 沙箱可写根（session.cwd + 临时目录）之外，每次直接写库根都触发提权审批，第三次被取消后收尾同步中断。
+- 实施者：BUILDER 子代理（OpenDesign/deepseek-v4.1-flash-eco，thinking high），用户当轮明确要求派工并批准计划（PLANS.md OD-ARCH-152 方案 A）。
+- 实现：模型建卡改写 workspace/staging/kb/；宿主新增 knowledge_sync_to_vault command（knowledge_vault.rs sync_from_workspace：路径/UTF-8/字数复核、冲突不覆盖、索引幂等追加、成功后清理暂存）；整理材料面板加「同步到知识库」入口；引擎终态只读探测 staging/kb 并附 pending_vault_sync 提示；skill 文档第四/五/六节改为新流程并禁止缺参调用。
+- 验证（ARCHITECT 实测复核）：cargo test 1185 lib 测试全过（含新增 4 项 sync 单测）；npx tsc --noEmit 0；verify_knowledge_sync_152.py 47/47；引擎终态探测与 pending_vault_sync 提示经合成目录验证。证据：tests/verification/desktop/evidence/od-arch-152/。
+- 未验证：真实模型按新 skill 写暂存区的端到端（未启动模型会话）；桌面窗口视觉走查。
+- 已知边界：同步只新建卡，库内已有同路径卡记冲突不覆盖，改卡仍走人工编辑或审核流；第五节「防重复判断由你完成；落库与索引由宿主完成」已与新流程对齐。
+
+## OD-UI-716 项目跟踪页视觉与色调对齐（2026-11-15）
+
+- 保留「四象限 + 甘特 + 统计 / 已完成」布局，只重做视觉层：页头复用工作记录的 `wr-hero`/`wr-search`，编辑弹层复用 `wr-dialog`。
+- 移除项目页的冷蓝渐变底、青绿光斑、蓝色统计光球和青色进度条；改为暖白底材、近白凸起卡、细分隔与品牌靛蓝小面积强调。
+- 四象限任务行改为白底细边列表行；状态胶囊使用暖色语义（待开始/进行中/已完成/暂停/逾期）；象限图标保留四组柔和底色。
+- 甘特条改为状态色带（未开始灰、进行中靛蓝、已完成绿、受阻/暂停琥珀、取消浅灰）；删除 `statePercent` 的伪进度百分比，任务行与甘特只显示真实状态。
+- 统计与已完成区改为暖白数字卡与 `wr-side-card` 材质；不再使用大面积彩色渐变圆。
+- 视觉参考：Flow / Pipefy 的卡片分区、Asana 的单主色层级；所有材质/字号/圆角/阴影落回 OmniDesk 的 `--od-neu-*` 令牌。
+- 验证：`npx tsc --noEmit` 0；`verify_task_quadrant_ui_402.py` 10/10；新增 `verify_project_ui_716.py` 7/7；`npm run tauri:build -- --bundles app` rc=0、425.68 MiB；覆盖安装后启动 app pid 82484、engine pid 82530、Python engine pid 82586；真实窗口目视确认项目页与工作记录页同色系。
+- 未验证：任务编辑弹层的逐项交互、排期/今日/本周视图；真实窗口截图含用户任务正文，未写入仓库。
+
+## OD-UI-715 历史会话模块化分类板与 80% 浮层抽屉（2026-11-15）
+
+- 页头改为一体式档案抬头：标题、分类数、对话数、最近更新时间与右侧总数凹槽；不再是空白页头。
+- 分类改为两列模块化“档案盒”卡片（`auto-fit` 网格）：每张卡有分类图标/色调、数量胶囊、时间线对话条目；默认显示最近 4 段，超过时底部“展开其余 N 段”。
+- 对话条目不再使用整行大白卡：改为带时间线圆点、时间/消息数、标题、两行摘要与悬浮箭头的紧凑行；悬停/选中只提亮行，不移动版面。
+- 右侧操作面板改为距顶 10%、高 80% 的圆角浮层，右侧留 16px；内容依次为标题、信息、继续对话、归档分类、最近消息、底部删除。
+- 分类色调只为内置分类固定、未来自定义分类按键名稳定散列；沿用工作记录页的四组柔和色，不引入新色板。
+- OpenDesign 参考：Agentic（对话优先）、Arc（侧栏与层次）、Bento（模块化卡片）；落到 OmniDesk 的 `--od-neu-*` 材质令牌。
+- 验证：`npx tsc --noEmit` 0；`npm run build` 0；`verify_ui_sessions_714.py` 22/22；`npm run tauri:build -- --bundles app` rc=0、425.68 MiB；覆盖安装后启动 app pid 79275、engine pid 79345；真实窗口目视确认分类板与 80% 浮层抽屉。
+- 未验证：删除确认的二次点击、跨 Profile 归档后的实际列表变化；真实窗口截图未入库（含用户对话正文，不写入仓库）。
+
+## OD-UI-714 历史会话平台入口与分类归档页（2026-11-15）
+
+- 左侧 Dock 新增平台内置「历史会话」，与知识库一样不受 Profile 场景声明管辖；旧声明里的 `sessions` 仍兼容解析但载入时丢弃，避免重复。
+- 新页按当前 Profile 的对话分类分块；分类表新增、改名或暂时缺少某键时，线程仍会显示（未知标签进入额外分类块）。
+- 点击单条记录打开右侧抽屉：继续对话（回首页打开该线程）、归档对话（重新挂到目标分类）、删除对话（删除本机线程记录，确认后执行）。
+- 归档只改线程标签，不移动线程 JSON、不改引擎会话、不刷新对话更新时间；在途任务未结束时禁止删除。
+- 视觉沿用工作记录页的页头、卡片材质与抽屉；分类块为一级结构，卡片显示标题、摘要、更新时间与消息数。
+- 验证：`npx tsc --noEmit` 0；`npm run build` 0；`node --experimental-strip-types --test src/sessionHistory.test.mjs` 5/5；`python3 tests/verification/desktop/verify_ui_sessions_714.py` 22/22；`python3 tests/verification/desktop/verify_ui_simplify_v1.py` 12/12；`cargo test --offline --lib profile_decl` 19/19。
+- 用户要求启动最新版后：`PATH="$HOME/.cargo/bin:$PATH" npm run tauri:build -- --bundles app` rc=0，bundle 425.68 MiB；已 `ditto` 覆盖安装到 `/Applications/OmniDesk.app`（0.2.26），`open -n` 后 app pid 77523、engine pid 77592；窗口标题 `OmniDesk Discipline`，尺寸 1280×821，引擎 Profile 为 `discipline`。
+- 未验证：真实窗口中的点击、抽屉视觉、归档后的跨 Profile 展示与真实用户线程数据；窗口已启动，但未做交互点击验收。
+
 ## OD-UI-406f 任务页单页化与最终视觉对齐（2026-11-14）
 
 - 去掉顶部「任务 / 项目」页签：项目页现在是单页，直接渲染任务矩阵；项目分页代码保留未渲染，按用户计划稍后整体删除。
