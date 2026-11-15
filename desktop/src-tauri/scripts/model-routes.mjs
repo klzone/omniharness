@@ -310,6 +310,14 @@ async function main() {
         // 思考等级（对应 DSH 的 reasoningEffort）：不传时由模型/Provider 默认决定。
         acpConfig.reasoningEffort = args.reasoningEffort;
       }
+      // OD-ARCH-153：web-api 通道的会话模型选择读的是 `agent-default-model`，
+      // 不读 `acp`（那是 ACP 通道的配置）。此前 effort 只写进 acp，导致界面上
+      // 选了思考等级、web 会话实际仍用 provider 默认档——选择形同未实装。
+      // 两处都写，通道无关。
+      const agentDefaultConfig = { provider: provider.id, model: args.model };
+      if (args.reasoningEffort && args.reasoningEffort !== "default") {
+        agentDefaultConfig.reasoningEffort = args.reasoningEffort;
+      }
       const overlay = [
         {
           id: "llm-pi-ai",
@@ -326,7 +334,7 @@ async function main() {
         {
           id: "agent-default-model",
           name: "@deepseek-ai/dsh-agent-default-model",
-          config: { provider: provider.id, model: args.model },
+          config: agentDefaultConfig,
         },
       ];
       fs.mkdirSync(path.dirname(args.writeOverlay), { recursive: true });
