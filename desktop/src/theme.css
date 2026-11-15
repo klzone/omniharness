@@ -22,30 +22,30 @@
  */
 @theme {
   /* ---- 颜色：MD3 色调板 ---- */
-  --color-surface: #f0efec;
-  --color-surface-dim: #d9d7d2;
-  --color-surface-bright: #fafaf8;
-  --color-surface-container-lowest: #f8f8f6;
-  --color-surface-container-low: #f2f1ee;
-  --color-surface-container: #e8e7e3;
-  --color-surface-container-high: #e1e0dc;
-  --color-surface-container-highest: #dad8d3;
-  --color-surface-variant: #e1dfda;
-  --color-on-surface: #34343b;
-  --color-on-surface-variant: #5f5f67;
+  --color-surface: #f4f2ed;
+  --color-surface-dim: #dedad2;
+  --color-surface-bright: #fbfaf7;
+  --color-surface-container-lowest: #fbfaf7;
+  --color-surface-container-low: #f7f5f0;
+  --color-surface-container: #eeebe4;
+  --color-surface-container-high: #e7e3db;
+  --color-surface-container-highest: #dfdbd2;
+  --color-surface-variant: #e4e0d8;
+  --color-on-surface: #2b2b2e;
+  --color-on-surface-variant: #5a5a60;
   --color-inverse-surface: #242530;
   --color-inverse-on-surface: #ececf2;
-  --color-outline: #8a877f;
-  --color-outline-variant: #d0cdc6;
-  --color-surface-tint: #5747f8;
+  --color-outline: #8a8880;
+  --color-outline-variant: #d8d4cb;
+  --color-surface-tint: #4a3dd9;
 
-  --color-primary: #5747f8;
+  --color-primary: #4a3dd9;
   --color-on-primary: #ffffff;
-  --color-primary-container: #6b5dff;
+  --color-primary-container: #3c31b8;
   --color-on-primary-container: #f1efff;
   --color-inverse-primary: #cbc5ff;
-  --color-primary-fixed: #e8e5ff;
-  --color-primary-fixed-dim: #c9c3ff;
+  --color-primary-fixed: #e9e6ff;
+  --color-primary-fixed-dim: #cbc5fb;
   --color-on-primary-fixed: #1b0c6b;
   --color-on-primary-fixed-variant: #3b2ccc;
 
@@ -72,8 +72,8 @@
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
 
-  --color-background: #f0efec;
-  --color-on-background: #34343b;
+  --color-background: #f4f2ed;
+  --color-on-background: #2b2b2e;
 
   /* ---- 字体（含系统回退；字体文件可后补） ---- */
   /* 大标题：思源柔黑优先，给新拟物一点柔和曲面；缺字体回退思源黑/系统黑。 */
@@ -122,38 +122,34 @@
  * ------------------------------------------------------------------ */
 :root {
   --font-display: var(--font-headline-lg);
-  --od-neu-bg: #f0efec;
-  --od-neu-surface: #f8f8f6;
-  --od-neu-surface-high: #fafaf8;
-  --od-neu-sunken: #e8e7e3;
-  --od-neu-sunken-deep: #e1e0dc;
-  --od-neu-ink: #34343b;
-  --od-neu-ink-2: #5f5f67;
-  --od-neu-ink-3: #85858c;
-  --od-neu-accent: #5747f8;
-  --od-neu-accent-soft: #ece9ff;
-  --od-neu-accent-ink: #4a3ae0;
-  --od-neu-focus: #3525cd;
+  --od-neu-bg: #f4f2ed;
+  --od-neu-surface: #fbfaf7;
+  --od-neu-surface-high: #ffffff;
+  --od-neu-sunken: #eeebe4;
+  --od-neu-sunken-deep: #e4e0d8;
+  --od-neu-ink: #2b2b2e;
+  --od-neu-ink-2: #5a5a60;
+  --od-neu-ink-3: #85837c;
+  --od-neu-accent: #4a3dd9;
+  --od-neu-accent-soft: #e9e6ff;
+  --od-neu-accent-ink: #372aa8;
+  --od-neu-focus: #372aa8;
   --od-neu-hi: rgba(255, 255, 255, 0.88);
   --od-neu-hi-soft: rgba(255, 255, 255, 0.78);
   --od-neu-lo: rgba(163, 160, 152, 0.22);
   --od-neu-lo-soft: rgba(163, 160, 152, 0.15);
-  --od-neu-line-dark: rgba(140, 136, 128, 0.18);
-  --od-neu-raise-1:
-    4px 4px 10px var(--od-neu-lo-soft),
-    -4px -4px 10px var(--od-neu-hi);
+  --od-neu-line-dark: rgba(43, 43, 46, 0.16);
+  --od-neu-line: rgba(43, 43, 46, 0.1);
+  --od-neu-line-strong: rgba(43, 43, 46, 0.16);
+  --od-neu-raise-1: 0 0 0 1px var(--od-neu-line);
   --od-neu-raise-2:
-    8px 8px 22px var(--od-neu-lo),
-    -8px -8px 22px var(--od-neu-hi);
+    0 0 0 1px var(--od-neu-line),
+    0 1px 2px rgba(43, 43, 46, 0.04);
   --od-neu-raise-3:
-    14px 14px 34px var(--od-neu-lo),
-    -10px -10px 26px var(--od-neu-hi);
-  --od-neu-inset-1:
-    inset 3px 3px 8px var(--od-neu-lo-soft),
-    inset -3px -3px 8px var(--od-neu-hi);
-  --od-neu-inset-2:
-    inset 4px 4px 10px var(--od-neu-lo),
-    inset -4px -4px 10px var(--od-neu-hi);
+    0 0 0 1px var(--od-neu-line),
+    0 16px 40px rgba(43, 43, 46, 0.12);
+  --od-neu-inset-1: inset 0 0 0 1px var(--od-neu-line);
+  --od-neu-inset-2: inset 0 0 0 1px var(--od-neu-line-strong);
 }
 
 .neu-app {
@@ -170,43 +166,46 @@
 }
 
 .neu-nav {
-  min-height: 64px;
-  border-radius: 30px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(252, 251, 249, 0.72));
-  box-shadow:
-    0 14px 32px rgba(150, 156, 180, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 1px rgba(255, 255, 255, 0.55);
+  min-height: 56px;
+  border-radius: 0;
+  background: var(--od-neu-surface);
+  border-bottom: 1px solid var(--od-neu-line);
+  box-shadow: none;
 }
 
 .neu-inset-pill,
 .neu-inset-field {
   background: var(--od-neu-sunken);
-  box-shadow: var(--od-neu-inset-1);
+  box-shadow: none;
 }
 
 .neu-inset-field {
+  background: var(--od-neu-surface);
+  border: 1px solid var(--od-neu-line);
   transition:
     background-color 180ms ease,
-    box-shadow 180ms ease;
+    border-color 180ms ease;
 }
 
 .neu-inset-field:focus-within {
   background: var(--od-neu-surface-high);
-  box-shadow: var(--od-neu-inset-1);
+  border-color: color-mix(in oklab, var(--od-neu-accent) 55%, transparent);
+  box-shadow: none;
 }
 
 .neu-chip {
   background: var(--od-neu-surface);
   box-shadow: var(--od-neu-raise-1);
   transition:
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
 }
 
 .neu-chip:hover {
-  transform: translateY(-1px);
+  background: var(--od-neu-surface-high);
   box-shadow: var(--od-neu-raise-2);
+  transform: none;
 }
 
 .neu-icon-btn,
@@ -215,24 +214,26 @@
   background: var(--od-neu-surface);
   box-shadow: var(--od-neu-raise-1);
   transition:
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease,
     color 180ms ease,
-    background-color 180ms ease;
+    border-color 160ms ease;
 }
 
 .neu-icon-btn:hover,
 .neu-window-btn:hover,
 .neu-dock-btn:hover {
-  transform: translateY(-1px);
+  background: var(--od-neu-surface-high);
   box-shadow: var(--od-neu-raise-2);
+  transform: none;
 }
 
 .neu-icon-btn:active,
 .neu-window-btn:active,
 .neu-dock-btn:active {
   transform: none;
-  box-shadow: var(--od-neu-inset-1);
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .neu-icon-btn:disabled {
@@ -253,9 +254,7 @@
 
 .neu-popover {
   background: var(--od-neu-surface-high);
-  box-shadow:
-    var(--od-neu-raise-3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: var(--od-neu-raise-3);
 }
 
 .neu-kbd {
@@ -265,40 +264,25 @@
 }
 
 .neu-brand-mark {
-  box-shadow:
-    var(--od-neu-raise-1),
-    0 0 0 1px rgba(150, 144, 132, 0.14);
+  box-shadow: none;
 }
 
 .neu-composer {
-  border-radius: 26px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.88) 0%,
-    rgba(247, 246, 252, 0.82) 100%
-  );
-  box-shadow:
-    0 20px 46px rgba(141, 146, 180, 0.22),
-    0 0 34px rgba(150, 140, 255, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    0 0 0 1px rgba(213, 208, 246, 0.55);
-  transition:
-    box-shadow 180ms ease;
+  border-radius: 14px;
+  background: var(--od-neu-surface);
+  border: 1px solid var(--od-neu-line);
+  box-shadow: none;
+  transition: border-color 160ms ease;
 }
 
 .neu-composer:focus-within {
-  box-shadow:
-    0 22px 50px rgba(141, 146, 180, 0.26),
-    0 0 34px rgba(150, 140, 255, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    0 0 0 1px rgba(196, 188, 246, 0.7);
+  border-color: color-mix(in oklab, var(--od-neu-accent) 45%, transparent);
+  box-shadow: none;
 }
 
 .neu-msg-assistant {
   background: var(--od-neu-surface);
-  box-shadow:
-    var(--od-neu-raise-1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .neu-msg-accent {
@@ -838,30 +822,11 @@ a[class~="bg-primary"]:active {
 .app-scape-base {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(1100px 640px at 82% 2%, rgba(255, 247, 226, 0.6), transparent 62%),
-    linear-gradient(
-      180deg,
-      #fbf9f4 0%,
-      #f9f7f3 34%,
-      #eff2fa 58%,
-      #f5f3f0 84%,
-      #f7f5f1 100%
-    );
+  background: var(--od-neu-bg);
 }
 
 .app-scape-art {
-  position: absolute;
-  top: 84px;
-  right: 0;
-  width: min(42vw, 740px);
-  height: auto;
-  opacity: 0.92;
-  -webkit-mask-image: radial-gradient(118% 100% at 88% 18%, #000 42%, transparent 88%);
-  mask-image: radial-gradient(118% 100% at 88% 18%, #000 42%, transparent 88%);
-  transition: opacity 320ms ease;
-  user-select: none;
-  pointer-events: none;
+  display: none;
 }
 
 .app-scape-art[data-hidden="true"] {
@@ -869,16 +834,7 @@ a[class~="bg-primary"]:active {
 }
 
 .app-scape-mist {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 52%;
-  background: linear-gradient(
-    180deg,
-    rgba(235, 241, 250, 0) 0%,
-    rgba(229, 236, 249, 0.26) 42%,
-    rgba(235, 240, 249, 0.1) 78%,
-    rgba(247, 245, 241, 0) 100%
-  );
+  display: none;
 }
 
 .home-hero {
@@ -1007,45 +963,42 @@ a[class~="bg-primary"]:active {
 }
 
 .neu-rail {
-  padding: 12px 8px;
-  border-radius: 30px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.74) 0%,
-    rgba(255, 255, 255, 0.46) 100%
-  );
-  box-shadow:
-    0 16px 36px rgba(148, 156, 182, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 1px rgba(255, 255, 255, 0.55);
+  padding: 8px 6px;
+  border-radius: 14px;
+  background: var(--od-neu-surface);
+  border: 1px solid var(--od-neu-line);
+  box-shadow: none;
 }
 
 .neu-rail .neu-dock-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   background: transparent;
   box-shadow: none;
-  color: #55555f;
+  color: var(--od-neu-ink-2);
 }
 
 .neu-rail .neu-dock-btn:hover {
   transform: none;
   color: var(--od-neu-accent-ink);
-  background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 6px 14px rgba(150, 155, 180, 0.2);
+  background: var(--od-neu-sunken);
+  box-shadow: none;
 }
 
 .neu-rail .neu-dock-active {
-  color: #fff;
-  background: linear-gradient(150deg, #8f7bff, #5747f8);
-  box-shadow:
-    0 10px 22px rgba(87, 71, 248, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: var(--od-neu-accent-ink);
+  background: var(--od-neu-accent-soft);
+  box-shadow: none;
 }
 
 .neu-rail .neu-dock-active::before {
-  display: none;
+  display: block;
+  left: -6px;
+  width: 2px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
 }
 
 .home-slogan-text {
@@ -1057,14 +1010,8 @@ a[class~="bg-primary"]:active {
 }
 
 .neu-date-chip {
-  background: linear-gradient(
-    180deg,
-    rgba(247, 245, 255, 0.96) 0%,
-    rgba(238, 236, 252, 0.88) 100%
-  );
-  box-shadow:
-    0 8px 18px rgba(140, 140, 180, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 /* ------------------------------------------------------------------ *

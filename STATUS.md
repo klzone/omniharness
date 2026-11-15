@@ -1,5 +1,13 @@
 # 执行状态
 
+## OD-UI-717 外壳与主题令牌去 AI 感（阶段一，2026-11-16）
+
+- theme.css 令牌层改为暖白纸面（bg #f4f2ed、surface #fbfaf7）、石墨墨色（ink #2b2b2e）与更深的品牌靛蓝（accent #4a3dd9）；新拟物大阴影改为发丝边框 + 极浅投影（raise/inset 令牌重定义）。
+- 外壳类改为纸面材质：顶栏去渐变/模糊、Dock 改 36px 方形按钮 + 选中左缘细线、输入条改 14px 圆角纸面、消息卡去高光；装饰波形与柔光底图层隐藏。
+- 范围仅 theme.css；App.tsx、Dock.tsx、HomeChat.tsx、styles.css 与各业务页样式未在本轮改动（阶段一逐页收口未做，阶段二未开始）。
+- 验证：npx tsc --noEmit 0；npm run build 通过（361 modules、962ms）；verify_ui_simplify_v1 12/12、verify_ui_sessions_714 22/22、verify_project_ui_716 7/7、verify_task_quadrant_ui_402 10/10、verify_tool_surface_154 7/7。
+- 未验证：真实窗口前后截图与目视验收（阶段一计划要求的实拍证据未补）；业务页在旧材质与新令牌并存下的观感。
+
 ## OD-ARCH-154 PTC 工具批量化与工具时间线修复（2026-11-16）
 
 - 实施：①discipline-core preset 追加 tool-presentation（mode: ptc）与 present，模型的工具面坍缩为 run_code，一次模型往返可循环调用 N 次工具（PTC 运行时由 dsh-base 全局挂载，本机已存在）；work-review-core 保持窄工具面；preset-ptc 禁用行保留。②「未知工具」修复：适配层 _tool_call_id_of 按 data.callId → data.message.toolCallId → data.message.source.callId 取调用标识；时间线只有 tool/call 能写标题、孤立结果事件忽略不再生成「未知工具」行；toolNote 仅在真实调用且有名时显示。
