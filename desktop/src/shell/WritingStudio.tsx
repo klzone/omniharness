@@ -349,9 +349,9 @@ export function WritingPipeline({
           aria-selected={workspaceTab === "workbench"}
           onClick={() => setWorkspaceTab("workbench")}
           className={
-            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            "rounded-lg px-3 py-1 text-[11.5px] font-medium transition-colors " +
             (workspaceTab === "workbench"
-              ? "bg-primary text-on-primary"
+              ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
               : "text-on-surface-variant hover:bg-surface-container")
           }
           data-writing-tab="workbench"
@@ -364,9 +364,9 @@ export function WritingPipeline({
           aria-selected={workspaceTab === "pipeline"}
           onClick={() => setWorkspaceTab("pipeline")}
           className={
-            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            "rounded-lg px-3 py-1 text-[11.5px] font-medium transition-colors " +
             (workspaceTab === "pipeline"
-              ? "bg-primary text-on-primary"
+              ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
               : "text-on-surface-variant hover:bg-surface-container")
           }
           data-writing-tab="pipeline"
@@ -379,9 +379,9 @@ export function WritingPipeline({
           aria-selected={workspaceTab === "materials"}
           onClick={() => setWorkspaceTab("materials")}
           className={
-            "rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors " +
+            "rounded-lg px-3 py-1 text-[11.5px] font-medium transition-colors " +
             (workspaceTab === "materials"
-              ? "bg-primary text-on-primary"
+              ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
               : "text-on-surface-variant hover:bg-surface-container")
           }
           data-writing-tab="materials"

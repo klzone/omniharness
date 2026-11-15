@@ -22,30 +22,30 @@
  */
 @theme {
   /* ---- 颜色：MD3 色调板 ---- */
-  --color-surface: #f4f2ed;
-  --color-surface-dim: #dedad2;
-  --color-surface-bright: #fbfaf7;
-  --color-surface-container-lowest: #fbfaf7;
-  --color-surface-container-low: #f7f5f0;
-  --color-surface-container: #eeebe4;
-  --color-surface-container-high: #e7e3db;
-  --color-surface-container-highest: #dfdbd2;
-  --color-surface-variant: #e4e0d8;
-  --color-on-surface: #2b2b2e;
-  --color-on-surface-variant: #5a5a60;
+  --color-surface: #f3ebdb;
+  --color-surface-dim: #dfd3bf;
+  --color-surface-bright: #faf3e5;
+  --color-surface-container-lowest: #faf3e5;
+  --color-surface-container-low: #f6efe1;
+  --color-surface-container: #ece3d2;
+  --color-surface-container-high: #e5dbc7;
+  --color-surface-container-highest: #ddd1ba;
+  --color-surface-variant: #e7ddc9;
+  --color-on-surface: #2c2823;
+  --color-on-surface-variant: #5b5349;
   --color-inverse-surface: #242530;
   --color-inverse-on-surface: #ececf2;
-  --color-outline: #8a8880;
-  --color-outline-variant: #d8d4cb;
-  --color-surface-tint: #4a3dd9;
+  --color-outline: #82776a;
+  --color-outline-variant: #d8cbb4;
+  --color-surface-tint: #a24e2c;
 
-  --color-primary: #4a3dd9;
+  --color-primary: #a24e2c;
   --color-on-primary: #ffffff;
-  --color-primary-container: #3c31b8;
+  --color-primary-container: #8a3f22;
   --color-on-primary-container: #f1efff;
   --color-inverse-primary: #cbc5ff;
-  --color-primary-fixed: #e9e6ff;
-  --color-primary-fixed-dim: #cbc5fb;
+  --color-primary-fixed: #f6e3d7;
+  --color-primary-fixed-dim: #e8c7b2;
   --color-on-primary-fixed: #1b0c6b;
   --color-on-primary-fixed-variant: #3b2ccc;
 
@@ -72,8 +72,8 @@
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
 
-  --color-background: #f4f2ed;
-  --color-on-background: #2b2b2e;
+  --color-background: #f2e9d8;
+  --color-on-background: #2c2823;
 
   /* ---- 字体（含系统回退；字体文件可后补） ---- */
   /* 大标题：思源柔黑优先，给新拟物一点柔和曲面；缺字体回退思源黑/系统黑。 */
@@ -122,34 +122,40 @@
  * ------------------------------------------------------------------ */
 :root {
   --font-display: var(--font-headline-lg);
-  --od-neu-bg: #f4f2ed;
-  --od-neu-surface: #fbfaf7;
-  --od-neu-surface-high: #ffffff;
-  --od-neu-sunken: #eeebe4;
-  --od-neu-sunken-deep: #e4e0d8;
-  --od-neu-ink: #2b2b2e;
-  --od-neu-ink-2: #5a5a60;
-  --od-neu-ink-3: #85837c;
-  --od-neu-accent: #4a3dd9;
-  --od-neu-accent-soft: #e9e6ff;
-  --od-neu-accent-ink: #372aa8;
-  --od-neu-focus: #372aa8;
-  --od-neu-hi: rgba(255, 255, 255, 0.88);
-  --od-neu-hi-soft: rgba(255, 255, 255, 0.78);
-  --od-neu-lo: rgba(163, 160, 152, 0.22);
-  --od-neu-lo-soft: rgba(163, 160, 152, 0.15);
-  --od-neu-line-dark: rgba(43, 43, 46, 0.16);
-  --od-neu-line: rgba(43, 43, 46, 0.1);
-  --od-neu-line-strong: rgba(43, 43, 46, 0.16);
-  --od-neu-raise-1: 0 0 0 1px var(--od-neu-line);
+  --od-neu-bg: #f2e9d8;
+  --od-neu-surface: #f3ebdb;
+  --od-neu-surface-high: #faf3e5;
+  --od-neu-sunken: #e9dfca;
+  --od-neu-sunken-deep: #e0d4bc;
+  --od-neu-ink: #2c2823;
+  --od-neu-ink-2: #5b5349;
+  --od-neu-ink-3: #857a6a;
+  --od-neu-accent: #a24e2c;
+  --od-neu-accent-soft: #f3e2d6;
+  --od-neu-accent-ink: #7c3a1f;
+  --od-neu-focus: #7c3a1f;
+  --od-neu-hi: rgba(255, 252, 244, 0.92);
+  --od-neu-hi-soft: rgba(255, 252, 244, 0.82);
+  --od-neu-lo: rgba(168, 145, 112, 0.36);
+  --od-neu-lo-soft: rgba(168, 145, 112, 0.26);
+  --od-neu-line-dark: rgba(90, 74, 56, 0.22);
+  --od-neu-line: rgba(120, 100, 75, 0.10);
+  --od-neu-line-strong: rgba(120, 100, 75, 0.18);
+  --od-neu-raise-1:
+    3px 3px 7px var(--od-neu-lo-soft),
+    -3px -3px 7px var(--od-neu-hi);
   --od-neu-raise-2:
-    0 0 0 1px var(--od-neu-line),
-    0 1px 2px rgba(43, 43, 46, 0.04);
+    8px 8px 22px var(--od-neu-lo-soft),
+    -8px -8px 22px var(--od-neu-hi);
   --od-neu-raise-3:
-    0 0 0 1px var(--od-neu-line),
-    0 16px 40px rgba(43, 43, 46, 0.12);
-  --od-neu-inset-1: inset 0 0 0 1px var(--od-neu-line);
-  --od-neu-inset-2: inset 0 0 0 1px var(--od-neu-line-strong);
+    14px 14px 34px var(--od-neu-lo),
+    -12px -12px 28px var(--od-neu-hi);
+  --od-neu-inset-1:
+    inset 2px 2px 5px var(--od-neu-lo),
+    inset -2px -2px 5px var(--od-neu-hi);
+  --od-neu-inset-2:
+    inset 5px 5px 11px var(--od-neu-lo),
+    inset -5px -5px 11px var(--od-neu-hi);
 }
 
 .neu-app {
@@ -167,30 +173,26 @@
 
 .neu-nav {
   min-height: 56px;
-  border-radius: 0;
+  border-radius: 18px;
   background: var(--od-neu-surface);
-  border-bottom: 1px solid var(--od-neu-line);
-  box-shadow: none;
+  box-shadow: var(--od-neu-raise-2);
 }
 
 .neu-inset-pill,
 .neu-inset-field {
   background: var(--od-neu-sunken);
-  box-shadow: none;
+  box-shadow: var(--od-neu-inset-1);
 }
 
 .neu-inset-field {
-  background: var(--od-neu-surface);
-  border: 1px solid var(--od-neu-line);
-  transition:
-    background-color 180ms ease,
-    border-color 180ms ease;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
 }
 
 .neu-inset-field:focus-within {
-  background: var(--od-neu-surface-high);
-  border-color: color-mix(in oklab, var(--od-neu-accent) 55%, transparent);
-  box-shadow: none;
+  background: var(--od-neu-surface);
+  box-shadow:
+    var(--od-neu-inset-1),
+    0 0 0 1px color-mix(in oklab, var(--od-neu-accent) 45%, transparent);
 }
 
 .neu-chip {
@@ -204,7 +206,7 @@
 
 .neu-chip:hover {
   background: var(--od-neu-surface-high);
-  box-shadow: var(--od-neu-raise-2);
+  box-shadow: var(--od-neu-raise-1);
   transform: none;
 }
 
@@ -268,21 +270,26 @@
 }
 
 .neu-composer {
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--od-neu-surface);
-  border: 1px solid var(--od-neu-line);
-  box-shadow: none;
-  transition: border-color 160ms ease;
+  box-shadow: var(--od-neu-inset-2);
+  transition: box-shadow 180ms ease;
 }
 
 .neu-composer:focus-within {
-  border-color: color-mix(in oklab, var(--od-neu-accent) 45%, transparent);
-  box-shadow: none;
+  box-shadow:
+    var(--od-neu-inset-2),
+    0 0 0 1px color-mix(in oklab, var(--od-neu-accent) 40%, transparent);
+}
+
+.neu-msg-user {
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .neu-msg-assistant {
   background: var(--od-neu-surface);
-  box-shadow: var(--od-neu-raise-1);
+  box-shadow: var(--od-neu-raise-2);
 }
 
 .neu-msg-accent {
@@ -494,8 +501,8 @@
   width: 4px;
 }
 .chat-scroll::-webkit-scrollbar-thumb {
-  background: rgba(199, 196, 216, 0.5);
-  border-radius: 9999px;
+  background: rgba(90, 74, 56, 0.26);
+  border-radius: 4px;
 }
 
 /* 对话轮次索引条悬停预览卡（OD-ARCH-083）：四角直角，与既有卡片同源。 */
@@ -597,7 +604,7 @@
  * 布局上首页已固定高度，只有对话历史区可滚动。 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+  scrollbar-color: rgba(90, 74, 56, 0.28) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -610,12 +617,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-  border-radius: 9999px;
+  background: rgba(90, 74, 56, 0.28);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.65);
+  background: rgba(90, 74, 56, 0.42);
 }
 
 @keyframes pulse-subtle {
@@ -963,17 +970,16 @@ a[class~="bg-primary"]:active {
 }
 
 .neu-rail {
-  padding: 8px 6px;
-  border-radius: 14px;
+  padding: 8px;
+  border-radius: 16px;
   background: var(--od-neu-surface);
-  border: 1px solid var(--od-neu-line);
-  box-shadow: none;
+  box-shadow: var(--od-neu-raise-2);
 }
 
 .neu-rail .neu-dock-btn {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   box-shadow: none;
   color: var(--od-neu-ink-2);
@@ -982,14 +988,14 @@ a[class~="bg-primary"]:active {
 .neu-rail .neu-dock-btn:hover {
   transform: none;
   color: var(--od-neu-accent-ink);
-  background: var(--od-neu-sunken);
-  box-shadow: none;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-1);
 }
 
 .neu-rail .neu-dock-active {
   color: var(--od-neu-accent-ink);
-  background: var(--od-neu-accent-soft);
-  box-shadow: none;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
 }
 
 .neu-rail .neu-dock-active::before {
@@ -1005,8 +1011,8 @@ a[class~="bg-primary"]:active {
   font-size: clamp(16px, 1.65vw, 22px);
   line-height: 1.4;
   letter-spacing: 0.16em;
-  color: #615a85;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  color: #6b5a45;
+  text-shadow: none;
 }
 
 .neu-date-chip {
@@ -3687,4 +3693,429 @@ button.wr-backlink:hover {
     flex-direction: row;
     gap: 6px;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * OD-UI-717 P2：全站纸面新拟物映射（2026-11-16）
+ *
+ * 第一阶段只统一了外壳与令牌；本段把各业务页遗留的白色玻璃卡、
+ * 白描边、靛蓝渐变与胶囊收敛到同一套暖纸材料：
+ * 同材质、单一光源、凸起与凹陷两级，陶土只做事件色。
+ * ------------------------------------------------------------------ */
+
+/* 1. 通用表面：白色半透明与旧玻璃统一为纸面 */
+[class*="bg-white"] {
+  background-color: var(--od-neu-surface) !important;
+}
+
+[class*="border-white"],
+[class*="ring-white"] {
+  border-color: transparent !important;
+  --tw-ring-color: transparent !important;
+}
+
+[class*="bg-surface-container-lowest"],
+[class*="bg-surface-bright"] {
+  background-color: var(--od-neu-surface-high) !important;
+}
+
+[class*="bg-surface-container-low"]:not([class*="lowest"]) {
+  background-color: var(--od-neu-surface) !important;
+}
+
+[class*="bg-surface-container-high"],
+[class*="bg-surface-container-highest"] {
+  background-color: var(--od-neu-sunken-deep) !important;
+}
+
+/* 2. 大写标签与宽字距改为句首大写，避免模板感 */
+[class*="uppercase"] {
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+}
+
+/* 3. 胶囊收敛：带底色的胶囊按控件半径，纯圆点与头像不受影响 */
+[class*="rounded-full"][class*="bg-surface"],
+[class*="rounded-full"][class*="bg-white"] {
+  border-radius: 10px !important;
+}
+
+/* 4. 首页快捷卡 */
+.home-card {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.home-card:hover {
+  transform: none;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.home-card:active {
+  transform: none;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.home-card-icon {
+  border-radius: 10px;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.home-quick-pill {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+/* 5. 工作记录页 */
+.wr-hero-mark {
+  border: 0;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-hero-title {
+  font-weight: 600;
+  color: var(--od-neu-ink);
+}
+
+.wr-hero-sub {
+  color: var(--od-neu-ink-3);
+}
+
+.wr-hero-pill {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-ink-2);
+}
+
+.wr-tabbar {
+  border-bottom-color: var(--od-neu-line);
+}
+
+.wr-tab {
+  color: var(--od-neu-ink-2);
+}
+
+.wr-tab:hover {
+  background: var(--od-neu-surface-high);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-tab.is-active {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
+  font-weight: 500;
+}
+
+.wr-tab.is-active::after {
+  background: var(--od-neu-accent);
+}
+
+.wr-tab-icon {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-ink-3);
+}
+
+.wr-tab.is-active .wr-tab-icon {
+  background: var(--od-neu-accent-soft);
+  box-shadow: none;
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-summary-action {
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-summary-action.is-primary {
+  background: var(--od-neu-accent-soft);
+}
+
+.wr-summary-status {
+  border-radius: 6px;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+}
+
+.od-record-group-summary {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.od-record-card {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.od-record-card:hover {
+  transform: none;
+  border: 0;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.od-record-card.is-active {
+  border: 0;
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.wr-card-time {
+  color: var(--od-neu-ink-3);
+}
+
+.wr-review-cta {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-review-cta::before {
+  display: none;
+}
+
+.wr-review-cta:hover {
+  transform: none;
+  box-shadow: var(--od-neu-raise-3);
+}
+
+.wr-review-cta-mark {
+  background: var(--od-neu-accent-soft);
+  box-shadow: none;
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-review-cta-title {
+  color: var(--od-neu-ink);
+  font-weight: 600;
+}
+
+.wr-review-cta-sub {
+  color: var(--od-neu-ink-3);
+}
+
+/* 6. 历史会话页 */
+.sh-masthead {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+[class*="sh-"] [class~="rounded-full"] {
+  border-radius: 10px;
+}
+/* 7. 工作记录筛选与侧栏卡片 */
+.wr-chip,
+.wr-pill {
+  border: 0;
+  border-radius: 10px;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.wr-chip:hover,
+.wr-pill:hover {
+  transform: none;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-chip.is-active,
+.wr-pill.is-active {
+  border: 0;
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-primary-button {
+  border-radius: 10px;
+  background: var(--od-neu-accent);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.wr-primary-button:hover:not(:disabled) {
+  transform: none;
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-ghost-button {
+  border: 0;
+  border-radius: 10px;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-ink-2);
+}
+
+.wr-ghost-button:hover {
+  transform: none;
+  color: var(--od-neu-accent-ink);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-ghost-button.is-primary {
+  border: 0;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+}
+
+.od-record-group::before {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--od-neu-accent) 42%, transparent),
+    var(--od-neu-line)
+  );
+}
+
+.wr-side-card {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-side-mark,
+.wr-side-mark.is-violet {
+  background: var(--od-neu-accent-soft);
+  box-shadow: none;
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-side-title,
+.wr-side-section-title,
+.wr-stat-number {
+  color: var(--od-neu-ink);
+}
+
+.wr-stat {
+  border: 0;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.wr-stat:hover {
+  transform: none;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.wr-stat-icon,
+.wr-stat-icon.is-blue,
+.wr-stat-icon.is-green,
+.wr-stat-icon.is-amber {
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-ink-2);
+}
+/* 8. 弹窗与提示层 */
+[role="dialog"],
+[role="alertdialog"] {
+  background: var(--od-neu-surface-high) !important;
+  border: 0 !important;
+  border-radius: 16px !important;
+  box-shadow: var(--od-neu-raise-3) !important;
+}
+
+/* 9. 旧靛蓝浅底统一为陶土浅底 */
+[class*="bg-primary-fixed"] {
+  background-color: var(--od-neu-accent-soft) !important;
+}
+[class*="text-on-primary-fixed"] {
+  color: var(--od-neu-accent-ink) !important;
+}
+/* 10. 历史会话页 */
+.sh-mast-mark {
+  border-radius: 14px;
+  background: var(--od-neu-accent-soft);
+  box-shadow: none;
+  color: var(--od-neu-accent-ink);
+}
+
+.sh-group-mark {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-ink-2);
+}
+
+.sh-group-title {
+  color: var(--od-neu-ink);
+  font-weight: 600;
+}
+
+.sh-group-rule {
+  background: linear-gradient(90deg, var(--od-neu-line-strong), transparent);
+}
+
+.sh-category {
+  border: 0;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.sh-category:hover {
+  transform: none;
+  box-shadow: var(--od-neu-raise-3);
+}
+
+.sh-category-head {
+  border-bottom-color: var(--od-neu-line);
+}
+
+.sh-category-mark,
+.sh-category-mark.tone-neutral,
+.sh-category-mark.tone-blue,
+.sh-category-mark.tone-violet,
+.sh-category-mark.tone-green,
+.sh-category-mark.tone-amber {
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-ink-2);
+}
+
+.sh-primary-action {
+  border-radius: 12px;
+  background: var(--od-neu-accent);
+  box-shadow: var(--od-neu-raise-1);
+  font-weight: 500;
+}
+
+.sh-primary-action:hover {
+  transform: none;
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.sh-archive-chip {
+  border: 0;
+  border-radius: 10px;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-ink-2);
+}
+
+.sh-archive-chip:hover:not(:disabled) {
+  border: 0;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+  color: var(--od-neu-accent-ink);
+}
+
+.sh-archive-chip.is-current {
+  border: 0;
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
 }

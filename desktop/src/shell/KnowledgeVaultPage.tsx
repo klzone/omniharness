@@ -793,12 +793,12 @@ export function KnowledgeVaultPage({
       className="flex-1 min-h-0 flex flex-col gap-2.5 px-6 md:pl-28 md:pr-10 pb-5"
       data-testid="knowledge-vault-page"
     >
-      <header className="flex-none rounded-2xl bg-white/80 border border-white/90 px-4 py-3 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)]">
+      <header className="flex-none rounded-[16px] bg-white/80 border border-white/90 px-5 py-3.5 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)]">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-headline-md text-[16px] font-semibold text-on-surface">知识库</h1>
+          <h1 className="font-headline-md text-[18px] font-semibold text-on-surface">知识库</h1>
           <span className="mono text-[10px] text-outline">本机 Markdown · AI 治理</span>
           <div
-            className="ml-2 flex items-center gap-0.5 rounded-full border border-white/80 bg-white/60 p-0.5"
+            className="ml-2 flex items-center gap-0.5 rounded-lg bg-[color:var(--od-neu-sunken)] p-0.5 shadow-[var(--od-neu-inset-1)]"
             role="tablist"
             aria-label="知识库页面"
           >
@@ -815,9 +815,9 @@ export function KnowledgeVaultPage({
                 aria-selected={hubPage === page}
                 data-testid={`hub-tab-${page}`}
                 className={
-                  "rounded-full px-3.5 py-1 text-[11.5px] " +
+                  "rounded-md px-3.5 py-1 text-[11.5px] " +
                   (hubPage === page
-                    ? "bg-primary text-on-primary shadow-sm"
+                    ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]"
                     : "text-on-surface-variant hover:text-primary")
                 }
                 onClick={() => {

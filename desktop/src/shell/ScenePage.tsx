@@ -664,6 +664,10 @@ export function ScenePage({
          * 与知识库统一为 Aetheria 浅色卡面与靛青主色；工作记录页保持原有四色区分。
          */
         <>
+          <div className="mx-auto mt-1 mb-3 flex max-w-7xl items-baseline gap-3 md:-translate-x-8">
+            <h1 className="text-[22px] font-semibold tracking-tight text-on-surface">文案写作</h1>
+            <span className="text-[11.5px] text-on-surface-variant">起草、改写与归档稿件</span>
+          </div>
           <div
             className={
               "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
@@ -739,7 +743,6 @@ export function ScenePage({
                   onToggleSubdirs={toggleSubdirs}
                   showTypeLabels
                   stalePaths={writingStalePaths}
-                  accent="primary"
                   onOpen={(p) => void openArtifact(p)}
                 />
               </div>

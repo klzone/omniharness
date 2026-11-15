@@ -800,9 +800,9 @@ export function TopNav({
   const now = useNow(30_000);
 
   return (
-    <header className="w-full z-40 flex-shrink-0" data-tauri-drag-region>
+    <header className="w-full pt-4 px-6 sm:px-10 z-40 flex-shrink-0" data-tauri-drag-region>
       <nav
-        className="neu-nav w-full flex items-center justify-between px-5 py-2 gap-4"
+        className="neu-nav w-full max-w-7xl mx-auto flex items-center justify-between rounded-[18px] px-5 py-2 gap-4"
         data-tauri-drag-region
       >
         {/* 品牌（固定软件名） + Profile 徽标 + 本地 IPC 状态 */}

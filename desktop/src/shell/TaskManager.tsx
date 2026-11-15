@@ -818,20 +818,20 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
  * 象牙灰底、近白凸起、品牌靛蓝只用在小面积强调；不再使用冷蓝渐变与光斑。
  */
 const NEU_TILE =
-  "bg-[#f8f8f6] shadow-[3px_3px_8px_rgba(163,160,152,0.15),-3px_-3px_8px_rgba(255,255,255,0.9)]";
+  "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 const NEU_CARD =
-  "bg-[#f8f8f6] shadow-[5px_5px_14px_rgba(163,160,152,0.14),-5px_-5px_14px_rgba(255,255,255,0.9)]";
+  "bg-[color:var(--od-neu-surface)] shadow-[var(--od-neu-raise-1)]";
 const NEU_CARD_STRONG =
-  "bg-[#f8f8f6] shadow-[8px_8px_22px_rgba(163,160,152,0.18),-8px_-8px_22px_rgba(255,255,255,0.92)]";
+  "bg-[color:var(--od-neu-surface)] shadow-[var(--od-neu-raise-2)]";
 const NEU_INSET =
-  "bg-[#e8e7e3] shadow-[inset_3px_3px_7px_rgba(163,160,152,0.2),inset_-3px_-3px_7px_rgba(255,255,255,0.9)]";
-const AXIS = "text-[12px] font-medium tracking-[0.08em] text-[#5f5f67]";
+  "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
+const AXIS = "text-[12px] font-medium tracking-[0.02em] text-[color:var(--od-neu-ink-2)]";
 
 const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: string }> = {
-  Q1: { icon: "star", color: "text-[#4a3ae0]", tile: "bg-[#efeaff]" },
-  Q2: { icon: "calendar", color: "text-[#3b63a8]", tile: "bg-[#edf3ff]" },
-  Q3: { icon: "clock", color: "text-[#96661d]", tile: "bg-[#fff4e2]" },
-  Q4: { icon: "book", color: "text-[#2f7a51]", tile: "bg-[#eaf8ef]" },
+  Q1: { icon: "star", color: "text-[color:var(--od-neu-accent-ink)]", tile: "bg-[color:var(--od-neu-accent-soft)]" },
+  Q2: { icon: "calendar", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
+  Q3: { icon: "clock", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
+  Q4: { icon: "book", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
 };
 
 /** 甘特条表达状态，不表达伪造的进度百分比。 */
@@ -1245,7 +1245,7 @@ export function TaskQuadrantBoard({
               className={
                 "rounded-full px-3 py-1.5 text-[11px] transition " +
                 (range === option.key
-                  ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                  ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
                   : NEU_TILE + " text-[#5f5f67]")
               }
             >
@@ -1290,7 +1290,7 @@ export function TaskQuadrantBoard({
                   </span>
                   <span className="shrink-0 text-[10px] text-[#8a877f]">{task.state}</span>
                 </div>
-                <div className="relative h-[9px] rounded-full bg-[#e8e7e3] shadow-[inset_0_1px_2px_rgba(163,160,152,0.28)]">
+                <div className="relative h-[9px] rounded-full bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
                   <div
                     className={
                       "absolute top-0 h-[9px] " +
@@ -1321,31 +1321,31 @@ export function TaskQuadrantBoard({
       value: stats.created,
       icon: "clock" as const,
       tone: "text-[#5f5f67]",
-      tile: "bg-[#f0efec]",
+      tile: "bg-[color:var(--od-neu-sunken)]",
     },
     {
       key: "running",
       label: "进行中",
       value: stats.running,
       icon: "arrow-right" as const,
-      tone: "text-[#4a3ae0]",
-      tile: "bg-[#efeaff]",
+      tone: "text-[color:var(--od-neu-ink-2)]",
+      tile: "bg-[color:var(--od-neu-sunken)]",
     },
     {
       key: "done",
       label: "已完成",
       value: stats.done,
       icon: "check" as const,
-      tone: "text-[#2f7a51]",
-      tile: "bg-[#eaf8ef]",
+      tone: "text-[color:var(--od-neu-ink-2)]",
+      tile: "bg-[color:var(--od-neu-sunken)]",
     },
     {
       key: "overdue",
       label: "逾期",
       value: stats.overdue,
       icon: "clock" as const,
-      tone: "text-[#96661d]",
-      tile: "bg-[#fff4e2]",
+      tone: "text-[color:var(--od-neu-accent-ink)]",
+      tile: "bg-[color:var(--od-neu-accent-soft)]",
     },
   ];
 
@@ -1519,7 +1519,7 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (importanceDraft === level
-                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
                           : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
@@ -1540,7 +1540,7 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (quadrantDraft === choice
-                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
                           : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
@@ -1568,7 +1568,7 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (dueKindDraft === kind
-                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
                           : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
