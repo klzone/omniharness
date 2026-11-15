@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { host, shell } from "../api";
+import { host, shell, type KnowledgeSyncReport } from "../api";
 import { TERMINAL_STATES, type KnowledgeIngestPrepare, type KnowledgeReviewItem } from "../types";
 import { Icon } from "../components/Icon";
 
@@ -14,6 +14,9 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
   const [phase, setPhase] = useState<Phase>("idle");
   const [prepared, setPrepared] = useState<KnowledgeIngestPrepare | null>(null);
   const [staged, setStaged] = useState<KnowledgeReviewItem | null>(null);
+  // OD-ARCH-152：模型只写 workspace/staging/kb/，落库由这里触发宿主同步。
+  const [syncReport, setSyncReport] = useState<KnowledgeSyncReport | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState("");
 
   const prepare = async () => {
@@ -103,6 +106,28 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
     }
   };
 
+  const sync = async () => {
+    setSyncing(true);
+    setSyncReport(null);
+    setMessage("正在把 workspace/staging/kb/ 的暂存卡同步到知识库…");
+    try {
+      const report = await shell.knowledgeSyncToVault();
+      setSyncReport(report);
+      setMessage(
+        report.ok
+          ? report.note
+          : report.note + "；冲突与错误项保留在暂存区，处理后重试。",
+      );
+      if (report.created.length > 0) {
+        onApplied?.();
+      }
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <>
       <button
@@ -170,7 +195,45 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
               </div>
             ) : null}
 
+            {syncReport ? (
+              <div
+                data-testid="knowledge-sync-report"
+                className="rounded-lg bg-surface-container-low p-2.5 text-[11.5px] space-y-1"
+              >
+                {syncReport.created.map((card) => (
+                  <p key={card.relative_path} className="truncate text-on-surface-variant">
+                    ◦ 已落库 {card.title} · {card.relative_path}
+                  </p>
+                ))}
+                {syncReport.conflicts.slice(0, 5).map((conflict) => (
+                  <p key={"c-" + conflict.relative_path} className="text-error">
+                    × 冲突 {conflict.relative_path}：{conflict.reason}
+                  </p>
+                ))}
+                {syncReport.errors.slice(0, 5).map((error) => (
+                  <p key={"e-" + error.relative_path} className="text-error">
+                    × 失败 {error.relative_path}：{error.reason}
+                  </p>
+                ))}
+                {syncReport.created.length === 0 &&
+                syncReport.conflicts.length === 0 &&
+                syncReport.errors.length === 0 ? (
+                  <p className="text-outline">暂存区没有待同步卡片。</p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                data-testid="knowledge-sync-button"
+                data-hover-hint="把模型写在 workspace/staging/kb/ 的卡片复核后同步进知识库；冲突不覆盖"
+                onClick={() => void sync()}
+                disabled={syncing}
+                className="mr-auto px-3 py-1 rounded-full bg-surface-container text-on-surface text-[11.5px] disabled:opacity-50"
+              >
+                {syncing ? "正在同步…" : "同步到知识库"}
+              </button>
               <button
                 type="button"
                 onClick={() => void prepare()}

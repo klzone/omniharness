@@ -1,5 +1,73 @@
 # 当前实施计划
 
+### OD-ARCH-152：知识库写入沙箱边界与耗时治理（已批准并实施，2026-11-15；ARCHITECT 复核通过，见 REVIEW.md）
+
+> **触发：** 用户在 Windows 实测「写 7 个文件花了 45 分钟」（详见《超时错误待核查.md》）。时间归因：提权审批等待 ≈49%、模型/工具基线往返 ≈32%、5 次空参数 write 调用 ≈12%、二次全量重写 ≈8%。根因：知识库根 `~/OmniDesk/库` 在 DSH session workspace（`~/OmniDesk/workspace/artifacts`）之外，`workspace-write` 沙箱拒绝写入，每次落盘都触发一次人工提权审批；其中第三次审批被取消，收尾同步链路中断。
+>
+> **现状核查（本助手本轮实测，macOS 侧）：**
+> - 知识库根默认 `~/OmniDesk/库`（settings.v1.json `knowledge_vault_root`），确实位于 `~/OmniDesk/workspace/artifacts`（引擎任务 workspace_dir，来自 `task_shell::prepare_local_data_root()`）之外。Windows 侧同构，问题可复现。
+> - `dsh-sandbox-policy` 的 `writableRoots(policy)` 只包含 `session.cwd`、`/tmp`、`os.tmpdir()` 三处（runtime 内 DSH 代码，AGENTS.md 禁改 runtime/）。用户日志里的 `work\知识库` 是 skill 文档过时路径 + 库根未注入共同导致的探测偏差。
+> - skill 文档 `skills/knowledge-search/SKILL.md` 第 89 行写「库根默认 `~/OmniDesk/库`」，但未给出环境变量名或配置文件路径；本机 `OMNIDESK_LIB_ROOT`/`OMNIDESK_KNOWLEDGE_ROOT` 均未注入引擎子进程（`engine_supervisor.rs child_env()` 不含此项）。settings.rs 中有 `OMNIDESK_KNOWLEDGE_ROOT` 环境变量支持（覆盖 `library_root`），但宿主从未把它传给引擎子进程。
+> - 空参数 write 调用（5 次）属于模型输出层错误，DSH 工具 schema 校验会拒绝并返回 invalid arguments，但已消耗一次完整往返。runtime/ 内 DSH 不允许改动，只能在 skill 提示词层规避。
+>
+> **方案（三选一，ARCHITECT 推荐方案 A）：**
+> - **方案 A（推荐）：** 知识库写入统一走「先落 workspace、后由宿主命令桥接到库根」。宿主侧新增一条 Tauri command（如 `knowledge_sync_to_vault`），由宿主直接复制 workspace 内精简版卡片到 `knowledge_vault_root`（宿主进程无 DSH 沙箱限制），返回同步结果。skill 文档改为「写 workspace/staging/kb/，然后调用宿主同步入口」；不再让模型直接写库根。优点：一次命令完成同步、无提权、沙箱边界不被放宽；宿主侧可做字数校验与索引合并。缺点：需要新增一条 IPC + 引擎/宿主触发机制（可由任务完成后自动触发，或由 UI 按钮触发）。
+> - **方案 B（最简）：** 把知识库根移进 workspace：把 `~/OmniDesk/库` 迁移或软链到 `~/OmniDesk/workspace/artifacts/库`，并同步更新 settings 与 skill 文档。优点：零 IPC 新增、skill 文档只改一处；缺点：改变用户现有目录习惯，需要一次显式迁移（须用户单独授权），且 `knowledge_vault_root` 与 `library_root` 语义耦合变紧。
+> - **方案 C：** 引擎侧把库根注入 session.cwd 之外的额外 writable root。不可行——`writableRoots` 硬编码 workspaceRoot+tmp，改它需要动 runtime/，AGENTS.md 禁改。
+>
+> **范围（方案 A）：**
+> 1. `desktop/src-tauri/src/lib.rs`：新增 `knowledge_sync_to_vault` Tauri command（读 workspace 暂存目录、写 knowledge_vault_root、做字数与索引校验）。
+> 2. `desktop/src-tauri/src/knowledge_vault.rs`：补 `sync_from_workspace` 公共函数（可复用现有 read/write helpers）。
+> 3. `skills/knowledge-search/SKILL.md`：数据边界一节改为「卡片先写 `workspace/staging/kb/`，再由宿主同步入口落库根」；同步落点、索引合并规则、字数上限（≤320 字）写清楚。同步过时的 `~/OmniDesk/库` 表述与 Windows 侧路径歧义。
+> 4. `desktop/src/api.ts` + `desktop/src/shell/KnowledgeIngestPanel.tsx`（或首页知识入口）：暴露「同步到知识库」按钮/自动触发。
+> 5. 引擎侧 `engine/omnidesk_engine/web_api_adapter.py`：任务终态后若检测到 workspace/staging/kb 有新文件，输出一条结构化提示（不改模型路由）。
+>
+> **明确不做：** 不动 runtime/、不改模型路由/凭证、不迁移用户现有库内容、不做通用插件市场或平台抽象。
+>
+> **验证：** cargo test（新增 command 单测）、`npx tsc --noEmit`、端到端：写一张测试卡（合成内容，≤320 字）→ workspace 暂存 → 宿主同步 → 库根落盘且字数合规 → 索引含该卡。证据落 `tests/verification/desktop/evidence/od-arch-152/`。
+
+### OD-UI-716：项目跟踪页视觉与色调对齐工作记录（按用户当轮反馈实施，2026-11-15）
+
+> **触发：** 用户认为项目跟踪布局初定，但 UI 与色调和整体不符，要求参考工作记录页与 OmniDesk 设计规范重新优化。
+>
+> **案例：** Flow / Pipefy 的卡片分区与 Asana 的单主色层级；只借用“分区清楚、卡片克制、一个主色”的版式经验。落到 OmniDesk：暖白底材、近白凸起面、品牌靛蓝小面积强调，不使用冷蓝渐变、青绿光斑或大面积彩色统计球。
+>
+> **范围：** `desktop/src/shell/TaskManager.tsx` 的 `TaskQuadrantBoard` 页头、四象限、任务行、甘特、统计、已完成与编辑弹层；新增 `verify_project_ui_716.py`，同步 `verify_task_quadrant_ui_402.py`。不改任务数据、IPC、象限派生逻辑或排期逻辑。
+>
+> **设计：** 页头复用 `wr-hero` 与 `wr-search`；编辑弹层复用 `wr-dialog`；四象限使用暖白凸起卡与细分隔任务行；统计改为简洁数字卡；已完成区改为 `wr-side-card` 的暖白卡；甘特条只表达状态色，不再伪造 `statePercent` 的 15%/55% 进度。
+>
+> **验证：** `npx tsc --noEmit` 0；`verify_task_quadrant_ui_402.py` 10/10；`verify_project_ui_716.py` 7/7；`npm run tauri:build -- --bundles app` rc=0、425.68 MiB；真实窗口目视确认。
+
+### OD-UI-715：历史会话模块化分类板与 80% 浮层操作抽屉（按用户当轮反馈实施，2026-11-15）
+
+> **触发：** 用户反馈历史会话页只是从上到下平铺，布局缺乏设计感；右侧操作抽屉占满高度。
+>
+> **案例与规范：** OpenDesign 案例库中取 Agentic（对话优先、结果清楚）、Arc（侧栏与层次）、Bento（模块化卡片）三组方向；结合 ChatGPT 历史列表与 Notion/Trello 分组卡片的扫读方式。材质、字号、圆角、阴影与强调色全部沿用 OmniDesk 的 Neo-Skeuomorphism 2.0 令牌（`--od-neu-*`），不引入新色板。
+>
+> **设计：** 页头改为一体式档案抬头（标题、分类数、对话数、最近更新、总数凹槽）；分类改为两列模块化“档案盒”卡片，卡片内按时间线排对话，默认显示最近 4 段，超过可展开；未来新增分类自动进入网格。右侧操作抽屉改为距顶 10%、高 80%、右侧浮起的圆角面板，内含继续、归档、最近三条消息与删除。
+>
+> **范围：** `desktop/src/shell/SessionHistoryPage.tsx`、`desktop/src/theme.css`、`tests/verification/desktop/verify_ui_sessions_714.py`；不改线程存储、分类表、引擎会话或删除边界。
+>
+> **验证：** `npx tsc --noEmit` 0；`npm run build` 0；`verify_ui_sessions_714.py` 22/22；重新打包并启动真实窗口后目视确认。
+
+### OD-UI-714：历史会话平台入口与分类归档页（按用户当轮明确要求实施，2026-11-15）
+
+> **性质：** 前端信息架构与界面实现；不新增存储字段、不迁移线程、不读取或删除引擎侧会话。
+>
+> **触发：** 用户指出会话历史不能去掉，否则无法翻回旧对话继续；要求把「历史会话」与「知识库」一样作为基础 Profile 的固定功能，在任何 Profile 下都出现在左侧快捷图标。
+>
+> **范围：** `desktop/src/shell/Dock.tsx`（新增平台内置历史入口）、`desktop/src/App.tsx`（路由）、`desktop/src/shell/SessionHistoryPage.tsx`（新页）、`desktop/src/sessionHistory.ts` 与 `.test.mjs`（分组/摘要/时间纯函数）、`desktop/src/theme.css`、`desktop/src/sceneThreads.ts`（归档时不改对话更新时间）、`tests/verification/desktop/verify_ui_sessions_714.py`、`verify_ui_simplify_v1.py`、`profile_decl.rs` 注释。
+>
+> **设计：** 沿用工作记录页的页头、卡片与右侧抽屉材质；一级结构是对话分类块，块内按更新时间倒序列出对话卡。分类表来自当前 Profile 的 `useThreadCategories()`，新增分类自动成为新块；分类表里没有的旧标签作为额外块显示，不丢线程。点击卡片打开操作抽屉，提供「继续对话」「归档对话」「删除对话」。
+>
+> **归档语义：** 归档＝把本机线程重新挂到一个对话分类，只改标签，不移动、不复制、不删除线程 JSON，也不改引擎侧会话；归档不刷新对话的更新时间。删除＝删除本机线程记录（`thread_store_delete`），删除前确认，引擎侧会话不动；在途任务未结束时禁止删除。
+>
+> **Profile 边界：** 历史会话不写入 Profile 场景声明，不随切换消失；旧声明里手工写的 `sessions` 仍可解析，但载入时丢弃，避免 Dock 重复。分类表随 Profile 变化，页面本身始终可用。
+>
+> **借鉴（OD-ARCH-035）：** ChatGPT 历史列表把“回到旧对话”做成低摩擦入口；Trello/Notion 的分组卡片把分类做成一级区块、记录做成可扫读卡片。本页取这两点，并与工作记录页共用页头、卡片与抽屉语言。
+>
+> **验证：** `npx tsc --noEmit` 0；`npm run build` 0；`node --experimental-strip-types --test src/sessionHistory.test.mjs` 5/5；`verify_ui_sessions_714.py` 22/22；`verify_ui_simplify_v1.py` 12/12；`cargo test --offline --lib profile_decl` 定向回归。真实窗口交互由用户实测。
+
 ### OD-ARCH-150：Harness Engineering + Multi-Agent Graph 专项审计与架构规划（已批准，2026-11-13；Phase B 已实施，待复核）
 
 > **性质：** 架构专项审计与改造规划，不是功能开发。全程只读代码与数据结构，产出六份规划文档；不修改业务源代码、不迁移数据库、不创建 Agent、不安装依赖、不动 runtime/。

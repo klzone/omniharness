@@ -1,0 +1,50 @@
+
+running 1 test
+SYNC152_REPORT:{"ok":true,"created":[{"relative_path":"知识库/方法/合成卡二.md","title":"合成卡二","bytes":93},{"relative_path":"知识库/概念/合成卡一.md","title":"合成卡一","bytes":105}],"conflicts":[],"errors":[],"index_updated":true,"staging_dir":"/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omnidesk-sync152-verify-sapctsxm/workspace/staging/kb","note":"已同步 2 张；冲突 0；错误 0"}
+test knowledge_sync_152_tests::knowledge_sync_152_e2e ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1184 filtered out; finished in 0.03s
+
+warning: unused variable: `material_ids`
+  --> src/integrity.rs:51:9
+   |
+51 |     let material_ids: BTreeSet<&str> = materials.items.iter().map(|m| m.material_id.as_str()).collect();
+   |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_material_ids`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `now`
+    --> src/review_store.rs:1357:13
+     |
+1357 |         let now = noon("2026-11-11");
+     |             ^^^ help: if this is intentional, prefix it with an underscore: `_now`
+
+warning: function `weekly_text` is never used
+    --> src/review_store.rs:1298:8
+     |
+1298 |     fn weekly_text(record_id: &str, task_id: &str) -> String {
+     |        ^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `stderr` is never read
+    --> src/export_engine.rs:1256:5
+     |
+1250 | struct ProcessOutput {
+     |        ------------- field in this struct
+...
+1256 |     stderr: String,
+     |     ^^^^^^
+
+warning: field `config` is never read
+    --> src/writing_section.rs:1096:9
+     |
+1093 |     struct Fixture {
+     |            ------- field in this struct
+...
+1096 |         config: PathBuf,
+     |         ^^^^^^
+
+warning: `omnidesk-desktop` (lib test) generated 5 warnings (run `cargo fix --lib -p omnidesk-desktop --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running unittests src/lib.rs (target/debug/deps/omnidesk_desktop_lib-2987307d49efb4d8)

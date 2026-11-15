@@ -1,3 +1,67 @@
+# OD-ARCH-152 审查：知识库写入沙箱边界与耗时治理（BUILDER 实施，ARCHITECT 独立复核，2026-11-15）——通过
+
+**审查对象：** BUILDER（OpenDesign/deepseek-v4.1-flash-eco，thinking high）按已批准计划 OD-ARCH-152 方案 A 实施的 7 个文件：knowledge_vault.rs（sync_from_workspace 及测试）、lib.rs（knowledge_sync_to_vault command + 注册 + 4 单测）、api.ts、KnowledgeIngestPanel.tsx、skills/knowledge-search/SKILL.md（第四/五/六节）、web_api_adapter.py（终态只读探测 + pending_vault_sync 提示）、verify_knowledge_sync_152.py。
+
+**核对结果（ARCHITECT 亲自复查源码与 Git diff，并实际重跑验证）：**
+1. 范围符合批准：未触碰 runtime/、模型路由、凭证；未改用户真实数据（所有测试用 /tmp 合成根）；既有未提交改动（OD-UI-714/715/716）全部保留，diff 零交集。
+2. 同步语义正确：路径只允许 知识库/概念|方法/ 下的 .md；复用 vault_write::create_note（原子写、UTF-8、大小上限）；正文超 CARD_MAX_CHARS(420) 拒绝；同路径已存在记冲突不覆盖；索引行幂等追加；索引落盘失败回滚新建卡；成功后清理暂存、冲突与失败项保留。逐行读 diff 未发现越界写入或静默覆盖。
+3. 复跑证据（脚本运行）：cargo test knowledge_sync → 4 passed；cargo test 全量 1185 passed（BUILDER 实测，证据 cargo-test.txt）；npx tsc --noEmit → 0；verify_knowledge_sync_152.py → 47/47（复跑两次，第二次在第五节修正后）；web_api_adapter.py ast 解析通过；终态探测与 pending_vault_sync 提示经合成目录验证。
+4. 复核发现并已修复：SKILL 第五节残留旧句「索引同步……始终由你完成」与第四节新流程矛盾；已退回 BUILDER 只改该句为「防重复判断（建卡前查索引）始终由你完成；落库与索引行由宿主同步入口完成」，复跑 47/47 通过。
+5. 证据落盘：tests/verification/desktop/evidence/od-arch-152/（cargo-test.txt、cargo-test-parallel.txt、tsc.txt、verify.txt、checks.txt、e2e_run1/2.txt、engine-hint.txt、engine-provenance.txt）。
+
+**如实限制（未验证项）：**
+- 未启动真实模型会话，「模型按新 skill 写 staging/kb → 宿主同步」全链路无真实模型输出证据（静态检查 + 合成端到端覆盖）。
+- 未启动桌面窗口做视觉走查；界面改动仅静态检查 + tsc。
+- Windows 侧事故遗留的 6 张精简卡仍在 workspace 暂存区，需用户在 Windows 上用新「同步到知识库」入口收尾；本机（macOS）不代操作。
+
+**结论：** 通过。提交与推送仍须用户单独批准；建议用户在 Windows 端实测一轮真实建卡后回填结论。
+
+# OD-UI-716 审查：项目跟踪页视觉与色调对齐（亲自实施并复验，2026-11-15）——通过，真实窗口已目视确认
+
+**审查对象：** `TaskManager.tsx` 中 `TaskQuadrantBoard` 的页头、四象限、任务行、甘特、统计、已完成与编辑弹层；`verify_task_quadrant_ui_402.py` 与新增 `verify_project_ui_716.py`。
+
+**核对结果：**
+1. 布局未变：仍是四象限 + 甘特 + 统计 / 已完成，不改任务数据、IPC 或象限派生。
+2. 色调已统一：冷蓝色值（`#3B82F6`、`#22D3EE`、`#2563EB`、`#DCE9FF` 等）从项目页移除；页头、卡片、统计和弹层改用暖白灰与 `#5747f8` 强调。
+3. 材质与工作记录一致：页头复用 `wr-hero`/`wr-search`，弹层复用 `wr-dialog`，右栏复用 `wr-side-card` 的暖白凸起面。
+4. 数据诚实性修复：删除 `statePercent` 的 15%/55% 伪进度，任务行显示真实状态，甘特条按状态着色。
+5. 回归：`npx tsc --noEmit` 0；`verify_task_quadrant_ui_402.py` 10/10；`verify_project_ui_716.py` 7/7；`npm run tauri:build -- --bundles app` rc=0、425.68 MiB；覆盖安装并启动 app pid 82484、engine pid 82530、Python engine pid 82586；真实窗口 1280×821 目视确认。
+
+**如实限制：** 未逐项点击编辑弹层与今日/本周视图；真实窗口截图含用户任务正文，未写入仓库；四象限卡片在任务很少时仍有较多留白（布局保持初定，不在本轮重排）。
+
+**结论：** 通过（结构、构建与真实窗口目视确认）；交互细节由用户实测。
+
+# OD-UI-715 审查：历史会话模块化分类板与 80% 浮层抽屉（亲自实施并复验，2026-11-15）——通过，真实窗口已目视确认
+
+**审查对象：** `SessionHistoryPage.tsx` 的页头、分类板、条目行与操作抽屉，`theme.css` 的 `sh-*` 二次设计样式，`verify_ui_sessions_714.py` 的结构检查。
+
+**核对结果：**
+1. 布局不是单列平铺：分类使用 `auto-fit` 两列卡片网格，卡片内是时间线条目；分类数量与未来新增分类都由当前分类表驱动。
+2. 抽屉高度符合要求：`top-[10%]` + `h-[80%]` + 右侧 16px，真实窗口 1280×821 中目视确认。
+3. 材质符合 OmniDesk 规范：页头/分类卡/抽屉使用 `--od-neu-raise-*`、`--od-neu-inset-*`、暖白底与品牌靛强调；分类色沿用工作记录页四组柔和色，未来分类按键名稳定散列。
+4. 操作仍完整：继续对话、归档到分类、最近消息预览、底部删除；归档/删除边界沿用 OD-UI-714，未改线程存储。
+5. 回归：`npx tsc --noEmit` 0；`npm run build` 0；`verify_ui_sessions_714.py` 22/22；`npm run tauri:build -- --bundles app` rc=0、425.68 MiB；覆盖安装并启动 app pid 79275、engine pid 79345。
+
+**如实限制：** 真实窗口截图含用户对话正文，未写入仓库；删除确认未再次点击，跨 Profile 归档后的列表变化未实测；分类表读取失败时的回退仍未逐项实测。
+
+**结论：** 通过（结构、构建与真实窗口目视确认）；删除确认与跨 Profile 归档由用户实测。
+
+# OD-UI-714 审查：历史会话平台入口与分类归档页（亲自实施并复验，2026-11-15）——通过，真实窗口待用户验收
+
+**审查对象：** `Dock.tsx`、`App.tsx`、`SessionHistoryPage.tsx`、`sessionHistory.ts` 与单测、`sceneThreads.ts`、`theme.css`、`profile_decl.rs` 注释、两份 verification 脚本。
+
+**核对结果：**
+1. 入口边界成立：历史会话与知识库在 Dock 平台内置项中固定追加，不依赖 `decl.yml`；旧声明里的 `sessions` 被过滤，避免重复。
+2. 分类分组成立：块顺序沿用当前 Profile 分类表的宿主顺序；空分类不渲染；未知/旧标签追加为额外块，线程不被丢弃。
+3. 操作成立：卡片点击打开右侧抽屉，三项操作为继续、归档、删除；归档调用 `retagThread` 且不刷新 `updatedAt`，不移动线程文件；删除前确认，在途任务未结束时禁用。
+4. 数据边界成立：删除仅走本机线程存储，不改引擎侧会话；页面不读取或展示对话正文以外的线程消息摘要。
+5. 视觉与工作记录一致：复用 `wr-hero`、记录卡材质与右侧抽屉，新增 `sh-*` 样式只组布局与操作面；未引入新颜色体系。
+6. 回归：`npx tsc --noEmit` 0；`npm run build` 0；`node --experimental-strip-types --test src/sessionHistory.test.mjs` 5/5；`verify_ui_sessions_714.py` 22/22；`verify_ui_simplify_v1.py` 12/12；`cargo test --offline --lib profile_decl` 19/19。
+
+**如实限制：** 已构建并安装最新版，窗口启动成功（app pid 77523、engine pid 77592）；但未用自动化点击验证抽屉视觉与确认框，未使用真实用户线程或跨 Profile 实际切换；分类表读取失败时页面按内置名与未知键回退，未逐项实测。
+
+**结论：** 通过（源码结构、构建、纯函数与定向 Rust 测试已实证）；真实窗口体验由用户实测确认。
+
 # OD-WR-104b 审查：补录跨周与失败即不写（亲自实施并复验，2026-11-13）——通过，真实模型待复测
 
 **审查对象：** `worklog.rs` 补录窗口/跨周移动、`quicklog.rs` 追加与移动、`workRecordVerdict.ts` 校验、`HomeChat.tsx` 索引与兜底、`memory-agent/SKILL.md`。

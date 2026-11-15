@@ -1,0 +1,57 @@
+[pass] sync_fn_public
+[pass] sync_staging_const
+[pass] sync_reuses_create_note
+[pass] sync_card_limit
+[pass] sync_utf8
+[pass] sync_conflict_no_overwrite
+[pass] sync_index_idempotent
+[pass] sync_cleanup_on_success
+[pass] sync_keeps_failed
+[pass] sync_allowed_dirs
+[pass] command_defined
+[pass] command_registered
+[pass] command_uses_vault_root
+[pass] command_uses_workspace
+[pass] api_method
+[pass] api_invokes_command
+[pass] panel_button
+[pass] panel_calls_api
+[pass] panel_report
+[pass] panel_shows_conflicts
+[pass] skill_write_staging
+[pass] skill_no_direct_vault_write
+[pass] skill_no_missing_args
+[pass] skill_index_by_host
+[pass] skill_root_from_settings
+[pass] skill_sections_intact
+[pass] skill_two_hop_intact
+[pass] engine_detector
+[pass] engine_hint_kind
+[pass] engine_hint_in_terminal
+[pass] engine_no_wait
+[pass] engine_route_untouched
+[pass] e2e_run1_ok {"ok": true, "created": [{"relative_path": "知识库/方法/合成卡二.md", "title": "合成卡二", "bytes": 93}, {"relative_path": "知识库/概念/合成卡一.md", "title": "合成卡一", "bytes": 105}], "conflicts": [], "errors": [], "index_updated": true, "staging_dir": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omnidesk-sync152-verify-vbdrkncf/workspace/staging/kb", "note": "已同步 2 张；冲突 0；错误 0"}
+[pass] e2e_run1_created_two
+[pass] e2e_run1_index_updated
+[pass] e2e_cards_landed
+[pass] e2e_staging_cleaned
+[pass] e2e_index_has_two # 知识库索引
+
+## 概念
+
+- [合成卡一](概念/合成卡一.md) | 标签：合成, 概念 | 合成定义。
+## 方法
+
+- [合成卡二](方法/合成卡二.md) | 标签：合成, 方法 | 合成方法：先列步骤，再写结论。
+## 原始资料
+
+[pass] e2e_body_under_target
+[pass] e2e_run2_not_ok {"ok": false, "created": [], "conflicts": [{"relative_path": "知识库/概念/合成卡一.md", "reason": "库里已有同路径卡片，同步不覆盖；请改名或人工合并"}], "errors": [{"relative_path": "知识库/方法/超限卡.md", "reason": "正文 421 字，超过 420 字上限；请拆卡后重试"}], "index_updated": true, "staging_dir": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omnidesk-sync152-verify-vbdrkncf/workspace/staging/kb", "note": "已同步 0 张；冲突 1；错误 1"}
+[pass] e2e_run2_conflict {"ok": false, "created": [], "conflicts": [{"relative_path": "知识库/概念/合成卡一.md", "reason": "库里已有同路径卡片，同步不覆盖；请改名或人工合并"}], "errors": [{"relative_path": "知识库/方法/超限卡.md", "reason": "正文 421 字，超过 420 字上限；请拆卡后重试"}], "index_updated": true, "staging_dir": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omnidesk-sync152-verify-vbdrkncf/workspace/staging/kb", "note": "已同步 0 张；冲突 1；错误 1"}
+[pass] e2e_run2_error {"ok": false, "created": [], "conflicts": [{"relative_path": "知识库/概念/合成卡一.md", "reason": "库里已有同路径卡片，同步不覆盖；请改名或人工合并"}], "errors": [{"relative_path": "知识库/方法/超限卡.md", "reason": "正文 421 字，超过 420 字上限；请拆卡后重试"}], "index_updated": true, "staging_dir": "/var/folders/z8/hyb3l8296wn_xpyv7rf8syl40000gn/T/omnidesk-sync152-verify-vbdrkncf/workspace/staging/kb", "note": "已同步 0 张；冲突 1；错误 1"}
+[pass] e2e_run2_created_none
+[pass] e2e_run2_no_overwrite
+[pass] e2e_run2_staging_kept
+[pass] e2e_index_no_duplicates
+[pass] e2e_overlimit_not_landed
+合计 47 项，失败 0 项

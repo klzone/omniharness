@@ -1,0 +1,4 @@
+missing_dir 0
+two_cards 2
+symlink_skipped 2
+empty_workspace 0
