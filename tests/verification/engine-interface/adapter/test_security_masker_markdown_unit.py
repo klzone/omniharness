@@ -144,7 +144,7 @@ class MaskMdTests(unittest.TestCase):
         original = "---\nauthor: 林青禾\n---\n正文"
         masked = masker().mask_markdown(original)
         self.assertTrue(masked.text.startswith("---\n"))
-        self.assertIn("author: [PERSON_", masked.text)
+        self.assertIn("author: 林**", masked.text)
         self.assertIn("\n---\n正文", masked.text)
 
     def test_wikilink_target_preserved_display_masked(self):
@@ -152,22 +152,20 @@ class MaskMdTests(unittest.TestCase):
         masked = masker().mask_markdown(original)
         self.assertTrue(masked.text.startswith("[[目标页|"))
         self.assertTrue(masked.text.endswith("]]"))
-        self.assertIn("[PERSON_", masked.text)
+        self.assertIn("[[目标页|林**]]", masked.text)
         self.assertNotIn("|林青禾]]", masked.text)
 
     def test_same_entity_across_regions_same_placeholder(self):
         original = "---\nauthor: 林青禾\n---\n正文 林青禾"
         masked = masker().mask_markdown(original)
-        placeholders = [part for part in masked.text.split() if part.startswith("[PERSON_")]
-        self.assertEqual(len(placeholders), 2)
-        self.assertEqual(placeholders[0].rstrip(","), placeholders[1])
+        self.assertEqual(masked.text.count("林**"), 2)
 
     def test_session_passthrough(self):
         scope = SessionScope()
         first = masker().mask_markdown("林青禾", session=scope)
         second = masker().mask_markdown("林青禾", session=scope)
         self.assertEqual(first.text, second.text)
-        self.assertIn("[PERSON_", first.text)
+        self.assertEqual(first.text, "林**")
 
     def test_tags_and_urls_not_masked(self):
         original = "#林青禾 https://example.test/林青禾/13800138000 正文 林青禾 13800138000"
@@ -193,14 +191,14 @@ class UnmaskMdTests(unittest.TestCase):
         roundtrip(self, original)
 
     def test_cross_mapping_is_rejected(self):
-        first = masker().mask_markdown("林青禾")
-        second = masker().mask_markdown("周岚")
+        first = masker().mask_markdown("13800138000")
+        second = masker().mask_markdown("林青禾")
         restored, report = DataMasker().unmask_markdown(first.text, second.mapping)
         self.assertEqual(restored, first.text)
         self.assertFalse(report["ok"])
 
     def test_modified_placeholder_preserved(self):
-        masked = masker().mask_markdown("林青禾")
+        masked = masker().mask_markdown("13800138000")
         modified = masked.text.replace("]", "X]", 1)
         restored, report = DataMasker().unmask_markdown(modified, masked.mapping)
         self.assertEqual(restored, modified)
@@ -285,7 +283,7 @@ class EdgeTests(unittest.TestCase):
     def test_unclosed_frontmatter_is_plain_text(self):
         text = "---\ntitle: 合成\n林青禾 13800138000"
         masked = masker().mask_markdown(text)
-        self.assertIn("[PERSON_", masked.text)
+        self.assertIn("林**", masked.text)
         self.assertIn("[PHONE_", masked.text)
 
 

@@ -943,6 +943,42 @@
   border-radius: 0;
 }
 
+/* ---- 敏感词典与阻断词（OD-MASK-160e）----
+   沿用上面勾选行的直角与细分隔线；一行三列，窄屏折成单列。 */
+.settings-surface .sensitive-dict {
+  margin-top: 1rem;
+}
+
+.settings-surface .dict-group {
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--od-neu-line-dark);
+}
+
+.settings-surface .dict-row {
+  grid-template-columns: 7.2rem minmax(0, 1.2fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.settings-surface .dict-row-block {
+  grid-template-columns: minmax(0, 1fr) 7.2rem auto;
+}
+
+.settings-surface .dict-row .text-input {
+  height: 1.85rem;
+  padding: 0 0.45rem;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+@media (max-width: 720px) {
+  .settings-surface .dict-row,
+  .settings-surface .dict-row-block {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .settings-surface .provider-editor {
   min-width: 0;
   display: flex;

@@ -7684,3 +7684,156 @@ Rust 测试前需 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"
 **本地验证：** desktop 下 `npm run build`（tsc --noEmit + vite build）通过，359 模块，0 错误。
 
 **待验证：** CI 构建与 release 产物；Windows 实机安装后项目跟踪页为新版四象限与甘特图。
+
+## 0.2.25 安装包验证与红线闸门裁定（ARCHITECT，2026-11-15）
+
+**v0.2.25 安装包已发布并核对：** CI macOS/Windows 构建与 publish 任务均 success；release tag 指向 fa7eb53，包含项目跟踪新拟物改版。资产为 OmniDesk_0.2.25_universal.dmg（约 190MB）与 OmniDesk_0.2.25_x64-setup.exe（约 88MB）。用户 Windows 侧实测以安装包为准。
+
+**脱敏与红线闸门分工确认（静态源码检查）：** 出站脱敏是引擎侧行为。engine_supervisor.rs child_env() 把 OMNIDESK_SENSITIVE_DICT 指到 <数据根>/config/sensitive-dict.v1.json；web_api_adapter.py 默认启用 DataMasker（_mask_prompt 在发模型前替换，_unmask_delta 收回复后还原），只有显式 OMNIDESK_MASKER=off 才关。宿主侧 mask_privacy 只对 profile rules.json 里 privacy 段（身份证/手机号）生效。本地保存路径（quicklog::append / worklog append_entry）收到的注释说"已过红线与掩码"，但实际保存原文、不落掩码，注释与行为不一致。
+
+**实际数据根核对：** 用户当前 ~/OmniDesk/app/profiles/discipline/rules.json 的 redline_keywords 已是空数组、privacy 段仍在（id_card/phone = mask）。因此对话链路的红线拦截此刻实际为空（无词可命中）；工作记录等其他写入入口若仍报"命中红线"，来源是该数据根下其他 Profile 规则文件或旧配置，不是 engine_submit_task 这条链路。用户数据根文件未改动。
+
+**残留待验证：** Windows 实机安装 v0.2.25 后项目跟踪页是否为四象限新版；出站脱敏在真实模型请求中的命中与还原需以引擎台账/会话日志为准。
+
+## 脱敏链路确认与配置指引（ARCHITECT，2026-11-15）
+
+**设计核对结论（源码证据）：** 系统当前就是"本地不拦、出站脱敏、回来还原"的双向架构。
+- 出站汇合点唯一：web_api_adapter.py:1434 _mask_prompt 在任何请求发往模型前执行。
+- 引擎侧自动识别并替换：身份证（GB11643 校验）、银行卡（Luhn）、手机号、邮箱、上下文人名（首字+**），都无需配置。
+- 可维护敏感词：~/OmniDesk/app/config/sensitive-dict.v1.json（PERSON/BRANCH/ORG/CUSTOM 四类，aliases 支持别名），当前为空 entries，重启引擎生效。
+- 还原：StreamUnmasker 按会话把占位符还原成本地原文，落盘与 UI 均为原文。
+- 红线扫描（命中即拒绝）与脱敏是两套机制；用户数据根 discipline/rules.json 的 redline_keywords 已为空数组，对话主链路实际已无拦截。设置页"规则资产"只读展示该文件；"恢复默认规则包"会写回 14 个出厂红线词，注意不要误点。
+
+**缺口：** 设置页没有敏感词典的编辑入口，维护需手动改 JSON 文件。
+
+## 敏感词典 Windows 缺失与预置方案（ARCHITECT，2026-11-15）
+
+**问题：** Windows 安装包没有 sensitive-dict.v1.json。源码里没有任何启动期写入该文件的逻辑——engine_supervisor.rs child_env 只传路径，masker.py 缺文件时静默降级为"未提供敏感词典"。macOS 本机的文件是早前手工/测试创建的（2026-11-14 00:04），不是代码产物。因此 Windows 用户看到的是只有模型配置、offline-flows、settings 等由代码创建的文件。
+
+**用户裁定：** 本地导出也不拦。需要实现：
+1. 启动期如果 config/sensitive-dict.v1.json 不存在，自动写一个空词条的默认文件（不覆盖已有）。
+2. 导出/归档的红线扫描改为不再拦截——导出链路 red_line_scan_with 命中改为仅记录日志不拒绝（或彻底移除该调用，由用户确认后定）。
+3. 设置页补敏感词典编辑入口（人名/机构/自定义词增删），后续任务。
+
+**等待用户确认后实施。**
+
+## 出网脱敏链路实测复核（ARCHITECT，2026-11-15）
+
+**实测证据（本地真实进程 + 假模型回环，OD-ARCH-143 S2）：**
+- verify_e2e_143.py 全链路 8/8 核心检查通过：词典人名「林青禾」在引擎出站被替换为占位符（outbound_has_placeholder PASS / outbound_no_original PASS）、引擎 stderr 无原文（stderr_no_original PASS）、模型回复流式与非流式都按会话映射还原为原文（answer_restored / stream_restored PASS）。证据落 tests/verification/desktop/evidence/od-arch-143/facts.json。
+- verify_masker_audit_142.py 14/15 通过；唯一 FAIL frontend_single_submit_call 是静态断言过时——HomeChat 现在有 3 处 host.submitTask（主对话 / 工作记录分析 / 周报复盘），都走同一个引擎出站汇合点，不构成脱敏旁路。属测试脚本需要更新，不是产品缺陷。
+
+**链路结论（确认成立）：** 出网脱敏存在且强制：宿主 engine_submit_task → 引擎 submit_task 唯一汇合点 _mask_prompt → 之后才进 _turn_worker / session/prompt；脱敏失败直接拒绝提交，不做明文降级。回程经 StreamUnmasker 还原后给 UI。前端 receipt.masker.by_type 会显示「已自动脱敏（人名 N 处…）」提示，可在对话 notice 里看到。
+
+**Windows 实际生效条件：** 引擎侧 DataMasker 默认开启（OMNIDESK_MASKER 未设即 on）。词典由 OMNIDESK_SENSITIVE_DICT 环境变量指向 <数据根>/config/sensitive-dict.v1.json；Windows 该文件不存在时引擎降级为"纯规则模式"（身份证/银行卡/手机号/邮箱/人名仍自动脱敏，词典实体不生效）。因此 Windows 要让人名/机构等自定义词脱敏，需先创建该文件（等启动期自动创建或设置页编辑入口上线）。
+
+**待办（待用户确认）：** ①出厂 rules.json 红线词清空；②启动期自动写空 sensitive-dict.v1.json；③设置页敏感词典编辑；④导出/归档红线扫描改为只记日志；⑤更新 verify_masker_audit_142.py 的 frontend_single_submit_call 断言以匹配当前 3 个 submitTask 调用点。
+
+## 用户脱敏风格裁定（ARCHITECT，2026-11-15，待实施）
+
+**用户新口径：**
+1. 本地显示/落盘一律原文，出站时强制替换——所有公司名与个人名都自动脱敏，不需要用户维护人名字典。
+2. 替换风格要自然：人名"张三丰"→"张**"（或张某某），公司"芭莎公司"→"芭某公司"。不希望出站用 [PERSON_XXX] 机器占位符打断模型语义（占位符会降低模型理解，影响回答质量与速度）。
+3. 增加出站硬阻断词类：领导人姓名、政治敏感字眼、色情字眼——命中直接不出站（或整体拒绝），由用户确认具体处置方式。
+4. 助手 notice 里"已自动脱敏"提示用户没看到，需要检查展示条件（maskNotice 只在 by_type 有计数时出现；纯规则模式命中人名会显示，需真实模型会话再核对）。
+
+**技术差距分析（源码核对）：**
+- 现状：词典实体（PERSON/BRANCH/ORG）出站替换为 [PERSON_XXXXXXXX] 随机占位符，回程按映射还原；只有上下文人名（NAME 类型）用"张**"自然风格。公司名无词典时完全不出站脱敏。
+- 差距1：需要把词典实体占位符风格从 [PERSON_XXX] 改成"张**"/"芭某公司"自然掩码，且回程还原逻辑要兼容自然掩码文本（张** 已是中文+星号，流式还原状态机需同步调整）。
+- 差距2：需要新增"全量人名/公司名自动识别"——不加词典就识别任意人名与公司名，这是 NER 级别需求，纯正则做不到高质量，需评估轻量方案（jieba 词性标注 / 规则+词表混合），受纯标准库 Python 3.9 约束。
+- 差距3：需要新增"硬阻断词类"配置（领导人/政治/色情），命中出站直接拒绝或整体拦截——当前引擎只有"脱敏失败拒绝提交"，没有"内容类别拒绝"。需在 _mask_prompt 前或后加阻断层，且词表要可维护。
+- 差距4：notice 展示条件核对。
+
+**待用户确认后出任务卡：**
+Q1 公司名替换风格"芭某公司"是否确定（或"芭**公司"/"某公司"）？
+Q2 硬阻断命中时：整条拒绝不出站，还是只把命中词替换后放行？
+Q3 阻断词表由谁维护：出厂内置+用户可加，还是纯用户自维护？
+
+## OD-MASK-160 出站脱敏自然化 + 硬阻断 + 设置页词表编辑（2026-11-15 实施，待 ARCHITECT 复核）
+
+**范围与结果：** 160a–160e 全部按获批任务卡落地，未动 `runtime/`、模型路由、凭证与
+`engine_submit_task` 既有红线扫描。只使用虚构样例词。
+
+**160a 自然掩码：** 词典 PERSON→首字+`**`（重名加序号），BRANCH/ORG→首字+`某`+机构后缀
+（芭莎公司→芭某公司、城东支行→城某支行），CUSTOM→首字+`**`。同一会话同实体复用同一
+掩码串；`unmask` 按映射整段还原；`StreamUnmasker` 按映射前缀缓存自然掩码，支持
+「芭某」+「公司」跨帧切断。映射仍只在内存/返回值，不落盘、不进日志。
+
+**160b 自动识别：** 扩大人名上下文词（会见/汇报/陪同/参加/督查/巡察/反映/举报等）与职务后缀；
+新增 2–6 个汉字+机构后缀规则（公司/集团/厂/店/行/社/所/中心/银行/支行/联社/信用社/
+事务所/研究院/大学/医院等）。名称前缀收敛到紧邻后缀的最后 2 个字，避免吞入前文；单字
+后缀「行」对进行/运行等常见动词尾字放行。含「某」或已呈掩码形态的片段跳过。
+
+**160c 硬阻断：** `masker.check_blocklist(text, block_terms)` 纯函数，只返回命中计数与
+类别；`web_api_adapter.submit_task` 在 `_mask_prompt` 与会话创建之前判定，命中即抛
+`EngineErrorCode.INVALID_ARGUMENT`（「出站内容命中阻断词表，已拒绝提交」），不建立会话、
+不触达模型、不回显命中词。词典 schema 升为 v2，新增 `blocklist`（term + category:
+political/porn/leader/custom）；v1 无该段视为空。
+
+**160d 启动模板：** 新增 `desktop/src-tauri/src/sensitive_dict.rs`；`build_state()` 在
+`paths.ensure()` 后调用 `ensure()`，文件不存在时写 schema v2、entries/blocklist 均为空的
+模板（内容解析自 `include_str!` 的出厂样例），已存在时不覆盖；失败只写 stderr，不阻断启动。
+`engine_supervisor::child_env()` 路径未变。
+
+**160e 设置页：** 「规则资产」页新增「敏感词典与阻断词」区块：实体（类型/原文/别名）与
+阻断词（词/类别）可增删；保存走 `sensitive_dict_save`，宿主校验 256KB、各 2000 条、
+value/term 非空且 ≤120 字，原子写回并备份 `.bak-<epoch>`；文件不存在时以空模板为底稿。
+`api.ts` 增加 `sensitiveDictGet/sensitiveDictSave`，`types.ts` 增加对应类型。
+
+**UI 借鉴（OD-ARCH-035）：** 参考 Shopify 设置卡（字段标签在输入框上方、分组卡片）与
+TypeWhisper 设置行（重复行 + 行尾动作）；实现沿用现有 binding 行直角、细分隔线与深浅色 token。
+
+**改动文件：** `engine/omnidesk_engine/security/masker.py`、`security/__init__.py`、
+`security/stream_unmask.py`、`engine/omnidesk_engine/web_api_adapter.py`、
+`config/sensitive-dict.sample.v1.json`、`desktop/src-tauri/src/sensitive_dict.rs`（新增）、
+`desktop/src-tauri/src/lib.rs`、`desktop/src-tauri/tests/knowledge_ingest_e2e_143.rs`、
+`desktop/src/SettingsPanel.tsx`、`desktop/src/settings-panel.css`、`desktop/src/api.ts`、
+`desktop/src/types.ts`、`tests/verification/engine-interface/adapter/test_security_masker_unit.py`、
+`test_security_masker_markdown_unit.py`、`test_web_api_unit.py`、`test_knowledge_ingest_unit.py`、
+`tests/verification/desktop/verify_e2e_143.py`、`verify_masker_audit_142.py`；证据
+`tests/verification/desktop/evidence/od-mask-160/`（含 unittest/cargo/build 输出、audit、e2e facts）。
+
+**实测：** Python unittest 239/239；`cargo test --offline --lib -- --test-threads=1`
+1181/1181（默认并行 1178/1181，3 个既有子进程测试偶发 Permission denied，单项均过）；
+`npm run build` 成功；`verify_masker_audit_142.py` 15/15；`verify_e2e_143.py` 掩码/阻断与
+知识整理相关 9/9 通过，脚本整体 10/12。两个失败为既有断言漂移：worklog 断言找「当周已有记录」
+而当前文案为「已有记录（最近 14 天…）」；weekly 脚本读取 HEAD 中已不存在的
+`desktop/src/shell/WeeklyQuadrants.tsx`。均未修改，待复核裁定。
+
+**未验证：** Windows 实机的启动期建文件、设置页保存与真实模型请求；真实业务语料的
+机构名误拦率。
+
+## OD-MASK-160 ARCHITECT 复核（2026-11-15）——通过
+
+**子代理交付：** Jason（OpenDesign/deepseek-v4.1-flash，high）完成 160a–160e。开工快照 fa7eb53e60，未提交未推送。
+
+**ARCHITECT 独立复跑（非采信自述）：**
+- adapter unittest 239/239 OK（实跑 1.8s）。
+- verify_masker_audit_142.py 15/15（实跑）。
+- cargo test --offline --lib：1178 passed / 3 failed（并行）；3 项失败为 engine_bridge/engine_ipc 既有子进程偶发 Permission denied，单项重跑均 ok，与本次改动无关。
+- npm run build（tsc+vite）成功。
+- verify_e2e_143.py 10/12：9 项脱敏/阻断核心全过（出站「林**」、无原文、stderr 无原文、流式/非流式还原、阻断词提交被拒且模型请求增量 0）；2 个失败是既有断言过时（verify_worklog_089 断言「当周已有记录」、verify_weekly_093 读取已删除的 WeeklyQuadrants.tsx），未扩大范围去修。
+
+**实现要点核对（源码抽查）：**
+- 自然掩码：PERSON→张**；BRANCH/ORG→芭某公司/城某支行，无后缀退化「某机构」；CUSTOM→张**式；重名加序号。_MASK_HINT_RE 防止把已掩码片段二次命中。回程 unmask 按映射整段还原；StreamUnmasker hold 逻辑兼容「某」结尾。
+- 硬阻断：check_blocklist 在 _mask_prompt 之前，命中即 EngineError 拒绝提交，不建会话不触达模型，错误不回显命中词；词表随词典 v2（blocklist 段，v1 向后兼容），引擎侧缓存。
+- 词典文件：sensitive_dict.rs（新）负责启动建空模板（build_state 链路）与设置页保存（sensitive_dict_save，原子写+备份+校验，≤256KB/≤2000条/term≤120字）；schema v2，出厂样例只含虚构阻断词。
+- 设置页：「敏感词典与阻断词」区块在规则资产 tab，entries/blocklist 可增删改，保存走新 Tauri command；api.ts/types.ts 已加对应方法与类型。
+
+**边界与限制（如实）：**
+- 人名识别仍是上下文启发式（无词典时），生僻格式会漏；公司/机构识别靠后缀规则，无后缀公司名不命中；不新增白名单机制。
+- 未验证 Windows 实机（启动建文件、设置页保存、真实模型请求）。
+- 真实领导人/色情词表由用户自行在设置页维护，出厂不含。
+
+**下一步：** 提交推送并出 0.2.26 安装包（等用户确认后执行）。
+
+
+## 0.2.26 发版（ARCHITECT，2026-11-15）
+
+**出厂规则包裁定落地：** samples/profiles/discipline.rules.json 的 redline_keywords 清空（用户裁定：本地零拦截，出站脱敏）。机制测试改用内联词表夹具（task_shell.rs policy_with_redlines），profile_rules.rs 出厂形状断言改为"红线空+隐私归类保留"。
+
+**ARCHITECT 复跑：** cargo lib 1178 passed（3 个既有子进程偶发失败，串行 7/7 ok）；adapter unittest 239/239；verify_masker_audit_142 15/15；npm run build 通过。
+
+**版本：** VERSION/tauri.conf.json → 0.2.26（sync-app-version.sh）。提交推送 main，由 release.yml 出 macOS dmg 与 Windows NSIS 安装包并发布 v0.2.26。
+
+**待验证：** CI 构建发布；Windows 实机安装后：①本地记录/导出零拦截；②说"芭莎公司"出站变"芭某公司"；③设置页敏感词典与阻断词编辑保存生效；④加阻断词后含词提交被整条拒绝。

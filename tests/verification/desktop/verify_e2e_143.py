@@ -13,20 +13,19 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from unittest import mock
 
 REPO = Path(__file__).resolve().parents[3]
 ADAPTER = REPO / "tests/verification/engine-interface/adapter"
 EVIDENCE = REPO / "tests/verification/desktop/evidence/od-arch-143"
 SENSITIVE = "林青禾"
-PLACEHOLDER = "[PERSON_A1B2C3D4]"
+PLACEHOLDER = "林**"
+BLOCK_TERM = "示例阻断词甲"
 
 sys.path.insert(0, str(ADAPTER))
 import _harness as H  # noqa: E402
 from _mock_model_server import start_mock  # noqa: E402
 
-from omnidesk_engine import SubmitTaskRequest, TaskState  # noqa: E402
-from omnidesk_engine.security import masker as masker_mod  # noqa: E402
+from omnidesk_engine import EngineError, EngineErrorCode, SubmitTaskRequest, TaskState  # noqa: E402
 
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -63,26 +62,36 @@ def main() -> int:
     try:
         dictionary = root["base"] / "sensitive-dict.v1.json"
         dictionary.write_text(json.dumps({
-            "schema": "omnidesk.sensitive-dict.v1",
+            "schema": "omnidesk.sensitive-dict.v2",
             "entries": [{"type": "PERSON", "value": SENSITIVE}],
+            "blocklist": [{"term": BLOCK_TERM, "category": "custom"}],
         }, ensure_ascii=False), encoding="utf-8")
         base_url, ctl, server = start_mock()
         overlay = H.write_overlay(root, "od143", H.web_overlay_text(base_url))
         ctl.set(mode="ok", chunks=[PLACEHOLDER, " 负责专项检查。"], delay=0.0)
-        with mock.patch.object(masker_mod.secrets, "token_hex", return_value="A1B2C3D4"):
-            adapter = H.make_web_adapter(
-                root, [overlay], init_timeout=45, session_timeout=45, default_timeout=60,
-                env_extra={"OMNIDESK_SENSITIVE_DICT": str(dictionary)},
-            )
-            adapter.initialize()
-            receipt = adapter.submit_task(SubmitTaskRequest(
-                intent="synthetic-e2e", workspace_dir=str(root["cwd"]),
-                prompt_text="请总结" + SENSITIVE + "的专项检查工作表现。",
+        adapter = H.make_web_adapter(
+            root, [overlay], init_timeout=45, session_timeout=45, default_timeout=60,
+            env_extra={"OMNIDESK_SENSITIVE_DICT": str(dictionary)},
+        )
+        adapter.initialize()
+        receipt = adapter.submit_task(SubmitTaskRequest(
+            intent="synthetic-e2e", workspace_dir=str(root["cwd"]),
+            prompt_text="请总结" + SENSITIVE + "的专项检查工作表现。",
+        ))
+        status = wait_terminal(adapter, receipt.omni_task_id)
+        events = [e.to_dict() for e in adapter.stream_events(receipt.omni_task_id, timeout=60)]
+        result = adapter.get_task_result(receipt.omni_task_id)
+        requests = ctl.new_requests()
+        before_block = len(requests)
+        block_error = None
+        try:
+            adapter.submit_task(SubmitTaskRequest(
+                intent="synthetic-block", workspace_dir=str(root["cwd"]),
+                prompt_text="请整理" + BLOCK_TERM + "相关材料。",
             ))
-            status = wait_terminal(adapter, receipt.omni_task_id)
-            events = [e.to_dict() for e in adapter.stream_events(receipt.omni_task_id, timeout=60)]
-            result = adapter.get_task_result(receipt.omni_task_id)
-            requests = ctl.new_requests()
+        except EngineError as exc:
+            block_error = exc
+        block_requests = ctl.new_requests()[before_block:]
         outbound = json.dumps(requests, ensure_ascii=False)
         stderr = adapter.engine_stderr() if adapter is not None else ""
         adapter_facts = {
@@ -91,6 +100,9 @@ def main() -> int:
             "result_has_placeholder": PLACEHOLDER in result.content,
             "outbound_has_original": SENSITIVE in outbound,
             "outbound_has_placeholder": PLACEHOLDER in outbound,
+            "blocked_error_code": block_error.code.value if block_error is not None else None,
+            "blocked_error_message": block_error.message if block_error is not None else None,
+            "block_requests": len(block_requests),
             "stderr_has_original": SENSITIVE in stderr,
             "text_deltas_have_original": any(
                 SENSITIVE in e.get("payload", {}).get("text", "")
@@ -102,6 +114,12 @@ def main() -> int:
         check("stderr_no_original", not adapter_facts["stderr_has_original"], "")
         check("answer_restored", adapter_facts["result_has_original"] and not adapter_facts["result_has_placeholder"], "")
         check("stream_restored", adapter_facts["text_deltas_have_original"], "")
+        check(
+            "blocklist_rejects_submit",
+            block_error is not None and block_error.code == EngineErrorCode.INVALID_ARGUMENT,
+            adapter_facts["blocked_error_code"],
+        )
+        check("blocklist_never_reaches_model", len(block_requests) == 0, str(len(block_requests)))
     except Exception as exc:  # noqa: BLE001 - 证据里保留可读失败原因
         check("adapter_fake_model_e2e", False, type(exc).__name__ + ": " + str(exc))
     finally:

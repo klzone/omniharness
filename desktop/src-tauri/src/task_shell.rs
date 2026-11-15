@@ -3339,7 +3339,8 @@ mod tests {
     fn redline_keywords_come_from_profile_rules_only() {
         let text = "这是虚构的案件线索占位文本";
         assert!(red_line_scan(text).is_empty(), "纯净底座不应内置任何红线词");
-        let policy = discipline_policy();
+        // OD-MASK-161：出厂包红线词已清空（本地不拦、出站脱敏），机制验证改用内联词表夹具。
+        let policy = policy_with_redlines(&["案件", "线索"]);
         let hits = red_line_scan_with(text, &policy);
         assert!(hits.iter().any(|h| h.kind == "case_keyword"));
         assert!(assert_input_allowed_with(text, &policy).is_err());
@@ -3349,7 +3350,7 @@ mod tests {
     #[test]
     fn prompt_rules_do_not_trip_red_line_scan() {
         // OD-ARCH-068：红线词来自规则包，因此「会误判」这个前提只在加载了规则包时成立。
-        let policy = discipline_policy();
+        let policy = policy_with_redlines(&["案件", "线索", "未公开"]);
         assert!(
             !red_line_scan_with(explanation_rules(), &policy).is_empty(),
             "前提：规则正文含边界说明用词，直接扫描全文会误判正常提交"
@@ -3367,7 +3368,7 @@ mod tests {
         let prompt = "规则说明：不处理案件、线索或未公开信息；素材：合成数据";
         assert_eq!(scan_target(prompt, Some("合成数据")), "合成数据");
         assert_eq!(scan_target(prompt, None), prompt);
-        let policy = discipline_policy();
+        let policy = policy_with_redlines(&["案件", "线索", "未公开"]);
         assert!(assert_input_allowed_with(scan_target(prompt, Some("合成数据")), &policy).is_ok());
         assert!(
             assert_input_allowed_with(scan_target(prompt, Some("虚构案件占位")), &policy).is_err()
@@ -3386,7 +3387,7 @@ mod tests {
     /// 扫描必须落在同一批 inbox 原文上，不能因规范文本误拒。
     #[test]
     fn knowledge_ingest_scans_inbox_text_not_card_spec() {
-        let policy = discipline_policy();
+        let policy = policy_with_redlines(&["案件", "线索", "审查调查", "举报", "涉案", "未公开"]);
         let prompt = "你是知识库整理助手。建卡规范：不处理案件、线索、审查调查、举报、涉案、未公开信息；\n\n收件箱材料：合成材料，专项检查每季度一次。";
         let inbox = "合成材料，专项检查每季度一次。";
         assert!(
@@ -3397,6 +3398,14 @@ mod tests {
             assert_input_allowed_with(scan_target(prompt, Some(inbox)), &policy).is_ok(),
             "整理链路必须以 inbox 原文为扫描对象"
         );
+    }
+
+    /// 内联红线词表夹具：机制测试不依赖出厂包的具体词数（出厂包红线词已清空）。
+    fn policy_with_redlines(words: &[&str]) -> crate::profile_rules::RulePolicy {
+        let mut rules = crate::profile_rules::parse_rules(crate::profile_rules::DEFAULT_RULES_JSON)
+            .expect("出厂默认规则包必须能解析");
+        rules.global.redline_keywords = words.iter().map(|s| s.to_string()).collect();
+        crate::profile_rules::RulePolicy::from_rules(&rules)
     }
 
     #[test]

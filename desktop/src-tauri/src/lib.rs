@@ -60,6 +60,7 @@ pub mod scheduling;
 pub mod scene_overview;
 pub mod scheduler;
 pub mod settings;
+pub mod sensitive_dict;
 pub mod sha256;
 pub mod task_shell;
 pub mod task_store;
@@ -2234,6 +2235,26 @@ fn profile_rules_save(
     text: String,
 ) -> Result<serde_json::Value, String> {
     save_rules_into(&profile_rules_dir(&state), profile_asset_scope(&state).standard, &text)
+}
+
+/// 读取出站敏感词典（OD-MASK-160e）。文件不存在时返回空模板视图。
+#[tauri::command(async)]
+fn sensitive_dict_get(state: State<'_, SharedHost>) -> Result<serde_json::Value, String> {
+    let config_dir = { state.lock().unwrap().paths.config.clone() };
+    serde_json::to_value(sensitive_dict::load(&config_dir))
+        .map_err(|e| format!("序列化敏感词典视图失败：{}", e))
+}
+
+/// 保存出站敏感词典：字段/数量/大小校验通过后备份旧文件并原子写回。
+#[tauri::command(async)]
+fn sensitive_dict_save(
+    state: State<'_, SharedHost>,
+    entries: Vec<sensitive_dict::DictEntry>,
+    blocklist: Vec<sensitive_dict::BlockTerm>,
+) -> Result<serde_json::Value, String> {
+    let config_dir = { state.lock().unwrap().paths.config.clone() };
+    let receipt = sensitive_dict::save(&config_dir, entries, blocklist)?;
+    serde_json::to_value(receipt).map_err(|e| format!("序列化敏感词典保存回执失败：{}", e))
 }
 
 /// 保存「场景 → Skill」绑定（OD-ARCH-129）。
@@ -9114,6 +9135,11 @@ fn build_state() -> Result<HostState, String> {
     paths
         .ensure()
         .map_err(|e| format!("创建应用数据目录失败（{}）：{}", paths.root.display(), e))?;
+    // OD-MASK-160d：首次启动写一份空词典模板；已存在时绝不覆盖。失败不阻断启动，
+    // 引擎仍会按纯规则模式工作，但日志必须留下原因。
+    if let Err(error) = sensitive_dict::ensure(&paths) {
+        eprintln!("[OmniDesk][sensitive-dict] 初始化失败：{}", error);
+    }
     let config = EngineConfig::from_env(&paths.root)?;
     // OD-ARCH-137：首次启动先把包内 seed 铺到隔离 DSH_HOME。模型设置与端点分类
     // 不经过引擎启动，不能等 `start()` 才播种；否则新机器上打开「设置模型」会
@@ -9328,6 +9354,8 @@ pub fn run() {
             profile_rules_save,
             profile_skill_bindings_save,
             profile_rules_restore_default,
+            sensitive_dict_get,
+            sensitive_dict_save,
             model_settings_load,
             model_settings_probe,
             model_settings_save,

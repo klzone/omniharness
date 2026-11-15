@@ -17,6 +17,7 @@ import threading
 import shutil
 import tempfile
 import json
+import os
 from pathlib import Path
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
@@ -344,9 +345,10 @@ class MaskingTests(unittest.TestCase):
         second, _, _ = self.adapter._mask_prompt("张三 负责", "sess-a")
         other, _, _ = self.adapter._mask_prompt("张三 负责", "sess-b")
         self.assertNotIn("张三", first)
-        self.assertIn("[PERSON_", first)
+        self.assertIn("张**", first)
         self.assertEqual(first.split()[0], second.split()[0])
-        self.assertNotEqual(first.split()[0], other.split()[0])
+        # 自然掩码本身按实体确定，跨会话相同；隔离的是各会话的映射表。
+        self.assertEqual(first.split()[0], other.split()[0])
         self.assertEqual(stats["by_type"]["PERSON"], 1)
         self.assertNotIn("张三", str(stats))
 
@@ -357,6 +359,23 @@ class MaskingTests(unittest.TestCase):
         self.assertIn("[PHONE_", masked)
         self.assertTrue(stats["warn"])
 
+    def test_dictionary_file_change_reloads_existing_session(self):
+        first, _, _ = self.adapter._mask_prompt("张三", "sess-reload")
+        self.assertEqual(first, "张**")
+        self.dict_path.write_text(
+            json.dumps({
+                "schema": "omnidesk.sensitive-dict.v2",
+                "entries": [{"type": "PERSON", "value": "周岚"}],
+                "blocklist": [],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        # 显式拨快 mtime，避免同一纳秒内写入导致缓存签名不变。
+        stat = self.dict_path.stat()
+        os.utime(self.dict_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        reloaded, _, _ = self.adapter._mask_prompt("周岚", "sess-reload")
+        self.assertEqual(reloaded, "周**")
+
     def test_explicit_off_leaves_text_unchanged(self):
         self.adapter._masker_enabled = False
         masked, stats, session = self.adapter._mask_prompt("张三", "sess-off")
@@ -366,7 +385,7 @@ class MaskingTests(unittest.TestCase):
 
     def test_submit_masks_before_worker_and_receipt_reports_counts(self):
         self.adapter._ensure_approval_channel = lambda: None
-        self.adapter._create_session = lambda workspace, task: "sess-new"
+        self.adapter._create_session = lambda workspace, task, preset=None: "sess-new"
 
         class Follow:
             session_id = "sess-new"
@@ -385,7 +404,7 @@ class MaskingTests(unittest.TestCase):
         ))
         self.assertTrue(done.wait(2), "worker 未被启动")
         self.assertNotIn("张三", seen[0])
-        self.assertIn("[PERSON_", seen[0])
+        self.assertIn("张**", seen[0])
         self.assertEqual(receipt.masker["by_type"]["PERSON"], 1)
 
 

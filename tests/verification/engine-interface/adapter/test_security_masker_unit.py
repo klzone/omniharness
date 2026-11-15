@@ -14,12 +14,18 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
 
-from omnidesk_engine.security import DataMasker, DictEntry, load_dictionary
+from omnidesk_engine.security import (
+    BlockEntry,
+    DataMasker,
+    DictEntry,
+    check_blocklist,
+    load_dictionary,
+)
 from omnidesk_engine.security import masker as masker_module
+from omnidesk_engine.security.stream_unmask import StreamUnmasker
 
 SAMPLE = H.REPO / "config" / "sensitive-dict.sample.v1.json"
 
@@ -125,6 +131,121 @@ class DictTests(unittest.TestCase):
             DictEntry("OPS", "秘密项目")
 
 
+class NaturalMaskTests(unittest.TestCase):
+    """OD-MASK-160a：词典实体改用自然掩码，回程按掩码串还原。"""
+
+    ENTRIES = [
+        DictEntry("PERSON", "林青禾"),
+        DictEntry("BRANCH", "城东支行"),
+        DictEntry("ORG", "芭莎公司"),
+        DictEntry("CUSTOM", "内部代号·晨星"),
+    ]
+
+    def test_person_branch_org_custom_styles(self):
+        result = DataMasker(entries=self.ENTRIES).mask(
+            "林青禾 城东支行 芭莎公司 内部代号·晨星"
+        )
+        for expected in ("林**", "城某支行", "芭某公司", "内**"):
+            self.assertIn(expected, result.text)
+        self.assertNotIn("林青禾", result.text)
+        self.assertNotIn("芭莎公司", result.text)
+
+    def test_natural_masks_roundtrip(self):
+        original = "林青禾 城东支行 芭莎公司 内部代号·晨星"
+        masked = DataMasker(entries=self.ENTRIES).mask(original)
+        restored, report = DataMasker().unmask(masked.text, masked.mapping)
+        self.assertEqual(restored, original)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["restored"], 4)
+
+    def test_same_entity_same_mask_and_collision_suffix(self):
+        scope = masker_module.SessionScope()
+        masker = DataMasker(entries=[DictEntry("PERSON", "张三"), DictEntry("PERSON", "张四")])
+        first = masker.mask("张三 张四", session=scope)
+        second = masker.mask("张三", session=scope)
+        self.assertIn("张**", first.text)
+        self.assertIn("张**2", first.text)
+        self.assertIn("张**", second.text)
+        self.assertNotIn("张**2", second.text)
+
+    def test_stream_split_org_mask_is_restored(self):
+        masker = DataMasker(entries=[DictEntry("ORG", "芭莎公司")])
+        masked = masker.mask("芭莎公司")
+        unmasker = StreamUnmasker(masker, masked.mapping)
+        out = unmasker.feed("芭某") + unmasker.feed("公司") + unmasker.flush()
+        self.assertEqual(out, "芭莎公司")
+        self.assertEqual(unmasker.report["restored"], 1)
+        self.assertTrue(unmasker.report["ok"])
+
+    def test_stream_split_person_mask_is_restored(self):
+        masker = DataMasker(entries=[DictEntry("PERSON", "林青禾")])
+        masked = masker.mask("林青禾")
+        unmasker = StreamUnmasker(masker, masked.mapping)
+        out = unmasker.feed("林") + unmasker.feed("**") + unmasker.flush()
+        self.assertEqual(out, "林青禾")
+
+
+class RuleEnhancementTests(unittest.TestCase):
+    """OD-MASK-160b：不配词典也能识别上下文人名与常见机构后缀。"""
+
+    def test_company_and_branch_suffix_rules(self):
+        masker = DataMasker()
+        self.assertEqual(masker.mask("芭莎公司").text, "芭某公司")
+        self.assertEqual(masker.mask("城东支行").text, "城某支行")
+
+    def test_context_verb_and_job_title_detect_person(self):
+        masker = DataMasker()
+        self.assertEqual(masker.mask("会见张三丰").text, "会见张**")
+        self.assertEqual(masker.mask("李四主任").text, "李**主任")
+
+    def test_already_masked_text_is_released(self):
+        masker = DataMasker()
+        self.assertEqual(masker.mask("芭某公司").text, "芭某公司")
+
+    def test_common_hang_verb_is_not_treated_as_branch(self):
+        # 「行」是唯一保留的单字后缀；进行/运行这类动词尾字必须放行。
+        self.assertEqual(DataMasker().mask("这项工作正在进行。").text, "这项工作正在进行。")
+
+
+class BlocklistTests(unittest.TestCase):
+    """OD-MASK-160c：v2 阻断词表、命中计数与 v1 兼容。"""
+
+    def test_sample_v2_has_fictional_blocklist(self):
+        loaded = load_dictionary(SAMPLE)
+        self.assertTrue(loaded.ok, loaded.warn)
+        self.assertGreaterEqual(len(loaded.blocklist), 2)
+        self.assertTrue(
+            all(item.category in ("political", "porn", "leader", "custom") for item in loaded.blocklist)
+        )
+
+    def test_v1_without_blocklist_loads_empty(self):
+        path = write_temp({"schema": "omnidesk.sensitive-dict.v1", "entries": []})
+        loaded = load_dictionary(path)
+        self.assertTrue(loaded.ok, loaded.warn)
+        self.assertEqual(loaded.blocklist, ())
+
+    def test_check_blocklist_counts_without_echoing_terms(self):
+        terms = [BlockEntry("示例阻断词甲", "custom")]
+        hit = check_blocklist("前示例阻断词甲后示例阻断词甲", terms)
+        self.assertTrue(hit["hit"])
+        self.assertEqual(hit["count"], 2)
+        self.assertEqual(hit["by_category"], {"custom": 2})
+        self.assertNotIn("示例阻断词甲", str(hit))
+        miss = check_blocklist("普通合成文本", terms)
+        self.assertFalse(miss["hit"])
+        self.assertEqual(miss["count"], 0)
+
+    def test_invalid_category_rejects_dictionary(self):
+        path = write_temp({
+            "schema": "omnidesk.sensitive-dict.v2",
+            "entries": [],
+            "blocklist": [{"term": "合成词", "category": "unknown"}],
+        })
+        loaded = load_dictionary(path)
+        self.assertFalse(loaded.ok)
+        self.assertIn("blocklist", loaded.warn)
+
+
 class RuleTests(unittest.TestCase):
     def test_idcard_checksum_valid_and_invalid(self):
         good = valid_id()
@@ -199,18 +320,14 @@ PLACEHOLDER_RE = re.compile(
 class PlaceholderTests(unittest.TestCase):
     def test_same_text_uses_same_placeholder(self):
         result = DataMasker(dictionary_path=SAMPLE).mask("林青禾 与 林青禾")
-        found = PLACEHOLDER_RE.findall(result.text)
-        self.assertEqual(len(found), 2)
-        self.assertEqual(found[0], found[1])
+        self.assertEqual(result.text.count("林**"), 2)
         self.assertEqual(len(result.mapping), 1)
 
-    def test_independent_masks_get_distinct_placeholders(self):
-        with mock.patch.object(masker_module.secrets, "token_hex", side_effect=["11111111", "22222222"]):
-            one = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
-            two = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
-        self.assertIn("[PERSON_11111111]", one.text)
-        self.assertIn("[PERSON_22222222]", two.text)
-        self.assertNotEqual(one.text, two.text)
+    def test_natural_mask_is_stable_across_requests(self):
+        one = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
+        two = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
+        self.assertEqual(one.text, "林**")
+        self.assertEqual(two.text, "林**")
 
     def test_repr_hides_original_and_is_count_only(self):
         result = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
@@ -218,22 +335,15 @@ class PlaceholderTests(unittest.TestCase):
         self.assertNotIn("林青禾", repr(result.mapping))
         self.assertFalse(hasattr(result.mapping, "to_dict"))
 
-    def test_placeholder_format_matches_design(self):
+    def test_person_mask_keeps_first_char(self):
         result = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
-        match = PLACEHOLDER_RE.search(result.text)
-        self.assertIsNotNone(match)
-        self.assertTrue(PLACEHOLDER_RE.fullmatch(match.group(0)))
+        self.assertEqual(result.text, "林**")
 
     def test_collision_retries_until_unused(self):
-        entries = [DictEntry("PERSON", "林青禾"), DictEntry("PERSON", "周岚")]
-        with mock.patch.object(
-            masker_module.secrets,
-            "token_hex",
-            side_effect=["DEADBEEF", "DEADBEEF", "CAFEBABE"],
-        ):
-            result = DataMasker(entries=entries).mask("林青禾 周岚")
-        self.assertIn("[PERSON_DEADBEEF]", result.text)
-        self.assertIn("[PERSON_CAFEBABE]", result.text)
+        entries = [DictEntry("PERSON", "张三"), DictEntry("PERSON", "张四")]
+        result = DataMasker(entries=entries).mask("张三 张四")
+        self.assertIn("张**", result.text)
+        self.assertIn("张**2", result.text)
         self.assertEqual(len(result.mapping), 2)
 
 
@@ -241,16 +351,14 @@ class MaskTests(unittest.TestCase):
     def test_overlap_longest_wins(self):
         entries = [DictEntry("PERSON", "张三"), DictEntry("PERSON", "张三丰")]
         result = DataMasker(entries=entries).mask("张三丰")
-        self.assertEqual(len(PLACEHOLDER_RE.findall(result.text)), 1)
+        self.assertEqual(result.text, "张**")
         self.assertEqual(len(result.mapping), 1)
         self.assertGreaterEqual(result.stats.overlap_dropped, 1)
-        self.assertIn("[PERSON_", result.text)
+        self.assertNotIn("张三丰", result.text)
 
     def test_same_name_same_type_single_placeholder(self):
         result = DataMasker(dictionary_path=SAMPLE).mask("林青禾、林青禾")
-        found = PLACEHOLDER_RE.findall(result.text)
-        self.assertEqual(len(found), 2)
-        self.assertEqual(found[0], found[1])
+        self.assertEqual(result.text.count("林**"), 2)
         self.assertEqual(result.stats.by_type.get("PERSON"), 2)
 
     def test_same_name_different_type_distinct_placeholders(self):
@@ -259,12 +367,12 @@ class MaskTests(unittest.TestCase):
             DictEntry("CUSTOM", "晨星项目"),
         ]
         result = DataMasker(entries=entries).mask("晨星项目 和 晨星")
-        found = PLACEHOLDER_RE.findall(result.text)
+        found = re.findall(r"晨\*\*\d*", result.text)
         self.assertEqual(len(found), 2)
         self.assertNotEqual(found[0], found[1])
         self.assertEqual(len(result.mapping), 2)
-        self.assertIn("[CUSTOM_", result.text)
-        self.assertIn("[PERSON_", result.text)
+        self.assertIn("晨**2", result.text)
+        self.assertIn("晨**", result.text)
 
     def test_empty_none_and_long_text_are_safe(self):
         masker = DataMasker(dictionary_path=SAMPLE)
@@ -282,7 +390,7 @@ class MaskTests(unittest.TestCase):
         result = DataMasker(dictionary_path=SAMPLE).mask(
             "林青禾 13800138000 lin.qinghe@example.test"
         )
-        self.assertIn("[PERSON_", result.text)
+        self.assertIn("林**", result.text)
         self.assertIn("[PHONE_", result.text)
         self.assertIn("[EMAIL_", result.text)
         self.assertEqual(len(result.mapping), 3)
@@ -321,8 +429,8 @@ class UnmaskTests(unittest.TestCase):
         self.assertEqual(report["unknown_placeholders"], [])
 
     def test_cross_mapping_restores_nothing(self):
-        first = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
-        second = DataMasker(dictionary_path=SAMPLE).mask("周岚")
+        first = DataMasker(dictionary_path=SAMPLE).mask("13800138000")
+        second = DataMasker(dictionary_path=SAMPLE).mask("林青禾")
         restored, report = DataMasker().unmask(first.text, second.mapping)
         self.assertEqual(restored, first.text)
         self.assertFalse(report["ok"])
@@ -350,40 +458,37 @@ class UnmaskTests(unittest.TestCase):
 class SessionTests(unittest.TestCase):
     def test_same_scope_reuses_placeholder(self):
         scope = masker_module.SessionScope()
-        with mock.patch.object(masker_module.secrets, "token_hex", side_effect=["AAAAAAAA"]):
-            first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
-            second = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
-        self.assertIn("[PERSON_AAAAAAAA]", first.text)
-        self.assertIn("[PERSON_AAAAAAAA]", second.text)
+        first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
+        second = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
+        self.assertEqual(first.text, "林**")
+        self.assertEqual(second.text, "林**")
 
     def test_different_scopes_are_isolated(self):
         one, two = masker_module.SessionScope(), masker_module.SessionScope()
-        with mock.patch.object(
-            masker_module.secrets, "token_hex", side_effect=["AAAAAAAA", "BBBBBBBB"]
-        ):
-            first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=one)
-            second = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=two)
-        self.assertIn("[PERSON_AAAAAAAA]", first.text)
-        self.assertIn("[PERSON_BBBBBBBB]", second.text)
-        self.assertNotEqual(first.text, second.text)
+        first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=one)
+        second = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=two)
+        # 自然掩码本身与作用域无关；隔离的是各自的映射表。
+        self.assertEqual(first.text, "林**")
+        self.assertEqual(second.text, "林**")
+        self.assertIsNot(first.mapping, second.mapping)
+        self.assertEqual(len(first.mapping), 1)
+        self.assertEqual(len(second.mapping), 1)
 
     def test_scope_and_request_mapping_do_not_pollute(self):
         scope = masker_module.SessionScope()
-        with mock.patch.object(
-            masker_module.secrets, "token_hex", side_effect=["AAAAAAAA", "BBBBBBBB"]
-        ):
-            first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
-            second = DataMasker(dictionary_path=SAMPLE).mask("周岚", session=scope)
+        first = DataMasker(dictionary_path=SAMPLE).mask("林青禾", session=scope)
+        second = DataMasker(dictionary_path=SAMPLE).mask("周岚", session=scope)
         self.assertEqual(len(first.mapping), 1)
         self.assertEqual(len(second.mapping), 1)
-        self.assertIn("[PERSON_AAAAAAAA]", first.text)
-        self.assertIn("[PERSON_BBBBBBBB]", second.text)
+        self.assertEqual(first.text, "林**")
+        self.assertEqual(second.text, "周**")
         restored, report = DataMasker().unmask(second.text, second.mapping)
         self.assertEqual(restored, "周岚")
         self.assertTrue(report["ok"])
         leaked, leaked_report = DataMasker().unmask(second.text, first.mapping)
         self.assertEqual(leaked, second.text)
-        self.assertFalse(leaked_report["ok"])
+        # 自然掩码查不到时保持原样；别再把它当成「已完整还原」。
+        self.assertEqual(leaked_report["restored"], 0)
 
 
 if __name__ == "__main__":
