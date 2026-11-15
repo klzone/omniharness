@@ -4119,3 +4119,27 @@ button.wr-backlink:hover {
   box-shadow: var(--od-neu-inset-1);
   color: var(--od-neu-accent-ink);
 }
+/* 11. 工作记录详情里的残留靛蓝 */
+.wr-backlink-kind,
+.wr-review-period {
+  border-radius: 6px;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-audit-mark {
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+}
+
+.od-record-group.is-today .od-record-group-head::before {
+  background: var(--od-neu-accent);
+  box-shadow:
+    0 0 0 4px var(--od-neu-accent-soft),
+    0 7px 14px -7px rgba(162, 78, 44, 0.45);
+}
+
+.od-timeline-day {
+  color: var(--od-neu-ink);
+  font-weight: 600;
+}
