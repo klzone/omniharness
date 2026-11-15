@@ -30,10 +30,11 @@ pub const PROFILE_DECL_FILE: &str = "decl.yml";
 pub const LEGACY_PROFILE_DECL_FILE: &str = "discipline.yml";
 /// 允许出现在 Dock 上的场景标识。不在表里的一律拒绝——声明不能凭空造入口。
 ///
-/// `sessions` 是已下线的「历史会话」入口：仍允许解析，避免既有用户声明被判为坏文件，
-/// 但载入时会被 `hide_retired` 丢弃，不再出现在界面上。
+/// `sessions` 是平台内置的「历史会话」入口（OD-UI-714）：它不归 Profile 声明管辖。
+/// 这里仍允许旧声明解析，避免既有文件被判为坏文件；载入时由 `hide_retired` 丢弃，
+/// 防止 Dock 同时出现声明项与平台内置项。
 pub const ALLOWED_SCENES: &[&str] = &["home", "report", "writing", "project", "sessions"];
-/// 已下线、但仍兼容旧声明解析的场景标识。载入后一律从入口列表移除。
+/// 归平台管理、但仍兼容旧声明解析的场景标识。载入后一律从声明入口列表移除。
 pub const RETIRED_SCENES: &[&str] = &["sessions"];
 /// 每个场景可选的图标名（取值与前端 `IconName` 对齐，前端另有校验）。
 pub const ALLOWED_ICONS: &[&str] = &["brand", "note", "book", "checklist", "history"];
@@ -451,13 +452,13 @@ mod tests {
         decl.validate().expect("内嵌默认声明必须通过校验");
         assert_eq!(decl.display_name, "OmniDesk Discipline");
         assert!(decl.scenes.iter().any(|s| s.id == "report"));
-        assert!(!decl.scenes.iter().any(|s| s.id == "sessions"), "出厂声明不再包含历史会话");
+        assert!(!decl.scenes.iter().any(|s| s.id == "sessions"), "历史会话由平台内置，不写入出厂声明");
     }
 
     #[test]
     fn retired_sessions_entry_is_accepted_then_hidden() {
-        // 既有用户声明里可能还留着 sessions：不能让整份声明变坏文件，
-        // 但载入后的入口列表里不能再出现它。
+        // 既有用户声明里可能还留着 sessions：不能让整份声明变坏文件；
+        // 载入后的声明入口列表里不能再出现它，Dock 由平台内置项负责显示。
         let text = "schema: omnidesk.profile-decl.v1\ndisplay_name: T\nscenes:\n  - id: home\n    label: 首页\n    icon: brand\n  - id: sessions\n    label: 历史会话\n    icon: history\n";
         let mut decl = parse_decl(text).unwrap();
         decl.validate().expect("兼容期允许解析 sessions");

@@ -277,6 +277,7 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
     setMigratedFlag();
     storageNote =
       "已把 " + local.length + " 条本地缓存的对话迁移到数据根（旧缓存保留）。";
+    notifyThreadStore();
     return;
   }
   const diskIds = new Set(fromDisk.map((t) => t.id));
@@ -297,6 +298,9 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
         : leftovers.length > 0
           ? "有 " + leftovers.length + " 条旧缓存记录尚未迁移到数据根。"
           : null;
+  // 首屏超时后用缓存先渲染时，后台读盘完成必须通知已挂载的页面刷新；
+  // 否则历史会话页会一直停在旧缓存，直到用户切页才重新读取。
+  notifyThreadStore();
 }
 
 function migratedFlag(): boolean {
@@ -378,10 +382,17 @@ export function saveThreadMessages(id: string, messages: ChatMessage[]): void {
   if (changed) persist(changed);
 }
 
-/** 事后改挂标签（换场景）。 */
-export function retagThread(id: string, tag: ThreadTag): void {
+/**
+ * 事后改挂标签（换场景）。
+ *
+ * `touchUpdatedAt=false` 用于历史会话页的「归档」：只改变分类，不把旧的对话
+ * 伪装成刚刚更新。既有场景页仍默认更新排序时间。
+ */
+export function retagThread(id: string, tag: ThreadTag, touchUpdatedAt = true): void {
   const next = read().map((t) =>
-    t.id === id ? { ...t, tag, updatedAt: Date.now() } : t,
+    t.id === id
+      ? { ...t, tag, updatedAt: touchUpdatedAt ? Date.now() : t.updatedAt }
+      : t,
   );
   write(next);
   const changed = next.find((t) => t.id === id);

@@ -12,6 +12,7 @@ export type Scene =
   | "report"
   | "writing"
   | "project"
+  | "sessions"
   | "knowledge"
   | "settings";
 
@@ -44,11 +45,22 @@ export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
 };
 
 /**
+ * 历史会话是平台固有入口（OD-UI-714）：线程记录按机器保存，不随 Profile 走，
+ * 所以任何 Profile 下都要能回到过去的对话。它不写进 Profile 场景声明。
+ */
+export const BUILTIN_HISTORY_ITEM: DockItem = {
+  scene: "sessions",
+  icon: "history",
+  label: "历史会话",
+};
+
+/**
  * 平台固有入口（OD-ARCH-106）：不受 Profile 声明管辖，任何 Profile 下都在。
- * 基础标准（无场景声明）时 Dock 只有两项：首页、知识库。
+ * 基础标准（无场景声明）时 Dock 有三项：首页、历史会话、知识库。
  */
 export const BUILTIN_PLATFORM_ITEMS: DockItem[] = [
   { scene: "home", icon: "home", label: "工作台首页" },
+  BUILTIN_HISTORY_ITEM,
   BUILTIN_KNOWLEDGE_ITEM,
 ];
 
@@ -76,7 +88,9 @@ export function Dock({
   const declaredItems: DockItem[] =
     declared && declared.length > 0
       ? declared
-          .filter((s) => (s.id as string) !== "sessions")
+          // 旧声明可能还留着 sessions / knowledge；它们现在由平台统一追加，
+          // 这里过滤掉，避免同一条入口出现两次。
+          .filter((s) => !["sessions", "knowledge"].includes(s.id as string))
           .map((s) => ({
             scene: s.id as Scene,
             icon: s.icon as IconName,
@@ -85,10 +99,18 @@ export function Dock({
       : declFailed
         ? DEFAULT_BUSINESS_ITEMS
         : BUILTIN_PLATFORM_ITEMS;
-  // 声明里即使手工写了 knowledge 也不重复；声明校验另有允许场景列表，本条只是兜底。
-  const items = declaredItems.some((item) => item.scene === "knowledge")
-    ? declaredItems
-    : [...declaredItems, BUILTIN_KNOWLEDGE_ITEM];
+  // 历史会话与知识库始终追加在声明入口之后；已有同名项时不重复。
+  const items: DockItem[] = [];
+  const seen = new Set<Scene>();
+  for (const item of [
+    ...declaredItems,
+    BUILTIN_HISTORY_ITEM,
+    BUILTIN_KNOWLEDGE_ITEM,
+  ]) {
+    if (seen.has(item.scene)) continue;
+    seen.add(item.scene);
+    items.push(item);
+  }
 
   return (
     <aside className="fixed left-5 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col items-center">
