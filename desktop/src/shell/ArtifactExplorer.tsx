@@ -121,7 +121,6 @@ export function ArtifactExplorer({
   compactToolbar = false,
   showTypeLabels = false,
   stalePaths,
-  accent = "primary",
   onOpen,
 }: {
   files: OfflineArtifactEntry[];
@@ -145,7 +144,6 @@ export function ArtifactExplorer({
   /** 超过 90 天未动的成果路径（写作页）：只做视觉标记，筛选由调用方处理。 */
   stalePaths?: Set<string>;
   /** 强调色（写作页用青绿，避免与工作记录页的紫完全一样）。 */
-  accent?: "primary" | "secondary";
   onOpen: (relativePath: string) => void;
 }) {
   const [range, setRange] = useState<"all" | "week" | "month">("all");
@@ -255,12 +253,10 @@ export function ArtifactExplorer({
   }, [range]);
 
   const chip = (active: boolean) =>
-    "px-3 py-1.5 rounded-full text-[12px] leading-none transition " +
+    "rounded-lg px-3 py-1.5 text-[12px] leading-none transition " +
     (active
-      ? accent === "secondary"
-        ? "bg-secondary text-on-secondary shadow-[0_1px_2px_rgba(0,104,122,0.25)]"
-        : "bg-primary text-on-primary shadow-[0_1px_2px_rgba(53,37,205,0.25)]"
-      : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high");
+      ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
+      : "bg-[color:var(--od-neu-surface)] text-[color:var(--od-neu-ink-2)] shadow-[var(--od-neu-raise-1)] hover:bg-[color:var(--od-neu-surface-high)]");
 
   const typeLabel = (value: string | null | undefined): string => {
     switch ((value ?? "").trim().toLowerCase()) {

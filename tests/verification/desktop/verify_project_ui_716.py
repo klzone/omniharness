@@ -41,11 +41,11 @@ def main() -> int:
     )
     check(
         "project_uses_warm_neumorphic_tokens",
-        "#f8f8f6" in task
-        and "#e8e7e3" in task
-        and "#5747f8" in task
+        "var(--od-neu-surface)" in task
+        and "var(--od-neu-sunken)" in task
+        and "var(--od-neu-accent" in task
         and "NEU_CARD" in task,
-        "卡片、凹槽与强调色落到暖白 + 品牌靛蓝",
+        "卡片、凹槽与强调色落到暖纸新拟物令牌（OD-UI-717）",
     )
     check(
         "fake_progress_removed",

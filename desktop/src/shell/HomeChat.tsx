@@ -3899,7 +3899,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                 <div className="flex items-start space-x-3">
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
                       remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
-                  <div className="rounded-[10px] border border-outline-variant/60 border-l-2 border-l-primary/70 bg-surface-container-low px-4 py-2.5 text-[14.5px] leading-relaxed text-on-surface min-w-0">
+                  <div className="neu-msg-user rounded-[12px] px-4 py-2.5 text-[14.5px] leading-relaxed text-on-surface min-w-0">
                     <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
                   </div>
                   <div
@@ -4305,7 +4305,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
             {attachments.map((a) => (
               <span
                 key={a.path}
-                className="inline-flex items-center gap-1 max-w-[240px] px-2 py-0.5 rounded-full bg-surface-container text-[11px] text-on-surface-variant"
+                className="inline-flex items-center gap-1 max-w-[240px] rounded-md bg-surface-container px-2 py-0.5 text-[11px] text-on-surface-variant"
                 data-hover-hint={`${a.path}\nsha256: ${a.sha256}\n${
                   a.contentKind === "metadata_only"
                     ? `正文未提取：${a.note ?? "可按路径让引擎自行读取"}`
@@ -4365,7 +4365,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
               <button
                 onClick={onNewThread}
                 disabled={busy}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full plate-soft-inset text-on-surface-variant font-label-caps text-[11px]"
+                className="inline-flex items-center space-x-1 rounded-md plate-soft-inset px-2.5 py-1 text-[11px] font-label-caps text-on-surface-variant"
                 data-hover-hint="开一段新对话（当前这段已自动保存在本机）"
               >
                 <Icon name="note" className="w-[13px] h-[13px]" />

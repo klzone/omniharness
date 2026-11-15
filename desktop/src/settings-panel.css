@@ -37,8 +37,8 @@
 .settings-surface .pane {
   background: var(--od-neu-surface);
   /* OD-ARCH-027 Step 2：去掉卡片级 backdrop-filter（每个面板一层，合成成本高、收益低）。 */
-  border: 1px solid var(--od-neu-line-dark);
-  border-radius: 1.25rem;
+  border: 0;
+  border-radius: 16px;
   padding: 1.35rem 1.5rem;
   box-shadow:
     var(--od-neu-raise-2),
@@ -124,9 +124,10 @@
 
 .settings-surface .tab {
   padding: 0.4rem 0.9rem;
-  border-radius: 9999px;
-  border: 1px solid var(--od-neu-line-dark);
+  border-radius: 10px;
+  border: 0;
   background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
   color: var(--color-on-surface-variant);
   font-family: var(--font-body-sm);
   font-size: 12.5px;
@@ -138,21 +139,23 @@
 }
 
 .settings-surface .tab:hover:not(:disabled) {
-  border-color: rgba(53, 37, 205, 0.35);
+  box-shadow: var(--od-neu-raise-2);
   color: var(--color-on-surface);
 }
 
 .settings-surface .tab.active {
-  background: var(--color-primary);
-  border-color: transparent;
-  color: var(--color-on-primary);
+  background: var(--od-neu-accent-soft);
+  border: 0;
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
 }
 
 /* 选中项在悬停时必须保持高对比（否则:higher-specificity 的 hover 规则会把字压暗）。 */
 .settings-surface .tab.active:hover:not(:disabled) {
-  background: var(--color-primary-container);
+  background: var(--od-neu-accent-soft);
   border-color: transparent;
-  color: var(--color-on-primary);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-accent-ink);
 }
 
 /* ---- 按钮 ---- */

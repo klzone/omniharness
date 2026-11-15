@@ -222,7 +222,7 @@ export function HoverHint() {
       data-hover-hint-layer=""
       className="pointer-events-none fixed z-[105] w-max border border-outline-variant/70 bg-surface-container-lowest px-2.5 py-1.5 text-[11.5px] leading-relaxed text-on-surface shadow-[0_10px_28px_-12px_rgba(15,23,42,0.35)] whitespace-pre-line break-words"
       style={{
-        borderRadius: 0,
+        borderRadius: 8,
         maxWidth: `min(${MAX_WIDTH}px, calc(100vw - ${MARGIN * 2}px))`,
         left: pos?.left ?? 0,
         top: pos?.top ?? 0,

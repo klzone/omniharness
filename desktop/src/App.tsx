@@ -368,7 +368,7 @@ export default function App() {
       ) : null}
 
       {firstRun && scene !== "settings" ? (
-        <div className="mx-auto mt-3 max-w-4xl w-[calc(100%-3rem)] rounded-[10px] border border-outline-variant/60 bg-surface-container-low px-4 py-3">
+        <div className="mx-auto mt-3 max-w-4xl w-[calc(100%-3rem)] rounded-xl bg-surface px-4 py-3 shadow-sm">
           <p className="text-[12.5px] font-medium text-on-surface">模型端点未配置</p>
           <p className="mt-1 text-[11.5px] leading-relaxed text-on-surface-variant">
             到设置里填服务商地址、协议与密钥，点「测试连接」确认能通。保存后即可在工作记录、
