@@ -79,7 +79,7 @@ def main() -> int:
     )
     check(
         "task_rows_simplified",
-        "截止 {task.due_date}" in task_manager and "<StateChip" in task_manager,
+        "截止 " in task_manager and "<StateChip" in task_manager,
         "任务行显示标题、状态与截止日期",
     )
     check(

@@ -56,9 +56,9 @@ const STATE_CLASS: Record<WorkTaskState, string> = {
   待确认: "bg-primary-fixed/70 text-on-primary-fixed-variant",
   待开始: "bg-surface-container text-on-surface-variant",
   进行中: "bg-primary/10 text-primary",
-  已完成: "bg-secondary-container/60 text-on-secondary-container",
+  已完成: "bg-[#eaf8ef] text-[#2f7a51]",
   已取消: "bg-surface-container text-outline",
-  暂停: "bg-tertiary-fixed/60 text-on-tertiary-fixed-variant",
+  暂停: "bg-[#fff4e2] text-[#96661d]",
 };
 
 /** 与宿主 task_store 的白名单保持一致；宿主仍是最终裁决者。 */
@@ -812,22 +812,36 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
   );
 }
 
+/*
+ * OD-UI-716：项目跟踪的视觉层。
+ * 布局仍是「四象限 + 甘特 + 统计 / 已完成」，但材质改回工作记录页的暖白新拟物：
+ * 象牙灰底、近白凸起、品牌靛蓝只用在小面积强调；不再使用冷蓝渐变与光斑。
+ */
 const NEU_TILE =
-  "bg-[#F9FAFD] shadow-[3px_3px_8px_rgba(160,175,200,0.22),-3px_-3px_8px_rgba(255,255,255,0.95)]";
+  "bg-[#f8f8f6] shadow-[3px_3px_8px_rgba(163,160,152,0.15),-3px_-3px_8px_rgba(255,255,255,0.9)]";
 const NEU_CARD =
-  "bg-[#EFF3FA] shadow-[6px_6px_16px_rgba(156,173,199,0.30),-6px_-6px_16px_rgba(255,255,255,1)]";
+  "bg-[#f8f8f6] shadow-[5px_5px_14px_rgba(163,160,152,0.14),-5px_-5px_14px_rgba(255,255,255,0.9)]";
 const NEU_CARD_STRONG =
-  "bg-[#F9FAFD] shadow-[9px_9px_24px_rgba(160,175,200,0.26),-9px_-9px_24px_rgba(255,255,255,1)]";
+  "bg-[#f8f8f6] shadow-[8px_8px_22px_rgba(163,160,152,0.18),-8px_-8px_22px_rgba(255,255,255,0.92)]";
 const NEU_INSET =
-  "bg-[#E3E8F2] shadow-[inset_3px_3px_7px_rgba(160,175,200,0.28),inset_-3px_-3px_7px_rgba(255,255,255,0.95)]";
-const GRAD_BLUE = "bg-[linear-gradient(90deg,#22D3EE_0%,#3B82F6_100%)]";
-const AXIS = "text-[14px] font-semibold tracking-[0.08em] text-[#2B3242]";
+  "bg-[#e8e7e3] shadow-[inset_3px_3px_7px_rgba(163,160,152,0.2),inset_-3px_-3px_7px_rgba(255,255,255,0.9)]";
+const AXIS = "text-[12px] font-medium tracking-[0.08em] text-[#5f5f67]";
 
-const QUADRANT_TONE: Record<string, { icon: IconName; color: string }> = {
-  Q1: { icon: "star", color: "text-[#3B82F6]" },
-  Q2: { icon: "calendar", color: "text-[#0EA5E9]" },
-  Q3: { icon: "clock", color: "text-[#F59E0B]" },
-  Q4: { icon: "book", color: "text-[#8B5CF6]" },
+const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: string }> = {
+  Q1: { icon: "star", color: "text-[#4a3ae0]", tile: "bg-[#efeaff]" },
+  Q2: { icon: "calendar", color: "text-[#3b63a8]", tile: "bg-[#edf3ff]" },
+  Q3: { icon: "clock", color: "text-[#96661d]", tile: "bg-[#fff4e2]" },
+  Q4: { icon: "book", color: "text-[#2f7a51]", tile: "bg-[#eaf8ef]" },
+};
+
+/** 甘特条表达状态，不表达伪造的进度百分比。 */
+const TASK_STATE_BAR: Record<WorkTaskState, string> = {
+  待确认: "bg-[#c9c3ff]",
+  待开始: "bg-[#c9c5bd]",
+  进行中: "bg-[linear-gradient(90deg,#8b7cf6,#5747f8)]",
+  已完成: "bg-[#7ac79b]",
+  已取消: "bg-[#d0cdc6]",
+  暂停: "bg-[#e3b778]",
 };
 
 const QUADRANT_SHORT: Record<string, string> = {
@@ -855,14 +869,6 @@ function iconForTask(title: string, fallback: IconName): IconName {
   if (/会议|复盘|列席|排期/.test(title)) return "calendar";
   if (/报送|催办|汇报|上报/.test(title)) return "arrow-up";
   return fallback;
-}
-
-function statePercent(state: WorkTaskState): number {
-  if (state === "已完成") return 100;
-  if (state === "进行中") return 55;
-  if (state === "暂停") return 35;
-  if (state === "已取消") return 0;
-  return 15;
 }
 
 function dayStart(value: string | Date): Date | null {
@@ -1082,16 +1088,16 @@ export function TaskQuadrantBoard({
   const compact = variant === "panel";
 
   const arrowUp = (
-    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[#AEB9CC]" />
+    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[#b8b4ac]" />
   );
   const arrowDown = (
-    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[#AEB9CC]" />
+    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[#b8b4ac]" />
   );
   const arrowLeft = (
-    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[#AEB9CC]" />
+    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[#b8b4ac]" />
   );
   const arrowRight = (
-    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#AEB9CC]" />
+    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#b8b4ac]" />
   );
 
   const matrix = (
@@ -1129,7 +1135,7 @@ export function TaskQuadrantBoard({
         style={{ gridColumn: 3, gridRow: "2 / 5" }}
       >
         {arrowUp}
-        <span className="w-px flex-1 bg-[#C9D3E4]" />
+        <span className="w-px flex-1 bg-[#c9c5bd]" />
         {arrowDown}
       </div>
 
@@ -1139,14 +1145,13 @@ export function TaskQuadrantBoard({
         style={{ gridColumn: "2 / 5", gridRow: 3 }}
       >
         {arrowLeft}
-        <span className="h-px flex-1 bg-[#C9D3E4]" />
+        <span className="h-px flex-1 bg-[#c9c5bd]" />
         {arrowRight}
       </div>
 
       {QUADRANT_COLUMNS.slice(0, 4).map((column) => {
         const items = visibleViews.filter((view) => view.quadrant === column.key);
         const tone = QUADRANT_TONE[column.key] ?? QUADRANT_TONE.Q1;
-        const selected = column.key === "Q1";
         const leftColumn = column.key === "Q1" || column.key === "Q3";
         const topRow = column.key === "Q1" || column.key === "Q2";
         return (
@@ -1158,22 +1163,15 @@ export function TaskQuadrantBoard({
             className={
               "relative flex min-w-0 flex-col overflow-hidden " +
               (compact ? "rounded-[18px] px-3.5 py-3 " : "rounded-[22px] px-5 py-4 ") +
-              (selected ? NEU_CARD_STRONG : NEU_CARD)
+              NEU_CARD
             }
           >
-            {selected ? (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute bottom-6 left-0 top-6 w-[3px] rounded-r-[3px] bg-[linear-gradient(180deg,#22D3EE,#3B82F6)]"
-              />
-            ) : null}
             <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
               {items.length === 0 ? (
-                <p className="m-auto text-[11px] text-[#A6AEBF]">暂无任务</p>
+                <p className="m-auto text-[11px] text-[#85858c]">暂无任务</p>
               ) : (
                 items.map((view) => {
                   const task = taskMap.get(view.task_id);
-                  const percent = statePercent(task?.state ?? "待开始");
                   return (
                     <article key={view.task_id} data-task-quadrant-row={view.task_id} className="min-w-0">
                       <button
@@ -1181,10 +1179,9 @@ export function TaskQuadrantBoard({
                         onClick={() => openEditor(view)}
                         title={view.title}
                         className={
-                          "grid w-full items-center rounded-2xl bg-[linear-gradient(180deg,#FFFFFF_0%,#F5F9FF_100%)] text-left transition " +
-                          "shadow-[6px_6px_14px_rgba(146,164,193,0.34),-6px_-6px_14px_rgba(255,255,255,1),inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(186,200,222,0.45)] " +
-                          "hover:-translate-y-px hover:shadow-[8px_8px_18px_rgba(146,164,193,0.42),-7px_-7px_16px_rgba(255,255,255,1)] " +
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]/40 " +
+                          "grid w-full items-center rounded-2xl bg-white/70 text-left ring-1 ring-white/80 transition " +
+                          "hover:bg-white hover:ring-[#d0cdc6]/70 " +
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5747f8]/35 " +
                           (compact
                             ? "grid-cols-[26px_minmax(0,1fr)] gap-2 px-2 py-1.5"
                             : "grid-cols-[34px_minmax(0,1fr)_auto] gap-3 px-3 py-2.5")
@@ -1192,8 +1189,8 @@ export function TaskQuadrantBoard({
                       >
                         <span
                           className={
-                            "flex shrink-0 items-center justify-center bg-[#E9EEF8] " +
-                            "shadow-[inset_2px_2px_5px_rgba(148,166,194,0.48),inset_-2px_-2px_5px_rgba(255,255,255,1)] " +
+                            "flex shrink-0 items-center justify-center " +
+                            tone.tile + " " +
                             (compact ? "h-[26px] w-[26px] rounded-[8px] " : "h-[34px] w-[34px] rounded-[11px] ") +
                             tone.color
                           }
@@ -1204,7 +1201,7 @@ export function TaskQuadrantBoard({
                           <span
                             title={view.title}
                             className={
-                              "block truncate font-semibold leading-snug text-[#2B3242] " +
+                              "block truncate font-semibold leading-snug text-[#34343b] " +
                               (compact ? "text-[12px]" : "text-[13.5px]")
                             }
                           >
@@ -1213,20 +1210,15 @@ export function TaskQuadrantBoard({
                           <span
                             title={task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state}
                             className={
-                              "mt-0.5 block truncate text-[10.5px] text-[#98A1B3] " + (compact ? "hidden" : "")
+                              "mt-0.5 block truncate text-[10.5px] text-[#8a877f] " + (compact ? "hidden" : "")
                             }
                           >
                             {task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state ?? "待开始"}
                           </span>
                         </span>
-                        <span
-                          className={
-                            "mono shrink-0 rounded-full bg-[#3B82F6]/10 px-2.5 py-1 text-[10.5px] font-medium text-[#2563EB] " +
-                            (compact ? "hidden" : "")
-                          }
-                        >
-                          {percent}%
-                        </span>
+                        {compact ? null : (
+                          <StateChip state={task?.state ?? "待开始"} />
+                        )}
                       </button>
                     </article>
                   );
@@ -1240,9 +1232,9 @@ export function TaskQuadrantBoard({
   );
 
   const gantt = (
-    <section aria-label="任务甘特图" className={"min-w-0 rounded-[24px] px-6 py-5 " + NEU_CARD_STRONG}>
+    <section aria-label="任务甘特图" className={"min-w-0 rounded-[22px] px-6 py-5 " + NEU_CARD_STRONG}>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <span className="text-[11px] tracking-[0.14em] text-[#98A1B3]">时间范围</span>
+        <span className="text-[11px] tracking-[0.14em] text-[#8a877f]">时间范围</span>
         <div className="flex gap-1.5">
           {RANGE_OPTIONS.map((option) => (
             <button
@@ -1253,8 +1245,8 @@ export function TaskQuadrantBoard({
               className={
                 "rounded-full px-3 py-1.5 text-[11px] transition " +
                 (range === option.key
-                  ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
-                  : NEU_TILE + " text-[#5B6579]")
+                  ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                  : NEU_TILE + " text-[#5f5f67]")
               }
             >
               {option.label}
@@ -1267,7 +1259,7 @@ export function TaskQuadrantBoard({
         <span />
         <div className="grid grid-cols-7">
           {ticks.map((day, index) => (
-            <span key={index} className="mono text-[10px] text-[#98A1B3]">
+            <span key={index} className="mono text-[10px] text-[#8a877f]">
               {mmdd(day)}
             </span>
           ))}
@@ -1275,44 +1267,42 @@ export function TaskQuadrantBoard({
       </div>
 
       {ganttRows.length === 0 ? (
-        <p className="pt-2 text-[11.5px] text-[#A6AEBF]">当前范围内没有带截止日期的任务。</p>
+        <p className="pt-2 text-[11.5px] text-[#85858c]">当前范围内没有带截止日期的任务。</p>
       ) : (
         <div className="relative flex flex-col">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute -top-2 bottom-0 w-px bg-[repeating-linear-gradient(180deg,rgba(59,130,246,0.5)_0_5px,transparent_5px_11px)]"
+            className="pointer-events-none absolute -top-2 bottom-0 w-px bg-[repeating-linear-gradient(180deg,rgba(87,71,248,0.42)_0_5px,transparent_5px_11px)]"
             style={{
               left: "calc(min(168px, 100% - 1px) + 16px + (100% - min(168px, 100% - 1px) - 16px) * " + Math.max(0, Math.min(1, todayPercent / 100)) + ")",
             }}
           />
           {ganttRows.map(({ task, left, width, clamped }) => {
-            const percent = statePercent(task.state);
             return (
               <div
                 key={task.id}
                 data-task-gantt-row={task.id}
-                className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[#DCE3F0] py-2.5 last:border-b-0 last:pb-0"
+                className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[#d0cdc6]/60 py-2.5 last:border-b-0 last:pb-0"
               >
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <span title={task.title} className="truncate text-[12px] font-medium text-[#2B3242]">
+                  <span title={task.title} className="truncate text-[12px] font-medium text-[#34343b]">
                     {task.title}
                   </span>
-                  <span className="mono shrink-0 text-[10px] text-[#98A1B3]">{percent}%</span>
+                  <span className="shrink-0 text-[10px] text-[#8a877f]">{task.state}</span>
                 </div>
-                <div className="relative h-[9px] rounded-full bg-[#E3E8F2] shadow-[inset_0_1px_2px_rgba(140,160,190,0.4)]">
+                <div className="relative h-[9px] rounded-full bg-[#e8e7e3] shadow-[inset_0_1px_2px_rgba(163,160,152,0.28)]">
                   <div
                     className={
-                      "absolute top-0 h-[9px] bg-[linear-gradient(90deg,rgba(34,211,238,0.18),rgba(59,130,246,0.18))] " +
+                      "absolute top-0 h-[9px] " +
+                      TASK_STATE_BAR[task.state] + " " +
                       (clamped ? "rounded-l-full" : "rounded-full")
                     }
                     style={{ left: left + "%", width: width + "%" }}
-                  >
-                    <div className={"h-[9px] rounded-full " + GRAD_BLUE} style={{ width: percent + "%" }} />
-                  </div>
+                  />
                   {clamped ? (
                     <span
                       aria-hidden="true"
-                      className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#3B82F6]/70"
+                      className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#5747f8]/70"
                     />
                   ) : null}
                 </div>
@@ -1330,60 +1320,48 @@ export function TaskQuadrantBoard({
       label: "今日新增",
       value: stats.created,
       icon: "clock" as const,
-      tone: "text-[#0891B2]",
-      tint: ["#EAF8FD", "#CFEDF8"],
+      tone: "text-[#5f5f67]",
+      tile: "bg-[#f0efec]",
     },
     {
       key: "running",
       label: "进行中",
       value: stats.running,
       icon: "arrow-right" as const,
-      tone: "text-[#2563EB]",
-      tint: ["#EDF3FF", "#D6E4FB"],
+      tone: "text-[#4a3ae0]",
+      tile: "bg-[#efeaff]",
     },
     {
       key: "done",
       label: "已完成",
       value: stats.done,
       icon: "check" as const,
-      tone: "text-[#0F766E]",
-      tint: ["#EAF8F4", "#CFEDE6"],
+      tone: "text-[#2f7a51]",
+      tile: "bg-[#eaf8ef]",
     },
     {
       key: "overdue",
       label: "逾期",
       value: stats.overdue,
       icon: "clock" as const,
-      tone: "text-[#B45309]",
-      tint: ["#FDF4E6", "#F7E3C6"],
+      tone: "text-[#96661d]",
+      tile: "bg-[#fff4e2]",
     },
   ];
 
   const statsPanel = (
     <div className="grid grid-cols-2 gap-3">
       {statCards.map((item) => (
-        <div key={item.key} className={"relative overflow-hidden rounded-[20px] px-4 py-4 " + NEU_CARD}>
-          <div className="flex items-center gap-3">
+        <div key={item.key} className={"rounded-[18px] px-3.5 py-3 " + NEU_CARD}>
+          <div className="flex items-center gap-2.5">
             <span
-              className={"relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full " + item.tone}
-              style={{
-                background:
-                  "radial-gradient(140% 140% at 32% 20%, #FFFFFF 0%, " + item.tint[0] + " 46%, " + item.tint[1] + " 100%)",
-                boxShadow:
-                  "5px 5px 12px rgba(160,175,200,0.38), -5px -5px 12px rgba(255,255,255,1), inset 0 1px 1px rgba(255,255,255,0.95), inset 0 -2px 4px rgba(160,175,200,0.32)",
-              }}
+              className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] " + item.tile + " " + item.tone}
             >
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute left-[20%] top-[13%] h-[26%] w-[46%] rounded-full bg-white/80 blur-[1.5px]"
-              />
-              <Icon name={item.icon} className="relative h-[17px] w-[17px] drop-shadow-[0_1px_1px_rgba(59,130,246,0.25)]" />
+              <Icon name={item.icon} className="h-[15px] w-[15px]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[9.5px] font-medium tracking-[0.16em] text-[#949EB1] [text-shadow:0_1px_0_rgba(255,255,255,0.95)]">
-                {item.label}
-              </span>
-              <span className="mt-1 block text-[24px] font-semibold leading-none text-[#5D687E] [text-shadow:0_1px_0_rgba(255,255,255,0.95)]">
+              <span className="block truncate text-[10px] text-[#8a877f]">{item.label}</span>
+              <span className="mt-0.5 block text-[20px] font-semibold leading-none text-[#34343b] tabular-nums">
                 {item.value}
               </span>
             </span>
@@ -1394,22 +1372,26 @@ export function TaskQuadrantBoard({
   );
 
   const completedPanel = (
-    <aside aria-label="已完成任务" className={"rounded-[24px] px-5 py-4 " + NEU_CARD_STRONG}>
-      <h3 className="mono pb-3 text-[10px] tracking-[0.18em] text-[#98A1B3]">已完成</h3>
+    <aside aria-label="已完成任务" className={"rounded-[22px] px-5 py-4 " + NEU_CARD_STRONG}>
+      <div className="flex items-center gap-2 border-b border-[#d0cdc6]/40 pb-3">
+        <Icon name="check" className="h-3.5 w-3.5 text-[#2f7a51]" />
+        <h3 className="text-[12px] font-semibold text-[#34343b]">已完成</h3>
+        <span className="mono ml-auto text-[10px] text-[#8a877f]">{completed.length}</span>
+      </div>
       {completed.length === 0 ? (
-        <p className="text-[11px] text-[#A6AEBF]">暂无已完成任务。</p>
+        <p className="pt-3 text-[11px] text-[#85858c]">暂无已完成任务。</p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="pt-2 flex flex-col gap-1">
           {completed.slice(0, 5).map((task) => (
             <li key={task.id} className="flex items-center gap-3 rounded-xl px-1 py-2">
-              <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#22D3EE,#3B82F6)] text-white shadow-[0_3px_8px_rgba(59,130,246,0.28)]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eaf8ef] text-[#2f7a51]">
                 <Icon name="check" className="h-3 w-3" />
               </span>
               <span className="min-w-0 flex-1">
-                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[#2B3242]">
+                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[#34343b]">
                   {task.title}
                 </span>
-                <span className="mono mt-0.5 block text-[9.5px] text-[#A6AEBF]">{isoDay(task.updated_at)}</span>
+                <span className="mono mt-0.5 block text-[9.5px] text-[#8a877f]">{isoDay(task.updated_at)}</span>
               </span>
             </li>
           ))}
@@ -1435,25 +1417,25 @@ export function TaskQuadrantBoard({
     <section
       aria-label="任务四象限"
       data-task-quadrant=""
-      className="relative mx-auto max-w-[1180px] overflow-hidden rounded-[30px] bg-[radial-gradient(120%_110%_at_50%_-10%,#F7FAFF_0%,#EEF1F7_55%,#E7ECF6_100%)] px-5 py-5 md:px-7 md:py-6"
+      className="relative mx-auto max-w-[1180px]"
     >
-      <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-[#3B82F6]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 -left-20 h-64 w-64 rounded-full bg-[#22D3EE]/10 blur-3xl" />
-
-      <header className="relative flex flex-wrap items-end justify-between gap-4 pb-5">
-        <div>
-          <h2 className="text-[22px] font-semibold tracking-tight text-[#232A3A]">项目跟踪</h2>
-          <p className="mt-1.5 text-[11.5px] text-[#6B7488]">
+      <header className="wr-hero">
+        <div className="wr-hero-mark" aria-hidden="true">
+          <Icon name="checklist" className="h-6 w-6" />
+        </div>
+        <div className="relative min-w-0 flex-1">
+          <h2 className="wr-hero-title">项目跟踪</h2>
+          <p className="wr-hero-sub">
             {today.getFullYear()} 年 {today.getMonth() + 1} 月 {today.getDate()} 日
           </p>
         </div>
-        <label className={"flex h-10 w-[240px] items-center gap-2 rounded-full px-4 " + NEU_INSET}>
-          <Icon name="search" className="h-4 w-4 text-[#3B82F6]/80" />
+        <label className="wr-search ml-auto">
+          <Icon name="search" className="h-3.5 w-3.5 text-[#5747f8]/80" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索任务"
-            className="w-full bg-transparent text-[12px] text-[#2B3242] placeholder:text-[#98A1B3] focus:outline-none"
+            className="w-full bg-transparent text-[11.5px] text-[#34343b] placeholder:text-[#8a877f] focus:outline-none"
             aria-label="搜索任务"
           />
         </label>
@@ -1466,7 +1448,7 @@ export function TaskQuadrantBoard({
             "relative mb-3 rounded-2xl px-4 py-2 text-[11.5px] leading-relaxed " +
             (localNotice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-white/80 text-[#5B6579]")
+              : "bg-white/80 text-[#5f5f67]")
           }
         >
           {localNotice.text}
@@ -1477,7 +1459,7 @@ export function TaskQuadrantBoard({
           读取四象限失败：{error}
         </p>
       ) : null}
-      {loading ? <p className="relative pb-2 text-[11.5px] text-[#98A1B3]">正在读取任务…</p> : null}
+      {loading ? <p className="relative pb-2 text-[11.5px] text-[#8a877f]">正在读取任务…</p> : null}
 
       <div className="relative grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-5">
@@ -1492,7 +1474,7 @@ export function TaskQuadrantBoard({
 
       {editingTask ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1B2434]/30 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4"
           role="presentation"
           onClick={() => setEditing(null)}
         >
@@ -1501,17 +1483,17 @@ export function TaskQuadrantBoard({
             aria-modal="true"
             aria-label="编辑任务"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[520px] rounded-[26px] bg-[#F7F9FD] p-6 shadow-[0_34px_80px_-30px_rgba(30,50,90,0.5)]"
+            className="wr-dialog w-full max-w-[520px] p-6"
           >
             <div className="flex items-start gap-3 pb-4">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[linear-gradient(135deg,#22D3EE,#3B82F6)] text-white shadow-[0_8px_18px_-8px_rgba(59,130,246,0.8)]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[linear-gradient(145deg,#9481ff,#5747f8)] text-white shadow-[0_8px_18px_-10px_rgba(87,71,248,0.7)]">
                 <Icon name="edit" className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <h3 title={editingTask.title} className="truncate text-[15px] font-semibold text-[#232A3A]">
+                <h3 title={editingTask.title} className="truncate text-[15px] font-semibold text-[#34343b]">
                   {editingTask.title}
                 </h3>
-                <p className="mt-1 text-[10.5px] text-[#98A1B3]">
+                <p className="mt-1 text-[10.5px] text-[#8a877f]">
                   {editingTask.state} · 创建于 {isoDay(editingTask.created_at)}
                 </p>
               </div>
@@ -1519,7 +1501,7 @@ export function TaskQuadrantBoard({
                 type="button"
                 aria-label="关闭"
                 onClick={() => setEditing(null)}
-                className={"flex h-9 w-9 items-center justify-center rounded-full text-[#6B7488] " + NEU_TILE}
+                className={"flex h-9 w-9 items-center justify-center rounded-full text-[#5f5f67] " + NEU_TILE}
               >
                 <Icon name="x" className="h-4 w-4" />
               </button>
@@ -1527,7 +1509,7 @@ export function TaskQuadrantBoard({
 
             <div className="flex flex-col gap-4">
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">重要性</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">重要性</p>
                 <div className="flex flex-wrap gap-2">
                   {IMPORTANCE_CHOICES.map((level) => (
                     <button
@@ -1537,8 +1519,8 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (importanceDraft === level
-                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
-                          : NEU_TILE + " text-[#5B6579]")
+                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
                       {level}
@@ -1548,7 +1530,7 @@ export function TaskQuadrantBoard({
               </div>
 
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">象限</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">象限</p>
                 <div className="flex flex-wrap gap-2">
                   {QUADRANT_CHOICES.map((choice) => (
                     <button
@@ -1558,8 +1540,8 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (quadrantDraft === choice
-                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
-                          : NEU_TILE + " text-[#5B6579]")
+                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
                       {choice === "自动" ? "自动" : QUADRANT_SHORT[choice] ?? choice}
@@ -1569,14 +1551,14 @@ export function TaskQuadrantBoard({
               </div>
 
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">截止日期</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">截止日期</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="date"
                     value={dueDraft}
                     onChange={(event) => setDueDraft(event.target.value)}
                     aria-label="截止日期"
-                    className={"h-9 rounded-full px-3 text-[11.5px] text-[#2B3242] " + NEU_INSET}
+                    className={"h-9 rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
                   />
                   {(["target", "hard"] as TaskDueKind[]).map((kind) => (
                     <button
@@ -1586,8 +1568,8 @@ export function TaskQuadrantBoard({
                       className={
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (dueKindDraft === kind
-                          ? "bg-[#DCE9FF] font-medium text-[#2563EB] shadow-[inset_2px_2px_5px_rgba(160,175,200,0.32)]"
-                          : NEU_TILE + " text-[#5B6579]")
+                          ? "bg-[#efeaff] font-medium text-[#4a3ae0] shadow-[inset_2px_2px_5px_rgba(163,160,152,0.2)]"
+                          : NEU_TILE + " text-[#5f5f67]")
                       }
                     >
                       {kind === "hard" ? "硬截止" : "目标日"}
@@ -1597,13 +1579,13 @@ export function TaskQuadrantBoard({
               </div>
 
               <label className="block">
-                <span className="block pb-2 text-[10.5px] tracking-[0.14em] text-[#98A1B3]">调整理由</span>
+                <span className="block pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">调整理由</span>
                 <input
                   value={reasonDraft}
                   onChange={(event) => setReasonDraft(event.target.value)}
                   placeholder="调整重要性或截止日期时必填"
                   className={
-                    "h-10 w-full rounded-2xl px-3.5 text-[11.5px] text-[#2B3242] placeholder:text-[#A6AEBF] " +
+                    "h-10 w-full rounded-2xl px-3.5 text-[11.5px] text-[#34343b] placeholder:text-[#85858c] " +
                     NEU_INSET
                   }
                 />
@@ -1620,7 +1602,7 @@ export function TaskQuadrantBoard({
               <button
                 type="button"
                 onClick={() => setEditing(null)}
-                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5B6579] " + NEU_TILE}
+                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
               >
                 取消
               </button>
@@ -1628,7 +1610,7 @@ export function TaskQuadrantBoard({
                 type="button"
                 onClick={() => void saveEditor()}
                 disabled={busy}
-                className="rounded-full bg-[linear-gradient(135deg,#3B82F6,#2563EB)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-10px_rgba(37,99,235,0.9)] disabled:opacity-50"
+                className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
               >
                 {busy ? "保存中…" : "保存修改"}
               </button>
