@@ -4087,7 +4087,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                   {(!m.timeline || m.timeline.length === 0 || (m.toolNote ?? "").includes("仍在运行")) &&
                   m.toolNote ? (
                     <p className="flex items-center space-x-1.5 text-[11.5px] text-outline">
-                      <Icon name="spark" className="w-3.5 h-3.5 animate-pulse" />
+                      <Icon name="spark" className="w-3.5 h-3.5" />
                       <span>{m.toolNote}</span>
                     </p>
                   ) : null}
@@ -4210,7 +4210,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
 
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
-      <div className="neu-composer mx-auto w-full max-w-[1100px] p-3.5 sm:p-4 flex-shrink-0">
+      <div className="neu-composer mx-auto w-full max-w-[1080px] px-4 py-3 flex-shrink-0">
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
             来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (
@@ -4399,7 +4399,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                   ? !engineCancelView.enabled
                   : !canSubmit || !input.trim()
               }
-              className="neu-send-btn w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="neu-send-btn w-9 h-9 rounded-[8px] bg-primary text-on-primary flex items-center justify-center hover:bg-primary-container transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               data-hover-hint={
                 generating
                   ? (engineCancelView.hint ?? engineCancelView.label)
