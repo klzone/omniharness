@@ -7674,3 +7674,13 @@ Rust 测试前需 `eval "$(bash scripts/setup-desktop-toolchain.sh --print-env)"
 
 **用户实测项：** Windows 任务管理器应显示 omnidesk-node.exe/omnidesk-python.exe 分组（python 副本 DLL 探针失败会自动回退原名，属预期降级）；macOS 活动监视器显示 omnidesk-engine/omnidesk-dsh。
 
+
+## 0.2.25 重新发版：项目跟踪新拟物改版进入安装包（ARCHITECT，2026-11-15）
+
+**问题确认：** GitHub 的 OmniDesk v0.2.24 安装包从 tag bcecee3 构建，该提交早于 97e2e4f「项目跟踪页新拟物改版」。97e2e4f、8ea41d6 推送 main 时因 v0.2.24 release 已存在，workflow 判定 publish=false，只构建不发布，所以 Windows/macOS 用户拿到的仍是旧任务页。
+
+**处理：** VERSION 与 tauri.conf.json 升到 0.2.25（scripts/sync-app-version.sh 同步），提交推送 main，由 release.yml 重新构建 macOS dmg 与 Windows NSIS 并发布 v0.2.25。
+
+**本地验证：** desktop 下 `npm run build`（tsc --noEmit + vite build）通过，359 模块，0 错误。
+
+**待验证：** CI 构建与 release 产物；Windows 实机安装后项目跟踪页为新版四象限与甘特图。
