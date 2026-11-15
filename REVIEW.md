@@ -1,3 +1,15 @@
+# OD-ARCH-153 审查：思考等级 web-api 通道未实装（ARCHITECT 亲自修复并自审，2026-11-15）——通过（附实测限制）
+
+**审查对象：** model-routes.mjs、model_settings.rs（render_overlay + 2 条新单测）、用户数据根现行覆盖文件的补齐。
+
+**核对结果：**
+1. 根因链有据：dsh-api-session-controller 的 selectionFor 回退链（session 投影 → session header → agentDefaultModel.currentSelection()）证明 web 会话读 agent-default-model；该块此前无 reasoningEffort。静态代码检查 + 文件事实。
+2. 修复面完整：两个覆盖文件写入方都补齐；≠default 才写、default/未设置不写（新增单测覆盖两种情况）；用户现行文件同口径补一行并留备份。
+3. 复跑证据（脚本运行）：cargo test --lib 1186 passed 0 failed；node --check model-routes.mjs 通过；npx tsc --noEmit 0。
+4. 诚实限制：真实模型端到端（重启引擎后观察思考 token 按档位变化）未验证，需用户实测回填；ACP 通道行为不变；runtime/ 零改动。
+
+**结论：** 通过；提交推送与引擎重启由用户决定。
+
 # OD-ARCH-152 审查：知识库写入沙箱边界与耗时治理（BUILDER 实施，ARCHITECT 独立复核，2026-11-15）——通过
 
 **审查对象：** BUILDER（OpenDesign/deepseek-v4.1-flash-eco，thinking high）按已批准计划 OD-ARCH-152 方案 A 实施的 7 个文件：knowledge_vault.rs（sync_from_workspace 及测试）、lib.rs（knowledge_sync_to_vault command + 注册 + 4 单测）、api.ts、KnowledgeIngestPanel.tsx、skills/knowledge-search/SKILL.md（第四/五/六节）、web_api_adapter.py（终态只读探测 + pending_vault_sync 提示）、verify_knowledge_sync_152.py。

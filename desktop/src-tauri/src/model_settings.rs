@@ -284,12 +284,17 @@ impl ModelSettings {
         if let Some(effort) = effort {
             out.push_str(&format!("    reasoningEffort: {}\n", effort));
         }
+        // OD-ARCH-153：web-api 通道会话读 `agent-default-model`，不读 `acp`；
+        // 思考等级必须两处都写，否则界面上选了档位、web 会话仍是 provider 默认档。
         out.push_str("- id: agent-default-model\n  name: \"@deepseek-ai/dsh-agent-default-model\"\n  config:\n");
         out.push_str(&format!(
             "    provider: {}\n    model: {}\n",
             self.default.provider,
             yaml_scalar(&self.default.model)
         ));
+        if let Some(effort) = effort {
+            out.push_str(&format!("    reasoningEffort: {}\n", effort));
+        }
         out
     }
 }
@@ -721,9 +726,26 @@ mod tests {
         assert!(yml.contains("apiKeyEnv: AGNESCN_API_KEY"));
         assert!(yml.contains("baseURL: https://agnescn.example.com/v1"));
         assert!(yml.contains("reasoningEffort: low"));
+        // OD-ARCH-153：agent-default-model 也必须带思考等级（web-api 通道读它）。
+        let agent_block = yml
+            .split("- id: agent-default-model")
+            .nth(1)
+            .expect("agent-default-model 块必须存在");
+        assert!(agent_block.contains("reasoningEffort: low"), "{}", agent_block);
         assert!(!yml.to_ascii_lowercase().contains("api_key:"));
         assert!(!yml.to_ascii_lowercase().contains("apikey:"));
         assert!(!yml.to_ascii_lowercase().contains("secret"));
+    }
+
+    #[test]
+    fn overlay_omits_effort_when_default_or_unset() {
+        // effort 为 default 时不写 reasoningEffort（provider 默认档），两个块都不写。
+        let mut s = sample();
+        s.providers[0].reasoning_effort = Some("default".to_string());
+        let yml = s.render_overlay(&[]);
+        assert!(!yml.contains("reasoningEffort"), "{}", yml);
+        s.providers[0].reasoning_effort = None;
+        assert!(!s.render_overlay(&[]).contains("reasoningEffort"));
     }
 
     #[test]

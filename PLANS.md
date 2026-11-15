@@ -1,5 +1,42 @@
 # 当前实施计划
 
+### OD-ARCH-154：工具调用批量化（PTC）与工具时间线显示修复（已批准，2026-11-16；子代理实施）
+
+> **触发：** 用户质询「为什么频繁短频快调用工具、不能汇总后再调」，并指认界面显示「未知工具」。ARCHITECT 核查结论：
+> - DSH agent loop 支持一次模型响应携带多个工具调用并按并发安全标记并行执行；PTC（run_code）模式可让一次模型往返内以程序循环调用 N 次工具。PTC 运行时（dsh-ptc-runtime-node）由 dsh-base 全局挂载，本机已存在。
+> - OmniDesk 的 discipline profile 把 `preset-ptc` 显式 disabled，discipline-core preset 未挂 `tool-presentation` 与 `tool-present`，run_code 通道被裁掉，只剩提示词层的软性批处理规则。
+> - 「未知工具」根因：DSH tool/call 带顶层 name，但 tool/result 的 callId 在 data.message.toolCallId（顶层无 callId/name）；引擎适配层只读顶层字段 → 结果事件 tool_name/call_id 为空 → 界面时间线以「未知工具」兜底且覆盖上一条真实工具名。
+>
+> **范围（用户已批准，子代理 OpenDesign/deepseek-v4.1-flash-eco + high 实施）：**
+> - **a. discipline-core 启用 PTC：** samples/profiles/discipline.profile.patch.yml 的 preset-discipline-core 插件清单追加：
+>   1. `tool-presentation`（@deepseek-ai/dsh-agent-tool-presentation，config.mode: ptc）；
+>   2. `present`（@deepseek-ai/dsh-tool-present）。
+>   不动 work-review-core（结构化任务保持窄工具面）、不动 preset-ptc 禁用行（那是上游基线整体预设，不需要解禁）。播种语义不变：用户改过的 profile patch 不被覆盖（.assets.v1.json 三态写入）；验证脚本须覆盖「已存在且未改 → 更新为 ours；已存在且用户改过 → 保留」两条路径。
+> - **b. 工具时间线显示修复：**
+>   1. engine/omnidesk_engine/web_api_adapter.py `_tool_activity_payload`：callId 依次读 data.callId、data.message.toolCallId、data.message.source.callId；tool_name 依次读既有字段与 data.message 的 toolCallId 关联名（不读 arguments/result 原文）。
+>   2. desktop/src/shell/timelineModel.ts：结果类事件（非 tool/call）不把标题覆盖为「未知工具」；无 callId 且找不到宿主条目时结果事件不新建条目、并入「更新」而不产生未知工具行。
+>   3. desktop/src/shell/HomeChat.tsx 的 toolNote 只在 tool/call 且有名时显示。
+>   4. 新增/扩展 desktop/src/shell/timelineModel 单测（node --test）覆盖：结果挂回原条目、无宿主条目的结果不产生未知工具行、call 事件缺名仍显示未知工具。
+>
+> **明确不做：** 不动 runtime/；不接 web_api_adapter.select_model 死代码；不给 work-review-core 加 PTC；不改沙箱与审批策略。
+>
+> **验证：** cargo test --lib 全过（profile_assets 播种三态用例）；node --test timelineModel 单测全过；npx tsc --noEmit 0；python3 引擎适配层单测/脚本（合成事件流验证 callId 提取）；真实 run_code 端到端（启动引擎后模型实际用 run_code 批量调工具）由用户实测回填，属未验证项如实标注。
+
+### OD-ARCH-153：思考等级在 web-api 通道未实装（用户指认，2026-11-15 已修复，待复核）
+
+> **触发：** 用户反馈 OmniDesk 显示思考等级可在界面选择，但实际未生效（模型仍按 provider 默认档跑，表现为长思考、频繁工具调用）。
+>
+> **根因（ARCHITECT 核查，静态 + 运行数据）：** 界面选档走 setModelRoute → 写覆盖文件 omnidesk-model.yml → 重启引擎。但两个写入方（model-routes.mjs 与 model_settings.rs render_overlay）都只把 reasoningEffort 写进 `acp` 配置块；OmniDesk 默认通道是 web-api，web 会话的模型选择读 `agent-default-model`（dsh-api-session-controller → agentDefaultModel.currentSelection()），该块此前没有 reasoningEffort 字段 → 所选档位从未到达会话。engine 适配层的 session/selectModel 封装（web_api_adapter.select_model）无任何调用方，属死代码，加重了「选了等于没选」。
+>
+> **修复（用户当轮明确要求「把这个搞定」，视为批准）：**
+> 1. model-routes.mjs：agent-default-model 配置块同样写入 reasoningEffort（≠default 时）。
+> 2. model_settings.rs render_overlay：同上；补两条单测断言 agent-default-model 块带档位、default/未设置时不写。
+> 3. 用户数据根的现行覆盖文件 ~/OmniDesk/app/config/omnidesk-model.yml 已按同口径补一行（备份 .bak-od-arch-153）；引擎重启后新会话即按所选档位执行。
+>
+> **明确不做：** 不动 runtime/；不接死代码 select_model（overlay + 重启语义已够）；不改 ACP 通道行为。
+>
+> **验证：** cargo test --lib 1186 全过（含新增 2 条）；node --check model-routes.mjs；npx tsc --noEmit 0。真实模型按档位出力的端到端待引擎重启后由用户实测回填。
+
 ### OD-ARCH-152：知识库写入沙箱边界与耗时治理（已批准并实施，2026-11-15；ARCHITECT 复核通过，见 REVIEW.md）
 
 > **触发：** 用户在 Windows 实测「写 7 个文件花了 45 分钟」（详见《超时错误待核查.md》）。时间归因：提权审批等待 ≈49%、模型/工具基线往返 ≈32%、5 次空参数 write 调用 ≈12%、二次全量重写 ≈8%。根因：知识库根 `~/OmniDesk/库` 在 DSH session workspace（`~/OmniDesk/workspace/artifacts`）之外，`workspace-write` 沙箱拒绝写入，每次落盘都触发一次人工提权审批；其中第三次审批被取消，收尾同步链路中断。

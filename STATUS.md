@@ -1,5 +1,12 @@
 # 执行状态
 
+## OD-ARCH-153 思考等级 web-api 通道未实装修复（2026-11-15）
+
+- 用户指认界面可选思考等级但实际未生效。根因：覆盖文件只把 reasoningEffort 写进 acp 配置块，而默认 web-api 通道的会话读 agent-default-model（无该字段）→ 档位从未到达会话；engine 侧 session/selectModel 封装无调用方。
+- 修复：model-routes.mjs 与 model_settings.rs render_overlay 均向 agent-default-model 写 reasoningEffort（≠default 时）；新增 2 条单测；用户现行覆盖文件已同口径补齐（备份 .bak-od-arch-153）。ARCHITECT 亲自实施（无派工）。
+- 验证：cargo test --lib 1186 passed 0 failed（首轮 3 个 engine 测试因既有并发环境竞争失败，重跑全过）；node --check 通过；npx tsc --noEmit 0。
+- 未验证：引擎重启后真实模型按档位出力（需用户重启应用/引擎后实测，观察思考 token 变化）。
+
 ## OD-ARCH-152 知识库写入沙箱边界与耗时治理（2026-11-15）
 
 - 背景：Windows 实测「写 7 个文件耗时 45 分钟」（超时错误待核查.md）。归因：提权审批等待 ≈49%、模型/工具往返 ≈32%、5 次空参数 write ≈12%、二次全量重写 ≈8%。根因：知识库根在 DSH workspace-write 沙箱可写根（session.cwd + 临时目录）之外，每次直接写库根都触发提权审批，第三次被取消后收尾同步中断。
