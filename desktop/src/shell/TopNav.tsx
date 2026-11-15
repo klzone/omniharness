@@ -153,7 +153,7 @@ function DateFlip({ now }: { now: Date }) {
         <div
           data-testid="topnav-calendar-popover"
           className={
-            "neu-popover absolute right-0 top-full mt-2 w-[320px] rounded-2xl p-3.5 z-50 origin-top-right transition-all duration-200 " +
+            "neu-popover absolute right-0 top-full mt-2 w-[320px] rounded-xl p-3.5 z-50 origin-top-right transition-[opacity,transform] duration-150 " +
             (visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none")
           }
         >
