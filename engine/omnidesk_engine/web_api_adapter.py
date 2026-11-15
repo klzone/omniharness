@@ -95,7 +95,13 @@ def preset_for_intent(intent: Optional[str], profile: Optional[str]) -> Optional
         return WORK_REVIEW_PRESET
     return None
 from .process_owner import record_child_group, terminate_group
-from .security import DataMasker, MaskMapping, SessionScope
+from .security import (
+    DataMasker,
+    MaskMapping,
+    SessionScope,
+    check_blocklist,
+    load_dictionary,
+)
 from .security.stream_unmask import StreamUnmasker
 
 __all__ = [
@@ -112,6 +118,8 @@ class _MaskSession:
     masker: DataMasker
     scope: SessionScope
     entries: dict
+    # 词典文件签名；设置页保存后下一轮自动重载，会话内既有映射保持不变。
+    dict_signature: Optional[tuple] = None
 
     def mapping(self) -> MaskMapping:
         return MaskMapping(tuple(self.entries.items()))
@@ -518,6 +526,8 @@ class WebApiAdapter(TaskCoreBase):
         self._masker_dict_path = Path(raw_dict) if raw_dict else None
         # engine_session_id -> 会话作用域 + 已用占位符映射。
         self._mask_sessions: dict = {}
+        # OD-MASK-160c：阻断词缓存，按词典文件 mtime/size 失效。
+        self._blocklist_cache: Optional[tuple] = None
 
     # -- 构造便利方法 -------------------------------------------------------
     @classmethod
@@ -1256,20 +1266,60 @@ class WebApiAdapter(TaskCoreBase):
             return value
         return {"ok": True}
 
-    def _mask_session_for(self, session_id: str) -> _MaskSession:
-        """按引擎会话取/建脱敏作用域；词典在会话建立时读取。"""
+    def _dictionary_signature(self):
+        """词典文件签名；不存在或不可读时返回 None。"""
 
+        path = self._masker_dict_path
+        if path is None:
+            return None
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        return (str(path), stat.st_mtime_ns, stat.st_size)
+
+    def _mask_session_for(self, session_id: str) -> _MaskSession:
+        """按引擎会话取/建脱敏作用域；词典变化时重载，既有映射保持不变。"""
+
+        signature = self._dictionary_signature()
         session = self._mask_sessions.get(session_id)
         if session is not None:
+            if session.dict_signature != signature:
+                session.masker = (
+                    DataMasker(dictionary_path=self._masker_dict_path)
+                    if self._masker_dict_path is not None
+                    else DataMasker()
+                )
+                session.dict_signature = signature
             return session
         masker = (
             DataMasker(dictionary_path=self._masker_dict_path)
             if self._masker_dict_path is not None
             else DataMasker()
         )
-        session = _MaskSession(masker=masker, scope=SessionScope(), entries={})
+        session = _MaskSession(
+            masker=masker,
+            scope=SessionScope(),
+            entries={},
+            dict_signature=signature,
+        )
         self._mask_sessions[session_id] = session
         return session
+
+    def _blocklist_terms(self):
+        """读取阻断词表；文件 mtime/size 变化即重读，设置页保存后下一轮生效。"""
+
+        path = self._masker_dict_path
+        if path is None:
+            return ()
+        signature = self._dictionary_signature()
+        cached = self._blocklist_cache
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        loaded = load_dictionary(path)
+        terms = loaded.blocklist
+        self._blocklist_cache = (signature, terms)
+        return terms
 
     def _mask_prompt(self, text: str, session_id: str):
         """出站脱敏；返回 (masked_text, stats, session|None)。不写原文。"""
@@ -1340,6 +1390,20 @@ class WebApiAdapter(TaskCoreBase):
         if not text:
             raise EngineError(
                 EngineErrorCode.INVALID_ARGUMENT, "prompt_text or input_file is required"
+            )
+
+        # OD-MASK-160c：硬阻断在脱敏与会话创建之前判定；命中即整条拒绝，
+        # 不建立引擎会话、不触达模型，也不回显命中词。
+        blocked = check_blocklist(text, self._blocklist_terms())
+        if blocked.get("hit"):
+            raise EngineError(
+                EngineErrorCode.INVALID_ARGUMENT,
+                "出站内容命中阻断词表，已拒绝提交",
+                detail={
+                    "blocked": True,
+                    "count": int(blocked.get("count") or 0),
+                    "categories": sorted((blocked.get("by_category") or {}).keys()),
+                },
             )
 
         with self._lock:

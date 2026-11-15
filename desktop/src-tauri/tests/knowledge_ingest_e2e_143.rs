@@ -72,10 +72,8 @@ fn synthetic_inbox_masks_then_creates_card_and_searches() {
     )
     .expect("整理提示词应组装成功");
     assert!(!prepared.prompt.contains("林青禾"), "人名不得明文出站");
-    let start = prepared.prompt.find("[PERSON_").expect("应有 PERSON 占位符");
-    let rest = &prepared.prompt[start..];
-    let end = rest.find(']').expect("占位符应闭合") + 1;
-    let placeholder = &rest[..end];
+    assert!(prepared.prompt.contains("林**"), "应有自然掩码");
+    let placeholder = "林**";
 
     let index_line = "- [专项检查频次](概念/专项检查频次.md) | 标签：监督 | 每季度一次";
     let payload = json!({

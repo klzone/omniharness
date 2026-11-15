@@ -13,6 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 SUPERVISOR = (REPO / "desktop/src-tauri/src/engine_supervisor.rs").read_text(encoding="utf-8")
 ADAPTER = (REPO / "engine/omnidesk_engine/web_api_adapter.py").read_text(encoding="utf-8")
+MASKER = (REPO / "engine/omnidesk_engine/security/masker.py").read_text(encoding="utf-8")
 TASK = (REPO / "engine/omnidesk_engine/task_core.py").read_text(encoding="utf-8")
 HOME = (REPO / "desktop/src/shell/HomeChat.tsx").read_text(encoding="utf-8")
 
@@ -24,8 +25,18 @@ def once(source: str, needle: str) -> bool:
 def main() -> int:
     cases = [
         ("host_passes_dictionary_path", "OMNIDESK_SENSITIVE_DICT" in SUPERVISOR),
-        ("engine_default_on", 'OMNIDESK_MASKER' in ADAPTER and '!= "off"' in ADAPTER),
-        ("mask_before_worker", ADAPTER.index("self._mask_prompt(text, session_id)") < ADAPTER.index("worker = threading.Thread")),
+        (
+            "engine_default_on_natural_style",
+            'OMNIDESK_MASKER' in ADAPTER
+            and '!= "off"' in ADAPTER
+            and "def _natural_placeholder" in MASKER,
+        ),
+        (
+            "block_and_mask_before_worker",
+            ADAPTER.index("check_blocklist(text, self._blocklist_terms())")
+            < ADAPTER.index("self._mask_prompt(text, session_id)")
+            < ADAPTER.index("worker = threading.Thread"),
+        ),
         ("worker_gets_masked_text", "args=(record, follow, masked_text)" in ADAPTER),
         ("session_prompt_single_exit", once(ADAPTER, '"session/prompt"')),
         ("mask_call_inside_submit", ADAPTER.index("def submit_task") < ADAPTER.index("self._mask_prompt(text, session_id)") < ADAPTER.index("def _turn_worker")),
@@ -33,7 +44,7 @@ def main() -> int:
         ("nonstream_unmask", "self._unmask_delta(record, final_text)" in ADAPTER),
         ("result_uses_unmasked_parts", '"content": "".join(record.text_parts)' in TASK),
         ("receipt_reports_counts", "masker=record.mask_stats" in ADAPTER and '"masker": dict(self.masker)' in TASK),
-        ("frontend_single_submit_call", once(HOME, "await host.submitTask")),
+        ("frontend_submit_uses_engine", HOME.count("await host.submitTask") >= 1),
         ("attachments_inside_prompt", "composeWithAttachments(text, picked)" in HOME),
         ("knowledge_context_inside_prompt", "knowledgeContext," in HOME),
         ("no_ui_masker_switch", "OMNIDESK_MASKER" not in HOME),

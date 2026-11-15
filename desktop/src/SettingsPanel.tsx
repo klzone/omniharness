@@ -53,6 +53,10 @@ import type {
   ProfileCustomEntry,
   ProfileDeclPayload,
   ProfileRulesView,
+  SensitiveBlockTerm,
+  SensitiveDictEntry,
+  SensitiveDictType,
+  SensitiveDictView,
   SchedulerConfig,
   SchedulerSnapshot,
   ThreadCategoryView,
@@ -101,6 +105,30 @@ const API_CHOICES: Array<{ value: string; label: string }> = [
   { value: "openai-responses", label: "openai-responses（兼容 /responses）" },
   { value: "anthropic-messages", label: "anthropic-messages（Anthropic 原生）" },
 ];
+
+const SENSITIVE_TYPE_CHOICES: Array<{ value: SensitiveDictType; label: string }> = [
+  { value: "PERSON", label: "人名" },
+  { value: "BRANCH", label: "分支机构" },
+  { value: "ORG", label: "机构" },
+  { value: "CUSTOM", label: "自定义" },
+];
+
+const BLOCK_CATEGORY_CHOICES: Array<{
+  value: SensitiveBlockTerm["category"];
+  label: string;
+}> = [
+  { value: "political", label: "政治" },
+  { value: "porn", label: "色情" },
+  { value: "leader", label: "人物" },
+  { value: "custom", label: "自定义" },
+];
+
+/** 编辑草稿：alias 在输入框里是逗号分隔的一行文本，保存时才拆成数组。 */
+type SensitiveEntryDraft = {
+  type: SensitiveDictType;
+  value: string;
+  aliases: string;
+};
 
 /** 工作日取值与宿主一致：1=周一 … 7=周日。 */
 const WEEKDAY_CHOICES: Array<{ value: number; label: string }> = [
@@ -485,6 +513,13 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const [rulesBusy, setRulesBusy] = useState(false);
   const [rulesNote, setRulesNote] = useState<string | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  // 出站敏感词典（OD-MASK-160e）：应用级文件，不随 Profile 切换。
+  const [sensitiveDict, setSensitiveDict] = useState<SensitiveDictView | null>(null);
+  const [dictEntries, setDictEntries] = useState<SensitiveEntryDraft[]>([]);
+  const [dictBlocklist, setDictBlocklist] = useState<SensitiveBlockTerm[]>([]);
+  const [dictBusy, setDictBusy] = useState(false);
+  const [dictNote, setDictNote] = useState<string | null>(null);
+  const [dictError, setDictError] = useState<string | null>(null);
   /**
    * 场景 → Skill 绑定的界面草稿（OD-ARCH-129）。
    *
@@ -697,6 +732,29 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     } catch (e) {
       setRules(null);
       setRulesError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  /** 读取敏感词典；文件不存在时宿主返回空模板，保存时按模板创建。 */
+  const refreshSensitiveDict = useCallback(async () => {
+    try {
+      const view = await shell.sensitiveDictGet();
+      setSensitiveDict(view);
+      setDictEntries(
+        view.entries.map((entry) => ({
+          type: entry.type,
+          value: entry.value,
+          aliases: (entry.aliases ?? []).join(", "),
+        })),
+      );
+      setDictBlocklist(view.blocklist.map((term) => ({ ...term })));
+      setDictError(view.error);
+      setDictNote(
+        view.exists ? null : "当前还没有词典文件；点「保存词典」会按出厂空模板创建。",
+      );
+    } catch (e) {
+      setSensitiveDict(null);
+      setDictError(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -1100,6 +1158,39 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       setRulesBusy(false);
     }
   }, [refreshRules, rulesText]);
+
+  const saveSensitiveDict = useCallback(async () => {
+    setDictBusy(true);
+    setDictNote(null);
+    setDictError(null);
+    try {
+      const entries: SensitiveDictEntry[] = dictEntries
+        .map((entry) => ({
+          type: entry.type,
+          value: entry.value.trim(),
+          aliases: entry.aliases
+            .split(/[,，]/)
+            .map((alias) => alias.trim())
+            .filter(Boolean),
+        }))
+        .filter((entry) => entry.value.length > 0);
+      const blocklist = dictBlocklist
+        .map((term) => ({ term: term.term.trim(), category: term.category }))
+        .filter((term) => term.term.length > 0);
+      const receipt = await shell.sensitiveDictSave(entries, blocklist);
+      setDictNote(
+        receipt.note +
+          (receipt.backup
+            ? `旧文件已备份为 ${receipt.backup.split("/").pop()}。`
+            : ""),
+      );
+      await refreshSensitiveDict();
+    } catch (e) {
+      setDictError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDictBusy(false);
+    }
+  }, [dictBlocklist, dictEntries, refreshSensitiveDict]);
 
   const restoreRules = useCallback(async () => {
     setRulesBusy(true);
@@ -1561,6 +1652,11 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   useEffect(() => {
     if (tab === "rules" && rules === null) void refreshRules();
   }, [tab, rules, refreshRules]);
+
+  // 敏感词典与规则资产同一页；打开时读一次，保存后由保存回调刷新。
+  useEffect(() => {
+    if (tab === "rules" && sensitiveDict === null) void refreshSensitiveDict();
+  }, [tab, sensitiveDict, refreshSensitiveDict]);
 
   // 能力管理同理：打开这一页才读，避免启动时多读一次磁盘。
   useEffect(() => {
@@ -3586,6 +3682,222 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
           </button>
         </div>
         {rulesNote ? <p className="hint">{rulesNote}</p> : null}
+
+        {/* ===== 出站敏感词典与阻断词（OD-MASK-160e）=====
+            与规则包分开：这是应用级文件，不随 Profile 切换；保存后下一轮提交生效。 */}
+        <div className="binding-block sensitive-dict" data-testid="sensitive-dict-editor">
+          <div className="binding-head">
+            <span className="binding-title">敏感词典与阻断词</span>
+            <span className="sub">
+              {sensitiveDict
+                ? `${dictEntries.length} 个实体 · ${dictBlocklist.length} 个阻断词`
+                : "读取中…"}
+            </span>
+          </div>
+          <p className="hint">
+            出站时实体换成自然掩码（人名「林**」、机构「芭某公司」），回程按会话映射还原；
+            阻断词命中则整条拒绝，不触达模型。
+          </p>
+          {sensitiveDict?.error ? (
+            <div className="alert">敏感词典：{sensitiveDict.error}</div>
+          ) : null}
+
+          <div className="dict-group">
+            <div className="binding-row-main">
+              <span className="binding-scene">敏感实体</span>
+              <span className="sub">同一会话同一实体复用同一掩码</span>
+            </div>
+            <div className="binding-rows">
+              {dictEntries.map((entry, index) => (
+                <div
+                  className="binding-row dict-row"
+                  key={`entry-${index}`}
+                  data-testid={`sensitive-dict-entry-${index}`}
+                >
+                  <select
+                    className="text-input"
+                    value={entry.type}
+                    aria-label="实体类型"
+                    disabled={dictBusy}
+                    onChange={(e) =>
+                      setDictEntries((prev) =>
+                        prev.map((item, at) =>
+                          at === index
+                            ? { ...item, type: e.target.value as SensitiveDictType }
+                            : item,
+                        ),
+                      )
+                    }
+                  >
+                    {SENSITIVE_TYPE_CHOICES.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="text-input"
+                    value={entry.value}
+                    placeholder="原文，如 芭莎公司"
+                    spellCheck={false}
+                    disabled={dictBusy}
+                    data-testid={`sensitive-dict-value-${index}`}
+                    onChange={(e) =>
+                      setDictEntries((prev) =>
+                        prev.map((item, at) =>
+                          at === index ? { ...item, value: e.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <input
+                    className="text-input"
+                    value={entry.aliases}
+                    placeholder="别名，逗号分隔"
+                    spellCheck={false}
+                    disabled={dictBusy}
+                    data-testid={`sensitive-dict-aliases-${index}`}
+                    onChange={(e) =>
+                      setDictEntries((prev) =>
+                        prev.map((item, at) =>
+                          at === index ? { ...item, aliases: e.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={dictBusy}
+                    aria-label="移除实体"
+                    onClick={() =>
+                      setDictEntries((prev) => prev.filter((_item, at) => at !== index))
+                    }
+                  >
+                    移除
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="ghost"
+                disabled={dictBusy}
+                data-testid="sensitive-dict-add-entry"
+                onClick={() =>
+                  setDictEntries((prev) => [
+                    ...prev,
+                    { type: "PERSON", value: "", aliases: "" },
+                  ])
+                }
+              >
+                添加实体
+              </button>
+            </div>
+          </div>
+
+          <div className="dict-group">
+            <div className="binding-row-main">
+              <span className="binding-scene">阻断词</span>
+              <span className="sub">命中即拒绝整条提交，不回显命中词</span>
+            </div>
+            <div className="binding-rows">
+              {dictBlocklist.map((term, index) => (
+                <div
+                  className="binding-row dict-row dict-row-block"
+                  key={`block-${index}`}
+                  data-testid={`sensitive-block-${index}`}
+                >
+                  <input
+                    className="text-input"
+                    value={term.term}
+                    placeholder="阻断词（只放自己维护的词）"
+                    spellCheck={false}
+                    disabled={dictBusy}
+                    onChange={(e) =>
+                      setDictBlocklist((prev) =>
+                        prev.map((item, at) =>
+                          at === index ? { ...item, term: e.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <select
+                    className="text-input"
+                    value={term.category}
+                    aria-label="阻断类别"
+                    disabled={dictBusy}
+                    onChange={(e) =>
+                      setDictBlocklist((prev) =>
+                        prev.map((item, at) =>
+                          at === index
+                            ? {
+                                ...item,
+                                category: e.target.value as SensitiveBlockTerm["category"],
+                              }
+                            : item,
+                        ),
+                      )
+                    }
+                  >
+                    {BLOCK_CATEGORY_CHOICES.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={dictBusy}
+                    aria-label="移除阻断词"
+                    onClick={() =>
+                      setDictBlocklist((prev) => prev.filter((_item, at) => at !== index))
+                    }
+                  >
+                    移除
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="ghost"
+                disabled={dictBusy}
+                data-testid="sensitive-dict-add-block"
+                onClick={() =>
+                  setDictBlocklist((prev) => [...prev, { term: "", category: "custom" }])
+                }
+              >
+                添加阻断词
+              </button>
+            </div>
+          </div>
+
+          <div className="actions">
+            <button
+              className="primary"
+              onClick={() => void saveSensitiveDict()}
+              disabled={dictBusy}
+              data-testid="sensitive-dict-save"
+              data-hover-hint="校验通过后原子写回；旧文件先备份"
+            >
+              {dictBusy ? "保存中…" : "保存词典"}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void refreshSensitiveDict()}
+              disabled={dictBusy}
+            >
+              重新读取
+            </button>
+          </div>
+          {dictNote ? <p className="hint">{dictNote}</p> : null}
+          {dictError ? <div className="alert">{dictError}</div> : null}
+        </div>
       </section>
 
       {/* ============ 3. 权限 ============ */}

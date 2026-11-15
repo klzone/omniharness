@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 import unittest
@@ -34,7 +33,7 @@ class IngestPromptTests(unittest.TestCase):
     def test_file_content_is_masked(self):
         result = assemble_ingest_prompt(self.files, self.index, self.card_spec, self.masker)
         self.assertNotIn("林青禾 负责", result.prompt)
-        self.assertIn("[PERSON_", result.prompt)
+        self.assertIn("林**", result.prompt)
         # 代码块保持原样；Task 2 的边界不在提示词层重写。
         self.assertIn("```\n林青禾\n```", result.prompt)
 
@@ -70,9 +69,7 @@ class IngestPromptTests(unittest.TestCase):
             {"relative_path": "inbox/b.md", "content": "林青禾 负责乙事项。"},
         ]
         result = assemble_ingest_prompt(files, self.index, self.card_spec, self.masker)
-        placeholders = re.findall(r"\[PERSON_[0-9A-F]{8}\]", result.prompt)
-        self.assertEqual(len(placeholders), 2)
-        self.assertEqual(placeholders[0], placeholders[1])
+        self.assertEqual(result.prompt.count("林**"), 2)
 
     def test_empty_index_gets_placeholder(self):
         result = assemble_ingest_prompt(self.files, "", self.card_spec, self.masker)

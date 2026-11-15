@@ -2613,6 +2613,48 @@ export interface ProfileRulesSaveReceipt {
   skills?: BoundSkillSync;
 }
 
+// ---------------------------------------------------------------------------
+// 出站敏感词典与硬阻断词（OD-MASK-160e）
+//
+// 文件固定为 <数据根>/config/sensitive-dict.v1.json，内容 schema 为 v2。
+// 实体会被换成自然掩码；阻断词命中则整条拒绝，不触达模型。
+// ---------------------------------------------------------------------------
+
+export type SensitiveDictType = "PERSON" | "BRANCH" | "ORG" | "CUSTOM";
+
+/** 阻断类别；出厂样例只放虚构词。 */
+export type BlockCategory = "political" | "porn" | "leader" | "custom";
+
+export interface SensitiveDictEntry {
+  type: SensitiveDictType;
+  value: string;
+  aliases?: string[];
+}
+
+export interface SensitiveBlockTerm {
+  term: string;
+  category: BlockCategory;
+}
+
+export interface SensitiveDictView {
+  path: string;
+  exists: boolean;
+  schema: string;
+  entries: SensitiveDictEntry[];
+  blocklist: SensitiveBlockTerm[];
+  bytes: number;
+  /** 文件损坏时的原因；此时界面不能把它当成空词表静默覆盖。 */
+  error: string | null;
+}
+
+export interface SensitiveDictSaveReceipt {
+  ok: boolean;
+  path: string;
+  backup: string | null;
+  bytes: number;
+  note: string;
+}
+
 /** 「保存绑定后立刻收敛 Skill」的回执（OD-ARCH-130）。 */
 export interface BoundSkillSync {
   ok?: boolean;

@@ -1,12 +1,12 @@
 {
   "plan": "OD-ARCH-143",
   "step": "S2",
-  "passed": true,
+  "passed": false,
   "checks": [
     {
       "name": "rust_knowledge_ingest_e2e",
       "ok": true,
-      "detail": "\nrunning 1 test\ntest synthetic_inbox_masks_then_creates_card_and_searches ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s\n     Running tests/knowledge_ingest_e2e_143.rs (target/debug/deps/knowledge_ingest_e2e_143-c576d4af648482f0)\n"
+      "detail": "\nrunning 1 test\ntest synthetic_inbox_masks_then_creates_card_and_searches ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s\n\n()).collect();\n   |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_material_ids`\n   |\n   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: field `stderr` is never read\n    --> src/export_engine.rs:1256:5\n     |\n1250 | struct ProcessOutput {\n     |        ------------- field in this struct\n...\n1256 |     stderr: String,\n     |     ^^^^^^\n     |\n     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `omnidesk-desktop` (lib) generated 2 warnings (run `cargo fix --lib -p omnidesk-desktop` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s\n     Running tests/knowledge_ingest_e2e_143.rs (target/debug/deps/knowledge_ingest_e2e_143-c576d4af648482f0)\n"
     },
     {
       "name": "adapter_terminal_succeeded",
@@ -39,14 +39,24 @@
       "detail": ""
     },
     {
-      "name": "worklog_regression",
+      "name": "blocklist_rejects_submit",
       "ok": true,
-      "detail": "\nPASS [WORKLOG-089] note_forbids_rewriting\nPASS [WORKLOG-089] note_no_skill_no_guess\nPASS [WORKLOG-089] note_no_skill_no_six_elements\nPASS [WORKLOG-089] report_includes_worklog_content\nPASS [WORKLOG-089] report_labels_week\nPASS [WORKLOG-089] report_has_sections\nPASS [WORKLOG-089] report_says_no_record\nPASS [WORKLOG-089] no_worklog_no_section\nPASS [WORKLOG-089] platform_prompt_is_thin\nPASS [WORKLOG-089] note_prompt_within_budget\nPASS [WORKLOG-089] note_prompt_measured\ncases=83 passed=83 failed=0\n"
+      "detail": "invalid_argument"
+    },
+    {
+      "name": "blocklist_never_reaches_model",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "name": "worklog_regression",
+      "ok": false,
+      "detail": "\nPASS [WORKLOG-089] note_forbids_rewriting\nPASS [WORKLOG-089] note_no_skill_no_guess\nPASS [WORKLOG-089] note_no_skill_no_six_elements\nPASS [WORKLOG-089] report_includes_worklog_content\nPASS [WORKLOG-089] report_labels_week\nPASS [WORKLOG-089] report_has_sections\nPASS [WORKLOG-089] report_says_no_record\nPASS [WORKLOG-089] no_worklog_no_section\nPASS [WORKLOG-089] platform_prompt_is_thin\nPASS [WORKLOG-089] note_prompt_within_budget\nPASS [WORKLOG-089] note_prompt_measured\ncases=83 passed=82 failed=1\n"
     },
     {
       "name": "weekly_quadrant_regression",
-      "ok": true,
-      "detail": "s_match_timeline_shape\nPASS [WEEKLY-093] empty_week_all_zero\nPASS [WEEKLY-093] invalid_date_not_overdue\nPASS [WEEKLY-093] visible_ids_match_cell\nPASS [WEEKLY-093] visible_ids_null_when_cleared\nPASS [WEEKLY-093] items_in_matches_count\nPASS [WEEKLY-093] quadrant_titles_chinese\nPASS [WEEKLY-093] quadrant_indexes\nPASS [WEEKLY-093] report_destination_literal\ncases=108 passed=108 failed=0\nevidence -> /Users/yvan/Code/MyWorkStation/tests/verification/desktop/evidence/od-arch-093/verify_weekly_093.json\n"
+      "ok": false,
+      "detail": "mmandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py\", line 1242, in open\n    return io.open(self, mode, buffering, encoding, errors, newline,\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py\", line 1110, in _opener\n    return self._accessor.open(self, flags, mode)\nFileNotFoundError: [Errno 2] No such file or directory: '/Users/yvan/Code/MyWorkStation/desktop/src/shell/WeeklyQuadrants.tsx'\n"
     },
     {
       "name": "artifact_regression",
@@ -60,11 +70,14 @@
     "result_has_placeholder": false,
     "outbound_has_original": false,
     "outbound_has_placeholder": true,
+    "blocked_error_code": "invalid_argument",
+    "blocked_error_message": "出站内容命中阻断词表，已拒绝提交",
+    "block_requests": 0,
     "stderr_has_original": false,
     "text_deltas_have_original": true
   },
   "rust_exit": 0,
-  "worklog_exit": 0,
-  "weekly_exit": 0,
+  "worklog_exit": 1,
+  "weekly_exit": 1,
   "artifact_exit": 0
 }

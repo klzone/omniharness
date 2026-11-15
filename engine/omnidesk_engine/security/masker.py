@@ -17,8 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
-SCHEMA = "omnidesk.sensitive-dict.v1"
+SCHEMA_V1 = "omnidesk.sensitive-dict.v1"
+SCHEMA_V2 = "omnidesk.sensitive-dict.v2"
+# 新写入一律用 v2；读取同时接受 v1（没有 blocklist 段，视为空）。
+SCHEMA = SCHEMA_V2
 ALLOWED_TYPES: Tuple[str, ...] = ("PERSON", "BRANCH", "ORG", "CUSTOM")
+ALLOWED_BLOCK_CATEGORIES: Tuple[str, ...] = ("political", "porn", "leader", "custom")
 
 _TYPE_KEY_RE = re.compile(r'"type"\s*:')
 
@@ -49,12 +53,34 @@ _SURNAMES = (
 )
 _NAME_BEFORE_RE = re.compile(
     r"(?:与|和|同|跟|向|对|给|找|叫|由|让|请|联系|询问|约谈|谈话|同事|"
-    r"人员|负责人|联系人|姓名|对象)\s*[:：]?\s*([" + _SURNAMES + r"][一-龥]{1,2})"
+    r"人员|负责人|联系人|姓名|对象|会见|汇报|陪同|参加|督查|巡察|反映|"
+    r"举报|批评|表扬|慰问|走访|调研|座谈|听取|约见|接见|拜访|看望|"
+    r"通知|安排)\s*[:：]?\s*([" + _SURNAMES + r"][一-龥]{1,2})"
 )
 _NAME_AFTER_RE = re.compile(
     r"([" + _SURNAMES + r"][一-龥]{1,2})(?:同志|主任|书记|行长|经理|科长|"
-    r"局长|处长|部长|队长|院长|所长|厂长|组长|老师|主席)"
+    r"局长|处长|部长|队长|院长|所长|厂长|组长|老师|主席|副行长|副总|"
+    r"总监|董事长|总经理|秘书长|厅长|股长|站长|校长|专员|干事|委员|代表)"
 )
+
+# 公司/机构后缀（OD-MASK-160b）。长后缀允许出现在连续正文里；
+# 单字后缀（厂/店/行/社/所）容易命中「正在进行」这类普通词，因此要求后面
+# 不再紧跟汉字。纯正则不做分词，这是刻意保留的简单口径（见文件末尾说明）。
+_ORG_SUFFIXES: Tuple[str, ...] = (
+    "信用社", "事务所", "研究院", "有限公司", "股份公司", "公司", "集团",
+    "银行", "支行", "联社", "中心", "大学", "医院", "学校", "工厂", "厂",
+    "店", "行", "社", "所",
+)
+_ORG_LONG_SUFFIX_RE = re.compile(
+    r"([一-龥]{2,6}?(?:信用社|事务所|研究院|有限公司|股份公司|公司|集团|"
+    r"银行|支行|联社|中心|大学|医院|学校))"
+)
+_ORG_SHORT_SUFFIX_RE = re.compile(
+    r"([一-龥]{2,6}?(?:工厂|厂|店|行|社|所))(?![一-龥])"
+)
+# 「行」既是机构后缀（商行/车行），也是常见动词尾字（进行/运行/执行）。
+# 单字后缀里只对「行」加这层窄口径放行；不扩展到白名单，避免把词表做大。
+_HANG_VERB_PREFIX = set("进运执试现发履举可自同流强实施推开并飞航旅出")
 
 _ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
 _ID_CHECK_CODES = "10X98765432"
@@ -65,6 +91,15 @@ _DICT_PRIORITY = 10
 _PLACEHOLDER_TYPES = "|".join(("IDCARD", "BANKCARD", "PHONE", "EMAIL", "PERSON", "BRANCH", "ORG", "CUSTOM"))
 _PLACEHOLDER_RE = re.compile(r"\[(%s)_([0-9A-F]{8})\]" % _PLACEHOLDER_TYPES)
 _PLACEHOLDER_PREFIX_RE = re.compile(r"\[(?:%s)_" % _PLACEHOLDER_TYPES)
+
+# 已经像掩码的片段不再二次命中：自然掩码含 ** 或「某」，机器占位符是 [TYPE_XXXXXXXX]。
+_MASK_HINT_RE = re.compile(r"(?:\*\*|某|\[(?:%s)_[0-9A-F]{8}\])" % _PLACEHOLDER_TYPES)
+
+
+def _looks_like_mask(value: str) -> bool:
+    """命中片段是否已是掩码形态；是则放行，避免把「芭某公司」再遮一层。"""
+
+    return bool(_MASK_HINT_RE.search(value or ""))
 
 
 def is_valid_idcard(value: str) -> bool:
@@ -138,9 +173,28 @@ class DictEntry:
 
 
 @dataclass(frozen=True)
+class BlockEntry:
+    """出站硬阻断词。只保存词与类别；命中时绝不回显词本身。"""
+
+    term: str
+    category: str = "custom"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.term, str):
+            raise ValueError("阻断词必须是非空字符串")
+        term = (self.term or "").strip()
+        if not term:
+            raise ValueError("阻断词不能为空")
+        if self.category not in ALLOWED_BLOCK_CATEGORIES:
+            raise ValueError("非法阻断类别：%r" % (self.category,))
+        object.__setattr__(self, "term", term)
+
+
+@dataclass(frozen=True)
 class DictionaryLoad:
     entries: Tuple[DictEntry, ...] = ()
     warn: Optional[str] = None
+    blocklist: Tuple[BlockEntry, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -177,9 +231,11 @@ def load_dictionary(path: Optional[Path]) -> DictionaryLoad:
         return DictionaryLoad((), "第 %d 行：JSON 解析失败：%s" % (exc.lineno, exc.msg))
     if not isinstance(payload, dict):
         return DictionaryLoad((), "敏感词典顶层必须是对象")
-    if payload.get("schema") != SCHEMA:
+    schema = payload.get("schema")
+    if schema not in (SCHEMA_V1, SCHEMA_V2):
         return DictionaryLoad(
-            (), "schema 必须是 %s，收到 %r" % (SCHEMA, payload.get("schema"))
+            (),
+            "schema 必须是 %s 或 %s，收到 %r" % (SCHEMA_V1, SCHEMA_V2, schema),
         )
     entries = payload.get("entries")
     if not isinstance(entries, list):
@@ -214,7 +270,66 @@ def load_dictionary(path: Optional[Path]) -> DictionaryLoad:
     loaded: List[DictEntry] = []
     for kind, value in order:
         loaded.append(DictEntry(kind, value, tuple(merged[(kind, value)])))
-    return DictionaryLoad(tuple(loaded), None)
+
+    # v2 的 blocklist；v1 没有该段时视为空（向后兼容）。
+    raw_blocklist = payload.get("blocklist", [])
+    if raw_blocklist is None:
+        raw_blocklist = []
+    if not isinstance(raw_blocklist, list):
+        return DictionaryLoad((), "blocklist 必须是数组")
+    blocklist: List[BlockEntry] = []
+    seen_terms: Set[str] = set()
+    for item in raw_blocklist:
+        if not isinstance(item, dict):
+            return DictionaryLoad((), "blocklist 条目必须是对象")
+        try:
+            entry = BlockEntry(item.get("term"), item.get("category", "custom"))
+        except ValueError as exc:
+            return DictionaryLoad((), "blocklist：%s" % exc)
+        if entry.term in seen_terms:
+            continue
+        seen_terms.add(entry.term)
+        blocklist.append(entry)
+    return DictionaryLoad(tuple(loaded), None, tuple(blocklist))
+
+
+def check_blocklist(text: Optional[str], block_terms: Iterable[object]) -> Dict[str, object]:
+    """出站硬阻断检查（OD-MASK-160c）。
+
+    纯函数，不读文件、不写日志。返回只含命中计数与类别，不回显任何命中词或
+    原文片段；调用方据此整条拒绝提交。``block_terms`` 接受 :class:`BlockEntry`、
+    ``(term, category)`` 或含 ``term``/``category`` 键的映射，便于宿主与会话复用。
+    """
+
+    if text is None or not isinstance(text, str) or not text:
+        return {"hit": False, "count": 0, "by_category": {}}
+    counts: Dict[str, int] = {}
+    total = 0
+    seen: Set[str] = set()
+    for item in block_terms or ():
+        term = ""
+        category = "custom"
+        if isinstance(item, BlockEntry):
+            term, category = item.term, item.category
+        elif isinstance(item, Mapping):
+            term = str(item.get("term") or "")
+            category = str(item.get("category") or "custom")
+        elif isinstance(item, (tuple, list)) and len(item) >= 1:
+            term = str(item[0] or "")
+            if len(item) >= 2:
+                category = str(item[1] or "custom")
+        else:
+            term = str(item or "")
+        term = term.strip()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        hit_count = text.count(term)
+        if not hit_count:
+            continue
+        total += hit_count
+        counts[category] = counts.get(category, 0) + hit_count
+    return {"hit": total > 0, "count": total, "by_category": counts}
 
 
 @dataclass(frozen=True)
@@ -310,13 +425,22 @@ class DataMasker:
         if entries is not None:
             self._entries: Tuple[DictEntry, ...] = tuple(entries)
             self._dictionary_warn: Optional[str] = None
+            self._blocklist: Tuple[BlockEntry, ...] = ()
         elif dictionary_path is not None:
             loaded = load_dictionary(dictionary_path)
             self._entries = loaded.entries
             self._dictionary_warn = loaded.warn
+            self._blocklist = loaded.blocklist
         else:
             self._entries = ()
             self._dictionary_warn = None
+            self._blocklist = ()
+
+    @property
+    def blocklist(self) -> Tuple[BlockEntry, ...]:
+        """词典文件里的阻断词（只读快照）。"""
+
+        return self._blocklist
 
     def _match_rules(self, text: str) -> List[_Candidate]:
         out: List[_Candidate] = []
@@ -338,9 +462,29 @@ class DataMasker:
                 value = match.group(1)
                 if value in seen_names:
                     continue
+                if _looks_like_mask(value):
+                    continue
                 seen_names.add(value)
                 start = match.start(1)
                 out.append(_Candidate("NAME", start, start + len(value), value, value, 4))
+        # 公司/机构：后缀命中即遮。纯正则不做分词，名称前缀收敛到紧邻后缀的最后
+        # 2 个字，避免吞入「今天去」这类前文；仍属启发式，可能漏拦或误拦。
+        for pattern in (_ORG_LONG_SUFFIX_RE, _ORG_SHORT_SUFFIX_RE):
+            for match in pattern.finditer(text):
+                value = match.group(1)
+                if _looks_like_mask(value):
+                    continue
+                start = match.start(1)
+                suffix = self._org_suffix(value)
+                if suffix == "行" and len(value) > 1 and value[-2] in _HANG_VERB_PREFIX:
+                    continue
+                # 2-6 个字的名称前缀本身分不出词边界；掩码只保留首字，因此统一
+                # 收敛到紧邻后缀的最后 2 个字，避免把「今天去」这类前文一起吞进来。
+                if suffix and len(value) - len(suffix) > 2:
+                    trimmed = len(value) - len(suffix) - 2
+                    value = value[trimmed:]
+                    start += trimmed
+                out.append(_Candidate("ORG", start, start + len(value), value, value, 4))
         # 先看有没有 @：1MB 的普通文本不必让邮箱正则逐字符回溯。
         if "@" in text:
             for match in _EMAIL_RE.finditer(text):
@@ -353,7 +497,7 @@ class DataMasker:
         out: List[_Candidate] = []
         for entry_index, entry in enumerate(self._entries):
             for term_index, term in enumerate(entry.terms):
-                if not term:
+                if not term or _looks_like_mask(term):
                     continue
                 for match in re.finditer(re.escape(term), text):
                     out.append(
@@ -378,16 +522,59 @@ class DataMasker:
         raise RuntimeError("占位符生成冲突超过 1000 次")
 
     @staticmethod
-    def _name_placeholder(value: str, used: Set[str]) -> str:
-        """人名占位：保留首字，其余用星号；重名加序号（张**、张**2…）。"""
-        base = (value[:1] or "某") + "**"
+    def _dedupe_placeholder(base: str, used: Set[str]) -> str:
+        """同一会话内掩码串不可重复；重名加序号（张**、张**2…）。"""
+
         if base not in used:
             return base
         for index in range(2, 1000):
             candidate = base + str(index)
             if candidate not in used:
                 return candidate
-        raise RuntimeError("人名占位符生成冲突超过 1000 次")
+        raise RuntimeError("掩码生成冲突超过 1000 次")
+
+    @classmethod
+    def _name_placeholder(cls, value: str, used: Set[str]) -> str:
+        """人名占位：保留首字，其余用星号；重名加序号（张**、张**2…）。"""
+
+        return cls._dedupe_placeholder((value[:1] or "某") + "**", used)
+
+    @staticmethod
+    def _org_suffix(value: str) -> str:
+        for suffix in _ORG_SUFFIXES:
+            if len(value) > len(suffix) and value.endswith(suffix):
+                return suffix
+        return ""
+
+    @classmethod
+    def _organization_placeholder(cls, value: str, used: Set[str]) -> str:
+        """机构占位：首字 + 某 + 机构后缀（芭莎公司→芭某公司）。
+
+        判断不出后缀时退化为「首字+某机构」，保证掩码里始终有「某」字样。
+        """
+
+        head = value[:1] or "某"
+        suffix = cls._org_suffix(value)
+        base = head + "某" + suffix if suffix else head + "某机构"
+        return cls._dedupe_placeholder(base, used)
+
+    @classmethod
+    def _custom_placeholder(cls, value: str, used: Set[str]) -> str:
+        """自定义词占位：保留首字 + 星号。"""
+
+        return cls._dedupe_placeholder((value[:1] or "某") + "**", used)
+
+    @classmethod
+    def _natural_placeholder(cls, kind: str, value: str, used: Set[str]) -> str:
+        """词典实体的自然掩码（OD-MASK-160a）。"""
+
+        if kind in ("PERSON", "NAME"):
+            return cls._name_placeholder(value, used)
+        if kind in ("BRANCH", "ORG"):
+            return cls._organization_placeholder(value, used)
+        if kind == "CUSTOM":
+            return cls._custom_placeholder(value, used)
+        return cls._placeholder(kind, used)
 
     def mask(self, text: Optional[str], session: Optional[SessionScope] = None) -> MaskResult:
         if text is None:
@@ -400,9 +587,16 @@ class DataMasker:
         # 词典里已经登记的人名优先：启发式命中同一片段时让位，避免把
         # 「与 林青禾」从 [PERSON_…] 改成 林**。
         dict_spans = {(c.start, c.end) for c in dictionary}
+        dict_org_spans = [
+            (c.start, c.end) for c in dictionary if c.type in ("BRANCH", "ORG")
+        ]
         rules = [
             c for c in rules
             if not (c.type == "NAME" and (c.start, c.end) in dict_spans)
+            and not (
+                c.type == "ORG"
+                and any(c.start < end and start < c.end for start, end in dict_org_spans)
+            )
         ]
         candidates = rules + dictionary
         candidates.sort(key=lambda c: (c.start, -c.length, c.priority, c.order))
@@ -431,10 +625,9 @@ class DataMasker:
             else:
                 used = set(session._placeholders) if session is not None else set()
                 used.update(local_used)
-                if candidate.type == "NAME":
-                    placeholder = self._name_placeholder(candidate.canonical, used)
-                else:
-                    placeholder = self._placeholder(candidate.type, used)
+                placeholder = self._natural_placeholder(
+                    candidate.type, candidate.canonical, used
+                )
                 local_entities[key] = placeholder
                 local_used.add(placeholder)
                 if session is not None:
@@ -493,16 +686,16 @@ class DataMasker:
         restored = 0
         unknown: List[str] = []
         exact_spans: List[Tuple[int, int]] = []
-        # 人名占位是「张** / 张**2」这种普通文本形式，先按映射整段还原。
-        name_pairs = [
+        # 自然掩码（张** / 芭某公司 / 林**2）是普通文本，先按映射整段还原。
+        natural_pairs = [
             (placeholder, entry.original)
             for placeholder, entry in mapping._entries
-            if entry.type == "NAME"
+            if not _PLACEHOLDER_RE.fullmatch(placeholder)
         ]
-        if name_pairs:
+        if natural_pairs:
             text_after_names = masked
             for placeholder, original in sorted(
-                name_pairs, key=lambda pair: len(pair[0]), reverse=True
+                natural_pairs, key=lambda pair: len(pair[0]), reverse=True
             ):
                 if placeholder in text_after_names:
                     restored += text_after_names.count(placeholder)
@@ -541,6 +734,23 @@ class DataMasker:
         exact_spans: List[Tuple[int, int]] = []
         by_type: Dict[str, int] = {}
         total = 0
+        # 自然掩码不是 [TYPE_XXXXXXXX]，按映射里的掩码串直接计数；长的先算，
+        # 覆盖计数后置空，避免「张**2」把「张**」也带上。
+        scratch = masked
+        for placeholder, entry in sorted(
+            (
+                (p, e)
+                for p, e in mapping._entries
+                if not _PLACEHOLDER_RE.fullmatch(p)
+            ),
+            key=lambda pair: len(pair[0]),
+            reverse=True,
+        ):
+            seen = scratch.count(placeholder)
+            if seen:
+                total += seen
+                by_type[entry.type] = by_type.get(entry.type, 0) + seen
+                scratch = scratch.replace(placeholder, "\u0000")
         for match in _PLACEHOLDER_RE.finditer(masked):
             total += 1
             exact_spans.append((match.start(), match.end()))

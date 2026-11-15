@@ -1,0 +1,16 @@
+PASS  host_passes_dictionary_path
+PASS  engine_default_on_natural_style
+PASS  block_and_mask_before_worker
+PASS  worker_gets_masked_text
+PASS  session_prompt_single_exit
+PASS  mask_call_inside_submit
+PASS  stream_unmask_before_append
+PASS  nonstream_unmask
+PASS  result_uses_unmasked_parts
+PASS  receipt_reports_counts
+PASS  frontend_submit_uses_engine
+PASS  attachments_inside_prompt
+PASS  knowledge_context_inside_prompt
+PASS  no_ui_masker_switch
+PASS  unmask_report_reaches_ui
+15/15 通过

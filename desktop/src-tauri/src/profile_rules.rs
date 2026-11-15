@@ -851,7 +851,13 @@ mod tests {
         let total = rules.global.redline_keywords.len()
             + rules.global.privacy_keywords.id_card.len()
             + rules.global.privacy_keywords.phone.len();
-        assert_eq!(total, 16, "16 个词条必须完整保留（14 红线 + 2 隐私归类）");
+        // OD-MASK-161：出厂红线词清空（本地不拦、出站脱敏）；隐私归类关键词保留。
+        assert_eq!(
+            total,
+            rules.global.privacy_keywords.id_card.len() + rules.global.privacy_keywords.phone.len(),
+            "隐私归类关键词必须保留；红线词表保持为空"
+        );
+        assert!(rules.global.redline_keywords.is_empty(), "出厂包本地零拦截");
         assert_eq!(rules.global.writing_rules.len(), 7);
         assert_eq!(rules.scene("weekly").unwrap().thinking, "low");
         assert_eq!(rules.scene("writing").unwrap().thinking, "low");

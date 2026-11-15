@@ -121,6 +121,10 @@ import type {
   ProfilePluginsEnsureReceipt,
   ProfilePluginAddReceipt,
   ProfileRulesSaveReceipt,
+  SensitiveBlockTerm,
+  SensitiveDictEntry,
+  SensitiveDictSaveReceipt,
+  SensitiveDictView,
   SkillBindingChoice,
   ProfileRulesView,
   ReferenceCandidate,
@@ -2080,6 +2084,25 @@ export const shell = {
     return invoke<ProfileRulesSaveReceipt>("profile_rules_restore_default").catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /** 读取出站敏感词典（OD-MASK-160e）。文件不存在时宿主返回空模板视图。 */
+  sensitiveDictGet(): Promise<SensitiveDictView> {
+    return invoke<SensitiveDictView>("sensitive_dict_get").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存敏感词典：宿主校验字段/数量/大小，旧文件先备份再原子写回。 */
+  sensitiveDictSave(
+    entries: SensitiveDictEntry[],
+    blocklist: SensitiveBlockTerm[],
+  ): Promise<SensitiveDictSaveReceipt> {
+    return invoke<SensitiveDictSaveReceipt>("sensitive_dict_save", { entries, blocklist }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
   },
 
   /**

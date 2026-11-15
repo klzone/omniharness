@@ -1,0 +1,31 @@
+PASS  rust_knowledge_ingest_e2e
+PASS  adapter_terminal_succeeded
+PASS  outbound_placeholder
+PASS  outbound_no_original
+PASS  stderr_no_original
+PASS  answer_restored
+PASS  stream_restored
+PASS  blocklist_rejects_submit
+PASS  blocklist_never_reaches_model
+FAIL  worklog_regression  — 
+PASS [WORKLOG-089] note_forbids_rewriting
+PASS [WORKLOG-089] note_no_skill_no_guess
+PASS [WORKLOG-089] note_no_skill_no_six_elements
+PASS [WORKLOG-089] report_includes_worklog_content
+PASS [WORKLOG-089] report_labels_week
+PASS [WORKLOG-089] report_has_sections
+PASS [WORKLOG-089] report_says_no_record
+PASS [WORKLOG-089] no_worklog_no_section
+PASS [WORKLOG-089] platform_prompt_is_thin
+PASS [WORKLOG-089] note_prompt_within_budget
+PASS [WORKLOG-089] note_prompt_measured
+cases=83 passed=82 failed=1
+
+FAIL  weekly_quadrant_regression  — mmandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/yvan/Code/MyWorkStation/desktop/src/shell/WeeklyQuadrants.tsx'
+
+PASS  artifact_regression
+10/12 通过

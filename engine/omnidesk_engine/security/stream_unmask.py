@@ -30,6 +30,18 @@ class StreamUnmasker:
         self._restored = 0
         self._unknown: List[str] = []
         self._modified = 0
+        # 自然掩码与它们的所有真前缀预先摊平：每个 delta 只查有限长度的尾部。
+        self._natural: Tuple[str, ...] = tuple(
+            placeholder
+            for placeholder, _entry in mapping._entries
+            if not PLACEHOLDER_RE.fullmatch(placeholder)
+        )
+        self._natural_prefixes = frozenset(
+            placeholder[:length]
+            for placeholder in self._natural
+            for length in range(1, len(placeholder))
+        )
+        self._natural_max = max((len(p) for p in self._natural), default=0)
 
     @property
     def report(self) -> Dict[str, object]:
@@ -71,16 +83,30 @@ class StreamUnmasker:
         self._modified += int(report.get("modified_candidates") or 0)
         return text
 
-    @staticmethod
-    def _hold_start(text: str) -> Optional[int]:
+    def _natural_hold(self, text: str) -> Optional[int]:
+        """缓存「只露出自然掩码前缀」的尾部（张 / 张* / 芭某 / 芭某公…）。"""
+
+        limit = min(self._natural_max - 1, len(text))
+        for length in range(limit, 0, -1):
+            if text[-length:] in self._natural_prefixes:
+                return len(text) - length
+        return None
+
+    def _hold_start(self, text: str) -> Optional[int]:
         """只缓存最后一个可能是占位符开头、且还没有闭合的尾部。"""
 
+        natural = self._natural_hold(text)
+        if natural is not None:
+            return natural
         name_match = _NAME_TAIL_RE.search(text[-8:])
         if name_match is not None:
-            return len(text) - len(name_match.group(0))
-        # 人名占位可能刚露出一个姓字，下一帧才是星号：先留住最后一个汉字。
-        if text and "一" <= text[-1] <= "龥":
-            return len(text) - 1
+            tail = name_match.group(0)
+            # 只有映射里确实存在更长的同前缀掩码（张** → 张**2）时才继续等；
+            # 否则完整掩码应立即还原，不必等下一帧。
+            if tail in self._natural_prefixes:
+                return len(text) - len(tail)
+        # 不再盲留任意尾部汉字：自然掩码的前缀已由 _natural_hold 按映射覆盖；
+        # 映射里没有的尾部汉字本来也无法还原，盲留只会让完整掩码晚一帧下发。
         start = text.rfind("[")
         if start < 0:
             return None
