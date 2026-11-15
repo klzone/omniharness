@@ -8,6 +8,7 @@ import { HomeCanvas } from "./shell/HomeCanvas";
 import { ConfirmDialog } from "./shell/ConfirmDialog";
 import { ScenePage } from "./shell/ScenePage";
 import { WorkRecordPage } from "./shell/WorkRecordPage";
+import { SessionHistoryPage } from "./shell/SessionHistoryPage";
 import { TopNav } from "./shell/TopNav";
 import { EnvironmentCheck } from "./shell/EnvironmentCheck";
 import { WindowResizeHandles } from "./shell/WindowChrome";
@@ -27,6 +28,7 @@ const KnowledgeVaultPage = lazy(() =>
  * - 首页以对话为中枢（HomeChat），左侧 Dock 进入工作记录、文案写作、项目跟踪。
  * - 三个工作场景复用离线流程页的同一套交互骨架，按入口进入对应场景；
  *   它们的模型任务都走同一条引擎适配链路，代码只做确定性校验与文件边界控制。
+ * - 历史会话与知识库是平台固有入口（OD-UI-714），不受 Profile 场景声明管辖。
  * - 设置只有顶栏一个入口（OD-ARCH-061）；引擎诊断作为设置里的只读分页。
  */
 export default function App() {
@@ -420,6 +422,8 @@ export default function App() {
           />
         ) : scene === "report" ? (
           <WorkRecordPage onNavigate={selectScene} />
+        ) : scene === "sessions" ? (
+          <SessionHistoryPage onNavigate={selectScene} />
         ) : scene === "writing" || scene === "project" ? (
           <ScenePage
             scene={scene === "writing" ? "writing" : "project"}

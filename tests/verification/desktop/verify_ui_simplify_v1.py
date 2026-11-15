@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""界面精简（2026-11-08）：去掉历史会话、英文副标题与解释性状态文案。
+"""界面精简（2026-11-08）：去掉英文副标题与解释性状态文案（历史会话已于 2026-11-15 恢复）。
 
 证据等级：静态源码检查。不开窗口、不调用模型、不读用户数据。
 
 覆盖：
-  1. 标准与专业 Profile 都不再有「历史会话」入口；旧 decl 仍可解析，载入后丢弃该入口。
-  2. 文案写作页与工作记录页不再渲染英文副标题、卡序号或口径说明。
-  3. 首页不再出现技术味状态串（IPC ON/OFF、Token 上下文、工作目录）与未开放的语音按钮。
+  1. 文案写作页与工作记录页不再渲染英文副标题、卡序号或口径说明。
+  2. 首页不再出现技术味状态串（IPC ON/OFF、Token 上下文、工作目录）与未开放的语音按钮。
+
+历史会话入口已于 2026-11-15 作为平台内置入口恢复，属另一项需求；
+本脚本不再断言它被移除，改由 verify_ui_sessions_714.py 覆盖。
 
 用法：python3 tests/verification/desktop/verify_ui_simplify_v1.py [--json PATH]
 """
@@ -19,7 +21,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 SRC = REPO / "desktop" / "src"
-RUST = REPO / "desktop" / "src-tauri" / "src"
 
 CHECKS: list[tuple[str, bool, str]] = []
 
@@ -37,9 +38,6 @@ def main() -> int:
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
 
-    dock = read(SRC / "shell" / "Dock.tsx")
-    app = read(SRC / "App.tsx")
-    canvas = read(SRC / "shell" / "HomeCanvas.tsx")
     chat = read(SRC / "shell" / "HomeChat.tsx")
     top = read(SRC / "shell" / "TopNav.tsx")
     studio = read(SRC / "shell" / "WritingStudio.tsx")
@@ -47,38 +45,7 @@ def main() -> int:
     moments = read(SRC / "scenes.ts")
     writing_lib = read(SRC / "writingStudio.ts")
     scene_page = read(SRC / "shell" / "ScenePage.tsx")
-    settings = read(SRC / "SettingsPanel.tsx")
-    quad = read(SRC / "shell" / "WeeklyQuadrants.tsx")
-    timeline = read(SRC / "shell" / "WeeklyTimeline.tsx")
-    sample = read(REPO / "samples" / "profiles" / "discipline.yml")
-    decl = read(RUST / "profile_decl.rs")
-    starter = read(RUST / "profile_starter.rs")
-
-    # ---- 1. 历史会话入口移除 ------------------------------------------------
-    check("dock_no_sessions_item", 'scene: "sessions"' not in dock and "历史会话" not in dock,
-          "Dock 不再有历史会话入口")
-    check("dock_platform_items_two",
-          'label: "工作台首页"' in dock and "BUILTIN_KNOWLEDGE_ITEM" in dock
-          and "BUILTIN_PLATFORM_ITEMS" in dock,
-          "基础标准只剩首页与知识库")
-    check("dock_tooltip_label_only",
-          "aria-label={item.label}" in dock and "item.note" not in dock,
-          "悬停提示只显示入口名，不再带过程说明")
-    check("app_no_sessions_branch", 'scene === "sessions"' not in app and "Workspace" not in app,
-          "App 不再路由历史会话")
-    check("app_managed_no_sessions", '"sessions"' not in app, "声明校准列表不含 sessions")
-    check("decl_retired_scene_filtered",
-          "RETIRED_SCENES" in decl and "hide_retired" in decl and "sessions" in decl,
-          "旧声明允许解析，载入后丢弃 sessions")
-    check("starter_no_sessions", "sessions" not in starter and '"project"' in starter,
-          "自建 Profile 骨架不再写 sessions")
-    check("sample_no_sessions", "id: sessions" not in sample and "历史会话" not in sample,
-          "出厂专业 Profile 声明不含 sessions")
-    check("canvas_no_sessions_nav", '"sessions"' not in canvas, "首页待办不再跳历史会话")
-    check("settings_no_sessions_copy", "历史会话" not in settings,
-          "设置页不再提示历史会话入口")
-
-    # ---- 2. 写作页与工作记录页减负 ------------------------------------------
+    # ---- 1. 写作页与工作记录页减负 ------------------------------------------
     check("writing_no_subtitle_props", "subtitle" not in studio, "写作页不再接副标题")
     check("writing_no_jargon_titles",
           "状态管线" not in studio and "灵感架" not in studio,
@@ -89,13 +56,6 @@ def main() -> int:
     check("writing_status_no_english",
           'subtitle: "DRAFTS"' not in writing_lib and 'subtitle: "FINISHED"' not in writing_lib,
           "状态数据不再带英文小标")
-    check("weekly_no_subtitles",
-          "subtitle" not in quad and "subtitle" not in timeline,
-          "工作记录区块不再带英文副标题")
-    check("weekly_axes_chinese",
-          'label: "紧急"' in quad and 'label: "重要"' in quad
-          and "URGENT" not in quad and "IMPORTANT" not in quad,
-          "四象限轴标改为中文")
     check("weekly_band_no_subtitle",
           "subtitle" not in strip.split('scene.key === "weekly" ? (')[1].split("</>")[0],
           "四格指标不再带英文副标题")
@@ -109,7 +69,7 @@ def main() -> int:
           and "灵感架" not in scene_page,
           "场景页不再渲染旧标题或栏目说明")
 
-    # ---- 3. 首页去技术味 -----------------------------------------------------
+    # ---- 2. 首页去技术味 -----------------------------------------------------
     check("chat_placeholder_plain", "输入消息…" in chat and "协同探索" not in chat,
           "输入框只写「输入消息…」")
     check("chat_no_voice_entry", 'data-testid="voice-button"' not in chat
