@@ -1,3 +1,17 @@
+# OD-UI-717 阶段一审查：外壳与主题令牌去 AI 感（theme.css 令牌层，2026-11-16）——通过（实拍验证待补）
+
+**审查对象：** desktop/src/theme.css 的 @theme 颜色令牌、:root --od-neu-* 材质令牌、顶栏/Dock/输入条/消息卡/底图装饰层等外壳类。
+
+**核对结果（ARCHITECT 读 diff 并复跑构建与验证脚本）：**
+1. 令牌一致性：新色板（#f4f2ed 纸面、#2b2b2e 墨色、#4a3dd9 靛蓝）在 MD3 与新拟物两层同步替换；raise/inset 阴影改为发丝边框 + 极浅投影，语义名不变，引用方无需改动即可换材质。
+2. 外壳：顶栏去渐变与模糊、Dock 42px 圆 → 36px 方形 + 选中左缘 2px 细线、输入条 26px 圆角改 14px 纸面、消息卡去内高光；装饰波形 app-scape-art 与 mist 隐藏。
+3. 范围：仅 theme.css；业务页（TaskManager 等）仍有 #5747f8 硬编码与渐变，属阶段二逐页收口范围，本轮不判为回归。
+4. 复跑证据（脚本运行）：tsc 0；npm run build 通过（361 modules / 962ms）；5 个 UI verify 脚本全过（12/12、22/22、7/7、10/10、7/7）。
+
+**未验证：** 真实窗口前后截图与目视（阶段一要求的实拍证据）；旧材质与新令牌并存的跨页观感。
+
+**结论：** 令牌层与外壳改动通过静态与构建验证，实拍验收待用户确认后补录。
+
 # OD-ARCH-154 审查：PTC 工具批量化与工具时间线修复（BUILDER 实施，ARCHITECT 独立复核，2026-11-16）——通过
 
 **审查对象：** discipline.profile.patch.yml（discipline-core 挂 tool-presentation ptc + present）、web_api_adapter.py（_tool_call_id_of 提取链）、timelineModel.ts（只有 tool/call 写标题；孤立结果忽略）、HomeChat.tsx（toolNote 有名才显示）、timelineModel.test.mjs（4 条）、verify_tool_surface_154.py（7 项）。
