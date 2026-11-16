@@ -21,7 +21,7 @@
 > 4. 预期：系统提示词从 5404 字符降到约 330–370 字符（约 200–250 tokens）；DSH web-app 的 248 字符暂保留。
 >
 > **阶段 C：Skill 注入改为元数据**
-> 1. desktop/src/conversationPrompt.ts 不再注入 Skill 全文；每个动作最多一个主 Skill，只带 id、name、description、path 或不超过 300 字符的摘要。
+> 1. desktop/src/conversationPrompt.ts 不再注入 Skill 全文；每个动作最多一个主 Skill，只带 id、name、description、path 或不超过 300 字符的摘要；同时记录 Skill 来源与同名冲突诊断（全局/Profile/动作）。
 > 2. 依赖 DSH 的 skill-filesystem/tool-skill 按需读取正文；先在一个动作上验证模型能在需要时加载 Skill，且不显著增加工具往返。
 > 3. 若 DSH 的 Skill 加载链路不可用或模型不会主动读取，回退为“短摘要 + 明确说明完整 Skill 在何处”，不直接恢复全文注入。
 > 4. 验收：任务提示词中的 Skill 段从最多 2500 字符降到 ≤300 字符；周报、复盘、知识整理仍能按原契约产出。
@@ -37,7 +37,7 @@
 > 8. 交付：工具约束清单（每个工具的参数/输出/路径/并发/安全现状与缺口），作为阶段 F 验收依据。
 >
 > **阶段 E：提示词来源诊断**
-> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，以及配置来源（全局/Profile/动作）与压缩状态；只显示元数据，不显示用户正文。
+> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，以及配置/资源来源（全局/Profile/动作）、模型 compat 与 thinking 能力、压缩状态；只显示元数据，不显示用户正文。
 > 2. 目的：改动后用户能解释行为变化，避免 pi 第 14 章指出的“最终形态不可预测”问题。
 >
 > **阶段 F：验收与发版**
@@ -48,7 +48,7 @@
 >
 > **文件范围：** samples/profiles/discipline.profile.patch.yml、对应的 seed patch、desktop/src/conversationPrompt.ts、SettingsPanel 的搜索设置入口、scripts/inspect-prompt.py、scripts/inspect-timings.py、docs/research/pi-book-notes.md 的后续补注。runtime/ 只读，不修改。
 >
-> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门（除非用户另批）；不使用真实用户材料做测试。
+> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门；不引入 Extension 市场、第三方代码执行、npm 资源包；不重写模型注册表或做 provider 市场；不使用真实用户材料做测试。
 >
 > **风险与回退：** 移除 web-search-free 会改变用户可见的搜索入口，需先确认 anysearch 可用；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after 钩子未知；提示词前缀变化可能影响缓存命中。回退路径：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入。
 >

@@ -211,41 +211,76 @@
 
 ## 第 15 章 Extension 系统
 
-**核心判断**：能力可以外置，但核心规则不可改；Extension 能加工具、命令、事件、持久化、Provider，但不能改循环、状态归约、消息变换。
+**核心判断**：几乎所有产品级能力都外置；核心只做调模型、跑循环、管状态。Extension 是代码模块，能加工具、命令、快捷键、UI、Provider，但不能改循环、状态归约和消息变换管道。
 
-**机制**：Loader → Runner → Wrapper 三层；两阶段初始化；26 种事件类型；类型安全合约；没有沙箱，靠信任和审计。
+**能力面**：
+- 事件订阅：观察型（session_start/message_update 等）与干预型（tool_call/input/context 可 block/transform）。事件数量持续增长，新增 before_provider_headers、agent_settled、session_info_changed。
+- 工具注册：ToolDefinition 带 TypeBox schema、promptSnippet、promptGuidelines、execute、renderCall/renderResult；工具选择改为字符串名字白名单 + cwd 工厂；cache-friendly 动态工具加载可保留 prompt 前缀。
+- 命令/快捷键/flag：命令 handler 可做会话级操作（newSession/fork/navigateTree），事件 handler 不行；会话替换后旧 ctx 失效，必须用 withSession 回调。
+- 消息与持久化：sendMessage（可选是否触发回复）、sendUserMessage（总是触发）、appendEntry（只持久化不进 LLM context）；deliverAs 控制 steer/followUp。
+- Provider 注册：可注册完整 provider（认证、模型刷新、过滤、自定义流），不只是改模型定义。
+- UI 上下文：select/confirm/input 阻塞式对话，setWidget/setFooter/setHeader/setEditorComponent 改 UI 结构。
 
-**取舍**：得到开放但有边界、类型安全；放弃深度定制能力、进程隔离、上手成本。
+**生命周期**：Loader 串行加载、jiti 动态编译、Virtual Modules 提供静态依赖；Runtime 两阶段初始化，setup 阶段 action 方法是 throwing stubs，bindCore 后才注入真实实现；启动时在 system prompt 装配前加载；/reload 重新执行整个加载流程；没有 teardown，用 session_shutdown 清理；闭包状态在 reload 后会丢，需要 appendEntry/session_start 恢复。
 
-**对 OmniDesk**：DSH 插件对应 Extension，Skill 对应文档能力。**借**：开放能力但锁核心；**不借**：把产品核心规则做成可被插件随意覆盖，或引入无沙箱的任意代码执行。
+**不能做什么**：不能改 runLoop、不能直接改 Agent 状态、不能拦截 transformContext/convertToLlm、session entries 只读（只能追加）。没有沙箱，坏 extension 可 crash 进程。
 
-## 第 16 章 Skill 用文档替代代码
+**取舍**：得到开放但有边界、类型安全；放弃深度定制、进程隔离、两阶段学习成本。
 
-**核心判断**：大多数能力扩展是“告诉 LLM 怎么做”，不是“写代码替 LLM 做”；Skill 是纯文本，零依赖、可审计、可版本控制。
+**对 OmniDesk**：DSH 插件对应 Extension。**借**：能力外置但锁核心、类型化事件、工具/Provider 注册边界；**不借**：无沙箱第三方代码、插件市场、让插件改核心循环。0.2.30 不引入新的扩展市场或第三方执行。
 
-**机制**：frontmatter + 目录发现；disable-model-invocation 控制可见性；formatSkillsForPrompt 只注入元数据；来源优先级、symlink 去重、gitignore。
+## 第 16 章 Skill 机制
 
-**取舍**：得到零风险、版本友好、低创建成本、渐进复杂；放弃运行时能力、效果依赖模型遵循、发现机制简单、全局优先可能覆盖项目。
+**核心判断**：大多数能力扩展是“告诉 LLM 怎么做”，不是“写代码替 LLM 做”。Skill 是带 frontmatter 的 Markdown，六个字段，没有 execute；全部运行时能力就是被 LLM 读取。
 
-**对 OmniDesk**：知识整理、周报、质检这些流程适合 Skill；需要运行时能力的（读文件、写盘、检索）应由宿主工具做。**借**：Skill 只做指令、正文按需加载、可审计；**不借**：把 Skill 当权限控制或把全文塞进每轮提示词。
+**机制**：
+- frontmatter 只关心 name、description、disable-model-invocation；正文不自动进 prompt，只有 description 匹配时模型用 read 读取全文。
+- disable-model-invocation 让 skill 不出现在 available_skills，只能 /skill:name 显式触发；显式触发用 XML wrapper 包裹指令与用户消息，导出时剥离。
+- 发现规则：目录含 SKILL.md 即 skill 包且不再递归；根目录 .md 作为独立 skill；递归子目录找 SKILL.md；尊重 .gitignore/.ignore/.fdignore。
+- 名称验证：小写字母数字连字符、≤64、不能首尾连字符或连续连字符；不一致只 warning；symlink 按 realpath 去重。
+- 优先级：全局先加载、项目后加载；同名冲突先加载者赢，产生 collision diagnostic，不静默。
+- formatSkillsForPrompt：只注入 name/description/location，XML 包裹；只有 read 工具可用时才注入。
+
+**Skill vs MCP vs Extension**：Skill 纯文本、零运行时、依赖模型遵循；MCP 独立进程、可访问外部系统；Extension 同进程代码、可改 UI/工具/Provider、无沙箱。三者互补，不是竞争。
+
+**取舍**：得到零依赖、可审计、版本友好、低创建成本；放弃运行时能力、效果依赖模型、发现机制简单、全局优先可能覆盖项目。
+
+**对 OmniDesk**：知识整理、周报、质检适合 Skill；需要读文件/写盘/检索的由宿主工具做。**借**：只给元数据、正文按需读、collision 诊断、显式触发；**不借**：把 Skill 当权限控制、把全文塞进每轮提示词、让 Skill 承担运行时能力。0.2.30 的 Skill 注入改造直接依据这一章。
 
 ## 第 17 章 Resource Loader
 
-**核心判断**：所有外部资源（extensions、skills、prompts、themes）走同一套发现、覆盖、诊断流程；单个资源失败不阻塞启动。
+**核心判断**：四种外部资源（extensions、skills、prompts、themes）走同一套发现、覆盖、诊断流程；单资源失败不阻塞启动。
+
+**机制**：
+- 来源：全局 → 项目 → npm 包 → CLI 额外路径；npm 包最后加载，显式安装优先于隐式全局目录。
+- 每种资源返回 diagnostics；冲突不静默，记录 ResourceDiagnostic；extension 冲突也加载，后加载覆盖先加载。
+- override 机制：extensionsOverride/skillsOverride/promptsOverride/themesOverride/systemPromptOverride，方便测试与产品壳定制。
+- reload 顺序：重载 settings → 解析包路径 → 加载 extensions（执行代码）→ 检测冲突 → 加载 skills/prompts/themes → 加载 AGENTS.md → 解析 system prompt。
+- AGENTS.md 沿目录树向上搜索，全局在前、祖先从远到近，全部拼接；同名目录跳过，避免 EISDIR。
+- cwd 必须显式传入，去掉 process.cwd() 兜底，支持同进程多工作目录。
+- Project Trust 在全局与项目资源之间插入闸门；项目本地资源不再无条件加载。
 
 **取舍**：得到统一心智、渐进降级、可测试；放弃资源类型差异被抹平、加载顺序不够透明。
 
-**对 OmniDesk**：我们的 Profile 资产、Skill、模型覆盖也应该有统一入口和冲突诊断；不要每个功能各自扫目录。**借**：统一发现、diagnostic、override；**不借**：统一接口导致简单资源承担过度设计。
+**对 OmniDesk**：Profile 资产、Skill、提示词应该有统一入口和冲突诊断；不要每个功能各自扫目录。**借**：诊断、override、显式 cwd、来源可解释；**不借**：npm 包资源市场、Project Trust 闸门（0.2.30 不引入）、把资源加载顺序藏起来。
 
 ## 第 18 章 Model Registry
 
-**核心判断**：选模型 = provider + api + 参数，不只是一个 id；内建目录构建时生成，models.json 做渐进覆盖。
+**核心判断**：选模型不是选一个 id，而是 provider + api + baseUrl + 成本/上下文/能力/compat/thinkingLevelMap。模型目录构建时生成，运行时动态刷新，models.json 做渐进覆盖。
 
-**机制**：ModelsStore 与 etag 条件刷新；model runtime 做 model/auth 门面；compat 层处理 OpenAI 兼容差异；扩展可注册 provider。
+**机制**：
+- Model 字段：id/name/api/provider/baseUrl/cost/contextWindow/maxTokens/input/reasoning/thinkingLevelMap；thinkingLevelMap 把统一档位映射到 provider 值，null 表示不支持，越界用 clampThinkingLevel 收敛。
+- 内建目录构建时生成，按 provider 拆包，可 tree-shake；Models 运行时按 model.api 分派。
+- 动态目录：ModelsStore 按 provider 存 models/lastModified/checkedAt/etag；条件刷新用 If-None-Match，304 复用缓存；Models.refresh({force}) 强制拉取；per-provider 错误/取消隔离。
+- models.json：除 id 外全 optional，可只写最小定义；modelOverrides 支持 partial merge（尤其 cost/compat）。
+- ModelRuntime 是异步 Models 门面（读盘、网络、认证、动态目录）；ModelRegistry 降级为面向 extension 的同步 compat 投影。
+- compat 层编码“OpenAI 兼容”的光谱差异：store、developer role、reasoning effort、maxTokensField、thinkingFormat、OpenRouter routing 等。
+- 图像生成目录与文本同构，但返回 Promise 而非事件流，因为没有有意义的增量。
 
-**取舍**：得到动态性、离线确定性、渐进覆盖；放弃运行时才知道模型可用、compat 维护成本持续增长。
+**取舍**：得到动态性、构建时确定性、渐进覆盖；放弃运行时才知道模型是否可用、compat 维护成本持续增长。
 
-**对 OmniDesk**：我们已经遇到“模型 id 看起来对、端点其实不支持”的问题。**借**：模型条目要带 provider/api/能力/compat，保存前做可用性预检；**不借**：把模型名当唯一标识。方舟 Agent Plan 的 404/UnsupportedModel 就是缺少这层预检的代价。
+**对 OmniDesk**：模型条目必须带 provider/api/baseUrl/能力/compat/thinking 档位；保存前做可用性预检，不能只存 id。我们遇到的方舟 Agent Plan 404/UnsupportedModel 就是缺少这层。**借**：model = provider+api+params、thinkingLevelMap、compat、etag 条件刷新、最小配置默认值；**不借**：0.2.30 重写模型注册表/路由、引入 npm 模型包或新 provider 市场。
+
 
 ## 第 19 章 工具设计原则：约束即保护
 
