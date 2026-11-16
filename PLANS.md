@@ -1,5 +1,54 @@
 # 当前实施计划
 
+### OD-ARCH-172：Pi 式提示词装配与按需能力（0.2.30，待批准，2026-11-16）
+
+> **触发：** 用户要求深度消化 pi-book 后再优化 OmniDesk。学习笔记见 docs/research/pi-book-notes.md（提交 258b957），覆盖第 1–32 章。
+>
+> **现状证据：** 从真实会话 system/message 解析，当前系统提示词 5404 字符（估算约 2.4k tokens）。其中 4732 字符是常驻 web-search-free 插件（引擎清单、回退链、搜索工具说明）；产品人设仅 120 字符；DSH web-app 说明约 248 字符；我们自己的检索/批处理规则约 552 字符。桌面端还把 Skill 全文注入任务提示词，单个上限 2500 字符。用户一次 Excel 生成实测：3 次思考、11 次工具、首字 130 秒、总用时 397 秒，但现有指标没有区分模型、工具、审批和缓存耗时。
+>
+> **目标：** 把提示词从“插件堆叠”改为 pi 式装配——短产品底座、按需追加、Skills 只给元数据、稳定缓存前缀；先建立可观测基线，再减法，不把“短”当成唯一目标。系统提示词正文目标 200–300 tokens（硬上限 1000），工具 schema 另计。
+>
+> **阶段 A：基线（只读，不改提示词）**
+> 1. 新增 scripts/inspect-prompt.py：读取最近一个会话的 system/message 与任务状态，只输出各段字符数/估算 token、工具面数量、Skill 注入字符数，不输出正文。
+> 2. 新增 scripts/inspect-timings.py（或并入上一个脚本）：从任务事件与 usage 计算每轮模型往返、工具活动起止、审批等待、缓存命中、首字与总时长；不读用户正文。
+> 3. 在隔离数据根选 3 类任务各跑一次：Excel 生成、周报/复盘、知识整理；记录基线表。真实用户数据不进入仓库。
+> 4. 验收：基线表能回答“397 秒里模型/工具/审批/缓存各占多少”，并作为后续对比依据。
+>
+> **阶段 B：提示词与 Profile 减法**
+> 1. 把 discipline-core 与 work-review-core 的 persona 前缀/后缀换成短 OmniDesk 底座，候选文本：你是 OmniDesk，一个个人工作台账助手。把工作记录、复盘、任务与资料整理成可复核的结构化结果；日期、统计和状态由宿主计算；只读写用户明确指定的文件；不确定时直接说明，不编造。
+> 2. 从 discipline 的 preset 中移除常驻 web-search-free；公开检索改由 anysearch Skill 按需承担，保留 tool-web 的 fetch。ui-settings-web-search 若无对应能力，隐藏或明确标注“未启用”，不留死设置。
+> 3. 日期不进系统提示词；确认 time-context 是否作为 runtime context 注入，若进入系统段则调整为运行上下文，保持跨日 cache 前缀稳定。工作目录放最后。
+> 4. 预期：系统提示词从 5404 字符降到约 330–370 字符（约 200–250 tokens）；DSH web-app 的 248 字符暂保留。
+>
+> **阶段 C：Skill 注入改为元数据**
+> 1. desktop/src/conversationPrompt.ts 不再注入 Skill 全文；每个动作最多一个主 Skill，只带 id、name、description、path 或不超过 300 字符的摘要。
+> 2. 依赖 DSH 的 skill-filesystem/tool-skill 按需读取正文；先在一个动作上验证模型能在需要时加载 Skill，且不显著增加工具往返。
+> 3. 若 DSH 的 Skill 加载链路不可用或模型不会主动读取，回退为“短摘要 + 明确说明完整 Skill 在何处”，不直接恢复全文注入。
+> 4. 验收：任务提示词中的 Skill 段从最多 2500 字符降到 ≤300 字符；周报、复盘、知识整理仍能按原契约产出。
+>
+> **阶段 D：工具执行语义核对（只读审计，不改 runtime）**
+> 1. 逐项核对 DSH 是否提供等价能力：工具参数校验、before/after 钩子、按工具串行、事件完成顺序与工件源顺序、工具结果解锁新工具、审批前置。
+> 2. 有等价钩子则记录可配置点；没有则在 REVIEW/STATUS 明确缺口，只在 adapter 或工具插件层近似，不伪造能力。
+> 3. 明确读写策略：读操作可并行，写盘/审批/有副作用操作串行；工具错误作为可恢复结果，结果进模型前脱敏。
+>
+> **阶段 E：提示词来源诊断**
+> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，只显示元数据，不显示用户正文。
+> 2. 目的：改动后用户能解释行为变化，避免 pi 第 14 章指出的“最终形态不可预测”问题。
+>
+> **阶段 F：验收与发版**
+> 1. npx tsc --noEmit；npm run build；cargo test 相关模块；现有 UI/Profile 验证脚本全过。
+> 2. 隔离 Profile 的 --dump-config 与启动探针；确认 web-search-free 已移除后平台仍能启动，anysearch 可用。
+> 3. 真实模型 smoke test（需用户当轮允许）：Excel、周报、知识整理各一次；记录提示词字符/token、工具往返、首字、总时长与缓存。
+> 4. 版本 0.2.30；提交推送；macOS 与 Windows 构建；STATUS/REVIEW 写清改前改后和未验证项。
+>
+> **文件范围：** samples/profiles/discipline.profile.patch.yml、对应的 seed patch、desktop/src/conversationPrompt.ts、SettingsPanel 的搜索设置入口、scripts/inspect-prompt.py、scripts/inspect-timings.py、docs/research/pi-book-notes.md 的后续补注。runtime/ 只读，不修改。
+>
+> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不使用真实用户材料做测试。
+>
+> **风险与回退：** 移除 web-search-free 会改变用户可见的搜索入口，需先确认 anysearch 可用；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after 钩子未知；提示词前缀变化可能影响缓存命中。回退路径：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入。
+>
+> **验收标准：** 系统提示词 ≤1000 tokens 且目标 200–300；Skill 段 ≤300 字符；基线表可解释 397 秒的构成；现有任务与验证脚本无回归；所有未验证项在 REVIEW 中如实列出。
+
 ### OD-UI-717：全站纸面新拟物改造（unslop，阶段一与阶段二均已实施，2026-11-16）
 
 > **触发：** 用户要求清理设计，并明确先给计划。依据 unslop 技能：先审查真实界面、给出方向，方向确认前不改代码；AGENTS.md 要求计划经用户明确批准。
