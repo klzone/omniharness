@@ -3900,7 +3900,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                   {/* 问句按 Markdown 渲染（OD-ARCH-081 S3）：用户自己贴的列表/代码也能成型；
                       remark-breaks 保留单换行，纯文本问句观感与之前一致。 */}
                   <div className="neu-msg-user rounded-[12px] px-4 py-2.5 text-[14.5px] leading-relaxed text-on-surface min-w-0">
-                    <MarkdownText text={m.text} tone="onPrimary" highlightQuery={searchQuery} />
+                    <MarkdownText text={m.text} highlightQuery={searchQuery} />
                   </div>
                   <div
                     className="w-7 h-7 rounded-full plate-soft-inset flex items-center justify-center flex-shrink-0"

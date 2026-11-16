@@ -52,15 +52,6 @@ const ALL_STATES: WorkTaskState[] = [
   "暂停",
 ];
 
-const STATE_CLASS: Record<WorkTaskState, string> = {
-  待确认: "bg-primary-fixed/70 text-on-primary-fixed-variant",
-  待开始: "bg-surface-container text-on-surface-variant",
-  进行中: "bg-primary/10 text-primary",
-  已完成: "bg-[#eaf8ef] text-[#2f7a51]",
-  已取消: "bg-surface-container text-outline",
-  暂停: "bg-[#fff4e2] text-[#96661d]",
-};
-
 /** 与宿主 task_store 的白名单保持一致；宿主仍是最终裁决者。 */
 const NEXT_STATES: Record<WorkTaskState, WorkTaskState[]> = {
   待确认: ["待开始", "已取消"],
@@ -98,7 +89,7 @@ function shortTime(iso: string): string {
 function StateChip({ state }: { state: WorkTaskState }) {
   return (
     <span
-      className={"shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium " + STATE_CLASS[state]}
+      className="shrink-0 text-[10px] font-medium text-[color:var(--od-neu-ink-3)]"
       data-task-state={state}
     >
       {state}
@@ -826,22 +817,24 @@ const NEU_CARD_STRONG =
 const NEU_INSET =
   "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 const AXIS = "text-[12px] font-medium tracking-[0.02em] text-[color:var(--od-neu-ink-2)]";
+const WELL =
+  "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 
 const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: string }> = {
-  Q1: { icon: "star", color: "text-[color:var(--od-neu-accent-ink)]", tile: "bg-[color:var(--od-neu-accent-soft)]" },
-  Q2: { icon: "calendar", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
-  Q3: { icon: "clock", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
-  Q4: { icon: "book", color: "text-[color:var(--od-neu-ink-2)]", tile: "bg-[color:var(--od-neu-sunken)]" },
+  Q1: { icon: "star", color: "text-[color:var(--od-neu-accent-ink)]", tile: "" },
+  Q2: { icon: "calendar", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
+  Q3: { icon: "clock", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
+  Q4: { icon: "book", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
 };
 
 /** 甘特条表达状态，不表达伪造的进度百分比。 */
 const TASK_STATE_BAR: Record<WorkTaskState, string> = {
-  待确认: "bg-[color:var(--od-neu-accent-soft)]",
-  待开始: "bg-[color:var(--od-neu-sunken-deep)]",
-  进行中: "bg-[linear-gradient(90deg,#8b7cf6,#5747f8)]",
-  已完成: "bg-[#7ac79b]",
-  已取消: "bg-[#d0cdc6]",
-  暂停: "bg-[#e3b778]",
+  待确认: "bg-[#c0855f]",
+  待开始: "bg-[#8a7f6e]",
+  进行中: "bg-[#a24e2c]",
+  已完成: "bg-[#3f7d5a]",
+  已取消: "bg-[#b5a896]",
+  暂停: "bg-[#8a5a12]",
 };
 
 const QUADRANT_SHORT: Record<string, string> = {
@@ -1162,8 +1155,8 @@ export function TaskQuadrantBoard({
             style={{ gridColumn: leftColumn ? 2 : 4, gridRow: topRow ? 2 : 4 }}
             className={
               "relative flex min-w-0 flex-col overflow-hidden " +
-              (compact ? "rounded-[18px] px-3.5 py-3 " : "rounded-[22px] px-5 py-4 ") +
-              NEU_CARD
+              (compact ? "rounded-[14px] px-3.5 py-3 " : "rounded-[18px] px-5 py-4 ") +
+              WELL
             }
           >
             <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
@@ -1179,9 +1172,9 @@ export function TaskQuadrantBoard({
                         onClick={() => openEditor(view)}
                         title={view.title}
                         className={
-                          "grid w-full items-center rounded-2xl bg-white/70 text-left ring-1 ring-white/80 transition " +
-                          "hover:bg-white hover:ring-[#d0cdc6]/70 " +
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5747f8]/35 " +
+                          "grid w-full items-center rounded-xl bg-[color:var(--od-neu-surface)] text-left shadow-[var(--od-neu-raise-1)] transition " +
+                          "hover:bg-[color:var(--od-neu-surface-high)] " +
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--od-neu-accent)]/40 " +
                           (compact
                             ? "grid-cols-[26px_minmax(0,1fr)] gap-2 px-2 py-1.5"
                             : "grid-cols-[34px_minmax(0,1fr)_auto] gap-3 px-3 py-2.5")
@@ -1190,8 +1183,7 @@ export function TaskQuadrantBoard({
                         <span
                           className={
                             "flex shrink-0 items-center justify-center " +
-                            tone.tile + " " +
-                            (compact ? "h-[26px] w-[26px] rounded-[8px] " : "h-[34px] w-[34px] rounded-[11px] ") +
+                            (compact ? "h-[26px] w-[26px] " : "h-[34px] w-[34px] ") +
                             tone.color
                           }
                         >
@@ -1201,7 +1193,7 @@ export function TaskQuadrantBoard({
                           <span
                             title={view.title}
                             className={
-                              "block truncate font-semibold leading-snug text-[#34343b] " +
+                              "block truncate font-semibold leading-snug text-[color:var(--od-neu-ink)] " +
                               (compact ? "text-[12px]" : "text-[13.5px]")
                             }
                           >
@@ -1210,7 +1202,7 @@ export function TaskQuadrantBoard({
                           <span
                             title={task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state}
                             className={
-                              "mt-0.5 block truncate text-[10.5px] text-[#8a877f] " + (compact ? "hidden" : "")
+                              "mt-0.5 block truncate text-[10.5px] text-[color:var(--od-neu-ink-3)] " + (compact ? "hidden" : "")
                             }
                           >
                             {task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state ?? "待开始"}
@@ -1290,10 +1282,10 @@ export function TaskQuadrantBoard({
                   </span>
                   <span className="shrink-0 text-[10px] text-[#8a877f]">{task.state}</span>
                 </div>
-                <div className="relative h-[9px] rounded-full bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
+                <div className="relative h-[10px] rounded-[5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
                   <div
                     className={
-                      "absolute top-0 h-[9px] " +
+                      "gantt-bar absolute top-0 h-[10px] " +
                       TASK_STATE_BAR[task.state] + " " +
                       (clamped ? "rounded-l-full" : "rounded-full")
                     }
@@ -1372,10 +1364,10 @@ export function TaskQuadrantBoard({
   );
 
   const completedPanel = (
-    <aside aria-label="已完成任务" className={"rounded-[22px] px-5 py-4 " + NEU_CARD_STRONG}>
+    <aside aria-label="已完成任务" className={"rounded-[18px] px-5 py-4 " + WELL}>
       <div className="flex items-center gap-2 border-b border-[#d0cdc6]/40 pb-3">
         <Icon name="check" className="h-3.5 w-3.5 text-[#2f7a51]" />
-        <h3 className="text-[12px] font-semibold text-[#34343b]">已完成</h3>
+        <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">已完成</h3>
         <span className="mono ml-auto text-[10px] text-[#8a877f]">{completed.length}</span>
       </div>
       {completed.length === 0 ? (
@@ -1383,12 +1375,12 @@ export function TaskQuadrantBoard({
       ) : (
         <ul className="pt-2 flex flex-col gap-1">
           {completed.slice(0, 5).map((task) => (
-            <li key={task.id} className="flex items-center gap-3 rounded-xl px-1 py-2">
+            <li key={task.id} className="flex items-center gap-3 rounded-lg bg-[color:var(--od-neu-surface)] px-2 py-2 shadow-[var(--od-neu-raise-1)]">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eaf8ef] text-[#2f7a51]">
                 <Icon name="check" className="h-3 w-3" />
               </span>
               <span className="min-w-0 flex-1">
-                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[#34343b]">
+                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[color:var(--od-neu-ink)]">
                   {task.title}
                 </span>
                 <span className="mono mt-0.5 block text-[9.5px] text-[#8a877f]">{isoDay(task.updated_at)}</span>
