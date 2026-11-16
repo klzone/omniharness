@@ -1,3 +1,24 @@
+# GitHub 历史重写与发布清理审查（2026-11-17）——通过（附外部副本限制）
+
+**审查对象：** 重写后的 `main`/标签、当前树、远端 `main`、29 个旧 Release 与仓库外备份。
+
+**核对结果：**
+
+1. 重写前 bundle 完整，`git bundle verify` 通过，约 480 MB。
+2. `git filter-repo` 完成重写；个人工作区、设计参考、测试证据、历史报告与旧计划在全部历史路径中命中 0。
+3. 当前树个人路径/旧 Profile 名扫描命中 0（许可证署名除外）；工作树中的本次清理改动已提交。
+4. 远端 `main` 为 `bf7c7fd836`，全部标签已强推；旧 Release 29 个已删除，GitHub Releases 当前为 0。
+5. Rust 定向测试 6/6、91/91 通过；本次未跑完整构建。
+
+**限制：**
+
+- 所有提交哈希已改变，已有 clone 必须重新 clone。
+- 旧标签仍存在但指向重写后的提交；旧 Release 下载已不可用。
+- GitHub fork 或平台缓存可能仍保留旧对象，非本仓库能强制清除。
+- `.git` 仍约 513 MB，主要是上游历史与大文件；当前树已不含个人资料。
+
+**结论：** 通过。0.2.30 需从清理后的源码重新构建安装包并发布。
+
 # 证据与历史报告全面归档审查（2026-11-17）——通过（当前树；历史待重写）
 
 **审查对象：** `tests/verification/**/evidence/`、`tests/verification/desktop/od-*/`、`tests/reports/`、`docs/archive/`、`docs/plans/`、`audit/`、`.gitignore` 与归档说明。

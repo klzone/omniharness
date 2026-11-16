@@ -79,6 +79,8 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 
 最新版本见 [Releases](https://github.com/klzone/omniharness/releases)：macOS 通用版 .dmg 与 Windows x64 .exe。
 
+> 2026-11-17：旧安装包已因个人资料清理下线。当前源码已清理，安装包将在 0.2.30 从清理后的源码重新构建并发布。
+
 安装包内置 DSH 运行时和 Python 依赖模块；需要系统已安装 Node.js 22+ 与 Python 3.10+，首次启动会做依赖自检并明确提示缺项。
 
 从源码运行：
