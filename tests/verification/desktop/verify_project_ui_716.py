@@ -55,9 +55,9 @@ def main() -> int:
         "甘特条表达状态，不再伪造 15%/55% 进度",
     )
     check(
-        "quadrant_tones_have_tile",
-        "tile:" in task and "tone.tile" in task and "QUADRANT_TONE" in task,
-        "四象限图标有柔和底色，不靠大面积色块",
+        "quadrant_icons_use_tone_color",
+        "QUADRANT_TONE" in task and "tone.color" in task and "tone.tile" not in task,
+        "四象限图标只用文字层级配色，不再加彩色底块（OD-UI-717 复核）",
     )
     check(
         "modal_uses_warm_dialog",

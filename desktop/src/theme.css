@@ -4143,3 +4143,58 @@ button.wr-backlink:hover {
   color: var(--od-neu-ink);
   font-weight: 600;
 }
+/* 12. 用户反馈修正：弹窗圆角、分类标签、快捷操作卡 */
+.neu-popover {
+  border-radius: 10px !important;
+}
+
+.wr-category,
+.wr-category.is-blue,
+.wr-category.is-violet,
+.wr-category.is-amber,
+.wr-category.is-green,
+.wr-category.is-neutral {
+  border-radius: 6px;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+}
+
+.wr-quick {
+  border: 0;
+  border-radius: 12px;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.wr-quick:hover:not(:disabled) {
+  transform: none;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wr-quick-icon,
+.wr-quick-icon.is-violet,
+.wr-quick-icon.is-blue,
+.wr-quick-icon.is-amber,
+.wr-quick-icon.is-green {
+  background: var(--od-neu-sunken);
+  color: var(--od-neu-ink-2);
+  box-shadow: var(--od-neu-inset-1);
+}
+.gantt-bar {
+  box-shadow:
+    0 1px 3px rgba(90, 74, 56, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+/* 13. 知识资产页：区域半径收敛 */
+[data-testid="knowledge-vault-page"] section,
+[data-testid="knowledge-vault-page"] [class*="rounded-2xl"],
+[data-testid="knowledge-vault-page"] [class*="rounded-[20px]"],
+[data-testid="knowledge-vault-page"] [class*="rounded-[18px]"] {
+  border-radius: 10px !important;
+}
+
+[data-testid="knowledge-vault-page"] [class*="rounded-full"][class*="bg-white"],
+[data-testid="knowledge-vault-page"] [class*="rounded-full"][class*="bg-surface"] {
+  border-radius: 8px !important;
+}
