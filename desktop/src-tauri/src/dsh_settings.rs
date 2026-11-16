@@ -409,9 +409,15 @@ pub fn classify_probe(result: &serde_json::Value) -> ModelProbe {
     } else {
         "local"
     };
+    let mut text = format!("{}（{}）", message, code);
+    if (lower.contains("answered 404") || lower.contains("answered 405"))
+        && classification == "format"
+    {
+        text.push_str("：该端点通常不提供模型列表（火山方舟等常见），可直接手填模型 id 后保存。");
+    }
     ModelProbe {
         classification: classification.to_string(),
-        message: format!("{}（{}）", message, code),
+        message: text,
         models: Vec::new(),
         key_source: "none".to_string(),
         builtin_catalog: false,
