@@ -83,35 +83,64 @@
 
 ## 第 8 章 agentLoop：发动机只管转
 
-**核心判断**：循环引擎是无状态纯函数，只接收 context + config，输出事件流；它不管理会话、不重试、不压缩上下文。
+**核心判断**：循环引擎应该知道尽可能少的东西。它只负责“把消息送进 LLM、拿回响应、有工具调用就执行、决定是否继续”；它不知道会话从哪来、存到哪去、上下文快满、该不该重试。循环内部全程使用 AgentMessage，只在调用 LLM 的边界转换成 LLM Message。
 
-**机制**：双层循环（内层忙碌、外层等待）；消息变换只发生在 LLM 边界；stream 函数底层必填；AgentLoopConfig 承载转换、工具执行、回调；事件是唯一输出通道。
+**双层循环**：
+- 内层负责“持续工作”：调用 LLM → 执行工具 → 检查 steering 消息 → 再调用 LLM；只要还有工具调用或 steering 消息就继续。
+- 外层负责“被唤醒”：内层要停时检查 follow-up 消息；有就设为 pending，重新进入内层。
+- Steering 是用户在执行中插入的转向指令，在工具执行后注入；follow-up 是任务完成后的追加任务，只在 agent 本来要退出时消费。两种消息共用 pendingMessages 通道，但消费时机不同。
 
-**取舍**：得到极致可组合、可测试、关注点分离；放弃会话持久化、自动重试、自动 compaction，且要求上层正确组装配置。
+**关键机制**：
+- 错误通过 stopReason 传递，不抛异常；循环只检查 error/aborted，不需要 try-catch。
+- 续轮条件不是“有没有 tool call”，而是工具批次的 terminate：只有整批结果都标记 terminate 才停止；单个工具可以主动叫停。
+- turn 之间有两个可选回调：prepareNextTurn 可热切换 model/context/thinkingLevel；shouldStopAfterTurn 可优雅停止；abort signal 会下发到这些回调。
+- 消息变换分两步：transformContext 在 AgentMessage 层裁剪/注入，convertToLlm 过滤自定义消息并转成 LLM 格式；转换只在 LLM 边界发生。
+- streamFn 是唯一与 provider 的耦合点；底层 runLoop 要求必填，公共入口可回退到宿主注入的默认 streamFn，agent 包不 import provider 目录。
+- AgentLoopConfig 的字段全是可选能力：convertToLlm 必填，其余不提供就不启用；消息变换回调有 must-not-throw 契约，before/afterToolCall 例外，循环会防御性捕获。
+- 事件是唯一输出通道；agent_start/turn_start/message_*/tool_execution_*/turn_end/agent_end 足以重建完整执行过程，支持录制与回放。
 
-**对 OmniDesk**：DSH 的 loop 对应这一层；重试、压缩、会话持久化在 DSH 上层或我们的适配层，不能塞回 loop。**借**：薄循环、事件唯一输出、纯函数可测试；**不借**：在产品层再造一个循环或把重试逻辑塞进 UI。
+**取舍**：得到极致可组合、可测试、关注点分离；放弃会话持久化、自动重试、自动压缩，并要求上层正确组装配置。循环做薄，是为了上层做厚时有自由度。
+
+**对 OmniDesk**：DSH 对应这一层；我们不应该在 UI 或 adapter 里再造循环、重试或压缩。**借**：事件唯一输出、stopReason 错误模型、turn 间热切换、steering/follow-up 的时机区分；**不借**：把 DSH 不提供的 turn 回调假设成存在。需要核对 DSH 是否暴露等价的 turn 间钩子与 abort 下发。
 
 ## 第 9 章 工具执行不是插件调用
 
-**核心判断**：工具执行是 prepare → execute → finalize 三段管道，不是“找到工具、调一下”。
+**核心判断**：工具执行是 prepare → execute → finalize 三段管道，不是“找到工具、调一下”。错误在 prepare 阶段变成可恢复的工具结果，执行阶段允许抛异常，finalize 阶段做审计与修改。
 
-**机制**：prepare 做工具查找、参数预处理、schema 运行时校验、beforeToolCall；校验失败立即变成错误工具结果，循环不中断。execute 带 abort signal、onUpdate 部分结果。finalize 用 afterToolCall 做字段级覆盖（content/details/isError/terminate），并传播 addedToolNames 解锁后续工具。
+**Prepare**：查找工具、prepareArguments 兼容旧参数、TypeBox 运行时校验、beforeToolCall；任何失败返回 immediate 错误结果，循环不中断。参数错误回到模型，模型下一轮可修正。
+**Execute**：带 AbortSignal、onUpdate 部分结果；工具允许抛异常，循环捕获为 isError 结果。
+**Finalize**：afterToolCall 字段级覆盖 content/details/isError/terminate；可做审计、脱敏、错误降级、结果增强；工具结果可带 addedToolNames，钉在转录位置解锁后续工具。
 
-**并发**：默认 parallel，但 prepare 串行以保证权限检查确定性；execute/finalize 并发，生命周期事件按完成顺序到 UI；写回上下文的 tool-result 按源顺序。单个工具声明 sequential 会让整批降级串行。
+**并发语义**：默认 parallel，但 prepare 严格按源顺序串行（权限检查确定性、事件顺序）；execute/finalize 并发，tool_execution_end 按完成顺序到 UI；写回上下文的 ToolResultMessage 按源顺序，保证可重放。单个工具声明 executionMode: sequential 会让整批降级串行。并行工具之间不能有依赖，依赖要靠模型分多轮。
 
-**取舍**：得到可观测/可控钩子、错误可恢复、安全与性能兼顾；放弃无钩子时的零开销、钩子错误会伪装成工具失败、并行工具之间不能有依赖。
+**终止**：工具或 afterToolCall 可设置 terminate；只有整批结果都 terminate 才停止续轮。
 
-**对 OmniDesk**：工具错误必须作为可恢复结果回到模型；读操作可并行、写盘/审批/有副作用操作应串行；UI 展示完成顺序，上下文与存储保持源顺序；工具结果进入模型前做脱敏。我们依赖 DSH 的管道，能借的是这些语义和分层，不能假设 DSH 一定暴露同名钩子，需要逐项核对。
+**取舍**：得到可观测/可控钩子、错误可恢复、安全与性能兼顾；放弃无钩子时的零开销、钩子异常会伪装成工具失败、并行工具不能共享中间状态。
+
+**对 OmniDesk**：工具错误必须作为可恢复结果回到模型；读并行、写盘/审批/副作用串行；UI 按完成顺序展示，上下文/存储按源顺序；工具结果进模型前脱敏；addedToolNames 式按需解锁工具是方向，但需核对 DSH 是否支持。不要把“审批失败”直接升级成整轮失败。
 
 ## 第 10 章 Agent：循环之上的有状态壳
 
-**核心判断**：无状态循环负责“转”，有状态 Agent 负责“记住和协调”。Agent 的状态变更只走 processEvents 一个入口。
+**核心判断**：无状态循环负责“转”，有状态 Agent 负责“记住和协调”。Agent 的状态修改只走 processEvents 一个入口；它只管运行时状态，不管会话存储、压缩、认证、模型选择、提示词拼接和工具注册。
 
-**机制**：MutableAgentState、事件订阅（有序、受 signal 保护）、消息队列（prompt/steer/followUp 两种节奏）、一个 AbortController 管全局中止、互斥锁禁止重入；还有 SessionStorage/SessionRepo 两层、RetryPolicy 与 retry 事件、models-only 认证。
+**状态**：MutableAgentState 持有 systemPrompt/model/thinkingLevel/tools/messages/isStreaming/streamingMessage/pendingToolCalls/errorMessage；tools 与 messages 用 getter/setter，赋值时 copy，避免循环引擎改到 Agent 状态；运行时字段对外 readonly，只有 processEvents 能改。
 
-**取舍**：得到清晰职责、可预测状态、多个消费者并行观察；放弃胖接口（30+ 方法）、listener 串行会拖慢 UI、单线程不能后台常驻。
+**事件与订阅**：listeners 注册顺序串行 await，保证状态归约和通知顺序一致；listener 收到 AbortSignal，可跳过耗时持久化；agent_end 不等于 idle，waitForIdle 要等所有 listener 处理完 agent_end。
 
-**对 OmniDesk**：宿主已经承担了状态壳的角色（任务台账、线程、队列）。我们要保证状态修改只有一条路径，UI 只订阅事件而不直接改 agent 状态；不要把会话存储、重试、压缩塞回循环。**借**：状态归约器、单中止控制、订阅解耦；**不借**：在 UI 里维护第二套会话状态。
+**消息队列**：steeringQueue 与 followUpQueue 分离；每个队列支持 all 与 one-at-a-time（默认），避免三条 steering 同时砸给模型；队列通过 getSteeringMessages/getFollowUpMessages 回调交给循环。
+
+**中止与互斥**：每次 prompt/continue 创建新的 AbortController，signal 传给循环、所有 listener 和工具；abort 一次中止整条链。activeRun 存在时拒绝新 prompt，错误信息直接告诉调用者用 steer/followUp 或等待。
+
+**状态归约**：processEvents 先按事件更新 state，再通知 listener；listener 看到一致状态。pendingToolCalls 用新 Set 赋值，保持 ReadonlySet 不可变语义。
+
+**扩展点**：CustomAgentMessages 是空接口，应用通过声明合并扩展；AgentMessage = LLM Message + 自定义消息；自定义消息在循环内部一等公民，convertToLlm 出门时过滤。这比 any 或泛型更保类型且不增加传参负担。
+
+**Agent 不管什么**：会话持久化、UI、认证、模型选择、压缩、system prompt 拼接、工具注册全部委托给上层。AgentHarness 是另一条“厚壳”路径，把会话/压缩/Skills/ExecutionEnv/重试/models 收进 agent 包；截至 v0.82.1 生产 coding-agent 仍用薄壳 Agent，AgentHarness 只在测试/docs 中使用。
+
+**取舍**：得到清晰职责、可预测状态、多消费者订阅；放弃胖接口、listener 串行拖慢 UI、单线程不能后台常驻。
+
+**对 OmniDesk**：宿主已经承担“厚壳”职责（线程、任务台账、队列、持久化）。不要再在 UI 里维护第二套会话状态；状态修改只走一条路径；订阅者按顺序处理；abort 要贯穿循环、工具和监听器；AgentHarness 是实验路径，不照搬进产品。
+
 
 ## 第 11 章 会话树
 
