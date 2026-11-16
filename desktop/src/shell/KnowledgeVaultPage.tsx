@@ -1097,7 +1097,7 @@ export function KnowledgeVaultPage({
               Wiki {wikiFiles.length} · raw/ {rawFileList.length}
             </span>
           </div>
-          <div className="flex-1 min-h-0 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(230px,280px)_minmax(0,1fr)] min-[1400px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)_minmax(280px,330px)]">
+          <div className="flex-1 min-h-0 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
             <aside className="min-h-0 flex flex-col gap-2.5">
               <section className="rounded-2xl bg-white/80 border border-white/90 p-3 flex flex-col min-h-[220px] xl:flex-1 xl:min-h-0">
                 <div className="flex items-baseline gap-2 pb-2 border-b border-surface-variant/20">
@@ -1316,7 +1316,7 @@ export function KnowledgeVaultPage({
                       <div className="ml-auto flex items-center gap-2">
                         <button
                           type="button"
-                          className="rounded-lg border border-outline-variant/60 bg-white/60 px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary min-[1400px]:hidden"
+                          className="rounded-lg border border-outline-variant/60 bg-white/60 px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary"
                           onClick={() => setInspectorOpen(true)}
                           data-testid="vault-inspector-toggle"
                         >
@@ -1439,7 +1439,7 @@ export function KnowledgeVaultPage({
 
             {inspectorOpen ? (
               <div
-                className="fixed inset-0 z-40 bg-black/10 min-[1400px]:hidden"
+                className="fixed inset-0 z-40 bg-black/10"
                 onClick={() => setInspectorOpen(false)}
                 aria-hidden="true"
               />
@@ -1447,13 +1447,13 @@ export function KnowledgeVaultPage({
             <aside
               data-testid="vault-inspector"
               className={
+                "flex min-h-0 flex-col gap-2.5 " +
                 (inspectorOpen
-                  ? "fixed bottom-0 right-0 top-0 z-50 flex w-[370px] max-w-[92vw] flex-col gap-2.5 overflow-y-auto border-l border-white/80 bg-surface p-3 shadow-[-16px_0_40px_-20px_rgba(15,23,42,0.25)] "
-                  : "hidden min-[1400px]:flex ") +
-                "min-h-0"
+                  ? "fixed bottom-0 right-0 top-0 z-50 w-[360px] max-w-[92vw] overflow-y-auto border-l border-outline-variant/50 bg-surface p-3 shadow-[-16px_0_40px_-20px_rgba(70,55,40,0.28)] "
+                  : "hidden")
               }
             >
-              <div className="flex items-center gap-2 min-[1400px]:hidden">
+              <div className="flex items-center gap-2">
                 <span className="text-[11px] font-medium text-on-surface">关系与属性</span>
                 <button
                   type="button"
