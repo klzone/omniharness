@@ -1,58 +1,72 @@
 # 当前实施计划
 
-### OD-ARCH-172：Pi 式提示词装配与按需能力（0.2.30，待批准，2026-11-16）
+### OD-ARCH-172（v2）：0.2.30 成熟、高效、安全基线（待批准，2026-11-16）
 
-> **触发：** 用户要求深度消化 pi-book 后再优化 OmniDesk。学习笔记见 docs/research/pi-book-notes.md（提交 258b957），覆盖第 1–32 章。
+> **触发：** 用户要求汇总 pi-book 学习，重新制定 OmniDesk 的 0.2.30 改进计划，目标是成熟、高效、安全的系统。学习底稿：docs/research/pi-book-notes.md（第 1–27 章，提交 c3da80c）。
 >
-> **现状证据：** 从真实会话 system/message 解析，当前系统提示词 5404 字符（估算约 2.4k tokens）。其中 4732 字符是常驻 web-search-free 插件（引擎清单、回退链、搜索工具说明）；产品人设仅 120 字符；DSH web-app 说明约 248 字符；我们自己的检索/批处理规则约 552 字符。桌面端还把 Skill 全文注入任务提示词，单个上限 2500 字符。用户一次 Excel 生成实测：3 次思考、11 次工具、首字 130 秒、总用时 397 秒，但现有指标没有区分模型、工具、审批和缓存耗时。
+> **现状证据：** 真实会话 system/message 5404 字符（约 2.4k tokens），其中 4732 字符是常驻 web-search-free 插件，产品人设仅 120 字符；桌面端仍把 Skill 全文注入任务提示词（单个上限 2500 字符）；用户一次 Excel 任务 3 次思考、11 次工具、首字 130 秒、总时长 397 秒，但现有指标无法拆分模型、工具、审批、缓存与压缩消耗；模型设置只存 id/name/contextWindow，缺少 provider/api/compat/thinking 能力，已出现方舟 404、UnsupportedModel 类问题。
 >
-> **目标：** 把提示词从“插件堆叠”改为 pi 式装配——短产品底座、按需追加、Skills 只给元数据、稳定缓存前缀；先建立可观测基线，再减法，不把“短”当成唯一目标。系统提示词正文目标 200–300 tokens（硬上限 1000），工具 schema 另计。
+> **0.2.30 的“成熟”定义：** 不是功能堆叠，而是三件事可验证——**契约可解释**（用户能知道当前提示词、工具、Skill、模型从哪来）、**度量可复现**（改前改后有同一张基线表）、**边界可回退**（配置、提示词、工具面都有回滚路径）。效率与安全都建立在这一点上。
 >
-> **阶段 A：基线（只读，不改提示词）**
-> 1. 新增 scripts/inspect-prompt.py：读取最近一个会话的 system/message 与任务状态，只输出各段字符数/估算 token、工具面数量、Skill 注入字符数，不输出正文。
-> 2. 新增 scripts/inspect-timings.py（或并入上一个脚本）：从任务事件与 usage 计算每轮模型往返、工具活动起止、审批等待、压缩/分支摘要/重试消耗、缓存命中、首字与总时长；不读用户正文。
-> 3. 在隔离数据根选 3 类任务各跑一次：Excel 生成、周报/复盘、知识整理；记录基线表。真实用户数据不进入仓库。
-> 4. 验收：基线表能回答“397 秒里模型/工具/审批/缓存各占多少”，并作为后续对比依据。
->
-> **阶段 B：提示词与 Profile 减法**
-> 1. 把 discipline-core 与 work-review-core 的 persona 前缀/后缀换成短 OmniDesk 底座，候选文本：你是 OmniDesk，一个个人工作台账助手。把工作记录、复盘、任务与资料整理成可复核的结构化结果；日期、统计和状态由宿主计算；只读写用户明确指定的文件；不确定时直接说明，不编造。
-> 2. 从 discipline 的 preset 中移除常驻 web-search-free；公开检索改由 anysearch Skill 按需承担，保留 tool-web 的 fetch。ui-settings-web-search 若无对应能力，隐藏或明确标注“未启用”，不留死设置。
-> 3. 日期不进系统提示词；确认 time-context 是否作为 runtime context 注入，若进入系统段则调整为运行上下文，保持跨日 cache 前缀稳定。工作目录放最后。
-> 4. 预期：系统提示词从 5404 字符降到约 330–370 字符（约 200–250 tokens）；DSH web-app 的 248 字符暂保留。
->
-> **阶段 C：Skill 注入改为元数据**
-> 1. desktop/src/conversationPrompt.ts 不再注入 Skill 全文；每个动作最多一个主 Skill，只带 id、name、description、path 或不超过 300 字符的摘要；同时记录 Skill 来源与同名冲突诊断（全局/Profile/动作）。
-> 2. 依赖 DSH 的 skill-filesystem/tool-skill 按需读取正文；先在一个动作上验证模型能在需要时加载 Skill，且不显著增加工具往返。
-> 3. 若 DSH 的 Skill 加载链路不可用或模型不会主动读取，回退为“短摘要 + 明确说明完整 Skill 在何处”，不直接恢复全文注入。
-> 4. 验收：任务提示词中的 Skill 段从最多 2500 字符降到 ≤300 字符；周报、复盘、知识整理仍能按原契约产出。
->
-> **阶段 D：工具执行语义与约束审计（只读审计，不改 runtime）**
-> 1. 逐项核对 DSH 是否提供等价能力：工具参数校验、before/after 钩子、按工具串行、事件完成顺序与工件源顺序、工具结果解锁新工具、审批前置；以及 turn 间热切换、shouldStopAfterTurn、steering/follow-up 队列和 abort 下发。
-> 2. 参数约束：核对每个工具的 schema 是否完整、是否拒绝多余字段、是否有 prepareArguments 兼容入口；能约束采样时优先约束，不能则事后校验。
-> 3. 输出约束：核对 read/搜索结果的行数与字节上限（pi 的基准：2000 行 / 50KB、grep 单行 500 字符、grep 默认 100 条、find 默认 1000 条），截断是否带元信息和续读路径，全量输出是否落临时文件。
-> 4. 路径与写盘：核对 cwd 是否显式绑定、路径是否限制在允许根内；写操作是否同文件串行、原子写、精确替换优先于整文重写、落盘后是否校验。
-> 5. bash 安全：核对 cwd、超时、进程树 kill、环境变量过滤、输出上限、审批和 sandbox；bash 只做后备，不作为首选。
-> 6. 搜索边界：知识库检索用宿主索引，不给模型自由 grep 全库；保留 grep 时默认忽略依赖/构建目录并带 limit/行截断。
-> 7. 有等价钩子则记录可配置点；没有则在 REVIEW/STATUS 明确缺口，只在 adapter 或工具插件层近似，不伪造能力。工具错误作为可恢复结果，结果进模型前脱敏。
-> 8. 交付：工具约束清单（每个工具的参数/输出/路径/并发/安全现状与缺口），作为阶段 F 验收依据。
->
-> **阶段 E：提示词来源诊断**
-> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，以及配置/资源来源（全局/Profile/动作）、模型 compat 与 thinking 能力、压缩状态；只显示元数据，不显示用户正文。
-> 2. 目的：改动后用户能解释行为变化，避免 pi 第 14 章指出的“最终形态不可预测”问题。
->
-> **阶段 F：验收与发版**
-> 1. npx tsc --noEmit；npm run build；cargo test 相关模块；现有 UI/Profile 验证脚本全过。
-> 2. 隔离 Profile 的 --dump-config 与启动探针；确认 web-search-free 已移除后平台仍能启动，anysearch 可用。
-> 3. 真实模型 smoke test（需用户当轮允许）：Excel、周报、知识整理各一次；记录提示词字符/token、工具往返、首字、总时长与缓存。
-> 4. 版本 0.2.30；提交推送；macOS 与 Windows 构建；STATUS/REVIEW 写清改前改后和未验证项。
->
-> **文件范围：** samples/profiles/discipline.profile.patch.yml、对应的 seed patch、desktop/src/conversationPrompt.ts、SettingsPanel 的搜索设置入口、scripts/inspect-prompt.py、scripts/inspect-timings.py、docs/research/pi-book-notes.md 的后续补注。runtime/ 只读，不修改。
->
-> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门；不引入 Extension 市场、第三方代码执行、npm 资源包；不重写模型注册表或做 provider 市场；不改 Tauri/React 通信协议，不新增 RPC/SDK/Web 组件宿主，不做 TUI/编辑器/UI 交互重构，不把模型调用或凭证搬进浏览器；不使用真实用户材料做测试。
->
-> **风险与回退：** 移除 web-search-free 会改变用户可见的搜索入口，需先确认 anysearch 可用；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after 钩子未知；提示词前缀变化可能影响缓存命中。回退路径：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入。
->
-> **验收标准：** 系统提示词 ≤1000 tokens 且目标 200–300；Skill 段 ≤300 字符；基线表可解释 397 秒的构成；现有任务与验证脚本无回归；所有未验证项在 REVIEW 中如实列出。
+> **三条主线：** 效率（提示词预算、能力懒加载、输出上限、缓存稳定、工具往返）、安全（凭证隔离、路径边界、审批、脱敏、无第三方代码）、成熟（诊断、契约、迁移、回退、验证）。
+
+**阶段 0：冻结与基线（只读，不改行为）**
+> 1. 记录 HEAD/git status；快照当前 Profile、模型设置、Skill 绑定；不读取、不打印凭证。
+> 2. 新增 scripts/inspect-prompt.py：解析最近会话 system/message，只输出各段字符/估算 token、工具面数量、Skill 注入字符，不输出正文。
+> 3. 新增 scripts/inspect-timings.py：从任务事件与 usage 计算每轮模型往返、工具活动起止、审批等待、压缩/分支摘要/重试消耗、缓存命中、首字与总时长。
+> 4. 在隔离数据根跑三类合成任务各一次：Excel 生成、周报/复盘、知识整理；基线落 tests/verification/desktop/evidence/od-arch-172/（不含真实用户材料）。
+> 5. 验收：基线表能回答“397 秒里模型/工具/审批/压缩/缓存各占多少”，后续所有优化以它为对照。
+
+**阶段 1：提示词装配与能力懒加载（效率第一刀）**
+> 1. 把 discipline-core 与 work-review-core 的通用 coding persona 换成短 OmniDesk 底座：你是 OmniDesk，一个个人工作台账助手；把工作记录、复盘、任务与资料整理成可复核的结构化结果；日期、统计和状态由宿主计算；只读写用户明确指定的文件；不确定时直接说明，不编造。
+> 2. 从 discipline preset 移除常驻 web-search-free；公开检索由 anysearch Skill 按需承担，保留 tool-web 的 fetch；处理搜索设置入口，避免死开关。
+> 3. 日期不进系统提示词；确认 time-context 是否作为 runtime context 注入，若进入系统段则调整为运行上下文；cwd 放最后。
+> 4. 目标：系统提示词 ≤1000 tokens，目标 200–300；DSH web-app 的少量说明暂保留。
+> 5. 验收：基线脚本复测；三类任务仍完成；不出现“为了短而丢工具指引”。
+
+**阶段 2：Skill 与资源来源可解释（效率与成熟）**
+> 1. conversationPrompt 不再注入 Skill 全文；每个动作最多一个主 Skill，只带 id/name/description/path 或 ≤300 字符摘要；正文依赖 DSH skill-filesystem/tool-skill 按需读取。
+> 2. 记录 Skill 来源（全局/Profile/动作）与同名冲突诊断；冲突不静默，沿用“先加载者赢 + diagnostic”的语义。
+> 3. 若 DSH 的按需加载不可用或模型不会主动读取，回退为短摘要 + 明确全文位置，不恢复全文注入。
+> 4. 验收：Skill 段 ≤300 字符；周报、复盘、知识整理仍按原契约产出；来源/冲突可见。
+
+**阶段 3：工具面与安全约束（约束即保护）**
+> 1. 按动作收敛工具白名单：搜索、Office、知识整理按需加载；读写、审批、有副作用工具保持显式。
+> 2. 输出上限：核对 read/搜索/bash 的行数与字节限制（pi 基准：2000 行 / 50KB、grep 单行 500 字符、grep 默认 100 条、find 默认 1000 条）；可配置的上限落地，不可配置的记缺口；全量输出落临时文件，模型需要时再读。
+> 3. 路径与写盘：cwd 显式绑定，路径限制在允许根；写操作同文件串行、原子写、精确替换优先于整文重写、落盘后校验。
+> 4. bash 安全：cwd、超时、进程树 kill、环境变量过滤、输出上限、审批、sandbox；bash 只做后备，不作为首选。
+> 5. 搜索边界：知识库检索用宿主索引，不给模型自由 grep 全库；保留 grep 时默认忽略依赖/构建目录并带 limit/行截断。
+> 6. 错误与脱敏：工具错误作为可恢复结果；工具结果进模型前脱敏；审批失败不升级为整轮失败。
+> 7. 只读审计 DSH 是否提供 before/after 钩子、按工具串行、事件完成顺序/工件源顺序、工具解锁、审批前置、turn 间热切换、steering/follow-up、abort 下发；有则配置，无则文档缺口，不改 runtime/。
+> 8. 交付：工具约束矩阵（每个工具的参数/输出/路径/并发/安全现状与缺口），作为验收依据。
+
+**阶段 4：模型接入成熟度（效率与安全）**
+> 1. 模型条目保存 provider/api/baseUrl/成本/上下文/能力/compat/thinking 档位，不再只存 id；thinkingLevelMap 越界用收敛而非静默。
+> 2. 保存/切换前做可用性预检：模型列表 404、UnsupportedModel、认证失败分别给出可操作提示；方舟 Agent Plan 预设保留 /api/plan/v3 与实测模型。
+> 3. 模型目录缓存只做只读数据（目录/etag/checkedAt），不做模型响应缓存；刷新不阻塞启动；凭证仍只在 DSH 凭据服务，UI 不读明文。
+> 4. 验收：模型不可用时在运行前给出明确原因；密钥不出现在 UI、日志、提示词或成果文件。
+
+**阶段 5：可观测性与配置解释（成熟）**
+> 1. 设置页或只读诊断入口显示：系统提示词分段与 token、工具与 Skill 可见性、配置/资源来源（全局/Profile/动作）、模型 compat 与 thinking 能力、压缩状态；只显示元数据。
+> 2. 任务时间线或诊断脚本显示模型往返、工具 prepare/execute、审批等待、压缩/重试、缓存命中；不显示用户正文。
+> 3. 验收：用户能回答“这条行为从哪来、时间花在哪、哪些能力被加载”，不需要读源码。
+
+**阶段 6：验证、发布与回退**
+> 1. npx tsc --noEmit；npm run build；cargo 相关测试；现有 UI/Profile 验证脚本全过。
+> 2. 隔离 Profile 的 --dump-config 与启动探针；确认 web-search-free 移除后平台仍启动、anysearch 可用、Skill 按需加载可用。
+> 3. 真实模型 smoke test（需用户当轮允许）：Excel、周报、知识整理各一次；记录提示词字符/token、工具往返、首字、总时长、缓存与压缩消耗。
+> 4. 版本 0.2.30；提交推送；macOS/Windows 构建；STATUS/REVIEW 写清改前改后、验证证据与未验证项。
+> 5. 回退：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入；保留旧配置备份。
+
+**验收矩阵（0.2.30 必须可验证）**
+> - 效率：系统提示词 ≤1000 tokens（目标 200–300）；Skill 段 ≤300 字符；工具输出有上限或明确缺口；基线表能拆分 397 秒；缓存命中被记录。
+> - 安全：凭证零读取/零打印/零前端存储；路径根与 cwd 显式；审批与 sandbox 保留；工具结果脱敏；无第三方代码/Extension 市场/npm 资源包。
+> - 成熟：提示词/工具/Skill/配置来源可解释；模型不可用有预检；回退路径可用；现有任务与验证脚本无回归；未验证项如实列出。
+
+**明确不做：** 不改 runtime/；不迁移线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门；不引入 Extension 市场、第三方代码、npm 资源包；不重写模型注册表或做 provider 市场；不改 Tauri/React 通信协议；不新增 RPC/SDK/Web/TUI 宿主；不做 UI/交互重构；不把模型调用或凭证搬进浏览器；不内建子代理编排、MCP 市场、计划模式；不使用真实用户材料做测试。
+
+**风险：** 移除 web-search-free 会改变搜索入口；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after/turn 钩子未知；提示词前缀变化可能影响缓存；模型预检可能因端点不提供列表而只能给出有限结论。每项都在阶段 0 基线与阶段 6 回退中记录。
+
 
 ### OD-UI-717：全站纸面新拟物改造（unslop，阶段一与阶段二均已实施，2026-11-16）
 
