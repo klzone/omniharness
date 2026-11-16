@@ -182,51 +182,79 @@
 
 **对 OmniDesk**：我们已经遇到“模型 id 看起来对、端点其实不支持”的问题。**借**：模型条目要带 provider/api/能力/compat，保存前做可用性预检；**不借**：把模型名当唯一标识。方舟 Agent Plan 的 404/UnsupportedModel 就是缺少这层预检的代价。
 
-## 第 19 章 工具设计原则
+## 第 19 章 工具设计原则：约束即保护
 
-**核心判断**：约束即保护。高频且易错的操作给结构化专用工具，bash 是后备；工具选择由“哪些工具被激活”表达，不靠 prompt 教模型选。
+**核心判断**：给 LLM 的接口越受约束，犯错越少。pi 不是“只给一个 bash”，而是 6 个结构化工具（read/write/edit/find/grep/ls）+ bash 后备；工具选择由“哪些工具被激活”表达，不再靠提示词教模型挑工具。
 
-**机制**：TypeBox schema、受约束采样、统一截断（2000 行/50KB）、pluggable ops 跨本地/SSH/Docker。
+**机制**：
+- 每个工具用 TypeBox schema 做运行时参数校验；prepareArguments 处理旧参数兼容；错误作为工具结果返回，模型下一轮可修正。
+- 受约束采样（constrainedSampling）：json_schema 的 prefer/require 或 grammar（Lark/regex），由 provider 能力位 supportsStrictTools / supportsGrammarTools 把关；不支持时退回普通 tool call。TypeBox 是事后校验，受约束采样是事前保证。
+- 工具激活是名字白名单 + cwd 工厂（createTool(name, cwd)）；工具不再隐式读 process.cwd()，同一进程可并存多个工作目录。
+- 统一截断 truncate.ts：2000 行 / 50KB，先触发的生效；read/find/grep 用 truncateHead（保留开头），bash 用 truncateTail（保留结尾）；截断带元信息，不产生半行。
+- 每个工具只暴露最小 Operations 接口（readFile/access/writeFile/exec/glob 等），可替换为本地、SSH、Docker、远程 API。
 
-**取舍**：得到更低出错率、可预测 token、跨环境一致；放弃工具选择负担、灵活性受限。
+**取舍**：得到更低出错率、可预测 token、跨环境一致；放弃工具选择负担和部分灵活性。高频且易错的操作给专用工具，其余才留给 bash。
 
-**对 OmniDesk**：工具的取舍应放在 Profile 与预设，不该在 persona 里写“优先用 grep”。**借**：专用工具 + 统一截断 + 激活即选择；**不借**：给模型一个万能 bash 再靠提示词约束。
+**对 OmniDesk**：这不是“工具越多越好”，而是“把易错操作从自由文本里拆出来”。我们的 Excel、知识库、记录写入、文件搜索都应该有宿主可校验的结构化入口；bash/pwsh 只做后备，并必须带 cwd 绑定、超时、输出上限和审批。工具面按动作激活，不在 persona 里写“先用什么工具”。
 
-## 第 20 章 edit 的设计
+## 第 20 章 edit：精确替换与并发安全
 
-**核心判断**：精确替换比整文件重写安全；oldText 唯一匹配、行尾归一化、同文件串行队列，几乎消除写错文件的可能。
+**核心判断**：不让模型“读出来、改、整文件写回”，因为大文件容易漏内容、改缩进、加空行；edit 用 oldText → newText 的精确替换，oldText 必须唯一、多个 edit 不能重叠、所有 edit 基于原始文件匹配。
 
-**取舍**：得到安全、并发正确、跨平台；放弃表达自由、大范围重构不友好（此时才该用 write）。
+**机制**：
+- 执行流水线：resolveToCwd → readFile → stripBom → detectLineEnding → normalizeToLF → applyEdits → diff → restoreLineEndings → writeFile。
+- fuzzyFindText：精确优先，失败后用 NFKC、去行尾空格、smart quotes/破折号/特殊空格归一化再匹配；模糊匹配只改命中的行块，不整文件重写。
+- applyEdits 先验证 oldText 非空、唯一、按位置排序、检测重叠，再从后往前替换，保证前面偏移不变。
+- file-mutation-queue 用 Promise 链按 realpath 串行化同一文件的写操作；不同文件仍并行；39 行实现，无锁、自动清理。
+- 结果同时给带行号的展示 diff 和可 git apply 的 unified patch。
 
-**对 OmniDesk**：知识库和成果文件的写入应尽量走精确替换或宿主校验，而不是让模型整文重写。**借**：唯一匹配、文件级串行、行尾归一化；**不借**：把编辑能力交给模型后不做落盘校验。
+**取舍**：得到几乎消除写错文件、并发正确、跨平台行尾一致；放弃行号式编辑的表达自由，大范围重构不如 write。
 
-## 第 21 章 read 的设计
+**对 OmniDesk**：知识库、记录、成果文件的修改应尽量走“精确替换 + 宿主校验 + 原子写 + 同文件串行”，不要让模型整文重写；改动前给 diff/摘要，改动后校验唯一匹配和落盘结果。我们的 knowledge_sync 已有冲突检查，方向对，但要补“同文件串行”和“精确替换优先”。
 
-**核心判断**：read 不是 cat；它用 offset/limit、行数与字节双重截断、图片自动检测和可插拔后端，保护 context 与安全边界。
+## 第 21 章 read：给模型看文件时的保护
 
-**取舍**：得到安全探索、增量续读、文本/图片统一；放弃一次读全、图片可能缩放丢失细节。
+**核心判断**：read 不是 cat。它用 offset/limit、行数与字节双重截断、续读提示、图片缩放和可插拔后端，保护 context 和隐私边界。
 
-**对 OmniDesk**：知识库和附件读取应带页窗和上限，不能把整个文件塞给模型。**借**：offset/limit、双重截断、图片 MIME 检测；**不借**：让模型自行 cat 大文件。
+**机制**：
+- schema 只有 path/offset/limit；offset 从 1 开始；截断同时受 2000 行和 50KB 限制，先触发者生效。
+- TruncationResult 带总行数/总字节/输出行数/触发原因；截断后明确告诉模型“还有更多，用 offset 继续”。
+- firstLineExceedsLimit：第一行就超 50KB 时不返回半截内容，而是提示改用 bash 的 sed/head -c。
+- 图片自动检测 MIME，转 base64，默认缩放到 2000×2000 内；缩放失败优雅降级为文本说明，不让 tool call 失败。
+- PDF/Jupyter 等格式不硬塞进 read，交给专用 CLI；ReadOperations 可替换为 SSH/Docker/Git blob。
 
-## 第 22 章 bash 与外部世界的边界
+**取舍**：得到安全探索、增量续读、文本/图片统一；放弃一次读全、图片细节可能丢失。
 
-**核心判断**：bash 是万能后备，不是首选；它提供灵活性，但也是最大安全风险。
+**对 OmniDesk**：知识库和附件读取必须带页窗与字节上限，不能把整个文件塞进模型；大文件用宿主索引/分页，不靠模型 cat；图片附件缩放后再进模型；PDF/Office 走专用解析，不伪装成 read。
 
-**机制**：极简 schema、可插拔 BashOperations、超时、结构化 details、spawn hook、输出截断、excludeFromContext、会话环境变量。
+## 第 22 章 bash：万能后备与安全边界
+
+**核心判断**：bash 是后备，不是首选。它提供灵活性，但也是最大安全风险；安全不能靠提示词，要靠执行后端和产品层。
+
+**机制**：
+- schema 只有 command/timeout；timeout 可选且无默认值（不同命令耗时差异太大，让模型按命令性质决定）。
+- BashOperations.exec 流式 onData、AbortSignal、exitCode；默认本地 shell 用 detached 进程组，超时先 kill 进程树再 reject，避免孤儿进程和输出竞争。
+- spawn 前校验 cwd 存在；输出用 truncateTail（保留结尾的错误/结果），截断时把完整输出写到临时文件 fullOutputPath，模型可用 read 取回。
+- BashSpawnHook 在 spawn 前改写命令/cwd/env，可做审计、set -e、环境过滤；安全梯度：beforeToolCall 审批 → Executor 隔离（Docker）→ 环境隔离。
 
 **取舍**：得到灵活性兜底、可适配安全模型；放弃结构化输出、默认就是后门、需要产品层实现 sandbox。
 
-**对 OmniDesk**：我们已经有 bash/pwsh 工具面和审批链。**借**：BashOperations 式可替换后端、超时和截断、执行不进上下文的开关；**不借**：没有 sandbox 或审批的 bash。
+**对 OmniDesk**：我们的 bash/pwsh 必须有 cwd 绑定、超时、进程树 kill、环境过滤、输出上限和审批；全量输出落临时文件而不是塞进上下文；不要把“不要执行危险命令”只写在 persona 里。Excel 生成这类任务应优先走受约束的 office/xlsx 入口，bash 只做兜底。
 
-## 第 23 章 find 和 grep
+## 第 23 章 find/grep：结构化搜索替代万能 bash
 
-**核心判断**：高频且易错的搜索从 bash 拆成结构化工具，降低出错率和 context 消耗。
+**核心判断**：高频且易错的搜索从 bash 拆成结构化工具，降低出错率、控制 context、保证跨平台和可取消。
 
-**机制**：两个 schema、默认限制、.gitignore 集成、ripgrep 后端、三层截断、可插拔 GrepOperations。
+**机制**：
+- find: pattern/path/limit，默认 1000；grep: pattern/path/glob/ignoreCase/literal/context/limit，默认 100。
+- 两者默认尊重 .gitignore 且不可关闭；find 优先 fd，grep 用 ripgrep --json 流式；全程可 AbortSignal 取消。
+- grep 三层截断：单行 500 字符、匹配数默认 100、总输出 50KB；matchLimitReached/linesTruncated 让模型知道结果不完整，可用 read 取完整行。
+- GrepOperations/FindOperations 可替换，本地实现可同步、远程实现可异步。
 
-**取舍**：得到更低出错率、分层截断、性能；放弃多两个工具的选择负担、gitignore 可能漏掉构建产物。
+**取舍**：得到更低搜索出错率、分层截断、性能与可取消；放弃多两个工具的选择负担，gitignore 可能漏掉构建产物。
 
-**对 OmniDesk**：知识检索已有宿主索引，不应再让模型用 grep 全库扫。**借**：结构化搜索与截断；**不借**：给模型一个万能搜索脚本再去提示它别乱扫。
+**对 OmniDesk**：知识库检索不要给模型一个自由 grep 全库的工具；用宿主索引 + knowledge-search，只在明确需要时给受限搜索。若保留 grep，必须默认忽略依赖/构建目录、带 limit 和行截断，并允许取消。搜索结果不能无限进上下文。
+
 
 ## 第 24 章 pi-tui
 
