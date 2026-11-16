@@ -10,7 +10,7 @@
 >
 > **阶段 A：基线（只读，不改提示词）**
 > 1. 新增 scripts/inspect-prompt.py：读取最近一个会话的 system/message 与任务状态，只输出各段字符数/估算 token、工具面数量、Skill 注入字符数，不输出正文。
-> 2. 新增 scripts/inspect-timings.py（或并入上一个脚本）：从任务事件与 usage 计算每轮模型往返、工具活动起止、审批等待、缓存命中、首字与总时长；不读用户正文。
+> 2. 新增 scripts/inspect-timings.py（或并入上一个脚本）：从任务事件与 usage 计算每轮模型往返、工具活动起止、审批等待、压缩/分支摘要/重试消耗、缓存命中、首字与总时长；不读用户正文。
 > 3. 在隔离数据根选 3 类任务各跑一次：Excel 生成、周报/复盘、知识整理；记录基线表。真实用户数据不进入仓库。
 > 4. 验收：基线表能回答“397 秒里模型/工具/审批/缓存各占多少”，并作为后续对比依据。
 >
@@ -37,7 +37,7 @@
 > 8. 交付：工具约束清单（每个工具的参数/输出/路径/并发/安全现状与缺口），作为阶段 F 验收依据。
 >
 > **阶段 E：提示词来源诊断**
-> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，只显示元数据，不显示用户正文。
+> 1. 设置页或只读诊断入口显示“当前系统提示词由哪些段组成、各多少字符/token、哪些工具与 Skill 可见”，以及配置来源（全局/Profile/动作）与压缩状态；只显示元数据，不显示用户正文。
 > 2. 目的：改动后用户能解释行为变化，避免 pi 第 14 章指出的“最终形态不可预测”问题。
 >
 > **阶段 F：验收与发版**
@@ -48,7 +48,7 @@
 >
 > **文件范围：** samples/profiles/discipline.profile.patch.yml、对应的 seed patch、desktop/src/conversationPrompt.ts、SettingsPanel 的搜索设置入口、scripts/inspect-prompt.py、scripts/inspect-timings.py、docs/research/pi-book-notes.md 的后续补注。runtime/ 只读，不修改。
 >
-> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不使用真实用户材料做测试。
+> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门（除非用户另批）；不使用真实用户材料做测试。
 >
 > **风险与回退：** 移除 web-search-free 会改变用户可见的搜索入口，需先确认 anysearch 可用；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after 钩子未知；提示词前缀变化可能影响缓存命中。回退路径：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入。
 >

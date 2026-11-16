@@ -144,43 +144,70 @@
 
 ## 第 11 章 会话树
 
-**核心判断**：coding agent 的会话不是线性聊天记录，而是可分支的树；JSONL + parentId 是够用的极简方案。
+**核心判断**：coding agent 的会话不是线性聊天记录。用户会回退、分支、重试、从某轮继续；线性列表要么不能回溯，要么复制整段历史。pi 用 JSONL + parentId 构成一棵树，分支只是“同一父节点下的新子节点”。
 
-**机制**：9 种 entry 类型分核心/元数据/扩展三层；buildSessionContext 从树构建 LLM 消息；/tree、/fork、/clone 三种分支；RPC 只读 get_entries/get_tree。
+**机制**：
+- SessionHeader 记录 version/id/timestamp/cwd/parentSession；每个 entry 有短 id（8 位十六进制）和 parentId，null 为根。
+- 会话 id 用 UUIDv7：时间有序，便于 provider 按 session 路由和 prompt cache 命中；entry id 短小，便于人读和分支导航。
+- 9 种 entry 分三层：核心层影响 LLM context（message、compaction、branch_summary）；元数据层恢复状态（thinking_level_change、model_change、session_info）；扩展层（custom、custom_message、label）。
+- buildSessionContext 从叶子沿 parentId 回溯到根，提取最后生效的 thinking/model；有 compaction 时输出“摘要 + firstKeptEntryId 之后的保留消息 + 最新消息”。
+- 分支命令 /tree、/fork、/clone；RPC 提供只读 get_entries/get_tree；孤儿 parentId 当作根，防御损坏。
+- 版本迁移 v1 线性 → v2 树 → v3。
 
 **取舍**：得到 append-only 容错、人类可读可修复、零依赖、天然分支；放弃随机访问、无索引、文件持续增长、首次全量加载、单进程写入。
 
-**对 OmniDesk**：我们已经有线程与场景会话，分支/派生对话的价值在于“从某轮继续”，不要复制整段历史。**借**：parentId 树、append-only、按路径构建上下文；**不借**：把会话树做成数据库或引入索引，除非真的需要跨会话查询。
+**对 OmniDesk**：线程/会话已有自己的存储与产品语义，0.2.30 不改格式、不迁移成 pi 的 session tree。**借**：从某轮继续/分支时只追加节点，不复制历史；上下文按路径构建；**不借**：为了“时间旅行”引入数据库、索引或跨会话查询。
 
 ## 第 12 章 Compaction
 
-**核心判断**：压缩不是简单摘要；它要保留文件操作记忆、结构化更新摘要、并且是产品层策略而不是 runtime 内建。
+**核心判断**：compaction 不是简单截断，也不是 runtime 内建；它是产品层策略：用 LLM 摘要旧对话，同时保留文件操作记忆，并且必须承认有损。
 
-**机制**：按 token 阈值触发；从后往前找合法切点；turn splitting；文件操作追踪；previousSummary 增量更新；prepare 与 compact 分离，extension 可接管；retry/会计/路由隔离。
+**机制**：
+- 触发：每次 assistant 响应后估算 context；优先用最近 usage 的真实 token，尾部消息用 chars/4 启发式（图片按 1200 token）；context > window - reserveTokens（默认 16K）时触发。
+- 保留：keepRecentTokens 默认 20K；从最新 entry 往回累积，找到合法切点；永远不在 toolResult 处切，否则拆散 tool call/result；切在 turn 中间时做 turn splitting，生成 prefix 摘要并保留后半段。
+- 文件操作：extractFileOperations 扫描 read/edit/write/bash，继承上次压缩的 details（fromHook 的压缩不继承），计算 readFiles / modifiedFiles，以 XML 追加到摘要。
+- 摘要：把对话序列化成纯文本（tool result 截断 2000 字符）放进 <conversation>，用专门的 summarization system prompt，要求六个章节：Goal、Constraints & Preferences、Progress（Done/In Progress/Blocked）、Key Decisions、Next Steps、Critical Context；有上次摘要时用 update prompt 增量更新，避免“摘要的摘要”。
+- 写入 CompactionEntry：summary、firstKeptEntryId、tokensBefore、details、fromHook；重复压缩从上一次保留边界起算，写入前重算 tokensBefore。
+- 产品层：prepareCompaction 做 CPU 计算（找切点、提取文件、整理消息），compact 做 I/O（LLM 摘要）；extension 可在两步之间接管。
+- 可恢复：摘要请求走 RetryPolicy，暴露 summarization_retry_* 事件；usage 计入会话；摘要请求隔离路由并禁用 prompt caching（新 sessionId + cacheRetention none）。
 
-**取舍**：得到理论无限对话、保留文件记忆、可定制、避免摘要的摘要；放弃有损、额外 token 消耗、不可逆。
+**取舍**：得到理论无限对话、文件记忆、可定制、增量更新；放弃有损、额外 token、不可逆（原始 entry 仍在 JSONL，但 LLM 看不到）。
 
-**对 OmniDesk**：长会话的压缩应由 DSH/产品层负责，UI 不应假装历史全在。**借**：结构化摘要 + 文件操作追踪 + 增量更新；**不借**：把“压缩后仍能记住所有细节”当承诺，必须在界面说明有损。
+**对 OmniDesk**：compaction 由 DSH/产品层负责，0.2.30 不在 UI 里实现自己的压缩，也不假装压缩后仍记得所有细节。**借**：结构化摘要、文件操作记忆、增量更新、prepare/compact 分离；**不借**：把压缩当成无损或隐藏压缩事件。基线必须把 compaction/重试的 token 和时间算进去，否则速度账会失真。
 
 ## 第 13 章 三级配置覆盖
 
-**核心判断**：配置分层是让同一工具适配不同项目的手段；全局、项目、目录三级，默认值让零配置也能启动。
+**核心判断**：同一工具要适配不同项目，需要全局/项目/目录三级配置；但不同规则类型的合并语义不同，必须让用户知道“当前配置从哪来”。
 
-**机制**：settings 深度合并（对象递归、数组替换），AGENTS.md 拼接，SYSTEM.md 替换；目录树向上发现；文件锁和只写修改字段保证并发安全；Project Trust 是第四道闸门。
+**机制**：
+- settings 深度合并：原始值覆盖、数组完全替换、嵌套对象递归合并；默认值在 getter 中硬编码，文件只存用户显式设置的字段；保存加文件锁，只写修改字段；reload 热加载。
+- AGENTS.md 是拼接：全局在前，目录树从远到近，最后当前目录；同一目录 AGENTS.md 优先于 CLAUDE.md；最终注入 <project_context>。
+- SYSTEM.md 是替换：项目优先于全局；APPEND_SYSTEM.md 是追加。
+- PackageSource 支持字符串或对象，可只启用包里的部分 extensions/skills/prompts/themes。
+- 运行时覆盖：CLI 参数 > 项目 settings > 全局 settings > 默认值；pi config -l 显式选择写全局还是项目层。
+- Project Trust：项目本地 settings/resources/extensions/packages/skills 默认不无条件加载；defaultProjectTrust 为 ask/always/never，--approve 一次性授权，/trust 会话内切换；信任结果存全局 trust.json，不能放在项目内。
+- CONFIG_DIR_NAME 可配置，用于 rebrand。
 
-**取舍**：得到零配置、渐进定制、团队共享、并发安全；放弃配置来源的可解释性、不同合并语义带来的心智负担、没有 dry run、信任闸门摩擦。
+**取舍**：得到零配置、渐进定制、团队共享、并发安全；放弃配置来源的可解释性、不同合并语义的心智负担、没有 dry run/explain、信任闸门的摩擦。
 
-**对 OmniDesk**：我们的 Profile 和模型设置已有分层雏形，但需要能回答“当前生效配置从哪来”。**借**：默认值、分层覆盖、文件锁、信任闸门；**不借**：三层合并却不给用户一个解释入口。0.2.30 若做提示词预算，应同时提供“当前装配来源”视图。
+**对 OmniDesk**：我们的 Profile/模型设置已有分层雏形，但缺少“当前生效配置来自哪一层”的解释入口。0.2.30 不改配置格式、不引入三级目录或 Project Trust 闸门；**借**：默认值、只写修改字段、文件锁、有效配置诊断；**不借**：多层合并却不给用户解释。
 
 ## 第 14 章 System Prompt 装配
 
-**核心判断**：系统提示词不是一块手写文本，而是默认/自定义底座 + 追加 + 项目上下文 + Skills 元数据 + 工作目录的装配流程；函数本身不做 I/O。
+**核心判断**：system prompt 不是手写字符串，而是默认/自定义底座 + 追加 + 项目上下文 + Skills 元数据 + 工作目录的装配流程；装配函数是纯函数，不做 I/O。
 
-**机制**：工具列表只为提供了说明的可见工具生成；guidelines 动态生成并去重，不再教模型在工具之间选择；skills 只注入 name/description/location，正文按需 read；project context 用 XML 标签；工作目录放最后；日期被移除以稳定 prompt cache。
+**机制**：
+- 默认底座：工具列表只为“可见且提供 toolSnippet”的工具生成；Guidelines 根据工具动态生成并去重，不再教模型在 bash/grep 之间选择；只在“仅有 bash、没有专用探索工具”时补一句兜底。
+- appendSystemPrompt 叠加；context files 用 XML 包裹，每个文件带 path；Skills 只注入 name/description/location，正文按需 read，且只有 read 工具可用时才注入。
+- 尾部只放 Current working directory；日期被移除以稳定 prompt cache 前缀。
+- 自定义 SYSTEM.md 路径：底座完全替换，但 context files、Skills、cwd 仍自动追加；代价是失去默认的工具列表和 guidelines。
+- context files 在 session 启动时加载一次，reload 才重新发现；不是每轮扫盘。
+- 装配顺序隐含优先级：越靠后的内容越受近因影响，AGENTS.md 的项目规则通常比默认底座更容易被遵守。
 
-**取舍**：得到无限可定制、随环境变化、关注点分离、纯函数可测试；放弃最终形态难预测、prompt 可能很长、拼接顺序隐含优先级、自定义底座会失去工具指引。
+**取舍**：得到无限可定制、随环境变化、关注点分离、纯函数可测试；放弃最终形态难预测、prompt 可能很长、拼接顺序隐含优先级、自定义底座失去工具指引。
 
-**对 OmniDesk**：这正是 0.2.30 的核心依据。我们现在的 5404 字符里 4732 是常驻 web-search 插件，只有 120 字符产品人设；应该换成短产品底座，Skills 只给元数据，项目上下文不进产品提示词，日期留在 runtime context。**借**：装配流程、XML 边界、技能延迟加载、缓存稳定前缀；**不借**：把插件说明塞进常驻底座。
+**对 OmniDesk**：0.2.30 的核心依据。当前 5404 字符里 5281 是插件/bundle 注入，产品人设只有 120 字符；应改为短底座 + 按需 Skill + 稳定前缀，并增加“当前提示词来源”诊断。**借**：分层装配、XML 边界、技能元数据、日期移出、cwd 最后；**不借**：把插件说明塞进常驻底座、把 AGENTS.md 注入用户产品。
+
 
 ## 第 15 章 Extension 系统
 
