@@ -4020,7 +4020,7 @@ mod tests {
     }
 
     #[test]
-    fn default_new_artifact_root_is_omnidesk_not_legacy_yvanai() {
+    fn default_new_artifact_root_is_omnidesk_not_legacy_data_root() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let home = temp_root("default-home");
         let _ = fs::remove_dir_all(&home);
@@ -4031,7 +4031,7 @@ mod tests {
         std::env::set_var("HOME", &home);
         let expected = home.join("OmniDesk/workspace/artifacts");
         let resolved = resolve_local_data_root();
-        let legacy_exists = home.join("OmniDeskData").exists();
+        let legacy_exists = home.join("LegacyDataRoot").exists();
         match previous_local {
             Some(v) => std::env::set_var(LOCAL_ROOT_ENV, v),
             None => std::env::remove_var(LOCAL_ROOT_ENV),
@@ -4045,7 +4045,7 @@ mod tests {
         let resolved = resolved.expect("默认本地数据根应可解析");
         assert_eq!(resolved, expected, "新成果默认落在 OmniDesk 之下：{}", resolved.display());
         // 不指向旧试点路径，解析过程也不会创建旧路径。
-        assert!(!resolved.to_string_lossy().contains("OmniDeskData"));
+        assert!(!resolved.to_string_lossy().contains("LegacyDataRoot"));
         assert!(!legacy_exists, "解析默认路径不得创建旧路径");
     }
 
@@ -4833,7 +4833,7 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let home = temp_root("save-home");
         let _ = fs::remove_dir_all(&home);
-        let legacy = home.join("OmniDeskData/projects/Omnidesk/analysis");
+        let legacy = home.join("LegacyDataRoot/projects/Omnidesk/analysis");
         fs::create_dir_all(&legacy).expect("创建旧路径");
         let legacy_file = legacy.join("existing-artifact.md");
         fs::write(&legacy_file, "旧成果正文").expect("写入旧成果");

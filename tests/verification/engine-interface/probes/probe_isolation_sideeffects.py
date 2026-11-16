@@ -29,7 +29,7 @@ TARGETS = {
     "dsh_home": HOME / ".dsh",
     "agents_home": HOME / ".agents",
     "omnidesk_root": HOME / "OmniDesk",
-    "yvanai_root": HOME / "OmniDeskData",
+    "external_data_root": HOME / "OmniDeskData",
 }
 
 

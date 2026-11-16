@@ -84,7 +84,7 @@
 
 **不算数的情况**：只看到“引擎未就绪”或空白，就当作没通过，别往下走——先把端点配好。
 
-**对照证据**：`tests/verification/desktop/evidence/od-arch-064/00-omnidesk-launch.png`（正式环境启动实拍）、`evidence/od-arch-063/04-settings-layout.png`、`05-settings-categories.png`。
+**对照证据**：`tests/verification/desktop/evidence/od-arch-064/facts.json`（正式环境启动实拍的事实记录）、`evidence/od-arch-063/facts.json`。截图已归档（2026-11-17）。
 
 > 当前机器上的实际情况（文件事实，可能随你改配置而变）：旧配置是路由 `agnescn / agnes-3.0-flash`，地址 `https://api.agnes-ai.cn/v1`，属公网。`~/OmniDesk/app/config/omnidesk-model.yml` 存在即优先生效，会盖过 Profile 里写的 `deepseek-v4.1-flash`。这个不一致是设计使然，不是故障。
 

@@ -13,7 +13,7 @@
 //!   * 出厂 Profile 与当前在用的 Profile 不许移除。
 //!
 //! 自定义 Profile 靠应用数据根 `profiles/index.v1.json` 登记，DSH 目录里
-//! 历史遗留的 `web` / `omnidesk-dev` / `headless` 不会被当成可选 Profile 露出。
+//! 历史遗留的 `web` / `legacy-work` / `headless` 不会被当成可选 Profile 露出。
 
 use std::fs;
 use std::path::{Path, PathBuf};

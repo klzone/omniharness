@@ -129,7 +129,7 @@ git ls-files -s runtime/deepseek-harness
 | 历史范例 | `knowledge/excellent-cases/` | `scripts/sync-skills.sh` | `.../references/excellent-cases/` |
 | 知识库分类 | `knowledge/{meeting-materials,methodology,policies,regulations}/` | 暂无脚本（供 `knowledge-search` 使用） | 未物化 |
 | DSH Profile | `profiles/omnidesk-dev/` | `scripts/omnidesk-dev.sh:173` | `~/OmniDesk/runtime/dsh-home/profiles/omnidesk-dev/` |
-| 数据底座规范 | `config/omnidesk-dev.yaml` | `scripts/init-yvan-data.sh:10` | `~/OmniDeskData/omnidesk-dev.yaml` |
+| 数据底座规范 | 个人数据根配置（已归档） | 个人初始化脚本（已归档） | 仓库外数据根 |
 
 **这套规则其实已经被 `scripts/sync-skills.sh` 编码实现**（第 32–35 行的三处 `ASSET_*_SRC` 与 `SOURCE_DIR`）。Phase 2B 要做的是让**文档与其余目录**与脚本保持一致，而不是新发明一套规则。
 

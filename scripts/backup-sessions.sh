@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_DIR="${1:-$HOME/OmniDeskData/backups/sessions}"
+TARGET_DIR="${1:-${OMNIDESK_DATA_ROOT:-$HOME/OmniDeskData}/backups/sessions}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_PATH="${TARGET_DIR}/${TIMESTAMP}"
 DSH_SESSIONS_DIR="$HOME/.dsh/sessions"

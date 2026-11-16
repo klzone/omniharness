@@ -53,16 +53,16 @@ SRC_TAURI = REPO / "desktop" / "src-tauri"
 
 # Rust 示例需要在能链接 Tauri 依赖的环境下运行（本机约定，不是仓库内容）。
 CARGO_ENV_HINTS = {
-    "PATH": "<local-home>/.cargo/bin:" + os.environ.get("PATH", ""),
+    "PATH": os.path.expanduser("~/.cargo/bin") + ":" + os.environ.get("PATH", ""),
     "PKG_CONFIG_PATH": ":".join([
-        "<local-home>/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu/pkgconfig",
-        "<local-home>/.local/omnidesk-tauri-deps/usr/share/pkgconfig",
+        os.path.expanduser("~/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu/pkgconfig"),
+        os.path.expanduser("~/.local/omnidesk-tauri-deps/usr/share/pkgconfig"),
         "/usr/lib/x86_64-linux-gnu/pkgconfig",
         "/usr/share/pkgconfig",
     ]),
-    "PKG_CONFIG_SYSROOT_DIR": "<local-home>/.local/omnidesk-tauri-deps",
+    "PKG_CONFIG_SYSROOT_DIR": os.path.expanduser("~/.local/omnidesk-tauri-deps"),
     "LIBRARY_PATH": ":".join([
-        "<local-home>/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu",
+        os.path.expanduser("~/.local/omnidesk-tauri-deps/usr/lib/x86_64-linux-gnu"),
         "/usr/lib/x86_64-linux-gnu",
     ]),
 }

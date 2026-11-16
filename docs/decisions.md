@@ -5,6 +5,64 @@
 
 ## 已确定
 
+### D-103（2026-11-17，证据与历史报告全面归档）：运行证据、任务证据和历史报告移出 Git
+
+**状态：** 当前工作树已实施；Git 历史重写未执行，未提交未推送。
+
+**决策：** 将 `tests/verification/**/evidence/`、`tests/verification/desktop/od-*/`、`tests/reports/`、`docs/archive/`、`docs/plans/` 与 `audit/` 移出 Git，归档到仓库外的 `MyWorkStation-archive/2026-11-17/test-and-process-evidence`，并生成 `MANIFEST.sha256`。Git 只保留可复跑测试脚本、夹具、架构契约、数据政策与当前决策。
+
+**理由：** 文本证据中包含本机路径、旧 Profile 名和工作材料片段；历史报告与旧计划属于过程记录。公开仓库保留测试能力即可，不需要分发历史运行产物。
+
+**影响：** 历史截图、运行日志、任务证据与报告在仓库内不再可点击；重新运行测试会在本地生成忽略目录。测试脚本与夹具未删除。
+
+**证据：** 移动 37 个目录、1065 个文件，归档体积约 11 MB；`tests/verification` 下已无 `evidence` 与 `od-*` 目录；`tests/reports`、`docs/archive`、`docs/plans`、`audit` 已移出。`.gitignore` 已改为忽略整个 evidence 与 od-* 目录；全树扫描已无个人路径与旧 Profile 名（许可证署名除外）。
+
+**复审触发：** ①需要复现历史运行结果或审阅旧报告；②需要把证据随发布包分发；③需要重写 Git 历史以彻底移除旧证据。
+
+### D-102（2026-11-17，公开仓库个人资料清理已实施）：个人文档与个人写作资产移出 Git，仓库只保留通用模板
+
+**状态：** 当前工作树已实施；Git 历史重写未执行，未提交未推送。
+
+**决策：** 将个人发言稿、个人写作风格库、个人数据根配置和初始化脚本移出 Git，归档到仓库外的 `MyWorkStation-archive/2026-11-17/personal-files`，并生成 `MANIFEST.sha256`。`knowledge/writing-style/` 改为不含个人内容的通用模板；开发 Profile 目录改为中性名称 `profiles/omnidesk-dev/`；`data-template/` 只说明目录骨架，不再依赖个人初始化脚本。
+
+**理由：** 公开仓库应只包含产品代码、通用模板、测试与维护文档。真实讲话稿、个人写作方法、个人数据路径属于用户私有资产，不应随 GitHub 分发。
+
+**影响：** 仓库不再提供个人数据根配置、个人初始化脚本或 `workstations/` 下的个人工作区；开发 Profile 默认名改为 `omnidesk-dev`；`_design` 原始设计参考已移出。已有本地个人资料需继续使用仓库外的归档副本。
+
+**证据：** 归档 15 个个人资料文件，另归档 7 个 `_design` 设计参考文件；个人工作区、个人数据根配置、个人初始化脚本与旧 `knowledge/writing-style/` 已移出工作树；`knowledge/writing-style/` 新建 5 个通用模板；开发 Profile 目录已改名并更新包名。全树扫描已无个人路径与旧 Profile 名（许可证署名除外）；`bash -n` 通过；Rust 定向测试 6/6、91/91 通过。
+
+**复审触发：** ①需要在 GitHub 历史中彻底移除旧个人文件，需重写历史并强制推送；②需要恢复个人写作资产或数据根配置，应从仓库外归档恢复；③进一步清理 `STATUS/REVIEW/PLANS` 中的个人路径与历史记录。
+
+### D-101（2026-11-17，证据归档已实施）：测试截图与任务截图移出 Git（同日由 D-103 扩展为全部证据归档）
+
+**状态：** 已实施；文字证据部分已由 D-103 扩展为全部移出 Git；未提交未推送。
+
+**决策：** 2026-11-17 之前已入库的 1087 张测试截图与任务截图（约 150 MB）移出仓库，归档到仓库外的 `MyWorkStation-archive/2026-11-17/test-evidence-screenshots`，并生成 `MANIFEST.sha256`。当时保留了 603 个已跟踪的文字证据文件；同日 D-103 将这些文字证据、任务证据与历史报告也移出 Git。测试脚本、夹具、架构契约与数据政策继续保留。
+
+**理由：** 仓库体积主要由运行产物而不是测试代码构成；截图对复跑测试不是输入，只会让 clone 和审阅变慢。文字证据继续保留可追溯性，测试脚本继续保留回归能力。
+
+**影响：** 已移动的截图在仓库内不再可点击查看；归档路径由维护者本地保存，不随仓库分发。测试脚本重新运行时会生成本地截图，但不会进入 Git。
+
+**证据：** 移动 1087 个文件，归档体积约 152 MB；当时 `tests/verification/desktop/evidence` 保留 603 个已跟踪文字证据文件；`git status` 显示 1087 个删除；归档清单记录 SHA-256、大小与原始相对路径。
+
+**复审触发：** ①需要把截图随发行包或审阅环境分发；②需要改为 Git LFS 或外部对象存储；③测试脚本依赖历史截图作为输入；④决定重写 Git 历史以缩减 clone 体积。
+
+**同日后续：** D-103 将文字证据、任务证据与历史报告也移出 Git。
+
+### D-100（2026-11-16，授权变更已实施）：OmniDesk 自有代码转 PolyForm Noncommercial 1.0.0，runtime 保持 MIT
+
+**状态：** 已实施（`LICENSE`、`COMMERCIAL-LICENSE.md`、`THIRD-PARTY-NOTICES.md`、`README.md`、`desktop/package.json`、`CHANGELOG.md`）；未提交未推送。
+
+**决策：** 根目录 `LICENSE` 覆盖 OmniDesk 自有代码，采用 PolyForm Noncommercial 1.0.0：个人、学习、研究及非营利用途免费；公司内部使用、为客户交付、付费产品、SaaS、转售和白标等商业用途须取得书面商业授权。`runtime/deepseek-harness` 不重新授权，继续按上游 MIT（Copyright (c) 2026 DeepSeek）分发，声明集中在 `THIRD-PARTY-NOTICES.md`。新授权自 0.2.30 起生效；0.2.29 及更早版本仍按 Apache-2.0，已授予的权利不收回。
+
+**理由：** Apache-2.0 允许商业使用和闭源再分发，无法阻止未经授权的商业利用；PolyForm 把个人非商业使用与商业授权分开，边界比 AGPL 或 BSL 更直接。公开源码仍需依靠许可证执法，不能从技术上阻止复制。
+
+**影响：** 仓库从 OSI 开源许可转为 source-available；GitHub 许可证识别会变化；商业授权需人工签署；`runtime/` 与打包产物中的 MIT 声明必须随分发保留。
+
+**证据：** `LICENSE` 与 SPDX `PolyForm-Noncommercial-1.0.0` 官方文本逐字一致（另加项目版权与 Required Notice）；`desktop/package.json` 可正常解析；`git diff --check` 通过；本次 diff 不含 `runtime/` 路径。未改代码，未运行构建。
+
+**复审触发：** ①商业授权需求出现，需要正式合同模板与价格；②需要恢复 OSI 开源身份（改用 AGPL 或 BSL）；③上游 DSH 许可证变更；④GitHub 或分发渠道对 source-available 标识有特殊要求。
+
 ### D-099（2026-11-15，OD-UI-714 已实施）：历史会话恢复为平台固有入口；归档＝重设本机线程分类
 
 **状态：** 已实施；真实窗口交互待用户实测。
@@ -937,7 +995,7 @@
 - **理由：** 运行时随意装插件是此前多次崩溃/会话丢失的诱因之一；冻结后升级路径可测试、可回滚，符合用户「先能天天用再谈扩展」的原则。
 - **影响：** ①能力管理页去掉/不提供新增入口；②版本升级流程需带「插件清单 + Skill 清单 + 变更说明」三件套；③用户手改文件系统不在产品管控内（预期行为，作者即用户）。
 - **实现落点：** `desktop/src/SettingsPanel.tsx`（能力管理页只保留查看/启停/更新提示，新增「新增插件与 Skill / 随版本升级」说明）；`desktop/src-tauri/src/lib.rs` 移除 `capability_market` 命令及其注册；`desktop/src/{api.ts,types.ts}` 同步去掉 `capabilityMarket`；保留只读的插件/Skill 列表与启停命令。
-- **证据：** 真实窗口截图 `tests/verification/desktop/evidence/od-arch-077/09-capabilities.png` 显示冻结文案且无市场开关；`tests/verification/desktop/evidence/od-arch-077/facts.json` 中 `capability_freeze_copy` / `no_market_entry` / `no_capability_market_cmd` 均为 true（`passed: true`，`missing_checks: []`，`gate_errors: []`）；源码事实见上述文件；用户 2026-10-24 指令「对照 DSH 官方桌面，把除了插件与 skill 外的功能都开发出来……插件定制好后不再新增……skill 平时可以修改但不能随意增加」。
+- **证据：** 该轮真实窗口截图已归档（2026-11-17）；`tests/verification/desktop/evidence/od-arch-077/facts.json` 中 `capability_freeze_copy` / `no_market_entry` / `no_capability_market_cmd` 均为 true（`passed: true`，`missing_checks: []`，`gate_errors: []`）；源码事实见上述文件；用户 2026-10-24 指令「对照 DSH 官方桌面，把除了插件与 skill 外的功能都开发出来……插件定制好后不再新增……skill 平时可以修改但不能随意增加」。
 - **复审触发：** ①出现真实的高价值插件/Skill 需求且冻结带来明显不便时，评估「受控新增」（签名包/白名单）而非放开自由安装；②用户开始分发给同事（打包阶段）时，需补版本升级的用户侧体验设计。
 
 ### D-031（2026-10-26，OD-KB-001 P1 已实施，待独立审查）：知识库使用独立的只读根

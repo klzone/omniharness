@@ -21,7 +21,7 @@ HOME = Path.home()
 SNAPSHOT_ROOTS = {
     "repo": REPO,
     "omnidesk_root": HOME / "OmniDesk",
-    "yvanai": HOME / "OmniDeskData",
+    "external_data": HOME / "OmniDeskData",
     "stock_dsh": HOME / ".dsh",
     "stock_agents": HOME / ".agents",
 }

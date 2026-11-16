@@ -20,7 +20,7 @@
 #   scripts/omnidesk-dev.sh --dry-run       # 打印将要执行的完整命令
 #   scripts/omnidesk-dev.sh web             # 同上（web 为显式写法）
 #   scripts/omnidesk-dev.sh web --port 3090 # 指定端口启动 Web UI
-#   scripts/omnidesk-dev.sh --profile omnidesk-dev --no-open
+#   OMNIDESK_PROFILE=omnidesk-dev scripts/omnidesk-dev.sh --no-open
 #   scripts/omnidesk-dev.sh --sync          # 启动前把仓库 Skills 同步到隔离根
 #
 # 说明：DSH 的 `dsh <name>` 等价于 `dsh --profile <name>`，`web` 本身就是一个

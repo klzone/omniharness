@@ -24,6 +24,10 @@ build/
 tmp/
 *.tmp
 
+# Test evidence and per-task run artifacts (archived outside Git; scripts regenerate locally)
+tests/verification/**/evidence/
+tests/verification/desktop/od-*/
+
 
 # Python cache
 __pycache__/

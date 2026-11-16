@@ -12,7 +12,7 @@ user-invocable: true
 ## 〇、参考资产与数据边界
 
 写作风格与避坑规则位于本 Skill 目录下：`references/writing-style/`（由
-`scripts/sync-skills.sh` 从仓库 `knowledge/writing-style/` 物化）。
+`scripts/sync-skills.sh` 从仓库 `knowledge/writing-style/` 模板物化；用户可在本地替换为个人规则）。
 审查前应用 read 工具**实际读取**所需规则文件；未读取的规则不得在报告中声明为已核验。
 若 `references/` 不存在，说明资产未物化，须在报告中说明并提示执行同步。
 

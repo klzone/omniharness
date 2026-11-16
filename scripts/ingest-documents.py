@@ -35,7 +35,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 SOFFICE_CANDIDATES = [
     os.environ.get("OMNIDESK_SOFFICE", ""),
-    "<local-home>/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override/soffice",
     "/snap/bin/libreoffice",
     "/usr/bin/libreoffice",
     "/usr/bin/soffice",

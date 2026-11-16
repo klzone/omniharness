@@ -59,12 +59,12 @@
     python3 tests/verification/engine-interface/adapter/run_engine_adapter_scenarios.py            # E01–E20 全部
     python3 tests/verification/engine-interface/adapter/run_engine_adapter_scenarios.py E05 E18    # 指定场景
 
-驱动使用**一次性临时数据根**（`/tmp/omni_p1s3_*`）与本机回环合成模型端点（零凭证、零外网），绝不写入 `~/.dsh`、`~/.agents`、`~/OmniDesk`、`~/OmniDeskData`。
+驱动使用**一次性临时数据根**（`/tmp/omni_p1s3_*`）与本机回环合成模型端点（零凭证、零外网），绝不写入 `~/.dsh`、`~/.agents`、`~/OmniDesk` 或外部数据根。
 
 ## 6. 证据位置
 
-- 逐场景证据：`tests/verification/engine-interface/evidence/adapter/E01.json … E20.json`（含真实输入、原始帧/事件、标准化结果、判定与证据路径）
-- 交付报告：[tests/reports/p1-engine-adapter-prototype-report.md](../tests/reports/p1-engine-adapter-prototype-report.md)
+- 逐场景证据：运行脚本会在 `tests/verification/engine-interface/evidence/` 本地重新生成，不进入 Git。
+- 历史交付报告已归档到仓库外 `MyWorkStation-archive/2026-11-17/test-and-process-evidence/tests/reports/`。
 - 隔离副作用探针：`tests/verification/engine-interface/probes/probe_isolation_sideeffects.py`
 
 ## 7. 已知语义缺口

@@ -2,20 +2,17 @@
 # ==============================================================================
 # OmniDesk 一键初始化（download-and-run）
 #
-# 目的：克隆本仓库后，用一条命令完成「准备底座 -> 初始化数据骨架 -> 同步技能」，
+# 目的：克隆本仓库后，用一条命令完成「准备底座 -> 同步技能」，
 #       得到一个可启动、与你验证版本一致的 OmniDesk 环境。
 #
 # 设计约束：
-#   1. 只在仓库内与 ~/OmniDeskData（外部数据）写入，绝不触碰 ~/.dsh、~/.agents 或系统 DSH。
+#   1. 只在仓库内与外部数据根写入，绝不触碰 ~/.dsh、~/.agents 或系统 DSH。
 #   2. 底座版本来自 runtime/RUNTIME.lock，不追「最新版」。
 #   3. 任一步失败即停止，并说明如何手动重跑该步。
 #   4. 不询问、不删除、不迁移任何已有 DSH 数据。
 #
-# 关于 ~/OmniDeskData（历史数据根，口径定案见 OD-ARCH-056）：
-#   ~/OmniDeskData 是本项目早期的个人数据根。那里的既有数据继续被**只读**使用：
-#   不迁移、不改名、不覆盖、不删除。新部署仍然初始化到该路径，是为了让
-#   init-yvan-data.sh 与既有安装保持同一行为（改了默认路径会让老机器被
-#   当成新机器，产生第二套骨架）。
+# 外部数据根由用户自行选择，默认 `~/OmniDeskData`，可用
+# `OMNIDESK_DATA_ROOT` 覆盖。仓库不附带个人数据初始化脚本。
 #   **桌面端成果不写这个目录**：OmniDesk 的新成果落在
 #   ~/OmniDesk/workspace/artifacts（或用户在设置页绑定的 vault 目录），
 #   见 docs/OmniDesk-Desktop-Data-Layout.md 第 5 节。
@@ -49,21 +46,14 @@ run_check() {
   fi
 }
 
-info "1/3 校验并准备运行底座（锁定版本）"
+info "1/2 校验并准备运行底座（锁定版本）"
 if [ "$CHECK_ONLY" -eq 1 ]; then
   run_check "运行底座" bash "$SCRIPT_DIR/bootstrap-runtime.sh" --check
 else
   bash "$SCRIPT_DIR/bootstrap-runtime.sh" || die "底座准备失败；可手动重跑：scripts/bootstrap-runtime.sh"
 fi
 
-info "2/3 初始化外部数据骨架（~/OmniDeskData）"
-if [ "$CHECK_ONLY" -eq 1 ]; then
-  info "（--check）跳过数据骨架初始化。"
-else
-  [ -x "$SCRIPT_DIR/init-yvan-data.sh" ] && bash "$SCRIPT_DIR/init-yvan-data.sh" || info "跳过（未找到 init-yvan-data.sh）。"
-fi
-
-info "3/3 同步技能到隔离运行时"
+info "2/2 同步技能到隔离运行时"
 if [ "$CHECK_ONLY" -eq 1 ]; then
   run_check "Skill 同步状态" bash "$SCRIPT_DIR/sync-skills.sh" --check
 else

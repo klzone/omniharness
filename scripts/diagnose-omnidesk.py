@@ -14,6 +14,10 @@
   python3 scripts/diagnose-omnidesk.py
   python3 scripts/diagnose-omnidesk.py --json
   python3 scripts/diagnose-omnidesk.py --app-root ~/OmniDesk/app --latest 3
+
+OD-ARCH-173 阶段 0：追加只读会话解析（--sessions）。只输出字符数、耗时、
+次数与 token 元数据；系统提示词按段落归类后只报每类字符数，不输出任何
+提示词、用户消息、工具参数或任务正文。
 """
 from __future__ import annotations
 
@@ -28,6 +32,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Mapping
 from urllib.parse import urlparse
 
 REDACT_KEYS = ("api-key", "api_key", "apikey", "token", "secret", "password")
@@ -254,6 +259,392 @@ def log_snapshot(app_root: Path) -> list[dict[str, object]]:
     return rows
 
 
+# ---------------------------------------------------------------------------
+# OD-ARCH-173 阶段 0：DSH 会话（session.v4.jsonl.zstd）只读元数据解析
+# ---------------------------------------------------------------------------
+
+SESSION_PROMPT_BUCKETS = (
+    "base",
+    "persona",
+    "web-search",
+    "ptc-runtime",
+    "tool-guidance",
+    "harness-guidance",
+    "discipline-rules",
+    "other",
+)
+
+
+def default_session_root(app_root: Path) -> Path:
+    """默认会话根：<OmniDesk>/runtime/dsh-home/sessions（app_root 的上一级）。"""
+    return app_root.parent / "runtime" / "dsh-home" / "sessions"
+
+
+def decode_session_file(path: Path) -> str | None:
+    """解压 session.v4.jsonl.zstd；只接受 .zstd 或 .jsonl 文件。"""
+    try:
+        if path.suffix == ".jsonl":
+            return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    zstd = shutil.which("zstd")
+    if not zstd:
+        return None
+    try:
+        result = subprocess.run(
+            [zstd, "-dc", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def classify_prompt_paragraph(paragraph: str) -> str:
+    """按系统提示词的稳定起头归类；未知段落计入 other。"""
+    head = paragraph.lstrip().splitlines()[0].strip() if paragraph.strip() else ""
+    if head.startswith("You are an AI agent powered by DeepSeek Harness"):
+        return "base"
+    if head.startswith("You are a coding agent powered by"):
+        return "persona"
+    if head.startswith("你是 OmniDesk") or "个人工作台账助手" in head:
+        return "persona"
+    if head.startswith("## Web search"):
+        return "web-search"
+    if (
+        head.startswith("interface Tool")
+        or head.startswith("`run_code`")
+        or head.startswith("## Writing code for run_code")
+        or head.startswith("Inside the program")
+        or head.startswith("- Call tools as `await tools.name(args)`")
+        or head.startswith("Program-only SDK bindings")
+        or head.startswith("```ts")
+        or head.startswith("type ToolName = keyof ToolOutputMap")
+        or head.startswith("declare class ToolCallError")
+        or head.startswith("declare const tools:")
+    ):
+        return "ptc-runtime"
+    if head.startswith(("检索收敛规则", "工具批处理规则", "检索预算规则", "工具选择规则")):
+        return "discipline-rules"
+    if (
+        "DeepSeek Harness Web GUI" in paragraph
+        or "runtime context names the DeepSeek Harness" in paragraph
+    ):
+        return "harness-guidance"
+    if head.startswith(
+        (
+            "Tokens prefixed with @",
+            "Use the ",
+            "Read an ",
+            "Read a file before",
+            "Check the [exit code:",
+            "web_search results",
+            "web_fetch returns",
+        )
+    ):
+        return "tool-guidance"
+    return "other"
+
+
+def system_prompt_segments(text: str) -> dict[str, object]:
+    """系统提示词分段字符数（只报分类与字符数，不保留原文）。"""
+    buckets: dict[str, int] = {name: 0 for name in SESSION_PROMPT_BUCKETS}
+    segments = 0
+    start = 0
+    length = len(text)
+    while start <= length:
+        end = text.find("\n\n", start)
+        para = text[start:] if end == -1 else text[start:end]
+        if para.strip():
+            segments += 1
+            buckets[classify_prompt_paragraph(para)] += len(para)
+        if end == -1:
+            break
+        start = end + 2
+    return {"chars": length, "segments": segments, "buckets": buckets}
+
+
+def _indexed_name(value: object, depth: int = 0) -> str | None:
+    """从事件 data 里取工具名（只返回名字，不取参数或正文）。"""
+    if depth > 3 or not isinstance(value, Mapping):
+        return None
+    for key in ("tool", "toolName", "name", "tool_name"):
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()[:80]
+    for key in ("call", "toolCall", "data"):
+        nested = value.get(key)
+        if isinstance(nested, Mapping):
+            name = _indexed_name(nested, depth + 1)
+            if name:
+                return name
+    return None
+
+
+def _usage_numbers(usage: object) -> dict[str, int]:
+    out = {"input": 0, "output": 0, "total": 0, "cache_read": 0}
+    if not isinstance(usage, Mapping):
+        return out
+    for key, alias in (
+        ("inputTokens", "input"),
+        ("input_tokens", "input"),
+        ("outputTokens", "output"),
+        ("output_tokens", "output"),
+        ("totalTokens", "total"),
+        ("total_tokens", "total"),
+        ("cacheReadTokens", "cache_read"),
+        ("cache_read_tokens", "cache_read"),
+    ):
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            out[alias] += int(value)
+    return out
+
+
+def _message_body(data: object) -> Mapping[str, object]:
+    """user/message 的 data 有两种形状：包一层 message 或直接是消息。"""
+    if isinstance(data, Mapping):
+        nested = data.get("message")
+        if isinstance(nested, Mapping):
+            return nested
+        return data
+    return {}
+
+
+def session_metadata(session_dir: Path) -> dict[str, object] | None:
+    path = session_dir / "session.v4.jsonl.zstd"
+    if not path.is_file():
+        path = session_dir / "session.v4.jsonl"
+        if not path.is_file():
+            return None
+    text = decode_session_file(path)
+    if text is None:
+        return {"session": session_dir.name, "error": "decode_failed"}
+
+    events: list[Mapping[str, object]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(parsed, Mapping):
+            events.append(parsed)
+
+    session_meta = next((e for e in events if e.get("type") == "session"), {})
+    provider = None
+    model = None
+    context_window = None
+    for event in events:
+        if event.get("type") == "request/context":
+            data = event.get("data") or {}
+            if isinstance(data, Mapping):
+                provider = data.get("provider")
+                model = data.get("model")
+                context_window = data.get("contextWindow")
+                break
+
+    system_text_parts: list[str] = []
+    injected: dict[str, int] = {
+        "user": 0,
+        "runtime-context": 0,
+        "skill-catalog": 0,
+        "time-context": 0,
+        "other": 0,
+    }
+    turns: dict[int, dict[str, object]] = {}
+    tool_calls = 0
+    tool_names: list[str] = []
+    approvals = 0
+    retries = 0
+    attempts = 0
+    compactions = 0
+    event_types: dict[str, int] = {}
+
+    def turn_slot(number: int) -> dict[str, object]:
+        return turns.setdefault(
+            number,
+            {
+                "start_ms": None,
+                "end_ms": None,
+                "first_chunk_ms": None,
+                "message_ms": None,
+                "rounds": 0,
+                "tool_calls": 0,
+                "usage": {"input": 0, "output": 0, "total": 0, "cache_read": 0},
+                "user_chars": 0,
+            },
+        )
+
+    for event in events:
+        event_type = str(event.get("type") or "")
+        event_types[event_type] = event_types.get(event_type, 0) + 1
+        time_ms = event.get("time")
+        data = event.get("data") or {}
+
+        if event_type == "system/message":
+            body = _message_body(data)
+            for block in body.get("content") or []:
+                if isinstance(block, Mapping) and block.get("type") == "text":
+                    system_text_parts.append(str(block.get("text") or ""))
+            continue
+
+        if event_type == "user/message":
+            body = _message_body(data)
+            source = body.get("source") if isinstance(body.get("source"), Mapping) else {}
+            kind = str(source.get("kind") or "other")
+            chars = sum(
+                len(str(block.get("text") or ""))
+                for block in (body.get("content") or [])
+                if isinstance(block, Mapping)
+            )
+            injected[kind if kind in injected else "other"] += chars
+            if kind == "user" and event.get("data", {}).get("turn") is not None:
+                slot = turn_slot(int(data["turn"]))
+                slot["user_chars"] = int(slot["user_chars"]) + chars
+            continue
+
+        if event_type == "turn/start" and time_ms is not None:
+            slot = turn_slot(int(data.get("turn") or 0))
+            slot["start_ms"] = time_ms
+            continue
+        if event_type == "turn/end" and time_ms is not None:
+            slot = turn_slot(int(data.get("turn") or 0))
+            slot["end_ms"] = time_ms
+            continue
+
+        if event_type == "assistant/message":
+            slot = turn_slot(int(data.get("turn") or 0))
+            slot["rounds"] = int(slot["rounds"]) + 1
+            usage = _usage_numbers(data.get("usage"))
+            merged = slot["usage"]
+            for key, value in usage.items():
+                merged[key] += value
+            if time_ms is not None:
+                slot["message_ms"] = time_ms
+            first_chunk = None
+            for entry in data.get("stream") or []:
+                chunk_time = entry.get("time") if isinstance(entry, Mapping) else None
+                if isinstance(chunk_time, (int, float)) and (
+                    first_chunk is None or chunk_time < first_chunk
+                ):
+                    first_chunk = chunk_time
+            if first_chunk is not None and slot["first_chunk_ms"] is None:
+                slot["first_chunk_ms"] = first_chunk
+            continue
+
+        if event_type == "tool/call":
+            tool_calls += 1
+            name = _indexed_name(data)
+            if name:
+                tool_names.append(name)
+            turn_number = data.get("turn") if isinstance(data, Mapping) else None
+            if isinstance(turn_number, (int, float)):
+                slot = turn_slot(int(turn_number))
+                slot["tool_calls"] = int(slot["tool_calls"]) + 1
+            continue
+
+        # DSH 会话里审批请求既有 approval/request（适配层）也有 approval/asked（会话事件）。
+        if event_type in {"approval/request", "approval/asked"}:
+            approvals += 1
+            continue
+        if event_type in {"llm/retry", "llm/retry-started"}:
+            retries += 1
+            continue
+        if event_type == "assistant/attempt":
+            attempts += 1
+            continue
+        if "compact" in event_type.lower():
+            compactions += 1
+
+    system_prompt = system_prompt_segments("\n".join(system_text_parts))
+    turn_rows: list[dict[str, object]] = []
+    for number in sorted(turns):
+        slot = turns[number]
+        start_ms = slot["start_ms"]
+        end_ms = slot["end_ms"]
+        first_chunk_ms = slot["first_chunk_ms"]
+        message_ms = slot["message_ms"]
+        total_s = None
+        ttft_s = None
+        if isinstance(start_ms, (int, float)):
+            if isinstance(end_ms, (int, float)):
+                total_s = round((end_ms - start_ms) / 1000, 2)
+            marker = first_chunk_ms if isinstance(first_chunk_ms, (int, float)) else message_ms
+            if isinstance(marker, (int, float)):
+                ttft_s = round((marker - start_ms) / 1000, 2)
+        turn_rows.append(
+            {
+                "turn": number,
+                "total_seconds": total_s,
+                "first_response_seconds": ttft_s,
+                "model_rounds": slot["rounds"],
+                "tool_calls": slot["tool_calls"],
+                "usage": slot["usage"],
+                "user_chars": slot["user_chars"],
+            }
+        )
+
+    return {
+        "session": session_dir.name,
+        "project": session_dir.parent.name,
+        "file": path.name,
+        "size_bytes": path.stat().st_size,
+        "created_at": session_meta.get("createdAt"),
+        "cwd": session_meta.get("cwd"),
+        "provider": provider,
+        "model": model,
+        "context_window": context_window,
+        "system_prompt": system_prompt,
+        "injected_chars": injected,
+        "turns": turn_rows,
+        "tool_calls": tool_calls,
+        "tool_names": sorted(set(tool_names)),
+        "approvals": approvals,
+        "retries": retries,
+        "assistant_attempts": attempts,
+        "compactions": compactions,
+        "event_types": event_types,
+    }
+
+
+def session_snapshot(
+    session_root: Path, limit: int, session_id: str | None = None
+) -> list[dict[str, object]]:
+    if not session_root.is_dir():
+        return []
+    candidates: list[Path] = []
+    if session_id:
+        for project in session_root.iterdir():
+            if not project.is_dir():
+                continue
+            candidate = project / session_id
+            if candidate.is_dir():
+                candidates.append(candidate)
+    else:
+        for project in session_root.iterdir():
+            if not project.is_dir():
+                continue
+            candidates.extend(p for p in project.iterdir() if p.is_dir())
+    candidates.sort(
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
+    rows: list[dict[str, object]] = []
+    for path in candidates[:limit]:
+        row = session_metadata(path)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
 def web_snapshot(app_root: Path) -> dict[str, object]:
     """Search-provider evidence: takeover lines from engine stderr + profile bundles.
 
@@ -302,8 +693,14 @@ def web_snapshot(app_root: Path) -> dict[str, object]:
     return info
 
 
-def build_report(app_root: Path, latest: int) -> dict[str, object]:
-    return {
+def build_report(
+    app_root: Path,
+    latest: int,
+    sessions: int = 0,
+    session_root: Path | None = None,
+    session_id: str | None = None,
+) -> dict[str, object]:
+    report: dict[str, object] = {
         "budget": {
             "tool_rounds_max": 8,
             "evidence_read_once": True,
@@ -326,6 +723,13 @@ def build_report(app_root: Path, latest: int) -> dict[str, object]:
         "tasks": task_snapshot(app_root, latest),
         "logs": log_snapshot(app_root),
     }
+    if sessions > 0:
+        root = session_root if session_root is not None else default_session_root(app_root)
+        report["sessions"] = {
+            "root": str(root),
+            "rows": session_snapshot(root, sessions, session_id),
+        }
+    return report
 
 
 def print_text(report: dict[str, object]) -> None:
@@ -390,6 +794,53 @@ def print_text(report: dict[str, object]) -> None:
     for line in web.get("free_search_takeover_lines") or []:
         print(f"takeover: {line}")
 
+    sessions = report.get("sessions")
+    if not sessions:
+        return
+    print("\n== recent sessions (metadata only) ==")
+    print(f"session_root: {sessions.get('root')}")
+    rows = sessions.get("rows") or []
+    if not rows:
+        print("(none)")
+        return
+    for row in rows:
+        if row.get("error"):
+            print(f"{row.get('session')}: error={row.get('error')}")
+            continue
+        prompt = row.get("system_prompt") or {}
+        buckets = prompt.get("buckets") or {}
+        bucket_text = " ".join(
+            f"{name}={buckets.get(name, 0)}" for name in SESSION_PROMPT_BUCKETS
+        )
+        print(
+            f"{row.get('session')} [{row.get('project')}] "
+            f"model={row.get('provider')}/{row.get('model')} "
+            f"context={row.get('context_window')}"
+        )
+        print(
+            f"  prompt_chars: system={prompt.get('chars', 0)} "
+            f"segments={prompt.get('segments', 0)} | {bucket_text}"
+        )
+        injected = row.get("injected_chars") or {}
+        print(
+            "  injected_chars: "
+            + " ".join(f"{name}={value}" for name, value in injected.items())
+        )
+        print(
+            f"  tool_calls={row.get('tool_calls')} names={row.get('tool_names')} "
+            f"approvals={row.get('approvals')} retries={row.get('retries')} "
+            f"attempts={row.get('assistant_attempts')} compactions={row.get('compactions')}"
+        )
+        for turn in row.get("turns") or []:
+            usage = turn.get("usage") or {}
+            print(
+                f"  turn {turn.get('turn')}: total={turn.get('total_seconds')}s "
+                f"first_response={turn.get('first_response_seconds')}s "
+                f"rounds={turn.get('model_rounds')} tools={turn.get('tool_calls')} "
+                f"in={usage.get('input', 0)} out={usage.get('output', 0)} "
+                f"cache_read={usage.get('cache_read', 0)}"
+            )
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -399,11 +850,30 @@ def main() -> int:
         default=Path(os.environ.get("HOME", "~")).expanduser() / "OmniDesk" / "app",
     )
     ap.add_argument("--latest", type=int, default=3, help="最近任务快照数量")
+    ap.add_argument(
+        "--sessions",
+        type=int,
+        default=0,
+        help="解析最近 N 个 DSH 会话的提示词/耗时/token 元数据（0 = 关闭）",
+    )
+    ap.add_argument(
+        "--session-root",
+        type=Path,
+        default=None,
+        help="DSH sessions 目录（默认 app_root 上一级的 runtime/dsh-home/sessions）",
+    )
+    ap.add_argument("--session-id", default=None, help="只解析指定会话 id")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     args = ap.parse_args()
 
     app_root = args.app_root.expanduser().resolve()
-    report = build_report(app_root, max(1, min(args.latest, 20)))
+    report = build_report(
+        app_root,
+        max(1, min(args.latest, 20)),
+        sessions=max(0, min(args.sessions, 50)),
+        session_root=args.session_root.expanduser().resolve() if args.session_root else None,
+        session_id=(args.session_id or "").strip() or None,
+    )
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:

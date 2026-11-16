@@ -124,5 +124,9 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 
 ## License
 
-Apache-2.0
+OmniDesk 自有代码（`desktop/`、`engine/`、`skills/`、`docs/` 等）采用 [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)。个人、学习、研究及非营利用途可免费使用；公司内部使用、为客户交付、付费产品、SaaS、转售和白标等商业用途须取得商业授权，见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
+
+`runtime/` 中的 DeepSeek Harness 及其依赖仍按各自许可证分发，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+本授权自 0.2.30 起生效。0.2.29 及更早版本仍按 Apache-2.0 授权，已授予的权利不因本次变更收回。
 

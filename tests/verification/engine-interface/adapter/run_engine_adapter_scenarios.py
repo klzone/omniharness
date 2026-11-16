@@ -1281,8 +1281,8 @@ def e20(result, root):
     result.check("idle_control_isolation_holds",
                  not any(idle_drift[k]["added_count"] or idle_drift[k]["removed_count"]
                          or idle_drift[k]["changed_count"]
-                         for k in ("agents_home", "omnidesk_root", "yvanai_root")),
-                 {k: idle_drift[k] for k in ("agents_home", "omnidesk_root", "yvanai_root")})
+                         for k in ("agents_home", "omnidesk_root", "external_data_root")),
+                 {k: idle_drift[k] for k in ("agents_home", "omnidesk_root", "external_data_root")})
 
     # 以空闲窗口结束时的状态作为复跑的基线，避免把空闲期的第三方写入算进复跑。
     baseline = idle_after

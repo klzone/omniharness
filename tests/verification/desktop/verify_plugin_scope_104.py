@@ -29,7 +29,7 @@ BASE_SAMPLE = REPO / "samples" / "profiles" / "omnidesk-base.profile.patch.yml"
 RUNTIME = REPO / "runtime" / "dsh-runtime"
 BIN = RUNTIME / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
 OFFICE = RUNTIME / "node_modules" / "@deepseek-ai" / "dsh-skill-office"
-DSH_HOME = Path(os.environ.get("OMNIDESK_DSH_HOME", "<local-data-root>/OmniDesk/runtime/dsh-home"))
+DSH_HOME = Path(os.environ.get("OMNIDESK_DSH_HOME", str(Path.home() / "OmniDesk" / "runtime" / "dsh-home")))
 REAL_PATCH = DSH_HOME / "profiles" / "discipline" / "cordis.patch.yml"
 
 

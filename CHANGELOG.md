@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit 与 npm run build：通过。
 - 工作记录相关 verify 脚本 301/502/503/504/505/506/507/508/509 全通过。
 
-## [Unreleased] - 2026-11-10
+## [Unreleased] - 2026-11-16
 
 ### Added
 - 首页 2.0 版式：问候带系统用户名（只读命令 `desktop_user_name`）、四张真实入口卡片、底部真实场景快捷入口、右上淡蓝山海背景插画（`desktop/public/home-scape.png`）。
@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
 - 线程存储新增“未知前端字段原样保存与读回”的 Rust 回归测试。
 
 ### Changed
+- 授权：OmniDesk 自有代码自 0.2.30 起改用 PolyForm Noncommercial 1.0.0，商业用途须取得书面商业授权；0.2.29 及更早版本仍按 Apache-2.0 授权；`runtime/` 维持上游 MIT。
+- 工程：2026-11-17 之前的测试截图、任务证据与历史报告移出 Git，归档到仓库外；Git 保留测试脚本、夹具与架构契约。
+- 仓库清理：个人发言稿、个人写作风格、个人数据根配置和初始化脚本移出 Git；写作风格改为通用模板，开发 Profile 改为中性名称，公开仓库不再包含个人文档。
 - 发布形态：0.2.18 起只提供安装包（macOS universal dmg、Windows NSIS setup.exe），发布工作流不再组装便携 zip。
 - 首页二次修订：去掉四张入口卡片、问候下方说明句与手掌表情；底部胶囊改为最近五个项目；对话开始后收起问候区，历史记录占满上方空间。
 - 首页按新参考图重排：顶栏 30px 圆角；左侧 Dock 收进胶囊导轨，当前项为品牌靛实心圆；输入面板改为 26px 凸起带淡紫光晕；空态标语改为两侧分隔线夹一行演示夏行楷（靛蓝灰 `#615A85`）。

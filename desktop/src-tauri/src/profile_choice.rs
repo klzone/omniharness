@@ -10,7 +10,7 @@
 //! OD-ARCH-082 S6 白名单口径：
 //!   * web-api 通道只列 `omnidesk-base`（默认）与 `discipline`。
 //!   * acp 通道只列 `acp`。
-//!   * 既有保存值（如 omnidesk-dev）不在白名单时：**保留设置原值不变**，本次回落默认，
+//!   * 既有保存值（如 legacy-work）不在白名单时：**保留设置原值不变**，本次回落默认，
 //!     并通过 `saved_out_of_whitelist: true` 显式告知前端做诚实提示。
 //!
 //! 证据等级：本文件为 static（源码事实）；模块内测试为 script（Rust 测试运行）。
@@ -86,7 +86,7 @@ pub fn list(_dsh_home: &Path, channel: &str) -> Vec<ProfileOption> {
 /// 白名单 + 用户自建 Profile（OD-ARCH-109 补充）。
 ///
 /// 自定义 Profile 只认应用数据根 `profiles/index.v1.json` 里登记、且隔离根里真有
-/// `package.json` 的那些；`web` / `omnidesk-dev` 等历史遗留目录不会被当成可选项。
+/// `package.json` 的那些；`web` / `legacy-work` 等历史遗留目录不会被当成可选项。
 pub fn list_all(dsh_home: &Path, channel: &str, app_root: &Path) -> Vec<ProfileOption> {
     let mut out = list(dsh_home, channel);
     let registered = crate::profile_lifecycle::load_registry(app_root);
@@ -121,7 +121,7 @@ pub fn is_selectable(channel: &str, app_root: &Path, name: &str) -> bool {
 
 /// 解析本次启动实际使用的 Profile：
 ///   * 用户没有选择（None）→ 通道标准 Profile；
-///   * 用户选了但不在白名单内（如旧值 omnidesk-dev）→ **保留设置原样，本次回落默认**；
+///   * 用户选了但不在白名单内（如旧值 legacy-work）→ **保留设置原样，本次回落默认**；
 ///   * 用户选了且在白名单内，但目录/清单不存在 → 明确报错，不静默回退。
 pub fn resolve(
     dsh_home: &Path,
@@ -191,9 +191,9 @@ mod tests {
     #[test]
     fn resolve_falls_back_for_out_of_whitelist_saved_profile() {
         let root = temp_root("out-of-whitelist");
-        seed(&root, "omnidesk-dev", "dsh-profile-yvan");
-        // omnidesk-dev 真实存在但在白名单外，回落到默认 omnidesk-base
-        assert_eq!(resolve(&root, "web-api", Some("omnidesk-dev"), None).unwrap(), "omnidesk-base");
+        seed(&root, "legacy-work", "dsh-profile-legacy");
+        // legacy-work 真实存在但在白名单外，回落到默认 omnidesk-base
+        assert_eq!(resolve(&root, "web-api", Some("legacy-work"), None).unwrap(), "omnidesk-base");
     }
 
     #[test]
@@ -216,11 +216,11 @@ mod tests {
         let root = temp_root("list");
         seed(&root, "omnidesk-base", "dsh-profile-omnidesk-base");
         seed(&root, "discipline", "dsh-profile-discipline");
-        seed(&root, "omnidesk-dev", "dsh-profile-yvan");
+        seed(&root, "legacy-work", "dsh-profile-legacy");
         let items = list(&root, "web-api");
         let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(names, vec!["omnidesk-base", "discipline"]);
-        assert!(!names.contains(&"omnidesk-dev"), "omnidesk-dev 不应出现在白名单列表中");
+        assert!(!names.contains(&"legacy-work"), "legacy-work 不应出现在白名单列表中");
 
         let base = items.iter().find(|i| i.name == "omnidesk-base").unwrap();
         assert!(base.standard);
@@ -241,7 +241,7 @@ mod tests {
         let app = root.join("app");
         std::fs::create_dir_all(&app).unwrap();
         seed(&root, "my-work", "dsh-profile-my-work");
-        seed(&root, "omnidesk-dev", "dsh-profile-yvan");
+        seed(&root, "legacy-work", "dsh-profile-legacy");
 
         // 未登记：仍回落默认
         assert_eq!(
@@ -266,13 +266,13 @@ mod tests {
         );
         // 历史遗留目录未登记，仍然回落到默认
         assert_eq!(
-            resolve(&root, "web-api", Some("omnidesk-dev"), Some(&app)).unwrap(),
+            resolve(&root, "web-api", Some("legacy-work"), Some(&app)).unwrap(),
             "omnidesk-base"
         );
         let options = list_all(&root, "web-api", &app);
         let names: Vec<&str> = options.iter().map(|o| o.name.as_str()).collect();
         assert!(names.contains(&"my-work"));
-        assert!(!names.contains(&"omnidesk-dev"));
+        assert!(!names.contains(&"legacy-work"));
     }
 }
 

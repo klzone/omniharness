@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# OmniDesk / OmniDesk — 工作站数据与资产备份脚本
-# 功能：对 ~/OmniDesk 或 ~/OmniDeskData 外部资产以及 ~/.dsh 会话进行完整安全镜像归档
+# OmniDesk — 工作站数据与资产备份脚本
+# 功能：对 ~/OmniDesk 或外部数据根以及 ~/.dsh 会话进行完整安全镜像归档
 # ==============================================================================
 set -euo pipefail
 
@@ -9,7 +9,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_ROOT="${1:-$HOME/OmniDesk/backups}"
 BACKUP_DEST="$BACKUP_ROOT/backup_${TIMESTAMP}"
 DSH_DIR="$HOME/.dsh"
-DATA_DIR="$HOME/OmniDeskData"
+DATA_DIR="${OMNIDESK_DATA_ROOT:-$HOME/OmniDeskData}"
 OMNI_DATA_DIR="$HOME/OmniDesk"
 
 mkdir -p "$BACKUP_DEST"
@@ -42,7 +42,7 @@ if [ -d "$DSH_DIR/profiles/desktop" ]; then
   echo "OK"
 fi
 
-# 3. 备份个人外部资产 (~/OmniDeskData 或 ~/OmniDesk 中的知识库与记忆库)
+# 3. 备份外部资产（${OMNIDESK_DATA_ROOT:-~/OmniDeskData} 或 ~/OmniDesk 中的知识库与记忆库）
 echo -n "[4/4] 正在归档核心长期记忆与本地资产... "
 if [ -d "$DATA_DIR/memory" ]; then
   mkdir -p "$BACKUP_DEST/external_memory"

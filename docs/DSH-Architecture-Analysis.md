@@ -131,7 +131,7 @@ cordis.patch.yml 是用户定制的核心文件。你当前的配置已经在做
 #### Session 保存位置
 
     ~/.dsh/sessions/
-    ├── --user-home--/               ← 按工作目录编码
+    ├── --user-home--/                ← 按工作目录编码
     │   ├── session-<uuid>/
     │   │   ├── session.v4.jsonl.zstd   ← v4 格式，Zstandard 压缩 JSONL
     │   │   ├── session.v4.jsonl.zstd.bak-*  ← 自动备份

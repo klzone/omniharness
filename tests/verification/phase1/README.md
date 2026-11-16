@@ -1,7 +1,7 @@
 # OmniDesk Phase 1 验证材料（可重复执行）
 
-本目录是 `tests/reports/phase1-verification-report.md` 的可执行配套。所有会写入的动作都发生在
-`/tmp` 下的一次性沙箱或一次性副本内；仓库、`~/OmniDesk`、`~/OmniDeskData`、`~/.dsh`、`~/.agents`
+本目录是可复跑的 Phase 1 验证脚本。所有会写入的动作都发生在
+`/tmp` 下的一次性沙箱或一次性副本内；仓库、`~/OmniDesk`、外部数据根、`~/.dsh`、`~/.agents`
 全程只读或仅做元数据快照。
 
 ## 1. 只读副作用验证（`setup.sh --check`）

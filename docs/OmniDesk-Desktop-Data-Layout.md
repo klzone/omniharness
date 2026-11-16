@@ -50,7 +50,7 @@
 
 在真实环境 `ls` 核实（应用已至少运行过一次，`ensure()` 已生效）：
 
-    <local-data-root>/OmniDesk/app/
+    ~/OmniDesk/app/
     ├── config/
     ├── engine-state/
     │   └── results/
@@ -126,7 +126,7 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
 **frontmatter（仅新文件）：** 两条保存路径在写正文前注入固定的 5 个字段——`scenario`、`title`、`created`（ISO 8601，`YYYY-MM-DDTHH:MM:SSZ`）、`tags`（`["omnidesk", <scenario>]`）、`omnidesk_version`（当前 `omnidesk-task-shell/1`）。渲染函数是 `render_frontmatter()`，单测断言可被 `serde_yaml` 解析、非法字符会加引号转义。frontmatter 属于元数据，不参与输入红线扫描（扫描仍只作用于用户原文）。
 
-**不改造既有文件：** 已在目录里的成果（含旧 OmniDeskData 位置的）保持字节级不变，不补写 frontmatter、不迁移、不改名、不删除；单测用「先放一份无 frontmatter 的历史成果 → 写入新成果 → 断言历史文件字节不变」覆盖这条边界。
+**不改造既有文件：** 已在目录里的成果（含旧外部数据根位置的）保持字节级不变，不补写 frontmatter、不迁移、不改名、不删除；单测用「先放一份无 frontmatter 的历史成果 → 写入新成果 → 断言历史文件字节不变」覆盖这条边界。
 
 **vault 绑定只有一项：** 默认目录是 `~/OmniDesk/workspace/artifacts`；改绑走设置页「成果目录」区（宿主命令 `task_set_artifact_root`，校验规则与保存路径相同：绝对路径、不在仓库或应用数据根内、软链接解析后仍在允许范围）。改绑后**新**成果落新目录，旧目录文件不动不迁。不做多 vault。
 
