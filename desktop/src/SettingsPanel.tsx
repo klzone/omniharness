@@ -1819,10 +1819,16 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     const preset: ProviderSettings = {
       ...blankProvider(),
       provider: "volcengine",
-      display_name: "火山方舟",
-      base_url: "https://ark.cn-beijing.volces.com/api/v3",
+      display_name: "火山方舟 Agent Plan",
+      base_url: "https://ark.cn-beijing.volces.com/api/plan/v3",
       api: "openai-completions",
       api_key_ref: "ARK_API_KEY",
+      models: [
+        { id: "deepseek-v4.1-flash", name: "deepseek-v4.1-flash", contextWindow: null },
+        { id: "deepseek-v4.1-flash-economy", name: "deepseek-v4.1-flash-economy", contextWindow: null },
+        { id: "deepseek-v4-pro", name: "deepseek-v4-pro", contextWindow: null },
+        { id: "kimi-k2.8-preview", name: "kimi-k2.8-preview", contextWindow: null },
+      ],
     };
     setForm((prev) => ({ ...prev, providers: [...prev.providers, preset] }));
     setEditing(form.providers.length);
@@ -2265,7 +2271,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                   />
                   <p className="hint">
                     不接受把密钥写进地址（user:pass@ 或 URL 查询串）；密钥请填在下面的输入框。
-                    火山方舟的兼容前缀是 https://ark.cn-beijing.volces.com/api/v3，协议选 openai-completions。
+                    Agent Plan 套餐用 https://ark.cn-beijing.volces.com/api/plan/v3；普通按量方舟用 /api/v3，两者不要混用。
                   </p>
                 </div>
 
@@ -2362,8 +2368,8 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                     ) : null}
                   </div>
                   <p className="hint">
-                    模型 id 必须是端点认识的标识：火山方舟填接入点 ID（ep-…）或方舟模型名（如 deepseek-v3-250324）；
-                    只填 deepseek、glm 会被端点拒绝，表现为本轮失败。
+                    模型 id 必须是套餐支持的标识：Agent Plan 实测可用 deepseek-v4.1-flash、deepseek-v4.1-flash-economy、
+                    deepseek-v4-pro、kimi-k2.8-preview；普通方舟则填接入点 ID（ep-…）或自己的模型名，glm 不在 Agent Plan 里。
                   </p>
                   <p className="hint">
                     上下文窗口写成 1048576 即 1M。这是给 DSH 的容量声明，不会让端点凭空变长；
