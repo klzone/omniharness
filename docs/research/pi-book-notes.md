@@ -358,35 +358,79 @@
 
 ## 第 24 章 pi-tui
 
-**核心判断**：终端 UI 自建而不是套 Ink；Component 接口只要求 render(width) → string[]，用差分渲染和节流控制开销。
+**核心判断**：终端 UI 自建而不是套 Ink，因为需要差分渲染的完全控制权。Component 接口只有 render(width) → string[]、可选 handleInput、wantsKeyRelease、invalidate；没有 virtual DOM、JSX 或 state management。
 
-**取舍**：得到完全控制、低渲染开销、IME/Kitty 支持；放弃维护成本、声明式 API、大量文本边界处理。
+**机制**：
+- Focusable 是 Component 增强；双层光标：软件反色块是用户看到的光标，硬件光标是 IME 定位叠加层；退出时先清软件光标再交还硬件光标，避免残影。
+- TUI 持有 previousLines/previousWidth/previousHeight、focusedComponent、overlayStack；requestRender 用 process.nextTick 合并同 tick 变更，并用 16ms 节流到约 60fps；force 模式清缓存全量重绘。
+- 差分渲染只找 firstChanged/lastChanged，从第一处连续输出到最后一处；宽度/高度变化全量重绘；内容收缩可选清理空行；每次渲染包在 synchronized output 序列中。
+- Overlay 栈支持模态组件；终端能力探测（颜色、超链接、Kitty 键盘/图片、tmux、Windows Terminal）；Kitty 图片协议降级。
+- 版本演化补了软件/硬件光标顺序、wrapTextWithAnsi 的 CRLF/ANSI 保留、流式代码围栏不闪烁、Container 栈溢出修复。
 
-**对 OmniDesk**：我们不是 TUI，但同样的判断适用于 React UI：不要为了“统一”引入重型框架；组件契约要窄，渲染要有节流。**借**：窄接口、差分/节流、能力探测；**不借**：把终端文本处理那套复杂度搬进 Web UI。
+**取舍**：得到完全控制、低渲染开销、IME/Kitty 支持；放弃维护成本、声明式 API、大量文本边界处理（宽度/换行/ANSI）。
+
+**对 OmniDesk**：我们不是 TUI，但同样适用：组件契约要窄、渲染要节流、能力要探测而不是假设、文本/Unicode/输入法边界要集中处理。**借**：窄接口、差分/节流、能力探测；**不借**：把终端文本处理复杂度搬进 Web UI，或为“统一”换掉 React。
 
 ## 第 25 章 编辑器组件
 
-**核心判断**：输入框不是 textarea；多行编辑、自动补全、@ 文件引用、! bash、粘贴折叠、IME、wrap、kill ring、undo 叠加起来，交互复杂度远超聊天框。
+**核心判断**：输入框不是 textarea。多行编辑、自动补全、@ 文件引用、! bash、粘贴折叠、IME、word wrap、kill ring、undo 组合起来，交互复杂度远超聊天框；复杂度必须集中在一个组件里，而不是散落到每个功能。
 
-**取舍**：得到 IDE 般的流畅体验、大粘贴优雅；放弃大量边界测试、维护负担集中。
+**机制**：
+- AutocompleteProvider：triggerCharacters、getSuggestions（lines/cursorLine/cursorCol/options）、applyCompletion、shouldTriggerFileCompletion；Editor 用 debounce + AbortController + requestId + startToken 处理异步竞态。
+- @ 文件引用弹出独立搜索 overlay，选中后不是插入字符串，而是结构化 context attachment；! 前缀进入 bash 执行模式，输出作为用户消息一部分。
+- Bracketed Paste 区分输入与粘贴；大粘贴存为 [paste #n +N lines] marker，原文保存在 Map，marker 在 Unicode 分词层是原子单元；删除 marker 时 registry 要严格对账并重编号，提交/清屏清零。
+- IME 依赖硬件光标定位候选窗；compose 中间态不能当最终输入；Kitty 键盘协议要特殊处理。
+- word wrap 按 Unicode 宽度、优先空格/标点、最后 grapheme 边界；paste marker 不被拆行；kill ring/undo 与粘贴 registry 绑定。
 
-**对 OmniDesk**：我们的输入条已经支持 @ 引用、附件和模型选择，属于同一类“交互复杂度集中地”。**借**：把复杂度收敛到一个组件、明确状态转换；**不借**：把每个快捷功能分散到多个组件各自处理状态。
+**取舍**：得到 IDE 般流畅、大粘贴优雅；放弃大量边界测试、维护负担集中。
+
+**对 OmniDesk**：我们的输入条已支持 @ 引用、附件、模型选择，属于同类复杂度集中地。**借**：单组件集中状态、异步请求 ID/取消、结构化附件而非字符串、粘贴/输入法边界；**不借**：把每个快捷功能拆到多个组件各自维护状态。0.2.30 不改输入交互。
 
 ## 第 26 章 RPC 模式
 
-**核心判断**：CLI 工具要能被 IDE/Web/自动化驱动，需要 JSON Lines over stdio 的 RPC 协议；命令与事件流分离。
+**核心判断**：CLI 要能被 IDE/Web/自动化驱动，需要 JSON Lines over stdio 的 RPC：stdin 发命令，stdout 发响应和事件；命令与事件流分离，进程生命周期绑定。
 
-**取舍**：得到任意前端驱动、Extension UI 透明代理；放弃协议版本维护、stdout 污染风险、调试困难。
+**机制**：
+- 命令：prompt/steer/follow_up/abort、set_model/cycle_model/get_available_models、set_thinking_level、会话 switch/clone/fork/export/get_entries/get_tree、compact/set_auto_compaction、set_auto_retry、abort_bash、set_steering_mode 等。
+- 响应统一信封：id、type=response、command、success、data/error；prompt 只回一次 preflight 裁决（accepted/queued/handled），后续失败只走事件流，避免客户端状态机混乱。
+- 事件流：AgentSessionEvent 序列化；bash_execution_update 流式输出、summarization_retry_* 暴露压缩重试。
+- RpcSessionState：model、thinkingLevel、isStreaming、isCompacting、steering/followUpMode、sessionFile/id/name、autoCompaction、message/pending 数；get_state 是 UI 状态主要来源。
+- 同步命令（get_state/get_messages）结果在响应 data；异步命令结果走事件。
 
-**对 OmniDesk**：Tauri 与 engine 的关系就是这类 RPC/事件桥。**借**：命令与事件分离、typed client、会话状态显式；**不借**：在协议通道上混入普通日志或第三方输出（我们已要求 stdout 干净）。
+**取舍**：得到任意语言驱动、Extension UI 透明代理；放弃协议维护、stdout 污染风险、调试困难。
+
+**对 OmniDesk**：Tauri 与 engine 的关系就是这类 RPC/事件桥。**借**：命令/事件分离、单一 preflight 响应、typed client、会话状态显式、流式工具更新；**不借**：在协议通道混入普通日志，或让每个前端自己发明一套状态机。0.2.30 不改 RPC 协议。
+
+## 第 26b 章 SDK
+
+**核心判断**：集成 pi 有两条路：RPC 驱动（跨进程、语言无关）和 SDK 嵌入（同进程、直接构造 AgentSession）。Node 场景优先 SDK，省去 framing、背压、进程生命周期管理。
+
+**机制**：
+- createAgentSession 全部有默认值：不传参数用 DefaultResourceLoader 标准发现 + SessionManager 落盘；可覆盖 model、tools 名字白名单、excludeTools、customTools、noTools、inMemory session。
+- 返回 { session, extensionsResult, modelFallbackMessage }；session 暴露 prompt/steer/followUp/abort/setModel/compact/getMessages/fork/subscribe，和 RPC 命令一一对应。
+- ModelRuntime 是模型/认证入口，取代旧的 AuthStorage + ModelRegistry 两件套；不传时工厂自己创建。
+- 更低层：createAgentSessionRuntime、createAgentSessionServices/FromServices，把“构造依赖”和“装配 session”分开，便于多会话复用。
+- 公共导出：ModelRuntime、InlineExtension、diff/unified patch、RpcClient、图片转换、parseArgs、CONFIG_DIR_NAME、消息/工具事件类型、Jsonl/InMemory SessionStorage。
+
+**取舍**：得到同进程嵌入、类型安全、少一层协议；放弃语言无关、进程隔离，需要自己管生命周期和并发。
+
+**对 OmniDesk**：Tauri 宿主 + engine 适配层更接近 RPC 驱动，不是 SDK 嵌入；不要为了“复用”把 DSH 直接嵌入前端进程。**借**：默认值 + 渐进覆盖、显式 tools 白名单、in-memory 测试会话、可复用构件导出；**不借**：把 provider/认证搬进浏览器或 UI 进程，或在产品壳里再造一个 SDK。
 
 ## 第 27 章 pi-web-ui
 
-**核心判断**：Web UI 用框架无关的 Web Components 复用 pi-ai/agent-core；浏览器端直接调模型，省后端代理。
+**核心判断**：Web UI 是框架无关的组件库（Lit Web Components），直接复用 pi-ai 的 provider 和 pi-agent-core 的 Agent，浏览器端直接调 LLM，不需要 Node 后端。
 
-**取舍**：得到框架无关、隐私简化、文档预览；放弃生态/工具链、浏览器端 key 安全隐患、依赖体积。
+**机制**：
+- 依赖分四层：LLM 连接（pi-ai、lmstudio、ollama）、文档预览（pdfjs-dist、docx-preview、xlsx）、UI（lucide/Tailwind）、工具（jszip、pi-tui 工具函数）。
+- Lit peerDependencies 让使用方控制版本；ChatPanel、SettingsDialog、ModelSelector、AttachmentOverlay、SessionListDialog、CustomProviderDialog。
+- 文档预览在浏览器内完成（PDF Canvas、docx→HTML、xlsx→表格），隐私敏感场景有优势。
+- IndexedDB 存储 provider keys、settings、sessions、custom providers；API key 在浏览器存储，安全性弱于服务端管理。
+- 包已移出主仓库（历史快照）；设计论点仍成立：同一内核、不同宿主。
 
-**对 OmniDesk**：我们是 React+Tauri，不需要 Web Components；但“框架无关的协议层”值得保留。**借**：产品壳与内核解耦、按需动态加载重依赖；**不借**：把 key 放浏览器存储，或为了复用强行换 UI 框架。
+**取舍**：得到框架无关、浏览器直连、隐私友好、文档预览；放弃生态/工具链、浏览器 key 安全隐患、依赖体积。
+
+**对 OmniDesk**：我们是 React+Tauri，不需要 Web Components；但“框架无关的协议层”值得保留。**借**：产品壳与内核解耦、按需动态加载重依赖、结构化附件预览；**不借**：把 key 放浏览器存储、为了复用强行换 UI 框架、把文档解析全塞进渲染进程。
+
 
 ## 第 28 章 mom（Slack）
 

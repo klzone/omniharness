@@ -48,7 +48,7 @@
 >
 > **文件范围：** samples/profiles/discipline.profile.patch.yml、对应的 seed patch、desktop/src/conversationPrompt.ts、SettingsPanel 的搜索设置入口、scripts/inspect-prompt.py、scripts/inspect-timings.py、docs/research/pi-book-notes.md 的后续补注。runtime/ 只读，不修改。
 >
-> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门；不引入 Extension 市场、第三方代码执行、npm 资源包；不重写模型注册表或做 provider 市场；不使用真实用户材料做测试。
+> **明确不做：** 不改 runtime/；不新增通用缓存层或模型响应缓存；不内建子代理编排、MCP 市场、计划模式；不把 Skill 变成权限控制；不为了缩短提示词牺牲任务契约；不迁移现有线程/会话为 pi 的 JSONL session tree；不实现自有 compaction；不引入全局/项目/目录三级配置与 Project Trust 闸门；不引入 Extension 市场、第三方代码执行、npm 资源包；不重写模型注册表或做 provider 市场；不改 Tauri/React 通信协议，不新增 RPC/SDK/Web 组件宿主，不做 TUI/编辑器/UI 交互重构，不把模型调用或凭证搬进浏览器；不使用真实用户材料做测试。
 >
 > **风险与回退：** 移除 web-search-free 会改变用户可见的搜索入口，需先确认 anysearch 可用；Skill 按需加载可能增加一次工具往返；DSH 是否暴露 before/after 钩子未知；提示词前缀变化可能影响缓存命中。回退路径：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与 Skill 全文注入。
 >
