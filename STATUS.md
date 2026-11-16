@@ -2,11 +2,10 @@
 
 ## 火山方舟模型接入诊断与修正（2026-11-16）
 
-- 诊断：方舟兼容前缀是 https://ark.cn-beijing.volces.com/api/v3，协议 openai-completions；其 /models 列表接口不保证可用，未鉴权实测返回 401，配置错误或端点不提供列表时表现为 404。404 只影响「读取可用模型」，不影响手填模型后保存。
-- 第二个症状的常见根因：模型 id 填了显示名（deepseek / glm）而不是方舟认识的接入点 ID（ep-…）或模型名（如 deepseek-v3-250324）；另外地址缺 /api/v3、协议选错也会表现为本轮失败。界面原先把底层错误吞成「engine reported turn/end=error」，无法判断。
-- 修正：设置页新增「火山方舟」预设（预填地址、协议、凭据名）；base_url 与模型 id 增加方舟专用说明；模型探测 404 的判定文案改为「端点通常不提供模型列表，可手填模型 id 保存」。
-- 错误透传：web_api_adapter 从 turn/end.reason.error/message 提取失败原因（截断 300 字、去换行），写入 task error_message；失败轮次现在能显示端点返回的真实原因。
-- 验证：tsc 0；cargo 定向单测 probe_classifies_wrong_path_as_format 通过；adapter unittest 239/239 通过；release 包重建后待用户用真实 key 复测（模型 id / 401 / 404 的具体错误会显示在失败卡里）。
+- 实测（2026-11-16，使用用户提供的 Agent Plan key，仅用于本次连通性验证，未写入配置、未入仓）：GET https://ark.cn-beijing.volces.com/api/plan/v3/models 返回 404（套餐不提供模型列表）；POST /api/plan/v3/chat/completions 对 deepseek-v4.1-flash、deepseek-v4.1-flash-economy、deepseek-v4-pro、kimi-k2.8-preview 均返回 200；流式 + stream_options + max_completion_tokens、以及 tools 工具调用同样返回 200。glm 不在该套餐支持范围，返回 UnsupportedModel。
+- 结论：套餐与 key 本身可用，Agent Plan 的 OpenAI 兼容前缀是 https://ark.cn-beijing.volces.com/api/plan/v3（官方提示不要用 /api/v3，会产生额外费用）；/models 404 只是不提供列表，不影响手填模型。
+- 修正：设置页「火山方舟」预设改为 Agent Plan 地址与协议，并预填上述四个实测模型；提示区分 Agent Plan 与普通 /api/v3；模型探测 404 文案改为「套餐不提供模型列表，可直接手填」；失败原因从 turn/end.reason 透传到失败卡（截断 300 字）。
+- 验证：tsc 0；cargo 定向单测通过；adapter unittest 239/239 通过；Ark 端到端以 curl 实测 200（含流式与工具调用）。
 
 ## OD-UI-717 验收反馈修正（2026-11-16 上午）
 
