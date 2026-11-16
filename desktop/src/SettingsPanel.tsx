@@ -358,6 +358,7 @@ function blankProvider(): ProviderSettings {
     api_key_ref: "",
     models: [{ id: "", name: "", contextWindow: null }],
     reasoning_effort: "default",
+    thinking_mode: "auto",
   };
 }
 
@@ -2303,6 +2304,22 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">思考模式（支持 thinking 参数的端点）</label>
+                  <select
+                    className="text-input"
+                    value={current.thinking_mode ?? "auto"}
+                    onChange={(e) => updateCurrent({ thinking_mode: e.target.value })}
+                  >
+                    <option value="auto">跟随模型默认</option>
+                    <option value="disabled">关闭思考（请求带 thinking: disabled）</option>
+                  </select>
+                  <p className="hint">
+                    关闭后该提供商的模型会写入 compat.thinkingFormat=deepseek，请求带 thinking: disabled；
+                    火山方舟 deepseek 实测支持。普通聊天会更快，规划类任务请保留默认。
+                  </p>
                 </div>
 
                 <div className="field">

@@ -2786,6 +2786,8 @@ export interface ProviderSettings {
   api_key_ref: string;
   models: ModelEntry[];
   reasoning_effort?: string | null;
+  /** auto 跟随模型；disabled 对支持 thinking 参数的端点显式关闭。 */
+  thinking_mode?: string | null;
 }
 
 export interface DefaultRoute {

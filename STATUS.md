@@ -1,5 +1,13 @@
 # 执行状态
 
+## 思考模式开关与缓存口径（0.2.29，2026-11-16）
+
+- 设置页新增提供商级「思考模式」：auto（跟随模型）/ disabled（关闭思考）。disabled 时该提供商的模型写入 reasoning: true 与 compat.thinkingFormat=deepseek，并省略 reasoningEffort；pi-ai 会发送 thinking: {type: disabled}，火山方舟 deepseek 实测可用。
+- 默认仍为 auto，不改变现有行为；关闭思考需用户自己为对应提供商选择。
+- 缓存：真正能降首字与总时长的是端点侧上下文缓存。任务台账已记录 cacheReadTokens（如 2026-11-14 的 42624），说明 DSH 复用的前缀已在端点命中缓存；前端缓存只能省 UI 数据请求，不能加速模型推理。前端可缓存模型目录/线程列表/知识扫描等只读数据，但生成内容不应缓存。
+- 实测限制：OpenDesign 的 OD_Key 存在 DSH 凭据服务里，按本项目规则不读取凭证，因此没有用 curl 直连 opendesign deepseek-v4.1-flash；本机台账里近期的 opendesign 任务是 deepseek-v4.1-flash-eco（TTFB 11.9s / 一段 81.5s，cacheRead 6144）。如需 flash 的实测，需在应用内切换到 flash 后跑一轮并回填。
+- 验证：tsc 0；cargo model_settings 20/20（含新增 thinking_disabled 用例）；其余 UI 验证待发版后回填。
+
 ## 知识资产页 Windows 布局修复（2026-11-16）
 
 - 触发：Windows 上知识资产页文字被挤成竖排细柱、右侧大面积空白。

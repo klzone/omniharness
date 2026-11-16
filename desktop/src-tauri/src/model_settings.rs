@@ -74,6 +74,9 @@ pub struct ProviderSettings {
     pub models: Vec<ModelEntry>,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// 思考模式：auto 跟随模型；disabled 对支持 thinking 参数的端点显式关闭。
+    #[serde(default)]
+    pub thinking_mode: String,
 }
 
 impl ProviderSettings {
@@ -86,6 +89,7 @@ impl ProviderSettings {
             api_key_ref: String::new(),
             models: Vec::new(),
             reasoning_effort: None,
+            thinking_mode: "auto".to_string(),
         }
     }
 
@@ -103,6 +107,12 @@ impl ProviderSettings {
                 self.provider,
                 ALLOWED_APIS.join(" / "),
                 self.api
+            ));
+        }
+        if !matches!(self.thinking_mode.as_str(), "" | "auto" | "disabled") {
+            return Err(format!(
+                "{}：thinking_mode 只支持 auto / disabled（收到 {}）",
+                self.provider, self.thinking_mode
             ));
         }
         if !valid_ident(&self.api_key_ref) {
@@ -273,6 +283,7 @@ impl ModelSettings {
 
         let effort = self
             .find(&self.default.provider)
+            .filter(|p| p.thinking_mode != "disabled")
             .and_then(|p| p.reasoning_effort.as_deref())
             .filter(|e| !e.is_empty() && *e != "default");
         out.push_str("- id: acp\n  name: \"@deepseek-ai/dsh-acp\"\n  config:\n");
@@ -354,7 +365,7 @@ fn render_provider(p: &ProviderSettings, base: Option<&ProviderRoute>) -> String
                     .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(m.id.as_str()))
             })
             .cloned();
-        let entry = match inherited {
+        let mut entry = match inherited {
             Some(mut entry) => {
                 if let Some(obj) = entry.as_object_mut() {
                     obj.insert("id".to_string(), serde_json::Value::String(m.id.clone()));
@@ -378,6 +389,20 @@ fn render_provider(p: &ProviderSettings, base: Option<&ProviderRoute>) -> String
                 entry
             }
         };
+        if p.thinking_mode == "disabled" {
+            if let Some(obj) = entry.as_object_mut() {
+                obj.insert("reasoning".to_string(), serde_json::json!(true));
+                let compat = obj
+                    .entry("compat")
+                    .or_insert_with(|| serde_json::json!({}));
+                if let Some(map) = compat.as_object_mut() {
+                    map.insert(
+                        "thinkingFormat".to_string(),
+                        serde_json::json!("deepseek"),
+                    );
+                }
+            }
+        }
         out.push_str(&render_model_entry(&entry, &m.id));
     }
     out
@@ -499,6 +524,7 @@ impl LegacySettings {
                     context_window: None,
                 }],
                 reasoning_effort: self.reasoning_effort,
+                thinking_mode: "auto".to_string(),
             }],
             default: DefaultRoute {
                 provider: self.provider,
@@ -686,6 +712,7 @@ mod tests {
                 context_window: None,
             }],
             reasoning_effort: None,
+            thinking_mode: "auto".to_string(),
         }
     }
 
@@ -986,6 +1013,24 @@ mod tests {
         // 界面填的显示名优先于 Profile 的旧名字。
         assert!(yml.contains("name: agnescn-flash"), "{}", yml);
     }
+
+    #[test]
+    fn thinking_disabled_writes_deepseek_compat_and_omits_effort() {
+        let mut s = ModelSettings::new();
+        let mut p = provider("volc");
+        p.base_url = "https://ark.cn-beijing.volces.com/api/plan/v3".to_string();
+        p.thinking_mode = "disabled".to_string();
+        p.reasoning_effort = Some("high".to_string());
+        s.providers.push(p);
+        s.default = DefaultRoute {
+            provider: "volc".to_string(),
+            model: "volc-flash".to_string(),
+        };
+        let yml = s.render_overlay(&[]);
+        assert!(yml.contains("thinkingFormat: deepseek"), "{}", yml);
+        assert!(yml.contains("reasoning: true"), "{}", yml);
+        assert!(!yml.contains("reasoningEffort"), "{}", yml);
+    }
 }
 
 
@@ -1030,7 +1075,16 @@ fn render_route(r: &ProviderRoute) -> String {
 
 /// 把 Profile 里的一个模型条目原样写成 YAML 序列项（只保留非机密字段白名单）。
 fn render_model_entry(entry: &serde_json::Value, id: &str) -> String {
-    const KEEP: &[&str] = &["id", "name", "contextWindow", "maxTokens", "input", "reasoningEfforts", "compat"];
+    const KEEP: &[&str] = &[
+        "id",
+        "name",
+        "contextWindow",
+        "maxTokens",
+        "input",
+        "reasoning",
+        "reasoningEfforts",
+        "compat",
+    ];
     let mut map = serde_json::Map::new();
     if let Some(obj) = entry.as_object() {
         for key in KEEP {
