@@ -1,5 +1,13 @@
 # 执行状态
 
+## 知识资产页 Windows 布局修复（2026-11-16）
+
+- 触发：Windows 上知识资产页文字被挤成竖排细柱、右侧大面积空白。
+- 根因：≥1400px 时页面切成「列表 + 正文 + 属性」三栏，属性栏的 aside 在该分支只写了 flex、没有 flex-col，子区块被横向挤成一条条窄列；三栏本身在 Windows 缩放后也过密。
+- 方案：改为稳定的两栏 master-detail（lg 起：左列表 240-300 + 右正文 1fr）；关系与属性不再内联，统一走右侧 360px 抽屉（带遮罩与收起）；删除 1400px 三栏分支与相关显隐类。
+- 参考：沿用 OD-KB-201 已记录的 Notion（侧栏驱动、正文阅读宽度）与 Linear（紧凑列表、主从详情）布局规律；截图灵感库按「knowledge base notes master detail sidebar」复核了同类主从结构。
+- 验证：tsc 通过；布局改动为结构类，Windows 实机待 0.2.28 安装包回填。
+
 ## 火山方舟模型接入诊断与修正（2026-11-16）
 
 - 实测（2026-11-16，使用用户提供的 Agent Plan key，仅用于本次连通性验证，未写入配置、未入仓）：GET https://ark.cn-beijing.volces.com/api/plan/v3/models 返回 404（套餐不提供模型列表）；POST /api/plan/v3/chat/completions 对 deepseek-v4.1-flash、deepseek-v4.1-flash-economy、deepseek-v4-pro、kimi-k2.8-preview 均返回 200；流式 + stream_options + max_completion_tokens、以及 tools 工具调用同样返回 200。glm 不在该套餐支持范围，返回 UnsupportedModel。
