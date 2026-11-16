@@ -1827,11 +1827,23 @@ class WebApiAdapter(TaskCoreBase):
                         if isinstance(reason_obj, Mapping)
                         else ""
                     )
+                    reason_detail = ""
+                    if isinstance(reason_obj, Mapping):
+                        err_obj = reason_obj.get("error")
+                        if isinstance(err_obj, Mapping):
+                            reason_detail = str(
+                                err_obj.get("message") or err_obj.get("code") or ""
+                            )
+                        reason_detail = reason_detail or str(
+                            reason_obj.get("message") or ""
+                        )
                     # 记下本轮结束事件在会话里的精确序号：DSH 的 session/fork
                     # 用「包含该切点」的事件序号作分叉边界，界面据此把这条回复
                     # 变成一条真正的子会话。序号缺失时保持 None，不猜。
                     self._record_turn_end_seq(record, event)
-                    self._settle_turn(record, reason_kind, finish_reason, final_text)
+                    self._settle_turn(
+                        record, reason_kind, finish_reason, final_text, reason_detail
+                    )
                     return
                 continue
         finally:
@@ -2011,6 +2023,7 @@ class WebApiAdapter(TaskCoreBase):
         reason_kind: str,
         finish_reason: Optional[str],
         final_text: str,
+        error_detail: str = "",
     ) -> None:
         # 先把流式缓冲的尾巴放出来；再处理「整段终文」路径。
         if record.unmasker is not None:
@@ -2069,7 +2082,15 @@ class WebApiAdapter(TaskCoreBase):
                 note="turn/end=" + reason_kind,
                 stop_reason=finish_reason or reason_kind,
                 error_code=EngineErrorCode.TASK_FAILED.value,
-                error_message="engine reported turn/end=" + reason_kind,
+                error_message=(
+                    "engine reported turn/end="
+                    + reason_kind
+                    + (
+                        "：" + error_detail.replace(chr(10), " ")[:300]
+                        if error_detail
+                        else ""
+                    )
+                ),
             )
         elif reason_kind == "max-tokens":
             self._settle(

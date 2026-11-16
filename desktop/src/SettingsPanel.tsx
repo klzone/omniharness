@@ -1808,6 +1808,26 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     setEditing(form.providers.length);
   }, [form.providers.length]);
 
+  /**
+   * 火山方舟预设：兼容前缀是 /api/v3，协议 openai-completions；
+   * 方舟不保证提供 /models 列表，预填后仍允许直接手填模型 id。
+   */
+  const addArkProvider = useCallback(() => {
+    setApiKey("");
+    setProbe(null);
+    setProbeError(null);
+    const preset: ProviderSettings = {
+      ...blankProvider(),
+      provider: "volcengine",
+      display_name: "火山方舟",
+      base_url: "https://ark.cn-beijing.volces.com/api/v3",
+      api: "openai-completions",
+      api_key_ref: "ARK_API_KEY",
+    };
+    setForm((prev) => ({ ...prev, providers: [...prev.providers, preset] }));
+    setEditing(form.providers.length);
+  }, [form.providers.length]);
+
   const removeProvider = useCallback(() => {
     if (!current) return;
     const removingDefault = form.default.provider === current.provider;
@@ -2174,6 +2194,14 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
               <button className="ghost small" onClick={addProvider} disabled={modelBusy}>
                 新增
               </button>
+              <button
+                className="ghost small"
+                onClick={addArkProvider}
+                disabled={modelBusy}
+                data-hover-hint="填入火山方舟的 OpenAI 兼容地址与协议；模型 id 仍需按方舟控制台填写"
+              >
+                火山方舟
+              </button>
             </div>
             {form.providers.length === 0 ? (
               <p className="hint">还没有提供商。点“新增”建一个。</p>
@@ -2237,6 +2265,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                   />
                   <p className="hint">
                     不接受把密钥写进地址（user:pass@ 或 URL 查询串）；密钥请填在下面的输入框。
+                    火山方舟的兼容前缀是 https://ark.cn-beijing.volces.com/api/v3，协议选 openai-completions。
                   </p>
                 </div>
 
@@ -2332,6 +2361,10 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                       </button>
                     ) : null}
                   </div>
+                  <p className="hint">
+                    模型 id 必须是端点认识的标识：火山方舟填接入点 ID（ep-…）或方舟模型名（如 deepseek-v3-250324）；
+                    只填 deepseek、glm 会被端点拒绝，表现为本轮失败。
+                  </p>
                   <p className="hint">
                     上下文窗口写成 1048576 即 1M。这是给 DSH 的容量声明，不会让端点凭空变长；
                     端点实际不支持时会报错，请按服务商真实能力填写。
