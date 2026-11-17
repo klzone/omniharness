@@ -1,5 +1,31 @@
 # GitHub 历史重写与发布清理审查（2026-11-17）——通过（附外部副本限制）
 
+# OD-ARCH-173 0.2.30 发布验收（2026-11-17）——通过（附未验证项）
+
+**审查对象：** PLANS.md OD-ARCH-173 全部阶段执行记录与证据（tests/verification/desktop/evidence/od-arch-173/）、release 提交 1d07d91bba、远程 main ac46822eff、实际源码 diff。
+
+**逐阶段复核（源码 diff + 测试输出，非自述）：**
+
+1. **阶段 0 基线：** diagnose-omnidesk.py 新增只读会话解析；12 个真实历史会话确认 system 5396 字符中 web-search 段占 1919、Skill 目录 2518；397 秒拆分缺原始会话，如实标未验证。
+2. **阶段 1 提示词：** web-search-free 从 discipline patch 移除，persona 换台账助手底座；mock 复测 web-search 段归零、去 PTC 口径 5396→2983（−44.7%）；PTC 与预算冲突经裁决保留 PTC（D-105 记录取舍）。
+3. **阶段 2 Skill：** 先用 mock 探针验证 tool-skill 全文可达（原生 + PTC run_code 两路均验证），才改 conversationPrompt；四动作 user 段降 61–72%；3 个旧断言脚本随阶段 6 更新后通过。
+4. **阶段 3 工具面：** dsh-free-search 依赖从 profile.json 与 profile_assets.rs 清除；输出上限显式钉住（read 2000 行/50KB、grep 250 条/单行 500 字节、glob 100）；钩子/审批/abort 审计完成，缺口记入 tool-matrix.md。
+5. **阶段 4 预检：** save() 前置档位校验（6 单测）；401/402/403 阻止保存、404 提示放行；切换路径模型目录校验显式档位；聊天期才暴露的 402/403 如实记录为缺口。
+6. **阶段 5 诊断页：** diagnostics_metadata 只读命令 + 设置页「配置解释」页；7 新单测；真实窗口截图因锁屏未成，黑图证据保留。
+7. **阶段 6 发布：** tsc/build/cargo check/tauri build --no-bundle 全过；cargo test 1200 全过；54 个验证脚本 41 过、13 失败均复现于 HEAD 之前快照或属环境限制；版本 0.2.30 三处同步；CHANGELOG 收口；提交 1d07d91bba 已推送 origin/main。
+
+**边界核对：** runtime/ 未改（全程）；凭证未读取/未打印；无 force push、无标签；未使用真实业务材料。
+
+**未验证项（不阻塞验收，需后续确认）：**
+
+- 真实模型 smoke test（Excel/周报/知识整理）：账户 402 余额不足，无法执行；提示词结构变化已由 mock 验证，真实模型是否先读 Skill 再输出待额度恢复后实测。
+- Windows 安装包构建：本机无环境。
+- verify_skill_flow_injection_108.py 真实窗口运行：macOS 无 Xvfb。
+- 配置解释页真实窗口目视：锁屏未成，由用户日常使用确认。
+- 已有安装 Profile 不会自动移除 dsh-free-search：需在 Profile 资产页手动「恢复出厂内容」或重装。
+
+**结论：** 通过。0.2.30 代码、版本号、变更日志已提交推送（1d07d91bba → origin/main ac46822eff）；macOS 侧 tauri build 产物已验证，可发布安装包。
+
 **审查对象：** 重写后的 `main`/标签、当前树、远端 `main`、29 个旧 Release 与仓库外备份。
 
 **核对结果：**
