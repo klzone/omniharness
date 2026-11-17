@@ -21,6 +21,24 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit、npm run build 通过；verify_arch_176 70/70、model_route_precheck_175 12/12 + 11/11、companion_plugins_177 11/11、worklog 089 86/86 / 103 52/52 / 104 73/73 / 505 71/71、conversationPrompt 33/33、skill_bindings 69/69；home_refine_202 39/40（唯一失败为既有项）。
 - 升级说明：已安装用户需在 Profile 资产页点「恢复默认规则包」获得更新后的 period-review / anysearch 技能文本。
 
+## [0.2.34] - 2026-11-17
+
+### Added
+- 思考档位声明进发行链（OD-ARCH-178 阶段 A）：宿主已验证清单（opendesign / deepseek-v4.1-flash 的 7 档实测映射）并入 modelCatalog 与覆盖文件渲染，Profile 已声明不覆盖。
+- 全部提交路径接入两层档位证据门（OD-ARCH-178 阶段 B）：普通对话 / 未分类场景纳入证据门，未声明模型不传档位、静默降级；api 层 gatedReasoningEffort 作为末道防线。
+- ModelPicker 目录驱动（OD-ARCH-178 阶段 C，DSH 原版行为）：档位按钮按当前模型声明集合渲染，未声明模型只显示「跟随模型默认」。
+- discipline preset persona 新增自查收敛规则（OD-ARCH-179）：OmniDesk 自查类问题先读 app/config 配置文件；bash 禁扫 storages/ 与 node_modules/。
+
+### Changed
+- 档位证据解析收敛到单一模块 modelEffortEvidence.ts（目录优先、Profile 兜底），界面渲染与提交门禁同口径。
+
+### Verification
+- cargo test --lib 单线程 1217/0；tsc / npm run build 通过；verify_arch_178 20+24、arch_176 71/71、model_route_precheck_175 12+12、companion_plugins_177 11/11、home_refine_202 39/40（既有失败）。
+- 真实 DSH 双向验证：声明档位后 selectModel 接受 off 且任务成功（正向新增用例 PASS）；未声明模型传 off 优雅降级不炸任务（verify_effort_select_degrade 4/4）。
+
+### 升级说明
+- 已安装用户需在 Profile 资产页点「修复缺失 / 恢复出厂内容」获得档位声明与自查规则；升级后模型选择器只显示当前模型声明过的思考档位。
+
 ## [0.2.33] - 2026-11-17
 
 ### Fixed
