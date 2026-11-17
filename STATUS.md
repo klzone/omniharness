@@ -550,6 +550,20 @@ M tests/verification/engine-interface/adapter/test_web_api_unit.py
 
 - `cargo test --lib --test-threads=1` 1217/0；`tsc` / `npm run build` 通过；verify_arch_178 20+24、arch_176 71/71、175 12+12、177 11/11、202 39/40（既有失败）；真实 DSH 双向验证（声明后 selectModel 接受 off PASS；未声明优雅降级 4/4）。
 
+## 2026-11-18 补充：eco 档位保守声明 + Skill 规范草稿
+
+- 用户实测回执：仅 deepseek-v4.1-flash 显示分档（7 档），eco 与其余模型只有「跟随模型默认」——符合「清单驱动、未实测不声明」设计（VERIFIED_EFFORTS 唯一条目为 flash）。
+- 改动：`desktop/src-tauri/src/model_routes.rs` VERIFIED_EFFORTS 增加 opendesign/deepseek-v4.1-flash-eco 的保守声明（仅 off→none，同族继承、标注待实测）；同步更新 4 处断言（flash 7 档、eco 仅 off、glm 不声明）。cargo test --lib 单线程 1217/0 实跑通过。
+- 用户已验证 slot：eco 的 off 档位需新构建（0.2.35 或 dev 运行）才可见；其余档位实测通过后再补。
+- `docs/skills-spec.md`（草稿 v1）已写，待用户评审修改；视为 OD-ARCH-180 阶段 1 进展。
+
+## 0.2.35 微调与发版（2026-11-18，ARCHITECT 亲自执行）
+
+- 用户实机回执：0.2.34 逐模型档位可用（自选档位可执行/可开关）。
+- 微调：设置页档位按钮缩小约一半（settings-panel.css .model-efforts 字号 9px、紧凑内边距）；ModelPicker 去掉「跟随模型默认」（modelEffortOptions：声明非空只列档位，为空保留单按钮兜底）。
+- 验证：tsc / npm run build 通过；verify_arch_178 20/20+25/25、arch_176 71/71 全过；cargo 单线程 1218/0（本轮未触 Rust，沿用同日结果）。
+- 发版：0.2.34 → 0.2.35（VERSION / package.json / tauri.conf.json），CHANGELOG 0.2.35 已写；本地 tauri build 已验证 .app 正常（DMG 打包失败为旧实例占盘，CI 不受影响）。
+
 ## OD-ARCH-179 阶段 D 立项执行记录（ARCHITECT 亲自执行，2026-11-17）
 
 > 勘察（真实 runtime 源码核实）：①`dsh-tool-bash` Config 仅 enableRunInBackground/promoteOnTimeout 两个配置项，输出截断（尾部保留 + spill 落盘）阈值是内部常量不可配，54KB 级输出在阈值内整段回灌；②`dsh-agent-loop` 与 pi-ai 无 maxSteps/stepBudget 配置面；③会话事件流 session-d87d30e7 第 24 行存在 `agent/inbox/spliced` —— turn 2 失败后 DSH 引擎把错误原因拼进 agent 收件箱，属原版自适应设计，「报错回灌」非 OmniDesk 缺陷。
