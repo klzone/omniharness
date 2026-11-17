@@ -21,6 +21,20 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit、npm run build 通过；verify_arch_176 70/70、model_route_precheck_175 12/12 + 11/11、companion_plugins_177 11/11、worklog 089 86/86 / 103 52/52 / 104 73/73 / 505 71/71、conversationPrompt 33/33、skill_bindings 69/69；home_refine_202 39/40（唯一失败为既有项）。
 - 升级说明：已安装用户需在 Profile 资产页点「恢复默认规则包」获得更新后的 period-review / anysearch 技能文本。
 
+## [0.2.35] - 2026-11-18
+
+### Added
+- 逐模型思考档位手动声明（OD-ARCH-181）：设置 → 模型与端点中每个模型行下新增 7 档切换按钮（关闭/最低/低/中/高/很高/最高），off 按网关惯用取值 none；声明写入覆盖文件并优先于 Profile 与宿主已验证清单，真实调用不接受时取消即可回退。
+
+### Changed
+- 档位按钮尺寸收小约一半（字号 9px、紧凑内边距）。
+- 对话模型选择器去掉「跟随模型默认」按钮：档位存在时直接列出声明的档位；档位为空时保留单按钮兜底。
+- eco 模型保守声明「关闭」档（同族继承、待实测），其余模型仍由用户手动声明。
+
+### Verification
+- cargo test --lib 单线程 1218/0（含「用户声明覆盖 Profile 与清单」单测）；tsc / npm run build 通过；verify_arch_178 20/20 + 25/25、arch_176 71/71、202 39/40（既有失败）。
+- 用户实机确认 0.2.34 档位生效；本版微调经本地构建目视。
+
 ## [0.2.34] - 2026-11-17
 
 ### Added
