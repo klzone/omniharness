@@ -178,6 +178,11 @@ class SubmitTaskRequest:
     timeout_policy: Mapping[str, float] = field(default_factory=dict)
     requested_at: Optional[float] = None
     engine_session_id: Optional[str] = None
+    # OD-ARCH-176：本轮思考档位。只有显式传入具体档位时才改变会话选择；
+    # 缺省（None）表示跟随模型默认。provider/model 与档位一起给出才生效。
+    reasoning_effort: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -233,11 +233,11 @@ def main() -> int:
     # ---- 静态：语义判断不再由前端正则兜着 ----
     check("home_no_redate_regex", "detectRedateInstruction(" not in home)
     check("home_no_continuation_regex", "isNoteContinuation(" not in home)
-    check("home_reads_week_before_model", home.index("shell.worklogReadWeek()") < home.index("notePendingRef.current.set("))
+    check("home_reads_week_before_model", home.index("shell.worklogReadWeek()") < home.index("classifyPendingRef.current.set("))
     # 模型判定到达之前一个字节都不写：append 只允许出现在 executeNote 里
     # （降级兜底一处、按判定逐条写入一处）。
-    exec_start = home.index("const executeNote = useCallback(")
-    exec_end = home.index("const settleNote = useCallback(")
+    exec_start = home.index("const executeVerdictPlan = useCallback(")
+    exec_end = home.index("  /**\n   * 把一条 note 判定执行并展示")
     append_calls = [
         i for i in range(len(home)) if home.startswith("shell.worklogAppend(", i)
     ]
@@ -252,18 +252,21 @@ def main() -> int:
         any(exec_start < i < exec_end for i in append_calls),
         len([i for i in append_calls if exec_start < i < exec_end]),
     )
-    check("home_statement_gate", "isPlainStatementNote(text)" in home)
+    # OD-ARCH-176：陈述句先落盘快路径已废除，每轮先分类。
+    check("home_statement_gate_removed", "isPlainStatementNote(text)" not in home)
     check("home_validates_before_write", home.index("validateVerdict(verdict, ctx, ctx.index)") < home.index("shell.worklogMoveMany({"))
     check("home_uses_batch_move", "shell.worklogMoveMany({" in home)
     check("home_strips_verdict_buffer", "verdictDisplayText(text)" in home)
     # 回读失败时消息里还可能留着流式收到的判定块：终态执行前必须再剥一次。
     check(
         "home_strips_before_settle",
-        home.index("text: verdictDisplayText(m.text)") < home.index("await settleNote(taskId, finalText"),
+        home.index("workIntentDisplayText(verdictDisplayText(m.text))") <
+        home.index("await settleWorkIntent(taskId, finalText"),
     )
-    check("home_says_fail_closed", "这轮没有写入工作记录" in home and "按原文原样记录" not in home)
-    check("home_local_receipt_label", '"工作台本地处理 · 未调用模型"' in home)
-    check("home_cancel_writes_nothing", "本轮已取消，这句没有写入工作记录。" in home)
+    check("home_says_fail_closed", "这句还没有写入工作记录" in home and "按原文原样记录" not in home)
+    check("home_intent_gate", 'mode: "classify"' in home and "settleWorkIntent" in home)
+    check("home_note_question", "这条要记吗？" in home and "answerNoteAsk" in home)
+    check("home_cancel_writes_nothing", "本轮已取消，没有判断也没有写入工作记录。" in home)
 
     # ---- 静态：提示词 ----
     check("prompt_has_note_index", "noteIndex" in prompt and "最近 14 天" in prompt)
@@ -289,7 +292,7 @@ def main() -> int:
 
     # ---- 静态：Skill ----
     check("skill_six_fields", all(k in skill for k in ["时间", "地点", "人物", "事件", "影响", "感受"]))
-    check("skill_no_file_permission", "没有写文件的权限" in skill)
+    check("skill_no_file_permission", "工作台逐字比对" in skill and "本机是工作记录的唯一存储地" in skill)
     check("skill_verdict_format", "<omnidesk-verdict>" in skill and "append" in skill and "move" in skill)
     check("skill_no_legacy_action", '"record|move|confirm|answer"' not in skill and "reply" not in skill, "")
     check("skill_no_report_sections", "本周概述" not in skill)

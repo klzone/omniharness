@@ -18,6 +18,7 @@ import { PendingWritePanel } from "./shell/PendingWriteCard";
 import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { refreshThreadCategories } from "./threadCategories";
 import { SCENES } from "./scenes";
+import { COMPANION_PLUGINS } from "./companionPlugins";
 import type {
   AdmissionFacts,
   AvailabilityConfig,
@@ -3114,6 +3115,29 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             这个 Profile 没有出厂资产清单，也没有声明 Skill 绑定或额外插件：保持现状，不写入任何文件。
           </p>
         ) : null}
+
+        {/* 配套插件推荐（OD-ARCH-177）：只读元数据，不自动安装、不检查版本。 */}
+        <div className="provider-list" data-testid="companion-plugins">
+          <div className="provider-list-head">
+            <span>配套插件推荐</span>
+            <span className="sub">{COMPANION_PLUGINS.length}</span>
+          </div>
+          {COMPANION_PLUGINS.map((plugin) => (
+            <div className="asset-row" key={plugin.name} data-testid={"companion-plugin-" + plugin.name}>
+              <div className="asset-row-main">
+                <div className="asset-row-title">
+                  <span className="name">{plugin.name}</span>
+                  <span className="asset-badge neutral">{plugin.version}</span>
+                </div>
+                <p className="sub">{plugin.purpose}</p>
+                <p className="sub mono">{plugin.url}</p>
+              </div>
+            </div>
+          ))}
+          <p className="hint">
+            常备插件不在发布包内：按上面的地址自行安装建议版本，升级随上游。
+          </p>
+        </div>
 
         {assets && !assets.standard ? (
           <div className="asset-groups" data-testid="profile-asset-groups">

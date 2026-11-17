@@ -9,7 +9,13 @@ import {
 } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { host, invalidateEngineFactsCache, onTaskEvent, scheduler, shell } from "../api";
+import {
+  host,
+  invalidateEngineFactsCache,
+  onTaskEvent,
+  scheduler,
+  shell,
+} from "../api";
 import type { ForkOrigin } from "../sceneThreads";
 import {
   ATTACHMENT_MAX_FILES,
@@ -39,8 +45,7 @@ import {
   detectPeriodReviewTarget,
   previousWeekLabel,
   extractEntryDate,
-  isPlainStatementNote,
-  findDatePhrase,
+  periodReviewTargetForPeriod,
   todayDateKey,
   type PeriodReviewTarget,
   type WorkIntent,
@@ -48,12 +53,11 @@ import {
 import {
   buildWorklogIndex,
   describeIndex,
-  parseVerdict,
   shortText,
-  splitVerdict,
   validateVerdict,
   verdictDisplayText,
   type WorklogIndex,
+  type WorkRecordVerdict,
 } from "../workRecordVerdict";
 import {
   describeEngineCancelOutcome,
@@ -92,11 +96,62 @@ import {
   type TimelineEntry,
 } from "./timelineModel";
 import { artifactLinksInText, type ArtifactLink } from "./artifactLinks";
-import { splitRecordReview } from "../recordReview";
 import { SCENES, isSceneKey } from "../scenes";
-import type { EngineModelCatalog } from "../types";
+import type { EngineModelCatalog, ModelRouteListing } from "../types";
 import { useChatInputFocus } from "./SceneScaffold";
 import type { Scene } from "./Dock";
+import {
+  decideWorkIntentRoute,
+  parseWorkIntentContract,
+  pickWorkIntentEffort,
+  workIntentDisplayText,
+  type WorkIntentEffortEvidence,
+  type WorkIntentContract,
+} from "../workIntentDecision";
+import type { RecordReview } from "../recordReview";
+
+/**
+ * 从已加载的模型目录与 Profile 原始声明提取档位证据。
+ *
+ * 两层顺序与 `api.ts` 的 `collectModelEffortEvidence` 相同：先看目录 efforts，
+ * 目录没有非空声明时再看 Profile 的 `modelEntries.reasoningEfforts`。这里只读
+ * 界面已经取得的非机密元数据，不在每轮提交前额外触发 RPC。
+ */
+function effortEvidenceFromLoaded(input: {
+  catalog: EngineModelCatalog | null;
+  routes: ModelRouteListing["profiles"];
+  sourceProfile: string;
+  provider: string | null;
+  model: string | null;
+}): WorkIntentEffortEvidence | null {
+  if (!input.provider || !input.model) return null;
+  const catalogEntry =
+    input.catalog?.available === true
+      ? (input.catalog.models ?? []).find(
+          (m) => m.provider === input.provider && m.id === input.model,
+        )
+      : undefined;
+  const catalogLevels = Array.isArray(catalogEntry?.efforts)
+    ? catalogEntry.efforts.map((e) => e.id)
+    : null;
+  if (catalogLevels && catalogLevels.length > 0) {
+    return { catalogLevels, profileLevels: null };
+  }
+
+  const profile = input.routes.find((p) => p.profile === input.sourceProfile);
+  const provider = profile?.providers.find((p) => p.id === input.provider);
+  const modelEntry = provider?.modelEntries?.find(
+    (e) => e && typeof e === "object" && e.id === input.model,
+  );
+  const declared = modelEntry?.reasoningEfforts;
+  let profileLevels: string[] | false | null = null;
+  if (declared === false) {
+    profileLevels = false;
+  } else if (declared && typeof declared === "object" && !Array.isArray(declared)) {
+    profileLevels = Object.keys(declared as Record<string, unknown>);
+  }
+  return { catalogLevels, profileLevels };
+}
 
 /**
  * 首页 AI 对话（OD-ARCH-026）—— 首页的主要工作入口。
@@ -184,6 +239,11 @@ export interface ChatMessage {
    * （例如把记错日期的记录挪到正确日期）。用它区分「本地回执」与「模型输出」。
    */
   local?: boolean;
+  /**
+   * OD-ARCH-176：这条是宿主按模型意图判定执行后的确定性回执。
+   * 与纯本地回执、纯模型输出都不同，界面据此如实标注。
+   */
+  executed?: boolean;
   /** OD-ARCH-141：本轮注入的知识库卡片引用。 */
   citations?: KnowledgeCitation[];
 }
@@ -523,7 +583,7 @@ function AssistantText({
 }) {
   // OD-ARCH-104：随手记的判定块是给工作台读的，不能出现在对话里。
   // 流式阶段块可能还没写完（没有闭合标签），此时连同半截一起藏掉。
-  const shown = verdictDisplayText(text);
+  const shown = workIntentDisplayText(verdictDisplayText(text));
   if (streamed) {
     return (
       <>
@@ -537,6 +597,19 @@ function AssistantText({
   ) : (
     <StreamedMarkdown text={shown} live={live} />
   );
+}
+
+/** 复核结果的展示行（OD-ARCH-176：质量分析与分类同一调用返回）。 */
+function formatRecordReviewLines(review: RecordReview | null): string[] {
+  if (!review) return [];
+  const lines: string[] = [];
+  if (review.errors.length > 0) lines.push("错误提醒：" + review.errors.join("；"));
+  if (review.missing.length > 0) lines.push("建议补充：" + review.missing.join("、"));
+  if (review.task.suggest && review.task.title) {
+    lines.push("发现任务：" + review.task.title + "。要创建任务吗？回复「创建」或「不用」。");
+  }
+  if (review.question) lines.push(review.question);
+  return lines;
 }
 
 /**
@@ -811,6 +884,8 @@ export function HomeChat({
   // 续接失败被降级为新建会话后，下一轮要补一次窗口化重放（把历史接回新会话）。
   const [replayNextTurn, setReplayNextTurn] = useState(false);
   const effectiveEngineSessionId = engineSessionId ?? localEngineSessionId;
+  const engineSessionIdRef = useRef<string | null>(effectiveEngineSessionId ?? null);
+  engineSessionIdRef.current = effectiveEngineSessionId ?? null;
   // 输入框是否有焦点：上报给骨架（输入框有焦点时不把顶部卡片放回来，OD-ARCH-042）。
   const reportInputFocus = useChatInputFocus();
   const [input, setInput] = useState(initialInput);
@@ -876,13 +951,7 @@ export function HomeChat({
   const [facts, setFacts] = useState<AdmissionFacts | null>(null);
   const [admissionError, setAdmissionError] = useState<string | null>(null);
   /** OD-ARCH-034：各 DSH Profile 生效的模型候选（不同 Profile 的模型选择互不相通）。 */
-  const [modelRoutes, setModelRoutes] = useState<
-    Array<{
-      profile: string;
-      default: { provider: string | null; model: string | null } | null;
-      providers: Array<{ id: string; models: string[]; baseURL: string | null }>;
-    }>
-  >([]);
+  const [modelRoutes, setModelRoutes] = useState<ModelRouteListing["profiles"]>([]);
   /**
    * 引擎当前实际加载的 Profile（OD-ARCH-095 S02）。
    * 模型目录是按 provider 分组的，目录 id 是 provider 而不是 Profile；
@@ -908,12 +977,24 @@ export function HomeChat({
    * 取得真实目录时用它渲染选择器；ACP 或读取失败时回退到 Profile 候选（groups）。
    */
   const [modelCatalog, setModelCatalog] = useState<EngineModelCatalog | null>(null);
+  // 稳定读取最近一次已加载元数据：终态回调与输入提交共用同一份档位证据。
+  const modelCatalogRef = useRef<EngineModelCatalog | null>(null);
+  modelCatalogRef.current = modelCatalog;
+  const modelRoutesRef = useRef<ModelRouteListing["profiles"]>([]);
+  modelRoutesRef.current = modelRoutes;
+  const engineProfileRef = useRef("");
+  engineProfileRef.current = engineProfile;
   /** 已收到过真实 `text_delta` 的任务（这些任务的正文不再做本地打字机降级）。 */
   const streamedTasksRef = useRef<Set<string>>(new Set());
   const [, forceStreamRender] = useState(0);
   const [modelBusy, setModelBusy] = useState(false);
   /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
   const [modelEffort, setModelEffort] = useState("off");
+  /** 最新渲染值的只读镜像：终态回调里提交后续轮次时不再依赖易变的闭包。 */
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const modelEffortRef = useRef(modelEffort);
+  modelEffortRef.current = modelEffort;
   /**
    * 用户是否手动选过思考档（OD-ARCH-068）。
    * 只有「没手动选过 + 引擎空闲」时才按场景默认切档；手动选档永远优先。
@@ -1024,14 +1105,23 @@ export function HomeChat({
   /** 宿主拒绝准备工作目录时的真实原因（供提交失败时原样带出）。 */
   const workspaceNoteRef = useRef<string | null>(null);
   /**
-   * 本轮随手记的待判定上下文（OD-ARCH-104）。
+   * 本轮意图判定的上下文（OD-ARCH-176）。
    *
-   * 模型拿不到宿主命令，只能把判定写在回复里；界面在终态回读结果后执行。
-   * 按 taskId 存，轮询与提交的闭包各不相同也能对上；done 置位后不再重放，
-   * 「重新查询」不会把同一句记两遍。
+   * 模型先理解这句话，再由宿主按判定执行；按 taskId 存，轮询与提交的闭包
+   * 各不相同也能对上；done 置位后不再重放，「重新查询」不会把同一句记两遍。
    */
-  const notePendingRef = useRef<
-    Map<string, { userText: string; week: string; today: string; index: WorklogIndex; done: boolean }>
+  const classifyPendingRef = useRef<
+    Map<
+      string,
+      {
+        userText: string;
+        week: string;
+        today: string;
+        index: WorklogIndex;
+        picked: AttachmentInput[];
+        done: boolean;
+      }
+    >
   >(new Map());
 
   /** 落盘后等待用户回复的复核（任务建议 / 补充要素）；下一条消息优先当作答复。 */
@@ -1044,8 +1134,8 @@ export function HomeChat({
     text: string;
     taskTitle: string;
   } | null>(null);
-  /** 随手记这一轮的流式原文（按任务号），供终态判定用；终态处理完即清。 */
-  const noteRawRef = useRef<Map<string, string>>(new Map());
+  /** 意图判定这一轮的流式原文（按任务号），供终态判定用；终态处理完即清。 */
+  const classifyRawRef = useRef<Map<string, string>>(new Map());
   /**
    * 当日摘要这一轮的写入上下文（OD-WR-503）。
    *
@@ -1076,6 +1166,19 @@ export function HomeChat({
     picked: AttachmentInput[];
     target: PeriodReviewTarget;
   } | null>(null);
+  /**
+   * 分类拿不准时的宿主提问（OD-ARCH-176）：note 与 instruction 边界模糊，
+   * 不猜是否落盘，用现有提问卡让用户选「记下来 / 不记」。
+   */
+  const [noteAsk, setNoteAsk] = useState<{
+    text: string;
+    picked: AttachmentInput[];
+    contract: WorkIntentContract | null;
+    week: string;
+    today: string;
+    index: WorklogIndex;
+    questionId: string;
+  } | null>(null);
 
   /**
    * 宿主用的时区偏移（分钟）。日期识别必须与宿主同一口径：宿主按设置里的
@@ -1103,7 +1206,9 @@ export function HomeChat({
     setMessages(normalizeLoadedMessages(initialMessages));
     setSkillHint(null);
     // 换会话后，上一轮还没执行的判定不再适用：丢掉，免得旧索引落到新对话里。
-    notePendingRef.current.clear();
+    classifyPendingRef.current.clear();
+    classifyRawRef.current.clear();
+    setNoteAsk(null);
     summaryPendingRef.current.clear();
     summaryRawRef.current.clear();
     periodPendingRef.current.clear();
@@ -1185,6 +1290,26 @@ export function HomeChat({
   useEffect(() => {
     factsRef.current = facts;
   }, [facts]);
+
+  /**
+   * 工作记录场景的思考档位：保留 OD-ARCH-176 的意图策略，并为 `off` 叠加
+   * 同一份两层能力证据。证据明确不含 `off` 时传 null；其它情况仍传 `off`。
+   */
+  const pickRoutedWorkIntentEffort = useCallback((intent: string): string | null => {
+    const factsNow = factsRef.current;
+    return pickWorkIntentEffort({
+      intent,
+      userSelected: effortTouchedRef.current,
+      selectedEffort: modelEffortRef.current,
+      evidence: effortEvidenceFromLoaded({
+        catalog: modelCatalogRef.current,
+        routes: modelRoutesRef.current,
+        sourceProfile: engineProfileRef.current,
+        provider: factsNow?.provider ?? null,
+        model: factsNow?.model ?? null,
+      }),
+    });
+  }, []);
 
   const refreshAdmission = useCallback(async () => {
     setFactsLoading(true);
@@ -1290,21 +1415,34 @@ export function HomeChat({
       try {
         // 改选模型后，路由与端点事实都会变：先让缓存作废（OD-ARCH-041）。
         invalidateEngineFactsCache();
+        const requestedEffort = effort ?? modelEffort;
         const r = await shell.setModelRoute({
           sourceProfile,
           provider,
           model,
-          reasoningEffort: effort ?? modelEffort,
+          reasoningEffort: requestedEffort,
         });
+        // 情形 3：宿主本地确定显式档位必败，已按默认档提交。界面状态同步到实际
+        // 生效的档位，避免下一次切换继续拿一个必败档位重试。
+        if (r.reasoningEffort && r.reasoningEffort !== requestedEffort) {
+          setModelEffort(r.reasoningEffort);
+        }
         // 只有用户自己点的那次切换才弹提示条；切场景自动套档走的是同一个函数，
         // 它若也写提示，会盖住用户刚看到的成功文案（OD-ARCH-096 窗口实测）。
         if (byUser) {
-          setModelNote(
-            `已切到 ${provider} / ${model}` +
-              (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
-              `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
-            "success",
-          );
+          if (r.advisory) {
+            // OD-ARCH-175：一句话说明档位调整，不堆端点/类别的次要描述。
+            setModelNote(r.advisory, "info");
+            // TODO(OD-ARCH-175 阶段 2/4)：运行期回退通知的接口未定；宿主接入后
+            // 在这里接收并展示，失败任务仍由用户点现有 retryable 入口重发。
+          } else {
+            setModelNote(
+              `已切到 ${provider} / ${model}` +
+                (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
+                `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
+              "success",
+            );
+          }
         }
         await refreshAdmission();
         return true;
@@ -1655,10 +1793,10 @@ export function HomeChat({
         streamedTasksRef.current.add(event.omni_task_id);
         forceStreamRender((n) => n + 1);
       }
-      if (notePendingRef.current.has(event.omni_task_id)) {
-        noteRawRef.current.set(
+      if (classifyPendingRef.current.has(event.omni_task_id)) {
+        classifyRawRef.current.set(
           event.omni_task_id,
-          (noteRawRef.current.get(event.omni_task_id) ?? "") + delta,
+          (classifyRawRef.current.get(event.omni_task_id) ?? "") + delta,
         );
       }
       if (summaryPendingRef.current.has(event.omni_task_id)) {
@@ -1774,127 +1912,6 @@ export function HomeChat({
     },
     [],
   );
-
-  /**
-   * 执行一份随手记判定：校验 → 移动 → 并入 → 逐条写入 → 返回给用户看的确定性回执。
-   *
-   * 任何不合规、缺失或异常都走降级：原文原样追加到当天，并明确标注
-   * 「未做指令识别」，绝不假装已经理解。降级路径不执行任何移动。
-   */
-  const executeNote = useCallback(
-    async (
-      ctx: { userText: string; week: string; today: string; index: WorklogIndex },
-      content: string,
-    ): Promise<string | null> => {
-    // 失败即不写：以前这里会把用户原话按当天原样记下，结果把「嗯，合并成一条」
-    // 这类对话也记成了工作事项。现在宁可这轮不写，也不制造错误记录。
-    const fallback = async (why: string): Promise<string> => {
-      const phrase = findDatePhrase(ctx.userText);
-      return (
-        "这轮没有写入工作记录（" + why + "）。" +
-        (phrase
-          ? "句子里有「" + phrase + "」，但判定没有通过，所以没有按那天记。"
-          : "请把要记的内容再说一次，或确认这条是不是工作事实。")
-      );
-    };
-
-    const split = splitVerdict(content || "");
-    if (!split.block) return fallback("回复里没有判定块");
-
-    const verdict = parseVerdict(split.block);
-    if (!verdict) return fallback("判定块不是合法 JSON");
-
-    const check = validateVerdict(verdict, ctx, ctx.index);
-    if (!check.ok) return fallback(check.reason);
-
-    const plan = check.plan;
-    // 三个数组都空 = 这一步只回一句话（确认、追问、回答）：不碰文件。
-    if (plan.append.length === 0 && plan.move.length === 0 && plan.merge.length === 0) return null;
-
-    const lines: string[] = [];
-    const problems: string[] = [];
-
-    // 并入先于移动：并入不增删条目、不改序号；移动会改变序号，追加会新增条目。
-    for (const record of plan.merge) {
-      try {
-        const receipt = await shell.worklogMerge({
-          // 跨周并入必须写回这条记录所属的周，不能固定用当周。
-          week: record.week,
-          date: record.date,
-          index: record.index,
-          expectText: record.expectText,
-          text: record.text,
-        });
-        if (!receipt.ok || !receipt.merged) {
-          problems.push(
-            "「" + shortText(record.text, 16) + "」没有并入 " + record.date + " 第 " +
-              (record.index + 1) + " 条：" + (receipt.error || "宿主未确认") + "。文件保持原样。",
-          );
-          continue;
-        }
-        lines.push(
-          "· 并入 " + receipt.date + " 第 " + (receipt.index + 1) + " 条：" +
-            shortText(receipt.added, 30),
-        );
-        if (receipt.masked) {
-          lines.push("  （已自动脱敏，身份证号 " + receipt.masked_id_card + " 处、手机号 " + receipt.masked_phone + " 处）");
-        }
-      } catch (e) {
-        problems.push("「" + shortText(record.text, 16) + "」并入失败：" + String(e) + "。");
-      }
-    }
-
-    if (plan.move.length > 0) {
-      try {
-        const receipt = await shell.worklogMoveMany({
-          week: ctx.week,
-          moves: plan.move.map((mv) => ({
-            date: mv.date,
-            index: mv.index,
-            to: mv.to,
-            expectText: mv.expectText,
-          })),
-        });
-        if (!receipt.ok) {
-          problems.push("移动没有执行：" + (receipt.error || "宿主未确认") + "。文件保持原样。");
-        } else {
-          for (const mv of receipt.moves) {
-            lines.push("· " + mv.from_date + " → " + mv.to_date + "：" + shortText(mv.text, 30));
-          }
-        }
-      } catch (e) {
-        problems.push("移动失败：" + String(e) + "。文件保持原样。");
-      }
-    }
-
-    for (const record of plan.append) {
-      try {
-        const receipt = await shell.worklogAppend(record.text, undefined, record.date);
-        if (!receipt.ok || !receipt.appended) {
-          problems.push(
-            "「" + shortText(record.text, 16) + "」没有记下来：" +
-              (receipt.error || "宿主未确认写入") + "。",
-          );
-          continue;
-        }
-        lines.push("· 记入 " + receipt.date + "：" + shortText(record.text, 30));
-        if (receipt.masked) {
-          lines.push("  （已自动脱敏，身份证号 " + receipt.masked_id_card + " 处、手机号 " + receipt.masked_phone + " 处）");
-        }
-      } catch (e) {
-        problems.push("「" + shortText(record.text, 16) + "」写入失败：" + String(e) + "。");
-      }
-    }
-
-    const parts: string[] = [];
-    if (lines.length > 0) {
-      parts.push("工作台已按判定执行：" + "\n" + lines.join("\n"));
-    } else if (problems.length === 0) {
-      parts.push("这一句没有产生写入。");
-    }
-    if (problems.length > 0) parts.push(problems.join(" "));
-    return parts.join("\n\n");
-  }, []);
 
   /**
    * 当日摘要终态落盘（OD-WR-503）。
@@ -2019,6 +2036,11 @@ export function HomeChat({
         intent: "worklog_extract",
         workspaceDir: workspace.workspace_dir,
         userInputText: prep.user_input_text,
+        // OD-ARCH-176：工作记录相关的分析轮默认模型直出；用户选过档位则按所选。
+        // 声明集合明确不含 off 时降为跟随模型默认，避免运行期拒绝整轮。
+        reasoningEffort: pickRoutedWorkIntentEffort("analyze"),
+        provider: factsRef.current?.provider ?? null,
+        model: factsRef.current?.model ?? null,
       });
       let status = await host.taskStatus(receipt.omni_task_id);
       for (
@@ -2051,127 +2073,569 @@ export function HomeChat({
     }
   }, []);
 
+  interface VerdictExecution {
+    /** 给用户看的确定性回执；null 表示这一轮没有产生写入。 */
+    outcome: string | null;
+    /** 判定是否通过宿主校验。分类轮拿不准时据此转提问，而不是猜着写。 */
+    checkOk: boolean;
+    reason: string;
+    /** 真正追加成功的条目（用于任务候选与确认展示）。 */
+    appended: Array<{
+      recordId: string;
+      date: string;
+      week: string;
+      index: number;
+      text: string;
+    }>;
+  }
+
   /**
-   * OD-WR-105：落盘后统一分析一次：错误、缺项、任务建议；结果进入待回复状态。
-   * 记录正文已经保存，这里只产出文字，不写文件。
+   * 执行一份已经解析好的随手记判定（OD-ARCH-176 起由意图分类直接带回）。
+   *
+   * 任何不合规都停在校验层：不写盘，并把原因交回调用方；写入仍只走宿主命令。
    */
-  const analyzeRecordReview = useCallback(
+  const executeVerdictPlan = useCallback(
     async (
-      entry: {
-        recordId: string;
+      ctx: { userText: string; week: string; today: string; index: WorklogIndex },
+      verdict: WorkRecordVerdict | null,
+    ): Promise<VerdictExecution> => {
+      const check = validateVerdict(verdict, ctx, ctx.index);
+      if (!check.ok) {
+        return { outcome: null, checkOk: false, reason: check.reason, appended: [] };
+      }
+      const plan = check.plan;
+      if (plan.append.length === 0 && plan.move.length === 0 && plan.merge.length === 0) {
+        return { outcome: null, checkOk: true, reason: "", appended: [] };
+      }
+      const lines: string[] = [];
+      const problems: string[] = [];
+      const appended: VerdictExecution["appended"] = [];
+
+      // 并入先于移动：并入不增删条目、不改序号；移动会改变序号，追加会新增条目。
+      for (const record of plan.merge) {
+        try {
+          const receipt = await shell.worklogMerge({
+            week: record.week,
+            date: record.date,
+            index: record.index,
+            expectText: record.expectText,
+            text: record.text,
+          });
+          if (!receipt.ok || !receipt.merged) {
+            problems.push(
+              "「" + shortText(record.text, 16) + "」没有并入 " + record.date + " 第 " +
+                (record.index + 1) + " 条：" + (receipt.error || "宿主未确认") + "。文件保持原样。",
+            );
+            continue;
+          }
+          lines.push(
+            "· 并入 " + receipt.date + " 第 " + (receipt.index + 1) + " 条：" +
+              shortText(receipt.added, 30),
+          );
+        } catch (e) {
+          problems.push("「" + shortText(record.text, 16) + "」并入失败：" + String(e) + "。");
+        }
+      }
+
+      if (plan.move.length > 0) {
+        try {
+          const receipt = await shell.worklogMoveMany({
+            week: ctx.week,
+            moves: plan.move.map((mv) => ({
+              date: mv.date,
+              index: mv.index,
+              to: mv.to,
+              expectText: mv.expectText,
+            })),
+          });
+          if (!receipt.ok) {
+            problems.push("移动没有执行：" + (receipt.error || "宿主未确认") + "。文件保持原样。");
+          } else {
+            for (const mv of receipt.moves) {
+              lines.push("· " + mv.from_date + " → " + mv.to_date + "：" + shortText(mv.text, 30));
+            }
+          }
+        } catch (e) {
+          problems.push("移动失败：" + String(e) + "。文件保持原样。");
+        }
+      }
+
+      for (const record of plan.append) {
+        try {
+          const receipt = await shell.worklogAppend(record.text, undefined, record.date);
+          if (!receipt.ok || !receipt.appended) {
+            problems.push(
+              "「" + shortText(record.text, 16) + "」没有记下来：" +
+                (receipt.error || "宿主未确认写入") + "。",
+            );
+            continue;
+          }
+          lines.push("· 记入 " + receipt.date + "：" + shortText(record.text, 30));
+          if (receipt.record_id) {
+            appended.push({
+              recordId: receipt.record_id,
+              date: receipt.date,
+              week: receipt.week,
+              index: receipt.entry_index,
+              text: record.text,
+            });
+          }
+          if (receipt.masked) {
+            lines.push("  （已自动脱敏，身份证号 " + receipt.masked_id_card + " 处、手机号 " + receipt.masked_phone + " 处）");
+          }
+        } catch (e) {
+          problems.push("「" + shortText(record.text, 16) + "」写入失败：" + String(e) + "。");
+        }
+      }
+
+      const parts: string[] = [];
+      if (lines.length > 0) {
+        parts.push("工作台已按判定执行：" + "\n" + lines.join("\n"));
+      } else if (problems.length === 0) {
+        parts.push("这一句没有产生写入。");
+      }
+      if (problems.length > 0) parts.push(problems.join(" "));
+      return { outcome: parts.join("\n\n") || null, checkOk: true, reason: "", appended };
+    },
+    [],
+  );
+
+  /**
+   * 把一条 note 判定执行并展示（OD-ARCH-176）。
+   *
+   * `confirmed=false` 时，校验不过就转提问，绝不擅自按原文落盘；
+   * 只有用户明确确认后才允许原文兜底写入。
+   */
+  const finishNote = useCallback(
+    async (params: {
+      messageId: string;
+      ctx: { userText: string; week: string; today: string; index: WorklogIndex };
+      picked: AttachmentInput[];
+      contract: WorkIntentContract | null;
+      confirmed: boolean;
+    }): Promise<void> => {
+      const { messageId, ctx, picked, contract, confirmed } = params;
+      const emit = (text: string, notice: string | null = null) => {
+        if (messageId) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? { ...m, text, notice, retryable: false, executed: true, local: false }
+                : m,
+            ),
+          );
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: "assistant", executed: true, text, notice },
+          ]);
+        }
+      };
+      const ask = () => {
+        setNoteAsk({
+          text: ctx.userText,
+          picked,
+          contract,
+          week: ctx.week,
+          today: ctx.today,
+          index: ctx.index,
+          questionId: "note-ask-" + nextId(),
+        });
+        if (messageId) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? { ...m, notice: "没有把握把这条当工作记录，先确认。" }
+                : m,
+            ),
+          );
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              local: true,
+              text: "没有把握把这条当工作记录，先确认。",
+            },
+          ]);
+        }
+      };
+
+      const run = await executeVerdictPlan(ctx, contract?.record ?? null);
+      if (run.checkOk && run.outcome) {
+        const lines: string[] = [];
+        for (const entry of run.appended) {
+          lines.push("已记录到 " + entry.date + "：" + entry.text);
+        }
+        if (lines.length === 0) lines.push(run.outcome);
+        lines.push(...formatRecordReviewLines(contract?.review ?? null));
+        const last = run.appended[run.appended.length - 1];
+        const review = contract?.review ?? null;
+        const wantsFollowUp =
+          !!review &&
+          (review.task.suggest ||
+            review.errors.length > 0 ||
+            review.missing.length > 0 ||
+            review.question.length > 0);
+        if (last && wantsFollowUp) {
+          pendingReviewRef.current = {
+            recordId: last.recordId,
+            date: last.date,
+            entryIndex: last.index,
+            week: last.week,
+            index: last.index,
+            text: last.text,
+            taskTitle: review!.task.title,
+          };
+        }
+        emit(lines.join("\n"));
+        return;
+      }
+
+      if (!confirmed) {
+        ask();
+        return;
+      }
+
+      // 用户明确确认过「记下来」：判定结构不可用时，才按原文记到用户说的那天。
+      const guess = extractEntryDate(ctx.userText, new Date(), tzOffsetRef.current);
+      const date = guess?.date ?? ctx.today;
+      try {
+        const receipt = await shell.worklogAppend(ctx.userText, undefined, date);
+        if (!receipt.ok || !receipt.appended) {
+          emit("这条没有记下来：" + (receipt.error || "宿主未确认写入") + "。");
+          return;
+        }
+        const lines = ["已记录到 " + receipt.date + "：" + ctx.userText];
+        const review = contract?.review ?? null;
+        lines.push(...formatRecordReviewLines(review));
+        const wantsFollowUp =
+          !!review &&
+          (review.task.suggest ||
+            review.errors.length > 0 ||
+            review.missing.length > 0 ||
+            review.question.length > 0);
+        if (receipt.record_id && wantsFollowUp) {
+          pendingReviewRef.current = {
+            recordId: receipt.record_id,
+            date: receipt.date,
+            entryIndex: receipt.entry_index,
+            week: receipt.week,
+            index: receipt.entry_index,
+            text: ctx.userText,
+            taskTitle: review!.task.title,
+          };
+        }
+        emit(lines.join("\n"));
+      } catch (e) {
+        emit("这条没有记下来：" + String(e) + "。");
+      }
+    },
+    [executeVerdictPlan],
+  );
+
+  /** 用户在提问卡上确认后执行；不确认就明确表示不记。 */
+  const answerNoteAsk = useCallback(
+    async (selected: string[], _custom: string) => {
+      const ask = noteAsk;
+      if (!ask) return;
+      setNoteAsk(null);
+      const wants = selected.includes("记下来");
+      if (!wants) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextId(), role: "assistant", local: true, text: "好的，这条不记为工作记录。" },
+        ]);
+        return;
+      }
+      await finishNote({
+        messageId: "",
+        ctx: { userText: ask.text, week: ask.week, today: ask.today, index: ask.index },
+        picked: ask.picked,
+        contract: ask.contract,
+        confirmed: true,
+      });
+    },
+    [noteAsk, finishNote],
+  );
+
+  /**
+   * 分类判定为 report / daily-summary / period-review 后，宿主汇集材料并入稿。
+   *
+   * 这不是分类的二次调用：分类只回意图；这里按周报场景既有路径准备材料
+   * 与输出契约，再提交起草轮。period-review 的材料汇集与落盘复用 OD-WR-505。
+   */
+  const submitRoutedWorkIntent = useCallback(
+    async (
+      action: "report" | "daily-summary" | "period-review",
+      userText: string,
+      picked: AttachmentInput[],
+      reviewTarget: PeriodReviewTarget | null,
+    ): Promise<void> => {
+      if (!preset) return;
+      let worklog: { week: string; exists: boolean; content: string } | null = null;
+      let summaryContext: {
         date: string;
-        week: string;
-        index: number;
-        text: string;
-      },
-      messageId: string,
-    ) => {
-      const finish = (detail: string) =>
+        material: string;
+        recordCount: number;
+      } | null = null;
+      let periodContext: {
+        target: PeriodReviewTarget;
+        material: string;
+        recordCount: number;
+        taskCount: number;
+        taskStats: { completed: number; uncompleted: number; overdue: number };
+        priorReviews: string[];
+      } | null = null;
+      let notice = "";
+      try {
+        if (action === "report") {
+          const week = await shell.worklogReadWeek();
+          worklog = { week: week.week, exists: week.exists, content: week.content };
+          notice = week.exists
+            ? "已带上 " + week.week + " 的工作记录（" + week.content.length + " 字符）。"
+            : week.week + " 还没有工作记录，周报只能如实说明这一点。";
+        } else if (action === "daily-summary") {
+          const date = todayDateKey(new Date(), tzOffsetRef.current);
+          const listing = await shell.workRecordList({
+            from_date: date,
+            to_date: date,
+            draft: false,
+          });
+          const material = buildDailySummaryMaterial(date, listing.items);
+          summaryContext = {
+            date,
+            material: material.material,
+            recordCount: material.recordCount,
+          };
+          notice =
+            material.recordCount === 0
+              ? date + " 没有正式记录；摘要只能如实说明。"
+              : "已带上 " + date + " 的 " + material.recordCount + " 条正式记录（草稿已排除）。";
+        } else {
+          if (!reviewTarget) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: "assistant",
+                text: "请告诉我复盘哪个周期（本周 / 本月 / 本季度 / 今年）。",
+              },
+            ]);
+            return;
+          }
+          const collected = await shell.worklogPeriodReviewCollect(
+            reviewTarget.period,
+            reviewTarget.start,
+            reviewTarget.end,
+          );
+          periodContext = {
+            target: reviewTarget,
+            material: collected.material,
+            recordCount: collected.record_count,
+            taskCount: collected.task_count,
+            taskStats: collected.task_stats,
+            priorReviews: collected.prior_reviews,
+          };
+          notice =
+            "已带上 " + reviewTarget.label + " 的 " + collected.record_count +
+            " 条正式记录与 " + collected.task_count + " 个任务。";
+        }
+
+        let dir = workspaceDir;
+        if (!dir && projectDir) {
+          dir = projectDir;
+          setWorkspaceDir(dir);
+        }
+        if (!dir) {
+          dir = await resolveWorkspaceDir();
+          setWorkspaceDir(dir);
+        }
+        if (!dir) {
+          throw new Error(
+            workspaceNoteRef.current ?? "无法为引擎提供工作目录（宿主未返回可用目录）。",
+          );
+        }
+        const session = engineSessionIdRef.current;
+        const continuation = Boolean(session);
+        const promptText = composeConversationPrompt({
+          preset,
+          turns: continuation
+            ? []
+            : messagesRef.current.map((m) => ({ role: m.role, text: m.text })),
+          current: composeWithAttachments(userText, picked),
+          continuation,
+          mode: action,
+          dailySummary: summaryContext,
+          periodReview: periodContext
+            ? {
+                period: periodContext.target.period,
+                label: periodContext.target.label,
+                start: periodContext.target.start,
+                end: periodContext.target.end,
+                material: periodContext.material,
+                recordCount: periodContext.recordCount,
+                taskCount: periodContext.taskCount,
+                taskStats: periodContext.taskStats,
+                priorReviews: periodContext.priorReviews,
+              }
+            : null,
+          worklog,
+        });
+        const effort = pickRoutedWorkIntentEffort(action);
+        const factsNow = factsRef.current;
+        setBusy(true);
+        resetCancelState();
+        setMaskerWarning(null);
+        const receipt = await host.submitTask({
+          promptText,
+          workspaceDir: dir,
+          intent: isSceneKey(activeTag) ? SCENES[activeTag].scenario : undefined,
+          userInputText: picked.length > 0 ? attachmentScanText(userText, picked) : userText,
+          engineSessionId: session,
+          reasoningEffort: effort,
+          provider: factsNow?.provider ?? null,
+          model: factsNow?.model ?? null,
+        });
+        if (receipt.engine_session_id) {
+          setLocalEngineSessionId(receipt.engine_session_id);
+          onEngineSessionId?.(receipt.engine_session_id);
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "assistant",
+            text: "",
+            taskId: receipt.omni_task_id,
+            state: receipt.status,
+            startedAtMs: Date.now(),
+            endedAtMs: null,
+            sentText: userText,
+            notice:
+              [notice, receipt.privacy_masked ? "已自动脱敏。" : null]
+                .filter(Boolean)
+                .join(" ") || null,
+          },
+        ]);
+        if (summaryContext) {
+          summaryPendingRef.current.set(receipt.omni_task_id, {
+            date: summaryContext.date,
+            recordCount: summaryContext.recordCount,
+            done: false,
+          });
+        }
+        if (periodContext) {
+          periodPendingRef.current.set(receipt.omni_task_id, {
+            target: periodContext.target,
+            recordCount: periodContext.recordCount,
+            taskCount: periodContext.taskCount,
+            done: false,
+          });
+        }
+        setActiveTaskId(receipt.omni_task_id);
+        ownInflightRef.current = receipt.omni_task_id;
+        inflightCbRef.current?.(receipt.omni_task_id);
+        onTaskCreated?.(receipt.omni_task_id);
+      } catch (e) {
+        setBusy(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            role: "assistant",
+            text: "",
+            error: "本次没有出稿：" + String(e),
+          },
+        ]);
+      }
+    },
+    [preset, projectDir, workspaceDir, resolveWorkspaceDir, activeTag, onEngineSessionId, onTaskCreated],
+  );
+
+  /** 终态解析统一意图契约并分流（OD-ARCH-176）。 */
+  const settleWorkIntent = useCallback(
+    async (taskId: string, content: string): Promise<void> => {
+      const ctx = classifyPendingRef.current.get(taskId);
+      if (!ctx || ctx.done) return;
+      ctx.done = true;
+      const raw = content.trim() ? content : (classifyRawRef.current.get(taskId) ?? "");
+      classifyPendingRef.current.delete(taskId);
+      classifyRawRef.current.delete(taskId);
+      const parsed = parseWorkIntentContract(raw);
+      const contract = parsed.contract;
+      if (!contract) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === messageId
-              ? { ...m, text: m.text.replace("\n模型分析中…", "") + detail }
+            m.taskId === taskId
+              ? {
+                  ...m,
+                  text: parsed.visible,
+                  notice: "没有读出意图判定，这句没有写入工作记录。",
+                  retryable: true,
+                }
               : m,
           ),
         );
-      if (!preset) return;
-      try {
-        const weekRead = await shell.worklogReadWeek();
-        const index = buildWorklogIndex(weekRead.content, weekRead.week);
-        const promptText =
-          composeConversationPrompt({
-            preset,
-            turns: [],
-            current: entry.text,
-            mode: "note",
-            noteIndex: {
-              week: weekRead.week,
-              today: entry.date,
-              entries: describeIndex(index, entry.date),
-            },
-          }) +
-          "\n\n补充说明：这条记录已由工作台原文保存到 " +
-          entry.date +
-          "；不要输出 append/merge/move。请判断：1）原文是否有与事实冲突或明显错误 2）缺少哪些要素（时间、地点、人物、事件、影响、感受）3）是否包含可执行任务。先用一两句话说明，然后单独一行输出 <omnidesk-review>{\"errors\":[],\"missing\":[],\"task\":{\"suggest\":false,\"title\":\"\"},\"question\":\"\"}</omnidesk-review>。";
-        const workspace = await shell.prepareWorkspaceDir();
-        if (!workspace.ok || !workspace.workspace_dir) return;
-        const receipt = await host.submitTask({
-          promptText,
-          intent: "weekly_report",
-          workspaceDir: workspace.workspace_dir,
-          userInputText: entry.text,
-        });
-        let status = await host.taskStatus(receipt.omni_task_id);
-        for (
-          let i = 0;
-          i < 300 && !(TERMINAL_STATES as readonly string[]).includes(String(status.status));
-          i += 1
-        ) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1000));
-          status = await host.taskStatus(receipt.omni_task_id);
-        }
-        if (status.status !== "succeeded") {
-          finish("\n分析未完成：" + status.status + (status.note ? " · " + status.note : ""));
-          return;
-        }
-        const result = await host.taskResult(receipt.omni_task_id);
-        const split = splitRecordReview(result.content);
-        const lines: string[] = [];
-        if (split.visible) lines.push(split.visible);
-        if (split.review) {
-          if (split.review.errors.length > 0) {
-            lines.push("错误提醒：" + split.review.errors.join("；"));
-          }
-          if (split.review.missing.length > 0) {
-            lines.push("建议补充：" + split.review.missing.join("、"));
-          }
-          if (split.review.task.suggest && split.review.task.title) {
-            lines.push("发现任务：" + split.review.task.title + "。要创建任务吗？回复「创建」或「不用」。");
-          }
-          if (split.review.question) lines.push(split.review.question);
-        }
-        finish(
-          lines.length > 0
-            ? "\n" + lines.join("\n")
-            : "\n分析完成：这条记录没有需要补充的内容。",
-        );
-        if (
-          split.review &&
-          (split.review.task.suggest || split.review.errors.length > 0 ||
-            split.review.missing.length > 0 || split.review.question)
-        ) {
-          pendingReviewRef.current = {
-            recordId: entry.recordId,
-            date: entry.date,
-            entryIndex: entry.index,
-            week: entry.week,
-            index: entry.index,
-            text: entry.text,
-            taskTitle: split.review.task.title,
-          };
-        }
-      } catch (e) {
-        finish("\n分析失败：" + String(e));
+        return;
       }
+      const route = decideWorkIntentRoute(contract.intent);
+      const reply = contract.reply || parsed.visible;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.taskId === taskId
+            ? {
+                ...m,
+                text: reply || (route.action === "ask" ? "这条要记吗？" : "这句没有可用的回复。"),
+                notice:
+                  route.action === "ask" ? "这句没有写入工作记录。" : null,
+              }
+            : m,
+        ),
+      );
+      if (route.action === "note") {
+        await finishNote({
+          messageId: taskId,
+          ctx: { userText: ctx.userText, week: ctx.week, today: ctx.today, index: ctx.index },
+          picked: ctx.picked,
+          contract,
+          confirmed: false,
+        });
+        return;
+      }
+      if (route.action === "reply") return;
+      if (route.action === "ask") {
+        setNoteAsk({
+          text: ctx.userText,
+          picked: ctx.picked,
+          contract,
+          week: ctx.week,
+          today: ctx.today,
+          index: ctx.index,
+          questionId: "note-ask-" + nextId(),
+        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.taskId === taskId
+              ? { ...m, notice: "没有把握把这条当工作记录，先确认。" }
+              : m,
+          ),
+        );
+        return;
+      }
+      let target: PeriodReviewTarget | null = null;
+      if (route.action === "period-review") {
+        target =
+          detectPeriodReviewTarget(ctx.userText, new Date(), tzOffsetRef.current) ??
+          (contract.period
+            ? periodReviewTargetForPeriod(contract.period, new Date(), tzOffsetRef.current)
+            : null);
+      }
+      await submitRoutedWorkIntent(route.action, ctx.userText, ctx.picked, target);
     },
-    [preset],
+    [finishNote, submitRoutedWorkIntent],
   );
-
-  const settleNote = useCallback(async (taskId: string, content: string): Promise<string | null> => {
-    const ctx = notePendingRef.current.get(taskId);
-    if (!ctx || ctx.done) return null;
-    ctx.done = true;
-    try {
-      // 宿主没回正文（读结果失败）时，用流式累积的原文做判定，
-      // 别让已经拿到的模型输出白丢。
-      const raw = content.trim() ? content : (noteRawRef.current.get(taskId) ?? "");
-      return await executeNote(ctx, raw);
-    } finally {
-      // 这一轮已经处理完（含失败），不再保留索引：同一任务不会被执行两次。
-      notePendingRef.current.delete(taskId);
-      noteRawRef.current.delete(taskId);
-    }
-  }, [executeNote]);
 
   /**
    * 终态后回读结果：有限重试；失败给出可见提示与重试入口。
@@ -2325,20 +2789,19 @@ export function HomeChat({
           });
           settle();
           const finalText = await loadResult(taskId, status.status);
-          // OD-ARCH-104：随手记的判定在终态之后执行——模型只交回判定，
+          // OD-ARCH-176：意图判定在终态之后执行——模型只交回判定，
           // 写不写、写到哪由这里校验后决定。被用户取消的这一轮不写任何东西。
           if (status.status === "cancelled" || status.status === "interrupted") {
-            const pending = notePendingRef.current.get(taskId);
+            const pending = classifyPendingRef.current.get(taskId);
             if (pending && !pending.done) {
               pending.done = true;
-              // 取消的这一轮不会再执行判定：连索引与流式原文一起丢掉，
-              // 免得长期占着内存（settleNote 的 finally 走不到这里）。
-              notePendingRef.current.delete(taskId);
-              noteRawRef.current.delete(taskId);
+              // 取消的这一轮不会再执行判定：连索引与流式原文一起丢掉。
+              classifyPendingRef.current.delete(taskId);
+              classifyRawRef.current.delete(taskId);
               setMessages((prev) =>
                 prev.map((m) =>
                   m.taskId === taskId
-                    ? { ...m, notice: "本轮已取消，这句没有写入工作记录。" }
+                    ? { ...m, notice: "本轮已取消，没有判断也没有写入工作记录。" }
                     : m,
                 ),
               );
@@ -2375,19 +2838,11 @@ export function HomeChat({
             setMessages((prev) =>
               prev.map((m) =>
                 m.taskId === taskId && m.role === "assistant"
-                  ? { ...m, text: verdictDisplayText(m.text) }
+                  ? { ...m, text: workIntentDisplayText(verdictDisplayText(m.text)) }
                   : m,
               ),
             );
-            const outcome = await settleNote(taskId, finalText ?? "");
-            if (outcome) {
-              // 判定与降级兜底都可能产生确定性回执：单独成一条本地消息，
-              // 与「模型输出 · 未复核」分开，用户一眼能看出哪些是工作台真的执行了。
-              setMessages((prev) => [
-                ...prev,
-                { id: nextId(), role: "assistant", local: true, text: outcome },
-              ]);
-            }
+            await settleWorkIntent(taskId, finalText ?? "");
             // 当日摘要只在任务成功时落盘：失败的半截输出不写入摘要文件。
             const summaryPending = summaryPendingRef.current.get(taskId);
             if (summaryPending && !summaryPending.done) {
@@ -2475,6 +2930,23 @@ export function HomeChat({
                 ),
               );
             }
+            const classifyPending = classifyPendingRef.current.get(taskId);
+            if (classifyPending && !classifyPending.done) {
+              classifyPending.done = true;
+              classifyPendingRef.current.delete(taskId);
+              classifyRawRef.current.delete(taskId);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.taskId === taskId
+                    ? {
+                        ...m,
+                        notice: "本轮没有判断出这句怎么处理，也没有写入工作记录。",
+                        retryable: true,
+                      }
+                    : m,
+                ),
+              );
+            }
           }
         }
       } catch (e) {
@@ -2502,7 +2974,7 @@ export function HomeChat({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [activeTaskId, loadResult, settleNote, settleDailySummary]);
+  }, [activeTaskId, loadResult, settleWorkIntent, settleDailySummary, settlePeriodReview]);
 
   // 只在切换线程时落到底部；生成中新增 token 不再强制滚动，保证用户能自由回看历史。
   useEffect(() => {
@@ -2608,6 +3080,8 @@ export function HomeChat({
     ): Promise<boolean> => {
       const text = raw.trim();
       if (!text || busy) return false;
+      // 新的输入代表用户已经在对话里作答；未确认的「这条要记吗」随之收起。
+      setNoteAsk(null);
       const decision = currentEngineSubmitDecision(text);
       if (!decision.allowed) {
         setMessages((prev) => [
@@ -2786,83 +3260,7 @@ export function HomeChat({
           "）。用户这句话是在补充或修正它：优先用 merge 或 move 指向该条，不要重复 append。";
       }
 
-      // OD-WR-105：陈述句先原文落盘，不调模型。
-      // 记录不再依赖模型的判定块；需要整理、查重或生成周报时才调用模型。
-      if (!pendingReview && intent === "note" && isPlainStatementNote(text)) {
-        const guess = extractEntryDate(text, new Date(), tzOffsetRef.current);
-        const targetDate = guess?.date ?? todayDateKey(new Date(), tzOffsetRef.current);
-        try {
-          const receipt = await shell.worklogAppend(text, undefined, targetDate);
-          if (receipt.ok && receipt.appended) {
-            const recordMessageId = nextId();
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: recordMessageId,
-                role: "assistant",
-                local: true,
-                state: "succeeded",
-text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
-              },
-            ]);
-            setBusy(false);
-            setStarting(false);
-            if (receipt.record_id) {
-              pendingReviewRef.current = {
-                recordId: receipt.record_id,
-                date: receipt.date,
-                entryIndex: receipt.entry_index,
-                week: receipt.week,
-                index: receipt.entry_index,
-                text,
-                taskTitle: "",
-              };
-              void analyzeRecordReview(
-                {
-                  recordId: receipt.record_id,
-                  date: receipt.date,
-                  week: receipt.week,
-                  index: receipt.entry_index,
-                  text,
-                },
-                recordMessageId,
-              );
-            }
-            return true;
-          }
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: "assistant",
-              text: "",
-              error: "本地记录失败：" + (receipt.error || "宿主未确认写入"),
-            },
-          ]);
-          setBusy(false);
-          setStarting(false);
-          return false;
-        } catch (e) {
-          setMessages((prev) => [
-            ...prev,
-            { id: nextId(), role: "assistant", text: "", error: "本地记录失败：" + String(e) },
-          ]);
-          setBusy(false);
-          setStarting(false);
-          return false;
-        }
-      }
       let worklogNotice: string | null = null;
-      /**
-       * OD-ARCH-104：随手记交给模型的当周索引与上下文。等任务号回来后放进
-       * notePendingRef，终态回读结果时据此校验并执行判定。
-       */
-      let noteContext: {
-        userText: string;
-        week: string;
-        today: string;
-        index: WorklogIndex;
-      } | null = null;
       /** 当日摘要材料：当天正式记录（排除草稿）的全文索引。 */
       let summaryContext: {
         date: string;
@@ -2884,13 +3282,9 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
         // 其它场景与普通对话不进入这套流程，行为不变。
         let worklog: { week: string; exists: boolean; content: string } | null = null;
         if (intent === "note") {
-          // OD-ARCH-104：模型判语义，宿主守边界。
-          //
-          // 这里原来是前端正则判断「这句是指令还是内容」（detectRedateInstruction /
-          // isNoteContinuation）。规则没覆盖到的说法会被原样写成正文——用户那句
-          // 「上杭教学和参观紫金矿业都是本周一的行动，你全部调整周一」就被当成了一条
-          // 记录。现在改成：先读当周记录整理成索引 → 模型判 → 校验 → 才落盘。
-          // 判定到达之前，这一轮不写任何文件。
+          // OD-ARCH-176：工作记录场景废除「陈述句先落盘」快路径。
+          // 每轮先做一次分类调用：note 落盘、instruction/chat 只回复、
+          // period-review 再汇集材料出稿；拿不准由宿主提问，不猜着写。
           const weekRead = await shell.worklogReadWeek();
           const today = todayDateKey(new Date(), tzOffsetRef.current);
           let index = buildWorklogIndex(weekRead.content, weekRead.week);
@@ -2906,13 +3300,96 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                 };
               }
             } catch {
-              // 上一周读不到就只用本周索引，不阻断记录。
+              // 上一周读不到就只用本周索引，不阻断分类。
             }
           }
-          noteContext = { userText: text, week: weekRead.week, today, index };
-          worklogNotice =
-            "已读出 " + weekRead.week + (prevLabel ? " 与 " + prevLabel : "") + " 的 " +
-            index.entries.length + " 条记录，交给模型判断这句该怎么记。";
+          let dir = workspaceDir;
+          if (!dir && projectDir) {
+            dir = projectDir;
+            setWorkspaceDir(dir);
+          }
+          if (!dir) {
+            dir = await resolveWorkspaceDir();
+            setWorkspaceDir(dir);
+          }
+          if (!dir) {
+            throw new Error(
+              workspaceNoteRef.current ?? "无法为引擎提供工作目录（宿主未返回可用目录）。",
+            );
+          }
+          const continuation = Boolean(effectiveEngineSessionId) && !replayNextTurn;
+          const classifyPrompt = composeConversationPrompt({
+            preset,
+            turns: messages.map((m) => ({ role: m.role, text: m.text })),
+            current: composeWithAttachments(text, picked),
+            continuation,
+            mode: "classify",
+            noteIndex: {
+              week: weekRead.week,
+              today,
+              entries: describeIndex(index, today),
+            },
+          });
+          const promptText = pendingHint
+            ? classifyPrompt + "\n\n" + pendingHint
+            : classifyPrompt;
+          const factsNow = factsRef.current;
+          const effort = pickRoutedWorkIntentEffort("classify");
+          const receipt = await host.submitTask({
+            promptText,
+            workspaceDir: dir,
+            intent: isSceneKey(activeTag) ? SCENES[activeTag].scenario : undefined,
+            userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
+            engineSessionId: effectiveEngineSessionId,
+            reasoningEffort: effort,
+            provider: factsNow?.provider ?? null,
+            model: factsNow?.model ?? null,
+          });
+          if (receipt.engine_session_id) {
+            setLocalEngineSessionId(receipt.engine_session_id);
+            onEngineSessionId?.(receipt.engine_session_id);
+          }
+          if (token.aborted) {
+            try {
+              await host.cancelTask(receipt.omni_task_id);
+            } catch {
+              // 放弃提交时取消失败不改变「这一轮不写盘」的结论。
+            }
+            return true;
+          }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              text: "",
+              taskId: receipt.omni_task_id,
+              state: receipt.status,
+              startedAtMs: turnStartedAtMs,
+              endedAtMs: null,
+              sentText: text,
+              notice:
+                "已读出 " +
+                weekRead.week +
+                (prevLabel ? " 与 " + prevLabel : "") +
+                " 的 " +
+                index.entries.length +
+                " 条记录；先判断这句该怎么处理。",
+            },
+          ]);
+          classifyPendingRef.current.set(receipt.omni_task_id, {
+            userText: text,
+            week: weekRead.week,
+            today,
+            index,
+            picked,
+            done: false,
+          });
+          setActiveTaskId(receipt.omni_task_id);
+          ownInflightRef.current = receipt.omni_task_id;
+          inflightCbRef.current?.(receipt.omni_task_id);
+          onTaskCreated?.(receipt.omni_task_id);
+          return true;
         } else if (intent === "report") {
           try {
             const week = await shell.worklogReadWeek();
@@ -3069,13 +3546,6 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
             : null,
           // 周报模式带上当周记录（OD-ARCH-089 S2）；随手记带索引（OD-ARCH-104）。
           worklog,
-          noteIndex: noteContext
-            ? {
-                week: noteContext.week,
-                today: noteContext.today,
-                entries: describeIndex(noteContext.index, noteContext.today),
-              }
-            : null,
           knowledgeContext,
           knowledgeSkills,
         });
@@ -3085,6 +3555,12 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
         const promptTextWithPending = pendingHint
           ? promptText + "\n\n" + pendingHint
           : promptText;
+        // OD-ARCH-176：工作记录场景的起草轮（周报/摘要/复盘）默认跟随模型默认
+        // 思考档；用户手动选过档位则按所选档位下发。
+        const routedEffort = weeklyScene && intent
+          ? pickRoutedWorkIntentEffort(intent)
+          : null;
+        const factsNow = factsRef.current;
         const receipt = await host.submitTask({
           promptText: promptTextWithPending,
           workspaceDir: dir,
@@ -3094,6 +3570,9 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
           // 红线扫描必须覆盖附件正文：只扫用户原话会让附件里的禁入内容绕过检查。
           userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
           engineSessionId: effectiveEngineSessionId,
+          reasoningEffort: routedEffort,
+          provider: factsNow?.provider ?? null,
+          model: factsNow?.model ?? null,
         });
         // 记住本线程的引擎会话号：下一轮据此续接同一会话（真多轮）。
         if (receipt.engine_session_id) {
@@ -3171,12 +3650,6 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
               .join(" ") || null,
           },
         ]);
-        if (noteContext) {
-          notePendingRef.current.set(receipt.omni_task_id, {
-            ...noteContext,
-            done: false,
-          });
-        }
         if (summaryContext) {
           summaryPendingRef.current.set(receipt.omni_task_id, {
             date: summaryContext.date,
@@ -3938,14 +4411,18 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
                   aria-hidden="true"
                 >
                   <span className="font-headline-md text-[11px] font-semibold">
-                    {m.local ? "L" : modelInitial}
+                    {m.local ? "L" : m.executed ? "E" : modelInitial}
                   </span>
                 </div>
                 <div className="neu-msg-assistant rounded-2xl rounded-tl-sm p-4 text-[15px] text-on-surface space-y-2.5 min-w-0">
                   <div className="flex items-center space-x-2 text-primary font-medium">
                     <Icon name="shield-check" className="w-[15px] h-[15px]" />
                     <span>
-                      {m.local ? "工作台本地处理 · 未调用模型" : "模型输出 · 未复核"}
+                      {m.local
+                        ? "工作台本地处理 · 未调用模型"
+                        : m.executed
+                          ? "工作台已执行 · 模型判定"
+                          : "模型输出 · 未复核"}
                       {m.state ? " · " + STATE_LABEL[m.state] : ""}
                       {m.taskId && (pendingApprovals[m.taskId] ?? 0) > 0 ? " · 等待审批中" : ""}
                       {m.taskId && activeTaskId === m.taskId && elapsed > 0 ? ` · 已等待 ${elapsed}s` : ""}
@@ -4220,6 +4697,36 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
       {/* 指令坞 */}
       {/* 输入框（对话框） */}
       <div className="neu-composer mx-auto w-full max-w-[1080px] px-4 py-3 flex-shrink-0">
+        {noteAsk ? (
+          <div className="mb-2" data-testid="note-decision">
+            <QuestionCard
+              request={{
+                questionId: noteAsk.questionId,
+                omniTaskId: "local",
+                callId: "local",
+                questions: [
+                  {
+                    id: "record",
+                    question: "这条要记吗？",
+                    options: [{ label: "记下来" }, { label: "不记" }],
+                    multi_select: false,
+                  },
+                ],
+                answerable: true,
+                violations: [],
+                status: "pending",
+              }}
+              title="这条要记吗？"
+              note="拿不准时不替你决定。"
+              cancelLabel="不记"
+              onSubmit={(_, __, answers) => {
+                const answer = answers[0];
+                void answerNoteAsk(answer?.selected ?? [], answer?.custom ?? "");
+              }}
+              onCancelTask={() => void answerNoteAsk([], "")}
+            />
+          </div>
+        ) : null}
         {/* @ 引用选择器（OD-ARCH-077 S1）：贴着输入框显示，只列宿主允许根内的白名单文本。
             来源只有“成果目录”和“库根”，越界路径根本不会出现在这里。 */}
         {mentionQuery !== null ? (

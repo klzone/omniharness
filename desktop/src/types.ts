@@ -2440,7 +2440,11 @@ export interface ModelCatalogEntry {
   description: string;
   provider: string;
   provider_name: string;
-  efforts: ModelCatalogEffort[];
+  /**
+   * 思考档位。归一化目录通常给空数组；缺省表示当前响应没有这一项，
+   * 两种情况都不能单独当作「已声明为空」——切换预检会再看 Profile 声明。
+   */
+  efforts?: ModelCatalogEffort[] | null;
   default_effort: string | null;
 }
 

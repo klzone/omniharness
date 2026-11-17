@@ -37,6 +37,7 @@ pub mod material_query;
 mod local_http;
 pub mod model_settings;
 pub mod model_routes;
+pub mod model_effort_fallback;
 pub mod pending_writes;
 pub mod platform;
 pub mod project_items;
@@ -424,6 +425,9 @@ async fn engine_submit_task(
     idempotency_key: Option<String>,
     user_input_text: Option<String>,
     engine_session_id: Option<String>,
+    reasoning_effort: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> Result<serde_json::Value, serde_json::Value> {
     // 提交链路的固定顺序：红线扫描 → 端点与授权准入 → 才触达引擎。
     // 红线拒绝发生在任何引擎动作之前，且不回显命中原文或输入内容。
@@ -504,6 +508,9 @@ async fn engine_submit_task(
     let workspace_dir = workspace_dir.clone();
     let idempotency_key = idempotency_key.clone();
     let engine_session_id = engine_session_id.clone();
+    let reasoning_effort = reasoning_effort.clone();
+    let provider = provider.clone();
+    let model = model.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
         with_engine_call(
             &sink,
@@ -526,6 +533,25 @@ async fn engine_submit_task(
                 let sid = sid.trim();
                 if !sid.is_empty() {
                     params["engine_session_id"] = serde_json::json!(sid);
+                }
+            }
+            // OD-ARCH-176：只有显式档位才下发；引擎在 session/prompt 前按会话应用。
+            if let Some(effort) = reasoning_effort {
+                let effort = effort.trim();
+                if !effort.is_empty() {
+                    params["reasoning_effort"] = serde_json::json!(effort);
+                    if let Some(provider) = provider {
+                        let provider = provider.trim();
+                        if !provider.is_empty() {
+                            params["provider"] = serde_json::json!(provider);
+                        }
+                    }
+                    if let Some(model) = model {
+                        let model = model.trim();
+                        if !model.is_empty() {
+                            params["model"] = serde_json::json!(model);
+                        }
+                    }
                 }
             }
             host.bridge.submit_task(params)
@@ -591,6 +617,126 @@ fn task_status_impl(
     host.bridge.get_task_status(omni_task_id)
 }
 
+/// OD-ARCH-175 阶段 2：运行期思考档位拒绝的自动回退（宿主状态轮询路径）。
+///
+/// 只在「任务 failed + note 精确命中 DSH 档位拒绝 + 覆盖文件确实显式下发了同一
+/// provider/model/effort」时触发，见 model_effort_fallback 模块头注释。
+///
+/// 顺序与并发边界：
+///   1. 先同步重写覆盖文件（select_route 传 None effort）并同步 supervisor / 事实快照。
+///      这一步明显短于引擎关闭，成功后 status note 才追加告知句；
+///   2. 停止旧引擎放到后台线程执行：状态轮询不等待关闭，后台线程取得
+///      lifecycle 变更守卫后由屏障拦住新任务，stop_engine 在锁外完成收尾；
+///   3. 同一 (覆盖文件, provider, model, effort) 由 global_guard 保证只触发一次。
+///
+/// note 契约（阶段 4 验证接口）：<原 note>；已自动回退为默认思考档位，请重发任务。
+/// 不自动重发失败任务。
+fn maybe_auto_fallback_effort(
+    app: &tauri::AppHandle,
+    state: &SharedHost,
+    status: &mut serde_json::Value,
+) {
+    if !model_effort_fallback::status_is_failed(status) {
+        return;
+    }
+    let note = status
+        .get("note")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let Some(rejection) = model_effort_fallback::parse_effort_rejection(note) else {
+        return;
+    };
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let overlay = model_routes::overlay_path(&app_root);
+    let key = model_effort_fallback::route_key(&overlay, &rejection);
+    match model_effort_fallback::global_guard().peek(&key) {
+        // 已经回退成功：覆盖文件已不再显式下发档位，仍按原路由 key 补齐同一条告知。
+        Some(model_effort_fallback::FallbackClaim::Applied) => {
+            model_effort_fallback::append_fallback_note(status);
+            return;
+        }
+        // 正在回退或已失败：不提前告知“已回退”，也不重复触发。
+        Some(
+            model_effort_fallback::FallbackClaim::InFlight
+            | model_effort_fallback::FallbackClaim::Failed,
+        ) => return,
+        Some(model_effort_fallback::FallbackClaim::Started) | None => {}
+    }
+    let Some(routes) = model_effort_fallback::read_routes(&overlay) else {
+        return;
+    };
+    if !routes
+        .iter()
+        .any(|route| model_effort_fallback::rejection_matches_route(&rejection, route))
+    {
+        return;
+    }
+    match model_effort_fallback::global_guard().claim(&key) {
+        model_effort_fallback::FallbackClaim::Started => {}
+        // 已经回退成功：后续轮询仍展示同一条告知，不再重复改写/重启。
+        model_effort_fallback::FallbackClaim::Applied => {
+            model_effort_fallback::append_fallback_note(status);
+            return;
+        }
+        // 正在回退或已失败：不提前告知“已回退”，也不重复触发。
+        model_effort_fallback::FallbackClaim::InFlight
+        | model_effort_fallback::FallbackClaim::Failed => return,
+    }
+
+    let config = match engine_supervisor::EngineConfig::from_env(&app_root) {
+        Ok(config) => config,
+        Err(message) => {
+            eprintln!("[OmniDesk][effort-fallback] 读取引擎配置失败：{message}");
+            model_effort_fallback::global_guard().mark_failed(&key);
+            return;
+        }
+    };
+    if let Err(message) = model_routes::select_route(
+        &config,
+        &overlay,
+        &config.profile,
+        &rejection.provider,
+        &rejection.model,
+        None,
+    ) {
+        eprintln!("[OmniDesk][effort-fallback] 重写模型覆盖文件失败：{message}");
+        model_effort_fallback::global_guard().mark_failed(&key);
+        return;
+    }
+
+    // 覆盖文件已去掉显式档位：先让 supervisor 与端点事实快照看到它，再停引擎。
+    sync_model_overlay(app, state, &app_root);
+    model_effort_fallback::global_guard().mark_applied(&key);
+    model_effort_fallback::append_fallback_note(status);
+
+    // 停止旧引擎在后台完成：不占用轮询路径；关闭期间由 lifecycle 屏障拒绝新调用。
+    let host_state = Arc::clone(state);
+    let spawned = std::thread::Builder::new()
+        .name("omnidesk-effort-fallback-stop".to_string())
+        .spawn(move || {
+            let lifecycle = {
+                let host = host_state.lock().unwrap();
+                Arc::clone(&host.lifecycle)
+            };
+            let change = lifecycle.begin_change();
+            match stop_engine(&host_state, Duration::from_secs(10)) {
+                Ok(_) => change.succeed(),
+                Err(message) => {
+                    eprintln!("[OmniDesk][effort-fallback] 停止引擎失败：{message}");
+                    // 与手动切路由同一语义：未能确认停止时保持失败关闭。
+                    change.fail(message);
+                }
+            }
+        });
+    if let Err(error) = spawned {
+        // 路由已改、引擎未停：不撤销 guard，避免同一错误在每次轮询里反复改写。
+        eprintln!("[OmniDesk][effort-fallback] 无法启动停止线程：{error}");
+    }
+}
+
 /// 读取任务结果（只读；语义同 `task_status_impl`）。
 fn task_result_impl(
     state: &SharedHost,
@@ -644,10 +790,18 @@ fn question_answer_impl(
 
 #[tauri::command(async)]
 fn engine_task_status(
+    app: tauri::AppHandle,
     state: State<'_, SharedHost>,
     omni_task_id: String,
 ) -> Result<serde_json::Value, serde_json::Value> {
-    task_status_impl(state.inner(), &omni_task_id)
+    match task_status_impl(state.inner(), &omni_task_id) {
+        Ok(mut status) => {
+            // OD-ARCH-175 阶段 2：只在这条真实状态轮询路径上做回退识别。
+            maybe_auto_fallback_effort(&app, state.inner(), &mut status);
+            Ok(status)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[tauri::command(async)]

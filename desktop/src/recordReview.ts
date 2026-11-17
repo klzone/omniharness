@@ -18,6 +18,27 @@ function asStrings(value: unknown): string[] {
   return value.map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 8);
 }
 
+/** 把已经解析好的对象转成复核结果（OD-ARCH-176：并入统一意图契约）。 */
+export function parseRecordReviewValue(value: unknown): RecordReview | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const parsed = value as {
+    errors?: unknown;
+    missing?: unknown;
+    task?: { suggest?: unknown; title?: unknown };
+    question?: unknown;
+  };
+  const task = parsed.task && typeof parsed.task === "object" ? parsed.task : {};
+  return {
+    errors: asStrings(parsed.errors),
+    missing: asStrings(parsed.missing),
+    task: {
+      suggest: Boolean(task.suggest),
+      title: String(task.title ?? "").trim(),
+    },
+    question: String(parsed.question ?? "").trim(),
+  };
+}
+
 /** 从模型回复里切出可见文字与复核块；没有块时 review 为 null。 */
 export function splitRecordReview(text: string): { visible: string; review: RecordReview | null } {
   const raw = text ?? "";
@@ -34,19 +55,7 @@ export function splitRecordReview(text: string): { visible: string; review: Reco
       task?: { suggest?: unknown; title?: unknown };
       question?: unknown;
     };
-    const task = parsed.task ?? {};
-    return {
-      visible,
-      review: {
-        errors: asStrings(parsed.errors),
-        missing: asStrings(parsed.missing),
-        task: {
-          suggest: Boolean(task.suggest),
-          title: String(task.title ?? "").trim(),
-        },
-        question: String(parsed.question ?? "").trim(),
-      },
-    };
+    return { visible, review: parseRecordReviewValue(parsed) };
   } catch {
     return { visible, review: null };
   }

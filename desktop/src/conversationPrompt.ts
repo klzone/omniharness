@@ -11,6 +11,7 @@
 
 import { buildDraftPrompt } from "./aiDraft";
 import type { PeriodReviewPeriod } from "./workIntent";
+import { INTENT_CLOSE, INTENT_OPEN } from "./workIntentDecision";
 
 export interface ConversationTurn {
   role: "user" | "assistant";
@@ -158,8 +159,13 @@ export function buildContext(turns: ConversationTurn[], current: string): string
  */
 export function presetSkillsFor(
   preset: ConversationPreset,
-  mode: "note" | "report" | "daily-summary" | "period-review",
+  mode: "note" | "classify" | "report" | "daily-summary" | "period-review",
 ): Array<{ id: string; content: string }> | null {
+  if (mode === "classify") {
+    // 意图分类用的仍是随手记这一条流程的判定口径（memory-agent 等）。
+    const note = preset.skillsByFlow?.note;
+    return Array.isArray(note) ? note : preset.skills ?? null;
+  }
   if (mode === "daily-summary") {
     // 摘要不复用场景级绑定：工作记录场景的通用底线是随手记的 memory-agent，
     // 它不是摘要口径。没配 weekly-daily-summary 就不预注入，交给下方输出契约兜底。
@@ -256,7 +262,7 @@ export function knowledgeSkillPointer(skill: { id: string; content: string }): s
  */
 function defaultSceneSkills(
   preset: ConversationPreset,
-  mode: "note" | "report" | "daily-summary" | "period-review" | undefined,
+  mode: "note" | "classify" | "report" | "daily-summary" | "period-review" | undefined,
   hasWorklog: boolean,
 ): Array<{ id: string; content: string }> | null {
   const weeklyReportFlow = preset.key === "weekly" && (mode === "report" || hasWorklog);
@@ -278,7 +284,7 @@ export function composeConversationPrompt(input: {
    * 随手记是「先记下来」的低负担入口：带铁律与章节会让首字明显变慢，
    * 而用户此刻要的只是把事实留住、顺带补上缺的要素。周报仍走完整组装。
    */
-  mode?: "note" | "report" | "daily-summary" | "period-review";
+  mode?: "note" | "classify" | "report" | "daily-summary" | "period-review";
   /**
    * 当日摘要材料（OD-WR-503）：界面从宿主记录列表读出的当天正式记录全文索引。
    * 模型不碰文件，材料与输出契约由此处带进提示词。
@@ -480,6 +486,70 @@ export function composeConversationPrompt(input: {
       "",
       ...indexLines,
       ...noteSkillLines,
+      ...knowledgeBlock,
+      context,
+    ].join("\n");
+  }
+  if (input.mode === "classify") {
+    // OD-ARCH-176：工作记录场景每一轮先理解再路由。
+    //
+    // 平台只给数据、边界与统一契约；「什么算工作事实」「指令绝不落盘」的
+    // 判断口径仍来自当前场景绑定的技能。模型在同一调用里完成分类；若判定
+    // 为 note，质量分析（原 omnidesk-review 契约）一并返回，宿主不再二次调用。
+    const noteSkills = (presetSkillsFor(preset, "classify") ?? [])
+      .filter((s) => s.content.trim().length > 0)
+      .slice(0, 1);
+    const skillLines: string[] = [];
+    if (noteSkills.length > 0) {
+      const s = noteSkills[0];
+      skillLines.push("配套技能指引（" + s.id + "）：", skillPointer(s), "");
+    }
+    const idx = input.noteIndex ?? null;
+    const indexLines = idx
+      ? [
+          "今天是 " + idx.today + "，当周文件是 " + idx.week + "。",
+          "已有记录（最近 14 天，每行：日期 #序号 正文，序号从 0 起）：",
+          idx.entries.trim() || "（本周还没有记录）",
+          "",
+        ]
+      : [];
+    const contractLines = [
+      "只输出一个判定块，块外不要写任何文字：",
+      INTENT_OPEN +
+        '{"intent":"note|instruction|chat|period-review|report|daily-summary|uncertain","record":null,"review":null,"reply_hint":"","period":null}' +
+        INTENT_CLOSE,
+      "",
+      "intent 的含义与必填字段：",
+      "- note：这句话是要记下来的工作事实，或对已有记录的补充/移动/并入。record 填 " +
+        '{"append":[{"text":"用户原话的连续片段","date":"YYYY-MM-DD"}],"move":[{"date":"YYYY-MM-DD","index":0,"to":"YYYY-MM-DD"}],"merge":[{"date":"YYYY-MM-DD","index":0,"text":"用户原话的连续片段"}]}' +
+        "；没有的动作留空数组。review 填 " +
+        '{"errors":[],"missing":[],"task":{"suggest":false,"title":""},"question":""}' +
+        "（同一调用完成质量分析）。",
+      "- instruction：用户在要求助手做事（搜索、查记录、创建、整理等）。不落盘；",
+      "  record 留 null，reply_hint 直接给出有用的回答（可以引用上面的记录索引）。",
+      "- chat：寒暄、确认或普通对话。不落盘；reply_hint 是回复正文。",
+      "- period-review：要周期复盘。period 填 weekly/monthly/quarterly/annual 之一；先不要起草。",
+      "- report：要周报；daily-summary：要今日摘要。先不要起草。",
+      "- uncertain：note 与 instruction 边界模糊，或你无法确定。不要猜；宿主会问用户。",
+      "",
+      "硬约束：指令、请求、寒暄都绝不能写进工作记录；只有 note 的 record 会被执行。",
+      "record 的正文必须是用户原话的连续片段，不得改写、合并或凭空补事实。",
+      "补录窗口：最近 14 天（含上一周）；用户给出日期时按该日期补录，跨周也照此。",
+      "",
+    ];
+    return [
+      "先用 skill 工具读取下方主技能正文（只调用一次；PTC 下在 run_code 内 tools.skill），再判断并回复。",
+      "read / grep / glob / bash / write / edit 与联网工具都不要用。",
+      "",
+      "技能正文里的旧判定块格式与「先人话、后判定块」本轮不适用：",
+      "本轮唯一输出是本提示词约定的 Omnidesk-intent 块；给人看的文字放进 reply_hint。",
+      "",
+      "写入由工作台执行：你不需要、也不允许写文件或改写已有条目，",
+      "也不要声称已经写入或已经移动。",
+      "",
+      ...contractLines,
+      ...indexLines,
+      ...skillLines,
       ...knowledgeBlock,
       context,
     ].join("\n");

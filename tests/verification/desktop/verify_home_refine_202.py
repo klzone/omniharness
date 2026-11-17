@@ -127,11 +127,11 @@ def main() -> int:
           "recoverTask(taskId)" in chat,
           "重新查询先尝试重建宿主任务状态")
     check("effort_advisory",
-          "effort-advisory" in model and "可能被忽略" in model,
-          "模型未声明档位时显示思考等级可能失效的提示")
+          "effort-advisory" in model and "未声明思考档位；若不支持会按默认档切换。" in model,
+          "模型未声明档位时提示会按默认档切换（OD-ARCH-175）")
     check("assistant_avatar_model_initial",
           "modelInitial" in chat
-          and "m.local ? \"L\" : modelInitial" in chat,
+          and "m.local ? \"L\" : m.executed ? \"E\" : modelInitial" in chat,
           "AI 回复头像改为模型首字母")
     check("user_avatar_brandmark",
           'BrandMark className="w-[16px] h-[16px]"' in chat,

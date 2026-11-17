@@ -556,6 +556,9 @@ class WebApiAdapter(TaskCoreBase):
         self._masker_dict_path = Path(raw_dict) if raw_dict else None
         # engine_session_id -> 会话作用域 + 已用占位符映射。
         self._mask_sessions: dict = {}
+        # OD-ARCH-176：engine_session_id -> 已应用的 (provider, model, effort)。
+        # 只用于避免同一会话重复调用 selectModel；不保存模型选择之外的任何内容。
+        self._applied_effort: dict = {}
         # OD-MASK-160c：阻断词缓存，按词典文件 mtime/size 失效。
         self._blocklist_cache: Optional[tuple] = None
 
@@ -1296,6 +1299,30 @@ class WebApiAdapter(TaskCoreBase):
             return value
         return {"ok": True}
 
+    def _apply_reasoning_effort(
+        self, session_id: str, request: SubmitTaskRequest
+    ) -> None:
+        """在 session/prompt 之前把本轮显式档位装到会话（OD-ARCH-176）。
+
+        DSH 的 session/prompt 请求只带 content，不支持按次 reasoningEffort；
+        因此这里走 session/selectModel 的会话级通道。档位为空表示跟随模型默认，
+        不改会话选择。provider/model 缺一不调用，避免把档位装到错误路由上。
+        """
+        effort = str(request.reasoning_effort or "").strip()
+        provider = str(request.provider or "").strip()
+        model = str(request.model or "").strip()
+        if not effort or not provider or not model:
+            return
+        key = (provider, model, effort)
+        with self._lock:
+            if self._applied_effort.get(session_id) == key:
+                return
+        self.select_model(
+            session_id, provider=provider, model=model, reasoning_effort=effort
+        )
+        with self._lock:
+            self._applied_effort[session_id] = key
+
     def _dictionary_signature(self):
         """词典文件签名；不存在或不可读时返回 None。"""
 
@@ -1506,6 +1533,9 @@ class WebApiAdapter(TaskCoreBase):
                 )
             if follow is None:
                 follow = self._open_follow(session_id, workspace_dir)
+            # OD-ARCH-176：显式档位在 prompt 之前按会话装好；失败如实报错，
+            # 不悄悄按默认档跑完再让用户以为选择生效了。
+            self._apply_reasoning_effort(session_id, request)
         except EngineError as error:
             if follow is not None:
                 self._drop_follow(follow)

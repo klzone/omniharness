@@ -362,6 +362,84 @@ mod tests {
         assert!(err.contains("请选择要使用的 Profile"));
     }
 
+    /// OD-ARCH-175 阶段 2：回退用 `select_route(..., None)` 重写覆盖文件后，文件里
+    /// **不再含** `reasoningEffort`；带显式档位时仍会写入（正对照）。
+    ///
+    /// 这条用例直接调用生产路径（node 脚本 + 仓库内 DSH CLI，只做配置转储，不发网络
+    /// 请求、不读凭证）；环境缺少 node / DSH CLI 时按既有惯例跳过。
+    #[test]
+    fn select_route_none_effort_writes_overlay_without_reasoning_effort() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("仓库根")
+            .to_path_buf();
+        let cli = repo.join("runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
+        if !cli.is_file() || crate::platform::resolve_node().is_err() {
+            eprintln!("跳过：本机没有 node 或仓库内 DSH CLI（{}）", cli.display());
+            return;
+        }
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-select-route-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let overlay = base.join("omnidesk-model.yml");
+        let _ = std::fs::remove_dir_all(&base);
+        let config = EngineConfig {
+            python: "/usr/bin/python3".to_string(),
+            engine_dir: repo.join("engine"),
+            dsh_cli: cli.clone(),
+            dsh_home: repo.join("runtime/dsh-home-seed"),
+            agents_home: base.join("agents"),
+            result_dir: base.join("results"),
+            engine_state_dir: base.join("engine-state"),
+            profile: "web".to_string(),
+            channel: "web-api".to_string(),
+            patch_files: Vec::new(),
+        };
+
+        // 正对照：显式档位会写入。
+        select_route(
+            &config,
+            &overlay,
+            "web",
+            "agnescn",
+            "agnes-3.0-flash",
+            Some("high"),
+        )
+        .expect("带档位重写覆盖文件应成功");
+        let text = std::fs::read_to_string(&overlay).expect("读回覆盖文件");
+        assert!(
+            text.contains("reasoningEffort"),
+            "显式档位应写入覆盖文件：{text}"
+        );
+
+        // 回退路径：引擎当前 Profile 本身没有这个 provider，它只存在于覆盖文件里；
+        // 必须仍能靠 patches 合并找到该路由并去掉显式档位（与生产落点一致）。
+        let engine_config = EngineConfig {
+            profile: "omnidesk-base".to_string(),
+            patch_files: vec![overlay.clone()],
+            ..config
+        };
+        select_route(
+            &engine_config,
+            &overlay,
+            "omnidesk-base",
+            "agnescn",
+            "agnes-3.0-flash",
+            None,
+        )
+        .expect("不带档位重写覆盖文件应成功");
+        let text = std::fs::read_to_string(&overlay).expect("读回覆盖文件");
+        assert!(
+            !text.contains("reasoningEffort"),
+            "回退重写后覆盖文件不得再含 reasoningEffort：{text}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     fn test_config() -> EngineConfig {
         EngineConfig {
             python: "/usr/bin/python3".to_string(),

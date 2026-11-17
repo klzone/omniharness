@@ -118,12 +118,14 @@ def main() -> int:
     # detectRedateInstruction / isNoteContinuation 做前置正则。以下几条被 104 取代，
     # 改由 verify_worklog_104.py 断言（「模型判定到达之前不写盘」「只走批量移动」）；
     # 这里只保留仍然成立的部分：日期与文本工具还在、本机回执标签还在。
-    check("home_keeps_find_date_phrase", "findDatePhrase(" in home)
+    # OD-ARCH-176：分类轮不再用 findDatePhrase 拼兜底话术；日期识别仍由宿主保留。
+    check("home_keeps_entry_date", "extractEntryDate(" in home)
     check("home_keeps_host_timezone", "utc_offset_minutes" in home)
     # 单条改日期的命令仍在（宿主能力保留）；界面改由 104 的批量通道统一执行，
     # 这条断言落在 API 层，不再要求 HomeChat 直接调用。
     check("api_keeps_redate_command", "worklogRedate(" in api and '"worklog_redate"' in api)
-    check("home_marks_local_receipt", '"工作台本地处理 · 未调用模型"' in home)
+    # OD-ARCH-176：陈述句先落盘快路径废除后，不再有「未调用模型」的本地回执。
+    check("home_statement_gate_removed", "isPlainStatementNote(text)" not in home)
     check("api_entry_date_param", "entryDate: entryDate ?? null" in api)
     check("api_redate_command", '"worklog_redate"' in api)
     check("types_append_index", "entry_index: number;" in types)
@@ -154,8 +156,8 @@ def main() -> int:
     # ---- 静态：Skill 规则 ----
     # OD-ARCH-104：日期不再由工作台从原文里「认出来」，改由模型判定 + 索引校验；
     # Skill 同步改成「先分类、再输出判定块」。
-    check("skill_date_judged_by_model", "你判语义" in skill and "工作台落盘" in skill)
-    check("skill_no_file_editing", "没有写文件的权限" in skill)
+    check("skill_date_judged_by_model", "日期指令" in skill and "工作台校验后" in skill)
+    check("skill_no_file_editing", "工作台逐字比对" in skill and "本机是工作记录的唯一存储地" in skill)
     check("skill_no_invented_tool", "worklog_redate" not in skill)
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")
 

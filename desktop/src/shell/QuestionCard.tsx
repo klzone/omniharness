@@ -19,6 +19,12 @@ interface QuestionCardProps {
   onCancelTask: (taskId: string) => void;
   /** 取消请求是否已发出（此时仍保持可答，等引擎确认）。 */
   cancelRequested?: boolean;
+  /** 本地提问的标题（缺省沿用引擎提问文案，OD-ARCH-176）。 */
+  title?: string;
+  /** 本地提问的说明（缺省沿用「选择后提交」）。 */
+  note?: string;
+  /** 本地提问的取消按钮文案（缺省「取消本次任务」）。 */
+  cancelLabel?: string;
 }
 
 /** 每道题当前的选择（选项 label 集合 + 自定义文本）。 */
@@ -32,7 +38,15 @@ function emptyDraft(request: QuestionRequest): Draft {
   return draft;
 }
 
-export function QuestionCard({ request, onSubmit, onCancelTask, cancelRequested }: QuestionCardProps) {
+export function QuestionCard({
+  request,
+  onSubmit,
+  onCancelTask,
+  cancelRequested,
+  title = "引擎需要你回答一个问题",
+  note,
+  cancelLabel = "取消本次任务",
+}: QuestionCardProps) {
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(request));
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -117,8 +131,8 @@ export function QuestionCard({ request, onSubmit, onCancelTask, cancelRequested 
   // WebKit 不会把卡片里的普通段落暴露成无障碍文本，只露控件。给卡片和结果提示
   // 一个合并后的无障碍名称，读屏用户与验收脚本都能确认真实题面与状态。
   const cardLabel = [
-    "引擎需要你回答一个问题",
-    request.note || "选择后提交；不会自动替你选。",
+    title,
+    note || request.note || "选择后提交；不会自动替你选。",
     ...request.questions.map((q) =>
       [q.header, q.question, q.detail].filter(Boolean).join("："),
     ),
@@ -138,9 +152,9 @@ export function QuestionCard({ request, onSubmit, onCancelTask, cancelRequested 
       <div className="flex items-start space-x-2">
         <Icon name="spark" className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <p className="text-on-surface font-medium">引擎需要你回答一个问题</p>
+          <p className="text-on-surface font-medium">{title}</p>
           <p className="text-on-surface-variant">
-            {request.note || "选择后提交；不会自动替你选。"}
+            {note || request.note || "选择后提交；不会自动替你选。"}
           </p>
         </div>
       </div>
@@ -231,7 +245,7 @@ export function QuestionCard({ request, onSubmit, onCancelTask, cancelRequested 
             className="px-3 py-1 rounded-full bg-surface-container-high text-on-surface text-[11.5px] font-medium disabled:opacity-50"
             data-testid="question-cancel-task"
           >
-            {cancelRequested ? "取消请求已发送" : "取消本次任务"}
+            {cancelRequested ? "取消请求已发送" : cancelLabel}
           </button>
           {submitting ? <span className="text-[11px] text-outline">正在等待宿主确认…</span> : null}
         </div>
@@ -284,7 +298,7 @@ export function QuestionCard({ request, onSubmit, onCancelTask, cancelRequested 
               className="px-3 py-1 rounded-full bg-surface-container-high text-on-surface text-[11.5px] font-medium disabled:opacity-50"
               data-testid="question-cancel-task"
             >
-              {cancelRequested ? "取消请求已发送" : "取消本次任务"}
+              {cancelRequested ? "取消请求已发送" : cancelLabel}
             </button>
           </div>
         </div>

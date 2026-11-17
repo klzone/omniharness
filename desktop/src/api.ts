@@ -68,6 +68,7 @@ import type {
   MaterialQueryInput,
   MaterialQueryResponse,
   MaterialReviewAction,
+  ModelCatalogEntry,
   WritingCollectInput,
   WritingCollectResponse,
   WritingSelectInput,
@@ -385,6 +386,14 @@ export const host = {
     userInputText?: string;
     /** 既有引擎会话号（OD-ARCH-034）：给出即续接同一会话（真多轮）；不给则新建。 */
     engineSessionId?: string | null;
+    /**
+     * 本轮思考档位（OD-ARCH-176）：`off` 等具体档位才下发；null/缺省 = 不显式设置。
+     * 由引擎在 session/prompt 前按会话应用，不改桌面覆盖文件、不重启引擎。
+     */
+    reasoningEffort?: string | null;
+    /** 与档位一起下发的当前路由；缺一则引擎不改档位。 */
+    provider?: string | null;
+    model?: string | null;
   }): Promise<SubmitTaskReceipt> {
     // 前端只拦空文本（OD-ARCH-021）；端点类别与授权由宿主按实际配置强制判定。
     const decision = currentEngineSubmitDecision(input.promptText);
@@ -398,6 +407,9 @@ export const host = {
       idempotencyKey: input.idempotencyKey ?? null,
       userInputText: input.userInputText ?? null,
       engineSessionId: input.engineSessionId ?? null,
+      reasoningEffort: input.reasoningEffort ?? null,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
@@ -534,6 +546,104 @@ export type KnowledgeSyncReport = {
   staging_dir: string;
   note: string;
 };
+
+// OD-ARCH-175：切换前的思考档位判定。预检不再阻断切换：目录不可用、模型未列出
+// 或没有声明时照所选档位提交；只有本地能确证「显式档位必败」时才改发 default。
+// TODO(OD-ARCH-175 阶段 2)：运行期 UNSUPPORTED_REASONING_EFFORT 的识别与自动回退
+// 在 Rust 宿主实现；本阶段不新增 RPC，只返回切换时的 advisory。
+const UNDECLARED_EFFORT_ADVISORY = "该模型未声明思考档位，若不支持将自动回退默认档。";
+const FALLBACK_EFFORT_ADVISORY = "已按默认思考等级切换（该模型不支持所选档位）。";
+
+export interface ModelRouteEffortPlan {
+  /** 实际提交给宿主的档位；情形 3 为 "default"。 */
+  submit: string;
+  /** 切换成功后应展示给用户的一句话；null 表示无需额外提示。 */
+  advisory: string | null;
+}
+
+export interface ModelRouteEffortEvidence {
+  /** 引擎目录声明的档位；空数组/缺省表示目录没有给出声明。 */
+  catalogLevels?: string[] | null;
+  /**
+   * Profile 里的 reasoningEfforts：
+   *   * 缺省：未声明，能力未知；
+   *   * false 或空数组：明确声明不支持思考档位；
+   *   * 非空数组：声明的档位集合。
+   */
+  profileLevels?: string[] | false | null;
+}
+
+/**
+ * OD-ARCH-175 切换预检（纯函数，供 verify 脚本直接断言）。
+ *
+ * DSH 的归一化模型目录会把「没有 reasoning 声明」和「显式声明为空」都压成
+ * efforts: []，因此空目录不能单独当作必败证据；这时再看 Profile 的显式声明。
+ * 两处都没有声明就按情形 1 放行，失败交给运行期回退。
+ */
+export function planModelRouteEffort(
+  evidence: ModelRouteEffortEvidence | null,
+  requested: string,
+): ModelRouteEffortPlan {
+  if (requested === "default") {
+    return { submit: "default", advisory: null };
+  }
+  const catalogLevels = evidence?.catalogLevels ?? null;
+  if (catalogLevels && catalogLevels.length > 0) {
+    if (catalogLevels.includes(requested)) {
+      return { submit: requested, advisory: null };
+    }
+    return { submit: "default", advisory: FALLBACK_EFFORT_ADVISORY };
+  }
+  const profileLevels = evidence?.profileLevels;
+  if (profileLevels === false) {
+    return { submit: "default", advisory: FALLBACK_EFFORT_ADVISORY };
+  }
+  if (Array.isArray(profileLevels)) {
+    if (profileLevels.includes(requested)) {
+      return { submit: requested, advisory: null };
+    }
+    return { submit: "default", advisory: FALLBACK_EFFORT_ADVISORY };
+  }
+  return { submit: requested, advisory: UNDECLARED_EFFORT_ADVISORY };
+}
+
+/**
+ * 读取切换所需的档位证据：先看引擎目录，空/缺失时再看 Profile 的显式声明。
+ * 只读非机密元数据，不发网络请求，不接触凭据。
+ */
+async function collectModelEffortEvidence(input: {
+  sourceProfile: string;
+  provider: string;
+  model: string;
+}): Promise<ModelRouteEffortEvidence> {
+  const catalog = await shell.listEngineModels().catch(() => null);
+  const entry: ModelCatalogEntry | undefined =
+    catalog?.available === true
+      ? (catalog.models ?? []).find(
+          (m) => m.provider === input.provider && m.id === input.model,
+        )
+      : undefined;
+  const catalogLevels = Array.isArray(entry?.efforts)
+    ? entry.efforts.map((e) => e.id)
+    : null;
+  if (catalogLevels && catalogLevels.length > 0) {
+    return { catalogLevels, profileLevels: null };
+  }
+  const listing = await shell.listModelRoutes().catch(() => null);
+  const profile = listing?.profiles?.find((p) => p.profile === input.sourceProfile);
+  const provider = profile?.providers?.find((p) => p.id === input.provider);
+  const modelEntry = provider?.modelEntries?.find(
+    (e) => e && typeof e === "object" && e.id === input.model,
+  );
+  const declared = modelEntry?.reasoningEfforts;
+  let profileLevels: string[] | false | null = null;
+  if (declared === false) {
+    profileLevels = false;
+  } else if (declared && typeof declared === "object" && !Array.isArray(declared)) {
+    profileLevels = Object.keys(declared as Record<string, unknown>);
+  }
+  return { catalogLevels, profileLevels };
+}
 
 export const shell = {
   /**
@@ -1921,43 +2031,19 @@ export const shell = {
     ok: boolean;
     route: { provider: string; model: string; endpoint: string | null; category: string };
     note: string;
+    /** 实际提交给宿主的思考档位；情形 3 为 "default"。 */
+    reasoningEffort: string;
+    /** 需要一句话告知用户的档位调整；null 表示无需提示。 */
+    advisory: string | null;
   }> {
     const requested = input.reasoningEffort ?? "default";
     return (async () => {
-      // 切换前只用本地已解析的模型目录校验思考档位：不发网络请求，不读凭证。
-      // 目录不可用或还没有这个模型时放行——预检不能确定的原因不能升级成阻止。
-      if (requested !== "default") {
-        const catalog = await shell.listEngineModels().catch(() => null);
-        const entry =
-          catalog?.available === true
-            ? (catalog.models ?? []).find(
-                (m) => m.provider === input.provider && m.id === input.model,
-              )
-            : undefined;
-        if (entry) {
-          const levels = entry.efforts.map((e) => e.id);
-          if (levels.length === 0) {
-            throw new Error(
-              "该模型（" +
-                input.provider +
-                " / " +
-                input.model +
-                "）在 DSH 模型目录里没有声明思考档位，显式档位会在首次模型调用时被拒绝。" +
-                "请选「跟随模型默认」后再切换；模型路由未改动。",
-            );
-          }
-          if (!levels.includes(requested)) {
-            throw new Error(
-              "该模型只声明了思考档位 " +
-                levels.join(" / ") +
-                "，没有「" +
-                requested +
-                "」。请改选一个档位，或选「跟随模型默认」后再切换；模型路由未改动。",
-            );
-          }
-        }
-      }
-      return invoke<{
+      // OD-ARCH-175：预检不再 throw。目录不可用/未声明时照所选档位提交；本地能
+      // 确证必败时改发 default，并把一句话 advisory 交还调用方展示。
+      const evidence =
+        requested === "default" ? null : await collectModelEffortEvidence(input);
+      const decision = planModelRouteEffort(evidence, requested);
+      const result = await invoke<{
         ok: boolean;
         route: { provider: string; model: string; endpoint: string | null; category: string };
         note: string;
@@ -1965,10 +2051,15 @@ export const shell = {
         sourceProfile: input.sourceProfile,
         provider: input.provider,
         model: input.model,
-        reasoningEffort: requested,
+        reasoningEffort: decision.submit,
       }).catch((e) => {
         throw new Error(normalizeError(e));
       });
+      return {
+        ...result,
+        reasoningEffort: decision.submit,
+        advisory: decision.advisory,
+      };
     })();
   },
 

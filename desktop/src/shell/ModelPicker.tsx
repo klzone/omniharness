@@ -60,18 +60,23 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const catalogModels = catalog?.available ? catalog.models ?? [] : [];
+  const currentEntry =
+    catalogModels.find((m) => m.provider === currentProvider && m.id === currentModel) ??
+    null;
   /** 当前模型在目录里声明的思考等级（没有则为空，退回固定档位）。 */
-  const currentEfforts =
-    catalogModels.find((m) => m.provider === currentProvider && m.id === currentModel)
-      ?.efforts ?? [];
+  const currentEfforts = currentEntry?.efforts ?? [];
   const effortLabel = EFFORT_LEVELS.find((x) => x.key === effort)?.label ?? effort;
   const effortDeclared = currentEfforts.some((e) => e.id === effort);
-  const effortWarning =
-    currentEfforts.length > 0
-      ? effortDeclared
-        ? null
-        : "当前模型未声明「" + effortLabel + "」档位，这一档位可能被忽略。"
-      : "当前模型未声明思考档位，档位设置可能被忽略。";
+  // OD-ARCH-175：预检不再阻断。只有目录明确列出档位且当前档不在集合里时才提前
+  // 说明会按默认档；目录为空/未列出属于「未声明」，由切换后的提示条告知结果。
+  const effortAdvisory =
+    effort === "default" || !catalog?.available
+      ? null
+      : !currentEntry || currentEfforts.length === 0
+        ? "未声明思考档位；若不支持会按默认档切换。"
+        : effortDeclared
+          ? null
+          : "该模型不支持「" + effortLabel + "」，切换会按默认档。";
 
   useEffect(() => {
     if (!open) return;
@@ -127,12 +132,12 @@ export function ModelPicker({
                 </button>
               ))}
             </div>
-            {effortWarning ? (
+            {effortAdvisory ? (
               <p
                 className="pt-1.5 text-[10px] text-outline leading-relaxed"
                 data-testid="effort-advisory"
               >
-                {effortWarning}
+                {effortAdvisory}
               </p>
             ) : null}
             {currentEfforts.length > 0 ? (
@@ -171,8 +176,8 @@ export function ModelPicker({
                         <span className="block truncate">{m.name || m.id}</span>
                         <span className="block truncate text-[10px] text-outline">
                           {m.description ||
-                            (m.efforts.length
-                              ? "思考等级：" + m.efforts.map((e) => e.id).join(" / ")
+                            ((m.efforts?.length ?? 0) > 0
+                              ? "思考等级：" + (m.efforts ?? []).map((e) => e.id).join(" / ")
                               : "未声明思考等级")}
                         </span>
                       </button>

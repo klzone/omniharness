@@ -210,6 +210,55 @@ export function detectPeriodReviewTarget(
   };
 }
 
+/**
+ * 由模型判出的周期算出起止日期（OD-ARCH-176）。
+ *
+ * 词表只认用户明确说了「复盘/总结」的说法；模型指出「帮我看看本周干得怎么样」
+ * 这类没有词表命中的周期时，宿主仍按完整自然周期取范围，不猜偏移。
+ */
+export function periodReviewTargetForPeriod(
+  period: PeriodReviewPeriod,
+  now: Date = new Date(),
+  offsetMinutes?: number,
+): PeriodReviewTarget {
+  const cal = calendarOf(now, offsetMinutes);
+  const month = new Date(cal.todayDay * DAY_MS).getUTCMonth() + 1;
+  if (period === "weekly") {
+    const monday = mondayOf(cal);
+    return {
+      period: "weekly",
+      start: fromDayNumber(monday),
+      end: fromDayNumber(monday + 6),
+      label: "本周",
+    };
+  }
+  if (period === "monthly") {
+    return {
+      period: "monthly",
+      start: `${cal.todayYear}-${String(month).padStart(2, "0")}-01`,
+      end: `${cal.todayYear}-${String(month).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, month)).padStart(2, "0")}`,
+      label: "本月",
+    };
+  }
+  if (period === "quarterly") {
+    const quarter = Math.floor((month - 1) / 3);
+    const startMonth = quarter * 3 + 1;
+    const endMonth = startMonth + 2;
+    return {
+      period: "quarterly",
+      start: `${cal.todayYear}-${String(startMonth).padStart(2, "0")}-01`,
+      end: `${cal.todayYear}-${String(endMonth).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, endMonth)).padStart(2, "0")}`,
+      label: `${cal.todayYear} Q${quarter + 1}`,
+    };
+  }
+  return {
+    period: "annual",
+    start: `${cal.todayYear}-01-01`,
+    end: `${cal.todayYear}-12-31`,
+    label: `${cal.todayYear} 年`,
+  };
+}
+
 function lastDayOfMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }

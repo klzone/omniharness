@@ -50,6 +50,8 @@ python3 "$ANYSEARCH_SKILL_DIR/scripts/anysearch_cli.py" extract "https://example
 
 ## 五、不可用时
 
+OmniDesk 引擎环境默认**没有**本机 Codex 技能目录，也没有 `ANYSEARCH_SKILL_DIR` 变量——找不到 `scripts/anysearch_cli.py` 属于预期，不是故障。此时**不要**按参数报错指引反复重试，也不要搜索安装路径；直接改用可用的联网手段（web_fetch 直连权威来源等），并在结果里如实标注实际使用的渠道与来源限制。
+
 若上述目录或 CLI 不存在，明确回报「AnySearch 未安装或路径不可用」，不要尝试安装、下载或改写上游技能包，也不要凭空返回检索结果。
 
 ## 六、依赖

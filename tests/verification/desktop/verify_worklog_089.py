@@ -212,7 +212,11 @@ def main() -> int:
     # 的数据筛选，仍是已知残留（见 REVIEW），不在本轮范围。
     for word in ("判断原则", "六要素", "omnidesk-verdict"):
         check(f"platform_has_no_rule:{word}", word not in conv, word)
-    check("platform_no_note_verdict_schema", "append" not in conv, "")
+    # OD-ARCH-176：工作记录场景新增了统一的意图契约（classify 分支），
+    # 该契约由本计划明确要求且由宿主解析；它之前的随手记分支仍不得
+    # 自己描述判定 schema。
+    note_slice = conv.split('if (input.mode === "classify")')[0]
+    check("platform_no_note_verdict_schema", "append" not in note_slice, "")
 
     api = (SRC / "api.ts").read_text(encoding="utf-8")
     check("api_worklog_append", '"worklog_append"' in api, "")

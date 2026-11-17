@@ -22,7 +22,7 @@ from pathlib import Path
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
 
-from omnidesk_engine import TaskState
+from omnidesk_engine import EngineError, EngineErrorCode, TaskState
 from omnidesk_engine.contract import EventType
 from omnidesk_engine.task_core import _TaskRecord
 from omnidesk_engine.task_core import SubmitTaskRequest
@@ -390,6 +390,10 @@ class MaskingTests(unittest.TestCase):
         class Follow:
             session_id = "sess-new"
 
+            @staticmethod
+            def close():
+                return None
+
         self.adapter._open_follow = lambda session_id, workspace: Follow()
         seen = []
         done = threading.Event()
@@ -406,6 +410,104 @@ class MaskingTests(unittest.TestCase):
         self.assertNotIn("张三", seen[0])
         self.assertIn("张**", seen[0])
         self.assertEqual(receipt.masker["by_type"]["PERSON"], 1)
+
+
+class ReasoningEffortTests(unittest.TestCase):
+    """OD-ARCH-176：显式档位在 session/prompt 之前按会话应用。"""
+
+    def setUp(self):
+        self.adapter = make_adapter(tmp_state="/tmp/od176-unit-state")
+
+    def test_apply_effort_calls_select_model_once_per_combo(self):
+        calls = []
+        self.adapter.select_model = lambda session_id, **kw: calls.append((session_id, kw)) or {}
+        request = SubmitTaskRequest(
+            intent="unit",
+            workspace_dir="/tmp",
+            prompt_text="x",
+            reasoning_effort="off",
+            provider="deepseek",
+            model="deepseek-v4.1-flash",
+        )
+        self.adapter._apply_reasoning_effort("sess-a", request)
+        self.adapter._apply_reasoning_effort("sess-a", request)
+        self.assertEqual(
+            calls,
+            [("sess-a", {"provider": "deepseek", "model": "deepseek-v4.1-flash", "reasoning_effort": "off"})],
+        )
+        # 同一会话换一档仍要重新应用。
+        high = SubmitTaskRequest(
+            intent="unit", workspace_dir="/tmp", prompt_text="x",
+            reasoning_effort="high", provider="deepseek", model="deepseek-v4.1-flash",
+        )
+        self.adapter._apply_reasoning_effort("sess-a", high)
+        self.assertEqual(calls[-1][1]["reasoning_effort"], "high")
+
+    def test_apply_effort_skips_incomplete_route_or_effort(self):
+        calls = []
+        self.adapter.select_model = lambda session_id, **kw: calls.append(kw) or {}
+        for request in (
+            SubmitTaskRequest(intent="unit", workspace_dir="/tmp", prompt_text="x"),
+            SubmitTaskRequest(intent="unit", workspace_dir="/tmp", prompt_text="x", reasoning_effort="off"),
+            SubmitTaskRequest(intent="unit", workspace_dir="/tmp", prompt_text="x",
+                              reasoning_effort="off", provider="p"),
+        ):
+            with self.subTest(request=request):
+                self.adapter._apply_reasoning_effort("sess-skip", request)
+        self.assertEqual(calls, [])
+
+    def test_submit_applies_effort_before_prompt(self):
+        self.adapter._ensure_approval_channel = lambda: None
+        self.adapter._create_session = lambda workspace, task, preset=None: "sess-new"
+
+        class Follow:
+            session_id = "sess-new"
+
+        self.adapter._open_follow = lambda session_id, workspace: Follow()
+        order = []
+        done = threading.Event()
+        self.adapter.select_model = lambda session_id, **kw: order.append("select") or {}
+
+        def worker(record, follow, text):
+            order.append("prompt")
+            done.set()
+
+        self.adapter._turn_worker = worker
+        self.adapter.submit_task(SubmitTaskRequest(
+            intent="unit", workspace_dir="/tmp", prompt_text="x",
+            reasoning_effort="off", provider="p", model="m",
+        ))
+        self.assertTrue(done.wait(2), "worker 未被启动")
+        self.assertEqual(order, ["select", "prompt"])
+        record = list(self.adapter._tasks.values())[0]
+        status = self.adapter.get_task_status(record.omni_task_id)
+        self.assertIn(status.status.value, {"running", "starting", "queued", "succeeded"})
+
+    def test_submit_fails_when_effort_cannot_be_applied(self):
+        self.adapter._ensure_approval_channel = lambda: None
+        self.adapter._create_session = lambda workspace, task, preset=None: "sess-new"
+
+        class Follow:
+            session_id = "sess-new"
+
+            @staticmethod
+            def close():
+                return None
+
+        self.adapter._open_follow = lambda session_id, workspace: Follow()
+        prompted = []
+        self.adapter._turn_worker = lambda record, follow, text: prompted.append(text)
+
+        def reject(session_id, **kw):
+            raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "unsupported reasoning effort")
+
+        self.adapter.select_model = reject
+        with self.assertRaises(EngineError):
+            self.adapter.submit_task(SubmitTaskRequest(
+                intent="unit", workspace_dir="/tmp", prompt_text="x",
+                reasoning_effort="high", provider="p", model="m",
+            ))
+        self.assertEqual(prompted, [], "档位失败时不得把 prompt 发出去")
 
 
 class StreamUnmaskTests(unittest.TestCase):
