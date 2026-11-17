@@ -143,6 +143,19 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
 
 桌面与引擎数据根都**不承载**业务正文；这保证更换 DSH 或替换桌面外壳时业务数据可迁移。注意 `~/OmniDesk` 下同时存在运行时数据根（`runtime/`、`app/`）与业务成果目录（`workspace/artifacts/`），二者语义不同，备份与清理时不得混为一谈。
 
+### 5.2 读书阅读笔记（OD-READ-001）
+
+书目、章节、划线/标记/想法、阅读进度与整理稿单独保存在仓库外阅读目录，默认：
+
+    ~/OmniDesk/reading/
+    ├── books/<book_id>.json    # 正文、章节、批注、整理稿摘要
+    ├── meta/<book_id>.json     # 书架列表用的轻量摘要
+    ├── progress/<book_id>.json # 滚动阅读进度（滚动时不重写整本书）
+    ├── notes/<book_id>/        # 用户确认保存的 AI 整理稿（Markdown）
+    └── exports/                # 确定性导出的读书笔记（Markdown）
+
+开发/测试可用 `OMNIDESK_READING_ROOT` 指向一次性绝对路径；正式默认目录不进入 Git。导入只读用户通过系统文件框显式选择的源文件（`.md/.txt/.pdf/.docx/.epub`，上限 32 MiB），不扫描目录；重复正文按 SHA-256 返回已有书，不覆盖。AI 解释与整理稿只作草稿，用户点击保存后才进入 `notes/`；不自动写知识库。
+
 ---
 
 ## 5.1 使用记录（usage.jsonl）：位置、格式与清理规则

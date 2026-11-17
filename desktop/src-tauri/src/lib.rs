@@ -54,6 +54,7 @@ pub mod profile_rules;
 pub mod process_alias;
 pub mod priority_rules;
 pub mod quicklog;
+pub mod reading_store;
 pub mod daily_summary;
 pub mod review_store;
 pub mod route_classifier;
@@ -5067,6 +5068,161 @@ fn knowledge_vault_open_attachment(
     knowledge_vault_open_attachment_for(&paths, &relative_path)
 }
 
+// ---------------------------------------------------------------------------
+// 读书阅读笔记（OD-READ-001）
+//
+// 书目、正文与批注只落仓库外阅读目录；导入只读用户显式选择的文件，
+// 不扫描目录、不写知识库。AI 整理稿由前端经既有模型链路生成，
+// 只有用户点保存时才进入 `reading_note_save`。
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
+fn reading_library(state: State<'_, SharedHost>) -> Result<reading_store::ReadingLibrary, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    reading_store::library(&paths)
+}
+
+#[tauri::command(async)]
+fn reading_import_book(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<reading_store::ReadingImportResult, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    reading_store::import_book(&paths, &path)
+}
+
+#[tauri::command(async)]
+fn reading_book(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<reading_store::ReadingBook, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::read_book_at(&root, &book_id)
+}
+
+#[tauri::command(async)]
+fn reading_annotation_add(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    draft: reading_store::ReadingAnnotationDraft,
+) -> Result<reading_store::ReadingAnnotation, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::add_annotation_at(&root, &book_id, draft, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn reading_annotation_update(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    annotation_id: String,
+    patch: reading_store::ReadingAnnotationPatch,
+) -> Result<reading_store::ReadingAnnotation, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::update_annotation_at(
+        &root,
+        &book_id,
+        &annotation_id,
+        patch,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn reading_annotation_delete(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    annotation_id: String,
+) -> Result<reading_store::ReadingBookMeta, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::delete_annotation_at(&root, &book_id, &annotation_id, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn reading_progress_set(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    percent: f64,
+) -> Result<reading_store::ReadingBookMeta, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::set_progress_at(&root, &book_id, percent, task_shell::now_secs())
+}
+
+#[tauri::command(async)]
+fn reading_note_save(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    title: String,
+    markdown: String,
+    annotation_ids: Vec<String>,
+) -> Result<reading_store::ReadingSavedNote, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::save_note_at(
+        &root,
+        &book_id,
+        &title,
+        &markdown,
+        annotation_ids,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn reading_note_read(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    note_id: String,
+) -> Result<String, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::read_note_at(&root, &book_id, &note_id)
+}
+
+#[tauri::command(async)]
+fn reading_export_notes(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<reading_store::ReadingNoteFile, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::export_notes_at(&root, &book_id, task_shell::now_secs())
+}
+
 /// 显式重建并原子发布链接索引。构建在锁外完成，只有完整快照才替换旧快照。
 #[tauri::command(async)]
 fn knowledge_vault_rebuild_index(
@@ -9602,6 +9758,16 @@ pub fn run() {
             knowledge_vault_rebuild_index,
             knowledge_vault_index_status,
             knowledge_vault_note_links,
+            reading_library,
+            reading_import_book,
+            reading_book,
+            reading_annotation_add,
+            reading_annotation_update,
+            reading_annotation_delete,
+            reading_progress_set,
+            reading_note_save,
+            reading_note_read,
+            reading_export_notes,
             knowledge_sync_to_vault,
             knowledge_ingest_init,
             knowledge_ingest_prepare,

@@ -1,0 +1,128 @@
+/* 读书页（OD-READ-001）：暖纸阅读面 + 低装饰侧栏。
+ * 参考布局（screenshots-design-inspiration，2026-11-18）：Pocket 的正文 + 左侧高亮栏，
+ * Instapaper 的窄栏、衬线、低干扰阅读面；导航仍沿用本应用暖白令牌。
+ */
+
+.reading-page {
+  background: color-mix(in srgb, var(--color-background) 86%, white 14%);
+}
+
+.reading-shelf {
+  backdrop-filter: blur(10px);
+}
+
+.reading-shelf-list {
+  scrollbar-width: thin;
+}
+
+.reading-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-outline) 45%, transparent) transparent;
+}
+
+.reading-chapter-title {
+  margin: 0 0 1.5rem;
+  color: var(--color-on-surface);
+  font-family: var(--font-headline-md);
+  font-size: 1.15rem;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.reading-paragraph {
+  position: relative;
+  margin: 0 0 1.15em;
+  color: color-mix(in srgb, var(--color-on-surface) 92%, black 8%);
+  font-family: var(--font-report-serif);
+  font-size: 1.06rem;
+  line-height: 2.02;
+  letter-spacing: 0.015em;
+  text-align: justify;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.reading-paragraph::selection,
+.reading-mark::selection {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.reading-mark {
+  border-radius: 2px;
+  padding: 0 1px;
+  color: inherit;
+  background: color-mix(in srgb, #f2c14e 46%, transparent);
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.reading-mark-blue {
+  background: color-mix(in srgb, #8ec5d8 42%, transparent);
+}
+
+.reading-mark-green {
+  background: color-mix(in srgb, #a8c89a 42%, transparent);
+}
+
+.reading-mark-pink {
+  background: color-mix(in srgb, #e3a7ad 40%, transparent);
+}
+
+.reading-mark-thought {
+  background: transparent;
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--color-primary) 65%, transparent);
+  border-radius: 0;
+}
+
+.reading-active-mark {
+  outline: 1.5px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.reading-bookmarked {
+  border-left: 2px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  padding-left: 12px;
+}
+
+.reading-bookmarked::before {
+  content: "▪";
+  position: absolute;
+  left: -13px;
+  top: 0.55em;
+  color: var(--color-primary);
+  font-family: var(--font-body-sm);
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.reading-kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #f2c14e;
+}
+
+.reading-kind-thought {
+  background: #9dbc91;
+}
+
+.reading-kind-bookmark {
+  background: #8ec5d8;
+}
+
+.reading-selection-bar {
+  box-shadow: 0 12px 30px -14px rgba(44, 40, 35, 0.35);
+}
+
+.reading-side-panel {
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 640px) {
+  .reading-paragraph {
+    font-size: 1rem;
+    line-height: 1.9;
+    text-align: left;
+  }
+}

@@ -1400,3 +1400,24 @@
 
 **复审触发：** ①用户要求自定义复盘周期 / 自定义模板 / 调度执行（真实需求出现即立项）；②意图分类（OD-ARCH-176）误判率上升且场景分支持续膨胀时，评估声明式定义替代硬编码分支；③出现同类外部设计且授权兼容时重新评估。
 
+### D-111（2026-11-18，OD-READ-001 初步实施）：读书页采用「段落锚点 + 本地目录 + 草稿确认」
+
+**状态：** 已实施（`desktop/src-tauri/src/reading_store.rs`、`desktop/src/shell/ReadingPage.tsx`、`scripts/reading_attachment_extract.py`）；真实桌面窗口与真实模型输出尚未验收。
+
+**决策：** 读书页是平台内置入口，不写进 Profile 场景声明；书目、章节、批注、阅读进度与整理稿保存在仓库外 `~/OmniDesk/reading/`，以每书一份 JSON + 轻量 meta 为权威源，不引入数据库、不接微信读书/GitHub 远程书架。
+
+**四条子决策：**
+
+1. **锚点用「章节 + 段落 + code point 偏移 + 引文」四元组。** 单纯保存 DOM 位置无法跨重启；单纯保存页码在重排后失效。落盘前用段落原文复核偏移与引文，找不到时按引文重新定位，仍找不到就拒绝，避免生成指向错字的假划线。
+2. **划线、标记、想法共用一张批注结构。** 标记是段落级书签（start=end=0）；想法可带引文或独立存在；AI 解释保存为「想法」并标 `source=ai`，不与读者原话混淆。
+3. **AI 只产草稿，用户确认才落盘。** 解释/查概念只发送当前段落、选中引文与问题；整理只发送读者已有批注。整理稿保存到 `notes/<book_id>/`，导出 Markdown 到 `exports/`，都不自动写知识库，也不需要模型直接写文件。
+4. **导入是用户显式选文件，不扫描目录。** 纯文本优先 Rust 按 UTF-8 读，非 UTF-8 与 PDF/DOCX/EPUB 交给既有 Python helper；超过 32 MiB、只有元数据没有正文、路径命中禁区时明确失败，不伪造内容。重复导入按正文 SHA-256 返回已有书，不覆盖。
+
+**理由：** 这三个参考项目（lamplit / dsh-weread / deep-read-summarize）都把「书内位置、批注、AI 结果」分开存储，并强调原文可回查；OmniDesk 继续遵守文件优先与仓库外数据边界，先用可读 JSON 支撑个人规模，等真实并发/检索瓶颈出现再评估 SQLite。
+
+**影响：** 新增 `reading_library / reading_import_book / reading_book / reading_annotation_* / reading_progress_set / reading_note_* / reading_export_notes` 命令；读书入口在 Dock 固定显示，不受 Profile 管辖；导入与 AI 任务不改变工作记录、知识库或成果目录。
+
+**证据：** `cargo test --lib -- --test-threads=1` 1225/0/1 ignored；`reading_store` 5/5、`reading_source` 2/2；`cargo check`、`npx tsc --noEmit`、`npm run build` 通过；`node --experimental-strip-types --test src/readingAi.test.mjs` 4/4；EPUB/GBK 纯文本 helper 手工样例通过（`/tmp/od-reading-helper-test`）。真实窗口点击、真实模型整理与跨段选择尚未验证。
+
+**复审触发：** ①书目或批注规模导致书架列表/阅读器出现可观察卡顿；②需要跨段划线、重叠批注重建或多人共享；③用户要求接入微信读书/GitHub 等远程书架；④AI 整理稿需要直接写入知识库；⑤真实模型结果出现无法回查的引文或编造原文。
+

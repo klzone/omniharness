@@ -12,6 +12,7 @@ import "./theme.css";
 import "./styles.css";
 import "./settings-panel.css";
 import "./markdown.css";
+import "./reading.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

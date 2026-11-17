@@ -2825,6 +2825,8 @@ pub const ATTACHMENT_TEXT_EXTS: &[&str] = &[
 
 const READING_HELPER: &str = include_str!("../../../scripts/reading_attachment_extract.py");
 const ATTACHMENT_HELPER_TIMEOUT: Duration = Duration::from_secs(6);
+/// 整本书的 PDF/EPUB 抽取可能远超对话附件的 6 秒上限。
+const READING_HELPER_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, serde::Deserialize)]
 struct AttachmentExtractOutput {
@@ -2881,6 +2883,14 @@ fn is_ooxml_word_container(bytes: &[u8]) -> bool {
 
 /// 写入临时 helper 并调用候选 Python；返回 JSON 结果；任何失败都返回 None 由上层降级。
 fn run_attachment_extract_helper(path: &Path, format: &str) -> Option<AttachmentExtractOutput> {
+    run_attachment_extract_helper_with_timeout(path, format, ATTACHMENT_HELPER_TIMEOUT)
+}
+
+fn run_attachment_extract_helper_with_timeout(
+    path: &Path,
+    format: &str,
+    timeout: Duration,
+) -> Option<AttachmentExtractOutput> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let candidates = crate::export_engine::ExportTools::discover().python_candidates;
     if candidates.is_empty() {
@@ -2931,7 +2941,7 @@ fn run_attachment_extract_helper(path: &Path, format: &str) -> Option<Attachment
             Ok(child) => child,
             Err(_) => continue,
         };
-        let deadline = Instant::now() + ATTACHMENT_HELPER_TIMEOUT;
+        let deadline = Instant::now() + timeout;
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
@@ -3025,10 +3035,14 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
     let mut chapters: Vec<ReadingSourceChapter> = Vec::new();
     let content = if READING_TEXT_EXTS.contains(&extension.as_str()) {
         match String::from_utf8(bytes) {
-            Ok(text) if !text.trim().is_empty() => text,
+            Ok(text) if !text.trim().is_empty() => text.trim_start_matches('\u{feff}').to_string(),
             Ok(_) => return Err(format!("阅读文件「{file_name}」没有可读的正文。")),
             Err(_) => {
-                let out = run_attachment_extract_helper(&resolved, &extension)
+                let out = run_attachment_extract_helper_with_timeout(
+                    &resolved,
+                    &extension,
+                    READING_HELPER_TIMEOUT,
+                )
                     .ok_or_else(|| format!("「{file_name}」不是 UTF-8 文本，且文本解码器不可用。"))?;
                 if out.kind != "text" {
                     return Err(format!(
@@ -3041,7 +3055,12 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
             }
         }
     } else if READING_EXTRACT_EXTS.contains(&extension.as_str()) {
-        let out = run_attachment_extract_helper(&resolved, &extension).ok_or_else(|| {
+        let out = run_attachment_extract_helper_with_timeout(
+            &resolved,
+            &extension,
+            READING_HELPER_TIMEOUT,
+        )
+        .ok_or_else(|| {
             format!(
                 "「{file_name}」的 {} 正文提取器不可用。请确认本机 Python 与 PDF 依赖可用，或先转换为 Markdown/TXT。",
                 extension.to_uppercase()
@@ -5353,6 +5372,43 @@ with zipfile.ZipFile(pathlib.Path(sys.argv[1]), 'w') as archive:
         assert!(err.contains("禁止"), "{}", err);
         let err = read_attachment("relative/notes.md").unwrap_err();
         assert!(err.contains("绝对路径"), "{}", err);
+    }
+
+    #[test]
+    fn reads_reading_source_utf8_text() {
+        let dir = material_dir("reading_utf8");
+        let file = dir.join("book.txt");
+        fs::write(&file, "第一章\n\n这是一段用于验证的阅读正文。").unwrap();
+        let read = read_reading_source(file.to_str().unwrap()).unwrap();
+        assert_eq!(read.extension, "txt");
+        assert!(read.content.contains("阅读正文"));
+        assert_eq!(read.sha256.len(), 64);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_reading_source_gbk_via_helper() {
+        let dir = material_dir("reading_gbk");
+        let file = dir.join("book.txt");
+        // 直接写 GB18030 字节：使用 python 生成一次固定夹具，不依赖运行期外部文件。
+        let gbk = std::process::Command::new("python3")
+            .arg("-c")
+            .arg("import sys;sys.stdout.buffer.write('第一章\\n\\nGBK 中文正文。'.encode('gb18030'))")
+            .output();
+        let Ok(output) = gbk else {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        };
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        fs::write(&file, output.stdout).unwrap();
+        match read_reading_source(file.to_str().unwrap()) {
+            Ok(read) => assert!(read.content.contains("中文正文")),
+            Err(err) => assert!(err.contains("解码器不可用"), "{}", err),
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

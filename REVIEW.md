@@ -1,5 +1,42 @@
 # GitHub 历史重写与发布清理审查（2026-11-17）——通过（附外部副本限制）
 
+# OD-READ-001 读书阅读笔记分页初步实施审查（2026-11-18）——通过（静态/脚本范围，附未验收项）
+
+**审查对象：** HEAD `b8b9357b9c` 之上的工作树；`desktop/src-tauri/src/reading_store.rs`、`task_shell.rs` 阅读源读取、`scripts/reading_attachment_extract.py` EPUB/纯文本分支、`desktop/src/shell/ReadingPage.tsx`、`desktop/src/readingAi.ts`、`api.ts`/`types.ts`/`lib.rs` 命令与注册、`docs/decisions.md` D-111、数据布局 §5.2。
+
+**结论：** 本切片的存储、锚点校验、导入边界、提示词边界与构建链路**通过**；真实桌面窗口交互与真实模型输出**尚未验收**，不得标为「已验收」或「真实可用」。
+
+**实际核对与发现（均在本次修复）：**
+
+1. **滚动进度曾经会重写整本书 JSON。** `set_progress_at` 最初走 `write_book`，在 5 MB 级正文上每次滚动暂停都全量重写。已改为 `progress/<id>.json` + meta 小文件；`read_book_at` 读取时合并，静止后只写小文件。
+2. **React StrictMode 下恢复阅读位置会失效。** 恢复标记原先在 effect 首行写入，StrictMode 首次 cleanup 后第二次 effect 直接跳过，滚动位置不恢复。已改为在 `requestAnimationFrame` 内成功设置滚动后再标记。
+3. **段落标记的装饰文字会污染选区偏移。** 书签圆点原先是段落内的 `<span>▪</span>`，`prefix.toString()` 会把圆点计入偏移，导致划线定位差 1 个字符。已改为 CSS `::before`，段落 `textContent` 恢复为纯原文。
+4. **快速切书会把旧书响应写进新书。** 已加 `loadSeq` 序号与 `bookIdAtCall` 校验，旧响应在切书后丢弃；切书同时清空草稿/删除确认/AI 结果并递增 AI 序号。
+5. **引文歧义与跨段选择。** 偏移不符时仅在引文于段落中唯一出现时重定位，多处出现直接拒绝；跨段选择在界面明确提示暂不支持，不生成错位批注。
+6. **AI 只产草稿。** 概念/整理提示词由纯函数组装并单测；整理稿只在 `reading_note_save` 落 `notes/`，不写知识库；模型结果界面标「未复核」。
+7. **导入边界。** 只接受用户显式选择的绝对路径普通文件；32 MiB 上限；重复正文按 SHA-256 返回已有书；抽取失败只报原因；阅读目录/文件在 Unix 下 0700/0600。
+
+**证据（实际运行）：** `cargo test --offline --lib -- --test-threads=1` 1225/0/1 ignored；`reading_store` 5/5；`reading_source` 2/2；`npx tsc --noEmit` 0；`npm run build` 0；`node --experimental-strip-types --test src/readingAi.test.mjs` 4/4；EPUB 与 GB18030 helper 手工样例通过；`git diff --check` 0。
+
+**未验收项与风险：** 真实窗口选区浮条位置、点击回跳、窄屏侧栏、真实模型解释/整理质量、32 MiB 级 PDF 耗时、复杂排版 EPUB 的纯文本损失均未实测；跨段划线未实现。后续若要写知识库或接微信读书/GitHub，须按 D-111 复审触发另行立项。
+
+# OD-READ-001 阶段 4 独立复核（2026-11-18，BUILDER 子代理执行）——通过
+
+**复核范围：** BUILDER（deepseek-v4.1-flash-eco / high）交付的阶段 4 diff：`reading_store.rs` 引文核验与 frontmatter、`ReadingPage.tsx` 围栏剥离与核验回执、`readingAi.ts` `stripMarkdownFence`、`types.ts` `ReadingSavedNote` 两字段、`STATUS.md` 执行记录。
+
+**ARCHITECT 实跑（非自述采信）：**
+
+1. `cargo test --offline --lib -- --test-threads=1` → 1232 passed / 0 failed / 1 ignored（50.8s）。新增 7 条核验/frontmatter/提示块测试全部通过，且引文核验确实作用于保存路径（`save_note_at` 内 `audit_organized_citations` 调用与提示块插入位置断言）。
+2. `npx tsc --noEmit` → 0；`npm run build` → 0（ReadingPage chunk 35.33 kB）；`node --experimental-strip-types --test src/readingAi.test.mjs` → 5/5；`git diff --check` → 0。
+3. 边界核对：`runtime/`、`engine/`、模型路由、凭证、版本号、CHANGELOG 未改；工作树既有改动原样保留；未提交未推送。
+
+**发现与处置：**
+
+1. 任务书允许清单未列 `readingAi.ts`，BUILDER 因测试可导入性把 `stripMarkdownFence` 放进该纯函数模块——判断正确，属任务书遗漏而非越权，计划允许清单在 PLANS.md 阶段 4 补记该文件。
+2. 界面「未核验 y 条」按列示条数计（超过 20 条时末条为「……另有 N 条」），保存文件提示块给出真实总数；已在 STATUS.md 如实记录，不构成缺陷。
+
+**结论：** 阶段 4 通过；随后进入提交推送子任务（用户已授权）。
+
 # OD-ARCH-173 0.2.30 发布验收（2026-11-17）——通过（附未验证项）
 
 **审查对象：** PLANS.md OD-ARCH-173 全部阶段执行记录与证据（tests/verification/desktop/evidence/od-arch-173/）、release 提交 1d07d91bba、远程 main ac46822eff、实际源码 diff。

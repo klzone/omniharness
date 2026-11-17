@@ -1,5 +1,29 @@
 # 执行状态
 
+## OD-READ-001 读书阅读笔记分页（ARCHITECT 亲自执行，2026-11-18，待复核）
+
+- 开工基线：`git status --short --branch` 为 `## main...origin/main`，HEAD `b8b9357b9c`；任务期间用户另有一次发版提交，已保留、未回退、未改写历史。本轮未提交、未推送、未打标签。
+- 改动清单：
+  - `desktop/src-tauri/src/reading_store.rs`（新增）：仓库外阅读目录 `~/OmniDesk/reading/`（books/meta/progress/notes/exports），书目按正文 SHA-256 去重；章节/段落切分；批注按章节+段落+code point 偏移+引文锚定，落盘前复核并拒绝歧义引文；进度单独落盘，避免滚动时重写整本书；确定性 Markdown 导出；Unix 下目录 0700、文件 0600。
+  - `desktop/src-tauri/src/task_shell.rs`：`read_reading_source` 与 32 MiB 阅读源上限；非 UTF-8/PDF/DOCX/EPUB 复用 Python helper，阅读抽取超时 120 秒；新增 UTF-8 与 GB18030 两条单测。
+  - `scripts/reading_attachment_extract.py`：新增 EPUB（container/OPF/spine/XHTML 块级正文）与纯文本 UTF-8/UTF-16/GB18030 解码；保留 DOCX/PDF 原有路径。
+  - `desktop/src-tauri/src/lib.rs`：新增 10 个 `reading_*` Tauri 命令并注册；只读用户显式选择的源文件，不扫描目录、不写知识库。
+  - `desktop/src/types.ts`、`desktop/src/api.ts`：阅读书目/批注/整理稿/进度类型与调用。
+  - `desktop/src/readingAi.ts`（新增）与 `readingAi.test.mjs`（新增）：概念提示词与整理提示词纯函数；只带当前段落/选中引文/已有批注，整理稿最多 80 条并标注未复核边界。
+  - `desktop/src/shell/ReadingPage.tsx`（新增）：书架、阅读器、选区浮条（划线/想法/标段/问 AI）、笔记侧栏、回跳/编辑/删除、随时问概念、AI 整理与保存、导出、删除确认。
+  - `desktop/src/App.tsx`、`shell/Dock.tsx`、`main.tsx`、`reading.css`（新增）：懒加载「读书」平台入口与阅读排版。
+  - `docs/decisions.md` D-111、`docs/OmniDesk-Desktop-Data-Layout.md` §5.2、`PLANS.md` OD-READ-001 执行结果。
+- 实际命令与结果：
+  - `cargo test --offline --lib -- --test-threads=1` → 1225 passed / 0 failed / 1 ignored（50.12s）。
+  - `cargo test --offline --lib reading_store` → 5/5；`reading_source` → 2/2；`cargo check --offline` → exit 0。
+  - `npx tsc --noEmit` → exit 0；`npm run build` → exit 0（ReadingPage 懒加载 chunk 约 34.0 kB）。
+  - `node --experimental-strip-types --test src/readingAi.test.mjs` → 4/4。
+  - `python3 scripts/reading_attachment_extract.py /tmp/od-reading-helper-test/sample.epub --format epub` → 两章正文正确；GB18030 纯文本样例正确。
+  - `git diff --check` → exit 0。
+- 证据等级：文件事实（源码与 diff）；脚本运行（cargo/tsc/build/node/Python）；未做真实桌面窗口点击与真实模型调用。
+- 未验证项：真实窗口选区浮条与回跳定位；真实模型概念解释/整理质量；32 MiB 级 PDF 抽取耗时；跨段选择（当前明确拒绝并提示）；EPUB 复杂样式/图表书可能只得到块级文字。
+- 数据边界：测试全部使用 `/tmp` 或一次性目录；仓库内未写入书正文、批注或真实材料；未改 `runtime/`、`engine/`、凭证或模型路由。
+
 ## OD-ARCH-175 阶段 3 执行记录（子代理，2026-11-17）
 
 - 开工基线：`git status --short` 为 `M PLANS.md`、`M REVIEW.md`；HEAD `5754da202c`。执行期间 STATUS.md 出现阶段 1 子代理追加的只读核查记录，本阶段原样保留，未改写其内容。
@@ -676,3 +700,46 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 ```
 
 工作树改动全部保留，未提交、未推送。
+
+## OD-READ-001 阶段 4 执行记录（BUILDER 子代理，2026-11-18）
+
+- 开工前快照：git status --short --branch 为 ## main...origin/main；HEAD b8b9357b9c。既有未提交改动（PLANS.md、REVIEW.md、STATUS.md、desktop/src-tauri/src/lib.rs、task_shell.rs、desktop/src/App.tsx、api.ts、main.tsx、shell/Dock.tsx、types.ts、docs 两处、scripts/reading_attachment_extract.py）与未跟踪文件（reading_store.rs、reading.css、readingAi.ts、readingAi.test.mjs、ReadingPage.tsx、docs/od-read-001-stage4-dispatch.md）全部原样保留；未 stash/reset/clean、未提交、未推送、未打标签。
+- 改动清单（仅本任务新增/修改）：
+  - desktop/src-tauri/src/reading_store.rs：新增 verify_organized_markdown 与引用行提取、空白/引号规范化、未核验最多 20 条（超出合并「……另有 N 条」）；save_note_at 调用核验，未核验 > 0 时在 frontmatter 之后插入「⚠ 引文核验」提示块，不阻断保存；无 frontmatter 时补写 title/created/book/source/annotation_count 五字段（YAML 双引号转义），已有 frontmatter 原样保留；ReadingSavedNote 新增 verified_citations: usize 与 unverified_citations: Vec<String>（均 serde default）。
+  - desktop/src/shell/ReadingPage.tsx：AI 整理结果进入展示/保存前调用 stripMarkdownFence；保存成功后显示「已核验引文 x 条 / 未核验 y 条」并把条目数写进保存回执。
+  - desktop/src/readingAi.ts：新增 stripMarkdownFence 纯函数（仅整段被单个三反引号/三波浪线围栏包裹时剥一层，内部围栏保留）。
+  - desktop/src/readingAi.test.mjs：新增围栏剥离断言（整段围栏、波浪线、内部围栏、尾部多余文本、无围栏、空串）。
+  - desktop/src/types.ts：ReadingSavedNote 增加 verified_citations: number 与 unverified_citations: string[]。
+  - STATUS.md：本节追加。
+- 实际命令与结果：
+  - cd desktop/src-tauri && /Users/yvan/.cargo/bin/cargo test --offline --lib -- --test-threads=1 → 1232 passed / 0 failed / 1 ignored（50.72s，exit 0）；其中 reading_store 过滤运行 12/12（新增 7 条：全部命中、部分未命中、中文空白差异、无引文/无批注、20 条上限、frontmatter 补写与不改写、未核验提示与计数）。
+  - cd desktop && npx tsc --noEmit → exit 0，无输出。
+  - cd desktop && npm run build → exit 0；ReadingPage chunk 35.33 kB；仅既有 chunk 大小提示。
+  - cd desktop && node --experimental-strip-types --test src/readingAi.test.mjs → 5 pass / 0 fail（含新增围栏断言）。
+  - git diff --check → exit 0。
+- 证据等级：文件事实（源码与 diff）；静态检查（tsc --noEmit、git diff --check）；脚本运行（cargo test、npm run build、node --test）。测试全部为合成内容（/tmp 一次性目录与单元测试字符串）。
+- 未验证项：真实桌面窗口的保存点击、回执视觉排版与 Markdown 渲染；真实模型输出同时含围栏与不可核验引文的端到端样例；已有 frontmatter 且含未核验引文时的提示块位置仅有静态路径覆盖，未做窗口级检查。
+- 计划偏差：任务书允许清单未列 desktop/src/readingAi.ts，但围栏剥离需要可被 readingAi.test.mjs 直接 import 的纯函数，故放在该纯函数模块；types.ts 按硬约束中「ReadingSavedNote 字段新增」明确允许而修改；未新增 tests/verification 脚本。
+- 交付时 Git 状态（工作树保留，未提交）：
+~~~text
+## main...origin/main
+ M PLANS.md
+ M REVIEW.md
+ M STATUS.md
+ M desktop/src-tauri/src/lib.rs
+ M desktop/src-tauri/src/task_shell.rs
+ M desktop/src/App.tsx
+ M desktop/src/api.ts
+ M desktop/src/main.tsx
+ M desktop/src/shell/Dock.tsx
+ M desktop/src/types.ts
+ M docs/OmniDesk-Desktop-Data-Layout.md
+ M docs/decisions.md
+ M scripts/reading_attachment_extract.py
+?? desktop/src-tauri/src/reading_store.rs
+?? desktop/src/reading.css
+?? desktop/src/readingAi.test.mjs
+?? desktop/src/readingAi.ts
+?? desktop/src/shell/ReadingPage.tsx
+?? docs/od-read-001-stage4-dispatch.md
+~~~

@@ -233,6 +233,15 @@ import type {
   ProfileExportReceipt,
   ProfileImportReceipt,
   ProfileBundleListing,
+  ReadingAnnotation,
+  ReadingAnnotationDraft,
+  ReadingAnnotationPatch,
+  ReadingBook,
+  ReadingBookMeta,
+  ReadingImportResult,
+  ReadingLibrary,
+  ReadingNoteFile,
+  ReadingSavedNote,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -1850,6 +1859,98 @@ export const shell = {
     return invoke<KnowledgeVaultNoteLinks>("knowledge_vault_note_links", {
       relativePath,
     }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读书书架（OD-READ-001）：只列书目摘要与阅读目录，不读正文。 */
+  readingLibrary(): Promise<ReadingLibrary> {
+    return invoke<ReadingLibrary>("reading_library").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 导入用户显式选择的阅读文件；重复内容返回已有书，不覆盖。 */
+  readingImportBook(path: string): Promise<ReadingImportResult> {
+    return invoke<ReadingImportResult>("reading_import_book", { path }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取整本书（正文、章节、批注与已保存整理稿摘要）。 */
+  readingBook(bookId: string): Promise<ReadingBook> {
+    return invoke<ReadingBook>("reading_book", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  readingAnnotationAdd(
+    bookId: string,
+    draft: ReadingAnnotationDraft,
+  ): Promise<ReadingAnnotation> {
+    return invoke<ReadingAnnotation>("reading_annotation_add", { bookId, draft }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  readingAnnotationUpdate(
+    bookId: string,
+    annotationId: string,
+    patch: ReadingAnnotationPatch,
+  ): Promise<ReadingAnnotation> {
+    return invoke<ReadingAnnotation>("reading_annotation_update", {
+      bookId,
+      annotationId,
+      patch,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  readingAnnotationDelete(
+    bookId: string,
+    annotationId: string,
+  ): Promise<ReadingBookMeta> {
+    return invoke<ReadingBookMeta>("reading_annotation_delete", {
+      bookId,
+      annotationId,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  readingProgressSet(bookId: string, percent: number): Promise<ReadingBookMeta> {
+    return invoke<ReadingBookMeta>("reading_progress_set", { bookId, percent }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存用户确认的 AI 整理稿；不自动写知识库。 */
+  readingNoteSave(
+    bookId: string,
+    title: string,
+    markdown: string,
+    annotationIds: string[],
+  ): Promise<ReadingSavedNote> {
+    return invoke<ReadingSavedNote>("reading_note_save", {
+      bookId,
+      title,
+      markdown,
+      annotationIds,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  readingNoteRead(bookId: string, noteId: string): Promise<string> {
+    return invoke<string>("reading_note_read", { bookId, noteId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 确定性导出当前书的划线/标记/想法；不调用模型。 */
+  readingExportNotes(bookId: string): Promise<ReadingNoteFile> {
+    return invoke<ReadingNoteFile>("reading_export_notes", { bookId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

@@ -21,6 +21,11 @@ const KnowledgeVaultPage = lazy(() =>
   import("./shell/KnowledgeVaultPage").then((m) => ({ default: m.KnowledgeVaultPage })),
 );
 
+// 读书页同样按需加载：书架正文可能很大，不应拖慢首屏。
+const ReadingPage = lazy(() =>
+  import("./shell/ReadingPage").then((m) => ({ default: m.ReadingPage })),
+);
+
 /**
  * 应用外壳（OD-ARCH-026）。
  *
@@ -432,6 +437,16 @@ export default function App() {
               onOpenSettings={() => selectScene("settings")}
               onDirtyChange={setKnowledgeDirty}
             />
+          </Suspense>
+        ) : scene === "reading" ? (
+          <Suspense
+            fallback={
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
+                <p className="text-[12px] text-on-surface-variant">正在打开读书页…</p>
+              </div>
+            }
+          >
+            <ReadingPage />
           </Suspense>
         ) : scene === "settings" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">

@@ -14,6 +14,7 @@ export type Scene =
   | "project"
   | "sessions"
   | "knowledge"
+  | "reading"
   | "settings";
 
 interface DockItem {
@@ -44,6 +45,13 @@ export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
   label: "知识库",
 };
 
+/** 读书是平台内置入口（OD-READ-001）：书目、批注与阅读进度只在本机，不随 Profile 声明走。 */
+export const BUILTIN_READING_ITEM: DockItem = {
+  scene: "reading",
+  icon: "note",
+  label: "读书",
+};
+
 /**
  * 历史会话是平台固有入口（OD-UI-714）：线程记录按机器保存，不随 Profile 走，
  * 所以任何 Profile 下都要能回到过去的对话。它不写进 Profile 场景声明。
@@ -60,6 +68,7 @@ export const BUILTIN_HISTORY_ITEM: DockItem = {
  */
 export const BUILTIN_PLATFORM_ITEMS: DockItem[] = [
   { scene: "home", icon: "home", label: "工作台首页" },
+  BUILTIN_READING_ITEM,
   BUILTIN_HISTORY_ITEM,
   BUILTIN_KNOWLEDGE_ITEM,
 ];
@@ -90,7 +99,7 @@ export function Dock({
       ? declared
           // 旧声明可能还留着 sessions / knowledge；它们现在由平台统一追加，
           // 这里过滤掉，避免同一条入口出现两次。
-          .filter((s) => !["sessions", "knowledge"].includes(s.id as string))
+          .filter((s) => !["sessions", "knowledge", "reading"].includes(s.id as string))
           .map((s) => ({
             scene: s.id as Scene,
             icon: s.icon as IconName,
@@ -104,6 +113,7 @@ export function Dock({
   const seen = new Set<Scene>();
   for (const item of [
     ...declaredItems,
+    BUILTIN_READING_ITEM,
     BUILTIN_HISTORY_ITEM,
     BUILTIN_KNOWLEDGE_ITEM,
   ]) {

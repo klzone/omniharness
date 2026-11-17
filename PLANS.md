@@ -25,6 +25,34 @@
 
 **风险与后续：** EPUB/PDF 抽取依赖本机 Python 与 `pypdf`；抽取失败时只报告原因，不伪造正文。跨段选择本切片先限制在同一段，跨段划线与重叠批注的合并展示留到后续验收。
 
+**执行结果（2026-11-18，ARCHITECT 亲自执行，待独立复核）：**
+> 已落地：Dock 固定「读书」入口与懒加载页面；书架/阅读器/笔记与 AI 侧栏；`.md/.txt/.pdf/.docx/.epub` 导入（UTF-8 直读、非 UTF-8/PDF/DOCX/EPUB 走既有 Python helper，EPUB 新增 stdlib 章节抽取）；批注按章节+段落+code point 偏移+引文锚定，支持划线、段落标记、思考碎片、编辑/删除/回跳；进度单独落 `progress/`，不随滚动重写整本书；AI 解释/查概念与批注整理只产草稿，用户点保存才写 `notes/`，确定性导出写 `exports/`。
+> 实跑：`cargo test --offline --lib -- --test-threads=1` 1225 passed / 0 failed / 1 ignored；`npx tsc --noEmit`、`npm run build` 通过；`node --experimental-strip-types --test src/readingAi.test.mjs` 4/4；EPUB/GB18030 helper 手工样例通过。
+> 未验证：真实桌面窗口的选区浮条、回跳定位与视觉排版；真实模型的概念解释与整理稿质量；32 MiB 级 PDF 抽取耗时；跨段选择（本切片明确拒绝并提示）。
+
+**用户裁决（2026-11-18 深夜，待批准派工）：** 用户复核后裁决：①用户睡觉后由 ARCHITECT 复核推进；②再次学习三个参考项目后，对现行方案（含已实现部分）进行复核；③认为可行或需要完善的，直接修改本计划，不必再等批准；④授权安排 BUILDER 子代理执行（模型 `OpenDesign/deepseek-v4.1-flash-eco`，思考等级 high；如该模型/档位不可用，记录实际原因后选用可用档位或改派 glm-5.3-flash，并在 STATUS.md 说明）；⑤ARCHITECT 只负责复核，不亲自实现；⑥复核通过后，由 BUILDER 子代理把改动提交至 GitHub 并推送，形成最新版本。
+
+**ARCHITECT 复核结论（2026-11-18，依据三个参考项目的再次只读学习）：**
+> 1. **方案总体可行。** 已实现部分与三个参考项目的共同骨架一致（本地优先、划线/想法分型、按书整理、原文回查、草稿确认），且遵守 OmniDesk 的仓库外数据边界与「AI 只产草稿」契约；不需要推翻重做。
+> 2. **借鉴 deep-read-summarize 的「原文核验」补确定性引文核验（新增阶段 4）。** 现行 `reading_organize` 只有提示词约束「不得补造」，没有程序级核验。补一条宿主纯函数：解析整理稿里的 `>` 引用行，逐条与本书批注的 quote/paragraph 做规范化比对（去空白差异）；任何一条找不到来源，就在整理稿顶部插入「⚠ 本稿存在 N 条未核验引文」提示块，拒绝静默通过。这是宿主确定性检查，不调模型、不新增依赖。
+> 3. **借鉴 lamplit 的「整理前后文」补边界改进（并入阶段 4）。** AI 整理稿保存时，若正文超过 200 字符，在保存的 Markdown 顶部补 frontmatter（title/created/book/source/annotation_count），方便外部工具（Obsidian）识别；不做多文件拆分。整理稿的模型输出含围栏包裹时先剥一层围栏（参考其 extractNote 的做法，保持简单实现）。
+> 4. **不做的事维持不变：** 不接微信读书/GitHub 书架、不做扫描件 OCR、不改 runtime/、不引入数据库；跨段划线、重叠批注重建、AI 稿直接写知识库仍列为后续复审触发，不在本轮。
+
+**阶段 4（确定性引文核验 + 整理稿边界，BUILDER 执行）**
+> 1. `desktop/src-tauri/src/reading_store.rs`：新增 `verify_organized_markdown(book, markdown) -> Vec<String>` 纯函数：提取整理稿中的 Markdown 引用行（`>` 开头），去首尾空白与多余空格后，与本书批注 quote 及批注所在段落原文比对；返回未核验引文列表（最多列 20 条）。`save_note_at` 调用它，未核验数 > 0 时在保存稿顶部插入提示块（不阻断保存，但不得静默）。
+> 2. `save_note_at` 保存的 Markdown 无 frontmatter 时补 5 字段 frontmatter（title/created/book/source/annotation_count）；已有 frontmatter 不改写。
+> 3. `desktop/src/shell/ReadingPage.tsx`：AI 整理结果进入编辑区前，剥一层 Markdown 围栏（仅当整段被单个 ```` ``` ````/`~~~` 围栏包裹时）；整理稿保存回执在界面显示「已核验引文 x 条 / 未核验 y 条」。
+> 4. Rust 单测：核验函数（全部命中 / 部分 / 全部未命中 / 中文引文空白差异）；frontmatter 补写与不改写；围栏剥离纯函数。现有测试不回退。
+> 5. 验证：`cargo test --lib -- --test-threads=1` 全过；`npx tsc --noEmit`、`npm run build`、`node --experimental-strip-types --test src/readingAi.test.mjs` 通过。
+
+**派工方式（本轮用户已授权）：**
+> 1. 阶段 4 派给一个 BUILDER 子代理（模型 `OpenDesign/deepseek-v4.1-flash-eco`；思考等级 high，如该档位被拒绝则用该模型可用档位或 `OpenDesign/glm-5.3-flash` high，按模板 `docs/BUILDER-Task-Instruction-Template.md` 派工，任务书原文写入 `docs/od-read-001-stage4-dispatch.md`）。
+> 2. ARCHITECT 不亲自实现阶段 4；完成后独立复核 diff 与测试输出，写 REVIEW.md。
+> 3. 复核通过后，由**另一个** BUILDER 子代理执行提交与推送（提交信息遵循仓库惯例，注明 OD-READ-001；不做 force push、不打标签、不改版本号；推送前跑一次 `git diff --check` 与 `cargo test --lib reading_store -- --test-threads=1`）。推送回执写入 STATUS.md。
+> 4. 版本号与 CHANGELOG 不在本轮自动改动；发版留给用户醒着时决定。
+
+**阶段 4 执行与复核结果（2026-11-18）：** BUILDER（deepseek-v4.1-flash-eco / high，昵称 Boyle）完成五条实现；ARCHITECT 实跑复核：cargo 1232/0/1、tsc 0、build 0、readingAi 5/5、git diff --check 0。任务书允许清单漏列 `desktop/src/readingAi.ts`，BUILDER 按测试可导入性补在该文件，复核认可（REVIEW.md 已记）。阶段 4 通过，进入提交推送子任务。
+
 ### OD-ARCH-176：工作记录场景自然语言意图与落盘决策重构（待批准，2026-11-17）
 
 > **触发（用户裁决）：** 诊断确认周期复盘在工作记录场景失败（REVIEW.md 2026-11-17 诊断）。用户明确产品方向：①对话分类只有未分类/工作记录/文案写作/项目跟踪，没有复盘专门场景，复盘必须能在工作记录场景直接完成；②意图由模型理解自然语言决定，不能机械靠关键词表触发；③对助手的指令（如「你自己去搜索」）绝不落盘为工作记录。

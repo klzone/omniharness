@@ -4095,3 +4095,112 @@ export interface IntegrityReport {
   truncated: boolean;
   skipped: number;
 }
+
+// ---------------------------------------------------------------------------
+// 读书阅读笔记（OD-READ-001）
+// ---------------------------------------------------------------------------
+
+export interface ReadingChapter {
+  title: string;
+  paragraphs: string[];
+}
+
+export interface ReadingProgress {
+  percent: number;
+  updated_at: string;
+}
+
+/** 一条批注：划线/标记/思考碎片共用一个结构，`start`/`end` 是段落内的 code point 偏移。 */
+export interface ReadingAnnotation {
+  id: string;
+  kind: "highlight" | "bookmark" | "thought";
+  chapter_index: number;
+  paragraph_index: number;
+  start: number;
+  end: number;
+  quote: string;
+  body: string;
+  color: string;
+  source: "user" | "ai";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReadingAnnotationDraft {
+  kind: "highlight" | "bookmark" | "thought";
+  chapter_index: number;
+  paragraph_index: number;
+  start?: number | null;
+  end?: number | null;
+  quote?: string;
+  body?: string;
+  color?: string;
+  source?: "user" | "ai";
+}
+
+export interface ReadingAnnotationPatch {
+  body?: string;
+  color?: string;
+}
+
+export interface ReadingSavedNote {
+  note_id: string;
+  title: string;
+  created_at: string;
+  relative_path: string;
+  bytes: number;
+  annotation_ids: string[];
+  verified_citations: number;
+  unverified_citations: string[];
+}
+
+export interface ReadingBookMeta {
+  schema: string;
+  book_id: string;
+  title: string;
+  author: string;
+  source_name: string;
+  source_format: string;
+  imported_at: string;
+  updated_at: string;
+  chapter_count: number;
+  paragraph_count: number;
+  char_count: number;
+  annotation_count: number;
+  note_count: number;
+  progress_percent: number;
+}
+
+export interface ReadingBook {
+  schema: string;
+  book_id: string;
+  title: string;
+  author: string;
+  source_name: string;
+  source_format: string;
+  source_path: string;
+  source_sha256: string;
+  imported_at: string;
+  updated_at: string;
+  chapters: ReadingChapter[];
+  annotations: ReadingAnnotation[];
+  notes: ReadingSavedNote[];
+  progress: ReadingProgress;
+}
+
+export interface ReadingLibrary {
+  root: string;
+  books: ReadingBookMeta[];
+}
+
+export interface ReadingImportResult {
+  book: ReadingBookMeta;
+  existing: boolean;
+}
+
+export interface ReadingNoteFile {
+  file_name: string;
+  relative_path: string;
+  content: string;
+  bytes: number;
+}
