@@ -743,3 +743,14 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 ?? desktop/src/shell/ReadingPage.tsx
 ?? docs/od-read-001-stage4-dispatch.md
 ~~~
+
+
+## OD-READ-001 提交与推送记录（BUILDER 子代理，2026-11-18）
+
+- 开工基线：`git status --short --branch` 为 `## main...origin/main`；HEAD `b8b9357b9c`，与任务书要求一致。未改动历史、未 stash/reset/clean。
+- 提交前验证：`git diff --check` → exit 0；`cd desktop/src-tauri && /Users/yvan/.cargo/bin/cargo test --offline --lib reading_store -- --test-threads=1` → 12 passed / 0 failed / 0 ignored（1221 filtered out，exit 0）。
+- 暂存清单：按任务书精确 `git add` 20 个文件；`git diff --cached --name-only` 与清单逐项一致，清单外改动 0 个。`git diff --cached` 目视核对：无密钥/凭证/个人正文，新增测试与夹具均为合成字符串（如「合成书」「第一章」）。
+- 提交：`f4c67db150`（一次提交，提交信息按任务书第 2 条原文，经 `git commit -F` 保留多行；20 files changed, 4109 insertions(+), 12 deletions(-)）。
+- 推送：`git push origin main` → exit 0；回执 `b8b9357b9c..f4c67db150  main -> main`（https://github.com/klzone/omniharness.git）。未 force、未打标签、未重试。
+- 推送后 `git status --short --branch` 快照：`## main...origin/main`（工作树干净，与 origin/main 同步）。
+- 清单外未暂存文件：无。本节追加后 STATUS.md 重新处于已修改状态（未提交），留待 ARCHITECT 终检。

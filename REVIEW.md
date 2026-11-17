@@ -37,6 +37,20 @@
 
 **结论：** 阶段 4 通过；随后进入提交推送子任务（用户已授权）。
 
+## OD-READ-001 提交推送终检（2026-11-18，ARCHITECT）——通过
+
+**终检依据（实跑核对，非子代理自述）：**
+
+1. `git log -2 --oneline`：HEAD 为 `f4c67db150`（OD-READ-001 提交），父提交 `b8b9357b9c` 与开工基线一致；无 force push、无新标签。
+2. `git log origin/main -1` 与 `git status --short --branch`：origin/main 已指向 `f4c67db150`，本地与远程同步；推送后仅剩 STATUS.md 记录小节未提交（见下）。
+3. `git show f4c67db150 --name-only`：20 个文件与任务书清单逐项一致，无清单外文件；提交体量 4109 insertions / 12 deletions，与工作树此前累计改动吻合。
+4. 敏感内容扫描：对提交全文检索 api_key / secret / token / password / sk- / Bearer，无命中；新增测试与夹具均为合成内容。
+5. 提交前验证复核：`cargo test --lib reading_store` 12/12、`git diff --check` 0 为 BUILDER 实跑；ARCHITECT 此前已实跑全量 1232/0/1 与 tsc/build，未回退。
+
+**遗留（有意保留）：** 提交推送记录小节（STATUS.md 748 行起）是在提交之后追加的执行记录，按 OD-READ-001 的既有口径留在工作树，不追加提交；是否随下次发版收口由用户决定。
+
+**结论：** OD-READ-001 初步实现、阶段 4 引文核验与提交推送全部通过终检；本轮闭环。真实桌面窗口交互与真实模型质量仍按 REVIEW.md 上节的未验收项执行，属用户日常使用验证。
+
 # OD-ARCH-173 0.2.30 发布验收（2026-11-17）——通过（附未验证项）
 
 **审查对象：** PLANS.md OD-ARCH-173 全部阶段执行记录与证据（tests/verification/desktop/evidence/od-arch-173/）、release 提交 1d07d91bba、远程 main ac46822eff、实际源码 diff。

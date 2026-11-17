@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.36] - 2026-11-18
+
+### Added
+- 读书阅读笔记分页（OD-READ-001）：Dock 新增平台内置「读书」入口，左侧书架、中间阅读器、右侧笔记与 AI 面板。
+- 阅读时选中文字可划线、写思考碎片、标记当前段落、问 AI；批注按「章节 + 段落 + 字符偏移 + 引文」锚定，侧栏可回到原文、编辑、删除。
+- 支持导入用户显式选择的 `.md/.txt/.pdf/.docx/.epub`（上限 32 MiB）：纯文本按 UTF-8 / UTF-16 / GB18030 读取，EPUB 用标准库解析 container/OPF/spine 章节，PDF/DOCX 复用既有抽取链路。
+- AI 可解释选中文字、随时回答概念问题，也可把本书的划线/标记/想法整理成 Markdown 草稿；
+  草稿经确定性引文核验（逐条比对本书批注与原文），未核验条目在保存稿顶部插入提示块，不阻断保存。
+
+### Changed
+- 保存的整理稿在无 frontmatter 时自动补 `title/created/book/source/annotation_count` 五字段，已有 frontmatter 原样保留；
+  AI 输出被整段 Markdown 围栏包裹时自动剥一层。保存回执显示「已核验引文 x 条 / 未核验 y 条」。
+- 阅读进度单独落盘（`progress/<book_id>.json`），滚动时不再重写整本书的大 JSON。
+
+### Notes
+- 书目、批注、进度与整理稿只保存在仓库外 `~/OmniDesk/reading/`；导入与 AI 任务不改动工作记录、知识库或成果目录；
+  重复导入同一正文按 SHA-256 返回已有书，不覆盖。
+- 本版一并包含 0.2.35 的逐模型思考档位手动声明（0.2.35 因 macOS 构建未获得 runner 而未发布）。
+
+### Verification
+- `cargo test --lib -- --test-threads=1`：1232 passed / 0 failed / 1 ignored。
+- `npx tsc --noEmit`、`npm run build` 通过；`node --experimental-strip-types --test src/readingAi.test.mjs` 5/5；`git diff --check` 0。
+- 真实桌面窗口交互与真实模型输出质量尚未验收，属日常使用验证项。
+
 ## [0.2.32] - 2026-11-17
 
 ### Added
@@ -22,6 +46,8 @@ All notable changes to this project will be documented in this file.
 - 升级说明：已安装用户需在 Profile 资产页点「恢复默认规则包」获得更新后的 period-review / anysearch 技能文本。
 
 ## [0.2.35] - 2026-11-18
+
+> 未发布：0.2.35 的 macOS 构建未获得 runner，相关改动随 0.2.36 发布。
 
 ### Added
 - 逐模型思考档位手动声明（OD-ARCH-181）：设置 → 模型与端点中每个模型行下新增 7 档切换按钮（关闭/最低/低/中/高/很高/最高），off 按网关惯用取值 none；声明写入覆盖文件并优先于 Profile 与宿主已验证清单，真实调用不接受时取消即可回退。
