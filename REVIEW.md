@@ -113,3 +113,103 @@
 **未验证：** GitHub 的许可证识别结果、安装包内的第三方许可证清单是否完整、商业授权合同的实际法律条款。
 
 > 更早的审查记录已归档到仓库外 `MyWorkStation-archive/2026-11-17/process-docs/`。
+
+# 诊断：volcengine / deepseek-v4.1-flash 切换报错（2026-11-17，诊断级）
+
+**背景：** 用户测试切换火山引擎模型：模型可正常对话，但显式思考档位切换被阻（错误一）；模型发现探测对 `ark.cn-beijing.volces.com/api/plan/v3/models` 返回 404（错误二）。
+
+**核对结果（文件事实 / 静态检查，未跑引擎）：**
+
+1. 错误一是 `desktop/src/api.ts` `setModelRoute` 的切换前预检（约 1930–1960 行）：仅当请求档位非 `default` 且目录中该模型存在、`efforts` 为空时阻断。目录来自 DSH `session/modelCatalog`（`engine_bridge.rs` `list_models` → `omni.list_models`），与 Profile 路由声明的 `reasoningEfforts` 同口径（`model_settings.rs` `declared_efforts`）。
+2. `profiles/omnidesk-dev/cordis.patch.yml` 中只有 **opendesign** 的 deepseek-v4.1-flash 声明了 7 档 `reasoningEfforts`；volcengine 未声明该字段，内置目录也无 → 切到 volcengine 时该模型目录 `efforts` 为空，显式档位被预检拒绝。这是设计内保护（显式档位会在首次调用被 DSH 拒绝），不是路由故障；「跟随模型默认」可正常切换，与"模型能正常对话"观察一致。
+3. 错误二来自 DSH `llm/discoverModels` 探测（`dsh_settings.rs` 注释指向 `packages/llm/llm-pi-ai/src/discovery.ts`，runtime/ 内不改）。消息本身已声明"本次请求的结果；没有保存任何设置"，不阻断手填模型 id 保存。
+4. 模型自述只知道 DeepSeek 驱动、不知道思考等级：属模型自述局限与档位未声明的事实叠加，非路由证据；不据此判定切换失败。
+5. `scripts/diagnose-omnidesk.py` 实测：当前默认路由 opendesign/deepseek-v4.1-flash；volcengine 字符串仅出现在 runtime/ 的 dsh-cost-meter、dsh-free-search 模块中。
+
+**未验证：**
+
+- 错误二 URL 中 `/api/plan/v3` 段的来源：标准 Ark OpenAI 兼容 base 为 `/api/v3`；该路径疑似与 dsh-cost-meter 的 plan 计费通道相关，未读该模块源码（诊断预算用尽），列为下一步。
+- volcengine 提供商配置的实际存放位置（app config v2 中只有 opendesign），以及该端点真实档位取值。
+
+**结论：** 两条提示均非路由故障。错误一按提示选「跟随模型默认」即可切换；若要求 volcengine 也支持档位，需实测端点后在其 Profile 条目声明 `reasoningEfforts`（实施项，须计划批准）。错误二不阻断保存，手填模型 id 即可；建议复核 volcengine base_url 是否混入 `/api/plan/v3` 计费路径。
+
+# OD-ARCH-175 阶段 1–3 复核（2026-11-17，代码级通过）
+
+**审查对象：** 子代理 Plato（阶段 1 只读核查）、Aristotle（阶段 3 前端）、Fermat（阶段 2 Rust）的实际改动：`desktop/src/api.ts`、`desktop/src/types.ts`、`desktop/src/shell/ModelPicker.tsx`、`desktop/src/shell/HomeChat.tsx`、`desktop/src-tauri/src/lib.rs`、`desktop/src-tauri/src/model_routes.rs`、`desktop/src-tauri/src/model_effort_fallback.rs`（新增）及验证脚本。
+
+**ARCHITECT 独立复核结果：**
+
+1. **阶段 1（执行主体修正已落 STATUS.md）：** 错误形态结论基于锁定安装产物（DSH 0.2.1-rc.5 / pi-ai 1.4.0）源码行，触发条件（note 稳定文本 + provider/model/effort 三元精确匹配）被阶段 2 单测逐条覆盖。新事实：未声明模型显式 `off` 可用（等价关闭思考下发），已纳入设计。
+2. **阶段 3：** `planModelRouteEffort` 用「归一化目录 + Profile 原始声明」两层证据正确区分未声明（照传档位，运行期回退兜底）与声明为空/不匹配（本地直接 default + 一句话告知）。次要备注：`listModelRoutes()` 用缓存，Profile 刚改声明时证据可能滞后一拍，后果只是多走一次运行期回退，无害。
+3. **阶段 2：** 解析器只认完整稳定句式，配置空档位错误不误触发；guard 四态（InFlight/Applied/Failed/未占位）防重复改写与提前告知；改写覆盖文件同步完成，stop_engine 在后台线程持 lifecycle 守卫执行，轮询路径不阻塞。已知限制：回退只尝试默认 Profile（切换路径是多候选），跨 Profile 路由时安全降级为不触发。
+4. **ARCHITECT 实跑验证：** `cargo test --lib` 1209 passed / 0 failed（另一次运行出现 3 个 engine spawn 类环境性 flaky，两次复跑不复现，非本改动回归）；`npx tsc --noEmit` 通过；`npm run build` 通过；`verify_model_route_precheck_175.py` 12/12 + static 11/11；`verify_home_refine_202.py` 39/40（唯一失败为既有 `home_scene_backdrop`，与未改动的 App.tsx 相关）；`git diff --check` 通过。
+
+**结论：** 阶段 1–3 代码级通过。**阶段 4 未验证**：真实 volcengine 切档 → DSH 拒绝 → 宿主自动回退 → 引擎重启 → 前端 notice 的端到端链路需重编译桌面应用并实际切换，属运行证据，留待用户当轮执行后补录。未提交、未推送。
+
+# 诊断：工作记录场景周期复盘失败（2026-11-17，诊断级）
+
+**现象：** 用户在工作记录场景依次提问：①「上周工作复盘（11-9至11-15）」→ 判为复盘请求不落盘，引导走周期复盘/周报流程；②「周复盘（11-9至11-15）」→ 模型口头确认起草，但称需工作台汇集材料、不自取，之后无下文；③「你自己去搜索app暂存的…记录」→ 被原文落盘为 2026-11-09 随手记并进入记录分析。
+
+**核对结果（文件事实/静态检查）：**
+
+1. 周期复盘的宿主材料汇集（`worklogPeriodReviewCollect`，OD-WR-505：正式记录+任务统计+既往复盘标题）只在 `HomeChat.tsx:2961-2988` 的 `intent === "period-review"` 分支触发；而 `HomeChat.tsx:2723-2724` 规定 `weeklyScene = preset?.key === "weekly"`，`intent = weeklyScene ? detectWorkIntent(text) : null` —— **工作记录场景 intent 恒为 null，汇集链路在该场景永远不触发**。
+2. `skills/period-review/SKILL.md:9` 明文契约：「工作台已提供本周期正式记录、任务统计与既往复盘标题；不要自己找文件」。模型在第 ②问的「我不会自行找文件取数、等材料送达」正是执行该契约；但该场景宿主不发材料 → 死等，无初稿。
+3. 第 ①问走随手记分析提示词（`HomeChat.tsx:2090-2125`，只判冲突/缺要素/可执行任务），判「复盘请求不含可记录事实」不落盘；第 ③问被判为可记录事实原样落盘（日期取文中 11-09），随后的「分析」同样是记录质量审查，无本地检索能力或授权。
+4. 引擎侧无异常：diagnose 脚本轮询正常，无 error 关键词日志；任务快照无新增失败。本问题与 OD-ARCH-175 模型路由改造无关。
+
+**结论：** 不是模型故障，是**场景门控设计缺口**——周期复盘流程只接进了周报场景，工作记录场景没有接线；period-review skill 的「等材料不自取」契约在该场景成为死路。三条用户路径分别落入「引导离开」「死等材料」「误当随手记」。
+
+**修复方向（待用户裁决后立计划）：** A. 把 intent 分流扩展到工作记录场景（需设计该场景落盘/展示交互）；B. 工作记录场景检测到 period-review 时内联触发材料汇集（只读汇集，材料入本轮提示词 + skill 指针）；C. 最小改：该场景识别到复盘请求时确定性引导切到周报场景，消除死等。
+
+# OD-ARCH-176 阶段 1–2 复核（2026-11-17，代码级通过）
+
+**背景：** 用户批准按自然语言理解重构工作记录场景（意图模型判定、指令不落盘、复盘场景内出稿、默认 off 直出 + 手动档位覆盖），子代理 Kierkegaard（阶段 1 全栈）、Aristotle（阶段 2 补充）执行，均为 deepseek-v4.1-flash-eco / high。
+
+**审查对象与结论：**
+
+1. **意图契约（`workIntentDecision.ts` 新增）：** `<omnidesk-intent>` 统一 JSON 契约（note/instruction/chat/period-review/report/daily-summary/uncertain），解析失败或枚举外按 uncertain 走提问卡，不猜不落盘；`decideWorkIntentRoute` 明确只有 note 写盘。复核通过。
+2. **路由落地（HomeChat）：** 陈述句快路径（OD-WR-105 `isPlainStatementNote`）在工作记录场景退出；note 落盘 + 质量分析并一次调用；instruction/chat 注入周记录索引回复；period-review 内联复用 `worklogPeriodReviewCollect`（OD-WR-505）；周报场景关键词通道未动。复核通过。
+3. **off 档位管线：** 桌面提交链新增 `reasoning_effort/provider/model` 参数 → engine RPC → `web_api_adapter._apply_reasoning_effort` 在 session/prompt 前按会话 `select_model`（带 per-session memo，缺 provider/model 不装档，失败如实报错）。已核实 DSH `SessionPromptRequest` 无按次 effort 字段，会话级通道是正确选择。复核通过。
+4. **off 能力预判（阶段 2 补充）：** `pickWorkIntentEffort` 增加两层证据判定——声明集合明确不含 off → 传 null 跟随默认；未声明/目录不可用/声明 false → 传 off。堵住了 OD-ARCH-175 阶段 1 证实的「声明集合不含 off 会被运行期拒绝」死角。复核通过。
+5. **技能文本：** `skills/period-review/SKILL.md` 改为「材料随请求送达直接起草，材料为空如实说明」，硬约束（引用编号/案件禁入/确认后不可覆盖）未动。注意：**安装副本仍是旧文本**（sync-skills.sh 受 macOS realpath 限制未实际同步），生效需「恢复默认规则包」或修复同步脚本——记入阶段 4 迁移项。
+
+**ARCHITECT 实跑验证：** `cargo test --lib` 1209/1209（另一次运行 3 个 engine spawn 类 flaky 不复现，与前两日一致）；`tsc`、`npm run build`、`git diff --check` 通过；`verify_arch_176.py` 70/70、conversationPrompt 33/33、skill bindings 69/69、089 86/86、103 52/52、104 73/73、503 通过、505 71/71、202 39/40（既有失败）。OD-ARCH-175 改动与单测无回归。
+
+**阶段 4 待验证（运行证据，需用户执行）：** ①真实模型下工作记录场景三类输入（事实/复盘请求/指令）的端到端行为；②DSH `selectModel` 持久化「最近一次选择」的影响面——若跨会话泄漏，off 可能影响后续非工作场景任务（起草轮不传 effort、依赖默认档，理论上不受影响，需实测确认）；③声明不含 off 模型的实际运行表现；④安装副本技能文本迁移。未提交、未推送。
+
+# OD-ARCH-177 复核与发布验收（2026-11-17，通过）
+
+**审查对象：** ARCHITECT 亲自实施（用户批准执行并授权提交推送发版）：`companionPlugins.ts`（新增）、`SettingsPanel.tsx` 配套插件区块、`skills/anysearch/SKILL.md` 环境适配、`verify_companion_plugins_177.py`（新增）、版本 0.2.32 与 CHANGELOG。
+
+**复核结果：**
+
+1. 清单为纯静态元数据（名称/上游地址/建议版本/用途），无自动安装、无联网版本检查、无插件实体入库，符合用户裁决（插件升级过期不由仓库承担）。
+2. 技能文本只加环境预期与回退指引，红线约束（不装不改上游、不伪造结果、敏感信息禁检索）逐字保留。
+3. ARCHITECT 实跑：verify_companion_plugins_177 11/11；tsc、npm run build 通过；verify_arch_176 70/70、175 12/12+11/11 回归通过；cargo test --lib 单线程 1209/0（并发 3 个 spawn 类环境性失败历次复跑均不复现，记为既有 flaky）。
+4. 初版两处脚本瑕疵（ROOT 层级、拼接字符串断言）在提交前修正，未入库错误版本。
+
+**发布验收：** 版本 0.2.31 → 0.2.32（package.json + tauri.conf.json），CHANGELOG 0.2.32 条目含 Added/Changed/Verification/升级说明；提交推送后 release.yml 自动构建。阶段 4（真实模型端到端、selectModel 持久化影响面）留待 0.2.32 Windows 实测后补录。
+
+# 诊断：工作记录不落盘/不显示 + anysearch 技能缺失（2026-11-17，诊断级，预算 8 轮用满）
+
+**问题一：工作记录对话称已写入，工作记录分页无显示。**
+
+核对结果（文件事实/脚本运行）：
+1. `/Users/yvan/OmniDesk/app/engine-state` 最后一份任务快照停在 11-16 01:01（`worklog_extract`，state=running 已停滞）；**11-17 全天零新增任务快照**；数据根当天仅 `omnidesk-model.yml` 变更（上午切火山引擎与种子备份）。
+2. 今天的 DSH 会话目录全部来自子代理冒烟测试工作区（`od-real-smoke*`、`od174-real*`），没有用户本人工作区的会话；但用户拿到了真实模型回复（含 anysearch 轮的真实联网检索）。
+3. 代码侧新意图路由链路正确：契约解析失败会显式提示「没有读出意图判定」，仅 `note` 走 `worklogAppend`。`working_root` 配置为 null，实际库根走默认推导，本轮未定位到（预算用尽）。
+
+**阶段结论：** 用户测试的对话实例与仓库侧数据根**不是同一份**（疑似另有一个 app 实例/数据根在别处），仓库侧无法直接看到那次对话的任务与落盘文件；需要用户确认测试所用实例（开发版 dev 数据根即 /Users/yvan/OmniDesk/app，发布版在别处）才能定位断点。次要嫌疑（代码确证）：记录日期取文内日期——此前已出现把指令句记到文中提及的 2026-11-09 的实例；若消息带日期词，记录会落到别的日期分组，按日期流水看今天则「看不到」。
+
+**问题二：anysearch 技能缺失（结论明确）。**
+
+`skills/anysearch/SKILL.md` 自述为薄包装：实体 CLI 位于 `$HOME/.codex/skills/anysearch/scripts/anysearch_cli.py`，仓库不复制脚本（文件事实）。OmniDesk 引擎环境没有 Codex 技能目录与 `ANYSEARCH_SKILL_DIR` 变量 → 模型按规范如实报缺并回退 web_fetch 直连（行为正确，非故障）。Google News 被拦截、维基 DNS 异常、新华网 403 属运行环境网络边界，与技能无关。
+
+**修复方向（待用户裁决后立计划）：** A. 把 CLI 脚本打包进 `skills/anysearch/scripts/`（需确认依赖与凭证边界）；B. 改写技能文本，明确引擎环境无本机 CLI 时直接走 web_fetch，避免浪费探索轮次；C. 引擎环境配置 `ANYSEARCH_SKILL_DIR` 指向真实存在的用户级技能目录。推荐 B+C。
+
+**2026-11-17 补充（用户 Windows 实测回执，问题一收口）：**
+
+1. **问题一非故障收口：** 用户重启软件后测试成功——记录已落 11 月 17 日并可见；库根为 `~/omnidesk/work/工作记录/`。此前"看不到"的原因叠加：测试实例与开发数据根不同源（Windows 发布版 0.2.31，不含 OD-ARCH-175/176 未提交改动）+ 需重启后新开对话。
+2. **场景边界（用户确证的行为）：** 必须新开对话且分类选「工作记录」才能落盘；「未分类」对话不落盘（无 preset 的对话不走工作记录写入路径，属现行设计）。如需"未分类也能记"属新需求，须另立计划。
+3. **OD-ARCH-175/176 阶段 4 仍未实测：** 用户 Windows 上是旧版本；新功能验证须提交推送并发版后进行（提交推送待用户授权）。
+4. **OD-ARCH-177 更新：** 常备插件清单按用户裁决定为 anysearch + dsh-cost-meter 两项。

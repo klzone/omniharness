@@ -1,5 +1,26 @@
 # 执行状态
 
+## OD-ARCH-175 阶段 3 执行记录（子代理，2026-11-17）
+
+- 开工基线：`git status --short` 为 `M PLANS.md`、`M REVIEW.md`；HEAD `5754da202c`。执行期间 STATUS.md 出现阶段 1 子代理追加的只读核查记录，本阶段原样保留，未改写其内容。
+- 改动清单：
+  - `desktop/src/api.ts`：新增 `planModelRouteEffort` 纯函数与 `collectModelEffortEvidence`；`setModelRoute` 移除两处阻断式 throw。目录非空声明按集合判定（情形 2 正常、情形 3 改发 `default`）；目录不可用/模型未列出/目录空声明时再看 Profile `modelEntries.reasoningEfforts`（`false` 或空对象视为声明为空）；两处都无法确证时照所选档位提交并返回 advisory。返回值新增 `reasoningEffort` 与 `advisory`，并留阶段 2/4 TODO。
+  - `desktop/src/types.ts`：`ModelCatalogEntry.efforts` 改为可选（`ModelCatalogEffort[] | null`），反映归一化目录可能缺项。
+  - `desktop/src/shell/ModelPicker.tsx`：档位提示改为「未声明思考档位；若不支持会按默认档切换。」/「该模型不支持「X」，切换会按默认档。」；保留 `data-testid="effort-advisory"`；模型列表对 `efforts` 可选做空值保护。
+  - `desktop/src/shell/HomeChat.tsx`：切换成功时优先展示 `r.advisory`（一句话、info 提示条）；情形 3 用 `setModelEffort(r.reasoningEffort)` 同步界面到实际生效的默认档；留阶段 2/4 运行期回退通知 TODO。
+  - `tests/verification/desktop/verify_model_route_precheck_175.py`（新增）：用 `tsc --ignoreConfig` 将真实 `api.ts`/`engineAdmission.ts` 转译到临时目录，在 Node 中 mock `invoke` 调用真实 `shell.setModelRoute`；覆盖情形 1（未列出/目录不可用/efforts 缺失/空目录+Profile 未声明）、情形 2（目录集合内/Profile 集合内）、情形 3（目录集合外/Profile false/Profile 空对象/未列出但 Profile 集合外）、requested default 不做预检；断言实际下发档位与 advisory 文案。
+  - `tests/verification/desktop/verify_home_refine_202.py`：更新 `effort_advisory` 断言到新文案（原断言依赖「可能被忽略」）。
+  - `STATUS.md`：本小节。
+- 判定口径：DSH 归一化目录把「没有 reasoning 声明」与「显式声明为空」都压成 `efforts: []`（`engine/omnidesk_engine/web_api_adapter.py` 只读核对），所以空目录不能单独当必败证据；能读到 Profile `reasoningEfforts: false` 或空对象时才本地改发默认档。无法区分 raw `reasoning` 是否显式为空数组的情形，仍可能把「声明为空」当作「未声明」而尝试一次；属已知限制，未改 engine/runtime。
+- 实际命令与结果：
+  - `cd desktop && npx tsc --noEmit` → exit 0。
+  - `python3 tests/verification/desktop/verify_model_route_precheck_175.py` → cases 12/12、static 11/11，exit 0；证据 `tests/verification/desktop/evidence/od-arch-175/precheck.json`（evidence 被 `.gitignore` 忽略）。
+  - `python3 tests/verification/desktop/verify_home_refine_202.py` → 39/40，唯一失败 `home_scene_backdrop`（`App.tsx` 未含 `app-scape-art`；本轮未改该文件，属既有失败）。
+  - `git diff --check` → exit 0。
+- 证据等级：文件事实（源码与 `web_api_adapter.py` 只读核对）；静态检查（`verify_home_refine_202` 文案断言）；脚本运行（TypeScript 编译 + Node 调用真实 `setModelRoute` + mock invoke）。未做真实桌面窗口点击与真实模型调用。
+- 未验证项：真实窗口下 ModelPicker/HomeChat 提示条的渲染与自动消失；真实 volcengine 切换后 DSH 是否按预期接受 `off` 或被阶段 2 回退链路处理（阶段 2/4）；raw `session/modelCatalog` 中 `reasoning` 显式为空与未声明的区分（归一化目录丢失该信息）。
+- Git：HEAD `5754da202c`；未提交、未推送、未打标签。`desktop/src-tauri/`、`runtime/`、`engine/` 未改；模型路由与凭证未动；未接触真实业务材料。
+
 ## OD-ARCH-174 阶段 C：核心技能正文重写（2026-11-17，待复核）
 
 - 重写三个技能正文，frontmatter 未动：`memory-agent` 1754 → 1228 字符（正文 1578 → 1052，66.7%）；`memory-report` 1099 → 749（正文 950 → 600，63.2%）；`period-review` 1820 → 1268（正文 1668 → 1116，66.9%）。三份全文比例均在 68%–70%。
@@ -160,3 +181,337 @@
 **阶段 C：** 三核心技能正文压至原 63-70%（memory-agent 1754 到 1228、memory-report 1099 到 749、period-review 1820 到 1268），契约逐字保留，082/089/503/505 全过。真实模型端到端：模型实际调用 skill(memory-report) 读到重写正文并按五段模板完整产出——指针、按需读取、按契约输出全链路确认。
 
 **已知缺口：** sync-skills.sh macOS realpath 兼容未修；已安装 Profile 需恢复默认规则包获得 knowledge 绑定；其余 7 个按需技能未重写；设置页未展示 knowledge 绑定编辑。
+
+## OD-ARCH-175 阶段 1 执行记录（子代理，2026-11-17）
+
+> 执行主体：用户当轮批准派发的子代理（Plato，模型 deepseek-v4.1-flash-eco / high；ARCHITECT 复核修正执行主体记录——原始记录误写为 ARCHITECT 本人）。本阶段只读核查，未改代码、`runtime/`、模型路由或凭证，未执行真实模型调用。
+
+### 范围与基线
+
+- 开工时 `git status --short`：`M PLANS.md`、`M REVIEW.md`；HEAD `5754da202c chore(release): 0.2.31（含 OD-ARCH-174 Skill 优化）`。全部既有改动原样保留。
+- **文件事实：** 仓库 `runtime/deepseek-harness/` 为空目录，`packages/llm/llm-pi-ai/src/discovery.ts` 不存在，无法取得源码行证据。实际核查对象是锁定的安装产物 `runtime/dsh-runtime/node_modules`：`@deepseek-ai/dsh-llm-pi-ai` 0.2.1-rc.5、`@earendil-works/pi-ai` 1.4.0（与 `runtime/RUNTIME.lock` 的 0.2.1-rc.5 一致）。`/Users/yvan/OmniDesk/runtime/dsh-home/profiles/omnidesk-base/node_modules` 只含 Profile 插件，不含 `dsh-llm-pi-ai`/`pi-ai` 核心包。
+
+### a. 运行期校验、错误码与三种情形
+
+- **文件事实：** `runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js:1785-1788` 的 `resolveReasoningLevel()` 在显式档位不在 `getSupportedThinkingLevels(model)` 中时抛：
+
+```text
+pi-ai provider "<provider>" model "<model>" does not support reasoning effort "<effort>"
+```
+
+  错误码准确为 `UNSUPPORTED_REASONING_EFFORT`。同一调用点在 `lib/index.js:1953`：`options.reasoningEffort ?? profile.reasoning`。报错前不进入 HTTP 模型请求。
+- **文件事实：** `lib/index.js:585-608` 把 Profile 的 `reasoningEfforts` 物化成模型能力：未声明时取内置目录 `base.reasoning`，否则默认 `false`；声明 `false` 时固定 `reasoning: false`；声明 map 时 `reasoning: true`，未列出的基础档位在 `thinkingLevelMap` 中钉为 `null`。
+- **文件事实：** `runtime/dsh-runtime/node_modules/@earendil-works/pi-ai/dist/models.js:693-703` 对 `reasoning: false` 返回唯一档位 `["off"]`；对声明 map 只返回未被 `null` 排出的档位。
+- **静态检查（只读脚本）：** `builtinProviders()` 共 42 个，`hasVolcengine=false`、`getBuiltinModels("volcengine").length=0`；同脚本确认非推理模型支持 `["off"]`，声明 `low/high` 的 map 支持 `["low","high"]`。
+
+| 情形 | 物化结果 | 行为差异与错误 |
+|---|---|---|
+| Profile 未声明 `reasoningEfforts`，且 provider/model 不在 pi-ai 内置目录（如 volcengine / deepseek-v4.1-flash） | `reasoning=false` | 任何非 `off` 的显式档位都会以 `UNSUPPORTED_REASONING_EFFORT` 拒绝；显式 `off` **不会**报该错误（`getSupportedThinkingLevels` 返回 `["off"]`，随后 `lib/index.js:1754-1758` 把 `off` 转成不下发 reasoning 参数）；不传档位也不报错。若 provider/model 恰好在 pi-ai 内置目录，则继承目录的 `reasoning`/`thinkingLevelMap`，不能一概判为不支持。 |
+| Profile 显式声明 `reasoningEfforts: false` | `reasoning=false` | 与“自定义路由未声明且无内置目录”相同：非 `off` 拒绝，`off` 接受，不传档位接受。错误文本只含 provider/model/请求档位，**无法从运行期错误反分“未声明”与“声明为 false”**。 |
+| Profile 声明非空档位集合，但请求档位不在集合内 | `reasoning=true` + `thinkingLevelMap` | 同一 `UNSUPPORTED_REASONING_EFFORT` 与同一格式的错误；集合内档位正常。`off` 仅当声明中存在 `off` 时可用（`off: null` 也视为可用）；声明未列 `off` 时，显式 `off` 也会被拒。 |
+
+- **文件事实（相邻配置形态）：** `lib/index.js:589` 对 `reasoningEfforts: null` 或空对象 `{}` 在目录物化阶段直接报配置错误 `llm-pi-ai: provider "<provider>" model "<model>" has an empty reasoningEfforts; ...`，不是运行期 `UNSUPPORTED_REASONING_EFFORT`。只有 `off` 的集合还会在 `lib/index.js:597` 被判为“offers no level beyond off”。这不属于上述三种运行期情形，阶段 2 不应把它们误当作可回退失败。
+
+### b. 到达宿主后的状态与 note 形态
+
+- **文件事实：** DSH Web API 的 `session/prompt` 只做内容准入并把消息放入 Agent 队列，随后返回 `{ accepted: true }`，不等待整轮完成（`runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js:925-965`）。因此档位校验发生在后续 turn 中，失败走 `turn/end`，不走 `session/prompt` 的提交阶段错误。
+- **静态检查（代码链）：** DSH `dsh-agent-loop/lib/index.js:1019-1032` 捕获 `LlmError`，把 `error.failure` 写入 `turn/end` 的 `reason: { kind: "error", error: { message, code } }`；`dsh-llm/lib/index.js:1615-1634` 证明 `failure` 同时保留 message 与 `UNSUPPORTED_REASONING_EFFORT` code。
+- **文件事实：** OmniDesk `engine/omnidesk_engine/web_api_adapter.py:1823-1845` 从 `turn/end` 的 `reason.error.message` 提取文本；`:2075-2093` 将 `reason.kind=error` 落为 `TaskState.FAILED`，并生成 `engine reported turn/end=error：<DSH message>`。
+- **文件事实：** `TaskState.FAILED` 的值是 `failed`（`engine/omnidesk_engine/contract.py:53`）；`task_core.py:675-689` 的 `_status_note()` 以 `stop_reason=<x>; error=<y>` 拼接 note。此案的运行期错误码只在 DSH 事件中，**不会**进入 OmniDesk 的 note（适配层只带 message）。
+- **静态检查（预期形态，未实跑）：** 以 `volcengine / deepseek-v4.1-flash / high` 为例，任务状态轮询应得到：
+
+```text
+status.status = "failed"
+status.note = stop_reason=error; error=engine reported turn/end=error：pi-ai provider "volcengine" model "deepseek-v4.1-flash" does not support reasoning effort "high"
+```
+
+  `HomeChat.tsx:2453-2463` 在 `failed`/`interrupted` 时直接把整条 `status.note` 当作 notice 显示，并置 `retryable=true`；它不单独解析 `error=` 段。该 string 为静态推演，未经真实模型调用或真实状态接口复核。
+
+### c. 阶段 2 自动回退的可靠识别建议
+
+- **静态检查：** 不要把 `UNSUPPORTED_REASONING_EFFORT` 当作 `status.note` 的匹配键；当前 note 只含 message。可靠组合是：`status.status === "failed"`、当前任务确实下发过显式档位、且 note 命中 `error=engine reported turn/end=error：pi-ai provider "..." model "..." does not support reasoning effort "..."`。建议解析 provider/model/effort 三个捕获组，并与本次路由和所选档位逐一相等后才回退；不要只按“failed 且含 reasoning effort”匹配，避免把其他上游拒绝误判成档位能力错误。
+- **静态检查：** 同一正则也能识别“声明集合不含档位”，但阶段 3 的本地预检应已提前处理；运行期自动回退主要覆盖“未声明/无内置目录”的尝试失败。`off` 在非推理模型上会被接受，因此“显式档位必须非 off 才回退”不是必要条件；应以 DSH 是否实际返回该错误为准。
+- 回退动作需每个任务最多一次（后续在阶段 2 的 Rust 状态机中实现），并继续使用现有 `retryable` 入口让用户手动重发，不自动重发失败任务。
+
+### 未验证项
+
+- **未验证（运行）：** 未真实发起 `volcengine / deepseek-v4.1-flash` 请求，未实际轮询 `omni.get_task_status` 抓取 `failed` 与完整 `note`。`b` 的原文是依据 rc.5 代码链的静态推演；仍需阶段 2 的隔离合成/真实验证确认 DSH 确实发出 `turn/end=error` 而非其他 follow 错误形态。
+- **未验证（运行）：** 未验证 OmniDesk 适配层的 300 字符截断是否会影响极长 provider/model 名称；普通名称下上述消息完整保留。
+- **未验证（源码）：** 仓库 `runtime/deepseek-harness` 未检出，无法引用上游 `packages/llm/llm-pi-ai/src/discovery.ts` 源码行；本结论仅基于锁定安装产物。
+
+### 实际运行过的命令（只读）
+
+```bash
+git status --short && git log --oneline -1
+find runtime/deepseek-harness -maxdepth 5 -type f -not -path '*/node_modules/*' | head -80
+test -e runtime/deepseek-harness/packages/llm/llm-pi-ai/src/discovery.ts
+rg -uu -n -C 12 'UNSUPPORTED_REASONING_EFFORT' runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
+rg -n -C 8 'reasoningEfforts|reasoningEffort' runtime/dsh-runtime/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
+rg -uu -n -C 12 'LlmFailure|turn/end' engine/omnidesk_engine/web_api_adapter.py
+rg -uu -n -C 10 'LlmFailure' runtime/dsh-runtime/node_modules/@deepseek-ai -g '*.js'
+rg -n -C 18 'def _status_note' engine/omnidesk_engine/task_core.py
+rg -n -C 8 'error=|stop_reason|status\.note' desktop/src/shell/HomeChat.tsx
+node --input-type=module -e "import { builtinProviders, getBuiltinModels } from '@earendil-works/pi-ai/providers/all'; ..."  # 42 providers; volcengine absent / 0 models
+node --input-type=module -e "const m=await import('file:///Users/yvan/Code/MyWorkStation/runtime/dsh-runtime/node_modules/@earendil-works/pi-ai/dist/models.js'); ..."  # nonReasoning=[off]; lowHigh=[low,high]
+```
+
+  另有一次 `@earendil-works/pi-ai/dist/models.js` 的包内路径 import 被 exports 拒绝（`ERR_PACKAGE_PATH_NOT_EXPORTED`），随后按上述绝对 `file://` 路径重跑成功；该失败不参与结论。所有命令均为本地只读检查，无网络模型调用。
+
+- 未提交、未推送、未打标签；本阶段写集仅 `STATUS.md`。
+
+## OD-ARCH-175 阶段 2 执行记录（子代理，2026-11-17）
+
+> 执行主体：本助手（按用户当轮指令亲自执行；小节标题沿用本次交付要求）。未派任何再下层子代理。开工时 `git status --short` 保留全部既有改动（`M PLANS.md`、`M REVIEW.md`、`M STATUS.md`，以及阶段 3 的 `desktop/src/` 改动与相关验证脚本），HEAD `5754da202c`。本阶段未改 `desktop/src/`、`engine/`、`runtime/`，未动模型路由的用户选择与凭证。
+
+### 改动文件
+
+- `desktop/src-tauri/src/model_effort_fallback.rs`（新增）：稳定错误文本解析、覆盖文件生效路由读取、精确匹配、note 追加、单次触发 guard（Started / InFlight / Applied / Failed 四态）。
+- `desktop/src-tauri/src/lib.rs`：接入 `engine_task_status` 状态轮询路径；`maybe_auto_fallback_effort` 完成识别、`select_route(..., None)` 重写覆盖文件、`sync_model_overlay`、后台线程 `stop_engine`。
+- `desktop/src-tauri/src/model_routes.rs`：新增生产路径用例，验证 `select_route` 不传档位时覆盖文件不含 `reasoningEffort`，传档位时仍写入（正对照）。
+- `STATUS.md`：本节。
+
+### 行为与 note 契约
+
+- 只在同时满足时回退：任务 `status.status == "failed"`；note 精确命中 `stop_reason=error; error=engine reported turn/end=error：pi-ai provider "<provider>" model "<model>" does not support reasoning effort "<effort>"`；覆盖文件（`agent-default-model` 或 `acp` 块）确实显式下发同一 provider/model/effort。错误码不进入 note，不按错误码匹配；`has an empty reasoningEfforts` / `offers no level beyond off` 等配置错误不触发。
+- 回退动作：同步 `model_routes::select_route(..., None)` 重写覆盖文件 → `sync_model_overlay` → 后台线程取得 `lifecycle.begin_change()` 后 `stop_engine`。回退成功改写后才追加告知；停止旧引擎不占用状态轮询路径。
+- **前端 note 完整格式（阶段 4 验证接口）：** `<原 note>；已自动回退为默认思考档位，请重发任务`（原 note 为空时只保留该句）。同一 (覆盖文件, provider, model, effort) 只触发一次（进程内存态，重启失效）；不自动重发失败任务，不改重试按钮。
+
+### 实际命令与结果
+
+```bash
+git status --short && git log --oneline -1
+# M PLANS.md, M REVIEW.md, M STATUS.md, 阶段 3 的 desktop/src 改动；HEAD 5754da202c
+
+~/.cargo/bin/cargo check --lib
+# Finished dev profile；仅既有 warnings（integrity.rs / export_engine.rs），新增模块无 warning
+
+~/.cargo/bin/cargo test --lib model_effort_fallback
+# 8 passed; 0 failed（解析命中/不命中、配置错误文本、路由精确匹配、覆盖文件路由读取、note 追加、单次 guard）
+
+~/.cargo/bin/cargo test --lib select_route_none_effort
+# 1 passed; 0 failed（真实调用仓库内 node + DSH CLI 做配置转储，只读不联网、不读凭证）
+
+~/.cargo/bin/cargo test --lib
+# 1209 passed; 0 failed; 1 ignored; finished in 13.32s（最终代码状态）
+# 说明：最终代码定稿前有一次完整运行出现 3 个失败（命令只保留尾部输出，未记录用例名），
+#       未涉及新增模块的定向用例；随后连续两次完整运行均为 1209 passed（不含并发参数改动）。
+```
+
+证据路径：`tests/verification/desktop/evidence/od-arch-175/stage2-cargo-test.md`（定向与完整回归摘要、环境与日志位置）。
+
+### 证据等级
+
+- **文件事实 / 静态检查：** 新增模块与接入代码已读回；note 解析锚定 `engine reported turn/end=error：pi-ai provider` 完整文本，配置空档位错误文本有反例单测；guard 为进程内存态且带 InFlight/Applied/Failed 状态，避免失败后补发“已回退”告知。
+- **脚本/运行测试：** 上述 `cargo test --lib` 实际运行结果；`select_route` 用例实际启动 node + 仓库内 DSH CLI，断言回退重写后覆盖文件无 `reasoningEffort`。
+- **未验证（运行，归阶段 4）：** 未发起真实模型请求，未实际观察 DSH 拒绝 → 宿主状态 note → 自动回退 → 引擎重启的完整链路；未验证真实引擎关闭耗时与前端 notice 展示。`engine_task_status` 的完整回退路径目前由单元测试覆盖各判定/改写环节，未用假引擎做端到端状态注入。
+
+### 交付时 Git 状态（未提交、未推送、未打标签）
+
+```text
+M  PLANS.md
+M  REVIEW.md
+M  STATUS.md
+M  desktop/src-tauri/src/lib.rs
+M  desktop/src-tauri/src/model_routes.rs
+?? desktop/src-tauri/src/model_effort_fallback.rs
+（阶段 3 的 desktop/src 改动与验证脚本原样保留，未触碰）
+```
+
+### 待 ARCHITECT 复核
+
+- 重点核对：状态轮询只读路径不因后台关闭卡住；一次性 guard 的失败态不会误发告知；note 契约与阶段 3/4 前端消费方式一致。
+
+## OD-ARCH-176 阶段 1 执行记录（子代理，2026-11-17）
+
+### 开工前事实
+
+```text
+cd /Users/yvan/Code/MyWorkStation && git status --short && git log --oneline -1
+# 工作树已有 OD-ARCH-175 未提交改动（desktop/src、desktop/src-tauri、verify 脚本与两个新文件）；
+# HEAD 5754da202c。全部原样保留，本轮改动叠加其上，未 reset / checkout / 提交 / 推送。
+```
+
+### 改动文件清单
+
+```text
+desktop/src/workIntentDecision.ts                    新增：统一意图契约解析、分流、思考档位选择（纯函数）
+desktop/src/workIntent.ts                            新增：periodReviewTargetForPeriod（模型判出的周期 → 起止日期）
+desktop/src/conversationPrompt.ts                    classify 模式：统一意图契约 + 本周索引 + note 技能指针
+desktop/src/recordReview.ts                          抽出 parseRecordReviewValue，供统一契约复用
+desktop/src/api.ts                                   submitTask 透传 reasoningEffort / provider / model
+desktop/src/shell/HomeChat.tsx                       工作记录场景分类前置、note 落盘与复核同调用、指令不落盘、不确定提问、复盘/周报/摘要分流、档位管线
+desktop/src/shell/QuestionCard.tsx                   本地提问可复用标题/说明/取消文案（默认行为不变）
+desktop/src-tauri/src/lib.rs                         engine_submit_task 接收并按需下发档位与路由
+engine/omnidesk_engine/task_core.py                  SubmitTaskRequest 增加 reasoning_effort / provider / model
+engine/omnidesk_engine/serve.py                      透传上述字段
+engine/omnidesk_engine/web_api_adapter.py            在 session/prompt 前按会话应用显式档位（select_model），同会话同组合去重
+tests/verification/desktop/verify_arch_176.py        新增：mock 分类输出分流、档位策略、管线与提示词断言
+tests/verification/desktop/verify_worklog_089.py     调整 note schema 断言（classify 分支为本计划新增契约）
+tests/verification/desktop/verify_worklog_103.py     快路径移除后的日期工具与技能契约断言更新
+tests/verification/desktop/verify_worklog_104.py     快路径移除、分类落盘、提问与剥离顺序断言更新
+tests/verification/engine-interface/adapter/test_web_api_unit.py  新增档位应用顺序/去重/失败不发送 prompt 用例
+```
+
+未修改：`runtime/`、`skills/`、`profiles/`、凭证、模型路由覆盖文件；未新增设置项。
+
+### 实际命令与结果
+
+```text
+cd desktop && npx tsc --noEmit
+# 0（无输出）
+
+cd desktop && npm run build
+# exit 0；vite 构建成功（仅既有 chunk >500kB 提示）
+
+cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib -- --test-threads=1
+# 1209 passed; 0 failed; 1 ignored; finished in 48.00s（含 OD-ARCH-175 model_effort_fallback 既有单测）
+
+cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib
+# 并发运行一次 1206 passed / 3 failed（event_pump、unstamped_grant、spawn_with_stderr 均为
+# "启动假引擎失败: Permission denied"）；三条各自单独运行均 ok，属既有环境性 flaky，未涉本轮新增逻辑。
+
+cd tests/verification/engine-interface/adapter && python3 -m unittest -v test_web_api_unit
+# Ran 101 tests ... OK（含 4 条 OD-ARCH-176 档位用例）
+
+python3 tests/verification/desktop/verify_arch_176.py
+# cases=55 passed=55 failed=0
+
+python3 tests/verification/desktop/verify_worklog_089.py
+# cases=86 passed=86 failed=0
+python3 tests/verification/desktop/verify_worklog_103.py
+# cases=52 passed=52 failed=0
+python3 tests/verification/desktop/verify_worklog_104.py
+# cases=73 passed=73 failed=0
+python3 tests/verification/desktop/verify_conversation_prompt.py
+# cases=33 failed=0
+python3 tests/verification/desktop/verify_skill_bindings_082.py
+# cases=69 failed=0
+python3 tests/verification/desktop/verify_wr_503.py / verify_wr_505.py
+# exit 0；505 为 71/71
+
+python3 tests/verification/desktop/verify_home_refine_202.py
+# exit 0；39/40，唯一未过的 home_scene_backdrop 为既有断言（HEAD 的 App.tsx 也不含 app-scape-art，
+# 该样式只在 theme.css），与 OD-ARCH-176 无关；本轮顺手更新了头像 executed 标记的断言。
+```
+
+### 证据等级
+
+- **文件事实 / 静态检查：** 已读回 `HomeChat.tsx`、`conversationPrompt.ts`、`api.ts`、Rust 提交命令、`serve.py`、`task_core.py`、`web_api_adapter.py`；`verify_arch_176.py` 对快路径移除、分类入口、档位链、提问卡与复盘内联均做源码断言。
+- **脚本运行：** 上述 tsc / 构建 / cargo / Python 单测 / verify 脚本均为实际执行结果；`verify_arch_176.py` 编译真实 TS 后喂 mock 分类 JSON，覆盖 note / instruction / chat / period-review / report / daily-summary / uncertain 与非法 JSON。
+- **真实模型输出：** 未执行（阶段 3 由 ARCHITECT 组织）。
+
+证据路径：`tests/verification/desktop/evidence/od-arch-176/verify-arch-176.json`（mock 分类输出 55 项断言结果）；脚本本体 `tests/verification/desktop/verify_arch_176.py`。
+
+### 未验证项与已知风险
+
+1. **DSH 按次 reasoningEffort 不存在（已核实契约）：** `SessionPromptRequest` 仅含 requestId / sessionId / mode / content / clientTimeZone，无按次档位字段；本轮按计划走 `session/selectModel` 会话级通道。
+2. **selectModel 的默认持久化副作用：** DSH `selectModel` 会在后台 `agentDefaultModel.saveSelection` 写入其自身默认选择；本轮未改桌面覆盖文件、未重启引擎，但无法阻止 DSH 记录“最近一次选择”。已在代码注释中保留事实，待阶段 3 真实模型验证时观察对用户默认档位的影响。
+3. **已声明档位模型的 `off`：** OD-ARCH-175 阶段 1 已证明未声明模型显式 off 可用；对明确声明档位集合但未含 off 的模型，本轮按计划仍传 off，若 DSH 拒绝则该分类轮失败并如实显示。未真实调用验证。
+4. **真实分类质量：** 未用真实模型验证模型是否稳定遵守统一契约（尤其 note 的 record 必须是用户原话连续片段、review 同调用返回）。阶段 2 技能契约微调后再做真实回归。
+
+### 交付时 Git 状态（未提交、未推送、未打标签）
+
+```text
+M PLANS.md / REVIEW.md / STATUS.md
+M desktop/src-tauri/src/lib.rs / model_routes.rs
+M desktop/src/api.ts / conversationPrompt.ts / recordReview.ts / types.ts / workIntent.ts
+M desktop/src/shell/HomeChat.tsx / ModelPicker.tsx / QuestionCard.tsx
+M engine/omnidesk_engine/serve.py / task_core.py / web_api_adapter.py
+M tests/verification/desktop/verify_home_refine_202.py / verify_worklog_089.py / verify_worklog_103.py / verify_worklog_104.py
+M tests/verification/engine-interface/adapter/test_web_api_unit.py
+?? desktop/src-tauri/src/model_effort_fallback.rs（OD-ARCH-175）
+?? desktop/src/workIntentDecision.ts
+?? tests/verification/desktop/verify_model_route_precheck_175.py（OD-ARCH-175）
+?? tests/verification/desktop/verify_arch_176.py
+```
+
+### 待 ARCHITECT 复核
+
+- 重点核对：分类提示词与 memory-agent 现有输出的关系（本轮用提示词显式覆盖旧 `<omnidesk-verdict>` 格式）；note 校验失败时是否只提问、不按原文猜测落盘；第二段起草轮沿用同一引擎会话是否符合预期。
+
+## OD-ARCH-176 阶段 2 执行记录（子代理，2026-11-17）
+
+### 改动
+
+- `desktop/src/workIntentDecision.ts`：`pickWorkIntentEffort` 增加两层档位证据输入。只有目录或 Profile 的非空声明集合明确不含 `off` 时，`off` 降为 `null`（跟随模型默认）；未声明、目录不可用、空集合与 `reasoningEfforts: false` 均维持传 `off`。用户手动选择 `off` 也走同一保护。
+- `desktop/src/shell/HomeChat.tsx`：复用 OD-ARCH-175 的证据顺序（先目录 `efforts`，无声明再看 Profile 原始 `reasoningEfforts`），从已加载的非机密模型元数据生成证据；分析、分类、路由起草四类调用统一经 `pickRoutedWorkIntentEffort` 选档。未新增每轮 RPC、未改路由或覆盖文件。
+- `skills/period-review/SKILL.md`：补充「收到随请求送达的汇集材料时直接起草，不回复等待话术；缺失或为空时如实说明，不自行找文件」，引用编号、案件材料禁入、已确认不可覆盖等硬约束保持不变。
+- `tests/verification/desktop/verify_arch_176.py`：新增目录含/不含 `off`、未声明、目录不可用、Profile 含/不含 `off`、`reasoningEfforts: false`、手动 `off` 等纯函数用例，以及 HomeChat 统一预判调用点与技能文本断言。
+- `STATUS.md`：仅追加本阶段记录。
+
+### 实际命令与结果
+
+```text
+cd desktop && npx tsc --noEmit
+# exit 0
+
+python3 tests/verification/desktop/verify_arch_176.py \
+  --json tests/verification/desktop/evidence/od-arch-176/verify-arch-176.json
+# exit 0；cases=70 passed=70 failed=0
+
+~/.cargo/bin/cargo test --lib        # desktop/src-tauri
+# 首次：1206 通过 / 3 个合成子进程启动 PermissionDenied / 1 ignored
+# 原命令重跑：exit 0；1209 passed / 0 failed / 1 ignored
+
+scripts/sync-skills.sh --check
+# 原生调用未进入比对：当前 macOS 的 /bin/realpath 不支持脚本使用的 `-m`
+# 临时兼容 wrapper 仅补 `realpath -m` 后重跑：exit 1，仅 [漂移] period-review
+```
+
+### 证据等级
+
+- **文件事实 / 静态检查：** 已读回三处实现与脚本改动；`verify_arch_176.py` 对四类 off 调用统一入口、两层证据函数与技能硬约束做源码断言。
+- **脚本运行：** `tsc --noEmit`、69 项 verify、`cargo test --lib` 均为实际执行。verify 编译真实 TS 模块后运行纯函数与 mock 契约输入，不调用模型。
+- **环境限制：** cargo 首跑的 3 个失败均为合成子进程 `PermissionDenied`，原命令重跑全过，未复现；`sync-skills.sh --check` 受 BSD `realpath` 缺陷影响，兼容 wrapper 下确认唯一漂移为本次修改的 `period-review`。未执行实际同步，安装副本仍是旧文本。
+
+证据路径：`tests/verification/desktop/evidence/od-arch-176/verify-arch-176.json`（70 项断言）；脚本本体：`tests/verification/desktop/verify_arch_176.py`。
+
+### 未验证项
+
+1. 未用真实声明不含 `off` 的模型发起工作记录分类/分析请求；本轮只验证证据判定与提交参数。
+2. 未重编译桌面应用，也未实际同步隔离 Skill 副本；用户当前安装副本需在获准后执行 `scripts/sync-skills.sh`，或在下次构建/初始化时采用内嵌新文本。
+3. 未修改 `runtime/`、`engine/`、`desktop/src-tauri/`、`profiles/` 或凭证；未提交、未推送、未打标签。
+
+### 交付时 Git 状态
+
+```text
+M PLANS.md / REVIEW.md / STATUS.md
+M desktop/src-tauri/src/lib.rs / model_routes.rs
+M desktop/src/api.ts / conversationPrompt.ts / recordReview.ts / types.ts / workIntent.ts
+M desktop/src/shell/HomeChat.tsx / ModelPicker.tsx / QuestionCard.tsx
+M engine/omnidesk_engine/serve.py / task_core.py / web_api_adapter.py
+M skills/period-review/SKILL.md
+M tests/verification/desktop/verify_home_refine_202.py / verify_worklog_089.py / verify_worklog_103.py / verify_worklog_104.py
+M tests/verification/engine-interface/adapter/test_web_api_unit.py
+?? desktop/src-tauri/src/model_effort_fallback.rs（OD-ARCH-175）
+?? desktop/src/workIntentDecision.ts
+?? tests/verification/desktop/verify_model_route_precheck_175.py（OD-ARCH-175）
+?? tests/verification/desktop/verify_arch_176.py
+```
+
+### 待 ARCHITECT 复核
+
+- 确认使用已加载目录/Profile 元数据而不在每轮调用 `collectModelEffortEvidence` 是否满足“复用两层证据”边界；若要求直接调用该函数，则需额外获批导出 `api.ts` 的私有收集器。
+- 确认安装副本漂移的处理时机；本轮未写入运行时副本。
+
+## OD-ARCH-177 执行记录（ARCHITECT 亲自执行，2026-11-17）
+
+> 用户批准 OD-ARCH-177 全部执行并授权提交推送发版；按常驻指令本轮未派子代理，本助手亲自实施。
+
+### 改动
+
+- `desktop/src/companionPlugins.ts`（新增）：常备插件只读清单——AnySearch CLI（github.com/anysearch-ai/anysearch-skill，建议 v2.1.0）、dsh-cost-meter（github.com/Han-1413141/dsh-cost-meter，建议 1.9.6）；仓库不打包插件实体、不自动安装、不联网检查版本。
+- `desktop/src/SettingsPanel.tsx`：Profile 资产页新增「配套插件推荐」只读区块（testid: companion-plugins / companion-plugin-*），列表自传达、不加长说明。
+- `skills/anysearch/SKILL.md`：第五节新增引擎环境预期——无本机 Codex 技能目录与 ANYSEARCH_SKILL_DIR 属预期，检测不到 CLI 直接回退 web_fetch 并如实标注来源，不按报错指引反复重试；既有红线约束未动。
+- `tests/verification/desktop/verify_companion_plugins_177.py`（新增）：清单/渲染/技能文本 11 项断言。
+
+### 验证（实际命令与结果）
+
+- `python3 tests/verification/desktop/verify_companion_plugins_177.py`：11/11（初版 ROOT 层级与一处拼接字符串断言有误，已修正后全过——文件事实）。
+- `npx tsc --noEmit`、`npm run build`：通过（脚本运行）。
+- `verify_arch_176.py` 70/70、`verify_model_route_precheck_175.py` 12/12+11/11：回归通过（脚本运行）。
+- `cargo test --lib -- --test-threads=1`：1209/0（并发运行偶现 3 个引擎 spawn 类 PermissionDenied 环境性失败，单线程与复跑均不复现，非本改动回归）。
+
+### 发布
+
+- 版本 0.2.31 → 0.2.32（package.json + tauri.conf.json），CHANGELOG 0.2.32 条目已写；提交推送后由 release.yml（push to main）自动构建发布。
