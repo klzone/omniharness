@@ -2,8 +2,7 @@
   "name": "dsh-profile-discipline",
   "private": true,
   "dependencies": {
-    "dsh-cost-meter": "1.9.6",
-    "dsh-free-search": "0.9.5"
+    "dsh-cost-meter": "1.9.6"
   },
   "dsh": {
     "profile": {

@@ -59,10 +59,19 @@
               readImage: false
               write: true
               edit: true
+              # OD-ARCH-173 S3：read 输出上限与 pi 基准对齐（2000 行 / 50KB / 单行 2000 字符）。
+              readLimit: 2000
+              readMaxLineLength: 2000
+              readMaxBytes: 51200
           - id: tool-fs-search
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
               sampleOverCapGlobResults: false
+              # 文件上限沿用 DSH 默认 100（比 pi find 的 1000 更紧，超出落 spill 文件）；
+              # 匹配上限 250 沿用 DSH 默认；单行截断压到 pi 的 500 字节。
+              globMaxResults: 100
+              grepMaxMatches: 250
+              grepMaxLineBytes: 500
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
@@ -134,10 +143,19 @@
               readImage: false
               write: true
               edit: true
+              # OD-ARCH-173 S3：read 输出上限与 pi 基准对齐（2000 行 / 50KB / 单行 2000 字符）。
+              readLimit: 2000
+              readMaxLineLength: 2000
+              readMaxBytes: 51200
           - id: tool-fs-search
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
               sampleOverCapGlobResults: false
+              # 文件上限沿用 DSH 默认 100（比 pi find 的 1000 更紧，超出落 spill 文件）；
+              # 匹配上限 250 沿用 DSH 默认；单行截断压到 pi 的 500 字节。
+              globMaxResults: 100
+              grepMaxMatches: 250
+              grepMaxLineBytes: 500
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill

@@ -12,6 +12,7 @@ import type {
   CancelOutcome,
   CapabilityReceipt,
   CapabilityView,
+  DiagnosticsMetadata,
   CategoryInitReceipt,
   CategorySettingsPayload,
   EngineDescriptor,
@@ -1876,7 +1877,18 @@ export const shell = {
    * 宿主侧同样要起 node 进程（~1-2 秒）；候选只在改选模型时变化，
    * 因此缓存到下次 invalidateEngineFactsCache 为止。
    */
-  listModelRoutes(): Promise<ModelRouteListing> {
+  listModelRoutes(refresh = false): Promise<ModelRouteListing> {
+    if (refresh) {
+      // 设置页保存前要按磁盘上的最新配置做档位预检：缓存可能还是上一次保存前的。
+      return invoke<ModelRouteListing>("task_list_model_routes")
+        .catch((e) => {
+          throw new Error(normalizeError(e));
+        })
+        .then((value) => {
+          if (value.ok) modelRoutesCache = value;
+          return value;
+        });
+    }
     if (modelRoutesCache) return Promise.resolve(modelRoutesCache);
     if (!modelRoutesInflight) {
       modelRoutesInflight = invoke<ModelRouteListing>("task_list_model_routes")
@@ -1910,18 +1922,54 @@ export const shell = {
     route: { provider: string; model: string; endpoint: string | null; category: string };
     note: string;
   }> {
-    return invoke<{
-      ok: boolean;
-      route: { provider: string; model: string; endpoint: string | null; category: string };
-      note: string;
-    }>("task_set_model_route", {
-      sourceProfile: input.sourceProfile,
-      provider: input.provider,
-      model: input.model,
-      reasoningEffort: input.reasoningEffort ?? "default",
-    }).catch((e) => {
-      throw new Error(normalizeError(e));
-    });
+    const requested = input.reasoningEffort ?? "default";
+    return (async () => {
+      // 切换前只用本地已解析的模型目录校验思考档位：不发网络请求，不读凭证。
+      // 目录不可用或还没有这个模型时放行——预检不能确定的原因不能升级成阻止。
+      if (requested !== "default") {
+        const catalog = await shell.listEngineModels().catch(() => null);
+        const entry =
+          catalog?.available === true
+            ? (catalog.models ?? []).find(
+                (m) => m.provider === input.provider && m.id === input.model,
+              )
+            : undefined;
+        if (entry) {
+          const levels = entry.efforts.map((e) => e.id);
+          if (levels.length === 0) {
+            throw new Error(
+              "该模型（" +
+                input.provider +
+                " / " +
+                input.model +
+                "）在 DSH 模型目录里没有声明思考档位，显式档位会在首次模型调用时被拒绝。" +
+                "请选「跟随模型默认」后再切换；模型路由未改动。",
+            );
+          }
+          if (!levels.includes(requested)) {
+            throw new Error(
+              "该模型只声明了思考档位 " +
+                levels.join(" / ") +
+                "，没有「" +
+                requested +
+                "」。请改选一个档位，或选「跟随模型默认」后再切换；模型路由未改动。",
+            );
+          }
+        }
+      }
+      return invoke<{
+        ok: boolean;
+        route: { provider: string; model: string; endpoint: string | null; category: string };
+        note: string;
+      }>("task_set_model_route", {
+        sourceProfile: input.sourceProfile,
+        provider: input.provider,
+        model: input.model,
+        reasoningEffort: requested,
+      }).catch((e) => {
+        throw new Error(normalizeError(e));
+      });
+    })();
   },
 
   /**
@@ -2183,6 +2231,16 @@ export const shell = {
    */
   capabilities(): Promise<CapabilityView> {
     return invoke<CapabilityView>("capability_view").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 配置解释（OD-ARCH-173 阶段 5）：只读返回路由、提示词分段字符、
+   * 预设工具声明与最近会话计数。不返回提示词正文、用户对话或凭据。
+   */
+  diagnosticsMetadata(): Promise<DiagnosticsMetadata> {
+    return invoke<DiagnosticsMetadata>("diagnostics_metadata").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

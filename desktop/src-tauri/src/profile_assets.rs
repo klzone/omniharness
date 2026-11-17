@@ -73,14 +73,11 @@ pub struct AssetProfile {
     pub plugins: &'static [PluginRequirement],
 }
 
-// OD-ARCH-147a：免 key 搜索与费用统计属于基础插件，随所有出厂 Profile 装配。
+// OD-ARCH-147a / OD-ARCH-173 S3：办公 Skill 与费用统计随 discipline Profile 装配；
+// 免 key 搜索（dsh-free-search）已在阶段 1 从补丁层移除，阶段 3 同步清掉依赖声明。
 const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[
     PluginRequirement {
         package: "@deepseek-ai/dsh-skill-office",
-        version: None,
-    },
-    PluginRequirement {
-        package: "dsh-free-search",
         version: None,
     },
     PluginRequirement {

@@ -121,8 +121,14 @@ const notePrompt = cp.composeConversationPrompt({
 check("note_injects_first_skill", notePrompt.includes("配套技能指引（memory-agent）："), notePrompt.slice(0, 100));
 check("note_does_not_inject_second_skill", !notePrompt.includes("knowledge-agent"), "");
 check("note_does_not_inject_report_skill", !notePrompt.includes("Memory Report Content"), "");
-// OD-ARCH-089：随手记不再「整理成要点」（写盘由宿主完成），只做缺项追问。
-check("note_contains_clean_directive", notePrompt.includes("这六项") || notePrompt.includes("六要素"), "");
+// OD-ARCH-173 S2：技能正文改为按需读取，提示词只带指针与「本轮只做判断」指令。
+// 六要素判断口径移入 Skill 正文，由模型先调 skill 读取，不再要求平台带全文。
+check("note_contains_pointer_directive",
+  notePrompt.includes("读取：调用 skill 工具，name=memory-agent") &&
+  notePrompt.includes("本动作只用这一个技能"),
+  notePrompt.slice(0, 160));
+check("note_does_not_inject_skill_body",
+  !notePrompt.includes("## 一、先分清事实与指令"), "");
 check("note_has_no_report_sections", !notePrompt.includes("本周概述"), "");
 
 // 3. Weekly 报告模式 (report mode)
@@ -201,7 +207,7 @@ const evidence = {
     scene: "weekly",
     input: "完成了两项系统联调，因第三方服务无响应，有一项接口联调延期至下周二。",
     hit_skills: ["memory-agent"],
-    snippets: [skillContents["memory-agent"] ? skillContents["memory-agent"].slice(0, 180) : ""],
+    snippets: [skillContents["memory-agent"] ? cp.skillPointer({ id: "memory-agent", content: skillContents["memory-agent"] }) : ""],
     prompt_sample: cp.composeConversationPrompt({
       preset: weeklyPreset,
       turns: [],
@@ -214,7 +220,7 @@ const evidence = {
     input: "起草一份政治监督专项检查报告初稿，强调四次现场督查与发现的9个共性问题。",
     hit_skills: ["material-writing"],
     snippets: [
-      skillContents["material-writing"] ? skillContents["material-writing"].slice(0, 180) : ""
+      skillContents["material-writing"] ? cp.skillPointer({ id: "material-writing", content: skillContents["material-writing"] }) : ""
     ],
     prompt_sample: writingPrompt.slice(0, 600)
   },
@@ -222,7 +228,7 @@ const evidence = {
     scene: "project",
     input: "登记并跟踪三个专项：项目A联调中，项目B待启动，项目C已完成。",
     hit_skills: ["project-agent"],
-    snippets: [skillContents["project-agent"] ? skillContents["project-agent"].slice(0, 180) : ""],
+    snippets: [skillContents["project-agent"] ? cp.skillPointer({ id: "project-agent", content: skillContents["project-agent"] }) : ""],
     prompt_sample: projectPrompt.slice(0, 500)
   }
 };

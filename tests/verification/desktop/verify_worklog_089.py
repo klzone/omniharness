@@ -126,13 +126,19 @@ const note = cp.composeConversationPrompt({
 const reportSections = scene.sections.split("\n").filter((s) => s.trim());
 
 // OD-ARCH-105：平台提示词只带数据与写盘边界；业务判断（分类、六要素、JSON 形状）
-// 必须来自注入的 Skill，而不是写死在平台里。
+// 必须来自 Skill，而不是写死在平台里。OD-ARCH-173 S2 起 Skill 正文按需读取，
+// 提示词只放 name/description/读取方式的指针，因此断言改为「指针在、正文不在」。
+const skillPointer = cp.skillPointer({ id: "memory-agent", content: skillText });
 check("note_has_six_elements", ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => note.includes(k)), "");
-check("note_six_elements_from_skill", note.includes(skillText.trim()), "");
+check("note_points_to_skill_pointer", note.includes(skillPointer), "");
+check("note_reads_skill_body_on_demand", note.includes("读取：调用 skill 工具，name=memory-agent"), "");
+check("note_does_not_inject_skill_body", !note.includes(skillText.trim()), "");
 check("note_carries_skill_id", note.includes("memory-agent"), "");
-check("note_has_index_data", note.includes("当周已有记录"), "");
+// 既有失效断言（HEAD 即失败）：文案早已从「当周已有记录」改为「已有记录（最近 14 天…」，
+// 这里只对齐当前提示词，不改行为。
+check("note_has_index_data", note.includes("已有记录（最近 14 天"), "");
 for (const word of ["判断原则", "六要素", "逐字取自用户原话", "omnidesk-verdict", "append", "moves", "「本周报引用」"]) {
-  check("platform_owns_no_rule:" + word, !note.replace(skillText.trim(), "").includes(word), word);
+  check("platform_owns_no_rule:" + word, !note.replace(skillPointer, "").includes(word), word);
 }
 check("note_states_write_boundary", note.includes("写入由工作台执行"), "");
 check("note_has_no_report_sections",
@@ -169,9 +175,9 @@ check("report_says_no_record", reportEmpty.includes("本周还没有记录"), ""
 const plain = cp.composeConversationPrompt({ preset, turns, current, mode: "report" });
 check("no_worklog_no_section", !plain.includes("本周工作记录（"), "");
 
-// 长度账（OD-ARCH-105）：平台自己写的那部分必须足够短——它只是数据 + 边界 + Skill 原文。
-// 这里用「去掉注入的 Skill 原文」后的字数衡量平台负担，并守住一个很紧的上限。
-const platformOnly = note.replace(skillText.trim(), "");
+// 长度账（OD-ARCH-105）：平台自己写的那部分必须足够短——它只是数据 + 边界 + Skill 指针。
+// 这里用「去掉注入的 Skill 指针」后的字数衡量平台负担，并守住一个很紧的上限。
+const platformOnly = note.replace(skillPointer, "");
 check("platform_prompt_is_thin", platformOnly.length <= 700, platformOnly.length + " 字符（不含 Skill）");
 check("note_prompt_within_budget", note.length <= 2500,
   note.length + " vs 上限 2500（周报 " + reportWithLog.length + "）");

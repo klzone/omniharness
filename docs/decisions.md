@@ -5,6 +5,57 @@
 
 ## 已确定
 
+### D-107（2026-11-17，OD-ARCH-173 阶段 5 已实施）：配置解释只读元数据，复用现有通道
+
+**状态：** 已实施（`desktop/src-tauri/src/diagnostics.rs`、`desktop/src-tauri/src/lib.rs` 的 `diagnostics_metadata`、`desktop/src/SettingsPanel.tsx` 的「配置解释」页、`desktop/src/api.ts`、`desktop/src/types.ts`）；无真实窗口截图（当前会话显示已锁定），真实模型行为未验证。
+
+**决策：** 设置页新增只读「配置解释」页，回答“这条行为从哪来、提示词有多大”。模型路由、接口、地址、思考档位来自现有 `task_list_model_routes`、准入事实与 `omnidesk-model.yml`；工具插件来自当前 Profile 的 `cordis.patch.yml` 静态声明；Skill 概况来自既有 `capability_view`；只有“最近一次会话的提示词分段与计数”需要新增一个只读命令。
+
+**四条子决策：**
+
+1. **只返回计数与分类，不返回正文。** `system/message` 只做段落归类与字符统计，`user/message` 只累加字符数；工具事件只取工具名，审批/重试/压缩只计数。单测断言序列化结果不含用户正文与提示词原文。
+2. **提示词口径与诊断脚本一致，不另起一套。** 分类表、`\n\n` 分段与字符数对齐 `scripts/diagnose-omnidesk.py`；逐轮时间线不做（阶段 5 明确不重做任务时间线）。
+3. **不为了解压会话新增 crate。** 优先调用系统 `zstd -dc`；缺失时退回同目录未压缩 `session.v4.jsonl`；两者都没有则如实说明“最近会话未解析”。
+4. **读不到就不猜。** Profile 没有预设登记表时工具面只显示最近会话实际调用；覆盖文件缺失时路由来源标为 Profile；字符数是 Unicode 字符数，不估算 token。
+
+**为什么不用 Python 脚本直接嵌进界面：** 分发环境不保证有 Python 与仓库 `scripts/`；宿主命令独立可跑，且能沿用隔离数据根。代价是会话解析逻辑存在两份，靠单测与口径注释约束。
+
+**证据：** `cargo test --offline --lib` 1200 passed / 1 ignored（`diagnostics` 7 个单测 + 1 个隔离根证据测试）；隔离 fixture 跑通的元数据见 `tests/verification/desktop/evidence/od-arch-173/stage5-metadata.json`；`tsc --noEmit` 0。
+
+**复审触发：** ①DSH 会话格式换代（`session.v4` 改名或事件字段变化）；②需要逐轮时间线或 token 估算时，另立阶段并明确数据来源；③分发环境不再提供 `zstd` 且会话长期只有压缩格式时，评估内置解压能力；④用户要求查看提示词原文时，须单独立项并明确正文展示边界。
+
+### D-106（2026-11-17，OD-ARCH-173 阶段 4 已实施）：模型保存/切换前预检只补差，目录缓存不持久化
+
+**状态：** 已实施（`desktop/src-tauri/src/model_settings.rs`、`desktop/src/SettingsPanel.tsx`、`desktop/src/api.ts`、`desktop/src/types.ts`）；真实端点行为未验证。
+
+**决策：**
+1. 保存期在宿主 `model_settings::save()` 增加思考档位校验：只按 Profile 已声明的 `reasoningEfforts` 阻断；声明 `false` 视为不支持思考；未声明不回退为猜测（DSH 可能用 pi-ai 内置目录）。
+2. 设置页保存前复用既有 `llm/discoverModels` 预检（10 秒超时，只传凭据引用名或本次输入）：401、402、403 阻止保存并分别给认证、额度、套餐权限文案；404/405、列表里缺少模型 id、网络/协议不支持/内置目录命中只提示后放行。理由是只有能确定不可用的失败才阻止，已有可用配置与离线编辑不受影响。
+3. 切换路径不新增 RPC，在 `api.ts::setModelRoute` 边界用 DSH `session/modelCatalog` 的 `efforts` 校验显式档位：未声明或不在集合内时阻止切换并说明原因；目录不可用或找不到该模型时放行。网络型认证/额度预检不放在切换上：跨 Profile 的凭据无法安全解析，且每次切换都额外启动/等待引擎会明显拖慢操作。
+4. 模型目录不持久化缓存：DSH `session/modelCatalog` 没有 ETag/版本/checkedAt 字段，沿用内存缓存，启动不刷新；需要持久化时应由宿主新增只读文件与命令，属于后续任务。
+
+**理由：** 阶段 0 的真实报错来自“界面选了端点不支持的档位 / 自定义路由没有能力表”，而不是字段缺失；在写盘与切换两个动作前用已有能力真值收口，比重写模型注册表或伪造能力表更小、更可验证。
+
+**影响：** 新填、尚未保存的端点不在模型目录里，档位只能提示“未能本地验证”；402/403 只有端点对模型列表请求也返回时才能在保存前发现，聊天请求才暴露的失败仍由运行期报错。切换路径没有网络预检，认证/额度的切换期拦截留作缺口。
+
+**证据：** `tests/verification/desktop/evidence/od-arch-173/stage4.md`；`cargo test --offline --lib` 单线程 1193/1193；`tsc --noEmit` exit 0；新增 6 个档位预检单测。
+
+**复审触发：** ①DSH 暴露模型能力解析或目录版本 RPC，可把保存/切换预检统一到宿主；②阶段 6 真实 smoke 发现预检误拦或漏拦；③需要切换期也做认证/额度预检，评估缓存凭据引用与探测成本；④需要跨进程持久化模型目录。
+
+### D-105（2026-11-17，OD-ARCH-173 阶段 3 已实施）：工具面按动作收敛，输出上限显式钉住，读边界缺口记录不修
+
+**状态：** 已实施（`samples/profiles/discipline.profile.patch.yml`、`samples/profiles/discipline.profile.json`、`desktop/src-tauri/src/profile_assets.rs`）；真实模型行为未验证。
+
+**决策：** discipline-core 的工具面保持 11 个模型可见工具（bash 或 pwsh、read/write/edit、glob/grep、skill、ask_user_question、web_fetch、run_code、present），work-review-core 保持 7 个且无 shell/PTC/present；只删除阶段 1 已裁决的 `dsh-free-search` 残留声明（manifest 与 `DISCIPLINE_PLUGINS`）。read/grep/glob 的输出上限写进 preset：read 2000 行 / 51200 字节 / 单行 2000 字符，grep 250 条 / 单行 500 字节，glob 100 条。bash 的输出与超时属于部署级 `bash-sandbox` 配置，记录实际值而不在 preset 重复声明。
+
+**理由：** 现有清单已是 discipline 的最小集合，web_search 已在阶段 1 移除；没有可安全删除的模型工具。把模型可见上限写实，避免上游默认变化导致输出膨胀；grep 单行对齐 pi 的 500 字符，减少大段日志噪声。
+
+**影响：** 读文件、grep/glob 与 PTC 程序内读取仍不受 workspace 根约束，只有写受 `writableRoots`（session cwd、/tmp、os.tmpdir）约束；DSH 没有工具结果统一脱敏；ask_user_question 有 120 秒超时兜底但 OmniDesk 没有问答卡片；preset 只在 `session/create` 选择，没有 turn 间热切换入口。这些作为缺口记录，不在本阶段修改 `runtime/`。
+
+**证据：** `tests/verification/desktop/evidence/od-arch-173/tool-matrix.md`（逐工具参数/上限/路径/并发/安全/缺口）与 `stage3.md`；`cargo test --lib` 单线程 1187/1187；mock 四条会话全部 succeeded；`verify_tool_surface_154.py` 7/7、`verify_work_review_213.py` 25/25、`verify_profile_assets_109.py` 41/41、`verify_conversation_prompt.py` 26/26。
+
+**复审触发：** ①真实模型在 Office/周报/知识整理中触发读越界或输出膨胀；②需要工具结果自动脱敏或读根校验，评估改 `runtime/` 或加宿主侧结果过滤；③ask-user 需要在 OmniDesk 界面提供问答卡片；④上游默认上限变化或 pi 基准调整，重新核对矩阵。
+
 ### D-104（2026-11-17，历史重写与发布清理已实施）：从 Git 历史移除个人资料并下线旧安装包
 
 **状态：** 已实施；`main` 与标签已强推，29 个旧 OmniDesk Release 已删除，当前 GitHub Releases 为空。

@@ -169,6 +169,55 @@ export function presetSkillsFor(
   return preset.skills ?? null;
 }
 
+/** 每个动作最多注入一个主 Skill 的元数据（OD-ARCH-173 阶段 2），字符上限。 */
+export const SKILL_POINTER_MAX_CHARS = 260;
+
+/** 从 Skill 正文的 YAML frontmatter 读取一个顶层字段；没有 frontmatter 时返回 null。 */
+function frontmatterValue(content: string, key: string): string | null {
+  const lines = content.split("\n");
+  if (lines.length === 0 || lines[0].trim() !== "---") return null;
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.trim() === "---") return null;
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    if (line.slice(0, colon).trim() !== key) continue;
+    const value = line.slice(colon + 1).trim();
+    if (value.length === 0) return null;
+    return value.replace(/^["']+|["']+$/g, "");
+  }
+  return null;
+}
+
+/**
+ * 把一个绑定的 Skill 换成给模型的元数据指针（OD-ARCH-173 阶段 2）。
+ *
+ * 正文不再进提示词：DSH 会话里已有技能目录（name + description），模型按 name
+ * 调 `skill` 工具即可取全文；PTC 呈现下在 `run_code` 程序内调 `tools.skill`。
+ * 这里只补「本动作该用哪一个」和资源定位方式，总长不超过 SKILL_POINTER_MAX_CHARS。
+ */
+export function skillPointer(skill: { id: string; content: string }): string {
+  const name = frontmatterValue(skill.content, "name") ?? skill.id;
+  const description = frontmatterValue(skill.content, "description") ?? "";
+  const short = description.length > 120 ? description.slice(0, 119) + "…" : description;
+  const text = [
+    "主技能：" + name + (short ? " — " + short : ""),
+    "读取：调用 skill 工具，name=" + name + "（PTC 下在 run_code 内 tools.skill）；返回含全文与资源目录。",
+    "本动作只用这一个技能；完成前不要读取其他技能正文。",
+  ].join("\n");
+  return text.length <= SKILL_POINTER_MAX_CHARS
+    ? text
+    : text.slice(0, SKILL_POINTER_MAX_CHARS - 1) + "…";
+}
+
+/** 每个动作只保留一个主 Skill，并把全文换成元数据指针。 */
+export function skillPointers(
+  skills: Array<{ id: string; content: string }> | null,
+): Array<{ id: string; content: string }> | null {
+  const picked = (skills ?? []).filter((s) => s.content.trim().length > 0).slice(0, 1);
+  return picked.length > 0 ? picked.map((s) => ({ id: s.id, content: skillPointer(s) })) : null;
+}
+
 export function composeConversationPrompt(input: {
   preset: ConversationPreset | null;
   turns: ConversationTurn[];
@@ -240,12 +289,7 @@ export function composeConversationPrompt(input: {
     const skillBlock: string[] = [];
     if (skills.length > 0) {
       const s = skills[0];
-      const raw = s.content.trim();
-      const trimmed =
-        raw.length <= CONTEXT_MAX_CHARS
-          ? raw
-          : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
-      skillBlock.push("配套技能指引（" + s.id + "）：", trimmed, "");
+      skillBlock.push("配套技能指引（" + s.id + "）：", skillPointer(s), "");
     }
     const materialLines = summary
       ? [
@@ -288,12 +332,7 @@ export function composeConversationPrompt(input: {
     const skillBlock: string[] = [];
     if (skills.length > 0) {
       const s = skills[0];
-      const raw = s.content.trim();
-      const trimmed =
-        raw.length <= CONTEXT_MAX_CHARS
-          ? raw
-          : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
-      skillBlock.push("配套技能指引（" + s.id + "）：", trimmed, "");
+      skillBlock.push("配套技能指引（" + s.id + "）：", skillPointer(s), "");
     }
     const sections = review ? PERIOD_REVIEW_SECTIONS[review.period] : [];
     const materialLines = review
@@ -348,11 +387,8 @@ export function composeConversationPrompt(input: {
     const noteSkillLines: string[] = [];
     if (noteSkills.length > 0) {
       const s = noteSkills[0];
-      const raw = s.content.trim();
-      const trimmed =
-        raw.length <= CONTEXT_MAX_CHARS ? raw : raw.slice(0, CONTEXT_MAX_CHARS) + "\n…（技能说明已截断）";
       noteSkillLines.push("配套技能指引（" + s.id + "）：");
-      noteSkillLines.push(trimmed);
+      noteSkillLines.push(skillPointer(s));
       noteSkillLines.push("");
     }
     const idx = input.noteIndex ?? null;
@@ -374,9 +410,9 @@ export function composeConversationPrompt(input: {
     return [
       ...headLines,
       "",
-      // 随手记只做判断：索引与技能正文已经在本消息里，模型不需要再读文件或联网。
-      "本轮只做判断，不要调用任何工具：read / grep / glob / bash / write / edit / skill 与联网工具都不要用；",
-      "下方已给出索引与技能指引，直接按它们输出判定块。",
+      // OD-ARCH-173 S2：技能正文改为按需读取，只放行一次 skill 调用；其余工具仍禁用。
+      "本轮只做判断：先用 skill 工具读取下方主技能正文（只调用一次；PTC 下在 run_code 内 tools.skill），再输出判定块；",
+      "read / grep / glob / bash / write / edit 与联网工具都不要用。",
       "",
       // 写盘边界对任何场景一致，属于平台契约，不下放给 Skill：
       // 模型没有文件通道，声称已写入只会误导用户。
@@ -417,8 +453,8 @@ export function composeConversationPrompt(input: {
     sceneRules: preset.rules,
     sceneSections: preset.sections,
     writingRules: preset.writingRules ?? null,
-    // OD-ARCH-108：周报只注入周报自己的底线技能（memory-report），
-    // 不再把随手记那一条一起塞进来。
-    skills: presetSkillsFor(preset, "report"),
+    // OD-ARCH-108：周报只带周报自己的底线技能（memory-report）；
+    // OD-ARCH-173 S2：只给元数据指针，正文由模型按需读取。
+    skills: skillPointers(presetSkillsFor(preset, "report")),
   });
 }

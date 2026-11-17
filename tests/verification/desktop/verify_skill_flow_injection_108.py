@@ -8,8 +8,8 @@
 为什么需要这一层：OD-ARCH-082 的脚本是在 Node 里直接调用编译后的
 composeConversationPrompt，属于「同一份源码」的证据，但没有经过界面提交链路。
 本轮要在真实窗口里证明：从输入框提交、经 HomeCanvas 取绑定、到模型请求，
-随手记那一轮只出现 memory-agent，周报那一轮只出现 memory-report，两轮都不出现
-anysearch 正文（它只按需加载）。
+随手记那一轮只出现 memory-agent 指针，周报那一轮只出现 memory-report 指针，
+两轮都不出现技能正文，也不出现 anysearch 正文（它们只按需加载）。
 
 两轮都走**产品自身的路径**，不靠脚本伪造意图：
   1. Dock「工作记录」→「去对话」→ 输入 ASCII 合成句（不含「周报」二字）→ 发送；
@@ -41,9 +41,12 @@ import accessibility as ax  # noqa: E402
 EVID = HERE / "evidence" / "od-arch-108"
 SCREEN_W, SCREEN_H = 1440, 900
 
-# 探针取自各 Skill 正文里独有的标题行：命中即证明该 Skill 正文进了这一轮请求。
-PROBE_NOTE = "随手记 (Memory Agent)"
-PROBE_REPORT = "周报起草 (Memory Report)"
+# OD-ARCH-173 S2：正文改为按需读取，提示词只带「主技能」指针。
+# 指针探针证明本轮绑定了正确的 Skill；正文探针必须落空，证明没有回退成全文注入。
+PROBE_NOTE = "主技能：memory-agent"
+PROBE_REPORT = "主技能：memory-report"
+PROBE_NOTE_BODY = "随手记 (Memory Agent)"
+PROBE_REPORT_BODY = "周报起草 (Memory Report)"
 PROBE_SEARCH = "联网检索 (AnySearch)"
 
 NOTE_PROMPT = "synthetic note probe od108 no weekly keyword"
@@ -193,7 +196,13 @@ def main() -> int:
         "evidence_level": "真实桌面窗口（Xvfb + XTEST + AT-SPI）+ 合成模型端点（非真实模型）",
         "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "root": str(root),
-        "probes": {"note": PROBE_NOTE, "report": PROBE_REPORT, "search": PROBE_SEARCH},
+        "probes": {
+            "note": PROBE_NOTE,
+            "note_body": PROBE_NOTE_BODY,
+            "report": PROBE_REPORT,
+            "report_body": PROBE_REPORT_BODY,
+            "search": PROBE_SEARCH,
+        },
         "checks": {},
         "failures": [],
     }
@@ -241,7 +250,16 @@ def main() -> int:
         session.start_mock()
         # 「整理成周报」也当成探针：它只可能来自产品自己的预填路径，
         # 用来证明周报那一轮确实是「去生成周报」送出去的，而不是脚本自己敲的。
-        session.mock_ctl.set(probes=[PROBE_NOTE, PROBE_REPORT, PROBE_SEARCH, REPORT_MARKER])
+        session.mock_ctl.set(
+            probes=[
+                PROBE_NOTE,
+                PROBE_NOTE_BODY,
+                PROBE_REPORT,
+                PROBE_REPORT_BODY,
+                PROBE_SEARCH,
+                REPORT_MARKER,
+            ]
+        )
         write_settings(session)
         seed_profile_assets(session)
 
@@ -293,7 +311,7 @@ def main() -> int:
             """取本轮提交后到达合成端点的第一条请求。
 
             为什么不按关键词匹配 `last_user`：合成端点只保留前 200 字符，而场景提示词
-            是「技能正文在前、用户原话在末尾」，用户在末尾，早被截掉了。按请求序号取
+            是「技能指针在前、用户原话在末尾」，用户在末尾，早被截掉了。按请求序号取
             更可靠：提交前记下条数，提交后第一条新请求就是这一轮。
             """
 
@@ -335,7 +353,14 @@ def main() -> int:
             PROBE_NOTE in note_hits,
             note_hits,
             PROBE_NOTE,
-            "随手记轮注入了 memory-agent 正文",
+            "随手记轮注入了 memory-agent 指针",
+        )
+        check(
+            "note_does_not_inject_memory_agent_body",
+            PROBE_NOTE_BODY not in note_hits,
+            note_hits,
+            "不含 " + PROBE_NOTE_BODY,
+            "随手记轮没有把 memory-agent 正文整段塞进请求",
         )
         check(
             "note_excludes_memory_report",
@@ -430,7 +455,14 @@ def main() -> int:
             PROBE_REPORT in rep_hits,
             rep_hits,
             PROBE_REPORT,
-            "周报轮注入了 memory-report 正文",
+            "周报轮注入了 memory-report 指针",
+        )
+        check(
+            "report_does_not_inject_memory_report_body",
+            PROBE_REPORT_BODY not in rep_hits,
+            rep_hits,
+            "不含 " + PROBE_REPORT_BODY,
+            "周报轮没有把 memory-report 正文整段塞进请求",
         )
         check(
             "report_excludes_memory_agent",

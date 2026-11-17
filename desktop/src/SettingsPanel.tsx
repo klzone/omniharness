@@ -24,6 +24,7 @@ import type {
   CapabilityView,
   CapabilitySkill,
   CategoryInitReceipt,
+  DiagnosticsMetadata,
   KnowledgeVaultRootStatus,
   KnowledgeVaultScan,
   LibraryRootInfo,
@@ -39,6 +40,7 @@ import type {
   ModelEntry,
   ModelPermissions,
   ModelProbeReceipt,
+  ModelRouteListing,
   ModelSettings,
   ModelSettingsView,
   ProviderSettings,
@@ -77,6 +79,7 @@ type SettingsTab =
   | "capabilities"
   | "library"
   | "permissions"
+  | "diagnostics"
   | "engine"
   | "about";
 
@@ -88,6 +91,7 @@ const SETTINGS_TABS: Array<{ key: SettingsTab; label: string }> = [
   { key: "capabilities", label: "能力管理" },
   { key: "library", label: "成果与文档库" },
   { key: "permissions", label: "权限" },
+  { key: "diagnostics", label: "配置解释" },
   { key: "engine", label: "引擎诊断" },
   { key: "about", label: "关于" },
 ];
@@ -190,6 +194,93 @@ const KEY_SOURCE_LABEL: Record<string, string> = {
   none: "没有带密钥",
 };
 
+/**
+ * 把宿主返回的探测原文细分到可操作提示（OD-ARCH-173 S4）。
+ *
+ * 宿主只给 ok/auth/network/format/unsupported/local 六类；402 额度、403 档位限制、
+ * 404 路径/模型在这六类里没有独立归类。这里只读原文里的状态码与 DSH 错误串，
+ * 不重写底层原因。block 表示“能确定这份配置不可用”，只在保存动作上阻止。
+ */
+function probeGuidance(probe: ModelProbeReceipt): {
+  block: boolean;
+  text: string;
+} | null {
+  if (probe.ok) return null;
+  const lower = probe.message.toLowerCase();
+  if (lower.includes("insufficient_balance") || lower.includes("answered 402")) {
+    return {
+      block: true,
+      text: "额度不足（402）：账号余额或套餐额度不足。请充值或换用有余量的账号后再保存。",
+    };
+  }
+  if (
+    lower.includes("tier_request_kind_not_entitled") ||
+    lower.includes("answered 403")
+  ) {
+    return {
+      block: true,
+      text: "无权限（403）：当前账号或套餐无权使用这个模型/请求类型。请换模型或升级套餐后再保存。",
+    };
+  }
+  if (
+    lower.includes("check the api key") ||
+    lower.includes("answered 401") ||
+    lower.includes("missing_credential") ||
+    lower.includes("invalid_credential")
+  ) {
+    return {
+      block: true,
+      text: "认证失败（401）：API Key 不对、过期或没有配置。请填写密钥、确认凭据引用名后再保存。",
+    };
+  }
+  if (lower.includes("answered 404") || lower.includes("answered 405")) {
+    return {
+      block: false,
+      text: "端点或模型不存在（404/405）：检查接口地址是否少了/多了 /v1，或模型 id 是否拼错；本次仍按当前配置保存。",
+    };
+  }
+  return null;
+}
+
+/**
+ * 从 DSH 配置转储里读某个模型显式声明的思考档位（`reasoningEfforts`）。
+ *
+ * 返回 `null` 表示没有声明（DSH 可能回退到内置目录，宿主不知道能力）；
+ * 返回空数组表示声明 `false`（不支持思考）；非空数组是声明过的档位。
+ */
+function declaredEffortsFromRoutes(
+  listing: ModelRouteListing | null,
+  provider: string,
+  model: string,
+): string[] | null {
+  if (!listing?.ok) return null;
+  for (const profile of listing.profiles) {
+    const route = profile.providers.find((p) => p.id === provider);
+    const entry = route?.modelEntries?.find((m) => m["id"] === model);
+    if (!entry) continue;
+    const raw = entry["reasoningEfforts"];
+    if (raw === false) return [];
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return Object.keys(raw as Record<string, unknown>);
+    }
+  }
+  return null;
+}
+
+/** 只改内存里的默认提供商档位；写盘仍走宿主校验。 */
+function withProviderEffort(
+  settings: ModelSettings,
+  provider: string,
+  effort: string,
+): ModelSettings {
+  return {
+    ...settings,
+    providers: settings.providers.map((p) =>
+      p.provider === provider ? { ...p, reasoning_effort: effort } : p,
+    ),
+  };
+}
+
 /** 卡片头：左侧标题与状态摘要，右侧主操作。 */
 function CardHead({
   title,
@@ -213,6 +304,56 @@ function CardHead({
         ) : null}
       </div>
       {children ? <div className="actions card-head-actions">{children}</div> : null}
+    </div>
+  );
+}
+
+/** 提示词分段标签（与 scripts/diagnose-omnidesk.py 的归类同名）。 */
+const PROMPT_BUCKET_LABEL: Record<string, string> = {
+  base: "DSH 底座",
+  persona: "角色前缀",
+  "web-search": "检索规则",
+  "ptc-runtime": "PTC 运行时",
+  "discipline-rules": "纪律规则",
+  "harness-guidance": "DSH 引导",
+  "tool-guidance": "工具说明",
+  other: "其余段落",
+};
+
+/** 分段来源：便于回答“这段提示词是谁加的”。 */
+const PROMPT_BUCKET_SOURCE: Record<string, string> = {
+  base: "DSH 内置",
+  persona: "Profile preset",
+  "web-search": "DSH 检索插件",
+  "ptc-runtime": "DSH PTC 注入",
+  "discipline-rules": "Profile preset",
+  "harness-guidance": "DSH 内置",
+  "tool-guidance": "DSH 工具说明",
+  other: "会话 system 段",
+};
+
+/** 会话注入来源标签；只显示字符数，不显示内容。 */
+const INJECTED_LABEL: Record<string, string> = {
+  user: "用户输入",
+  "runtime-context": "运行上下文",
+  "skill-catalog": "Skill 目录",
+  "time-context": "时间上下文",
+  other: "其它注入",
+};
+
+function formatChars(value: number): string {
+  return value.toLocaleString("zh-CN") + " 字符";
+}
+
+/** 一条只读元数据：值 + 来源，不拆成两个互相猜测的字段。 */
+function MetaRow({ label, value, source }: { label: string; value: string; source?: string }) {
+  return (
+    <div className="record-item">
+      <span className="mono">{label}</span>
+      <p className="hint">
+        {value}
+        {source ? " · " + source : null}
+      </p>
     </div>
   );
 }
@@ -542,6 +683,12 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const [capsNote, setCapsNote] = useState<string | null>(null);
   const [capsError, setCapsError] = useState<string | null>(null);
 
+  // —— 配置解释（OD-ARCH-173 阶段 5）：只读元数据；按需读取，不随启动加载 ——
+  const [diagMeta, setDiagMeta] = useState<DiagnosticsMetadata | null>(null);
+  const [diagRoutes, setDiagRoutes] = useState<ModelRouteListing | null>(null);
+  const [diagMetaBusy, setDiagMetaBusy] = useState(false);
+  const [diagMetaError, setDiagMetaError] = useState<string | null>(null);
+
   // —— Profile 资产（OD-ARCH-109）：切换即装配，这里只看结果、按需装插件 ——
   const [assets, setAssets] = useState<ProfileAssetsView | null>(null);
   const [assetsBusy, setAssetsBusy] = useState(false);
@@ -767,6 +914,26 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       setCapsError(null);
     } catch (e) {
       setCapsError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  /** 配置解释：宿主只返回元数据；模型候选与能力清单并行读取，失败不阻塞本页。 */
+  const refreshDiagMeta = useCallback(async () => {
+    setDiagMetaBusy(true);
+    try {
+      const meta = await shell.diagnosticsMetadata();
+      setDiagMeta(meta);
+      setDiagMetaError(null);
+      const [routes, capsView] = await Promise.allSettled([
+        shell.listModelRoutes(),
+        shell.capabilities(),
+      ]);
+      if (routes.status === "fulfilled") setDiagRoutes(routes.value);
+      if (capsView.status === "fulfilled") setCaps(capsView.value);
+    } catch (e) {
+      setDiagMetaError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiagMetaBusy(false);
     }
   }, []);
 
@@ -1664,6 +1831,11 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     if (tab === "capabilities" && caps === null) void refreshCaps();
   }, [tab, caps, refreshCaps]);
 
+  // 配置解释同样按需读取：这一页要看“最近一次会话”，每次打开都刷新一次。
+  useEffect(() => {
+    if (tab === "diagnostics" && diagMeta === null) void refreshDiagMeta();
+  }, [tab, diagMeta, refreshDiagMeta]);
+
   // Profile 资产同理：只读巡检，打开这一页才读。
   useEffect(() => {
     if (tab === "assets" && assets === null) void refreshAssets();
@@ -1691,8 +1863,135 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
         }
         return form.default;
       };
-      const payload = defaultValid ? form : { ...form, default: pickDefault() };
+      let payload = defaultValid ? form : { ...form, default: pickDefault() };
       if (!defaultValid) setForm(payload);
+
+      // —— 保存前预检（OD-ARCH-173 S4）——
+      //
+      // 只在“保存”这个动作上触发；已经有可用配置的任务与界面照旧工作。
+      // 两类检查各司其职：
+      //   1. 端点可用性：复用既有 llm/discoverModels（10 秒超时，不读凭证明文）；
+      //   2. 思考档位：读已落盘的 Profile 模型条目，必要时用连接预检的内置目录标志
+      //      判断“自定义路由没有能力表”。
+      // 不能确定的原因（网络、协议不支持、未保存的新端点）不升级成阻止。
+      const preflightWarnings: string[] = [];
+      let preflight: ModelProbeReceipt | null = null;
+      const defaultProvider =
+        payload.providers.find((p) => p.provider === payload.default.provider) ?? target ?? null;
+      // 预检正在编辑的提供商；它是默认提供商时，结果也代表生效路由。
+      // 编辑别的提供商时不拿默认路由的临时故障去阻止保存。
+      const probeTarget = target ?? defaultProvider;
+      const probeAppliesToDefault =
+        probeTarget !== null && probeTarget.provider === payload.default.provider;
+      if (probeTarget && probeTarget.base_url.trim().length > 0) {
+        try {
+          preflight = await shell.modelSettingsProbe({
+            provider: probeTarget.provider.trim() || null,
+            baseUrl: probeTarget.base_url,
+            api: probeTarget.api,
+            // 输入框里的 key 只用于这一次预检；空则沿用 DSH 已登记的凭据。
+            apiKey: apiKey.trim().length > 0 ? apiKey : null,
+          });
+          setProbe(preflight);
+          setProbeError(null);
+        } catch (e) {
+          setProbe(null);
+          setProbeError(e instanceof Error ? e.message : String(e));
+          preflightWarnings.push(
+            "端点预检没有完成，本次按当前配置保存；首次任务若失败会显示引擎原因。",
+          );
+        }
+      }
+      if (preflight) {
+        const guidance = probeGuidance(preflight);
+        if (guidance) {
+          if (guidance.block) throw new Error(guidance.text + " 本次未保存。");
+          preflightWarnings.push(guidance.text);
+        }
+        if (
+          preflight.ok &&
+          probeAppliesToDefault &&
+          preflight.models.length > 0 &&
+          !preflight.models.some((m) => m.id === payload.default.model)
+        ) {
+          preflightWarnings.push(
+            "端点返回的模型列表里没有「" +
+              payload.default.model +
+              "」；请核对模型 id 与端点地址（有些网关不列全，本次仍按当前配置保存）。",
+          );
+        }
+      }
+
+      const effortProvider = payload.providers.find(
+        (p) => p.provider === payload.default.provider,
+      );
+      const requestedEffort = effortProvider?.reasoning_effort ?? "default";
+      // 思考模式关闭时覆盖文件不写 reasoningEffort，这个档位不会下发。
+      if (
+        effortProvider &&
+        requestedEffort !== "default" &&
+        effortProvider.thinking_mode !== "disabled"
+      ) {
+        let levels: string[] | null = null;
+        try {
+          // 刷新一次：保存前的 Profile 路由可能已经和缓存不同。
+          const listing = await shell.listModelRoutes(true);
+          levels = declaredEffortsFromRoutes(
+            listing,
+            payload.default.provider,
+            payload.default.model,
+          );
+        } catch {
+          preflightWarnings.push("读取 Profile 模型条目失败，思考档位未能本地验证。");
+        }
+        if (levels !== null) {
+          if (levels.length === 0) {
+            payload = withProviderEffort(payload, payload.default.provider, "default");
+            preflightWarnings.push(
+              "「" +
+                payload.default.provider +
+                " / " +
+                payload.default.model +
+                "」在 Profile 里声明不支持思考档位；已改为「跟随模型默认」。",
+            );
+          } else if (!levels.includes(requestedEffort)) {
+            throw new Error(
+              "「" +
+                payload.default.provider +
+                " / " +
+                payload.default.model +
+                "」只声明了思考档位 " +
+                levels.join(" / ") +
+                "，没有「" +
+                requestedEffort +
+                "」。请改选其中一个或选「跟随模型默认」后再保存。本次未保存。",
+            );
+          }
+        } else if (
+          probeAppliesToDefault &&
+          preflight?.provider_route &&
+          !preflight.builtin_catalog
+        ) {
+          // 已保存的自定义路由没有 pi-ai 内置目录；DSH 对任何显式档位都会报
+          // UNSUPPORTED_REASONING_EFFORT。能收敛就收敛，并把改动写回表单。
+          payload = withProviderEffort(payload, payload.default.provider, "default");
+          preflightWarnings.push(
+            "「" +
+              payload.default.provider +
+              "」是自定义路由且没有声明思考档位；DSH 不会套用内置能力表，已把思考等级改为「跟随模型默认」。",
+          );
+        } else {
+          preflightWarnings.push(
+            "未能本地验证「" +
+              payload.default.provider +
+              " / " +
+              payload.default.model +
+              "」的思考档位；如端点拒绝显式档位，请改为「跟随模型默认」。",
+          );
+        }
+      }
+      if (payload !== form) setForm(payload);
+
       const r = await shell.modelSettingsSave({
         settings: payload,
         // 密钥只写进当前编辑的提供商；引用名由宿主再校验一次。
@@ -1702,11 +2001,18 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       // 密钥只在这一次请求里出现过：无论成败都立刻从界面状态里清掉。
       setApiKey("");
       setModelNote(
-        (defaultValid ? "" : `已将默认路由设为 ${payload.default.provider} / ${payload.default.model}。`) +
-          r.note +
-          (r.key_written ? " 密钥已登记。" : " 本次未写入密钥。") +
-          (r.key_error ? " 密钥写入失败：" + r.key_error : "") +
-          (r.engine_stopped ? "" : " 注意：旧引擎未能确认停止，下次任务可能仍用旧路由。"),
+        [
+          defaultValid
+            ? ""
+            : `已将默认路由设为 ${payload.default.provider} / ${payload.default.model}。`,
+          r.note,
+          r.key_written ? "密钥已登记。" : "本次未写入密钥。",
+          r.key_error ? "密钥写入失败：" + r.key_error : "",
+          r.engine_stopped ? "" : "注意：旧引擎未能确认停止，下次任务可能仍用旧路由。",
+          ...preflightWarnings,
+        ]
+          .filter((line) => line.length > 0)
+          .join(" "),
       );
       invalidateEngineFactsCache();
       await refreshModel();
@@ -1748,6 +2054,7 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
 
   // —— 多提供商编辑（OD-ARCH-065 S4）——
   const current: ProviderSettings | null = form.providers[editing] ?? null;
+  const probeAdvice = probe ? probeGuidance(probe) : null;
   const keyOk = useCallback(
     (ref: string) => (ref ? view?.key_status?.[ref]?.configured === true : false),
     [view],
@@ -2124,6 +2431,67 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
         (i) => i.status === "ready" || i.status === "unchanged",
       ).length
     : 0;
+
+  // —— 配置解释：把已有数据通道拼成“这条行为从哪来” ——
+  const diagProfileEntry =
+    diagRoutes?.profiles.find((p) => p.profile === diagRoutes.engine_profile) ?? null;
+  const diagProviderId =
+    diagMeta?.route?.provider ?? facts?.provider ?? diagProfileEntry?.default?.provider ?? null;
+  const diagModelId =
+    diagMeta?.route?.model ?? facts?.model ?? diagProfileEntry?.default?.model ?? null;
+  const diagProvider =
+    diagProfileEntry?.providers.find((p) => p.id === diagProviderId) ?? null;
+  const diagEfforts =
+    diagProviderId && diagModelId
+      ? declaredEffortsFromRoutes(diagRoutes, diagProviderId, diagModelId)
+      : null;
+  const diagModelEntry =
+    diagProvider?.modelEntries?.find((entry) => entry["id"] === diagModelId) ?? null;
+  const diagContextWindow =
+    typeof diagModelEntry?.["contextWindow"] === "number"
+      ? (diagModelEntry["contextWindow"] as number)
+      : (diagMeta?.session?.context_window ?? null);
+  const diagRouteSource = !diagMeta
+    ? "未读取"
+    : diagMeta.route?.overlay_present
+      ? "OmniDesk 覆盖文件"
+      : "Profile「" + (diagRoutes?.engine_profile ?? diagMeta.profile ?? "未知") + "」";
+  const diagProfileSource = "Profile「" + (diagProfileEntry?.profile ?? "未知") + "」配置转储";
+  const diagEndpointSource = diagProvider
+    ? diagProfileSource
+    : diagMeta?.route?.provider_api
+      ? "OmniDesk 覆盖文件"
+      : "未读取";
+  const diagWindowSource = typeof diagModelEntry?.["contextWindow"] === "number"
+    ? diagProfileSource
+    : diagMeta?.session?.context_window
+      ? "最近一次会话"
+      : "未读取";
+  const diagEffortText =
+    diagEfforts === null
+      ? "未声明（DSH 可能回退内置目录）"
+      : diagEfforts.length === 0
+        ? "声明不支持显式档位"
+        : diagEfforts.join(" / ");
+  const diagSentBuckets = diagMeta?.session
+    ? Object.keys(PROMPT_BUCKET_LABEL)
+        .map((key) => [key, diagMeta.session!.system_prompt.buckets[key] ?? 0] as const)
+        .filter(([, value]) => value > 0)
+    : [];
+  const diagInjected = diagMeta?.session
+    ? Object.keys(INJECTED_LABEL)
+        .map((key) => [key, diagMeta.session!.injected_chars[key] ?? 0] as const)
+        .filter(([, value]) => value > 0)
+    : [];
+  const skillPreinjected = caps
+    ? caps.skills.filter((s) => s.bindings.some((b) => b.effective)).length
+    : null;
+  const skillOnDemand = caps && skillPreinjected !== null
+    ? caps.skills.length - skillPreinjected
+    : null;
+  const diagExtraNotes = diagMeta
+    ? diagMeta.notes.filter((n) => !n.startsWith("只统计分类"))
+    : [];
 
   return (
     <div className="settings-v2 settings-surface">
@@ -2523,6 +2891,12 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                   : (PROBE_LABEL[probe.classification] ?? probe.classification) + " —— " + probe.message}
               </span>
             </div>
+            {probeAdvice ? (
+              <div className="status-row">
+                <span className="k">下一步</span>
+                <span className="v">{probeAdvice.text}</span>
+              </div>
+            ) : null}
             <div className="status-row">
               <span className="k">说明</span>
               <span className="v">{probe.note}没有保存任何设置。</span>
@@ -5215,6 +5589,228 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             </button>
           </div>
         </details>
+      </section>
+
+      {/* ============ 配置解释（OD-ARCH-173 阶段 5，只读） ============ */}
+      <section className="pane" hidden={tab !== "diagnostics"}>
+        <CardHead
+          title="配置解释"
+          status={
+            diagMeta
+              ? diagMeta.session
+                ? "只读 · 最近会话已解析"
+                : "只读 · 尚无会话"
+              : diagMetaBusy
+                ? "正在读取…"
+                : diagMetaError
+                  ? "读取失败"
+                  : "尚未读取"
+          }
+        >
+          <button className="ghost" onClick={() => void refreshDiagMeta()} disabled={diagMetaBusy}>
+            {diagMetaBusy ? "读取中…" : "重新读取"}
+          </button>
+        </CardHead>
+        <p className="hint">
+          这里只回答“这条行为从哪来、提示词有多大”。只显示模型路由、字符数与来源；
+          提示词原文、对话内容和密钥不会出现在这里。字符数按段落统计，不含段间空行，
+          也不换算 token。
+        </p>
+        {diagMetaError ? <div className="alert">配置解释：{diagMetaError}</div> : null}
+        {diagExtraNotes.length ? <p className="hint">{diagExtraNotes.join("；")}</p> : null}
+
+        <div className="provider-split">
+          <div className="provider-list">
+            <div className="provider-list-head">
+              <span>生效路由</span>
+              <span className="sub">{diagRouteSource}</span>
+            </div>
+            <ul className="record-list">
+              <MetaRow
+                label="提供商"
+                value={diagProviderId ?? "未读取"}
+                source={diagRouteSource}
+              />
+              <MetaRow
+                label="模型"
+                value={diagModelId ?? "未读取"}
+                source={diagRouteSource}
+              />
+              <MetaRow
+                label="接口"
+                value={diagProvider?.api ?? diagMeta?.route?.provider_api ?? "未读取"}
+                source={diagEndpointSource}
+              />
+              <MetaRow
+                label="地址"
+                value={
+                  diagProvider?.baseURL ?? diagMeta?.route?.provider_base_url ?? "未读取"
+                }
+                source={diagEndpointSource}
+              />
+              <MetaRow
+                label="思考档位"
+                value={diagMeta?.route?.reasoning_effort ?? "跟随模型默认"}
+                source={diagRouteSource}
+              />
+              <MetaRow label="声明档位" value={diagEffortText} source={diagProfileSource} />
+              <MetaRow
+                label="上下文窗口"
+                value={
+                  diagContextWindow
+                    ? diagContextWindow.toLocaleString("zh-CN") + " tokens"
+                    : "未声明"
+                }
+                source={diagWindowSource}
+              />
+            </ul>
+          </div>
+
+          <div className="provider-list">
+            <div className="provider-list-head">
+              <span>提示词与上下文</span>
+              <span className="sub">
+                {diagMeta?.session ? "最近一次会话" : "尚无会话"}
+              </span>
+            </div>
+            {diagMeta?.session ? (
+              <ul className="record-list">
+                <MetaRow
+                  label="系统提示词"
+                  value={
+                    formatChars(diagMeta.session.system_prompt.chars) +
+                    " · " +
+                    diagMeta.session.system_prompt.segments +
+                    " 段"
+                  }
+                  source="会话 system 段"
+                />
+                {diagSentBuckets.map(([key, value]) => (
+                  <MetaRow
+                    key={key}
+                    label={PROMPT_BUCKET_LABEL[key] ?? key}
+                    value={formatChars(value)}
+                    source={PROMPT_BUCKET_SOURCE[key] ?? "会话 system 段"}
+                  />
+                ))}
+                {diagInjected
+                  .filter(([, value]) => value > 0)
+                  .map(([key, value]) => (
+                    <MetaRow
+                      key={key}
+                      label={INJECTED_LABEL[key] ?? key}
+                      value={formatChars(value)}
+                      source="会话注入（只计数）"
+                    />
+                  ))}
+                <MetaRow
+                  label="会话计数"
+                  value={
+                    "工具 " +
+                    diagMeta.session.tool_calls +
+                    " 次 · 审批 " +
+                    diagMeta.session.approvals +
+                    " 次 · 重试 " +
+                    diagMeta.session.retries +
+                    " 次 · 模型往返 " +
+                    diagMeta.session.assistant_attempts +
+                    " 次"
+                  }
+                  source="会话事件（只计数）"
+                />
+                <MetaRow
+                  label="压缩"
+                  value={diagMeta.session.compactions + " 次 compact 事件"}
+                  source="会话事件（只计数）"
+                />
+              </ul>
+            ) : (
+              <p className="hint">
+                还没有可解析的会话。先跑一次任务；没有会话文件时不估算提示词大小。
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="provider-split">
+          <div className="provider-list">
+            <div className="provider-list-head">
+              <span>工具面（预设声明）</span>
+              <span className="sub">
+                {diagMeta?.preset ? diagMeta.preset.plugins.length + " 个工具插件" : "未读到"}
+              </span>
+            </div>
+            {diagMeta?.preset ? (
+              <>
+                <p className="hint">
+                  {diagMeta.preset.label || diagMeta.preset.id}（{diagMeta.preset.id}）·
+                  来源 {diagMeta.preset.source}
+                </p>
+                {diagMeta.preset.plugins.map((plugin) => (
+                  <div className="provider-item" key={plugin.id}>
+                    <span className="name">{plugin.id}</span>
+                    <span className="sub">{plugin.name}</span>
+                  </div>
+                ))}
+                <p className="hint">
+                  只列 Profile 默认 preset 的声明，未判断平台与子工具开关；周报动作会切到
+                  work-review-core（无 shell/PTC）。实际可见工具以右侧最近会话为准。
+                </p>
+              </>
+            ) : (
+              <p className="hint">没有读到当前 Profile 的工具预设声明。</p>
+            )}
+          </div>
+
+          <div className="provider-list">
+            <div className="provider-list-head">
+              <span>最近会话实际调用</span>
+              <span className="sub">
+                {diagMeta?.session ? diagMeta.session.tool_names.length + " 种" : "—"}
+              </span>
+            </div>
+            {diagMeta?.session && diagMeta.session.tool_names.length ? (
+              <p className="hint">{diagMeta.session.tool_names.join(" · ")}</p>
+            ) : (
+              <p className="hint">
+                {diagMeta?.session ? "最近一次会话没有工具调用。" : "尚无会话可统计。"}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="provider-list">
+          <div className="provider-list-head">
+            <span>Skill 概况</span>
+            <span className="sub">{caps ? caps.skills.length + " 个" : "未读取"}</span>
+          </div>
+          {caps ? (
+            <ul className="record-list">
+              <MetaRow
+                label="全局 Skill 目录"
+                value={caps.skills.length + " 个"}
+                source={caps.skills_dir}
+              />
+              <MetaRow
+                label="本 Profile 预注入"
+                value={(skillPreinjected ?? 0) + " 个"}
+                source="Profile 规则包 skill_bindings"
+              />
+              <MetaRow
+                label="按需可读"
+                value={(skillOnDemand ?? 0) + " 个"}
+                source="全局目录（未被预注入）"
+              />
+              <MetaRow
+                label="缺失绑定"
+                value={caps.missing_bindings.length + " 个"}
+                source="Profile 规则包"
+              />
+            </ul>
+          ) : (
+            <p className="hint">能力清单未读取；打开「能力管理」或点上方「重新读取」。</p>
+          )}
+        </div>
       </section>
 
       {/* ============ 7. 引擎诊断（状态只读，停止引擎由用户手动触发） ============ */}

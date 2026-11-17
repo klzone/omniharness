@@ -2362,8 +2362,64 @@ export interface ModelRouteListing {
       apiKeyEnv: string | null;
       baseURL: string | null;
       models: string[];
+      /**
+       * DSH 配置转储里的完整非机密模型条目（含 name / contextWindow /
+       * reasoningEfforts 映射 / compat）。`models` 只是 id 列表；保存前的
+       * 思考档位预检要读这里。字段可能因 Profile 层不同而缺失。
+       */
+      modelEntries?: Array<Record<string, unknown>>;
     }>;
   }>;
+}
+
+/** 配置解释（OD-ARCH-173 阶段 5）：只含计数与来源，不含正文或凭证。 */
+export interface DiagnosticsPromptSegments {
+  chars: number;
+  segments: number;
+  buckets: Record<string, number>;
+}
+
+export interface DiagnosticsSession {
+  file: string;
+  size_bytes: number;
+  modified_at: number;
+  provider: string | null;
+  model: string | null;
+  context_window: number | null;
+  system_prompt: DiagnosticsPromptSegments;
+  injected_chars: Record<string, number>;
+  tool_calls: number;
+  tool_names: string[];
+  approvals: number;
+  retries: number;
+  assistant_attempts: number;
+  compactions: number;
+}
+
+export interface DiagnosticsRoute {
+  overlay_present: boolean;
+  overlay_path: string;
+  provider: string | null;
+  model: string | null;
+  reasoning_effort: string | null;
+  provider_api: string | null;
+  provider_base_url: string | null;
+}
+
+export interface DiagnosticsPreset {
+  id: string;
+  label: string;
+  source: string;
+  plugins: Array<{ id: string; name: string }>;
+}
+
+export interface DiagnosticsMetadata {
+  ok: boolean;
+  profile: string | null;
+  route: DiagnosticsRoute | null;
+  preset: DiagnosticsPreset | null;
+  session: DiagnosticsSession | null;
+  notes: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 pub mod admission;
 pub mod app_paths;
 pub mod capabilities;
+pub mod diagnostics;
 pub mod dsh_settings;
 pub mod engine_bridge;
 pub mod engine_ipc;
@@ -850,6 +851,17 @@ fn app_paths_info(state: State<'_, SharedHost>) -> serde_json::Value {
         "config": p.config.display().to_string(),
         "profiles": p.root.join("profiles").display().to_string(),
     })
+}
+
+/// 配置解释（OD-ARCH-173 阶段 5）：只读展示生效路由、提示词分段字符、
+/// 预设工具声明与最近会话的工具/压缩计数。不返回任何正文或凭证。
+#[tauri::command(async)]
+fn diagnostics_metadata(state: State<'_, SharedHost>) -> serde_json::Value {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    crate::diagnostics::build(&app_root)
 }
 
 /// 当前登录用户的显示名，只用于首页问候。
@@ -9340,6 +9352,7 @@ pub fn run() {
             model_permission_set,
             model_permission_revoke_all,
             app_paths_info,
+            diagnostics_metadata,
             desktop_user_name,
             profile_decl_load,
             profile_decl_digest,

@@ -34,6 +34,7 @@
 > 2. 验证通过：conversationPrompt.ts 不再注入 Skill 全文，改为 id/name/description/path 或 ≤300 字符摘要；每个动作最多一个主 Skill。
 > 3. 验证不通过：保留全文注入，在 docs/decisions.md 记录缺口与复审触发条件（等 DSH 升级），不改坏现有行为。
 > 4. 验收（若通过）：Skill 段 ≤300 字符；周报/复盘/知识整理产出契约不回归；Skill 来源（全局/Profile/动作）与同名冲突可见。
+> 5. 执行结果（2026-11-17，ARCHITECT 复核通过）：验证通过并已实施。DSH tool-skill 返回全文（原生 skill_content 包装；PTC 下经 run_code 内 tools.skill），会话自带 2518 字符技能目录（19 个 Skill 的 name+description）。conversationPrompt.ts 全文注入改为 ≤260 字符指针，四动作 user 段降 61–72%。遗留既有验证脚本断言全文注入需随阶段 6 更新（verify_skill_bindings_082、verify_worklog_089、verify_skill_flow_injection_108）；skill-catalog 2518 字符是 DSH 目录注入非桌面注入，压目录需改 tool-skill 配置，超出本阶段范围，记缺口。真实模型行为归入阶段 6 smoke test。
 
 **阶段 3：工具面与安全约束**
 > 1. 按动作收敛工具白名单：搜索、Office、知识整理按需；读写、审批、副作用工具显式。
@@ -43,17 +44,20 @@
 > 5. 错误与脱敏：工具错误作为可恢复结果；工具结果进模型前脱敏；审批失败不升级为整轮失败。
 > 6. 只读审计 DSH 是否提供 before/after 钩子、按工具串行、审批前置、turn 间热切换、abort 下发；有则配置，无则记缺口，不改 runtime/。
 > 7. 交付：工具约束矩阵（每个工具的参数/输出/路径/并发/安全现状与缺口）。
+> 8. 执行结果（2026-11-17，ARCHITECT 复核通过）：dsh-free-search 依赖声明已从 discipline.profile.json 与 profile_assets.rs 清除（cost-meter 保留）；工具面盘点结论为无可安全删除项，discipline-core 11 工具 / work-review-core 7 工具保持最小集合；tool-fs/tool-fs-search 显式钉住输出上限（read 2000 行/50KB、grep 单行 500 字节、glob 100 条、grep 250 条）；钩子/审批/串行/abort 审计完成，缺口（读不受 workspace 根约束、无统一脱敏、ask-user 无宿主卡片、无 turn 间热切换）记入 tool-matrix.md；cargo test 1187 全过、mock 四会话 succeeded。D-105 决策已落 docs/decisions.md。
 
 **阶段 4：模型接入成熟度（只补差）**
 > 1. 盘点 model_settings.rs 已有字段（provider/api/apiKeyEnv/reasoningEffort/contextWindow 已落）与 DSH 侧仍缺的能力项（成本/compat/模型列表预检），只补缺失项，不重写已有字段。
 > 2. 保存/切换前可用性预检：模型列表 404、UnsupportedModel、认证失败分别给出可操作提示；预检不读明文凭证。
 > 3. 模型目录缓存只做只读数据（目录/etag/checkedAt），刷新不阻塞启动。
 > 4. 验收：模型不可用时在运行前给出明确原因；密钥不出现在 UI、日志、提示词或成果文件。
+> 5. 执行结果（2026-11-17，ARCHITECT 复核通过）：Rust save() 前置档位校验（declared_efforts/check_effort_capability，6 单测）；设置页保存前端点预检（401/402/403 阻止，404/网络提示放行）+ 档位收敛（声明 false 自动回落默认）；切换路径 api.ts 用模型目录校验显式档位。cargo test 1193 全过、tsc 0。缺口如实记录：聊天期才暴露的 402/403 保存期发现不了；目录无 ETag/checkedAt 持久缓存（DSH 未暴露版本字段）；真实端点响应文本未验证（归阶段 6）。D-106 决策已落 docs/decisions.md。
 
 **阶段 5：可观测性与配置解释**
 > 1. 设置页或只读诊断入口显示：系统提示词分段与 token、工具与 Skill 可见性、配置来源、模型 compat 与 thinking 能力、压缩状态；只显示元数据。
 > 2. 任务时间线显示模型往返、工具 prepare/execute、审批等待、压缩/重试、缓存命中；不显示用户正文。
 > 3. 验收：用户能回答"这条行为从哪来、时间花在哪"，不需要读源码。
+> 4. 执行结果（2026-11-17，ARCHITECT 复核通过）：新增只读诊断命令 diagnostics_metadata（Rust，复用会话解析思路，只出元数据不出正文）；设置页新增「配置解释」页：生效路由/api/thinking 能力/上下文窗口、提示词分段与来源、工具面清单、Skill 概况。tsc 0、npm run build 0、cargo test 1200 全过（diagnostics 7 新单测）。缺口：任务时间线逐轮耗时/审批等待/缓存命中未展示（明确不做范围）；真实窗口截图未完成（macOS 锁屏，黑图证据存 evidence），由用户验收时目视。D-107 已落 docs/decisions.md。
 
 **阶段 6：验证、发布与回退**
 > 1. npx tsc --noEmit；npm run build；cargo test --lib；现有 UI/Profile 验证脚本全过。
@@ -61,6 +65,8 @@
 > 3. 真实模型 smoke test（需用户当轮允许）：Excel、周报、知识整理各一次；记录提示词字符/token、工具往返、首字、总时长、缓存与压缩消耗。
 > 4. 版本 0.2.30；提交推送；macOS/Windows 构建；STATUS/REVIEW 写清改前改后、证据与未验证项。
 > 5. 回退：恢复 preset-standard、重新挂回 web-search-free、恢复原 persona 与（若改动）Skill 全文注入；保留旧配置备份。
+>
+> 6. 执行结果（2026-11-17，待 ARCHITECT 复核）：tsc 0、npm run build 0、cargo test --lib 单线程 1200/1200、cargo check 0、Tauri release `--no-bundle` 编译通过；54 个 UI/Profile 脚本中 41 通过、13 项既有失效/环境失败（HEAD 快照复现，逐项见 stage6.md）；三个 Skill 注入脚本已改为指针断言，082 58/58、089 85/85 通过，108 因 macOS 无 Xvfb 仅语法检查。版本与 CHANGELOG 已收口 0.2.30。播种迁移结论：现有安装不自动清理，需「修复缺失 / 恢复出厂内容」（写前备份）或重装；发布工作流重建 seed 后新装包生效。真实模型 smoke 因 402 未执行，Windows 未构建。提交推送与回退路径见 stage6.md。
 
 **验收矩阵（0.2.30 必须可验证）**
 > - 效率：系统提示词 ≤1000 tokens（目标 200–300）；Skill 段 ≤300 字符（若阶段 2 通过）；工具输出有上限或明确缺口；基线表能拆分 397 秒；缓存命中被记录。

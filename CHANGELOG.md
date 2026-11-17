@@ -19,15 +19,19 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit 与 npm run build：通过。
 - 工作记录相关 verify 脚本 301/502/503/504/505/506/507/508/509 全通过。
 
-## [Unreleased] - 2026-11-16
+## [0.2.30] - 2026-11-17
 
 ### Added
 - 首页 2.0 版式：问候带系统用户名（只读命令 `desktop_user_name`）、四张真实入口卡片、底部真实场景快捷入口、右上淡蓝山海背景插画（`desktop/public/home-scape.png`）。
 - 线程记录新增 `forkOrigin`（父会话号与切点），新分支线程顶部显示一行灰色来源说明；普通新建线程不显示。
 - 线程存储新增“未知前端字段原样保存与读回”的 Rust 回归测试。
+- 设置页新增「配置解释」只读页（`diagnostics_metadata`）：生效路由、接口与地址、思考档位及声明、上下文窗口、提示词分段字符、工具面、Skill 概况，均可回答“这条行为从哪来”；只出元数据，不出提示词正文或用户内容。
+- 模型保存与切换前预检：保存时按 Profile 的 `reasoningEfforts` 校验档位，401/402/403 给出认证、额度、套餐权限提示并阻止保存；切换时用 DSH 模型目录校验显式档位。
 
 ### Changed
 - 授权：OmniDesk 自有代码自 0.2.30 起改用 PolyForm Noncommercial 1.0.0，商业用途须取得书面商业授权；0.2.29 及更早版本仍按 Apache-2.0 授权；`runtime/` 维持上游 MIT。
+- 效率（OD-ARCH-173）：discipline preset 系统提示词 5396 → 2983 字符（去 PTC 口径；保留 PTC 时 15252），web-search 段 1919 → 0；随手记/周报/当日摘要/周期复盘的 user 段 2131/1446/1450/2222 → 636/558/487/613 字符（−61%～−72%）；Skill 全文改为 ≤260 字符指针，模型按需调用 `skill` 取正文（PTC 下在 `run_code` 内调 `tools.skill`）。
+- 安全（OD-ARCH-173）：discipline Profile 移除 `dsh-free-search` 依赖与宿主插件要求，公开检索改由 anysearch Skill 按需承担；read/grep/glob 输出上限写入 preset（read 2000 行 / 51200 字节 / 单行 2000 字符，grep 250 条 / 单行 500 字节，glob 100 条）；模型保存/切换增加可用性预检，预检不读明文凭证。
 - 工程：2026-11-17 之前的测试截图、任务证据与历史报告移出 Git，归档到仓库外；Git 保留测试脚本、夹具与架构契约。
 - 仓库清理：个人发言稿、个人写作风格、个人数据根配置和初始化脚本移出 Git；写作风格改为通用模板，开发 Profile 改为中性名称，公开仓库不再包含个人文档。
 - 发布：2026-11-17 重写 Git 历史并清理旧个人文档/证据，旧安装包已下线；0.2.30 将从清理后的源码重新构建。
@@ -44,7 +48,15 @@ All notable changes to this project will be documented in this file.
 ### Verification
 - `verify_fork_origin_202.py`：9/9。
 - `cargo test --offline --lib thread_store::tests`：13/13。
-- `npm run build`：通过。
+- `npx tsc --noEmit`、`npm run build`：通过。
+- `cargo test --offline --lib -- --test-threads=1`：1200 passed / 0 failed / 1 ignored。
+- OD-ARCH-173 相关 `verify_conversation_prompt.py`、`verify_worklog_104.py`、`verify_wr_503.py`、`verify_wr_505.py`、`verify_tool_surface_154.py`、`verify_work_review_213.py`、`verify_profile_assets_109.py` 全通过；Skill 指针相关 `verify_skill_bindings_082.py`、`verify_worklog_089.py` 已按新行为更新断言后通过。
+
+### Known limitations
+- 真实模型 smoke test（Excel、周报、知识整理）未执行：账户返回 402 余额不足，属账户状态而非代码失败；提示词结构变化已由 mock 合成会话证明，真实模型行为待账户恢复后复测。
+- Windows 安装包未在本机构建验证；macOS 侧完成 tsc、vite、cargo 与 Tauri 编译链路验证。
+- 既有安装的 discipline Profile 不会自动删除已装 `dsh-free-search`：宿主装配只在缺失时写入、不覆盖用户文件；升级用户可在资产页点「恢复出厂内容」（写前备份），或重装 Profile。新装包由发布工作流重建 seed 后生效。
+- 配置解释页未展示逐轮耗时、审批等待与缓存命中（阶段 5 明确不做时间线改版）；DSH 注入的 Skill 目录（约 2518 字符）仍存在，压目录需改上游 tool-skill 配置。
 
 ## [0.2.1] - 2026-10-15 (discipline-v0.2 / 结构收敛)
 

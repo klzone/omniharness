@@ -661,6 +661,7 @@ pub fn save(
     base: &[ProviderRoute],
 ) -> Result<(PathBuf, PathBuf), String> {
     settings.validate()?;
+    check_effort_capability(settings, base)?;
     let overlay_text = settings.render_overlay(base);
     let json_path = settings_path(config_dir);
     let text = serde_json::to_vec_pretty(settings)
@@ -669,6 +670,83 @@ pub fn save(
     let overlay = overlay_path(config_dir);
     write_atomic(&overlay, overlay_text.as_bytes())?;
     Ok((json_path, overlay))
+}
+
+/// Profile 为某个模型显式声明的思考档位（`reasoningEfforts` 的键）。
+///
+/// 返回值的三种含义必须分开用：
+///   * `None`：Profile 没有声明，DSH 可能回退到内置目录；宿主不知道能力，不能据此
+///     阻止保存，也不能假装它一定支持；
+///   * `Some(空)`：声明 `reasoningEfforts: false`，该模型不支持思考；任何显式档位
+///     都会在首次模型调用时被 DSH 拒绝；
+///   * `Some(非空)`：声明了这些档位，显式档位必须落在集合内。
+///
+/// 只读 Profile 路由的非机密元数据；不接触凭据。
+pub fn declared_efforts(
+    routes: &[ProviderRoute],
+    provider: &str,
+    model: &str,
+) -> Option<Vec<String>> {
+    let route = routes.iter().find(|r| r.id == provider)?;
+    let entry = route
+        .model_entries
+        .iter()
+        .find(|entry| entry.get("id").and_then(|v| v.as_str()) == Some(model))?;
+    match entry.get("reasoningEfforts") {
+        None => None,
+        Some(serde_json::Value::Bool(false)) => Some(Vec::new()),
+        Some(serde_json::Value::Object(map)) => Some(map.keys().cloned().collect()),
+        // null 或其它形状：DSH 的配置校验会直接拒绝，宿主不替它猜测能力。
+        Some(_) => None,
+    }
+}
+
+/// 保存前的思考档位预检（只查 Profile 明确声明的能力）。
+///
+/// 为什么只在“已声明”时阻断：Profile 未声明 `reasoningEfforts` 时，DSH 会回退到
+/// pi-ai 内置目录；宿主没有同口径的目录读取接口，猜“不支持”会误伤内置 provider。
+/// 未声明但实际不支持的端点，由设置页用配置转储的 `modelEntries` 与连接预检的
+/// 内置目录标志补查（切换路径读 `engine_list_models` 的 `efforts`），或由运行期的
+/// `UNSUPPORTED_REASONING_EFFORT` 如实报错。
+pub fn check_effort_capability(
+    settings: &ModelSettings,
+    base: &[ProviderRoute],
+) -> Result<(), String> {
+    let provider = settings
+        .find(&settings.default.provider)
+        .ok_or_else(|| format!("默认路由指向不存在的提供商：{}", settings.default.provider))?;
+    // 思考模式关闭时 render_overlay 不写 reasoningEffort；不要拦一个不会下发的档位。
+    if provider.thinking_mode == "disabled" {
+        return Ok(());
+    }
+    let effort = match provider
+        .reasoning_effort
+        .as_deref()
+        .filter(|e| !e.is_empty() && *e != "default")
+    {
+        Some(effort) => effort,
+        None => return Ok(()),
+    };
+    let Some(levels) = declared_efforts(base, &settings.default.provider, &settings.default.model)
+    else {
+        return Ok(());
+    };
+    if levels.is_empty() {
+        return Err(format!(
+            "{} / {}：Profile 声明该模型不支持思考档位（reasoningEfforts: false），当前选了「{}」；请把思考等级改为「跟随模型默认」后保存（显式档位会在首次模型调用时被 DSH 拒绝）。",
+            settings.default.provider, settings.default.model, effort
+        ));
+    }
+    if !levels.iter().any(|level| level == effort) {
+        return Err(format!(
+            "{} / {}：Profile 声明的可用思考档位只有 {}，没有「{}」；请改选其中一个，或把思考等级改为「跟随模型默认」后保存（显式档位会在首次模型调用时被 DSH 拒绝）。",
+            settings.default.provider,
+            settings.default.model,
+            levels.join(" / "),
+            effort
+        ));
+    }
+    Ok(())
 }
 
 /// 日志/界面里只允许出现配置的**非机密摘要**。
@@ -879,6 +957,102 @@ mod tests {
             let mode = fs::metadata(&overlay).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600, "覆盖文件必须是 0600");
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn routes_with_efforts(efforts: serde_json::Value) -> Vec<ProviderRoute> {
+        let mut routes = base_routes();
+        routes[0].models = vec!["agnescn-flash".to_string()];
+        routes[0].model_entries = vec![serde_json::json!({
+            "id": "agnescn-flash",
+            "reasoningEfforts": efforts,
+        })];
+        routes
+    }
+
+    #[test]
+    fn declared_efforts_distinguishes_absent_false_and_levels() {
+        let routes = base_routes();
+        assert_eq!(declared_efforts(&routes, "agnescn", "agnescn-flash"), None);
+
+        let routes = routes_with_efforts(serde_json::Value::Bool(false));
+        assert_eq!(
+            declared_efforts(&routes, "agnescn", "agnescn-flash"),
+            Some(Vec::new())
+        );
+
+        let routes = routes_with_efforts(serde_json::json!({ "off": null, "high": "high" }));
+        let mut levels = declared_efforts(&routes, "agnescn", "agnescn-flash").unwrap();
+        levels.sort();
+        assert_eq!(levels, vec!["high".to_string(), "off".to_string()]);
+    }
+
+    #[test]
+    fn save_rejects_effort_the_profile_does_not_list() {
+        let dir = temp_dir("effort-block");
+        let routes = routes_with_efforts(serde_json::json!({ "off": null, "high": "high" }));
+        let err = save(&dir, &sample(), &routes).unwrap_err();
+        assert!(err.contains("没有「low」"), "{}", err);
+        assert!(err.contains("off") && err.contains("high"), "{}", err);
+        assert!(!settings_path(&dir).exists(), "被拒绝的保存不得写盘");
+        assert!(!overlay_path(&dir).exists(), "被拒绝的保存不得写覆盖文件");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_allows_effort_the_profile_lists() {
+        let dir = temp_dir("effort-ok");
+        let routes = routes_with_efforts(serde_json::json!({ "off": null, "high": "high" }));
+        let mut s = sample();
+        s.providers[0].reasoning_effort = Some("high".to_string());
+        let (json_path, overlay) = save(&dir, &s, &routes).unwrap();
+        assert!(json_path.is_file() && overlay.is_file());
+        assert_eq!(
+            load(&dir).unwrap().unwrap().providers[0]
+                .reasoning_effort
+                .as_deref(),
+            Some("high")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_rejects_effort_when_profile_declares_no_reasoning() {
+        let dir = temp_dir("effort-false");
+        let routes = routes_with_efforts(serde_json::Value::Bool(false));
+        let err = save(&dir, &sample(), &routes).unwrap_err();
+        assert!(err.contains("不支持思考档位"), "{}", err);
+        assert!(!settings_path(&dir).exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_skips_effort_check_when_profile_is_silent_or_default_is_selected() {
+        // 未声明：宿主不知道内置目录能力，不能猜“不支持”。
+        let dir = temp_dir("effort-unknown");
+        let routes = base_routes();
+        save(&dir, &sample(), &routes).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+
+        // 选择「跟随模型默认」时不发显式档位，声明 false 也不阻断。
+        let dir = temp_dir("effort-default");
+        let routes = routes_with_efforts(serde_json::Value::Bool(false));
+        let mut s = sample();
+        s.providers[0].reasoning_effort = Some("default".to_string());
+        save(&dir, &s, &routes).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_skips_effort_check_when_thinking_is_disabled() {
+        // thinking_mode=disabled 时覆盖文件根本不写 reasoningEffort；档位声明不该误拦。
+        let dir = temp_dir("effort-disabled");
+        let routes = routes_with_efforts(serde_json::Value::Bool(false));
+        let mut s = sample();
+        s.providers[0].thinking_mode = "disabled".to_string();
+        save(&dir, &s, &routes).unwrap();
+        let yml = fs::read_to_string(overlay_path(&dir)).unwrap();
+        assert!(!yml.contains("reasoningEffort:"), "{}", yml);
         let _ = fs::remove_dir_all(&dir);
     }
 
