@@ -1,5 +1,16 @@
 # 执行状态
 
+## OD-ARCH-173 真实模型 smoke 补录（2026-11-17，用户授权换 key 后执行）
+
+- **根因修正（文件事实 + 脚本运行）：** OmniDesk 的 OD_Key 是旧账号 key（OpenDesign 侧 free 档、钱包 0），与用户当前 Codex 通道的新 key 不同。已把 OpenDesign 路由配置中的现行 key 同步到 ~/OmniDesk/runtime/dsh-home/.credentials.yaml（原文件已备份 .bak-odkey-*），并移除 ~/OmniDesk/app/config/omnidesk-model.yml 中端点不支持的 reasoningEffort: off 两行（备份 .bak-odarch173-*）。全程未读取或打印任何密钥值，只比对前缀与长度。
+- **逐模型实测（合成周报任务 ×5，阶段 0 的 402/403 结论复现）：** eco/glm/gpt-6-luna/minimax 均 403 free_workspace_flash_only；deepseek-v4.1-flash 402 余额不足（旧 key）。换新 key 后 eco 通过。
+- **真实模型 smoke（opendesign/deepseek-v4.1-flash-eco，隔离根 /tmp/od-real-final，证据等级：真实模型输出）：**
+  - Excel：succeeded，ttfb 54.0s；模型先调 skill(office-xlsx) 读正文再动手——阶段 2 的 skill-first 行为在真实模型 + PTC preset 下确认；产物 demo-budget.xlsx 落盘。
+  - 周报：succeeded，ttfb 10.6s/总 14.1s，8.7k tokens；模型按材料直接成稿（四节结构，未调工具）。
+  - 知识整理：succeeded，ttfb 16.0s；三张卡片落 cards/。缓存命中正常（cacheRead 7.9k/11.5k）。
+  - 应用自身配置复测：修复后的 omnidesk-model.yml 走同引擎路径，周报 succeeded（22.1s，ttfb 18.3s）。
+- **剩余未验证：** Windows 构建、配置解释页真机截图（锁屏）、verify_skill_flow_injection_108.py 真机运行、知识类任务未触发 skill 读取（模型判断直接落卡，非回归，记录观察）。
+
 ## OD-ARCH-173 阶段 6：验证、发布与回退（2026-11-17，待 ARCHITECT 复核）
 
 - 全量回归：`cd desktop && npx tsc --noEmit` exit 0；`npm run build` exit 0（361 modules，仅既有 chunk 体积提示）；`OMNIDESK_PYTHON=/usr/bin/python3 ~/.cargo/bin/cargo test --offline --lib -- --test-threads=1` 1200 passed / 0 failed / 1 ignored（49.41s）；`cargo check --offline --all-targets` exit 0；`PATH="$HOME/.cargo/bin:$PATH" npm run tauri build -- --no-bundle` exit 0，release 二进制 1m 33s；`bash scripts/sync-app-version.sh` 确认 tauri.conf 已是 0.2.30；`git diff --check` exit 0。
