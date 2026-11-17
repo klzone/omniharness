@@ -515,3 +515,4 @@ M tests/verification/engine-interface/adapter/test_web_api_unit.py
 ### 发布
 
 - 版本 0.2.31 → 0.2.32（package.json + tauri.conf.json），CHANGELOG 0.2.32 条目已写；提交推送后由 release.yml（push to main）自动构建发布。
+- 修正：release.yml 的发布版本源是仓库根 `VERSION` 文件（非 package.json），初推时 VERSION 仍为 0.2.31 会 publish=false 空跑；已补 commit 6e3dab1520（VERSION → 0.2.32）并推送，本次 CI 应以 v0.2.32 构建发布。发布提交链：c718aa6e65（feat）→ a1cb0da7ab（docs）→ 99cb0c70f9（release）→ 1e3ec584dc（test 补录）→ 6e3dab1520（VERSION 修正）。
