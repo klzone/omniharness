@@ -184,6 +184,129 @@ const projectPrompt = cp.composeConversationPrompt({
 });
 check("project_injects_project_agent", projectPrompt.includes("--- 技能：project-agent ---"), "");
 
+// 5b. OD-ARCH-174 A：默认分支不再无条件取 report 流程绑定。
+// writing / project 场景即使 preset 上残留 skillsByFlow.report（周报绑定），
+// 也只能注入本场景自己的 preset.skills。
+const residualReport = [
+  { id: "memory-report", content: skillContents["memory-report"] || "Memory Report Content" }
+];
+const writingWithResidual = { ...writingPreset, skillsByFlow: { report: residualReport } };
+const writingResidualPrompt = cp.composeConversationPrompt({
+  preset: writingWithResidual,
+  turns,
+  current: "起草一份监督工作总结",
+});
+check(
+  "writing_ignores_residual_report_binding",
+  writingResidualPrompt.includes("--- 技能：material-writing ---") &&
+    !writingResidualPrompt.includes("--- 技能：memory-report ---"),
+  writingResidualPrompt.slice(0, 160)
+);
+const projectWithResidual = { ...projectPreset, skillsByFlow: { report: residualReport } };
+const projectResidualPrompt = cp.composeConversationPrompt({
+  preset: projectWithResidual,
+  turns,
+  current: "梳理项目进度与阻塞",
+});
+check(
+  "project_ignores_residual_report_binding",
+  projectResidualPrompt.includes("--- 技能：project-agent ---") &&
+    !projectResidualPrompt.includes("--- 技能：memory-report ---"),
+  projectResidualPrompt.slice(0, 160)
+);
+
+// 5c. weekly 场景没有明确进入周报流程（未传 worklog、也没 mode=report）时，
+// 用场景级绑定，不用 weekly-report。
+const weeklyImplicitPrompt = cp.composeConversationPrompt({
+  preset: weeklyPreset,
+  turns,
+  current: "随便问一句",
+});
+check(
+  "weekly_implicit_uses_scene_skill",
+  weeklyImplicitPrompt.includes("--- 技能：memory-agent ---") &&
+    !weeklyImplicitPrompt.includes("--- 技能：memory-report ---"),
+  weeklyImplicitPrompt.slice(0, 160)
+);
+const weeklyWorklogPrompt = cp.composeConversationPrompt({
+  preset: weeklyPreset,
+  turns,
+  current: "整理本周工作",
+  worklog: { week: "2026-W46", exists: true, content: "本周记录" },
+});
+check(
+  "weekly_worklog_uses_report_skill",
+  weeklyWorklogPrompt.includes("--- 技能：memory-report ---") &&
+    !weeklyWorklogPrompt.includes("--- 技能：memory-agent ---"),
+  weeklyWorklogPrompt.slice(0, 160)
+);
+
+// 5d. OD-ARCH-174 A2：knowledge 专用绑定独立于场景主指针。
+const knowledgeSkill = {
+  id: "knowledge-search",
+  content: skillContents["knowledge-search"] || "Knowledge Search Content"
+};
+const knowledgeNotePrompt = cp.composeConversationPrompt({
+  preset: { ...weeklyPreset, knowledgeSkills: [knowledgeSkill] },
+  turns: [],
+  current: "查一下专项检查频次",
+  mode: "note",
+  knowledgeContext: "知识库检索上下文 KNOW-MARKER"
+});
+check(
+  "knowledge_pointer_injected_from_binding",
+  knowledgeNotePrompt.includes("知识检索技能指引（knowledge-search）：") &&
+    knowledgeNotePrompt.includes("库/知识库/索引.md"),
+  knowledgeNotePrompt.slice(0, 200)
+);
+check(
+  "knowledge_main_pointer_stays_memory_agent",
+  knowledgeNotePrompt.includes("配套技能指引（memory-agent）：") &&
+    !knowledgeNotePrompt.includes("配套技能指引（knowledge-search）："),
+  knowledgeNotePrompt.slice(0, 200)
+);
+const knowledgeDraftPrompt = cp.composeConversationPrompt({
+  preset: { ...writingPreset, knowledgeSkills: [knowledgeSkill] },
+  turns: [],
+  current: "查一下专项检查频次",
+  knowledgeContext: "KNOW-MARKER"
+});
+check(
+  "knowledge_does_not_replace_draft_main_pointer",
+  knowledgeDraftPrompt.includes("--- 技能：material-writing ---") &&
+    !knowledgeDraftPrompt.includes("--- 技能：knowledge-search ---") &&
+    knowledgeDraftPrompt.includes("知识检索技能指引（knowledge-search）："),
+  knowledgeDraftPrompt.slice(0, 200)
+);
+const knowledgeNoBindingPrompt = cp.composeConversationPrompt({
+  preset: weeklyPreset,
+  turns: [],
+  current: "查一下专项检查频次",
+  mode: "note",
+  knowledgeContext: "KNOW-MARKER"
+});
+check(
+  "knowledge_pointer_requires_binding",
+  knowledgeNoBindingPrompt.includes("KNOW-MARKER") &&
+    !knowledgeNoBindingPrompt.includes("知识检索技能指引"),
+  knowledgeNoBindingPrompt.slice(0, 160)
+);
+// 普通对话没有 preset：宿主单独透传 knowledgeSkills，同样只追加检索指针。
+const plainKnowledgePrompt = cp.composeConversationPrompt({
+  preset: null,
+  turns: [],
+  current: "查一下专项检查频次",
+  knowledgeContext: "KNOW-MARKER",
+  knowledgeSkills: [knowledgeSkill]
+});
+check(
+  "plain_chat_knowledge_pointer_injected",
+  plainKnowledgePrompt.includes("KNOW-MARKER") &&
+    plainKnowledgePrompt.includes("知识检索技能指引（knowledge-search）：") &&
+    plainKnowledgePrompt.includes("库/知识库/索引.md"),
+  plainKnowledgePrompt.slice(0, 200)
+);
+
 // 6. 三场景注入内容严格不同
 check("prompts_distinct_weekly_vs_writing", notePrompt !== writingPrompt && reportWeeklyPrompt !== writingPrompt, "");
 check("prompts_distinct_writing_vs_project", writingPrompt !== projectPrompt, "");
@@ -283,10 +406,26 @@ def test_rule_bindings_asset() -> list[dict]:
         bindings.get("weekly", {}).get("skills") == ["memory-agent"],
         str(bindings.get("weekly", {}).get("skills")),
     )
-    bound_ids = [s for b in bindings.values() for s in b.get("skills", [])]
+    # OD-ARCH-174 A2：knowledge 是知识检索流程的专用绑定键，不占四场景主指针。
+    check(
+        "knowledge_binds_knowledge_search_only",
+        bindings.get("knowledge", {}).get("skills") == ["knowledge-search"],
+        str(bindings.get("knowledge", {}).get("skills")),
+    )
+    check(
+        "knowledge_max_injected_is_one",
+        bindings.get("knowledge", {}).get("max_injected") == 1,
+        str(bindings.get("knowledge", {}).get("max_injected")),
+    )
+    bound_ids = [
+        s
+        for key, b in bindings.items()
+        if key != "knowledge"
+        for s in b.get("skills", [])
+    ]
     for ondemand in ("anysearch", "knowledge-search", "document-review", "knowledge-agent"):
         check(
-            f"{ondemand}_not_preinjected",
+            f"{ondemand}_not_in_scene_bindings",
             ondemand not in bound_ids,
             str(bound_ids),
         )

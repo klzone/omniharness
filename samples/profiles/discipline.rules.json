@@ -84,6 +84,12 @@
         "project-agent"
       ],
       "max_injected": 1
+    },
+    "knowledge": {
+      "skills": [
+        "knowledge-search"
+      ],
+      "max_injected": 1
     }
   },
   "agents": {

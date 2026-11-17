@@ -2,6 +2,7 @@
 name: document-review
 description: 纪检监察公文与业务材料质量多维评估与审查助手。对输入的文稿从结构规范、事实依据支撑、表述实效性（剔除假大空与AI味）、政治与法规合规风险四个维度进行严格审查，并输出结构化质检报告与修改建议。
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # 材料质量评估助手 (Document Review Skill)

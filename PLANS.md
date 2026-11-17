@@ -1,5 +1,42 @@
 # 当前实施计划
 
+### OD-ARCH-174：Skill 优化——指针补全、目录瘦身、正文重写（待批准，2026-11-17）
+
+> **触发：** 0.2.30 完成后用户要求优化 Skill。勘察证据：①真实模型 smoke（f1e06a3）确认知识整理任务不读 Skill，根因是 knowledge 场景在 rules.json 无 skill_bindings，模型没有"该用哪个技能"的指引；②每次任务注入 skill-catalog 2518 字符（10 技能），其中 4 个（anysearch/document-review/material-writing/knowledge-search）从不被模型自主调用，目录对它们是纯开销；③写材料/项目场景与周报共用默认分支的指针来源（presetSkillsFor(preset,"report")），边界情况可能拿错技能指针；④10 个 Skill 正文约 36KB，是全文注入时代写的冗长文风，按需读取时代可收紧。
+>
+> **用户裁决（2026-11-17）：** ①知识库场景只需要检索知识卡（绑定 knowledge-search），知识卡沉淀发生在任意场景（工作/写作/无分类），不是独立场景的职责；②阶段 C 必做。
+>
+> **派工：** 子代理 OpenDesign/deepseek-v4.1-flash-eco + high，按 BUILDER 模板逐阶段派发；每阶段 ARCHITECT 复核后进下一阶段。真实模型验证用现行可用 key。
+
+**阶段 A：指针补全与绑定修正（低风险）**
+> 1. 修 writing/project 场景指针来源：conversationPrompt.ts 默认分支（mode=report）不应无条件走 presetSkillsFor(preset, "report")；按当前场景取各自绑定（writing→material-writing、project→project-agent），周报场景维持 memory-report。改动后用 Node 直接调组装器验证四场景指针各归其位。
+> 2. knowledge 场景补绑定：knowledgeContext 命中时（宿主已检出的检索上下文），在 knowledgeBlock 追加 knowledge-search 的技能指针（≤260 字符，含"两跳检索/先读索引.md"要点）；无命中不注入。不动 rules.json 的场景结构（knowledge 不是独立场景，是横切能力）。
+> 3. 验证：verify_conversation_prompt / verify_skill_bindings_082 断言更新并全过；tsc 0。
+> 4. 执行结果（2026-11-17，ARCHITECT 复核：代码与测试通过，发现注入点策略缺口，见第 5 条）：defaultSceneSkills 修正四场景指针串号；knowledgeSkillPointer 落地（151 字符）；tsc 0、verify_conversation_prompt 33/33、verify_skill_bindings_082 62/62、worklog_089 85/85、ai_draft 27/27。
+> 5. **A2 追加（ARCHITECT 裁决）：** docs/decisions.md D-104 口径"knowledge-search 不进任何绑定，纯按需"的前提已变化——阶段 2 造出了指针注入点（260 字符不再是 4901 字正文）。裁决：新增专用绑定键 `knowledge`（知识检索流程），HomeCanvas 读取后作为独立参数传给 composeConversationPrompt（不混入场景级 skills）；出厂 discipline.rules.json 增加 `knowledge → knowledge-search` 绑定；同步更新 D-104 决策记录（注明复审触发：OD-ARCH-174 指针机制）。这样 knowledge 指针在默认 Profile 即生效，且不污染四场景主指针。
+> 6. **A2 执行结果（2026-11-17，ARCHITECT 复核通过）：** knowledge 专用绑定键落地（rules.json + HomeCanvas 独立读取 + HomeChat 透传 + ConversationPreset.knowledgeSkills）；普通对话 preset=null 也注入知识指针；D-108 决策记录完整（含复审触发）。tsc 0；verify_conversation_prompt 33/33、skill_bindings_082 69/69、worklog_089 86/86、cargo 1200 全过。已安装 Profile 的 rules.json 迁移待用户「恢复默认规则包」。
+
+**阶段 B：目录瘦身（低风险）**
+> 1. 对从不被模型自主调用的 4 个技能（anysearch/document-review/material-writing/knowledge-search）在 SKILL.md frontmatter 加 disable-model-invocation: true；保留 user-invocable。效果：模型自主目录不再列它们（估省约 400 字符），流程绑定与用户手点不受影响（绑定注入走 skill_contents，不走目录）。
+> 2. 同步仓库 skills/ 与 sync-skills.sh 校验；mock 会话复测目录字符（预期 2518 → 约 2000）。
+> 3. 验证：mock 前后对比落 evidence/od-arch-174/；相关 verify 脚本全过。
+> 4. **B 中途裁决（ARCHITECT，基于阻断性发现）：** disable-model-invocation 同时关掉目录条目与 skill 工具执行（dsh-tool-skill execute 二次校验），与指针机制冲突。裁决按"能力优先、目录开销其次"收缩：material-writing、knowledge-search 撤回标记（它们的绑定指针要求模型调 skill 读正文）；anysearch 撤回标记（阶段 1 计划明确公开检索由模型按需走 anysearch，自主可见是能力的一部分）；只保留 document-review 的标记（纯用户手点场景，无绑定指针指向它，目录省约 110 字符）。目录 2518 → 约 2410，收益缩小但零能力损失；后续若 DSH 拆分"目录可见"与"可执行"两个开关，再回来收这 4 个。
+> 5. **B 执行结果（2026-11-17）：** 4 标记实验证明 disable-model-invocation 使 skill 工具返回 "not available for model invocation"（阶段 A/A2 的指针会失效）；按裁决撤回 3 个、保留 document-review；mock 目录 2518 → 2410 字符；verify 33/33、69/69、86/86 全过。
+> 6. **B 最终（复核通过）：** 实测目录 2518 → 2401 字符（−117）；仅 document-review 从模型目录消失；sync --check 一致；mock 三任务 succeeded。既有缺口记录：sync-skills.sh 在 macOS 需绕过 BSD realpath（未修）。
+> 7. **C 执行结果（2026-11-17，ARCHITECT 复核通过，含真实模型端到端验证）：** 三技能正文压至原 63–70%（memory-agent 1754→1228、memory-report 1099→749、period-review 1820→1268），契约与硬约束逐字保留（082 69/69、089 86/86、503 58/58、505 71/71）。**真实模型端到端**（新驱动 run_custom_prompt.py 送桌面组装器产物）：模型收到指针后实际调用 skill(name=memory-report) 读到重写正文，随后按五段模板产出（本周概述/事项进展/问题与风险/下步计划/待确认事项全在）——"指针→按需读取→按契约输出"全链路真实模型确认。knowledge 任务的模型未触发 skill 读取属模型自主决策（宿主检索上下文已直接给出），非回归。
+>
+> **OD-ARCH-174 完成总结：** 四场景指针各归其位；knowledge 专用绑定键落地（D-108）；目录 2518→2401；三核心技能正文 −30~37%；真实模型全链路验证通过。已知缺口：sync-skills.sh macOS realpath 兼容（未修）；已安装 Profile 的 rules.json 需「恢复默认规则包」获得 knowledge 绑定；阶段 C 其余 7 个技能未重写（anysearch/document-review 等按需技能留待后续按使用频率决定）。
+
+**阶段 C：核心技能正文重写（中风险，用户必做项）**
+> 1. 重写 memory-agent / memory-report / period-review 三个核心技能正文：删除全文注入时代的冗余（重复平台契约的写盘边界说明、解释"平台会替你做什么"的段落、与 conversationPrompt 指针重复的读取指引），保留输出契约（五段模板/判定结构/标题深度）与硬约束（引用编号/不虚构）。
+> 2. 重写原则：模型通过 skill 工具读全文时，读到的是"纯任务指令"；平台契约（写盘边界、宿主计算）只在指针与平台提示词出现一次，不在技能正文重复。
+> 3. 每个技能重写后：先 diff 说明删了什么留了什么，再跑对应 verify 脚本（082/503/505）确认输出契约断言不变；三个全过才继续下一个。
+> 4. 真实模型回归（现行 key）：随手记/周报/复盘各 1 次，对照 0.2.30 smoke 的产出结构；结果落 evidence/od-arch-174/。
+>
+> **明确不做：** 不动 knowledge-agent（沉淀型技能留给用户手点场景，本轮不改正文）；不改 DSH tool-skill 的目录机制（disable-model-invocation 是既有配置项）；不改 runtime/；不动凭证；知识卡"任意场景沉淀"的流程不变（卡片落盘仍由 knowledge-search 的建卡路径 + 宿主执行）。
+>
+> **验收：** A/B/C 每阶段 mock+脚本证据齐全；C 结束后真实模型三类任务产出契约与 0.2.30 smoke 一致；目录与注入总量显著下降；全部验证脚本通过或既有失效如实记录。
+
 ### OD-ARCH-173（v3，最终版）：0.2.30 成熟、高效、安全基线（已完成并通过验收，2026-11-17；release 提交 1d07d91bba，验收记录见 REVIEW.md）
 
 > **本版定位：** 本节是 0.2.30 的唯一执行计划，取代下方 OD-ARCH-172（v2）。v2 由 DeepSeek 起草（提交 1c3514a），ARCHITECT 复核后确认：三主线（效率/安全/成熟）与"明确不做"边界成立，阶段顺序合理；但存在四处问题——①阶段 1 遗漏 11-16 已合入的 PTC 修复（OD-ARCH-154）与 11-15 已修的思考等级通道（OD-ARCH-153），直接执行会重做或冲突；②阶段 2"Skill 按需加载"依赖 DSH tool-skill 的实际行为，未先验证就承诺验收指标；③阶段 0 的两个基线脚本可与现有 diagnose-omnidesk.py 合并观测口径，避免重复造轮子；④阶段 4 模型预检与 model_settings.rs 现状（provider/api/apiKeyEnv/reasoningEffort 已落）存在字段重叠，需先盘点再补差。本版按此收窄与排序，执行主体为子代理 OpenDesign/deepseek-v4.1-flash-eco + high（用户当轮明确授权派工，符合 AGENTS.md 派工例外条款）。

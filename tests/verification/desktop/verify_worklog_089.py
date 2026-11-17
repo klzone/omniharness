@@ -262,9 +262,18 @@ def main() -> int:
     check("legacy_weekly_alias_is_note",
           bindings.get("weekly", {}).get("skills") == ["memory-agent"],
           str(bindings.get("weekly", {}).get("skills")))
-    bound_ids = [s for b in bindings.values() for s in b.get("skills", [])]
+    # OD-ARCH-174 A2：knowledge 是知识检索专用绑定，不占场景主指针。
+    check("knowledge_binds_knowledge_search_only",
+          bindings.get("knowledge", {}).get("skills") == ["knowledge-search"],
+          str(bindings.get("knowledge", {}).get("skills")))
+    bound_ids = [
+        s
+        for key, b in bindings.items()
+        if key != "knowledge"
+        for s in b.get("skills", [])
+    ]
     for ondemand in ("anysearch", "knowledge-search", "document-review", "knowledge-agent"):
-        check(f"{ondemand}_not_preinjected",
+        check(f"{ondemand}_not_in_scene_bindings",
               ondemand not in bound_ids,
               str(bound_ids))
 

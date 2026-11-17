@@ -1,5 +1,51 @@
 # 执行状态
 
+## OD-ARCH-174 阶段 C：核心技能正文重写（2026-11-17，待复核）
+
+- 重写三个技能正文，frontmatter 未动：`memory-agent` 1754 → 1228 字符（正文 1578 → 1052，66.7%）；`memory-report` 1099 → 749（正文 950 → 600，63.2%）；`period-review` 1820 → 1268（正文 1668 → 1116，66.9%）。三份全文比例均在 68%–70%。
+- 删除：平台写盘边界/材料已提供等重复说明、真实地名示例、占位符还原机制、周报中转说明、按需加载其他技能（与主指针冲突）、自检清单、四组 Markdown 围栏（标题与顺序逐字改写成紧凑序列）、草稿/确认的平台流程说明。保留：7 条随手记动作规则、日期窗口、verdict 块与四字段 JSON、六要素、去向、“本机是工作记录唯一存储地，可记录案件/审查调查日常工作事实”；周报五段标题、`本周报引用`、`不得补造`、精确短语“只有用户明确确认后才落盘”、`不覆盖`、`-2` 规则；复盘四周期完整标题序列、`#wr-`/`#t-` 引用格式、`不补造`/`不得虚构`、只交 Markdown 正文、数据边界。
+- verify：`verify_skill_bindings_082.py` 69/69、`verify_worklog_089.py` 86/86、`verify_wr_503.py` 58/58、`verify_wr_505.py` 71/71 全过。
+- mock：`run_mock_session.py --label stageC` 的 excel / weekly / knowledge `succeeded`（weekly 对应 memory-report），tool_probe 30 秒上限内仍 `running`；note 与 review 用 `stage2_prompt_session.py` 补跑，user 634 / 701 字符，均 `succeeded`；`skill-catalog` 2401。
+- 真实模型（overlay `~/OmniDesk/app/config/omnidesk-model.yml`，weekly 与 knowledge 分开 root 跑）：weekly `succeeded` 20.07s / ttfb 17.56s / 8375 tokens（cacheRead 7808）；knowledge `succeeded` 66.24s / ttfb 61.99s / 14310 tokens（cacheRead 13568），三张卡落 `workspace/staging/kb/知识库/方法/`。weekly 产出四节（本周完成/进行中/风险/下周计划），与 0.2.30 smoke 的四节行为一致；`run_synthetic_tasks.py` 发的是裸提示词，不经过桌面五段契约。
+- **关键限制：** 两次真实任务 `tool_event_count=0`，模型没有调用 `skill`，因此重写后的正文没有被真实模型读取；真实回归只证明任务可跑通、产出仍正常，正文质量与模型读后行为未验证。
+- 同步：`sync-skills.sh`（沿用 `/tmp/od174-bin/realpath` 包装）exit 0，`--check` 一致；未改其他 7 个技能、`runtime/`、`aiDraft.ts`、凭证或模型路由。
+- 证据：`tests/verification/desktop/evidence/od-arch-174/stageC.md`、`mock-run-stageC.log`、`mock-prompt-note-review-stageC.log`、`real-weekly-stageC.log`、`real-knowledge-stageC.log`（evidence 被 `.gitignore` 忽略）。
+- Git：HEAD `f1e06a3`；新增 `M skills/memory-agent/SKILL.md`、`M skills/memory-report/SKILL.md`、`M skills/period-review/SKILL.md`；未提交、未推送、未打标签。
+
+## OD-ARCH-174 阶段 B：目录瘦身（2026-11-17，已按裁决收缩，待复核）
+
+- 最终改动：仅 `skills/document-review/SKILL.md` 保留 `disable-model-invocation: true`；`material-writing` / `knowledge-search` / `anysearch` 的标记已撤回（前两个是绑定指针要求模型读正文，anysearch 是阶段 1 明确保留的按需检索能力）。其余 6 个技能未动；未改 `runtime/`、`aiDraft.ts`、凭证或模型路由。
+- 裁决依据：全量 4 标记曾把目录压到 2039 字符（−479），但实测 `skill` 工具会拒绝模型读取被标记技能（`Error: skill "material-writing" is not available for model invocation`，69 字符、无正文），与阶段 A/A2 指针冲突。ARCHITECT 裁决“能力优先、目录开销其次”，仅保留无绑定指针指向的 `document-review`。
+- 最终 mock（`run_mock_session.py --label stageB-final`）：`skill-catalog` 2518 → 2401 字符（−117，−4.65%），目录技能 19 → 16；只有 `document-review` 消失，`anysearch` / `material-writing` / `knowledge-search` 仍在目录中。4 条会话均为 2401。
+- 同步：`sync-skills.sh` 在 macOS 上因 BSD `realpath` 不支持 `-m` 直接失败，未改脚本，用 `/tmp/od174-bin/realpath` 兼容包装后执行；最终状态先报 3 个 Skill 漂移，同步后 `--check` 一致（exit 0）。隔离副本核对：仅 `document-review` 带标记。同步副作用：全量同步时删除旧备份 `knowledge-search/SKILL.md.bak-1794761541` 并重新物化两个 references 目录（同步前已有漂移），均为隔离运行时副本。
+- 回归（最终状态补跑）：`verify_conversation_prompt.py` 33/33、`verify_skill_bindings_082.py` 69/69、`verify_skill_scope_107.py` 33/33、`verify_worklog_089.py` 86/86 通过；`sync-skills.sh --check` 一致。
+- 未验证：真实模型行为；用户手点 `document-review` 的真实窗口路径；macOS 下 `sync-skills.sh` 的直接可运行性。
+- 证据：`tests/verification/desktop/evidence/od-arch-174/stageB.md`、`mock-run-stageB-final.log`、`stageB-probe-material-writing.log`（全量试验的阻断证据，evidence 被 `.gitignore` 忽略）。
+- Git：HEAD `f1e06a3`；`skills/` 下唯一改动是 `M skills/document-review/SKILL.md`；未提交、未推送、未打标签。
+
+## OD-ARCH-174 阶段 A2：knowledge 专用绑定键（2026-11-17，待 ARCHITECT 复核）
+
+- 改动：`samples/profiles/discipline.rules.json` 新增 `"knowledge": {"skills":["knowledge-search"],"max_injected":1}`；`conversationPrompt.ts` 的 `ConversationPreset` 与组装输入增加可选 `knowledgeSkills`，知识指针改从该字段取首个非空项（不再从 `preset.skills` 找）；`HomeCanvas.tsx` 独立读取 `skill_bindings["knowledge"]` 并透传；`HomeChat.tsx` 只加字段透传。未改 `aiDraft.ts`、`runtime/`、凭证或模型路由。
+- 普通对话的透传理由：未分类/自定义分类对话 `preset=null`，知识检索随时可能发生；因此 `HomeCanvas` 用独立 `useMemo` 读绑定，`HomeChat` 透传 `knowledgeSkills` 给组装器。不混入 `preset.skills`/`skillsByFlow`，四场景主指针不受影响。
+- 规则校验：`profile_rules.rs` 的绑定键校验无场景白名单（只要求非空、每场景 ≤3、总键数 ≤12），`knowledge` 键直接通过；出厂规则单测同步改为「`knowledge-search` 只进专用 `knowledge` 绑定，其余场景绑定仍不得预注入它」。设置页把非固定流程键作为额外键原样保留，整表保存不会冲掉。
+- 决策记录：`docs/decisions.md` 在 D-035 之后新增 D-108，写明指针机制使注入成本从 4901 字正文降为 151 字指针、原「没有注入点」前提失效；`knowledge` 绑定独立于四场景主指针；复审触发四条。
+- 探针（真实源码编译后 Node 调用，与 `HomeCanvas` 同构）：weekly-note 无检索 → `memory-agent`；weekly-report → `memory-report`；writing → `material-writing`；project → `project-agent`；weekly-note + 检索上下文 → 主指针仍 `memory-agent` + 知识指针（855 字符）；writing + 检索上下文 + `knowledgeSkills` → 主指针 `material-writing` + 知识指针（1115）；普通对话（`preset=null`）+ 检索上下文 + `knowledgeSkills` → 只有知识指针（235）。知识指针 151 字符。
+- 结果：`cd desktop && npx tsc --noEmit` exit 0；`verify_conversation_prompt.py` 33/33、`verify_skill_bindings_082.py` 69/69、`verify_worklog_089.py` 86/86、`verify_work_review_213.py` 25/25、`verify_skill_scope_107.py` 33/33、`verify_profile_assets_109.py` 41/41 通过；`verify_profile_rules_068.py` 26/27，唯一失败仍是既有 `16_keywords`（本地拦截词期望 16、实际 2）；`verify_capabilities_072.py` 因本机无 Xvfb 未运行；`OMNIDESK_PYTHON=/usr/bin/python3 ~/.cargo/bin/cargo test --offline --lib -- --test-threads=1` → 1200 passed / 0 failed / 1 ignored（49.02s）。
+- 未验证：真实模型检索行为；现有安装的 `~/OmniDesk/app/profiles/discipline/rules.json` 未迁移（只改仓库出厂资产，按约束不动用户数据），需「恢复默认规则包」或重装后 `knowledge` 绑定才生效；设置页不显示可勾选的 `knowledge` 固定行（仅作为额外键保留）；真实窗口提交链路未运行。
+- 证据：`tests/verification/desktop/evidence/od-arch-174/stageA.md` 第 6 节与 `stageA_probe.json`（evidence 被 `.gitignore` 忽略）。
+- Git：HEAD `f1e06a3`；本阶段在阶段 A 工作树上新增 `M docs/decisions.md`、`M desktop/src/shell/HomeCanvas.tsx`、`M desktop/src/shell/HomeChat.tsx`、`M desktop/src-tauri/src/profile_rules.rs`、`M samples/profiles/discipline.rules.json`、`M verify_worklog_089.py`；未提交、未推送、未打标签。
+
+## OD-ARCH-174 阶段 A：指针补全与绑定修正（2026-11-17，待 ARCHITECT 复核）
+
+- 改动：`desktop/src/conversationPrompt.ts` 新增 `defaultSceneSkills()` 与 `knowledgeSkillPointer()`（`KNOWLEDGE_POINTER_MAX_CHARS = 260`）。默认分支不再无条件取 `presetSkillsFor(preset, "report")`：仅当 `preset.key === "weekly"` 且 `mode="report"` 或宿主传了 `worklog` 时用 `weekly-report` 绑定，writing / project / 无意图一律取本场景 `preset.skills`。`knowledgeContext` 非空且 `preset.skills` 绑定 `knowledge-search` 时，在检索上下文后追加 151 字符检索指针（先读 `库/知识库/索引.md`、按标签定位、只加载 1–2 张卡、未命中如实说明）；未绑定或没上下文不注入，正文不入提示词。note / daily-summary / period-review 分支与 weekly-report 指针不变。
+- 选择最小改法的理由：`preset.key` 已是场景键（与 `scenes.ts`、`HomeCanvas` 一致），周报流程用宿主已传入的 `worklog`/`mode` 判定，不改 `HomeCanvas`/`HomeChat`/`aiDraft.ts`，也不新增 preset 字段。
+- 验证脚本：`verify_skill_bindings_082.py` 新增 4 条断言（writing/project 残留 `skillsByFlow.report` 时仍只取场景绑定；weekly 无 mode/worklog 用 `memory-agent`；weekly 有 worklog 用 `memory-report`）；`verify_conversation_prompt.py` 新增 7 条 knowledge 指针断言（上下文顺序、≤260、正文不入、无绑定/无上下文不注入）。旧断言全部保留。
+- 四场景直接组装（真实源码编译后 Node 调用，与 `HomeCanvas` 同构）：weekly-note → `memory-agent`（642 字符）、weekly-report → `memory-report`（918）、writing → `material-writing`（899）、project → `project-agent`（865）；knowledge（写作场景追加 `knowledge-search` 绑定 + 检索上下文）→ 主指针 `material-writing` + 检索指针 `knowledge-search`（151 字符）。
+- 结果：`cd desktop && npx tsc --noEmit` exit 0；`verify_conversation_prompt.py` 33/33、`verify_skill_bindings_082.py` 62/62、`verify_worklog_089.py` 85/85、`verify_attachments_077.py` 25/25、`verify_resume_token_savings.py` 11/11、`verify_ai_draft.py` 27/27 通过。`verify_profile_rules_068.py` 26/27，唯一失败 `16_keywords`（期望 16、实际 2）只读 `discipline.rules.json` 的本地拦截词数量，HEAD 资产即本地零拦截，属既有失效断言；`verify_skill_flow_injection_108.py` 未运行（macOS 无 Xvfb，启动即因 `/private/tmp` 路径判定拒绝清理）。
+- 未验证：真实模型行为；真实窗口提交链路（`HomeCanvas` 构造与探针同构，静态比对）；默认 Profile 的 knowledge 指针尚未可达——出厂规则包没有任何 `knowledge-search` 绑定，按任务约束未改 `samples/profiles/`，需规则资产绑定后才生效；主技能指针仍带“只用这一个技能”，knowledge 检索指针追加后存在两条指引的文案张力，留待真实模型观察/阶段 C 收敛。
+- 证据：`tests/verification/desktop/evidence/od-arch-174/stageA.md`、`stageA_probe.js`、`stageA_probe.json`（evidence 被 `.gitignore` 忽略）。
+- Git：HEAD `f1e06a3`；开始时已有 `M PLANS.md`，本阶段新增 `M desktop/src/conversationPrompt.ts`、`M verify_conversation_prompt.py`、`M verify_skill_bindings_082.py`；未提交、未推送、未打标签。
+
 ## OD-ARCH-173 真实模型 smoke 补录（2026-11-17，用户授权换 key 后执行）
 
 - **根因修正（文件事实 + 脚本运行）：** OmniDesk 的 OD_Key 是旧账号 key（OpenDesign 侧 free 档、钱包 0），与用户当前 Codex 通道的新 key 不同。已把 OpenDesign 路由配置中的现行 key 同步到 ~/OmniDesk/runtime/dsh-home/.credentials.yaml（原文件已备份 .bak-odkey-*），并移除 ~/OmniDesk/app/config/omnidesk-model.yml 中端点不支持的 reasoningEffort: off 两行（备份 .bak-odarch173-*）。全程未读取或打印任何密钥值，只比对前缀与长度。
@@ -104,3 +150,13 @@
 - 未提交未推送。
 
 > 更早的执行记录已归档到仓库外 `MyWorkStation-archive/2026-11-17/process-docs/`。
+
+## OD-ARCH-174 Skill 优化（2026-11-17，三阶段完成，ARCHITECT 逐阶段复核）
+
+**阶段 A/A2：** 四场景指针串号修复（defaultSceneSkills）；knowledge 专用绑定键（rules.json + HomeCanvas 独立读取 + HomeChat 透传），普通对话也注入 151 字符检索指针；D-108 决策记录。验证：tsc 0、verify_conversation_prompt 33/33、skill_bindings_082 69/69、worklog_089 86/86、cargo 1200 全过。
+
+**阶段 B：** disable-model-invocation 实验发现会同时关闭 skill 工具执行（阻断指针链路），ARCHITECT 裁决收缩为只保留 document-review 标记；目录 2518 到 2401；能力零损失。
+
+**阶段 C：** 三核心技能正文压至原 63-70%（memory-agent 1754 到 1228、memory-report 1099 到 749、period-review 1820 到 1268），契约逐字保留，082/089/503/505 全过。真实模型端到端：模型实际调用 skill(memory-report) 读到重写正文并按五段模板完整产出——指针、按需读取、按契约输出全链路确认。
+
+**已知缺口：** sync-skills.sh macOS realpath 兼容未修；已安装 Profile 需恢复默认规则包获得 knowledge 绑定；其余 7 个按需技能未重写；设置页未展示 knowledge 绑定编辑。

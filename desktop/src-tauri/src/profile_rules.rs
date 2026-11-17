@@ -882,12 +882,22 @@ mod tests {
         assert!(weekly.skills.len() <= weekly.max_injected);
         assert!(note.skills.len() <= note.max_injected);
         assert!(report.skills.len() <= report.max_injected);
-        // anysearch / knowledge-search / document-review / knowledge-agent 不进任何绑定。
-        for scene in rules.skill_bindings.values() {
+        // OD-ARCH-174 A2：knowledge-search 只进专用 knowledge 绑定（知识检索流程），
+        // 不进四场景主指针；其余按需能力仍不预注入。
+        let knowledge = rules
+            .skill_bindings
+            .get("knowledge")
+            .expect("知识检索流程必须有专用绑定");
+        assert_eq!(knowledge.skills, vec!["knowledge-search"]);
+        assert_eq!(knowledge.max_injected, 1);
+        for (key, scene) in &rules.skill_bindings {
+            if key == "knowledge" {
+                continue;
+            }
             for ondemand in ["anysearch", "knowledge-search", "document-review", "knowledge-agent"] {
                 assert!(
                     !scene.skills.iter().any(|s| s == ondemand),
-                    "{ondemand} 不应被预注入"
+                    "{ondemand} 不应被预注入（{key}）"
                 );
             }
         }

@@ -96,6 +96,42 @@ check("continuation_preset_drops_context", !continuedPreset.includes("第一轮�
 check("continuation_preset_keeps_current", continuedPreset.includes("第三轮提问"), "");
 check("continuation_preset_keeps_forbidden_rule", continuedPreset.includes("不处理案件材料"), "");
 
+// 5) OD-ARCH-174 A：knowledgeContext 命中时，绑定了 knowledge-search 的场景在
+// 检索上下文后补一条检索指针；没绑定或没有上下文都不注入。
+const knowledgeSkill = {
+  id: "knowledge-search",
+  content: "---\nname: knowledge-search\n---\n正文不应进入提示词 KNOW-BODY",
+};
+const knowledgePreset = {
+  key: "writing",
+  label: "文案起草",
+  rules: weekly.rules,
+  sections: weekly.sections,
+  writingRules,
+  skills: null,
+  knowledgeSkills: [knowledgeSkill],
+};
+const withKnowledge = mod.composeConversationPrompt({
+  preset: knowledgePreset,
+  turns: [],
+  current: "查一下专项检查频次",
+  knowledgeContext: "知识库检索上下文 KNOW-MARKER",
+});
+check("knowledge_context_kept", withKnowledge.includes("KNOW-MARKER"), "");
+check("knowledge_pointer_injected", withKnowledge.includes("知识检索技能指引（knowledge-search）：") && withKnowledge.includes("库/知识库/索引.md"), "");
+check("knowledge_pointer_after_context", withKnowledge.indexOf("KNOW-MARKER") < withKnowledge.indexOf("知识检索技能指引"), "");
+check("knowledge_pointer_bounded", mod.knowledgeSkillPointer(knowledgeSkill).length <= mod.KNOWLEDGE_POINTER_MAX_CHARS, String(mod.knowledgeSkillPointer(knowledgeSkill).length));
+check("knowledge_body_not_in_prompt", !withKnowledge.includes("KNOW-BODY"), "");
+const noBindingKnowledge = mod.composeConversationPrompt({
+  preset: { ...knowledgePreset, knowledgeSkills: null },
+  turns: [],
+  current: "查一下专项检查频次",
+  knowledgeContext: "KNOW-MARKER",
+});
+check("knowledge_pointer_requires_binding", noBindingKnowledge.includes("KNOW-MARKER") && !noBindingKnowledge.includes("知识检索技能指引"), "");
+const noContextKnowledge = mod.composeConversationPrompt({ preset: knowledgePreset, turns: [], current: "查一下专项检查频次" });
+check("knowledge_pointer_requires_context", !noContextKnowledge.includes("知识检索技能指引"), "");
+
 console.log(JSON.stringify({ cases, failed: cases.filter((c) => !c.ok).length }));
 """
 

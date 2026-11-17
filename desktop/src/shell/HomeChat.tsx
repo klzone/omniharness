@@ -143,6 +143,8 @@ export interface ChatPreset {
     summary?: Array<{ id: string; content: string }> | null;
     periodReview?: Array<{ id: string; content: string }> | null;
   } | null;
+  /** 知识检索流程的专用绑定（OD-ARCH-174 A2），不混入场景级绑定。 */
+  knowledgeSkills?: Array<{ id: string; content: string }> | null;
 }
 
 export interface ChatMessage {
@@ -599,6 +601,11 @@ export interface HomeChatProps {
   onNewThread?: () => void;
   /** 开场预设：把场景规则、期望章节与材料位置约定带进对话（OD-ARCH-031）。 */
   preset?: ChatPreset | null;
+  /**
+   * 知识检索专用绑定（OD-ARCH-174 A2）：普通对话没有 preset 时由宿主单独透传，
+   * 命中知识库检索上下文时只追加一条检索指针。
+   */
+  knowledgeSkills?: Array<{ id: string; content: string }> | null;
   /** 项目工作目录（绝对路径）；缺省时用宿主准备的工作区。 */
   projectDir?: string | null;
   /** 线程标识：变化时重置对话（切换会话）。 */
@@ -641,6 +648,7 @@ export interface HomeChatProps {
 export function HomeChat({
   onNavigate,
   preset = null,
+  knowledgeSkills = null,
   searchQuery = "",
   searchCurrentIndex = 0,
   onSearchMatchesChange,
@@ -3069,6 +3077,7 @@ text: "已记录到 " + receipt.date + "：" + text + "\n模型分析中…",
               }
             : null,
           knowledgeContext,
+          knowledgeSkills,
         });
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：

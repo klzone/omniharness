@@ -1113,6 +1113,17 @@
 - **证据：** `cargo test --offline`、`pytest tests -q`、`npx tsc --noEmit`、`npm run build`、`verify_skill_bindings_082.py`（含 note/report 各自只注入自己那一个）、`verify_worklog_089.py`、`tests/verification/phase-worklog/verify_env_085.py`、`verify_skill_scope_107.py`。
 - **复审触发：** ①真实模型实测中「该搜却不搜」的比例明显偏高，需要回到预注入；②出现第三条共用同一场景的流程，考虑把 `skillsByFlow` 的键改成任意流程名；③知识库加入模型问答，需要单独的绑定键；④用户想自己调整哪条流程绑什么，规则编辑器要能直出这些键。
 
+### D-108（2026-11-17，OD-ARCH-174 A2 已实施）：知识检索使用专用绑定键，不占场景主指针
+
+- **状态：** 已实施（`samples/profiles/discipline.rules.json`、`desktop/src/conversationPrompt.ts`、`desktop/src/shell/HomeCanvas.tsx`、`desktop/src/shell/HomeChat.tsx`、`desktop/src-tauri/src/profile_rules.rs` 的出厂规则测试）；真实模型在默认 Profile 下的检索行为未实测。
+- **决策：** `skill_bindings` 新增专用键 `knowledge` → `knowledge-search`（`max_injected: 1`）。它不参与四场景主指针的选取：`HomeCanvas` 单独读取并作为 `knowledgeSkills` 透传，`composeConversationPrompt` 只在 `knowledgeContext` 非空时于检索上下文后追加一条 151 字符检索指针（先读 `库/知识库/索引.md`、按标签定位、只加载 1–2 张卡、未命中如实说明）。无绑定或无上下文都不注入，正文不进提示词。
+- **原前提失效：** D-035 记录「知识库绑定 knowledge-search 没有注入点，只能纯按需」，当时成立的前提是绑定必然带来 4901 字技能正文。OD-ARCH-173 阶段 2 把正文注入改为 ≤260 字符指针后，注入成本降到 151 字，且 `knowledge-search` 不再需要模型自行发现；按需检索的收益（少读整库）由技能正文承担，平台只负责说清「用哪个技能、读哪张索引」。
+- **为什么不混入场景级绑定：** 知识检索是横切能力，可能发生在工作记录、写作、项目或无场景的普通对话里。混入 `preset.skills` 会挤占四场景「每轮只一个主指针」的位置，也会让写作场景的 `material-writing` 被知识技能顶掉。专用键让两套指针各自独立：场景主指针照旧，检索上下文命中时才多一条知识指针。
+- **普通对话的透传：** `preset` 在未分类/自定义分类对话里为 null，所以 `HomeChat` 允许单独透传 `knowledgeSkills` 给组装器；`ConversationPreset` 也保留同名字段，测试与场景路径可直接带出。二者不参与 `skillsByFlow`。
+- **规则资产与校验：** 绑定键校验原本只要求非空、每场景 ≤3 个技能、总键数 ≤12，没有场景白名单，`knowledge` 键直接通过；设置页把不在五个固定流程里的绑定当“额外键”原样保留，保存整表不会把它冲掉。
+- **证据：** `npx tsc --noEmit` exit 0；`verify_conversation_prompt.py` 33/33、`verify_skill_bindings_082.py` 69/69、`verify_worklog_089.py` 86/86、`verify_work_review_213.py` 25/25、`verify_skill_scope_107.py` 33/33、`verify_profile_assets_109.py` 41/41；`cargo test --offline --lib -- --test-threads=1` 1200 passed / 0 failed / 1 ignored。Node 探针：weekly-note 主指针 `memory-agent` 且知识指针同时出现，writing 主指针 `material-writing` 不被知识指针替换，普通对话（preset=null）也注入知识指针。证据目录 `tests/verification/desktop/evidence/od-arch-174/`。
+- **复审触发：** ①真实模型在默认 Profile 下仍不读知识卡，或反过来无检索需求也频繁读 `knowledge-search`；②知识库升级为独立对话场景，需要它自己的场景规则与主指针；③阶段 B 给 `knowledge-search` 加 `disable-model-invocation` 后，指针注入链路出现回归；④用户需要在设置页里直接编辑 `knowledge` 绑定（目前它作为额外键保留但不在固定行里展示）。
+
 ### D-036（2026-10-28，OD-ARCH-104 插件挂载已实施，待真实模型实测）：办公 Skill 随专业 Profile 挂载，基础标准保持官方插件面
 
 **状态：** 已实施（`samples/profiles/discipline.profile.patch.yml`、实机 `~/OmniDesk/runtime/dsh-home/profiles/discipline/cordis.patch.yml`、`tests/verification/desktop/verify_plugin_scope_104.py`）；office 三个技能在真实会话中的实际调用尚未实测；出厂播种缺口未修。

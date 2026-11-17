@@ -390,6 +390,23 @@ export function HomeCanvas({
     };
   }, [effectiveTag, pack, rulesView, declaredScenes, declFailed]);
 
+  /**
+   * 知识检索专用绑定（OD-ARCH-174 A2）。
+   *
+   * 知识库是横切能力，不绑定到任何一个场景；普通对话没有 preset（preset 为 null），
+   * 所以这里单独读取并透传给 HomeChat，命中检索上下文时只追加一条检索指针。
+   */
+  const knowledgeSkills = useMemo(() => {
+    const bound = rulesView?.rules?.skill_bindings?.["knowledge"];
+    if (!bound) return null;
+    const maxInjected = bound.max_injected ?? 3;
+    const skills = (bound.skills ?? [])
+      .slice(0, maxInjected)
+      .map((id) => ({ id, content: rulesView?.skill_contents?.[id] ?? "" }))
+      .filter((s) => s.content.trim().length > 0);
+    return skills.length > 0 ? skills : null;
+  }, [rulesView]);
+
   const categories = useThreadCategories();
   const options = useMemo(
     () => sceneOptions(categories, declaredScenes, declFailed),
@@ -503,6 +520,7 @@ export function HomeCanvas({
           key={viewKey}
           onNavigate={onNavigate}
           preset={preset}
+          knowledgeSkills={knowledgeSkills}
           sceneOptions={options}
           activeTag={effectiveTag}
           onChangeTag={changeTag}

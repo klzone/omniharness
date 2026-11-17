@@ -42,6 +42,13 @@ export interface ConversationPreset {
     summary?: Array<{ id: string; content: string }> | null;
     periodReview?: Array<{ id: string; content: string }> | null;
   } | null;
+  /**
+   * 知识检索流程的专用绑定（OD-ARCH-174 A2）。
+   *
+   * 知识库是横切能力：命中检索上下文时才追加一条检索指针，不参与四场景主指针的
+   * 选取，也不混进 skills / skillsByFlow。
+   */
+  knowledgeSkills?: Array<{ id: string; content: string }> | null;
 }
 
 /** 周期复盘的标题深度（OD-WR-505），与宿主 review_store.rs 和 Skill 保持一致。 */
@@ -172,6 +179,9 @@ export function presetSkillsFor(
 /** 每个动作最多注入一个主 Skill 的元数据（OD-ARCH-173 阶段 2），字符上限。 */
 export const SKILL_POINTER_MAX_CHARS = 260;
 
+/** 知识检索指针的字符上限（OD-ARCH-174 阶段 A）。 */
+export const KNOWLEDGE_POINTER_MAX_CHARS = 260;
+
 /** 从 Skill 正文的 YAML frontmatter 读取一个顶层字段；没有 frontmatter 时返回 null。 */
 function frontmatterValue(content: string, key: string): string | null {
   const lines = content.split("\n");
@@ -216,6 +226,41 @@ export function skillPointers(
 ): Array<{ id: string; content: string }> | null {
   const picked = (skills ?? []).filter((s) => s.content.trim().length > 0).slice(0, 1);
   return picked.length > 0 ? picked.map((s) => ({ id: s.id, content: skillPointer(s) })) : null;
+}
+
+/**
+ * 知识检索的技能指针（OD-ARCH-174 阶段 A）。
+ *
+ * 知识库是横切能力：宿主已经检索出上下文时，模型仍需要知道「先读索引、按标签定位、
+ * 只加载 1–2 张卡」这条路径。这里只拼指针，正文仍由 skill 工具按需读取。
+ */
+export function knowledgeSkillPointer(skill: { id: string; content: string }): string {
+  const name = frontmatterValue(skill.content, "name") ?? skill.id;
+  const pointer = [
+    "主技能：" + name + "（知识库检索）",
+    "检索：先读 库/知识库/索引.md，按标签定位，只加载命中的 1–2 张卡；未命中如实说明「知识库未收录」。",
+    "读取：调用 skill 工具，name=" + name + "（PTC 下在 run_code 内 tools.skill）。",
+  ].join("\n");
+  return pointer.length <= KNOWLEDGE_POINTER_MAX_CHARS
+    ? pointer
+    : pointer.slice(0, KNOWLEDGE_POINTER_MAX_CHARS - 1) + "…";
+}
+
+/**
+ * 默认分支（report / 无意图的完整组装）该注入哪一组技能。
+ *
+ * 工作记录场景同时带出 note 与 report 两套绑定，但 writing / project 只带场景级
+ * `preset.skills`。默认分支不能无条件按 report 取：只有场景本身就是 weekly、并且
+ * 明确处于周报流程（mode=report，或宿主传了当周记录）时，才用 weekly-report 绑定；
+ * 其余场景当前场景自己的绑定就是 `preset.skills`（OD-ARCH-174 阶段 A）。
+ */
+function defaultSceneSkills(
+  preset: ConversationPreset,
+  mode: "note" | "report" | "daily-summary" | "period-review" | undefined,
+  hasWorklog: boolean,
+): Array<{ id: string; content: string }> | null {
+  const weeklyReportFlow = preset.key === "weekly" && (mode === "report" || hasWorklog);
+  return weeklyReportFlow ? presetSkillsFor(preset, "report") : preset.skills ?? null;
 }
 
 export function composeConversationPrompt(input: {
@@ -269,14 +314,28 @@ export function composeConversationPrompt(input: {
   noteIndex?: { week: string; today: string; entries: string } | null;
   /** OD-ARCH-141 S5：已检索到的知识库上下文（≤3000 字）。 */
   knowledgeContext?: string | null;
+  /**
+   * 知识检索专用绑定（OD-ARCH-174 A2）：普通对话没有场景预设（preset=null），
+   * 由宿主单独透传；有 preset 时可从 preset.knowledgeSkills 取。
+   */
+  knowledgeSkills?: Array<{ id: string; content: string }> | null;
 }): string {
   const context = input.continuation
     ? "用户：" + input.current
     : buildContext(input.turns, input.current);
   const preset = input.preset;
   // knowledgeContext 已由 knowledgeRetrieval 带上引用约束标题，这里只负责放位置。
+  // OD-ARCH-174 阶段 A/A2：有检索上下文时，若 knowledge 流程绑定了检索技能，就在上下文后
+  // 补一条检索指针；没绑定不注入，不硬编码技能正文。
+  const knowledgeSkills = input.knowledgeSkills ?? preset?.knowledgeSkills ?? null;
+  const knowledgeSkill = input.knowledgeContext?.trim()
+    ? (knowledgeSkills ?? []).find((s) => s.content.trim().length > 0)
+    : undefined;
+  const knowledgeSkillBlock = knowledgeSkill
+    ? ["知识检索技能指引（knowledge-search）：", knowledgeSkillPointer(knowledgeSkill), ""]
+    : [];
   const knowledgeBlock = input.knowledgeContext?.trim()
-    ? [input.knowledgeContext.trim(), ""]
+    ? [input.knowledgeContext.trim(), "", ...knowledgeSkillBlock]
     : [];
   if (!preset) return [context, ...knowledgeBlock].filter(Boolean).join("\n");
   if (input.mode === "daily-summary") {
@@ -453,8 +512,9 @@ export function composeConversationPrompt(input: {
     sceneRules: preset.rules,
     sceneSections: preset.sections,
     writingRules: preset.writingRules ?? null,
-    // OD-ARCH-108：周报只带周报自己的底线技能（memory-report）；
+    // OD-ARCH-108 / OD-ARCH-174 S A：只有 weekly 的周报流程才取 weekly-report 绑定；
+    // 其余场景（writing / project / 无意图）用本场景自己的绑定。
     // OD-ARCH-173 S2：只给元数据指针，正文由模型按需读取。
-    skills: skillPointers(presetSkillsFor(preset, "report")),
+    skills: skillPointers(defaultSceneSkills(preset, input.mode, Boolean(input.worklog))),
   });
 }
