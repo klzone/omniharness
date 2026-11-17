@@ -190,6 +190,19 @@
 
 **发布验收：** 版本 0.2.31 → 0.2.32（package.json + tauri.conf.json），CHANGELOG 0.2.32 条目含 Added/Changed/Verification/升级说明；提交推送后 release.yml 自动构建。阶段 4（真实模型端到端、selectModel 持久化影响面）留待 0.2.32 Windows 实测后补录。
 
+# 线上回归：工作记录场景 engine_unavailable（2026-11-17，ARCHITECT 责任事故，已修复于 0.2.33）
+
+**现象：** 0.2.32 用户实测工作记录场景每条消息报 `engine_unavailable`，未分类 / 文案写作场景正常；与思考档位、提供商无关。
+
+**根因（ARCHITECT 的实现判断错误）：** OD-ARCH-176 阶段 1 依据 prompt 路径行为推断「未声明模型传 off 必被接受」——该结论只对 session/prompt 成立。真实 DSH 的 **session/selectModel** 走 `resolveCallConfig` 校验，对 reasoning=false（未声明档位）的模型拒绝任何显式 effort（含 off），RemoteError 为 `session/model-unavailable`，被适配层 `_map_rpc_failure` 兜底映射成 ENGINE_UNAVAILABLE。工作记录场景每轮分类都带 off+provider/model，故必挂；其他场景不带这些参数，故正常。阶段 2 的两层证据预判只覆盖「声明集合不含 off」，未覆盖「未声明」这一更普遍情形；单元测试 mock 了 select_model、harness 场景不带档位参数，真实 DSH 行为从未实测——**教训：凡是新增引擎 RPC 调用，必须有真实引擎回归，mock 全绿不等于可用。**
+
+**修复（0.2.33）：**
+1. 前端 `workIntentDecision.ts`：新增 `effortEvidenceIncludes`，档位必须被证据「证明支持」才下发；未声明 / 目录不可用一律不传（未声明模型无思考可关，等效直出）；用户手动档位同样需要证据支持。
+2. 适配器 `_apply_reasoning_effort`：select_model 失败捕获 EngineError、记 stderr、按模型默认继续，不再炸整轮任务。
+3. `_map_rpc_failure`：`session/model-unavailable` 改判 INVALID_ARGUMENT，呈现真实原因。
+
+**验证：** 真实 DSH 回归 `verify_effort_select_degrade.py` 4/4（selectModel 拒绝 → stderr 降级 → 任务按默认档成功）；verify_arch_176 71/71（用例按新语义更新）；cargo 1209/0 单线程；tsc / build 通过。ARCHITECT 对本事故负全责：阶段 1 的「off 必被接受」结论与阶段 4 未实测即发版，是两个叠加的管理失误。
+
 # 诊断：工作记录不落盘/不显示 + anysearch 技能缺失（2026-11-17，诊断级，预算 8 轮用满）
 
 **问题一：工作记录对话称已写入，工作记录分页无显示。**

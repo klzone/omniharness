@@ -516,3 +516,23 @@ M tests/verification/engine-interface/adapter/test_web_api_unit.py
 
 - 版本 0.2.31 → 0.2.32（package.json + tauri.conf.json），CHANGELOG 0.2.32 条目已写；提交推送后由 release.yml（push to main）自动构建发布。
 - 修正：release.yml 的发布版本源是仓库根 `VERSION` 文件（非 package.json），初推时 VERSION 仍为 0.2.31 会 publish=false 空跑；已补 commit 6e3dab1520（VERSION → 0.2.32）并推送，本次 CI 应以 v0.2.32 构建发布。发布提交链：c718aa6e65（feat）→ a1cb0da7ab（docs）→ 99cb0c70f9（release）→ 1e3ec584dc（test 补录）→ 6e3dab1520（VERSION 修正）。
+
+## 0.2.33 线上回归修复执行记录（ARCHITECT 亲自执行，2026-11-17）
+
+> 用户实测 0.2.32：工作记录场景每轮 engine_unavailable，其他场景正常。ARCHITECT 复现并定根因（session/selectModel 拒绝未声明模型的 off，错误兜底误映射），属 OD-ARCH-176 阶段 1 实现判断错误；详见 REVIEW.md 事故记录。本轮修复由 ARCHITECT 亲自完成。
+
+### 改动
+
+- `desktop/src/workIntentDecision.ts`：新增 `effortEvidenceIncludes`；`pickWorkIntentEffort` 改为「证据证明支持才下发」——未声明 / 目录不可用 / 声明不含该档位一律不传；用户手动档位同样需要证据。
+- `engine/omnidesk_engine/web_api_adapter.py`：`_apply_reasoning_effort` 捕获 EngineError、记 stderr、按模型默认继续（新增 `import sys`）；`_map_rpc_failure` 将 `session/model-unavailable` 改判 INVALID_ARGUMENT。
+- `tests/verification/desktop/verify_arch_176.py`：档位用例按新语义更新（71 项）。
+- `tests/verification/engine-interface/verify_effort_select_degrade.py`（新增）：真实 DSH 回归——selectModel 拒绝未声明模型 off → 适配器降级 → 任务成功，4 项断言。
+
+### 验证（实际命令与结果）
+
+- 真实 DSH 回归：`python3 tests/verification/engine-interface/verify_effort_select_degrade.py` → 4/4（此前同参数复现出 `[engine_unavailable] provider "fake" model "synthetic-model" does not support reasoning effort "off"`，修复后任务成功完成）。
+- `verify_arch_176.py` 71/71、`verify_companion_plugins_177.py` 11/11、`verify_model_route_precheck_175.py` 12/12+11/11、`cargo test --lib --test-threads=1` 1209/0、`tsc` / `npm run build` 通过。
+
+### 发布
+
+- 0.2.32 → 0.2.33（VERSION / package.json / tauri.conf.json），CHANGELOG 0.2.33 条目已写；推送后 CI 以 v0.2.33 构建发布（cancel-in-progress 会取消未完成的 0.2.32 构建，只发布 0.2.33）。
