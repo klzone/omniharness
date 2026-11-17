@@ -19,6 +19,18 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit 与 npm run build：通过。
 - 工作记录相关 verify 脚本 301/502/503/504/505/506/507/508/509 全通过。
 
+## [0.2.31] - 2026-11-17
+
+### Changed
+- Skill 优化（OD-ARCH-174）：四场景技能指针各归其位（修 writing/project 可能错拿周报指针）；知识检索专用绑定键 `knowledge → knowledge-search`，宿主检索命中时追加 151 字符检索指针，普通对话同样生效（D-108）；模型技能目录 2518 → 2401 字符（document-review 转纯手点）；核心技能正文重写——memory-agent 1754→1228、memory-report 1099→749、period-review 1820→1268，输出契约与硬约束逐字保留。
+
+### Verified
+- 「指针 → 模型调用 skill 读取 → 按契约输出」全链路真实模型验证：模型实际调用 skill(memory-report) 读到重写正文并按五段模板完整产出。
+- cargo test 1200 全过；tsc / npm run build 零错误；verify_conversation_prompt 33/33、skill_bindings_082 69/69、worklog_089 86/86、wr_503 58/58、wr_505 71/71。
+
+### 升级说明
+- 已安装用户需在 Profile 资产页点一次「恢复默认规则包」以获得 knowledge 检索绑定。
+
 ## [0.2.30] - 2026-11-17
 
 ### Added
