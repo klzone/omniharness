@@ -536,3 +536,129 @@ M tests/verification/engine-interface/adapter/test_web_api_unit.py
 ### 发布
 
 - 0.2.32 → 0.2.33（VERSION / package.json / tauri.conf.json），CHANGELOG 0.2.33 条目已写；推送后 CI 以 v0.2.33 构建发布（cancel-in-progress 会取消未完成的 0.2.32 构建，只发布 0.2.33）。
+
+## OD-ARCH-178/179 发版执行记录 0.2.34（ARCHITECT 亲自执行，2026-11-17）
+
+> 用户批准：登记 swamp 借鉴候选（docs/decisions.md D-110）并推送发新版本供实测「思考等级是否真正生效」；swamp 借鉴设计待用户测试后启动。
+
+### 改动
+
+- 提交内容 = OD-ARCH-178 阶段 A/B/C（档位声明进发行链 + 全路径证据门 + 目录驱动选择器）+ OD-ARCH-179（discipline persona 自查收敛规则）+ D-109/D-110 决策记录 + 全部 verify 脚本。
+- 版本 0.2.33 → 0.2.34（VERSION / package.json / tauri.conf.json），CHANGELOG 0.2.34 条目已写。
+
+### 验证（发版前最终门）
+
+- `cargo test --lib --test-threads=1` 1217/0；`tsc` / `npm run build` 通过；verify_arch_178 20+24、arch_176 71/71、175 12+12、177 11/11、202 39/40（既有失败）；真实 DSH 双向验证（声明后 selectModel 接受 off PASS；未声明优雅降级 4/4）。
+
+## OD-ARCH-179 阶段 D 立项执行记录（ARCHITECT 亲自执行，2026-11-17）
+
+> 勘察（真实 runtime 源码核实）：①`dsh-tool-bash` Config 仅 enableRunInBackground/promoteOnTimeout 两个配置项，输出截断（尾部保留 + spill 落盘）阈值是内部常量不可配，54KB 级输出在阈值内整段回灌；②`dsh-agent-loop` 与 pi-ai 无 maxSteps/stepBudget 配置面；③会话事件流 session-d87d30e7 第 24 行存在 `agent/inbox/spliced` —— turn 2 失败后 DSH 引擎把错误原因拼进 agent 收件箱，属原版自适应设计，「报错回灌」非 OmniDesk 缺陷。
+
+### 改动
+
+- `runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml`：discipline-core persona 追加「自查收敛规则」两条（OmniDesk 自查先读 app/config 两文件；bash 禁扫 storages/node_modules，大范围检索走 tool-fs-search）。work-review-core 无 shell 不适用。
+- `docs/decisions.md`：新增 D-109（宿主已验证清单 + 证据门架构、runtime 三项上游缺口登记、复审触发条件）。
+
+### 验证
+
+- seed patch YAML 可解析（python yaml.safe_load 实跑通过）；`probe_work_review_preset_213.py` 所断言的 work-review preset 块未被触碰；按用户指示不推送不发版，改动保留工作树。
+
+## OD-ARCH-178 阶段 A 执行记录（子代理，2026-11-17）
+
+> 执行范围：仅 Rust 宿主层。未改 `desktop/src/`、`engine/`、`runtime/`、`skills/`、Profile 或凭证；未提交、未推送。另一子代理并行修改的前端文件与本记录无关。
+
+### 改动
+
+- `desktop/src-tauri/src/model_routes.rs`：新增静态清单 `VERIFIED_EFFORTS`，唯一条目 `opendesign / deepseek-v4.1-flash`，7 档映射与 `profiles/omnidesk-dev/cordis.patch.yml` 已实测值一致（off→none、minimal/low/medium/high/xhigh/max 同名）。新增 `verified_efforts`、`merge_verified_efforts`、`merge_verified_efforts_in_catalog`；`list_routes` 在脚本返回后对每个 Profile 的 `modelEntries` 补声明。只在 `reasoningEfforts` 键完全缺失时补，已有声明（含 false）不改。
+- `desktop/src-tauri/src/model_settings.rs`：`render_model_entry` 在写覆盖文件时同样调用清单合并，覆盖 Profile 路由与 OmniDesk 自有 provider 两条路径；Profile 已声明优先。`yaml_scalar` 对 `off/on/yes/no/true/false/null/~/none` 加引号，避免 YAML 1.1 把映射键 `off` 读成布尔、把 `none` 读成空值。
+- 单测：清单命中合并、Profile 已声明不覆盖、provider/model 未命中不变；overlay 断言 deepseek-v4.1-flash 出现 `reasoningEfforts` 而 eco/glm 不出现；自有 opendesign provider 路径；另加一条隔离临时 patch + 仓库内 DSH CLI 的 `list_routes` 真实配置转储用例。
+
+### 验证（实际命令与结果）
+
+- `cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib -- --test-threads=1`：**1217 passed / 0 failed / 1 ignored**（共 1218）。
+- 新增用例单独复跑：3 个 catalog 合并用例、4 个 overlay/自有 provider 用例、1 个隔离 `list_routes` 转储用例均通过。
+- 证据等级：源码事实 + Rust 单测（实际执行）；`list_routes` 用例实际启动仓库内 DSH CLI 做只读 `--dump-config`，未发网络请求、未读凭证值。
+- 证据位置：`desktop/src-tauri/src/model_routes.rs`（清单与 catalog 合并）、`desktop/src-tauri/src/model_settings.rs`（overlay 渲染与 YAML 引号）；本轮未生成独立证据文件，以命令输出为准。
+
+### 未验证项
+
+1. 未重编译桌面应用，未在安装后的 DSH modelCatalog / session/selectModel 上做真实选档调用；“两端一致”由单元级 `list_routes` 与 `render_overlay` 断言覆盖，真实引擎行为待 ARCHITECT 复核后验证。
+2. `model_routes::select_route` 的覆盖文件由既有 `model-routes.mjs` 写出；它会保留当前覆盖文件中已有的声明，但不会为旧安装中缺失的声明主动补写。首次经设置页 `model_settings::save` 会写入声明；该路径之外的补写未在本阶段实现。
+3. 未为 eco/glm/其它模型声明任何档位；未改开发 Profile 的实测映射。
+
+### 交付时 Git 状态
+
+```text
+M PLANS.md（ARCHITECT 计划改动，非本次）
+M desktop/src-tauri/src/model_routes.rs
+M desktop/src-tauri/src/model_settings.rs
+M STATUS.md
+并行前端子代理另有 desktop/src/api.ts、HomeChat.tsx、ModelPicker.tsx、modelEffortEvidence.ts 等改动（非本次，实时以 git status 为准）
+```
+
+工作树改动全部保留，未提交、未推送。
+
+## OD-ARCH-178 阶段 B+C 执行记录（子代理，2026-11-17）
+
+> 执行范围：`desktop/src/` 前端、`tests/verification/desktop/` 相关 verify 与本节 STATUS 追加。未改 `desktop/src-tauri/`、`engine/`、`runtime/`、`skills/`、Profile 或凭证；未提交、未推送。阶段 A 的 Rust 改动与本节并行写入同一工作树，互不覆盖。
+
+### 改动
+
+- 新增 `desktop/src/modelEffortEvidence.ts`：档位证据的单一目录口径。`resolveModelEffortDeclaration` 先读 `listEngineModels` 的当前模型 `efforts`，目录为空/缺省时才回退 Profile 的 `reasoningEfforts`；`modelEffortOptions` 始终只给「跟随模型默认」+ 声明集合；`gatedReasoningEffort` 作为提交前裁决。
+- `desktop/src/shell/HomeChat.tsx`：4 个 `host.submitTask` 站点全部接入同一证据门并显式传 `effortEvidence`；普通对话/未分类场景由原来的「非周报场景恒 null」改为 `pickRoutedWorkIntentEffort(intent ?? "chat")`，未声明仍返回 null。初始 `modelEffort` 改为 `default`；模型声明 off 且用户未主动改档时界面自动沿用 off（与提交侧直出一致）。模型切换与场景套档先按目标模型证据裁决，不支持时回退「跟随模型默认」并在用户主动操作时提示一句。
+- `desktop/src/shell/ModelPicker.tsx`：删除固定五档（默认/关闭/低/中/高），按钮改为当前 provider+model 的声明集合；未声明只显示「跟随模型默认」。未知声明档位按 id 显示，已知档位沿用中文标签；保留 `neu-effort-btn`、`effort-advisory` 与新增 `effort-option-*` testid。
+- `desktop/src/api.ts`：`host.submitTask` 新增 `effortEvidence` 参数；转发前统一走 `gatedReasoningEffort`，调用方漏传证据或证据不含档位时静默降级 null。`collectModelEffortEvidence` 改为复用同一解析模块，目录非空时不再额外读 Profile。
+- `desktop/src/workIntentDecision.ts`：证据类型与 `effortEvidenceIncludes/Excludes` 迁到 `modelEffortEvidence.ts` 并保留原导出，避免 api 层为一道门禁拉入工作记录判定链。
+- `tests/verification/desktop/verify_arch_178.py`（新增）：20 项静态 + 24 项运行断言；`verify_arch_176.py`、`verify_model_route_precheck_175.py`、`verify_home_refine_202.py` 的旧文案/转发断言按新契约更新。
+
+### 逐站点审计结论
+
+1. `HomeChat.tsx` 分析轮（`analyzeRecordAfterWrite`，`reasoningEffort: pickRoutedWorkIntentEffort("analyze")`）：已走两层证据 + api 层复验。
+2. `HomeChat.tsx` 工作意图轮（`submitRoutedWorkIntent`，`reasoningEffort: effort` 来自 `pickRoutedWorkIntentEffort(action)`）：已走两层证据 + api 层复验。
+3. `HomeChat.tsx` 分类轮（`mode: "classify"`，`reasoningEffort: effort` 来自 `pickRoutedWorkIntentEffort("classify")`）：已走两层证据 + api 层复验。
+4. `HomeChat.tsx` 普通提交轮（原 `weeklyScene && intent` 分支）：现统一为 `pickRoutedWorkIntentEffort(intent ?? "chat")`；普通对话/未分类场景也先证明可用，未声明传 null + api 层复验。这是本轮修复的缺口站点。
+5. `HomeChat.tsx` 模型切换写覆盖文件（`shell.setModelRoute`）：提交前用同一 `effortEvidenceFromLoaded` 裁决，目标模型不支持时改发 `default`；`api.ts` 的 `setModelRoute` 继续保留 OD-ARCH-175 的 `planModelRouteEffort` 两层预检。
+6. 其余 `host.submitTask` 站点：`WritingWorkbench.tsx`、`ReviewArchive.tsx`、`WritingOutlineEditor.tsx`、`KnowledgeIngestPanel.tsx`、`WritingSectionEditor.tsx`、`WorkRecordLibrary.tsx`、`aiDraft.ts` 均不下发 `reasoningEffort`（等效 null）；api 层门禁使后续误加显式档位也不会无证据下发。
+7. `SettingsPanel.tsx` 只读 `reasoningEfforts` 做配置展示/保存前预检，不直接提交任务；不构成下发路径。
+
+### 验证（实际命令与结果）
+
+- `cd desktop && npx tsc --noEmit` → 0。
+- `cd desktop && npm run build` → 成功（vite 构建完成，仅既有 chunk 大小提示）。
+- `python3 tests/verification/desktop/verify_arch_176.py` → **cases=71 passed=71 failed=0**。
+- `python3 tests/verification/desktop/verify_model_route_precheck_175.py` → **cases 12/12; static 12/12**。
+- `python3 tests/verification/desktop/verify_arch_178.py` → **static=20/20 runtime=24/24 failed=0**。
+- `python3 tests/verification/desktop/verify_home_refine_202.py` → 39/40；`effort_advisory` 按新文案通过，唯一失败 `home_scene_backdrop` 在 HEAD 即缺少 `App.tsx` 的 `app-scape-art`（与本节改动无关）。
+- 未运行 cargo（阶段 A 并行改 `src-tauri`，按任务约束由 ARCHITECT 复核时统一跑）。
+
+### 证据等级与位置
+
+- 文件事实 / 静态检查：4 个 HomeChat 站点、api 门禁、ModelPicker 目录映射、其余 submit 站点无档位。
+- 脚本运行：真实 `desktop/src` 的 `modelEffortEvidence.ts` 与 `workIntentDecision.ts` 经 tsc 编译后在 Node 执行，覆盖未声明、声明含 off、目录优先、Profile 回退、按钮集合与门禁。
+- 证据文件：`tests/verification/desktop/evidence/od-arch-178/verify.json`、`evidence/od-arch-175/precheck.json`、`evidence/od-arch-176/verify.json`。
+
+### 未验证项
+
+1. 未在真实 DSH `session/selectModel` 上做端到端选档调用；本轮的提交门禁与切档门禁由静态检查和纯函数运行覆盖，真实引擎行为待 ARCHITECT 复核后统一验证。
+2. 未重编译桌面应用、未跑窗口级 UI 截图；ModelPicker 的按钮集合由纯函数 + 静态断言覆盖，实际渲染样式未做像素级验收。
+3. 目录与 Profile 若在真实运行中给出互相矛盾的声明，按现有门禁以目录非空声明为准；该矛盾场景未用真实端点复现。
+
+### 交付时 Git 状态
+
+```text
+M PLANS.md（ARCHITECT 计划改动，非本次）
+M STATUS.md
+M desktop/src/api.ts
+M desktop/src/shell/HomeChat.tsx
+M desktop/src/shell/ModelPicker.tsx
+M desktop/src/workIntentDecision.ts
+?? desktop/src/modelEffortEvidence.ts
+M tests/verification/desktop/verify_arch_176.py
+M tests/verification/desktop/verify_home_refine_202.py
+M tests/verification/desktop/verify_model_route_precheck_175.py
+?? tests/verification/desktop/verify_arch_178.py
+M desktop/src-tauri/src/model_routes.rs（阶段 A 并行改动，非本次）
+M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
+```
+
+工作树改动全部保留，未提交、未推送。

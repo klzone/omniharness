@@ -53,6 +53,44 @@
 > 1. verify 脚本：清单结构与渲染断言；`tsc`/`npm run build`/`cargo test --lib` 回归。
 > 2. 真实模型验证（用户执行）：引擎环境中确认技能按新文本直达 web_fetch 回退。
 
+### OD-ARCH-178：思考档位声明进发行链 + 目录驱动档位选择（待批准，2026-11-17）
+
+> **触发（用户 0.2.32 实测 + 407s 回合日志）：** ①Mac 安装的 0.2.32 中，普通对话路径把用户所选档位（low/off）无证据下发给未声明模型，被 selectModel 拒绝，连续 4 次失败（0.2.33 的证据门只覆盖工作记录场景）；②发行链的 opendesign 模型**没有声明 reasoningEfforts**（声明只存在于 dev profile patch），未声明 = DSH selectModel 拒绝一切显式档位 = 用户永远无法设置思考等级，模型跑在默认重思考档；③一个本可 8 秒回答的问题花了 404 秒：62 次模型调用、上下文 5509→76106 token（13.8 倍，单条 54KB bash grep 是断崖）、约 10 个死胡同步、提示词收敛规则无硬性执行。
+>
+> **DSH 原版设计（对照基准）：** Profile 按 model 声明 `reasoningEfforts` → modelCatalog 向 UI 暴露 → UI 只提供声明过的档位 → session/selectModel 校验并装档 → agentDefaultModel 后台持久化（最近一次选择会成为引擎默认，OmniDesk 需知情使用）。OmniDesk 发行链缺的正是声明这一环。
+
+**阶段 A（声明进发行链，核心）**
+> 1. 宿主侧能力清单：在仓库维护 opendesign 模型档位声明（deepseek-v4.1-flash 用 dev patch 已实测的 7 档映射 off→none 等；其余模型实测后逐个补充），由 `model_routes`/`render_overlay` 在生成覆盖文件时并入 model_entries 的 `reasoningEfforts`，使 modelCatalog 与 selectModel 两端一致生效。
+> 2. 已安装用户随 0.2.34 升级 + 「修复缺失/恢复出厂内容」获得声明。
+
+**阶段 B（全路径证据门收口）**
+> 1. 核对 4 个 submitTask 站点（analyze / routed / classify / weekly）之外是否仍有未走证据门的路径；普通对话路径同样接入两层证据，未声明一律不传档位、静默降级。
+
+**阶段 C（ModelPicker 目录驱动，DSH 原版行为）**
+> 1. 档位按钮按当前模型的声明档位渲染；未声明模型只显示「跟随模型默认」，不再提供会被拒绝的选项。
+
+**阶段 D（407s 类问题的硬化，独立后续）**
+> 1. bash 通道输出字节上限（tool-fs 上限不覆盖 bash，54KB 价目表灌入即断崖来源）。
+> 2. 宿主侧步数硬拦截与「连续 N 步无新事实」强制收敛。
+> 3. 排查「上一条报错文本被当作 prompt 回灌」的缺陷（日志 turn 4）。
+
+**明确不做：** 不改 runtime/；不为未实测的模型声明档位；不在本计划内做 bash 沙箱改造。
+
+**验证：** 真实 DSH 场景回归（声明模型选档 → selectModel 成功 → 生效；未声明模型选档 → 静默降级不报错）；UI 断言；既有 verify 全过；0.2.34 发版后用户 Windows/Mac 双端实测。
+
+> **执行结果（2026-11-17）：** 阶段 A/B/C 由子代理 Heisenberg / Zeno（eco + high）并行完成，ARCHITECT 复核通过并亲自完成真实 DSH 双向验证（正向：声明后 selectModel 接受 off 任务成功；负向：未声明优雅降级 4/4）；用户批准随 0.2.34 发版实测。
+
+### OD-ARCH-179：阶段 D 立项结题——pi 极简口径的收敛硬化（已实施，2026-11-17）
+
+> **触发：** 用户批准 D 项立项，要求参考 pi-agent 极简设计思路升级、不再出错。勘察结论先行：D 项原列的三件事在 runtime 配置面上大多没有杠杆——①bash 工具已有「截断到尾部 + 溢落盘」，但阈值是 runtime 内部常量，tool-bash 配置面只有 runInBackground/promoteOnTimeout；②agent-loop 无任何步数预算配置面；③「报错回灌」经会话事件流核实为 DSH 原版 `agent/inbox/spliced` 机制（失败原因拼进收件箱供模型自适应），非缺陷。按极简原则：不加宿主拦截层、不改 runtime、缺口如实记录（见 docs/decisions.md D-109），把杠杆集中在唯一可配置面——preset persona 规则与已落地的档位声明。
+
+**实施（ARCHITECT 亲自执行，改动 1 处）：**
+> 1. `runtime/dsh-home-seed/profiles/discipline/cordis.patch.yml` discipline-core persona 追加「自查收敛规则」（两条）：OmniDesk 自查类问题先读 app/config 两个配置文件各一次再作答（404 秒回合在第 44 步才读到答案文件）；bash 禁止对 storages/、node_modules/ 全目录 grep/find，大范围检索走 tool-fs-search（自带条数上限）。work-review-core 无 shell 不适用，不加。
+
+**验证与边界：**
+> - 既有 verify 回归不受影响（该文件无内容断言依赖）；发版后已安装用户经「修复缺失 / 恢复出厂内容」获得规则。
+> - 明确不做：不改 runtime/；不做宿主侧步数拦截；bash 截断阈值与步数预算记为 runtime 上游缺口（D-109 已登记复审触发条件）。
+
 ### OD-ARCH-175：未声明思考档位渠道的顺畅兼容（待批准，2026-11-17）
 
 > **触发：** 用户测试 volcengine / deepseek-v4.1-flash：未声明档位导致显式档位切换被预检阻断（错误一），且该渠道模型发现端点 404（错误二，不阻断）。用户方向：未声明模型默认不添加思考等级；用户设置了档位就尝试使用，失败自动回退默认并告知用户，确保切换与使用顺畅。

@@ -203,6 +203,46 @@
 
 **验证：** 真实 DSH 回归 `verify_effort_select_degrade.py` 4/4（selectModel 拒绝 → stderr 降级 → 任务按默认档成功）；verify_arch_176 71/71（用例按新语义更新）；cargo 1209/0 单线程；tsc / build 通过。ARCHITECT 对本事故负全责：阶段 1 的「off 必被接受」结论与阶段 4 未实测即发版，是两个叠加的管理失误。
 
+# OD-ARCH-178 复核（2026-11-17，代码级通过；应用户指示不发版）
+
+**背景：** 用户 407s 回合日志（omnidesk-407s-turn-log.md，ARCHITECT 已全文核对）证实三件事：①Mac 安装的 0.2.32 中普通对话把所选档位无证据下发，连续 4 次被 selectModel 拒绝；②发行链 opendesign 模型未声明 reasoningEfforts（声明只存在于 dev profile patch），未声明 = 档位永远设置不成功，模型跑默认重思考档；③404 秒回合 = 92.7% 模型生成（62 次调用、上下文 13.8 倍膨胀、单条 54KB bash grep 断崖）+ 约 10 个死胡同步 + 收敛规则无硬执行，合理成本约 8 秒。
+
+**审查对象：** 子代理 Heisenberg（阶段 A，Rust）、Zeno（阶段 B+C，前端），均为 deepseek-v4.1-flash-eco / high。
+
+**复核结果：**
+
+1. **阶段 A：** `VERIFIED_EFFORTS` 静态清单（唯一实测条目 opendesign/deepseek-v4.1-flash 7 档）同时并入 `task_list_model_routes` 与覆盖文件渲染；Profile 已声明不覆盖；`yaml_scalar` 修正 off/none 的 YAML 1.1 引号。复核通过。
+2. **阶段 B：** 逐站点审计（7 类 submitTask 站点 + SettingsPanel）确认全部走证据门；普通对话/未分类场景为 0.2.32 缺口站点，已接同一证据门；api.ts `gatedReasoningEffort` 作为最后一道防线（漏传证据静默降级 null）。复核通过。
+3. **阶段 C：** ModelPicker 删除固定五档，按钮由 `modelEffortOptions`（声明集合 + 跟随模型默认）渲染，未声明只出默认——与 DSH 原版目录驱动行为一致。复核通过。
+4. **ARCHITECT 实跑验证：** cargo test --lib 单线程 **1217/0**（本人复跑确认）；tsc / npm run build 通过；verify_arch_178 20+24、arch_176 71/71、175 12+12、177 11/11、202 39/40（既有失败）。
+5. **真实 DSH 双向验证（ARCHITECT 亲自执行）：** 负向——未声明模型传 off → 适配器降级、任务成功（verify_effort_select_degrade 4/4，0.2.33 已有）；**正向——覆盖文件声明 reasoningEfforts 后，真实 selectModel 接受 off 且任务成功**（新增正向用例 PASS），声明链路端到端打通。
+
+**结论：** OD-ARCH-178 阶段 A/B/C 代码级通过。按用户指示**不发新版本**，全部改动保留在工作树（HEAD 95d11d0169）未提交。阶段 D（bash 字节上限、步数硬拦截、报错回灌缺陷）与发版（0.2.34）待用户后续指令。已安装用户获得声明需升级后点「修复缺失 / 恢复出厂内容」或经设置页保存一次路由。
+
+# OD-ARCH-179 阶段 D 立项结题复核（2026-11-17，通过；ARCHITECT 亲自执行）
+
+**审查对象：** seed discipline persona 追加「自查收敛规则」两条；docs/decisions.md D-109（档位能力架构 + runtime 上游缺口登记）；STATUS/PLANS 记录。
+
+**复核结果：**
+
+1. **D 项三件事的定性（全部有 runtime 源码或事件流证据）：** ①bash 截断已存在（尾部保留 + spill 落盘），阈值内部常量不可配（tool-bash Config 仅两个开关）——上游缺口；②agent-loop 无步数预算配置面——上游缺口；③`agent/inbox/spliced` 为 DSH 原版失败自适应机制（session-d87d30e7 事件流第 24 行实证），非缺陷。极简口径下不做宿主侧 hack，缺口登记 D-109 并设复审触发。
+2. **persona 规则极简且对症：** 两条规则直接针对 404 秒回合的实证浪费（答案文件第 44 步才被读到；54KB grep 断崖）；work-review-core 无 shell 不适用故不加；规则总量约 190 字符，不违反 0.2.30 的提示词瘦身口径。
+3. **验证：** `probe_work_review_preset_213.py` 真实 DSH CLI 引导 seed profile 成功（YAML 被 DSH 解析器实吃，强于静态校验）；work-review 断言不受影响；ARCHITECT 实跑确认。
+
+**结论：** 阶段 D 立项结题。发版（0.2.34）与 Windows/Mac 双端实测仍待用户指令；本轮所有改动保留工作树未提交。
+
+# OD-ARCH-178/179 发版复核（2026-11-17，通过；0.2.34 已推送）
+
+**背景：** 用户批准登记 swamp 借鉴候选（D-110）并推送发新版本实测思考等级。ARCHITECT 亲自执行发版链。
+
+**复核结果：**
+
+1. **D-110 登记核对：** 候选方向（周期流程声明式定义，借鉴 swamp 类型/定义分离）写明「未采纳、真实需求出现才立项」与三条复审触发；授权冲突（AGPL vs PolyForm）、账号前提冲突、平行事实源三个不可融合理由如实记录。
+2. **seed 修正（关键）：** 本轮初推前发现 `runtime/dsh-home-seed/` 在 .gitignore（打包期由 prepare-runtime-assets.sh 从 samples/ 生成），我此前只改了 seed 副本——**发行包不会带上自查规则**。已把「自查收敛规则」两条同步进权威源 `samples/profiles/discipline.profile.patch.yml`（discipline-core 与 work-review-core 两处 persona 的 suffix；work-review 无 shell，规则文本仍随 preset 声明、实际不触发）。seed 与 samples 的 web-search-free 差异为历史遗留（samples 已按 OD-ARCH-173 移除、seed 副本未重建），以 samples 为准，不回改。
+3. **版本链：** 0.2.33 → 0.2.34（VERSION / package.json / tauri.conf.json），CHANGELOG 0.2.34 条目含升级说明；推送后 release.yml 以 v0.2.34 构建发布。
+
+**结论：** 0.2.34 发布通过。升级后用户需在 Profile 资产页点「修复缺失 / 恢复出厂内容」获得档位声明与自查规则；实测「思考等级是否真正生效」后启动 swamp 借鉴设计立项。
+
 # 诊断：工作记录不落盘/不显示 + anysearch 技能缺失（2026-11-17，诊断级，预算 8 轮用满）
 
 **问题一：工作记录对话称已写入，工作记录分页无显示。**
