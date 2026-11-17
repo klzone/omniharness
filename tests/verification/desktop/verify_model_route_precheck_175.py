@@ -280,8 +280,9 @@ def static_checks() -> tuple[dict[str, bool], list[str]]:
         "home_consumes_advisory": "r.advisory" in home and "setModelNote(r.advisory" in home,
         "home_syncs_effective_effort": "setModelEffort(r.reasoningEffort)" in home,
         "picker_keeps_advisory_slot": 'data-testid="effort-advisory"' in picker,
-        "picker_uses_one_line_copy": "未声明思考档位；若不支持会按默认档切换。" in picker
+        "picker_uses_one_line_copy": "该模型未声明思考档位，已跟随模型默认。" in picker
         and "该模型不支持「" in picker,
+        "picker_default_only_copy": "跟随模型默认" in picker,
         "types_efforts_optional": "efforts?: ModelCatalogEffort[] | null;" in types,
     }
     failures = [name for name, ok in checks.items() if not ok]
@@ -326,7 +327,7 @@ def main() -> int:
             print(proc.stdout)
             print(proc.stderr, file=sys.stderr)
             return 1
-        for name in ("api", "engineAdmission", "types"):
+        for name in ("api", "engineAdmission", "modelEffortEvidence", "types"):
             js = out / f"{name}.js"
             if js.exists():
                 js.rename(out / f"{name}.mjs")
@@ -340,6 +341,9 @@ def main() -> int:
         )
         api_text = api_text.replace(
             'from "./engineAdmission"', 'from "./engineAdmission.mjs"'
+        )
+        api_text = api_text.replace(
+            'from "./modelEffortEvidence"', 'from "./modelEffortEvidence.mjs"'
         )
         api_js.write_text(api_text, encoding="utf-8")
         (out / "tauri-core.mjs").write_text(CORE_STUB, encoding="utf-8")

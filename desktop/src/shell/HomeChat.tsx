@@ -108,50 +108,13 @@ import {
   type WorkIntentEffortEvidence,
   type WorkIntentContract,
 } from "../workIntentDecision";
+import {
+  effortEvidenceFromLoaded,
+  effortLabelFor,
+  gatedReasoningEffort,
+  resolveModelEffortDeclaration,
+} from "../modelEffortEvidence";
 import type { RecordReview } from "../recordReview";
-
-/**
- * 从已加载的模型目录与 Profile 原始声明提取档位证据。
- *
- * 两层顺序与 `api.ts` 的 `collectModelEffortEvidence` 相同：先看目录 efforts，
- * 目录没有非空声明时再看 Profile 的 `modelEntries.reasoningEfforts`。这里只读
- * 界面已经取得的非机密元数据，不在每轮提交前额外触发 RPC。
- */
-function effortEvidenceFromLoaded(input: {
-  catalog: EngineModelCatalog | null;
-  routes: ModelRouteListing["profiles"];
-  sourceProfile: string;
-  provider: string | null;
-  model: string | null;
-}): WorkIntentEffortEvidence | null {
-  if (!input.provider || !input.model) return null;
-  const catalogEntry =
-    input.catalog?.available === true
-      ? (input.catalog.models ?? []).find(
-          (m) => m.provider === input.provider && m.id === input.model,
-        )
-      : undefined;
-  const catalogLevels = Array.isArray(catalogEntry?.efforts)
-    ? catalogEntry.efforts.map((e) => e.id)
-    : null;
-  if (catalogLevels && catalogLevels.length > 0) {
-    return { catalogLevels, profileLevels: null };
-  }
-
-  const profile = input.routes.find((p) => p.profile === input.sourceProfile);
-  const provider = profile?.providers.find((p) => p.id === input.provider);
-  const modelEntry = provider?.modelEntries?.find(
-    (e) => e && typeof e === "object" && e.id === input.model,
-  );
-  const declared = modelEntry?.reasoningEfforts;
-  let profileLevels: string[] | false | null = null;
-  if (declared === false) {
-    profileLevels = false;
-  } else if (declared && typeof declared === "object" && !Array.isArray(declared)) {
-    profileLevels = Object.keys(declared as Record<string, unknown>);
-  }
-  return { catalogLevels, profileLevels };
-}
 
 /**
  * 首页 AI 对话（OD-ARCH-026）—— 首页的主要工作入口。
@@ -988,8 +951,12 @@ export function HomeChat({
   const streamedTasksRef = useRef<Set<string>>(new Set());
   const [, forceStreamRender] = useState(0);
   const [modelBusy, setModelBusy] = useState(false);
-  /** 思考等级（对应 DSH 的 reasoningEffort）：默认＝不传该参数。 */
-  const [modelEffort, setModelEffort] = useState("off");
+  /**
+   * 思考等级（对应 DSH 的 reasoningEffort）：default＝不传该参数。
+   * OD-ARCH-178 阶段 C：启动时不再默认拿一个未经验证的 off 下发；只有用户
+   * 在目录声明过的档位里选过，或场景默认档被证据证明支持时，才写具体档位。
+   */
+  const [modelEffort, setModelEffort] = useState("default");
   /** 最新渲染值的只读镜像：终态回调里提交后续轮次时不再依赖易变的闭包。 */
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -1295,21 +1262,25 @@ export function HomeChat({
    * 工作记录场景的思考档位：保留 OD-ARCH-176 的意图策略，并为 `off` 叠加
    * 同一份两层能力证据。证据明确不含 `off` 时传 null；其它情况仍传 `off`。
    */
-  const pickRoutedWorkIntentEffort = useCallback((intent: string): string | null => {
+  const currentEffortEvidence = useCallback((): WorkIntentEffortEvidence => {
     const factsNow = factsRef.current;
+    return effortEvidenceFromLoaded({
+      catalog: modelCatalogRef.current,
+      routes: modelRoutesRef.current,
+      sourceProfile: engineProfileRef.current,
+      provider: factsNow?.provider ?? null,
+      model: factsNow?.model ?? null,
+    });
+  }, []);
+
+  const pickRoutedWorkIntentEffort = useCallback((intent: string): string | null => {
     return pickWorkIntentEffort({
       intent,
       userSelected: effortTouchedRef.current,
       selectedEffort: modelEffortRef.current,
-      evidence: effortEvidenceFromLoaded({
-        catalog: modelCatalogRef.current,
-        routes: modelRoutesRef.current,
-        sourceProfile: engineProfileRef.current,
-        provider: factsNow?.provider ?? null,
-        model: factsNow?.model ?? null,
-      }),
+      evidence: currentEffortEvidence(),
     });
-  }, []);
+  }, [currentEffortEvidence]);
 
   const refreshAdmission = useCallback(async () => {
     setFactsLoading(true);
@@ -1384,6 +1355,50 @@ export function HomeChat({
     void loadModelRoutes();
   }, [loadModelRoutes]);
 
+  /**
+   * OD-ARCH-178 阶段 C：目录刷新或模型变化后，已选档位若不在当前模型声明集合里，
+   * 界面回退到「跟随模型默认」并提示一句。真正写覆盖文件的回退在
+   * selectModel / selectEffort 的证据门完成；这里只清掉会误导下一次切换的残留状态。
+   */
+  useEffect(() => {
+    if (!modelCatalog) return;
+    if (!facts?.provider || !facts?.model) return;
+    const declaration = resolveModelEffortDeclaration({
+      catalog: modelCatalog,
+      routes: modelRoutes,
+      sourceProfile: engineProfile,
+      provider: facts.provider,
+      model: facts.model,
+    });
+    // 声明了 off 的模型：用户没主动改过档位时，界面沿用原来的「关闭」默认，
+    // 与实际提交侧「证据支持 off 时直出」一致；未声明 off 才停在跟随默认。
+    if (
+      modelEffort === "default" &&
+      !effortTouchedRef.current &&
+      declaration.levels.includes("off")
+    ) {
+      setModelEffort("off");
+      return;
+    }
+    if (modelEffort === "default") return;
+    if (declaration.levels.includes(modelEffort)) return;
+    setModelEffort("default");
+    if (effortTouchedRef.current) {
+      setModelNote(
+        `该模型未声明或不支持「${effortLabelFor(modelEffort)}」思考档位，已跟随模型默认。`,
+        "info",
+      );
+    }
+  }, [
+    facts?.provider,
+    facts?.model,
+    modelCatalog,
+    modelRoutes,
+    engineProfile,
+    modelEffort,
+    setModelNote,
+  ]);
+
   /** 切换模型：写 OmniDesk 自己的覆盖文件 → 引擎重启 → 端点重新判定。 */
   const selectModel = useCallback(
     async (
@@ -1392,6 +1407,7 @@ export function HomeChat({
       model: string,
       effort?: string,
       byUser = true,
+      fallbackNote?: string,
     ): Promise<boolean> => {
       // OD-ARCH-095 S03：没有真实 Profile 就不发切换请求。
       // 之前候选为空时这里会带空串调用宿主，被空值校验拦下，登录后立刻弹出一条失败；
@@ -1415,7 +1431,20 @@ export function HomeChat({
       try {
         // 改选模型后，路由与端点事实都会变：先让缓存作废（OD-ARCH-041）。
         invalidateEngineFactsCache();
-        const requestedEffort = effort ?? modelEffort;
+        // OD-ARCH-178 阶段 C：目标模型没有声明（或不含）该档位时，切回
+        // 「跟随模型默认」。这条门与提交侧使用同一份目录证据。
+        const pickedEffort = (effort ?? modelEffort).trim();
+        const targetEvidence = effortEvidenceFromLoaded({
+          catalog: modelCatalogRef.current,
+          routes: modelRoutesRef.current,
+          sourceProfile,
+          provider,
+          model,
+        });
+        const requestedEffort =
+          gatedReasoningEffort(pickedEffort, targetEvidence) ?? "default";
+        const droppedEffort =
+          pickedEffort !== "" && pickedEffort !== "default" && requestedEffort === "default";
         const r = await shell.setModelRoute({
           sourceProfile,
           provider,
@@ -1424,13 +1453,18 @@ export function HomeChat({
         });
         // 情形 3：宿主本地确定显式档位必败，已按默认档提交。界面状态同步到实际
         // 生效的档位，避免下一次切换继续拿一个必败档位重试。
-        if (r.reasoningEffort && r.reasoningEffort !== requestedEffort) {
-          setModelEffort(r.reasoningEffort);
-        }
+        if (r.reasoningEffort) setModelEffort(r.reasoningEffort);
+        if (droppedEffort) setModelEffort("default");
         // 只有用户自己点的那次切换才弹提示条；切场景自动套档走的是同一个函数，
         // 它若也写提示，会盖住用户刚看到的成功文案（OD-ARCH-096 窗口实测）。
         if (byUser) {
-          if (r.advisory) {
+          if (droppedEffort) {
+            setModelNote(
+              fallbackNote ??
+                `该模型未声明或不支持「${effortLabelFor(pickedEffort)}」思考档位，已跟随模型默认。`,
+              "info",
+            );
+          } else if (r.advisory) {
             // OD-ARCH-175：一句话说明档位调整，不堆端点/类别的次要描述。
             setModelNote(r.advisory, "info");
             // TODO(OD-ARCH-175 阶段 2/4)：运行期回退通知的接口未定；宿主接入后
@@ -1438,7 +1472,7 @@ export function HomeChat({
           } else {
             setModelNote(
               `已切到 ${provider} / ${model}` +
-                (effort && effort !== "default" ? `（思考等级：${effort}）` : "") +
+                (requestedEffort !== "default" ? `（思考等级：${requestedEffort}）` : "") +
                 `，端点 ${r.route.endpoint ?? "未解析"}（类别 ${r.route.category}）。引擎已按新路由重启。`,
               "success",
             );
@@ -2039,6 +2073,7 @@ export function HomeChat({
         // OD-ARCH-176：工作记录相关的分析轮默认模型直出；用户选过档位则按所选。
         // 声明集合明确不含 off 时降为跟随模型默认，避免运行期拒绝整轮。
         reasoningEffort: pickRoutedWorkIntentEffort("analyze"),
+        effortEvidence: currentEffortEvidence(),
         provider: factsRef.current?.provider ?? null,
         model: factsRef.current?.model ?? null,
       });
@@ -2495,6 +2530,7 @@ export function HomeChat({
           userInputText: picked.length > 0 ? attachmentScanText(userText, picked) : userText,
           engineSessionId: session,
           reasoningEffort: effort,
+          effortEvidence: currentEffortEvidence(),
           provider: factsNow?.provider ?? null,
           model: factsNow?.model ?? null,
         });
@@ -3342,6 +3378,7 @@ export function HomeChat({
             userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
             engineSessionId: effectiveEngineSessionId,
             reasoningEffort: effort,
+            effortEvidence: currentEffortEvidence(),
             provider: factsNow?.provider ?? null,
             model: factsNow?.model ?? null,
           });
@@ -3555,11 +3592,10 @@ export function HomeChat({
         const promptTextWithPending = pendingHint
           ? promptText + "\n\n" + pendingHint
           : promptText;
-        // OD-ARCH-176：工作记录场景的起草轮（周报/摘要/复盘）默认跟随模型默认
-        // 思考档；用户手动选过档位则按所选档位下发。
-        const routedEffort = weeklyScene && intent
-          ? pickRoutedWorkIntentEffort(intent)
-          : null;
+        // OD-ARCH-176/178：所有提交轮都走同一证据门。起草轮（周报/摘要/复盘）
+        // 默认跟随模型默认；普通对话/未分类场景同样先证明档位可用，
+        // 未声明时传 null，静默降级。
+        const routedEffort = pickRoutedWorkIntentEffort(intent ?? "chat");
         const factsNow = factsRef.current;
         const receipt = await host.submitTask({
           promptText: promptTextWithPending,
@@ -3571,6 +3607,7 @@ export function HomeChat({
           userInputText: picked.length > 0 ? attachmentScanText(text, picked) : text,
           engineSessionId: effectiveEngineSessionId,
           reasoningEffort: routedEffort,
+          effortEvidence: currentEffortEvidence(),
           provider: factsNow?.provider ?? null,
           model: factsNow?.model ?? null,
         });
@@ -3719,8 +3756,18 @@ export function HomeChat({
       );
       // OD-ARCH-095 S03：候选里找不到这条路由时，不要退回空 Profile 去调用宿主。
       // `selectModel` 会再用引擎当前 Profile 兜底；两处都没有才真正放弃。
-      setModelEffort(effort);
-      return selectModel(route?.profile ?? "", facts.provider, facts.model, effort, byUser);
+      // OD-ARCH-178 阶段 C：档位由 selectModel 按目标模型的目录证据裁决；
+      // 未声明/不在集合内时静默改为「跟随模型默认」，用户主动点时提示一句。
+      return selectModel(
+        route?.profile ?? "",
+        facts.provider,
+        facts.model,
+        effort,
+        byUser,
+        byUser
+          ? `该模型未声明或不支持「${effortLabelFor(effort)}」思考档位，已跟随模型默认。`
+          : undefined,
+      );
     },
     [facts, modelRoutes, selectModel],
   );

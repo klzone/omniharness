@@ -12,6 +12,13 @@ import {
 } from "./workRecordVerdict";
 import { parseRecordReviewValue, type RecordReview } from "./recordReview";
 import type { PeriodReviewPeriod } from "./workIntent";
+import {
+  effortEvidenceIncludes,
+  type WorkIntentEffortEvidence,
+} from "./modelEffortEvidence";
+
+export { effortEvidenceExcludes, effortEvidenceIncludes } from "./modelEffortEvidence";
+export type { WorkIntentEffortEvidence } from "./modelEffortEvidence";
 
 export const INTENT_OPEN = "<omnidesk-intent>";
 export const INTENT_CLOSE = "</omnidesk-intent>";
@@ -157,64 +164,6 @@ export function decideWorkIntentRoute(intent: ModelWorkIntent): WorkIntentRoute 
     return { action: "daily-summary", writes: true, reviewInline: false };
   }
   return { action: "ask", writes: false, reviewInline: false };
-}
-
-/**
- * 从模型目录或 Profile 声明得到的档位证据（与 OD-ARCH-175 的
- * `collectModelEffortEvidence` 同形）：目录优先，目录没有给出声明时再看 Profile。
- */
-export interface WorkIntentEffortEvidence {
-  /** 引擎目录声明的档位；空数组/缺省表示目录没有给出声明。 */
-  catalogLevels?: string[] | null;
-  /**
-   * Profile 原始 `reasoningEfforts`：缺省 = 未声明；`false` = 明确关闭档位；
-   * 非空数组 = 声明的档位集合。`false` 和空集合不能当作拒绝 `off` 的证据。
-   */
-  profileLevels?: string[] | false | null;
-}
-
-/**
- * 证据是否明确声明“不支持 requested”，而不是“没有声明”。
- *
- * 只有目录或 Profile 给出了非空声明集合、且集合不含该档位时才算反对。
- * 未声明、目录不可用、空集合与 `reasoningEfforts: false` 都保持原判断。
- */
-export function effortEvidenceExcludes(
-  evidence: WorkIntentEffortEvidence | null | undefined,
-  requested: string,
-): boolean {
-  const catalogLevels = evidence?.catalogLevels;
-  if (Array.isArray(catalogLevels) && catalogLevels.length > 0) {
-    return !catalogLevels.includes(requested);
-  }
-  const profileLevels = evidence?.profileLevels;
-  if (Array.isArray(profileLevels) && profileLevels.length > 0) {
-    return !profileLevels.includes(requested);
-  }
-  return false;
-}
-
-/**
- * 证据是否明确声明「支持 requested」。
- *
- * 与 effortEvidenceExcludes 相反：只有目录或 Profile 给出非空声明集合、
- * 且集合包含该档位时才算支持。未声明 / 目录不可用一律视为不支持——
- * 真实 DSH 的 session/selectModel 会拒绝未声明模型的任何显式档位
- * （OD-ARCH-176 线上回归实测），因此档位必须「证明可用」才下发。
- */
-export function effortEvidenceIncludes(
-  evidence: WorkIntentEffortEvidence | null | undefined,
-  requested: string,
-): boolean {
-  const catalogLevels = evidence?.catalogLevels;
-  if (Array.isArray(catalogLevels) && catalogLevels.length > 0) {
-    return catalogLevels.includes(requested);
-  }
-  const profileLevels = evidence?.profileLevels;
-  if (Array.isArray(profileLevels) && profileLevels.length > 0) {
-    return profileLevels.includes(requested);
-  }
-  return false;
 }
 
 /**

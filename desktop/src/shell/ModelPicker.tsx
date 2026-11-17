@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
+import {
+  DEFAULT_EFFORT_KEY,
+  effortLabelFor,
+  modelEffortOptions,
+  resolveModelEffortDeclaration,
+} from "../modelEffortEvidence";
 import type { EngineModelCatalog } from "../types";
 
 /**
@@ -16,16 +22,13 @@ import type { EngineModelCatalog } from "../types";
 export interface ModelRouteGroup {
   profile: string;
   default: { provider: string | null; model: string | null } | null;
-  providers: Array<{ id: string; models: string[]; baseURL: string | null }>;
+  providers: Array<{
+    id: string;
+    models: string[];
+    baseURL: string | null;
+    modelEntries?: Array<Record<string, unknown>>;
+  }>;
 }
-
-export const EFFORT_LEVELS: Array<{ key: string; label: string }> = [
-  { key: "default", label: "默认" },
-  { key: "off", label: "关闭" },
-  { key: "low", label: "低" },
-  { key: "medium", label: "中" },
-  { key: "high", label: "高" },
-];
 
 export function ModelPicker({
   currentProvider,
@@ -60,23 +63,30 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const catalogModels = catalog?.available ? catalog.models ?? [] : [];
-  const currentEntry =
-    catalogModels.find((m) => m.provider === currentProvider && m.id === currentModel) ??
-    null;
-  /** 当前模型在目录里声明的思考等级（没有则为空，退回固定档位）。 */
-  const currentEfforts = currentEntry?.efforts ?? [];
-  const effortLabel = EFFORT_LEVELS.find((x) => x.key === effort)?.label ?? effort;
-  const effortDeclared = currentEfforts.some((e) => e.id === effort);
-  // OD-ARCH-175：预检不再阻断。只有目录明确列出档位且当前档不在集合里时才提前
-  // 说明会按默认档；目录为空/未列出属于「未声明」，由切换后的提示条告知结果。
+  /**
+   * OD-ARCH-178 阶段 C：档位按钮由当前模型（provider+model）的声明驱动。
+   * 证据解析与提交侧共用 modelEffortEvidence；目录非空为准，目录未声明时才看
+   * Profile 原始声明。两者都没有时只渲染「跟随模型默认」。
+   */
+  const declaration = resolveModelEffortDeclaration({
+    catalog,
+    routes: groups,
+    sourceProfile: engineProfile,
+    provider: currentProvider,
+    model: currentModel,
+  });
+  const effortOptions = modelEffortOptions(declaration.levels);
+  const activeEffort = effortOptions.some((option) => option.key === effort)
+    ? effort
+    : DEFAULT_EFFORT_KEY;
+  // 只在「用户还带着一个当前模型不支持的档位」时提示一句；未声明且已是默认时
+  // 不再堆描述文字，单按钮本身已经说明问题。
   const effortAdvisory =
-    effort === "default" || !catalog?.available
-      ? null
-      : !currentEntry || currentEfforts.length === 0
-        ? "未声明思考档位；若不支持会按默认档切换。"
-        : effortDeclared
-          ? null
-          : "该模型不支持「" + effortLabel + "」，切换会按默认档。";
+    effort !== DEFAULT_EFFORT_KEY && !declaration.levels.includes(effort)
+      ? declaration.levels.length === 0
+        ? "该模型未声明思考档位，已跟随模型默认。"
+        : "该模型不支持「" + effortLabelFor(effort) + "」，已跟随模型默认。"
+      : null;
 
   useEffect(() => {
     if (!open) return;
@@ -113,7 +123,7 @@ export function ModelPicker({
           <div className="pb-2 border-b border-surface-variant/20">
             <div className="text-[10px] uppercase tracking-wide text-outline">思考等级</div>
             <div className="pt-1.5 flex flex-wrap gap-1">
-              {EFFORT_LEVELS.map((lv) => (
+              {effortOptions.map((lv) => (
                 <button
                   key={lv.key}
                   type="button"
@@ -123,10 +133,11 @@ export function ModelPicker({
                   }}
                   className={
                     "neu-effort-btn px-3 py-1.5 rounded-md text-[11.5px] font-medium " +
-                    (lv.key === effort ? "neu-effort-active" : "")
+                    (lv.key === activeEffort ? "neu-effort-active" : "")
                   }
-                  aria-pressed={lv.key === effort}
-                  data-hover-hint="对应 DSH 的 reasoningEffort：默认＝不传该参数，由模型/Provider 决定"
+                  aria-pressed={lv.key === activeEffort}
+                  data-testid={"effort-option-" + lv.key}
+                  data-hover-hint="对应 DSH 的 reasoningEffort：跟随模型默认＝不传该参数，由模型/Provider 决定"
                 >
                   {lv.label}
                 </button>
@@ -138,12 +149,6 @@ export function ModelPicker({
                 data-testid="effort-advisory"
               >
                 {effortAdvisory}
-              </p>
-            ) : null}
-            {currentEfforts.length > 0 ? (
-              <p className="pt-1 text-[10px] text-outline leading-relaxed">
-                当前模型目录声明的等级：
-                {currentEfforts.map((e) => e.name || e.id).join(" / ")}
               </p>
             ) : null}
           </div>

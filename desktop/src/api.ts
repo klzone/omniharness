@@ -5,6 +5,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { currentEngineSubmitDecision } from "./engineAdmission";
+import {
+  effortEvidenceFromLoaded,
+  gatedReasoningEffort,
+  type WorkIntentEffortEvidence,
+} from "./modelEffortEvidence";
 import type {
   AdmissionStatusResponse,
   AnalysisRunResponse,
@@ -68,7 +73,6 @@ import type {
   MaterialQueryInput,
   MaterialQueryResponse,
   MaterialReviewAction,
-  ModelCatalogEntry,
   WritingCollectInput,
   WritingCollectResponse,
   WritingSelectInput,
@@ -391,6 +395,12 @@ export const host = {
      * 由引擎在 session/prompt 前按会话应用，不改桌面覆盖文件、不重启引擎。
      */
     reasoningEffort?: string | null;
+    /**
+     * 档位证据（OD-ARCH-178）：目录 + Profile 两层声明。只有证据明确支持所选
+     * 档位时才下发；缺省、未声明或证据不含该档位时，api 层静默降级为 null。
+     * 这是提交链的最后一道门，调用方漏传证据也不会把未证明的档位带进 DSH。
+     */
+    effortEvidence?: WorkIntentEffortEvidence | null;
     /** 与档位一起下发的当前路由；缺一则引擎不改档位。 */
     provider?: string | null;
     model?: string | null;
@@ -407,7 +417,7 @@ export const host = {
       idempotencyKey: input.idempotencyKey ?? null,
       userInputText: input.userInputText ?? null,
       engineSessionId: input.engineSessionId ?? null,
-      reasoningEffort: input.reasoningEffort ?? null,
+      reasoningEffort: gatedReasoningEffort(input.reasoningEffort, input.effortEvidence),
       provider: input.provider ?? null,
       model: input.model ?? null,
     }).catch((e) => {
@@ -617,32 +627,24 @@ async function collectModelEffortEvidence(input: {
   model: string;
 }): Promise<ModelRouteEffortEvidence> {
   const catalog = await shell.listEngineModels().catch(() => null);
-  const entry: ModelCatalogEntry | undefined =
+  const catalogLevels =
     catalog?.available === true
-      ? (catalog.models ?? []).find(
-          (m) => m.provider === input.provider && m.id === input.model,
-        )
-      : undefined;
-  const catalogLevels = Array.isArray(entry?.efforts)
-    ? entry.efforts.map((e) => e.id)
-    : null;
-  if (catalogLevels && catalogLevels.length > 0) {
-    return { catalogLevels, profileLevels: null };
-  }
-  const listing = await shell.listModelRoutes().catch(() => null);
-  const profile = listing?.profiles?.find((p) => p.profile === input.sourceProfile);
-  const provider = profile?.providers?.find((p) => p.id === input.provider);
-  const modelEntry = provider?.modelEntries?.find(
-    (e) => e && typeof e === "object" && e.id === input.model,
-  );
-  const declared = modelEntry?.reasoningEfforts;
-  let profileLevels: string[] | false | null = null;
-  if (declared === false) {
-    profileLevels = false;
-  } else if (declared && typeof declared === "object" && !Array.isArray(declared)) {
-    profileLevels = Object.keys(declared as Record<string, unknown>);
-  }
-  return { catalogLevels, profileLevels };
+      ? (catalog.models ?? [])
+          .find((m) => m.provider === input.provider && m.id === input.model)
+          ?.efforts?.map((e) => e.id) ?? null
+      : null;
+  // 目录给出非空声明时无需再读 Profile；与提交侧/选择器共用同一份解析。
+  const listing =
+    catalogLevels && catalogLevels.length > 0
+      ? null
+      : await shell.listModelRoutes().catch(() => null);
+  return effortEvidenceFromLoaded({
+    catalog,
+    routes: listing?.profiles ?? null,
+    sourceProfile: input.sourceProfile,
+    provider: input.provider,
+    model: input.model,
+  });
 }
 
 export const shell = {

@@ -40,6 +40,9 @@
                 - 连续 15 步只有工具调用、没有任何文本输出时，下一步必须先写一段阶段性结论，再继续。
                 工具批处理规则：
                 - 能用一条命令完成的批量操作（多文件读写、生成后立即校验、批量重命名）不要拆成多次工具调用；写文件后用同一条命令运行并检查结果；不要为同一目标重复执行等价命令。
+                自查收敛规则（OD-ARCH-179）：
+                - 回答 OmniDesk 自身配置、模型与思考档位类问题时，先读 /Users/yvan/OmniDesk/app/config/omnidesk.model-settings.v2.json 与同目录 omnidesk-model.yml 各一次，通常即可作答；不要扫描 node_modules/、storages/ 或引擎安装目录。
+                - bash 不要对 storages/、node_modules/ 做全目录 grep / find（大输出会整段进入上下文）；大范围文件检索改用 tool-fs-search（自带条数上限）。
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -210,6 +213,9 @@
             - 没有结果时先换一次关键词；仍没有结果就如实说明限制，不连续重试。
             工具选择规则：
             - advanced_search 只用于时间范围或指定站点过滤；domain_search 只用于站内检索；platform_search 只用于中文平台内容；video_search / weather 只在用户明确要求时使用；不要把 free_search_test 当作常规检索。
+                自查收敛规则（OD-ARCH-179）：
+                - 回答 OmniDesk 自身配置、模型与思考档位类问题时，先读 /Users/yvan/OmniDesk/app/config/omnidesk.model-settings.v2.json 与同目录 omnidesk-model.yml 各一次，通常即可作答；不要扫描 node_modules/、storages/ 或引擎安装目录。
+                - bash 不要对 storages/、node_modules/ 做全目录 grep / find（大输出会整段进入上下文）；大范围文件检索改用 tool-fs-search（自带条数上限）。
       - id: agent-instructions
         name: '@deepseek-ai/dsh-agent-instructions'
         config:

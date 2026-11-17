@@ -127,8 +127,8 @@ def main() -> int:
           "recoverTask(taskId)" in chat,
           "重新查询先尝试重建宿主任务状态")
     check("effort_advisory",
-          "effort-advisory" in model and "未声明思考档位；若不支持会按默认档切换。" in model,
-          "模型未声明档位时提示会按默认档切换（OD-ARCH-175）")
+          "effort-advisory" in model and "该模型未声明思考档位，已跟随模型默认。" in model,
+          "未声明模型只提供跟随默认并提示一句（OD-ARCH-178）")
     check("assistant_avatar_model_initial",
           "modelInitial" in chat
           and "m.local ? \"L\" : m.executed ? \"E\" : modelInitial" in chat,

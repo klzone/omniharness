@@ -28,6 +28,90 @@ use crate::engine_supervisor::EngineConfig;
 const ROUTES_SCRIPT: &str = include_str!("../scripts/model-routes.mjs");
 const SCRIPT_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// 已验证的模型思考档位（OD-ARCH-178 阶段 A）。
+///
+/// 发行链的 Profile 没有声明 `reasoningEfforts`，DSH 便会拒绝一切显式档位；这份清单
+/// 只记录**经真实调用实测**过的映射，宿主在生成 modelCatalog 与覆盖文件时补齐。
+/// 未实测的模型一律不入表：宁可保持「跟随模型默认」，也不替端点猜测能力。
+///
+/// 条目按 `(provider, model, [(DSH 档位, 端点取值)])` 排列；`off` 与 `none` 这类
+/// 会被 YAML 当作布尔的词，在渲染时由 `yaml_scalar` 加引号。
+pub const VERIFIED_EFFORTS: &[(&str, &str, &[(&str, &str)])] = &[(
+    "opendesign",
+    "deepseek-v4.1-flash",
+    &[
+        ("off", "none"),
+        ("minimal", "minimal"),
+        ("low", "low"),
+        ("medium", "medium"),
+        ("high", "high"),
+        ("xhigh", "xhigh"),
+        ("max", "max"),
+    ],
+)];
+
+/// 查出某个模型在清单里声明的档位映射；未命中返回 `None`。
+pub fn verified_efforts(provider: &str, model: &str) -> Option<serde_json::Value> {
+    VERIFIED_EFFORTS
+        .iter()
+        .find(|(p, m, _)| *p == provider && *m == model)
+        .map(|(_, _, efforts)| {
+            let mut map = serde_json::Map::new();
+            for (level, value) in efforts.iter() {
+                map.insert((*level).to_string(), Value::String((*value).to_string()));
+            }
+            Value::Object(map)
+        })
+}
+
+/// 把一个 model entry 并入清单声明。
+///
+/// 只在 Profile 完全没写 `reasoningEfforts` 键时补；已有声明（含 `false` 或其它
+/// 形状）一律原样保留，避免宿主覆盖 Profile 的能力事实。
+pub fn merge_verified_efforts(entry: &mut Value, provider: &str, model: &str) {
+    let Some(obj) = entry.as_object_mut() else {
+        return;
+    };
+    if obj.contains_key("reasoningEfforts") {
+        return;
+    }
+    if let Some(efforts) = verified_efforts(provider, model) {
+        obj.insert("reasoningEfforts".to_string(), efforts);
+    }
+}
+
+/// `task_list_model_routes` 返回的 modelCatalog 也要带清单声明（前端证据门的数据源）。
+///
+/// 输入是 `{ ok, profiles: [{ profile, providers: [{ id, modelEntries }] }] }` 形态；
+/// 每个 model entry 按 `provider + id` 命中清单。已有声明不覆盖。
+pub fn merge_verified_efforts_in_catalog(value: &mut Value) {
+    let Some(profiles) = value.get_mut("profiles").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for profile in profiles {
+        let Some(providers) = profile.get_mut("providers").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for provider in providers {
+            let Some(provider_id) = provider.get("id").and_then(Value::as_str).map(str::to_string)
+            else {
+                continue;
+            };
+            let Some(entries) = provider.get_mut("modelEntries").and_then(Value::as_array_mut)
+            else {
+                continue;
+            };
+            for entry in entries {
+                let Some(model) = entry.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
+                let model = model.to_string();
+                merge_verified_efforts(entry, &provider_id, &model);
+            }
+        }
+    }
+}
+
 /// OmniDesk 自己数据根下的模型路由覆盖文件（不含任何机密）。
 pub fn overlay_path(app_root: &Path) -> PathBuf {
     app_root.join("config").join("omnidesk-model.yml")
@@ -176,7 +260,9 @@ fn run_script(payload: Value) -> Result<Value, String> {
 /// 界面拿到空候选后，场景思考档又用空 Profile 发起切换，于是登录即报错。
 /// 这里与 `base_routes` 的差别是**要**包含覆盖文件：列表要展示的正是「引擎此刻会走的路由」。
 pub fn list_routes(config: &EngineConfig, profiles: &[String]) -> Result<Value, String> {
-    run_script(list_payload(config, profiles))
+    let mut value = run_script(list_payload(config, profiles))?;
+    merge_verified_efforts_in_catalog(&mut value);
+    Ok(value)
 }
 
 /// 候选枚举的请求体（抽出来便于断言：OD-ARCH-095 S01 的补丁集合就在这份 payload 里）。
@@ -316,6 +402,77 @@ mod tests {
         assert!(stderr_tail(&long).chars().count() <= 600);
     }
 
+    fn catalog_with(entries: Value) -> Value {
+        json!({
+            "ok": true,
+            "profiles": [{
+                "profile": "web",
+                "providers": [{
+                    "id": "opendesign",
+                    "models": ["deepseek-v4.1-flash", "deepseek-v4.1-flash-eco", "glm-5.3-flashx"],
+                    "modelEntries": entries,
+                }],
+            }],
+        })
+    }
+
+    #[test]
+    fn catalog_merges_verified_efforts_when_profile_is_silent() {
+        let mut catalog = catalog_with(json!([
+            { "id": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash" },
+            { "id": "deepseek-v4.1-flash-eco", "name": "DeepSeek V4.1 Flash Eco" },
+            { "id": "glm-5.3-flashx", "name": "GLM 5.3 FlashX" },
+        ]));
+        merge_verified_efforts_in_catalog(&mut catalog);
+        let efforts = catalog
+            .pointer("/profiles/0/providers/0/modelEntries/0/reasoningEfforts")
+            .expect("清单命中的模型必须补上 reasoningEfforts");
+        let map = efforts.as_object().expect("reasoningEfforts 必须是映射");
+        assert_eq!(map.len(), 7);
+        assert_eq!(map.get("off").and_then(Value::as_str), Some("none"));
+        assert_eq!(map.get("max").and_then(Value::as_str), Some("max"));
+        for index in [1, 2] {
+            assert!(catalog
+                .pointer(&format!("/profiles/0/providers/0/modelEntries/{index}/reasoningEfforts"))
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn catalog_keeps_profile_declaration_untouched() {
+        let mut catalog = catalog_with(json!([{
+            "id": "deepseek-v4.1-flash",
+            "reasoningEfforts": { "off": "none", "high": "high" },
+        }]));
+        merge_verified_efforts_in_catalog(&mut catalog);
+        let efforts = catalog
+            .pointer("/profiles/0/providers/0/modelEntries/0/reasoningEfforts")
+            .and_then(Value::as_object)
+            .expect("已有声明必须保留");
+        assert_eq!(efforts.len(), 2, "不得把清单声明追加上去");
+        assert_eq!(efforts.get("high").and_then(Value::as_str), Some("high"));
+        assert!(!efforts.contains_key("max"));
+    }
+
+    #[test]
+    fn catalog_leaves_unlisted_provider_and_models_unchanged() {
+        let mut catalog = json!({
+            "ok": true,
+            "profiles": [{
+                "profile": "web",
+                "providers": [{
+                    "id": "volcengine",
+                    "models": ["deepseek-v4.1-flash"],
+                    "modelEntries": [{ "id": "deepseek-v4.1-flash" }],
+                }],
+            }],
+        });
+        merge_verified_efforts_in_catalog(&mut catalog);
+        assert!(catalog
+            .pointer("/profiles/0/providers/0/modelEntries/0/reasoningEfforts")
+            .is_none());
+    }
+
     /// OD-ARCH-095 S01：枚举候选的 payload 必须带上引擎实际加载的补丁集合。
     /// 这条断言防的是「覆盖文件里的 provider 在候选里消失」再次发生。
     #[test]
@@ -436,6 +593,81 @@ mod tests {
             !text.contains("reasoningEffort"),
             "回退重写后覆盖文件不得再含 reasoningEffort：{text}"
         );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// OD-ARCH-178 阶段 A：发行链 Profile 没写 `reasoningEfforts` 时，
+    /// `task_list_model_routes` 的数据源也要补上已验证声明。
+    ///
+    /// 用仓库内 DSH CLI 做一次真实配置转储（只读，不发网络请求、不读凭证），
+    /// 以隔离的临时 patch 定义 opendesign，避免依赖本机已安装数据。
+    #[test]
+    fn list_routes_merges_verified_efforts_from_profile_without_declaration() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("仓库根")
+            .to_path_buf();
+        let cli = repo.join("runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js");
+        if !cli.is_file() || crate::platform::resolve_node().is_err() {
+            eprintln!("跳过：本机没有 node 或仓库内 DSH CLI（{}）", cli.display());
+            return;
+        }
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-list-routes-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建立临时目录");
+        let patch = base.join("opendesign.patch.yml");
+        std::fs::write(
+            &patch,
+            "- id: llm-pi-ai\n  name: \"@deepseek-ai/dsh-llm-pi-ai\"\n  config:\n    providers:\n      opendesign:\n        displayName: OpenDesign\n        api: openai-completions\n        baseURL: https://amr-link.open-design.ai/v1\n        models:\n          - id: deepseek-v4.1-flash\n            name: DeepSeek V4.1 Flash\n          - id: deepseek-v4.1-flash-eco\n            name: DeepSeek V4.1 Flash Eco\n",
+        )
+        .expect("写入临时 patch");
+        let config = EngineConfig {
+            python: "/usr/bin/python3".to_string(),
+            engine_dir: repo.join("engine"),
+            dsh_cli: cli,
+            dsh_home: repo.join("runtime/dsh-home-seed"),
+            agents_home: base.join("agents"),
+            result_dir: base.join("results"),
+            engine_state_dir: base.join("engine-state"),
+            profile: "web".to_string(),
+            channel: "web-api".to_string(),
+            patch_files: vec![patch],
+        };
+        let value = list_routes(&config, &["web".to_string()]).expect("列出路由应成功");
+        let provider = value
+            .pointer("/profiles/0/providers")
+            .and_then(Value::as_array)
+            .and_then(|providers| {
+                providers
+                    .iter()
+                    .find(|p| p.get("id").and_then(Value::as_str) == Some("opendesign"))
+            })
+            .expect("Profile 里应有 opendesign");
+        let entries = provider
+            .get("modelEntries")
+            .and_then(Value::as_array)
+            .expect("应有 modelEntries");
+        let flash = entries
+            .iter()
+            .find(|e| e.get("id").and_then(Value::as_str) == Some("deepseek-v4.1-flash"))
+            .expect("应有 deepseek-v4.1-flash");
+        let efforts = flash
+            .get("reasoningEfforts")
+            .and_then(Value::as_object)
+            .expect("未声明模型应合并清单档位");
+        assert_eq!(efforts.len(), 7);
+        assert_eq!(efforts.get("off").and_then(Value::as_str), Some("none"));
+        let eco = entries
+            .iter()
+            .find(|e| e.get("id").and_then(Value::as_str) == Some("deepseek-v4.1-flash-eco"))
+            .expect("应有 eco");
+        assert!(eco.get("reasoningEfforts").is_none(), "未实测模型不得声明档位");
 
         let _ = std::fs::remove_dir_all(&base);
     }

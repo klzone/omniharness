@@ -196,6 +196,7 @@ def main() -> int:
     home = (SRC / "shell" / "HomeChat.tsx").read_text(encoding="utf-8")
     api = (SRC / "api.ts").read_text(encoding="utf-8")
     decision = (SRC / "workIntentDecision.ts").read_text(encoding="utf-8")
+    evidence = (SRC / "modelEffortEvidence.ts").read_text(encoding="utf-8")
     prompt_src = (SRC / "conversationPrompt.ts").read_text(encoding="utf-8")
     lib = (DESKTOP / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
     serve = (ENGINE / "serve.py").read_text(encoding="utf-8")
@@ -216,11 +217,12 @@ def main() -> int:
     check("home_effort_chain", "reasoningEffort: effort" in home and "provider: factsNow?.provider" in home)
     check(
         "home_off_effort_preflight",
-        "effortEvidenceFromLoaded" in home and "evidence: effortEvidenceFromLoaded" in home,
+        "effortEvidenceFromLoaded" in home
+        and "evidence: currentEffortEvidence()" in home,
     )
     check(
         "home_off_effort_two_layer_evidence",
-        "catalogEntry?.efforts" in home and "modelEntry?.reasoningEfforts" in home,
+        "catalogEntry?.efforts" in evidence and "modelEntry?.reasoningEfforts" in evidence,
     )
     check(
         "home_off_effort_all_calls_routed",
@@ -249,7 +251,10 @@ def main() -> int:
     )
 
     # ---- 静态：桌面 → Rust → engine 管线 ----
-    check("api_forwards_effort", "reasoningEffort: input.reasoningEffort ?? null" in api)
+    check(
+        "api_forwards_effort",
+        "gatedReasoningEffort(input.reasoningEffort, input.effortEvidence)" in api,
+    )
     check("api_forwards_route", "provider: input.provider ?? null" in api and "model: input.model ?? null" in api)
     check("rust_accepts_effort", "reasoning_effort: Option<String>" in lib and 'params["reasoning_effort"]' in lib)
     check("rust_forwards_route", 'params["provider"]' in lib and 'params["model"]' in lib)

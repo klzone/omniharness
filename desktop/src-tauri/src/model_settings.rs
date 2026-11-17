@@ -403,7 +403,7 @@ fn render_provider(p: &ProviderSettings, base: Option<&ProviderRoute>) -> String
                 }
             }
         }
-        out.push_str(&render_model_entry(&entry, &m.id));
+        out.push_str(&render_model_entry(&p.provider, &entry, &m.id));
     }
     out
 }
@@ -449,7 +449,15 @@ pub fn validate_base_url(url: &str) -> Result<(), String> {
 
 /// 单行 YAML 标量：可裸写就裸写，否则用双引号并按 YAML 规则转义。
 fn yaml_scalar(value: &str) -> String {
+    // YAML 1.1 把 off/on/yes/no 当作布尔，把 null/~ 当作空值。思考档位里 `off` 是
+    // 键名、端点取值里有 `none`；不识别这些词会让映射键变成布尔 false、值变成 null。
+    // 统一加引号，保证 DSH 读到的是字符串而不是被 YAML 改写的类型。
+    let reserved = matches!(
+        value.to_ascii_lowercase().as_str(),
+        "off" | "on" | "yes" | "no" | "true" | "false" | "null" | "~" | "none"
+    );
     let plain = !value.is_empty()
+        && !reserved
         && value
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@' | '+' | '~'))
@@ -1145,6 +1153,114 @@ mod tests {
         assert!(!s.render_overlay(&[]).contains("contextWindow"));
     }
 
+    fn opendesign_routes(entries: serde_json::Value) -> Vec<ProviderRoute> {
+        let models = entries
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|e| e.get("id").and_then(|v| v.as_str()).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        vec![ProviderRoute {
+            id: "opendesign".to_string(),
+            display_name: Some("OpenDesign".to_string()),
+            api: Some("openai-completions".to_string()),
+            api_key_env: Some("OPENDESIGN_API_KEY".to_string()),
+            base_url: Some("https://amr-link.open-design.ai/v1".to_string()),
+            models,
+            model_entries: entries.as_array().cloned().unwrap_or_default(),
+        }]
+    }
+
+    fn opendesign_block(yml: &str) -> &str {
+        yml.split("      opendesign:")
+            .nth(1)
+            .and_then(|block| block.split("      agnescn:").next())
+            .expect("覆盖文件里应有 opendesign 路由")
+    }
+
+    #[test]
+    fn overlay_adds_verified_efforts_when_profile_is_silent() {
+        let routes = opendesign_routes(serde_json::json!([
+            { "id": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash" },
+        ]));
+        let yml = sample().render_overlay(&routes);
+        let block = opendesign_block(&yml);
+        assert_eq!(block.matches("reasoningEfforts:").count(), 1, "{}", block);
+        // YAML 1.1 里 off/none 必须加引号，否则会被解析成布尔与空值。
+        assert!(block.contains("\"off\": \"none\""), "{}", block);
+        assert!(block.contains("xhigh: xhigh"), "{}", block);
+    }
+
+    #[test]
+    fn overlay_keeps_profile_effort_declaration() {
+        let routes = opendesign_routes(serde_json::json!([{
+            "id": "deepseek-v4.1-flash",
+            "name": "DeepSeek V4.1 Flash",
+            "reasoningEfforts": { "off": "none", "high": "high" },
+        }]));
+        let yml = sample().render_overlay(&routes);
+        let block = opendesign_block(&yml);
+        assert_eq!(block.matches("reasoningEfforts:").count(), 1, "{}", block);
+        assert!(block.contains("high: high"), "{}", block);
+        assert!(!block.contains("max: max"), "不得追加清单里的 max：{}", block);
+    }
+
+    #[test]
+    fn overlay_only_declares_models_on_the_verified_list() {
+        let routes = opendesign_routes(serde_json::json!([
+            { "id": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash" },
+            { "id": "deepseek-v4.1-flash-eco", "name": "DeepSeek V4.1 Flash Eco" },
+            { "id": "glm-5.3-flashx", "name": "GLM 5.3 FlashX" },
+        ]));
+        let yml = sample().render_overlay(&routes);
+        let block = opendesign_block(&yml);
+        assert_eq!(block.matches("reasoningEfforts:").count(), 1, "{}", block);
+        let eco = block
+            .split("- id: deepseek-v4.1-flash-eco")
+            .nth(1)
+            .and_then(|section| section.split("- id:").next())
+            .expect("应有 eco 条目");
+        assert!(!eco.contains("reasoningEfforts"), "{}", eco);
+        let glm = block
+            .split("- id: glm-5.3-flashx")
+            .nth(1)
+            .expect("应有 glm 条目");
+        assert!(!glm.contains("reasoningEfforts"), "{}", glm);
+    }
+
+    #[test]
+    fn own_opendesign_route_also_gets_verified_efforts() {
+        let mut s = sample();
+        let mut own = provider("opendesign");
+        own.models = vec![
+            ModelEntry {
+                id: "deepseek-v4.1-flash".to_string(),
+                name: "DeepSeek V4.1 Flash".to_string(),
+                context_window: None,
+            },
+            ModelEntry {
+                id: "deepseek-v4.1-flash-eco".to_string(),
+                name: "DeepSeek V4.1 Flash Eco".to_string(),
+                context_window: None,
+            },
+        ];
+        s.providers.push(own);
+        let yml = s.render_overlay(&[]);
+        let flash = yml
+            .split("- id: deepseek-v4.1-flash")
+            .nth(1)
+            .and_then(|section| section.split("- id:").next())
+            .expect("应有 deepseek-v4.1-flash");
+        assert!(flash.contains("reasoningEfforts:"), "{}", flash);
+        let eco = yml
+            .split("- id: deepseek-v4.1-flash-eco")
+            .nth(1)
+            .expect("应有 eco");
+        assert!(!eco.contains("reasoningEfforts"), "{}", eco);
+    }
+
     #[test]
     fn profile_model_capabilities_survive_merge() {
         let mut routes = base_routes();
@@ -1235,7 +1351,7 @@ fn render_route(r: &ProviderRoute) -> String {
                 .iter()
                 .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
             {
-                Some(entry) => out.push_str(&render_model_entry(entry, id)),
+                Some(entry) => out.push_str(&render_model_entry(&r.id, entry, id)),
                 None => out.push_str(&format!(
                     "          - id: {}\n            name: {}\n",
                     yaml_scalar(id),
@@ -1248,7 +1364,10 @@ fn render_route(r: &ProviderRoute) -> String {
 }
 
 /// 把 Profile 里的一个模型条目原样写成 YAML 序列项（只保留非机密字段白名单）。
-fn render_model_entry(entry: &serde_json::Value, id: &str) -> String {
+///
+/// OD-ARCH-178 阶段 A：Profile 没声明 `reasoningEfforts` 时，按宿主已验证清单补齐；
+/// 已声明则保持 Profile 的原值，不做双写或覆盖。
+fn render_model_entry(provider: &str, entry: &serde_json::Value, id: &str) -> String {
     const KEEP: &[&str] = &[
         "id",
         "name",
@@ -1259,6 +1378,8 @@ fn render_model_entry(entry: &serde_json::Value, id: &str) -> String {
         "reasoningEfforts",
         "compat",
     ];
+    let mut entry = entry.clone();
+    crate::model_routes::merge_verified_efforts(&mut entry, provider, id);
     let mut map = serde_json::Map::new();
     if let Some(obj) = entry.as_object() {
         for key in KEEP {
@@ -1294,14 +1415,14 @@ fn push_yaml_field(lines: &mut Vec<String>, key: &str, value: &serde_json::Value
     let pad = "  ".repeat(depth);
     match value {
         serde_json::Value::Object(obj) if !obj.is_empty() => {
-            lines.push(format!("{}{}:", pad, key));
+            lines.push(format!("{}{}:", pad, yaml_scalar(key)));
             for (k, v) in obj {
                 push_yaml_field(lines, k, v, depth + 1);
             }
         }
         serde_json::Value::Array(items) if items.iter().all(|i| i.is_string()) => {
             if items.is_empty() {
-                lines.push(format!("{}{}: []", pad, key));
+                lines.push(format!("{}{}: []", pad, yaml_scalar(key)));
             } else {
                 let joined = items
                     .iter()
@@ -1309,12 +1430,16 @@ fn push_yaml_field(lines: &mut Vec<String>, key: &str, value: &serde_json::Value
                     .map(yaml_scalar)
                     .collect::<Vec<_>>()
                     .join(", ");
-                lines.push(format!("{}{}: [{}]", pad, key, joined));
+                lines.push(format!("{}{}: [{}]", pad, yaml_scalar(key), joined));
             }
         }
-        serde_json::Value::String(s) => lines.push(format!("{}{}: {}", pad, key, yaml_scalar(s))),
-        serde_json::Value::Bool(b) => lines.push(format!("{}{}: {}", pad, key, b)),
-        serde_json::Value::Number(n) => lines.push(format!("{}{}: {}", pad, key, n)),
+        serde_json::Value::String(s) => {
+            lines.push(format!("{}{}: {}", pad, yaml_scalar(key), yaml_scalar(s)))
+        }
+        serde_json::Value::Bool(b) => lines.push(format!("{}{}: {}", pad, yaml_scalar(key), b)),
+        serde_json::Value::Number(n) => {
+            lines.push(format!("{}{}: {}", pad, yaml_scalar(key), n))
+        }
         other => {
             // 其它形状（嵌套数组、null、空对象）不写出：宁可退回默认，也不猜测格式。
             let _ = other;
