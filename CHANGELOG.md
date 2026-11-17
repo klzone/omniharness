@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.32] - 2026-11-17
+
+### Added
+- 工作记录场景自然语言意图重构（OD-ARCH-176）：每轮先由模型按统一意图契约分类（事实 / 指令 / 闲聊 / 复盘 / 周报 / 当日摘要），只有事实才落盘；指令与闲聊转为对话回复并带本周记录索引；复盘请求在工作记录场景内直接汇集材料出稿（OD-WR-505）；拿不准走提问卡确认。陈述句启发式快路径退出该场景，周报场景关键词快速通道不变。
+- 模型运行期思考档位自动回退（OD-ARCH-175）：未声明档位的模型其显式档位被引擎运行期拒绝时，宿主自动重写覆盖文件去掉档位、重启引擎并提示重发；同一 (路由, 档位) 只触发一次；切换前的阻断式预检改为本地回退 + 一句话告知。
+- 设置页「配套插件推荐」（OD-ARCH-177）：AnySearch CLI 与 dsh-cost-meter 的名称、上游地址、建议版本；仓库不打包插件实体，不自动安装、不联网检查版本。
+- 工作记录场景思考档位策略：分类 / 分析 / 指令回复默认 off 模型直出（按会话覆盖，不重启引擎），用户手动选档即按所选；声明集合不含 off 的模型自动降级为跟随默认。
+
+### Changed
+- skills/period-review：工作台汇集材料随请求送达时直接起草，不再输出等待类话术；skills/anysearch：引擎环境无本机 CLI 属预期，直接回退 web_fetch 并如实标注来源与限制。
+- 模型目录契约：`ModelCatalogEntry.efforts` 改为可选（归一化目录可能缺项）。
+
+### Verification
+- cargo test --lib：1209/0（并发运行偶现 3 个引擎 spawn 类环境性失败，单线程与复跑均不复现）。
+- npx tsc --noEmit、npm run build 通过；verify_arch_176 70/70、model_route_precheck_175 12/12 + 11/11、companion_plugins_177 11/11、worklog 089 86/86 / 103 52/52 / 104 73/73 / 505 71/71、conversationPrompt 33/33、skill_bindings 69/69；home_refine_202 39/40（唯一失败为既有项）。
+- 升级说明：已安装用户需在 Profile 资产页点「恢复默认规则包」获得更新后的 period-review / anysearch 技能文本。
+
 ## [0.2.23] - 2026-11-12
 
 ### Added
