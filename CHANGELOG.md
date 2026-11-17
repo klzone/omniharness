@@ -21,6 +21,15 @@ All notable changes to this project will be documented in this file.
 - npx tsc --noEmit、npm run build 通过；verify_arch_176 70/70、model_route_precheck_175 12/12 + 11/11、companion_plugins_177 11/11、worklog 089 86/86 / 103 52/52 / 104 73/73 / 505 71/71、conversationPrompt 33/33、skill_bindings 69/69；home_refine_202 39/40（唯一失败为既有项）。
 - 升级说明：已安装用户需在 Profile 资产页点「恢复默认规则包」获得更新后的 period-review / anysearch 技能文本。
 
+## [0.2.33] - 2026-11-17
+
+### Fixed
+- 工作记录场景每轮报 engine_unavailable 的线上回归（OD-ARCH-176）：真实 DSH 的 session/selectModel 会拒绝未声明思考档位模型的任何显式档位（含 off），此前「未声明即传 off」的设计使该场景所有消息必然失败，且错误被兜底映射成 engine_unavailable 误导排查。现在档位必须被两层证据「证明支持」才下发（未声明模型不传档位——本就没有思考可关，不传即等效直出）；适配器对 select_model 失败优雅降级（记 stderr、按模型默认继续，不炸整轮）；session/model-unavailable 错误改判 invalid_argument，呈现真实原因而非误报引擎不可用。
+
+### Verification
+- 新增真实 DSH 回归 verify_effort_select_degrade.py 4/4：selectModel 拒绝 → stderr 降级记录 → 任务按默认档成功完成。
+- verify_arch_176 71/71（档位用例按「证明支持才下发」新语义更新）；cargo test --lib 1209/0（单线程）；tsc / npm run build 通过。
+
 ## [0.2.23] - 2026-11-12
 
 ### Added
