@@ -2834,6 +2834,12 @@ export interface ModelEntry {
   name: string;
   /** 上下文窗口（token）。只写配置；端点是否真支持要另行核实。 */
   contextWindow?: number | null;
+  /**
+   * 用户逐模型手动声明的思考档位（OD-ARCH-181）。写进 DSH 的 reasoningEfforts：
+   * 声明后档位会出现在模型选择器并可通过 selectModel 生效；声明不实会在真实
+   * 调用时报错，由用户修正。未声明时沿用 Profile / 宿主已验证清单。
+   */
+  reasoningEfforts?: Record<string, string> | null;
 }
 
 export interface ProviderSettings {

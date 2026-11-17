@@ -48,6 +48,12 @@ pub const VERIFIED_EFFORTS: &[(&str, &str, &[(&str, &str)])] = &[(
         ("xhigh", "xhigh"),
         ("max", "max"),
     ],
+), (
+    // 同族继承的保守声明（2026-11-18）：eco 与 flash 同网关同族，先只声明
+    // off 一个档位供用户实测；通过真实调用确认后再补其余档位。不一次猜全。
+    "opendesign",
+    "deepseek-v4.1-flash-eco",
+    &[("off", "none")],
 )];
 
 /// 查出某个模型在清单里声明的档位映射；未命中返回 `None`。
@@ -431,11 +437,15 @@ mod tests {
         assert_eq!(map.len(), 7);
         assert_eq!(map.get("off").and_then(Value::as_str), Some("none"));
         assert_eq!(map.get("max").and_then(Value::as_str), Some("max"));
-        for index in [1, 2] {
-            assert!(catalog
-                .pointer(&format!("/profiles/0/providers/0/modelEntries/{index}/reasoningEfforts"))
-                .is_none());
-        }
+        let eco = catalog
+            .pointer("/profiles/0/providers/0/modelEntries/1/reasoningEfforts")
+            .and_then(Value::as_object)
+            .expect("eco 应只声明 off");
+        assert_eq!(eco.len(), 1);
+        assert_eq!(eco.get("off").and_then(Value::as_str), Some("none"));
+        assert!(catalog
+            .pointer("/profiles/0/providers/0/modelEntries/2/reasoningEfforts")
+            .is_none());
     }
 
     #[test]
@@ -667,7 +677,12 @@ mod tests {
             .iter()
             .find(|e| e.get("id").and_then(Value::as_str) == Some("deepseek-v4.1-flash-eco"))
             .expect("应有 eco");
-        assert!(eco.get("reasoningEfforts").is_none(), "未实测模型不得声明档位");
+        let eco_efforts = eco
+            .get("reasoningEfforts")
+            .and_then(Value::as_object)
+            .expect("eco 应只声明经保守确认的档位");
+        assert_eq!(eco_efforts.len(), 1, "eco 先只声明 off，待实测再补");
+        assert_eq!(eco_efforts.get("off").and_then(Value::as_str), Some("none"));
 
         let _ = std::fs::remove_dir_all(&base);
     }

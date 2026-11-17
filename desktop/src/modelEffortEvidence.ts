@@ -87,8 +87,10 @@ export interface ModelEffortOption {
 }
 
 /**
- * 选择器按钮：始终保留「跟随模型默认」，其余只来自声明集合。
- * 声明为空或缺省时返回单按钮，不再提供会被 DSH 拒绝的固定五档。
+ * 选择器按钮：档位只来自声明集合（OD-ARCH-181 微调）。
+ * 声明非空时不再提供「跟随模型默认」——模型档位已由用户在设置页逐模型
+ * 手动声明，选择器直接给出可用的档位；声明为空时保留单按钮作兜底，
+ * 避免选择器出现空档位区。
  */
 export function modelEffortOptions(
   levels: readonly string[] | null | undefined,
@@ -101,7 +103,10 @@ export function modelEffortOptions(
     seen.add(key);
     declared.push({ key, label: effortLabelFor(key) });
   }
-  return [{ key: DEFAULT_EFFORT_KEY, label: DEFAULT_EFFORT_LABEL }, ...declared];
+  if (declared.length === 0) {
+    return [{ key: DEFAULT_EFFORT_KEY, label: DEFAULT_EFFORT_LABEL }];
+  }
+  return declared;
 }
 
 export interface ModelEffortDeclaration {

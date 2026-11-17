@@ -95,12 +95,12 @@ check(
   JSON.stringify(undeclaredOptions),
 );
 
-// 2) 目录声明含 off → 渲染 off 按钮，默认按钮仍在。
+// 2) 目录声明含 off → 渲染 off 按钮；声明非空时不再保留「跟随模型默认」（OD-ARCH-181 微调）。
 const withOff = resolve({ catalog: catalog(["off", "low", "medium", "high"]) });
 check("catalog_off_levels", withOff.levels.includes("off") && withOff.source === "catalog", withOff.source);
 const offOptions = ev.modelEffortOptions(withOff.levels);
 check("catalog_off_button", offOptions.some((o) => o.key === "off" && o.label === "关闭"), JSON.stringify(offOptions));
-check("catalog_default_button_first", offOptions[0].key === "default" && offOptions[0].label === "跟随模型默认");
+check("catalog_default_button_removed", offOptions.every((o) => o.key !== "default"), JSON.stringify(offOptions));
 
 // 3) 目录优先：目录非空时不看 Profile 的不同声明。
 const priority = resolve({
@@ -120,6 +120,7 @@ check("profile_empty_empty", profileEmpty.levels.length === 0);
 // 5) 未知声明档位保留 id，已知档位用中文标签。
 const custom = ev.modelEffortOptions(["minimal", "max", "mystery"]);
 check("custom_labels", custom.some((o) => o.key === "minimal" && o.label === "最低") && custom.some((o) => o.key === "max" && o.label === "最高") && custom.some((o) => o.key === "mystery" && o.label === "mystery"), JSON.stringify(custom));
+check("custom_no_default_mixed", custom.every((o) => o.key !== "default"), JSON.stringify(custom));
 
 // 6) 提交门禁：只有证据明确支持才下发；未声明 / 无证据 / default 一律 null。
 check("gate_default_null", ev.gatedReasoningEffort("default", { catalogLevels: ["off"] }) === null);
@@ -198,7 +199,7 @@ def static_checks() -> tuple[list[dict], list[str]]:
     check("picker_default_only_when_empty", "该模型未声明思考档位，已跟随模型默认。" in picker)
     check("picker_unsupported_hint", "该模型不支持「" in picker and 'data-testid="effort-advisory"' in picker)
     check("picker_keeps_testid_style", 'data-testid={"effort-option-" + lv.key}' in picker)
-    check("effort_helper_pure_default", 'return [{ key: DEFAULT_EFFORT_KEY, label: DEFAULT_EFFORT_LABEL }, ...declared];' in evidence)
+    check("effort_helper_pure_default", "if (declared.length === 0)" in evidence and "return declared;" in evidence)
 
     failures = [c["name"] for c in cases if not c["ok"]]
     return cases, failures

@@ -19,6 +19,17 @@ import { EngineTechSlice } from "./shell/EngineTechSlice";
 import { refreshThreadCategories } from "./threadCategories";
 import { SCENES } from "./scenes";
 import { COMPANION_PLUGINS } from "./companionPlugins";
+
+/** OD-ARCH-181：逐模型手动声明思考档位（DSH 的 7 档）。off 按网关惯用取值 none。 */
+const MODEL_EFFORT_LEVELS: Array<{ key: string; label: string }> = [
+  { key: "off", label: "关闭" },
+  { key: "minimal", label: "最低" },
+  { key: "low", label: "低" },
+  { key: "medium", label: "中" },
+  { key: "high", label: "高" },
+  { key: "xhigh", label: "很高" },
+  { key: "max", label: "最高" },
+];
 import type {
   AdmissionFacts,
   AvailabilityConfig,
@@ -2694,7 +2705,19 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                 <div className="field">
                   <label className="field-label">模型（id 发给端点；名称只影响显示）</label>
                   <div className="model-list">
-                    {current.models.map((m, index) => (
+                    {current.models.map((m, index) => {
+                      const efforts = m.reasoningEfforts ?? {};
+                      const toggleEffort = (level: string) => {
+                        const next: Record<string, string> = { ...efforts };
+                        if (next[level]) delete next[level];
+                        else next[level] = level === "off" ? "none" : level;
+                        updateModel(index, {
+                          reasoningEfforts:
+                            Object.keys(next).length > 0 ? next : null,
+                        });
+                      };
+                      return (
+                      <>
                       <div className="model-row" key={index}>
                         <input
                           className="text-input mono"
@@ -2737,7 +2760,30 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
                           删除
                         </button>
                       </div>
-                    ))}
+                      <div className="model-efforts" key={index + "-efforts"}>
+                        <span className="field-label">思考档位</span>
+                        {MODEL_EFFORT_LEVELS.map((lv) => {
+                          const on = Object.prototype.hasOwnProperty.call(efforts, lv.key);
+                          return (
+                            <button
+                              key={lv.key}
+                              className={"ghost small" + (on ? " effort-on" : "")}
+                              data-testid={"model-effort-" + lv.key}
+                              data-hover-hint={
+                                on
+                                  ? "已声明给 DSH（off 取值 none，其余同名）；再点一次取消"
+                                  : "声明该档位；模型不支持时真实调用会报错，取消即可"
+                              }
+                              onClick={() => toggleEffort(lv.key)}
+                            >
+                              {on ? "✓ " + lv.label : lv.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      </>
+                      );
+                    })}
                   </div>
                   <div className="actions">
                     <button className="ghost small" onClick={addModel}>

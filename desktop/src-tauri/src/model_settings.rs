@@ -48,6 +48,11 @@ pub struct ModelEntry {
     /// 这是配置声明，不代表端点一定接受这么大；界面必须如实说明。
     #[serde(default, rename = "contextWindow", skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
+    /// 用户手动声明的思考档位映射（DSH `reasoningEfforts`，OD-ARCH-181）。
+    /// 设置后优先于 Profile 继承与宿主已验证清单；未设置则沿用既有合并规则。
+    /// 声明不实会在真实调用时报错，用户自行修正——这正是手动控制的语义。
+    #[serde(default, rename = "reasoningEfforts", skip_serializing_if = "Option::is_none")]
+    pub reasoning_efforts: Option<std::collections::BTreeMap<String, String>>,
 }
 
 impl ModelEntry {
@@ -136,6 +141,25 @@ impl ProviderSettings {
             seen.push(id);
             if m.name.contains(['\r', '\n']) {
                 return Err(format!("{}：模型名称不能含换行", self.provider));
+            }
+            if let Some(efforts) = &m.reasoning_efforts {
+                for (level, value) in efforts {
+                    if !matches!(
+                        level.as_str(),
+                        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+                    ) {
+                        return Err(format!(
+                            "{} / {}：思考档位只支持 off / minimal / low / medium / high / xhigh / max（收到 {}）",
+                            self.provider, id, level
+                        ));
+                    }
+                    if value.trim().is_empty() || value.contains(['\r', '\n']) {
+                        return Err(format!(
+                            "{} / {}：档位 {} 的端点取值不能为空或含换行",
+                            self.provider, id, level
+                        ));
+                    }
+                }
             }
             if let Some(window) = m.context_window {
                 if window == 0 || window > 100_000_000 {
@@ -389,6 +413,19 @@ fn render_provider(p: &ProviderSettings, base: Option<&ProviderRoute>) -> String
                 entry
             }
         };
+        // OD-ARCH-181：用户在设置页逐模型手动声明的档位优先——覆盖 Profile 继承，
+        // 也覆盖宿主已验证清单（merge_verified_efforts 只补缺失键）。
+        if let Some(efforts) = &m.reasoning_efforts {
+            if !efforts.is_empty() {
+                if let Some(obj) = entry.as_object_mut() {
+                    obj.insert(
+                        "reasoningEfforts".to_string(),
+                        serde_json::to_value(efforts)
+                            .unwrap_or_else(|_| serde_json::json!({})),
+                    );
+                }
+            }
+        }
         if p.thinking_mode == "disabled" {
             if let Some(obj) = entry.as_object_mut() {
                 obj.insert("reasoning".to_string(), serde_json::json!(true));
@@ -530,6 +567,7 @@ impl LegacySettings {
                     id: self.default_model.clone(),
                     name: self.default_model.clone(),
                     context_window: None,
+                    reasoning_efforts: None,
                 }],
                 reasoning_effort: self.reasoning_effort,
                 thinking_mode: "auto".to_string(),
@@ -796,6 +834,7 @@ mod tests {
                 id: format!("{}-flash", name),
                 name: format!("{}-flash", name),
                 context_window: None,
+                reasoning_efforts: None,
             }],
             reasoning_effort: None,
             thinking_mode: "auto".to_string(),
@@ -881,6 +920,7 @@ mod tests {
             id: "glm-5.3-flash".to_string(),
             name: "GLM 5.3 Flash".to_string(),
             context_window: Some(1_048_576),
+            reasoning_efforts: None,
         });
         s.providers.push(own);
         s.default = DefaultRoute {
@@ -1194,6 +1234,30 @@ mod tests {
     }
 
     #[test]
+    fn user_declared_efforts_override_profile_and_verified_list() {
+        let mut s = sample();
+        let mut own = provider("opendesign");
+        own.models = vec![ModelEntry {
+            id: "deepseek-v4.1-flash".to_string(),
+            name: "DeepSeek V4.1 Flash".to_string(),
+            context_window: None,
+            reasoning_efforts: Some(
+                [("high".to_string(), "custom-high".to_string())].into_iter().collect(),
+            ),
+        }];
+        s.providers.push(own);
+        let yml = s.render_overlay(&[]);
+        let flash = yml
+            .split("- id: deepseek-v4.1-flash")
+            .nth(1)
+            .and_then(|section| section.split("- id:").next())
+            .expect("应有 deepseek-v4.1-flash");
+        assert!(flash.contains("reasoningEfforts:"), "{}", flash);
+        assert!(flash.contains("custom-high"), "用户取值必须原样写出：{}", flash);
+        assert!(!flash.contains("none"), "用户声明应完整覆盖宿主清单：{}", flash);
+    }
+
+    #[test]
     fn overlay_keeps_profile_effort_declaration() {
         let routes = opendesign_routes(serde_json::json!([{
             "id": "deepseek-v4.1-flash",
@@ -1216,13 +1280,14 @@ mod tests {
         ]));
         let yml = sample().render_overlay(&routes);
         let block = opendesign_block(&yml);
-        assert_eq!(block.matches("reasoningEfforts:").count(), 1, "{}", block);
+        assert_eq!(block.matches("reasoningEfforts:").count(), 2, "{}", block);
         let eco = block
             .split("- id: deepseek-v4.1-flash-eco")
             .nth(1)
             .and_then(|section| section.split("- id:").next())
             .expect("应有 eco 条目");
-        assert!(!eco.contains("reasoningEfforts"), "{}", eco);
+        assert!(eco.contains("reasoningEfforts"), "{}", eco);
+        assert!(eco.contains("\"off\": \"none\""), "{}", eco);
         let glm = block
             .split("- id: glm-5.3-flashx")
             .nth(1)
@@ -1239,11 +1304,13 @@ mod tests {
                 id: "deepseek-v4.1-flash".to_string(),
                 name: "DeepSeek V4.1 Flash".to_string(),
                 context_window: None,
+                reasoning_efforts: None,
             },
             ModelEntry {
                 id: "deepseek-v4.1-flash-eco".to_string(),
                 name: "DeepSeek V4.1 Flash Eco".to_string(),
                 context_window: None,
+                reasoning_efforts: None,
             },
         ];
         s.providers.push(own);
@@ -1258,7 +1325,8 @@ mod tests {
             .split("- id: deepseek-v4.1-flash-eco")
             .nth(1)
             .expect("应有 eco");
-        assert!(!eco.contains("reasoningEfforts"), "{}", eco);
+        assert!(eco.contains("reasoningEfforts"), "{}", eco);
+        assert!(eco.contains("\"off\": \"none\""), "{}", eco);
     }
 
     #[test]

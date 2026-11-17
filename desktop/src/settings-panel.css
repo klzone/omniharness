@@ -1003,6 +1003,26 @@
   align-items: center;
 }
 
+/* 逐模型的思考档位声明（OD-ARCH-181）：标签 + 7 个可切换档位。 */
+.settings-surface .model-efforts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0 0.4rem;
+}
+
+.settings-surface .model-efforts .effort-on {
+  border-color: var(--accent, #5747f8);
+  color: var(--accent, #5747f8);
+}
+
+/* 档位按钮再收一档（约默认的一半）：字号与内边距都缩小，避免挤压模型设置布局。 */
+.settings-surface .model-efforts button.ghost {
+  font-size: 9px;
+  padding: 0.15rem 0.4rem;
+}
+
 @media (max-width: 900px) {
   .settings-surface .provider-split {
     grid-template-columns: 1fr;

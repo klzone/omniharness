@@ -2833,7 +2833,35 @@ struct AttachmentExtractOutput {
     content: Option<String>,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    chapters: Vec<ReadingSourceChapter>,
 }
+
+/// 阅读导入时由 EPUB 提取器给出的章节；纯文本/PDF 可以没有章节，由存储层再切分。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReadingSourceChapter {
+    pub title: String,
+    pub content: String,
+}
+
+/// 用户显式选择的阅读源文件：正文 + 真实来源事实。
+///
+/// 与对话附件不同，阅读导入允许整本书（上限 32 MiB）；依旧必须是普通文件、
+/// 绝对路径、不得命中禁区，且只有真实解码/提取出的正文才会返回。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ReadingSource {
+    pub path: String,
+    pub file_name: String,
+    pub bytes: u64,
+    pub extension: String,
+    pub sha256: String,
+    pub content: String,
+    pub chapters: Vec<ReadingSourceChapter>,
+}
+
+pub const READING_SOURCE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+const READING_TEXT_EXTS: &[&str] = &["md", "markdown", "txt", "text"];
+const READING_EXTRACT_EXTS: &[&str] = &["pdf", "docx", "docm", "epub"];
 
 fn attachment_vendor_dir() -> Option<PathBuf> {
     if let Some(raw) = std::env::var_os("OMNIDESK_PYTHON_VENDOR") {
@@ -2951,6 +2979,99 @@ fn metadata_reason(extension: &str, file_name: &str, helper_reason: Option<Strin
             file_name
         ),
     }
+}
+
+/// 读取用户通过文件框显式选择的阅读源（OD-READ-001）。
+///
+/// 纯文本优先由 Rust 直接按 UTF-8 读；非 UTF-8 再交给 Python helper 尝试
+/// UTF-16/GB18030。PDF/DOCX/EPUB 一律走 helper；helper 不可用或只回元数据时
+/// 明确报错，不把空正文当成功。
+pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
+    let raw = path_text.trim();
+    if raw.is_empty() {
+        return Err("请选择要导入的阅读文件。".to_string());
+    }
+    let path = Path::new(raw);
+    if !path.is_absolute() {
+        return Err(format!("阅读文件路径必须是绝对路径：{raw}"));
+    }
+    assert_attachment_path_allowed(path)?;
+    let resolved = resolve_real_path(path)?;
+    assert_attachment_path_allowed(&resolved)?;
+    let meta = fs::metadata(&resolved)
+        .map_err(|e| format!("无法读取阅读文件 {}：{}。请确认文件存在且可读。", resolved.display(), e))?;
+    if !meta.is_file() {
+        return Err(format!("{} 不是普通文件，无法导入阅读。", resolved.display()));
+    }
+    if meta.len() > READING_SOURCE_MAX_BYTES {
+        return Err(format!(
+            "阅读文件 {} KB，超过 {} KB 导入上限。请拆分或先转换为较小的文本文件。",
+            meta.len() / 1024,
+            READING_SOURCE_MAX_BYTES / 1024
+        ));
+    }
+    let extension = resolved
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    let file_name = resolved
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| resolved.display().to_string());
+    let bytes = fs::read(&resolved)
+        .map_err(|e| format!("读取阅读文件 {} 失败：{}", resolved.display(), e))?;
+    let sha256 = sha256_hex(&bytes);
+    let mut chapters: Vec<ReadingSourceChapter> = Vec::new();
+    let content = if READING_TEXT_EXTS.contains(&extension.as_str()) {
+        match String::from_utf8(bytes) {
+            Ok(text) if !text.trim().is_empty() => text,
+            Ok(_) => return Err(format!("阅读文件「{file_name}」没有可读的正文。")),
+            Err(_) => {
+                let out = run_attachment_extract_helper(&resolved, &extension)
+                    .ok_or_else(|| format!("「{file_name}」不是 UTF-8 文本，且文本解码器不可用。"))?;
+                if out.kind != "text" {
+                    return Err(format!(
+                        "「{file_name}」正文未提取：{}",
+                        out.reason.unwrap_or_else(|| "编码无法识别".to_string())
+                    ));
+                }
+                chapters = out.chapters;
+                out.content.unwrap_or_default()
+            }
+        }
+    } else if READING_EXTRACT_EXTS.contains(&extension.as_str()) {
+        let out = run_attachment_extract_helper(&resolved, &extension).ok_or_else(|| {
+            format!(
+                "「{file_name}」的 {} 正文提取器不可用。请确认本机 Python 与 PDF 依赖可用，或先转换为 Markdown/TXT。",
+                extension.to_uppercase()
+            )
+        })?;
+        if out.kind != "text" {
+            return Err(format!(
+                "「{file_name}」正文未提取：{}",
+                out.reason.unwrap_or_else(|| "没有可读文字".to_string())
+            ));
+        }
+        chapters = out.chapters;
+        out.content.unwrap_or_default()
+    } else {
+        return Err(format!(
+            "「{file_name}」格式不支持阅读导入（支持 md / markdown / txt / pdf / docx / epub）。"
+        ));
+    };
+    if content.trim().is_empty() {
+        return Err(format!("「{file_name}」没有可读的正文。"));
+    }
+    Ok(ReadingSource {
+        path: resolved.display().to_string(),
+        file_name,
+        bytes: meta.len(),
+        extension,
+        sha256,
+        content,
+        chapters,
+    })
 }
 
 /// 读取用户通过文件选择框显式给出的一个附件。
