@@ -8,7 +8,7 @@
 - 版本与日志：`VERSION` 0.2.30；`desktop/src-tauri/tauri.conf.json` 0.2.30；`desktop/package.json` 0.2.30；`CHANGELOG.md` 的 `[Unreleased]` 收口为 `[0.2.30] - 2026-11-17`，写清效率（system 5396→2983、四动作 user 段降 61%–72%）、安全（free-search 依赖清理、输出上限、保存/切换预检）、成熟（配置解释页）与 Known limitations。
 - 播种迁移：`seed_home_from_package` 只在缺失时复制，不覆盖已有 Profile；日常装配把内容不同的文件标 drift 并保留；只有用户点「修复缺失 / 恢复出厂内容」才备份后写回。本机 `~/OmniDesk/runtime/dsh-home/profiles/discipline` 仍含 `dsh-free-search`（只读核对，未改用户数据）。发布工作流会在 tauri build 前用 `prepare-runtime-assets.sh` 重建 seed，新装包干净；现有用户需点恢复出厂或重装，记为已知事项。
 - 未验证：真实模型 smoke（402 余额不足）；Windows 安装器；`verify_skill_flow_injection_108.py` 真实窗口运行；配置解释页真实窗口截图；GUI/真实模型下的 Skill 读取行为。
-- 交付：本次提交与推送结果见下方「0.2.30 发布提交」小节；未打标签，未 force push。
+- 交付：release 提交 `1d07d91bba`（`docs(release): 0.2.30 OD-ARCH-173 成熟高效安全基线`），已推送 `origin/main`（`296b160d0c..1d07d91bba`）；未打标签，未 force push；提交后工作树干净，无遗漏改动。
 
 ## OD-ARCH-173 阶段 5：可观测性与配置解释（2026-11-17）
 
