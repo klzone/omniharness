@@ -195,15 +195,38 @@ export function effortEvidenceExcludes(
 }
 
 /**
+ * 证据是否明确声明「支持 requested」。
+ *
+ * 与 effortEvidenceExcludes 相反：只有目录或 Profile 给出非空声明集合、
+ * 且集合包含该档位时才算支持。未声明 / 目录不可用一律视为不支持——
+ * 真实 DSH 的 session/selectModel 会拒绝未声明模型的任何显式档位
+ * （OD-ARCH-176 线上回归实测），因此档位必须「证明可用」才下发。
+ */
+export function effortEvidenceIncludes(
+  evidence: WorkIntentEffortEvidence | null | undefined,
+  requested: string,
+): boolean {
+  const catalogLevels = evidence?.catalogLevels;
+  if (Array.isArray(catalogLevels) && catalogLevels.length > 0) {
+    return catalogLevels.includes(requested);
+  }
+  const profileLevels = evidence?.profileLevels;
+  if (Array.isArray(profileLevels) && profileLevels.length > 0) {
+    return profileLevels.includes(requested);
+  }
+  return false;
+}
+
+/**
  * 本轮提交的思考档位（OD-ARCH-176 阶段 1 第 6 条）。
  *
  * - 用户手动选过档位 → 按所选档位（`default` 视为不传）；
- * - 分类 / 随手记分析 / 指令回复 → 默认 `off`（模型直出）；
+ * - 分类 / 随手记分析 / 指令回复 → 证据声明支持 off 时默认 `off`（模型直出）；
  * - 复盘 / 周报 / 当日摘要起草 → 不传，跟随模型默认。
  *
- * 返回 null 表示不显式设置 reasoningEffort。工作记录场景的 `off` 生效前还会
- * 检查两层档位证据：只有声明集合明确不含 `off` 时才降为 null，跟随模型默认；
- * 未声明或目录不可用时仍按 `off` 提交。
+ * 返回 null 表示不显式设置 reasoningEffort。档位必须被证据「证明支持」才下发：
+ * 真实 DSH 的 session/selectModel 会拒绝未声明模型的任何显式档位（含 off，
+ * OD-ARCH-176 线上回归实测）；未声明模型本就没有思考可关，不传档位即等效直出。
  */
 export function pickWorkIntentEffort(input: {
   intent: string;
@@ -214,12 +237,10 @@ export function pickWorkIntentEffort(input: {
   const selected = (input.selectedEffort ?? "").trim();
   if (input.userSelected) {
     if (!selected || selected === "default") return null;
-    return selected === "off" && effortEvidenceExcludes(input.evidence, "off")
-      ? null
-      : selected;
+    return effortEvidenceIncludes(input.evidence, selected) ? selected : null;
   }
   if (input.intent === "report" || input.intent === "period-review" || input.intent === "daily-summary") {
     return null;
   }
-  return effortEvidenceExcludes(input.evidence, "off") ? null : "off";
+  return effortEvidenceIncludes(input.evidence, "off") ? "off" : null;
 }

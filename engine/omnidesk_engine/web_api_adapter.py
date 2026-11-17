@@ -35,6 +35,7 @@ import queue
 import socket
 import struct
 import subprocess
+import sys
 
 import threading
 import time
@@ -903,6 +904,10 @@ class WebApiAdapter(TaskCoreBase):
         elif "fork-unavailable" in low:
             # 切点在源会话里不存在（或源会话没有完整轮次）：是参数问题，不是引擎掉线。
             mapped = EngineErrorCode.INVALID_ARGUMENT
+        elif "model-unavailable" in low:
+            # session/selectModel 等模型选择失败（OD-ARCH-176 线上回归）：是本轮
+            # 模型/档位组合不被接受，不是引擎掉线，按任务失败呈现真实原因。
+            mapped = EngineErrorCode.INVALID_ARGUMENT
         elif "not-found" in low:
             mapped = EngineErrorCode.UNKNOWN_TASK
         elif "unsupported" in low or "not implemented" in low:
@@ -1317,9 +1322,22 @@ class WebApiAdapter(TaskCoreBase):
         with self._lock:
             if self._applied_effort.get(session_id) == key:
                 return
-        self.select_model(
-            session_id, provider=provider, model=model, reasoning_effort=effort
-        )
+        try:
+            self.select_model(
+                session_id, provider=provider, model=model, reasoning_effort=effort
+            )
+        except EngineError as error:
+            # OD-ARCH-176 线上回归：DSH session/selectModel 会拒绝未声明档位
+            # 模型的任何显式档位（含 off）。装不上档位只是失去直出优化，
+            # 不能炸掉整轮任务；记一条 stderr 后按「跟随模型默认」继续。
+            print(
+                "[OmniDesk][effort] select_model 被拒，按模型默认继续："
+                f"session={session_id} provider={provider} model={model} "
+                f"effort={effort}: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
         with self._lock:
             self._applied_effort[session_id] = key
 

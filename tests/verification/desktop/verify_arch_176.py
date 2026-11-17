@@ -82,17 +82,23 @@ const fenced = "<omnidesk-intent>" + String.fromCharCode(96).repeat(3) + "json\n
   JSON.stringify({ intent: "chat", reply_hint: "好。" }) + "\n" + String.fromCharCode(96).repeat(3) + "</omnidesk-intent>";
 check("fenced_json_ok", dec.parseWorkIntentContract(fenced).contract.intent === "chat");
 
-// 2) 思考档位：分类/指令默认 off；起草不传；用户手动档位优先。
+// 2) 思考档位：档位必须被证据「证明支持」才下发（真实 DSH 的 session/selectModel
+// 会拒绝未声明模型的任何显式档位，含 off——OD-ARCH-176 线上回归）；
+// 未声明模型本就没有思考可关，不传档位即等效直出；起草不传；用户手动档位优先。
 const pick = dec.pickWorkIntentEffort;
-check("effort_classify_off", pick({ intent: "classify", userSelected: false, selectedEffort: "off" }) === "off");
-check("effort_instruction_off", pick({ intent: "instruction", userSelected: false, selectedEffort: "high" }) === "off");
-check("effort_note_off", pick({ intent: "note", userSelected: false, selectedEffort: "high" }) === "off");
+check("effort_no_evidence_drops_tier", pick({ intent: "classify", userSelected: false, selectedEffort: "off" }) === null);
+check("effort_instruction_no_evidence_drops_tier", pick({ intent: "instruction", userSelected: false, selectedEffort: "high" }) === null);
+check("effort_note_no_evidence_drops_tier", pick({ intent: "note", userSelected: false, selectedEffort: "high" }) === null);
 check("effort_report_default", pick({ intent: "report", userSelected: false, selectedEffort: "high" }) === null);
 check("effort_period_default", pick({ intent: "period-review", userSelected: false, selectedEffort: "high" }) === null);
-check("effort_manual_high", pick({ intent: "classify", userSelected: true, selectedEffort: "high" }) === "high");
+check("effort_manual_high_without_evidence_drops_tier", pick({ intent: "classify", userSelected: true, selectedEffort: "high" }) === null);
+check("effort_manual_high_with_evidence", pick({
+  intent: "classify", userSelected: true, selectedEffort: "high",
+  evidence: { catalogLevels: ["low", "high"], profileLevels: null },
+}) === "high");
 check("effort_manual_default", pick({ intent: "classify", userSelected: true, selectedEffort: "default" }) === null);
 
-// 2a) off 能力预判：只有声明集合存在且不含 off 时才降为 null。
+// 2a) off 能力预判：声明集合包含 off 才下发 off；未声明/目录不可用一律 null。
 check(
   "effort_catalog_includes_off",
   pick({
@@ -108,15 +114,15 @@ check(
   }) === null,
 );
 check(
-  "effort_undeclared_keeps_off",
+  "effort_undeclared_drops_tier",
   pick({
     intent: "classify", userSelected: false, selectedEffort: "off",
     evidence: { catalogLevels: [], profileLevels: null },
-  }) === "off",
+  }) === null,
 );
 check(
-  "effort_catalog_unavailable_keeps_off",
-  pick({ intent: "classify", userSelected: false, selectedEffort: "off", evidence: null }) === "off",
+  "effort_catalog_unavailable_drops_tier",
+  pick({ intent: "classify", userSelected: false, selectedEffort: "off", evidence: null }) === null,
 );
 check(
   "effort_profile_includes_off",
@@ -133,11 +139,11 @@ check(
   }) === null,
 );
 check(
-  "effort_profile_false_keeps_off",
+  "effort_profile_false_drops_tier",
   pick({
     intent: "classify", userSelected: false, selectedEffort: "off",
     evidence: { catalogLevels: [], profileLevels: false },
-  }) === "off",
+  }) === null,
 );
 check(
   "effort_manual_off_missing_is_default",
