@@ -1253,6 +1253,8 @@ struct ProcessOutput {
     code: Option<i32>,
     #[allow(dead_code)]
     stdout: String,
+    /// 保留给诊断；当前调用方不读取（只用于排查外部进程失败）。
+    #[allow(dead_code)]
     stderr: String,
 }
 

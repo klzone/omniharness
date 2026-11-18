@@ -48,7 +48,6 @@ pub fn check(work_root: &Path) -> Result<IntegrityReport, String> {
     let record_ids: BTreeSet<&str> = records.items.iter().map(|r| r.id.as_str()).collect();
     let task_ids: BTreeSet<&str> = tasks.items.iter().map(|t| t.id.as_str()).collect();
     let project_ids: BTreeSet<&str> = projects.items.iter().map(|p| p.project_id.as_str()).collect();
-    let material_ids: BTreeSet<&str> = materials.items.iter().map(|m| m.material_id.as_str()).collect();
 
     let mut issues: Vec<IntegrityIssue> = Vec::new();
     let mut issue_count = 0usize;
