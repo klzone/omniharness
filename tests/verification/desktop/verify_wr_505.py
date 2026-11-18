@@ -68,6 +68,13 @@ const annual = mod.detectPeriodReviewTarget("年度总结", now);
 check("target_annual", annual && annual.start === "2026-01-01" && annual.end === "2026-12-31", JSON.stringify(annual));
 const weekly = mod.detectPeriodReviewTarget("本周复盘", now);
 check("target_weekly", weekly && weekly.start === "2026-11-09" && weekly.end === "2026-11-15", JSON.stringify(weekly));
+// OD-ARCH-182：词表之外的「复盘一下上周」「上上周」也必须落到正确周期。
+const lastWeek = mod.detectPeriodReviewTarget("复盘一下上周的工作", now);
+check("target_last_week_loose", lastWeek && lastWeek.start === "2026-11-02" && lastWeek.end === "2026-11-08" && lastWeek.label === "上周", JSON.stringify(lastWeek));
+const twoWeeksBack = mod.detectPeriodReviewTarget("复盘上上周", now);
+check("target_two_weeks_back", twoWeeksBack && twoWeeksBack.start === "2026-10-26" && twoWeeksBack.end === "2026-11-01", JSON.stringify(twoWeeksBack));
+const lastMonth = mod.detectPeriodReviewTarget("复盘上个月", now);
+check("target_last_month", lastMonth && lastMonth.start === "2026-10-01" && lastMonth.end === "2026-10-31" && lastMonth.label === "上个月", JSON.stringify(lastMonth));
 
 console.log(JSON.stringify({ cases }));
 """

@@ -164,30 +164,77 @@ export function detectPeriodReviewTarget(
   now: Date = new Date(),
   offsetMinutes?: number,
 ): PeriodReviewTarget | null {
-  const raw = (input || "").trim();
-  const text = normalizeIntentText(raw);
+  const text = normalizeIntentText((input || "").trim());
   if (!text) return null;
-  if (!PERIOD_REVIEW_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) return null;
+  // OD-ARCH-182 修复：词表只收固定搭配，「复盘一下上周的工作」这类说法会漏配。
+  // 只要出现总结动词 + 明确的相对周期词，也按复盘处理；范围仍由宿主演算。
+  const keywordHit = PERIOD_REVIEW_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)));
+  const summaryHit = ["复盘", "总结", "回顾", "梳理", "汇总", "小结"].some((w) =>
+    text.includes(w),
+  );
+  if (!keywordHit && !summaryHit) return null;
 
   const cal = calendarOf(now, offsetMinutes);
   const month = new Date(cal.todayDay * DAY_MS).getUTCMonth() + 1;
-  if (PERIOD_REVIEW_KEYWORDS.slice(0, 6).some((k) => text.includes(normalizeIntentText(k)))) {
-    let monday = mondayOf(cal);
-    if (/上周/.test(raw)) monday -= 7;
-    const endDay = monday + 6;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const weeksBack = text.includes("上上周")
+    ? 2
+    : /上周|上一周|前一周/.test(text)
+      ? 1
+      : 0;
+  const weeklyHit =
+    PERIOD_REVIEW_KEYWORDS.slice(0, 6).some((k) => text.includes(normalizeIntentText(k))) ||
+    (summaryHit && /周/.test(text));
+  if (weeklyHit || weeksBack > 0) {
+    const monday = mondayOf(cal) - 7 * weeksBack;
     return {
       period: "weekly",
       start: fromDayNumber(monday),
-      end: fromDayNumber(endDay),
-      label: /上周/.test(raw) ? "上周" : "本周",
+      end: fromDayNumber(monday + 6),
+      label: weeksBack === 0 ? "本周" : weeksBack === 1 ? "上周" : "上上周",
     };
   }
-  if (PERIOD_REVIEW_KEYWORDS.slice(6, 14).some((k) => text.includes(normalizeIntentText(k)))) {
-    const endMonth = month;
+  if (/月度|月报|本月|这个月|上个月|上月/.test(text)) {
+    const back = /上个月|上月/.test(text) ? 1 : 0;
+    const year = cal.todayYear - (month - 1 - back < 0 ? 1 : 0);
+    const targetMonth = (((month - 1 - back) % 12) + 12) % 12 + 1;
     return {
       period: "monthly",
-      start: `${cal.todayYear}-${String(month).padStart(2, "0")}-01`,
-      end: `${cal.todayYear}-${String(endMonth).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, endMonth)).padStart(2, "0")}`,
+      start: String(year) + "-" + pad(targetMonth) + "-01",
+      end: String(year) + "-" + pad(targetMonth) + "-" + pad(lastDayOfMonth(year, targetMonth)),
+      label: back === 0 ? "本月" : "上个月",
+    };
+  }
+  if (/季度|本季|上个季度|上季度/.test(text)) {
+    const back = /上个季度|上季度/.test(text) ? 1 : 0;
+    const quarterIndex = Math.floor((month - 1) / 3) - back;
+    const year = cal.todayYear + Math.floor(quarterIndex / 4);
+    const quarter = (((quarterIndex % 4) + 4) % 4) + 1;
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    return {
+      period: "quarterly",
+      start: String(year) + "-" + pad(startMonth) + "-01",
+      end: String(year) + "-" + pad(endMonth) + "-" + pad(lastDayOfMonth(year, endMonth)),
+      label: String(year) + " Q" + quarter,
+    };
+  }
+  if (/年度|全年|今年|本年|去年/.test(text)) {
+    const year = cal.todayYear - (/去年/.test(text) ? 1 : 0);
+    return {
+      period: "annual",
+      start: String(year) + "-01-01",
+      end: String(year) + "-12-31",
+      label: String(year) + " 年",
+    };
+  }
+  if (!keywordHit) return null;
+  if (PERIOD_REVIEW_KEYWORDS.slice(6, 14).some((k) => text.includes(normalizeIntentText(k)))) {
+    return {
+      period: "monthly",
+      start: String(cal.todayYear) + "-" + pad(month) + "-01",
+      end:
+        String(cal.todayYear) + "-" + pad(month) + "-" + pad(lastDayOfMonth(cal.todayYear, month)),
       label: "本月",
     };
   }
@@ -197,21 +244,22 @@ export function detectPeriodReviewTarget(
     const endMonth = startMonth + 2;
     return {
       period: "quarterly",
-      start: `${cal.todayYear}-${String(startMonth).padStart(2, "0")}-01`,
-      end: `${cal.todayYear}-${String(endMonth).padStart(2, "0")}-${String(lastDayOfMonth(cal.todayYear, endMonth)).padStart(2, "0")}`,
-      label: `${cal.todayYear} Q${quarter + 1}`,
+      start: String(cal.todayYear) + "-" + pad(startMonth) + "-01",
+      end:
+        String(cal.todayYear) + "-" + pad(endMonth) + "-" + pad(lastDayOfMonth(cal.todayYear, endMonth)),
+      label: String(cal.todayYear) + " Q" + (quarter + 1),
     };
   }
   return {
     period: "annual",
-    start: `${cal.todayYear}-01-01`,
-    end: `${cal.todayYear}-12-31`,
-    label: `${cal.todayYear} 年`,
+    start: String(cal.todayYear) + "-01-01",
+    end: String(cal.todayYear) + "-12-31",
+    label: String(cal.todayYear) + " 年",
   };
 }
 
 /**
- * 由模型判出的周期算出起止日期（OD-ARCH-176）。
+ * 由模型判出的周期算出起止日期OD-ARCH-176）。
  *
  * 词表只认用户明确说了「复盘/总结」的说法；模型指出「帮我看看本周干得怎么样」
  * 这类没有词表命中的周期时，宿主仍按完整自然周期取范围，不猜偏移。

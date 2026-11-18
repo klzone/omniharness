@@ -2661,7 +2661,13 @@ export function HomeChat({
           m.taskId === taskId
             ? {
                 ...m,
-                text: reply || (route.action === "ask" ? "这条要记吗？" : "这句没有可用的回复。"),
+                text:
+                  reply ||
+                  (route.action === "ask"
+                    ? "这条要记吗？"
+                    : route.action === "note"
+                      ? "本条信息已记录。"
+                      : "这句没有可用的回复。"),
                 notice:
                   route.action === "ask" ? "这句没有写入工作记录。" : null,
               }
