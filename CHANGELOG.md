@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.39] - 2026-11-18
+
+### Added
+- 健脑室：读书页更名为「健脑室」，书架分「书籍」「订阅文章」两组；新增 RSS/Atom 订阅管理（添加、删除、刷新全部）与 49 条预置源（9 位精选作者 + 40 条独立博客，MIT 归属）。
+- RSS 文章复用既有阅读器与划线/想法/标段/问 AI 浮条，AI 走既有概念解释与批注整理链路；订阅与文章只落本机 `~/OmniDesk/reading/`。
+
+### Fixed
+- Windows 关闭应用后残留 DSH node 进程：引擎与宿主补齐 Windows 进程树回收（taskkill 树杀、owner.json 记录 child_pid、启动前按命令行指纹清扫死父进程遗留、退出兜底），不再只依赖 Job Object。
+- 知识卡 staging 路径歧义：skill 改为以引擎当前工作目录为基准写 `staging/kb/`，避免模型误写 `workspace` 父目录导致建卡失败。
+- 输入侧脱敏补强：新增金额、名单式人名、无后缀企业名规则与常见词防误遮。
+
+### Verification
+- `cargo test --offline --lib`：1232 通过 / 0 失败 / 1 忽略（含 rss_store 11 项）。
+- `npx tsc --noEmit`、`npm run build` 通过；`verify_od_read_002_stage1.py` 42 项全过；`verify_process_platform_133.py` 28/28。
+- Windows 专属行为需实机复验：开关两次后 `Get-CimInstance` 过滤 `dsh-runtime` 残留应为 0。
+
 ## [0.2.38] - 2026-11-18
 
 ### Changed
