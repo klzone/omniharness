@@ -15,6 +15,199 @@
   scrollbar-width: thin;
 }
 
+.reading-shelf-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 6px 8px 0;
+}
+
+.reading-shelf-tabs button {
+  border-radius: 8px 8px 0 0;
+  padding: 6px 4px;
+  color: var(--color-on-surface-variant);
+  font-size: 10.5px;
+  border-bottom: 1.5px solid transparent;
+}
+
+.reading-shelf-tabs button.is-active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+}
+
+.reading-cover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent);
+  background: linear-gradient(160deg, #f6ead8, #e8d6be);
+  box-shadow: 0 3px 8px -5px rgba(70, 55, 40, 0.35);
+}
+
+.reading-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reading-cover-fallback {
+  color: color-mix(in srgb, var(--color-primary) 70%, #6b5544 30%);
+  font-family: var(--font-headline-md);
+  font-size: 16px;
+  font-weight: 550;
+  line-height: 1;
+}
+
+.reading-cover-shelf {
+  width: 34px;
+  height: 46px;
+}
+
+.reading-cover-header {
+  width: 26px;
+  height: 36px;
+}
+
+.reading-media-figure {
+  display: flex;
+  justify-content: center;
+  margin: 1.1rem auto;
+  max-width: 100%;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 88%, white 12%);
+  box-shadow: 0 12px 24px -18px rgba(70, 55, 40, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  padding: 8px;
+}
+
+/* 媒体标记的原始文本只作为划线偏移锚点存在，不参与视觉排版。 */
+.reading-media-anchor {
+  display: none;
+}
+
+/* 行内 Markdown 的语法符号只作为偏移锚点，不影响排版。 */
+.reading-syntax-anchor {
+  display: none;
+}
+
+.reading-inline-code {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-surface-container) 88%, transparent);
+  padding: 0.05em 0.28em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+}
+
+.reading-media-image {
+  max-width: 640px;
+}
+
+.reading-media-image-button {
+  display: block;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.reading-media-image-button img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.reading-media-audio {
+  width: 100%;
+  border-radius: 10px;
+}
+
+.reading-media-video {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 10px;
+  background: #191715;
+}
+
+.reading-media-loading,
+.reading-media-error {
+  display: inline-block;
+  margin: 0.35rem 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-container) 75%, transparent);
+  padding: 4px 8px;
+  color: var(--color-outline);
+  font-family: var(--font-body-sm);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.reading-media-error {
+  color: var(--color-error);
+}
+
+.reading-lightbox img {
+  max-height: 88vh;
+  max-width: 92vw;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+}
+
+.reading-lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.home-reading-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0.5rem 0 0.75rem;
+  padding: 6px 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 252, 246, 0.58));
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent);
+  box-shadow: 0 10px 22px -18px rgba(120, 100, 80, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  text-align: left;
+}
+
+.home-reading-stats:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+
+.home-reading-stats-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 9px;
+  color: var(--color-on-surface-variant);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.home-reading-stats-item strong {
+  color: var(--color-on-surface);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+}
+
+.home-reading-stats-item svg {
+  align-self: center;
+  color: color-mix(in srgb, var(--color-primary) 75%, var(--color-on-surface-variant) 25%);
+}
+
 .reading-scroll {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-outline) 45%, transparent) transparent;

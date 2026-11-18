@@ -1,3 +1,29 @@
+# OD-READ-004 ARCHITECT 复核（2026-11-18）——通过（脚本/静态范围；真实 MOBI/PDF/窗口待用户验收）
+
+**复核对象：** 工作树 `od-read-002-brain-room` 上 OD-READ-004 改动：`HomeCanvas.tsx` 布局、`ReadingPage.tsx` 格式过滤器、`task_shell.rs` 扩展名白名单与 MOBI 单测、`reading_attachment_extract.py` MOBI 解析、`python-requirements.txt`/prepare 脚本/数据布局文档、新增 `verify_reading_004_formats.py`。
+
+**ARCHITECT 实跑：** `cargo test --offline --lib -- --test-threads=1` → 1249 passed / 0 failed / 1 ignored；`reads_reading_source_mobi_via_helper` → 1/1；`npx tsc --noEmit` → 0；`npm run build` → 0；`verify_reading_004_formats.py` → 19/19；`verify_reading_003_selection.py` → 25/25；`git diff --check` → 干净。
+
+**结论：** 首页统计条已移到对话下方（原「项目跟踪」快捷入口已移除，对话与统计条之间保留间距）；MOBI 扩展名已进入 Rust 白名单与界面过滤器，PalmDOC 解压与 HTML 转文本经合成样例验证；PDF 依赖 pypdf 已写入随包 requirements 并实际完成文字提取验证。HUFF/CDIC 压缩与 DRM 加密会明确拒绝，属文档化限制。真实用户 MOBI/PDF 与窗口视觉仍待用户验收。
+
+# OD-READ-003 ARCHITECT 复核（2026-11-18）——通过（脚本/静态范围；真实窗口交互待用户验收）
+
+**复核对象：** 工作树 `/Users/yvan/.codex/worktrees/2221/MyWorkStation`（分支 `od-read-002-brain-room`，HEAD `f008ef94bb`）上 BUILDER（OpenDesign/deepseek-v4.1-flash-eco，思考档 high）交付的 OD-READ-003 全部改动：11 个修改文件 + 1 个新增验证脚本（1775 insertions / 117 deletions）。
+
+**ARCHITECT 实跑（非自述采信）：**
+1. `cargo test --offline --lib -- --test-threads=1`（`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation`）→ **1248 passed / 0 failed / 1 ignored**（50.76s，含新增 stats/thought 口径、封面落盘、EPUB 含图端到端测试）。
+2. `npx tsc --noEmit` → exit 0；`npm run build` → exit 0（ReadingPage chunk 51.54 kB）。
+3. `python3 tests/verification/desktop/verify_reading_003_selection.py` → **cases=25 failed=0**（data-paragraph 锚点、selectionchange 通道、浮条条件、首页统计条、左栏页签、thought 闪记口径、odmedia 标记、cover payload）。
+4. 关键修复逐条核对（文件事实）：`ReadingPage.tsx` 段落元素已补 `data-paragraph` 属性（原 closest("[data-paragraph]") 永远落空的确定性 bug）；selectionchange 150ms 去抖与 mouseup 共用 `readSelectionRef`；首页统计条 `home-reading-stats` 数字全部来自 `reading_stats` 聚合（books 排除 rss、finished≥0.95、thoughts=thought 批注数，与用户「闪记=想法」语义一致）；左栏「本地书籍/订阅文章」页签与订阅来源折叠分组实现完整；EPUB 图片经 `odmedia:` 标记 + `reading_media_extract`（路径防穿越/10MB/MIME 白名单）渲染；封面 ≤2MB 落 `meta/<book_id>.cover.*`。
+5. 行内 Markdown 偏差评估：BUILDER 未直接用 react-markdown 渲染段落行内语法，理由成立——react-markdown 会把语法符号从 DOM 移除，破坏划线 code point 偏移；其「隐藏语法锚点」方案保证 DOM 文本严格等于原文，属合理实现而非范围扩大。笔记/AI 面板仍走既有 MarkdownText。
+6. 计划偏差接受：①「闪记」按用户当轮语义落地为 thought 批注计数（覆盖计划原文"不做闪记"）；②新增 `reading_cover_image` 命令（展示封面所必需）；③封面字节由 Python helper 提取（未新增 Rust ZIP 依赖，Cargo.toml 不在允许清单内，处理正确）。
+
+**边界核对：** 未触碰 runtime/、engine/、模型路由、凭证；工作树既有未提交 STATUS.md 与 runtime/* 未跟踪工件原样保留；测试数据全部在 /tmp 或一次性目录；改动已于 2026-11-19 合并进 main 并推送。
+
+**未验收项（不阻塞合入，留用户实机确认）：** 真实桌面窗口选区浮条位置与手感、封面/长图视觉排版、真实 RSS 音视频远端加载、真实模型解释与整理质量。`OMNIDESK_REPO_ROOT` 工作树路径限制已记录（工作树位于 ~/.codex 触发 app_paths 禁区检查，按既有做法指向主仓库跑测试）。
+
+**结论：** OD-READ-003 通过复核；改动已于 2026-11-19 合并进 main 并推送，真实窗口验收仍待用户完成。
+
 # GitHub 历史重写与发布清理审查（2026-11-17）——通过（附外部副本限制）
 
 # OD-READ-001 读书阅读笔记分页初步实施审查（2026-11-18）——通过（静态/脚本范围，附未验收项）

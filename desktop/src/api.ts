@@ -240,8 +240,10 @@ import type {
   ReadingBookMeta,
   ReadingImportResult,
   ReadingLibrary,
+  ReadingMediaPayload,
   ReadingNoteFile,
   ReadingSavedNote,
+  ReadingStats,
   RssArticleMeta,
   RssFetchReport,
   RssSubscription,
@@ -1954,6 +1956,27 @@ export const shell = {
   /** 确定性导出当前书的划线/标记/想法；不调用模型。 */
   readingExportNotes(bookId: string): Promise<ReadingNoteFile> {
     return invoke<ReadingNoteFile>("reading_export_notes", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 首页阅读统计：本地书籍 + RSS 文章篇数；失败原样抛出。 */
+  readingStats(): Promise<ReadingStats> {
+    return invoke<ReadingStats>("reading_stats").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** EPUB 包内媒体（odmedia: 标记）按 zip 路径取 base64。 */
+  readingMediaExtract(bookId: string, mediaRef: string): Promise<ReadingMediaPayload> {
+    return invoke<ReadingMediaPayload>("reading_media_extract", { bookId, mediaRef }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 导入时缓存的 EPUB 封面。 */
+  readingCoverImage(bookId: string): Promise<ReadingMediaPayload> {
+    return invoke<ReadingMediaPayload>("reading_cover_image", { bookId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

@@ -1,5 +1,57 @@
 # 执行状态
 
+## OD-READ-004 首页统计下移 + MOBI/PDF 原生导入（ARCHITECT 亲自执行，2026-11-18）
+
+- 开工基线：工作树 `/Users/yvan/.codex/worktrees/2221/MyWorkStation`，分支 `od-read-002-brain-room`，HEAD `f008ef94bb`；未提交的 OD-READ-003 改动全部保留，本任务在其之上继续。改动已于 2026-11-19 合并进 main 并推送（见 Git 记录）。
+- 改动清单：
+  - `desktop/src/shell/HomeCanvas.tsx`：统计条从问候区移出，渲染在 `HomeChat` 下方（`home-reading-stats-slot`，`pt-4` 间距）；删除「最近项目/项目跟踪」快捷入口及 `projects` 状态、`projectList` 效果与 `ProjectInfo` 导入；对话容器增加 `pt-2 md:pt-3` 下移间距。
+  - `scripts/reading_attachment_extract.py`：新增 `extract_mobi`——Palm Database 记录切分、PalmDOC LZ77 解压（压缩 0/1/2）、MOBI 头文本编码（65001/1252）、HTML 转纯文本、EXTH 封面（201/202 + 首图记录）；HUFF/CDIC 与 DRM 明确拒绝。
+  - `desktop/src-tauri/src/task_shell.rs`：`READING_EXTRACT_EXTS` 增加 `mobi`；错误提示格式清单同步；新增单测 `reads_reading_source_mobi_via_helper`（合成 MOBI 经 helper 读入正文）。
+  - `desktop/src/shell/ReadingPage.tsx`：导入文件过滤器增加 `mobi`。
+  - `scripts/python-requirements.txt`、`scripts/prepare-runtime-assets.sh`、`docs/OmniDesk-Desktop-Data-Layout.md`：PDF 依赖 pypdf 内置到 python-vendor，格式清单补 mobi。
+  - `tests/verification/desktop/verify_reading_004_formats.py`（新增）：19 项静态/脚本断言。
+  - 本地 `runtime/python-vendor` 安装 pypdf 6.21.4（未跟踪构建工件，仅用于本机验证与开发构建；发布构建按 requirements 自动内置）。
+- 真实命令与结果：
+  - `cargo test --offline --lib -- --test-threads=1`（`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation`） → 1249 passed / 0 failed / 1 ignored（50.53s，含新增 MOBI 单测）；定向 `reads_reading_source_mobi_via_helper` → 1/1。
+  - `npx tsc --noEmit` → exit 0；`npm run build` → exit 0。
+  - `python3 tests/verification/desktop/verify_reading_004_formats.py` → cases=19 failures=0（含 MOBI 未压缩/PalmDOC/HUFF 拒绝/DRM 拒绝、PDF 文字提取）。
+  - `python3 tests/verification/desktop/verify_reading_003_selection.py` → cases=25 failed=0（既有回归）。
+  - `git diff --check` → 干净。
+- 证据等级：文件事实（源码/diff）；静态检查（verify 脚本、tsc）；脚本运行（cargo、build、Python helper 合成样例）。
+- 未验证项：真实用户 MOBI 文件（含 HUFF/CDIC 压缩的常见亚马逊书仍会拒绝）、真实 PDF 中文内嵌字体/扫描件、真实窗口下首页统计条位置与间距手感、Windows 实机。
+- 已知限制：MOBI 仅支持未压缩/PalmDOC 压缩且无 DRM；PDF 扫描件无 OCR；AZW3/KF8 未专门支持。
+- 本机调试构建（2026-11-18）：`npx tauri build --debug --bundles app` → exit 0，产物 `desktop/src-tauri/target/debug/bundle/macos/OmniDesk.app`（486.81 MiB，未签名调试包）；未启动窗口（本机已有正式版实例占用同一数据根）。
+
+## OD-READ-003 健脑室：首页统计 + 左栏分页 + 富媒体阅读 + 选区浮条修复（2026-11-18）
+
+- 开工基线：工作树 `/Users/yvan/.codex/worktrees/2221/MyWorkStation`，分支 `od-read-002-brain-room`，HEAD `f008ef94bb`；`git status --short --branch` 显示既有 `M STATUS.md` 与 4 个未跟踪 `runtime/*` 构建工件，全部原样保留，未还原/清理/stash。
+- UI 参考（screenshots-design-inspiration MCP，实查 3 组）：`epub reader highlights` → My Reader AI；`rss reader typography` → My Reader AI；`book library covers` → Apple Books。借鉴要点：左栏用页签分流书籍/文章，订阅页按来源折叠；书架封面卡用暖色占位与真实封面并置，正文保持单列低干扰排版。
+- 改动清单：
+  - `desktop/src/shell/ReadingPage.tsx`：段落补 `data-paragraph`；新增 document 级 `selectionchange`（150ms 去抖）与 mouseup 共用 `readSelectionRef`；左栏「本地书籍 / 订阅文章」页签、封面卡与暖底首字占位、订阅来源折叠分组、未读点；`![img](…)` / `[audio](…)` / `[video](…)` 行内媒体渲染为 figure/原生控件、图片点击放大、`odmedia:` 经命令取 base64 并缓存；段落内粗体/行内代码/链接用偏移保真渲染（同步保留隐藏语法锚点）。
+  - `desktop/src/reading.css`：书架页签、封面、媒体卡（14px 圆角/描边/柔和阴影）、图片 lightbox、首页统计条与语法锚点样式。
+  - `desktop/src/shell/HomeCanvas.tsx`：问候区下新增紧凑阅读统计条，点击跳转健脑室；读取失败显示错误，不显示假 0。
+  - `desktop/src-tauri/src/reading_store.rs`：`reading_stats_at`（书籍本数排除 rss；已读完 `progress_percent >= 0.95`；字数/批注/笔记/闪记求和，闪记=`kind == "thought"`）；`ReadingBookMeta` 增加 `cover`、`thought_count`；导入 EPUB 时把 OPF cover-image（≤2MB）写入 `meta/<book_id>.cover.<ext>` 并提供封面读取。
+  - `desktop/src-tauri/src/rss_store.rs`：`sanitize_html` 的 img 改为保留 data:/http(s) 的 `![img](原src)`，audio/video（含 `<source>`）输出对应标记，其余协议丢弃；新增 `article_count`。
+  - `desktop/src-tauri/src/task_shell.rs`：helper 输出 cover 与 base64 解码；新增 `read_reading_media`（绝对路径 + EPUB + 路径防穿越 + ≤10MB + image/audio/video 白名单），base64 编解码辅助。
+  - `desktop/src-tauri/src/lib.rs`：注册 `reading_stats`（合并 RSS 文章篇数）、`reading_media_extract`、`reading_cover_image`。
+  - `desktop/src/api.ts`、`desktop/src/types.ts`：阅读统计、媒体/封面回执、`thought_count`/`cover` 类型与调用。
+  - `scripts/reading_attachment_extract.py`：`_html_blocks` 不再丢弃 img/audio/video，输出 `![img](odmedia:<zip路径>)` / `[audio](…)` / `[video](…)`；OPF cover-image 提取；新增 `--media` 单条目 base64 提取（10MB 上限、类型白名单）。
+  - `tests/verification/desktop/verify_reading_003_selection.py`（新增，未跟踪）。
+- 验证命令与真实结果：
+  - `cd desktop/src-tauri && PATH="$HOME/.cargo/bin:$PATH" OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → `1248 passed; 0 failed; 1 ignored`（50.16s）。注：工作树位于 `~/.codex`，若把 `OMNIDESK_REPO_ROOT` 指向工作树，`app_paths` 3 个仓库边界测试会先命中 `/.codex` 禁区而失败；按既有 OD-READ-002 做法指向主仓库后全部通过，本任务未改 `app_paths.rs`。
+  - `cd desktop && npx tsc --noEmit` → exit 0；`npm run build` → exit 0（ReadingPage chunk 51.54 kB，仅既有 500 kB chunk 提示）。
+  - `python3 tests/verification/desktop/verify_reading_003_selection.py` → `cases=25 failed=0`（含 data-paragraph、selectionchange、浮条条件、统计条/页签、thought 口径、odmedia 标记与 cover payload）。
+  - 合成 EPUB 端到端（`OMNIDESK_READING_ROOT` 指向 /tmp 一次性根）：`cargo test --offline --lib end_to_end_epub_cover_and_media_under_env_root -- --test-threads=1 --nocapture` → `book=bk_dd255810dbcd0e19 cover=bk_dd255810dbcd0e19.cover.jpg cover_exists=true`、`media mime=image/png bytes=6`，测试 1/1 通过。
+  - `git diff --check` → exit 0。
+- 计划偏差：
+  1. 「闪记」按用户当轮语义落地为 `thought` 批注总数（计划原文曾写“不做闪记”）。
+  2. 段落内行内 Markdown 未直接用 react-markdown 输出：其会移除 `**`/反引号/链接目标，导致 DOM 前缀长度与原文不一致、划线偏移错位；改为偏移保真的轻量渲染（隐藏语法锚点）。笔记与 AI 结果仍走既有 `MarkdownText`（react-markdown）。
+  3. 为在书架/阅读头部显示封面，新增 `reading_cover_image` 命令（计划只要求存 `meta/<book_id>.cover.*` 与 meta cover 字段）。
+  4. cover 字节由既有 Python EPUB 解析 helper 从 OPF 取出，`reading_store.rs` 负责落盘与 meta 登记；未新增 Rust ZIP 依赖（`Cargo.toml` 不在允许改动清单）。
+- 证据等级：文件事实（源码/diff）；静态检查（tsc、verify 脚本）；脚本运行（cargo test、build、端到端合成 EPUB）；未做真实桌面窗口点击、真实模型调用、真实用户 EPUB/RSS 媒体源。
+- 未验证项：真实窗口选区浮条位置与拖选手感、封面/长图的视觉排版、真实 RSS 音视频远端加载、真实模型解释/整理质量。
+- Git：改动已于 2026-11-19 合并进 main 并推送；`runtime/*` 4 个未跟踪工件保持原样、未入库。`git diff --stat`（提交前）→ STATUS.md 40+ / lib.rs 68+ / reading_store.rs 276+ / rss_store.rs 67+ / task_shell.rs 304+ / api.ts 23+ / reading.css 193+ / HomeCanvas.tsx 85+ / ReadingPage.tsx 582+ / types.ts 22+ / reading_attachment_extract.py 232+（11 files, 1775 insertions, 117 deletions）；`tests/verification/desktop/verify_reading_003_selection.py` 为新增文件。
+
 ## OD-READ-001 修版 0.2.38（ARCHITECT，2026-11-18）
 
 - 触发：用户反馈 AI 查询结果占屏过大；要求右侧面板可向左展开/收缩。
@@ -845,3 +897,13 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 计划偏差：工作树内 `docs/od-read-002-stage1-dispatch.md` 与 PLANS.md 采用 `subscriptions.json` + 每篇一条 RSS 书；本轮按该详细任务书实现。`reqwest` 启用 `blocking + native-tls + system-proxy`，`Cargo.lock` 新增约 215 行 TLS/代理传递 crate；原“不改变锁文件”假设不成立，需 ARCHITECT 复核。
 - 未验证：真实 Tauri 窗口中的订阅模态框布局/焦点/滚动、添加删除与拉取全部（49 源串行）、RSS 文章划线/想法/标段/问 AI 端到端；应用内 `rss_fetch` 的真实网络行为。
 - 构建期间为找到 `runtime/dsh-runtime` 等资源临时在 worktree `runtime/` 建了 4 个指向主工作树的符号链接，验证结束后已删除，不在最终工作树留下未跟踪文件。
+
+## OD-READ-002 阶段 1 提交与推送记录（BUILDER 子代理，2026-11-18）
+
+- 开工基线（按任务书写入）：`git status --short --branch` 为 `## od-read-002-brain-room`；HEAD `cb0a0b31f0`（`cb0a0b31f077525b10fd4e9c9fc7a12bca1327f4`），与任务书要求一致；分支 `od-read-002-brain-room`。未 stash/reset/clean，未改清单外文件。
+- 提交前验证：`git diff --check` → exit 0；`cd desktop/src-tauri && OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation /Users/yvan/.cargo/bin/cargo test --offline --lib rss_store -- --test-threads=1` → 11 passed / 0 failed / 0 ignored（1233 filtered out，exit 0）。
+- 暂存：按任务书清单精确 `git add` 16 个文件；`git diff --cached --name-only` 与清单逐项一致，清单外文件 0 个。`git diff --cached` 敏感模式扫描（sk-/api key/secret/password/私钥/Bearer 等）0 命中；无凭证、无真实业务材料。
+- 提交：`f008ef94bb`（`f008ef94bb69f9dfd0223dd7b4a7bd7e3784d70c`），一次 `git commit -F`，提交信息按任务书原文；16 files changed, 2607 insertions(+), 47 deletions(-)。
+- 推送：`git push origin od-read-002-brain-room` → exit 0；回执 `* [new branch] od-read-002-brain-room -> od-read-002-brain-room`（https://github.com/klzone/omniharness.git）；`git ls-remote origin refs/heads/od-read-002-brain-room` 返回 `f008ef94bb69f9dfd0223dd7b4a7bd7e3784d70c`，与本地 HEAD 一致。未 push main、未 force、未打标签、未重试。
+- 推送后 `git status --short --branch` 快照：`## od-read-002-brain-room`；仅剩 4 个未跟踪构建符号链接 `runtime/dsh-home-seed`、`runtime/dsh-runtime`、`runtime/pnpm`、`runtime/python-vendor`（任务书明确不暂存，未加入提交）。
+- 清单外文件：仅上述 4 个 `runtime/` 未跟踪符号链接，未暂存、未修改。本节追加后 STATUS.md 重新处于已修改状态（未提交、未再推送），留待 ARCHITECT 终检。

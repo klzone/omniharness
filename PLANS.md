@@ -1,13 +1,19 @@
 # 当前实施计划
 
-### OD-READ-004：首页统计下移 + MOBI/PDF 原生阅读导入（已实施并通过复核，2026-11-18；改动在 worktree `od-read-002-brain-room` 未提交）
+### OD-READ-004：首页统计下移 + MOBI/PDF 原生阅读导入（已实施并通过复核，2026-11-18）
 
-> **用户当轮指示：** ①统计条移到对话框下方原「项目跟踪」快捷入口的位置并取消该入口，对话框下移留间距；②阅读导入原生支持 MOBI、PDF。
+> **触发（用户当轮指示）：** ①首页阅读统计从问候区下方移到对话框中「项目跟踪」快捷按钮的位置，取消该快捷入口，对话框下移并与统计条留出间距；②阅读导入除 EPUB 外原生支持 MOBI、PDF 等常见电子书格式。
 >
-> **结果：** `HomeCanvas` 统计条移到 `HomeChat` 下方、删除项目快捷入口；helper 新增 MOBI（PalmDOC 解压 + HTML 转文本 + EXTH 封面，HUFF/CDIC 与 DRM 明确拒绝）；pypdf 写入随包 requirements；Rust 白名单与界面过滤器加入 mobi。新增 `verify_reading_004_formats.py` 19/19；cargo 1249/0/1、tsc、build、既有 003 验证全部通过。详见工作树 `STATUS.md` 与 `REVIEW.md` 顶部。
+> **范围与做法：**
+> 1. 首页布局（`HomeCanvas.tsx`）：统计条移出上部问候区，改渲染在 `HomeChat` 下方（`home-reading-stats-slot`），与输入区留 `pt-4` 间距；删除「最近项目/项目跟踪」快捷按钮及其数据加载（`projectList` effect、`ProjectInfo` 状态）；对话容器加 `pt-2 md:pt-3` 下移间距。
+> 2. MOBI（`scripts/reading_attachment_extract.py`）：纯标准库实现 Palm Database 解析 + PalmDOC LZ77 解压（压缩 0/1/2），MOBI 头文本编码（65001/1252）、HTML 标签转纯文本、EXTH 封面（201/202 + 首图记录）提取；HUFF/CDIC 压缩与 DRM 加密如实拒绝并说明。Rust `READING_EXTRACT_EXTS` 增加 `mobi`，界面文件过滤器与错误提示同步。
+> 3. PDF：随包 `runtime/python-vendor` 增加 `pypdf`（写入 `scripts/python-requirements.txt`），保证发布包无需用户自行 pip 安装即可逐页提取文字；扫描件仍如实提示无文本。
+>
+> **验收：** 新增 `tests/verification/desktop/verify_reading_004_formats.py`（19 项：布局/白名单/依赖/MOBI 合成样例三态/PDF 文字提取）；`cargo test --offline --lib`、`npx tsc --noEmit`、`npm run build` 全过。
+>
+> **明确不做：** MOBI 的 HUFF/CDIC 解压、DRM 去保护、PDF 扫描件 OCR、AZW3/KF8 专门解析、PDF 页面渲图。
 
-
-### OD-READ-003：健脑室——首页统计 + 左栏分页 + 富媒体阅读 + 选区浮条修复（已实施并通过复核，2026-11-18；改动在 worktree `od-read-002-brain-room` 未提交）
+### OD-READ-003：健脑室——首页统计 + 左栏分页 + 富媒体阅读 + 选区浮条修复（已实施并通过复核，2026-11-18）
 
 > **触发（用户当轮指示）：** EPUB 已可导入，继续完善四件事：①首页展示阅读统计；②左栏分「本地书籍 / 订阅文章」两页，书籍展示封面；③阅读区支持封面/图片/音频/视频与 Markdown 排版；④修复阅读界面划线标记与笔记浮动菜单条不显示。
 >
@@ -41,7 +47,7 @@
 > 3. 合成含图 EPUB：导入后封面出现在书架、图片在正文显示、划线浮条可出现（脚本级验证 + 真实窗口留给用户）。
 > 4. 首页统计条为真实聚合数字；左栏两分页可切换、订阅分组可折叠。
 
-**明确不做：** 不做闪记（无数据结构，待该功能落地再加计数）；不做阅读主题切换；不做 PDF 图片化；不代理/转存 RSS 音视频；不动 runtime/ 与模型路由；不改既有未提交的两处工作区改动。
+**明确不做：** 不做阅读主题切换；不做 PDF 图片化；不代理/转存 RSS 音视频；不动 runtime/ 与模型路由。（「闪记」已按用户当轮语义以 thought 批注计数实现。）
 
 
 ### OD-ARCH-183：Windows 引擎进程树回收（已实施，2026-11-18；Windows 实机待复验）

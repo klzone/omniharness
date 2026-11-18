@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pendingWrites, shell } from "../api";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { SCENES, isSceneKey } from "../scenes";
 import {
   createThread,
@@ -18,10 +18,10 @@ import {
 } from "../sceneThreads";
 import type {
   OfflineFlowPack,
-  ProjectInfo,
   PendingWriteView,
   ProfileRulesView,
   ProfileSceneEntry,
+  ReadingStats,
 } from "../types";
 import { useThreadCategories, type ThreadCategory } from "../threadCategories";
 import type { Scene } from "./Dock";
@@ -67,6 +67,56 @@ function ruleText(value: unknown): string | null {
  * 窗口失焦/隐藏时暂停计时，避免后台无意义重渲染。
  */
 const TODO_ROTATE_MS = 5000;
+
+function ReadingStatsBar({
+  stats,
+  error,
+  loading,
+  onNavigate,
+}: {
+  stats: ReadingStats | null;
+  error: string | null;
+  loading: boolean;
+  onNavigate: (scene: Scene) => void;
+}) {
+  if (error) {
+    return (
+      <p className="text-[11.5px] text-error pb-2" role="status" data-testid="home-reading-stats-error">
+        阅读统计读取失败：{error}
+      </p>
+    );
+  }
+  if (loading) {
+    return <p className="text-[11.5px] text-outline pb-2">正在读取阅读统计…</p>;
+  }
+  if (!stats) return null;
+  const items: Array<{ icon: IconName; value: number; label: string }> = [
+    { icon: "book", value: stats.books, label: "本书" },
+    { icon: "check", value: stats.finished, label: "已读完" },
+    { icon: "note", value: stats.chars, label: "字" },
+    { icon: "star", value: stats.annotations, label: "批注" },
+    { icon: "note", value: stats.notes, label: "笔记" },
+    { icon: "spark", value: stats.thoughts, label: "闪记" },
+    { icon: "radar", value: stats.rss_articles, label: "订阅文章" },
+  ];
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate("reading")}
+      className="home-reading-stats"
+      data-testid="home-reading-stats"
+      title="打开健脑室"
+    >
+      {items.map((item) => (
+        <span className="home-reading-stats-item" key={item.label}>
+          <Icon name={item.icon} className="w-[13px] h-[13px]" />
+          <strong>{item.value.toLocaleString("zh-CN")}</strong>
+          {item.label}
+        </span>
+      ))}
+    </button>
+  );
+}
 
 function TodoTicker({
   items,
@@ -208,11 +258,12 @@ export function HomeCanvas({
   const [todos, setTodos] = useState<PendingWriteView[]>([]);
   const [todoLoading, setTodoLoading] = useState(true);
   const [todoError, setTodoError] = useState<string | null>(null);
+  const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
+  const [readingStatsLoading, setReadingStatsLoading] = useState(true);
+  const [readingStatsError, setReadingStatsError] = useState<string | null>(null);
 
   /** 系统用户名，只用于问候语；读不到就只显示问候，不编造称呼。 */
   const [userName, setUserName] = useState("");
-  /** 最近更新的五个项目：首页底部小卡片的数据来源。 */
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   /** 对话是否已经开始：开始后收起问候区，把纵向空间让给历史记录。 */
   const [conversationStarted, setConversationStarted] = useState(false);
 
@@ -248,6 +299,29 @@ export function HomeCanvas({
       })
       .finally(() => {
         if (alive) setTodoLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 阅读统计只读本机聚合数字；失败如实显示，不把错误当成 0。
+  useEffect(() => {
+    let alive = true;
+    shell
+      .readingStats()
+      .then((stats) => {
+        if (!alive) return;
+        setReadingStats(stats);
+        setReadingStatsError(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setReadingStats(null);
+        setReadingStatsError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (alive) setReadingStatsLoading(false);
       });
     return () => {
       alive = false;
@@ -413,26 +487,6 @@ export function HomeCanvas({
     [categories, declaredScenes, declFailed],
   );
 
-  /** 最近五个项目：按更新时间倒序，读不到就留空，不编造项目名。 */
-  useEffect(() => {
-    let alive = true;
-    shell
-      .projectList()
-      .then((r) => {
-        if (!alive) return;
-        const sorted = [...(r.items ?? [])].sort((a, b) =>
-          String(b.updated_at).localeCompare(String(a.updated_at)),
-        );
-        setProjects(sorted.slice(0, 5));
-      })
-      .catch(() => {
-        if (alive) setProjects([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   // 线程切换或首条消息落盘时同步「对话已开始」，用于收起问候区。
   useEffect(() => {
     setConversationStarted((active?.messages.length ?? 0) > 0);
@@ -514,7 +568,7 @@ export function HomeCanvas({
       chat={
         /* 下部：对话（全宽）。OD-ARCH-078 S2：去掉左侧吉祥物图片，
            顶部常驻问候已经承载状态，不必再放一张装饰图。 */
-        <div className="flex flex-1 min-h-0 gap-3">
+        <div className="flex flex-1 min-h-0 gap-3 pt-2 md:pt-3">
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <HomeChat
           key={viewKey}
@@ -557,39 +611,16 @@ export function HomeCanvas({
           searchQuery={searchQuery}
           searchCurrentIndex={searchCurrentIndex}
           onSearchMatchesChange={onSearchMatchesChange}
-          emptyFooter={
-            projects.length > 0 ? (
-              <div
-                className="flex flex-wrap items-center justify-center gap-2 pt-16 pb-1"
-                data-testid="home-recent-projects"
-              >
-                {projects.map((project) => (
-                  <button
-                    key={project.project_id}
-                    type="button"
-                    onClick={() => onNavigate("project")}
-                    data-hover-hint={project.goal || project.name}
-                    className="home-quick-pill"
-                  >
-                    <Icon name="folder" className="w-[15px] h-[15px]" />
-                    <span className="max-w-[180px] truncate">{project.name}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex justify-center pt-16 pb-1">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("project")}
-                  className="home-quick-pill"
-                >
-                  <Icon name="folder" className="w-[15px] h-[15px]" />
-                  <span>项目跟踪</span>
-                </button>
-              </div>
-            )
-          }
         />
+            {/* 阅读统计放在对话下方（原「项目跟踪」快捷入口的位置），与输入区留出间距。 */}
+            <div className="shrink-0 pt-4" data-testid="home-reading-stats-slot">
+              <ReadingStatsBar
+                stats={readingStats}
+                error={readingStatsError}
+                loading={readingStatsLoading}
+                onNavigate={onNavigate}
+              />
+            </div>
           </div>
         </div>
       }
