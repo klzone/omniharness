@@ -51,6 +51,12 @@
 
 **结论：** OD-READ-001 初步实现、阶段 4 引文核验与提交推送全部通过终检；本轮闭环。真实桌面窗口交互与真实模型质量仍按 REVIEW.md 上节的未验收项执行，属用户日常使用验证。
 
+## 0.2.36 发版复核（2026-11-18，ARCHITECT）——通过（附实机未验证项）
+
+**核对（gh 实查，非推测）：** run `44203067532` 的 meta / macos / windows / publish 四个 job 全部 success；release `v0.2.36` 已发布，含 `OmniDesk_0.2.36_universal.dmg` 与 `OmniDesk_0.2.36_x64-setup.exe` 两项产物，未标记 prerelease。发布版本号与 `VERSION`、`package.json`、`tauri.conf.json` 三处一致。
+
+**未验证：** Windows 实机安装、读书页导入/划线/AI 交互与真实模型输出质量；均由用户在单位电脑上验收。
+
 # OD-ARCH-173 0.2.30 发布验收（2026-11-17）——通过（附未验证项）
 
 **审查对象：** PLANS.md OD-ARCH-173 全部阶段执行记录与证据（tests/verification/desktop/evidence/od-arch-173/）、release 提交 1d07d91bba、远程 main ac46822eff、实际源码 diff。

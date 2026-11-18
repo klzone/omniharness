@@ -1,5 +1,15 @@
 # 执行状态
 
+## OD-READ-001 发版 0.2.36（ARCHITECT 亲自执行，2026-11-18）
+
+- 触发：用户裁决「推送并编译最新版本，去单位电脑测试 Windows 版本」；属 OD-READ-001 收尾与发版，未扩大功能范围。
+- 版本收口：`VERSION` 与 `desktop/package.json` 0.2.35 → 0.2.36，`scripts/sync-app-version.sh` 同步 `tauri.conf.json`；提交 `2415894cf6`（含 CHANGELOG 0.2.36、REVIEW/STATUS 复核记录、0.2.35 未发布说明）。
+- 流水线：`gh run list` 显示读书提交触发的旧 run `44200944724`（当时会以未发版的 0.2.35 为 tag）被并发组取消；新 run `44203067532` 全绿——meta / macos / windows / publish 均 success。
+- 发布：`v0.2.36`，非草稿、非预发布，产物两项：`OmniDesk_0.2.36_universal.dmg`（181 MB）与 `OmniDesk_0.2.36_x64-setup.exe`（84 MB）。
+- Windows 安装包直链：`https://github.com/klzone/omniharness/releases/download/v0.2.36/OmniDesk_0.2.36_x64-setup.exe`；Release 页：`https://github.com/klzone/omniharness/releases/tag/v0.2.36`。
+- 证据等级：脚本运行（gh run / gh release 实查）；未在 Windows 实机安装与操作，未做真实模型输出验收。
+- 使用前提（沿用既有发版说明）：目标机需 Node.js 22.19+ 与 Python 3.10+；安装包未签名，SmartScreen 选「仍要运行」。
+
 ## OD-READ-001 读书阅读笔记分页（ARCHITECT 亲自执行，2026-11-18，待复核）
 
 - 开工基线：`git status --short --branch` 为 `## main...origin/main`，HEAD `b8b9357b9c`；任务期间用户另有一次发版提交，已保留、未回退、未改写历史。本轮未提交、未推送、未打标签。
