@@ -1,5 +1,13 @@
 # 执行状态
 
+## OD-READ-001 修版 0.2.37 发版（ARCHITECT，2026-11-18）
+
+- 提交 `33fa63b596`；run `44229046992` 全绿（meta / macos / windows / publish）。
+- release `v0.2.37` 已发布，产物：`OmniDesk_0.2.37_universal.dmg`（181 MB）、`OmniDesk_0.2.37_x64-setup.exe`（84 MB）。
+- Windows 直链：`https://github.com/klzone/omniharness/releases/download/v0.2.37/OmniDesk_0.2.37_x64-setup.exe`
+- 说明：EPUB 修复针对 XHTML DOCTYPE 与 div-only 正文；AI 报错中的 `getaddrinfo ENOTFOUND` 属模型端点/网络 DNS 环境，代码只改为可操作提示，未改端点或凭证。
+- 证据等级：脚本运行（gh run/release 实查）；真实用户 EPUB 与 Windows 实机未复测。
+
 ## OD-READ-001 修版 0.2.37（ARCHITECT，2026-11-18）
 
 - 触发：用户 Windows 实测反馈三处问题：EPUB 导入提示未提取正文并闪控制台黑框；选中文字后没有出现标记/笔记/查询；AI 阅读助手报 `getaddrinfo ENOTFOUND`。
