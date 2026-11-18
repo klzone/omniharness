@@ -1,5 +1,13 @@
 # 执行状态
 
+## OD-READ-001 修版 0.2.38（ARCHITECT，2026-11-18）
+
+- 触发：用户反馈 AI 查询结果占屏过大；要求右侧面板可向左展开/收缩。
+- 改动：`ReadingPage.tsx` 增加面板宽度状态与左缘拖拽手柄（300–640px），双击在 340/560px 切换；宽屏默认展开、窄屏默认收起；顶栏「笔记」按钮与面板关闭按钮都可开合；`reading.css` 增加 `reading-panel-resizer`。
+- AI 结果仍限制在面板内滚动；阅读区随面板收放自动变宽/变窄。
+- 验证：`npx tsc --noEmit`、`npm run build` 通过；`verify_reading_001_fixes.py` 11/11（新增面板拖拽/开合断言）。
+- 未验证：Windows 实机拖拽手感与窄屏覆盖效果。
+
 ## OD-READ-001 修版 0.2.37 发版（ARCHITECT，2026-11-18）
 
 - 提交 `33fa63b596`；run `44229046992` 全绿（meta / macos / windows / publish）。

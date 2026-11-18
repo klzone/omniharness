@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, shell } from "../api";
 import {
@@ -128,7 +128,12 @@ export function ReadingPage() {
   const [bookBusy, setBookBusy] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
   const [sideTab, setSideTab] = useState<SideTab>("notes");
-  const [panelOpen, setPanelOpen] = useState(false);
+  // 宽屏默认展开右侧笔记；窄屏默认收起，选中文字/AI 时再展开。
+  const [panelOpen, setPanelOpen] = useState(() =>
+    typeof window === "undefined" ? false : window.innerWidth >= 1280,
+  );
+  const [panelWidth, setPanelWidth] = useState(340);
+  const panelResize = useRef<{ x: number; width: number } | null>(null);
   const [selection, setSelection] = useState<PendingSelection | null>(null);
   const [selectionPos, setSelectionPos] = useState<{ top: number; left: number } | null>(null);
   const [composer, setComposer] = useState<ComposerState | null>(null);
@@ -389,6 +394,27 @@ export function ReadingPage() {
     window.getSelection()?.removeAllRanges();
     setSelection(null);
     setSelectionPos(null);
+  };
+
+  const beginPanelResize = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    panelResize.current = { x: event.clientX, width: panelWidth };
+    const move = (ev: MouseEvent) => {
+      const state = panelResize.current;
+      if (!state) return;
+      const next = state.width + (state.x - ev.clientX);
+      const max = Math.min(640, Math.max(300, window.innerWidth - 80));
+      setPanelWidth(Math.max(300, Math.min(max, next)));
+    };
+    const up = () => {
+      panelResize.current = null;
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
   };
 
   const mergeAnnotation = (annotation: ReadingAnnotation, bookIdAtCall: string) => {
@@ -977,7 +1003,7 @@ export function ReadingPage() {
                 <button
                   type="button"
                   onClick={() => setPanelOpen((value) => !value)}
-                  className="rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] text-on-surface-variant hover:text-primary xl:hidden"
+                  className="rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] text-on-surface-variant hover:text-primary"
                 >
                   笔记
                 </button>
@@ -1065,13 +1091,21 @@ export function ReadingPage() {
 
         {book ? (
           <aside
+            style={{ width: panelWidth }}
             className={
-              "reading-side-panel shrink-0 flex-col border-l border-outline-variant/40 bg-surface/85 " +
+              "reading-side-panel relative shrink-0 flex-col border-l border-outline-variant/40 bg-surface/85 " +
               (panelOpen
-                ? "fixed bottom-0 right-0 top-[52px] z-40 flex w-[340px] max-w-[92vw] shadow-[-16px_0_40px_-20px_rgba(70,55,40,0.28)] xl:static xl:z-auto xl:shadow-none"
-                : "hidden xl:flex")
+                ? "fixed bottom-0 right-0 top-[52px] z-40 flex max-w-[92vw] shadow-[-16px_0_40px_-20px_rgba(70,55,40,0.28)] xl:static xl:z-auto xl:shadow-none"
+                : "hidden")
             }
           >
+            <div
+              className="reading-panel-resizer"
+              onMouseDown={beginPanelResize}
+              onDoubleClick={() => setPanelWidth((w) => (w >= 460 ? 340 : 560))}
+              title="拖动调整面板宽度；双击切换宽/窄"
+              aria-label="调整右侧面板宽度"
+            />
             <div className="flex items-center border-b border-outline-variant/40">
               <button
                 type="button"
@@ -1096,7 +1130,7 @@ export function ReadingPage() {
               <button
                 type="button"
                 onClick={() => setPanelOpen(false)}
-                className="px-2 text-outline hover:text-on-surface xl:hidden"
+                className="px-2 text-outline hover:text-on-surface"
                 aria-label="关闭笔记面板"
               >
                 ×

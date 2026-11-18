@@ -119,6 +119,21 @@
   backdrop-filter: blur(12px);
 }
 
+/* 右侧面板可从左边缘向左拖宽；双击在宽/窄之间切换。 */
+.reading-panel-resizer {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 45;
+}
+
+.reading-panel-resizer:hover {
+  background: color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+
 @media (max-width: 640px) {
   .reading-paragraph {
     font-size: 1rem;

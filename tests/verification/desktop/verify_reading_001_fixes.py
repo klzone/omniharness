@@ -84,8 +84,10 @@ def main() -> int:
     check("selection_bar_exists", "reading-selection-bar" in page)
     check("highlight_opens_notes", page.count('setSideTab("notes")') >= 2)
     check("ai_dns_hint", "getaddrinfo/ENOTFOUND" in page or "getaddrinfo" in page)
+    check("panel_resizer", "reading-panel-resizer" in page and "beginPanelResize" in page)
+    check("panel_width_state", "panelWidth" in page and "panelResize" in page)
 
-    print(f"cases={9} failed={len(FAILS)}")
+    print(f"cases={11} failed={len(FAILS)}")
     return 0 if not FAILS else 1
 
 

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.38] - 2026-11-18
+
+### Changed
+- 读书页右侧「笔记 / AI」面板改为可调宽度：拖动左边缘在 300–640px 之间调整，双击在 340/560px 之间切换；宽屏默认展开，窄屏默认收起，顶栏「笔记」按钮可随时开合。
+- AI 结果仍限制在面板内滚动，不再把阅读区挤成一条窄缝。
+
+### Verification
+- `npx tsc --noEmit`、`npm run build` 通过；`verify_reading_001_fixes.py` 11/11（含面板拖拽/开合静态断言）。
+
 ## [0.2.37] - 2026-11-18
 
 ### Fixed
