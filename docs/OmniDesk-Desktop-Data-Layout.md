@@ -154,7 +154,7 @@ DSH 侧的重定向走 `DSH_HOME` / `DSH_AGENTS_HOME` 两个**官方支持**的�
     ├── notes/<book_id>/        # 用户确认保存的 AI 整理稿（Markdown）
     └── exports/                # 确定性导出的读书笔记（Markdown）
 
-开发/测试可用 `OMNIDESK_READING_ROOT` 指向一次性绝对路径；正式默认目录不进入 Git。导入只读用户通过系统文件框显式选择的源文件（`.md/.txt/.pdf/.docx/.epub`，上限 32 MiB），不扫描目录；重复正文按 SHA-256 返回已有书，不覆盖。AI 解释与整理稿只作草稿，用户点击保存后才进入 `notes/`；不自动写知识库。
+开发/测试可用 `OMNIDESK_READING_ROOT` 指向一次性绝对路径；正式默认目录不进入 Git。导入只读用户通过系统文件框显式选择的源文件（`.md/.txt/.pdf/.docx/.epub/.mobi`，上限 32 MiB），不扫描目录；重复正文按 SHA-256 返回已有书，不覆盖。AI 解释与整理稿只作草稿，用户点击保存后才进入 `notes/`；不自动写知识库。
 
 ---
 

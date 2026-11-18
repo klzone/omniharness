@@ -2837,6 +2837,16 @@ struct AttachmentExtractOutput {
     reason: Option<String>,
     #[serde(default)]
     chapters: Vec<ReadingSourceChapter>,
+    #[serde(default)]
+    cover: Option<HelperCover>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct HelperCover {
+    mime: String,
+    #[serde(default)]
+    name: String,
+    data_base64: String,
 }
 
 /// 阅读导入时由 EPUB 提取器给出的章节；纯文本/PDF 可以没有章节，由存储层再切分。
@@ -2844,6 +2854,14 @@ struct AttachmentExtractOutput {
 pub struct ReadingSourceChapter {
     pub title: String,
     pub content: String,
+}
+
+/// EPUB OPF cover-image 的原图字节（≤2 MiB，由 helper 解析、Rust 落 meta/）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ReadingSourceCover {
+    pub file_name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
 }
 
 /// 用户显式选择的阅读源文件：正文 + 真实来源事实。
@@ -2859,11 +2877,20 @@ pub struct ReadingSource {
     pub sha256: String,
     pub content: String,
     pub chapters: Vec<ReadingSourceChapter>,
+    pub cover: Option<ReadingSourceCover>,
+}
+
+/// 阅读媒体提取回执：前端把 base64 转成 data URL 后交给 img/audio/video。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ReadingMediaPayload {
+    pub mime: String,
+    pub bytes: usize,
+    pub data_base64: String,
 }
 
 pub const READING_SOURCE_MAX_BYTES: u64 = 32 * 1024 * 1024;
 const READING_TEXT_EXTS: &[&str] = &["md", "markdown", "txt", "text"];
-const READING_EXTRACT_EXTS: &[&str] = &["pdf", "docx", "docm", "epub"];
+const READING_EXTRACT_EXTS: &[&str] = &["pdf", "docx", "docm", "epub", "mobi"];
 
 fn attachment_vendor_dir() -> Option<PathBuf> {
     if let Some(raw) = std::env::var_os("OMNIDESK_PYTHON_VENDOR") {
@@ -2884,6 +2911,66 @@ fn is_ooxml_word_container(bytes: &[u8]) -> bool {
 /// 写入临时 helper 并调用候选 Python；返回 JSON 结果；任何失败都返回 None 由上层降级。
 fn run_attachment_extract_helper(path: &Path, format: &str) -> Option<AttachmentExtractOutput> {
     run_attachment_extract_helper_with_timeout(path, format, ATTACHMENT_HELPER_TIMEOUT)
+}
+
+pub(crate) fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let a = chunk[0];
+        let b = chunk.get(1).copied().unwrap_or(0);
+        let c = chunk.get(2).copied().unwrap_or(0);
+        out.push(TABLE[(a >> 2) as usize] as char);
+        out.push(TABLE[(((a & 0b11) << 4) | (b >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(((b & 0b1111) << 2) | (c >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(c & 0b111111) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+pub(crate) fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    fn value(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let compact: Vec<u8> = input
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
+        .collect();
+    if compact.len() % 4 == 1 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(compact.len() / 4 * 3 + 3);
+    let mut index = 0usize;
+    while index < compact.len() {
+        let a = value(compact[index])?;
+        let b = value(compact[index + 1])?;
+        out.push((a << 2) | (b >> 4));
+        if index + 2 < compact.len() {
+            let c = value(compact[index + 2])?;
+            out.push((b << 4) | (c >> 2));
+            if index + 3 < compact.len() {
+                let d = value(compact[index + 3])?;
+                out.push((c << 6) | d);
+            }
+        }
+        index += 4;
+    }
+    Some(out)
 }
 
 fn run_attachment_extract_helper_with_timeout(
@@ -2998,6 +3085,173 @@ fn metadata_reason(extension: &str, file_name: &str, helper_reason: Option<Strin
     }
 }
 
+fn cover_from_helper(out: &AttachmentExtractOutput) -> Option<ReadingSourceCover> {
+    let cover = out.cover.as_ref()?;
+    if !cover.mime.to_ascii_lowercase().starts_with("image/") {
+        return None;
+    }
+    let bytes = base64_decode(&cover.data_base64)?;
+    if bytes.is_empty() || bytes.len() > 2 * 1024 * 1024 {
+        return None;
+    }
+    Some(ReadingSourceCover {
+        file_name: cover.name.clone(),
+        mime: cover.mime.clone(),
+        bytes,
+    })
+}
+
+const READING_MEDIA_MAX_BYTES: usize = 10 * 1024 * 1024;
+
+#[derive(Debug, serde::Deserialize)]
+struct ReadingMediaOutput {
+    kind: String,
+    #[serde(default)]
+    mime: String,
+    #[serde(default)]
+    bytes: usize,
+    #[serde(default)]
+    data_base64: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+fn valid_media_ref(media_ref: &str) -> Result<String, String> {
+    let value = media_ref.trim().replace('\\', "/");
+    if value.is_empty() || value.starts_with('/') || value.contains('\0') {
+        return Err("媒体路径不合法。".to_string());
+    }
+    if value
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("媒体路径不合法。".to_string());
+    }
+    if value.len() > 1_000 {
+        return Err("媒体路径过长。".to_string());
+    }
+    Ok(value)
+}
+
+fn media_mime_allowed(mime: &str) -> bool {
+    let value = mime.trim().to_ascii_lowercase();
+    value.starts_with("image/")
+        || value.starts_with("audio/")
+        || value.starts_with("video/")
+}
+
+/// 在 EPUB 包内按 zip 路径读一个媒体文件；路径校验在 Rust 侧，解压与 base64 在 helper。
+pub fn read_reading_media(path_text: &str, media_ref: &str) -> Result<ReadingMediaPayload, String> {
+    let path = Path::new(path_text.trim());
+    if !path.is_absolute() {
+        return Err("阅读源路径必须是绝对路径。".to_string());
+    }
+    if path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) != Some("epub".to_string()) {
+        return Err("只有 EPUB 源支持包内媒体提取。".to_string());
+    }
+    let media = valid_media_ref(media_ref)?;
+    let candidates = crate::export_engine::ExportTools::discover().python_candidates;
+    if candidates.is_empty() {
+        return Err("本机没有可用的 Python，无法解压 EPUB 媒体。".to_string());
+    }
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let temp = std::env::temp_dir().join(format!(
+        "omnidesk-reading-media-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(&temp).map_err(|e| format!("创建媒体临时目录失败：{e}"))?;
+    let helper = temp.join("reading_attachment_extract.py");
+    let output = temp.join("stdout.json");
+    if let Err(e) = fs::write(&helper, READING_HELPER) {
+        let _ = fs::remove_dir_all(&temp);
+        return Err(format!("写入媒体提取器失败：{e}"));
+    }
+    let vendor = attachment_vendor_dir();
+    let mut parsed: Option<ReadingMediaOutput> = None;
+    for python in candidates {
+        let out_file = match File::create(&output) {
+            Ok(file) => file,
+            Err(_) => continue,
+        };
+        let mut command = Command::new(&python);
+        command
+            .arg(&helper)
+            .arg(path)
+            .arg("--format")
+            .arg("epub")
+            .arg("--media")
+            .arg(&media)
+            .arg("--max-media-bytes")
+            .arg(READING_MEDIA_MAX_BYTES.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(out_file))
+            .stderr(Stdio::null());
+        if let Some(vendor) = vendor.as_deref() {
+            let separator = if cfg!(windows) { ";" } else { ":" };
+            let existing = std::env::var("PYTHONPATH").unwrap_or_default();
+            let mut value = vendor.display().to_string();
+            if !existing.trim().is_empty() {
+                value.push_str(separator);
+                value.push_str(&existing);
+            }
+            command.env("PYTHONPATH", value);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(_) => continue,
+        };
+        let deadline = Instant::now() + READING_HELPER_TIMEOUT;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if status.success() {
+                        if let Ok(text) = fs::read_to_string(&output) {
+                            if let Ok(value) = serde_json::from_str::<ReadingMediaOutput>(&text) {
+                                parsed = Some(value);
+                            }
+                        }
+                    }
+                    break;
+                }
+                Ok(None) if Instant::now() >= deadline => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+                Err(_) => break,
+            }
+        }
+        if parsed.is_some() {
+            break;
+        }
+    }
+    let _ = fs::remove_dir_all(&temp);
+    let parsed = parsed.ok_or_else(|| "EPUB 媒体提取器不可用。".to_string())?;
+    if parsed.kind != "media" {
+        return Err(parsed.reason.unwrap_or_else(|| "媒体未提取。".to_string()));
+    }
+    if !media_mime_allowed(&parsed.mime) {
+        return Err("媒体类型不在 image/audio/video 白名单内。".to_string());
+    }
+    if parsed.bytes > READING_MEDIA_MAX_BYTES || parsed.bytes == 0 {
+        return Err(format!("媒体大小不合法（{} 字节）。", parsed.bytes));
+    }
+    base64_decode(&parsed.data_base64).ok_or_else(|| "媒体字节解码失败。".to_string())?;
+    Ok(ReadingMediaPayload {
+        mime: parsed.mime,
+        bytes: parsed.bytes,
+        data_base64: parsed.data_base64,
+    })
+}
+
 /// 读取用户通过文件框显式选择的阅读源（OD-READ-001）。
 ///
 /// 纯文本优先由 Rust 直接按 UTF-8 读；非 UTF-8 再交给 Python helper 尝试
@@ -3040,6 +3294,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
         .map_err(|e| format!("读取阅读文件 {} 失败：{}", resolved.display(), e))?;
     let sha256 = sha256_hex(&bytes);
     let mut chapters: Vec<ReadingSourceChapter> = Vec::new();
+    let mut cover: Option<ReadingSourceCover> = None;
     let content = if READING_TEXT_EXTS.contains(&extension.as_str()) {
         match String::from_utf8(bytes) {
             Ok(text) if !text.trim().is_empty() => text.trim_start_matches('\u{feff}').to_string(),
@@ -3057,6 +3312,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
                         out.reason.unwrap_or_else(|| "编码无法识别".to_string())
                     ));
                 }
+                cover = cover_from_helper(&out);
                 chapters = out.chapters;
                 out.content.unwrap_or_default()
             }
@@ -3079,11 +3335,12 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
                 out.reason.unwrap_or_else(|| "没有可读文字".to_string())
             ));
         }
+        cover = cover_from_helper(&out);
         chapters = out.chapters;
         out.content.unwrap_or_default()
     } else {
         return Err(format!(
-            "「{file_name}」格式不支持阅读导入（支持 md / markdown / txt / pdf / docx / epub）。"
+            "「{file_name}」格式不支持阅读导入（支持 md / markdown / txt / pdf / docx / epub / mobi）。"
         ));
     };
     if content.trim().is_empty() {
@@ -3097,6 +3354,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
         sha256,
         content,
         chapters,
+        cover,
     })
 }
 
@@ -5419,6 +5677,52 @@ with zipfile.ZipFile(pathlib.Path(sys.argv[1]), 'w') as archive:
     }
 
     #[test]
+    fn reads_epub_media_markers_cover_and_package_media() {
+        let dir = material_dir("reading_epub_media");
+        let file = dir.join("media.epub");
+        let script = r#"
+import sys, zipfile
+path = sys.argv[1]
+with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("mimetype", "application/epub+zip")
+    z.writestr("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+    z.writestr("OEBPS/content.opf", '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf"><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/><item id="pic" href="images/pic.png" media-type="image/png"/><item id="sound" href="audio/a.mp3" media-type="audio/mpeg"/></manifest><spine><itemref idref="c1"/></spine></package>')
+    z.writestr("OEBPS/text/ch1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>前文<img src="../images/pic.png"/>后文</p><audio src="../audio/a.mp3"></audio></body></html>')
+    z.writestr("OEBPS/images/pic.png", b"\x89PNG\r\n")
+    z.writestr("OEBPS/images/cover.jpg", b"\xff\xd8\xff\xe0cover")
+    z.writestr("OEBPS/audio/a.mp3", b"ID3\x04\x00")
+"#;
+        let built = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(script)
+            .arg(&file)
+            .output();
+        let Ok(output) = built else {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        };
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        let read = read_reading_source(file.to_str().unwrap()).unwrap();
+        let body = &read.chapters[0].content;
+        assert!(body.contains("![img](odmedia:OEBPS/images/pic.png)"), "{body}");
+        assert!(body.contains("[audio](odmedia:OEBPS/audio/a.mp3)"), "{body}");
+        let cover = read.cover.expect("应解析 cover-image");
+        assert_eq!(cover.mime, "image/jpeg");
+        assert_eq!(cover.bytes, vec![0xff, 0xd8, 0xff, 0xe0, b'c', b'o', b'v', b'e', b'r']);
+
+        let payload = read_reading_media(file.to_str().unwrap(), "OEBPS/images/pic.png").unwrap();
+        assert_eq!(payload.mime, "image/png");
+        assert_eq!(payload.bytes, 6);
+        assert_eq!(base64_decode(&payload.data_base64).unwrap(), b"\x89PNG\r\n");
+        let err = read_reading_media(file.to_str().unwrap(), "../OEBPS/images/pic.png").unwrap_err();
+        assert!(err.contains("不合法"), "{err}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn artifact_paths_still_refuse_repo() {
         // 附件放行不等于产物落盘放行：产物写在仓库内仍然必须被拒绝。
         let repo = repo_root_hint().unwrap();
@@ -5485,5 +5789,60 @@ with zipfile.ZipFile(pathlib.Path(sys.argv[1]), 'w') as archive:
         }
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&outside);
+    }
+    #[test]
+    fn reads_reading_source_mobi_via_helper() {
+        // 合成一个未压缩 MOBI（Palm Database + PalmDOC 头），验证扩展名白名单与 helper 接线。
+        let dir = material_dir("reading_mobi");
+        let file = dir.join("book.mobi");
+        let script = r#"
+import struct, sys, pathlib
+path = pathlib.Path(sys.argv[1])
+text = "<html><body><p>第一段</p><p>第二段</p></body></html>".encode("utf-8")
+name = b"Test Book"
+rec0 = bytearray(16 + 0x78 + len(name))
+rec0[0:2] = (0).to_bytes(2, "big")
+rec0[4:8] = len(text).to_bytes(4, "big")
+rec0[8:10] = (1).to_bytes(2, "big")
+rec0[16:20] = b"MOBI"
+rec0[20:24] = (0x78).to_bytes(4, "big")
+rec0[16 + 0x0C:16 + 0x10] = (65001).to_bytes(4, "big")
+rec0[16 + 0x44:16 + 0x48] = (16 + 0x78).to_bytes(4, "big")
+rec0[16 + 0x48:16 + 0x4C] = len(name).to_bytes(4, "big")
+rec0[16 + 0x78:] = name
+records = [bytes(rec0), text]
+header = bytearray(78)
+header[0:4] = b"Test"
+header[60:64] = b"BOOK"
+header[64:68] = b"MOBI"
+header[76:78] = len(records).to_bytes(2, "big")
+offset = 78 + 8 * len(records)
+infos = bytearray()
+blobs = []
+for record in records:
+    infos += struct.pack(">I", offset) + b"\x00\x00\x00\x00"
+    blobs.append(record)
+    offset += len(record)
+path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
+"#;
+        let built = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(script)
+            .arg(&file)
+            .output();
+        let Ok(output) = built else {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        };
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        let read = read_reading_source(file.to_str().unwrap()).unwrap();
+        assert_eq!(read.extension, "mobi");
+        assert!(read.content.contains("第一段"), "{}", read.content);
+        assert!(read.content.contains("第二段"), "{}", read.content);
+        assert!(!read.content.contains("<p>"), "HTML 标签应被剥离：{}", read.content);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

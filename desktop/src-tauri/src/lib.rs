@@ -5224,6 +5224,71 @@ fn reading_export_notes(
     reading_store::export_notes_at(&root, &book_id, task_shell::now_secs())
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+struct ReadingStatsView {
+    books: usize,
+    finished: usize,
+    chars: usize,
+    annotations: usize,
+    notes: usize,
+    thoughts: usize,
+    rss_articles: usize,
+}
+
+/// 首页阅读统计（OD-READ-003）：本地书目聚合 + RSS 文章篇数；失败原样返回，不补零。
+#[tauri::command(async)]
+fn reading_stats(state: State<'_, SharedHost>) -> Result<ReadingStatsView, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    let stats = reading_store::reading_stats_at(&root)?;
+    let rss_articles = rss_store::article_count(&paths)?;
+    Ok(ReadingStatsView {
+        books: stats.books,
+        finished: stats.finished,
+        chars: stats.chars,
+        annotations: stats.annotations,
+        notes: stats.notes,
+        thoughts: stats.thoughts,
+        rss_articles,
+    })
+}
+
+/// 从当前书的 EPUB 包内取一个媒体文件（图片/音频/视频），返回 base64。
+#[tauri::command(async)]
+fn reading_media_extract(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    media_ref: String,
+) -> Result<task_shell::ReadingMediaPayload, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    let book = reading_store::read_book_at(&root, &book_id)?;
+    if book.source_format != "epub" {
+        return Err("只有 EPUB 书籍支持包内媒体读取。".to_string());
+    }
+    task_shell::read_reading_media(&book.source_path, &media_ref)
+}
+
+/// 导入时落在 meta/ 的 EPUB 封面。
+#[tauri::command(async)]
+fn reading_cover_image(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<task_shell::ReadingMediaPayload, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::read_cover_at(&root, &book_id)
+}
+
 // ---------------------------------------------------------------------------
 // 健脑室 RSS 订阅（OD-READ-002 阶段 1）
 //
@@ -9851,6 +9916,9 @@ pub fn run() {
             reading_note_save,
             reading_note_read,
             reading_export_notes,
+            reading_stats,
+            reading_media_extract,
+            reading_cover_image,
             rss_subscriptions_list,
             rss_subscription_add,
             rss_subscription_remove,

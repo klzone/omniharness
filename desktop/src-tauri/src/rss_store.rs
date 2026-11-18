@@ -359,6 +359,16 @@ pub fn list_articles(paths: &AppPaths) -> Result<Vec<RssArticleMeta>, String> {
     list_articles_at(&root)
 }
 
+/// 首页统计用的文章篇数；只数真实入库的 RSS 文章元数据。
+pub fn article_count(paths: &AppPaths) -> Result<usize, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    article_count_at(&root)
+}
+
+pub fn article_count_at(root: &Path) -> Result<usize, String> {
+    Ok(list_articles_at(root)?.len())
+}
+
 fn list_articles_at(root: &Path) -> Result<Vec<RssArticleMeta>, String> {
     ensure_rss_dirs(root)?;
     let dir = articles_dir(root);
@@ -615,6 +625,7 @@ fn ingest_feed_at(
             source_format: "rss".to_string(),
             source_path: clamp_chars(&entry.link, 2_000),
             source_sha256,
+            cover: String::new(),
             imported_at: fetched_at.clone(),
             updated_at: fetched_at.clone(),
             chapters: vec![ReadingChapter {
@@ -1133,6 +1144,7 @@ fn html_to_plain(html: &str) -> String {
 fn sanitize_html(html: &str) -> String {
     let mut out = String::new();
     let mut index = 0usize;
+    let mut open_media: Option<String> = None;
     while index < html.len() {
         let rest = &html[index..];
         if rest.starts_with('<') {
@@ -1186,9 +1198,28 @@ fn sanitize_html(html: &str) -> String {
             {
                 out.push_str("\n\n");
             } else if tag == "img" {
-                if let Some(alt) = attr_value_from_tag(inner, "alt") {
-                    if !alt.trim().is_empty() {
-                        out.push_str(&format!("[图片：{}]", alt.trim()));
+                if let Some(src) = attr_value_from_tag(inner, "src") {
+                    if let Some(url) = sanitize_media_url(&src) {
+                        out.push_str(&format!("![img]({})", markdown_url(&url)));
+                    }
+                }
+            } else if tag == "audio" || tag == "video" {
+                if closing {
+                    open_media = None;
+                } else {
+                    open_media = Some(tag.clone());
+                    if let Some(src) = attr_value_from_tag(inner, "src") {
+                        if let Some(url) = sanitize_media_url(&src) {
+                            out.push_str(&format!("[{}]({})", tag, markdown_url(&url)));
+                        }
+                    }
+                }
+            } else if tag == "source" && !closing {
+                // 常见写法：<audio><source src="…"/></audio>
+                if let (Some(kind), Some(src)) = (open_media.as_ref(), attr_value_from_tag(inner, "src")) {
+                    if let Some(url) = sanitize_media_url(&src) {
+                        out.push_str(&format!("[{}]({})", kind, markdown_url(&url)));
+                        open_media = None;
                     }
                 }
             }
@@ -1212,6 +1243,21 @@ fn attr_value_from_tag(inner: &str, wanted: &str) -> Option<String> {
         .into_iter()
         .find(|(key, _)| key == wanted)
         .map(|(_, value)| value)
+}
+
+/// RSS 正文只允许 data: 与 http(s) 媒体直接交给 WebView；其余协议丢弃，不代理不落盘。
+fn sanitize_media_url(src: &str) -> Option<String> {
+    let value = src.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("data:") || lower.starts_with("http://") || lower.starts_with("https://") {
+        Some(value.to_string())
+    } else {
+        None
+    }
+}
+
+fn markdown_url(value: &str) -> String {
+    value.replace(' ', "%20").replace(')', "%29")
 }
 
 fn clamp_chars(text: &str, max: usize) -> String {
@@ -1528,6 +1574,21 @@ mod tests {
         assert_eq!(paragraphs[1], "一段 & 二段");
         assert_eq!(paragraphs[2], "第三段 换行");
         assert!(!paragraphs.join(" ").contains("bad()"));
+    }
+
+    #[test]
+    fn sanitizer_keeps_whitelisted_media_and_drops_other_schemes() {
+        let html = concat!(
+            "<p>图</p><img src=\"https://example.test/a.png\"/>",
+            "<img src=\"javascript:alert(1)\"/>",
+            "<audio src=\"https://example.test/a.mp3\"></audio>",
+            "<video><source src=\"data:video/mp4;base64,AAAA\"/></video>"
+        );
+        let sanitized = sanitize_html(html);
+        assert!(sanitized.contains("![img](https://example.test/a.png)"), "{sanitized}");
+        assert!(!sanitized.contains("javascript"), "{sanitized}");
+        assert!(sanitized.contains("[audio](https://example.test/a.mp3)"), "{sanitized}");
+        assert!(sanitized.contains("[video](data:video/mp4;base64,AAAA)"), "{sanitized}");
     }
 
     #[test]

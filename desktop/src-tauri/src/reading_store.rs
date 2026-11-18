@@ -149,6 +149,9 @@ pub struct ReadingBook {
     pub source_path: String,
     #[serde(default)]
     pub source_sha256: String,
+    /// 导入时从 EPUB OPF 提取的封面文件名（meta/ 下），无封面为空。
+    #[serde(default)]
+    pub cover: String,
     pub imported_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -181,6 +184,12 @@ pub struct ReadingBookMeta {
     pub char_count: usize,
     pub annotation_count: usize,
     pub note_count: usize,
+    /// thought 批注数；`None` 表示旧版 meta 没写过这个字段，聚合时回读正文补算。
+    #[serde(default)]
+    pub thought_count: Option<usize>,
+    /// 封面文件名（meta/ 下）；旧版书目没有封面。
+    #[serde(default)]
+    pub cover: Option<String>,
     pub progress_percent: f64,
 }
 
@@ -202,6 +211,18 @@ pub struct ReadingNoteFile {
     pub relative_path: String,
     pub content: String,
     pub bytes: u64,
+}
+
+/// 首页阅读统计（OD-READ-003）。`books` 只算本地书籍，订阅文章篇数由 rss_store 另计。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReadingStats {
+    pub books: usize,
+    /// 读完口径：progress_percent >= 0.95（与验收口径一致）。
+    pub finished: usize,
+    pub chars: usize,
+    pub annotations: usize,
+    pub notes: usize,
+    pub thoughts: usize,
 }
 
 fn now_secs() -> f64 {
@@ -344,6 +365,8 @@ fn book_meta(book: &ReadingBook) -> ReadingBookMeta {
         char_count: chars,
         annotation_count: book.annotations.len(),
         note_count: book.notes.len(),
+        thought_count: Some(book.annotations.iter().filter(|a| a.kind == KIND_THOUGHT).count()),
+        cover: if book.cover.trim().is_empty() { None } else { Some(book.cover.clone()) },
         progress_percent: book.progress.percent,
     }
 }
@@ -557,6 +580,87 @@ fn normalize_color(raw: &str) -> String {
     }
 }
 
+const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
+
+fn cover_extension(mime: &str, file_name: &str) -> Option<&'static str> {
+    match mime.trim().to_ascii_lowercase().as_str() {
+        "image/png" => Some("png"),
+        "image/jpeg" => Some("jpg"),
+        "image/gif" => Some("gif"),
+        "image/webp" => Some("webp"),
+        "image/bmp" => Some("bmp"),
+        _ => {
+            let ext = Path::new(file_name)
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_ascii_lowercase())?;
+            match ext.as_str() {
+                "png" => Some("png"),
+                "jpg" | "jpeg" => Some("jpg"),
+                "gif" => Some("gif"),
+                "webp" => Some("webp"),
+                "bmp" => Some("bmp"),
+                _ => None,
+            }
+        }
+    }
+}
+
+/// 封面只从导入时已解析出的 OPF cover-image 字节写入 meta/；失败不阻断正文导入。
+fn store_cover(root: &Path, book_id: &str, cover: &crate::task_shell::ReadingSourceCover) -> Option<String> {
+    if cover.bytes.is_empty() || cover.bytes.len() > MAX_COVER_BYTES {
+        return None;
+    }
+    let ext = cover_extension(&cover.mime, &cover.file_name)?;
+    let file_name = format!("{book_id}.cover.{ext}");
+    let target = root.join("meta").join(&file_name);
+    let write = if target.exists() {
+        write_replace_atomically(&target, &cover.bytes)
+    } else {
+        write_new_atomically(&target, &cover.bytes)
+    };
+    if write.is_err() {
+        return None;
+    }
+    harden_private(&target, 0o600);
+    Some(file_name)
+}
+
+pub fn cover_path(root: &Path, book_id: &str, cover: &str) -> Result<PathBuf, String> {
+    if !is_safe_id(book_id) {
+        return Err(format!("书编号不合法：{book_id:?}"));
+    }
+    let name = Path::new(cover).file_name().and_then(|value| value.to_str()).unwrap_or("");
+    if name != cover || !cover.starts_with(&format!("{book_id}.cover.")) {
+        return Err("封面文件名不合法。".to_string());
+    }
+    Ok(root.join("meta").join(cover))
+}
+
+/// 读 meta/ 下的封面字节，返回前端可直接转 data URL 的 payload。
+pub fn read_cover_at(root: &Path, book_id: &str) -> Result<crate::task_shell::ReadingMediaPayload, String> {
+    let meta = read_meta_at(root, book_id)?;
+    let cover = meta.cover.ok_or_else(|| "这本书没有封面。".to_string())?;
+    let path = cover_path(root, book_id, &cover)?;
+    let bytes = fs::read(&path).map_err(|e| format!("读取封面失败（{}）：{}", path.display(), e))?;
+    if bytes.is_empty() || bytes.len() > MAX_COVER_BYTES {
+        return Err("封面大小不合法。".to_string());
+    }
+    let mime = match Path::new(&cover).extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => return Err("封面格式不在白名单内。".to_string()),
+    };
+    Ok(crate::task_shell::ReadingMediaPayload {
+        mime: mime.to_string(),
+        bytes: bytes.len(),
+        data_base64: crate::task_shell::base64_encode(&bytes),
+    })
+}
+
 pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<ReadingImportResult, String> {
     ensure_store_dirs(root)?;
     if source.content.chars().count() > MAX_BOOK_CHARS {
@@ -583,6 +687,10 @@ pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<Re
     if chapters.is_empty() {
         return Err(format!("「{}」没有可读的章节正文。", source.file_name));
     }
+    let cover_file = source
+        .cover
+        .as_ref()
+        .and_then(|cover| store_cover(root, &book_id, cover));
     let imported_at = utc_iso8601(now);
     let book = ReadingBook {
         schema: READING_SCHEMA.to_string(),
@@ -593,6 +701,7 @@ pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<Re
         source_format: source.extension,
         source_path: source.path,
         source_sha256: source.sha256,
+        cover: cover_file.unwrap_or_default(),
         imported_at: imported_at.clone(),
         updated_at: imported_at,
         chapters,
@@ -636,6 +745,43 @@ pub fn library(paths: &AppPaths) -> Result<ReadingLibrary, String> {
         root: root.display().to_string(),
         books: list_books_at(&root)?,
     })
+}
+
+/// 首页统计聚合。所有数字都来自真实书目摘要/正文，不补零也不估算。
+/// 「闪记」按用户当轮语义 = `kind == "thought"` 的批注数。
+pub fn reading_stats_at(root: &Path) -> Result<ReadingStats, String> {
+    assert_store_root(root)?;
+    let books = list_books_at(root)?;
+    let mut stats = ReadingStats {
+        books: 0,
+        finished: 0,
+        chars: 0,
+        annotations: 0,
+        notes: 0,
+        thoughts: 0,
+    };
+    for meta in books {
+        // 书籍本数不含订阅文章；其余计数覆盖书架里的全部阅读条目。
+        if meta.source_format != "rss" {
+            stats.books += 1;
+            if meta.progress_percent >= 0.95 {
+                stats.finished += 1;
+            }
+        }
+        stats.chars += meta.char_count;
+        stats.annotations += meta.annotation_count;
+        stats.notes += meta.note_count;
+        stats.thoughts += match meta.thought_count {
+            Some(count) => count,
+            // 旧版 meta 没有 thought_count：回读正文补算，避免把历史闪记显示成 0。
+            None => read_book_at(root, &meta.book_id)?
+                .annotations
+                .iter()
+                .filter(|annotation| annotation.kind == KIND_THOUGHT)
+                .count(),
+        };
+    }
+    Ok(stats)
 }
 
 fn read_meta_at(root: &Path, book_id: &str) -> Result<ReadingBookMeta, String> {
@@ -1205,6 +1351,7 @@ mod tests {
             sha256: crate::sha256::sha256_hex(content.as_bytes()),
             content: content.to_string(),
             chapters: Vec::new(),
+            cover: None,
         }
     }
 
@@ -1451,5 +1598,134 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         assert!(read_book_at(&root, "../escape").is_err());
         assert!(read_book_at(&root, "bk/a").is_err());
+    }
+
+    #[test]
+    fn summarizes_stats_with_thoughts_and_excludes_rss_from_book_count() {
+        let root = temp_root("stats");
+        fs::create_dir_all(&root).unwrap();
+        let imported = import_book_at(&root, source("# 章\n\n一段正文。\n\n第二段。"), 1_760_000_000.0).unwrap();
+        let book_id = imported.book.book_id.clone();
+        let highlight = ReadingAnnotationDraft {
+            kind: KIND_HIGHLIGHT.to_string(),
+            chapter_index: 0,
+            paragraph_index: 0,
+            start: Some(0),
+            end: Some(5),
+            quote: "一段正文。".to_string(),
+            ..ReadingAnnotationDraft::default()
+        };
+        add_annotation_at(&root, &book_id, highlight, 1_760_000_010.0).unwrap();
+        let thought = ReadingAnnotationDraft {
+            kind: KIND_THOUGHT.to_string(),
+            chapter_index: 0,
+            paragraph_index: 1,
+            start: Some(0),
+            end: Some(4),
+            quote: "第二段。".to_string(),
+            body: "闪记内容".to_string(),
+            ..ReadingAnnotationDraft::default()
+        };
+        add_annotation_at(&root, &book_id, thought, 1_760_000_020.0).unwrap();
+        set_progress_at(&root, &book_id, 0.96, 1_760_000_030.0).unwrap();
+        save_note_at(&root, &book_id, "整理", "# 整理\n\n没有引用", vec![], 1_760_000_040.0).unwrap();
+
+        let mut rss_source = source("# RSS\n\n订阅正文。");
+        rss_source.extension = "rss".to_string();
+        rss_source.file_name = "rss.md".to_string();
+        let rss = import_book_at(&root, rss_source, 1_760_000_050.0).unwrap();
+
+        let stats = reading_stats_at(&root).unwrap();
+        assert_eq!(stats.books, 1, "RSS 文章不计入书籍本数");
+        assert_eq!(stats.finished, 1);
+        assert_eq!(stats.chars, imported.book.char_count + rss.book.char_count);
+        assert_eq!(stats.annotations, 2);
+        assert_eq!(stats.notes, 1);
+        assert_eq!(stats.thoughts, 1, "闪记口径 = thought 批注");
+    }
+
+    #[test]
+    fn imports_opf_cover_into_meta_and_serves_payload() {
+        let root = temp_root("cover");
+        fs::create_dir_all(&root).unwrap();
+        let mut sample = source("# 章\n\n正文。");
+        sample.cover = Some(crate::task_shell::ReadingSourceCover {
+            file_name: "cover.jpg".to_string(),
+            mime: "image/jpeg".to_string(),
+            bytes: vec![0xff, 0xd8, 0xff, 0x01, 0x02, 0x03],
+        });
+        let imported = import_book_at(&root, sample, 1_760_000_000.0).unwrap();
+        let meta = read_meta_at(&root, &imported.book.book_id).unwrap();
+        let cover = meta.cover.expect("应记录封面文件名");
+        assert_eq!(cover, format!("{}.cover.jpg", imported.book.book_id));
+        let path = root.join("meta").join(&cover);
+        assert_eq!(fs::read(&path).unwrap(), vec![0xff, 0xd8, 0xff, 0x01, 0x02, 0x03]);
+        let payload = read_cover_at(&root, &imported.book.book_id).unwrap();
+        assert_eq!(payload.mime, "image/jpeg");
+        assert_eq!(payload.bytes, 6);
+        assert_eq!(crate::task_shell::base64_decode(&payload.data_base64).unwrap().len(), 6);
+    }
+
+    #[test]
+    fn end_to_end_epub_cover_and_media_under_env_root() {
+        let dir = temp_root("epub_e2e");
+        fs::create_dir_all(&dir).unwrap();
+        let epub = dir.join("media.epub");
+        let data_root = dir.join("reading-store");
+        let script = r#"
+import sys, zipfile
+path = sys.argv[1]
+with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("mimetype", "application/epub+zip")
+    z.writestr("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+    z.writestr("OEBPS/content.opf", '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf"><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/><item id="pic" href="images/pic.png" media-type="image/png"/></manifest><spine><itemref idref="c1"/></spine></package>')
+    z.writestr("OEBPS/text/ch1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>前文<img src="../images/pic.png"/>后文</p></body></html>')
+    z.writestr("OEBPS/images/pic.png", b"\x89PNG\r\n")
+    z.writestr("OEBPS/images/cover.jpg", b"\xff\xd8\xff\xe0cover")
+"#;
+        let built = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(script)
+            .arg(&epub)
+            .output();
+        let Ok(output) = built else {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        };
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        let previous = std::env::var_os(READING_ROOT_ENV);
+        std::env::set_var(READING_ROOT_ENV, &data_root);
+        let result = (|| {
+            let paths = AppPaths::resolve().map_err(|e| format!("路径解析失败：{e}"))?;
+            let imported = import_book(&paths, epub.to_str().unwrap())?;
+            let root = resolve_reading_root(&paths)?;
+            let meta = read_meta_at(&root, &imported.book.book_id)?;
+            let cover = meta.cover.ok_or_else(|| "没有封面".to_string())?;
+            let cover_path = root.join("meta").join(&cover);
+            assert!(cover_path.is_file(), "封面应落在 meta/<book_id>.cover.*");
+            eprintln!(
+                "OD-READ-003 e2e: book={} root={} cover={} cover_exists={}",
+                imported.book.book_id,
+                root.display(),
+                cover,
+                cover_path.is_file()
+            );
+            let book = read_book_at(&root, &imported.book.book_id)?;
+            assert!(book.chapters[0].paragraphs.iter().any(|p| p.contains("![img](odmedia:OEBPS/images/pic.png)")));
+            let payload = crate::task_shell::read_reading_media(&book.source_path, "OEBPS/images/pic.png")?;
+            eprintln!("OD-READ-003 e2e: media mime={} bytes={}", payload.mime, payload.bytes);
+            assert_eq!(payload.mime, "image/png");
+            assert_eq!(payload.bytes, 6);
+            Ok::<(), String>(())
+        })();
+        match previous {
+            Some(value) => std::env::set_var(READING_ROOT_ENV, value),
+            None => std::env::remove_var(READING_ROOT_ENV),
+        }
+        result.unwrap();
+        let _ = fs::remove_dir_all(&dir);
     }
 }

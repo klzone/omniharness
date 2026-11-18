@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, shell } from "../api";
 import {
@@ -125,6 +125,264 @@ function describeAiError(error: unknown): string {
   return raw;
 }
 
+// ---------------------------------------------------------------------------
+// 富媒体（OD-READ-003）：段落里保留 `![img](...)` / `[audio](...)` / `[video](...)`
+// 行内标记；划线偏移仍按含标记的原文计算。媒体字节按需取，组件内缓存。
+// ---------------------------------------------------------------------------
+
+type MediaKind = "image" | "audio" | "video";
+
+type ParagraphToken =
+  | { kind: "text"; value: string }
+  | { kind: MediaKind; value: string; raw: string };
+
+const MEDIA_MARKER_RE = /!\[img\]\(([^)\n]+)\)|\[(audio|video)\]\(([^)\n]+)\)/g;
+
+function splitMediaMarkers(text: string): ParagraphToken[] {
+  const tokens: ParagraphToken[] = [];
+  let last = 0;
+  for (const match of text.matchAll(MEDIA_MARKER_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) tokens.push({ kind: "text", value: text.slice(last, index) });
+    if (match[1]) tokens.push({ kind: "image", value: match[1], raw: match[0] });
+    else
+      tokens.push({
+        kind: match[2] === "audio" ? "audio" : "video",
+        value: match[3] ?? "",
+        raw: match[0],
+      });
+    last = index + match[0].length;
+  }
+  if (last < text.length) tokens.push({ kind: "text", value: text.slice(last) });
+  return tokens;
+}
+
+function decodeMediaRef(src: string): string {
+  try {
+    return decodeURIComponent(src);
+  } catch {
+    return src;
+  }
+}
+
+function isDirectMediaSrc(src: string): boolean {
+  return /^(https?:|data:)/i.test(src);
+}
+
+const mediaSrcCache = new Map<string, string>();
+
+function MediaBlock({
+  bookId,
+  kind,
+  src,
+  onOpenImage,
+}: {
+  bookId: string;
+  kind: MediaKind;
+  src: string;
+  onOpenImage: (src: string) => void;
+}) {
+  const cacheKey = `${bookId}:${src}`;
+  const [resolved, setResolved] = useState<string | null>(() => mediaSrcCache.get(cacheKey) ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (resolved) return;
+    if (isDirectMediaSrc(src)) {
+      mediaSrcCache.set(cacheKey, src);
+      setResolved(src);
+      return;
+    }
+    if (!src.startsWith("odmedia:")) {
+      setError("不支持的媒体地址。");
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    const ref = decodeMediaRef(src.slice("odmedia:".length));
+    shell
+      .readingMediaExtract(bookId, ref)
+      .then((payload) => {
+        if (!alive) return;
+        const dataUrl = `data:${payload.mime};base64,${payload.data_base64}`;
+        mediaSrcCache.set(cacheKey, dataUrl);
+        setResolved(dataUrl);
+      })
+      .catch((e) => {
+        if (alive) setError(String(e));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // src/bookId 变化才重新取；resolved 只用于跳过已缓存结果。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, src]);
+
+  if (error) {
+    return (
+      <span className="reading-media-error" data-testid="reading-media-error">
+        媒体读取失败：{error}
+      </span>
+    );
+  }
+  if (!resolved) {
+    return <span className="reading-media-loading">{loading ? "正在读取媒体…" : "媒体未加载"}</span>;
+  }
+  if (kind === "image") {
+    return (
+      <figure className="reading-media-figure reading-media-image">
+        <button type="button" className="reading-media-image-button" onClick={() => onOpenImage(resolved)}>
+          <img src={resolved} alt="正文图片" loading="lazy" />
+        </button>
+      </figure>
+    );
+  }
+  return (
+    <figure className="reading-media-figure">
+      {kind === "audio" ? (
+        <audio className="reading-media-audio" controls preload="none" src={resolved} />
+      ) : (
+        <video className="reading-media-video" controls preload="metadata" src={resolved} />
+      )}
+    </figure>
+  );
+}
+
+const INLINE_MARKDOWN_RE = /\[([^\]\n]+)\]\((https?:\/\/[^)\n]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+
+/**
+ * 段落内行内 Markdown 的偏移保真渲染。
+ *
+ * ReactMarkdown 会把 `**`/反引号/链接目标从 DOM 文本里移除，导致选区前缀长度
+ * 与原文不一致、划线偏移错位；这里把格式符号放进视觉隐藏的锚点 span，
+ * 让 DOM 文本严格等于原段落，同时仍显示粗体/行内代码/链接。笔记与 AI 结果
+ * 继续走 MarkdownText 的 react-markdown 管线。
+ */
+function InlineMarkdown({ text }: { text: string }) {
+  if (!text.includes("*") && !text.includes("`") && !text.includes("[")) return <>{text}</>;
+  const nodes: Array<string | JSX.Element> = [];
+  let last = 0;
+  for (const match of text.matchAll(INLINE_MARKDOWN_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) nodes.push(text.slice(last, index));
+    if (match[1] && match[2]) {
+      nodes.push(
+        <Fragment key={`link-${index}`}>
+          <span className="reading-syntax-anchor">[</span>
+          <a href={match[2]} target="_blank" rel="noreferrer noopener">{match[1]}</a>
+          <span className="reading-syntax-anchor">]({match[2]})</span>
+        </Fragment>,
+      );
+    } else if (match[3]) {
+      nodes.push(
+        <Fragment key={`strong-${index}`}>
+          <span className="reading-syntax-anchor">**</span>
+          <strong>{match[3]}</strong>
+          <span className="reading-syntax-anchor">**</span>
+        </Fragment>,
+      );
+    } else if (match[4]) {
+      nodes.push(
+        <Fragment key={`code-${index}`}>
+          <span className="reading-syntax-anchor">`</span>
+          <code className="reading-inline-code">{match[4]}</code>
+          <span className="reading-syntax-anchor">`</span>
+        </Fragment>,
+      );
+    }
+    last = index + match[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return <>{nodes}</>;
+}
+
+function RichParagraphText({
+  bookId,
+  text,
+  onOpenImage,
+}: {
+  bookId: string;
+  text: string;
+  onOpenImage: (src: string) => void;
+}) {
+  const tokens = splitMediaMarkers(text);
+  if (tokens.length === 1 && tokens[0]?.kind === "text") {
+    return <InlineMarkdown text={text} />;
+  }
+  return (
+    <>
+      {tokens.map((token, index) =>
+        token.kind === "text" ? (
+          <InlineMarkdown key={index} text={token.value} />
+        ) : (
+          <Fragment key={`${bookId}-${index}`}>
+            {/* 标记原文保留在 DOM 文本里（视觉隐藏），Range.toString 才能保住划线偏移。 */}
+            <span className="reading-media-anchor" aria-hidden="true">
+              {token.raw}
+            </span>
+            <MediaBlock
+              bookId={bookId}
+              kind={token.kind}
+              src={token.value}
+              onOpenImage={onOpenImage}
+            />
+          </Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+const coverSrcCache = new Map<string, string>();
+
+function BookCover({
+  bookId,
+  cover,
+  title,
+  className,
+}: {
+  bookId: string;
+  cover?: string | null;
+  title: string;
+  className?: string;
+}) {
+  const [src, setSrc] = useState<string | null>(() => (cover ? coverSrcCache.get(bookId) ?? null : null));
+  useEffect(() => {
+    if (!cover || src) return;
+    let alive = true;
+    shell
+      .readingCoverImage(bookId)
+      .then((payload) => {
+        if (!alive) return;
+        const dataUrl = `data:${payload.mime};base64,${payload.data_base64}`;
+        coverSrcCache.set(bookId, dataUrl);
+        setSrc(dataUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // 封面只按书号取一次；失败时保留暖底首字占位。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, cover]);
+  return (
+    <span className={`reading-cover ${className ?? ""}`}>
+      {src ? (
+        <img src={src} alt={`${title} 封面`} loading="lazy" />
+      ) : (
+        <span className="reading-cover-fallback" aria-hidden="true">
+          {(Array.from(title.trim())[0] ?? "书").toUpperCase()}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ReadingPage() {
   const [library, setLibrary] = useState<ReadingLibrary | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -171,6 +429,9 @@ export function ReadingPage() {
   const [rssMessage, setRssMessage] = useState<string | null>(null);
   const [rssError, setRssError] = useState<string | null>(null);
   const [pendingSubscriptionDelete, setPendingSubscriptionDelete] = useState<RssSubscription | null>(null);
+  const [shelfTab, setShelfTab] = useState<"books" | "rss">("books");
+  const [collapsedSources, setCollapsedSources] = useState<Record<string, boolean>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const restoredBook = useRef<string | null>(null);
   const loadSeq = useRef(0);
@@ -339,7 +600,7 @@ export function ReadingPage() {
         multiple: false,
         directory: false,
         title: "选择要读的文件",
-        filters: [{ name: "阅读文件", extensions: ["md", "markdown", "txt", "pdf", "docx", "epub"] }],
+        filters: [{ name: "阅读文件", extensions: ["md", "markdown", "txt", "pdf", "docx", "epub", "mobi"] }],
       });
       if (!picked || Array.isArray(picked)) return;
       const result = await shell.readingImportBook(picked);
@@ -486,8 +747,23 @@ export function ReadingPage() {
       if (target?.closest?.(".reading-selection-bar")) return;
       window.setTimeout(() => readSelectionRef.current(), 0);
     };
+    // 拖选/双击/键盘选择在部分 WebView 里 mouseup 之后选区才落定；
+    // selectionchange 去抖作为第二通道，两条路都收敛到 readSelectionRef。
+    let selectionTimer: number | null = null;
+    const onSelectionChange = () => {
+      if (selectionTimer !== null) window.clearTimeout(selectionTimer);
+      selectionTimer = window.setTimeout(() => {
+        selectionTimer = null;
+        readSelectionRef.current();
+      }, 150);
+    };
     document.addEventListener("mouseup", handler);
-    return () => document.removeEventListener("mouseup", handler);
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("mouseup", handler);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      if (selectionTimer !== null) window.clearTimeout(selectionTimer);
+    };
   }, [book?.book_id]);
 
   const clearSelection = () => {
@@ -981,19 +1257,53 @@ export function ReadingPage() {
       const right = rssMetaById.get(b.book_id)?.published_ts ?? 0;
       return right - left || b.updated_at.localeCompare(a.updated_at);
     });
+  const rssGroups = useMemo(() => {
+    const groups = new Map<string, ReadingBookMeta[]>();
+    for (const item of shelfArticles) {
+      const name = item.source_name?.trim() || rssMetaById.get(item.book_id)?.author || "订阅文章";
+      const list = groups.get(name) ?? [];
+      list.push(item);
+      groups.set(name, list);
+    }
+    return Array.from(groups.entries()).sort((a, b) => {
+      const left = rssMetaById.get(a[1][0]?.book_id ?? "")?.published_ts ?? 0;
+      const right = rssMetaById.get(b[1][0]?.book_id ?? "")?.published_ts ?? 0;
+      return right - left || a[0].localeCompare(b[0]);
+    });
+  }, [shelfArticles, rssMetaById]);
 
   return (
     <div className="reading-page flex h-full min-h-0 w-full flex-col md:pl-20" data-testid="reading-page">
       <div className="flex min-h-0 flex-1">
         <aside className="reading-shelf hidden w-[238px] shrink-0 flex-col border-r border-outline-variant/40 bg-surface/60 lg:flex">
-          <div className="flex items-center justify-between gap-2 border-b border-outline-variant/40 px-3 py-3">
+          <div className="flex items-center justify-between gap-2 border-b border-outline-variant/40 px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-[13px] font-medium text-on-surface">健脑室</p>
               <p className="truncate text-[10.5px] text-outline">
                 {library ? `${shelfBooks.length} 本 · ${shelfArticles.length} 篇` : "读取中"}
               </p>
             </div>
-            <div className="flex items-center gap-1">
+          </div>
+          <div className="reading-shelf-tabs" data-testid="reading-shelf-tabs">
+            <button
+              type="button"
+              onClick={() => setShelfTab("books")}
+              className={shelfTab === "books" ? "is-active" : ""}
+              data-testid="reading-shelf-tab-books"
+            >
+              本地书籍 {shelfBooks.length}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShelfTab("rss")}
+              className={shelfTab === "rss" ? "is-active" : ""}
+              data-testid="reading-shelf-tab-rss"
+            >
+              订阅文章 {shelfArticles.length}
+            </button>
+          </div>
+          <div className="flex items-center justify-end gap-1 border-b border-outline-variant/30 px-2 py-1.5">
+            {shelfTab === "books" ? (
               <button
                 type="button"
                 onClick={() => void importBook()}
@@ -1003,113 +1313,136 @@ export function ReadingPage() {
                 <Icon name="plus" className="h-3 w-3" />
                 {importBusy ? "导入中" : "导入"}
               </button>
-              <button
-                type="button"
-                onClick={() => setSubscriptionOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary"
-              >
-                订阅
-              </button>
-            </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary"
+                >
+                  订阅管理
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runRssFetch()}
+                  disabled={rssBusy === "refresh" || subscriptions.length === 0}
+                  className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
+                >
+                  <Icon name="refresh" className="h-3 w-3" />
+                  {rssBusy === "refresh" ? "拉取中" : "拉取全部"}
+                </button>
+              </>
+            )}
           </div>
-          <div className="reading-shelf-list min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="reading-shelf-list min-h-0 flex-1 overflow-y-auto p-2" data-testid="reading-shelf-list">
             {libraryError ? (
               <p className="rounded-lg bg-error-container/60 p-2 text-[11px] text-on-error-container">{libraryError}</p>
             ) : null}
-            <div className="mb-1 flex items-center justify-between px-1 pt-1">
-              <p className="text-[10px] font-medium tracking-wide text-outline">书籍 {shelfBooks.length}</p>
-            </div>
-            {shelfBooks.length === 0 ? (
-              <p className="mb-2 rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
-                还没有导入的书。
-              </p>
-            ) : null}
-            {shelfBooks.map((item) => {
-              const active = item.book_id === bookId;
-              return (
-                <button
-                  type="button"
-                  key={item.book_id}
-                  onClick={() => void openBook(item.book_id)}
-                  className={
-                    "mb-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors " +
-                    (active
-                      ? "border-primary/40 bg-primary/10"
-                      : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-6 items-center justify-center rounded-[4px] bg-surface-container text-primary">
-                      <Icon name="book" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-medium text-on-surface">{item.title}</span>
-                      <span className="block text-[10px] text-outline">
-                        {sourceFormatLabel(item.source_format)} · {item.chapter_count} 章 · {item.annotation_count} 条批注
-                      </span>
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-outline-variant/30">
-                    <div
-                      className="h-full rounded-full bg-primary/70"
-                      style={{ width: `${Math.round(item.progress_percent * 100)}%` }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-
-            <div className="mb-1 mt-2 flex items-center justify-between gap-1 px-1 pt-1">
-              <p className="text-[10px] font-medium tracking-wide text-outline">订阅文章 {shelfArticles.length}</p>
-              <button
-                type="button"
-                onClick={() => void runRssFetch()}
-                disabled={rssBusy === "refresh" || subscriptions.length === 0}
-                className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] text-outline hover:text-primary disabled:opacity-40"
-              >
-                <Icon name="refresh" className="h-3 w-3" />
-                {rssBusy === "refresh" ? "拉取中" : "拉取全部"}
-              </button>
-            </div>
-            {shelfArticles.length === 0 ? (
-              <p className="rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
-                从「订阅」添加 RSS，或点「拉取全部」。
-              </p>
-            ) : null}
-            {shelfArticles.map((item) => {
-              const active = item.book_id === bookId;
-              const meta = rssMetaById.get(item.book_id);
-              return (
-                <button
-                  type="button"
-                  key={item.book_id}
-                  onClick={() => void openBook(item.book_id)}
-                  className={
-                    "relative mb-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors " +
-                    (active
-                      ? "border-primary/40 bg-primary/10"
-                      : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
-                  }
-                >
-                  {!meta?.read ? (
-                    <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" aria-label="未读" />
-                  ) : null}
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-6 items-center justify-center rounded-[4px] bg-surface-container text-primary">
-                      <Icon name="note" className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate pr-2 text-[12px] font-medium text-on-surface">{item.title}</span>
-                      <span className="flex min-w-0 items-center gap-1 text-[10px] text-outline">
-                        <span className="shrink-0 rounded bg-primary/10 px-1 text-[9px] font-medium text-primary">RSS</span>
-                        <span className="truncate">{item.source_name || meta?.guid || "订阅"}</span>
-                        <span className="shrink-0">· {item.annotation_count} 条批注</span>
-                      </span>
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+            {shelfTab === "books" ? (
+              <>
+                {shelfBooks.length === 0 ? (
+                  <p className="mb-2 rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
+                    还没有导入的书。
+                  </p>
+                ) : null}
+                {shelfBooks.map((item) => {
+                  const active = item.book_id === bookId;
+                  return (
+                    <button
+                      type="button"
+                      key={item.book_id}
+                      onClick={() => void openBook(item.book_id)}
+                      className={
+                        "mb-1.5 w-full rounded-lg border px-2 py-2 text-left transition-colors " +
+                        (active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
+                      }
+                      data-testid="reading-book-card"
+                    >
+                      <div className="flex items-start gap-2">
+                        <BookCover
+                          bookId={item.book_id}
+                          cover={item.cover}
+                          title={item.title}
+                          className="reading-cover-shelf"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium text-on-surface">{item.title}</span>
+                          <span className="block text-[10px] text-outline">
+                            {sourceFormatLabel(item.source_format)} · {item.chapter_count} 章 · {item.annotation_count} 条批注
+                          </span>
+                          <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-outline-variant/30">
+                            <span
+                              className="block h-full rounded-full bg-primary/70"
+                              style={{ width: `${Math.round(item.progress_percent * 100)}%` }}
+                            />
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                {shelfArticles.length === 0 ? (
+                  <p className="rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
+                    从「订阅管理」添加 RSS，或点「拉取全部」。
+                  </p>
+                ) : null}
+                {rssGroups.map(([sourceName, items]) => {
+                  const collapsed = collapsedSources[sourceName] ?? false;
+                  return (
+                    <section key={sourceName} className="mb-1.5" data-testid="rss-source-group">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCollapsedSources((prev) => ({ ...prev, [sourceName]: !collapsed }))
+                        }
+                        className="flex w-full items-center gap-1 px-1 py-1 text-left text-[10.5px] text-on-surface-variant hover:text-primary"
+                        aria-expanded={!collapsed}
+                      >
+                        <Icon name={collapsed ? "chevron-down" : "chevron-up"} className="h-3 w-3 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{sourceName}</span>
+                        <span className="shrink-0 text-[9.5px] text-outline">{items.length}</span>
+                      </button>
+                      {collapsed
+                        ? null
+                        : items.map((item) => {
+                            const active = item.book_id === bookId;
+                            const meta = rssMetaById.get(item.book_id);
+                            return (
+                              <button
+                                type="button"
+                                key={item.book_id}
+                                onClick={() => void openBook(item.book_id)}
+                                className={
+                                  "relative mb-1 w-full rounded-lg border px-2 py-1.5 text-left transition-colors " +
+                                  (active
+                                    ? "border-primary/40 bg-primary/10"
+                                    : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
+                                }
+                                data-testid="reading-article-item"
+                              >
+                                {!meta?.read ? (
+                                  <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" aria-label="未读" />
+                                ) : null}
+                                <span className="block truncate pr-3 text-[11.5px] font-medium text-on-surface">
+                                  {item.title}
+                                </span>
+                                <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[9.5px] text-outline">
+                                  <span className="shrink-0 rounded bg-primary/10 px-1 text-[9px] font-medium text-primary">RSS</span>
+                                  <span className="shrink-0">· {item.annotation_count} 条批注</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                    </section>
+                  );
+                })}
+              </>
+            )}
           </div>
           {library?.root ? (
             <p className="truncate border-t border-outline-variant/30 px-3 py-2 text-[9.5px] text-outline" title={library.root}>
@@ -1170,6 +1503,15 @@ export function ReadingPage() {
                     </option>
                   ))}
                 </select>
+                {book.source_format === "epub" ? (
+                  <BookCover
+                    key={book.book_id}
+                    bookId={book.book_id}
+                    cover={(library?.books ?? []).find((item) => item.book_id === book.book_id)?.cover}
+                    title={book.title}
+                    className="reading-cover-header hidden sm:inline-flex"
+                  />
+                ) : null}
                 <div className="min-w-0 flex-1">
                   <h1 className="truncate text-[15px] font-medium text-on-surface">{book.title}</h1>
                   <p className="truncate text-[10.5px] text-outline">
@@ -1238,6 +1580,7 @@ export function ReadingPage() {
                         return (
                           <p
                             key={`${chapterIndex}-${paragraphIndex}`}
+                            data-paragraph
                             data-chapter-index={chapterIndex}
                             data-paragraph-index={paragraphIndex}
                             className={`reading-paragraph ${bookmarked ? "reading-bookmarked" : ""}`}
@@ -1260,10 +1603,20 @@ export function ReadingPage() {
                                     setActiveAnnotation(segment.mark?.id ?? null);
                                   }}
                                 >
-                                  {segment.text}
+                                  <RichParagraphText
+                                    bookId={book.book_id}
+                                    text={segment.text}
+                                    onOpenImage={setLightbox}
+                                  />
                                 </mark>
                               ) : (
-                                <span key={segment.key}>{segment.text}</span>
+                                <span key={segment.key}>
+                                  <RichParagraphText
+                                    bookId={book.book_id}
+                                    text={segment.text}
+                                    onOpenImage={setLightbox}
+                                  />
+                                </span>
                               ),
                             )}
                           </p>
@@ -1721,6 +2074,25 @@ export function ReadingPage() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {lightbox ? (
+        <div
+          className="reading-lightbox fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-label="查看图片"
+        >
+          <img src={lightbox} alt="正文图片大图" onClick={(event) => event.stopPropagation()} />
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="reading-lightbox-close"
+            aria-label="关闭图片"
+          >
+            ×
+          </button>
         </div>
       ) : null}
 

@@ -1,5 +1,23 @@
 # 当前实施计划
 
+### OD-READ-004：首页统计下移 + MOBI/PDF 原生阅读导入（已实施，2026-11-18）
+
+> **触发（用户当轮指示）：** ①首页阅读统计从问候区下方移到对话框中「项目跟踪」快捷按钮的位置，取消该快捷入口，对话框下移并与统计条留出间距；②阅读导入除 EPUB 外原生支持 MOBI、PDF 等常见电子书格式。
+>
+> **范围与做法：**
+> 1. 首页布局（`HomeCanvas.tsx`）：统计条移出上部问候区，改渲染在 `HomeChat` 下方（`home-reading-stats-slot`），与输入区留 `pt-4` 间距；删除「最近项目/项目跟踪」快捷按钮及其数据加载（`projectList` effect、`ProjectInfo` 状态）；对话容器加 `pt-2 md:pt-3` 下移间距。
+> 2. MOBI（`scripts/reading_attachment_extract.py`）：纯标准库实现 Palm Database 解析 + PalmDOC LZ77 解压（压缩 0/1/2），MOBI 头文本编码（65001/1252）、HTML 标签转纯文本、EXTH 封面（201/202 + 首图记录）提取；HUFF/CDIC 压缩与 DRM 加密如实拒绝并说明。Rust `READING_EXTRACT_EXTS` 增加 `mobi`，界面文件过滤器与错误提示同步。
+> 3. PDF：随包 `runtime/python-vendor` 增加 `pypdf`（写入 `scripts/python-requirements.txt`），保证发布包无需用户自行 pip 安装即可逐页提取文字；扫描件仍如实提示无文本。
+>
+> **验收：** 新增 `tests/verification/desktop/verify_reading_004_formats.py`（19 项：布局/白名单/依赖/MOBI 合成样例三态/PDF 文字提取）；`cargo test --offline --lib`、`npx tsc --noEmit`、`npm run build` 全过。
+>
+> **明确不做：** MOBI 的 HUFF/CDIC 解压、DRM 去保护、PDF 扫描件 OCR、AZW3/KF8 专门解析、PDF 页面渲图。
+
+### OD-READ-003：健脑室——首页统计 + 左栏分页 + 富媒体阅读 + 选区浮条修复（已实施，2026-11-18，改动在本工作树未提交）
+
+> 计划原文与验收口径见 ARCHITECT 主仓库 `PLANS.md` 同名小节；本工作树实现与复核记录见 `STATUS.md`、`REVIEW.md` 顶部。用户已批准并由子代理（OpenDesign/deepseek-v4.1-flash-eco）实施、ARCHITECT 复核通过。
+
+
 ### OD-READ-002：健脑室——读书页融合 RSS 新闻聚合（待批准，2026-11-18）
 
 > **触发（用户当轮指示）：** 把新闻聚合 RSS 融合进读书界面；读书入口更名为「健脑室」；保留既有划线工具栏能力。参考 qiaomu-rss-dsh 插件源码（GPL-3.0，只读借鉴思路，不搬代码）与其信息源。用户已指定派工模型与档位；ARCHITECT 只做计划与复核。

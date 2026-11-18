@@ -4168,6 +4168,10 @@ export interface ReadingBookMeta {
   char_count: number;
   annotation_count: number;
   note_count: number;
+  /** thought 批注数（闪记）；旧版 meta 可能缺省。 */
+  thought_count?: number | null;
+  /** meta/ 下的封面文件名；无封面为 null。 */
+  cover?: string | null;
   progress_percent: number;
 }
 
@@ -4180,6 +4184,7 @@ export interface ReadingBook {
   source_format: string;
   source_path: string;
   source_sha256: string;
+  cover?: string;
   imported_at: string;
   updated_at: string;
   chapters: ReadingChapter[];
@@ -4203,6 +4208,23 @@ export interface ReadingNoteFile {
   relative_path: string;
   content: string;
   bytes: number;
+}
+
+/** 首页阅读统计（OD-READ-003）。 */
+export interface ReadingStats {
+  books: number;
+  finished: number;
+  chars: number;
+  annotations: number;
+  notes: number;
+  thoughts: number;
+  rss_articles: number;
+}
+
+export interface ReadingMediaPayload {
+  mime: string;
+  bytes: number;
+  data_base64: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -78,7 +78,7 @@ else
   if [ -z "$PY_HOST" ]; then
     say "警告：构建机没有 python3，无法内置 requests/certifi"
   else
-    say "内置 Python 模块（requests/certifi + python-docx/lxml）→ $VENDOR"
+    say "内置 Python 模块（requests/certifi + python-docx/lxml + pypdf）→ $VENDOR"
     rm -rf "$VENDOR"
     mkdir -p "$VENDOR"
     if ! "$PY_HOST" -m pip install --no-input --disable-pip-version-check \
