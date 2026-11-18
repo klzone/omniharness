@@ -1,5 +1,20 @@
 # 执行状态
 
+## OD-KB-202 暂存知识卡进入「知识审核」再入库（ARCHITECT 亲自执行，2026-11-19）
+
+- 触发：用户反馈模型写在 workspace/staging/kb 的知识卡没有出现在「知识审核」；「同步到知识库」直接落盘，缺少人工确认。
+- 改动：
+  - desktop/src-tauri/src/knowledge_vault.rs：新增 list_staged_cards（只读列表，含标题/类型/字数/预览/ready 与原因）、sync_selected_from_workspace（只同步勾选卡，未选保留）、discard_staged_cards（拒绝符号链接与路径穿越）；sync_from_workspace 重构为共享内部实现，落库规则不变。
+  - desktop/src-tauri/src/lib.rs：新增并注册 knowledge_staging_list / knowledge_staging_sync / knowledge_staging_discard；审核入库后向治理记录追加 approve_card（来源 staging），失败只追加说明不掩盖落库结果。
+  - desktop/src/api.ts：新增暂存列表/选中入库/丢弃类型与调用。
+  - desktop/src/shell/KnowledgeStagingInbox.tsx（新增）：审核页「暂存卡待审核」区，多选、全选、入库选中/全部入库/丢弃选中，均带二次确认；显示标题、类型、字数、正文预览与不可入库原因。
+  - desktop/src/shell/KnowledgeVaultPage.tsx：审核页挂载暂存卡区，入库/丢弃后刷新扫描、审核队列与治理数据。
+  - desktop/src/shell/KnowledgeIngestPanel.tsx：「同步到知识库」改为「全部入库」，必须二次确认。
+  - tests/verification/desktop/verify_knowledge_staging_202.py（新增）：静态 + 真实 Rust 定向单测。
+- 验证：cargo test --offline --lib -- --test-threads=1 → 1250 passed / 0 failed / 1 ignored（新增暂存列表/选中同步/丢弃/路径穿越单测）；npx tsc --noEmit → 0；npm run build → 0；verify_knowledge_staging_202.py → 14/14。
+- 证据等级：文件事实、静态检查、脚本运行（cargo/tsc/build/verify）。真实窗口点击与用户 5 张卡的实际入库仍待 0.2.42 实测。
+- 数据边界：未修改用户暂存卡；验证只用 /tmp 合成根。
+
 ## OD-ARCH-187 审批请求静默丢弃修复（ARCHITECT 亲自执行，2026-11-19）
 
 - 触发：用户实测「未分类对话要求存入知识库」两次提权但没有看到审批弹窗，第三次模型改用 artifacts/staging 后暂时成功。

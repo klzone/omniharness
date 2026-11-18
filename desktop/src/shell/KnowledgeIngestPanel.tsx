@@ -17,6 +17,7 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
   // OD-ARCH-152：模型只写 workspace/staging/kb/，落库由这里触发宿主同步。
   const [syncReport, setSyncReport] = useState<KnowledgeSyncReport | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [confirmAll, setConfirmAll] = useState(false);
   const [message, setMessage] = useState("");
 
   const prepare = async () => {
@@ -107,6 +108,7 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
   };
 
   const sync = async () => {
+    setConfirmAll(false);
     setSyncing(true);
     setSyncReport(null);
     setMessage("正在把 workspace/staging/kb/ 的暂存卡同步到知识库…");
@@ -227,12 +229,19 @@ export function KnowledgeIngestPanel({ onApplied }: { onApplied?: () => void } =
               <button
                 type="button"
                 data-testid="knowledge-sync-button"
-                data-hover-hint="把模型写在 workspace/staging/kb/ 的卡片复核后同步进知识库；冲突不覆盖"
-                onClick={() => void sync()}
+                data-hover-hint="把暂存区全部卡片写入知识库；需要再点一次确认。冲突不覆盖"
+                onClick={() => {
+                  if (!confirmAll) {
+                    setConfirmAll(true);
+                    setMessage("确认把暂存区全部卡片写入知识库？再点一次「确认全部入库」。");
+                    return;
+                  }
+                  void sync();
+                }}
                 disabled={syncing}
                 className="mr-auto px-3 py-1 rounded-full bg-surface-container text-on-surface text-[11.5px] disabled:opacity-50"
               >
-                {syncing ? "正在同步…" : "同步到知识库"}
+                {syncing ? "正在同步…" : confirmAll ? "确认全部入库" : "全部入库"}
               </button>
               <button
                 type="button"

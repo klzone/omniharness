@@ -5446,6 +5446,74 @@ fn knowledge_sync_to_vault(
     knowledge_vault::sync_from_workspace(&workspace, &root)
 }
 
+/// 知识审核页的「暂存卡待审核」列表（只读）。
+#[tauri::command(async)]
+fn knowledge_staging_list(
+    state: State<'_, SharedHost>,
+) -> Result<knowledge_vault::StagingList, String> {
+    let _ = state;
+    let workspace = crate::task_shell::prepare_local_data_root()?;
+    knowledge_vault::list_staged_cards(&workspace)
+}
+
+/// 审核通过：只把勾选的暂存卡落库，并追加逐卡治理记录。
+#[tauri::command(async)]
+fn knowledge_staging_sync(
+    state: State<'_, SharedHost>,
+    relative_paths: Vec<String>,
+) -> Result<knowledge_vault::SyncReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    let policy = current_rule_policy(&state)?;
+    let root = configured_vault_root(&paths)?;
+    let workspace = crate::task_shell::prepare_local_data_root()?;
+    let mut report =
+        knowledge_vault::sync_selected_from_workspace(&workspace, &root, &relative_paths)?;
+    let now = crate::task_shell::now_secs() as i64;
+    let mut governance_failures = 0usize;
+    for card in &report.created {
+        let hash = knowledge_vault::read_vault_note(&root, &card.relative_path)
+            .map(|note| note.sha256)
+            .unwrap_or_else(|_| "-".to_string());
+        let entry = knowledge_governance::GovernanceEntry {
+            action: "approve_card".to_string(),
+            subject: card.relative_path.clone(),
+            sha256: hash,
+            note: "来源 staging（用户审核通过）".to_string(),
+        };
+        if knowledge_governance::append_record_at(
+            &root,
+            knowledge_governance::KIND_REVIEW_DECISIONS,
+            &entry,
+            &policy,
+            now,
+            offset,
+        )
+        .is_err()
+        {
+            governance_failures += 1;
+        }
+    }
+    if governance_failures > 0 {
+        report.note.push_str(&format!("；治理记录写入失败 {governance_failures} 条"));
+    }
+    Ok(report)
+}
+
+/// 审核拒绝：删除勾选的暂存卡（仅 staging/kb 内普通 .md）。
+#[tauri::command(async)]
+fn knowledge_staging_discard(
+    state: State<'_, SharedHost>,
+    relative_paths: Vec<String>,
+) -> Result<knowledge_vault::StagingDiscardReport, String> {
+    let _ = state;
+    let workspace = crate::task_shell::prepare_local_data_root()?;
+    knowledge_vault::discard_staged_cards(&workspace, &relative_paths)
+}
+
 /// 建立收件箱/概念/方法/原文骨架与空索引（幂等）。
 #[tauri::command(async)]
 fn knowledge_ingest_init(
@@ -9926,6 +9994,9 @@ pub fn run() {
             rss_article_mark_read,
             rss_fetch,
             knowledge_sync_to_vault,
+            knowledge_staging_list,
+            knowledge_staging_sync,
+            knowledge_staging_discard,
             knowledge_ingest_init,
             knowledge_ingest_prepare,
             knowledge_ingest_apply,

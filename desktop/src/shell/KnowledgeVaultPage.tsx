@@ -25,6 +25,7 @@ import { MarkdownText } from "./MarkdownText";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { KnowledgeIngestPanel } from "./KnowledgeIngestPanel";
+import { KnowledgeStagingInbox } from "./KnowledgeStagingInbox";
 import { KnowledgeDashboard } from "./KnowledgeDashboard";
 import { KnowledgeReviewCenter } from "./KnowledgeReviewCenter";
 import { buildKnowledgeConflicts, countPendingReviews, rawFiles, wikiNotes } from "./knowledgeHub";
@@ -1073,21 +1074,30 @@ export function KnowledgeVaultPage({
             onRefreshQuality={() => void loadQuality()}
           />
         ) : hubPage === "review" ? (
-          <KnowledgeReviewCenter
-            items={reviewItems}
-            conflicts={conflicts}
-            busy={reviewBusy}
-            error={reviewError ?? (reviewBroken > 0 ? `另有 ${reviewBroken} 条审核记录损坏，已跳过。` : null)}
-            message={reviewMessage}
-            queue={reviewQueue}
-            onQueueChange={setReviewQueue}
-            onDecide={decideReview}
-            onResolveConflict={resolveConflict}
-            onRefresh={() => {
-              void loadReview();
-              void loadGovernance();
-            }}
-          />
+          <div className="flex-1 min-h-0 flex flex-col gap-2">
+            <KnowledgeStagingInbox
+              onChanged={() => {
+                void loadScan();
+                void loadReview();
+                void loadGovernance();
+              }}
+            />
+            <KnowledgeReviewCenter
+              items={reviewItems}
+              conflicts={conflicts}
+              busy={reviewBusy}
+              error={reviewError ?? (reviewBroken > 0 ? `另有 ${reviewBroken} 条审核记录损坏，已跳过。` : null)}
+              message={reviewMessage}
+              queue={reviewQueue}
+              onQueueChange={setReviewQueue}
+              onDecide={decideReview}
+              onResolveConflict={resolveConflict}
+              onRefresh={() => {
+                void loadReview();
+                void loadGovernance();
+              }}
+            />
+          </div>
         ) : (
         <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto xl:overflow-hidden" data-testid="knowledge-assets">
           <div className="flex items-baseline gap-3 rounded-xl bg-white/65 px-3 py-2">

@@ -1,3 +1,11 @@
+# OD-KB-202 复核（2026-11-19，ARCHITECT 实施并复核）——通过（脚本/静态范围；真实窗口待 0.2.42 实测）
+
+**复核对象：** 暂存卡审核链路（knowledge_vault 列表/选中同步/丢弃、lib.rs 命令与治理记录、审核页暂存卡区、整理材料弹窗二次确认）。
+
+**实跑证据：** cargo 全量 1250/0/1；tsc/build 通过；verify_knowledge_staging_202.py 14/14（含真实 Rust 单测：仅勾选卡入库、未选保留、丢弃成功、../escape.md 被拒）。静态核对：选中同步沿用原有 frontmatter/字数/冲突/索引规则；落库成功后才删除暂存文件；治理记录失败只追加说明。
+
+**结论：** 暂存卡现在先出现在「知识审核」的待审区，用户逐张或批量确认后才入库；通过复核，可随 0.2.42 发布复测。
+
 # OD-ARCH-187 复核（2026-11-19，ARCHITECT 实施并复核）——通过（单元/静态范围；真实窗口待 0.2.41 实测）
 
 **复核对象：** `engine/omnidesk_engine/web_api_adapter.py` 审批归属逻辑、`tests/verification/engine-interface/adapter/test_web_api_unit.py`、`skills/knowledge-search/SKILL.md`。

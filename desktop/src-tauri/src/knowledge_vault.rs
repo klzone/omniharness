@@ -677,6 +677,211 @@ pub struct SyncReport {
     pub note: String,
 }
 
+/// 审核页展示的一张暂存卡（只读视图；正文预览截断，不用于落库）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct StagedCardView {
+    pub relative_path: String,
+    pub title: String,
+    pub kind: String,
+    pub chars: usize,
+    pub preview: String,
+    pub ready: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct StagingList {
+    pub staging_dir: String,
+    pub cards: Vec<StagedCardView>,
+    pub errors: Vec<SyncIssue>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct StagingDiscardReport {
+    pub removed: Vec<String>,
+    pub errors: Vec<SyncIssue>,
+}
+
+fn staging_dir_checked(workspace_dir: &Path) -> Result<PathBuf, String> {
+    if !workspace_dir.is_absolute() {
+        return Err(format!(
+            "workspace 目录必须是绝对路径：{}",
+            workspace_dir.display()
+        ));
+    }
+    let meta = fs::symlink_metadata(workspace_dir)
+        .map_err(|e| format!("workspace 目录不可访问：{}（{e}）", workspace_dir.display()))?;
+    if meta.file_type().is_symlink() {
+        return Err(format!(
+            "workspace 目录不能是符号链接：{}",
+            workspace_dir.display()
+        ));
+    }
+    if !meta.is_dir() {
+        return Err(format!(
+            "workspace 目录必须是目录：{}",
+            workspace_dir.display()
+        ));
+    }
+    assert_local_root_allowed(workspace_dir)?;
+    assert_outside_repo(workspace_dir)?;
+    Ok(workspace_dir.join(SYNC_STAGING_REL))
+}
+
+fn preview_text(body: &str) -> String {
+    let flat: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars: Vec<char> = flat.chars().collect();
+    if chars.len() > 100 {
+        chars.truncate(100);
+        chars.push('…');
+    }
+    chars.into_iter().collect()
+}
+
+/// 列出 workspace 暂存区待审卡片（只读；不落库、不删文件）。
+pub fn list_staged_cards(workspace_dir: &Path) -> Result<StagingList, String> {
+    let staging = staging_dir_checked(workspace_dir)?;
+    let mut out = StagingList {
+        staging_dir: staging.display().to_string(),
+        ..Default::default()
+    };
+    match fs::symlink_metadata(&staging) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(format!("暂存目录不能是符号链接：{}", staging.display()));
+        }
+        Ok(meta) if !meta.is_dir() => {
+            return Err(format!("暂存路径不是目录：{}", staging.display()));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(format!("暂存目录不可访问：{}（{e}）", staging.display())),
+    }
+    let mut report = SyncReport::default();
+    let cards = collect_staged_cards(&staging, &mut report);
+    out.errors = report.errors;
+    for (relative, path) in cards {
+        let (relative, section, title) = match check_staged_card_path(&relative) {
+            Ok(value) => value,
+            Err(reason) => {
+                out.cards.push(StagedCardView {
+                    relative_path: relative,
+                    title: "（未识别的暂存文件）".to_string(),
+                    kind: "未知".to_string(),
+                    chars: 0,
+                    preview: String::new(),
+                    ready: false,
+                    reason,
+                });
+                continue;
+            }
+        };
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(e) => {
+                out.errors.push(SyncIssue {
+                    relative_path: relative.clone(),
+                    reason: format!("无法读取暂存卡信息：{e}"),
+                });
+                continue;
+            }
+        };
+        if meta.file_type().is_symlink() {
+            out.errors.push(SyncIssue {
+                relative_path: relative.clone(),
+                reason: "暂存路径是符号链接，已跳过".to_string(),
+            });
+            continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) => {
+                out.errors.push(SyncIssue {
+                    relative_path: relative.clone(),
+                    reason: format!("暂存卡不是可读的 UTF-8 文本：{e}"),
+                });
+                continue;
+            }
+        };
+        let parsed = crate::vault_note::parse_note(&content);
+        let chars = parsed.body.chars().count();
+        let mut reason = String::new();
+        if meta.len() > VAULT_MAX_NOTE_BYTES {
+            reason = format!("文件 {} 字节，超过单文件上限", meta.len());
+        } else if !parsed.has_frontmatter {
+            reason = "缺少 frontmatter（至少需要 tags/date）".to_string();
+        } else if chars > crate::knowledge_ingest::CARD_MAX_CHARS {
+            reason = format!("正文 {chars} 字，超过 {} 字上限", crate::knowledge_ingest::CARD_MAX_CHARS);
+        }
+        out.cards.push(StagedCardView {
+            relative_path: relative,
+            title,
+            kind: section,
+            chars,
+            preview: preview_text(&parsed.body),
+            ready: reason.is_empty(),
+            reason,
+        });
+    }
+    out.cards.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(out)
+}
+
+/// 丢弃用户明确选中的暂存卡；只删除 staging/kb/知识库/(概念|方法) 下的普通文件。
+pub fn discard_staged_cards(
+    workspace_dir: &Path,
+    selected: &[String],
+) -> Result<StagingDiscardReport, String> {
+    if selected.is_empty() {
+        return Err("没有选择要丢弃的暂存卡。".to_string());
+    }
+    if selected.len() > 200 {
+        return Err("一次最多丢弃 200 张暂存卡。".to_string());
+    }
+    let staging = staging_dir_checked(workspace_dir)?;
+    let meta = fs::symlink_metadata(&staging)
+        .map_err(|e| format!("暂存目录不可访问：{}（{e}）", staging.display()))?;
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return Err("暂存目录不是可用的普通目录。".to_string());
+    }
+    let mut report = StagingDiscardReport::default();
+    for raw in selected {
+        let normalized = raw.trim().replace('\\', "/");
+        let (relative, _, _) = match check_staged_card_path(&normalized) {
+            Ok(value) => value,
+            Err(reason) => {
+                report.errors.push(SyncIssue {
+                    relative_path: raw.clone(),
+                    reason,
+                });
+                continue;
+            }
+        };
+        let path = staging.join(&relative);
+        match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => report.errors.push(SyncIssue {
+                relative_path: relative,
+                reason: "暂存路径是符号链接，拒绝删除".to_string(),
+            }),
+            Ok(meta) if meta.is_file() => match fs::remove_file(&path) {
+                Ok(_) => report.removed.push(relative),
+                Err(e) => report.errors.push(SyncIssue {
+                    relative_path: relative,
+                    reason: format!("删除暂存卡失败：{e}"),
+                }),
+            },
+            Ok(_) => report.errors.push(SyncIssue {
+                relative_path: relative,
+                reason: "暂存条目不是普通文件，拒绝删除".to_string(),
+            }),
+            Err(_) => report.errors.push(SyncIssue {
+                relative_path: relative,
+                reason: "暂存卡不存在。".to_string(),
+            }),
+        }
+    }
+    Ok(report)
+}
+
 /// 暂存卡的相对路径只允许镜像库内位置：`知识库/概念/x.md` 或 `知识库/方法/x.md`。
 fn check_staged_card_path(relative: &str) -> Result<(String, String, String), String> {
     let normalized = relative.replace('\\', "/");
@@ -868,6 +1073,26 @@ fn collect_staged_cards(staging: &Path, report: &mut SyncReport) -> Vec<(String,
 /// 会与库内版本分叉，后续人工改卡也看不出哪份是准的。失败、冲突与超限的暂存卡
 /// 原样保留，供用户处理后重试，因此不会静默丢掉模型产出。
 pub fn sync_from_workspace(workspace_dir: &Path, root: &Path) -> Result<SyncReport, String> {
+    sync_cards_from_workspace(workspace_dir, root, None)
+}
+
+/// 只同步用户勾选的暂存卡（审核页「入库选中」）；未勾选的保持原样。
+pub fn sync_selected_from_workspace(
+    workspace_dir: &Path,
+    root: &Path,
+    selected: &[String],
+) -> Result<SyncReport, String> {
+    if selected.is_empty() {
+        return Err("没有选择要入库的暂存卡。".to_string());
+    }
+    sync_cards_from_workspace(workspace_dir, root, Some(selected))
+}
+
+fn sync_cards_from_workspace(
+    workspace_dir: &Path,
+    root: &Path,
+    selected: Option<&[String]>,
+) -> Result<SyncReport, String> {
     if !workspace_dir.is_absolute() {
         return Err(format!(
             "workspace 目录必须是绝对路径：{}",
@@ -936,7 +1161,23 @@ pub fn sync_from_workspace(workspace_dir: &Path, root: &Path) -> Result<SyncRepo
     let original_index = fs::read_to_string(&index_path)
         .map_err(|e| format!("读取知识库索引失败（{}）：{e}", index_path.display()))?;
 
-    let staged = collect_staged_cards(&staging, &mut report);
+    let mut staged = collect_staged_cards(&staging, &mut report);
+    if let Some(selected) = selected {
+        use std::collections::BTreeSet;
+        let wanted: BTreeSet<String> = selected
+            .iter()
+            .map(|path| path.trim().replace('\\', "/"))
+            .filter(|path| !path.is_empty())
+            .collect();
+        let available: BTreeSet<String> = staged.iter().map(|(relative, _)| relative.clone()).collect();
+        for missing in wanted.difference(&available) {
+            report.errors.push(SyncIssue {
+                relative_path: missing.clone(),
+                reason: "选中的暂存卡不存在或不在 staging/kb/知识库/(概念|方法) 内".to_string(),
+            });
+        }
+        staged.retain(|(relative, _)| wanted.contains(relative));
+    }
     let mut entries: Vec<(String, String)> = Vec::new();
     let mut synced_sources: Vec<(String, PathBuf)> = Vec::new();
     for (relative, path) in staged {
@@ -1425,6 +1666,37 @@ mod tests {
         std::os::unix::fs::symlink(&fx.root, &link).unwrap();
         let err = assert_vault_root_allowed(&link, None).unwrap_err();
         assert!(err.contains("符号链接"), "{err}");
+    }
+
+    #[test]
+    fn staging_list_selected_sync_and_discard() {
+        let fx = Fixture::new("staging-review");
+        let workspace = fx.base.join("workspace");
+        let staging = workspace.join("staging/kb/知识库/方法");
+        fs::create_dir_all(&staging).unwrap();
+        let card = "---\ntags: [方法]\ndate: 2026-11-19\n---\n\n正文。";
+        fs::write(staging.join("A.md"), card).unwrap();
+        fs::write(staging.join("B.md"), card).unwrap();
+
+        let list = list_staged_cards(&workspace).unwrap();
+        assert_eq!(list.cards.len(), 2, "{:?}", list.cards);
+        assert!(list.cards.iter().all(|card| card.ready && card.kind == "方法"));
+        let first = list.cards[0].relative_path.clone();
+
+        let report =
+            sync_selected_from_workspace(&workspace, &fx.root, &[first.clone()]).unwrap();
+        assert_eq!(report.created.len(), 1, "{:?}", report.created);
+        assert!(!fx.base.join("workspace").join("staging/kb").join(&first).exists());
+        let second = if first.ends_with("A.md") { "知识库/方法/B.md" } else { "知识库/方法/A.md" };
+        assert!(workspace.join("staging/kb").join(second).exists(), "未选中的卡必须保留");
+
+        let discard =
+            discard_staged_cards(&workspace, &[second.to_string()]).unwrap();
+        assert_eq!(discard.removed.len(), 1);
+        assert!(!workspace.join("staging/kb").join(second).exists());
+
+        let escape = discard_staged_cards(&workspace, &["../escape.md".to_string()]).unwrap();
+        assert_eq!(escape.errors.len(), 1, "路径穿越必须被拒绝");
     }
 }
 

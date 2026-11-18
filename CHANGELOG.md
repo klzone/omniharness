@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.42] - 2026-11-19
+
+### Changed
+- 知识库暂存卡改为先进入「知识审核」：review 页新增「暂存卡待审核」区，列出标题、类型、字数与正文预览；支持勾选后「入库选中」「丢弃选中」，全部入库需二次确认。落库成功后删除对应暂存文件，并追加逐卡治理记录。
+- 「整理材料」弹窗里的「同步到知识库」改为「全部入库」，必须先确认。
+
+### Verification
+- `cargo test --offline --lib`：1250 通过 / 0 失败 / 1 忽略（新增暂存列表、选中同步、丢弃与路径穿越单测）。
+- `npx tsc --noEmit`、`npm run build` 通过；`verify_knowledge_staging_202.py` 14/14。
+
 ## [0.2.41] - 2026-11-19
 
 ### Fixed

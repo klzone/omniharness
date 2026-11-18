@@ -571,6 +571,28 @@ export type KnowledgeSyncReport = {
   note: string;
 };
 
+/** OD-KB-202：审核页展示的暂存卡（只读视图，正文预览已截断）。 */
+export type StagedKnowledgeCard = {
+  relative_path: string;
+  title: string;
+  kind: string;
+  chars: number;
+  preview: string;
+  ready: boolean;
+  reason: string;
+};
+
+export type KnowledgeStagingList = {
+  staging_dir: string;
+  cards: StagedKnowledgeCard[];
+  errors: { relative_path: string; reason: string }[];
+};
+
+export type KnowledgeStagingDiscardReport = {
+  removed: string[];
+  errors: { relative_path: string; reason: string }[];
+};
+
 // OD-ARCH-175：切换前的思考档位判定。预检不再阻断切换：目录不可用、模型未列出
 // 或没有声明时照所选档位提交；只有本地能确证「显式档位必败」时才改发 default。
 // TODO(OD-ARCH-175 阶段 2)：运行期 UNSUPPORTED_REASONING_EFFORT 的识别与自动回退
@@ -2087,6 +2109,29 @@ export const shell = {
   /** OD-ARCH-152：把模型写在 workspace/staging/kb/ 的卡同步进知识库根。 */
   knowledgeSyncToVault(): Promise<KnowledgeSyncReport> {
     return invoke<KnowledgeSyncReport>("knowledge_sync_to_vault").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** OD-KB-202：列出 workspace 暂存区待审卡片（只读）。 */
+  knowledgeStagingList(): Promise<KnowledgeStagingList> {
+    return invoke<KnowledgeStagingList>("knowledge_staging_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 审核通过：只落库勾选的暂存卡。 */
+  knowledgeStagingSync(relativePaths: string[]): Promise<KnowledgeSyncReport> {
+    return invoke<KnowledgeSyncReport>("knowledge_staging_sync", { relativePaths }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 审核拒绝：删除勾选的暂存卡。 */
+  knowledgeStagingDiscard(relativePaths: string[]): Promise<KnowledgeStagingDiscardReport> {
+    return invoke<KnowledgeStagingDiscardReport>("knowledge_staging_discard", {
+      relativePaths,
+    }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
