@@ -237,17 +237,17 @@ def main() -> int:
     )
     check(
         "period_review_inline_draft",
-        "收到随请求送达的汇集材料时直接按对应深度模板起草" in period_skill
-        and "不回复「等待材料」类文案" in period_skill,
+        "材料随请求送达，直接起草" in period_skill
+        and "不回「等待材料」" in period_skill,
     )
     check(
         "period_review_empty_honest",
-        "材料缺失或为空时如实说明" in period_skill and "不要自己找文件" in period_skill,
+        "材料为空如实说明" in period_skill and "不自己找文件" in period_skill,
     )
     check(
         "period_review_hard_constraints_kept",
         "案件材料、线索、未公开审查调查信息" in period_skill
-        and "已确认的复盘不允许被重新生成覆盖" in period_skill,
+        and "已确认的复盘不会被重新生成覆盖" in period_skill,
     )
 
     # ---- 静态：桌面 → Rust → engine 管线 ----

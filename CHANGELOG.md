@@ -13,7 +13,10 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Windows 关闭应用后残留 DSH node 进程：引擎与宿主补齐 Windows 进程树回收（taskkill 树杀、owner.json 记录 child_pid、启动前按命令行指纹清扫死父进程遗留、退出兜底），不再只依赖 Job Object。
 - 知识卡 staging 路径歧义：skill 改为以引擎当前工作目录为基准写 `staging/kb/`，避免模型误写 `workspace` 父目录导致建卡失败。
-- 输入侧脱敏补强：新增金额、名单式人名、无后缀企业名规则与常见词防误遮。
+- 输入侧脱敏补强：新增金额、名单式人名、无后缀企业名规则与常见词防误遮；对话两条路径统一显示「已自动脱敏（类别 处数）」；修正 0.2.33 起失效的 selectModel 降级单测。
+
+### Changed
+- 10 个 Skill 按统一规范对齐（触发与排除、依据规则、步骤、输出契约与质量清单、失败处理六段结构），同步更新相关 verify 脚本与注入断言。
 
 ### Verification
 - `cargo test --offline --lib`：1232 通过 / 0 失败 / 1 忽略（含 rss_store 11 项）。

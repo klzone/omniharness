@@ -811,6 +811,14 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 工具读取的工作区文件内容仍不经过脱敏（OD-ARCH-182 阶段 C 镜像方案未实施；本轮按用户裁决只做输入侧）。
 - 本改动未推送；是否发 0.2.39 待用户指令。
 
+## 0.2.39 发版门禁记录（2026-11-18，ARCHITECT 亲自执行）
+
+- 用户指令：汇总各会话改动，提交推送 0.2.39。
+- 分支状态：本地领先 origin 4 个提交（含其他会话的 0.2.39 release 提交 fb2fb2f66b 与 od-read-002 合并）。
+- 发布前门禁实跑：`cargo test --lib --test-threads=1` **1243/0**；`tsc` / `npm run build` 通过；引擎单测 adapter 101/101、masker 46/46、markdown 38/38、process_owner 全部通过；桌面 verify：process_platform_133 28/28、masker_ui 7/7、masker_audit 15/15、arch_178 20/20+25/25、arch_176 71/71、model_route_precheck_175 11/11、companion_plugins_177 全过、od_read_002_stage1 全过。
+- 修正：skills 规范对齐后 period-review 文案变化导致 arch_176 三条断言失效，已按新权威文案同步断言（语义契约不变：材料随请求直接起草、为空如实说明、已确认不可覆盖）。
+- CHANGELOG 0.2.39 补充「输入侧脱敏提示计数 + selectModel 降级单测修正」与「10 个 Skill 规范对齐」两条；版本号沿用其他会话已抬的 0.2.39。
+
 
 ## OD-ARCH-183 Windows 引擎进程树回收（2026-11-18，ARCHITECT 亲自实施）
 
