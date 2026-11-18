@@ -2937,6 +2937,13 @@ fn run_attachment_extract_helper_with_timeout(
             command.env("PYTHONPATH", value);
             command.env("OMNIDESK_PYTHON_VENDOR", vendor.display().to_string());
         }
+        // Windows 下不让 Python 子进程弹控制台黑框（阅读导入/附件抽取都会走这里）。
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(_) => continue,

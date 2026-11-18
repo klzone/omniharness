@@ -104,6 +104,21 @@ function annotationPreview(annotation: ReadingAnnotation): string {
   return "（空批注）";
 }
 
+function describeAiError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/getaddrinfo|enotfound|eai_again|dns/i.test(raw)) {
+    return (
+      "模型端点域名解析失败（getaddrinfo/ENOTFOUND）。读书页没有改动模型配置，" +
+      "请检查本机网络、代理或设置中的服务商地址后再试。\n原始错误：" +
+      raw
+    );
+  }
+  if (/econnrefused|etimedout|econnreset/i.test(raw)) {
+    return "模型端点连接失败（网络超时或被拒绝）。请检查网络/代理后重试。\n原始错误：" + raw;
+  }
+  return raw;
+}
+
 export function ReadingPage() {
   const [library, setLibrary] = useState<ReadingLibrary | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -143,6 +158,7 @@ export function ReadingPage() {
   const progressTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
   const aiSeq = useRef(0);
+  const readSelectionRef = useRef<() => void>(() => {});
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -346,10 +362,28 @@ export function ReadingPage() {
       quote,
     });
     setSelectionPos({
-      top: Math.max(8, rect.top - 48),
+      // 顶部被顶栏占住时放到选区下方，避免工具栏藏在导航条后面。
+      top: Math.max(
+        64,
+        Math.min(window.innerHeight - 52, rect.top >= 64 ? rect.top - 48 : rect.bottom + 8),
+      ),
       left: Math.max(12, Math.min(window.innerWidth - 330, rect.left + rect.width / 2 - 150)),
     });
   };
+  readSelectionRef.current = readSelection;
+
+  // 鼠标可能在正文外松开（例如拖到侧栏边缘），只挂 article 会漏掉；
+  // 在本书打开期间监听 document，延迟一拍等浏览器把选区落定。
+  useEffect(() => {
+    if (!book) return undefined;
+    const handler = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".reading-selection-bar")) return;
+      window.setTimeout(() => readSelectionRef.current(), 0);
+    };
+    document.addEventListener("mouseup", handler);
+    return () => document.removeEventListener("mouseup", handler);
+  }, [book?.book_id]);
 
   const clearSelection = () => {
     window.getSelection()?.removeAllRanges();
@@ -397,22 +431,34 @@ export function ReadingPage() {
 
   const addHighlight = async () => {
     if (!selection) return;
-    await addAnnotation({ kind: "highlight", ...selection, color: "amber", source: "user" });
+    const added = await addAnnotation(
+      { kind: "highlight", ...selection, color: "amber", source: "user" },
+      true,
+    );
+    if (added) showToast("已划线；右侧「笔记」可回到原文，也可写想法。");
     clearSelection();
+    setSideTab("notes");
+    setPanelOpen(true);
   };
 
   const addBookmark = async () => {
     if (!book || !selection) return;
     const paragraph = book.chapters[selection.chapter_index]?.paragraphs[selection.paragraph_index] ?? "";
-    await addAnnotation({
-      kind: "bookmark",
-      chapter_index: selection.chapter_index,
-      paragraph_index: selection.paragraph_index,
-      quote: clampText(paragraph.trim(), 80),
-      color: "blue",
-      source: "user",
-    });
+    const added = await addAnnotation(
+      {
+        kind: "bookmark",
+        chapter_index: selection.chapter_index,
+        paragraph_index: selection.paragraph_index,
+        quote: clampText(paragraph.trim(), 80),
+        color: "blue",
+        source: "user",
+      },
+      true,
+    );
+    if (added) showToast("已标记本段；右侧「笔记」可见。");
     clearSelection();
+    setSideTab("notes");
+    setPanelOpen(true);
   };
 
   const beginThought = () => {
@@ -513,6 +559,8 @@ export function ReadingPage() {
       }
       setComposer(null);
       clearSelection();
+      setSideTab("notes");
+      setPanelOpen(true);
     } catch (e) {
       showToast(String(e));
     } finally {
@@ -643,7 +691,7 @@ export function ReadingPage() {
         setAiPhase("done");
       } catch (e) {
         if (aiSeq.current !== run) return;
-        setAiError(String(e));
+        setAiError(describeAiError(e));
         setAiPhase("error");
         setAiStatus(null);
       } finally {
@@ -959,8 +1007,13 @@ export function ReadingPage() {
                 </button>
               </header>
 
-              <div ref={scrollRef} onScroll={handleScroll} className="reading-scroll min-h-0 flex-1 overflow-y-auto">
-                <article className="mx-auto w-full max-w-[760px] px-6 pb-28 pt-8 md:px-10" onMouseUp={readSelection}>
+              <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                onKeyUp={readSelection}
+                className="reading-scroll min-h-0 flex-1 overflow-y-auto"
+              >
+                <article className="mx-auto w-full max-w-[760px] px-6 pb-28 pt-8 md:px-10">
                   {book.chapters.map((chapter, chapterIndex) => (
                     <section key={`${chapterIndex}-${chapter.title}`} data-chapter-section={chapterIndex}>
                       <h2 className="reading-chapter-title">{chapter.title}</h2>

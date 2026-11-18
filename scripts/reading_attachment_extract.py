@@ -214,9 +214,18 @@ def _safe_zip_name(name: str) -> Optional[str]:
 
 
 def _parse_xml(raw: bytes) -> Optional[ET.Element]:
-    head = raw[:4096].upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
+    # EPUB 的 XHTML/OPF 常带 DOCTYPE。DOCTYPE 本身不是内容，剥掉后按普通 XML 解析；
+    # 但任何内部实体声明（<!ENTITY …>）一律拒绝，避免实体展开。
+    if b"<!ENTITY" in raw.upper():
         return None
+    if b"<!DOCTYPE" in raw[:4096].upper():
+        raw = re.sub(
+            rb"<!DOCTYPE[^>\[]*(?:\[[\s\S]*?\])?>",
+            b"",
+            raw,
+            count=1,
+            flags=re.IGNORECASE,
+        )
     try:
         return ET.fromstring(raw)
     except ET.ParseError:
@@ -234,6 +243,16 @@ def _html_title(root: ET.Element) -> Optional[str]:
             title = re.sub(r"\s+", " ", "".join(node.itertext())).strip()
             if title:
                 return title
+    # 有些 EPUB 章节标题是 <div>第二章</div>，没有 h1/h2/h3；只认短且像章节名的 div。
+    for node in root.iter():
+        if _local_name(node.tag) != "div":
+            continue
+        title = re.sub(r"\s+", " ", "".join(node.itertext())).strip()
+        if title and len(title) <= 40 and (
+            re.match(r"^第[一二三四五六七八九十百千0-9]+[章节卷篇]", title)
+            or re.match(r"^(chapter|part)\s+", title, re.IGNORECASE)
+        ):
+            return title
     return None
 
 
@@ -241,9 +260,28 @@ def _html_blocks(root: ET.Element) -> list[str]:
     """按常见块级节点取正文；跳过 script/style/svg，避免把样式或矢量路径当正文。"""
     blocks: list[str] = []
 
+    def has_block_child(node: ET.Element) -> bool:
+        for child in node.iter():
+            if child is node:
+                continue
+            if _local_name(child.tag) in _HTML_BLOCK_TAGS:
+                return True
+        return False
+
     def walk(node: ET.Element) -> None:
         tag = _local_name(node.tag)
         if tag in ("script", "style", "svg", "head"):
+            return
+        # 有些 EPUB 用 <div> 直接包正文（没有 <p>）。没有块级子节点时把 div 当一个块；
+        # 有块级子节点时继续下钻，避免重复收整段。
+        if tag == "div":
+            if not has_block_child(node):
+                text = re.sub(r"\s+", " ", "".join(node.itertext())).strip()
+                if text:
+                    blocks.append(text)
+                return
+            for child in list(node):
+                walk(child)
             return
         if tag in _HTML_BLOCK_TAGS:
             # 只取最外层块，避免 <li><p>…</p></li> 重复。
@@ -255,6 +293,11 @@ def _html_blocks(root: ET.Element) -> list[str]:
             walk(child)
 
     walk(root)
+    if not blocks:
+        # 极端兜底：没有可识别的块级节点时，取整篇可见文字，至少让正文可读。
+        text = re.sub(r"\s+", " ", "".join(root.itertext())).strip()
+        if text:
+            blocks.append(text)
     return blocks
 
 

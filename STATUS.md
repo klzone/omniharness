@@ -1,5 +1,15 @@
 # 执行状态
 
+## OD-READ-001 修版 0.2.37（ARCHITECT，2026-11-18）
+
+- 触发：用户 Windows 实测反馈三处问题：EPUB 导入提示未提取正文并闪控制台黑框；选中文字后没有出现标记/笔记/查询；AI 阅读助手报 `getaddrinfo ENOTFOUND`。
+- 修复 1（EPUB）：`scripts/reading_attachment_extract.py` 原先把 XHTML 的 `<!DOCTYPE …>` 当作不安全 XML 直接拒绝，导致正常 EPUB 所有章节被跳过；现剥离 DOCTYPE、拒绝内部实体，并对只含 `<div>` 的正文与 div 章节名做兜底。合成 EPUB 验证：DOCTYPE + `<p>` 章节、纯 `<div>` 章节均能解出标题与正文。
+- 修复 2（Windows 黑框）：`task_shell.rs` 的 Python 抽取子进程在 Windows 使用 `CREATE_NO_WINDOW`，不再弹出控制台。
+- 修复 3（选区工具栏）：`ReadingPage.tsx` 改为 document 级 mouseup + 键盘 selection 兜底，工具栏避开顶栏；划线/标记/想法保存后自动打开右侧「笔记」，并给出回执。
+- 修复 4（AI 错误）：`describeAiError` 将 `getaddrinfo/ENOTFOUND` 转成「模型端点域名解析失败，请检查网络/代理/服务商地址」，保留原始错误。
+- 验证：`cargo test --lib -- --test-threads=1` 1232/0/1；`npx tsc --noEmit`、`npm run build` 通过；`verify_reading_001_fixes.py` 9/9。
+- 未验证：真实用户这本 EPUB 原文（只用合成/公开结构样例）；Windows 实机安装与选区手感；AI DNS 属用户网络/端点环境，未在其电脑上复测。
+
 ## OD-READ-001 发版 0.2.36（ARCHITECT 亲自执行，2026-11-18）
 
 - 触发：用户裁决「推送并编译最新版本，去单位电脑测试 Windows 版本」；属 OD-READ-001 收尾与发版，未扩大功能范围。

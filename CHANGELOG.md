@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.37] - 2026-11-18
+
+### Fixed
+- 读书导入 EPUB 时，XHTML 的 `<!DOCTYPE ...>` 与只含 `<div>` 的章节正文会被误判为「未提取到正文」；现在剥离 DOCTYPE、拒绝内部实体，并对无 `<p>` 的 div 正文与章节名做兜底解析。
+- Windows 下调用 Python 抽取 EPUB/PDF/DOCX 时会闪出控制台黑框；子进程现在使用 `CREATE_NO_WINDOW`。
+- 正文选区工具栏改为 document 级 mouseup + 键盘 selection 兜底，并避开顶栏；划线/标记/想法保存后自动打开右侧「笔记」，不再只剩一个消失的浮条。
+- AI 阅读助手遇到 `getaddrinfo/ENOTFOUND` 时给出明确提示（检查网络、代理或设置中的服务商地址），不再只显示引擎原始错误。
+
+### Verification
+- `cargo test --lib -- --test-threads=1`：1232 passed / 0 failed / 1 ignored。
+- `npx tsc --noEmit`、`npm run build` 通过；`verify_reading_001_fixes.py` 9/9（合成 EPUB 的 DOCTYPE/div 正文、Windows 无控制台、选区监听与 AI 提示断言）。
+
 ## [0.2.36] - 2026-11-18
 
 ### Added
