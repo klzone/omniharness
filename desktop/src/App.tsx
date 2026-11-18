@@ -442,7 +442,7 @@ export default function App() {
           <Suspense
             fallback={
               <div className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
-                <p className="text-[12px] text-on-surface-variant">正在打开读书页…</p>
+                <p className="text-[12px] text-on-surface-variant">正在打开健脑室…</p>
               </div>
             }
           >

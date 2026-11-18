@@ -9,6 +9,8 @@ import {
   type ReadingBookMeta,
   type ReadingLibrary,
   type ReadingSavedNote,
+  type RssArticleMeta,
+  type RssSubscription,
 } from "../types";
 import {
   buildReadingConceptPrompt,
@@ -52,6 +54,10 @@ function kindLabel(kind: string): string {
 
 function chapterTitle(book: ReadingBook, index: number): string {
   return book.chapters[index]?.title?.trim() || `第 ${index + 1} 章`;
+}
+
+function sourceFormatLabel(format: string): string {
+  return format === "rss" ? "订阅文章" : format.toUpperCase();
 }
 
 function codeLength(text: string): number {
@@ -108,7 +114,7 @@ function describeAiError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   if (/getaddrinfo|enotfound|eai_again|dns/i.test(raw)) {
     return (
-      "模型端点域名解析失败（getaddrinfo/ENOTFOUND）。读书页没有改动模型配置，" +
+      "模型端点域名解析失败（getaddrinfo/ENOTFOUND）。健脑室没有改动模型配置，" +
       "请检查本机网络、代理或设置中的服务商地址后再试。\n原始错误：" +
       raw
     );
@@ -156,6 +162,15 @@ export function ReadingPage() {
   const [aiTaskId, setAiTaskId] = useState<string | null>(null);
   const [noteView, setNoteView] = useState<{ title: string; markdown: string } | null>(null);
   const [exportFile, setExportFile] = useState<{ path: string; content: string } | null>(null);
+  const [subscriptions, setSubscriptions] = useState<RssSubscription[]>([]);
+  const [rssArticles, setRssArticles] = useState<RssArticleMeta[]>([]);
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [subscribeUrl, setSubscribeUrl] = useState("");
+  const [subscribeName, setSubscribeName] = useState("");
+  const [rssBusy, setRssBusy] = useState<"add" | "refresh" | null>(null);
+  const [rssMessage, setRssMessage] = useState<string | null>(null);
+  const [rssError, setRssError] = useState<string | null>(null);
+  const [pendingSubscriptionDelete, setPendingSubscriptionDelete] = useState<RssSubscription | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const restoredBook = useRef<string | null>(null);
   const loadSeq = useRef(0);
@@ -181,9 +196,24 @@ export function ReadingPage() {
     }
   }, []);
 
+  const refreshRss = useCallback(async () => {
+    try {
+      const [loadedSubscriptions, loadedArticles] = await Promise.all([
+        shell.rssSubscriptionsList(),
+        shell.rssArticlesList(),
+      ]);
+      setSubscriptions(loadedSubscriptions);
+      setRssArticles(loadedArticles);
+      setRssError(null);
+    } catch (e) {
+      setRssError(String(e));
+    }
+  }, []);
+
   useEffect(() => {
     void refreshLibrary();
-  }, [refreshLibrary]);
+    void refreshRss();
+  }, [refreshLibrary, refreshRss]);
 
   useEffect(() => {
     return () => {
@@ -240,6 +270,16 @@ export function ReadingPage() {
         if (seq !== loadSeq.current) return;
         setBook(loaded);
         lastProgress.current = loaded.progress.percent;
+        if (loaded.source_format === "rss") {
+          void shell.rssArticleMarkRead(id).then((meta) => {
+            setRssArticles((prev) => {
+              if (prev.some((item) => item.book_id === meta.book_id)) {
+                return prev.map((item) => (item.book_id === meta.book_id ? meta : item));
+              }
+              return [...prev, meta];
+            });
+          }).catch(() => undefined);
+        }
       } catch (e) {
         if (seq !== loadSeq.current) return;
         setBookError(String(e));
@@ -315,6 +355,66 @@ export function ReadingPage() {
       showToast(String(e));
     } finally {
       setImportBusy(false);
+    }
+  };
+
+  const addRssSubscription = async () => {
+    const url = subscribeUrl.trim();
+    if (!url) {
+      setRssError("请填写 RSS / Atom 地址。");
+      return;
+    }
+    setRssBusy("add");
+    setRssError(null);
+    setRssMessage(null);
+    try {
+      const added = await shell.rssSubscriptionAdd(url, subscribeName.trim() || undefined);
+      await refreshRss();
+      setSubscribeUrl("");
+      setSubscribeName("");
+      setRssMessage(`已添加「${added.name}」；点「刷新全部」开始拉取。`);
+    } catch (e) {
+      setRssError(String(e));
+    } finally {
+      setRssBusy(null);
+    }
+  };
+
+  const removeRssSubscription = async () => {
+    if (!pendingSubscriptionDelete) return;
+    const id = pendingSubscriptionDelete.id;
+    try {
+      await shell.rssSubscriptionRemove(id);
+      await refreshRss();
+      setRssMessage("订阅已删除；已拉取的文章仍留在书架。");
+    } catch (e) {
+      setRssError(String(e));
+    } finally {
+      setPendingSubscriptionDelete(null);
+    }
+  };
+
+  const runRssFetch = async (subscriptionId?: string) => {
+    if (rssBusy === "refresh") return;
+    setRssBusy("refresh");
+    setRssError(null);
+    setRssMessage(subscriptionId ? "正在拉取这个订阅…" : `正在拉取 ${subscriptions.length} 个订阅…`);
+    try {
+      const report = await shell.rssFetch(subscriptionId);
+      await Promise.all([refreshLibrary(), refreshRss()]);
+      let summary = `已拉取 ${report.fetched} 个订阅，新增 ${report.added} 篇`;
+      if (report.skipped) summary += `，跳过重复 ${report.skipped} 篇`;
+      if (report.failed) summary += `，失败 ${report.failed} 个`;
+      setRssMessage(summary);
+      if (report.errors.length) {
+        setRssError(report.errors.map((item) => `${item.name}：${item.message}`).join("\n"));
+      }
+      showToast(summary);
+    } catch (e) {
+      setRssError(String(e));
+      showToast(String(e));
+    } finally {
+      setRssBusy(null);
     }
   };
 
@@ -868,36 +968,63 @@ export function ReadingPage() {
     }
   };
 
+  const rssMetaById = useMemo(
+    () => new Map(rssArticles.map((item) => [item.book_id, item])),
+    [rssArticles],
+  );
+  const shelfBooks = (library?.books ?? []).filter((item) => item.source_format !== "rss");
+  const shelfArticles = (library?.books ?? [])
+    .filter((item) => item.source_format === "rss")
+    .slice()
+    .sort((a, b) => {
+      const left = rssMetaById.get(a.book_id)?.published_ts ?? 0;
+      const right = rssMetaById.get(b.book_id)?.published_ts ?? 0;
+      return right - left || b.updated_at.localeCompare(a.updated_at);
+    });
+
   return (
     <div className="reading-page flex h-full min-h-0 w-full flex-col md:pl-20" data-testid="reading-page">
       <div className="flex min-h-0 flex-1">
         <aside className="reading-shelf hidden w-[238px] shrink-0 flex-col border-r border-outline-variant/40 bg-surface/60 lg:flex">
           <div className="flex items-center justify-between gap-2 border-b border-outline-variant/40 px-3 py-3">
-            <div>
-              <p className="text-[13px] font-medium text-on-surface">读书</p>
-              <p className="text-[10.5px] text-outline">{library ? `${library.books.length} 本` : "读取中"}</p>
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-on-surface">健脑室</p>
+              <p className="truncate text-[10.5px] text-outline">
+                {library ? `${shelfBooks.length} 本 · ${shelfArticles.length} 篇` : "读取中"}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void importBook()}
-              disabled={importBusy}
-              className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
-            >
-              <Icon name="plus" className="h-3 w-3" />
-              {importBusy ? "导入中" : "导入"}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void importBook()}
+                disabled={importBusy}
+                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
+              >
+                <Icon name="plus" className="h-3 w-3" />
+                {importBusy ? "导入中" : "导入"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubscriptionOpen(true)}
+                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary"
+              >
+                订阅
+              </button>
+            </div>
           </div>
           <div className="reading-shelf-list min-h-0 flex-1 overflow-y-auto p-2">
             {libraryError ? (
               <p className="rounded-lg bg-error-container/60 p-2 text-[11px] text-on-error-container">{libraryError}</p>
             ) : null}
-            {library?.books.length === 0 ? (
-              <div className="rounded-lg bg-surface-container-low p-3 text-[11.5px] leading-relaxed text-on-surface-variant">
-                <p className="font-medium text-on-surface">书架还是空的</p>
-                <p className="mt-1">导入一本 Markdown、TXT、PDF、DOCX 或 EPUB，开始留下划线与想法。</p>
-              </div>
+            <div className="mb-1 flex items-center justify-between px-1 pt-1">
+              <p className="text-[10px] font-medium tracking-wide text-outline">书籍 {shelfBooks.length}</p>
+            </div>
+            {shelfBooks.length === 0 ? (
+              <p className="mb-2 rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
+                还没有导入的书。
+              </p>
             ) : null}
-            {library?.books.map((item) => {
+            {shelfBooks.map((item) => {
               const active = item.book_id === bookId;
               return (
                 <button
@@ -918,7 +1045,7 @@ export function ReadingPage() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12px] font-medium text-on-surface">{item.title}</span>
                       <span className="block text-[10px] text-outline">
-                        {item.source_format.toUpperCase()} · {item.chapter_count} 章 · {item.annotation_count} 条批注
+                        {sourceFormatLabel(item.source_format)} · {item.chapter_count} 章 · {item.annotation_count} 条批注
                       </span>
                     </span>
                   </div>
@@ -927,6 +1054,58 @@ export function ReadingPage() {
                       className="h-full rounded-full bg-primary/70"
                       style={{ width: `${Math.round(item.progress_percent * 100)}%` }}
                     />
+                  </div>
+                </button>
+              );
+            })}
+
+            <div className="mb-1 mt-2 flex items-center justify-between gap-1 px-1 pt-1">
+              <p className="text-[10px] font-medium tracking-wide text-outline">订阅文章 {shelfArticles.length}</p>
+              <button
+                type="button"
+                onClick={() => void runRssFetch()}
+                disabled={rssBusy === "refresh" || subscriptions.length === 0}
+                className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] text-outline hover:text-primary disabled:opacity-40"
+              >
+                <Icon name="refresh" className="h-3 w-3" />
+                {rssBusy === "refresh" ? "拉取中" : "拉取全部"}
+              </button>
+            </div>
+            {shelfArticles.length === 0 ? (
+              <p className="rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
+                从「订阅」添加 RSS，或点「拉取全部」。
+              </p>
+            ) : null}
+            {shelfArticles.map((item) => {
+              const active = item.book_id === bookId;
+              const meta = rssMetaById.get(item.book_id);
+              return (
+                <button
+                  type="button"
+                  key={item.book_id}
+                  onClick={() => void openBook(item.book_id)}
+                  className={
+                    "relative mb-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors " +
+                    (active
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
+                  }
+                >
+                  {!meta?.read ? (
+                    <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" aria-label="未读" />
+                  ) : null}
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-6 items-center justify-center rounded-[4px] bg-surface-container text-primary">
+                      <Icon name="note" className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate pr-2 text-[12px] font-medium text-on-surface">{item.title}</span>
+                      <span className="flex min-w-0 items-center gap-1 text-[10px] text-outline">
+                        <span className="shrink-0 rounded bg-primary/10 px-1 text-[9px] font-medium text-primary">RSS</span>
+                        <span className="truncate">{item.source_name || meta?.guid || "订阅"}</span>
+                        <span className="shrink-0">· {item.annotation_count} 条批注</span>
+                      </span>
+                    </span>
                   </div>
                 </button>
               );
@@ -943,20 +1122,29 @@ export function ReadingPage() {
           {!book && !bookBusy ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6">
               <div className="w-full max-w-[560px] rounded-2xl border border-outline-variant/40 bg-surface/70 p-6">
-                <p className="text-[16px] font-medium text-on-surface">读书，也把想法留下</p>
+                <p className="text-[16px] font-medium text-on-surface">健脑室</p>
                 <p className="mt-2 text-[12.5px] leading-relaxed text-on-surface-variant">
-                  选择一本书或一个文本文件。阅读时选中一段，可以划线、标记、写思考碎片，或直接问 AI 解释；
-                  整理稿和批注只保存在本机阅读目录，保存前由你确认。
+                  选一本书，或从订阅文章里挑一篇。阅读时选中一段，可以划线、标记、写思考碎片，或直接问 AI 解释；
+                  整理稿和批注只保存在本机阅读目录。
                 </p>
-                <button
-                  type="button"
-                  onClick={() => void importBook()}
-                  disabled={importBusy}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[12px] text-on-primary disabled:opacity-50"
-                >
-                  <Icon name="plus" className="h-3.5 w-3.5" />
-                  {importBusy ? "正在导入…" : "选择文件"}
-                </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void importBook()}
+                    disabled={importBusy}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[12px] text-on-primary disabled:opacity-50"
+                  >
+                    <Icon name="plus" className="h-3.5 w-3.5" />
+                    {importBusy ? "正在导入…" : "选择文件"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubscriptionOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/60 px-3.5 py-2 text-[12px] text-on-surface-variant hover:border-primary hover:text-primary"
+                  >
+                    管理订阅
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -985,7 +1173,7 @@ export function ReadingPage() {
                 <div className="min-w-0 flex-1">
                   <h1 className="truncate text-[15px] font-medium text-on-surface">{book.title}</h1>
                   <p className="truncate text-[10.5px] text-outline">
-                    {book.source_format.toUpperCase()} · {book.chapters.length} 章 · {book.annotations.length} 条批注 · 读到
+                    {sourceFormatLabel(book.source_format)} · {book.chapters.length} 章 · {book.annotations.length} 条批注 · 读到
                     {" "}
                     {Math.round(book.progress.percent * 100)}%
                   </p>
@@ -1422,7 +1610,7 @@ export function ReadingPage() {
           <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-outline-variant/40 bg-surface p-4 shadow-xl">
             <div className="flex items-center justify-between gap-3 border-b border-outline-variant/30 pb-2">
               <div>
-                <p className="text-[13px] font-medium text-on-surface">已导出读书笔记</p>
+                <p className="text-[13px] font-medium text-on-surface">已导出阅读笔记</p>
                 <p className="truncate text-[10px] text-outline" title={exportFile.path}>{exportFile.path}</p>
               </div>
               <button type="button" onClick={() => setExportFile(null)} className="text-outline hover:text-on-surface" aria-label="关闭导出结果">
@@ -1431,6 +1619,106 @@ export function ReadingPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pt-3">
               <MarkdownText text={exportFile.content} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {subscriptionOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 p-4">
+          <div className="flex max-h-[86vh] w-full max-w-2xl flex-col rounded-xl border border-outline-variant/40 bg-surface p-4 shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant/30 pb-2">
+              <div>
+                <p className="text-[13px] font-medium text-on-surface">订阅</p>
+                <p className="text-[10px] text-outline">{subscriptions.length} 个来源</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubscriptionOpen(false)}
+                className="text-outline hover:text-on-surface"
+                aria-label="关闭订阅管理"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid gap-1.5 border-b border-outline-variant/30 py-3 sm:grid-cols-[1fr_140px_auto]">
+              <input
+                value={subscribeUrl}
+                onChange={(event) => setSubscribeUrl(event.target.value)}
+                placeholder="RSS / Atom 地址"
+                className="h-8 min-w-0 rounded-md border border-outline-variant/50 bg-surface-container-lowest px-2 text-[11.5px] text-on-surface outline-none focus:border-primary"
+              />
+              <input
+                value={subscribeName}
+                onChange={(event) => setSubscribeName(event.target.value)}
+                placeholder="名称（可选）"
+                className="h-8 min-w-0 rounded-md border border-outline-variant/50 bg-surface-container-lowest px-2 text-[11.5px] text-on-surface outline-none focus:border-primary"
+              />
+              <button
+                type="button"
+                onClick={() => void addRssSubscription()}
+                disabled={rssBusy === "add" || !subscribeUrl.trim()}
+                className="h-8 rounded-md bg-primary px-3 text-[11px] text-on-primary disabled:opacity-50"
+              >
+                {rssBusy === "add" ? "添加中" : "添加"}
+              </button>
+            </div>
+
+            {rssMessage ? <p className="py-2 text-[11px] text-on-surface-variant" role="status">{rssMessage}</p> : null}
+            {rssError ? (
+              <p className="my-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded-lg bg-error-container/60 p-2 text-[10.5px] leading-relaxed text-on-error-container">
+                {rssError}
+              </p>
+            ) : null}
+
+            <div className="min-h-0 flex-1 overflow-y-auto py-2">
+              {subscriptions.length === 0 ? (
+                <p className="rounded-lg bg-surface-container-low p-3 text-[11px] text-on-surface-variant">
+                  还没有订阅。
+                </p>
+              ) : null}
+              {subscriptions.map((item) => (
+                <div
+                  key={item.id}
+                  className="mb-1 flex items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 hover:border-outline-variant/40 hover:bg-surface-container-low"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[11.5px] font-medium text-on-surface">{item.name}</span>
+                      <span className="shrink-0 text-[9.5px] text-outline">{item.group}</span>
+                    </div>
+                    <p className="truncate text-[9.5px] text-outline" title={item.url}>{item.url}</p>
+                    {item.last_error ? (
+                      <p className="mt-1 line-clamp-2 text-[9.5px] leading-relaxed text-error" title={item.last_error}>
+                        {item.last_error}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPendingSubscriptionDelete(item)}
+                    className="shrink-0 rounded p-1 text-outline hover:text-error"
+                    aria-label={`删除订阅 ${item.name}`}
+                    title="删除订阅"
+                  >
+                    <Icon name="x" className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-t border-outline-variant/30 pt-2">
+              <p className="text-[9.5px] text-outline">只请求订阅地址；文章正文不发外部服务。</p>
+              <button
+                type="button"
+                onClick={() => void runRssFetch()}
+                disabled={rssBusy === "refresh" || subscriptions.length === 0}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-[11px] text-on-primary disabled:opacity-50"
+              >
+                <Icon name="refresh" className="h-3 w-3" />
+                {rssBusy === "refresh" ? "拉取中" : "刷新全部"}
+              </button>
             </div>
           </div>
         </div>
@@ -1450,6 +1738,16 @@ export function ReadingPage() {
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => void removeAnnotation()}
         testId="reading-delete-confirm"
+      />
+
+      <ConfirmDialog
+        open={pendingSubscriptionDelete !== null}
+        title="删除这个订阅？"
+        description="只会移除订阅源；已经拉取的文章和批注仍保留在书架中。"
+        confirmLabel="删除"
+        onCancel={() => setPendingSubscriptionDelete(null)}
+        onConfirm={() => void removeRssSubscription()}
+        testId="rss-subscription-delete-confirm"
       />
     </div>
   );

@@ -4204,3 +4204,46 @@ export interface ReadingNoteFile {
   content: string;
   bytes: number;
 }
+
+// ---------------------------------------------------------------------------
+// 健脑室 RSS 订阅（OD-READ-002 阶段 1）
+// ---------------------------------------------------------------------------
+
+export interface RssSubscription {
+  id: string;
+  url: string;
+  name: string;
+  group: string;
+  added_at: string;
+  last_fetched_at: string;
+  last_error: string;
+}
+
+export interface RssArticleMeta {
+  schema: string;
+  book_id: string;
+  subscription_id: string;
+  feed_url: string;
+  guid: string;
+  link: string;
+  title: string;
+  author: string;
+  published_at: string;
+  published_ts: number;
+  fetched_at: string;
+  read: boolean;
+}
+
+export interface RssFetchFailure {
+  subscription_id: string;
+  name: string;
+  message: string;
+}
+
+export interface RssFetchReport {
+  fetched: number;
+  failed: number;
+  added: number;
+  skipped: number;
+  errors: RssFetchFailure[];
+}

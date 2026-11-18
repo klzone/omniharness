@@ -1,0 +1,1575 @@
+//! 健脑室的 RSS 订阅与文章入库（OD-READ-002 阶段 1）。
+//!
+//! 数据只落仓库外的阅读目录：
+//!   rss/subscriptions.json          订阅清单（schema omnidesk.rss.v1）
+//!   rss/articles/<book_id>.json     文章元数据（已读状态、原链接、订阅来源）
+//!   books/<book_id>.json            与普通书共用的 ReadingBook 正文
+//!
+//! 边界：只对用户添加或预置清单里的 URL 发 HTTP GET；不把正文写进日志；
+//! 同一 feed_url + entry key 只入库一次，不覆盖已有批注。
+//!
+//! RSS/Atom 解析与预置清单结构思路借鉴自 qiaomu-rss-dsh（GPL-3.0），未复制代码。
+//! 独立博客清单来源：timqian/chinese-independent-blogs，MIT License。
+
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+
+use crate::app_paths::AppPaths;
+use crate::reading_store::{
+    ensure_store_dirs, harden_private, write_book, ReadingBook, ReadingChapter,
+    ReadingProgress, READING_SCHEMA,
+};
+use crate::sha256::sha256_hex;
+use crate::task_shell::utc_iso8601;
+use crate::worklog_records::{is_safe_id, write_new_atomically, write_replace_atomically};
+
+pub const RSS_SCHEMA: &str = "omnidesk.rss.v1";
+const SUBSCRIPTIONS_FILE: &str = "subscriptions.json";
+const MAX_FETCH_BYTES: usize = 2 * 1024 * 1024;
+const MAX_ENTRIES_PARSED: usize = 200;
+const MAX_ENTRIES_KEPT: usize = 50;
+const MAX_ARTICLE_CHARS: usize = 100_000;
+const FETCH_TIMEOUT_SECS: u64 = 20;
+const DEFAULT_GROUP: &str = "我的订阅";
+
+const PRESET_GROUP_AUTHORS: &str = "精选作者";
+const PRESET_GROUP_BLOGS: &str = "独立博客";
+
+struct PresetFeed {
+    name: &'static str,
+    url: &'static str,
+    group: &'static str,
+}
+
+/// 精选作者 9 条，取自 qiaomu-rss-dsh 的 featured 数组（只读借鉴清单事实）。
+const PRESET_FEEDS: &[PresetFeed] = &[
+    PresetFeed { name: "潮流周刊 · Tw93", url: "https://weekly.tw93.fun/rss.xml", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "阮一峰的网络日志", url: "https://www.ruanyifeng.com/blog/atom.xml", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "云风", url: "https://blog.codingnow.com/atom.xml", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "和菜头", url: "https://www.hecaitou.com/feeds/posts/default?alt=rss", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "张鑫旭", url: "https://www.zhangxinxu.com/wordpress/feed/", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "小众软件", url: "https://www.appinn.com/feed/", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "月光博客", url: "https://www.williamlong.info/rss.xml", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "Reorx", url: "https://reorx.com/feed.xml", group: PRESET_GROUP_AUTHORS },
+    PresetFeed { name: "pseudoyu", url: "https://www.pseudoyu.com/zh/index.xml", group: PRESET_GROUP_AUTHORS },
+    // 以下独立博客来自 timqian/chinese-independent-blogs（MIT License），按 tag「编程/读书」挑选。
+    PresetFeed { name: "透明创业实验", url: "https://blog.t9t.io/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "酷 壳 – CoolShell", url: "http://coolshell.cn/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Alili丶前端大爆炸", url: "https://alili.tech/index.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "蚊子前端博客", url: "https://www.xiabingbao.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "DIYGod - 写代码是热爱，写到世界充满爱!", url: "https://diygod.me/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "MacTalk-池建强的随想录", url: "http://macshuo.com/?feed=rss2", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "ShrekShao", url: "http://shrekshao.github.io/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "ZDDHUB 的博客", url: "https://zddhub.com/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "全栈应用开发:精益实践", url: "https://www.phodal.com/blog/feeds/rss/", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Python 工匠", url: "https://www.piglei.com/feeds/latest/", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "但行好事，莫问前程", url: "https://windard.com/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Ric's Blog", url: "https://www.lichong.work/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "罗磊的独立博客", url: "http://luolei.org/feed/", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "代码家", url: "https://daimajia.com/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "开源实验室", url: "https://www.kymjs.com/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "技术小黑屋", url: "https://droidyue.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "依云's Blog", url: "https://blog.lilydjwg.me/posts.rss", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "朽儿", url: "https://xiuer.medium.com/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "王登科-DK博客", url: "https://greatdk.com/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "chai2010 的博客", url: "https://chai2010.cn/index.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "笨方法学写作", url: "https://www.cnfeat.com/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "云原生", url: "https://jimmysong.io/index.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Hawstein's Blog", url: "http://hawstein.com/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Skywind Inside", url: "http://www.skywind.me/blog/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "陈沙克日志", url: "http://www.chenshake.com/feed/", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Randy's Blog", url: "https://lutaonan.com/rss.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "iTimothy", url: "https://xiaozhou.net/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "小胡子哥的个人网站", url: "http://www.barretlee.com/rss2.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "晚晴幽草轩", url: "https://www.jeffjade.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "the5fire的技术博客", url: "http://www.the5fire.com/rss", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "forecho 的独立博客", url: "https://blog.forecho.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "Debug客栈", url: "https://blog.debuginn.com/index.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "我爱自然语言处理", url: "http://www.52nlp.cn/feed", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "鸟窝", url: "https://colobu.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "OneV's Den", url: "https://onevcat.com/feed.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "唐巧的博客", url: "https://blog.devtang.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "GeekPlux", url: "https://geekplux.com/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "王子亭的博客", url: "https://jysperm.me/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "囧克斯 勾三股四", url: "https://jiongks.name/atom.xml", group: PRESET_GROUP_BLOGS },
+    PresetFeed { name: "张戈博客", url: "https://zhang.ge/feed", group: PRESET_GROUP_BLOGS },
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RssSubscription {
+    pub id: String,
+    pub url: String,
+    pub name: String,
+    pub group: String,
+    pub added_at: String,
+    #[serde(default)]
+    pub last_fetched_at: String,
+    #[serde(default)]
+    pub last_error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RssArticleMeta {
+    #[serde(default = "schema_default")]
+    pub schema: String,
+    pub book_id: String,
+    pub subscription_id: String,
+    pub feed_url: String,
+    pub guid: String,
+    pub link: String,
+    pub title: String,
+    pub author: String,
+    pub published_at: String,
+    #[serde(default)]
+    pub published_ts: i64,
+    pub fetched_at: String,
+    #[serde(default)]
+    pub read: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RssFetchFailure {
+    pub subscription_id: String,
+    pub name: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RssFetchReport {
+    pub fetched: usize,
+    pub failed: usize,
+    pub added: usize,
+    pub skipped: usize,
+    pub errors: Vec<RssFetchFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RssStoreFile {
+    #[serde(default = "schema_default")]
+    schema: String,
+    #[serde(default)]
+    subscriptions: Vec<RssSubscription>,
+}
+
+fn schema_default() -> String {
+    RSS_SCHEMA.to_string()
+}
+
+fn now_secs() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+fn hash8(value: &str) -> String {
+    sha256_hex(value.as_bytes()).chars().take(8).collect()
+}
+
+fn subscription_id(url: &str) -> String {
+    hash8(url)
+}
+
+fn rss_dir(root: &Path) -> PathBuf {
+    root.join("rss")
+}
+
+fn articles_dir(root: &Path) -> PathBuf {
+    rss_dir(root).join("articles")
+}
+
+fn subscriptions_path(root: &Path) -> PathBuf {
+    rss_dir(root).join(SUBSCRIPTIONS_FILE)
+}
+
+fn ensure_rss_dirs(root: &Path) -> Result<(), String> {
+    ensure_store_dirs(root)?;
+    let rss = rss_dir(root);
+    let articles = articles_dir(root);
+    fs::create_dir_all(&articles)
+        .map_err(|e| format!("创建 RSS 文章目录失败（{}）：{}", articles.display(), e))?;
+    harden_private(&rss, 0o700);
+    harden_private(&articles, 0o700);
+    Ok(())
+}
+
+fn validate_feed_url(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("请填写 RSS / Atom 地址。".to_string());
+    }
+    if trimmed.chars().count() > 2_048 {
+        return Err("订阅地址过长（上限 2048 字符）。".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("订阅地址不能包含空白或控制字符。".to_string());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Err("订阅地址必须以 http:// 或 https:// 开头。".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn feed_name_from_url(url: &str) -> String {
+    let after_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let host = after_scheme.split('/').next().unwrap_or("").trim();
+    if host.is_empty() {
+        DEFAULT_GROUP.to_string()
+    } else {
+        host.to_string()
+    }
+}
+
+fn preset_store(now: f64) -> RssStoreFile {
+    let added_at = utc_iso8601(now);
+    RssStoreFile {
+        schema: RSS_SCHEMA.to_string(),
+        subscriptions: PRESET_FEEDS
+            .iter()
+            .map(|preset| RssSubscription {
+                id: subscription_id(preset.url),
+                url: preset.url.to_string(),
+                name: preset.name.to_string(),
+                group: preset.group.to_string(),
+                added_at: added_at.clone(),
+                last_fetched_at: String::new(),
+                last_error: String::new(),
+            })
+            .collect(),
+    }
+}
+
+fn save_store_at(root: &Path, store: &RssStoreFile) -> Result<(), String> {
+    ensure_rss_dirs(root)?;
+    let path = subscriptions_path(root);
+    let raw = serde_json::to_vec_pretty(store).map_err(|e| format!("序列化订阅清单失败：{e}"))?;
+    if path.exists() {
+        write_replace_atomically(&path, &raw)?;
+    } else {
+        write_new_atomically(&path, &raw)?;
+    }
+    harden_private(&path, 0o600);
+    Ok(())
+}
+
+/// 首次访问时写入预置清单；文件一旦存在就不再补种，因此用户删除的预置项不会复活。
+pub(crate) fn seed_store_at(root: &Path, now: f64) -> Result<RssStoreFile, String> {
+    ensure_rss_dirs(root)?;
+    let path = subscriptions_path(root);
+    if path.exists() {
+        return load_store_at(root);
+    }
+    let store = preset_store(now);
+    save_store_at(root, &store)?;
+    Ok(store)
+}
+
+fn load_store_at(root: &Path) -> Result<RssStoreFile, String> {
+    ensure_rss_dirs(root)?;
+    let path = subscriptions_path(root);
+    if !path.exists() {
+        return seed_store_at(root, now_secs());
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("读取订阅清单失败（{}）：{}", path.display(), e))?;
+    let store: RssStoreFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("订阅清单格式不正确（{}）：{}", path.display(), e))?;
+    if store.schema != RSS_SCHEMA {
+        return Err(format!(
+            "订阅清单版本不受支持：{}（期望 {}）",
+            store.schema, RSS_SCHEMA
+        ));
+    }
+    Ok(store)
+}
+
+pub fn list_subscriptions(paths: &AppPaths) -> Result<Vec<RssSubscription>, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    Ok(load_store_at(&root)?.subscriptions)
+}
+
+pub fn add_subscription(
+    paths: &AppPaths,
+    url: &str,
+    name: Option<&str>,
+) -> Result<RssSubscription, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    add_subscription_at(&root, url, name, now_secs())
+}
+
+fn add_subscription_at(
+    root: &Path,
+    url: &str,
+    name: Option<&str>,
+    now: f64,
+) -> Result<RssSubscription, String> {
+    let url = validate_feed_url(url)?;
+    let mut store = load_store_at(root)?;
+    if let Some(existing) = store.subscriptions.iter().find(|item| item.url == url) {
+        return Ok(existing.clone());
+    }
+    let id = subscription_id(&url);
+    if store.subscriptions.iter().any(|item| item.id == id) {
+        return Err("订阅编号与已有来源冲突，请换一个地址。".to_string());
+    }
+    let name = name
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| clamp_chars(value, 120))
+        .unwrap_or_else(|| feed_name_from_url(&url));
+    let subscription = RssSubscription {
+        id,
+        url,
+        name,
+        group: DEFAULT_GROUP.to_string(),
+        added_at: utc_iso8601(now),
+        last_fetched_at: String::new(),
+        last_error: String::new(),
+    };
+    store.subscriptions.push(subscription.clone());
+    save_store_at(root, &store)?;
+    Ok(subscription)
+}
+
+pub fn remove_subscription(paths: &AppPaths, id: &str) -> Result<(), String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    remove_subscription_at(&root, id)
+}
+
+fn remove_subscription_at(root: &Path, id: &str) -> Result<(), String> {
+    if !is_safe_id(id) {
+        return Err(format!("订阅编号不合法：{id:?}"));
+    }
+    let mut store = load_store_at(root)?;
+    let before = store.subscriptions.len();
+    store.subscriptions.retain(|item| item.id != id);
+    if store.subscriptions.len() == before {
+        return Err(format!("订阅不存在：{id}"));
+    }
+    save_store_at(root, &store)
+}
+
+pub fn list_articles(paths: &AppPaths) -> Result<Vec<RssArticleMeta>, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    list_articles_at(&root)
+}
+
+fn list_articles_at(root: &Path) -> Result<Vec<RssArticleMeta>, String> {
+    ensure_rss_dirs(root)?;
+    let dir = articles_dir(root);
+    let mut items = Vec::new();
+    let entries = fs::read_dir(&dir)
+        .map_err(|e| format!("读取 RSS 文章目录失败（{}）：{}", dir.display(), e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(raw) = fs::read_to_string(&path) else { continue };
+        if let Ok(item) = serde_json::from_str::<RssArticleMeta>(&raw) {
+            items.push(item);
+        }
+    }
+    items.sort_by(|a, b| {
+        b.published_ts
+            .cmp(&a.published_ts)
+            .then_with(|| b.fetched_at.cmp(&a.fetched_at))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    Ok(items)
+}
+
+pub fn mark_article_read(paths: &AppPaths, book_id: &str) -> Result<RssArticleMeta, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    mark_article_read_at(&root, book_id)
+}
+
+fn mark_article_read_at(root: &Path, book_id: &str) -> Result<RssArticleMeta, String> {
+    let path = article_path(root, book_id)?;
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("读取 RSS 文章元数据失败（{}）：{}", path.display(), e))?;
+    let mut meta: RssArticleMeta = serde_json::from_str(&raw)
+        .map_err(|e| format!("RSS 文章元数据格式不正确（{}）：{}", path.display(), e))?;
+    if meta.read {
+        return Ok(meta);
+    }
+    meta.read = true;
+    let bytes = serde_json::to_vec_pretty(&meta).map_err(|e| format!("序列化 RSS 文章元数据失败：{e}"))?;
+    write_replace_atomically(&path, &bytes)?;
+    harden_private(&path, 0o600);
+    Ok(meta)
+}
+
+fn article_path(root: &Path, book_id: &str) -> Result<PathBuf, String> {
+    if !is_safe_id(book_id) {
+        return Err(format!("文章编号不合法：{book_id:?}"));
+    }
+    Ok(articles_dir(root).join(format!("{book_id}.json")))
+}
+
+fn reading_book_exists_at(root: &Path, book_id: &str) -> bool {
+    is_safe_id(book_id) && root.join("books").join(format!("{book_id}.json")).exists()
+}
+
+pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetchReport, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    let mut store = load_store_at(&root)?;
+    let targets: Vec<usize> = match subscription_id.map(str::trim).filter(|id| !id.is_empty()) {
+        Some(id) => {
+            if !is_safe_id(id) {
+                return Err(format!("订阅编号不合法：{id:?}"));
+            }
+            let index = store
+                .subscriptions
+                .iter()
+                .position(|item| item.id == id)
+                .ok_or_else(|| format!("订阅不存在：{id}"))?;
+            vec![index]
+        }
+        None => (0..store.subscriptions.len()).collect(),
+    };
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent("OmniDesk-RSS/0.1 (+https://omnidesk.local)")
+        .build()
+        .map_err(|e| format!("创建 RSS 网络客户端失败：{e}"))?;
+    let mut report = RssFetchReport {
+        fetched: 0,
+        failed: 0,
+        added: 0,
+        skipped: 0,
+        errors: Vec::new(),
+    };
+    let fetched_at = utc_iso8601(now_secs());
+    for index in targets {
+        let subscription = store.subscriptions[index].clone();
+        match fetch_feed_xml(&client, &subscription.url) {
+            Ok(xml) => {
+                let summary = ingest_feed_at(&root, &subscription, &xml, now_secs());
+                match summary {
+                    Ok(summary) => {
+                        report.fetched += 1;
+                        report.added += summary.added;
+                        report.skipped += summary.skipped;
+                        for message in summary.errors {
+                            report.errors.push(RssFetchFailure {
+                                subscription_id: subscription.id.clone(),
+                                name: subscription.name.clone(),
+                                message,
+                            });
+                        }
+                        if let Some(item) = store.subscriptions.get_mut(index) {
+                            item.last_fetched_at = fetched_at.clone();
+                            item.last_error.clear();
+                        }
+                    }
+                    Err(error) => {
+                        report.failed += 1;
+                        if let Some(item) = store.subscriptions.get_mut(index) {
+                            item.last_fetched_at = fetched_at.clone();
+                            item.last_error = error.clone();
+                        }
+                        report.errors.push(RssFetchFailure {
+                            subscription_id: subscription.id.clone(),
+                            name: subscription.name.clone(),
+                            message: error,
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                report.failed += 1;
+                if let Some(item) = store.subscriptions.get_mut(index) {
+                    item.last_fetched_at = fetched_at.clone();
+                    item.last_error = error.clone();
+                }
+                report.errors.push(RssFetchFailure {
+                    subscription_id: subscription.id.clone(),
+                    name: subscription.name.clone(),
+                    message: error,
+                });
+            }
+        }
+    }
+    save_store_at(&root, &store)?;
+    Ok(report)
+}
+
+fn fetch_feed_xml(client: &reqwest::blocking::Client, url: &str) -> Result<String, String> {
+    let url = validate_feed_url(url)?;
+    let response = client
+        .get(&url)
+        .header(
+            reqwest::header::ACCEPT,
+            "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+        )
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("拉取超时（单请求 {}s）：{e}", FETCH_TIMEOUT_SECS)
+            } else if e.is_connect() {
+                format!("网络连接失败（DNS/连接错误）：{e}")
+            } else {
+                format!("请求失败：{e}")
+            }
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("HTTP 状态 {}：{}", status.as_u16(), url));
+    }
+    if let Some(length) = response.content_length() {
+        if length > MAX_FETCH_BYTES as u64 {
+            return Err(format!(
+                "响应体 {} KB，超过 {} KB 上限。",
+                length / 1024,
+                MAX_FETCH_BYTES / 1024
+            ));
+        }
+    }
+    let mut reader = response.take((MAX_FETCH_BYTES + 1) as u64);
+    let mut body = Vec::new();
+    reader
+        .read_to_end(&mut body)
+        .map_err(|e| format!("读取响应体失败：{e}"))?;
+    if body.len() > MAX_FETCH_BYTES {
+        return Err(format!("响应体超过 {} KB 上限，已拒绝解析。", MAX_FETCH_BYTES / 1024));
+    }
+    Ok(String::from_utf8_lossy(&body).to_string())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct FeedEntry {
+    key: String,
+    guid: String,
+    link: String,
+    title: String,
+    published_at: String,
+    published_ts: i64,
+    author: String,
+    content_html: String,
+    summary: String,
+}
+
+#[derive(Default)]
+struct IngestSummary {
+    added: usize,
+    skipped: usize,
+    errors: Vec<String>,
+}
+
+fn ingest_feed_at(
+    root: &Path,
+    subscription: &RssSubscription,
+    xml: &str,
+    now: f64,
+) -> Result<IngestSummary, String> {
+    let mut entries = parse_feed(xml)?;
+    entries.sort_by(|a, b| b.published_ts.cmp(&a.published_ts));
+    entries.truncate(MAX_ENTRIES_KEPT);
+    ensure_rss_dirs(root)?;
+    let fetched_at = utc_iso8601(now);
+    let mut summary = IngestSummary::default();
+    for entry in entries {
+        let key = if entry.key.trim().is_empty() {
+            hash8(&format!("{}\n{}\n{}", entry.title, entry.link, entry.published_at))
+        } else {
+            clamp_chars(entry.key.trim(), 500)
+        };
+        let book_id = format!(
+            "rss-{}-{}",
+            hash8(&format!("{}\n{}", subscription.url, key)),
+            hash8(&key)
+        );
+        if reading_book_exists_at(root, &book_id) || article_path(root, &book_id)?.exists() {
+            summary.skipped += 1;
+            continue;
+        }
+        let paragraphs = html_to_paragraphs(&entry.content_html);
+        if paragraphs.is_empty() {
+            summary.skipped += 1;
+            continue;
+        }
+        let title = if entry.title.trim().is_empty() {
+            "无标题文章".to_string()
+        } else {
+            clamp_chars(entry.title.trim(), 300)
+        };
+        let author = if entry.author.trim().is_empty() {
+            subscription.name.clone()
+        } else {
+            clamp_chars(entry.author.trim(), 200)
+        };
+        let source_sha256 = sha256_hex(entry.content_html.as_bytes());
+        let book = ReadingBook {
+            schema: READING_SCHEMA.to_string(),
+            book_id: book_id.clone(),
+            title: title.clone(),
+            author: author.clone(),
+            source_name: subscription.name.clone(),
+            source_format: "rss".to_string(),
+            source_path: clamp_chars(&entry.link, 2_000),
+            source_sha256,
+            imported_at: fetched_at.clone(),
+            updated_at: fetched_at.clone(),
+            chapters: vec![ReadingChapter {
+                title: "正文".to_string(),
+                paragraphs,
+            }],
+            annotations: Vec::new(),
+            notes: Vec::new(),
+            progress: ReadingProgress::default(),
+        };
+        write_book(root, &book)?;
+        let meta = RssArticleMeta {
+            schema: RSS_SCHEMA.to_string(),
+            book_id: book_id.clone(),
+            subscription_id: subscription.id.clone(),
+            feed_url: subscription.url.clone(),
+            guid: clamp_chars(&entry.guid, 2_000),
+            link: clamp_chars(&entry.link, 2_000),
+            title,
+            author,
+            published_at: clamp_chars(&entry.published_at, 120),
+            published_ts: entry.published_ts,
+            fetched_at: fetched_at.clone(),
+            read: false,
+        };
+        let path = article_path(root, &book_id)?;
+        let raw = serde_json::to_vec_pretty(&meta)
+            .map_err(|e| format!("序列化 RSS 文章元数据失败：{e}"))?;
+        write_new_atomically(&path, &raw)?;
+        harden_private(&path, 0o600);
+        summary.added += 1;
+    }
+    Ok(summary)
+}
+
+#[derive(Debug, Default)]
+struct XmlNode {
+    name: String,
+    attrs: Vec<(String, String)>,
+    children: Vec<XmlNode>,
+    text: String,
+}
+
+fn parse_xml(input: &str) -> XmlNode {
+    let mut root = XmlNode {
+        name: "#document".to_string(),
+        ..XmlNode::default()
+    };
+    let mut stack: Vec<XmlNode> = vec![XmlNode {
+        name: "#document".to_string(),
+        ..XmlNode::default()
+    }];
+    let mut index = 0usize;
+    while index < input.len() {
+        let rest = &input[index..];
+        if let Some(position) = rest.find('<') {
+            if position > 0 {
+                let text = decode_entities(&rest[..position]);
+                if let Some(current) = stack.last_mut() {
+                    current.text.push_str(&text);
+                }
+                index += position;
+                continue;
+            }
+        } else {
+            let text = decode_entities(rest);
+            if let Some(current) = stack.last_mut() {
+                current.text.push_str(&text);
+            }
+            break;
+        }
+        let rest = &input[index..];
+        if rest.starts_with("<!--") {
+            index += rest.find("-->").map(|p| p + 3).unwrap_or(rest.len());
+            continue;
+        }
+        if rest.starts_with("<![CDATA[") {
+            let end = rest.find("]]>").unwrap_or(rest.len());
+            let content = &rest[9..end.min(rest.len())];
+            if let Some(current) = stack.last_mut() {
+                current.text.push_str(content);
+            }
+            index += if end < rest.len() { end + 3 } else { rest.len() };
+            continue;
+        }
+        if rest.starts_with("<?") {
+            index += rest.find("?>").map(|p| p + 2).unwrap_or(rest.len());
+            continue;
+        }
+        if rest.starts_with("<!") {
+            index += rest.find('>').map(|p| p + 1).unwrap_or(rest.len());
+            continue;
+        }
+        let Some(end) = find_tag_end(rest) else {
+            let text = decode_entities(rest);
+            if let Some(current) = stack.last_mut() {
+                current.text.push_str(&text);
+            }
+            break;
+        };
+        let inner = &rest[1..end];
+        if let Some(name) = inner.strip_prefix('/') {
+            let closing = local_name(name.trim());
+            if let Some(position) = stack.iter().rposition(|node| node.name == closing) {
+                while stack.len() > position + 1 {
+                    let node = stack.pop().unwrap();
+                    if let Some(parent) = stack.last_mut() {
+                        parent.children.push(node);
+                    }
+                }
+                let node = stack.pop().unwrap();
+                if let Some(parent) = stack.last_mut() {
+                    parent.children.push(node);
+                }
+            }
+            index += end + 1;
+            continue;
+        }
+        let (name, attrs, self_closing) = parse_start_tag(inner);
+        if name.is_empty() {
+            if let Some(current) = stack.last_mut() {
+                current.text.push('<');
+            }
+            index += 1;
+            continue;
+        }
+        let node = XmlNode {
+            name,
+            attrs,
+            children: Vec::new(),
+            text: String::new(),
+        };
+        if self_closing {
+            if let Some(parent) = stack.last_mut() {
+                parent.children.push(node);
+            }
+        } else {
+            stack.push(node);
+        }
+        index += end + 1;
+    }
+    while stack.len() > 1 {
+        let node = stack.pop().unwrap();
+        if let Some(parent) = stack.last_mut() {
+            parent.children.push(node);
+        }
+    }
+    root = stack.pop().unwrap_or(root);
+    root
+}
+
+fn find_tag_end(rest: &str) -> Option<usize> {
+    let bytes = rest.as_bytes();
+    let mut quote: Option<u8> = None;
+    for (i, byte) in bytes.iter().enumerate().skip(1) {
+        if let Some(q) = quote {
+            if *byte == q {
+                quote = None;
+            }
+            continue;
+        }
+        if *byte == b'\"' || *byte == b'\'' {
+            quote = Some(*byte);
+        } else if *byte == b'>' {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
+    let trimmed = inner.trim();
+    let self_closing = trimmed.ends_with('/');
+    let body = trimmed.trim_end_matches('/').trim_end();
+    let mut chars = body.char_indices();
+    let mut name_end = body.len();
+    for (index, ch) in chars.by_ref() {
+        if ch.is_whitespace() {
+            name_end = index;
+            break;
+        }
+    }
+    let raw_name = &body[..name_end];
+    let name = local_name(raw_name);
+    let mut attrs = Vec::new();
+    let mut index = name_end;
+    while index < body.len() {
+        while index < body.len() {
+            let ch = body[index..].chars().next().unwrap();
+            if ch.is_whitespace() {
+                index += ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if index >= body.len() {
+            break;
+        }
+        let key_start = index;
+        while index < body.len() {
+            let ch = body[index..].chars().next().unwrap();
+            if ch.is_whitespace() || ch == '=' {
+                break;
+            }
+            index += ch.len_utf8();
+        }
+        let key = local_name(&body[key_start..index]);
+        while index < body.len() {
+            let ch = body[index..].chars().next().unwrap();
+            if ch.is_whitespace() {
+                index += ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if index < body.len() && body[index..].starts_with('=') {
+            index += 1;
+            while index < body.len() {
+                let ch = body[index..].chars().next().unwrap();
+                if ch.is_whitespace() {
+                    index += ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            if index < body.len() {
+                let quote = body[index..].chars().next().unwrap();
+                let value = if quote == '\"' || quote == '\'' {
+                    index += 1;
+                    let start = index;
+                    while index < body.len() {
+                        let ch = body[index..].chars().next().unwrap();
+                        if ch == quote {
+                            break;
+                        }
+                        index += ch.len_utf8();
+                    }
+                    let value = decode_entities(&body[start..index]);
+                    if index < body.len() {
+                        index += 1;
+                    }
+                    value
+                } else {
+                    let start = index;
+                    while index < body.len() {
+                        let ch = body[index..].chars().next().unwrap();
+                        if ch.is_whitespace() {
+                            break;
+                        }
+                        index += ch.len_utf8();
+                    }
+                    decode_entities(&body[start..index])
+                };
+                if !key.is_empty() {
+                    attrs.push((key, value));
+                }
+            }
+        }
+    }
+    (name, attrs, self_closing)
+}
+
+fn local_name(name: &str) -> String {
+    name.rsplit(':').next().unwrap_or(name).trim().to_ascii_lowercase()
+}
+
+fn node_children<'a>(node: &'a XmlNode, name: &str) -> Vec<&'a XmlNode> {
+    let wanted = name.to_string();
+    node.children
+        .iter()
+        .filter(|child| child.name == wanted)
+        .collect()
+}
+
+fn first_child<'a>(node: &'a XmlNode, names: &[&str]) -> Option<&'a XmlNode> {
+    node.children
+        .iter()
+        .find(|child| names.iter().any(|name| *name == child.name))
+}
+
+fn node_all_text(node: &XmlNode) -> String {
+    let mut out = node.text.clone();
+    for child in &node.children {
+        let child_text = node_all_text(child);
+        if child_text.trim().is_empty() {
+            continue;
+        }
+        if !out.is_empty()
+            && !out
+                .chars()
+                .last()
+                .map(|ch| ch.is_whitespace())
+                .unwrap_or(true)
+        {
+            out.push(' ');
+        }
+        out.push_str(&child_text);
+    }
+    out
+}
+
+fn attr_value<'a>(node: &'a XmlNode, name: &str) -> Option<&'a str> {
+    node.attrs
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
+}
+
+fn child_text(node: &XmlNode, names: &[&str]) -> String {
+    first_child(node, names)
+        .map(node_all_text)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn collect_entries<'a>(node: &'a XmlNode, out: &mut Vec<&'a XmlNode>) {
+    for child in &node.children {
+        if child.name == "item" || child.name == "entry" {
+            out.push(child);
+        }
+        collect_entries(child, out);
+    }
+}
+
+fn parse_feed(xml: &str) -> Result<Vec<FeedEntry>, String> {
+    let root = parse_xml(xml);
+    let mut nodes = Vec::new();
+    collect_entries(&root, &mut nodes);
+    if nodes.is_empty() {
+        if xml.contains("<rss") || xml.contains("<feed") || xml.contains("<rdf") {
+            return Err("Feed 中没有可解析的文章条目。".to_string());
+        }
+        return Err("无法识别 RSS/Atom：未找到 item 或 entry。".to_string());
+    }
+    nodes.truncate(MAX_ENTRIES_PARSED);
+    let mut entries = Vec::new();
+    for node in nodes {
+        entries.push(parse_entry(node));
+    }
+    Ok(entries)
+}
+
+fn parse_entry(node: &XmlNode) -> FeedEntry {
+    let title = child_text(node, &["title"]);
+    let link = atom_or_text_link(node);
+    let guid = {
+        let text = child_text(node, &["guid", "id"]);
+        if text.is_empty() {
+            attr_value(node, "about").unwrap_or("").to_string()
+        } else {
+            text
+        }
+    };
+    let published_at = child_text(node, &["pubdate", "published", "updated", "date"]);
+    let published_ts = parse_feed_date(&published_at).unwrap_or(0);
+    let author = child_text(node, &["author", "creator"]);
+    let content_html = {
+        let encoded = child_text(node, &["encoded"]);
+        let content = child_text(node, &["content"]);
+        if !encoded.is_empty() {
+            encoded
+        } else if !content.is_empty() {
+            content
+        } else {
+            child_text(node, &["description"])
+        }
+    };
+    let summary = {
+        let description = child_text(node, &["description"]);
+        if !description.is_empty() {
+            clamp_chars(&html_to_plain(&description), 500)
+        } else {
+            clamp_chars(&html_to_plain(&child_text(node, &["summary"])), 500)
+        }
+    };
+    let key = if guid.trim().is_empty() {
+        if link.trim().is_empty() {
+            hash8(&format!("{title}\n{published_at}"))
+        } else {
+            link.clone()
+        }
+    } else {
+        guid.clone()
+    };
+    FeedEntry {
+        key,
+        guid,
+        link,
+        title,
+        published_at,
+        published_ts,
+        author,
+        content_html,
+        summary,
+    }
+}
+
+fn atom_or_text_link(node: &XmlNode) -> String {
+    let links: Vec<&XmlNode> = node_children(node, "link");
+    if let Some(link) = links.iter().find(|link| {
+        attr_value(*link, "rel")
+            .map(|rel| rel.eq_ignore_ascii_case("alternate"))
+            .unwrap_or(false)
+    }) {
+        if let Some(href) = attr_value(link, "href") {
+            return href.trim().to_string();
+        }
+    }
+    for link in &links {
+        if let Some(href) = attr_value(*link, "href") {
+            return href.trim().to_string();
+        }
+    }
+    links
+        .iter()
+        .map(|link| node_all_text(*link).trim().to_string())
+        .find(|value| !value.is_empty())
+        .unwrap_or_default()
+}
+
+fn decode_entities(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut index = 0usize;
+    while index < input.len() {
+        let rest = &input[index..];
+        if let Some(position) = rest.find('&') {
+            out.push_str(&rest[..position]);
+            index += position;
+            let entity_rest = &input[index..];
+            if let Some(semicolon) = entity_rest.find(';') {
+                if semicolon <= 32 {
+                    let entity = &entity_rest[1..semicolon];
+                    if let Some(decoded) = decode_entity(entity) {
+                        out.push_str(&decoded);
+                        index += semicolon + 1;
+                        continue;
+                    }
+                }
+            }
+            out.push('&');
+            index += 1;
+        } else {
+            out.push_str(rest);
+            break;
+        }
+    }
+    out
+}
+
+fn decode_entity(entity: &str) -> Option<String> {
+    if let Some(number) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
+        return u32::from_str_radix(number, 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|ch| ch.to_string());
+    }
+    if let Some(number) = entity.strip_prefix('#') {
+        return number
+            .parse::<u32>()
+            .ok()
+            .and_then(char::from_u32)
+            .map(|ch| ch.to_string());
+    }
+    let value = match entity {
+        "amp" => "&",
+        "lt" => "<",
+        "gt" => ">",
+        "quot" | "ldquo" | "rdquo" => "\"",
+        "apos" | "lsquo" | "rsquo" => "'",
+        "nbsp" => " ",
+        "mdash" => "—",
+        "ndash" => "–",
+        "hellip" => "…",
+        "middot" => "·",
+        "copy" => "©",
+        _ => return None,
+    };
+    Some(value.to_string())
+}
+
+fn html_to_paragraphs(html: &str) -> Vec<String> {
+    let plain = sanitize_html(html);
+    let mut paragraphs = Vec::new();
+    for block in plain.split("\n\n") {
+        let normalized = block.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !normalized.is_empty() {
+            paragraphs.push(normalized);
+        }
+    }
+    let mut joined = String::new();
+    for paragraph in &paragraphs {
+        if !joined.is_empty() {
+            joined.push_str("\n\n");
+        }
+        joined.push_str(paragraph);
+    }
+    if joined.chars().count() > MAX_ARTICLE_CHARS {
+        let clipped = clamp_chars(&joined, MAX_ARTICLE_CHARS);
+        paragraphs = clipped
+            .split("\n\n")
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect();
+    }
+    paragraphs
+}
+
+fn html_to_plain(html: &str) -> String {
+    sanitize_html(html)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn sanitize_html(html: &str) -> String {
+    let mut out = String::new();
+    let mut index = 0usize;
+    while index < html.len() {
+        let rest = &html[index..];
+        if rest.starts_with('<') {
+            let sample: String = rest.chars().take(16).collect();
+            let lower = sample.to_ascii_lowercase();
+            if lower.starts_with("<script") || lower.starts_with("<style") {
+                let tag = if lower.starts_with("<script") { "script" } else { "style" };
+                let close = format!("</{tag}");
+                if let Some(position) = rest.to_ascii_lowercase().find(&close) {
+                    if let Some(end) = rest[position..].find('>') {
+                        index += position + end + 1;
+                        continue;
+                    }
+                }
+            }
+            let Some(end) = find_tag_end(rest) else {
+                out.push('<');
+                index += 1;
+                continue;
+            };
+            let inner = &rest[1..end];
+            let trimmed = inner.trim();
+            let closing = trimmed.starts_with('/');
+            let tag = trimmed
+                .trim_start_matches('/')
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('/')
+                .to_ascii_lowercase();
+            if tag == "br" {
+                out.push('\n');
+            } else if tag == "li" && !closing {
+                out.push_str("\n\n· ");
+            } else if tag == "p"
+                || tag == "div"
+                || tag == "blockquote"
+                || tag == "pre"
+                || tag == "figure"
+                || tag == "figcaption"
+                || tag == "section"
+                || tag == "article"
+                || tag == "tr"
+                || tag == "td"
+                || tag == "th"
+                || tag == "li"
+                || tag == "ul"
+                || tag == "ol"
+                || tag == "hr"
+                || (tag.len() == 2 && tag.starts_with('h') && tag.ends_with(|c: char| c.is_ascii_digit()))
+            {
+                out.push_str("\n\n");
+            } else if tag == "img" {
+                if let Some(alt) = attr_value_from_tag(inner, "alt") {
+                    if !alt.trim().is_empty() {
+                        out.push_str(&format!("[图片：{}]", alt.trim()));
+                    }
+                }
+            }
+            index += end + 1;
+            continue;
+        }
+        if let Some(position) = rest.find('<') {
+            out.push_str(&decode_entities(&rest[..position]));
+            index += position;
+        } else {
+            out.push_str(&decode_entities(rest));
+            break;
+        }
+    }
+    out.replace("\r", "\n").replace('\u{00a0}', " ")
+}
+
+fn attr_value_from_tag(inner: &str, wanted: &str) -> Option<String> {
+    let (_, attrs, _) = parse_start_tag(inner);
+    attrs
+        .into_iter()
+        .find(|(key, _)| key == wanted)
+        .map(|(_, value)| value)
+}
+
+fn clamp_chars(text: &str, max: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max {
+        text.to_string()
+    } else {
+        chars.into_iter().take(max).collect()
+    }
+}
+
+fn parse_feed_date(raw: &str) -> Option<i64> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if let Some(ts) = parse_iso_date(value) {
+        return Some(ts);
+    }
+    parse_rfc2822_date(value)
+}
+
+fn parse_iso_date(value: &str) -> Option<i64> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    let year = value.get(0..4)?.parse::<i64>().ok()?;
+    let month = value.get(5..7)?.parse::<u32>().ok()?;
+    let day = value.get(8..10)?.parse::<u32>().ok()?;
+    let mut secs = days_from_civil(year, month, day) * 86_400;
+    if value.len() > 11 && (bytes[10] == b'T' || bytes[10] == b' ') {
+        let time = value.get(11..19)?;
+        let hour = time.get(0..2)?.parse::<i64>().ok()?;
+        let minute = time.get(3..5)?.parse::<i64>().ok()?;
+        let second = time.get(6..8)?.parse::<i64>().ok()?;
+        if hour > 23 || minute > 59 || second > 59 {
+            return None;
+        }
+        secs += hour * 3_600 + minute * 60 + second;
+    }
+    let rest = value.get(19..).unwrap_or("").trim();
+    if rest.starts_with('+') || rest.starts_with('-') {
+        let sign = if rest.starts_with('-') { -1 } else { 1 };
+        let digits = rest[1..].replace(':', "");
+        if digits.len() >= 4 {
+            let hours = digits.get(0..2)?.parse::<i64>().ok()?;
+            let minutes = digits.get(2..4)?.parse::<i64>().ok()?;
+            secs -= sign * (hours * 3_600 + minutes * 60);
+        }
+    }
+    Some(secs)
+}
+
+fn parse_rfc2822_date(value: &str) -> Option<i64> {
+    let cleaned = value.replace(',', " ");
+    let tokens: Vec<&str> = cleaned.split_whitespace().collect();
+    let months = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    let month_pos = tokens
+        .iter()
+        .position(|token| months.iter().any(|month| token.eq_ignore_ascii_case(month)))?;
+    if month_pos == 0 || month_pos + 1 >= tokens.len() {
+        return None;
+    }
+    let day = tokens[month_pos - 1].parse::<u32>().ok()?;
+    let year = tokens[month_pos + 1].parse::<i64>().ok()?;
+    let month = months
+        .iter()
+        .position(|month| tokens[month_pos].eq_ignore_ascii_case(month))? as u32
+        + 1;
+    let mut secs = days_from_civil(year, month, day) * 86_400;
+    if let Some(time) = tokens.get(month_pos + 2) {
+        let parts: Vec<&str> = time.split(':').collect();
+        if parts.len() >= 2 {
+            let hour = parts[0].parse::<i64>().ok()?;
+            let minute = parts[1].parse::<i64>().ok()?;
+            let second = parts.get(2).and_then(|part| part.parse::<i64>().ok()).unwrap_or(0);
+            secs += hour * 3_600 + minute * 60 + second;
+        }
+    }
+    if let Some(zone) = tokens.get(month_pos + 3) {
+        if zone.starts_with('+') || zone.starts_with('-') {
+            let sign = if zone.starts_with('-') { -1 } else { 1 };
+            let digits = zone[1..].to_string();
+            if digits.len() >= 4 {
+                let hours = digits.get(0..2)?.parse::<i64>().ok()?;
+                let minutes = digits.get(2..4)?.parse::<i64>().ok()?;
+                secs -= sign * (hours * 3_600 + minutes * 60);
+            }
+        }
+    }
+    Some(secs)
+}
+
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let adjusted_year = year - if month <= 2 { 1 } else { 0 };
+    let era = if adjusted_year >= 0 { adjusted_year } else { adjusted_year - 399 } / 400;
+    let year_of_era = adjusted_year - era * 400;
+    let month_index = month as i64 - 3 + if month > 2 { 0 } else { 12 };
+    let day_of_year = (153 * month_index + 2) / 5 + day as i64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reading_store::read_book_at;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_root(tag: &str) -> PathBuf {
+        let seq = TEST_SEQ.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "omnidesk-rss-test-{tag}-{}-{seq}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn sample_subscription() -> RssSubscription {
+        RssSubscription {
+            id: "testfeed".to_string(),
+            url: "https://example.test/feed.xml".to_string(),
+            name: "测试订阅".to_string(),
+            group: DEFAULT_GROUP.to_string(),
+            added_at: "2026-11-18T00:00:00Z".to_string(),
+            last_fetched_at: String::new(),
+            last_error: String::new(),
+        }
+    }
+
+    #[test]
+    fn parses_rss2_with_chinese_cdata_and_entities() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel><title>合成源</title>
+    <item>
+      <title>中文 &amp; 标题</title>
+      <link>https://example.test/posts/1</link>
+      <guid>post-1</guid>
+      <pubDate>Tue, 18 Nov 2026 08:00:00 GMT</pubDate>
+      <dc:creator>作者甲</dc:creator>
+      <content:encoded><![CDATA[<p>第一段 &amp; 引用。</p><p>第二段 含 <strong>重点</strong>。</p><script>alert(1)</script>]]></content:encoded>
+    </item>
+  </channel>
+</rss>"#;
+        let entries = parse_feed(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].title, "中文 & 标题");
+        assert_eq!(entries[0].link, "https://example.test/posts/1");
+        assert_eq!(entries[0].author, "作者甲");
+        assert_eq!(entries[0].published_ts, 1_794_988_800);
+        let paragraphs = html_to_paragraphs(&entries[0].content_html);
+        assert_eq!(paragraphs.len(), 2);
+        assert!(paragraphs[0].contains("第一段 & 引用"));
+        assert!(paragraphs[1].contains("第二段 含 重点"));
+    }
+
+    #[test]
+    fn parses_atom_with_namespace_prefixes_and_link_href() {
+        let xml = r#"<?xml version="1.0"?>
+<atom:feed xmlns:atom="http://www.w3.org/2005/Atom">
+  <atom:entry>
+    <atom:id>tag:example.test,2026:1</atom:id>
+    <atom:title>Atom 示例</atom:title>
+    <atom:link rel="alternate" href="https://example.test/atom/1"/>
+    <atom:updated>2026-11-18T09:30:00+08:00</atom:updated>
+    <atom:author><atom:name>作者乙</atom:name></atom:author>
+    <atom:content type="html">&lt;p&gt;Alice &amp;amp; Bob&lt;/p&gt;&lt;p&gt;第二段&lt;/p&gt;</atom:content>
+  </atom:entry>
+</atom:feed>"#;
+        let entries = parse_feed(xml).unwrap();
+        assert_eq!(entries[0].title, "Atom 示例");
+        assert_eq!(entries[0].link, "https://example.test/atom/1");
+        assert_eq!(entries[0].author, "作者乙");
+        assert_eq!(entries[0].published_ts, 1_794_965_400);
+        let paragraphs = html_to_paragraphs(&entries[0].content_html);
+        assert_eq!(paragraphs.len(), 2);
+        assert_eq!(paragraphs[0], "Alice & Bob");
+    }
+
+    #[test]
+    fn keeps_newest_fifty_and_parses_at_most_two_hundred_entries() {
+        let mut xml = String::from("<rss><channel>");
+        for index in 0..250u64 {
+            let published = utc_iso8601(1_800_000_000.0 + index as f64 * 86_400.0);
+            xml.push_str(&format!(
+                "<item><title>条目 {index}</title><link>https://example.test/{index}</link><guid>{index}</guid><published>{published}</published><description>正文 {index}</description></item>"
+            ));
+        }
+        xml.push_str("</channel></rss>");
+        let entries = parse_feed(&xml).unwrap();
+        assert_eq!(entries.len(), 200);
+        let mut sorted = entries;
+        sorted.sort_by(|a, b| b.published_ts.cmp(&a.published_ts));
+        sorted.truncate(MAX_ENTRIES_KEPT);
+        assert_eq!(sorted.len(), 50);
+        assert_eq!(sorted[0].title, "条目 199");
+        assert_eq!(sorted[49].title, "条目 150");
+    }
+
+    #[test]
+    fn ingest_deduplicates_and_does_not_overwrite_annotations() {
+        let root = temp_root("dedupe");
+        let subscription = sample_subscription();
+        let xml = r#"<rss><channel><item><title>去重样例</title><link>https://example.test/one</link><guid>one</guid><description>第一段</description></item></channel></rss>"#;
+        let first = ingest_feed_at(&root, &subscription, xml, 1_800_000_000.0).unwrap();
+        assert_eq!(first.added, 1);
+        let book_id = format!(
+            "rss-{}-{}",
+            hash8(&format!("{}\n{}", subscription.url, "one")),
+            hash8("one")
+        );
+        let draft = crate::reading_store::ReadingAnnotationDraft {
+            kind: "highlight".to_string(),
+            chapter_index: 0,
+            paragraph_index: 0,
+            start: Some(0),
+            end: Some(3),
+            quote: "第一段".to_string(),
+            body: String::new(),
+            color: "amber".to_string(),
+            source: "user".to_string(),
+        };
+        crate::reading_store::add_annotation_at(&root, &book_id, draft, 1_800_000_001.0).unwrap();
+        let second = ingest_feed_at(&root, &subscription, xml, 1_800_000_002.0).unwrap();
+        assert_eq!(second.added, 0);
+        assert_eq!(second.skipped, 1);
+        let book = read_book_at(&root, &book_id).unwrap();
+        assert_eq!(book.annotations.len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn preset_seed_is_idempotent_and_does_not_resurrect_deleted_items() {
+        let root = temp_root("preset");
+        let first = seed_store_at(&root, 1_800_000_000.0).unwrap();
+        assert_eq!(first.subscriptions.len(), 49);
+        let removed_id = first.subscriptions[0].id.clone();
+        remove_subscription_at(&root, &removed_id).unwrap();
+        let after_delete = load_store_at(&root).unwrap();
+        assert_eq!(after_delete.subscriptions.len(), 48);
+        let second_seed = seed_store_at(&root, 1_800_000_100.0).unwrap();
+        assert_eq!(second_seed.subscriptions.len(), 48);
+        assert!(!second_seed.subscriptions.iter().any(|item| item.id == removed_id));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn adding_same_url_twice_returns_the_existing_subscription() {
+        let root = temp_root("add");
+        seed_store_at(&root, 1_800_000_000.0).unwrap();
+        let before = load_store_at(&root).unwrap().subscriptions.len();
+        let first = add_subscription_at(&root, "https://example.test/new.xml", Some("新源"), 1_800_000_100.0).unwrap();
+        assert_eq!(first.name, "新源");
+        assert_eq!(first.group, DEFAULT_GROUP);
+        let second = add_subscription_at(&root, "https://example.test/new.xml", Some("改名"), 1_800_000_200.0).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(load_store_at(&root).unwrap().subscriptions.len(), before + 1);
+        assert!(add_subscription_at(&root, "ftp://example.test/feed", None, 1_800_000_300.0).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn truncates_long_article_body_to_the_limit() {
+        let root = temp_root("truncate");
+        let subscription = sample_subscription();
+        let long = "长".repeat(MAX_ARTICLE_CHARS + 5_000);
+        let xml = format!(
+            "<rss><channel><item><title>长文</title><link>https://example.test/long</link><guid>long</guid><description>{long}</description></item></channel></rss>"
+        );
+        let summary = ingest_feed_at(&root, &subscription, &xml, 1_800_000_000.0).unwrap();
+        assert_eq!(summary.added, 1);
+        let book_id = format!(
+            "rss-{}-{}",
+            hash8(&format!("{}\n{}", subscription.url, "long")),
+            hash8("long")
+        );
+        let book = read_book_at(&root, &book_id).unwrap();
+        let chars: usize = book.chapters.iter().flat_map(|c| c.paragraphs.iter()).map(|p| p.chars().count()).sum();
+        assert!(chars <= MAX_ARTICLE_CHARS);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn marks_article_read_without_touching_body() {
+        let root = temp_root("read");
+        let subscription = sample_subscription();
+        let xml = r#"<rss><channel><item><title>已读样例</title><link>https://example.test/read</link><guid>read</guid><description>正文</description></item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, xml, 1_800_000_000.0).unwrap();
+        let items = list_articles_at(&root).unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].read);
+        let updated = mark_article_read_at(&root, &items[0].book_id).unwrap();
+        assert!(updated.read);
+        assert_eq!(list_articles_at(&root).unwrap()[0].read, true);
+        assert!(read_book_at(&root, &items[0].book_id).is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sanitizer_drops_script_and_preserves_block_paragraphs() {
+        let html = "<h1>标题</h1><p>一段 &amp; 二段</p><script>bad()</script><p>第三段<br>换行</p>";
+        let paragraphs = html_to_paragraphs(html);
+        assert_eq!(paragraphs.len(), 3);
+        assert_eq!(paragraphs[0], "标题");
+        assert_eq!(paragraphs[1], "一段 & 二段");
+        assert_eq!(paragraphs[2], "第三段 换行");
+        assert!(!paragraphs.join(" ").contains("bad()"));
+    }
+
+    #[test]
+    fn preset_source_size_stays_under_twenty_kilobytes() {
+        let mut bytes = 0usize;
+        for preset in PRESET_FEEDS {
+            bytes += preset.name.len() + preset.url.len() + preset.group.len();
+        }
+        assert!(bytes < 20_000);
+        assert_eq!(PRESET_FEEDS.len(), 49);
+    }
+
+    #[test]
+    fn fetches_local_http_feed_and_ingests_entries() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let xml = r#"<rss><channel><item><title>本地回放</title><link>https://example.test/local</link><guid>local</guid><description>第一段</description><description>第二段</description></item></channel></rss>"#;
+        let payload = xml.to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                payload.len(),
+                payload
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let fetched = fetch_feed_xml(&client, &format!("http://{address}/feed.xml")).unwrap();
+        server.join().unwrap();
+        let root = temp_root("http");
+        let subscription = sample_subscription();
+        let summary = ingest_feed_at(&root, &subscription, &fetched, 1_800_000_000.0).unwrap();
+        assert_eq!(summary.added, 1);
+        let items = list_articles_at(&root).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "本地回放");
+        let _ = fs::remove_dir_all(root);
+    }
+}
