@@ -335,3 +335,17 @@
 2. **场景边界（用户确证的行为）：** 必须新开对话且分类选「工作记录」才能落盘；「未分类」对话不落盘（无 preset 的对话不走工作记录写入路径，属现行设计）。如需"未分类也能记"属新需求，须另立计划。
 3. **OD-ARCH-175/176 阶段 4 仍未实测：** 用户 Windows 上是旧版本；新功能验证须提交推送并发版后进行（提交推送待用户授权）。
 4. **OD-ARCH-177 更新：** 常备插件清单按用户裁决定为 anysearch + dsh-cost-meter 两项。
+
+
+# OD-ARCH-183 Windows 引擎进程树回收独立复核（2026-11-18）——通过（静态/脚本范围，Windows 实机待验收）
+
+**复核对象：** HEAD `cb0a0b31f0` 之上的未提交改动：`process_owner.py`、`web_api_adapter.py`、`serve.py`、`platform.rs`、`process_owner.rs`、`lib.rs`、`verify_process_platform_133.py`、`test_process_owner_unit.py`。
+
+**结论：** POSIX 行为未回退；Windows 清理链路在代码层面补全（引擎树杀 + 宿主登记回收 + 死父进程清扫 + 退出兜底）；Windows 实机行为未验收，不得标为「已在 Windows 生效」。
+
+**证据（实际运行）：** `cargo test --offline --lib` 1232/0/1；engine adapter `unittest discover` 249 通过（含新增 5 个 Windows 分支单测）；`verify_process_platform_133` 28/28；`verify_sys_process_701` 40/40；`verify_proc_alias_149` 34/34；`py_compile` 通过。
+
+**风险与限制：**
+1. Windows 专属代码无法在本机构建（`x86_64-pc-windows-msvc` 目标已装，但构建脚本缺 `llvm-rc`），只能人工审查 + 单测用注入假实现覆盖判定分支；`taskkill`/`tasklist`/PowerShell 的真实行为需 Windows 实机验证。
+2. `verify_process_lifecycle_074` 的 4 项失败在 HEAD 纯净副本复现，属既有环境问题（非本改动引入）。
+3. 命令行指纹清扫只杀「`dsh-runtime` + `bin.js` + `--profile` 且父进程已退出」的 node，不按裸 node 名全杀；若用户同时运行另一份 OmniDesk 且其引擎父进程存活，不会被误杀。

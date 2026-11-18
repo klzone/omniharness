@@ -61,9 +61,12 @@ def main() -> int:
             'cfg(target_os = "macos")' in platform_rs and ("pub fn %s(" % fn) in platform_rs,
         )
     record(
-        "platform_windows_returns_empty",
-        platform_rs.count('cfg(not(any(target_os = "linux", target_os = "macos")))') >= 4,
-        "Windows 不参与回收，查不到即不动",
+        "platform_windows_impl",
+        "pub fn process_stat(pid: i32) -> Option<(char, i32)>" in platform_rs
+        and "tasklist_image" in platform_rs
+        and "kill_process_tree" in platform_rs
+        and "sweep_orphan_dsh_processes" in platform_rs,
+        "OD-ARCH-183：Windows 用 tasklist/PowerShell/taskkill 做核验与树杀；查不到仍按「不动」处理",
     )
     record("platform_proc_row", "pub struct ProcRow" in platform_rs)
     record(

@@ -1,5 +1,47 @@
 # 当前实施计划
 
+
+### OD-ARCH-183：Windows 引擎进程树回收（已实施，2026-11-18；Windows 实机待复验）
+
+> **触发（Windows 实测）：** 关闭应用后 `node.exe` 残留，开关 2 次累计 7 个。实测命令行：`"node" D:\OmniDesk\runtime\dsh-runtime\node_modules\@deepseek-ai\dsh\lib\bin.js --profile discipline --patch C:\Users\Yvan\OmniDesk\app\config\omnidesk-model.yml --port 0 --no-open`，父进程为已退出的 python 引擎。残留是 DSH 主进程本身（每个引擎实例一个），不是 MCP server——工具面未声明 mcpServers，free-search/cost-meter 插件也无 mcp 声明。
+>
+> **根因（源码事实）：**
+> 1. `engine/omnidesk_engine/process_owner.py` 是 POSIX-only（读 `/proc`）：Windows 上 `_proc_stat` 返回 None，`_kill_child_group`/`terminate_group` 永远空转，优雅关停从不回收 node；`record_child_group` 也不登记 node pid。
+> 2. `desktop/src-tauri/src/platform.rs`：Windows 上 `boot_id()` 返回 None、`process_stat()` 返回 None、`process_cmd()` 返回空 → `process_owner::reclaim_before_start` 每次启动都判 `stale_boot`，直接删登记、不回收任何遗留进程；`cleanup_engine_group` 见 pgid=0 直接跳过。
+> 3. Job Object（0.2.15/0.2.16）理论兜底 kill-on-close，但实测未回收；不再把它当唯一保证。
+> 4. 进程别名未生效：残留镜像名是 `node` 而非 `omnidesk-node`（`OMNIDESK_NODE` 被环境变量覆盖或副本回退），按名清理不可靠。
+
+**修复方案（双保险，名字只作识别辅助）：**
+> **阶段 1 引擎侧（engine/omnidesk_engine）：**
+> 1. `process_owner.py` 增加 Windows 分支：用 `taskkill /PID <pid> /T /F` 树杀替代 `killpg`；`record_child_group` 在无 `/proc` 时直接记录 `child_pid=proc.pid`、`child_pgid=0`。
+> 2. `web_api_adapter.py` 的 `shutdown()` 在 finally 中执行 Windows 树杀（RPC 超时/异常也必须执行）；node 启动成功后把 pid 写入登记（`owner.json` 的 `child_pid`）。
+
+> **阶段 2 宿主侧（desktop/src-tauri）：**
+> 1. `platform.rs`：Windows 实现进程存活判断（`tasklist /FI "PID eq N"` 或 Toolhelp FFI）与命令行读取（仅启动/收尾时用，不在热路径）。
+> 2. `process_owner.rs`：Windows 不依赖 `boot_id` 判 stale；按 `host_pid` 判活（另一实例活跃则拒绝）；遗留引擎与 `child_pid` 经「镜像名 node/omnidesk-node + 命令行含 `dsh-runtime` 与 `bin.js`」核验后 `taskkill /T /F`；Job 保留为最后保险。
+> 3. 退出路径 `finish_stop`：`terminate` 后仍按登记 `child_pid` 做一次树杀兜底。
+
+> **阶段 3（可选，识别辅助）：** 查明 `OMNIDESK_NODE` 别名为何未生效（环境变量覆盖 / 副本失败 / 用户全局设置），使残留进程名归一到 `omnidesk-node`；不作为杀进程判据。
+
+**验证：** `cargo test --offline --lib` 全过（新增 Windows 判定纯逻辑测试可跨平台跑）；引擎 Python 单测（合成 pid/命令行，不真杀）；Windows 实测：正常使用后关 app，`Get-CimInstance Win32_Process` 过滤 `dsh-runtime` 残留为 0；连续开关 2 次无累积；正常任务与模型调用不受影响。
+
+**明确不做：** 不改 `runtime/` 内 DSH；不按裸 `node.exe` 全名杀（防误伤用户其它 node 程序）；不动模型路由与凭证。
+
+**执行结果（2026-11-18，ARCHITECT 亲自实施）：**
+> 1. 引擎侧：`process_owner.py` 增加 Windows 分支——`tasklist` 判定存活、`Get-CimInstance` 取命令行、`taskkill /PID <pid> /T /F` 树杀；`_inspect_owner_windows` 用镜像名核验（python/node），不依赖 `/proc`；`record_child_group` 在无 `/proc` 时靠 `_proc_stat` 的 Windows 实现记录 `child_pid`（pgid=0）；`claim_ownership`/`reclaim_owner` 对 pgid=0 改走 child_pid 树杀。`web_api_adapter.shutdown()` 在 Windows 上先树杀再 terminate（graceful 与 force 两条路径都覆盖）。`serve._finalize()` 关停失败时保留 owner.json，供宿主下次回收。
+> 2. 宿主侧：`platform.rs` 实现 Windows `process_stat`/`process_cmd`/`process_table`/`process_image`/`kill_process_tree`/`sweep_orphan_dsh_processes`；`process_owner.rs` 增加 Windows 启动回收（镜像名核验 + child_pid 树杀 + 死父进程 CLI 指纹清扫）、收尾兜底 `cleanup_engine_group` Windows 分支、退出兜底 `cleanup_child_on_exit`；`lib.rs` 在 `RunEvent::Exit` 调用退出兜底。
+> 3. 测试：`cargo test --offline --lib -- --test-threads=1` → 1232 passed / 0 failed / 1 ignored；引擎适配层 249 个单测全过（含新增 5 个 Windows 判定单测）；`verify_process_platform_133` 28 项全过（断言已更新）；`verify_sys_process_701` 40 项全过；`verify_proc_alias_149` 34/34。
+> 4. 偏差与未验证：`verify_process_lifecycle_074` 有 4 项（N/O/P/R）既有失败，已在 HEAD 纯净副本上复现同样失败，判定为环境性问题、与本改动无关。Windows 专属代码无法在本机编译验证（`cargo check --target x86_64-pc-windows-msvc` 因缺 `llvm-rc` 无法构建），需在 Windows 实机复验：开关两次 app 后 `Get-CimInstance` 过滤 `dsh-runtime` 残留为 0。
+
+
+### 附：知识卡 staging 路径歧义小修（2026-11-18，已实施，ARCHITECT 亲自执行）
+
+> **触发：** Windows 实测建卡失败。定性（源码 + 实测证据）：不是宿主 ACL，也不是 skill 限制工具——`knowledge-search` SKILL 第四节「workspace 暂存区」的 `workspace` 一词被模型按字面映射到 `…\OmniDesk\workspace\`，而引擎沙箱根是其下的 `artifacts`（`prepare_workspace_dir` 返回值），越根被 DSH 拒（`Access to the path 'staging' is denied`，enforcement: partial 不弹窗）。模型已在 `workspace\artifacts\staging\kb\知识库` 成功建目录——那正是宿主同步入口扫描的位置。
+>
+> **修改（2 处）：** ①`skills/knowledge-search/SKILL.md` 第四节第 3 条改为「以引擎当前工作目录（cwd，默认 `~/OmniDesk/workspace/artifacts`）为基准写相对路径 `staging/kb/…`，不要走进名字叫 workspace 的目录，不确定先 pwd」；②`tests/verification/desktop/verify_knowledge_sync_152.py` 断言同步更新（断言 `staging/kb/知识库/概念/` + 「当前工作目录」表述，并断言不再出现反引号包裹的 workspace/staging 前缀写法）。
+>
+> **验证：** `python3 tests/verification/desktop/verify_knowledge_sync_152.py` → 48 项全过（exit 0）。宿主同步入口（`knowledge_sync_to_vault` 扫 `<数据根>/staging/kb`）与引擎 cwd 同源，无需改代码。
+
 ### OD-READ-001：读书阅读笔记分页（初步实施，2026-11-18）
 
 > **触发（用户当轮指示）：** 为 OmniDesk 增加读书阅读笔记分页：读书时能划线、标记、添加思考碎片，前端记录；AI 能整理笔记，也能随时查询相关概念。先初步实现这些功能。用户给出三个参考项目：`lysforge/dsh-lamplit`、`zhaohongxuan/dsh-weread`、`PensiveFei/deep-read-summarize`。
@@ -179,6 +221,31 @@
 **验证：** cargo test --lib 单线程 1218/0（新增「用户声明覆盖 Profile 与清单」单测）；tsc / npm run build 通过；verify_arch_178、arch_176 71/71、202 39/40（既有失败）全过。本改动编译进 Rust，需新构建（0.2.35 或 dev）后才能在设置页看到 chips。
 >
 > **微调与发版（2026-11-18，用户实机确认档位生效后）：** ①设置页 7 个档位按钮缩小约一半（字号 9px、紧凑内边距）；②对话模型选择器去掉「跟随模型默认」，档位存在时直接列声明档位、为空时单按钮兜底；随 0.2.35 发版。
+
+### OD-ARCH-182：外发脱敏边界收口（待批准，2026-11-18 紧急）
+
+> **触发（用户 0.2.38 实机自检）：** 含实名、企业、金额与内部职务的材料经工作区知识库文件被模型以工具读取后，明文发送到公网端点（opendesign / amr-link.open-design.ai）。核查结论：**提示词通道的脱敏器默认开启且在工作；漏洞通道是工具读取的文件内容——工具结果由 DSH 引擎直接进模型上下文，OmniDesk 脱敏器不接入该链路**（masker.py 自述「不接入 LLM 调用链」）。叠加因素：敏感字典默认为空（示例仅合成词条）、金额无默认规则、人名/机构为启发式（宁可少遮）、红线扫描不覆盖工具读取内容。属用户自述的「未做实质脱敏」，按项目规则「启发式扫描不等于代码级安全控制」——这层从来不是安全边界。
+
+**范围与原则：** 在 OmniDesk 自有层补可见性和可控边界；不改 runtime/（工具结果钩子是 DSH 上游能力，记缺口）。
+
+**阶段 A（可见性，立即）**
+> 1. 外发端点判定：非 localhost 端点时，界面提示「脱敏仅覆盖提示词通道，工具读取的工作区内容不受脱敏保护」；敏感字典为空时同日提示「未配置人员/机构词典」。
+> 2. 每轮对话展示脱敏状态：已脱敏处数与类型；脱敏被 OMNIDESK_MASKER=off 关闭时显式告警。
+
+**阶段 B（默认规则补强）**
+> 1. masker 增加金额模式（数字+万/亿/元、区间写法）→ [AMOUNT]；统一社会信用代码（18 位）→ [USCC]；保持既有身份证/银行卡/手机/邮箱规则。
+> 2. 规则命中率单测（合成样例），避免误遮普通文本。
+
+**阶段 C（工具读取边界的工程替代，重点）**
+> 1. 「脱敏镜像工作区」：工作区文件入库/整理时生成脱敏副本，对话工具只读镜像目录；原文件不进入工具可读路径（或场景规则明确禁止读原目录）。需评估对现有工作记录/知识库路径的影响。
+> 2. 或者：知识库类文件的对话读取统一走 knowledge_ingest 的脱敏管线（已实现），模型不直接读原文件。
+> 3. 二选一须先做路径影响评估，再定实现。
+
+**明确不做：** 不改 runtime/；不承诺「脱敏=授权」（案件、线索、人物画像等禁入材料仍禁止进入工作台，规则不变）；不把真实词典写入仓库。
+
+**验证：** 合成样例端到端（提示词与工具读取两条通道各自的可观测结果）；既有 masker 单测全过；真实窗口提示文案核对。
+
+> **用户裁决（2026-11-18）：** 不做阶段 A 的外发可见性建设；只要求在宿主端对话框输入向外发模型时先做脱敏，规则保持简单（名字、银行卡、电话等部分替换）。**实施结果：** masker 补强——金额（万/亿）、名单式人名、无后缀企业名（两家/三家/等+企业）、扩展姓名触发词、常见词防误遮（金额/金融等）；对话两条路径统一显示「已自动脱敏（类别 处数）」；顺带修正一处自 0.2.33 起失效的适配器单测（selectModel 拒绝档位应为降级而非抛错）。验证：masker 46/46、markdown 38/38、adapter 101/101、tsc/build、masker UI/audit 脚本全过。**未覆盖（如实告知）：** 模型用工具读取的工作区文件内容仍不经过脱敏——该通道不在输入侧；阶段 C 的镜像方案仍待另行评估。
 
 **未验证（用户实测）：** 声明不实档位时真实调用报错的呈现与回改流程；设置保存后选择器档位刷新的时机（保存会同步覆盖文件并重启引擎）。
 

@@ -129,7 +129,8 @@ const reportSections = scene.sections.split("\n").filter((s) => s.trim());
 // 必须来自 Skill，而不是写死在平台里。OD-ARCH-173 S2 起 Skill 正文按需读取，
 // 提示词只放 name/description/读取方式的指针，因此断言改为「指针在、正文不在」。
 const skillPointer = cp.skillPointer({ id: "memory-agent", content: skillText });
-check("note_has_six_elements", ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => note.includes(k)), "");
+// OD-ARCH-176 起六要素在技能正文（按需读取），不在技能指针里；断言改读技能文件。
+check("note_has_six_elements", ["时间", "地点", "人物", "事件", "影响", "感受"].every((k) => skillText.includes(k)), "");
 check("note_points_to_skill_pointer", note.includes(skillPointer), "");
 check("note_reads_skill_body_on_demand", note.includes("读取：调用 skill 工具，name=memory-agent"), "");
 check("note_does_not_inject_skill_body", !note.includes(skillText.trim()), "");

@@ -292,9 +292,9 @@ def main() -> int:
 
     # ---- 静态：Skill ----
     check("skill_six_fields", all(k in skill for k in ["时间", "地点", "人物", "事件", "影响", "感受"]))
-    check("skill_no_file_permission", "工作台逐字比对" in skill and "本机是工作记录的唯一存储地" in skill)
-    check("skill_verdict_format", "<omnidesk-verdict>" in skill and "append" in skill and "move" in skill)
-    check("skill_no_legacy_action", '"record|move|confirm|answer"' not in skill and "reply" not in skill, "")
+    check("skill_no_file_permission", "连续片段" in skill and "写盘由工作台执行" in skill)
+    check("skill_verdict_format", "append" in skill and "move" in skill and "merge" in skill and "reply_hint" in skill)
+    check("skill_no_legacy_action", '"action"' not in skill and "worklog_" not in skill, "")
     check("skill_no_report_sections", "本周概述" not in skill)
     check("skill_links_report", "memory-report" in skill)
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")

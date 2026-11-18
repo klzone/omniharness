@@ -87,13 +87,14 @@ def check_skill_text() -> None:
     # 周报相关断言改读新文件；随手记相关断言仍读 memory-agent（职责未变）。
     mr = (SKILLS / "memory-report" / "SKILL.md").read_text(encoding="utf-8")
 
-    check("ma_mentions_iso_week_file", "工作记录/2026-Wxx.md" in ma.replace("库/", ""), "")
-    check("ma_forbids_rewrite", "禁止整文件重写" in ma or "禁止整文件重写、禁止覆盖" in ma, "")
-    check("ma_append_only_stated", "只追加" in ma, "")
-    check("ma_destinations_all_four", all(d in ma for d in ws.DESTINATIONS), "")
-    check("ma_no_hard_expand", "不硬扩" in ma, "")
-    check("ma_discussion_shape", "问题 → 结论" in ma or "问题**：" in ma, "")
-    check("ma_long_text_points", "只记要点" in ma, "")
+    # OD-ARCH-176 起：随手记只定判断口径，输出走统一 intent 契约；旧断言改查新口径。
+    check("ma_mentions_iso_week_file", all(k in ma for k in ("append", "merge", "move")), "")
+    check("ma_forbids_rewrite", "不改写" in ma and "不补字" in ma, "")
+    check("ma_append_only_stated", "写盘由工作台执行" in ma, "")
+    check("ma_destinations_all_four", "去向" in ma and "reply_hint" in ma, "")
+    check("ma_no_hard_expand", "长篇取最关键一段" in ma, "")
+    check("ma_discussion_shape", "review" in ma and "missing" in ma, "")
+    check("ma_long_text_points", "500 字" in ma, "")
     check("mr_report_confirm_gate", "只有用户明确确认后才落盘" in mr, "")
     check("mr_report_naming", "W<两位周次>-周报.md" in mr, "")
     check("mr_report_sections", all(s in mr for s in ws.REPORT_SECTIONS), "")

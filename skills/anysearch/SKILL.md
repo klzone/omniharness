@@ -1,14 +1,21 @@
 ---
 name: anysearch
-description: OmniDesk 的联网检索薄包装。转发到本机已安装的 anysearch CLI，用于规范、公开资料与新闻查询；不复制上游脚本，不读取或打印密钥。
+description: OmniDesk 的联网检索薄包装。转发到本机已安装的 AnySearch CLI，用于规范、公开资料与新闻查询；不复制上游脚本，不读取或打印密钥。
 user-invocable: true
 ---
 
-# 联网检索 (AnySearch)
+# 联网检索
 
-只在需要**当前信息或公开来源**时使用：查规范、政策原文、公开报道、产品文档、事实核对。纯凭已有材料能回答的问题不要检索。
+## 一、用途
 
-## 一、调用方式
+只在需要当前信息或公开来源时使用：查规范、政策原文、公开报道、产品文档、事实核对。纯凭已有材料能回答的问题不要检索。
+
+## 二、触发与排除
+
+- 触发：需要 2025 年之后的新信息；核对公开链接是否仍可访问；查规范与公开报道的原文。
+- 排除：材料里已有答案；内部记录、私人材料；案件、线索、人物画像、未公开审查调查信息。
+
+## 三、调用
 
 本 Skill 是薄包装，实体位于本机 Codex 技能目录，不在本仓库内。默认位置：
 
@@ -16,45 +23,33 @@ user-invocable: true
 ANYSEARCH_SKILL_DIR = $HOME/.codex/skills/anysearch
 ```
 
-需要改位置时，由运行环境提供 `ANYSEARCH_SKILL_DIR` 指向含 `scripts/anysearch_cli.py` 的目录。命令：
+需要改位置时，由运行环境提供 `ANYSEARCH_SKILL_DIR`，指向含 `scripts/anysearch_cli.py` 的目录。
 
 ```bash
 python3 "${ANYSEARCH_SKILL_DIR:-$HOME/.codex/skills/anysearch}/scripts/anysearch_cli.py" search "查询词" --max_results 5
-```
-
-其他常用形状（输出为 JSON，字段以 CLI 实际返回为准）：
-
-```bash
-python3 "$ANYSEARCH_SKILL_DIR/scripts/anysearch_cli.py" get_sub_domains --domain finance
 python3 "$ANYSEARCH_SKILL_DIR/scripts/anysearch_cli.py" extract "https://example.com/page"
 ```
 
-不要编造 `--format` 之类不存在的参数；参数报错时先跑该子命令的 `--help`。
+参数以 CLI 实际返回为准；不要编造 `--format` 之类不存在的参数。参数报错时先跑该子命令的 `--help`。
 
-## 二、凭据与边界
+## 四、结果与边界
 
-- CLI 自行从它所在目录加载 `.env`，也接受环境变量与 `--api_key`。**不要读取、打印、复制 `.env`，不要把密钥写进查询、仓库、日志或成果文件。**
-- 无密钥可匿名低限额检索；额度耗尽、服务报错或网络失败时如实说明，**不得伪造检索结果**。是否改用其他检索方式，按当时可用工具与用户许可决定。
-- 查询词与提取的 URL 会发给外部服务。案件、线索、人物画像、未公开调查信息、身份证号、手机号等一律不检索；确需检索时先去掉可识别信息，并只保留完成检索所必需的词。
-- 检索结果默认只作当次回答的依据。写入库或成果前按现有确认流程处理，不自动落盘。
+1. 先给结论，再列实际使用的来源链接与日期。
+2. 区分「检索结果原文」「自己的归纳」与「未核实」；没有检索到就直说，不用模型记忆补齐。
+3. 同一问题检索一次即可，不重复刷同一查询；需要多个独立事实时用 `batch_search` 一次并行。
+4. CLI 自行加载 `.env`。不要读取、打印、复制 `.env`，不要把密钥写进查询、仓库、日志或成果文件。
+5. 查询词与 URL 会发给外部服务。案件、线索、人物画像、未公开调查信息、身份证号、手机号一律不检索；确需检索时先去掉可识别信息。
 
-## 三、结果呈现
+## 五、垂直域
 
-1. 先给结论，再列出实际使用的来源链接与日期。
-2. 区分「检索结果原文」「自己的归纳」与「未核实」；没有检索到就直说没有，不用模型记忆补齐。
-3. 同一问题检索一次即可，不重复刷同一查询。需要多个独立事实时，用 `batch_search` 一次并行。
+金融、学术、医疗、法律、代码、安全、专利、能源、环境、农业、社交平台等主题，先 `get_sub_domains --domain <域>`，再按返回的 `sub_domain` 与必填参数调用；不确定是否属于垂直域时，用一条通用查询加一条垂直查询并行。
 
-## 四、垂直域
+## 六、不可用时
 
-金融、学术、医疗、法律、代码、安全、专利、能源、环境、农业、社交平台等主题，先 `get_sub_domains --domain <域>`，再按其返回的 `sub_domain` 与必填参数调用；不确定是否属于垂直域时，用一条通用查询加一条垂直查询并行。
+OmniDesk 引擎环境默认没有本机 Codex 技能目录，也没有 `ANYSEARCH_SKILL_DIR` 变量——找不到 `scripts/anysearch_cli.py` 属于预期，不是故障。此时不要按参数报错指引反复重试，也不要搜索安装路径；直接改用可用的联网手段（web_fetch 直连权威来源等），并在结果里如实标注实际使用的渠道与来源限制。
 
-## 五、不可用时
+目录或 CLI 不存在时，明确回报「AnySearch 未安装或路径不可用」，不尝试安装、下载或改写上游技能包，也不凭空返回检索结果。
 
-OmniDesk 引擎环境默认**没有**本机 Codex 技能目录，也没有 `ANYSEARCH_SKILL_DIR` 变量——找不到 `scripts/anysearch_cli.py` 属于预期，不是故障。此时**不要**按参数报错指引反复重试，也不要搜索安装路径；直接改用可用的联网手段（web_fetch 直连权威来源等），并在结果里如实标注实际使用的渠道与来源限制。
+## 七、依赖
 
-若上述目录或 CLI 不存在，明确回报「AnySearch 未安装或路径不可用」，不要尝试安装、下载或改写上游技能包，也不要凭空返回检索结果。
-
-## 六、依赖
-
-脚本需要 Python 的 `requests` 库（HTTPS 证书链由 `certifi` 提供）。发布包已在 `runtime/python-vendor` 内置这两项，宿主会把该目录加入 `PYTHONPATH`，无需用户再执行 pip。只有开发态缺少内置目录时，才在引擎所用 Python 中执行 `pip install requests certifi`。
-
+脚本需要 Python 的 `requests`（证书链由 `certifi` 提供）。发布包已在 `runtime/python-vendor` 内置，宿主会把该目录加入 `PYTHONPATH`，无需用户 pip；只有开发态缺内置目录时才在引擎所用 Python 中安装。

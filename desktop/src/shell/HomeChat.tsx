@@ -562,6 +562,44 @@ function AssistantText({
   );
 }
 
+/** 出站脱敏提示（OD-ARCH-142/182）：只报类别与处数，不含原文。 */
+function maskNoticeFromReceipt(
+  masked:
+    | {
+        id_card?: number;
+        phone?: number;
+        masker?: { by_type?: Record<string, number> } | null;
+      }
+    | null
+    | undefined,
+): string | null {
+  if (!masked) return null;
+  const parts: string[] = [];
+  const labels: Record<string, string> = {
+    PERSON: "人名",
+    NAME: "人名",
+    BRANCH: "机构",
+    ORG: "组织",
+    CUSTOM: "自定义词",
+    EMAIL: "邮箱",
+    BANKCARD: "银行卡",
+    IDCARD: "身份证号",
+    PHONE: "手机号",
+    AMOUNT: "金额",
+  };
+  const idCard = masked.id_card ?? 0;
+  const phone = masked.phone ?? 0;
+  if (idCard > 0) parts.push("身份证号 " + idCard + " 处");
+  if (phone > 0) parts.push("手机号 " + phone + " 处");
+  for (const [kind, count] of Object.entries(masked.masker?.by_type ?? {})) {
+    if (count <= 0) continue;
+    if (kind === "IDCARD" && idCard > 0) continue;
+    if (kind === "PHONE" && phone > 0) continue;
+    parts.push((labels[kind] ?? kind) + " " + count + " 处");
+  }
+  return parts.length > 0 ? "已自动脱敏（" + parts.join("、") + "）。" : null;
+}
+
 /** 复核结果的展示行（OD-ARCH-176：质量分析与分类同一调用返回）。 */
 function formatRecordReviewLines(review: RecordReview | null): string[] {
   if (!review) return [];
@@ -2550,7 +2588,7 @@ export function HomeChat({
             endedAtMs: null,
             sentText: userText,
             notice:
-              [notice, receipt.privacy_masked ? "已自动脱敏。" : null]
+              [notice, maskNoticeFromReceipt(receipt.privacy_masked)]
                 .filter(Boolean)
                 .join(" ") || null,
           },

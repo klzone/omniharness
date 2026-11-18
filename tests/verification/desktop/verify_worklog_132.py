@@ -218,9 +218,9 @@ def main() -> int:
     check("home_reports_merge_line", '"· 并入 "' in home)
 
     # ---- 静态：Skill ----
-    check("skill_merge_rule", "merge" in skill and "不新起条目" in skill)
+    check("skill_merge_rule", "merge" in skill and "指向索引那条" in skill)
     check("skill_merge_json", '"merge":[{"date"' in skill)
-    check("skill_four_fields", "四个字段都可省" in skill)
+    check("skill_four_fields", all(k in skill for k in ("intent", "record", "review", "reply_hint")))
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")
 
     # ---- 运行：真实源码 ----

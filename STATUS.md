@@ -790,3 +790,32 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 推送：`git push origin main` → exit 0；回执 `b8b9357b9c..f4c67db150  main -> main`（https://github.com/klzone/omniharness.git）。未 force、未打标签、未重试。
 - 推送后 `git status --short --branch` 快照：`## main...origin/main`（工作树干净，与 origin/main 同步）。
 - 清单外未暂存文件：无。本节追加后 STATUS.md 重新处于已修改状态（未提交），留待 ARCHITECT 终检。
+
+## 2026-11-18 组合诊断：0.2.38 外发脱敏核查与输入侧规则补强（ARCHITECT 亲自执行）
+
+> 用户 Windows 自检：含实名、企业名、金额、职务的线索材料经公网端点外发。核查结论：提示词通道脱敏器默认开启且在工作；泄漏通道是「模型用工具读取工作区文件」——工具结果经 DSH 引擎直接进模型上下文，OmniDesk 脱敏器不接入该链路；叠加字典为空、金额无规则、人名/机构启发式漏遮。
+
+### 改动
+
+- `engine/omnidesk_engine/security/masker.py`：新增金额规则（万/亿/元）、名单式人名规则（顿号串）、无后缀企业名回扫（两家/三家/等+企业）、扩展姓名触发词（涉及/涉案/名单/股东/法定代表人等）、常见词防误遮（金额/金融/黄金等）；占位类型新增 AMOUNT。
+- `desktop/src/shell/HomeChat.tsx`：新增 `maskNoticeFromReceipt`，两条对话路径统一显示「已自动脱敏（人名 X 处、银行卡 Y 处…）」。
+- `tests/verification/engine-interface/adapter/test_web_api_unit.py`：修正自 0.2.33 起失效的旧断言（selectModel 拒绝档位应为降级继续而非抛错）；新增 masker 回归用例（名单/无后缀企业/金额/防误遮）。
+
+### 验证（实际命令与结果）
+
+- masker 单测 46/46（新增用例）、markdown 38/38、adapter 101/101；tsc / npm run build 通过；verify_masker_audit_142 15/15、verify_masker_ui_142 7/7。
+- 复现样例：名单式人名、四家企业（一家带后缀一家不带）、1000 万金额、银行卡、电话全部命中；「涉及金额」不再误遮。
+
+### 未覆盖与告知
+
+- 工具读取的工作区文件内容仍不经过脱敏（OD-ARCH-182 阶段 C 镜像方案未实施；本轮按用户裁决只做输入侧）。
+- 本改动未推送；是否发 0.2.39 待用户指令。
+
+
+## OD-ARCH-183 Windows 引擎进程树回收（2026-11-18，ARCHITECT 亲自实施）
+
+- 开工基线：HEAD `cb0a0b31f0`；既有未提交改动（PLANS.md、skills/*、engine/security/masker.py、desktop/src/shell/HomeChat.tsx 等）原样保留，未 stash/reset/clean。
+- 改动：`engine/omnidesk_engine/process_owner.py`（Windows 分支：tasklist 存活判定、PowerShell 命令行、taskkill 树杀、镜像名核验、pgid=0 走 child_pid）、`web_api_adapter.py`（shutdown 先树杀）、`serve.py`（关停失败保留登记）、`desktop/src-tauri/src/platform.rs`（Windows process_stat/cmd/table/image/kill_tree/sweep）、`process_owner.rs`（Windows 启动回收、收尾兜底、退出兜底）、`lib.rs`（RunEvent::Exit 兜底）、`tests/verification/desktop/verify_process_platform_133.py`（断言更新）、`tests/verification/engine-interface/adapter/test_process_owner_unit.py`（新增 5 个 Windows 判定单测）。
+- 实跑：`cargo test --offline --lib -- --test-threads=1` → 1232 passed / 0 failed / 1 ignored（49.5s）；`python3 -m unittest discover -p "test_*.py"`（engine adapter）→ 249 passed；`verify_process_platform_133` → 28/28；`verify_sys_process_701` → 40/40；`verify_proc_alias_149` → 34/34；`python3 -m py_compile` 两处引擎文件通过。
+- 既有失败：`verify_process_lifecycle_074` 4 项失败（N/O/P/R），在 HEAD 纯净 worktree 上复现同样失败，属环境性问题。
+- 未验证：Windows 专属编译与行为（本机无法交叉构建，缺 `llvm-rc`）；Windows 实机开关两次后残留为 0 的验收。

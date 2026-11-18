@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -30,6 +31,7 @@ from typing import Iterable, Optional
 OWNER_FILENAME = "owner.json"
 _BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
 _DARWIN = sys.platform == "darwin"
+_WINDOWS = sys.platform == "win32"
 
 
 class OwnerConflict(RuntimeError):
@@ -170,6 +172,8 @@ def owner_path(state_dir: str | os.PathLike[str]) -> Path:
 
 def _proc_stat(pid: int) -> Optional[tuple[str, int]]:
     """返回 (进程状态, 进程组号)；进程不存在或不可读时返回 None。"""
+    if _WINDOWS:
+        return ("R", 0) if _windows_alive(pid) else None
     if _DARWIN:
         return _darwin_stat(pid)
     try:
@@ -190,6 +194,8 @@ def _proc_stat(pid: int) -> Optional[tuple[str, int]]:
 
 
 def _proc_cmdline(pid: int) -> list[str]:
+    if _WINDOWS:
+        return _windows_cmdline(pid)
     if _DARWIN:
         return _darwin_cmdline(pid)
     try:
@@ -215,6 +221,8 @@ def is_engine_cmdline(cmdline: Iterable[str]) -> bool:
 def group_members(pgid: int) -> list[tuple[int, list[str]]]:
     if pgid <= 1:
         return []
+    if _WINDOWS:
+        return [(pgid, _windows_cmdline(pgid))] if is_alive(pgid) else []
     if _DARWIN:
         return _darwin_group_members(pgid)
     members: list[tuple[int, list[str]]] = []
@@ -248,6 +256,53 @@ def child_group_is_ours(pid: int, pgid: int) -> bool:
     return is_engine_cmdline(_proc_cmdline(pid))
 
 
+def _windows_image(pid: int) -> str:
+    """Windows 镜像名（小写 basename）。查不到时返回空串。"""
+    if pid <= 0:
+        return ""
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "PID eq %d" % pid, "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    for line in out.stdout.splitlines():
+        match = re.match(r'^"([^"]+)","(\d+)"', line.strip())
+        if match and int(match.group(2)) == pid:
+            return match.group(1).lower()
+    return ""
+
+
+def _windows_alive(pid: int) -> bool:
+    return bool(_windows_image(pid))
+
+
+def _windows_cmdline(pid: int) -> list[str]:
+    """取命令行仅用于身份核验；本进程直接读 sys.argv，避免拉起 PowerShell。"""
+    if pid <= 0:
+        return []
+    if pid == os.getpid():
+        return [sys.executable or "python", *sys.argv]
+    script = (
+        "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=%d\" "
+        "-ErrorAction SilentlyContinue; if ($p -and $p.CommandLine) { $p.CommandLine }"
+    ) % pid
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    line = out.stdout.strip().splitlines()
+    return line[0].split() if line else []
+
+
 def read_owner(state_dir: str | os.PathLike[str]) -> Optional[OwnerRecord]:
     path = owner_path(state_dir)
     try:
@@ -276,6 +331,36 @@ def read_owner(state_dir: str | os.PathLike[str]) -> Optional[OwnerRecord]:
         return None
 
 
+def _inspect_owner_windows(record: OwnerRecord) -> OwnerInspection:
+    """Windows 核验：没有 /proc，用镜像名 + 登记 pid 判定，不猜命令行。"""
+    if is_alive(record.pid):
+        image = _windows_image(record.pid)
+        if image in ("omnidesk-python.exe", "python.exe", "pythonw.exe"):
+            return OwnerInspection(
+                "active_engine", record, "登记进程仍存活且镜像名一致", ()
+            )
+        return OwnerInspection(
+            "unknown_live",
+            record,
+            "登记进程存活但镜像名不是引擎；拒绝启动，不杀进程",
+            (),
+        )
+    if record.child_pid > 1 and is_alive(record.child_pid):
+        image = _windows_image(record.child_pid)
+        if image in ("omnidesk-node.exe", "node.exe"):
+            return OwnerInspection(
+                "orphan_group", record, "引擎已退出，DSH 子进程仍在运行",
+                ((record.child_pid, ()),),
+            )
+        return OwnerInspection(
+            "unknown_live",
+            record,
+            "子进程存活但镜像名不是 DSH node；拒绝回收",
+            ((record.child_pid, ()),),
+        )
+    return OwnerInspection("pid_reused", record, "登记进程与 DSH 子进程均已退出", ())
+
+
 def inspect_owner(state_dir: str | os.PathLike[str]) -> OwnerInspection:
     path = owner_path(state_dir)
     if not path.exists():
@@ -283,6 +368,8 @@ def inspect_owner(state_dir: str | os.PathLike[str]) -> OwnerInspection:
     record = read_owner(state_dir)
     if record is None:
         return OwnerInspection("invalid", reason="owner.json 无法解析")
+    if _WINDOWS:
+        return _inspect_owner_windows(record)
 
     members = tuple((pid, tuple(cmd)) for pid, cmd in group_members(record.pgid))
     current_boot = boot_id()
@@ -382,8 +469,12 @@ def claim_ownership(state_dir: str | os.PathLike[str], channel: str) -> OwnerRec
         raise OwnerConflict(inspection.reason + "（state_dir=" + str(root) + "）")
     if inspection.status == "orphan_group":
         # 引擎侧只回收身份完全可核验的遗留组；宿主正常路径会先做同样的回收。
-        pgid = inspection.record.pgid if inspection.record else 0
-        terminate_group(pgid, grace=3.0)
+        earlier = inspection.record
+        pgid = earlier.pgid if earlier else 0
+        if pgid > 1:
+            terminate_group(pgid, grace=3.0)
+        elif _WINDOWS and earlier and earlier.child_pid > 1:
+            terminate_group(0, grace=3.0, trusted_leader=earlier.child_pid)
     record = OwnerRecord(
         pid=os.getpid(),
         pgid=current_pgid(),
@@ -436,6 +527,28 @@ def terminate_group(
 
     只允许杀「组内全部是本产品进程」的组；否则抛 OwnerConflict，绝不误伤。
     """
+    if _WINDOWS:
+        target = int(trusted_leader) if trusted_leader and trusted_leader > 1 else int(pgid)
+        if target <= 1:
+            raise OwnerConflict("拒绝终止非法的进程号：%r" % (target,))
+        if target == os.getpid():
+            raise OwnerConflict("拒绝终止包含自身的进程组")
+        if not is_alive(target):
+            return False
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(target), "/T", "/F"],
+                capture_output=True,
+                timeout=max(5.0, float(grace) + 5.0),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        deadline = time.monotonic() + max(0.5, float(grace))
+        while time.monotonic() < deadline:
+            if not is_alive(target):
+                return True
+            time.sleep(0.05)
+        return True
     if pgid <= 1:
         raise OwnerConflict("拒绝终止非法的进程组号：%r" % (pgid,))
     members = group_members(pgid)
@@ -510,11 +623,15 @@ def reclaim_owner(
             owner_path(root).unlink(missing_ok=True)
             result["action"] = "removed_stale_record"
             return result
-        forced = terminate_group(record.pgid, grace=grace)
+        forced = terminate_group(record.pgid, grace=grace) if record.pgid > 1 else False
         child_forced = False
         if record.child_pgid and record.child_pgid != record.pgid:
             child_forced = terminate_group(
                 record.child_pgid, grace=grace, trusted_leader=record.child_pid or None
+            )
+        elif _WINDOWS and record.child_pid > 1:
+            child_forced = terminate_group(
+                0, grace=grace, trusted_leader=record.child_pid
             )
         forced = forced or child_forced
         result["action"] = "sigkill_group" if forced else "sigterm_group"

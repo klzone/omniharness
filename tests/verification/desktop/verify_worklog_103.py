@@ -156,8 +156,8 @@ def main() -> int:
     # ---- 静态：Skill 规则 ----
     # OD-ARCH-104：日期不再由工作台从原文里「认出来」，改由模型判定 + 索引校验；
     # Skill 同步改成「先分类、再输出判定块」。
-    check("skill_date_judged_by_model", "日期指令" in skill and "工作台校验后" in skill)
-    check("skill_no_file_editing", "工作台逐字比对" in skill and "本机是工作记录的唯一存储地" in skill)
+    check("skill_date_judged_by_model", "日期指令" in skill and "工作台" in skill and "不晚于今天" in skill)
+    check("skill_no_file_editing", "连续片段" in skill and "写盘由工作台执行" in skill)
     check("skill_no_invented_tool", "worklog_redate" not in skill)
     check("skill_within_budget", len(skill) <= 2500, f"{len(skill)} 字符")
 

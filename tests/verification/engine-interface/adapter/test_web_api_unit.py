@@ -483,7 +483,7 @@ class ReasoningEffortTests(unittest.TestCase):
         status = self.adapter.get_task_status(record.omni_task_id)
         self.assertIn(status.status.value, {"running", "starting", "queued", "succeeded"})
 
-    def test_submit_fails_when_effort_cannot_be_applied(self):
+    def test_submit_degrades_when_effort_cannot_be_applied(self):
         self.adapter._ensure_approval_channel = lambda: None
         self.adapter._create_session = lambda workspace, task, preset=None: "sess-new"
 
@@ -502,12 +502,17 @@ class ReasoningEffortTests(unittest.TestCase):
             raise EngineError(EngineErrorCode.INVALID_ARGUMENT, "unsupported reasoning effort")
 
         self.adapter.select_model = reject
-        with self.assertRaises(EngineError):
-            self.adapter.submit_task(SubmitTaskRequest(
+        import contextlib
+        import io
+
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            receipt = self.adapter.submit_task(SubmitTaskRequest(
                 intent="unit", workspace_dir="/tmp", prompt_text="x",
                 reasoning_effort="high", provider="p", model="m",
             ))
-        self.assertEqual(prompted, [], "档位失败时不得把 prompt 发出去")
+        self.assertIsNotNone(receipt, "档位失败应按模型默认继续提交")
+        self.assertIn("select_model 被拒", captured.getvalue(), "降级必须留下日志")
 
 
 class StreamUnmaskTests(unittest.TestCase):

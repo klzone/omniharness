@@ -74,7 +74,8 @@ def static_checks() -> None:
 
     sec4 = section(skill, "## 四、")
     sec6 = section(skill, "## 六、")
-    check("skill_write_staging", "workspace/staging/kb/知识库/概念/" in sec4)
+    check("skill_write_staging", "staging/kb/知识库/概念/" in sec4 and "当前工作目录" in sec4)
+    check("skill_staging_relative_not_prefixed", "`workspace/staging" not in sec4)
     check("skill_no_direct_vault_write", "不要直接写知识库根" in sec4)
     check("skill_no_missing_args", "禁止缺参调用" in sec4 and "`file_path`" in sec4 and "`content`" in sec4)
     check("skill_index_by_host", "不要自己改索引" in sec4 and "knowledge_sync_to_vault" in sec4)

@@ -29,6 +29,8 @@ _TYPE_KEY_RE = re.compile(r'"type"\s*:')
 _IDCARD_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
 _BANKCARD_RE = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
 _PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+# 金额（OD-ARCH-182）：数字 + 万/亿（可带元）。年份「2026年」不含万/亿，不会误伤。
+_AMOUNT_RE = re.compile(r"(?<!\d)(\d{1,4}(?:\.\d+)?)(万亿|万|亿)(?:元|余元|美元)?")
 _EMAIL_RE = re.compile(
     r"(?<![A-Za-z0-9.!#$%&'*+/=?^_`{|}~-])"
     r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@"
@@ -55,8 +57,21 @@ _NAME_BEFORE_RE = re.compile(
     r"(?:与|和|同|跟|向|对|给|找|叫|由|让|请|联系|询问|约谈|谈话|同事|"
     r"人员|负责人|联系人|姓名|对象|会见|汇报|陪同|参加|督查|巡察|反映|"
     r"举报|批评|表扬|慰问|走访|调研|座谈|听取|约见|接见|拜访|看望|"
-    r"通知|安排)\s*[:：]?\s*([" + _SURNAMES + r"][一-龥]{1,2})"
+    r"通知|安排|涉及|涉案|关联|分别|包括|其中|名单|股东|法定代表人|"
+    r"经办|当事人|嫌疑人)\s*[:：]?\s*([" + _SURNAMES + r"][一-龥]{1,2})"
 )
+# 名单式人名（OD-ARCH-182）：顿号分隔的姓名串没有上下文触发词，需要单独命中。
+# 两条规则分别覆盖「名字后跟顿号+下一个名字」与「顿号后的名字」，
+# 用不消费分隔符的方式逐个命中，3 人以上的名单也能全覆盖。
+_NAME_LIST_FOLLOW_RE = re.compile(
+    r"([" + _SURNAMES + r"][一-龥]{1,2})(?=、[" + _SURNAMES + r"][一-龥]{1,2})"
+)
+_NAME_LIST_PRECEDE_RE = re.compile(
+    r"(?<=、)([" + _SURNAMES + r"][一-龥]{1,2})"
+    r"(?=[、，,。；;：: ]|$|谈话|表示|反映|介绍|汇报|参与|涉及|系|等)"
+)
+# 常见「姓氏开头但不是人名」的词，避免「涉及金额」这类误遮。
+_NAME_STOPWORDS = {"金额", "金融", "黄金", "银行", "高额", "高原"}
 _NAME_AFTER_RE = re.compile(
     r"([" + _SURNAMES + r"][一-龥]{1,2})(?:同志|主任|书记|行长|经理|科长|"
     r"局长|处长|部长|队长|院长|所长|厂长|组长|老师|主席|副行长|副总|"
@@ -78,6 +93,9 @@ _ORG_LONG_SUFFIX_RE = re.compile(
 _ORG_SHORT_SUFFIX_RE = re.compile(
     r"([一-龥]{2,6}?(?:工厂|厂|店|行|社|所))(?![一-龥])"
 )
+# 无后缀企业名（OD-ARCH-182）：如「永晋盈、鸿耀泰两家企业」。先命中计数词，
+# 再向前回扫顿号分隔的 2–6 字名称段。纯启发式，只用于出站遮蔽。
+_ORG_COUNT_RE = re.compile(r"(?:两家|三家|四家|五家|等)(?:企业|公司|单位|机构)")
 # 「行」既是机构后缀（商行/车行），也是常见动词尾字（进行/运行/执行）。
 # 单字后缀里只对「行」加这层窄口径放行；不扩展到白名单，避免把词表做大。
 _HANG_VERB_PREFIX = set("进运执试现发履举可自同流强实施推开并飞航旅出")
@@ -88,7 +106,9 @@ _ID_CHECK_CODES = "10X98765432"
 _RULE_PRIORITY = {"IDCARD": 0, "BANKCARD": 1, "PHONE": 2, "EMAIL": 3}
 _DICT_PRIORITY = 10
 
-_PLACEHOLDER_TYPES = "|".join(("IDCARD", "BANKCARD", "PHONE", "EMAIL", "PERSON", "BRANCH", "ORG", "CUSTOM"))
+_PLACEHOLDER_TYPES = "|".join(
+    ("IDCARD", "BANKCARD", "PHONE", "EMAIL", "AMOUNT", "PERSON", "BRANCH", "ORG", "CUSTOM")
+)
 _PLACEHOLDER_RE = re.compile(r"\[(%s)_([0-9A-F]{8})\]" % _PLACEHOLDER_TYPES)
 _PLACEHOLDER_PREFIX_RE = re.compile(r"\[(?:%s)_" % _PLACEHOLDER_TYPES)
 
@@ -455,18 +475,44 @@ class DataMasker:
         for match in _PHONE_RE.finditer(text):
             value = match.group(0)
             out.append(_Candidate("PHONE", match.start(), match.end(), value, value, 2))
+        for match in _AMOUNT_RE.finditer(text):
+            value = match.group(0)
+            out.append(_Candidate("AMOUNT", match.start(), match.end(), value, value, 2))
         # 人名：只在有明确人物上下文时遮，避免把「高效」「关于」误当姓名。
         seen_names = set()
-        for pattern in (_NAME_BEFORE_RE, _NAME_AFTER_RE):
+        for pattern in (_NAME_BEFORE_RE, _NAME_AFTER_RE, _NAME_LIST_FOLLOW_RE, _NAME_LIST_PRECEDE_RE):
             for match in pattern.finditer(text):
                 value = match.group(1)
                 if value in seen_names:
+                    continue
+                if value in _NAME_STOPWORDS:
                     continue
                 if _looks_like_mask(value):
                     continue
                 seen_names.add(value)
                 start = match.start(1)
                 out.append(_Candidate("NAME", start, start + len(value), value, value, 4))
+        # 无后缀企业名：计数词前回扫顿号分隔的名称段（最多三段）。
+        for match in _ORG_COUNT_RE.finditer(text):
+            cursor = match.start()
+            need_separator = False
+            for _ in range(3):
+                end = cursor
+                if need_separator:
+                    if end > 0 and text[end - 1] in "、，,":
+                        end -= 1
+                    else:
+                        break
+                begin = end
+                while begin > 0 and "一" <= text[begin - 1] <= "龥" and end - begin < 6:
+                    begin -= 1
+                if end - begin < 2:
+                    break
+                value = text[begin:end]
+                if not _looks_like_mask(value):
+                    out.append(_Candidate("ORG", begin, end, value, value, 4))
+                cursor = begin
+                need_separator = True
         # 公司/机构：后缀命中即遮。纯正则不做分词，名称前缀收敛到紧邻后缀的最后
         # 2 个字，避免吞入「今天去」这类前文；仍属启发式，可能漏拦或误拦。
         for pattern in (_ORG_LONG_SUFFIX_RE, _ORG_SHORT_SUFFIX_RE):

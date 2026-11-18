@@ -9932,6 +9932,11 @@ pub fn run() {
                         .unwrap_or_default();
                     service.stop(&record);
                 }
+                // OD-ARCH-183：退出兜底——窗口关闭路径之外（菜单退出/异常收尾）
+                // 也按登记回收 DSH node 子树，避免残留。
+                if let Some(snap) = app.try_state::<HostSnapshot>() {
+                    crate::process_owner::cleanup_child_on_exit(&snap.paths.engine_state);
+                }
             }
         });
 }

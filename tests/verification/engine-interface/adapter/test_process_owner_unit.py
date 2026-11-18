@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import _harness as H  # noqa: F401 - 负责把 engine/ 加进 sys.path
@@ -227,6 +228,71 @@ class ProcessOwnerTests(unittest.TestCase):
         for pgid in (0, 1, -5):
             with self.assertRaises(po.OwnerConflict):
                 po.terminate_group(pgid, grace=0.1)
+
+
+class WindowsBranchTests(unittest.TestCase):
+    """Windows 分支的判定逻辑（在 macOS 上注入假实现，不依赖 tasklist）。"""
+
+    def record(self, **over):
+        base = dict(
+            pid=111,
+            pgid=0,
+            host_pid=999,
+            boot_id="",
+            channel="web-api",
+            started_at=0.0,
+            cmdline=[],
+            state_dir="",
+        )
+        base.update(over)
+        return po.OwnerRecord(**base)
+
+    def test_orphan_dsh_child_is_detected_without_proc(self):
+        rec = self.record(child_pid=333)
+        with mock.patch.object(po, "is_alive", side_effect=lambda pid: pid == 333), mock.patch.object(
+            po, "_windows_image", return_value="node.exe"
+        ):
+            out = po._inspect_owner_windows(rec)
+        self.assertEqual(out.status, "orphan_group")
+        self.assertEqual(out.group_members, ((333, ()),))
+
+    def test_live_engine_by_image_name(self):
+        rec = self.record()
+        with mock.patch.object(po, "is_alive", side_effect=lambda pid: pid == 111), mock.patch.object(
+            po, "_windows_image", return_value="omnidesk-python.exe"
+        ):
+            out = po._inspect_owner_windows(rec)
+        self.assertEqual(out.status, "active_engine")
+
+    def test_foreign_image_is_never_reclaimed(self):
+        rec = self.record()
+        with mock.patch.object(po, "is_alive", side_effect=lambda pid: pid == 111), mock.patch.object(
+            po, "_windows_image", return_value="chrome.exe"
+        ):
+            out = po._inspect_owner_windows(rec)
+        self.assertEqual(out.status, "unknown_live")
+
+    def test_windows_terminate_uses_taskkill_tree(self):
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        alive = {"pid": 444}
+        with mock.patch.object(po, "_WINDOWS", True), mock.patch.object(
+            po, "is_alive", side_effect=lambda pid: alive["pid"] == pid
+        ), mock.patch.object(po.subprocess, "run", side_effect=fake_run), mock.patch.object(
+            po.time, "sleep", side_effect=lambda _s: alive.update(pid=0)
+        ):
+            forced = po.terminate_group(0, grace=0.2, trusted_leader=444)
+        self.assertTrue(forced)
+        self.assertEqual(calls[0][:4], ["taskkill", "/PID", "444", "/T"])
+
+    def test_windows_terminate_refuses_self(self):
+        with mock.patch.object(po, "_WINDOWS", True):
+            with self.assertRaises(po.OwnerConflict):
+                po.terminate_group(os.getpid(), grace=0.1)
 
 
 if __name__ == "__main__":

@@ -490,6 +490,23 @@ class SessionTests(unittest.TestCase):
         # 自然掩码查不到时保持原样；别再把它当成「已完整还原」。
         self.assertEqual(leaked_report["restored"], 0)
 
+    def test_outbound_rules_cover_lists_amounts_and_stopwords(self):
+        """OD-ARCH-182：名单式人名、无后缀企业名、金额必须命中；常见词不误遮。"""
+        text = (
+            "与张瑞山、李汶桦谈话；另永晋盈、鸿耀泰两家企业涉及金额1000万元，"
+            "名单：杨炜华、文志成、蒲茸。银行卡6228480128801095778，电话13800138000。"
+        )
+        result = DataMasker().mask(text)
+        by_type = result.stats.by_type
+        self.assertGreaterEqual(by_type.get("NAME", 0), 4, by_type)
+        self.assertGreaterEqual(by_type.get("ORG", 0), 2, by_type)
+        self.assertGreaterEqual(by_type.get("AMOUNT", 0), 1, by_type)
+        self.assertGreaterEqual(by_type.get("BANKCARD", 0), 1, by_type)
+        self.assertGreaterEqual(by_type.get("PHONE", 0), 1, by_type)
+        # 「涉及金额」不能因为「涉及」触发词把「金额」当人名遮掉。
+        self.assertIn("金额", result.text)
+        self.assertNotIn("张瑞山、李汶桦", result.text)
+
 
 if __name__ == "__main__":
     unittest.main()

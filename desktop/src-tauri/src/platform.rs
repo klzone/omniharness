@@ -852,7 +852,43 @@ pub fn process_stat(pid: i32) -> Option<(char, i32)> {
     Some((state, pgid))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Windows：用 tasklist 取镜像名（小写）。只用于身份核验，不在热路径。
+#[cfg(windows)]
+fn tasklist_image(pid: i32) -> Option<String> {
+    if pid <= 0 {
+        return None;
+    }
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
+    hide_console(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix('"') else { continue };
+        let mut parts = rest.splitn(3, "\",\"");
+        let Some(name) = parts.next() else { continue };
+        let Some(pid_field) = parts.next() else { continue };
+        if pid_field.trim().parse::<i32>().ok() == Some(pid) {
+            return Some(name.to_ascii_lowercase());
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+pub fn process_image(pid: i32) -> Option<String> {
+    tasklist_image(pid)
+}
+
+#[cfg(windows)]
+pub fn process_stat(pid: i32) -> Option<(char, i32)> {
+    tasklist_image(pid).map(|_| ('R', 0))
+}
+
+#[cfg(all(not(windows), not(any(target_os = "linux", target_os = "macos"))))]
 pub fn process_stat(_pid: i32) -> Option<(char, i32)> {
     None
 }
@@ -896,7 +932,98 @@ pub fn process_cmd(pid: i32) -> Vec<String> {
         .collect()
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Windows：命令行只用于启动/收尾时的身份核验；失败按「查不到」处理。
+#[cfg(windows)]
+pub fn process_cmd(pid: i32) -> Vec<String> {
+    if pid <= 0 {
+        return Vec::new();
+    }
+    let script = format!(
+        "$p = Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\" -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine) {{ $p.CommandLine }}"
+    );
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+    hide_console(&mut cmd);
+    let Ok(out) = cmd.output() else { return Vec::new() };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.trim().lines().next().unwrap_or("").trim();
+    if line.is_empty() {
+        return Vec::new();
+    }
+    line.split_whitespace().map(str::to_string).collect()
+}
+
+/// Windows：taskkill /T 回收整棵进程树；仍存活才算失败。
+#[cfg(windows)]
+pub fn kill_process_tree(pid: i32) -> Result<(), String> {
+    if pid <= 1 {
+        return Err(format!("拒绝终止非法 pid：{pid}"));
+    }
+    let mut cmd = Command::new("taskkill");
+    cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+    hide_console(&mut cmd);
+    let _ = cmd.output();
+    if tasklist_image(pid).is_some() {
+        return Err(format!("taskkill 后进程仍存活：{pid}"));
+    }
+    Ok(())
+}
+
+/// Windows：启动前清扫父进程已退出的 DSH 引擎残留（命令行指纹 + 死父进程）。
+#[cfg(windows)]
+pub fn sweep_orphan_dsh_processes() -> Vec<i32> {
+    let script = concat!(
+        "$items = @(Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='omnidesk-node.exe'\" ",
+        "| Where-Object { $_.CommandLine -like '*dsh-runtime*' -and $_.CommandLine -like '*bin.js*' ",
+        "-and $_.CommandLine -like '*--profile*' }); ",
+        "$alive = @{}; foreach ($i in $items) { $p = [int]$i.ParentProcessId; ",
+        "if (-not $alive.ContainsKey($p)) { $alive[$p] = [bool](Get-Process -Id $p -ErrorAction SilentlyContinue) } }; ",
+        "@($items | Where-Object { $q = [int]$_.ParentProcessId; -not $alive[$q] } | ForEach-Object { [int]$_.ProcessId }) ",
+        "| ConvertTo-Json -Compress"
+    );
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+    hide_console(&mut cmd);
+    let Ok(out) = cmd.output() else { return Vec::new() };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    match parsed {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                if let Some(pid) = item.as_i64() {
+                    found.push(pid as i32);
+                }
+            }
+        }
+        serde_json::Value::Number(num) => {
+            if let Some(pid) = num.as_i64() {
+                found.push(pid as i32);
+            }
+        }
+        serde_json::Value::String(raw) => {
+            if let Ok(pid) = raw.parse::<i64>() {
+                found.push(pid as i32);
+            }
+        }
+        _ => {}
+    }
+    found
+}
+
+#[cfg(all(not(windows), not(any(target_os = "linux", target_os = "macos"))))]
 pub fn process_cmd(_pid: i32) -> Vec<String> {
     Vec::new()
 }
@@ -972,7 +1099,35 @@ pub fn process_table() -> Vec<ProcRow> {
     out
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// Windows：tasklist 快照只提供 pid 与镜像名（无 POSIX 进程组）。
+#[cfg(windows)]
+pub fn process_table() -> Vec<ProcRow> {
+    let mut out = Vec::new();
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FO", "CSV", "/NH"]);
+    hide_console(&mut cmd);
+    let Ok(res) = cmd.output() else { return out };
+    if !res.status.success() {
+        return out;
+    }
+    for line in String::from_utf8_lossy(&res.stdout).lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix('"') else { continue };
+        let mut parts = rest.splitn(3, "\",\"");
+        let Some(name) = parts.next() else { continue };
+        let Some(pid_field) = parts.next() else { continue };
+        let Ok(pid) = pid_field.trim().parse::<i32>() else { continue };
+        out.push(ProcRow {
+            pid,
+            pgid: 0,
+            state: 'R',
+            cmd: vec![name.to_ascii_lowercase()],
+        });
+    }
+    out
+}
+
+#[cfg(all(not(windows), not(any(target_os = "linux", target_os = "macos"))))]
 pub fn process_table() -> Vec<ProcRow> {
     Vec::new()
 }

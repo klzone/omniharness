@@ -707,12 +707,16 @@ class EngineService:
             self._pumps.clear()
         for stop in stops:
             stop.set()
+        shutdown_failed = False
         if self._adapter is not None:
             try:
                 self._adapter.shutdown(mode="graceful", grace_period=5.0)
             except Exception as exc:
+                shutdown_failed = True
                 _log("shutdown on exit failed: " + type(exc).__name__ + ": " + str(exc))
-        self._release_owner()
+        # 关停失败时保留 owner.json，让宿主下一次启动能按登记回收 DSH 子进程。
+        if not shutdown_failed:
+            self._release_owner()
 
     def _release_owner(self) -> None:
         if not self._owns_registration:

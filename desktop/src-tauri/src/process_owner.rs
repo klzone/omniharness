@@ -160,9 +160,103 @@ fn terminate_group(pgid: i32, leader: Option<i32>, grace: Duration) -> Result<bo
     Ok(true)
 }
 
+
+#[cfg(windows)]
+fn image_is_node(image: &str) -> bool {
+    is_node_image(image)
+}
+
+#[cfg(windows)]
+fn image_is_python(image: &str) -> bool {
+    matches!(image, "python.exe" | "pythonw.exe" | "omnidesk-python.exe")
+}
+
+/// Windows 启动前回收：没有 /proc，用镜像名 + 登记 pid 核验后按树杀。
+///
+/// 没有登记文件时仍做一次命令行指纹清扫（父进程已退出的 DSH node），
+/// 覆盖旧版本留下的残留。
+#[cfg(windows)]
+fn reclaim_before_start_windows(state_dir: &Path, path: &Path) -> Result<ReclaimOutcome, String> {
+    let had_record = path.exists();
+    let record = if had_record { read_owner(state_dir) } else { None };
+    let mut action = "none".to_string();
+    if let Some(record) = record {
+        let me = std::process::id() as i32;
+        let host_alive = record.host_pid > 0 && is_alive(record.host_pid);
+        if host_alive && record.host_pid != me {
+            return Err("另一个 OmniDesk 实例正在使用同一数据根，未启动新引擎".into());
+        }
+        if is_alive(record.pid) {
+            let image = crate::platform::process_image(record.pid).unwrap_or_default();
+            if !image_is_python(&image) {
+                return Err(format!(
+                    "同数据根存在无法核验身份的进程（pid={}，镜像 {}），拒绝启动，不杀进程",
+                    record.pid, image
+                ));
+            }
+            crate::platform::kill_process_tree(record.pid)?;
+            action = "killed_engine_tree".into();
+        }
+        if record.child_pid > 1 && is_alive(record.child_pid) {
+            let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
+            if !image_is_node(&image) {
+                return Err(format!(
+                    "遗留子进程身份不符（pid={}，镜像 {}），拒绝回收",
+                    record.child_pid, image
+                ));
+            }
+            crate::platform::kill_process_tree(record.child_pid)?;
+            if action == "none" {
+                action = "killed_child_tree".into();
+            }
+        }
+        let _ = std::fs::remove_file(path);
+    }
+
+    let swept = crate::platform::sweep_orphan_dsh_processes();
+    for pid in swept {
+        if let Err(err) = crate::platform::kill_process_tree(pid) {
+            eprintln!("[omnidesk] 清扫遗留 DSH 进程失败（pid={pid}）：{err}");
+        } else if action == "none" {
+            action = "swept_orphans".into();
+        }
+    }
+
+    Ok(ReclaimOutcome {
+        status: if had_record { "windows_reclaim" } else { "none" }.into(),
+        action,
+        detail: "Windows 引擎进程树回收完成".into(),
+    })
+}
+
+/// Windows 宿主收尾：引擎被强杀后按登记回收 DSH 子进程树。
+#[cfg(windows)]
+fn cleanup_engine_group_windows(state_dir: &Path, engine_pid: i32) -> Option<String> {
+    let record = read_owner(state_dir)?;
+    if record.pid != engine_pid {
+        return None;
+    }
+    if record.child_pid > 1 && is_alive(record.child_pid) {
+        let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
+        if !image_is_node(&image) {
+            return Some(format!(
+                "子进程 pid={} 镜像 {} 不是 node，拒绝回收",
+                record.child_pid, image
+            ));
+        }
+        return crate::platform::kill_process_tree(record.child_pid).err();
+    }
+    None
+}
+
 /// 宿主启动引擎前调用：只有身份核验通过才回收，否则返回可读错误并拒绝启动。
 pub fn reclaim_before_start(state_dir: &Path, grace: Duration) -> Result<ReclaimOutcome, String> {
     let path = owner_path(state_dir);
+    #[cfg(windows)]
+    {
+        let _ = grace;
+        return reclaim_before_start_windows(state_dir, &path);
+    }
     if !path.exists() {
         return Ok(ReclaimOutcome {
             status: "none".into(),
@@ -244,8 +338,35 @@ pub fn reclaim_before_start(state_dir: &Path, grace: Duration) -> Result<Reclaim
     })
 }
 
+/// 宿主退出兜底（Windows）：登记属于本宿主时，按 child_pid 回收 DSH 子进程树。
+pub fn cleanup_child_on_exit(state_dir: &Path) {
+    #[cfg(windows)]
+    {
+        let Some(record) = read_owner(state_dir) else { return };
+        let me = std::process::id() as i32;
+        if record.host_pid != 0 && record.host_pid != me {
+            return;
+        }
+        if record.child_pid > 1 && is_alive(record.child_pid) {
+            let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
+            if image_is_node(&image) {
+                let _ = crate::platform::kill_process_tree(record.child_pid);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state_dir;
+    }
+}
+
 /// 宿主收尾兜底：按当前引擎登记回收子进程组（不杀外部 DSH）。
 pub fn cleanup_engine_group(state_dir: &Path, engine_pid: i32, grace: Duration) -> Option<String> {
+    #[cfg(windows)]
+    {
+        let _ = grace;
+        return cleanup_engine_group_windows(state_dir, engine_pid);
+    }
     let record = read_owner(state_dir)?;
     if record.pid != engine_pid {
         return None;

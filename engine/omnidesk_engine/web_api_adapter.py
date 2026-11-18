@@ -3123,6 +3123,10 @@ class WebApiAdapter(TaskCoreBase):
             exit_code = proc.poll()
             if mode == "force":
                 if exit_code is None:
+                    if os.name == "nt":
+                        # Windows：TerminateProcess 不回收孙进程，先按树杀。
+                        if self._kill_child_group(3.0):
+                            forced = True
                     try:
                         proc.kill()
                     except OSError:
@@ -3134,6 +3138,10 @@ class WebApiAdapter(TaskCoreBase):
                     pass
             else:
                 if exit_code is None:
+                    if os.name == "nt":
+                        # Windows：先树杀 DSH 与它的子进程，再走原有 terminate 流程。
+                        if self._kill_child_group(max(1.0, float(grace_period))):
+                            forced = True
                     try:
                         proc.terminate()
                         exit_code = proc.wait(timeout=max(1.0, float(grace_period)))
