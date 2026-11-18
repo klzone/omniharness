@@ -1,5 +1,48 @@
 # 当前实施计划
 
+### OD-READ-004：首页统计下移 + MOBI/PDF 原生阅读导入（已实施并通过复核，2026-11-18；改动在 worktree `od-read-002-brain-room` 未提交）
+
+> **用户当轮指示：** ①统计条移到对话框下方原「项目跟踪」快捷入口的位置并取消该入口，对话框下移留间距；②阅读导入原生支持 MOBI、PDF。
+>
+> **结果：** `HomeCanvas` 统计条移到 `HomeChat` 下方、删除项目快捷入口；helper 新增 MOBI（PalmDOC 解压 + HTML 转文本 + EXTH 封面，HUFF/CDIC 与 DRM 明确拒绝）；pypdf 写入随包 requirements；Rust 白名单与界面过滤器加入 mobi。新增 `verify_reading_004_formats.py` 19/19；cargo 1249/0/1、tsc、build、既有 003 验证全部通过。详见工作树 `STATUS.md` 与 `REVIEW.md` 顶部。
+
+
+### OD-READ-003：健脑室——首页统计 + 左栏分页 + 富媒体阅读 + 选区浮条修复（已实施并通过复核，2026-11-18；改动在 worktree `od-read-002-brain-room` 未提交）
+
+> **触发（用户当轮指示）：** EPUB 已可导入，继续完善四件事：①首页展示阅读统计；②左栏分「本地书籍 / 订阅文章」两页，书籍展示封面；③阅读区支持封面/图片/音频/视频与 Markdown 排版；④修复阅读界面划线标记与笔记浮动菜单条不显示。
+>
+> **开工基线：** main @ a93212260a；工作区有两处既有未提交改动（export_engine.rs / integrity.rs），本任务不触碰、不还原。
+>
+> **根因与现状（源码事实）：**
+> 1. **选区浮条不显示是确定性 bug**：`ReadingPage.tsx` `readSelection()` 用 `closest("[data-paragraph]")` 定位段落，但正文段落元素只有 `data-chapter-index`/`data-paragraph-index`，没有 `data-paragraph` → 选区定位必然失败，浮条永远不出现。
+> 2. **统计无聚合**：`ReadingBookMeta` 已有 char_count/annotation_count/note_count/progress_percent，`rss_store` 有文章元数据，缺一个聚合命令与首页展示。「闪记」全仓库无对应数据结构（GOALS/STATUS/代码均无），统计不含闪记、不做假数字。
+> 3. **富媒体被丢弃**：`scripts/reading_attachment_extract.py` `_html_blocks` 只收文字，`<img>/<audio>/<video>` 全丢；`rss_store.rs` `sanitize_html` 把 img 压成 "[图片：alt]" 占位文字。书架无封面概念。
+> 4. **左栏单列表**：书籍与订阅文章同列混排，无分页、无封面、无按来源分组折叠。
+
+**本切片范围：**
+> 1. **统计聚合与首页展示**：
+>    - `reading_store.rs` 新增 `reading_stats_at(root)`：书籍本数（source_format != rss）、已读完本数（progress_percent ≥ 0.95，口径写进代码注释）、阅读字数（Σchar_count）、批注条数（Σannotation_count，含划线/标记/想法）、笔记篇数（Σnote_count）；`rss_store.rs` 提供文章篇数；Tauri 命令 `reading_stats` 合并返回。
+>    - 首页 `HomeCanvas` 问候区下加一行统计条（图标 + 数字 + 标签，暖白令牌新拟物卡片，一行紧凑排布；OD-ARCH-035 原则：不逐项加说明文字）；点击跳转健脑室。数据读取失败如实显示错误，不编造 0。
+> 2. **左栏两分页**：
+>    - 左栏顶部「本地书籍 / 订阅文章」两页签；书籍页：封面卡（无封面用暖底 + 书名首字占位）+ 书名 + 进度条，顶部「导入」；订阅页：按订阅来源分组折叠（组头=来源名+篇数，展开为文章列表：标题 + 未读点），顶部「订阅管理」「拉取全部」。折叠状态存组件 state 不落盘。
+> 3. **富媒体与排版**：
+>    - 数据链路：段落仍是纯文本（保住划线锚定），媒体以行内标记嵌在段落文本中：提取器输出 `![img](odmedia:<zip内路径>)`；RSS `sanitize_html` 输出 `![img](<原src>)`（data:/http(s): 保留，其余丢弃），`<audio>/<video>` 输出对应占位标记。
+>    - Rust 新增 `reading_media_extract(book_id, media_ref)`：仅限本书源 EPUB 内按 zip 路径读字节（单文件 ≤ 10MB、MIME 白名单 image/audio/video），返回 base64+mime；封面在导入时提取（OPF cover-image，原图字节存 `meta/<book_id>.cover.*`，≤ 2MB），书架与阅读头部显示。
+>    - 前端：媒体段落渲染为 `<figure>`（图片圆角、居中、点击放大 lightbox；音频/视频原生控件 + 新拟物容器）；`odmedia:` 经命令取 base64 渲染（组件内缓存）；RSS 的 http(s) 图直接由 WebView 加载（不代理不落盘）。段落内行内 Markdown（粗体/链接/行内代码）用已有 react-markdown 管线渲染；`reading.css` 增加 .reading-media-* 样式（圆角 14px、描边、柔和阴影，与全局新拟物一致）。
+>    - 参考（OD-ARCH-035，动工前用 screenshots-design-inspiration 检索并把 2 句借鉴要点写入任务记录）：qiaomu-rss-dsh 只读借鉴其「正文白名单渲染 + 选中即划线」思路，不搬代码。
+> 4. **选区浮条修复**：
+>    - 修复1：段落元素补 `data-paragraph` 属性（定位选择器的真正锚点）。
+>    - 修复2：document mouseup 后仅 setTimeout(0) 读选区在部分拖选场景早于选区落定——增加 selectionchange（去抖 ~150ms）作为第二通道，两条路都收敛到同一 `readSelectionRef`；失败静默清空浮条状态。
+>    - 保留：键盘选区 onKeyUp、工具栏 mousedown preventDefault、跨段拒绝提示。
+
+**验收：**
+> 1. Rust：`reading_stats`/`reading_media_extract`/封面提取单测；`cargo test --offline --lib -- --test-threads=1` 全过。
+> 2. 前端：`npx tsc --noEmit`、`npm run build` 通过；新增 `tests/verification/desktop/verify_reading_003_selection.py`（断言 data-paragraph 锚点、selectionchange 通道、浮条渲染条件、首页统计条与左栏分页存在）。
+> 3. 合成含图 EPUB：导入后封面出现在书架、图片在正文显示、划线浮条可出现（脚本级验证 + 真实窗口留给用户）。
+> 4. 首页统计条为真实聚合数字；左栏两分页可切换、订阅分组可折叠。
+
+**明确不做：** 不做闪记（无数据结构，待该功能落地再加计数）；不做阅读主题切换；不做 PDF 图片化；不代理/转存 RSS 音视频；不动 runtime/ 与模型路由；不改既有未提交的两处工作区改动。
+
 
 ### OD-ARCH-183：Windows 引擎进程树回收（已实施，2026-11-18；Windows 实机待复验）
 
