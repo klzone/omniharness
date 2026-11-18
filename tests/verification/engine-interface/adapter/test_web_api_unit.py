@@ -745,10 +745,32 @@ class ApprovalChannelTests(unittest.TestCase):
         self.assertEqual(len(self.events()), before)
         self.assertEqual(len(self.record.pending_approvals), 1)
 
-    def test_unmatched_agent_is_not_attributed(self):
-        self.adapter._on_approval_request(self.request_frame(agent_id="other") )
+    def test_unmatched_agent_is_attributed_to_single_active_task(self):
+        # OD-ARCH-187：agentId 与任务会话不一致时，旧实现静默丢弃审批，
+        # 界面看不到审批卡；现在唯一活跃任务接手，并在事件里标注归属方式。
+        self.adapter._on_approval_request(self.request_frame(agent_id="other"))
+        self.assertEqual(len(self.record.pending_approvals), 1)
+        events = self.events()
+        self.assertEqual(events[-1].payload["kind"], "approval_request")
+        self.assertEqual(events[-1].payload["attribution"], "single_active")
+
+    def test_ambiguous_agents_surface_engine_ask_instead_of_silence(self):
+        other = make_record()
+        other.engine_session_id = "sess-2"
+        other.omni_task_id = "omni-unit-2"
+        other.created_at = (self.record.created_at or 0.0) + 1.0
+        self.adapter._tasks[other.omni_task_id] = other
+        self.adapter._sessions["sess-2"] = other
+        self.adapter._on_approval_request(self.request_frame(event_id="ev-x", agent_id="child-agent"))
         self.assertEqual(len(self.record.pending_approvals), 0)
-        self.assertEqual(len(self.events()), 0)
+        self.assertEqual(len(other.pending_approvals), 0)
+        self.assertIn("ev-x", self.adapter._unattributed_approvals)
+        asks = [
+            e for e in list(other.events)
+            if e.type == EventType.PROGRESS and e.payload.get("kind") == "engine_ask"
+        ]
+        self.assertTrue(asks, "未归属审批必须变成可见提示")
+        self.assertEqual(asks[-1].payload.get("approval_id"), "ev-x")
 
     def test_cancel_event_clears_pending(self):
         self.adapter._on_approval_request(self.request_frame())

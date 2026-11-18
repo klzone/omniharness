@@ -1,5 +1,14 @@
 # 执行状态
 
+## OD-ARCH-187 审批请求静默丢弃修复（ARCHITECT 亲自执行，2026-11-19）
+
+- 触发：用户实测「未分类对话要求存入知识库」两次提权但没有看到审批弹窗，第三次模型改用 artifacts/staging 后暂时成功。
+- 根因（源码事实）：`web_api_adapter._on_approval_request` 用审批帧 `agentId` 精确匹配 `_sessions`，匹配失败直接 `return`；当工具运行在子代理/其它 agent 会话时，`agentId` 与任务的 `engine_session_id` 不一致，审批被静默丢弃——界面收不到审批卡，DSH 等不到应答后按取消收尾。
+- 修改：`engine/omnidesk_engine/web_api_adapter.py` 改为三级归属：精确匹配 → 唯一活跃任务（标注 `single_active`）→ ambiguous/unmatched；未归属请求登记 `_unattributed_approvals`（上限 20）并向最近活跃任务发 `engine_ask` 可见提示；取消帧同步清理。`skills/knowledge-search/SKILL.md` 补充「父目录 workspace/staging 是历史错误路径、不会被同步」。
+- 验证：`python3 -m unittest test_web_api_unit` → 102/102（新增唯一活跃归属与歧义提示两条用例，原「不归属」断言更新为新语义）；`python3 tests/verification/desktop/verify_knowledge_sync_152.py` → 48/48；`py_compile` 通过。前端与 Rust 本轮未改。
+- 证据等级：文件事实（源码/diff）、静态检查（verify 脚本）、单元测试。真实窗口审批弹窗与子代理场景仍待 0.2.41 实测。
+- 数据边界：用户已暂存的 5 张卡仍在 `~/OmniDesk/workspace/artifacts/staging/kb/知识库/方法/`，未改动未迁移；可在知识库页执行同步落库。
+
 ## OD-READ-004 首页统计下移 + MOBI/PDF 原生导入（ARCHITECT 亲自执行，2026-11-18）
 
 - 开工基线：工作树 `/Users/yvan/.codex/worktrees/2221/MyWorkStation`，分支 `od-read-002-brain-room`，HEAD `f008ef94bb`；未提交的 OD-READ-003 改动全部保留，本任务在其之上继续。改动已于 2026-11-19 合并进 main 并推送（见 Git 记录）。

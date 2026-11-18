@@ -542,6 +542,9 @@ class WebApiAdapter(TaskCoreBase):
         # OD-ARCH-066：审批通道与待办索引（只存归一化字段与本任务归属）。
         self._approval_channel: Optional[_ApprovalChannel] = None
         self._approval_index: dict = {}
+        # OD-ARCH-187：无法归属到任务的审批请求（agentId 与 engine_session_id 不一致）。
+        # 只留归一化字段，用于诊断与「引擎在等待确认」提示；最多保留 20 条。
+        self._unattributed_approvals: dict = {}
         # OD-ARCH-088：结构化提问索引（只在内存；题干/答案不落状态文件）。
         # event_id -> 归一化待答项；task_id -> {event_id: 待答项}
         self._question_index: dict = {}
@@ -2218,18 +2221,36 @@ class WebApiAdapter(TaskCoreBase):
         self._persist(record)
 
     def _on_approval_request(self, value: Mapping[str, Any]) -> None:
-        """把 DSH 审批请求归一化成 PROGRESS 事件；找不到归属时如实标注。"""
+        """把 DSH 审批请求归一化成 PROGRESS 事件；找不到归属时如实标注。
+
+        OD-ARCH-187：DSH 的审批帧 agentId 不保证等于本任务的 engine_session_id
+        （工具在子代理里运行时就会不一致）。旧实现找不到记录时直接 return，
+        结果审批被静默丢弃：界面看不到审批卡，引擎等不到应答后按取消处理。
+        现在按「精确匹配 → 唯一活跃任务 → 如实上报未归属」三级处理，绝不静默。
+        """
         event_id = str(value.get("eventId") or "")
         request = value.get("request")
         if not event_id or not isinstance(request, Mapping):
             return
         agent_id = str(value.get("agentId") or "")
+        latest_active = None
         with self._lock:
+            if event_id in self._approval_index:
+                return
             record = self._sessions.get(agent_id)
             if record is not None and record.state in TERMINAL_STATES:
                 record = None
-            if event_id in self._approval_index:
-                return
+            attribution = "exact" if record is not None else "unmatched"
+            if record is None:
+                active = [
+                    task for task in self._tasks.values() if task.state not in TERMINAL_STATES
+                ]
+                if len(active) == 1:
+                    record = active[0]
+                    attribution = "single_active"
+                elif active:
+                    attribution = "ambiguous"
+                    latest_active = max(active, key=lambda task: task.created_at or 0.0)
             tool_name = str(request.get("toolName") or "")
             call_id = str(request.get("callId") or "")
             reason = str(request.get("reason") or "")
@@ -2239,11 +2260,41 @@ class WebApiAdapter(TaskCoreBase):
                 "call_id": call_id,
                 "reason": reason,
                 "session_id": agent_id,
+                "attribution": attribution,
             }
             self._approval_index[event_id] = entry
             if record is not None:
                 record.pending_approvals[event_id] = dict(entry)
+            else:
+                # 未归属也要留下证据，并按最近活跃任务发一条可见提示；
+                # 该请求没有可应答的归属，用户可取消任务后重试。
+                self._unattributed_approvals[event_id] = dict(entry)
+                while len(self._unattributed_approvals) > 20:
+                    self._unattributed_approvals.pop(next(iter(self._unattributed_approvals)))
         if record is None:
+            target = latest_active
+            if target is None:
+                return
+            key = (target.omni_task_id, event_id)
+            with self._lock:
+                if key in self._engine_ask_seen:
+                    return
+                self._engine_ask_seen[key] = True
+            self._emit(
+                target,
+                EventType.PROGRESS,
+                {
+                    "kind": "engine_ask",
+                    "event": "approval/request",
+                    "approval_id": event_id,
+                    "session_id": agent_id,
+                    "note": (
+                        "审批请求未能归属到当前任务（agent 会话与任务不一致）；"
+                        "界面没有审批卡时请取消任务后重试"
+                    ),
+                },
+            )
+            self._persist(target)
             return
         self._emit(
             record,
@@ -2255,6 +2306,7 @@ class WebApiAdapter(TaskCoreBase):
                 "call_id": call_id,
                 "reason": reason,
                 "session_id": agent_id,
+                "attribution": attribution,
             },
         )
         self._persist(record)
@@ -2571,6 +2623,7 @@ class WebApiAdapter(TaskCoreBase):
             return
         with self._lock:
             entry = self._approval_index.pop(event_id, None)
+            self._unattributed_approvals.pop(event_id, None)
             record = self._sessions.get(str((entry or {}).get("session_id") or ""))
             if record is not None:
                 record.pending_approvals.pop(event_id, None)

@@ -1,3 +1,11 @@
+# OD-ARCH-187 复核（2026-11-19，ARCHITECT 实施并复核）——通过（单元/静态范围；真实窗口待 0.2.41 实测）
+
+**复核对象：** `engine/omnidesk_engine/web_api_adapter.py` 审批归属逻辑、`tests/verification/engine-interface/adapter/test_web_api_unit.py`、`skills/knowledge-search/SKILL.md`。
+
+**实跑证据：** 单元测试 102/102（含新增唯一活跃任务归属、歧义时 engine_ask 提示、精确匹配回归）；知识库同步验证 48/48；`py_compile` 通过。修复点：审批帧 agentId 不匹配任务的 engine_session_id 时，不再静默丢弃；唯一活跃任务接手并在事件里标注归属方式，多活跃任务则上报可见的 engine_ask 提示并保留诊断索引。旧断言「unmatched 不归属」已按新语义更新（静默丢弃正是本次故障本身）。
+
+**结论：** 代码与测试通过复核，可随 0.2.41 发布复测；未在真实窗口复现用户那次子代理审批场景。
+
 # OD-READ-004 ARCHITECT 复核（2026-11-18）——通过（脚本/静态范围；真实 MOBI/PDF/窗口待用户验收）
 
 **复核对象：** 工作树 `od-read-002-brain-room` 上 OD-READ-004 改动：`HomeCanvas.tsx` 布局、`ReadingPage.tsx` 格式过滤器、`task_shell.rs` 扩展名白名单与 MOBI 单测、`reading_attachment_extract.py` MOBI 解析、`python-requirements.txt`/prepare 脚本/数据布局文档、新增 `verify_reading_004_formats.py`。

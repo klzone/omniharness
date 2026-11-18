@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.41] - 2026-11-19
+
+### Fixed
+- 审批弹窗不出现：工具在子代理或其它 agent 会话发起提权时，审批帧 `agentId` 与任务的 `engine_session_id` 不一致，适配层原先静默丢弃请求，界面看不到审批卡、引擎按取消收尾。现改为「精确匹配 → 唯一活跃任务 → 可见提示」三级归属，多任务歧义时也会显示「引擎在等待确认」提示，不再无反馈。
+- 知识卡暂存路径：明确父目录 workspace/staging 是历史错误路径（沙箱外且不会被宿主同步），减少无效提权尝试。
+
+### Verification
+- 适配层单元测试 102/102（新增唯一活跃归属与歧义提示用例）；`verify_knowledge_sync_152.py` 48/48。
+
 ## [0.2.40] - 2026-11-19
 
 ### Added
