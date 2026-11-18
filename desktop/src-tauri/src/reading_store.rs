@@ -264,15 +264,15 @@ fn assert_store_root(root: &Path) -> Result<(), String> {
 }
 
 #[cfg(unix)]
-fn harden_private(path: &Path, mode: u32) {
+pub(crate) fn harden_private(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
     let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode));
 }
 
 #[cfg(not(unix))]
-fn harden_private(_path: &Path, _mode: u32) {}
+pub(crate) fn harden_private(_path: &Path, _mode: u32) {}
 
-fn ensure_store_dirs(root: &Path) -> Result<(), String> {
+pub(crate) fn ensure_store_dirs(root: &Path) -> Result<(), String> {
     assert_store_root(root)?;
     for name in ["books", "meta", "progress", "notes", "exports"] {
         fs::create_dir_all(root.join(name))
@@ -662,7 +662,7 @@ pub fn read_book_at(root: &Path, book_id: &str) -> Result<ReadingBook, String> {
     Ok(book)
 }
 
-fn write_book(root: &Path, book: &ReadingBook) -> Result<(), String> {
+pub(crate) fn write_book(root: &Path, book: &ReadingBook) -> Result<(), String> {
     ensure_store_dirs(root)?;
     let path = book_path(root, &book.book_id)?;
     let meta_target = meta_path(root, &book.book_id)?;

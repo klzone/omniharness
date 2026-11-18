@@ -1,5 +1,54 @@
 # 当前实施计划
 
+### OD-READ-002：健脑室——读书页融合 RSS 新闻聚合（待批准，2026-11-18）
+
+> **触发（用户当轮指示）：** 把新闻聚合 RSS 融合进读书界面；读书入口更名为「健脑室」；保留既有划线工具栏能力。参考 qiaomu-rss-dsh 插件源码（GPL-3.0，只读借鉴思路，不搬代码）与其信息源。用户已指定派工模型与档位；ARCHITECT 只做计划与复核。
+>
+> **参考项目只读勘察结论（2026-11-18，ARCHITECT 完成）：**
+> 1. **乔木 RSS（qiaomu-rss-dsh）**：feed 解析走 RSS 2.x / RDF / Atom 统一归一化（entry: id/guid/link/title/published/content/author/summary）；正文上限 100k 字符、每 feed 最多 50 条、总量 1MB；订阅与文章 JSON 落本地 storages，元数据与正文分文件；HTML 白名单净化后渲染，选段伴读只带选中引文（text quote anchor + prefix/suffix）。划线/笔记明确「插件不提供」（README 原文），划线能力复用 OmniDesk 读书页既有实现。
+> 2. **信息源**：精选作者 9 条 RSS（潮流周刊/阮一峰/云风/和菜头/张鑫旭/小众软件/月光博客/Reorx/pseudoyu）；独立博客目录来自 timqian/chinese-independent-blogs（MIT），共 1342 条，可按 tag 筛；播客目录另列。本切片只内嵌精选作者 + 精选独立博客（不超过 40 条，总大小控制在 20KB 内，保留 MIT 归属注释），不做公众号源（需第三方服务）、不做播客。
+> 3. **设计参考（screenshots-design-inspiration MCP 已检索）**：My Reader AI（左栏文章列表 + 右侧正文单列）、Perplexity（信息密度留白）、Apple Books（书架卡片 + 批注颜色系统）。借鉴要点：左栏双分组（书籍在上、订阅文章在下）共用一条列表样式，用来源徽标区分；阅读区保持单列排版，划线工具栏沿用既有 4 按钮浮条；书架顶部加「订阅」入口，不新增 Dock 项。
+
+**本切片范围（平台内置，不动 Profile 声明）：**
+> 1. **入口更名**：Dock 读书入口 label 改「健脑室」，页面内标题同步；ReadingPage 模块路径不改（保持既有 import 稳定），改显示文案与注释。
+> 2. **RSS 源管理（阶段 1 最小版）**：阅读目录 rss/subscriptions.json 存订阅（schema omnidesk.rss.v1）；预置精选作者 + 精选独立博客静态清单（Rust 常量数组，含 MIT 归属注释）；用户可在界面添加任意 RSS/Atom URL、删除订阅；不做 OPML 导入导出（留后续）。
+> 3. **RSS 拉取与解析**：Rust 侧 HTTP GET（单请求 20s 超时、响应体上限 2MB、最多 200 条 entry、每 feed 保留最新 50 条）；RSS 2.x/RDF/Atom 三格式归一化；XML 解析手写小型解析器（不引新 crate，参考乔木插件 xml.js 的思路）；失败时返回错误信息不静默。网络客户端必须新建（local_http 只允许 127.0.0.1，不可复用）；允许引入 reqwest（已在 Cargo.lock 作传递依赖）或 ureq，选型由 BUILDER 决定并说明理由。
+> 4. **文章入库与书架融合**：每篇文章在书架是一条条目（source_format=rss，book_id=rss-<sha8>-<articleKey>）；标题=文章标题，author=作者，source_name=订阅名；正文转 Markdown 后作为单一章节导入（复用 ReadingBook 结构，paragraphs=正文分段）；同一文章（feed url+entry guid/link 哈希相同）不重复入库、不覆盖已有批注。阅读目录 rss/articles/ 只存元数据 JSON（含已拉取的正文），落仓库外。
+> 5. **UI 融合**：书架列表分两组：「书籍」「订阅文章」，同一列表样式 + 来源徽标；订阅文章条目附「未读/已读」小圆点（元数据字段 read）；RSS 文章用与书籍一致的阅读器渲染（划线/想法/标段/问 AI 四按钮浮条不变）；书籍条目不加未读点。
+> 6. **AI 伴读沿用既有链路**：选中文字后问 AI 走 reading_concept；RSS 文章整理走 reading_organize（把文章批注传入）。不加新 intent。
+> 7. **隐私边界**：RSS 拉取只发 HTTP GET 到用户添加/预置清单里的订阅地址；不发文章正文给任何外部服务；AI 只发选中文本或批注（走既有 submitTask 红线扫描链路）；日志不记正文。
+
+**验收（阶段 1）：**
+> 1. Rust：rss_store 新模块单测覆盖 RSS2.x/Atom 解析（含中文/CDATA/HTML 实体）、去重、条目上限、正文截断；cargo test --offline --lib -- --test-threads=1 全过。
+> 2. 前端：npx tsc --noEmit、npm run build 通过；阅读页能添加/删除订阅、拉取文章、打开 RSS 条目、划线、问 AI（真实窗口验收留用户）。
+> 3. 数据：订阅与文章只落 ~/OmniDesk/reading/rss/；仓库内不出现文章正文；重复导入不覆盖；网络失败报错可读。
+> 4. 预置清单含 MIT 归属注释；不含公众号源与播客；总大小 <20KB。
+
+**明确不做（阶段 1）：** 不做播客/公众号源、不做 OPML 导入导出、不做阅读版本切换/翻译/改写、不做搜索/收藏/未读过滤（书架只有分组展示）、不做乔木服务对接、不改 runtime/、不引入数据库、不做全文搜索索引。
+
+**风险与技术决策：**
+> 1. HTTP 客户端选型：reqwest 已在传递依赖树，加为直接依赖不改变锁文件；ureq 更轻但需加新 crate。默认建议 reqwest（blocking 特性即可），BUILDER 可按实际依赖树调整，理由写入 STATUS.md。
+> 2. XML 解析：手写小型解析器（约 200 行）足够 RSS/Atom；避免引入 quick-xml 等新依赖。
+> 3. HTML 正文转 Markdown：手写白名单 + 段落提取（复用 reading_store 已有的正文分段逻辑），不追求完美转换，代码块/图片/列表保留基本结构。
+> 4. 阶段 2 候选（另行批准）：OPML 导入导出、未读/收藏过滤、搜索、文章列表分页加载、播客转写。
+
+**派工（用户当轮已指定）：**
+> 1. 单个 BUILDER 子代理执行阶段 1；模型 OpenDesign/deepseek-v4.1-flash-eco、思考等级 high。若 eco 档不可用，按 OD-READ-001 先例：先试 OpenDesign/deepseek-v4.1-flash + high，再不行用 OpenDesign/glm-5.3-flash + high，并记录实际原因。
+> 2. 工作树：/Users/yvan/.codex/worktrees/2221/MyWorkStation（分支 od-read-002-brain-room，基于 main HEAD cb0a0b31f0，已创建并干净）。
+> 3. 任务书落盘 docs/od-read-002-stage1-dispatch.md（worktree 内）；ARCHITECT 不亲自实现。
+> 4. ARCHITECT 复核 diff 与测试输出，写 REVIEW.md；通过后交由用户决定是否提交推送（本轮不自动推送）。
+
+**批准状态：2026-11-18 用户当轮原话已授权按指定模型派工**（「怎么融合以及原有的读书界面怎么设计，你参考原设计和 /opendesign 的案例以及omnidesk的设计规范来确定plan，然后指派子agent执行，记得用deepseek-v4.1-flash-eco模型high思考等级」）。如该模型实际不可用按上述顺序回退并记录。
+
+**执行与复核结果（2026-11-18）：** BUILDER 子代理 Godel（deepseek-v4.1-flash-eco / high，派工通道实际接受 eco 档）完成阶段 1：rss_store.rs（订阅存储 + 49 条预置 + 手写 RSS/Atom 解析 + 本地回环 HTTP 回放测试）、lib.rs 6 命令、ReadingPage 健脑室改名与书架双分组/订阅模态/未读圆点、reqwest(blocking+native-tls) 直接依赖。ARCHITECT 实跑复核：cargo 1243/0/1（OMNIDESK_REPO_ROOT 绕过 worktree 路径误伤）、tsc 0、build 0、verify 42 项全过、git diff --check 0；REVIEW.md 已记，**通过**（真实窗口交互与真实模型输出未验收）。4 个 runtime/ 符号链接为构建工件，提交时不得加入。提交推送待用户裁决。
+
+**阶段 1 实施偏差（2026-11-18，BUILDER）：**
+> 1. 为支撑书架「未读」圆点与打开文章后回写已读状态，任务书的三条订阅命令之外新增 `rss_articles_list()` 与 `rss_article_mark_read(book_id)`；`rss_fetch` 仍按任务书的 `subscription_id?` 参数工作。
+> 2. 正文将 HTML 白名单净化后转成 `ReadingChapter.paragraphs` 的纯文本分段，不保留 Markdown 标记：现有阅读器按段落渲染，保留 `#`/`**` 会把标记当正文显示。
+> 3. 开工后 `desktop/src-tauri/src/lib.rs` 出现一套未登记的 `rss_library/rss_catalog/rss_refresh/...` 命令桩（与任务书命令名不一致）；已统一为任务书命令集，避免两套 RSS 契约并存。
+> 4. 网络客户端选 `reqwest 0.13.5` 的 `blocking + native-tls + system-proxy`；macOS 走系统 Security Framework，离线构建可用。启用这些特性会新增 `hyper-tls/native-tls/security-framework` 等传递依赖，`Cargo.lock` 因此增加约 215 行，原“锁文件不变”假设不成立。
+
+
 ### OD-READ-001：读书阅读笔记分页（初步实施，2026-11-18）
 
 > **触发（用户当轮指示）：** 为 OmniDesk 增加读书阅读笔记分页：读书时能划线、标记、添加思考碎片，前端记录；AI 能整理笔记，也能随时查询相关概念。先初步实现这些功能。用户给出三个参考项目：`lysforge/dsh-lamplit`、`zhaohongxuan/dsh-weread`、`PensiveFei/deep-read-summarize`。

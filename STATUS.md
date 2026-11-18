@@ -790,3 +790,14 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 推送：`git push origin main` → exit 0；回执 `b8b9357b9c..f4c67db150  main -> main`（https://github.com/klzone/omniharness.git）。未 force、未打标签、未重试。
 - 推送后 `git status --short --branch` 快照：`## main...origin/main`（工作树干净，与 origin/main 同步）。
 - 清单外未暂存文件：无。本节追加后 STATUS.md 重新处于已修改状态（未提交），留待 ARCHITECT 终检。
+
+## OD-READ-002 阶段 1 执行记录（BUILDER 子代理，2026-11-18）
+
+- 开工基线：`git status --short --branch` 为 `## od-read-002-brain-room`；HEAD `cb0a0b31f077525b10fd4e9c9fc7a12bca1327f4`。未提交、未推送、未打标签；未改 `runtime/`、`engine/` 或凭证。
+- 实现：`rss_store.rs` 新增 `rss/subscriptions.json`（schema `omnidesk.rss.v1`）、预置 49 条（9 位精选作者 + 40 条独立博客，MIT 归属注释，不含公众号）、手写 RSS 2.x/RDF/Atom 解析、HTML 净化与段落提取、文章作为单章 `ReadingBook` 入库、已读状态与逐源失败信息。`lib.rs` 注册 6 个命令；`reading_store.rs` 仅将目录/原子写辅助函数提升为 `pub(crate)`。前端 `ReadingPage.tsx` 更名「健脑室」，书架分「书籍」「订阅文章」，订阅模态框支持添加/删除/刷新，未读圆点与既有四按钮划线浮条保留。
+- 验证：`cargo test --offline --lib rss_store -- --test-threads=1` → 11 passed / 0 failed（含 127.0.0.1 合成 HTTP 回放，不访问外网）；`npx tsc --noEmit` → exit 0；`npm run build` → exit 0；`python3 tests/verification/desktop/verify_od_read_002_stage1.py` → 42 checks passed；`git diff --check` → exit 0。
+- 全量单测：当前 worktree 直接运行 `cargo test --offline --lib -- --test-threads=1` → 1240 passed / 3 failed / 1 ignored；3 项均为既有 `app_paths` 路径边界测试，因 worktree 位于 `~/.codex/...` 先命中禁用片段 `/.codex`，错误文本不含“仓库”。设置 `OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation` 后同一源码重跑 → 1243 passed / 0 failed / 1 ignored（exit 0，50.17s）。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage1.md`（被 `.gitignore` 忽略）；公开源 curl 连通：weekly.tw93.fun、reorx.com、pseudoyu.com、appinn.com 与阮一峰 atom.xml（带 `OmniDesk-RSS/0.1` UA）均 HTTP 200。
+- 计划偏差：工作树内 `docs/od-read-002-stage1-dispatch.md` 与 PLANS.md 采用 `subscriptions.json` + 每篇一条 RSS 书；本轮按该详细任务书实现。`reqwest` 启用 `blocking + native-tls + system-proxy`，`Cargo.lock` 新增约 215 行 TLS/代理传递 crate；原“不改变锁文件”假设不成立，需 ARCHITECT 复核。
+- 未验证：真实 Tauri 窗口中的订阅模态框布局/焦点/滚动、添加删除与拉取全部（49 源串行）、RSS 文章划线/想法/标段/问 AI 端到端；应用内 `rss_fetch` 的真实网络行为。
+- 构建期间为找到 `runtime/dsh-runtime` 等资源临时在 worktree `runtime/` 建了 4 个指向主工作树的符号链接，验证结束后已删除，不在最终工作树留下未跟踪文件。

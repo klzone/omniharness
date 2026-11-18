@@ -45,11 +45,11 @@ export const BUILTIN_KNOWLEDGE_ITEM: DockItem = {
   label: "知识库",
 };
 
-/** 读书是平台内置入口（OD-READ-001）：书目、批注与阅读进度只在本机，不随 Profile 声明走。 */
+/** 健脑室是平台内置入口（OD-READ-001/002）：书目、订阅文章、批注与阅读进度只在本机，不随 Profile 声明走。 */
 export const BUILTIN_READING_ITEM: DockItem = {
   scene: "reading",
   icon: "note",
-  label: "读书",
+  label: "健脑室",
 };
 
 /**

@@ -335,3 +335,22 @@
 2. **场景边界（用户确证的行为）：** 必须新开对话且分类选「工作记录」才能落盘；「未分类」对话不落盘（无 preset 的对话不走工作记录写入路径，属现行设计）。如需"未分类也能记"属新需求，须另立计划。
 3. **OD-ARCH-175/176 阶段 4 仍未实测：** 用户 Windows 上是旧版本；新功能验证须提交推送并发版后进行（提交推送待用户授权）。
 4. **OD-ARCH-177 更新：** 常备插件清单按用户裁决定为 anysearch + dsh-cost-meter 两项。
+
+# OD-READ-002 阶段 1 独立复核（2026-11-18，BUILDER 子代理 Godel / deepseek-v4.1-flash-eco / high）——通过（静态/脚本范围，附未验收项）
+
+**复核范围：** 工作树 `/Users/yvan/.codex/worktrees/2221/MyWorkStation`（分支 od-read-002-brain-room，HEAD cb0a0b31f0 不变）上 BUILDER 的未提交改动：`rss_store.rs`（新增，1560 行）、`lib.rs` 6 个 RSS 命令注册、`reading_store.rs` 三个辅助函数提升 `pub(crate)`、`Cargo.toml`/`Cargo.lock` reqwest 依赖、`ReadingPage.tsx` 健脑室改名 + 书架双分组 + 订阅模态框 + 未读圆点、`Dock.tsx`/`App.tsx` 文案、`api.ts`/`types.ts` 六命令四类型、`verify_od_read_002_stage1.py`。
+
+**ARCHITECT 实跑（非自述采信）：**
+
+1. `cargo test --offline --lib -- --test-threads=1`（OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation）→ **1243 passed / 0 failed / 1 ignored**（48.9s）。不带该环境变量时 3 项 `app_paths` 路径边界测试失败，原因是 worktree 路径 `~/.codex/...` 先命中 `/.codex` 禁用片段——环境工件，与 RSS 改动无关；同样测试在主仓库路径全过。rss_store 新增 11 条测试全部通过（含本地回环合成 HTTP 回放）。
+2. `npx tsc --noEmit` → 0；`npm run build` → 0（ReadingPage chunk 45.66 kB）；`python3 tests/verification/desktop/verify_od_read_002_stage1.py` → 全部检查通过（42 项）；`git diff --check` → 0。
+3. 关键 diff 人工核对：HTTP 客户端只向订阅 URL 发 GET（`fetch_feed_xml` 校验 scheme、20s 超时、2MB 上限、UA OmniDesk-RSS/0.1）；预置清单 9+40 条含 MIT 归属注释、`preset_seed_is_idempotent_and_does_not_resurrect_deleted_items` 保证用户删除不被复活；文章入库复用 `ReadingBook` 且去重不覆盖批注；划线浮条四按钮与 `data-paragraph` 结构未动。
+
+**发现与处置：**
+
+1. **Cargo.lock +215 行（TLS 传递依赖）**：任务书允许引入 reqwest，BUILDER 选择 `native-tls`（macOS 走系统 Security Framework）+ `system-proxy`，理由成立；锁文件增量是 TLS 后端的正常代价，接受。
+2. **BUILDER 报告的偏差属实**：新增 `rss_articles_list`/`rss_article_mark_read` 支撑未读圆点；正文以净化纯文本段落入库（不保留 Markdown 标记，避免阅读器把 `#`/`**` 渲染为正文）——两者均为合理的小范围扩展，不越出计划边界。
+3. **worktree runtime/ 下曾出现 4 个指向主仓库的符号链接**（构建脚本需要），BUILDER 交付前已删除；ARCHITECT 复跑测试时重建了同样的 4 个符号链接（`runtime/dsh-runtime`、`dsh-home-seed`、`pnpm`、`python-vendor` → 主仓库对应目录），它们未被 .gitignore 覆盖、会出现在 `git status` 未跟踪区。**提交时不得加入这 4 个符号链接；如后续在主仓库构建，可直接删除。**
+4. 阮一峰 `atom.xml` 在默认 UA 下被 Cloudflare 拦截返回 HTML，运行时会写入可读 `last_error` 并在订阅模态框显示——行为符合「失败不静默」要求；真实效果留窗口验收。
+
+**通过范围与未验收项：** 存储边界、解析正确性、去重、幂等预置、构建链路**通过**；真实桌面窗口的订阅模态框交互、49 源串行拉取耗时、RSS 文章内划线/想法/标段/问 AI 端到端、真实模型输出**未验收**，不得标为「真实可用」。提交推送需用户裁决后另行派工。

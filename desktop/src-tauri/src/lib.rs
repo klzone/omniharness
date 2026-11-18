@@ -55,6 +55,7 @@ pub mod process_alias;
 pub mod priority_rules;
 pub mod quicklog;
 pub mod reading_store;
+pub mod rss_store;
 pub mod daily_summary;
 pub mod review_store;
 pub mod route_classifier;
@@ -5223,6 +5224,88 @@ fn reading_export_notes(
     reading_store::export_notes_at(&root, &book_id, task_shell::now_secs())
 }
 
+// ---------------------------------------------------------------------------
+// 健脑室 RSS 订阅（OD-READ-002 阶段 1）
+//
+// 订阅清单与文章元数据只落在阅读目录的 rss/ 下；文章正文与普通书共用
+// books/<book_id>.json，批注继续走 reading_store 的既有命令。
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
+fn rss_subscriptions_list(
+    state: State<'_, SharedHost>,
+) -> Result<Vec<rss_store::RssSubscription>, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    rss_store::list_subscriptions(&paths)
+}
+
+#[tauri::command(async)]
+fn rss_subscription_add(
+    state: State<'_, SharedHost>,
+    url: String,
+    name: Option<String>,
+) -> Result<rss_store::RssSubscription, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    rss_store::add_subscription(&paths, &url, name.as_deref())
+}
+
+#[tauri::command(async)]
+fn rss_subscription_remove(
+    state: State<'_, SharedHost>,
+    id: String,
+) -> Result<(), String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    rss_store::remove_subscription(&paths, &id)
+}
+
+#[tauri::command(async)]
+fn rss_articles_list(
+    state: State<'_, SharedHost>,
+) -> Result<Vec<rss_store::RssArticleMeta>, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    rss_store::list_articles(&paths)
+}
+
+#[tauri::command(async)]
+fn rss_article_mark_read(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<rss_store::RssArticleMeta, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    rss_store::mark_article_read(&paths, &book_id)
+}
+
+#[tauri::command(async)]
+async fn rss_fetch(
+    state: State<'_, SharedHost>,
+    subscription_id: Option<String>,
+) -> Result<rss_store::RssFetchReport, String> {
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        rss_store::fetch(&paths, subscription_id.as_deref())
+    })
+    .await
+    .map_err(|e| format!("RSS 拉取任务异常退出：{e}"))?
+}
+
 /// 显式重建并原子发布链接索引。构建在锁外完成，只有完整快照才替换旧快照。
 #[tauri::command(async)]
 fn knowledge_vault_rebuild_index(
@@ -9768,6 +9851,12 @@ pub fn run() {
             reading_note_save,
             reading_note_read,
             reading_export_notes,
+            rss_subscriptions_list,
+            rss_subscription_add,
+            rss_subscription_remove,
+            rss_articles_list,
+            rss_article_mark_read,
+            rss_fetch,
             knowledge_sync_to_vault,
             knowledge_ingest_init,
             knowledge_ingest_prepare,

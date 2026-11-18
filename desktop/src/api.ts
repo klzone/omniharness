@@ -242,6 +242,9 @@ import type {
   ReadingLibrary,
   ReadingNoteFile,
   ReadingSavedNote,
+  RssArticleMeta,
+  RssFetchReport,
+  RssSubscription,
 } from "./types";
 
 function normalizeError(error: unknown): string {
@@ -1951,6 +1954,44 @@ export const shell = {
   /** 确定性导出当前书的划线/标记/想法；不调用模型。 */
   readingExportNotes(bookId: string): Promise<ReadingNoteFile> {
     return invoke<ReadingNoteFile>("reading_export_notes", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 健脑室订阅清单；首次调用会把预置源写入本机阅读目录。 */
+  rssSubscriptionsList(): Promise<RssSubscription[]> {
+    return invoke<RssSubscription[]>("rss_subscriptions_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  rssSubscriptionAdd(url: string, name?: string): Promise<RssSubscription> {
+    return invoke<RssSubscription>("rss_subscription_add", { url, name }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  rssSubscriptionRemove(id: string): Promise<void> {
+    return invoke<void>("rss_subscription_remove", { id }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 拉取指定订阅或全部订阅；失败项在 report.errors 里逐条返回。 */
+  rssFetch(subscriptionId?: string): Promise<RssFetchReport> {
+    return invoke<RssFetchReport>("rss_fetch", { subscriptionId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  rssArticlesList(): Promise<RssArticleMeta[]> {
+    return invoke<RssArticleMeta[]>("rss_articles_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  rssArticleMarkRead(bookId: string): Promise<RssArticleMeta> {
+    return invoke<RssArticleMeta>("rss_article_mark_read", { bookId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
