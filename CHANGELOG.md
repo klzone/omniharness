@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.40] - 2026-11-19
+
+### Added
+- 首页阅读统计：书籍本数、已读完（进度 ≥95%）、阅读字数、批注、笔记、闪记（想法批注）与订阅文章篇数，聚合自本机健脑室数据，点击进入健脑室；统计条位于对话框下方。
+- 健脑室左栏改为「本地书籍 / 订阅文章」两页签：书籍展示 EPUB 封面（无封面用书名首字占位）与进度；订阅文章按来源分组折叠，保留未读点。
+- 阅读区支持图片、音频、视频与段落内行内 Markdown；EPUB 内嵌媒体经本地命令按需读取，RSS 图片直接加载。
+- 阅读导入原生支持 MOBI（PalmDOC 压缩、HTML 转文本、EXTH 封面）与 PDF（随包 pypdf 逐页提取文字）。
+
+### Fixed
+- 阅读界面选中文字后不出现划线/笔记浮条：修复段落锚点属性缺失，并增加 selectionchange 兜底通道。
+- PDF 导入在发布包中因缺少 pypdf 而退化为「正文未提取」。
+
+### Changed
+- 取消首页「项目跟踪」快捷入口；对话区下移并与统计条留出间距。
+- 清理 integrity 未使用变量与 export_engine stderr 字段告警。
+
+### Verification
+- `cargo test --offline --lib`：1249 通过 / 0 失败 / 1 忽略（含 MOBI 导入链路单测）。
+- `npx tsc --noEmit`、`npm run build` 通过；`verify_reading_003_selection.py` 25/25、`verify_reading_004_formats.py` 19/19。
+- 合成 EPUB/MOBI 与最小 PDF 端到端通过；真实用户书籍、扫描件 PDF 与 Windows 实机仍待验收。
+
 ## [0.2.39] - 2026-11-18
 
 ### Added
