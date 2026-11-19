@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .alias_store import AliasStore
+
 SCHEMA_V1 = "omnidesk.sensitive-dict.v1"
 SCHEMA_V2 = "omnidesk.sensitive-dict.v2"
 # 新写入一律用 v2；读取同时接受 v1（没有 blocklist 段，视为空）。
@@ -439,7 +441,9 @@ class DataMasker:
         dictionary_path: Optional[Path] = None,
         *,
         entries: Optional[Iterable[DictEntry]] = None,
+        alias_store: Optional[AliasStore] = None,
     ) -> None:
+        self._alias_store = alias_store
         if dictionary_path is not None and entries is not None:
             raise ValueError("dictionary_path 与 entries 只能二选一")
         if entries is not None:
@@ -671,9 +675,22 @@ class DataMasker:
             else:
                 used = set(session._placeholders) if session is not None else set()
                 used.update(local_used)
-                placeholder = self._natural_placeholder(
-                    candidate.type, candidate.canonical, used
-                )
+                placeholder = None
+                if self._alias_store is not None and candidate.type != "AMOUNT":
+                    # OD-ARCH-185：优先使用稳定的持久别名（跨会话/跨文档不变）。
+                    kind = candidate.type
+                    canonical = candidate.canonical
+                    placeholder = self._alias_store.alias_for(
+                        kind,
+                        canonical,
+                        lambda taken, k=kind, c=canonical, u=used: self._natural_placeholder(
+                            k, c, set(taken) | set(u)
+                        ),
+                    )
+                if not placeholder:
+                    placeholder = self._natural_placeholder(
+                        candidate.type, candidate.canonical, used
+                    )
                 local_entities[key] = placeholder
                 local_used.add(placeholder)
                 if session is not None:
@@ -747,6 +764,18 @@ class DataMasker:
                     restored += text_after_names.count(placeholder)
                     text_after_names = text_after_names.replace(placeholder, original)
             masked = text_after_names
+        # OD-ARCH-185：旧文档里的稳定别名也按持久映射还原（跨会话一致性）。
+        alias_restored = 0
+        if self._alias_store is not None:
+            for alias, original in sorted(
+                self._alias_store.aliases(),
+                key=lambda pair: len(pair[0]),
+                reverse=True,
+            ):
+                if not alias or alias not in masked:
+                    continue
+                alias_restored += masked.count(alias)
+                masked = masked.replace(alias, original)
         for match in _PLACEHOLDER_RE.finditer(masked):
             exact_spans.append((match.start(), match.end()))
             pieces.append(masked[cursor:match.start()])
@@ -763,6 +792,7 @@ class DataMasker:
         pieces.append(masked[cursor:])
         report: Dict[str, object] = {
             "restored": restored,
+            "alias_restored": alias_restored,
             "unknown_placeholders": unknown,
             "modified_candidates": self._count_modified(masked, exact_spans),
             "ok": not unknown,

@@ -96,6 +96,7 @@ def preset_for_intent(intent: Optional[str], profile: Optional[str]) -> Optional
         return WORK_REVIEW_PRESET
     return None
 from .process_owner import record_child_group, terminate_group
+from .security.alias_store import AliasStore
 from .security import (
     DataMasker,
     MaskMapping,
@@ -558,6 +559,9 @@ class WebApiAdapter(TaskCoreBase):
         self._masker_enabled = str(env.get("OMNIDESK_MASKER", "")).strip().lower() != "off"
         raw_dict = str(env.get("OMNIDESK_SENSITIVE_DICT", "") or "").strip()
         self._masker_dict_path = Path(raw_dict) if raw_dict else None
+        # OD-ARCH-185：稳定别名表（跨会话/跨文档保持同一实体→同一掩码串）。
+        raw_alias = str(env.get("OMNIDESK_ALIAS_MAP", "") or "").strip()
+        self._alias_store = AliasStore(Path(raw_alias)) if raw_alias else None
         # engine_session_id -> 会话作用域 + 已用占位符映射。
         self._mask_sessions: dict = {}
         # OD-ARCH-176：engine_session_id -> 已应用的 (provider, model, effort)。
@@ -1364,16 +1368,22 @@ class WebApiAdapter(TaskCoreBase):
         if session is not None:
             if session.dict_signature != signature:
                 session.masker = (
-                    DataMasker(dictionary_path=self._masker_dict_path)
+                    DataMasker(
+                        dictionary_path=self._masker_dict_path,
+                        alias_store=self._alias_store,
+                    )
                     if self._masker_dict_path is not None
-                    else DataMasker()
+                    else DataMasker(alias_store=self._alias_store)
                 )
                 session.dict_signature = signature
             return session
         masker = (
-            DataMasker(dictionary_path=self._masker_dict_path)
+            DataMasker(
+                dictionary_path=self._masker_dict_path,
+                alias_store=self._alias_store,
+            )
             if self._masker_dict_path is not None
-            else DataMasker()
+            else DataMasker(alias_store=self._alias_store)
         )
         session = _MaskSession(
             masker=masker,

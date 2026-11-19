@@ -209,7 +209,13 @@ class UnmaskMdTests(unittest.TestCase):
         _, report = DataMasker().unmask_markdown(masked.text, masked.mapping)
         self.assertEqual(
             set(report),
-            {"restored", "unknown_placeholders", "modified_candidates", "ok"},
+            {
+                "restored",
+                "alias_restored",
+                "unknown_placeholders",
+                "modified_candidates",
+                "ok",
+            },
         )
 
     def test_placeholder_moved_into_code_still_restores(self):

@@ -918,6 +918,12 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 本机：cargo test --lib 单线程 1250/0；process_owner 单测 OK；py_compile OK；tsc/build 通过。改动未推送。
 - Windows 交叉编译检查在 tauri-winres 的 llvm-rc 依赖处失败（宿主缺 Windows 资源编译器，与代码无关），Windows cfg 代码等 CI/实机验证；**Windows 实机复验待用户**：关闭 app 后 Get-CimInstance 过滤 dsh-runtime 残留应为 0。
 
+## 2026-11-19 OD-ARCH-185 阶段 1 执行记录（ARCHITECT 亲自执行）
+
+- 新增 `engine/omnidesk_engine/security/alias_store.py`（稳定别名表：0600、原子写、损坏容错、金额不持久化）；masker 接入稳定别名（跨会话同一实体同一掩码），unmask 增加持久别名还原（report 增 alias_restored）；宿主 `OMNIDESK_ALIAS_MAP` 注入（与敏感词典同目录，默认启用无弹窗）。
+- 验证：新增 test_alias_store_unit 6/6（稳定性、双人区分、无会话映射还原、金额不持久化、0600、损坏容错）；masker 45/45、markdown 38/38、adapter 101/101、knowledge_ingest OK；cargo child_env 2/2（含新增 alias map 路径断言）。改动未推送。
+- 阶段 2（镜像工作区）未实施：受 runtime 工具读取边界缺口限制，镜像只能靠约定抑制；待真实“读取原文文件”需求或 runtime 钩子出现再立项。
+
 
 ## OD-ARCH-183 Windows 引擎进程树回收（2026-11-18，ARCHITECT 亲自实施）
 

@@ -389,6 +389,13 @@ impl EngineConfig {
             .unwrap_or(&self.engine_state_dir)
             .join("config")
             .join("sensitive-dict.v1.json");
+        // OD-ARCH-185：稳定别名表与词典同目录，跨会话保持实体→掩码一致。
+        let alias_map = self
+            .engine_state_dir
+            .parent()
+            .unwrap_or(&self.engine_state_dir)
+            .join("config")
+            .join("pseudonym-map.v1.json");
         let mut envs = vec![
             ("OMNIDESK_DSH_HOME".to_string(), self.dsh_home.display().to_string()),
             ("OMNIDESK_AGENTS_HOME".to_string(), self.agents_home.display().to_string()),
@@ -402,6 +409,10 @@ impl EngineConfig {
             (
                 "OMNIDESK_SENSITIVE_DICT".to_string(),
                 sensitive_dict.display().to_string(),
+            ),
+            (
+                "OMNIDESK_ALIAS_MAP".to_string(),
+                alias_map.display().to_string(),
             ),
         ];
         // OD-SYS-704：发布包内置纯 Python 依赖（requests/certifi）。
@@ -669,6 +680,22 @@ mod tests {
             .join("sensitive-dict.v1.json");
         assert_eq!(
             child_env_value(&config, "OMNIDESK_SENSITIVE_DICT"),
+            Some(expected.display().to_string())
+        );
+    }
+
+    /// OD-ARCH-185：稳定别名表路径同样注入引擎，与应用数据根 config/ 对齐。
+    #[test]
+    fn child_env_exposes_alias_map_under_app_config() {
+        let config = fake_config();
+        let expected = config
+            .engine_state_dir
+            .parent()
+            .unwrap()
+            .join("config")
+            .join("pseudonym-map.v1.json");
+        assert_eq!(
+            child_env_value(&config, "OMNIDESK_ALIAS_MAP"),
             Some(expected.display().to_string())
         );
     }
