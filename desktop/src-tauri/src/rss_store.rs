@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_paths::AppPaths;
 use crate::reading_store::{
-    ensure_store_dirs, harden_private, write_book, ReadingBook, ReadingChapter,
+    ensure_store_dirs, harden_private, read_book_at, write_book, ReadingBook, ReadingChapter,
     ReadingProgress, READING_SCHEMA,
 };
 use crate::sha256::sha256_hex;
@@ -99,6 +99,26 @@ const PRESET_FEEDS: &[PresetFeed] = &[
     PresetFeed { name: "张戈博客", url: "https://zhang.ge/feed", group: PRESET_GROUP_BLOGS },
 ];
 
+/// 健脑室空态展示的精选作者；只暴露作者组，不暴露独立博客与公众号。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RssPresetSource {
+    pub name: String,
+    pub url: String,
+    pub group: String,
+}
+
+pub fn preset_sources() -> Vec<RssPresetSource> {
+    PRESET_FEEDS
+        .iter()
+        .filter(|preset| preset.group == PRESET_GROUP_AUTHORS)
+        .map(|preset| RssPresetSource {
+            name: preset.name.to_string(),
+            url: preset.url.to_string(),
+            group: preset.group.to_string(),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RssSubscription {
     pub id: String,
@@ -129,6 +149,8 @@ pub struct RssArticleMeta {
     pub fetched_at: String,
     #[serde(default)]
     pub read: bool,
+    #[serde(default)]
+    pub favorite: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -145,6 +167,13 @@ pub struct RssFetchReport {
     pub added: usize,
     pub skipped: usize,
     pub errors: Vec<RssFetchFailure>,
+}
+
+/// 单篇 RSS 文章的正文回填结果：只在无批注且匹配到新条目时改写正文。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RssArticleRefreshResult {
+    pub updated: bool,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -399,6 +428,36 @@ pub fn mark_article_read(paths: &AppPaths, book_id: &str) -> Result<RssArticleMe
     mark_article_read_at(&root, book_id)
 }
 
+/// 切换文章收藏；只改 articles/<book_id>.json，不触碰正文与批注。
+pub fn set_article_favorite(
+    paths: &AppPaths,
+    book_id: &str,
+    favorite: bool,
+) -> Result<RssArticleMeta, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    set_article_favorite_at(&root, book_id, favorite)
+}
+
+fn set_article_favorite_at(
+    root: &Path,
+    book_id: &str,
+    favorite: bool,
+) -> Result<RssArticleMeta, String> {
+    let path = article_path(root, book_id)?;
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("读取 RSS 文章元数据失败（{}）：{}", path.display(), e))?;
+    let mut meta: RssArticleMeta = serde_json::from_str(&raw)
+        .map_err(|e| format!("RSS 文章元数据格式不正确（{}）：{}", path.display(), e))?;
+    if meta.favorite == favorite {
+        return Ok(meta);
+    }
+    meta.favorite = favorite;
+    let bytes = serde_json::to_vec_pretty(&meta).map_err(|e| format!("序列化 RSS 文章元数据失败：{e}"))?;
+    write_replace_atomically(&path, &bytes)?;
+    harden_private(&path, 0o600);
+    Ok(meta)
+}
+
 fn mark_article_read_at(root: &Path, book_id: &str) -> Result<RssArticleMeta, String> {
     let path = article_path(root, book_id)?;
     let raw = fs::read_to_string(&path)
@@ -426,6 +485,149 @@ fn reading_book_exists_at(root: &Path, book_id: &str) -> bool {
     is_safe_id(book_id) && root.join("books").join(format!("{book_id}.json")).exists()
 }
 
+fn read_article_meta_at(root: &Path, book_id: &str) -> Result<Option<RssArticleMeta>, String> {
+    let path = article_path(root, book_id)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("读取 RSS 文章元数据失败（{}）：{}", path.display(), e))?;
+    let meta = serde_json::from_str(&raw)
+        .map_err(|e| format!("RSS 文章元数据格式不正确（{}）：{}", path.display(), e))?;
+    Ok(Some(meta))
+}
+
+/// 单篇 RSS 文章回填：重新抓取所属 feed，按 guid/link 匹配条目后重算正文。
+/// 只有文章没有批注时才改写 chapters/author/source_sha256，progress 与已读状态原样保留。
+pub fn refresh_article(paths: &AppPaths, book_id: &str) -> Result<RssArticleRefreshResult, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    refresh_article_at(&root, book_id)
+}
+
+fn refresh_article_at(root: &Path, book_id: &str) -> Result<RssArticleRefreshResult, String> {
+    let not_updated = |reason: &str| RssArticleRefreshResult {
+        updated: false,
+        reason: reason.to_string(),
+    };
+    if !is_safe_id(book_id) {
+        return Err(format!("文章编号不合法：{book_id:?}"));
+    }
+    let Some(meta) = read_article_meta_at(root, book_id)? else {
+        return Ok(not_updated("没有该 RSS 文章的元数据，无法重新抓取。"));
+    };
+    if !reading_book_exists_at(root, book_id) {
+        return Ok(not_updated("没有找到文章正文文件。"));
+    }
+    let book = read_book_at(root, book_id)?;
+    if book.source_format != "rss" {
+        return Ok(not_updated("这不是订阅文章，跳过回填。"));
+    }
+    if !book.annotations.is_empty() {
+        return Ok(not_updated("文章已有批注，未回填正文。"));
+    }
+    let Some(feed_url) = subscription_feed_url(root, &meta) else {
+        return Ok(not_updated("缺少可用的订阅源地址。"));
+    };
+    let client = http_client()?;
+    let xml = fetch_feed_xml(&client, &feed_url)?;
+    refresh_article_with_xml_at(root, book_id, &xml)
+}
+
+fn subscription_feed_url(root: &Path, meta: &RssArticleMeta) -> Option<String> {
+    if let Ok(url) = validate_feed_url(&meta.feed_url) {
+        return Some(url);
+    }
+    if !subscriptions_path(root).exists() {
+        return None;
+    }
+    let store = load_store_at(root).ok()?;
+    store
+        .subscriptions
+        .into_iter()
+        .find(|item| item.id == meta.subscription_id || item.url == meta.feed_url)
+        .map(|item| item.url)
+}
+
+fn refresh_article_with_xml_at(
+    root: &Path,
+    book_id: &str,
+    xml: &str,
+) -> Result<RssArticleRefreshResult, String> {
+    let not_updated = |reason: &str| RssArticleRefreshResult {
+        updated: false,
+        reason: reason.to_string(),
+    };
+    let Some(meta) = read_article_meta_at(root, book_id)? else {
+        return Ok(not_updated("没有该 RSS 文章的元数据，无法重新抓取。"));
+    };
+    let mut book = match read_book_at(root, book_id) {
+        Ok(book) => book,
+        Err(_) => return Ok(not_updated("没有找到文章正文文件。")),
+    };
+    if book.source_format != "rss" {
+        return Ok(not_updated("这不是订阅文章，跳过回填。"));
+    }
+    if !book.annotations.is_empty() {
+        return Ok(not_updated("文章已有批注，未回填正文。"));
+    }
+    let entries = parse_feed(xml)?;
+    let matched = entries.into_iter().find(|entry| {
+        let guid_hit = !meta.guid.trim().is_empty()
+            && entry.guid.trim() == meta.guid.trim();
+        let link_hit = !meta.link.trim().is_empty()
+            && entry.link.trim() == meta.link.trim();
+        guid_hit || link_hit
+    });
+    let Some(entry) = matched else {
+        return Ok(not_updated("订阅源中没有匹配的文章条目（guid/link 不一致）。"));
+    };
+    let base_url = if !entry.link.trim().is_empty() {
+        entry.link.trim().to_string()
+    } else if !meta.link.trim().is_empty() {
+        meta.link.trim().to_string()
+    } else {
+        meta.feed_url.trim().to_string()
+    };
+    let mut paragraphs = html_to_paragraphs(&entry.content_html, &base_url);
+    let has_media = paragraphs
+        .iter()
+        .any(|item| item.contains("![img]") || item.contains("odmedia:"));
+    if !has_media && !entry.image_url.is_empty() {
+        paragraphs.insert(0, format!("![img]({})", markdown_url(&entry.image_url)));
+    }
+    if paragraphs.is_empty() {
+        return Ok(not_updated("订阅源正文为空，未回填。"));
+    }
+    let existing: Vec<String> = book
+        .chapters
+        .iter()
+        .flat_map(|chapter| chapter.paragraphs.iter().cloned())
+        .collect();
+    if paragraphs == existing {
+        return Ok(not_updated("订阅源正文与本地一致，无需回填。"));
+    }
+    if !has_media && paragraphs.iter().any(|item| item.contains("[图片：")) {
+        return Ok(not_updated("订阅源正文仍含旧图片占位，未找到可用图片地址。"));
+    }
+    let author = if entry.author.trim().is_empty() {
+        book.author.clone()
+    } else {
+        clamp_chars(entry.author.trim(), 200)
+    };
+    book.chapters = vec![ReadingChapter {
+        title: "正文".to_string(),
+        paragraphs,
+    }];
+    book.author = author;
+    book.source_sha256 = sha256_hex(entry.content_html.as_bytes());
+    book.media_version = 1;
+    write_book(root, &book)?;
+    Ok(RssArticleRefreshResult {
+        updated: true,
+        reason: String::new(),
+    })
+}
+
 pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetchReport, String> {
     let root = crate::reading_store::resolve_reading_root(paths)?;
     let mut store = load_store_at(&root)?;
@@ -443,12 +645,7 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
         }
         None => (0..store.subscriptions.len()).collect(),
     };
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .connect_timeout(Duration::from_secs(10))
-        .user_agent("OmniDesk-RSS/0.1 (+https://omnidesk.local)")
-        .build()
-        .map_err(|e| format!("创建 RSS 网络客户端失败：{e}"))?;
+    let client = http_client()?;
     let mut report = RssFetchReport {
         fetched: 0,
         failed: 0,
@@ -511,6 +708,15 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
     Ok(report)
 }
 
+fn http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent("OmniDesk-RSS/0.1 (+https://omnidesk.local)")
+        .build()
+        .map_err(|e| format!("创建 RSS 网络客户端失败：{e}"))
+}
+
 fn fetch_feed_xml(client: &reqwest::blocking::Client, url: &str) -> Result<String, String> {
     let url = validate_feed_url(url)?;
     let response = client
@@ -564,6 +770,7 @@ struct FeedEntry {
     author: String,
     content_html: String,
     summary: String,
+    image_url: String,
 }
 
 #[derive(Default)]
@@ -597,10 +804,48 @@ fn ingest_feed_at(
             hash8(&key)
         );
         if reading_book_exists_at(root, &book_id) || article_path(root, &book_id)?.exists() {
+            if let Ok(mut book) = read_book_at(root, &book_id) {
+                if book.source_format == "rss" && book.annotations.is_empty() {
+                    let mut paragraphs = html_to_paragraphs(&entry.content_html, &entry.link);
+                    let has_media = paragraphs
+                        .iter()
+                        .any(|item| item.contains("![img]") || item.contains("odmedia:"));
+                    if !has_media && !entry.image_url.is_empty() {
+                        paragraphs.insert(
+                            0,
+                            format!("![img]({})", markdown_url(&entry.image_url)),
+                        );
+                    }
+                    if has_media || !entry.image_url.is_empty() {
+                        let author = if entry.author.trim().is_empty() {
+                            subscription.name.clone()
+                        } else {
+                            clamp_chars(entry.author.trim(), 200)
+                        };
+                        book.chapters = vec![ReadingChapter {
+                            title: "正文".to_string(),
+                            paragraphs,
+                        }];
+                        book.author = author;
+                        book.source_sha256 = sha256_hex(entry.content_html.as_bytes());
+                        book.media_version = 1;
+                        write_book(root, &book)?;
+                    }
+                }
+            }
             summary.skipped += 1;
             continue;
         }
-        let paragraphs = html_to_paragraphs(&entry.content_html);
+        let mut paragraphs = html_to_paragraphs(&entry.content_html, &entry.link);
+        let has_media = paragraphs
+            .iter()
+            .any(|item| item.contains("![img]") || item.contains("odmedia:"));
+        if !has_media && !entry.image_url.is_empty() {
+            paragraphs.insert(
+                0,
+                format!("![img]({})", markdown_url(&entry.image_url)),
+            );
+        }
         if paragraphs.is_empty() {
             summary.skipped += 1;
             continue;
@@ -635,6 +880,7 @@ fn ingest_feed_at(
             annotations: Vec::new(),
             notes: Vec::new(),
             progress: ReadingProgress::default(),
+            media_version: 1,
         };
         write_book(root, &book)?;
         let meta = RssArticleMeta {
@@ -650,6 +896,7 @@ fn ingest_feed_at(
             published_ts: entry.published_ts,
             fetched_at: fetched_at.clone(),
             read: false,
+            favorite: false,
         };
         let path = article_path(root, &book_id)?;
         let raw = serde_json::to_vec_pretty(&meta)
@@ -997,9 +1244,9 @@ fn parse_entry(node: &XmlNode) -> FeedEntry {
     let summary = {
         let description = child_text(node, &["description"]);
         if !description.is_empty() {
-            clamp_chars(&html_to_plain(&description), 500)
+            clamp_chars(&html_to_plain(&description, &link), 500)
         } else {
-            clamp_chars(&html_to_plain(&child_text(node, &["summary"])), 500)
+            clamp_chars(&html_to_plain(&child_text(node, &["summary"]), &link), 500)
         }
     };
     let key = if guid.trim().is_empty() {
@@ -1011,6 +1258,7 @@ fn parse_entry(node: &XmlNode) -> FeedEntry {
     } else {
         guid.clone()
     };
+    let image_url = entry_image_url(node, &link);
     FeedEntry {
         key,
         guid,
@@ -1021,7 +1269,39 @@ fn parse_entry(node: &XmlNode) -> FeedEntry {
         author,
         content_html,
         summary,
+        image_url,
     }
+}
+
+/// 条目自带的图片地址：enclosure 或 media:content（localName content + url 属性）。
+///
+/// 只接受 http/https 且声明为 image/* 的地址；Atom 的 HTML content 没有 url 属性，不会被误判。
+fn entry_image_url(node: &XmlNode, base_url: &str) -> String {
+    for child in &node.children {
+        if child.name != "enclosure" && child.name != "content" {
+            continue;
+        }
+        let Some(url) = attr_value(child, "url") else {
+            continue;
+        };
+        let kind = attr_value(child, "type").unwrap_or_default();
+        let lower = kind.trim().to_ascii_lowercase();
+        let medium = attr_value(child, "medium")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        let is_image = lower.starts_with("image/") || (lower.is_empty() && medium == "image");
+        if !is_image {
+            continue;
+        }
+        if let Some(url) = sanitize_media_url(&url, base_url) {
+            let lower_url = url.to_ascii_lowercase();
+            if lower_url.starts_with("http://") || lower_url.starts_with("https://") {
+                return url;
+            }
+        }
+    }
+    String::new()
 }
 
 fn atom_or_text_link(node: &XmlNode) -> String {
@@ -1107,8 +1387,8 @@ fn decode_entity(entity: &str) -> Option<String> {
     Some(value.to_string())
 }
 
-fn html_to_paragraphs(html: &str) -> Vec<String> {
-    let plain = sanitize_html(html);
+fn html_to_paragraphs(html: &str, base_url: &str) -> Vec<String> {
+    let plain = sanitize_html(html, base_url);
     let mut paragraphs = Vec::new();
     for block in plain.split("\n\n") {
         let normalized = block.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1134,14 +1414,14 @@ fn html_to_paragraphs(html: &str) -> Vec<String> {
     paragraphs
 }
 
-fn html_to_plain(html: &str) -> String {
-    sanitize_html(html)
+fn html_to_plain(html: &str, base_url: &str) -> String {
+    sanitize_html(html, base_url)
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-fn sanitize_html(html: &str) -> String {
+fn sanitize_html(html: &str, base_url: &str) -> String {
     let mut out = String::new();
     let mut index = 0usize;
     let mut open_media: Option<String> = None;
@@ -1199,7 +1479,7 @@ fn sanitize_html(html: &str) -> String {
                 out.push_str("\n\n");
             } else if tag == "img" {
                 if let Some(src) = attr_value_from_tag(inner, "src") {
-                    if let Some(url) = sanitize_media_url(&src) {
+                    if let Some(url) = sanitize_media_url(&src, base_url) {
                         out.push_str(&format!("![img]({})", markdown_url(&url)));
                     }
                 }
@@ -1209,7 +1489,7 @@ fn sanitize_html(html: &str) -> String {
                 } else {
                     open_media = Some(tag.clone());
                     if let Some(src) = attr_value_from_tag(inner, "src") {
-                        if let Some(url) = sanitize_media_url(&src) {
+                        if let Some(url) = sanitize_media_url(&src, base_url) {
                             out.push_str(&format!("[{}]({})", tag, markdown_url(&url)));
                         }
                     }
@@ -1217,7 +1497,7 @@ fn sanitize_html(html: &str) -> String {
             } else if tag == "source" && !closing {
                 // 常见写法：<audio><source src="…"/></audio>
                 if let (Some(kind), Some(src)) = (open_media.as_ref(), attr_value_from_tag(inner, "src")) {
-                    if let Some(url) = sanitize_media_url(&src) {
+                    if let Some(url) = sanitize_media_url(&src, base_url) {
                         out.push_str(&format!("[{}]({})", kind, markdown_url(&url)));
                         open_media = None;
                     }
@@ -1246,14 +1526,95 @@ fn attr_value_from_tag(inner: &str, wanted: &str) -> Option<String> {
 }
 
 /// RSS 正文只允许 data: 与 http(s) 媒体直接交给 WebView；其余协议丢弃，不代理不落盘。
-fn sanitize_media_url(src: &str) -> Option<String> {
+/// 相对地址按条目 link 解析成绝对 http(s) 后再放行。
+fn sanitize_media_url(src: &str, base_url: &str) -> Option<String> {
     let value = src.trim();
+    if value.is_empty() || value.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return None;
+    }
     let lower = value.to_ascii_lowercase();
-    if lower.starts_with("data:") || lower.starts_with("http://") || lower.starts_with("https://") {
-        Some(value.to_string())
+    if lower.starts_with("data:") {
+        return Some(value.to_string());
+    }
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Some(value.to_string());
+    }
+    if let Some(colon) = value.find(':') {
+        let path_start = value
+            .find(['/', '?', '#'])
+            .unwrap_or(value.len());
+        if colon < path_start {
+            // javascript:/mailto:/file: 等未知协议一律丢弃，避免被当成相对路径解析。
+            return None;
+        }
+    }
+    let resolved = resolve_media_url(value, base_url)?;
+    let resolved_lower = resolved.to_ascii_lowercase();
+    if resolved_lower.starts_with("http://") || resolved_lower.starts_with("https://") {
+        Some(resolved)
     } else {
         None
     }
+}
+
+/// 把 `//cdn/x`、`/img/x`、`images/x`、`../x` 这类相对地址基于条目 link 解析为绝对地址。
+fn resolve_media_url(value: &str, base_url: &str) -> Option<String> {
+    let (scheme, rest) = base_url.trim().split_once("://")?;
+    let scheme_lower = scheme.to_ascii_lowercase();
+    if scheme_lower != "http" && scheme_lower != "https" {
+        return None;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() {
+        return None;
+    }
+    let base_no_fragment = rest
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("");
+    let base_dir = match base_no_fragment.rfind('/') {
+        Some(index) => &base_no_fragment[..=index],
+        None => "/",
+    };
+    let absolute = if value.starts_with("//") {
+        format!("{}://{}", scheme_lower, value.trim_start_matches('/'))
+    } else if value.starts_with('/') {
+        format!("{}://{}{}", scheme_lower, authority, value)
+    } else if value.starts_with('?') || value.starts_with('#') {
+        format!("{}://{}{}", scheme_lower, base_no_fragment, value)
+    } else {
+        format!("{}://{}{}", scheme_lower, base_dir, value)
+    };
+    Some(normalize_absolute_url(&absolute))
+}
+
+/// 折叠 `.`/`..` 段，保留协议、主机与 query/hash。
+fn normalize_absolute_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    let (authority, path) = match rest.find('/') {
+        Some(index) => (&rest[..index], &rest[index..]),
+        None => (rest, "/"),
+    };
+    let (path_only, suffix) = match path.find(['?', '#']) {
+        Some(index) => (&path[..index], &path[index..]),
+        None => (path, ""),
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path_only.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            other => segments.push(other),
+        }
+    }
+    let mut out = format!("{}://{}/", scheme.to_ascii_lowercase(), authority);
+    out.push_str(&segments.join("/"));
+    out.push_str(suffix);
+    out
 }
 
 fn markdown_url(value: &str) -> String {
@@ -1417,7 +1778,7 @@ mod tests {
         assert_eq!(entries[0].link, "https://example.test/posts/1");
         assert_eq!(entries[0].author, "作者甲");
         assert_eq!(entries[0].published_ts, 1_794_988_800);
-        let paragraphs = html_to_paragraphs(&entries[0].content_html);
+        let paragraphs = html_to_paragraphs(&entries[0].content_html, &entries[0].link);
         assert_eq!(paragraphs.len(), 2);
         assert!(paragraphs[0].contains("第一段 & 引用"));
         assert!(paragraphs[1].contains("第二段 含 重点"));
@@ -1441,9 +1802,56 @@ mod tests {
         assert_eq!(entries[0].link, "https://example.test/atom/1");
         assert_eq!(entries[0].author, "作者乙");
         assert_eq!(entries[0].published_ts, 1_794_965_400);
-        let paragraphs = html_to_paragraphs(&entries[0].content_html);
+        let paragraphs = html_to_paragraphs(&entries[0].content_html, &entries[0].link);
         assert_eq!(paragraphs.len(), 2);
         assert_eq!(paragraphs[0], "Alice & Bob");
+    }
+
+    #[test]
+    fn extracts_image_from_enclosure_and_media_content() {
+        let xml = r#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel><item>
+    <title>带图文章</title><link>https://example.test/photo</link><guid>photo</guid>
+    <enclosure url="https://example.test/cover.jpg" type="image/jpeg" length="1234"/>
+    <media:content url="https://example.test/inline.png" type="image/png" medium="image"/>
+    <description>正文没有图片</description>
+  </item></channel>
+</rss>"#;
+        let entries = parse_feed(xml).unwrap();
+        assert_eq!(entries[0].image_url, "https://example.test/cover.jpg");
+        let xml_media_only = r#"<rss xmlns:media="http://search.yahoo.com/mrss/"><channel><item>
+<title>媒体图</title><link>https://example.test/m</link><guid>m</guid>
+<media:content url="https://example.test/inline.png" type="image/png"/>
+<description>正文</description></item></channel></rss>"#;
+        let entries = parse_feed(xml_media_only).unwrap();
+        assert_eq!(entries[0].image_url, "https://example.test/inline.png");
+    }
+
+    #[test]
+    fn backfills_old_article_media_without_annotations() {
+        let root = temp_root("backfill");
+        let subscription = sample_subscription();
+        let plain = r#"<rss><channel><item><title>旧文章</title><link>https://example.test/old</link><guid>old</guid><description>只有文字</description></item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, plain, 1_800_000_000.0).unwrap();
+        let nl = char::from_u32(10).unwrap();
+        let book_id = format!(
+            "rss-{}-{}",
+            hash8(&format!("{}{}{}", subscription.url, nl, "old")),
+            hash8("old")
+        );
+        crate::reading_store::set_progress_at(&root, &book_id, 0.5, 1_800_000_010.0).unwrap();
+        let with_image = r#"<rss><channel><item><title>旧文章</title><link>https://example.test/old</link><guid>old</guid><description>&lt;p&gt;文字&lt;/p&gt;&lt;img src="https://example.test/pic.png"/&gt;</description></item></channel></rss>"#;
+        let summary = ingest_feed_at(&root, &subscription, with_image, 1_800_000_020.0).unwrap();
+        assert_eq!(summary.added, 0);
+        let book = read_book_at(&root, &book_id).unwrap();
+        assert_eq!(book.media_version, 1);
+        assert!(book.chapters[0]
+            .paragraphs
+            .iter()
+            .any(|item| item.contains("![img](https://example.test/pic.png)")));
+        assert!((book.progress.percent - 0.5).abs() < 1e-9, "回填不得改动阅读进度");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1529,6 +1937,14 @@ mod tests {
     }
 
     #[test]
+    fn preset_sources_returns_nine_featured_authors() {
+        let sources = preset_sources();
+        assert_eq!(sources.len(), 9);
+        assert!(sources.iter().all(|source| source.group == PRESET_GROUP_AUTHORS));
+        assert!(sources.iter().any(|source| source.name == "阮一峰的网络日志"));
+    }
+
+    #[test]
     fn truncates_long_article_body_to_the_limit() {
         let root = temp_root("truncate");
         let subscription = sample_subscription();
@@ -1566,9 +1982,29 @@ mod tests {
     }
 
     #[test]
+    fn favorites_article_metadata_only() {
+        let root = temp_root("favorite");
+        let subscription = sample_subscription();
+        let xml = r#"<rss><channel><item><title>收藏样例</title><link>https://example.test/star</link><guid>star</guid><description>正文</description></item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, xml, 1_800_000_000.0).unwrap();
+        let items = list_articles_at(&root).unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].favorite);
+        let book_path = root.join("books").join(format!("{}.json", items[0].book_id));
+        let book_before = fs::read_to_string(&book_path).unwrap();
+        let updated = set_article_favorite_at(&root, &items[0].book_id, true).unwrap();
+        assert!(updated.favorite);
+        assert_eq!(list_articles_at(&root).unwrap()[0].favorite, true);
+        assert_eq!(fs::read_to_string(&book_path).unwrap(), book_before, "收藏不得改写正文");
+        let cleared = set_article_favorite_at(&root, &items[0].book_id, false).unwrap();
+        assert!(!cleared.favorite);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn sanitizer_drops_script_and_preserves_block_paragraphs() {
         let html = "<h1>标题</h1><p>一段 &amp; 二段</p><script>bad()</script><p>第三段<br>换行</p>";
-        let paragraphs = html_to_paragraphs(html);
+        let paragraphs = html_to_paragraphs(html, "https://example.test/posts/1");
         assert_eq!(paragraphs.len(), 3);
         assert_eq!(paragraphs[0], "标题");
         assert_eq!(paragraphs[1], "一段 & 二段");
@@ -1584,11 +2020,103 @@ mod tests {
             "<audio src=\"https://example.test/a.mp3\"></audio>",
             "<video><source src=\"data:video/mp4;base64,AAAA\"/></video>"
         );
-        let sanitized = sanitize_html(html);
+        let sanitized = sanitize_html(html, "https://example.test/posts/1");
         assert!(sanitized.contains("![img](https://example.test/a.png)"), "{sanitized}");
         assert!(!sanitized.contains("javascript"), "{sanitized}");
         assert!(sanitized.contains("[audio](https://example.test/a.mp3)"), "{sanitized}");
         assert!(sanitized.contains("[video](data:video/mp4;base64,AAAA)"), "{sanitized}");
+    }
+
+    #[test]
+    fn resolves_relative_image_sources_against_entry_link() {
+        let html = concat!(
+            "<p>图</p><img src=\"/assets/a.png\"/>",
+            "<img src=\"//cdn.example.test/b.png\"/>",
+            "<img src=\"../img/c.png\"/>",
+            "<img src=\"javascript:alert(1)\"/>"
+        );
+        let paragraphs = html_to_paragraphs(html, "https://example.test/posts/2026/11/art");
+        let joined = paragraphs.join("\n");
+        assert!(joined.contains("![img](https://example.test/assets/a.png)"), "{joined}");
+        assert!(joined.contains("![img](https://cdn.example.test/b.png)"), "{joined}");
+        assert!(joined.contains("![img](https://example.test/posts/2026/img/c.png)"), "{joined}");
+        assert!(!joined.contains("javascript"), "{joined}");
+    }
+
+    #[test]
+    fn refresh_article_rebuilds_body_and_keeps_progress() {
+        let root = temp_root("refresh");
+        let subscription = sample_subscription();
+        let old_xml = r#"<rss><channel><item>
+<title>ALTRun 旧文</title><link>https://example.test/posts/alt</link><guid>alt</guid>
+<description>&lt;p&gt;正文&lt;/p&gt;&lt;p&gt;[图片：ALTRun … 21]&lt;/p&gt;</description>
+</item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, old_xml, 1_800_000_000.0).unwrap();
+        let items = list_articles_at(&root).unwrap();
+        assert_eq!(items.len(), 1);
+        let book_id = items[0].book_id.clone();
+        let mut book = read_book_at(&root, &book_id).unwrap();
+        book.progress.percent = 0.42;
+        write_book(&root, &book).unwrap();
+
+        let new_xml = r#"<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item>
+<title>ALTRun 旧文</title><link>https://example.test/posts/alt</link><guid>alt</guid>
+<content:encoded><![CDATA[<p>正文</p><img src="/uploads/alt.png"/>]]></content:encoded>
+</item></channel></rss>"#;
+        let result = refresh_article_with_xml_at(&root, &book_id, new_xml).unwrap();
+        assert!(result.updated, "{:?}", result.reason);
+        let updated = read_book_at(&root, &book_id).unwrap();
+        let joined = updated
+            .chapters
+            .iter()
+            .flat_map(|chapter| chapter.paragraphs.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("![img](https://example.test/uploads/alt.png)"), "{joined}");
+        assert!(!joined.contains("[图片："), "{joined}");
+        assert_eq!(updated.progress.percent, 0.42);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn refresh_article_skips_when_annotations_exist() {
+        use crate::reading_store::ReadingAnnotation;
+        let root = temp_root("refresh-annotated");
+        let subscription = sample_subscription();
+        let old_xml = r#"<rss><channel><item>
+<title>有批注的旧文</title><link>https://example.test/posts/note</link><guid>note</guid>
+<description>&lt;p&gt;正文&lt;/p&gt;&lt;p&gt;[图片：ALTRun … 21]&lt;/p&gt;</description>
+</item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, old_xml, 1_800_000_000.0).unwrap();
+        let items = list_articles_at(&root).unwrap();
+        let book_id = items[0].book_id.clone();
+        let mut book = read_book_at(&root, &book_id).unwrap();
+        book.annotations.push(ReadingAnnotation {
+            id: "ann-1".to_string(),
+            kind: "highlight".to_string(),
+            chapter_index: 0,
+            paragraph_index: 0,
+            start: 0,
+            end: 2,
+            quote: "正文".to_string(),
+            body: String::new(),
+            color: "amber".to_string(),
+            source: "user".to_string(),
+            created_at: "2026-11-18T00:00:00Z".to_string(),
+            updated_at: "2026-11-18T00:00:00Z".to_string(),
+        });
+        write_book(&root, &book).unwrap();
+        let new_xml = r#"<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item>
+<title>有批注的旧文</title><link>https://example.test/posts/note</link><guid>note</guid>
+<content:encoded><![CDATA[<p>正文</p><img src="/uploads/note.png"/>]]></content:encoded>
+</item></channel></rss>"#;
+        let result = refresh_article_with_xml_at(&root, &book_id, new_xml).unwrap();
+        assert!(!result.updated, "{:?}", result.reason);
+        assert!(result.reason.contains("批注"), "{:?}", result.reason);
+        let unchanged = read_book_at(&root, &book_id).unwrap();
+        assert_eq!(unchanged.chapters, book.chapters);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

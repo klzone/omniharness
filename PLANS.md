@@ -529,3 +529,103 @@
 **已知边界：** 别名表只解决“同一实体掩码稳定”，不提高检测覆盖率——裸人名/无后缀企业仍靠敏感词典精确兜底；别名文件本身是敏感文件（本机 0600，不进 Git、不外发）。工具读取原文通道仍在（阶段 2 前不消除）。
 
 > 已完成的旧计划已归档到仓库外 `MyWorkStation-archive/2026-11-17/process-docs/`。
+
+
+### OD-READ-002 阶段 3：健脑室侧栏自动折叠 + 首页统计条底部居中（2026-11-19，用户指示）
+
+> **触发（用户 4 条改进）：** ①右侧 AI/笔记面板常态化折叠，收起时只显示图标栏，点击图标或划线动作条动作自动展开，90 秒无右侧栏操作/输入自动收起；②首页读书展示条底部居中；③正文多媒体/Markdown 显示；④RSS 文章计入阅读字数。经核对：③④已在 483e2b4177 落地（rss_store 已转 img/audio/video 标记，reading_stats.chars 单测覆盖 RSS），本轮只做①②并验证③④。
+
+**实施（BUILDER 执行）：**
+> 1. `desktop/src/shell/ReadingPage.tsx`：`panelOpen` 默认改为 `false`（宽窄屏一致）；面板收起时不再整体 `hidden`，改为右侧固定 40px 垂直图标栏（笔记图标 + 批注数角标、AI 图标、展开箭头），样式与 Dock/顶栏图标按钮一致；点击图标栏条目 → 展开面板并切到对应 tab；划线动作条的 划线/想法/标段 → 展开并切 notes，问 AI → 展开并切 ai（既有 `setPanelOpen(true)` 调用点保留）。
+> 2. 90 秒自动收起：面板展开期间，监听面板内的 click/keydown/scroll/pointerdown 重置计时器；任意一次交互后 90 秒无新事件即 `setPanelOpen(false)`；面板收起或切走书目时清除计时器；主阅读区滚动不重置计时器（以右侧栏操作为准）。
+> 3. `desktop/src/shell/HomeCanvas.tsx` + 样式：`ReadingStatsBar` 槽位改为贴底居中——槽位 `shrink-0 flex justify-center`，统计条自身宽度按内容收缩（去多余拉伸），保持可点击跳转健脑室。
+> 4. 验证③：打开一本含图片/链接/Markdown 的书与一篇含图 RSS 文章，确认图片渲染、超链接可点、行内 Markdown 生效；划线偏移锚点不因富媒体偏移（现有 `verify_reading_003_selection.py` 回归）。
+> 5. 验证④：`reading_stats` 单测已断言 `chars == 书籍 + RSS`；补充前端统计条展示「字数」含订阅文章的静态断言。
+> 6. 回归：`cargo test --lib -- --test-threads=1`（设 `OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation`）、`npx tsc --noEmit`、`npm run build`、verify_reading_003/004 全过；证据追加到 `tests/verification/desktop/evidence/od-read-002/stage3.md`。
+
+**明确不做：** 不改划线锚定数据结构；不动 rss 抓取链路；不做面板宽度记忆持久化；不提交不推送（由 ARCHITECT 复核后另派提交任务）。
+
+
+### OD-READ-002 阶段 4：健脑室阅读区新拟物视觉改版（2026-11-19，用户批准执行）
+
+> **触发（用户裁决）：** 认可设计样稿（reading.css + ReadingPage.tsx 样式层），要求按新拟物方案改版书/文阅读区，并「AI 划线浮动条同步设计」，授权执行。样稿路径：/Users/yvan/.codex/visualizations/2026/11/18/01a1ed5a-db65-7780-a2e2-c620b62cb67d/reading-neumorphic-mockup.html（默认态/展开态两张 PNG 同目录）。
+> **借鉴要点（≤2 句）：** 阅读主区用一张凸起「纸」承载正文（Apple Books 沉浸纸面 + 宽松行距），书架与侧栏用凸起小卡、选中转内凹井 + 主色环（OpenDesign omnidesk-neumorphism 案例配方）；正文媒体与引文由内凹窗承载。
+
+**实施（BUILDER 执行，仅样式与布局）：**
+> 1. reading.css 新增健脑室设计变量（暖纸面新拟物配方）：--rd-raise / --rd-raise-sm / --rd-inset / --rd-inset-sm / --rd-ring；作用域限定阅读页根节点，不污染其它页面。
+> 2. 阅读纸面：正文容器改凸起大圆角卡（padding 约 34/44），正文段落宋体栈 + 2.0 行距；划线用琥珀软底、想法用主色下划线（沿用现有标注逻辑，只换视觉）；正文图片/媒体改内凹窗 + 圆角；RSS 引文块内凹井 + 主色左缘；章节头进度条改内凹轨 + 主色填充。
+> 3. 书架此消彼长：panelOpen=false 时左侧书架 288px（搜索内凹胶囊、条目凸起卡、选中内凹井+主色环、进度内凹轨）；panelOpen=true 时书架收为 56px 图标栏（书/订阅/搜索三钮，可点回列表），过渡约 220ms；窄屏（<1280）沿用现有行为（书架折叠 + 面板 overlay）。
+> 4. 右侧面板：展开卡改凸起卡（宽约 320-340 可拖拽不变），tabs 内凹胶囊 + 选中凸起，批注卡与 AI 草稿区改内凹井；收起 40px 图标栏样式统一（圆钮 raise-sm / active inset）。
+> 5. 划线浮动条：同一新拟物语言——raised 胶囊容器（白高光 + 暖褐投影、圆角），四个按钮 hover 凸起 / active 内凹，问 AI 按钮主色文字；位置、行为、锚点逻辑不变。
+> 6. 验证：cargo test --lib（OMNIDESK_REPO_ROOT 指向主仓库）+ tsc + build + 既有 verify_reading_003/004/stage3 全过；新增 verify_reading_005_design.py 断言新样式类与浮动条样式存在；证据 tests/verification/desktop/evidence/od-read-002/stage4.md。真实窗口视觉由用户终验。
+> 7. 明确不做：不动划线锚定与批注数据结构；不动 RSS 抓取；不改首页其它区域；不提交不推送。
+
+### OD-READ-002 阶段 5：健脑室仪表盘落地（2026-11-19，用户批准执行）
+
+> **触发（用户裁决）：** 仪表盘 v2 样稿定稿（/Users/yvan/.codex/visualizations/2026/11/18/01a1ed5a-db65-7780-a2e2-c620b62cb67d/reading-dashboard-v2.html），要求落地：顶部当前书籍封面+进度、本月目标 1000 分钟（无黑色刻度条）、五格数据（阅读字数 K 格式化在前、今年已读在后、批注、订阅文章、整理笔记）、已读书籍列表（封面/作者/日期/完成环）、花瓣图两层结构+外侧标签。
+
+**实施（BUILDER 执行）：**
+> 1. 新增 `desktop/src/shell/ReadingDashboard.tsx`：无书打开时的主区仪表盘；数据来自 ReadingPage 已有 library/readingStats/rssSubscriptions/rssArticles；空态（无书无订阅）用两张插图引导卡 + 精选作者 chips。
+> 2. 顶部：最近更新且有进度的书籍（封面/书名/格式章数/上次阅读日期）+ 42% 大数字；本月目标固定 1000 分钟，估算分钟 = 本月更新书籍 Σ(chars × progress)/300，标注「估算」，完成后进度条无黑色刻度条。
+> 3. 五格数据：字数 K 格式化；今年已读 = 本年读完书籍数（progress_percent≥1 且 updated_at 在当年）；批注/订阅文章（含 X 读完）/整理笔记；无数据来源的涨跌小字不显示。
+> 4. 下部：左列已读书籍（最新 4 本，封面=meta.cover 数据 URI，缺省首字占位；作者 meta.author；日期；100% 环）；右列花瓣图（固定底色层 + 数据层，百分比=该源已读篇数占本月已读总数；标签在花瓣外侧）；管理订阅入口。
+> 5. 入口：导入书籍复用现有文件框导入；查看全部切到书架；自定义 RSS 地址复用新增订阅弹窗；精选作者 chips 点击即订阅（新增宿主命令 `rss_preset_sources` 返回内置源清单）。
+> 6. 样式落在 reading.css（.reading-dash-* 作用域，复用 --rd-* 变量）。
+> 7. 验证：cargo lib 全量（OMNIDESK_REPO_ROOT 指向主仓库）、tsc、build、verify_reading_003/004/005 与新增 verify_reading_006_dashboard.py；证据 stage5.md。真实窗口视觉由用户终验。
+> 8. 明确不做：不改抓取链路与批注锚定；不虚构历史数据；不提交不推送。
+
+### OD-READ-002 阶段 6：健脑室仪表盘独占、书籍删除、封面与正文图片修复（2026-11-19，用户实测反馈）
+
+> **触发（用户真机截图反馈）：** ①打开健脑室不应出现左侧书籍列表，只有进入书籍/RSS 阅读才出现；②书籍只能添加不能删除，需要删除；③封面与正文图片仍无法显示。
+> **实测定位（ARCHITECT）：** 封面：DashboardCover 在 `meta.cover` 为空时直接走首字占位、不调用 `reading_cover_image`；且既有书导入时未存封面（meta.cover 全空），需按需补提取。正文图片：RSS 文章 `<img src=https://…>` 被 `isDirectMediaSrc` 直接交给 `<img>`，Tauri CSP 仅允许 self/data/asset，远程 https 被拦。仪表盘另有三处小问题：0.9991 进度被算作未读完（今年已读 0）、目标条文字在 5% 宽度时被裁、页面不可滚动导致花瓣图截断。
+
+**实施（BUILDER 执行）：**
+> 1. 书架显隐：ReadingPage 仅在 `book` 非空时渲染左侧书架（RSS 文章同样是 book）；仪表盘独占整宽。仪表盘「查看全部」改为打开「书架管理」弹窗（列全部本地书籍，可打开/删除）。
+> 2. 书籍删除：`reading_store::delete_book_at(root, book_id)` 只删除本地书籍（books/meta/progress/notes 与封面文件；exports 保留），拒绝 rss 条目；新增命令 `reading_delete_book` 并注册；api.ts/types.ts 增加接口；书架行与书架管理弹窗提供删除（ConfirmDialog 二次确认），删除后刷新书架、若正打开该书则关闭阅读器。
+> 3. 封面修复：`read_cover_at` 在 meta.cover 缺失时按需从源文件重新提取（复用 task_shell 阅读抽取的 cover 字节，store_cover 写 meta 并更新 meta.cover 持久化）；DashboardCover 与书架封面组件不再因 meta.cover 为空跳过读取，统一走 `reading_cover_image` 并缓存。
+> 4. 正文图片修复：新增命令 `reading_remote_media(url)`（reqwest blocking，仅 http/https、≤2 次重定向且每跳校验 scheme、10s 超时、≤8 MiB、响应 content-type 必须 image/*），返回 ReadingMediaPayload；前端 MediaBlock 对 http(s) 源改走该命令并缓存，EPUB odmedia 逻辑不变；图片失败给出可读错误。
+> 5. 仪表盘修正：完成判定用 `progress_percent >= 0.995`（与界面 100% 一致）；目标条内部文字在宽度 <12% 时隐藏、剩余分钟移到条下方；仪表盘容器 `overflow-y:auto`，花瓣图随高度收缩不再被截断。
+> 6. 验证：cargo lib 全量（OMNIDESK_REPO_ROOT 指向主仓库）、tsc、build、verify_reading_003/004/005/006 全过；更新/新增 verify_reading_007_fixes.py（书架显隐、删除命令、封面回退、远程媒体命令、0.995 判定、目标条条件渲染）。证据 stage6.md。
+> 7. 明确不做：不动 RSS 抓取链路；不删除导出文件；不改划线与批注锚定；不提交不推送。
+
+### OD-READ-002 阶段 7：仪表盘细节、真实阅读时长、旧内容媒体回填（2026-11-19，用户实测反馈）
+
+> **触发（用户 7 条反馈）：** ①缺少连续天数/本月分钟数两个按钮条；②下部两栏在 1280 宽时错误堆叠；③已读书籍缺作者列；④本月阅读时间不是真实记录；⑤花瓣中心图标改 RSS 大写 R；⑥目标条左下加「继续阅读」；⑦正文图片仍不显示。
+> **实测定位：** 现有 EPUB 书籍与本机 RSS 文章的 books/<id>.json 正文中都没有 `![img]`/`odmedia:` 标记（导入/抓取发生在媒体提取上线之前）；RSS 仅新条目会带标记，旧条目 refresh 时直接 skip。阅读时长当前是「字数×进度/300」估算，未记录真实时间。
+
+**实施（BUILDER 执行）：**
+> 1. 真实阅读时长：progress/<id>.json 增加 `daily_seconds`（按 UTC 日期累计）；新增 `reading_time_add(book_id, seconds)` 命令（单次 ≤1 小时，累计）；`reading_stats_at` 增加 `month_minutes`（当月 daily_seconds 合计取整）与 `streak_days`（从今天向前连续有阅读秒数的天数，今天为 0 时从昨天起算）。ReadingStats 前后端类型同步。
+> 2. 前端计时：ReadingPage 在书籍打开且窗口可见/聚焦时每 15 秒累计，60 秒 flush 一次并在切书/关闭/隐藏时 flush；不把空闲后台时间计入。
+> 3. 仪表盘：标题右侧恢复「连续天数」「本月分钟」两枚胶囊；目标区改用真实 month_minutes（去掉估算标注）；目标条左下加「继续阅读」按钮（打开最近在读书籍，无书则禁用）；花瓣中心改为大写「R」。
+> 4. 响应式：下部两栏在 ≥1000px 容器宽时并排、低于则堆叠（修掉 1280 宽时错误堆叠）；作者列始终显示，meta.author 为空显示「未知作者」。
+> 5. EPUB 作者：helper 解析 OPF `dc:creator` 写入 author（新导入与回填都生效）。
+> 6. 旧内容媒体回填：新增 `reading_refresh_content(book_id)`：仅 epub/mobi，重新调用 read_reading_source 取带媒体标记的章节与作者/封面；按 quote 在章节内重定位批注（找不到则保留原位置并在返回值里报告 unresolved 数）；更新 books/meta（新增 `media_version: u32` 默认 0，新导入置 1，回填后置 1）。ReadingPage openBook 时若 epub/mobi 且 media_version<1 自动调用一次并重载，失败/源文件缺失则置 1 防重复并提示。
+> 7. RSS 旧文章回填：ingest_feed_at 对已存在文章，若其批注为空且新解析正文含媒体标记（或条目有 enclosure/media:content 图片而正文无图和标记），更新该文章 chapters/meta（保留 read/progress）；有批注的跳过。parse_entry 增加 enclosure / media:content 图片 URL 提取（仅 http/https、image 类型），正文无 img 时前置一条 `![img](url)`。
+> 8. 验证：cargo 全量、tsc、build；verify_reading_003/004/005/006/007 全过；新增 verify_reading_008_dashboard2.py（连续天数/本月分钟胶囊、真实计时命令与 daily_seconds、1000px 断点、作者回退、R 字中心、继续阅读按钮、refresh_content、media_version、RSS enclosure）。证据 stage7.md。
+> 9. 明确不做：不改批注锚定结构（回填只做 quote 重定位）；不删用户导出；不提交不推送。
+
+### OD-READ-002 阶段 8：顶部并排自适应 + RSS 旧占位图回填（2026-11-19，用户再次实测）
+
+> **触发：** ①顶部「当前在读书籍」与「本月目标」在 ≤1280px 时被 CSS 堆叠，要求始终并排自适应；②正文仍显示 `[图片：…]` 文本占位（实测为小众软件 2026-11-18 抓取的旧文章：当时图片被转成 alt 占位，正文无媒体标记）。现抓取的同一条目 content:encoded 中有真实 `<img src=https://…>`。
+> **实施：**
+> 1. reading.css：删除 `≤1280` 对 `.reading-dash-top` 的单列覆盖；所有宽度保持两列（窄屏用 0.9fr/1.1fr 与缩小间距），必要时 hero 数字缩放。
+> 2. 新增命令 `rss_refresh_article(book_id)`：读取 RSS 文章 meta 的订阅源，重新抓取该 feed，按 guid/link 匹配条目，重算正文；仅当文章无批注时替换 chapters/author/source_sha256（保留进度与已读）；返回 updated/unresolved 原因。
+> 3. ReadingPage openBook：书籍为 rss 且正文含 `[图片：` 旧占位（或含图片指令但无可解析地址）且批注为空时，自动调用 rss_refresh_article 后重载；失败提示原因。
+> 4. rss_store：`html_to_paragraphs` 接收 base_url（条目 link），相对 `<img src="/…">`/无协议地址解析为绝对 http(s) 后再转 `![img]`；`sanitize_media_url` 增加 base 解析；保留现有 `[图片：` 文本仅在无法解析时出现（正常应为图片标记）。
+> 5. 验证：cargo、tsc、build；003/004/005/006/007/008 全过；新增 verify_reading_009_top_and_placeholder.py（顶部无单列覆盖、refresh_article、base_url 解析、旧占位触发）。证据 stage8.md。
+> 6. 不提交不推送；不改批注锚定。
+
+### OD-READ-002 阶段 9：仪表盘内凹分割线 + RSS 文章打开卡顿修复（2026-11-19）
+
+> **触发：** ①仪表盘中部数据区需要上下内凹分割线，区分上中下三段；②点击订阅文章长时间停在「正在打开书籍…」，无法进入阅读界面（根因：openBook 在 setBook 之前同步等待 rss_refresh_article 重新抓取 feed，最长 20s+；且该命令是阻塞式同步命令）。
+> **实施：**
+> 1. reading.css：`.reading-dash-divider` 改内凹凹槽线（surface 底色 + inset 上下阴影 + 3px 高），上下两条都生效。
+> 2. ReadingPage.openBook：先 setBook(loaded) 显示文章，再在后台执行旧占位回填；回填成功更新书籍内容（保持滚动位置），失败 toast；busy 状态只在初次读取期间。
+> 3. lib.rs：rss_refresh_article 改为 spawn_blocking 执行，避免阻塞 async 运行时。
+> 4. 验证：cargo、tsc、build；003–009 全过；新增 verify_reading_010_open_and_groove.py（先显示后回填、spawn_blocking、凹槽样式）。证据 stage9.md。
+> 5. 不提交不推送。
+
+### OD-READ-002 阶段 10：健脑室内页排版、RSS 收藏与 30 分钟自动刷新（2026-11-20，用户验收后新一轮）
+
+> **触发：** ①左侧「健脑室」标题加粗放大、侧栏字体整体 +2；②移除订阅管理与拉取全部按钮，进入页面时若距上次刷新 ≥30 分钟自动抓取；超过 30 天且未收藏的文章不再显示；③书籍增加改名按钮；④订阅源默认全部折叠，每次进入随机展开一个源展示其文章；⑤阅读区顶部标题栏各按钮加粗，「+」改为收藏图标，收藏文章不受 30 天限制。
+> **实施：** 1) 侧栏标题 16px/700/letter-spacing，条目/注释/标签字号 +2；2) 移除两按钮；ReadingPage mount/focus 检查最大 last_fetched_at，≥30 分钟静默 rss_fetch 并刷新列表；3) RSS 列表过滤 30 天（published_ts 或 fetched_at，favorite 例外）；4) RssArticleMeta 增加 favorite（serde default），新增 rss_article_set_favorite 命令 + api；阅读头 + 改为星标 toggle（仅 rss；本地书保留导入 +）；星标文章一直显示、行内显示星标；5) 书籍改名：reading_rename_book 命令（book+meta title，非 rss），侧栏/管理弹窗铅笔按钮 + 输入弹窗；6) 侧栏源默认折叠，进入时随机展开一个源（一次）；7) 头栏 笔记/导出/写想法/整理笔记 font-semibold。验证：cargo、tsc、build、003–010 与新增 011 全过；证据 stage10.md。不提交不推送。

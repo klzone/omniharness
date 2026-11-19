@@ -242,10 +242,14 @@ import type {
   ReadingLibrary,
   ReadingMediaPayload,
   ReadingNoteFile,
+  ReadingProgress,
+  ReadingRefreshResult,
   ReadingSavedNote,
   ReadingStats,
   RssArticleMeta,
+  RssArticleRefreshResult,
   RssFetchReport,
+  RssPresetSource,
   RssSubscription,
 } from "./types";
 
@@ -1952,6 +1956,13 @@ export const shell = {
     });
   },
 
+  /** 记录真实阅读时长（单次最多 3600 秒，按 UTC 日期累计）。 */
+  readingTimeAdd(bookId: string, seconds: number): Promise<ReadingProgress> {
+    return invoke<ReadingProgress>("reading_time_add", { bookId, seconds }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /** 保存用户确认的 AI 整理稿；不自动写知识库。 */
   readingNoteSave(
     bookId: string,
@@ -2003,9 +2014,44 @@ export const shell = {
     });
   },
 
+  /** 删除一本本地书籍；后端保留 exports/，订阅文章会被拒绝。 */
+  readingDeleteBook(bookId: string): Promise<void> {
+    return invoke<void>("reading_delete_book", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 本地书籍改名：后端同步更新 books/ 与 meta/ 的 title，订阅文章会被拒绝。 */
+  readingRenameBook(bookId: string, title: string): Promise<ReadingBookMeta> {
+    return invoke<ReadingBookMeta>("reading_rename_book", { bookId, title }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 重新抽取 EPUB/MOBI 正文，补齐媒体标记与作者，并按引文重定位批注。 */
+  readingRefreshContent(bookId: string): Promise<ReadingRefreshResult> {
+    return invoke<ReadingRefreshResult>("reading_refresh_content", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** RSS 正文远程图片：后端只允许 http/https 图片并转成 base64。 */
+  readingRemoteMedia(url: string): Promise<ReadingMediaPayload> {
+    return invoke<ReadingMediaPayload>("reading_remote_media", { url }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /** 健脑室订阅清单；首次调用会把预置源写入本机阅读目录。 */
   rssSubscriptionsList(): Promise<RssSubscription[]> {
     return invoke<RssSubscription[]>("rss_subscriptions_list").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 健脑室空态用的内置精选作者清单。 */
+  rssPresetSources(): Promise<RssPresetSource[]> {
+    return invoke<RssPresetSource[]>("rss_preset_sources").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -2037,6 +2083,20 @@ export const shell = {
 
   rssArticleMarkRead(bookId: string): Promise<RssArticleMeta> {
     return invoke<RssArticleMeta>("rss_article_mark_read", { bookId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 收藏/取消收藏订阅文章；只更新 articles/ 元数据。 */
+  rssArticleSetFavorite(bookId: string, favorite: boolean): Promise<RssArticleMeta> {
+    return invoke<RssArticleMeta>("rss_article_set_favorite", { bookId, favorite }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 单篇订阅文章重新抓取所属 feed，回填旧图片占位；有批注时后端不改文件。 */
+  rssRefreshArticle(bookId: string): Promise<RssArticleRefreshResult> {
+    return invoke<RssArticleRefreshResult>("rss_refresh_article", { bookId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

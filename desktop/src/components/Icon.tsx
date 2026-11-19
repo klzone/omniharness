@@ -41,6 +41,7 @@ export type IconName =
   | "volume"
   | "refresh"
   | "edit"
+  | "trash"
   | "undo"
   | "branch"
   | "clock"
@@ -245,21 +246,31 @@ const PATHS: Record<IconName, JSX.Element> = {
   ),
   "chevron-up": <path d="m18 15-6-6-6 6" />,
   x: <path d="M18 6 6 18M6 6l12 12" />,
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V5h6v2" />
+      <path d="m6 7 1 13h10l1-13" />
+      <path d="M10 11v5M14 11v5" />
+    </>
+  ),
 };
 
 export function Icon({
   name,
   className,
   strokeWidth = 1.7,
+  filled = false,
 }: {
   name: IconName;
   className?: string;
   strokeWidth?: number;
+  filled?: boolean;
 }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
       strokeWidth={strokeWidth}
       strokeLinecap="round"

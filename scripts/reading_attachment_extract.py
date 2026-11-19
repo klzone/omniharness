@@ -465,6 +465,13 @@ def extract_epub(path: Path) -> dict[str, Any]:
         opf = _parse_xml(opf_raw) if opf_raw is not None else None
         if opf is None:
             return _metadata("EPUB OPF 无法解析")
+        author = ""
+        for node in opf.iter():
+            if _local_name(node.tag) == "creator":
+                text = "".join(node.itertext()).strip()
+                if text:
+                    author = text
+                    break
         base = posixpath.dirname(_safe_zip_name(rootfile) or rootfile)
         manifest: dict[str, str] = {}
         image_items: list[tuple[str, str, str]] = []
@@ -551,6 +558,8 @@ def extract_epub(path: Path) -> dict[str, Any]:
             return _metadata("EPUB 未提取到可读正文（可能是影印或仅图片）")
         content = "\n\n".join(f"# {ch['title']}\n\n{ch['content']}" for ch in chapters)
         payload = _text(content, chapters)
+        if author:
+            payload["author"] = author
         if cover:
             payload["cover"] = cover
         return payload

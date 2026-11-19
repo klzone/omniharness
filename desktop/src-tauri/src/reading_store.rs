@@ -10,6 +10,7 @@
 //! 字符偏移一律按 Unicode 标量（Rust `char` / 前端 code point）计，避免中文与 emoji
 //! 被 UTF-8 字节或 UTF-16 代理对切坏。
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -47,6 +48,8 @@ const MAX_NOTE_CHARS: usize = 2_000_000;
 const MAX_BOOK_CHARS: usize = 20_000_000;
 
 static ID_SEQ: AtomicU64 = AtomicU64::new(0);
+/// progress/<id>.json 是「进度 + 每日计时」的读改写文件；串行化避免滚动保存与计时落盘互相覆盖。
+static PROGRESS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadingChapter {
@@ -60,6 +63,9 @@ pub struct ReadingProgress {
     pub percent: f64,
     #[serde(default)]
     pub updated_at: String,
+    /// 按 UTC 日期（YYYY-MM-DD）累计的真实阅读秒数；旧版进度文件没有这个字段。
+    #[serde(default)]
+    pub daily_seconds: BTreeMap<String, u64>,
 }
 
 impl Default for ReadingProgress {
@@ -67,6 +73,7 @@ impl Default for ReadingProgress {
         Self {
             percent: 0.0,
             updated_at: String::new(),
+            daily_seconds: BTreeMap::new(),
         }
     }
 }
@@ -162,6 +169,9 @@ pub struct ReadingBook {
     pub notes: Vec<ReadingSavedNote>,
     #[serde(default)]
     pub progress: ReadingProgress,
+    /// 正文媒体标记版本：0 = 媒体提取上线前的旧正文；1 = 已带 odmedia/![img] 标记。
+    #[serde(default)]
+    pub media_version: u32,
 }
 
 fn schema_default() -> String {
@@ -191,6 +201,8 @@ pub struct ReadingBookMeta {
     #[serde(default)]
     pub cover: Option<String>,
     pub progress_percent: f64,
+    #[serde(default)]
+    pub media_version: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -217,12 +229,23 @@ pub struct ReadingNoteFile {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReadingStats {
     pub books: usize,
-    /// 读完口径：progress_percent >= 0.95（与验收口径一致）。
+    /// 读完口径：progress_percent >= 0.995（与界面显示的 100% 完成一致）。
     pub finished: usize,
     pub chars: usize,
     pub annotations: usize,
     pub notes: usize,
     pub thoughts: usize,
+    /// 本月（UTC）真实阅读分钟数，按秒累计后四舍五入。
+    pub month_minutes: u64,
+    /// 从今天向前连续有阅读秒数的天数；今天还没有记录时从昨天起算。
+    pub streak_days: u32,
+}
+
+/// 旧正文回填结果：更新后的书 + 未能按引文重新定位的批注数。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReadingRefreshResult {
+    pub book: ReadingBook,
+    pub unresolved: usize,
 }
 
 fn now_secs() -> f64 {
@@ -368,6 +391,7 @@ fn book_meta(book: &ReadingBook) -> ReadingBookMeta {
         thought_count: Some(book.annotations.iter().filter(|a| a.kind == KIND_THOUGHT).count()),
         cover: if book.cover.trim().is_empty() { None } else { Some(book.cover.clone()) },
         progress_percent: book.progress.percent,
+        media_version: book.media_version,
     }
 }
 
@@ -589,6 +613,7 @@ fn cover_extension(mime: &str, file_name: &str) -> Option<&'static str> {
         "image/gif" => Some("gif"),
         "image/webp" => Some("webp"),
         "image/bmp" => Some("bmp"),
+        "image/avif" => Some("avif"),
         _ => {
             let ext = Path::new(file_name)
                 .extension()
@@ -600,6 +625,7 @@ fn cover_extension(mime: &str, file_name: &str) -> Option<&'static str> {
                 "gif" => Some("gif"),
                 "webp" => Some("webp"),
                 "bmp" => Some("bmp"),
+                "avif" => Some("avif"),
                 _ => None,
             }
         }
@@ -637,23 +663,29 @@ pub fn cover_path(root: &Path, book_id: &str, cover: &str) -> Result<PathBuf, St
     Ok(root.join("meta").join(cover))
 }
 
-/// 读 meta/ 下的封面字节，返回前端可直接转 data URL 的 payload。
-pub fn read_cover_at(root: &Path, book_id: &str) -> Result<crate::task_shell::ReadingMediaPayload, String> {
-    let meta = read_meta_at(root, book_id)?;
-    let cover = meta.cover.ok_or_else(|| "这本书没有封面。".to_string())?;
-    let path = cover_path(root, book_id, &cover)?;
+fn cover_mime_for(file_name: &str) -> Option<&'static str> {
+    match Path::new(file_name).extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "avif" => Some("image/avif"),
+        _ => None,
+    }
+}
+
+fn read_cover_payload(
+    root: &Path,
+    book_id: &str,
+    cover: &str,
+) -> Result<crate::task_shell::ReadingMediaPayload, String> {
+    let path = cover_path(root, book_id, cover)?;
     let bytes = fs::read(&path).map_err(|e| format!("读取封面失败（{}）：{}", path.display(), e))?;
     if bytes.is_empty() || bytes.len() > MAX_COVER_BYTES {
         return Err("封面大小不合法。".to_string());
     }
-    let mime = match Path::new(&cover).extension().and_then(|e| e.to_str()).unwrap_or("") {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => return Err("封面格式不在白名单内。".to_string()),
-    };
+    let mime = cover_mime_for(cover).ok_or_else(|| "封面格式不在白名单内。".to_string())?;
     Ok(crate::task_shell::ReadingMediaPayload {
         mime: mime.to_string(),
         bytes: bytes.len(),
@@ -661,6 +693,187 @@ pub fn read_cover_at(root: &Path, book_id: &str) -> Result<crate::task_shell::Re
     })
 }
 
+/// 旧书目导入时没有落封面：按需回读源文件，把提取到的 cover 写进 meta/ 并更新摘要。
+fn extract_cover_from_source(root: &Path, book_id: &str) -> Option<String> {
+    let book = read_book_at(root, book_id).ok()?;
+    if book.source_format == "rss" || book.source_path.trim().is_empty() {
+        return None;
+    }
+    let source = read_reading_source(&book.source_path).ok()?;
+    let cover = source.cover.as_ref()?;
+    store_cover(root, book_id, cover)
+}
+
+/// 读 meta/ 下的封面字节，返回前端可直接转 data URL 的 payload。
+///
+/// meta.cover 缺失或缓存文件损坏时，从真实源文件重新提取一次；提取失败仍按
+/// 「这本书没有封面」返回，让前端落到首字占位而不是显示内部错误。
+pub fn read_cover_at(root: &Path, book_id: &str) -> Result<crate::task_shell::ReadingMediaPayload, String> {
+    let mut meta = read_meta_at(root, book_id)?;
+    let cached = meta
+        .cover
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    if let Some(cover) = cached {
+        if let Ok(payload) = read_cover_payload(root, book_id, &cover) {
+            return Ok(payload);
+        }
+    }
+    let extracted = extract_cover_from_source(root, book_id)
+        .ok_or_else(|| "这本书没有封面。".to_string())?;
+    let payload = read_cover_payload(root, book_id, &extracted)?;
+    meta.cover = Some(extracted);
+    let raw = serde_json::to_vec_pretty(&meta).map_err(|e| format!("序列化书目摘要失败：{e}"))?;
+    write_replace_atomically(&meta_path(root, book_id)?, &raw)
+        .map_err(|e| format!("保存封面索引失败：{e}"))?;
+    harden_private(&meta_path(root, book_id)?, 0o600);
+    Ok(payload)
+}
+
+fn remove_tracked_file(
+    path: &Path,
+    label: String,
+    removed: &mut Vec<String>,
+    failures: &mut Vec<String>,
+) {
+    match fs::remove_file(path) {
+        Ok(()) => removed.push(label),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => failures.push(format!("{label}：{e}")),
+    }
+}
+
+/// 本地书籍改名：只改写 books/<book_id>.json 与 meta/<book_id>.json 的 title。
+/// 订阅文章（source_format = rss）由文章元数据管理，拒绝改名。
+pub fn rename_book_at(root: &Path, book_id: &str, title: &str) -> Result<ReadingBookMeta, String> {
+    assert_store_root(root)?;
+    if !is_safe_id(book_id) {
+        return Err(format!("书编号不合法：{book_id:?}"));
+    }
+    let next_title = title.trim();
+    let title_chars = next_title.chars().count();
+    if !(1..=300).contains(&title_chars) {
+        return Err("书名需为 1 到 300 个字符。".to_string());
+    }
+    let existing = read_meta_at(root, book_id)
+        .map_err(|e| format!("这本书不存在或摘要损坏，未改名：{e}"))?;
+    if existing.source_format == "rss" {
+        return Err("订阅文章的标题跟随订阅源，不能改名。".to_string());
+    }
+
+    let book_target = book_path(root, book_id)?;
+    let meta_target = meta_path(root, book_id)?;
+    let book_raw = fs::read_to_string(&book_target)
+        .map_err(|e| format!("读取书籍失败（{}）：{}", book_target.display(), e))?;
+    let meta_raw = fs::read_to_string(&meta_target)
+        .map_err(|e| format!("读取书目摘要失败（{}）：{}", meta_target.display(), e))?;
+    let mut book_value: serde_json::Value = serde_json::from_str(&book_raw)
+        .map_err(|e| format!("书籍文件格式不正确（{}）：{}", book_target.display(), e))?;
+    let mut meta_value: serde_json::Value = serde_json::from_str(&meta_raw)
+        .map_err(|e| format!("书目摘要格式不正确（{}）：{}", meta_target.display(), e))?;
+    let book_id_matches = book_value
+        .get("book_id")
+        .and_then(|value| value.as_str())
+        == Some(book_id)
+        && meta_value
+            .get("book_id")
+            .and_then(|value| value.as_str())
+            == Some(book_id);
+    if !book_id_matches {
+        return Err(format!("书籍文件编号不一致：{book_id}"));
+    }
+    if !book_value.is_object() || !meta_value.is_object() {
+        return Err("书籍文件结构不正确，未改名。".to_string());
+    }
+    book_value["title"] = serde_json::Value::String(next_title.to_string());
+    meta_value["title"] = serde_json::Value::String(next_title.to_string());
+
+    let book_bytes = serde_json::to_vec_pretty(&book_value)
+        .map_err(|e| format!("序列化书籍失败：{e}"))?;
+    let meta_bytes = serde_json::to_vec_pretty(&meta_value)
+        .map_err(|e| format!("序列化书目摘要失败：{e}"))?;
+    write_replace_atomically(&book_target, &book_bytes)?;
+    write_replace_atomically(&meta_target, &meta_bytes)?;
+    harden_private(&book_target, 0o600);
+    harden_private(&meta_target, 0o600);
+
+    serde_json::from_value(meta_value)
+        .map_err(|e| format!("书目摘要格式不正确（{}）：{}", meta_target.display(), e))
+}
+
+/// 删除一本本地书籍：正文、摘要、进度、笔记目录与封面；exports/ 始终保留。
+///
+/// 只接受安全编号；meta 标记为 rss 的订阅文章一律拒绝。删除按项进行，
+/// 中途失败时返回已删项与失败项，便于用户判断目录实际状态。
+pub fn delete_book_at(root: &Path, book_id: &str) -> Result<(), String> {
+    assert_store_root(root)?;
+    if !is_safe_id(book_id) {
+        return Err(format!("书编号不合法：{book_id:?}"));
+    }
+    let meta = read_meta_at(root, book_id)
+        .map_err(|e| format!("这本书不存在或摘要损坏，未删除任何文件：{e}"))?;
+    if meta.source_format == "rss" {
+        return Err("订阅文章不能从书架删除；请到订阅管理里处理订阅源。".to_string());
+    }
+    let mut removed: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+
+    // 封面可能有多份旧扩展名；按前缀清掉，避免孤儿文件继续占用空间。
+    let meta_dir = root.join("meta");
+    match fs::read_dir(&meta_dir) {
+        Ok(entries) => {
+            let prefix = format!("{book_id}.cover.");
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with(&prefix) {
+                    remove_tracked_file(
+                        &entry.path(),
+                        format!("meta/{name}"),
+                        &mut removed,
+                        &mut failures,
+                    );
+                }
+            }
+        }
+        Err(e) => failures.push(format!("读取封面目录失败：{e}")),
+    }
+
+    let notes_dir = root.join("notes").join(book_id);
+    if notes_dir.exists() {
+        match fs::remove_dir_all(&notes_dir) {
+            Ok(()) => removed.push(format!("notes/{book_id}/")),
+            Err(e) => failures.push(format!("notes/{book_id}/：{e}")),
+        }
+    }
+
+    if let Ok(path) = progress_path(root, book_id) {
+        remove_tracked_file(&path, format!("progress/{book_id}.json"), &mut removed, &mut failures);
+    }
+    if let Ok(path) = book_path(root, book_id) {
+        remove_tracked_file(&path, format!("books/{book_id}.json"), &mut removed, &mut failures);
+    }
+    // 摘要最后删：中途失败时 meta 还在，用户至少还能重试一次删除。
+    if let Ok(path) = meta_path(root, book_id) {
+        remove_tracked_file(&path, format!("meta/{book_id}.json"), &mut removed, &mut failures);
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+    let removed_text = if removed.is_empty() {
+        "无".to_string()
+    } else {
+        removed.join("、")
+    };
+    Err(format!(
+        "删除《{}》未完全成功。已删除：{}；失败：{}",
+        meta.title,
+        removed_text,
+        failures.join("、")
+    ))
+}
 pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<ReadingImportResult, String> {
     ensure_store_dirs(root)?;
     if source.content.chars().count() > MAX_BOOK_CHARS {
@@ -696,7 +909,7 @@ pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<Re
         schema: READING_SCHEMA.to_string(),
         book_id: book_id.clone(),
         title,
-        author: String::new(),
+        author: source.author.trim().to_string(),
         source_name: source.file_name,
         source_format: source.extension,
         source_path: source.path,
@@ -708,6 +921,7 @@ pub fn import_book_at(root: &Path, source: ReadingSource, now: f64) -> Result<Re
         annotations: Vec::new(),
         notes: Vec::new(),
         progress: ReadingProgress::default(),
+        media_version: 1,
     };
     write_book(root, &book)?;
     Ok(ReadingImportResult { book: book_meta(&book), existing: false })
@@ -750,6 +964,10 @@ pub fn library(paths: &AppPaths) -> Result<ReadingLibrary, String> {
 /// 首页统计聚合。所有数字都来自真实书目摘要/正文，不补零也不估算。
 /// 「闪记」按用户当轮语义 = `kind == "thought"` 的批注数。
 pub fn reading_stats_at(root: &Path) -> Result<ReadingStats, String> {
+    reading_stats_at_now(root, now_secs())
+}
+
+fn reading_stats_at_now(root: &Path, now: f64) -> Result<ReadingStats, String> {
     assert_store_root(root)?;
     let books = list_books_at(root)?;
     let mut stats = ReadingStats {
@@ -759,12 +977,15 @@ pub fn reading_stats_at(root: &Path) -> Result<ReadingStats, String> {
         annotations: 0,
         notes: 0,
         thoughts: 0,
+        month_minutes: 0,
+        streak_days: 0,
     };
+    let mut daily_seconds: BTreeMap<String, u64> = BTreeMap::new();
     for meta in books {
         // 书籍本数不含订阅文章；其余计数覆盖书架里的全部阅读条目。
         if meta.source_format != "rss" {
             stats.books += 1;
-            if meta.progress_percent >= 0.95 {
+            if meta.progress_percent >= 0.995 {
                 stats.finished += 1;
             }
         }
@@ -780,6 +1001,32 @@ pub fn reading_stats_at(root: &Path) -> Result<ReadingStats, String> {
                 .filter(|annotation| annotation.kind == KIND_THOUGHT)
                 .count(),
         };
+        for (day, seconds) in read_progress_at(root, &meta.book_id).daily_seconds {
+            *daily_seconds.entry(day).or_insert(0) += seconds;
+        }
+    }
+    let today = utc_iso8601(now);
+    let month_prefix = &today[..7];
+    let month_secs: u64 = daily_seconds
+        .iter()
+        .filter(|(day, _)| day.get(..7) == Some(month_prefix))
+        .map(|(_, seconds)| *seconds)
+        .sum();
+    stats.month_minutes = (month_secs + 30) / 60;
+    let today_key = &today[..10];
+    let today_secs = daily_seconds.get(today_key).copied().unwrap_or(0);
+    let mut day_num = (now.max(0.0) / 86_400.0).floor() as i64;
+    if today_secs == 0 {
+        day_num -= 1;
+    }
+    while daily_seconds
+        .get(&utc_iso8601(day_num as f64 * 86_400.0)[..10])
+        .copied()
+        .unwrap_or(0)
+        > 0
+    {
+        stats.streak_days += 1;
+        day_num -= 1;
     }
     Ok(stats)
 }
@@ -825,6 +1072,104 @@ pub(crate) fn write_book(root: &Path, book: &ReadingBook) -> Result<(), String> 
     Ok(())
 }
 
+/// 旧正文回填：按引文把批注移动到新章节中的同一段/同章位置。
+///
+/// 只调整 chapter_index / paragraph_index / start / end，不改批注结构与引文；
+/// 找不到唯一匹配时保留原位置并计入 unresolved。
+fn relocate_annotations(chapters: &[ReadingChapter], annotations: &mut [ReadingAnnotation]) -> usize {
+    let mut unresolved = 0usize;
+    for annotation in annotations.iter_mut() {
+        let quote = annotation.quote.trim();
+        if quote.is_empty() {
+            continue;
+        }
+        let Some(chapter) = chapters.get(annotation.chapter_index) else {
+            unresolved += 1;
+            continue;
+        };
+        if let Some(text) = chapter.paragraphs.get(annotation.paragraph_index) {
+            if let Ok((start, end, matched)) =
+                resolve_span(text, annotation.start, annotation.end, quote)
+            {
+                annotation.start = start;
+                annotation.end = end;
+                annotation.quote = matched;
+                continue;
+            }
+        }
+        let mut found = None;
+        for (paragraph_index, text) in chapter.paragraphs.iter().enumerate() {
+            if let Ok((start, end, matched)) = resolve_span(text, 0, 0, quote) {
+                found = Some((paragraph_index, start, end, matched));
+                break;
+            }
+        }
+        match found {
+            Some((paragraph_index, start, end, matched)) => {
+                annotation.paragraph_index = paragraph_index;
+                annotation.start = start;
+                annotation.end = end;
+                annotation.quote = matched;
+            }
+            None => unresolved += 1,
+        }
+    }
+    unresolved
+}
+
+fn mark_media_version(root: &Path, book_id: &str) {
+    if let Ok(mut book) = read_book_at(root, book_id) {
+        if book.media_version < 1 {
+            book.media_version = 1;
+            let _ = write_book(root, &book);
+        }
+    }
+}
+
+/// 重新抽取 EPUB/MOBI 正文，补齐旧版导入缺失的媒体标记与作者，并按引文重定位批注。
+///
+/// 任何失败都会把 media_version 置 1，避免每次打开旧书都重复抽取；失败原因原样返回。
+pub fn refresh_content_at(root: &Path, book_id: &str) -> Result<ReadingRefreshResult, String> {
+    let result = refresh_content_inner(root, book_id);
+    if result.is_err() {
+        mark_media_version(root, book_id);
+    }
+    result
+}
+
+fn refresh_content_inner(root: &Path, book_id: &str) -> Result<ReadingRefreshResult, String> {
+    assert_store_root(root)?;
+    let mut book = read_book_at(root, book_id)?;
+    if book.source_format != "epub" && book.source_format != "mobi" {
+        return Err("只有 EPUB / MOBI 书籍支持正文媒体回填。".to_string());
+    }
+    if book.source_path.trim().is_empty() {
+        return Err("源文件路径为空，无法回填正文媒体。".to_string());
+    }
+    let source = read_reading_source(&book.source_path)
+        .map_err(|e| format!("重新读取源文件失败：{e}"))?;
+    let chapters = apply_chapters(&source);
+    if chapters.is_empty() {
+        return Err("源文件没有可读的章节正文，无法回填。".to_string());
+    }
+    let unresolved = relocate_annotations(&chapters, &mut book.annotations);
+    book.chapters = chapters;
+    if !source.author.trim().is_empty() {
+        book.author = source.author.trim().to_string();
+    }
+    if let Some(cover) = source.cover.as_ref() {
+        if let Some(file_name) = store_cover(root, book_id, cover) {
+            book.cover = file_name;
+        }
+    }
+    if !source.sha256.is_empty() {
+        book.source_sha256 = source.sha256;
+    }
+    book.media_version = 1;
+    write_book(root, &book)?;
+    Ok(ReadingRefreshResult { book, unresolved })
+}
+
 pub fn set_progress_at(root: &Path, book_id: &str, percent: f64, now: f64) -> Result<ReadingBookMeta, String> {
     ensure_store_dirs(root)?;
     if !percent.is_finite() {
@@ -832,10 +1177,10 @@ pub fn set_progress_at(root: &Path, book_id: &str, percent: f64, now: f64) -> Re
     }
     let percent = percent.clamp(0.0, 1.0);
     let at = utc_iso8601(now);
-    let progress = ReadingProgress {
-        percent,
-        updated_at: at.clone(),
-    };
+    let _guard = PROGRESS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut progress = read_progress_at(root, book_id);
+    progress.percent = percent;
+    progress.updated_at = at.clone();
     let raw = serde_json::to_vec_pretty(&progress).map_err(|e| format!("序列化阅读进度失败：{e}"))?;
     write_replace_atomically(&progress_path(root, book_id)?, &raw)?;
     harden_private(&progress_path(root, book_id)?, 0o600);
@@ -846,6 +1191,48 @@ pub fn set_progress_at(root: &Path, book_id: &str, percent: f64, now: f64) -> Re
     write_replace_atomically(&meta_path(root, book_id)?, &meta_raw)?;
     harden_private(&meta_path(root, book_id)?, 0o600);
     Ok(meta)
+}
+
+fn read_progress_at(root: &Path, book_id: &str) -> ReadingProgress {
+    progress_path(root, book_id)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str::<ReadingProgress>(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// 单次最多累计一小时；秒数按 UTC 日期写入 progress 文件，不改正文与批注。
+pub fn add_reading_time_at(root: &Path, book_id: &str, seconds: u64) -> Result<ReadingProgress, String> {
+    let day = utc_iso8601(now_secs());
+    add_reading_time_on(root, book_id, seconds, &day[..10])
+}
+
+/// 记录一次真实阅读时长。day 形如 2026-11-19，仅供内部测试注入日期。
+fn add_reading_time_on(
+    root: &Path,
+    book_id: &str,
+    seconds: u64,
+    day: &str,
+) -> Result<ReadingProgress, String> {
+    ensure_store_dirs(root)?;
+    if seconds > 3_600 {
+        return Err("单次阅读计时最多 3600 秒。".to_string());
+    }
+    if seconds == 0 {
+        return Ok(read_progress_at(root, book_id));
+    }
+    if day.len() != 10 || !day.chars().all(|ch| ch.is_ascii_digit() || ch == '-') {
+        return Err(format!("阅读计时日期不合法：{day:?}"));
+    }
+    let _guard = PROGRESS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut progress = read_progress_at(root, book_id);
+    let entry = progress.daily_seconds.entry(day.to_string()).or_insert(0);
+    *entry = entry.saturating_add(seconds);
+    let path = progress_path(root, book_id)?;
+    let raw = serde_json::to_vec_pretty(&progress).map_err(|e| format!("序列化阅读进度失败：{e}"))?;
+    write_replace_atomically(&path, &raw)?;
+    harden_private(&path, 0o600);
+    Ok(progress)
 }
 
 pub fn add_annotation_at(
@@ -1349,6 +1736,7 @@ mod tests {
             bytes: content.len() as u64,
             extension: "md".to_string(),
             sha256: crate::sha256::sha256_hex(content.as_bytes()),
+            author: String::new(),
             content: content.to_string(),
             chapters: Vec::new(),
             cover: None,
@@ -1367,6 +1755,120 @@ mod tests {
         let second = import_book_at(&root, source(content), 1_760_000_100.0).unwrap();
         assert!(second.existing);
         assert_eq!(first.book.book_id, second.book.book_id);
+        assert_eq!(first.book.media_version, 1);
+    }
+
+    #[test]
+    fn renames_book_in_body_and_meta_but_rejects_rss_and_bad_titles() {
+        let root = temp_root("rename");
+        fs::create_dir_all(&root).unwrap();
+        let imported = import_book_at(&root, source("# 章\n\n正文。"), 1_760_000_000.0).unwrap();
+        let book_id = imported.book.book_id.clone();
+        let renamed = rename_book_at(&root, &book_id, "  新书名  ").unwrap();
+        assert_eq!(renamed.title, "新书名");
+        assert_eq!(renamed.chapter_count, imported.book.chapter_count);
+        assert_eq!(renamed.annotation_count, imported.book.annotation_count);
+        let book = read_book_at(&root, &book_id).unwrap();
+        assert_eq!(book.title, "新书名");
+        assert_eq!(book.chapters.len(), imported.book.chapter_count);
+        assert!(rename_book_at(&root, &book_id, "   ").is_err());
+        let long = "字".repeat(301);
+        assert!(rename_book_at(&root, &book_id, &long).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn day_key(secs: f64) -> String {
+        utc_iso8601(secs)[..10].to_string()
+    }
+
+    #[test]
+    fn accumulates_reading_time_month_minutes_and_streak() {
+        let root = temp_root("time");
+        fs::create_dir_all(&root).unwrap();
+        let now = 1_760_000_000.0;
+        let imported = import_book_at(&root, source("# 章\n\n正文。"), now).unwrap();
+        let book_id = imported.book.book_id.clone();
+        let today = day_key(now);
+        let yesterday = day_key(now - 86_400.0);
+        add_reading_time_on(&root, &book_id, 15, &today).unwrap();
+        add_reading_time_on(&root, &book_id, 45, &today).unwrap();
+        add_reading_time_on(&root, &book_id, 3_600, &yesterday).unwrap();
+        assert!(add_reading_time_on(&root, &book_id, 3_601, &today).is_err());
+
+        let progress = read_progress_at(&root, &book_id);
+        assert_eq!(progress.daily_seconds.get(&today), Some(&60));
+        assert_eq!(progress.daily_seconds.get(&yesterday), Some(&3_600));
+
+        set_progress_at(&root, &book_id, 0.42, now + 10.0).unwrap();
+        let kept = read_progress_at(&root, &book_id);
+        assert_eq!(kept.daily_seconds.get(&today), Some(&60), "写进度不得丢掉 daily_seconds");
+
+        let stats = reading_stats_at_now(&root, now + 20.0).unwrap();
+        assert_eq!(stats.month_minutes, 61);
+        assert_eq!(stats.streak_days, 2);
+    }
+
+    #[test]
+    fn streak_starts_yesterday_when_today_has_no_reading() {
+        let root = temp_root("streak");
+        fs::create_dir_all(&root).unwrap();
+        let now = 1_760_000_000.0;
+        let imported = import_book_at(&root, source("# 章\n\n正文。"), now).unwrap();
+        let book_id = imported.book.book_id.clone();
+        let yesterday = day_key(now - 86_400.0);
+        let before = day_key(now - 172_800.0);
+        add_reading_time_on(&root, &book_id, 60, &yesterday).unwrap();
+        add_reading_time_on(&root, &book_id, 60, &before).unwrap();
+        let stats = reading_stats_at_now(&root, now).unwrap();
+        assert_eq!(stats.streak_days, 2);
+    }
+
+    #[test]
+    fn relocates_annotations_by_quote_within_chapter() {
+        let mut annotation = ReadingAnnotation {
+            id: "a1".to_string(),
+            kind: KIND_HIGHLIGHT.to_string(),
+            chapter_index: 0,
+            paragraph_index: 0,
+            start: 0,
+            end: 8,
+            quote: "一段引文".to_string(),
+            body: String::new(),
+            color: "amber".to_string(),
+            source: SOURCE_USER.to_string(),
+            created_at: "2026-11-19T00:00:00Z".to_string(),
+            updated_at: "2026-11-19T00:00:00Z".to_string(),
+        };
+        let chapters = vec![ReadingChapter {
+            title: "第一章".to_string(),
+            paragraphs: vec!["新增的前言".to_string(), "这里有一段引文出现。".to_string()],
+        }];
+        let unresolved = relocate_annotations(&chapters, std::slice::from_mut(&mut annotation));
+        assert_eq!(unresolved, 0);
+        assert_eq!(annotation.paragraph_index, 1);
+        assert_eq!(annotation.start, 3);
+        assert_eq!(annotation.end, 7);
+
+        annotation.quote = "不存在的引文".to_string();
+        let unresolved = relocate_annotations(&chapters, std::slice::from_mut(&mut annotation));
+        assert_eq!(unresolved, 1);
+        assert_eq!(annotation.paragraph_index, 1, "找不到时保留原位置");
+    }
+
+    #[test]
+    fn failed_media_refresh_marks_version_to_avoid_repeats() {
+        let root = temp_root("refresh-fail");
+        fs::create_dir_all(&root).unwrap();
+        let imported = import_book_at(&root, source("# 章\n\n正文。"), 1_760_000_000.0).unwrap();
+        let book_id = imported.book.book_id.clone();
+        let mut book = read_book_at(&root, &book_id).unwrap();
+        book.source_format = "mobi".to_string();
+        book.source_path = root.join("missing.mobi").display().to_string();
+        book.media_version = 0;
+        write_book(&root, &book).unwrap();
+        assert!(refresh_content_at(&root, &book_id).is_err());
+        assert_eq!(read_book_at(&root, &book_id).unwrap().media_version, 1);
+        assert_eq!(read_meta_at(&root, &book_id).unwrap().media_version, 1);
     }
 
     #[test]
@@ -1627,7 +2129,7 @@ mod tests {
             ..ReadingAnnotationDraft::default()
         };
         add_annotation_at(&root, &book_id, thought, 1_760_000_020.0).unwrap();
-        set_progress_at(&root, &book_id, 0.96, 1_760_000_030.0).unwrap();
+        set_progress_at(&root, &book_id, 0.996, 1_760_000_030.0).unwrap();
         save_note_at(&root, &book_id, "整理", "# 整理\n\n没有引用", vec![], 1_760_000_040.0).unwrap();
 
         let mut rss_source = source("# RSS\n\n订阅正文。");
@@ -1667,6 +2169,40 @@ mod tests {
     }
 
     #[test]
+    fn deletes_local_files_keeps_exports_and_rejects_rss() {
+        let root = temp_root("delete");
+        fs::create_dir_all(&root).unwrap();
+        let imported = import_book_at(&root, source("# 章\n\n正文。"), 1_770_000_000.0).unwrap();
+        let book_id = imported.book.book_id.clone();
+        set_progress_at(&root, &book_id, 0.4, 1_770_000_010.0).unwrap();
+        let notes_dir = root.join("notes").join(&book_id);
+        fs::create_dir_all(&notes_dir).unwrap();
+        fs::write(notes_dir.join("note.md"), "# 笔记").unwrap();
+        let cover_name = format!("{book_id}.cover.png");
+        fs::write(root.join("meta").join(&cover_name), b"\x89PNG\r\n").unwrap();
+        fs::write(root.join("exports").join("keep.md"), "导出保留").unwrap();
+
+        delete_book_at(&root, &book_id).unwrap();
+        assert!(!root.join("books").join(format!("{book_id}.json")).exists());
+        assert!(!root.join("meta").join(format!("{book_id}.json")).exists());
+        assert!(!root.join("meta").join(&cover_name).exists());
+        assert!(!root.join("progress").join(format!("{book_id}.json")).exists());
+        assert!(!notes_dir.exists());
+        assert!(root.join("exports").join("keep.md").exists(), "导出文件必须保留");
+
+        let mut rss_source = source("# RSS\n\n订阅正文。");
+        rss_source.extension = "rss".to_string();
+        rss_source.file_name = "rss.md".to_string();
+        let rss = import_book_at(&root, rss_source, 1_770_000_020.0).unwrap();
+        let rss_id = rss.book.book_id.clone();
+        assert!(delete_book_at(&root, &rss_id).is_err(), "订阅文章一律拒绝删除");
+        assert!(root.join("books").join(format!("{rss_id}.json")).exists());
+
+        assert!(delete_book_at(&root, "bk/a").is_err(), "不安全编号必须拒绝");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn end_to_end_epub_cover_and_media_under_env_root() {
         let dir = temp_root("epub_e2e");
         fs::create_dir_all(&dir).unwrap();
@@ -1678,7 +2214,7 @@ path = sys.argv[1]
 with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("mimetype", "application/epub+zip")
     z.writestr("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
-    z.writestr("OEBPS/content.opf", '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf"><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/><item id="pic" href="images/pic.png" media-type="image/png"/></manifest><spine><itemref idref="c1"/></spine></package>')
+    z.writestr("OEBPS/content.opf", '<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:creator>合成作者</dc:creator></metadata><manifest><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/><item id="pic" href="images/pic.png" media-type="image/png"/></manifest><spine><itemref idref="c1"/></spine></package>')
     z.writestr("OEBPS/text/ch1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>前文<img src="../images/pic.png"/>后文</p></body></html>')
     z.writestr("OEBPS/images/pic.png", b"\x89PNG\r\n")
     z.writestr("OEBPS/images/cover.jpg", b"\xff\xd8\xff\xe0cover")
@@ -1701,6 +2237,7 @@ with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         let result = (|| {
             let paths = AppPaths::resolve().map_err(|e| format!("路径解析失败：{e}"))?;
             let imported = import_book(&paths, epub.to_str().unwrap())?;
+            assert_eq!(imported.book.author, "合成作者");
             let root = resolve_reading_root(&paths)?;
             let meta = read_meta_at(&root, &imported.book.book_id)?;
             let cover = meta.cover.ok_or_else(|| "没有封面".to_string())?;
@@ -1713,12 +2250,56 @@ with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
                 cover,
                 cover_path.is_file()
             );
+            // 模拟旧书目：摘要没记封面、缓存文件也不在；读取时应从源 EPUB 回提取。
+            fs::remove_file(&cover_path).map_err(|e| format!("移除封面失败：{e}"))?;
+            let mut legacy = read_meta_at(&root, &imported.book.book_id)?;
+            legacy.cover = None;
+            let legacy_raw = serde_json::to_vec_pretty(&legacy)
+                .map_err(|e| format!("序列化旧摘要失败：{e}"))?;
+            fs::write(root.join("meta").join(format!("{}.json", imported.book.book_id)), legacy_raw)
+                .map_err(|e| format!("写入旧摘要失败：{e}"))?;
+            let recovered = read_cover_at(&root, &imported.book.book_id)?;
+            assert_eq!(recovered.mime, "image/jpeg");
+            let rewritten = read_meta_at(&root, &imported.book.book_id)?;
+            assert!(rewritten.cover.is_some(), "回提取后应写回 meta.cover");
             let book = read_book_at(&root, &imported.book.book_id)?;
             assert!(book.chapters[0].paragraphs.iter().any(|p| p.contains("![img](odmedia:OEBPS/images/pic.png)")));
             let payload = crate::task_shell::read_reading_media(&book.source_path, "OEBPS/images/pic.png")?;
             eprintln!("OD-READ-003 e2e: media mime={} bytes={}", payload.mime, payload.bytes);
             assert_eq!(payload.mime, "image/png");
             assert_eq!(payload.bytes, 6);
+
+            // 模拟媒体提取上线前的旧书目：正文无标记、media_version=0；打开时回填。
+            let mut legacy_book = read_book_at(&root, &imported.book.book_id)?;
+            legacy_book.chapters = vec![ReadingChapter {
+                title: "旧正文".to_string(),
+                paragraphs: vec!["前文后文".to_string()],
+            }];
+            legacy_book.author = String::new();
+            legacy_book.media_version = 0;
+            write_book(&root, &legacy_book)?;
+            let draft = ReadingAnnotationDraft {
+                kind: KIND_HIGHLIGHT.to_string(),
+                chapter_index: 0,
+                paragraph_index: 0,
+                start: Some(0),
+                end: Some(2),
+                quote: "前文".to_string(),
+                ..ReadingAnnotationDraft::default()
+            };
+            add_annotation_at(&root, &imported.book.book_id, draft, 1_760_000_020.0)?;
+            let refreshed = refresh_content_at(&root, &imported.book.book_id)?;
+            assert_eq!(refreshed.book.media_version, 1);
+            assert_eq!(refreshed.book.author, "合成作者");
+            assert_eq!(refreshed.unresolved, 0);
+            assert!(refreshed.book.chapters[0].paragraphs.iter().any(|p| p.contains("![img](odmedia:OEBPS/images/pic.png)")));
+            let annotation = refreshed.book.annotations.first().ok_or_else(|| "批注丢失".to_string())?;
+            let moved = refreshed.book.chapters[0]
+                .paragraphs
+                .get(annotation.paragraph_index)
+                .ok_or_else(|| "批注段落越界".to_string())?;
+            assert_eq!(annotation.quote, "前文");
+            assert!(moved.chars().skip(annotation.start).take(annotation.end - annotation.start).collect::<String>() == "前文");
             Ok::<(), String>(())
         })();
         match previous {

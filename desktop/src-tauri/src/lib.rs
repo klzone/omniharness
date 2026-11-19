@@ -5175,6 +5175,20 @@ fn reading_progress_set(
 }
 
 #[tauri::command(async)]
+fn reading_time_add(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    seconds: u64,
+) -> Result<reading_store::ReadingProgress, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::add_reading_time_at(&root, &book_id, seconds)
+}
+
+#[tauri::command(async)]
 fn reading_note_save(
     state: State<'_, SharedHost>,
     book_id: String,
@@ -5233,6 +5247,8 @@ struct ReadingStatsView {
     notes: usize,
     thoughts: usize,
     rss_articles: usize,
+    month_minutes: u64,
+    streak_days: u32,
 }
 
 /// 首页阅读统计（OD-READ-003）：本地书目聚合 + RSS 文章篇数；失败原样返回，不补零。
@@ -5253,12 +5269,14 @@ fn reading_stats(state: State<'_, SharedHost>) -> Result<ReadingStatsView, Strin
         notes: stats.notes,
         thoughts: stats.thoughts,
         rss_articles,
+        month_minutes: stats.month_minutes,
+        streak_days: stats.streak_days,
     })
 }
 
 /// 从当前书的 EPUB 包内取一个媒体文件（图片/音频/视频），返回 base64。
-#[tauri::command(async)]
-fn reading_media_extract(
+#[tauri::command]
+async fn reading_media_extract(
     state: State<'_, SharedHost>,
     book_id: String,
     media_ref: String,
@@ -5267,17 +5285,21 @@ fn reading_media_extract(
         let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
         host.paths.clone()
     };
-    let root = reading_store::resolve_reading_root(&paths)?;
-    let book = reading_store::read_book_at(&root, &book_id)?;
-    if book.source_format != "epub" {
-        return Err("只有 EPUB 书籍支持包内媒体读取。".to_string());
-    }
-    task_shell::read_reading_media(&book.source_path, &media_ref)
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = reading_store::resolve_reading_root(&paths)?;
+        let book = reading_store::read_book_at(&root, &book_id)?;
+        if book.source_format != "epub" {
+            return Err("只有 EPUB 书籍支持包内媒体读取。".to_string());
+        }
+        task_shell::read_reading_media(&book.source_path, &media_ref)
+    })
+    .await
+    .map_err(|e| format!("媒体读取任务异常退出：{e}"))?
 }
 
 /// 导入时落在 meta/ 的 EPUB 封面。
-#[tauri::command(async)]
-fn reading_cover_image(
+#[tauri::command]
+async fn reading_cover_image(
     state: State<'_, SharedHost>,
     book_id: String,
 ) -> Result<task_shell::ReadingMediaPayload, String> {
@@ -5285,8 +5307,67 @@ fn reading_cover_image(
         let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
         host.paths.clone()
     };
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = reading_store::resolve_reading_root(&paths)?;
+        reading_store::read_cover_at(&root, &book_id)
+    })
+    .await
+    .map_err(|e| format!("封面读取任务异常退出：{e}"))?
+}
+
+/// 删除一本本地书籍（保留 exports/）；订阅文章由存储层拒绝。
+#[tauri::command(async)]
+fn reading_delete_book(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<(), String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
     let root = reading_store::resolve_reading_root(&paths)?;
-    reading_store::read_cover_at(&root, &book_id)
+    reading_store::delete_book_at(&root, &book_id)
+}
+
+/// 本地书籍改名：只更新 books/ 与 meta/ 的 title，订阅文章一律拒绝。
+#[tauri::command(async)]
+fn reading_rename_book(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    title: String,
+) -> Result<reading_store::ReadingBookMeta, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    let root = reading_store::resolve_reading_root(&paths)?;
+    reading_store::rename_book_at(&root, &book_id, &title)
+}
+
+/// 旧 EPUB/MOBI 正文回填：补齐媒体标记、作者与封面，并按引文重定位批注。
+#[tauri::command]
+async fn reading_refresh_content(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<reading_store::ReadingRefreshResult, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = reading_store::resolve_reading_root(&paths)?;
+        reading_store::refresh_content_at(&root, &book_id)
+    })
+    .await
+    .map_err(|e| format!("正文回填任务异常退出：{e}"))?
+}
+
+/// RSS 正文里的远程图片：http/https、最多 2 跳重定向、10s 超时、8 MiB 上限。
+#[tauri::command]
+async fn reading_remote_media(url: String) -> Result<task_shell::ReadingMediaPayload, String> {
+    tauri::async_runtime::spawn_blocking(move || task_shell::read_remote_media(&url))
+        .await
+        .map_err(|e| format!("图片读取任务异常退出：{e}"))?
 }
 
 // ---------------------------------------------------------------------------
@@ -5305,6 +5386,11 @@ fn rss_subscriptions_list(
         host.paths.clone()
     };
     rss_store::list_subscriptions(&paths)
+}
+
+#[tauri::command(async)]
+fn rss_preset_sources() -> Vec<rss_store::RssPresetSource> {
+    rss_store::preset_sources()
 }
 
 #[tauri::command(async)]
@@ -5353,6 +5439,35 @@ fn rss_article_mark_read(
         host.paths.clone()
     };
     rss_store::mark_article_read(&paths, &book_id)
+}
+
+/// 收藏/取消收藏一篇订阅文章；只写 articles/<book_id>.json。
+#[tauri::command(async)]
+fn rss_article_set_favorite(
+    state: State<'_, SharedHost>,
+    book_id: String,
+    favorite: bool,
+) -> Result<rss_store::RssArticleMeta, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    rss_store::set_article_favorite(&paths, &book_id, favorite)
+}
+
+/// 单篇 RSS 文章正文回填：重新抓取所属 feed，按 guid/link 匹配后补齐媒体标记。
+#[tauri::command(async)]
+async fn rss_refresh_article(
+    state: State<'_, SharedHost>,
+    book_id: String,
+) -> Result<rss_store::RssArticleRefreshResult, String> {
+    let paths = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || rss_store::refresh_article(&paths, &book_id))
+        .await
+        .map_err(|e| format!("RSS 文章回填任务异常退出：{e}"))?
 }
 
 #[tauri::command(async)]
@@ -9981,17 +10096,25 @@ pub fn run() {
             reading_annotation_update,
             reading_annotation_delete,
             reading_progress_set,
+            reading_time_add,
             reading_note_save,
             reading_note_read,
             reading_export_notes,
             reading_stats,
             reading_media_extract,
             reading_cover_image,
+            reading_delete_book,
+            reading_rename_book,
+            reading_refresh_content,
+            reading_remote_media,
             rss_subscriptions_list,
+            rss_preset_sources,
             rss_subscription_add,
             rss_subscription_remove,
             rss_articles_list,
             rss_article_mark_read,
+            rss_article_set_favorite,
+            rss_refresh_article,
             rss_fetch,
             knowledge_sync_to_vault,
             knowledge_staging_list,

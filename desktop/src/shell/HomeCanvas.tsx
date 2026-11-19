@@ -93,7 +93,7 @@ function ReadingStatsBar({
   const items: Array<{ icon: IconName; value: number; label: string }> = [
     { icon: "book", value: stats.books, label: "本书" },
     { icon: "check", value: stats.finished, label: "已读完" },
-    { icon: "note", value: stats.chars, label: "字" },
+    { icon: "note", value: stats.chars, label: "字数" },
     { icon: "star", value: stats.annotations, label: "批注" },
     { icon: "note", value: stats.notes, label: "笔记" },
     { icon: "spark", value: stats.thoughts, label: "闪记" },
@@ -613,7 +613,7 @@ export function HomeCanvas({
           onSearchMatchesChange={onSearchMatchesChange}
         />
             {/* 阅读统计放在对话下方（原「项目跟踪」快捷入口的位置），与输入区留出间距。 */}
-            <div className="shrink-0 pt-4" data-testid="home-reading-stats-slot">
+            <div className="shrink-0 flex justify-center pt-4" data-testid="home-reading-stats-slot">
               <ReadingStatsBar
                 stats={readingStats}
                 error={readingStatsError}
