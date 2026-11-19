@@ -902,6 +902,22 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 现象 3：复盘正文引用写成空括号「记录、、」。核查：宿主材料含 `#wr-…` 编号（review_store::build_material），属模型未按契约复制；period-review SKILL 增加「编号必须原样写 #wr-…，不得留空括号」硬约束。
 - 验证：verify_wr_505 74/74（新增上周/上上周/上个月用例）、arch_176 71/71、arch_178 20+25、tsc/build 通过。改动未推送。
 
+## 2026-11-19 Windows 残留 DSH node 二次修复（OD-ARCH-184，ARCHITECT 亲自执行）
+
+> 用户 0.2.42 实测：关闭 app 后仍残留 node.exe（PID 8660，父 6152，命令行 dsh-runtime bin.js --profile discipline）。核查源码发现三条真实缺口：
+
+### 修复
+
+1. engine_supervisor::finish_stop：原实现 terminate 失败即提前返回，跳过 cleanup_engine_group（DSH 子树兜底回收）。改为先取 terminate 结果、始终执行兜底回收，最后再上报 terminate 错误。
+2. process_owner::cleanup_child_on_exit（RunEvent::Exit）：登记属于旧宿主/记录缺失时原实现直接跳过。改为：登记匹配时按 child_pid 树杀；无论是否匹配，再执行「父进程已退出的 DSH node」命令行指纹清扫（另一实例的 node 父进程存活，不会被误杀）。
+3. process_owner::cleanup_engine_group_windows：记录不匹配时原实现直接返回，现改为记录匹配才按 child_pid 杀，之后同样执行指纹清扫。
+4. platform::kill_process_tree / sweep_orphan_dsh_processes 与 engine/process_owner.py terminate_group：taskkill / powershell 改为 SystemRoot 下绝对路径（打包环境 PATH 被裁剪时裸名会静默失败）。
+
+### 验证与限制
+
+- 本机：cargo test --lib 单线程 1250/0；process_owner 单测 OK；py_compile OK；tsc/build 通过。改动未推送。
+- Windows 交叉编译检查在 tauri-winres 的 llvm-rc 依赖处失败（宿主缺 Windows 资源编译器，与代码无关），Windows cfg 代码等 CI/实机验证；**Windows 实机复验待用户**：关闭 app 后 Get-CimInstance 过滤 dsh-runtime 残留应为 0。
+
 
 ## OD-ARCH-183 Windows 引擎进程树回收（2026-11-18，ARCHITECT 亲自实施）
 

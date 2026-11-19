@@ -1316,22 +1316,21 @@ impl EngineSupervisor {
             grace + Duration::from_secs(5),
         );
 
-        let forced = channel
-            .terminate(grace)
-            .map_err(|e| format!("关闭引擎子进程失败：{}", e))?;
-        // 引擎若已被强杀，登记仍在：宿主侧按其可信 pid/pgid 兜底回收 DSH 子进程组。
+        let terminate_result = channel.terminate(grace);
+        // OD-ARCH-184：无论 terminate 成功与否都要做兜底回收——Windows 上 terminate
+        // 失败（强杀 io 错误等）曾直接问号返回，跳过了 DSH node 的树杀，留下孤儿。
         if let Some(problem) = crate::process_owner::cleanup_engine_group(
             engine_state_dir,
             engine_pid,
             Duration::from_secs(3),
         ) {
-            // OD-SYS-701：Windows 没有 POSIX 进程组，pgid=0 时 cleanup 直接跳过，
-            // 由 Job Object 在句柄关闭时回收整棵树；这里只报告真正失败的组回收。
+            // OD-SYS-701：Windows 没有 POSIX 进程组，pgid=0 时 cleanup 走登记树杀 + 指纹清扫。
             eprintln!(
-                "[omnidesk] 引擎进程组兜底回收未完成（Windows 由 Job Object 负责回收）：{}",
+                "[omnidesk] 引擎进程组兜底回收未完成：{}",
                 problem
             );
         }
+        let forced = terminate_result.map_err(|e| format!("关闭引擎子进程失败：{}", e))?;
         Ok((forced, channel.exit_code()))
     }
 

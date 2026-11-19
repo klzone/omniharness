@@ -958,11 +958,21 @@ pub fn process_cmd(pid: i32) -> Vec<String> {
 
 /// Windows：taskkill /T 回收整棵进程树；仍存活才算失败。
 #[cfg(windows)]
+fn system32_exe(relative: &str) -> PathBuf {
+    // OD-ARCH-184 加固：打包后子进程 PATH 可能被裁剪，Command::new("taskkill")
+    // 会静默失败；优先用 <SystemRoot>\System32\ 下的绝对路径。
+    match std::env::var_os("SystemRoot") {
+        Some(root) => PathBuf::from(root).join("System32").join(relative),
+        None => PathBuf::from(relative),
+    }
+}
+
+#[cfg(windows)]
 pub fn kill_process_tree(pid: i32) -> Result<(), String> {
     if pid <= 1 {
         return Err(format!("拒绝终止非法 pid：{pid}"));
     }
-    let mut cmd = Command::new("taskkill");
+    let mut cmd = Command::new(system32_exe("taskkill.exe"));
     cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
     hide_console(&mut cmd);
     let _ = cmd.output();
@@ -984,7 +994,7 @@ pub fn sweep_orphan_dsh_processes() -> Vec<i32> {
         "@($items | Where-Object { $q = [int]$_.ParentProcessId; -not $alive[$q] } | ForEach-Object { [int]$_.ProcessId }) ",
         "| ConvertTo-Json -Compress"
     );
-    let mut cmd = Command::new("powershell");
+    let mut cmd = Command::new(system32_exe("WindowsPowerShell/v1.0/powershell.exe"));
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", script]);
     hide_console(&mut cmd);
     let Ok(out) = cmd.output() else { return Vec::new() };

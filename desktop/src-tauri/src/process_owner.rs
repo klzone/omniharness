@@ -232,21 +232,27 @@ fn reclaim_before_start_windows(state_dir: &Path, path: &Path) -> Result<Reclaim
 /// Windows 宿主收尾：引擎被强杀后按登记回收 DSH 子进程树。
 #[cfg(windows)]
 fn cleanup_engine_group_windows(state_dir: &Path, engine_pid: i32) -> Option<String> {
-    let record = read_owner(state_dir)?;
-    if record.pid != engine_pid {
-        return None;
-    }
-    if record.child_pid > 1 && is_alive(record.child_pid) {
-        let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
-        if !image_is_node(&image) {
-            return Some(format!(
-                "子进程 pid={} 镜像 {} 不是 node，拒绝回收",
-                record.child_pid, image
-            ));
+    let mut problem: Option<String> = None;
+    if let Some(record) = read_owner(state_dir) {
+        if record.pid == engine_pid && record.child_pid > 1 && is_alive(record.child_pid) {
+            let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
+            if !image_is_node(&image) {
+                problem = Some(format!(
+                    "子进程 pid={} 镜像 {} 不是 node，拒绝回收",
+                    record.child_pid, image
+                ));
+            } else if let Err(err) = crate::platform::kill_process_tree(record.child_pid) {
+                problem = Some(err);
+            }
         }
-        return crate::platform::kill_process_tree(record.child_pid).err();
     }
-    None
+    // OD-ARCH-184 兜底：引擎进程此时已退出，父进程已死的 DSH node 一律按指纹清扫。
+    for pid in crate::platform::sweep_orphan_dsh_processes() {
+        if let Err(err) = crate::platform::kill_process_tree(pid) {
+            eprintln!("[omnidesk] 退出清扫遗留 DSH 进程失败（pid={pid}）：{err}");
+        }
+    }
+    problem
 }
 
 /// 宿主启动引擎前调用：只有身份核验通过才回收，否则返回可读错误并拒绝启动。
@@ -342,16 +348,22 @@ pub fn reclaim_before_start(state_dir: &Path, grace: Duration) -> Result<Reclaim
 pub fn cleanup_child_on_exit(state_dir: &Path) {
     #[cfg(windows)]
     {
-        let Some(record) = read_owner(state_dir) else { return };
         let me = std::process::id() as i32;
-        if record.host_pid != 0 && record.host_pid != me {
-            return;
-        }
-        if record.child_pid > 1 && is_alive(record.child_pid) {
-            let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
-            if image_is_node(&image) {
-                let _ = crate::platform::kill_process_tree(record.child_pid);
+        if let Some(record) = read_owner(state_dir) {
+            if (record.host_pid == 0 || record.host_pid == me)
+                && record.child_pid > 1
+                && is_alive(record.child_pid)
+            {
+                let image = crate::platform::process_image(record.child_pid).unwrap_or_default();
+                if image_is_node(&image) {
+                    let _ = crate::platform::kill_process_tree(record.child_pid);
+                }
             }
+        }
+        // OD-ARCH-184 兜底：登记缺失 / 登记属于旧宿主 / 强杀竞态时，按「父进程已退出
+        // 的 DSH node」命令行指纹清扫。另一个在运行实例的 node 父进程存活，不会被命中。
+        for pid in crate::platform::sweep_orphan_dsh_processes() {
+            let _ = crate::platform::kill_process_tree(pid);
         }
     }
     #[cfg(not(windows))]

@@ -520,6 +520,16 @@ def record_child_group(state_dir: str | os.PathLike[str] | None, pid: int) -> No
         pass
 
 
+def _windows_taskkill_exe() -> str:
+    """taskkill 绝对路径（OD-ARCH-184）：引擎子进程 PATH 可能被裁剪，裸名会静默失败。"""
+    root = os.environ.get("SystemRoot") or os.environ.get("windir") or ""
+    if root:
+        candidate = os.path.join(root, "System32", "taskkill.exe")
+        if os.path.exists(candidate):
+            return candidate
+    return "taskkill"
+
+
 def terminate_group(
     pgid: int, *, grace: float = 5.0, trusted_leader: Optional[int] = None
 ) -> bool:
@@ -537,7 +547,7 @@ def terminate_group(
             return False
         try:
             subprocess.run(
-                ["taskkill", "/PID", str(target), "/T", "/F"],
+                [_windows_taskkill_exe(), "/PID", str(target), "/T", "/F"],
                 capture_output=True,
                 timeout=max(5.0, float(grace) + 5.0),
             )
