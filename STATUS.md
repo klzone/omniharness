@@ -863,3 +863,87 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 推送：`git push origin od-read-002-brain-room` → exit 0；回执 `* [new branch] od-read-002-brain-room -> od-read-002-brain-room`（https://github.com/klzone/omniharness.git）；`git ls-remote origin refs/heads/od-read-002-brain-room` 返回 `f008ef94bb69f9dfd0223dd7b4a7bd7e3784d70c`，与本地 HEAD 一致。未 push main、未 force、未打标签、未重试。
 - 推送后 `git status --short --branch` 快照：`## od-read-002-brain-room`；仅剩 4 个未跟踪构建符号链接 `runtime/dsh-home-seed`、`runtime/dsh-runtime`、`runtime/pnpm`、`runtime/python-vendor`（任务书明确不暂存，未加入提交）。
 - 清单外文件：仅上述 4 个 `runtime/` 未跟踪符号链接，未暂存、未修改。本节追加后 STATUS.md 重新处于已修改状态（未提交、未再推送），留待 ARCHITECT 终检。
+
+## OD-READ-002 阶段 3 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；工作树 `od-read-002-brain-room`。未提交、未推送、未打标签；未改 `runtime/`、`engine/`、RSS 抓取链路或划线锚定结构。
+- ①右侧栏：`panelOpen` 初始 `false`；收起态为 40px 贴右缘图标栏（笔记图标 + 批注总数角标、AI 图标），点击展开并切 notes/ai；`click/keydown/scroll/pointerdown` 捕获重置 90 秒计时，切书或关闭时清除；宽度 200ms 过渡。
+- ②首页统计条：槽位 `shrink-0 flex justify-center`，统计算 `width: fit-content; margin: 0.5rem auto 0.75rem`；字数项 label 改为「字数」，仍可整条点击跳健脑室。
+- ③④ 验证：`rss_store.rs` 的 `![img]({})` 转换、`reading_store.rs` 的 RSS 字数聚合单测、前端「字数」项均在；未重做实现。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1249 passed / 0 failed / 1 ignored（49.20s）；`npm run build` → exit 0；verify_reading_003 25/25、verify_reading_004 19/19、verify_od_read_002_stage3 18/18；`git diff --check` → exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage3.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口 90 秒计时/重置、图标栏在 `<xl` 与 `xl` 的视觉位置、划线动作条真实点击展开、首页统计条最终贴底排版。保留既有 4 个未跟踪 `runtime/` 构建符号链接，未暂存、未修改。
+
+## OD-READ-002 阶段 4 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 3 未提交改动。未提交、未推送、未打标签；未改划线锚定、RSS 抓取与首页其它区域，未引入新依赖。
+- 视觉：`reading.css` 新增 `.reading-page` 作用域暖纸新拟物变量；阅读纸面 26px 凸起卡 + 34/44 内边距 + 宋体 16.5px/2.0/justify；琥珀划线/主色想法；媒体内凹窗 + 图注；RSS 引文井；章节头进度轨；书架 288↔56 see-saw；右侧面板卡/tabs/批注卡/AI 井；浮动条 raised 胶囊。
+- 布局：`ReadingPage.tsx` 书架满宽 288px、面板展开时 56px 三钮图标栏（书籍/订阅/搜索，aria-label）；面板默认 320px；搜索胶囊本地过滤现有书架条目；右侧面板收起仍 40px 图标栏。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1249 passed / 0 failed / 1 ignored（49.22s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、verify_reading_004 19/19、verify_od_read_002_stage3 18/18、verify_reading_005_design 34/34；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage4.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口视觉层次、288↔56/320 过渡、窄屏 overlay、浮动条 hover/active、搜索胶囊焦点与过滤手感。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 5 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 3/4 未提交改动。未提交、未推送、未打标签；未改 RSS 抓取、批注锚定与首页其它区域，未引入新依赖。
+- 仪表盘：新增 `ReadingDashboard.tsx`；无书时替换旧空态。顶部最近在读书（实际进度、封面、格式章数、上次日期）+ 1000 分钟目标（本月书籍 chars×progress/300，标注估算、无 knob）；五格按字数/今年已读/批注/订阅文章/整理笔记；最近 4 本读完含封面、作者、日期、100% 环；RSS 花瓣固定底色层 + 按本月已读比例的缩放数据层；空态两卡 + 精选作者 chips。
+- 宿主/前端：`rss_store::preset_sources` 返回 9 位精选作者，新增 `rss_preset_sources` 命令与 `RssPresetSource` 类型/API。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1250 passed / 0 failed / 1 ignored（48.78s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、verify_reading_004 19/19、verify_reading_005 34/34、verify_od_read_002_stage3 18/18、verify_reading_006_dashboard 34/34；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage5.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口仪表盘视觉、目标轨/五格/花瓣/空态排版、查看全部/导入/书籍行/chip/订阅入口的真实点击；既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 6 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 1–5 未提交改动。未提交、未推送、未打标签；未改 RSS 抓取链路、批注锚定、exports，未新增依赖。
+- 书架与删除：`ReadingPage` 仅在 `book` 非空时渲染左侧书架；仪表盘「查看全部」打开书架管理弹窗（全部本地书、封面/格式/章数/进度、打开/删除、Esc）；书架行与管理行加 trash 删除（stopPropagation）与 ConfirmDialog；删除后 refreshLibrary，当前书清理进度定时器并关闭阅读器。
+- 后端：`reading_store::delete_book_at`（安全编号、拒绝 rss、删 books/meta/progress/notes/meta cover、exports 保留、部分失败回报已删项）；`read_cover_at` 缺封面时从 source_path 回提取并原子写回 meta.cover；`reading_stats` 完成阈值 0.995；新增 `reading_delete_book`、`reading_remote_media` 与 `task_shell::read_remote_media`（http/https、≤2 跳逐跳校验、10s、8 MiB、图片白名单）。
+- 前端修正：DashboardCover/BookCover 不再因 cover 为空早退；远程正文图片走 `readingRemoteMedia`（缓存、失败文案）；仪表盘完成判定 0.995、目标条 <12% 隐藏条内文字并在条下显示剩余、花瓣图自适应、容器滚动约束保留。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1253 passed / 0 failed / 1 ignored（50.14s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage6.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口书架显隐/管理弹窗/删除交互、目标条窄宽排版、花瓣图滚动完整性；真实 RSS 远程图片（CDN 重定向/SVG/超大响应）端到端；旧书源文件是否仍在原路径。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 7 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 1–6 未提交改动。未提交、未推送、未打标签；未改批注锚定结构、未删导出、未新增依赖。
+- 真实阅读时长：progress/<id>.json 增加 daily_seconds（UTC 日期→秒，serde default）；set_progress_at 保留已有计时；新增 reading_time_add（单次 ≤3600 秒，累加）；reading_stats 增加 month_minutes（当月秒数四舍五入）与 streak_days（今天为 0 时从昨天起算）；ReadingPage 在可见且聚焦时每 15 秒累计、60 秒 flush，切书/关闭/隐藏/失焦 flush。
+- 仪表盘：标题右侧恢复连续天数/本月分钟两枚胶囊；目标区改用 month_minutes，删除估算与字数×进度公式；目标条左下「继续阅读」（最近在读书，无书禁用）；花瓣中心改为 16px 主色大写 R；下部两栏 ≥1000px 并排、<1000px 堆叠；作者列始终显示，空作者显示「未知作者」。
+- EPUB 作者：helper 解析 OPF dc:creator → ReadingSource.author → 新导入与回填写 meta.author。
+- 旧内容媒体回填：reading_refresh_content 仅 epub/mobi，重新 read_reading_source 取带媒体标记的章节/作者/封面；按 quote 先原段落再全章重定位批注，找不到保留原位置并返回 unresolved；新导入与回填置 media_version=1，旧书 openBook 自动回填一次并重载，失败置 1 防重复并 toast。
+- RSS 旧文章回填：parse_entry 解析 enclosure / media:content（仅 http/https、image/*），正文无图时前置 ![img]；ingest_feed_at 对已存在且无批注文章，在新正文含媒体标记或条目带图时更新 chapters/author/source_sha256，保留 progress/read。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1259 passed / 0 failed / 1 ignored（89.23s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40、新增 008 49/49；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage7.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口计时节奏/切书与隐藏 flush、胶囊/继续阅读/R 字/1000px 切换视觉；真实用户 EPUB/MOBI 源文件自动回填（合成 EPUB 已覆盖端到端）；真实 RSS enclosure 图片显示；多作者 EPUB 只取第一个 creator。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 8 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 1–7 未提交改动。未提交、未推送、未打标签；未改批注锚定结构、未动用户导出、未新增依赖。
+- 顶部并排：`reading.css` 的 `.reading-dash-top` 基准改为 `minmax(0, 0.95fr) minmax(0, 1.05fr)` 两列；删除 ≤1280 断点的顶部单列覆盖与 hero 左内边距归零；新增 ≤900 断点（gap 20px、hero 间距 14px、数字 64px、hero 左内边距 0）。窗口最小宽度 960px 起始终保持并排。
+- RSS 正文回填：`rss_store` 的 `html_to_paragraphs`/`sanitize_html`/`sanitize_media_url` 接收条目 link 作为 base_url；新增 `resolve_media_url`/`normalize_absolute_url` 解析 `/x`、`//cdn`、`../x`、`?query` 为绝对 http(s)，未知协议不解析，解析失败不生成图片标记；`entry_image_url` 同步支持相对地址。
+- 单篇回填命令：新增 `rss_refresh_article`（lib.rs 注册、api.ts/types.ts 同步）；`refresh_article` 读取 `rss/articles/<id>.json` 与 `books/<id>.json`，重新抓取该 feed 并按 guid 或 link 匹配；仅当文章无批注时重算正文并更新 chapters/author/source_sha256（media_version=1），progress/imported_at 保留；有批注、未匹配、正文一致或仍只有旧占位时返回 updated:false + reason 且不改文件。
+- 前端：`ReadingPage` 新增 `hasLegacyImagePlaceholder` 与 `rssRefreshAttempted` 一次标记；openBook 对无批注且含 `[图片：` 的 RSS 文章自动调用回填并重读一次，成功刷新书架，失败/无需回填 toast 原因，不循环重试。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1262 passed / 0 failed / 1 ignored（87.00s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40、008 49/49、新增 009 36/36；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage8.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口 960–1280px 顶部排版手感；真实 appinn feed 在线回填（单测为合成 RSS）；既有文章 guid/link 是否仍匹配当前 feed；回填后远程图片实际加载；有批注文章按设计跳过，旧占位可能保留。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 9 执行记录（BUILDER 子代理，2026-11-19）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 1–8 未提交改动。未提交、未推送、未打标签；未改批注锚定结构、未动用户导出、未新增依赖。
+- 仪表盘分割线：`reading.css` 的 `.reading-dash-divider` 改为 3px 高、surface 底色、2px 圆角，并用上下两道 inset 阴影形成内凹凹槽；仪表盘上、中、下三段之间原有两条分割线都保留。
+- RSS 打开：`ReadingPage.openBook` 初次 `readingBook` 成功后立即 `setBook(loaded)`，busy 只覆盖初次读取；随后用独立异步任务调用 `rssRefreshArticle`，期间 toast「正在补齐文章图片…」，失败提示原因。成功后重读文章并再次 `setBook`，保留当前滚动位置、阅读进度与批注面板上下文，不重置选择/批注状态；一次标记仍防循环。
+- 宿主：`rss_refresh_article` 改为 async 命令，内部用 `tauri::async_runtime::spawn_blocking` 执行 `rss_store::refresh_article`，与 `rss_fetch` 相同模式；后台任务异常转成可读错误返回。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation cargo test --offline --lib -- --test-threads=1` → 1262 passed / 0 failed / 1 ignored（52.88s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40、008 49/49、009 36/36、新增 010 24/24；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage9.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口中凹槽线的手感与两条线的视觉分隔；真实订阅文章点击后立即进入阅读、20s+ 网络回填期间的 toast 与可交互性；回填完成后的真实滚动位置/批注面板上下文保持（当前为静态断言 + 构建验证）。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 10 执行记录（BUILDER 子代理，2026-11-20）
+
+- 基线：`483e2b41772f1c2571fca343e1bfbe74514f7286`；保留阶段 1–9 未提交改动。未提交、未推送、未打标签；未改批注锚定结构、未动用户导出、未新增依赖。
+- 侧栏排版：`ReadingPage` 的「健脑室」标题改为 16px / 700 / `.08em` 字距；书籍标题 14px semibold、副信息 12px、文章行标题 13.5px、时间与徽标 11.5px；`reading.css` 的 tabs 12.5px、搜索输入 13px，新增铅笔按钮显隐样式。
+- 自动刷新：新增 30 分钟常量与 `maybeAutoRefreshRss`；读取 `subscriptions` 最大 `last_fetched_at`，挂载与窗口 focus 时超期则后台 `shell.rssFetch()`，不占 `rssBusy`，完成后 `refreshLibrary` + `refreshRss`；`lastAutoRefreshRef` 记录触发时间、`autoRefreshRunning` 防并发。
+- RSS 过滤与收藏：`RssArticleMeta` 增加 `favorite`（serde default）；`rss_store::set_article_favorite` 只改写 `articles/<id>.json`；新增 `rss_article_set_favorite` 命令、`rssArticleSetFavorite` 与前端类型。侧栏按 `published_ts`（否则 `fetched_at`）过滤 30 天，favorite 例外；分组/页签计数随过滤结果；文章行显示星标与日期。头栏对 RSS 文章用星标替代导入按钮，实心主色表示已收藏，toast「已收藏/已取消收藏」。
+- 改名：`reading_store::rename_book_at` 校验安全 id、拒绝 rss、标题 1..=300 字符，用 `serde_json::Value` 仅改 `books/<id>.json` 与 `meta/<id>.json` 的 title；`reading_rename_book` / `readingRenameBook` 已注册。侧栏书籍行与书架管理弹窗各加铅笔按钮，保存后刷新 library，并同步当前打开书的 header 标题。
+- 订阅折叠：`collapsedSources` 默认 `true`；文章列表首次可用后 `Math.random` 选一个来源展开，`randomSourceExpanded` ref 只执行一次。
+- 按钮与文案：侧栏「订阅管理」「拉取全部」已删除，仪表盘「管理订阅」入口保留；RSS 空态改为指向仪表盘订阅入口。
+- 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation /Users/yvan/.cargo/bin/cargo test --offline --lib -- --test-threads=1` → 1264 passed / 0 failed / 1 ignored（55.82s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40、008 49/49、009 36/36、010 22/22、新增 011 47/47；`git diff --check` exit 0。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage10.md`（`.gitignore` 忽略）。
+- 未验证：真实窗口的侧栏字号层级/铅笔按钮触控可见性、真实 >30 天文章过滤与 favorite 例外、真实挂载/聚焦后台刷新耗时与失败展示、真实改名后 header/书架即时刷新、随机展开分布与手动折叠持久性。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。

@@ -4108,6 +4108,8 @@ export interface ReadingChapter {
 export interface ReadingProgress {
   percent: number;
   updated_at: string;
+  /** UTC 日期（YYYY-MM-DD）-> 真实阅读秒数；旧版文件可能缺省。 */
+  daily_seconds?: Record<string, number>;
 }
 
 /** 一条批注：划线/标记/思考碎片共用一个结构，`start`/`end` 是段落内的 code point 偏移。 */
@@ -4173,6 +4175,8 @@ export interface ReadingBookMeta {
   /** meta/ 下的封面文件名；无封面为 null。 */
   cover?: string | null;
   progress_percent: number;
+  /** 0 = 媒体提取上线前的旧正文；1 = 已带媒体标记。 */
+  media_version?: number;
 }
 
 export interface ReadingBook {
@@ -4191,6 +4195,7 @@ export interface ReadingBook {
   annotations: ReadingAnnotation[];
   notes: ReadingSavedNote[];
   progress: ReadingProgress;
+  media_version?: number;
 }
 
 export interface ReadingLibrary {
@@ -4219,6 +4224,13 @@ export interface ReadingStats {
   notes: number;
   thoughts: number;
   rss_articles: number;
+  month_minutes: number;
+  streak_days: number;
+}
+
+export interface ReadingRefreshResult {
+  book: ReadingBook;
+  unresolved: number;
 }
 
 export interface ReadingMediaPayload {
@@ -4241,6 +4253,12 @@ export interface RssSubscription {
   last_error: string;
 }
 
+export interface RssPresetSource {
+  name: string;
+  url: string;
+  group: string;
+}
+
 export interface RssArticleMeta {
   schema: string;
   book_id: string;
@@ -4254,6 +4272,13 @@ export interface RssArticleMeta {
   published_ts: number;
   fetched_at: string;
   read: boolean;
+  /** 收藏的文章不受 30 天显示过滤影响。 */
+  favorite: boolean;
+}
+
+export interface RssArticleRefreshResult {
+  updated: boolean;
+  reason: string;
 }
 
 export interface RssFetchFailure {

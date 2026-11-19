@@ -380,3 +380,97 @@
 4. 阮一峰 `atom.xml` 在默认 UA 下被 Cloudflare 拦截返回 HTML，运行时会写入可读 `last_error` 并在订阅模态框显示——行为符合「失败不静默」要求；真实效果留窗口验收。
 
 **通过范围与未验收项：** 存储边界、解析正确性、去重、幂等预置、构建链路**通过**；真实桌面窗口的订阅模态框交互、49 源串行拉取耗时、RSS 文章内划线/想法/标段/问 AI 端到端、真实模型输出**未验收**，不得标为「真实可用」。提交推送需用户裁决后另行派工。
+
+
+## OD-READ-002 阶段 3 复核（2026-11-19，ARCHITECT 独立复核：通过）
+
+**范围：** 健脑室右侧面板常态化折叠 + 收起图标栏 + 90 秒自动收起；首页读书统计条底部居中；③富媒体/Markdown 显示与 ④RSS 字数统计为既有实现（483e2b4177）验证。
+
+**源码事实（ARCHITECT 逐项核对 diff）：**
+1. `ReadingPage.tsx`：`panelOpen` 默认 `false`（不再按视口宽度）；收起态渲染 40px 图标栏（笔记图标+批注角标 99+ 上限、AI 图标），点击展开并切对应 tab；`PANEL_AUTO_CLOSE_MS = 90_000`，click/keydown/scroll/pointerdown 四类事件 capture 监听**仅挂面板容器**（正文滚动不续命，注释明示）；切书/收起/卸载清除计时器；划线动作条 划线/想法/标段→notes、问 AI→ai 的既有 `setPanelOpen(true)` 全部保留；宽度 200ms 过渡，窄屏 fixed overlay 保留。
+2. `HomeCanvas.tsx` + `reading.css`：统计槽位 `shrink-0 flex justify-center`，`.home-reading-stats` 改 `width: fit-content` 居中；字数项在列且含订阅文章聚合。
+3. ③：rss_store `![img](url)` 转换与段落偏移兼容断言均在；④：`stats.chars == 书籍 + RSS` 单测在。
+
+**ARCHITECT 实跑（脚本运行证据）：**
+- `OMNIDESK_REPO_ROOT=... cargo test --offline --lib -- --test-threads=1`：**1249 passed / 0 failed / 1 ignored**（ARCHITECT 本机独立实跑，48.94s）。
+- `npx tsc --noEmit`：exit 0。
+- `verify_od_read_002_stage3.py` 18/18、`verify_reading_003_selection.py` 25/25、`verify_reading_004_formats.py` 19/19。
+- Boyle 自跑 `npm run build` exit 0（ReadingPage chunk 53.52 kB，既有提示）。
+
+**结论：** 阶段 3 通过验收，可进入提交环节（提交/推送另行授权执行）。
+
+**未验证（真实窗口，用户实测）：** 90 秒自动收起与面板内操作重置的真实手感、图标栏宽/窄屏视觉位置、划线动作条展开、首页统计条最终贴底排版、RSS 文章图片/链接实际渲染效果。
+
+## OD-READ-002 阶段 4 复核（2026-11-19，ARCHITECT 独立复核：通过）
+
+**范围：** 健脑室阅读区新拟物视觉改版（书 + RSS 文章），含划线浮动条同步设计、书架 288↔56 see-saw、右侧面板 320 默认宽；设计样稿见 /Users/yvan/.codex/visualizations/2026/11/18/01a1ed5a-db65-7780-a2e2-c620b62cb67d/reading-neumorphic-mockup.html。
+
+**源码事实（ARCHITECT 核对 diff）：**
+1. `reading.css` +404 行：新增 `.reading-page` 作用域变量 `--rd-raise / --rd-raise-sm / --rd-inset / --rd-inset-sm / --rd-ring / --rd-speed: 220ms`；阅读纸面 26px 圆角 + 34/44 内边距 + `--rd-raise`；正文宋体栈 16.5px / line-height 2 / justify；划线琥珀 `rgba(212,164,74,.4)`、想法主色下划线；媒体内凹窗 18px；RSS 引文井 + 3px 主色左缘；章节进度轨内凹；书架卡/搜索胶囊/tabs/进度轨/面板卡/批注卡/AI 井均接入 raise-inset 双态；架空浮动条改 14px raised 胶囊 + hover/active 双态 + 主色。
+2. `ReadingPage.tsx`：书架 `w-[288px]` ↔ `reading-shelf-is-rail w-14`（56px）由 `panelOpen` 联动，220ms 宽度过渡；56px 态渲染三枚圆钮（本地书籍/订阅文章/搜索），aria-label/aria-pressed 齐全，可恢复完整列表；书架新增本地搜索过滤（书籍与文章按标题/来源/作者匹配）；面板默认 320、可拖拽；纸面/引文/进度轨/素材井接入新类；批注锚点 `data-paragraph`/`data-chapter-index`/`data-paragraph-index` 原样保留。
+3. `verify_reading_005_design.py` 34 项断言覆盖设计变量、纸面、媒体、引文、书架 see-saw、面板两态、浮动条与锚点未改。
+
+**ARCHITECT 实跑（脚本运行证据）：**
+- `cargo test --offline --lib -- --test-threads=1`（OMNIDESK_REPO_ROOT 指向主仓库）：**1249 passed / 0 failed / 1 ignored**。
+- `npx tsc --noEmit`：exit 0。
+- `verify_reading_005_design.py` 34/34、`verify_reading_003_selection.py` 25/25、`verify_reading_004_formats.py` 19/19、`verify_od_read_002_stage3.py` 18/18。
+- Boyle 自跑 `npm run build` exit 0（ReadingPage chunk 54.38 kB，既有提示）。
+
+**结论：** 阶段 4 通过验收。剩余为用户真实窗口视觉终验（阴影层次、宋体字重、过渡手感、窄屏 overlay、浮动条 hover/active）；提交与推送待用户终验后另行授权。
+
+
+## OD-READ-002 阶段 4 复核（2026-11-19，ARCHITECT 独立复核：通过）
+
+**范围：** 健脑室阅读区新拟物视觉改版（书 + RSS 文章），含划线浮动条同步设计、书架 288↔56 see-saw、右侧面板 320 默认宽；设计样稿见 /Users/yvan/.codex/visualizations/2026/11/18/01a1ed5a-db65-7780-a2e2-c620b62cb67d/reading-neumorphic-mockup.html。
+
+**源码事实（ARCHITECT 核对 diff）：**
+1. `reading.css` +404 行：新增 `.reading-page` 作用域变量 `--rd-raise / --rd-raise-sm / --rd-inset / --rd-inset-sm / --rd-ring / --rd-speed: 220ms`；阅读纸面 26px 圆角 + 34/44 内边距 + `--rd-raise`；正文宋体栈 16.5px / line-height 2 / justify；划线琥珀 `rgba(212,164,74,.4)`、想法主色下划线；媒体内凹窗 18px；RSS 引文井 + 3px 主色左缘；章节进度轨内凹；书架卡/搜索胶囊/tabs/进度轨/面板卡/批注卡/AI 井均接入 raise-inset 双态；架空浮动条改 14px raised 胶囊 + hover/active 双态 + 主色。
+2. `ReadingPage.tsx`：书架 `w-[288px]` ↔ `reading-shelf-is-rail w-14`（56px）由 `panelOpen` 联动，220ms 宽度过渡；56px 态渲染三枚圆钮（本地书籍/订阅文章/搜索），aria-label/aria-pressed 齐全，可恢复完整列表；书架新增本地搜索过滤；面板默认 320、可拖拽；纸面/引文/进度轨/素材井接入新类；批注锚点 `data-paragraph`/`data-chapter-index`/`data-paragraph-index` 原样保留。
+3. `verify_reading_005_design.py` 34 项断言覆盖设计变量、纸面、媒体、引文、书架 see-saw、面板两态、浮动条与锚点未改。
+
+**ARCHITECT 实跑（脚本运行证据）：**
+- `cargo test --offline --lib -- --test-threads=1`（OMNIDESK_REPO_ROOT 指向主仓库）：**1249 passed / 0 failed / 1 ignored**。
+- `npx tsc --noEmit`：exit 0。
+- `verify_reading_005_design.py` 34/34、`verify_reading_003_selection.py` 25/25、`verify_reading_004_formats.py` 19/19、`verify_od_read_002_stage3.py` 18/18。
+- Boyle 自跑 `npm run build` exit 0（ReadingPage chunk 54.38 kB，既有提示）。
+
+**结论：** 阶段 4 通过验收。剩余为用户真实窗口视觉终验（阴影层次、宋体字重、过渡手感、窄屏 overlay、浮动条 hover/active）；提交与推送待用户终验后另行授权。
+
+## OD-READ-002 阶段 5 复核（2026-11-19，ARCHITECT 独立复核：通过）
+
+**范围：** 健脑室仪表盘落地（空态 + 有数据态），按定稿样稿 reading-dashboard-v2.html。
+
+**源码事实：**
+1. 新增 `ReadingDashboard.tsx`（496 行）：顶部当前书籍封面+进度（封面取 `meta.cover`，缺省首字/图标占位）、1000 分钟目标（估算 = 本月书籍 Σ(char×progress)/300，标注「估算」）、进度条无黑色刻度针；五格数据顺序为 阅读字数（K 格式化）→ 今年已读（本年 progress≥1）→ 批注 → 订阅文章（含「N 读完」）→ 整理笔记；无历史基线的涨跌小字不显示（未虚构）。
+2. 下部分栏：左列最近 4 本已读书籍（封面/书名/格式·章数·日期/作者「著」/日期/100% 环），头部仅「+ 导入书籍」「查看全部」右对齐相邻；右列「喜欢的 RSS 订阅」花瓣图两层（固定底色层 + 数据层按本月已读占比），标签在花瓣外侧；本月无已读时给空态说明。
+3. 空态：两张引导卡（导入第一本书 / 订阅第一篇资讯）+ 9 位精选作者 chips（新增 `rss_preset_sources` 命令，返回内置精选清单，带单测）。
+4. 接线：导入复用文件框、查看全部展开书架、书籍行打开阅读器、自定义 RSS/管理订阅复用现有弹窗、chip 点击即订阅。
+5. 样式 `.reading-dash-*` 落 reading.css，复用 --rd-* 变量。
+
+**ARCHITECT 实跑：**
+- `cargo test --offline --lib -- --test-threads=1`（OMNIDESK_REPO_ROOT 指向主仓库）：**1250 passed / 0 failed / 1 ignored**。
+- `npx tsc --noEmit`：exit 0。
+- `verify_reading_006_dashboard.py` 34/34、`verify_reading_005_design.py` 34/34、`verify_reading_003_selection.py` 25/25、`verify_reading_004_formats.py` 19/19、`verify_od_read_002_stage3.py` 18/18。
+- Boyle 自跑 `npm run build` exit 0（ReadingPage chunk 64.92 kB，既有提示）。
+
+**结论：** 阶段 5 通过验收。剩余为用户真实窗口视觉终验与交互点击验证；提交与推送待用户终验后授权。
+## OD-READ-002 阶段 6–10 复核（2026-11-20，ARCHITECT 独立复核：通过）
+
+**范围：** 用户真机反馈的五轮修复：书架显隐与书籍删除、封面与正文图片、阅读区视觉、仪表盘细节、顶部并排、RSS 旧占位回填、中层凸起卡、视频媒体、侧栏排版、RSS 收藏与 30 分钟自动刷新、书籍改名、来源随机展开、头栏星标。
+
+**源码事实（逐轮核对 diff）：**
+- 阶段 6：书架仅在书籍打开时渲染；`reading_delete_book` 删除正文/摘要/进度/笔记并保留导出；封面缺失按需回填；`reading_remote_media` 远程图片；完成阈值 0.995。
+- 阶段 7：真实阅读时长 `daily_seconds` + `reading_time_add`；`month_minutes`/`streak_days`；EPUB `dc:creator`；`reading_refresh_content` 旧正文媒体回填（quote 重定位）；RSS enclosure/media:content 与旧文章回填。
+- 阶段 8：顶部两模块全宽度并排；相对图片地址按条目 link 解析；`rss_refresh_article` 单篇回填。
+- 阶段 9：RSS/EPUB 正文先显示、后台回填；`rss_refresh_article` 走 spawn_blocking；中层数据区最终改为凸起卡（分割线移除）。
+- 阶段 10：侧栏字号 +2 与 16px/700 标题；移除订阅管理/拉取全部，30 分钟自动刷新；30 天过滤 + `favorite` 收藏；书籍改名；来源默认折叠并随机展开一个；头栏加粗与星标收藏。
+- 媒体白名单含 AVIF 与视频/音频，单文件上限 32 MiB；媒体/封面/回填命令均为 async + spawn_blocking。
+
+**ARCHITECT 实跑（最终轮）：**
+- `cargo test --offline --lib -- --test-threads=1`：**1264 passed / 0 failed / 1 ignored**。
+- `npx tsc --noEmit`、`npm run build`：通过（仅既有 chunk 体积提示）。
+- `verify_reading_003`–`011` 共九套静态核验全部通过（含 011 的 47 项）。
+- `git diff --check`：干净。
+
+**结论：** 阶段 6–10 通过验收，随 0.2.39 发版提交。剩余未验证项：Windows 真机与真实外部 CDN 视频/AVIF 端到端；由用户在 Windows 环境实测。
+

@@ -2839,6 +2839,8 @@ struct AttachmentExtractOutput {
     chapters: Vec<ReadingSourceChapter>,
     #[serde(default)]
     cover: Option<HelperCover>,
+    #[serde(default)]
+    author: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -2875,6 +2877,9 @@ pub struct ReadingSource {
     pub bytes: u64,
     pub extension: String,
     pub sha256: String,
+    /// OPF dc:creator 等真实元数据里的作者；没有时为空。
+    #[serde(default)]
+    pub author: String,
     pub content: String,
     pub chapters: Vec<ReadingSourceChapter>,
     pub cover: Option<ReadingSourceCover>,
@@ -3140,6 +3145,135 @@ fn media_mime_allowed(mime: &str) -> bool {
         || value.starts_with("video/")
 }
 
+const REMOTE_IMAGE_MAX_BYTES: usize = 32 * 1024 * 1024;
+const REMOTE_IMAGE_TIMEOUT: Duration = Duration::from_secs(10);
+const REMOTE_IMAGE_ALLOWED_MIMES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "image/avif",
+    "image/svg+xml",
+    "video/mp4",
+    "video/webm",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/aac",
+    "audio/ogg",
+    "audio/wav",
+    "audio/flac",
+];
+
+fn remote_image_mime(content_type: &str) -> Option<String> {
+    let mime = content_type.split(';').next()?.trim().to_ascii_lowercase();
+    if REMOTE_IMAGE_ALLOWED_MIMES.contains(&mime.as_str()) {
+        Some(mime)
+    } else {
+        None
+    }
+}
+
+/// RSS 正文里的远程图片（OD-READ-002 阶段 6）。
+///
+/// 只读 http/https；重定向由本函数逐跳处理（最多 2 跳，每跳重新校验协议），
+/// 10 秒超时，响应必须是 image/* 白名单且不超过 8 MiB。返回 base64 供前端
+/// 转 data URL，避免 Tauri CSP 直接拦截远程 https 图片。
+pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> {
+    let raw = url_text.trim();
+    if raw.is_empty() {
+        return Err("图片地址为空。".to_string());
+    }
+    let mut current = reqwest::Url::parse(raw).map_err(|_| "图片地址不是有效的网址。".to_string())?;
+    if !matches!(current.scheme(), "http" | "https") {
+        return Err("只允许读取 http/https 图片。".to_string());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(REMOTE_IMAGE_TIMEOUT)
+        .connect_timeout(REMOTE_IMAGE_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("OmniDesk-Reading/0.2 (+https://omnidesk.local)")
+        .build()
+        .map_err(|e| format!("创建图片读取客户端失败：{e}"))?;
+    let mut hops = 0usize;
+    loop {
+        let response = client
+            .get(current.clone())
+            .header(
+                reqwest::header::ACCEPT,
+                "image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif,image/svg+xml,audio/*,video/mp4,video/webm",
+            )
+            .send()
+            .map_err(|e| {
+                if e.is_timeout() {
+                    format!("图片读取超时（{} 秒）。", REMOTE_IMAGE_TIMEOUT.as_secs())
+                } else {
+                    format!("读取图片失败：{e}")
+                }
+            })?;
+        let status = response.status();
+        if status.is_redirection() {
+            if hops >= 2 {
+                return Err("图片地址重定向超过 2 次。".to_string());
+            }
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "图片重定向缺少 Location。".to_string())?;
+            let next = current
+                .join(location)
+                .map_err(|_| "图片重定向地址无效。".to_string())?;
+            if !matches!(next.scheme(), "http" | "https") {
+                return Err("图片重定向只允许 http/https。".to_string());
+            }
+            current = next;
+            hops += 1;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("图片服务器返回 HTTP {}。", status.as_u16()));
+        }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        let mime = remote_image_mime(content_type)
+            .ok_or_else(|| format!("响应不是支持的媒体类型：{}。", content_type.trim()))?;
+        let declared = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        if declared > REMOTE_IMAGE_MAX_BYTES as u64 {
+            return Err(format!(
+                "媒体超过 32 MiB 上限（{} KB）。",
+                declared / 1024
+            ));
+        }
+        let mut limited = response.take(REMOTE_IMAGE_MAX_BYTES as u64 + 1);
+        let mut bytes = Vec::new();
+        limited
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("读取图片内容失败：{e}"))?;
+        if bytes.is_empty() {
+            return Err("图片内容为空。".to_string());
+        }
+        if bytes.len() > REMOTE_IMAGE_MAX_BYTES {
+            return Err("图片超过 8 MiB 上限。".to_string());
+        }
+        return Ok(ReadingMediaPayload {
+            mime,
+            bytes: bytes.len(),
+            data_base64: base64_encode(&bytes),
+        });
+    }
+}
+
 /// 在 EPUB 包内按 zip 路径读一个媒体文件；路径校验在 Rust 侧，解压与 base64 在 helper。
 pub fn read_reading_media(path_text: &str, media_ref: &str) -> Result<ReadingMediaPayload, String> {
     let path = Path::new(path_text.trim());
@@ -3295,6 +3429,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
     let sha256 = sha256_hex(&bytes);
     let mut chapters: Vec<ReadingSourceChapter> = Vec::new();
     let mut cover: Option<ReadingSourceCover> = None;
+    let mut author = String::new();
     let content = if READING_TEXT_EXTS.contains(&extension.as_str()) {
         match String::from_utf8(bytes) {
             Ok(text) if !text.trim().is_empty() => text.trim_start_matches('\u{feff}').to_string(),
@@ -3313,6 +3448,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
                     ));
                 }
                 cover = cover_from_helper(&out);
+                author = out.author.unwrap_or_default().trim().to_string();
                 chapters = out.chapters;
                 out.content.unwrap_or_default()
             }
@@ -3336,6 +3472,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
             ));
         }
         cover = cover_from_helper(&out);
+        author = out.author.unwrap_or_default().trim().to_string();
         chapters = out.chapters;
         out.content.unwrap_or_default()
     } else {
@@ -3352,6 +3489,7 @@ pub fn read_reading_source(path_text: &str) -> Result<ReadingSource, String> {
         bytes: meta.len(),
         extension,
         sha256,
+        author,
         content,
         chapters,
         cover,
@@ -5844,5 +5982,61 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
         assert!(read.content.contains("第二段"), "{}", read.content);
         assert!(!read.content.contains("<p>"), "HTML 标签应被剥离：{}", read.content);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn serve_media_once(
+        status: &'static str,
+        headers: &'static str,
+        body: Vec<u8>,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let cloned = stream.try_clone().unwrap();
+                let mut reader = BufReader::new(cloned);
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                }
+                let head = format!(
+                    "{status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        (format!("http://{addr}/image.png"), handle)
+    }
+
+    #[test]
+    fn remote_media_reads_whitelisted_image_payload() {
+        let (url, handle) = serve_media_once(
+            "HTTP/1.1 200 OK",
+            "Content-Type: image/png\r\n",
+            b"\x89PNG\r\n".to_vec(),
+        );
+        let payload = read_remote_media(&url).unwrap();
+        assert_eq!(payload.mime, "image/png");
+        assert_eq!(payload.bytes, 6);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn remote_media_rejects_non_http_scheme_and_non_image_type() {
+        assert!(read_remote_media("file:///etc/passwd").is_err());
+        assert!(read_remote_media("data:image/png;base64,AAAA").is_err());
+        let (url, handle) = serve_media_once(
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/html\r\n",
+            b"<html></html>".to_vec(),
+        );
+        let error = read_remote_media(&url).unwrap_err();
+        assert!(error.contains("不是支持的媒体类型"), "{error}");
+        handle.join().unwrap();
     }
 }

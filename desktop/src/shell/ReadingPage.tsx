@@ -8,8 +8,10 @@ import {
   type ReadingBook,
   type ReadingBookMeta,
   type ReadingLibrary,
+  type ReadingStats,
   type ReadingSavedNote,
   type RssArticleMeta,
+  type RssPresetSource,
   type RssSubscription,
 } from "../types";
 import {
@@ -21,6 +23,7 @@ import {
 } from "../readingAi";
 import { MarkdownText } from "./MarkdownText";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ReadingDashboard } from "./ReadingDashboard";
 import { Icon } from "../components/Icon";
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -48,6 +51,10 @@ type AiContext = PendingSelection & {
 type AiPhase = "idle" | "running" | "done" | "error";
 type SideTab = "notes" | "ai";
 
+const PANEL_AUTO_CLOSE_MS = 90_000;
+const RSS_AUTO_REFRESH_MS = 30 * 60 * 1000;
+const RSS_SHELF_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 function kindLabel(kind: string): string {
   return kind === "highlight" ? "划线" : kind === "bookmark" ? "标记" : "想法";
 }
@@ -58,6 +65,21 @@ function chapterTitle(book: ReadingBook, index: number): string {
 
 function sourceFormatLabel(format: string): string {
   return format === "rss" ? "订阅文章" : format.toUpperCase();
+}
+
+function articleDateLabel(meta?: RssArticleMeta): string {
+  if (!meta) return "";
+  const stamp = meta.published_ts > 0 ? meta.published_ts * 1000 : Date.parse(meta.fetched_at);
+  if (!Number.isFinite(stamp)) return "";
+  const date = new Date(stamp);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+/** 旧抓取把正文图片压成了“[图片：…]”文本；命中且无批注时交给后端重新抓取回填。 */
+function hasLegacyImagePlaceholder(book: ReadingBook): boolean {
+  return book.chapters.some((chapter) =>
+    chapter.paragraphs.some((paragraph) => paragraph.includes("[图片：")),
+  );
 }
 
 function codeLength(text: string): number {
@@ -166,7 +188,11 @@ function decodeMediaRef(src: string): string {
 }
 
 function isDirectMediaSrc(src: string): boolean {
-  return /^(https?:|data:)/i.test(src);
+  return /^data:/i.test(src);
+}
+
+function isRemoteMediaSrc(src: string): boolean {
+  return /^https?:/i.test(src);
 }
 
 const mediaSrcCache = new Map<string, string>();
@@ -193,6 +219,34 @@ function MediaBlock({
       mediaSrcCache.set(cacheKey, src);
       setResolved(src);
       return;
+    }
+    if (isRemoteMediaSrc(src)) {
+      const remoteKey = `remote:${src}`;
+      const cached = mediaSrcCache.get(remoteKey);
+      if (cached) {
+        setResolved(cached);
+        return;
+      }
+      let alive = true;
+      setLoading(true);
+      setError(null);
+      shell
+        .readingRemoteMedia(src)
+        .then((payload) => {
+          if (!alive) return;
+          const dataUrl = `data:${payload.mime};base64,${payload.data_base64}`;
+          mediaSrcCache.set(remoteKey, dataUrl);
+          setResolved(dataUrl);
+        })
+        .catch((e) => {
+          if (alive) setError(String(e));
+        })
+        .finally(() => {
+          if (alive) setLoading(false);
+        });
+      return () => {
+        alive = false;
+      };
     }
     if (!src.startsWith("odmedia:")) {
       setError("不支持的媒体地址。");
@@ -226,7 +280,8 @@ function MediaBlock({
   if (error) {
     return (
       <span className="reading-media-error" data-testid="reading-media-error">
-        媒体读取失败：{error}
+        {kind === "image" ? "图片读取失败：" : "媒体读取失败："}
+        {error}
       </span>
     );
   }
@@ -351,9 +406,15 @@ function BookCover({
   title: string;
   className?: string;
 }) {
-  const [src, setSrc] = useState<string | null>(() => (cover ? coverSrcCache.get(bookId) ?? null : null));
+  // 旧书目 meta.cover 为空：仍向宿主请求一次，由后端按需从源文件回提取。
+  const [src, setSrc] = useState<string | null>(() => coverSrcCache.get(bookId) ?? null);
   useEffect(() => {
-    if (!cover || src) return;
+    if (src) return;
+    if (cover?.startsWith("data:")) {
+      coverSrcCache.set(bookId, cover);
+      setSrc(cover);
+      return;
+    }
     let alive = true;
     shell
       .readingCoverImage(bookId)
@@ -367,7 +428,7 @@ function BookCover({
     return () => {
       alive = false;
     };
-    // 封面只按书号取一次；失败时保留暖底首字占位。
+    // 封面按书号取一次；失败时保留暖底首字占位。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, cover]);
   return (
@@ -385,6 +446,7 @@ function BookCover({
 
 export function ReadingPage() {
   const [library, setLibrary] = useState<ReadingLibrary | null>(null);
+  const [readingStats, setReadingStats] = useState<ReadingStats | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [bookId, setBookId] = useState<string | null>(null);
@@ -392,12 +454,11 @@ export function ReadingPage() {
   const [bookBusy, setBookBusy] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
   const [sideTab, setSideTab] = useState<SideTab>("notes");
-  // 宽屏默认展开右侧笔记；窄屏默认收起，选中文字/AI 时再展开。
-  const [panelOpen, setPanelOpen] = useState(() =>
-    typeof window === "undefined" ? false : window.innerWidth >= 1280,
-  );
-  const [panelWidth, setPanelWidth] = useState(340);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(320);
   const panelResize = useRef<{ x: number; width: number } | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelCloseTimer = useRef<number | null>(null);
   const [selection, setSelection] = useState<PendingSelection | null>(null);
   const [selectionPos, setSelectionPos] = useState<{ top: number; left: number } | null>(null);
   const [composer, setComposer] = useState<ComposerState | null>(null);
@@ -429,14 +490,29 @@ export function ReadingPage() {
   const [rssMessage, setRssMessage] = useState<string | null>(null);
   const [rssError, setRssError] = useState<string | null>(null);
   const [pendingSubscriptionDelete, setPendingSubscriptionDelete] = useState<RssSubscription | null>(null);
+  const [shelfManagerOpen, setShelfManagerOpen] = useState(false);
+  const [pendingBookDelete, setPendingBookDelete] = useState<ReadingBookMeta | null>(null);
   const [shelfTab, setShelfTab] = useState<"books" | "rss">("books");
+  const [shelfQuery, setShelfQuery] = useState("");
   const [collapsedSources, setCollapsedSources] = useState<Record<string, boolean>>({});
+  const [renamingBook, setRenamingBook] = useState<ReadingBookMeta | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const shelfSearchRef = useRef<HTMLInputElement | null>(null);
   const restoredBook = useRef<string | null>(null);
+  const rssRefreshAttempted = useRef<Set<string>>(new Set());
+  const subscriptionsRef = useRef<RssSubscription[]>([]);
+  const lastAutoRefreshRef = useRef(0);
+  const autoRefreshRunning = useRef(false);
+  const randomSourceExpanded = useRef(false);
   const loadSeq = useRef(0);
   const lastProgress = useRef(0);
   const progressTimer = useRef<number | null>(null);
+  const timeBookId = useRef<string | null>(null);
+  const pendingSeconds = useRef(0);
   const toastTimer = useRef<number | null>(null);
   const aiSeq = useRef(0);
   const readSelectionRef = useRef<() => void>(() => {});
@@ -447,11 +523,111 @@ export function ReadingPage() {
     toastTimer.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
 
+  const flushReadingTime = useCallback((id: string | null) => {
+    const seconds = pendingSeconds.current;
+    pendingSeconds.current = 0;
+    if (!id || seconds <= 0) return;
+    void shell
+      .readingTimeAdd(id, Math.min(seconds, 3600))
+      .then(() => shell.readingStats())
+      .then((stats) => setReadingStats(stats))
+      .catch(() => undefined);
+  }, []);
+
+  // 真实阅读时长：仅窗口可见且聚焦时每 15 秒累计，每 60 秒落盘一次；
+  // 切书、关闭、失焦或页面隐藏时立即 flush，后台时间不计入。
+  useEffect(() => {
+    const id = book?.book_id ?? null;
+    if (!id) return undefined;
+    timeBookId.current = id;
+    pendingSeconds.current = 0;
+    let activeSince =
+      document.visibilityState === "visible" && document.hasFocus() ? performance.now() : null;
+    const tick = window.setInterval(() => {
+      if (activeSince === null) return;
+      if (document.visibilityState !== "visible" || !document.hasFocus()) {
+        flushReadingTime(timeBookId.current);
+        activeSince = null;
+        return;
+      }
+      if (performance.now() - activeSince >= 15_000) {
+        pendingSeconds.current += 15;
+        activeSince = performance.now();
+      }
+    }, 15_000);
+    const flush = window.setInterval(() => {
+      flushReadingTime(timeBookId.current);
+    }, 60_000);
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        flushReadingTime(timeBookId.current);
+        activeSince = null;
+      } else if (document.hasFocus()) {
+        activeSince = performance.now();
+      }
+    };
+    const onBlur = () => {
+      flushReadingTime(timeBookId.current);
+      activeSince = null;
+    };
+    const onFocus = () => {
+      if (document.visibilityState === "visible") activeSince = performance.now();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      flushReadingTime(id);
+    };
+  }, [book?.book_id, flushReadingTime]);
+
+  const resetPanelCloseTimer = useCallback(() => {
+    if (panelCloseTimer.current !== null) window.clearTimeout(panelCloseTimer.current);
+    panelCloseTimer.current = window.setTimeout(() => {
+      panelCloseTimer.current = null;
+      setPanelOpen(false);
+    }, PANEL_AUTO_CLOSE_MS);
+  }, []);
+
+  // 只统计右侧栏内的操作；正文滚动不续命，避免一直滚动时面板永不收起。
+  useEffect(() => {
+    const clear = () => {
+      if (panelCloseTimer.current !== null) {
+        window.clearTimeout(panelCloseTimer.current);
+        panelCloseTimer.current = null;
+      }
+    };
+    if (!panelOpen || !book) {
+      clear();
+      return clear;
+    }
+    const element = panelRef.current;
+    if (!element) {
+      clear();
+      return clear;
+    }
+    const activity = () => resetPanelCloseTimer();
+    const events = ["click", "keydown", "scroll", "pointerdown"] as const;
+    for (const event of events) element.addEventListener(event, activity, true);
+    resetPanelCloseTimer();
+    return () => {
+      for (const event of events) element.removeEventListener(event, activity, true);
+      clear();
+    };
+  }, [book?.book_id, panelOpen, resetPanelCloseTimer]);
+
   const refreshLibrary = useCallback(async () => {
     try {
       const loaded = await shell.readingLibrary();
       setLibrary(loaded);
       setLibraryError(null);
+      const stats = await shell.readingStats();
+      setReadingStats(stats);
     } catch (e) {
       setLibraryError(String(e));
     }
@@ -472,9 +648,76 @@ export function ReadingPage() {
   }, []);
 
   useEffect(() => {
+    subscriptionsRef.current = subscriptions;
+  }, [subscriptions]);
+
+  // 后台刷新：不占 rssBusy，不阻塞阅读；成功后只刷新书架与文章列表。
+  const autoRefreshRss = useCallback(async () => {
+    if (autoRefreshRunning.current) return;
+    autoRefreshRunning.current = true;
+    lastAutoRefreshRef.current = Date.now();
+    try {
+      const report = await shell.rssFetch();
+      await Promise.all([refreshLibrary(), refreshRss()]);
+      if (report.added > 0) showToast(`后台刷新新增 ${report.added} 篇文章。`);
+    } catch (e) {
+      setRssError(String(e));
+    } finally {
+      autoRefreshRunning.current = false;
+    }
+  }, [refreshLibrary, refreshRss, showToast]);
+
+  const maybeAutoRefreshRss = useCallback(() => {
+    const now = Date.now();
+    // 本次会话已经触发过就等下一个 30 分钟，避免失败后反复重试。
+    if (now - lastAutoRefreshRef.current < RSS_AUTO_REFRESH_MS) return;
+    const list = subscriptionsRef.current;
+    if (list.length === 0) return;
+    const stamps = list
+      .map((item) => Date.parse(item.last_fetched_at))
+      .filter((stamp) => Number.isFinite(stamp));
+    const latest = stamps.length ? Math.max(...stamps) : 0;
+    if (latest && now - latest < RSS_AUTO_REFRESH_MS) return;
+    void autoRefreshRss();
+  }, [autoRefreshRss]);
+
+  useEffect(() => {
+    maybeAutoRefreshRss();
+  }, [subscriptions, maybeAutoRefreshRss]);
+
+  useEffect(() => {
+    const onFocus = () => maybeAutoRefreshRss();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [maybeAutoRefreshRss]);
+
+  useEffect(() => {
     void refreshLibrary();
     void refreshRss();
   }, [refreshLibrary, refreshRss]);
+
+  // 书架管理弹窗：Esc 关闭；确认删除对话框盖在上面时交给 ConfirmDialog 自己处理。
+  useEffect(() => {
+    if (!shelfManagerOpen) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || pendingBookDelete) return;
+      event.preventDefault();
+      setShelfManagerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shelfManagerOpen, pendingBookDelete]);
+
+  useEffect(() => {
+    if (!renamingBook) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || renameBusy) return;
+      event.preventDefault();
+      setRenamingBook(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [renamingBook, renameBusy]);
 
   useEffect(() => {
     return () => {
@@ -508,6 +751,8 @@ export function ReadingPage() {
         progressTimer.current = null;
       }
       setBookId(id);
+      // 切书时右侧栏回到折叠态，旧书的批注/输入不跨书保留。
+      setPanelOpen(false);
       setBookBusy(true);
       setBookError(null);
       setBook(null);
@@ -527,10 +772,36 @@ export function ReadingPage() {
       setNoteView(null);
       setExportFile(null);
       try {
-        const loaded = await shell.readingBook(id);
+        let loaded = await shell.readingBook(id);
         if (seq !== loadSeq.current) return;
+        // 先显示旧正文，避免旧 EPUB 的媒体回填把「正在打开书籍…」拖上十几秒。
         setBook(loaded);
         lastProgress.current = loaded.progress.percent;
+        if (
+          (loaded.source_format === "epub" || loaded.source_format === "mobi") &&
+          (loaded.media_version ?? 0) < 1
+        ) {
+          showToast("正在补齐正文媒体…");
+          void (async () => {
+            try {
+              const refreshed = await shell.readingRefreshContent(id);
+              if (seq !== loadSeq.current) return;
+              const scrollTop = scrollRef.current?.scrollTop ?? 0;
+              const currentPercent = lastProgress.current;
+              setBook({ ...refreshed.book, progress: { ...refreshed.book.progress, percent: currentPercent } });
+              requestAnimationFrame(() => {
+                if (seq !== loadSeq.current || !scrollRef.current) return;
+                scrollRef.current.scrollTop = scrollTop;
+              });
+              if (refreshed.unresolved > 0) {
+                showToast(`已补齐正文媒体；${refreshed.unresolved} 条批注未能按原文重新定位。`);
+              }
+            } catch (e) {
+              if (seq !== loadSeq.current) return;
+              showToast(`正文媒体回填失败：${String(e)}`);
+            }
+          })();
+        }
         if (loaded.source_format === "rss") {
           void shell.rssArticleMarkRead(id).then((meta) => {
             setRssArticles((prev) => {
@@ -541,6 +812,44 @@ export function ReadingPage() {
             });
           }).catch(() => undefined);
         }
+        if (
+          loaded.source_format === "rss" &&
+          loaded.annotations.length === 0 &&
+          hasLegacyImagePlaceholder(loaded) &&
+          !rssRefreshAttempted.current.has(id)
+        ) {
+          rssRefreshAttempted.current.add(id);
+          showToast("正在补齐文章图片…");
+          // 初次 readingBook 已完成并显示正文；回填在后台跑，不占 busy。
+          void (async () => {
+            try {
+              const result = await shell.rssRefreshArticle(id);
+              if (seq !== loadSeq.current) return;
+              if (result.updated) {
+                loaded = await shell.readingBook(id);
+                if (seq !== loadSeq.current) return;
+                const scrollTop = scrollRef.current?.scrollTop ?? 0;
+                const currentPercent = lastProgress.current;
+                loaded = {
+                  ...loaded,
+                  progress: { ...loaded.progress, percent: currentPercent },
+                };
+                setBook(loaded);
+                lastProgress.current = currentPercent;
+                requestAnimationFrame(() => {
+                  if (seq !== loadSeq.current || !scrollRef.current) return;
+                  scrollRef.current.scrollTop = scrollTop;
+                });
+                void refreshLibrary();
+              } else if (result.reason.trim()) {
+                showToast(`旧图片回填未完成：${result.reason}`);
+              }
+            } catch (e) {
+              if (seq !== loadSeq.current) return;
+              showToast(`旧图片回填失败：${String(e)}`);
+            }
+          })();
+        }
       } catch (e) {
         if (seq !== loadSeq.current) return;
         setBookError(String(e));
@@ -548,7 +857,7 @@ export function ReadingPage() {
         if (seq === loadSeq.current) setBookBusy(false);
       }
     },
-    [book],
+    [book, refreshLibrary, showToast],
   );
 
   useEffect(() => {
@@ -652,6 +961,95 @@ export function ReadingPage() {
       setRssError(String(e));
     } finally {
       setPendingSubscriptionDelete(null);
+    }
+  };
+
+  const deleteBook = async () => {
+    if (!pendingBookDelete) return;
+    const target = pendingBookDelete;
+    try {
+      await shell.readingDeleteBook(target.book_id);
+      await refreshLibrary();
+      if (bookId === target.book_id) {
+        // 取消尚未返回的打开请求，并关闭阅读器；书架随 book=null 自动隐藏。
+        loadSeq.current += 1;
+        if (progressTimer.current !== null) {
+          window.clearTimeout(progressTimer.current);
+          progressTimer.current = null;
+        }
+        // 书已被删除：丢弃尚未落盘的计时，避免 cleanup 又创建 progress 文件。
+        pendingSeconds.current = 0;
+        setBookId(null);
+        setBook(null);
+        setBookBusy(false);
+        setBookError(null);
+        setPanelOpen(false);
+        setSelection(null);
+        setSelectionPos(null);
+      }
+      showToast(`已删除《${target.title}》；导出文件保留在阅读目录。`);
+    } catch (e) {
+      showToast(String(e));
+    } finally {
+      setPendingBookDelete(null);
+    }
+  };
+
+  const toggleArticleFavorite = useCallback(async () => {
+    if (!book || book.source_format !== "rss" || favoriteBusy) return;
+    const current = rssArticles.find((item) => item.book_id === book.book_id);
+    const next = !(current?.favorite ?? false);
+    setFavoriteBusy(true);
+    try {
+      const meta = await shell.rssArticleSetFavorite(book.book_id, next);
+      setRssArticles((prev) => {
+        if (prev.some((item) => item.book_id === meta.book_id)) {
+          return prev.map((item) => (item.book_id === meta.book_id ? meta : item));
+        }
+        return [...prev, meta];
+      });
+      showToast(meta.favorite ? "已收藏" : "已取消收藏");
+    } catch (e) {
+      showToast(String(e));
+    } finally {
+      setFavoriteBusy(false);
+    }
+  }, [book, favoriteBusy, rssArticles, showToast]);
+
+  const openRenameDialog = (meta: ReadingBookMeta) => {
+    setRenamingBook(meta);
+    setRenameTitle(meta.title);
+  };
+
+  const saveRename = async () => {
+    if (!renamingBook || renameBusy) return;
+    const title = renameTitle.trim();
+    if (!title) {
+      showToast("书名不能为空。");
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      const meta = await shell.readingRenameBook(renamingBook.book_id, title);
+      await refreshLibrary();
+      setBook((prev) => (prev && prev.book_id === meta.book_id ? { ...prev, title: meta.title } : prev));
+      setRenamingBook(null);
+      showToast(`已改名为《${meta.title}》。`);
+    } catch (e) {
+      showToast(String(e));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const subscribePreset = async (source: RssPresetSource) => {
+    try {
+      const added = await shell.rssSubscriptionAdd(source.url, source.name);
+      await refreshRss();
+      showToast(`已订阅「${added.name}」。`);
+    } catch (e) {
+      showToast(String(e));
+      throw e;
     }
   };
 
@@ -1244,45 +1642,147 @@ export function ReadingPage() {
     }
   };
 
+  const expandShelf = (tab?: "books" | "rss", focusSearch = false) => {
+    if (tab) setShelfTab(tab);
+    setPanelOpen(false);
+    if (focusSearch) {
+      window.setTimeout(() => shelfSearchRef.current?.focus(), 240);
+    }
+  };
+
   const rssMetaById = useMemo(
     () => new Map(rssArticles.map((item) => [item.book_id, item])),
     [rssArticles],
   );
+  const articleTimestamp = (item: ReadingBookMeta): number => {
+    const meta = rssMetaById.get(item.book_id);
+    if (meta?.published_ts && meta.published_ts > 0) return meta.published_ts * 1000;
+    const fetched = meta ? Date.parse(meta.fetched_at) : NaN;
+    return Number.isFinite(fetched) ? fetched : 0;
+  };
   const shelfBooks = (library?.books ?? []).filter((item) => item.source_format !== "rss");
   const shelfArticles = (library?.books ?? [])
     .filter((item) => item.source_format === "rss")
+    .filter((item) => {
+      // 收藏永远显示；未收藏的文章只保留最近 30 天。时间缺失时按保留处理。
+      if (rssMetaById.get(item.book_id)?.favorite) return true;
+      const stamp = articleTimestamp(item);
+      if (!stamp) return true;
+      return Date.now() - stamp <= RSS_SHELF_RETENTION_MS;
+    })
     .slice()
     .sort((a, b) => {
-      const left = rssMetaById.get(a.book_id)?.published_ts ?? 0;
-      const right = rssMetaById.get(b.book_id)?.published_ts ?? 0;
+      const left = articleTimestamp(a) || Date.parse(a.updated_at) || 0;
+      const right = articleTimestamp(b) || Date.parse(b.updated_at) || 0;
       return right - left || b.updated_at.localeCompare(a.updated_at);
     });
+  const shelfNeedle = shelfQuery.trim().toLocaleLowerCase();
+  const matchingBooks = shelfNeedle
+    ? shelfBooks.filter((item) =>
+        `${item.title} ${item.source_name} ${item.author}`.toLocaleLowerCase().includes(shelfNeedle),
+      )
+    : shelfBooks;
+  const matchingArticles = shelfNeedle
+    ? shelfArticles.filter((item) =>
+        `${item.title} ${item.source_name} ${item.author}`.toLocaleLowerCase().includes(shelfNeedle),
+      )
+    : shelfArticles;
   const rssGroups = useMemo(() => {
     const groups = new Map<string, ReadingBookMeta[]>();
-    for (const item of shelfArticles) {
+    for (const item of matchingArticles) {
       const name = item.source_name?.trim() || rssMetaById.get(item.book_id)?.author || "订阅文章";
       const list = groups.get(name) ?? [];
       list.push(item);
       groups.set(name, list);
     }
     return Array.from(groups.entries()).sort((a, b) => {
-      const left = rssMetaById.get(a[1][0]?.book_id ?? "")?.published_ts ?? 0;
-      const right = rssMetaById.get(b[1][0]?.book_id ?? "")?.published_ts ?? 0;
+      const left = a[1][0] ? articleTimestamp(a[1][0]) : 0;
+      const right = b[1][0] ? articleTimestamp(b[1][0]) : 0;
       return right - left || a[0].localeCompare(b[0]);
     });
-  }, [shelfArticles, rssMetaById]);
+  }, [matchingArticles, rssMetaById]);
+
+  useEffect(() => {
+    if (randomSourceExpanded.current || rssGroups.length === 0) return;
+    randomSourceExpanded.current = true;
+    const pick = rssGroups[Math.floor(Math.random() * rssGroups.length)];
+    if (!pick) return;
+    const sourceName = pick[0];
+    setCollapsedSources((prev) => ({ ...prev, [sourceName]: false }));
+  }, [rssGroups]);
+
+  const currentArticleFavorite =
+    book && book.source_format === "rss" ? Boolean(rssMetaById.get(book.book_id)?.favorite) : false;
 
   return (
     <div className="reading-page flex h-full min-h-0 w-full flex-col md:pl-20" data-testid="reading-page">
-      <div className="flex min-h-0 flex-1">
-        <aside className="reading-shelf hidden w-[238px] shrink-0 flex-col border-r border-outline-variant/40 bg-surface/60 lg:flex">
+      <div className="flex min-h-0 flex-1 gap-2 p-2 xl:gap-3 xl:p-3">
+        {book ? (
+        <aside
+          className={
+            "reading-shelf hidden shrink-0 flex-col lg:flex " +
+            (panelOpen ? "reading-shelf-is-rail w-14" : "w-[288px]")
+          }
+        >
+          <div className="reading-shelf-rail" aria-label="书架快捷入口">
+            <button
+              type="button"
+              onClick={() => expandShelf("books")}
+              className={"reading-shelf-rail-button" + (shelfTab === "books" ? " is-active" : "")}
+              aria-label="展开书架并切到本地书籍"
+              aria-pressed={shelfTab === "books"}
+              title="本地书籍"
+            >
+              <Icon name="book" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => expandShelf("rss")}
+              className={"reading-shelf-rail-button" + (shelfTab === "rss" ? " is-active" : "")}
+              aria-label="展开书架并切到订阅文章"
+              aria-pressed={shelfTab === "rss"}
+              title="订阅文章"
+            >
+              <Icon name="radar" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => expandShelf(undefined, true)}
+              className="reading-shelf-rail-button"
+              aria-label="展开书架并搜索"
+              title="搜索书架与文章"
+            >
+              <Icon name="search" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="reading-shelf-full">
           <div className="flex items-center justify-between gap-2 border-b border-outline-variant/40 px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-[13px] font-medium text-on-surface">健脑室</p>
-              <p className="truncate text-[10.5px] text-outline">
+              <p className="text-[16px] font-bold tracking-[0.08em] text-on-surface">健脑室</p>
+              <p className="truncate text-[12.5px] text-outline">
                 {library ? `${shelfBooks.length} 本 · ${shelfArticles.length} 篇` : "读取中"}
               </p>
             </div>
+          </div>
+          <div className="reading-shelf-search" data-testid="reading-shelf-search">
+            <Icon name="search" className="h-3 w-3 shrink-0" />
+            <input
+              ref={shelfSearchRef}
+              value={shelfQuery}
+              onChange={(event) => setShelfQuery(event.target.value)}
+              placeholder="搜索书架与文章"
+              aria-label="搜索书架与文章"
+            />
+            {shelfQuery ? (
+              <button
+                type="button"
+                onClick={() => setShelfQuery("")}
+                className="text-outline hover:text-on-surface"
+                aria-label="清除搜索"
+              >
+                ×
+              </button>
+            ) : null}
           </div>
           <div className="reading-shelf-tabs" data-testid="reading-shelf-tabs">
             <button
@@ -1302,65 +1802,45 @@ export function ReadingPage() {
               订阅文章 {shelfArticles.length}
             </button>
           </div>
-          <div className="flex items-center justify-end gap-1 border-b border-outline-variant/30 px-2 py-1.5">
-            {shelfTab === "books" ? (
+          {shelfTab === "books" ? (
+            <div className="flex items-center justify-end gap-1 border-b border-outline-variant/30 px-2 py-1.5">
               <button
                 type="button"
                 onClick={() => void importBook()}
                 disabled={importBusy}
-                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[12.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
               >
                 <Icon name="plus" className="h-3 w-3" />
                 {importBusy ? "导入中" : "导入"}
               </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSubscriptionOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary"
-                >
-                  订阅管理
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runRssFetch()}
-                  disabled={rssBusy === "refresh" || subscriptions.length === 0}
-                  className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/60 px-2 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
-                >
-                  <Icon name="refresh" className="h-3 w-3" />
-                  {rssBusy === "refresh" ? "拉取中" : "拉取全部"}
-                </button>
-              </>
-            )}
-          </div>
+            </div>
+          ) : null}
           <div className="reading-shelf-list min-h-0 flex-1 overflow-y-auto p-2" data-testid="reading-shelf-list">
             {libraryError ? (
               <p className="rounded-lg bg-error-container/60 p-2 text-[11px] text-on-error-container">{libraryError}</p>
             ) : null}
             {shelfTab === "books" ? (
               <>
-                {shelfBooks.length === 0 ? (
-                  <p className="mb-2 rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
-                    还没有导入的书。
+                {matchingBooks.length === 0 ? (
+                  <p className="mb-2 rounded-lg bg-surface-container-low p-2.5 text-[12.5px] leading-relaxed text-on-surface-variant">
+                    {shelfNeedle ? "没有匹配的书。" : "还没有导入的书。"}
                   </p>
                 ) : null}
-                {shelfBooks.map((item) => {
+                {matchingBooks.map((item) => {
                   const active = item.book_id === bookId;
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={item.book_id}
-                      onClick={() => void openBook(item.book_id)}
                       className={
-                        "mb-1.5 w-full rounded-lg border px-2 py-2 text-left transition-colors " +
-                        (active
-                          ? "border-primary/40 bg-primary/10"
-                          : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
+                        "reading-shelf-item relative w-full " + (active ? "is-active" : "")
                       }
                       data-testid="reading-book-card"
                     >
-                      <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void openBook(item.book_id)}
+                        className="flex w-full items-start gap-2 pr-14 text-left"
+                      >
                         <BookCover
                           bookId={item.book_id}
                           cover={item.cover}
@@ -1368,31 +1848,57 @@ export function ReadingPage() {
                           className="reading-cover-shelf"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-medium text-on-surface">{item.title}</span>
-                          <span className="block text-[10px] text-outline">
+                          <span className="block truncate text-[14px] font-semibold text-on-surface">{item.title}</span>
+                          <span className="block text-[12px] text-outline">
                             {sourceFormatLabel(item.source_format)} · {item.chapter_count} 章 · {item.annotation_count} 条批注
                           </span>
-                          <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-outline-variant/30">
+                          <span className="reading-shelf-progress">
                             <span
-                              className="block h-full rounded-full bg-primary/70"
+                              className="reading-shelf-progress-fill"
                               style={{ width: `${Math.round(item.progress_percent * 100)}%` }}
                             />
                           </span>
                         </span>
-                      </div>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openRenameDialog(item);
+                        }}
+                        className="reading-shelf-edit"
+                        aria-label={`重命名《${item.title}》`}
+                        title="重命名书籍"
+                        data-testid="reading-shelf-edit"
+                      >
+                        <Icon name="edit" className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPendingBookDelete(item);
+                        }}
+                        className="reading-shelf-delete"
+                        aria-label={`删除《${item.title}》`}
+                        title="删除书籍"
+                        data-testid="reading-shelf-delete"
+                      >
+                        <Icon name="trash" className="h-3 w-3" />
+                      </button>
+                    </div>
                   );
                 })}
               </>
             ) : (
               <>
-                {shelfArticles.length === 0 ? (
-                  <p className="rounded-lg bg-surface-container-low p-2.5 text-[10.5px] leading-relaxed text-on-surface-variant">
-                    从「订阅管理」添加 RSS，或点「拉取全部」。
+                {matchingArticles.length === 0 ? (
+                  <p className="rounded-lg bg-surface-container-low p-2.5 text-[12.5px] leading-relaxed text-on-surface-variant">
+                    {shelfNeedle ? "没有匹配的订阅文章。" : "在仪表盘添加订阅源，文章会在后台自动更新。"}
                   </p>
                 ) : null}
                 {rssGroups.map(([sourceName, items]) => {
-                  const collapsed = collapsedSources[sourceName] ?? false;
+                  const collapsed = collapsedSources[sourceName] ?? true;
                   return (
                     <section key={sourceName} className="mb-1.5" data-testid="rss-source-group">
                       <button
@@ -1400,12 +1906,12 @@ export function ReadingPage() {
                         onClick={() =>
                           setCollapsedSources((prev) => ({ ...prev, [sourceName]: !collapsed }))
                         }
-                        className="flex w-full items-center gap-1 px-1 py-1 text-left text-[10.5px] text-on-surface-variant hover:text-primary"
+                        className="flex w-full items-center gap-1 px-1 py-1 text-left text-[12.5px] text-on-surface-variant hover:text-primary"
                         aria-expanded={!collapsed}
                       >
                         <Icon name={collapsed ? "chevron-down" : "chevron-up"} className="h-3 w-3 shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{sourceName}</span>
-                        <span className="shrink-0 text-[9.5px] text-outline">{items.length}</span>
+                        <span className="shrink-0 text-[11.5px] text-outline">{items.length}</span>
                       </button>
                       {collapsed
                         ? null
@@ -1418,21 +1924,24 @@ export function ReadingPage() {
                                 key={item.book_id}
                                 onClick={() => void openBook(item.book_id)}
                                 className={
-                                  "relative mb-1 w-full rounded-lg border px-2 py-1.5 text-left transition-colors " +
-                                  (active
-                                    ? "border-primary/40 bg-primary/10"
-                                    : "border-transparent hover:border-outline-variant/50 hover:bg-surface-container-low")
+                                  "reading-shelf-item relative w-full text-left " + (active ? "is-active" : "")
                                 }
                                 data-testid="reading-article-item"
                               >
                                 {!meta?.read ? (
                                   <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" aria-label="未读" />
                                 ) : null}
-                                <span className="block truncate pr-3 text-[11.5px] font-medium text-on-surface">
+                                <span className="block truncate pr-3 text-[13.5px] font-medium text-on-surface">
                                   {item.title}
                                 </span>
-                                <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[9.5px] text-outline">
-                                  <span className="shrink-0 rounded bg-primary/10 px-1 text-[9px] font-medium text-primary">RSS</span>
+                                <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[11.5px] text-outline">
+                                  {meta?.favorite ? (
+                                    <Icon name="star" filled className="h-3 w-3 shrink-0 text-primary" />
+                                  ) : null}
+                                  <span className="shrink-0 rounded bg-primary/10 px-1 text-[11px] font-medium text-primary">RSS</span>
+                                  {articleDateLabel(meta) ? (
+                                    <span className="shrink-0">· {articleDateLabel(meta)}</span>
+                                  ) : null}
                                   <span className="shrink-0">· {item.annotation_count} 条批注</span>
                                 </span>
                               </button>
@@ -1449,37 +1958,25 @@ export function ReadingPage() {
               阅读目录：{library.root}
             </p>
           ) : null}
+          </div>
         </aside>
+        ) : null}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           {!book && !bookBusy ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-              <div className="w-full max-w-[560px] rounded-2xl border border-outline-variant/40 bg-surface/70 p-6">
-                <p className="text-[16px] font-medium text-on-surface">健脑室</p>
-                <p className="mt-2 text-[12.5px] leading-relaxed text-on-surface-variant">
-                  选一本书，或从订阅文章里挑一篇。阅读时选中一段，可以划线、标记、写思考碎片，或直接问 AI 解释；
-                  整理稿和批注只保存在本机阅读目录。
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void importBook()}
-                    disabled={importBusy}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[12px] text-on-primary disabled:opacity-50"
-                  >
-                    <Icon name="plus" className="h-3.5 w-3.5" />
-                    {importBusy ? "正在导入…" : "选择文件"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubscriptionOpen(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/60 px-3.5 py-2 text-[12px] text-on-surface-variant hover:border-primary hover:text-primary"
-                  >
-                    管理订阅
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ReadingDashboard
+              library={library}
+              stats={readingStats}
+              subscriptions={subscriptions}
+              rssArticles={rssArticles}
+              importBusy={importBusy}
+              onImport={() => void importBook()}
+              onViewAll={() => setShelfManagerOpen(true)}
+              onOpenBook={(id) => void openBook(id)}
+              onManageSubscriptions={() => setSubscriptionOpen(true)}
+              onCustomFeed={() => setSubscriptionOpen(true)}
+              onSubscribePreset={subscribePreset}
+            />
           ) : null}
 
           {bookBusy ? <p className="p-6 text-[12px] text-on-surface-variant">正在打开书籍…</p> : null}
@@ -1519,35 +2016,61 @@ export function ReadingPage() {
                     {" "}
                     {Math.round(book.progress.percent * 100)}%
                   </p>
+                  <span className="reading-header-progress" aria-hidden="true">
+                    <span style={{ width: `${Math.round(book.progress.percent * 100)}%` }} />
+                  </span>
                 </div>
+                {book.source_format === "rss" ? (
+                  <button
+                    type="button"
+                    onClick={() => void toggleArticleFavorite()}
+                    disabled={favoriteBusy}
+                    className={
+                      "rounded-lg border p-1.5 disabled:opacity-50 " +
+                      (currentArticleFavorite
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-outline-variant/50 text-on-surface-variant hover:text-primary")
+                    }
+                    aria-label={currentArticleFavorite ? "取消收藏文章" : "收藏文章"}
+                    title={currentArticleFavorite ? "取消收藏" : "收藏文章"}
+                    data-testid="reading-article-favorite"
+                  >
+                    <Icon name="star" filled={currentArticleFavorite} className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void importBook()}
+                    disabled={importBusy}
+                    className="rounded-lg border border-outline-variant/50 p-1.5 text-on-surface-variant hover:text-primary disabled:opacity-50"
+                    aria-label="导入阅读文件"
+                    title="导入阅读文件"
+                  >
+                    <Icon name="plus" className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => void importBook()}
-                  disabled={importBusy}
-                  className="rounded-lg border border-outline-variant/50 p-1.5 text-on-surface-variant hover:text-primary disabled:opacity-50"
-                  aria-label="导入阅读文件"
-                  title="导入阅读文件"
-                >
-                  <Icon name="plus" className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen((value) => !value)}
-                  className="rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] text-on-surface-variant hover:text-primary"
+                  onClick={() => {
+                    setSideTab("notes");
+                    setPanelOpen(true);
+                  }}
+                  className="rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant hover:text-primary"
+                  aria-label="展开笔记面板"
                 >
                   笔记
                 </button>
                 <button
                   type="button"
                   onClick={() => void exportNotes()}
-                  className="hidden rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] text-on-surface-variant hover:text-primary sm:inline-flex"
+                  className="hidden rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant hover:text-primary sm:inline-flex"
                 >
                   导出
                 </button>
                 <button
                   type="button"
                   onClick={beginStandaloneThought}
-                  className="hidden rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] text-on-surface-variant hover:text-primary sm:inline-flex"
+                  className="hidden rounded-lg border border-outline-variant/50 px-2.5 py-1.5 text-[11px] font-semibold text-on-surface-variant hover:text-primary sm:inline-flex"
                   data-testid="reading-add-thought"
                 >
                   写想法
@@ -1555,7 +2078,7 @@ export function ReadingPage() {
                 <button
                   type="button"
                   onClick={() => void organizeBook()}
-                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] text-on-primary disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-semibold text-on-primary disabled:opacity-50"
                   disabled={book.annotations.length === 0 || aiPhase === "running"}
                 >
                   <Icon name="spark" className="h-3 w-3" />
@@ -1567,9 +2090,12 @@ export function ReadingPage() {
                 ref={scrollRef}
                 onScroll={handleScroll}
                 onKeyUp={readSelection}
-                className="reading-scroll min-h-0 flex-1 overflow-y-auto"
+                className="reading-scroll reading-paper min-h-0 flex-1 overflow-y-auto"
               >
-                <article className="mx-auto w-full max-w-[760px] px-6 pb-28 pt-8 md:px-10">
+                <article
+                  className="reading-article mx-auto w-full max-w-[760px]"
+                  data-source-format={book.source_format}
+                >
                   {book.chapters.map((chapter, chapterIndex) => (
                     <section key={`${chapterIndex}-${chapter.title}`} data-chapter-section={chapterIndex}>
                       <h2 className="reading-chapter-title">{chapter.title}</h2>
@@ -1577,13 +2103,17 @@ export function ReadingPage() {
                         const items = annotationMap.get(paragraphKey(chapterIndex, paragraphIndex)) ?? [];
                         const bookmarked = items.some((item) => item.kind === "bookmark");
                         const segments = paragraphSegments(paragraph, items);
+                        const quoteLike =
+                          book.source_format === "rss" && /^[「“>]/.test(paragraph.trim());
                         return (
                           <p
                             key={`${chapterIndex}-${paragraphIndex}`}
                             data-paragraph
                             data-chapter-index={chapterIndex}
                             data-paragraph-index={paragraphIndex}
-                            className={`reading-paragraph ${bookmarked ? "reading-bookmarked" : ""}`}
+                            className={`reading-paragraph ${bookmarked ? "reading-bookmarked" : ""} ${
+                              quoteLike ? "reading-quote" : ""
+                            }`}
                           >
                             {segments.map((segment) =>
                               segment.mark ? (
@@ -1632,28 +2162,31 @@ export function ReadingPage() {
 
         {book ? (
           <aside
-            style={{ width: panelWidth }}
+            ref={panelRef}
+            style={panelOpen ? { width: panelWidth } : undefined}
+            aria-label="笔记与 AI 面板"
             className={
-              "reading-side-panel relative shrink-0 flex-col border-l border-outline-variant/40 bg-surface/85 " +
+              "reading-side-panel relative flex shrink-0 flex-col transition-[width] duration-200 ease-out " +
               (panelOpen
-                ? "fixed bottom-0 right-0 top-[52px] z-40 flex max-w-[92vw] shadow-[-16px_0_40px_-20px_rgba(70,55,40,0.28)] xl:static xl:z-auto xl:shadow-none"
-                : "hidden")
+                ? "fixed bottom-0 right-0 top-[52px] z-40 flex max-w-[92vw] overflow-hidden shadow-[-16px_0_40px_-20px_rgba(70,55,40,0.28)] xl:static xl:z-auto xl:shadow-none"
+                : "fixed bottom-0 right-0 top-[52px] z-30 w-10 bg-surface/70 xl:static xl:z-auto")
             }
           >
+            {panelOpen ? (
+              <>
             <div
               className="reading-panel-resizer"
               onMouseDown={beginPanelResize}
-              onDoubleClick={() => setPanelWidth((w) => (w >= 460 ? 340 : 560))}
+              onDoubleClick={() => setPanelWidth((w) => (w >= 460 ? 320 : 560))}
               title="拖动调整面板宽度；双击切换宽/窄"
               aria-label="调整右侧面板宽度"
             />
-            <div className="flex items-center border-b border-outline-variant/40">
+            <div className="reading-panel-tabs">
               <button
                 type="button"
                 onClick={() => setSideTab("notes")}
                 className={
-                  "flex-1 px-3 py-2.5 text-[11.5px] " +
-                  (sideTab === "notes" ? "border-b-2 border-primary text-primary" : "text-on-surface-variant")
+                  "reading-panel-tab " + (sideTab === "notes" ? "is-active" : "")
                 }
               >
                 笔记 {book.annotations.length + book.notes.length}
@@ -1662,8 +2195,7 @@ export function ReadingPage() {
                 type="button"
                 onClick={() => setSideTab("ai")}
                 className={
-                  "flex-1 px-3 py-2.5 text-[11.5px] " +
-                  (sideTab === "ai" ? "border-b-2 border-primary text-primary" : "text-on-surface-variant")
+                  "reading-panel-tab " + (sideTab === "ai" ? "is-active" : "")
                 }
               >
                 AI
@@ -1694,10 +2226,7 @@ export function ReadingPage() {
                           <div
                             key={annotation.id}
                             className={
-                              "rounded-lg border px-2.5 py-2 " +
-                              (activeAnnotation === annotation.id
-                                ? "border-primary/50 bg-primary/8"
-                                : "border-outline-variant/35 bg-surface-container-lowest")
+                              "reading-note-card " + (activeAnnotation === annotation.id ? "is-active" : "")
                             }
                           >
                             <div className="flex items-center gap-1.5 text-[10px] text-outline">
@@ -1757,7 +2286,7 @@ export function ReadingPage() {
                             type="button"
                             key={note.note_id}
                             onClick={() => void readSavedNote(note)}
-                            className="w-full rounded-lg border border-outline-variant/35 bg-surface-container-lowest px-2.5 py-2 text-left text-[11.5px] text-on-surface hover:border-primary/40"
+                            className="reading-note-card w-full text-left text-[11.5px] text-on-surface"
                           >
                             <span className="block truncate">{note.title}</span>
                             <span className="block truncate text-[10px] text-outline">{note.created_at}</span>
@@ -1769,7 +2298,7 @@ export function ReadingPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-lg border border-outline-variant/35 bg-surface-container-lowest p-2.5">
+                  <div className="reading-ai-well p-2.5">
                     <p className="text-[11px] font-medium text-on-surface">AI 阅读助手</p>
                     <p className="mt-1 text-[10.5px] leading-relaxed text-outline">
                       只会发送当前选中的引文、问题和批注；模型结果未复核，保存前请核对。
@@ -1786,7 +2315,7 @@ export function ReadingPage() {
                   </button>
 
                   {aiContext ? (
-                    <div className="rounded-lg border border-primary/25 bg-primary/5 p-2.5">
+                    <div className="reading-ai-well reading-ai-selection p-2.5">
                       <p className="line-clamp-2 text-[10.5px] text-outline">{aiContext.chapter_title}</p>
                       <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-on-surface">
                         {aiContext.quote ? `「${aiContext.quote}」` : "（未选文字，按当前阅读段提问）"}
@@ -1805,7 +2334,7 @@ export function ReadingPage() {
                     </p>
                   )}
 
-                  <div className="rounded-lg border border-outline-variant/35 bg-surface-container-lowest p-2.5">
+                  <div className="reading-ai-well p-2.5">
                     <textarea
                       value={aiQuestion}
                       onChange={(event) => setAiQuestion(event.target.value)}
@@ -1834,7 +2363,7 @@ export function ReadingPage() {
                   {aiStatus && aiPhase !== "running" ? <p className="text-[10.5px] text-outline">{aiStatus}</p> : null}
 
                   {aiAnswer ? (
-                    <div className="rounded-lg border border-outline-variant/35 bg-surface-container-lowest p-2.5" data-testid="reading-ai-answer">
+                    <div className="reading-ai-well p-2.5" data-testid="reading-ai-answer">
                       <div className="mb-1 flex items-center justify-between">
                         <p className="text-[11px] font-medium text-on-surface">AI 解释（未复核）</p>
                         <button
@@ -1853,7 +2382,7 @@ export function ReadingPage() {
                   ) : null}
 
                   {organized ? (
-                    <div className="rounded-lg border border-outline-variant/35 bg-surface-container-lowest p-2.5" data-testid="reading-organized">
+                    <div className="reading-ai-well p-2.5" data-testid="reading-organized">
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <p className="text-[11px] font-medium text-on-surface">整理稿（未复核）</p>
                         <button
@@ -1878,6 +2407,47 @@ export function ReadingPage() {
                 </div>
               )}
             </div>
+              </>
+            ) : (
+              <div
+                className="flex flex-col items-center gap-2 py-3"
+                data-testid="reading-panel-rail"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSideTab("notes");
+                    setPanelOpen(true);
+                  }}
+                  className={
+                    "reading-panel-rail-button relative " + (sideTab === "notes" ? "is-active" : "")
+                  }
+                  aria-label={`展开笔记面板${book.annotations.length > 0 ? `，${book.annotations.length} 条批注` : ""}`}
+                  title="笔记"
+                >
+                  <Icon name="note" className="h-3.5 w-3.5" />
+                  {book.annotations.length > 0 ? (
+                    <span className="absolute -right-1 -top-1 min-w-[15px] rounded-full bg-primary px-1 text-center text-[9px] leading-[15px] text-on-primary">
+                      {book.annotations.length > 99 ? "99+" : book.annotations.length}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSideTab("ai");
+                    setPanelOpen(true);
+                  }}
+                  className={
+                    "reading-panel-rail-button " + (sideTab === "ai" ? "is-active" : "")
+                  }
+                  aria-label="展开 AI 面板"
+                  title="AI"
+                >
+                  <Icon name="spark" className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </aside>
         ) : null}
       </div>
@@ -1977,6 +2547,150 @@ export function ReadingPage() {
         </div>
       ) : null}
 
+      {shelfManagerOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 p-4">
+          <div
+            className="flex max-h-[86vh] w-full max-w-2xl flex-col rounded-xl border border-outline-variant/40 bg-surface p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="书架管理"
+            data-testid="reading-shelf-manager"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant/30 pb-2">
+              <div>
+                <p className="text-[13px] font-medium text-on-surface">书架管理</p>
+                <p className="text-[10px] text-outline">{shelfBooks.length} 本本地书籍</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShelfManagerOpen(false)}
+                className="text-outline hover:text-on-surface"
+                aria-label="关闭书架管理"
+              >
+                ×
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto py-1">
+              {shelfBooks.length === 0 ? (
+                <p className="mt-2 rounded-lg bg-surface-container-low p-3 text-[11px] text-on-surface-variant">
+                  还没有导入的书。
+                </p>
+              ) : null}
+              {shelfBooks.map((meta) => (
+                <div
+                  key={meta.book_id}
+                  className="flex items-center gap-3 border-b border-outline-variant/25 py-2 last:border-b-0"
+                  data-testid="reading-shelf-manager-row"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShelfManagerOpen(false);
+                      void openBook(meta.book_id);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <BookCover
+                      bookId={meta.book_id}
+                      cover={meta.cover}
+                      title={meta.title}
+                      className="reading-cover-shelf"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-semibold text-on-surface">{meta.title}</span>
+                      <span className="block text-[12px] text-outline">
+                        {sourceFormatLabel(meta.source_format)} · {meta.chapter_count} 章 ·
+                        {Math.round(meta.progress_percent * 100)}%
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openRenameDialog(meta)}
+                    className="shrink-0 rounded p-1.5 text-outline hover:text-primary"
+                    aria-label={`重命名《${meta.title}》`}
+                    title="重命名书籍"
+                    data-testid="reading-shelf-manager-edit"
+                  >
+                    <Icon name="edit" className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingBookDelete(meta)}
+                    className="shrink-0 rounded p-1.5 text-outline hover:text-error"
+                    aria-label={`删除《${meta.title}》`}
+                    title="删除书籍"
+                    data-testid="reading-shelf-manager-delete"
+                  >
+                    <Icon name="trash" className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {renamingBook ? (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/25 p-4">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveRename();
+            }}
+            className="w-full max-w-sm rounded-xl border border-outline-variant/40 bg-surface p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="重命名书籍"
+            data-testid="reading-rename-dialog"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-outline-variant/30 pb-2">
+              <p className="text-[13px] font-medium text-on-surface">重命名书籍</p>
+              <button
+                type="button"
+                onClick={() => setRenamingBook(null)}
+                disabled={renameBusy}
+                className="text-outline hover:text-on-surface disabled:opacity-50"
+                aria-label="关闭重命名"
+              >
+                ×
+              </button>
+            </div>
+            <label className="mt-3 block text-[11px] text-on-surface-variant" htmlFor="reading-rename-title">
+              书名
+            </label>
+            <input
+              id="reading-rename-title"
+              autoFocus
+              value={renameTitle}
+              onChange={(event) => setRenameTitle(event.target.value)}
+              maxLength={300}
+              className="mt-1.5 h-9 w-full rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-3 text-[13px] text-on-surface outline-none focus:border-primary"
+              data-testid="reading-rename-input"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenamingBook(null)}
+                disabled={renameBusy}
+                className="rounded-lg px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:bg-surface-container disabled:opacity-50"
+                data-testid="reading-rename-cancel"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={renameBusy || !renameTitle.trim()}
+                className="rounded-lg bg-primary px-3 py-1.5 text-[11.5px] text-on-primary disabled:opacity-50"
+                data-testid="reading-rename-save"
+              >
+                {renameBusy ? "保存中…" : "保存"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {subscriptionOpen ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 p-4">
           <div className="flex max-h-[86vh] w-full max-w-2xl flex-col rounded-xl border border-outline-variant/40 bg-surface p-4 shadow-xl">
@@ -1989,7 +2703,7 @@ export function ReadingPage() {
                 type="button"
                 onClick={() => setSubscriptionOpen(false)}
                 className="text-outline hover:text-on-surface"
-                aria-label="关闭订阅管理"
+                aria-label="关闭订阅"
               >
                 ×
               </button>
@@ -2101,6 +2815,16 @@ export function ReadingPage() {
           {toast}
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingBookDelete !== null}
+        title="删除这本书？"
+        description="删除后这本书的批注与笔记一并移除，导出文件保留。"
+        confirmLabel="删除"
+        onCancel={() => setPendingBookDelete(null)}
+        onConfirm={() => void deleteBook()}
+        testId="reading-book-delete-confirm"
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

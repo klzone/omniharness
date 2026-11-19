@@ -76,7 +76,7 @@ def main() -> int:
     check("inline_markdown_kept_for_offsets", "reading-syntax-anchor" in page)
 
     check("stats_thought_kind", "KIND_THOUGHT" in store and "thoughts" in store)
-    check("stats_completed_threshold", "0.95" in store)
+    check("stats_completed_threshold", "0.995" in store)
     check("stats_excludes_rss_books", 'meta.source_format != "rss"' in store)
     check("media_marker_img", "![img]" in helper and "odmedia:" in helper)
     check("media_marker_audio_video", "[audio]" in helper or "_media_marker" in helper)
