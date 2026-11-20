@@ -729,6 +729,13 @@ class EngineService:
 
 def main(argv: Optional[list] = None) -> int:
     _log("starting; pid=" + str(os.getpid()) + "; protocol=" + PROTOCOL_VERSION)
+    # 协议通道固定 UTF-8：Windows 默认控制台代码页（常见 cp936/GBK）会把
+    # 宿主发来的 UTF-8 JSON 或引擎返回的 JSON 解错，导致读取线程异常。
+    for stream, errors in ((sys.stdin, "replace"), (sys.stdout, "replace")):
+        try:
+            stream.reconfigure(encoding="utf-8", errors=errors)
+        except (AttributeError, OSError, ValueError):
+            pass
     # OD-ARCH-074：引擎独占一个进程组。登记里的 pgid 必须是本进程组，
     # 这样引擎被强杀后，宿主才能凭 owner.json 安全识别并回收整棵子树。
     ensure_process_group()

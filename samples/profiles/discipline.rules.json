@@ -61,12 +61,6 @@
       ],
       "max_injected": 1
     },
-    "weekly-daily-summary": {
-      "skills": [
-        "daily-summary"
-      ],
-      "max_injected": 1
-    },
     "weekly-period-review": {
       "skills": [
         "period-review"
@@ -99,13 +93,11 @@
         "weekly",
         "weekly-note",
         "weekly-report",
-        "weekly-daily-summary",
         "weekly-period-review"
       ],
       "skills": [
         "memory-agent",
         "memory-report",
-        "daily-summary",
         "period-review"
       ],
       "permission_profile": null

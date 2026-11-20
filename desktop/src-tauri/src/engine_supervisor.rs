@@ -414,6 +414,10 @@ impl EngineConfig {
                 "OMNIDESK_ALIAS_MAP".to_string(),
                 alias_map.display().to_string(),
             ),
+            // Windows 的 Python 默认按控制台代码页（常见 GBK）解码 stdin/stdout；
+            // 协议与子进程输出都是 UTF-8。显式固定，避免读取线程因编码冲突退出。
+            ("PYTHONUTF8".to_string(), "1".to_string()),
+            ("PYTHONIOENCODING".to_string(), "utf-8:replace".to_string()),
         ];
         // OD-SYS-704：发布包内置纯 Python 依赖（requests/certifi）。
         // 引擎与它拉起的检索子进程都走同一份 PYTHONPATH，不要求用户装系统包。
@@ -770,6 +774,16 @@ mod tests {
             child_env_value(&default_config, "OMNIDESK_DSH_PROFILE").as_deref(),
             Some("omnidesk-base"),
             "child_env() 必须把默认 Profile 传给引擎子进程"
+        );
+        assert_eq!(
+            child_env_value(&default_config, "PYTHONUTF8").as_deref(),
+            Some("1"),
+            "Windows 引擎协议必须固定 UTF-8"
+        );
+        assert_eq!(
+            child_env_value(&default_config, "PYTHONIOENCODING").as_deref(),
+            Some("utf-8:replace"),
+            "Windows Python 标准流不得回落到 GBK"
         );
         assert_eq!(
             default_config.initialize_params()["dsh"]["profile"],

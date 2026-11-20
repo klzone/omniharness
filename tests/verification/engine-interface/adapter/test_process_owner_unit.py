@@ -294,6 +294,16 @@ class WindowsBranchTests(unittest.TestCase):
             with self.assertRaises(po.OwnerConflict):
                 po.terminate_group(os.getpid(), grace=0.1)
 
+    def test_current_pgid_non_posix_returns_zero(self):
+        with mock.patch.object(po.os, "name", "nt"):
+            self.assertEqual(po.current_pgid(), 0)
+
+    def test_current_pgid_falls_back_when_getpgrp_fails(self):
+        # Windows 或受限环境里 getpgrp 可能不存在或直接报 OSError；
+        # 引擎初始化不能因此失败，更不能触发宿主每 5 秒重复启动。
+        with mock.patch.object(po.os, "getpgrp", side_effect=OSError("no pgrp"), create=True):
+            self.assertEqual(po.current_pgid(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

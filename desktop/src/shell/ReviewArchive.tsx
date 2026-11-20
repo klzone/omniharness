@@ -367,6 +367,38 @@ export function ReviewArchive({
     }
   }
 
+  async function confirmDraft() {
+    if (!detail?.exists || !selected || busy) return;
+    if (detail.status !== "草稿") {
+      setNotice({ kind: "err", text: "这份复盘不是草稿，无需再次确认。" });
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      const receipt = await shell.worklogPeriodReviewConfirm(
+        selected.period,
+        selected.start,
+        selected.end,
+      );
+      const refreshed = await shell.worklogPeriodReviewRead(
+        selected.period,
+        selected.start,
+        selected.end,
+      );
+      setDetail(refreshed);
+      setReloadTick((value) => value + 1);
+      setNotice({
+        kind: "ok",
+        text: "已确认归档（" + receipt.period + " " + receipt.range + "）。",
+      });
+    } catch (e) {
+      setNotice({ kind: "err", text: errText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="wr-reviews" data-review-archive="">
       <section aria-label="复盘筛选" className="wr-review-toolbar">
@@ -633,6 +665,17 @@ export function ReviewArchive({
                 </button>
                 <button
                   type="button"
+                  onClick={() => void confirmDraft()}
+                  disabled={busy || detail.status !== "草稿"}
+                  data-review-confirm=""
+                  className="wr-primary-button"
+                  title={detail.status === "草稿" ? "确认后归档，且不可再被重新生成覆盖" : "已确认"}
+                >
+                  <Icon name="check" className="h-3.5 w-3.5" />
+                  {detail.status === "草稿" ? "确认归档" : "已确认"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void regenerate()}
                   disabled={busy || detail.status !== "草稿"}
                   data-review-regenerate=""
@@ -668,7 +711,11 @@ export function ReviewArchive({
                 >
                   已确认复盘不可覆盖。如需更新，请换一个周期。
                 </p>
-              ) : null}
+              ) : (
+                <p className="mt-1.5 text-[10.5px] leading-relaxed text-outline" data-review-draft-hint="">
+                  当前是草稿；确认归档后会锁定，不能再被重新生成覆盖。
+                </p>
+              )}
               {detail.stale ? (
                 <p className="mt-1.5 text-[10.5px] leading-relaxed text-error" data-review-stale="">
                   引用的记录或任务已有删除：记录 {detail.missing_record_ids.length} 条，任务{" "}

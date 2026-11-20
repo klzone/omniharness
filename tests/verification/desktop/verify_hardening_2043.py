@@ -209,12 +209,18 @@ def main() -> int:
                 )
             )
         current = sorted(set(current))
+        # 0.2.45：当日摘要下线，两条命令按产品决定移除；其余命令仍须与基线一一对应。
+        retired = {"worklog_daily_summary_generate", "worklog_daily_summary_read"}
+        # 0.2.45：新增只读描述命令（不启动引擎），用于修复 5 秒轮询重启循环。
+        added = {"engine_describe_if_running"}
+        expected_names = sorted((set(baseline["names"]) - retired) | added)
+        expected_count = baseline["count"] - len(retired) + len(added)
         check("d_modules_exist", (SRC / "commands" / "mod.rs").is_file() and (SRC / "commands" / "reading.rs").is_file())
-        check("d_command_count_matches_baseline", len(current) == baseline["count"], f"{len(current)} != {baseline['count']}")
+        check("d_command_count_matches_baseline", len(current) == expected_count, f"{len(current)} != {expected_count}")
         check(
             "d_command_names_match_baseline",
-            sorted(set(baseline["names"])) == current,
-            str(sorted(set(baseline["names"]) ^ set(current))[:5]),
+            expected_names == current,
+            str(sorted(set(expected_names) ^ set(current))[:5]),
         )
 
     print(f"cases={TOTAL} failures={len(FAILS)}")

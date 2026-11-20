@@ -169,8 +169,6 @@ import type {
   CandidateListing,
   AnalyzeApplied,
   AnalyzePrompt,
-  DailySummaryRead,
-  DailySummaryReceipt,
   PeriodReviewCollect,
   PeriodReviewListing,
   PeriodReviewRead,
@@ -314,6 +312,13 @@ export function invalidateEngineFactsCache(): void {
 export const host = {
   describe(): Promise<EngineDescriptor> {
     return invoke<EngineDescriptor>("engine_describe").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 只读描述：引擎未启动/未初始化时返回 null，绝不拉起进程。 */
+  describeIfRunning(): Promise<EngineDescriptor | null> {
+    return invoke<EngineDescriptor | null>("engine_describe_if_running").catch((e) => {
       throw new Error(normalizeError(e));
     });
   },
@@ -890,26 +895,6 @@ export const shell = {
   /** 结构化周视图（OD-WR-311）：按记录库 ISO 周过滤，不解析 Markdown。 */
   worklogWeekView(week?: string): Promise<WorklogWeekView> {
     return invoke<WorklogWeekView>("worklog_week_view", { week: week ?? null }).catch((e) => {
-      throw new Error(normalizeError(e));
-    });
-  },
-
-  /** 当日摘要：界面侧模型返回的正文交给宿主校验并落盘（OD-WR-503）。 */
-  worklogDailySummaryGenerate(
-    date: string,
-    content: string,
-  ): Promise<DailySummaryReceipt> {
-    return invoke<DailySummaryReceipt>("worklog_daily_summary_generate", {
-      date,
-      content,
-    }).catch((e) => {
-      throw new Error(normalizeError(e));
-    });
-  },
-
-  /** 读取当日摘要；不存在时 exists=false，不建文件。 */
-  worklogDailySummaryRead(date: string): Promise<DailySummaryRead> {
-    return invoke<DailySummaryRead>("worklog_daily_summary_read", { date }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

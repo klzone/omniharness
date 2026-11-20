@@ -1,7 +1,7 @@
 // 工作记录场景的意图判定契约（OD-ARCH-176 阶段 1）。
 //
 // 每一轮先由模型理解这句话是「要记的事实」「对助手的指令」「普通对话」
-// 还是「复盘 / 周报 / 当日摘要」，再由宿主按判定执行。平台只认下面这份
+// 还是「复盘 / 周报」，再由宿主按判定执行。平台只认下面这份
 // 统一契约，不替模型猜语义；解析失败或拿不准一律交回用户确认。
 //
 // 纯函数、无依赖：界面与离线验证脚本执行同一份源码。
@@ -30,7 +30,6 @@ export type ModelWorkIntent =
   | "chat"
   | "period-review"
   | "report"
-  | "daily-summary"
   | "uncertain";
 
 export interface WorkIntentContract {
@@ -51,8 +50,7 @@ export type WorkIntentAction =
   | "reply"
   | "ask"
   | "period-review"
-  | "report"
-  | "daily-summary";
+  | "report";
 
 export interface WorkIntentRoute {
   action: WorkIntentAction;
@@ -69,7 +67,6 @@ const INTENTS: readonly ModelWorkIntent[] = [
   "chat",
   "period-review",
   "report",
-  "daily-summary",
   "uncertain",
 ];
 
@@ -160,9 +157,6 @@ export function decideWorkIntentRoute(intent: ModelWorkIntent): WorkIntentRoute 
     return { action: "period-review", writes: true, reviewInline: false };
   }
   if (intent === "report") return { action: "report", writes: true, reviewInline: false };
-  if (intent === "daily-summary") {
-    return { action: "daily-summary", writes: true, reviewInline: false };
-  }
   return { action: "ask", writes: false, reviewInline: false };
 }
 
@@ -171,7 +165,7 @@ export function decideWorkIntentRoute(intent: ModelWorkIntent): WorkIntentRoute 
  *
  * - 用户手动选过档位 → 按所选档位（`default` 视为不传）；
  * - 分类 / 随手记分析 / 指令回复 → 证据声明支持 off 时默认 `off`（模型直出）；
- * - 复盘 / 周报 / 当日摘要起草 → 不传，跟随模型默认。
+ * - 复盘 / 周报起草 → 不传，跟随模型默认。
  *
  * 返回 null 表示不显式设置 reasoningEffort。档位必须被证据「证明支持」才下发：
  * 真实 DSH 的 session/selectModel 会拒绝未声明模型的任何显式档位（含 off，
@@ -188,7 +182,7 @@ export function pickWorkIntentEffort(input: {
     if (!selected || selected === "default") return null;
     return effortEvidenceIncludes(input.evidence, selected) ? selected : null;
   }
-  if (input.intent === "report" || input.intent === "period-review" || input.intent === "daily-summary") {
+  if (input.intent === "report" || input.intent === "period-review") {
     return null;
   }
   return effortEvidenceIncludes(input.evidence, "off") ? "off" : null;

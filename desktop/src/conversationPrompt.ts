@@ -40,7 +40,6 @@ export interface ConversationPreset {
   skillsByFlow?: {
     note?: Array<{ id: string; content: string }> | null;
     report?: Array<{ id: string; content: string }> | null;
-    summary?: Array<{ id: string; content: string }> | null;
     periodReview?: Array<{ id: string; content: string }> | null;
   } | null;
   /**
@@ -154,23 +153,16 @@ export function buildContext(turns: ConversationTurn[], current: string): string
  *
  * 同一场景可以有多条流程（工作记录 = 随手记 + 周报），各自只绑自己的底线技能。
  * 按 mode 取对应那一组；该流程没有单独配置时回落到场景级 skills。
- * 当日摘要例外：没有 weekly-daily-summary 绑定时不预注入，避免混入随手记的底线技能。
  * 空数组与 null 都表示「这一轮不注入」，不在这里补默认值——补默认会绕过规则资产。
  */
 export function presetSkillsFor(
   preset: ConversationPreset,
-  mode: "note" | "classify" | "report" | "daily-summary" | "period-review",
+  mode: "note" | "classify" | "report" | "period-review",
 ): Array<{ id: string; content: string }> | null {
   if (mode === "classify") {
     // 意图分类用的仍是随手记这一条流程的判定口径（memory-agent 等）。
     const note = preset.skillsByFlow?.note;
     return Array.isArray(note) ? note : preset.skills ?? null;
-  }
-  if (mode === "daily-summary") {
-    // 摘要不复用场景级绑定：工作记录场景的通用底线是随手记的 memory-agent，
-    // 它不是摘要口径。没配 weekly-daily-summary 就不预注入，交给下方输出契约兜底。
-    const summary = preset.skillsByFlow?.summary;
-    return Array.isArray(summary) ? summary : null;
   }
   if (mode === "period-review") {
     // 周期复盘只读 weekly-period-review 绑定，不借随手记的 memory-agent。
@@ -262,7 +254,7 @@ export function knowledgeSkillPointer(skill: { id: string; content: string }): s
  */
 function defaultSceneSkills(
   preset: ConversationPreset,
-  mode: "note" | "classify" | "report" | "daily-summary" | "period-review" | undefined,
+  mode: "note" | "classify" | "report" | "period-review" | undefined,
   hasWorklog: boolean,
 ): Array<{ id: string; content: string }> | null {
   const weeklyReportFlow = preset.key === "weekly" && (mode === "report" || hasWorklog);
@@ -278,22 +270,12 @@ export function composeConversationPrompt(input: {
    * 本场景的输入模式（OD-ARCH-068 S3，OD-ARCH-089 改为按输入判定）：
    *   report（默认）= 完整组装（场景规则 + 章节 + Profile 写作铁律）；
    *   note = 随手记：写盘已由宿主完成，这里只带一句缺项追问指令。
-   *   daily-summary = 当日摘要：带当天正式记录、五段输出契约与摘要 Skill。
    *   period-review = 周期复盘：带周期材料、按周期深度的标题契约与复盘 Skill。
    *
    * 随手记是「先记下来」的低负担入口：带铁律与章节会让首字明显变慢，
    * 而用户此刻要的只是把事实留住、顺带补上缺的要素。周报仍走完整组装。
    */
-  mode?: "note" | "classify" | "report" | "daily-summary" | "period-review";
-  /**
-   * 当日摘要材料（OD-WR-503）：界面从宿主记录列表读出的当天正式记录全文索引。
-   * 模型不碰文件，材料与输出契约由此处带进提示词。
-   */
-  dailySummary?: {
-    date: string;
-    material: string;
-    recordCount: number;
-  } | null;
+  mode?: "note" | "classify" | "report" | "period-review";
   /** 周期复盘材料（OD-WR-505）：宿主汇集的记录、任务统计与既往复盘标题。 */
   periodReview?: {
     period: PeriodReviewPeriod;
@@ -344,50 +326,6 @@ export function composeConversationPrompt(input: {
     ? [input.knowledgeContext.trim(), "", ...knowledgeSkillBlock]
     : [];
   if (!preset) return [context, ...knowledgeBlock].filter(Boolean).join("\n");
-  if (input.mode === "daily-summary") {
-    // 当日摘要：宿主已经把当天正式记录整理成全文索引；这里只给数据、输出契约与
-    // 绑定的 daily-summary Skill。写盘与引用校验由宿主完成，模型不碰文件。
-    const summary = input.dailySummary ?? null;
-    const skills = (presetSkillsFor(preset, "daily-summary") ?? [])
-      .filter((s) => s.content.trim().length > 0)
-      .slice(0, 1);
-    const skillBlock: string[] = [];
-    if (skills.length > 0) {
-      const s = skills[0];
-      skillBlock.push("配套技能指引（" + s.id + "）：", skillPointer(s), "");
-    }
-    const materialLines = summary
-      ? [
-          "当日正式记录（" + summary.date + "，已排除草稿，共 " + summary.recordCount + " 条）：",
-          summary.material.trim(),
-          "",
-        ]
-      : [
-          "当日正式记录：界面没有读出材料。",
-          "没有材料时不得生成摘要，只说明无法读取当日记录。",
-          "",
-        ];
-    const contract = [
-      "输出契约：只返回 Markdown 正文，不要 frontmatter、路径或前言。",
-      "严格使用以下五个二级标题，顺序不变：",
-      "## 今日工作概况",
-      "## 重点事项",
-      "## 重要思考",
-      "## 需要跟进的问题",
-      "## 与任务管理的关联",
-      "每段至少标注一个真实记录编号，格式为 #记录编号（例如 #wr-…）；",
-      "只能引用上面材料里出现过的编号。记录没写到的事实、进度或结论不要写。",
-      "材料为空时，五段都如实写「当日无记录」，不要编造。",
-      "",
-    ];
-    return [
-      ...contract,
-      ...materialLines,
-      ...skillBlock,
-      ...knowledgeBlock,
-      context,
-    ].join("\n");
-  }
   if (input.mode === "period-review") {
     // 周期复盘：材料与引用全部由宿主汇集/校验；模型只按周期深度写正文。
     const review = input.periodReview ?? null;
@@ -516,7 +454,7 @@ export function composeConversationPrompt(input: {
     const contractLines = [
       "只输出一个判定块，块外不要写任何文字：",
       INTENT_OPEN +
-        '{"intent":"note|instruction|chat|period-review|report|daily-summary|uncertain","record":null,"review":null,"reply_hint":"","period":null}' +
+        '{"intent":"note|instruction|chat|period-review|report|uncertain","record":null,"review":null,"reply_hint":"","period":null}' +
         INTENT_CLOSE,
       "",
       "intent 的含义与必填字段：",
@@ -529,7 +467,7 @@ export function composeConversationPrompt(input: {
       "  record 留 null，reply_hint 直接给出有用的回答（可以引用上面的记录索引）。",
       "- chat：寒暄、确认或普通对话。不落盘；reply_hint 是回复正文。",
       "- period-review：要周期复盘。period 填 weekly/monthly/quarterly/annual 之一；先不要起草。",
-      "- report：要周报；daily-summary：要今日摘要。先不要起草。",
+      "- report：要周报。先不要起草。",
       "- uncertain：note 与 instruction 边界模糊，或你无法确定。不要猜；宿主会问用户。",
       "",
       "硬约束：指令、请求、寒暄都绝不能写进工作记录；只有 note 的 record 会被执行。",

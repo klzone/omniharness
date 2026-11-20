@@ -213,8 +213,16 @@ impl EngineChannel {
                 .name("omnidesk-engine-stdout".to_string())
                 .spawn(move || {
                     let reader = BufReader::new(stdout);
-                    for line in reader.lines() {
-                        let Ok(line) = line else { break };
+                    let mut reader = reader;
+                    let mut raw = Vec::new();
+                    loop {
+                        raw.clear();
+                        match reader.read_until(b'\n', &mut raw) {
+                            Ok(0) => break,
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                        let line = String::from_utf8_lossy(&raw);
                         let line = line.trim();
                         if line.is_empty() {
                             continue;
@@ -257,8 +265,16 @@ impl EngineChannel {
                 .name("omnidesk-engine-stderr".to_string())
                 .spawn(move || {
                     let reader = BufReader::new(stderr);
-                    for line in reader.lines() {
-                        let Ok(line) = line else { break };
+                    let mut reader = reader;
+                    let mut raw = Vec::new();
+                    loop {
+                        raw.clear();
+                        match reader.read_until(b'\n', &mut raw) {
+                            Ok(0) => break,
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                        let line = String::from_utf8_lossy(&raw).trim_end().to_string();
                         if let Some(path) = &log_path {
                             append_stderr_line(path, &line);
                         }
@@ -610,6 +626,41 @@ mod tests {
         }
         let _ = channel.wait_exit(Duration::from_secs(2));
         assert!(captured.contains("合成引擎启动信息"), "日志应包含子进程 stderr");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn stderr_reader_survives_non_utf8_bytes() {
+        // Windows 子进程有时混入 GBK 字节；单个坏字节不能终止读取线程。
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-stderr-lossy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let log = base.join("logs/engine-stderr.log");
+        let python = std::env::var("OMNIDESK_PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let code = "import sys; sys.stderr.buffer.write(b'bad\\xff\\n'); sys.stderr.buffer.flush(); sys.stderr.buffer.write(b'after\\n'); sys.stderr.buffer.flush()";
+        let mut channel = EngineChannel::spawn_with_stderr_log(
+            &python,
+            &["-c".to_string(), code.to_string()],
+            &std::env::temp_dir(),
+            &[],
+            Some(&log),
+        )
+        .expect("应能启动含坏字节 stderr 的子进程");
+        let mut captured = String::new();
+        for _ in 0..60 {
+            captured = fs::read_to_string(&log).unwrap_or_default();
+            if captured.contains("after") {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(captured.contains("after"), "坏字节之后的行仍必须被读到：{captured}");
+        let _ = channel.wait_exit(Duration::from_secs(2));
         let _ = fs::remove_dir_all(base);
     }
 }

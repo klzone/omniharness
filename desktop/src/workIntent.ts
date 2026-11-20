@@ -9,22 +9,7 @@
 //
 // 判定偏保守：宁可当随手记（多记一条不会丢事实），也不要误进周报流程。
 
-export type WorkIntent = "report" | "note" | "daily-summary" | "period-review";
-
-/**
- * 明确指向「当日摘要」的措辞（OD-WR-503）。
- *
- * 只收用户已经把范围限定在「今天 / 当日」的说法。像「总结一下这个会」这种
- * 没有日期范围的措辞仍是随手记；宁可漏判，也不要把一条普通记录误进摘要流程。
- * 「生成今日摘要」「今日摘要」「当日摘要」本身就是指令，不再要求额外限定词。
- */
-export const DAILY_SUMMARY_KEYWORDS: readonly string[] = [
-  "生成今日摘要",
-  "今日摘要",
-  "总结今天",
-  "今天的摘要",
-  "当日摘要",
-];
+export type WorkIntent = "report" | "note" | "period-review";
 
 /**
  * 明确指向「周报」的措辞。出现即进周报流程。
@@ -146,11 +131,6 @@ export function detectWorkIntent(input: string): WorkIntent {
   const text = normalizeIntentText(input || "");
   if (!text) return "note";
 
-  // 当日摘要的词表是封闭枚举：命中即走摘要；没命中就交给下面的周报/随手记判定。
-  if (DAILY_SUMMARY_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) {
-    return "daily-summary";
-  }
-
   // 「周报」二字足够明确：用户说周报就是在要周报。
   if (REPORT_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)))) return "report";
 
@@ -169,7 +149,6 @@ export function detectWorkIntent(input: string): WorkIntent {
 /** 界面上明示本轮走哪条路：用户不必靠猜，误判一眼可见。 */
 export function describeWorkIntent(intent: WorkIntent): string {
   if (intent === "report") return "按周报生成";
-  if (intent === "daily-summary") return "按当日摘要生成";
   if (intent === "period-review") return "按周期复盘生成";
   return "按随手记记录";
 }

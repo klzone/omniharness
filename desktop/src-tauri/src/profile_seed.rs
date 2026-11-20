@@ -55,7 +55,6 @@ pub static SKILLS: &[SeedSkill] = &[
     SeedSkill { name: "material-writing", files: skill_md!("material-writing") },
     SeedSkill { name: "memory-agent", files: skill_md!("memory-agent") },
     SeedSkill { name: "memory-report", files: skill_md!("memory-report") },
-    SeedSkill { name: "daily-summary", files: skill_md!("daily-summary") },
     SeedSkill { name: "period-review", files: skill_md!("period-review") },
     SeedSkill { name: "project-agent", files: skill_md!("project-agent") },
 ];

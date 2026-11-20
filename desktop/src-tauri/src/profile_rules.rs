@@ -32,7 +32,7 @@ pub const PROFILE_RULES_SCHEMA: &str = PROFILE_RULES_SCHEMA_V3;
 pub const PROFILE_RULES_ACCEPTED_SCHEMAS: &[&str] =
     &[PROFILE_RULES_SCHEMA_V1, PROFILE_RULES_SCHEMA_V2, PROFILE_RULES_SCHEMA_V3];
 
-/// 程序内置的 Skill 清单（OD-ARCH-082 S2，086 加入 anysearch，089 加入 memory-report，OD-WR-503 加入 daily-summary，OD-WR-505 加入 period-review）。
+/// 程序内置的 Skill 清单（OD-ARCH-082 S2，086 加入 anysearch，089 加入 memory-report，OD-WR-505 加入 period-review）。
 ///
 /// OD-ARCH-131 起这只是「内置清单」，不再是绑定白名单：自建 Profile 可以带自己的
 /// Skill（放在 `<应用数据根>/profiles/<名字>/skills/<skill名>/`），绑定校验改按
@@ -44,7 +44,6 @@ pub const ALLOWED_SKILLS: &[&str] = &[
     "document-review",
     "memory-agent",
     "memory-report",
-    "daily-summary",
     "period-review",
     "project-agent",
     "anysearch",

@@ -436,17 +436,14 @@ export function HomeCanvas({
     const sceneSkills = readBinding(def.preset);
     const noteSkills = readBinding(def.preset + "-note");
     const reportSkills = readBinding(def.preset + "-report");
-    const summarySkills = readBinding(def.preset + "-daily-summary");
     const periodReviewSkills = readBinding(def.preset + "-period-review");
     // 没有按流程拆分时，两组都回落到场景级绑定（旧规则文件的行为不变）。
     const boundSkills = sceneSkills;
     const skillsByFlow =
-      noteSkills || reportSkills || summarySkills
-        || periodReviewSkills
+      noteSkills || reportSkills || periodReviewSkills
         ? {
             note: noteSkills ?? sceneSkills,
             report: reportSkills ?? sceneSkills,
-            summary: summarySkills,
             periodReview: periodReviewSkills,
           }
         : null;
@@ -612,15 +609,17 @@ export function HomeCanvas({
           searchCurrentIndex={searchCurrentIndex}
           onSearchMatchesChange={onSearchMatchesChange}
         />
-            {/* 阅读统计放在对话下方（原「项目跟踪」快捷入口的位置），与输入区留出间距。 */}
-            <div className="shrink-0 flex justify-center pt-4" data-testid="home-reading-stats-slot">
-              <ReadingStatsBar
-                stats={readingStats}
-                error={readingStatsError}
-                loading={readingStatsLoading}
-                onNavigate={onNavigate}
-              />
-            </div>
+            {conversationStarted ? null : (
+              /* 阅读统计只在空白首页显示；有对话后像标语一样隐藏，不占版面。 */
+              <div className="shrink-0 flex justify-center pt-4" data-testid="home-reading-stats-slot">
+                <ReadingStatsBar
+                  stats={readingStats}
+                  error={readingStatsError}
+                  loading={readingStatsLoading}
+                  onNavigate={onNavigate}
+                />
+              </div>
+            )}
           </div>
         </div>
       }

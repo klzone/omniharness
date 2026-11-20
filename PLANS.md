@@ -767,3 +767,28 @@
 > 5. **RSS 文末模块（仅 `source_format === "rss"`）**：附件井（音频/视频复用既有 MediaBlock 与远程媒体链路；文件提供「打开原文件」）、「打开原文」、居中「—— 完 ——」、按正文字数估算的「约 N 分钟读完」（400 字/分钟，至少 1 分钟）、同一订阅源上一篇更早文章的「下一篇」卡片（点击直接打开）。本地书籍不渲染该模块。
 > 6. **验证**：`cargo test --offline --lib -- --test-threads=1`、`npx tsc --noEmit`、`npm run build`、既有 verify_reading_003–011 与新增 `verify_reading_012_settings_and_footer.py`；新增 RSS 附件解析与旧元数据补写单测。证据写入 `tests/verification/desktop/evidence/od-read-002/stage11.md`。
 > 7. **明确不做**：不提供宽度/颜色/主题设置；不改标题字号；不改批注锚定；不改 RSS 抓取网络策略；不把本地书籍套用文末模块；不提交不推送。
+
+### OD-HOME-0245：首页与工作记录微调（2026-11-20，用户本轮明确指令）
+
+> **触发（用户 5 条反馈）：** ①首页阅读数据条在有对话后应像标语一样隐藏；②当日摘要生成要 128 秒、价值低，取消功能与相关代码；③首页 `dsh-web-api · unknown · compatible` 的状态文案需要说明/修正；④顶栏「通知与待办」未实装，应聚合工作台自动生成待处理项与用户任务提醒；⑤周复盘缺少确认入口，重复生成不覆盖/不产出新草稿的路径需要修顺。
+
+**实施范围：**
+> 1. HomeCanvas：阅读统计槽位仅在 `conversationStarted === false` 时渲染；有任一对话消息后与空对话标语一起隐藏，不占版面。
+> 2. 当日摘要下线：删除 `dailySummary.ts`、`daily_summary.rs`、两条宿主命令与注册、前端 API/类型、HomeChat 的生成/确认/落盘上下文、WorkRecordLibrary 的摘要入口与卡片、conversationPrompt 的 daily-summary 模式、workIntent/workIntentDecision 的意图；内置 Skill 清单、seed 与样本 rules 解绑并删除 `skills/daily-summary`；旧摘要文件保留不删。
+> 3. 引擎文案：新增 `engineLabels.ts`，把 `dsh-web-api` / `unknown` / `compatible` 显示为「DSH Web API · 版本未知 · 协议兼容」；顶栏与引擎技术切片共用。
+> 4. 通知与待办：新增 `NotificationCenter`，聚合待确认写入（仅 pending）、到期/逾期/待确认任务、未完成任务总览与到点复盘；顶栏铃铛显示数量，点击跳转到对应场景；无内容时显示空态，读取失败如实提示。
+> 5. 周复盘：ReviewArchive 草稿态新增「确认归档」按钮，调用 `worklog_period_review_confirm` 后刷新详情与列表；草稿提示确认后锁定，已确认仍禁止覆盖；重新生成继续走既有 `.bak` 备份路径。
+> 6. 验证：`cargo test --offline --lib -- --test-threads=1`、`npx tsc --noEmit`、`npm run build`、`npm test`（Node 22 与当前版本）、`verify_home_work_0244.py`、`verify_hardening_2043.py`、`verify_reading_004_formats.py`、`verify_reading_entity_2043.py`。
+> 7. **明确不做**：不删除磁盘上历史摘要文件；不改任务/复盘判定与文件格式；不提交不推送（待用户另行授权）。
+
+### OD-PERF-0245：周复盘性能与工作流稳定性（2026-11-20，用户 Windows 实测反馈）
+
+> **触发：** 用户实测 2 条记录 + 3 个任务、关闭思考的周复盘耗时 278 秒；自检已确认引擎频繁重启与 `getpgrp` 初始化失败约 60 次、子进程 GBK/UTF-8 解码冲突导致 3 个读取线程异常；推断缺少 TTFT/素材/排队分段计时。
+
+**实施范围：**
+> 1. 引擎轮询改只读：新增 `engine_describe_if_running`，App 的启动探测与 5 秒轮询改为绝不启动子进程；应用启动后仅调用一次 `engine_describe` 预热，失败不再 5 秒重试。
+> 2. 编码统一：宿主为引擎注入 `PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8:replace`；Python `serve.main` 重配 stdin/stdout 为 UTF-8；DSH `Popen` 显式 `encoding=utf-8, errors=replace`；Rust stdout/stderr 读取改 `read_until` + `from_utf8_lossy`，坏字节不再让线程退出。
+> 3. `getpgrp`：非 POSIX 直接返回 0；`AttributeError`/`OSError` 均回退 0，初始化不再因进程组查询失败而中断。
+> 4. 分段计时：消息新增 `timing.classifyMs / materialMs / submitMs`；周复盘路由保留用户提交起点，界面显示「判定 / 素材 / 提交」，与既有「首字」「总耗时」并列。
+> 5. 验证：Rust 全量、Node 22 前端测试、build、`verify_review_perf_0245.py`、process_owner 与 web-api 单测。
+> 6. **明确不做**：不改变模型路由/思考等级；不新增自动重试；不删除历史日志；不提交不推送。

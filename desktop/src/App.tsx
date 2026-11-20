@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { host, onProfileDeclSaved, shell } from "./api";
 import { hydrateThreads } from "./sceneThreads";
 import { refreshThreadCategories } from "./threadCategories";
@@ -13,6 +13,7 @@ import { TopNav } from "./shell/TopNav";
 import { EnvironmentCheck } from "./shell/EnvironmentCheck";
 import { WindowResizeHandles } from "./shell/WindowChrome";
 import { HoverHint } from "./shell/HoverHint";
+import { engineSummaryLabel } from "./engineLabels";
 import type { EngineDescriptor, EnvironmentReport, ProfileDeclPayload } from "./types";
 
 // 知识库分页只在用户第一次点进来时才加载（OD-KB-001 P2-S04）：它是目前最大的
@@ -43,6 +44,8 @@ export default function App() {
   const [threadsReady, setThreadsReady] = useState(false);
   const [descriptor, setDescriptor] = useState<EngineDescriptor | null>(null);
   const [descriptorError, setDescriptorError] = useState<string | null>(null);
+  /** 启动后只预热一次引擎；失败不在 5 秒轮询里反复重启。 */
+  const engineWarmupStarted = useRef(false);
   // 运行时依赖体检（OD-ARCH-134）：缺 node / python 时先给出可操作的检查页，
   // 而不是让引擎在后台起不来、用户只看到「终端一闪而过」。体检失败本身不阻断
   // 界面（读设置、看记录都不需要引擎），只有明确缺依赖时才接管主区域。
@@ -234,7 +237,12 @@ export default function App() {
           );
           return;
         }
-        const d = await host.describe();
+        let d = await host.describeIfRunning();
+        // 冷启动只在应用启动后尝试一次，避免把「探测」变成每 5 秒一次的重启循环。
+        if (!d && !engineWarmupStarted.current) {
+          engineWarmupStarted.current = true;
+          d = await host.describe();
+        }
         if (!cancelled) {
           setDescriptor(d);
           setDescriptorError(null);
@@ -257,10 +265,10 @@ export default function App() {
 
   const engineHealthy = descriptor ? descriptor.healthy : null;
   const engineLabel = descriptor
-    ? `${descriptor.engine_kind} · ${descriptor.engine_version} · ${descriptor.compatibility}`
+    ? engineSummaryLabel(descriptor)
     : descriptorError
       ? `引擎未就绪：${descriptorError}`
-      : "正在检测引擎…";
+      : "引擎尚未启动";
 
   /** 引擎未就绪时轻量轮询（健康快照），就绪即停：IPC 徽标不能只在启动时探一次，
    *  否则权限后开、引擎冷启动完成、Profile 切换后恢复都永远显示 OFF。 */
@@ -271,8 +279,12 @@ export default function App() {
         try {
           const admission = await host.admissionStatus();
           if (!admission.ok || !admission.facts?.allowed) return;
-          const d = await host.describe();
-          setDescriptor(d);
+          const d = await host.describeIfRunning();
+          if (d) {
+            setDescriptor(d);
+          } else {
+            setDescriptor(null);
+          }
           setDescriptorError(null);
         } catch {
           /* 仍未就绪：下一轮继续探 */
@@ -304,6 +316,7 @@ export default function App() {
         engineHealthy={engineHealthy}
         engineLabel={engineLabel}
         onOpenSettings={() => selectScene("settings")}
+        onNavigate={selectScene}
         onProfileChanged={() => {
           // 切换 Profile 已停旧引擎并换规则：声明必须重读，Dock 立刻换成新工作台。
           // 不强行跳页：设置页与知识库不受声明管辖，若当前场景在新 Profile 里不存在，

@@ -59,7 +59,6 @@ pub mod priority_rules;
 pub mod quicklog;
 pub mod reading_store;
 pub mod rss_store;
-pub mod daily_summary;
 pub mod review_store;
 pub mod route_classifier;
 pub mod schedule_store;
@@ -418,6 +417,26 @@ async fn engine_health(app: tauri::AppHandle) -> Result<serde_json::Value, Strin
     })
     .await;
     joined.map_err(|e| format!("读取引擎健康状态的后台任务异常结束：{}", e))
+}
+
+/// 只读引擎描述：已初始化时返回真实描述，否则返回 null。
+///
+/// 与 `engine_describe` 不同，本命令**绝不启动引擎**；界面轮询必须用它，
+/// 否则每次探测都会拉起一次冷启动，初始化失败时会形成 5 秒一次的重启循环。
+#[tauri::command]
+async fn engine_describe_if_running(
+    app: tauri::AppHandle,
+) -> Result<Option<serde_json::Value>, String> {
+    let host_state = {
+        let state = app.state::<SharedHost>();
+        Arc::clone(state.inner())
+    };
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        let host = host_state.lock().unwrap();
+        host.bridge.descriptor_if_initialized()
+    })
+    .await;
+    joined.map_err(|e| format!("读取引擎只读描述的后台任务异常结束：{e}"))
 }
 
 #[tauri::command]
@@ -5899,29 +5918,6 @@ fn worklog_offset_minutes(state: &State<'_, SharedHost>) -> i32 {
         .unwrap_or(scheduler::DEFAULT_UTC_OFFSET_MINUTES)
 }
 
-/// 当日摘要：界面侧模型返回的正文经宿主校验后落盘（OD-WR-503）。
-///
-/// 日期、正式记录集合与引用编号全部由宿主核验；校验不过时不写任何文件。
-#[tauri::command(async)]
-fn worklog_daily_summary_generate(
-    state: State<'_, SharedHost>,
-    date: String,
-    content: String,
-) -> Result<daily_summary::DailySummaryReceipt, String> {
-    let root = work_root(&state)?;
-    daily_summary::write_summary(&root, &date, &content, task_shell::now_secs())
-}
-
-/// 读取当日摘要。文件不存在是合法状态，返回 exists=false，不建文件。
-#[tauri::command(async)]
-fn worklog_daily_summary_read(
-    state: State<'_, SharedHost>,
-    date: String,
-) -> Result<daily_summary::DailySummaryRead, String> {
-    let root = work_root(&state)?;
-    daily_summary::read_summary(&root, &date)
-}
-
 /// 周期复盘：汇集周期内正式记录、任务状态与既往复盘标题（OD-WR-505）。
 #[tauri::command(async)]
 fn worklog_period_review_collect(
@@ -10019,6 +10015,7 @@ pub fn run() {
         .manage(Arc::new(dsh_settings::SettingsService::new()))
         .invoke_handler(tauri::generate_handler![
             engine_describe,
+            engine_describe_if_running,
             engine_health,
             engine_submit_task,
             engine_task_status,
@@ -10202,8 +10199,6 @@ pub fn run() {
             worklog_merge,
             worklog_read_week,
             worklog_week_view,
-            worklog_daily_summary_generate,
-            worklog_daily_summary_read,
             worklog_period_review_collect,
             worklog_period_review_generate,
             worklog_period_review_read,

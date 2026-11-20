@@ -435,9 +435,11 @@ def current_pgid() -> int:
 
     Windows 的整棵进程树由宿主的 Job Object 负责回收，宿主不得把 0 当作真实组号。
     """
+    if os.name != "posix":
+        return 0
     try:
         return os.getpgrp()
-    except AttributeError:
+    except (AttributeError, OSError):
         return 0
 
 

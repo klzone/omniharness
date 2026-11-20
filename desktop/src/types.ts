@@ -3436,33 +3436,6 @@ export interface WorkRecordRevision {
   note: string;
 }
 
-/** 当日摘要落盘回执（OD-WR-503）。 */
-export interface DailySummaryReceipt {
-  ok: boolean;
-  path: string;
-  date: string;
-  record_ids: string[];
-  generated_at: string;
-  status: string;
-  /** 重新生成时旧摘要的 `.bak` 路径；首次写入为 null。 */
-  backup: string | null;
-  records: number;
-}
-
-/** 当日摘要读取结果；不存在时 exists=false，不建文件。 */
-export interface DailySummaryRead {
-  exists: boolean;
-  path: string;
-  date: string;
-  status: string | null;
-  record_ids: string[];
-  generated_at: string | null;
-  body: string;
-  /** 引用过但当前记录库已不存在的编号。 */
-  missing_record_ids: string[];
-  stale: boolean;
-}
-
 /** 复盘周期（OD-WR-505）；与 workIntent.ts 的 PeriodReviewPeriod 保持同一组取值。 */
 export type PeriodReviewPeriod = "weekly" | "monthly" | "quarterly" | "annual";
 

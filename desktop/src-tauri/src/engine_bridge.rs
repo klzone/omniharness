@@ -504,6 +504,18 @@ impl EngineBridge {
             "stderr_tail": stderr_tail,
         })
     }
+
+    /// 只读描述：引擎已初始化时返回真实描述；未启动/未初始化返回 None。
+    ///
+    /// 界面轮询必须走这里，不能走 `ensure_initialized`：后者在每次探测时都会
+    /// 启动引擎，初始化失败会变成每 5 秒一次的重启循环。
+    pub fn descriptor_if_initialized(&self) -> Option<serde_json::Value> {
+        if self.initialized {
+            self.descriptor.clone()
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]

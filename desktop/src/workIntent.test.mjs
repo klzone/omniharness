@@ -13,7 +13,8 @@ const NOW = new Date("2026-11-20T04:00:00Z"); // 周五
 test("detectWorkIntent 正常分类", () => {
   assert.equal(detectWorkIntent("写一份周报"), "report");
   assert.equal(detectWorkIntent("记一下今天做了什么"), "note");
-  assert.equal(detectWorkIntent("生成今日摘要"), "daily-summary");
+  // 当日摘要已下线：旧口令不再进入摘要流程，按随手记处理。
+  assert.equal(detectWorkIntent("生成今日摘要"), "note");
   assert.equal(detectWorkIntent("帮我做本周复盘"), "period-review");
   assert.equal(detectWorkIntent("月度总结"), "period-review");
 });

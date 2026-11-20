@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.45] - 2026-11-20
+
+### Changed
+- 首页阅读统计条只在空白对话显示；有对话后与空对话标语一起隐藏，不再占用版面。
+- 顶栏引擎状态改为中文可读文案（DSH Web API / 协议兼容），不再直接显示 `unknown · compatible`。
+- 引擎不暴露版本时直接省略版本段，只显示「DSH Web API · 协议兼容」。
+- 顶栏「通知与待办」实装：聚合待确认写入、到期/逾期/待确认任务、未完成任务总览与到点复盘，点击跳到对应场景。
+- 周期复盘草稿新增「确认归档」；确认后锁定不可覆盖，重新生成继续备份旧草稿。
+- 引擎描述轮询改为只读，不再每次探测都启动引擎；启动后仅预热一次，避免初始化失败时每 5 秒重启约 60 次。
+- Windows 引擎协议与 DSH 子进程输出统一 UTF-8（`PYTHONUTF8` / `PYTHONIOENCODING`、`sys.stdin/stdout` 重配、Popen 显式解码）；Rust 读取线程改为按字节读取 + 容错解码，单个坏字节不再终止线程。
+- `getpgrp` 在非 POSIX 或调用失败时回退为 0，不再让初始化失败。
+- 每轮对话显示「判定 / 素材 / 提交」分段耗时；原有总耗时与首字时间保留，可量化素材汇集、引擎启动/排队与模型生成各占多少。
+
+### Removed
+- 当日摘要功能与相关代码整体下线（前后端命令、提示词模式、意图判定、入口与 Skill）；磁盘上已有摘要文件保留不删。
+
+### Verification
+- `cargo test --offline --lib -- --test-threads=1`：1276 通过 / 0 失败 / 1 忽略；`npx tsc --noEmit`、`npm run build`、`npm test`（Node 22）通过。
+- `verify_home_work_0244.py` 31/31、`verify_hardening_2043.py` 77/77、`verify_reading_004_formats.py` 19/19、`verify_reading_entity_2043.py` 7/7。
+
 ## [0.2.44] - 2026-11-20
 
 ### Added

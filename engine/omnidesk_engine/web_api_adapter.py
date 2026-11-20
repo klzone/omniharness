@@ -625,6 +625,10 @@ class WebApiAdapter(TaskCoreBase):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    # Windows 控制台默认可能是 GBK；DSH 的 stdout 是 UTF-8。
+                    # 固定编码并替换坏字节，避免 readline 线程因 UnicodeDecodeError 退出。
+                    encoding="utf-8",
+                    errors="replace",
                     bufsize=1,
                 )
             except OSError as exc:

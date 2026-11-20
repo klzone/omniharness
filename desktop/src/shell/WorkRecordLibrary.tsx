@@ -5,7 +5,6 @@ import { Icon, type IconName } from "../components/Icon";
 import { requestNewThread } from "../sceneThreads";
 import { TERMINAL_STATES } from "../types";
 import type {
-  DailySummaryRead,
   PeriodReviewPeriod,
   RecordFilter,
   RecordListing,
@@ -37,13 +36,6 @@ interface EditForm {
 interface RecordDateGroup {
   date: string;
   records: WorkRecord[];
-}
-
-interface GroupSummaryState {
-  read?: DailySummaryRead;
-  open: boolean;
-  loading: boolean;
-  error: string | null;
 }
 
 const STATUS_LABEL: Record<WorkRecordAiStatus, string> = {
@@ -275,10 +267,6 @@ export function WorkRecordLibrary({
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [confirmRephrase, setConfirmRephrase] = useState(false);
-  const [summary, setSummary] = useState<DailySummaryRead | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [groupSummaries, setGroupSummaries] = useState<Record<string, GroupSummaryState>>({});
   const [backlinks, setBacklinks] = useState<RecordBacklinks | null>(null);
   const [backlinksLoading, setBacklinksLoading] = useState(false);
   const [backlinksError, setBacklinksError] = useState<string | null>(null);
@@ -362,34 +350,6 @@ export function WorkRecordLibrary({
     };
   }, [reloadTick, refreshToken]);
 
-  // 非当天组只按需读取已有摘要；不存在不建文件，也不提供生成入口。
-  function patchGroupSummary(date: string, patch: Partial<GroupSummaryState>) {
-    setGroupSummaries((prev) => {
-      const base: GroupSummaryState = prev[date] ?? {
-        open: false,
-        loading: false,
-        error: null,
-      };
-      return { ...prev, [date]: { ...base, ...patch } };
-    });
-  }
-
-  function toggleGroupSummary(date: string) {
-    if (date === todayLocal()) {
-      setSummaryOpen((open) => !open);
-      return;
-    }
-    const current = groupSummaries[date];
-    const opening = !current?.open;
-    patchGroupSummary(date, { open: opening });
-    if (!opening || current?.read || current?.loading) return;
-    patchGroupSummary(date, { loading: true, error: null });
-    shell
-      .worklogDailySummaryRead(date)
-      .then((read) => patchGroupSummary(date, { read, loading: false }))
-      .catch((e) => patchGroupSummary(date, { loading: false, error: errText(e) }));
-  }
-
   useEffect(() => {
     if (!focusRecordId) return;
     let alive = true;
@@ -470,32 +430,6 @@ export function WorkRecordLibrary({
       alive = false;
     };
   }, [selected?.id, selected?.linked_task_ids, reloadTick]);
-
-  // 列表刷新后丢弃按需读取的旧摘要缓存，避免展示过期正文。
-  useEffect(() => {
-    setGroupSummaries({});
-  }, [reloadTick]);
-
-  // 当日摘要随列表刷新读取；不存在不建文件，读失败只在本卡内提示。
-  useEffect(() => {
-    let alive = true;
-    shell
-      .worklogDailySummaryRead(todayLocal())
-      .then((read) => {
-        if (!alive) return;
-        setSummary(read);
-        setSummaryError(null);
-        if (!read.exists) setSummaryOpen(false);
-      })
-      .catch((e) => {
-        if (!alive) return;
-        setSummary(null);
-        setSummaryError(errText(e));
-      });
-    return () => {
-      alive = false;
-    };
-  }, [reloadTick]);
 
   // 修订历史随所选记录读取；缺失 revisions.jsonl 的旧记录返回空列表。
   useEffect(() => {
@@ -737,12 +671,6 @@ export function WorkRecordLibrary({
     onNavigate("home");
   }
 
-  /** 生成当日摘要：模型调用在首页对话侧，这里只预填并切过去。 */
-  function goGenerateSummary() {
-    requestNewThread("weekly", "生成今日摘要");
-    onNavigate("home");
-  }
-
   /**
    * 交给 AI 继续分析：只把记录编号与标题预填到首页对话的输入框，不自动发送。
    * 首页不是 ThreadTag，工作记录对应的既有场景键是 weekly。
@@ -759,10 +687,6 @@ export function WorkRecordLibrary({
         "。原始素材与正式记录见工作记录库，不要修改任何文件，只做分析。",
     );
     onNavigate("home");
-  }
-
-  function requestSummary() {
-    goGenerateSummary();
   }
 
   /** 周期复盘入口：只把周期说法预填到首页工作记录对话，不自动发送。 */
@@ -809,15 +733,6 @@ export function WorkRecordLibrary({
     applyMonth(todayLocal().slice(0, 7));
     patchFilter({ ai_analysis_status: status ?? undefined });
     scrollToTimeline();
-  }
-
-  async function openSummaryRecord(id: string) {
-    try {
-      const record = await shell.workRecordRead(id);
-      selectRecord(record);
-    } catch (e) {
-      setNotice({ kind: "err", text: "引用的记录读不到：" + errText(e) });
-    }
   }
 
   const groups = groupRecordsByDate(listing.items);
@@ -1155,15 +1070,6 @@ export function WorkRecordLibrary({
                   ) : (
                     groups.map((group) => {
                       const isToday = group.date === today;
-                      const state = groupSummaries[group.date];
-                      const expanded = isToday ? summaryOpen : state?.open === true;
-                      const summaryBody = isToday
-                        ? summary?.exists
-                          ? summary
-                          : null
-                        : state?.read?.exists
-                          ? state.read
-                          : null;
                       return (
                         <div
                           key={group.date}
@@ -1182,99 +1088,7 @@ export function WorkRecordLibrary({
                               </span>
                               记录
                             </span>
-                            <div className="ml-auto flex items-center gap-1">
-                              {isToday ? (
-                                <>
-                                  {summary?.exists ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleGroupSummary(group.date)}
-                                      data-daily-summary-view=""
-                                      className="wr-summary-action"
-                                    >
-                                      {summaryOpen ? "收起摘要" : "查看摘要"}
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    onClick={requestSummary}
-                                    data-daily-summary-generate=""
-                                    className="wr-summary-action is-primary"
-                                  >
-                                    生成当日摘要
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleGroupSummary(group.date)}
-                                  data-record-group-summary={group.date}
-                                  className="wr-summary-action"
-                                >
-                                  {expanded ? "收起摘要" : "查看摘要"}
-                                </button>
-                              )}
-                            </div>
                           </div>
-
-                          {isToday && summaryError ? (
-                            <p className="px-1 py-1 text-[10.5px] leading-relaxed text-error">
-                              当日摘要读取失败：{summaryError}
-                            </p>
-                          ) : null}
-
-                          {expanded ? (
-                            <div className="od-record-group-summary">
-                              {summaryBody ? (
-                                <div data-daily-summary-card="">
-                                  <div className="flex items-center gap-2">
-                                    <span className="wr-summary-eyebrow">当日摘要</span>
-                                    {summaryBody.status ? (
-                                      <span className="wr-summary-status">{summaryBody.status}</span>
-                                    ) : null}
-                                    {summaryBody.generated_at ? (
-                                      <span className="mono ml-auto text-[10px] text-outline">
-                                        {revisionTime(summaryBody.generated_at)}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  {summaryBody.stale ? (
-                                    <p className="mt-1 text-[10.5px] leading-relaxed text-amber-700">
-                                      有 {summaryBody.missing_record_ids.length} 条引用记录已不存在，摘要待复核。
-                                    </p>
-                                  ) : null}
-                                  <div className="mt-1.5" data-daily-summary-body="">
-                                    <MarkdownText text={summaryBody.body} />
-                                    {summaryBody.record_ids.length > 0 ? (
-                                      <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {summaryBody.record_ids.map((id) => (
-                                          <button
-                                            key={id}
-                                            type="button"
-                                            onClick={() => void openSummaryRecord(id)}
-                                            data-daily-summary-record={id}
-                                            className="wr-ref-chip"
-                                            title={id}
-                                            aria-label="查看引用记录"
-                                          >
-                                            <Icon name="note" className="h-3 w-3" />
-                                          </button>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              ) : state?.loading ? (
-                                <p className="px-1 py-1 text-[10.5px] text-outline">正在读取摘要…</p>
-                              ) : state?.error ? (
-                                <p className="px-1 py-1 text-[10.5px] text-error">
-                                  摘要读取失败：{state.error}
-                                </p>
-                              ) : state?.read && !state.read.exists ? (
-                                <p className="px-1 py-1 text-[10.5px] text-outline">当日无摘要。</p>
-                              ) : null}
-                            </div>
-                          ) : null}
 
                           <div className="od-record-group-cards">
                             {group.records.map((record) => {

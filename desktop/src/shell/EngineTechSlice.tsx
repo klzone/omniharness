@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { host, onTaskEvent } from "../api";
 import type { AdmissionFacts, EngineDescriptor, EngineHealth, TaskEvent } from "../types";
 import { Icon } from "../components/Icon";
+import { engineSummaryLabel } from "../engineLabels";
 
 function formatTime(seconds: number): string {
   if (!seconds) return "";
@@ -152,7 +153,7 @@ export function EngineTechSlice({
           <div className="flex items-center space-x-3">
             <span className="font-label-caps text-[11px] text-outline">
               {descriptor
-                ? `${descriptor.engine_kind} · ${descriptor.engine_version} · ${descriptor.compatibility}`
+                ? engineSummaryLabel(descriptor)
                 : descriptorError
                   ? "引擎未就绪"
                   : "正在检测引擎…"}

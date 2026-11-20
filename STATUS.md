@@ -1157,3 +1157,24 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 证据：`tests/verification/desktop/evidence/od-read-002/stage11.md`（Git 忽略）。
 - 未验证：真实窗口字体字形/弹层阴影/字号与对齐切换手感；真实 enclosure 音频/PDF 的播放与外链打开；CJK 子集首次按需加载耗时；下一篇切换后的滚动位置。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
 - 提交后 CI 修正：Linux test job 首轮暴露 `diagnostics::newest_session_prefers_latest_mtime`（mtime 秒级截断）与 `attachment_reads_repo_files_but_still_refuses_runtime_data`（附件禁区 `omniharness` 误伤 runner 仓库路径）；分别改为纳秒与从附件禁区移除该项。第二轮暴露 Node 22 不接受 `--test src` 目录参数，`npm test` 改为 `node --experimental-strip-types --test` 递归发现。第三轮暴露 `workIntent.test.mjs` 三个测试误嵌在父测试内，Node 22 取消子测试；已补父测试收尾并移除多余括号。Node 22.23.4 与本机均 88/88；本机全量 1288 passed / 0 failed / 1 ignored。
+
+## OD-HOME-0245 执行记录（ARCHITECT 亲自实施，2026-11-20）
+
+- 基线：`63c7756edd`；保留已推送的 0.2.44 工作区。
+- 首页：阅读统计槽位仅在空白对话渲染，有消息后与空态标语一起隐藏，不占版面。
+- 当日摘要：删除前端 `dailySummary.ts`、HomeChat 全部摘要上下文/确认/落盘路径、WorkRecordLibrary 摘要入口与卡片、conversationPrompt daily-summary 模式、workIntent/workIntentDecision 意图；删除宿主 `daily_summary.rs`、`worklog_daily_summary_generate/read` 与注册；内置 Skill 清单、seed、样本 rules 解绑并删除 `skills/daily-summary`。历史摘要文件未删除。
+- 引擎文案：新增 `engineLabels.ts`（DSH Web API / 版本未知 / 协议兼容），顶栏与引擎技术切片共用；不再直接显示 `unknown · compatible`。
+- 通知与待办：新增 `NotificationCenter`，聚合待确认写入、到期/逾期/待确认任务、未完成任务总览与 `review_due`；徽标数量、空态、错误提示、点击场景跳转齐全；顶栏未实现占位已移除。
+- 周复盘：ReviewArchive 草稿态新增「确认归档」按钮（`worklogPeriodReviewConfirm`），确认后刷新详情/列表；草稿提示确认后锁定，已确认仍禁止覆盖；重新生成沿用 `.bak` 备份。
+- 测试：`cargo test --offline --lib -- --test-threads=1` → 1276 passed / 0 failed / 1 ignored（删除 12 项已下线的摘要测试）；`npx tsc --noEmit`、`npm run build`、`npm test` 88/88（Node 22.23.4 同）；`verify_home_work_0244.py` 31/31、`verify_hardening_2043.py` 77/77、`verify_reading_004_formats.py` 19/19、`verify_reading_entity_2043.py` 7/7。
+- 未验证：真实窗口通知弹层视觉与任务计数、真实待确认/到期数据、复盘确认后的列表刷新手感；旧历史摘要文件仅保留未清理。未提交、未推送。
+
+## OD-PERF-0245 执行记录（ARCHITECT 亲自实施，2026-11-20）
+
+- 基线：OD-HOME-0245 未提交工作区（0.2.44 已发布）。
+- 引擎轮询：新增 `engine_describe_if_running`（只读、spawn_blocking）；App 首探与 5 秒轮询不再启动引擎，仅启动后单次预热；`engineLabel` 不再显示未暴露的版本。
+- 编码：`child_env` 注入 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8:replace`；`serve.main` 重配 stdin/stdout；`web_api_adapter.Popen` 显式 UTF-8 解码；Rust 两个读取线程改 `read_until` + `from_utf8_lossy`，新增坏字节单测。
+- `getpgrp`：`current_pgid` 非 POSIX 返回 0，`AttributeError`/`OSError` 都回退 0；新增 2 项 Python 单测。
+- 分段计时：`ChatMessage.timing` 记录 `classifyMs/materialMs/submitMs`；路由提交使用原始 `ctx.startedAtMs`，消息显示「判定 / 素材 / 提交」，保留「首字」「总耗时」。
+- 测试：Rust 全量 1277 passed / 0 failed / 1 ignored；`npm test` 88/88；`npm run build` 通过；`verify_review_perf_0245.py` 21/21、`verify_home_work_0244.py` 31/31；process_owner 18/18、web-api 105/105。
+- 未验证：Windows 实机 150 秒目标、真实引擎重启次数与 GBK 输出；分段计时只覆盖前端可观测段，模型内部排队仍以 TTFT 近似。未提交、未推送。

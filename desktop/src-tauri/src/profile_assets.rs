@@ -94,7 +94,6 @@ const DISCIPLINE_SKILLS: &[&str] = &[
     "material-writing",
     "memory-agent",
     "memory-report",
-    "daily-summary",
     "period-review",
     "project-agent",
 ];

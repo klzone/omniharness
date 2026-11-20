@@ -9,6 +9,8 @@ import type {
 } from "../types";
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 import { WindowControls } from "./WindowChrome";
+import { NotificationCenter } from "./NotificationCenter";
+import type { Scene } from "./Dock";
 
 /**
  * 顶栏（OD-ARCH-072 首页改版）。
@@ -20,7 +22,7 @@ import { WindowControls } from "./WindowChrome";
  * 3. 时钟仍是自持状态的小组件，tick 只重渲染这一小块，不影响品牌与按钮。
  *
  * 诚实性约束：
- * - 全局搜索、通知在本版本**尚未实现**，一律禁用并标注「未实现」，不做假入口；
+ * - 全局搜索已实现；通知与待办只聚合宿主已有的待确认写入、到期任务与到点复盘；
  * - 「LOCAL IPC ACTIVE」来自真实引擎健康状态；
  * - Profile 列表来自宿主对隔离数据根的读盘结果；读不到就显示原因，
  *   不伪造可选 Profile，也不把「保存成功」说成「已切换」。
@@ -759,6 +761,7 @@ export interface TopNavProps {
   engineHealthy: boolean | null;
   engineLabel: string;
   onOpenSettings: () => void;
+  onNavigate: (scene: Scene) => void;
   /** 顶栏切换 Profile 成功后的回调（OD-ARCH-110）：让 App 重读场景声明。 */
   onProfileChanged?: () => void;
   searchQuery?: string;
@@ -774,6 +777,7 @@ export function TopNav({
   engineHealthy,
   engineLabel,
   onOpenSettings,
+  onNavigate,
   onProfileChanged,
   searchQuery = "",
   onSearchQueryChange,
@@ -918,14 +922,7 @@ export function TopNav({
             <Icon name="settings" className="w-[19px] h-[19px]" />
           </button>
 
-          <button
-            disabled
-            className="neu-icon-btn w-8 h-8 rounded-full text-on-surface-variant flex items-center justify-center cursor-not-allowed"
-            data-hover-hint="未实现：通知与待办"
-            aria-label="未实现：通知与待办"
-          >
-            <Icon name="bell" className="w-[19px] h-[19px]" />
-          </button>
+          <NotificationCenter onNavigate={onNavigate} />
 
           {/* OD-ARCH-078 S2：删掉账户头像占位块——本版本没有身份系统，
               摆一个假头像只会让人以为已经登录。 */}

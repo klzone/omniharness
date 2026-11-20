@@ -553,3 +553,40 @@
 
 **提交后 CI 修正（2026-11-20）：** 首轮 Linux test job 失败两项，均与本轮功能无关但阻断发布：①`newest_session_file` 用 `as_secs()` 比较 mtime，同一秒内两张会话表相等，改为 `as_nanos()`（单测 `newest_session_prefers_latest_mtime`）；②附件禁区含宽泛片段 `omniharness`，GitHub runner 的仓库路径 `/home/runner/work/omniharness/omniharness` 使仓库内 AGENTS.md 被误拒，按既有「附件可读仓库文档」的契约从附件禁区移除该项（DSH/agent 数据仍由 `.dsh`/`deepseek-harness` 等拦截）。第二轮暴露 Node 22 不接受 `--test src` 目录参数，`npm test` 改为 `node --experimental-strip-types --test` 让其自行递归发现 `.test.mjs`；第三轮暴露 `workIntent.test.mjs` 中三个测试误嵌套在父测试内，Node 22 在父测试结束后取消子测试，已补上父测试的收尾并移除多余括号。Node 22.23.4 与本机均 88/88。本机全量复跑 1288 passed / 0 failed / 1 ignored。
 
+## OD-HOME-0245 复核（2026-11-20，ARCHITECT 实施并复核）：通过（脚本/静态范围）
+
+**范围：** 首页阅读统计显隐、当日摘要下线、引擎状态文案、顶栏通知与待办、周复盘确认入口。
+
+**源码事实：**
+1. `HomeCanvas` 的阅读统计槽位包在 `conversationStarted ? null` 内；有任一对话消息后不再渲染，空对话仍保留统计与标语。
+2. 当日摘要从产品面完整移除：前端 `dailySummary.ts`、HomeChat 摘要上下文/确认/落盘、WorkRecordLibrary 摘要入口/卡片、conversationPrompt daily-summary、workIntent/workIntentDecision 意图均删除；宿主 `daily_summary.rs` 与两条命令/注册删除；内置 Skill 清单、seed、样本 rules 解绑并删除 `skills/daily-summary`。历史摘要文件未删除。
+3. 引擎状态新增 `engineLabels.ts`：`dsh-web-api · unknown · compatible` 显示为「DSH Web API · 版本未知 · 协议兼容」；`unknown` 只表示 web-api 不暴露版本，不等于不兼容。顶栏与 EngineTechSlice 共用该映射。
+4. `NotificationCenter` 聚合 pending 待确认写入、到期/逾期/待确认任务、未完成任务总览与 `review_due`；徽标、空态、读取失败提示、点击跳转齐全；TopNav 未实现占位移除，App 传入 `selectScene`。
+5. `ReviewArchive` 草稿态新增「确认归档」按钮，调用 `worklogPeriodReviewConfirm` 后重读详情并刷新列表；确认后锁定不可覆盖；重新生成仍走既有 `.bak` 备份与草稿覆盖路径。
+6. `verify_home_work_0244.py` 31 项覆盖上述 UI/代码事实；`verify_hardening_2043.py` 的命令基线增加「已下线两条摘要命令」的显式允许集合，其余命令仍一一对应。
+
+**ARCHITECT 实跑：**
+- `cargo test --offline --lib -- --test-threads=1`：1276 passed / 0 failed / 1 ignored（删除 12 项随功能下线的摘要测试）。
+- `npx tsc --noEmit`、`npm run build`、`npm test` 88/88；Node 22.23.4 亦 88/88。
+- `verify_home_work_0244.py` 31/31、`verify_hardening_2043.py` 77/77、`verify_reading_004_formats.py` 19/19、`verify_reading_entity_2043.py` 7/7。
+
+**结论：** 本轮微调通过验收。剩余未验证：真实窗口通知弹层的密度与计数、真实任务/待确认数据、复盘确认后列表刷新的手感；未提交、未推送。
+
+## OD-PERF-0245 复核（2026-11-20，ARCHITECT 实施并复核）：通过（单元/静态范围）
+
+**范围：** 周复盘 278 秒的引擎重启、编码冲突、getpgrp 失败与分段计时。
+
+**源码事实：**
+1. `engine_describe_if_running` 只返回已初始化描述，不触达 `ensure_initialized`；App 首探与轮询走它，只在启动后单次 `engine_describe` 预热；失败不在 5 秒轮询里重试。
+2. 编码统一覆盖四层：宿主 `child_env` 固定 `PYTHONUTF8`/`PYTHONIOENCODING`；Python `serve.main` 重配 stdin/stdout；DSH `Popen` 显式 `encoding=utf-8, errors=replace`；Rust stdout/stderr 线程按字节读取并容错解码。
+3. `current_pgid` 非 POSIX 返回 0，`AttributeError`/`OSError` 回退 0；`ensure_process_group` 仍只在 POSIX 调用 setsid。
+4. 消息新增 `timing.classifyMs/materialMs/submitMs`；路由提交使用用户提交时刻，总耗时计算不再从任务回执时刻起算；界面并列显示判定/素材/提交、首字与总耗时。
+5. `verify_review_perf_0245.py` 21 项覆盖只读探测、编码、getpgrp、分段计时；`stderr_reader_survives_non_utf8_bytes` 与 process_owner 2 项单测覆盖坏字节和 OSError。
+
+**ARCHITECT 实跑：**
+- `cargo test --offline --lib -- --test-threads=1`：1277 passed / 0 failed / 1 ignored。
+- `npm test` 88/88；`npm run build` 通过；Node 22 下 88/88。
+- process_owner 单测 18/18；web-api 单测 105/105；`verify_review_perf_0245.py` 21/21、`verify_home_work_0244.py` 31/31。
+
+**结论：** 性能修复通过本机验证。150 秒目标必须靠 Windows 实机复测确认；分段计时可定位剩余耗时落在判定、素材、提交/排队、首字还是生成。未提交、未推送。
+
