@@ -47,6 +47,7 @@ test("detectPeriodReviewTarget 跨年与月长", () => {
   assert.deepEqual(january, { period: "monthly", start: "2025-12-01", end: "2025-12-31", label: "上月" });
   const february = detectPeriodReviewTarget("上月复盘", new Date("2026-03-10T04:00:00Z"));
   assert.deepEqual(february, { period: "monthly", start: "2026-02-01", end: "2026-02-28", label: "上月" });
+});
 
 test("结构化词表：每个词条的周期与标签", () => {
   for (const entry of PERIOD_REVIEW_TABLE) {
@@ -81,7 +82,6 @@ test("词表中间插入新词不影响既有判定", () => {
   // 用注入后的词表行为等价：新词命中周复盘，邻近的「月度总结」仍是月度。
   assert.deepEqual(detectPeriodReviewTarget("这一周复盘", NOW)?.period, "weekly");
   assert.deepEqual(detectPeriodReviewTarget("月度总结", NOW)?.period, "monthly");
-});
 });
 
 test("detectPeriodReviewTarget 非法输入返回 null", () => {

@@ -551,5 +551,5 @@
 
 **结论：** 阶段 11 通过验收。剩余未验证项为用户真实窗口的字体字形、弹层阴影、字号/对齐切换手感与真实 enclosure 播放；提交与推送待用户另行授权。
 
-**提交后 CI 修正（2026-11-20）：** 首轮 Linux test job 失败两项，均与本轮功能无关但阻断发布：①`newest_session_file` 用 `as_secs()` 比较 mtime，同一秒内两张会话表相等，改为 `as_nanos()`（单测 `newest_session_prefers_latest_mtime`）；②附件禁区含宽泛片段 `omniharness`，GitHub runner 的仓库路径 `/home/runner/work/omniharness/omniharness` 使仓库内 AGENTS.md 被误拒，按既有「附件可读仓库文档」的契约从附件禁区移除该项（DSH/agent 数据仍由 `.dsh`/`deepseek-harness` 等拦截）。第二轮暴露 Node 22 不接受 `--test src` 目录参数，`npm test` 改为 `node --experimental-strip-types --test` 让其自行递归发现 `.test.mjs`（本机 88/88）。本机全量复跑 1288 passed / 0 failed / 1 ignored。
+**提交后 CI 修正（2026-11-20）：** 首轮 Linux test job 失败两项，均与本轮功能无关但阻断发布：①`newest_session_file` 用 `as_secs()` 比较 mtime，同一秒内两张会话表相等，改为 `as_nanos()`（单测 `newest_session_prefers_latest_mtime`）；②附件禁区含宽泛片段 `omniharness`，GitHub runner 的仓库路径 `/home/runner/work/omniharness/omniharness` 使仓库内 AGENTS.md 被误拒，按既有「附件可读仓库文档」的契约从附件禁区移除该项（DSH/agent 数据仍由 `.dsh`/`deepseek-harness` 等拦截）。第二轮暴露 Node 22 不接受 `--test src` 目录参数，`npm test` 改为 `node --experimental-strip-types --test` 让其自行递归发现 `.test.mjs`；第三轮暴露 `workIntent.test.mjs` 中三个测试误嵌套在父测试内，Node 22 在父测试结束后取消子测试，已补上父测试的收尾并移除多余括号。Node 22.23.4 与本机均 88/88。本机全量复跑 1288 passed / 0 failed / 1 ignored。
 
