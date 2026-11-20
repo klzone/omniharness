@@ -3172,31 +3172,83 @@ fn media_mime_allowed(mime: &str) -> bool {
 
 const REMOTE_IMAGE_MAX_BYTES: usize = 8 * 1024 * 1024;
 const REMOTE_IMAGE_TIMEOUT: Duration = Duration::from_secs(10);
-const REMOTE_IMAGE_ALLOWED_MIMES: &[&str] = &[
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-    "image/bmp",
-    "image/avif",
-    "image/svg+xml",
-    "video/mp4",
-    "video/webm",
-    "audio/mpeg",
-    "audio/mp4",
-    "audio/aac",
-    "audio/ogg",
-    "audio/wav",
-    "audio/flac",
-];
-
+/// 响应类型判定只按一级类型（OD-HARDEN-2043R）：image/*、audio/*、video/* 都接受，
+/// 避免站点用 image/x-png、image/heic、image/tiff 等子类型时被误判为不支持。
 fn remote_image_mime(content_type: &str) -> Option<String> {
     let mime = content_type.split(';').next()?.trim().to_ascii_lowercase();
-    if REMOTE_IMAGE_ALLOWED_MIMES.contains(&mime.as_str()) {
+    if mime.starts_with("image/") || mime.starts_with("audio/") || mime.starts_with("video/") {
         Some(mime)
     } else {
         None
     }
+}
+
+/// 有些站点把图片当 application/octet-stream 或干脆不给 Content-Type，
+/// 这时按文件头识别常见图片格式，识别不出来才拒绝。
+fn sniff_media_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG") {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        return Some("image/webp");
+    }
+    if bytes.starts_with(b"\x89PNG") {
+        return Some("image/png");
+    }
+    if bytes.len() > 2 && bytes[0] == b'B' && bytes[1] == b'M' {
+        return Some("image/bmp");
+    }
+    if bytes.get(4..8) == Some(b"ftyp") && bytes.get(8..12) == Some(b"avif") {
+        return Some("image/avif");
+    }
+    None
+}
+
+/// 从网页里找 og:image / twitter:image，供「图片地址实际是一个网页」时回退一次。
+fn og_image_from_html(html: &str, base: &reqwest::Url) -> Option<reqwest::Url> {
+    let lower = html.to_ascii_lowercase();
+    for marker in ["og:image", "twitter:image"] {
+        let mut index = 0usize;
+        while let Some(pos) = lower[index..].find(marker) {
+            let start = index + pos;
+            index = start + marker.len();
+            let tag_start = lower[..start].rfind("<meta").unwrap_or(start);
+            let tag_end = lower[index..].find('>').map(|p| index + p).unwrap_or(html.len());
+            let attrs = &html[tag_start..tag_end.min(html.len())];
+            if let Some(value) = attr_value(attrs, "content") {
+                let candidate = base.join(value.trim()).ok()?;
+                if matches!(candidate.scheme(), "http" | "https") {
+                    return Some(candidate);
+                }
+            }
+            if index >= lower.len() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// 从标签片段里取 attr="..." 的值（单双引号都支持，大小写不敏感）。
+fn attr_value<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let lower = tag.to_ascii_lowercase();
+    let pos = lower.find(name)?;
+    let rest = &tag[pos + name.len()..];
+    let eq = rest.find('=')?;
+    let after = rest[eq + 1..].trim_start();
+    let mut chars = after.chars();
+    let quote = chars.next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let body = &after[1..];
+    body.find(quote).map(|end| &body[..end])
 }
 
 /// RSS 正文里的远程图片（OD-READ-002 阶段 6）。
@@ -3215,6 +3267,7 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
         return Err("只允许读取 http/https 图片。".to_string());
     }
     let mut hops = 0usize;
+    let mut og_tried = false;
     loop {
         let addrs = crate::net_guard::assert_url_addresses(&current, crate::net_guard::NetPolicy::PublicOnly)?;
         let client = crate::net_guard::pin_client(
@@ -3232,7 +3285,7 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
             .get(current.clone())
             .header(
                 reqwest::header::ACCEPT,
-                "image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif,image/svg+xml,audio/*,video/mp4,video/webm",
+                "image/*,audio/*,video/*,*/*;q=0.1",
             )
             .send()
             .map_err(|e| {
@@ -3274,9 +3327,8 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .unwrap_or("");
-        let mime = remote_image_mime(content_type)
-            .ok_or_else(|| format!("响应不是支持的媒体类型：{}。", content_type.trim()))?;
+            .unwrap_or("")
+            .to_string();
         let declared = response
             .headers()
             .get(reqwest::header::CONTENT_LENGTH)
@@ -3304,6 +3356,34 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
                 REMOTE_IMAGE_MAX_BYTES / 1024 / 1024
             ));
         }
+        let mime = match remote_image_mime(&content_type) {
+            Some(mime) => mime,
+            None => {
+                // 站点把图片地址重定向到了网页：按 og:image 再试一次（只回退一次）。
+                if content_type.to_ascii_lowercase().starts_with("text/html") && !og_tried {
+                    og_tried = true;
+                    let html = String::from_utf8_lossy(&bytes);
+                    if let Some(next) = og_image_from_html(&html, &current) {
+                        if !crate::net_guard::rejects_scheme_downgrade(&current, &next)
+                            && matches!(next.scheme(), "http" | "https")
+                        {
+                            current = next;
+                            hops += 1;
+                            continue;
+                        }
+                    }
+                    return Err("目标返回的是网页而不是图片（未找到可用的 og:image）。".to_string());
+                }
+                sniff_media_mime(&bytes)
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        format!(
+                            "响应不是支持的媒体类型：{}。",
+                            content_type.trim()
+                        )
+                    })?
+            }
+        };
         return Ok(ReadingMediaPayload {
             mime,
             bytes: bytes.len(),
@@ -6070,14 +6150,73 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
         assert!(error.contains("禁止范围"), "{error}");
     }
 
+    fn serve_media_sequence(
+        responses: Vec<(String, String, Vec<u8>)>,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            for (status, headers, body) in responses {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let cloned = stream.try_clone().unwrap();
+                let mut reader = BufReader::new(cloned);
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                }
+                let head = format!(
+                    "{status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        (format!("http://{addr}/page"), handle)
+    }
+
+    #[test]
+    fn remote_media_follows_og_image_when_url_is_a_web_page() {
+        let html = b"<html><head><meta property=\"og:image\" content=\"/img.png\"></head></html>".to_vec();
+        let (url, handle) = serve_media_sequence(vec![
+            ("HTTP/1.1 200 OK".to_string(), "Content-Type: text/html; charset=utf-8\r\n".to_string(), html),
+            ("HTTP/1.1 200 OK".to_string(), "Content-Type: image/png\r\n".to_string(), b"\x89PNG\r\n".to_vec()),
+        ]);
+        crate::net_guard::allow_loopback_in_tests(true);
+        let payload = read_remote_media(&url);
+        crate::net_guard::allow_loopback_in_tests(false);
+        handle.join().unwrap();
+        let payload = payload.expect("og:image 回退应成功");
+        assert_eq!(payload.mime, "image/png");
+        assert_eq!(payload.bytes, 6);
+    }
+
+    #[test]
+    fn remote_media_sniffs_unknown_content_type() {
+        let (url, handle) = serve_media_sequence(vec![
+            ("HTTP/1.1 200 OK".to_string(), "Content-Type: application/octet-stream\r\n".to_string(), b"\x89PNG\r\n".to_vec()),
+        ]);
+        crate::net_guard::allow_loopback_in_tests(true);
+        let payload = read_remote_media(&url);
+        crate::net_guard::allow_loopback_in_tests(false);
+        handle.join().unwrap();
+        let payload = payload.expect("按文件头应识别为 png");
+        assert_eq!(payload.mime, "image/png");
+    }
+
     #[test]
     fn remote_media_rejects_non_http_scheme_and_non_image_type() {
         assert!(read_remote_media("file:///etc/passwd").is_err());
         assert!(read_remote_media("data:image/png;base64,AAAA").is_err());
         let (url, handle) = serve_media_once(
             "HTTP/1.1 200 OK",
-            "Content-Type: text/html\r\n",
-            b"<html></html>".to_vec(),
+            "Content-Type: application/json\r\n",
+            b"{\"ok\":true}".to_vec(),
         );
         crate::net_guard::allow_loopback_in_tests(true);
         let error = read_remote_media(&url).unwrap_err();

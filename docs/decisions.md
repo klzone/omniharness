@@ -5,7 +5,30 @@
 
 ## 已确定
 
-+### D-108（2026-11-20，OD-HARDEN-2043-C 已实施）：外联 URL 统一校验，私网按用途分档
+### D-109（2026-11-20，DSH 运行时升级）：核心从 0.2.1-rc.5 升到 0.2.2-rc.5
+
+**状态：** 已实施（`runtime/RUNTIME.lock`、`runtime/dsh-runtime.package.json`、`runtime/dsh-runtime.package-lock.json`、`desktop/src-tauri/src/platform.rs`、README/脚本/发布说明的 Node 文案）。真实模型任务与 golden_tasks 由用户实机验证。
+
+**决策：**
+1. 运行时锁定 `@deepseek-ai/dsh 0.2.2-rc.5`（tag `dsh-v0.2.2-rc.5`，commit `9c2670d3bce5275e0d1610272958121af87787bb`），DSH 依赖树由 `runtime/dsh-runtime.package-lock.json`（744 个包）固定，bootstrap 用 `npm ci`。
+2. `@deepseek-ai/dsh` 0.2.2 自带 `engines.node >= 24.9.0`，应用侧 Node 最低版本从「主版本 ≥ 22」改为「主/次版本 ≥ 24.9」，并同步 README、发布说明、`build-portable-package.sh`、`bootstrap-runtime.sh`、开发脚本注释与接口审计文档。代价是 Node 22 用户必须先升级 Node。
+3. 三个 profile 的 `profile-lock.json` 重新生成后内容未变（它们只锁第三方插件；`@deepseek-ai/dsh-base`/`dsh-web-app` 由 DSH 按自身版本装入）。
+
+**集成面验证（旁路，不改本机运行目录）：**
+- 临时目录用本次提交的 lock 执行 `npm ci` 成功，`dsh --version` 输出 `0.2.2-rc.5`。
+- `dsh web --profile web --port 0 --no-open` 仍打印 `dsh web: http://127.0.0.1:<port>/?token=…`，地址为回环，符合 T7 收紧后的解析。
+- 令牌交换仍是 303 + `Set-Cookie`；cookie 名由 `dsh_auth` 变为 `dsh-auth-<随机>`，适配层按 `Set-Cookie` 通用解析，不受影响。
+- `session/create|follow|prompt|cancel|fork|selectModel|modelCatalog`、`credentials/describe|set|unset`、`llm/discoverModels` 在 0.2.2 包中均存在；`dsh plugin --profile … add` 参数不变。
+- 插件 peer 范围兼容：`dsh-cost-meter@1.9.6`、`dsh-free-search@0.9.5` 要求 `>=0.2.0-rc.1 <0.3.0`；0.2.2 带 cordis 4.1，满足 `^4.0.1`。
+
+**未验证：** 真实模型任务（含工具调用）、设置窗、订阅拉取与导出；`diagnostics.rs` 假设的 `session.v4.jsonl` 存档格式是否仍成立；`tests/golden_tasks` 与隔离自检。
+
+**回滚：** 恢复 `RUNTIME.lock` 与 `runtime/dsh-runtime.package*.json` 到 0.2.1-rc.5 的提交后重跑 bootstrap；应用侧 Node 检查可同时回退到 ≥22。
+
+**复审触发：** 0.2.2 正式版发布；DSH 会话存档格式或 `dsh web` 公告/鉴权格式变化；Node 24.9 覆盖率仍低时重新评估。
+
+
+### D-108（2026-11-20，OD-HARDEN-2043-C 已实施）：外联 URL 统一校验，私网按用途分档
 
 **状态：** 已实施（`desktop/src-tauri/src/net_guard.rs`、`rss_store.rs` 的 `feed_client`/`fetch_feed_xml`/`allow_private_feeds`、`task_shell.rs::read_remote_media`、`lib.rs` 的 `rss_settings_get`/`rss_settings_set_allow_private_feeds`、`desktop/src/shell/ReadingPage.tsx` 的开关）。Linux CI 与真实窗口未验证。
 
@@ -20,6 +43,11 @@
 **证据：** `net_guard` 7 个表驱动单测（各类禁止段、`::ffff:127.0.0.1`、`::ffff:169.254.169.254`、ULA、CGNAT、URL 形态）；`rss_store` 新增 `feed_redirect_to_link_local_is_rejected`、`feed_redirect_over_limit_is_rejected`；`task_shell` 新增 `remote_media_rejects_loopback_address_without_test_hook`；既有本机回环单测改走 `#[cfg(test)]` 的线程局部放行入口。
 
 **复审触发：** ①reqwest 对系统代理的处理方式变化；②需要支持 HTTP 代理下的钉扎（例如改用 `proxy(Proxy::all(...))` 并自行校验代理地址）；③用户要求订阅源支持非 http(s) 协议；④出现需要放行 IPv6 公网以外的特殊网段（如运营商级 NAT 以外的地址）时，单独评估策略。
+
+**补充（2026-11-21，0.2.46）：** 实机反馈两处过严，按以下口径放宽后重新验收：
+1. 订阅源抓取上限从 2 MiB 提到 8 MiB（实测有 3.8 MB 与 10 MB 的正常 feed 被判超限；10 MB 仍拒绝）。
+2. 订阅源允许**同主机**的 https→http 重定向（不少老博客只提供 http）；跨主机降级仍拒绝。远程图片的重定向保持严格，不做降级。
+3. 远程图片类型改为接受任意 `image/*`、`audio/*`、`video/*`；Content-Type 缺失或为 `application/octet-stream` 时按文件头识别常见图片；图片地址实际返回网页时按 `og:image`/`twitter:image` 回退一次再取图。
 
 ### D-107（2026-11-17，OD-ARCH-173 阶段 5 已实施）：配置解释只读元数据，复用现有通道
 

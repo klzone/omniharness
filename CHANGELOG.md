@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.46] - 2026-11-21
+
+### Changed
+- DSH 运行时升级到 0.2.2-rc.5（commit 9c2670d3）；Node 最低要求同步提高到 24.9，README、发布说明、bootstrap 与构建脚本一致更新。
+- 订阅源单次抓取上限从 2 MiB 提到 8 MiB，避免大 feed 被误判超限。
+- 订阅源重定向允许同一主机的 https→http（老博客常见），跨主机降级仍然拒绝。
+- 远程图片接受任意 image/*、audio/*、video/*；Content-Type 不明确时按文件头识别；图片地址实际返回网页时回退读取 og:image。
+
+### Fixed
+- RSS 阅读页图片提示「响应不是支持的媒体类型：text/html」后无法显示。
+
 ## [0.2.45] - 2026-11-20
 
 ### Changed

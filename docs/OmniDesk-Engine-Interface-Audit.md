@@ -45,7 +45,7 @@
 | 源 tag | `dsh-v0.2.1-alpha.2` | `static`（`runtime/RUNTIME.lock`） |
 | commit | `d743267388641bc76f17c45ce8b4c231aed1d32c` | `static` |
 | npm 包 | `@deepseek-ai/dsh@0.2.1-alpha.2` | `static` |
-| node engine | `^22.19.0 || >=24.0.0` | `static` |
+| node engine | `>=24.9.0` | `static` |
 | 安装目录 | `runtime/dsh-runtime`（gitignore） | `static` |
 | 实测版本 | `--version` -> `0.2.1-alpha.2` | `script`（`evidence/raw/A0-version.txt`） |
 

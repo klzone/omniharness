@@ -199,10 +199,11 @@ pub fn environment_report() -> EnvironmentReport {
     let node = match resolve_node() {
         Ok(path) => {
             let version = run_version(&path, &["--version"]);
+            // OD-HARDEN-2043R：DSH 0.2.2 声明 engines.node >= 24.9.0，这里同步。
             let ok = version
                 .as_deref()
-                .and_then(node_major)
-                .map(|major| major >= 22)
+                .and_then(node_major_minor)
+                .map(|(major, minor)| (major, minor) >= (24, 9))
                 .unwrap_or(false);
             DependencyStatus {
                 name: "node",
@@ -210,7 +211,7 @@ pub fn environment_report() -> EnvironmentReport {
                 found: true,
                 path: Some(path),
                 version,
-                requirement: "Node.js 22+",
+                requirement: "Node.js 24.9+",
                 hint: "版本低于 22 时 DSH 底座无法运行。装好新版后重启 OmniDesk；也可以设置 OMNIDESK_NODE 指向 node 的绝对路径。",
                 download: "https://nodejs.org",
             }
@@ -221,8 +222,8 @@ pub fn environment_report() -> EnvironmentReport {
             found: false,
             path: None,
             version: None,
-            requirement: "Node.js 22+",
-            hint: "安装 Node.js 22 或更高版本后重启 OmniDesk；也可以设置 OMNIDESK_NODE 指向 node 的绝对路径。",
+            requirement: "Node.js 24.9+",
+            hint: "安装 Node.js 24.9 或更高版本后重启 OmniDesk；也可以设置 OMNIDESK_NODE 指向 node 的绝对路径。",
             download: "https://nodejs.org",
         },
     };
@@ -434,6 +435,15 @@ fn node_major(version: &str) -> Option<u32> {
         .next()?
         .parse()
         .ok()
+}
+
+/// `v24.9.1` → (24, 9)；DSH 0.2.2 的引擎下限按主/次版本比较。
+fn node_major_minor(version: &str) -> Option<(u32, u32)> {
+    let trimmed = version.trim().trim_start_matches('v');
+    let mut parts = trimmed.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some((major, minor))
 }
 
 /// `3.12.4` → (3, 12)。
@@ -707,7 +717,7 @@ pub fn resolve_node() -> Result<String, String> {
         }
     }
     Err(concat!(
-        "未找到 node。OmniDesk 需要 Node.js 22+ 才能驱动 DSH 引擎。",
+        "未找到 node。OmniDesk 需要 Node.js 24.9+ 才能驱动 DSH 引擎。",
         "请安装 Node.js（https://nodejs.org），",
         "或在系统设置中为 OmniDesk 设置 OMNIDESK_NODE 环境变量指向 node 的绝对路径。"
     )
@@ -1178,6 +1188,9 @@ mod tests {
         assert_eq!(node_major("  24.0.0\n"), Some(24));
         assert_eq!(node_major(""), None);
         assert_eq!(node_major("not-a-version"), None);
+        assert_eq!(node_major_minor("v24.9.1"), Some((24, 9)));
+        assert_eq!(node_major_minor("22.19.0"), Some((22, 19)));
+        assert!(node_major_minor("22.19.0").unwrap() < (24, 9));
     }
 
     #[test]
@@ -1296,7 +1309,8 @@ mod tests {
         let report = environment_report();
         for item in [&report.node, &report.python] {
             assert!(item.found || !item.ok, "{}：ok 不能先于 found", item.name);
-            assert!(item.requirement.contains("3.10") || item.requirement.contains("22"));
+            // OD-HARDEN-2043R：Node 最低版本随 DSH 0.2.2 抬到 24.9。
+            assert!(item.requirement.contains("3.10") || item.requirement.contains("24.9"));
             assert!(item.download.starts_with("https://"));
             assert!(!item.hint.is_empty());
             if !item.ok {

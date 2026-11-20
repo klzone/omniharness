@@ -112,7 +112,11 @@ def main() -> int:
     check("net_guard_pins_resolved", "fn pin_client(" in guard and ".resolve(" in guard)
     check("rss_manual_redirect", "redirect::Policy::none()" in rss and "MAX_FEED_REDIRECTS" in rss)
     check("rss_revalidates_each_hop", "assert_url_addresses(url, policy)" in rss)
-    check("rss_denies_https_downgrade", "rejects_scheme_downgrade" in rss)
+    # 0.2.46：同主机降级放行，跨主机仍拒绝（判定在 net_guard::downgrade_permitted）。
+    check(
+        "rss_downgrade_policy",
+        "downgrade_permitted" in rss and "downgrade_permitted" in guard,
+    )
     check("rss_private_toggle_persisted", "allow_private_feeds" in rss)
     reading_cmd = (SRC / "commands" / "reading.rs")
     reading_src = reading_cmd.read_text(encoding="utf-8") if reading_cmd.is_file() else ""

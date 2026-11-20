@@ -10,7 +10,7 @@
 #   2. 版本来自 runtime/RUNTIME.lock，而不是「最新版」，保证可复现。
 #   3. 绝不触碰 ~/.dsh、~/.agents 或系统 Desktop 安装。
 #   4. 已安装且版本一致时直接跳过，不重复下载。
-#   5. 需要网络与 node（>=22.19）；不满足时明确报错，不做任何降级猜测。
+#   5. 需要网络与 node（>=24.9）；不满足时明确报错，不做任何降级猜测。
 #
 # 用法:
 #   scripts/bootstrap-runtime.sh            # 安装/校验锁定版本底座
@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f "$LOCK_FILE" ] || die "缺少锁定文件：$LOCK_FILE"
-command -v node >/dev/null 2>&1 || die "未找到 node（需要 ^22.19.0 或 >=24）。"
+command -v node >/dev/null 2>&1 || die "未找到 node（需要 >=24.9）。"
 command -v npm  >/dev/null 2>&1 || die "未找到 npm。"
 
 # 从 RUNTIME.lock 读取版本（只取 runtime: 段的 version:）

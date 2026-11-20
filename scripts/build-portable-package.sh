@@ -130,7 +130,7 @@ OmniDesk 免安装版
 =================
 
 一、运行前需要装两样东西（只需一次）
-  1. Node.js 22.19 以上：https://nodejs.org
+  1. Node.js 24.9 以上：https://nodejs.org
   2. Python 3.10 以上：https://www.python.org
   装好后直接启动即可；OmniDesk 启动时会自检，缺哪一样会在窗口里列出来，
   并给出下载页，不会只闪一下就没。

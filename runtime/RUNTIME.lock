@@ -17,13 +17,15 @@
 
 source:
   repo: https://github.com/deepseek-ai/deepseek-harness.git
-  tag: dsh-v0.2.1-rc.5
-  commit: b830ec950faba0a46dda564be3e2d854afed94f1
+  tag: dsh-v0.2.2-rc.5
+  commit: 9c2670d3bce5275e0d1610272958121af87787bb
 
 runtime:
   npm_package: "@deepseek-ai/dsh"
-  version: 0.2.1-rc.5
-  node_engine: "^22.19.0 || >=24.0.0"
+  version: 0.2.2-rc.5
+  # 0.2.2 起 @deepseek-ai/dsh 自身声明 engines.node >= 24.9.0；
+  # 应用侧的 Node 最低版本检查与之对齐（platform::environment_report）。
+  node_engine: ">=24.9.0"
   install_dir: runtime/dsh-runtime   # 由 bootstrap 脚本生成，已被 .gitignore 排除
 
 verified:

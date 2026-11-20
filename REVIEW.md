@@ -1,3 +1,12 @@
+# DSH 0.2.2-rc.5 升级复核（2026-11-20，ARCHITECT 实施并复核）——本机范围通过，实机任务待用户验证
+
+**对象：** `runtime/RUNTIME.lock`、`runtime/dsh-runtime.package*.json`、`platform.rs` 的 Node 门槛、README/脚本/发布说明、`docs/decisions.md` D-109。
+
+**实跑证据：** 提交的 lock 在临时目录 `npm ci` 成功，`dsh --version` = `0.2.2-rc.5`；`dsh web` 公告与 303 鉴权实测兼容；`cargo test --lib` 1277 passed / 0 failed / 1 ignored；`npm run test` 88/88；`npm run build` 通过；`test_web_api_unit.py` 105 tests OK；验证脚本 77/77、7/7。
+
+**结论：** 升级已落地，集成面（启动参数、公告、鉴权、RPC、插件 peer）在本机核对兼容；Node 门槛同步到 24.9。未验证：真实模型任务、设置窗、订阅与导出、`session.v4` 存档格式、golden_tasks、CI 用 Node 24 的完整构建。回滚方式写在 D-109。
+
+
 # OD-HARDEN-2043 复核（2026-11-20，ARCHITECT 实施并复核）——A/C/B/E 通过（静态/脚本范围）；D 仅第 1 步，未完成
 
 **复核对象：** 发布门禁（`release.yml`）、外联 URL 校验（`net_guard.rs` + `rss_store` + `task_shell::read_remote_media`）、宿主授权（`host_access.rs` + 八个命令 + 四个前端入口）、小项加固（`writing_parse` 超时、实体检查、unwrap 清理）、`lib.rs` 拆分第 1 步。

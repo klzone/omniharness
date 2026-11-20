@@ -1,5 +1,38 @@
 # 执行状态
 
+## 0.2.46：RSS 图片与订阅源兼容修复（ARCHITECT 亲自执行，2026-11-21）
+
+- 触发：实机反馈阅读页提示「图片读取失败：响应不是支持的媒体类型：text/html」，以及部分订阅源报错。
+- 事实（只读核对 `~/OmniDesk/reading/rss/subscriptions.json`，49 个源中 13 个有 `last_error`）：绝大多数是远端问题（超时 2、DNS 失败 1、404 3、403 1、连接失败 2）；属于本地规则过严的有 3 个——1 个同主机 https→http 降级被拒、2 个 feed 体积 3.8 MB / 10 MB 超过 2 MiB 上限。界面上的「回环与 169.254 始终拒绝」是订阅弹窗的静态提示，不是报错。
+- 改动：
+  - `task_shell.rs`：远程媒体接受任意 `image/*`、`audio/*`、`video/*`；Content-Type 缺失或 octet-stream 时按文件头识别（PNG/JPEG/GIF/WebP/BMP/AVIF）；返回 text/html 时按 `og:image`/`twitter:image` 回退一次再取图；Accept 改为 `image/*,audio/*,video/*,*/*;q=0.1`。
+  - `net_guard.rs`：新增 `downgrade_permitted`（同主机 https→http 放行，跨主机拒绝）；远程图片仍用严格判定。
+  - `rss_store.rs`：单次抓取上限 2 MiB → 8 MiB；跳转使用新判定。
+  - `docs/decisions.md` D-108 补充本次放宽口径；`VERSION`/package.json/tauri.conf 升到 0.2.46，CHANGELOG 增加条目。
+- 测试：`cargo test --lib` → 1279 passed / 0 failed / 1 ignored（新增 og:image 回退与文件头识别 2 项）；`npm run test` 88/88；`npm run build` 通过；`verify_hardening_2043.py` 77/77（断言改为 downgrade_permitted）；`verify_reading_entity_2043.py` 7/7。
+- 未验证：真实站点图片的 og:image 回退效果（用合成 HTML 单测覆盖）；8 MiB 上限对 10 MB feed 仍然拒绝（按设计）。
+
+
+## DSH 运行时升级：0.2.1-rc.5 → 0.2.2-rc.5（ARCHITECT 亲自执行，2026-11-20）
+
+- 开工基线：HEAD `cd6b847698`（用户已提交 0.2.45 周复盘性能修复），工作区干净。保留既有改动，未提交。
+- 改动：
+  - `runtime/RUNTIME.lock`：tag `dsh-v0.2.2-rc.5`、commit `9c2670d3bce5275e0d1610272958121af87787bb`、npm 版本 `0.2.2-rc.5`、`node_engine` 改为 `>=24.9.0` 并注释原因。
+  - `runtime/dsh-runtime.package.json` 与 `runtime/dsh-runtime.package-lock.json`：按 0.2.2-rc.5 重新生成（744 个包条目，0.2.1 时为 687）。
+  - `desktop/src-tauri/src/platform.rs`：Node 检查由「主版本 ≥ 22」改为「主/次版本 ≥ 24.9」（新增 `node_major_minor`），环境报告文案与提示同步；更新对应断言。
+  - `README.md`、`.github/workflows/release.yml`（发布说明 + `NODE_VERSION: '24'`）、`scripts/build-portable-package.sh`、`scripts/bootstrap-runtime.sh`、`scripts/omnidesk-dev.sh`、`docs/OmniDesk-Engine-Interface-Audit.md`：Node 要求统一为 24.9+。
+  - `docs/decisions.md`：新增 D-109（决策、集成面证据、未验证项与回滚方式）。
+- 实测（脚本测试）：
+  - 临时目录用本次提交的 lock 执行 `npm ci` → EXIT=0，`dsh --version` → `0.2.2-rc.5`。
+  - 临时目录启动 `dsh web --profile web --port 0 --no-open` → 输出 `dsh web: http://127.0.0.1:<port>/?token=…`（回环），对公告地址发起请求 → `HTTP/1.1 303` + `Set-Cookie: dsh-auth-…`（cookie 名换了，适配层按 Set-Cookie 通用解析）。
+  - `dsh plugin --help` / `dsh web --help`：`--profile`、`--port`、`--no-open` 参数不变。
+  - `session/create|follow|prompt|cancel|fork|selectModel|modelCatalog`、`credentials/describe|set|unset`、`llm/discoverModels` 均能在 0.2.2 包中找到；插件 peer 范围（`>=0.2.0-rc.1 <0.3.0`、cordis `^4.0.1`）与 0.2.2 的 cordis 4.1 兼容。
+  - `cargo test --lib -- --test-threads=1` → `1277 passed; 0 failed; 1 ignored`（当前基线，daily_summary 模块已由用户提交移除）；`npm run test` → 88/88；`npm run build` → 通过；`verify_hardening_2043.py` 77/77；`verify_reading_entity_2043.py` 7/7；`test_web_api_unit.py` 105 tests OK。
+  - profile lock 重新生成后与既有文件逐字节一致（未变），未产生多余改动。
+- 未验证（用户实机测试）：真实模型任务含工具调用、设置窗、订阅拉取、导出；`diagnostics.rs` 假设的 `session.v4.jsonl` 存档格式；`tests/golden_tasks` 与隔离自检；GitHub runner 用 Node 24 构建发布包。
+- 回滚：恢复 `RUNTIME.lock` 与 `runtime/dsh-runtime.package*.json` 到 0.2.1-rc.5 提交并重跑 bootstrap。
+
+
 ## OD-HARDEN-2043R 第二批/第三批/第四批执行记录（ARCHITECT 亲自执行，2026-11-20）
 
 - 基线：HEAD `2046d12d33`，保留前轮 A/C/B/E 与 D 第 1 步的未提交改动。

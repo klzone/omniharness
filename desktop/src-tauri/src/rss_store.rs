@@ -29,7 +29,8 @@ use crate::worklog_records::{is_safe_id, write_new_atomically, write_replace_ato
 
 pub const RSS_SCHEMA: &str = "omnidesk.rss.v1";
 const SUBSCRIPTIONS_FILE: &str = "subscriptions.json";
-const MAX_FETCH_BYTES: usize = 2 * 1024 * 1024;
+/// 单次抓取上限：部分博客的 feed 单篇全文较大（实测有 3–10 MB），2 MiB 会误杀。
+const MAX_FETCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ENTRIES_PARSED: usize = 200;
 const MAX_ENTRIES_KEPT: usize = 50;
 const MAX_ARTICLE_CHARS: usize = 100_000;
@@ -823,7 +824,7 @@ fn fetch_feed_xml(url: &str, policy: crate::net_guard::NetPolicy) -> Result<Stri
             let next = current
                 .join(location)
                 .map_err(|_| "订阅重定向地址无效。".to_string())?;
-            if crate::net_guard::rejects_scheme_downgrade(&current, &next) {
+            if !crate::net_guard::downgrade_permitted(&current, &next) {
                 return Err("订阅地址不允许从 https 降级到 http。".to_string());
             }
             if !matches!(next.scheme(), "http" | "https") {

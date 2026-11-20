@@ -108,6 +108,18 @@ pub fn rejects_scheme_downgrade(from: &Url, to: &Url) -> bool {
     from.scheme() == "https" && to.scheme() == "http"
 }
 
+/// 订阅源专用的降级判定：同主机的 https → http 放行（不少老博客只提供 http），
+/// 跨主机降级仍拒绝，避免被重定向到不安全的另一台主机。
+pub fn downgrade_permitted(from: &Url, to: &Url) -> bool {
+    if !rejects_scheme_downgrade(from, to) {
+        return true;
+    }
+    match (from.host_str(), to.host_str()) {
+        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        _ => false,
+    }
+}
+
 fn deny_reason(ip: IpAddr, policy: NetPolicy) -> Option<&'static str> {
     #[cfg(test)]
     {
@@ -274,5 +286,9 @@ mod tests {
         assert!(rejects_scheme_downgrade(&https, &http));
         assert!(!rejects_scheme_downgrade(&http, &https));
         assert!(!rejects_scheme_downgrade(&https, &https));
+        let other_http = Url::parse("http://other.example.com/feed").expect("http url");
+        assert!(downgrade_permitted(&https, &http), "同主机允许降级");
+        assert!(!downgrade_permitted(&https, &other_http), "跨主机不允许降级");
+        assert!(downgrade_permitted(&http, &http));
     }
 }

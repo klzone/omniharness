@@ -204,7 +204,7 @@ CLI_PREFIX=()
 # 入口 1：Desktop 自带的打包 CLI 本体。bin.js 位于 asar 归档内，因此必须用真实
 # 执行来确认（--version 返回成功即视为可用），而不是用文件存在性判断。
 entry0_version=''
-# 入口 0（首选）：仓库内按锁定版本安装的底座。node 引擎与官方一致（^22.19 || >=24），
+# 入口 0（首选）：仓库内按锁定版本安装的底座。node 引擎与官方一致（>=24.9），
 # 因此不做 node 主版本门槛，只以「能否真实执行 --version」为准。
 if [ -z "$CLI_KIND" ] && [ -f "$OMNIDESK_CLI_ENTRY_0" ] && command -v node >/dev/null 2>&1; then
   set +e
