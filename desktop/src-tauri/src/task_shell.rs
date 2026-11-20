@@ -432,7 +432,6 @@ const ATTACHMENT_FORBIDDEN_PATH_FRAGMENTS: &[&str] = &[
     "/.config/dsh desktop",
     "/.local/share/io.github.hairyf.deepseek-harness-desktop",
     "deepseek-harness",
-    "omniharness",
 ];
 
 pub(crate) fn assert_attachment_path_allowed(path: &Path) -> Result<(), String> {

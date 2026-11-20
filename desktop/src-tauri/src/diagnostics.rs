@@ -165,7 +165,7 @@ fn now_epoch() -> u64 {
 
 /// 最近写入的会话文件：先看 `.zstd`，没有再退到 `.jsonl`。
 fn newest_session_file(root: &Path) -> Option<PathBuf> {
-    let mut best: Option<(u64, PathBuf)> = None;
+    let mut best: Option<(u128, PathBuf)> = None;
     let projects = std::fs::read_dir(root).ok()?;
     for project in projects.flatten() {
         if !project.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -190,7 +190,7 @@ fn newest_session_file(root: &Path) -> Option<PathBuf> {
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
+                .map(|d| d.as_nanos())
                 .unwrap_or(0);
             if best.as_ref().map(|(b, _)| stamp > *b).unwrap_or(true) {
                 best = Some((stamp, candidate));

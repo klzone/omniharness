@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - 新增 `net_guard`、`host_access` 与 `commands/reading.rs` 切片；阅读/RSS 11 条命令从 `lib.rs` 迁出，命令名与注册清单保持一致。
 - DSH runtime、三个 profile 与 Python 依赖改为 lock 文件安装，pnpm 固定 `11.28.11`。
 - 材料读取的禁区文案改为中性描述，不再把只读拒绝误写为“写入”。
+- 诊断会话按纳秒级 mtime 取最新，避免同一秒内写入时误选旧会话；附件读取不再因仓库目录名 `omniharness` 误拒仓库内文档。
 
 ### Verification
 - `cargo test --offline --lib -- --test-threads=1`：1288 通过 / 0 失败 / 1 忽略。
