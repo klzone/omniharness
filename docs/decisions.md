@@ -5,6 +5,22 @@
 
 ## 已确定
 
++### D-108（2026-11-20，OD-HARDEN-2043-C 已实施）：外联 URL 统一校验，私网按用途分档
+
+**状态：** 已实施（`desktop/src-tauri/src/net_guard.rs`、`rss_store.rs` 的 `feed_client`/`fetch_feed_xml`/`allow_private_feeds`、`task_shell.rs::read_remote_media`、`lib.rs` 的 `rss_settings_get`/`rss_settings_set_allow_private_feeds`、`desktop/src/shell/ReadingPage.tsx` 的开关）。Linux CI 与真实窗口未验证。
+
+**决策：**
+1. 外联地址统一走 `net_guard::assert_url_addresses`：只放行 http/https、拒绝带用户名密码、拒绝空主机；解析出的每个地址都要落在允许范围。IPv4 映射的 IPv6 先还原成 IPv4 再判断。
+2. 策略分两档：`PublicOnly` 只允许公网地址；`AllowPrivate` 额外放行 RFC1918 私网、IPv6 ULA（fc00::/7）与 CGNAT（100.64/10）。回环、链路本地（含 169.254.169.254）、未指定、多播、广播在任何策略下都拒绝。
+3. 用途决定档位：订阅源默认 `PublicOnly`，设置里的「允许内网订阅源」开关（默认关，存 `rss/store.json` 的 `allow_private_feeds`）可打开 `AllowPrivate`；正文里的远程图片与媒体固定 `PublicOnly`，不受该开关影响。
+4. 订阅源拉取改为 `redirect::Policy::none()` 加手动跳转，最多 3 跳，每跳重新校验并禁止 https 降级；每跳用 `ClientBuilder::resolve` 钉住已校验地址，防 DNS 重绑定。远程媒体沿用逐跳写法并补上同样的校验与钉扎，上限统一为 8 MiB。
+
+**残余风险（保留）：** 配置了系统代理时，reqwest 把连接交给代理，`resolve` 钉扎对实际目标不生效；逐跳的地址校验仍然有效，但“校验时解析的地址”与“代理最终连接的地址”可能不同。本仓库 reqwest 显式启用了 `system-proxy`。接受该风险，理由是代理本身是用户显式配置的外联路径；不做“检测到代理就拒绝拉取”，以免内网代理环境下的正常订阅完全不可用。
+
+**证据：** `net_guard` 7 个表驱动单测（各类禁止段、`::ffff:127.0.0.1`、`::ffff:169.254.169.254`、ULA、CGNAT、URL 形态）；`rss_store` 新增 `feed_redirect_to_link_local_is_rejected`、`feed_redirect_over_limit_is_rejected`；`task_shell` 新增 `remote_media_rejects_loopback_address_without_test_hook`；既有本机回环单测改走 `#[cfg(test)]` 的线程局部放行入口。
+
+**复审触发：** ①reqwest 对系统代理的处理方式变化；②需要支持 HTTP 代理下的钉扎（例如改用 `proxy(Proxy::all(...))` 并自行校验代理地址）；③用户要求订阅源支持非 http(s) 协议；④出现需要放行 IPv6 公网以外的特殊网段（如运营商级 NAT 以外的地址）时，单独评估策略。
+
 ### D-107（2026-11-17，OD-ARCH-173 阶段 5 已实施）：配置解释只读元数据，复用现有通道
 
 **状态：** 已实施（`desktop/src-tauri/src/diagnostics.rs`、`desktop/src-tauri/src/lib.rs` 的 `diagnostics_metadata`、`desktop/src/SettingsPanel.tsx` 的「配置解释」页、`desktop/src/api.ts`、`desktop/src/types.ts`）；无真实窗口截图（当前会话显示已锁定），真实模型行为未验证。

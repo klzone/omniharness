@@ -1265,5 +1265,55 @@ class TimeoutPolicyTests(unittest.TestCase):
             peer.close()
 
 
+
+class AnnouncementAndPumpTests(unittest.TestCase):
+    """OD-HARDEN-2043 T7：断言只接受回环主机；启动后输出只留最近 200 行。"""
+
+    def test_accepts_loopback_announcement(self):
+        adapter = make_adapter()
+        for raw in (
+            "http://127.0.0.1:1234/?token=x",
+            "http://localhost:1234/?token=x",
+            "http://[::1]:1234/?token=x",
+        ):
+            root, token = adapter._parse_announcement(raw)
+            self.assertEqual(token, "x")
+            self.assertTrue(root.startswith("http://"))
+
+    def test_rejects_non_loopback_without_echoing_token(self):
+        adapter = make_adapter()
+        for raw in (
+            "http://example.com/?token=super-secret-token",
+            "http://10.0.0.5/?token=super-secret-token",
+        ):
+            with self.assertRaises(EngineError) as ctx:
+                adapter._parse_announcement(raw)
+            error = ctx.exception
+            self.assertEqual(error.code, EngineErrorCode.EVENT_PARSE_ERROR)
+            self.assertNotIn("super-secret-token", str(error.detail))
+            self.assertNotIn("super-secret-token", str(error))
+
+    def test_pump_keeps_only_bounded_tail_after_startup(self):
+        import collections
+        import queue
+        import threading
+
+        adapter = make_adapter()
+        startup = queue.Queue()
+        recent = collections.deque(maxlen=200)
+        announced = threading.Event()
+        announced.set()  # 已经拿到地址：后续输出只进有界队列
+
+        lines = (f"line {index}\n" for index in range(100_000))
+        adapter._pump_stdout(lines, startup, recent, announced)
+
+        self.assertEqual(len(recent), 200)
+        self.assertEqual(recent[-1], "line 99999")
+        # 启动后不再往无界队列里塞：只剩 finally 的 None 哨兵。
+        remaining = []
+        while not startup.empty():
+            remaining.append(startup.get_nowait())
+        self.assertEqual(remaining, [None])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

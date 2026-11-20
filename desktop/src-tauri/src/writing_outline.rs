@@ -276,14 +276,13 @@ fn validate_template_text(name: &str, value: &str, max_chars: usize) -> Result<S
     Ok(trimmed.to_string())
 }
 
-/// 解析内嵌默认模板。解析失败属于构建缺陷，测试会直接拦住。
-pub fn default_templates() -> WritingTemplates {
-    let templates: WritingTemplates =
-        serde_json::from_str(DEFAULT_TEMPLATES_JSON).expect("内嵌默认类型模板必须是合法 JSON");
-    templates
-        .validate()
-        .expect("内嵌默认类型模板必须通过结构与文本校验");
-    templates
+/// 解析内嵌默认模板（OD-HARDEN-2043：不再用 expect 直接中止进程）。
+/// 解析失败属于构建缺陷，由调用方如实报错；单测同样会拦住。
+pub fn default_templates() -> Result<WritingTemplates, String> {
+    let templates: WritingTemplates = serde_json::from_str(DEFAULT_TEMPLATES_JSON)
+        .map_err(|e| format!("内嵌默认类型模板不是合法 JSON：{e}"))?;
+    templates.validate()?;
+    Ok(templates)
 }
 
 pub fn templates_path(config_dir: &Path) -> PathBuf {
@@ -322,7 +321,7 @@ pub fn load_templates(config_dir: &Path) -> Result<LoadedTemplates, String> {
             })
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(LoadedTemplates {
-            templates: default_templates(),
+            templates: default_templates()?,
             path: path.display().to_string(),
             from_default: true,
         }),
@@ -815,8 +814,8 @@ pub fn parse_outline_markdown(markdown: &str) -> Result<WritingOutline, String> 
             continue;
         }
         if let Some(rest) = line.strip_prefix("## ") {
-            if current.is_some() {
-                sections.push(current.take().unwrap());
+            if let Some(section) = current.take() {
+                sections.push(section);
             }
             if rest.trim() == "核心观点" {
                 mode = ParseMode::Core;
@@ -1197,8 +1196,7 @@ mod tests {
 
     #[test]
     fn default_templates_cover_four_sets() {
-        let templates = default_templates();
-        templates.validate().unwrap();
+        let templates = default_templates().expect("内嵌默认类型模板必须合法");
         assert_eq!(templates.templates.len(), 4);
         let keys: Vec<&str> = templates
             .templates
@@ -1231,7 +1229,7 @@ mod tests {
     #[test]
     fn load_templates_reads_edited_file_and_rejects_bad_schema() {
         let fixture = Fixture::new("edited");
-        let mut templates = default_templates();
+        let mut templates = default_templates().expect("内嵌默认类型模板必须合法");
         templates.templates[0].label = "自定义工作总结".to_string();
         fs::write(
             templates_path(fixture.config()),
@@ -1254,7 +1252,7 @@ mod tests {
 
     #[test]
     fn template_mapping_covers_all_document_types() {
-        let templates = default_templates();
+        let templates = default_templates().expect("内嵌默认类型模板必须合法");
         for document_type in DOCUMENT_TYPES {
             template_for_document_type(&templates, document_type).unwrap();
         }
@@ -1348,7 +1346,7 @@ mod tests {
             vec![material_id.clone()],
             vec!["k-prompt".to_string()],
         );
-        let templates = default_templates();
+        let templates = default_templates().expect("内嵌默认类型模板必须合法");
         let template = template_for_document_type(&templates, &task.document_type).unwrap();
         let material = material_store::read_material(fixture.work(), &material_id).unwrap();
         let prompt = build_outline_prompt(&task, template, &[material]);

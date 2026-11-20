@@ -70,35 +70,51 @@ export const REPORT_SUMMARY_WORDS: readonly string[] = [
  * 复盘流程。「总结一下本月会议」这类没有周期范围的句子仍是随手记。
  * 词表里刻意不收「复盘」单字，避免把一次普通复盘记录误判成复盘报告。
  */
-export const PERIOD_REVIEW_KEYWORDS: readonly string[] = [
-  "周复盘",
-  "复盘本周",
-  "本周复盘",
-  "这周复盘",
-  "上周复盘",
-  "复盘上周",
-  "月度总结",
-  "月度复盘",
-  "月报",
-  "本月复盘",
-  "复盘本月",
-  "本月总结",
-  "这个月复盘",
-  "复盘这个月",
-  "季度复盘",
-  "季度总结",
-  "复盘本季",
-  "本季复盘",
-  "本季度复盘",
-  "复盘本季度",
-  "年度总结",
-  "年度复盘",
-  "复盘今年",
-  "今年复盘",
-  "本年总结",
-  "全年总结",
-  "复盘全年",
+/**
+ * 周期复盘词条（OD-HARDEN-2043 T13）：结构化表，取代按数组下标切片判断周期。
+ * offset 表示往前推几个自然周期（1 = 上一个）。
+ */
+export interface PeriodReviewKeyword {
+  keyword: string;
+  period: PeriodReviewPeriod;
+  offset?: number;
+}
+
+export const PERIOD_REVIEW_TABLE: readonly PeriodReviewKeyword[] = [
+  { keyword: "周复盘", period: "weekly" },
+  { keyword: "复盘本周", period: "weekly" },
+  { keyword: "本周复盘", period: "weekly" },
+  { keyword: "这周复盘", period: "weekly" },
+  { keyword: "上周复盘", period: "weekly", offset: 1 },
+  { keyword: "复盘上周", period: "weekly", offset: 1 },
+  { keyword: "月度总结", period: "monthly" },
+  { keyword: "月度复盘", period: "monthly" },
+  { keyword: "月报", period: "monthly" },
+  { keyword: "本月复盘", period: "monthly" },
+  { keyword: "复盘本月", period: "monthly" },
+  { keyword: "本月总结", period: "monthly" },
+  { keyword: "这个月复盘", period: "monthly" },
+  { keyword: "复盘这个月", period: "monthly" },
+  { keyword: "上月复盘", period: "monthly", offset: 1 },
+  { keyword: "复盘上月", period: "monthly", offset: 1 },
+  { keyword: "上个月复盘", period: "monthly", offset: 1 },
+  { keyword: "季度复盘", period: "quarterly" },
+  { keyword: "季度总结", period: "quarterly" },
+  { keyword: "复盘本季", period: "quarterly" },
+  { keyword: "本季复盘", period: "quarterly" },
+  { keyword: "本季度复盘", period: "quarterly" },
+  { keyword: "复盘本季度", period: "quarterly" },
+  { keyword: "年度总结", period: "annual" },
+  { keyword: "年度复盘", period: "annual" },
+  { keyword: "复盘今年", period: "annual" },
+  { keyword: "今年复盘", period: "annual" },
+  { keyword: "本年总结", period: "annual" },
+  { keyword: "全年总结", period: "annual" },
+  { keyword: "复盘全年", period: "annual" },
 ];
+
+/** 词表字符串视图（既有引用与「关键词命中即复盘」判定沿用）。 */
+export const PERIOD_REVIEW_KEYWORDS: readonly string[] = PERIOD_REVIEW_TABLE.map((entry) => entry.keyword);
 
 export type PeriodReviewPeriod = "weekly" | "monthly" | "quarterly" | "annual";
 
@@ -173,6 +189,8 @@ export function detectPeriodReviewTarget(
     text.includes(w),
   );
   if (!keywordHit && !summaryHit) return null;
+  // T13：周期只看结构化命中的词条，不再依赖数组下标。
+  const matched = PERIOD_REVIEW_TABLE.find((entry) => text.includes(normalizeIntentText(entry.keyword)));
 
   const cal = calendarOf(now, offsetMinutes);
   const month = new Date(cal.todayDay * DAY_MS).getUTCMonth() + 1;
@@ -183,7 +201,7 @@ export function detectPeriodReviewTarget(
       ? 1
       : 0;
   const weeklyHit =
-    PERIOD_REVIEW_KEYWORDS.slice(0, 6).some((k) => text.includes(normalizeIntentText(k))) ||
+    matched?.period === "weekly" ||
     (summaryHit && /周/.test(text));
   if (weeklyHit || weeksBack > 0) {
     const monday = mondayOf(cal) - 7 * weeksBack;
@@ -195,14 +213,19 @@ export function detectPeriodReviewTarget(
     };
   }
   if (/月度|月报|本月|这个月|上个月|上月/.test(text)) {
-    const back = /上个月|上月/.test(text) ? 1 : 0;
+    const back =
+      matched?.period === "monthly" && matched.offset
+        ? matched.offset
+        : /上个月|上月/.test(text)
+          ? 1
+          : 0;
     const year = cal.todayYear - (month - 1 - back < 0 ? 1 : 0);
     const targetMonth = (((month - 1 - back) % 12) + 12) % 12 + 1;
     return {
       period: "monthly",
       start: String(year) + "-" + pad(targetMonth) + "-01",
       end: String(year) + "-" + pad(targetMonth) + "-" + pad(lastDayOfMonth(year, targetMonth)),
-      label: back === 0 ? "本月" : "上个月",
+      label: back === 0 ? "本月" : "上月",
     };
   }
   if (/季度|本季|上个季度|上季度/.test(text)) {
@@ -229,7 +252,7 @@ export function detectPeriodReviewTarget(
     };
   }
   if (!keywordHit) return null;
-  if (PERIOD_REVIEW_KEYWORDS.slice(6, 14).some((k) => text.includes(normalizeIntentText(k)))) {
+  if (matched?.period === "monthly") {
     return {
       period: "monthly",
       start: String(cal.todayYear) + "-" + pad(month) + "-01",
@@ -238,7 +261,7 @@ export function detectPeriodReviewTarget(
       label: "本月",
     };
   }
-  if (PERIOD_REVIEW_KEYWORDS.slice(14, 20).some((k) => text.includes(normalizeIntentText(k)))) {
+  if (matched?.period === "quarterly") {
     const quarter = Math.floor((month - 1) / 3);
     const startMonth = quarter * 3 + 1;
     const endMonth = startMonth + 2;

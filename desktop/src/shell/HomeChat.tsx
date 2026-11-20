@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   host,
   invalidateEngineFactsCache,
@@ -3931,12 +3930,11 @@ export function HomeChat({
     if (busy) return;
     setAttachNote(null);
     try {
-      const picked = await openFileDialog({
+      const paths = await host.pickFiles({
         multiple: true,
         title: "选择要引用的文件",
       });
-      if (!picked) return;
-      const paths = Array.isArray(picked) ? picked : [picked];
+      if (paths.length === 0) return;
       for (const p of paths) await addAttachment(p, true);
     } catch (e) {
       setAttachNote(

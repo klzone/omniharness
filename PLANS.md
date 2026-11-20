@@ -1,5 +1,128 @@
 # 当前实施计划
 
+### OD-HARDEN-2043R：加固与改进任务书（汇总版，T1–T14）（待用户批准执行，2026-11-20）
+
+> **触发：** 用户下发合并后的总任务书（原 A/C/B/E/D + G1/G2/G3 + F1/F2/F3 + 新项）。本轮只整理范围与现状，待批准后按批次执行；批准不扩大本节范围。
+> **开工基线（2026-11-20）：** HEAD `2046d12d33c874131ba20319cf1b8686f7b401ad`，工作区 25 处既有未提交改动（前一轮 A/C/B/E 与 D 第 1 步），保留不动。`lib.rs` 15046 行、274 处 `#[tauri::command` 文本、277 个命令定义；`Cargo.toml` `rust-version = 1.77`；`release.yml` 顶层 `permissions` 仍在第 9 行；`desktop/package.json` 无 `test` 脚本，`src` 下 8 个 `.test.mjs`。
+
+**已完成、只需按本任务书验收标准核对（不重做）：**
+- **T1（原 A）**：`test` job + `pull_request` 触发 + `needs` 依赖图 + 缓存已落地（STATUS 2026-11-20 任务 A）。遗留：T12 完成后把 `npm run test` 接入 test job。
+- **T3（原 C）**：`net_guard.rs`、RSS 逐跳 3 跳 + 禁止降级 + `resolve` 钉扎、媒体固定公网档、上限 8 MiB、内网开关、D-108 记录均已落地（STATUS 任务 C）。
+- **T4（原 B）**：注册表 + `host_pick_files`/`host_pick_directory` + 八个命令授权门 + 四个前端入口 + `dialog:allow-open` 移除 + 11 项凭证黑名单 + 拖拽宿主登记均已落地（STATUS 任务 B）。遗留：Windows 实机与真实窗口手工清单未验证。
+- **T8（原 E）**：写作子进程 10 秒超时、docx/epub 实体全文扫描、9 处非锁 unwrap 处理均已落地（STATUS 任务 E）。
+- **T14（原 D）部分**：基线脚本 `tests/verification/desktop/export_commands_2043.py` 与基线 JSON 已建立，阅读/RSS 11 条命令已迁到 `src/commands/reading.rs`，迁移前后命令集合均为 277 且一致（STATUS 任务 D）。剩余六个领域未迁。
+
+**待执行任务与该轮做法（按批次）：**
+1. **T2（发布令牌与 Action 固定）**：`release.yml` 顶层改 `contents: read`，仅 `publish` 声明 `contents: write`；全部 `uses:` 固定 40 位 SHA（从各仓库对应 Release 标签查得，行尾注明原标签）；`dtolnay/rust-toolchain` 改为固定版本并与 `rust-version = 1.77` 对齐（若固定工具链无法编译现有代码，先报告再定版本，不擅自放宽）；新增 `.github/dependabot.yml`（github-actions 每周）。
+2. **T5（导出目录并入授权）**：`export_engine.rs::resolve_target_dir` 要求注册表命中或位于成果根；`target_path` 改父目录 `canonicalize` 后比较；在 `is_safe_id` 调用处补注释。新增单测：未授权拒绝、授权放行、含 `..` 的 writing_id 仍拒、md/docx/pdf/html 四种既有导出测试全过。
+3. **T6（Windows 打开链接）**：`platform.rs` 把「程序名 + 参数」抽成纯函数；Windows 分支改 `rundll32.exe url.dll,FileProtocolHandler`，目标用 `arg` 传。单测跨平台断言程序名不是 `cmd` 且 `%USERPROFILE%` 原样作为单参数。
+4. **T7（引擎适配层）**：F1 启动后 DSH 输出改 `deque(maxlen=200)` 并继续读空管道；F2 `_parse_announcement` 只接受 `127.0.0.1`/`localhost`/`::1`，拒绝信息不含令牌。单测覆盖 10 万行保留上限、回环通过、非回环拒绝且 detail 无令牌。
+5. **T9（会话缓存只存元数据）**：先读 `readLocal/writeLocal` 与 `MIGRATED_KEY` 迁移逻辑；确认迁移标记置位后清除旧键里的 `messages`，未迁移先迁移。单测（T12 后）断言 localStorage 无正文、未迁移样本先迁移后清理。
+6. **T10（依赖可复现）**：DSH 运行时生成并提交 `runtime/dsh-runtime.package.json` 与对应 `package-lock.json`，`bootstrap-runtime.sh` 改 `npm ci`；各打包 profile 生成并提交 `package-lock.json`，`prepare-runtime-assets.sh` 改 `npm ci --omit=dev`；pnpm 固定到实际安装版本；Python 用 `pip-compile --generate-hashes` 生成 `scripts/python-requirements.lock`（含 macOS universal 与 Windows 哈希），`pip install --require-hashes`。做不到就报告，不降级为无哈希。
+7. **T11（发布校验和）**：`publish` 生成 `SHA256SUMS.txt` 并作为 Release 资产，说明里写 `shasum -a 256` 与 `Get-FileHash` 校验命令。
+8. **T12（前端单测基线）**：`package.json` 加 `test` 脚本（Node 原生、沿用 `--experimental-strip-types`），先本机跑通现有 8 个文件；为 `workIntent.ts`、`workIntentDecision.ts`、`sceneThreads.ts` 纯函数补表征测试；先核实 `recordReview.ts`、`displayText.ts` 覆盖情况。不引入新依赖、不修改被测源码。
+9. **T13（复盘周期结构化）**：`PERIOD_REVIEW_KEYWORDS` 改为 `{ keyword, period, offset }` 表，去掉所有 `slice(...)` 下标判断；新增「上月复盘」等词条与正确起止/标签（跨年）。表驱动单测覆盖边界与「插入新词后既有用例仍过」。
+10. **T14 续做**：余下领域按「任务、工作记录、阅读其余、知识库、写作、设置、引擎」逐个迁移；每步导出命令集与基线逐项比对（277 个，若本轮新增命令先更新基线并说明），每步前后跑 `cargo test --lib -- --test-threads=1`。
+
+**决策点（默认值，请确认或改）：**
+- P1 T10 的 Python 锁文件需要联网与 `pip-compile` 工具；默认按任务书执行，工具或平台哈希不可得时停下报告，不降级。
+- P2 T2 固定 SHA 需要访问 GitHub 查询各 Action 对应 Release 标签；默认联网查证（不凭记忆填写）。
+- P3 T12 的 `npm run test` 路径：默认 `node --experimental-strip-types --test src`（Node 递归发现 `.test.mjs`），先本机验证覆盖现有 8 个文件；若不可用再改显式文件列表。
+- P4 T13 可选项「复盘提示词补传今天日期」默认**不做**（涉及 `conversationPrompt.ts` 与 period-review skill 口径），需另行批准。
+- P5 T14 基线使用实测 277 个命令（任务书写的 281 是文本出现次数口径，含注释里的字样）。
+
+**不在本节范围：** 代码签名与公证（T11 明确排除，需付费账号）、SettingsPanel.tsx / HomeChat.tsx 拆分、`runtime/` 内 DSH Runtime 修改、`lib.rs` 的 `.lock().unwrap()` 与 CSP `unsafe-inline`。
+
+**验收与记录：** 每项实测命令与输出写 STATUS.md（静态检查 / 脚本测试 / 未验证）；每项完成后在 REVIEW.md 写独立审查结论；无法实测的（Windows 实机、真实发布、golden_tasks 40 个任务）标「未验证」。
+
+
+### OD-HARDEN-2043：v0.2.43 加固任务书（A/C/B/E/D）（已批准执行；A/C/B/E 已完成，D 仅第 1 步，2026-11-20）
+
+> **触发（用户当轮指示）：** 对 v0.2.43 做抽样代码审计后，用户下发加固任务书，含 A 发布测试门禁、C 外联 URL 校验、B 本地读文件宿主授权、E 小项加固、D 拆分 lib.rs。建议顺序 A → C → B → E → D，D 必须最后做。
+> **状态：** 本节只是范围与验收的书面草案。用户批准前不修改代码、不运行改动型命令。批准不扩大本节范围。
+
+**开工基线（2026-11-20 只读核对）**
+- 仓库 `/Users/yvan/Code/MyWorkStation`，HEAD `2046d12d33c874131ba20319cf1b8686f7b401ad`（0.2.43 合并提交），`git status --short` 为空。
+- 本机 `python3` 为 `/usr/bin/python3`，未安装 pytest；`actionlint`、`xvfb-run` 未安装。
+- 源码事实（与任务书逐条核对）：
+  - `release.yml` 只有 meta、macos、windows、publish 四个 job，没有测试 job，也没有 pull_request 触发。
+  - `validate_feed_url`（rss_store.rs:229）只检查 http/https 前缀；RSS 抓取（rss_store.rs:711）用 reqwest 默认重定向。
+  - `read_remote_media`（task_shell.rs:3182）已逐跳处理重定向，但没有地址过滤；`REMOTE_IMAGE_MAX_BYTES` 为 32 MiB，注释写 8 MiB。
+  - 前端 `open as openFileDialog / openDirectoryDialog` 共四处：HomeChat.tsx、ReadingPage.tsx、KnowledgeVaultPage.tsx、SettingsPanel.tsx。`dialog:allow-open` 只在 `capabilities/default.json` 与 `tests/verification/desktop/verify_home_polish_078.py:198` 中出现。
+  - 任务书所列 B 类 10 个命令均存在于 lib.rs。
+  - E-2：`reading_attachment_extract.py` 对 docx 已拒绝 DOCTYPE 与 ENTITY，对 epub 已拒绝 ENTITY 并剥离 DOCTYPE。实体检查已存在，缺的是回归与恶意样本测试。
+  - E-3：生产代码（第一个 `#[cfg(test)]` 之前）的实际计数与任务书不一致，见决策 D6。
+  - `lib.rs` 共 14987 行，`#[tauri::command]` 共 281 处。
+
+**任务 A：发布流程加测试门禁**
+1. `release.yml` 新增 `test` job（ubuntu-latest），触发增加 `pull_request`。meta、macos、windows、publish 加 `if: github.event_name == 'push'`，使 PR 只跑 test。
+2. 依赖图：macos、windows 的 `needs` 为 `[meta, test]`；publish 的 `needs` 为 `[meta, test, macos, windows]`。test 失败时 publish 被跳过。
+3. test 步骤：安装 Tauri 2 Linux 依赖（libwebkit2gtk-4.1-dev、libgtk-3-dev、libayatana-appindicator3-dev、librsvg2-dev、patchelf）；`cd desktop/src-tauri && cargo test --lib -- --test-threads=1`（CI 去掉 --offline）；`cd desktop && npm ci && npm run build`；Python 验证按 D3、D4 执行。
+4. 缓存 cargo 与 npm（方式见 D7）。
+5. 本机先依次跑三组命令记录基线。基线失败则列出失败清单并停止报告，不用 continue-on-error，不删测试。
+
+验收：三组命令的实际输出写入 STATUS.md；actionlint 不可用则标"未验证"，改为人工核对 needs 依赖图；apt 依赖与 Linux 运行只能在 CI 中验证，本机是 macOS，标"未验证"。
+
+**任务 C：外联 URL 统一校验（RSS 订阅源与远程媒体）**
+1. 新增 `desktop/src-tauri/src/net_guard.rs`，提供 `assert_public_http_url(url) -> Result<Vec<SocketAddr>, String>`。规则：只放行 http/https；拒绝用户名或密码；拒绝空主机；经 `ToSocketAddrs` 解析后，任一结果落入禁止段即拒绝；IPv4 映射的 IPv6 先还原为 IPv4 再判断。
+2. 策略分两档。订阅源默认拒绝回环、链路本地、未指定、多播、私网与 CGNAT；私网与 CGNAT 受设置开关"允许内网订阅源"（默认关）控制。正文中的远程图片与媒体一律只允许公网地址，不受该开关影响。策略以参数传入，RSS 与媒体各自指定。
+3. RSS 拉取改为 `redirect::Policy::none()` 加手动跳转，最多 3 跳，每跳重新校验，禁止 https 降级为 http。
+4. 调用方用 `ClientBuilder::resolve(host, addr)` 钉住已校验的地址，防 DNS 重绑定。
+5. 系统代理场景下应用无法钉住解析结果。保留逐跳校验，并在 docs/decisions.md 新增一条记录（状态写"已决定，残余风险待用户确认"），写明代理场景的残余风险。
+6. `REMOTE_IMAGE_MAX_BYTES` 与注释统一为 8 MiB，错误文案同步。
+7. "允许内网订阅源"开关属于界面改动。动工前用 `screenshots-design-inspiration` MCP 搜 2 至 3 个同类设置页，在 STATUS.md 写 2 句以内的借鉴要点。
+
+测试：
+- net_guard 表驱动单测，覆盖 IPv4 各禁止段、::1、fe80::/10、fc00::/7、::ffff:127.0.0.1、::ffff:169.254.169.254、100.64/10，以及公网地址放行。
+- 测试放行入口用 `#[cfg(test)]` 实现，生产代码不留开关。现有 `fetches_local_http_feed_and_ingests_entries` 改走该测试入口。
+- 新增用例：订阅源 302 跳到 169.254.169.254 被拒；图片地址指向 127.0.0.1 被拒；https 降级为 http 被拒；第 4 跳被拒。
+- `cargo test --lib -- --test-threads=1` 全绿。
+
+**任务 B：本地读文件改为宿主授权**
+1. 新增宿主侧"已授权路径"注册表：`Mutex<HashMap<规范化路径, 授权时间>>`，过期 30 分钟，数量上限 256 条，超出时淘汰最旧项。
+2. 新增命令 `host_pick_files`、`host_pick_directory`：在 Rust 侧通过 `tauri_plugin_dialog` 的 DialogExt 弹出选择框，结果规范化后登记，再返回前端。
+3. 改造命令 task_read_attachment、task_read_material、reading_import_book、profile_import、knowledge_vault_set_root、task_set_library_root、task_set_working_root、task_set_artifact_root。规则：规范化后的路径必须在未过期的注册表内，或是成果根、库根的子路径；符号链接按真实落点判断。注册表命中时是否刷新过期时间见 D5。
+4. task_open_local_file、task_read_reference 只核对，不改动。
+5. 前端四处 `open` 改为调用 `host_pick_*`。全部替换后，从 `capabilities/default.json` 移除 `dialog:allow-open`。保留 `tauri_plugin_dialog::init()` 与 npm、Cargo 依赖，因为 DialogExt 仍需要它们。
+6. 同步更新 verify_home_polish_078.py:198 的断言。全仓再搜 `dialog:allow-open` 与 `plugin-dialog`，更新引用它们的测试、脚本与文档。
+7. 黑名单追加：/.ssh、/.aws、/.gnupg、/.kube、/.config/gcloud、/.docker、/library/keychains、/appdata/roaming/microsoft/credentials、id_rsa、id_ed25519、.env。
+
+测试：单测覆盖未登记拒绝、登记放行、过期拒绝、指向 ~/.ssh 的符号链接拒绝、`..` 穿越拒绝。重跑 verify_home_polish_078.py。
+手工清单（STATUS.md 中标"未验证"，除非实机跑过）：附件选择、阅读导入、知识库根目录设置、成果目录设置。
+风险：注册表只在内存中，应用重启后清空。需要逐个核对已保存的根目录在再次读取时能否通过"成果根、库根子路径"规则。
+
+**任务 E：小项加固**
+1. writing_parse.rs:296 的 `wait_with_output()` 改为 spawn 后用 `try_wait` 轮询，超过 10 秒则 kill，沿用 task_shell.rs 中已有的模式。
+2. reading_attachment_extract.py：核对 docx、epub 两支在解析前都先检查原始字节，含 `<!ENTITY` 即拒绝；不拒绝 DOCTYPE。补测试：合成的实体膨胀恶意 docx 与 epub 样本应被拒绝；合成的正常 epub（XHTML 带 DOCTYPE）回归通过。测试样本全部为合成数据。
+3. 非锁类生产 unwrap/expect 逐条处理（计数见 D6）：engine_ipc.rs 2 处 spawn expect 改为返回 Err；rss_store.rs 10 处改为 Result；writing_outline.rs 3 处改为 Result。无法返回 Result 的，写不变量注释。锁类 unwrap 与 lib.rs 中的锁 unwrap 不动。
+
+验收：相关单测与 `cargo test --lib -- --test-threads=1` 全绿；STATUS.md 列出每处 unwrap 的处理结果。
+
+**任务 D：拆分 lib.rs（纯重构，最后做）**
+1. 写只读的命令清单导出脚本，导出当前 281 个 `#[tauri::command]` 名称与 `generate_handler!` 清单，作为基线。基线输出存于 `tests/verification/desktop/evidence/od-harden-2043/`。
+2. 每次只迁一个领域到 `src/commands/<领域>.rs`，领域顺序为任务、工作记录、阅读、知识库、写作、设置、引擎。每完成一个领域：命令名集合与基线逐项比对，必须仍是 281 个且完全一致；`cargo test --lib -- --test-threads=1` 结果与迁移前一致；前端 invoke 名称零改动。
+3. 只做机械移动，不改签名、命令名与行为。提交时机由用户决定，本计划不提交。
+4. SettingsPanel.tsx、HomeChat.tsx 的拆分不在本计划内。
+
+**决策点（需用户确认，括号内为默认值）**
+- D1 私网订阅源（默认：拒绝私网，设置开关"允许内网订阅源"默认关）。任务书已定。
+- D2 代理残余风险（默认：接受并写入 docs/decisions.md）。备选：检测到系统代理时直接拒绝订阅拉取。
+- D3 Python 测试运行方式（默认：逐个 `python3` 运行选定脚本，不新增依赖）。备选：CI 安装 pytest 后运行 `python3 -m pytest`，这属于新增依赖。
+- D4 Python 子集（默认：只跑与本任务相关的脚本，即 E-2 的 reading_attachment_extract 回归与 verify_home_polish_078 静态断言）。其余约 150 个 desktop 验证脚本多数依赖真实窗口或 Xvfb，CI 中没有 xvfb-run，不进 CI。
+- D5 宿主授权过期策略（默认：30 分钟，每次命中刷新）。备选：固定 30 分钟，到期即失效。
+- D6 E-3 计数。任务书写 engine_ipc 16、rss_store 10、dsh_settings 4、writing_outline 3。实测生产代码的非锁计数为 engine_ipc 2、rss_store 10、dsh_settings 0、writing_outline 3；engine_ipc 另有 14 处、dsh_settings 另有 4 处为锁类。默认不改锁类，与任务书"非锁类"的字面一致。请确认。
+- D7 CI 缓存（默认：用 GitHub 官方 actions/cache 缓存 cargo 与 npm）。备选：Swatinem/rust-cache 是第三方 action，属于新增依赖，需批准后才用。
+
+**不在本计划范围**
+- CSP 的 unsafe-inline、lib.rs 中的锁 unwrap、SettingsPanel.tsx 与 HomeChat.tsx 的拆分。
+- runtime/ 的任何改动；提交、推送、打标签；派发子代理。
+
+**验收与记录**
+- 每项实测命令与输出写入 STATUS.md，分为"静态检查、脚本测试、未验证"。
+- 每项完成后在 REVIEW.md 写独立审查结论，未审查不标通过。
+- 未运行的项（actionlint、Linux CI、Windows 实机、真实窗口手工清单）标"未验证"。
+
+
 ### OD-KB-202：暂存知识卡进入「知识审核」再入库（已实施并通过复核，2026-11-19）
 
 > **触发（用户当轮反馈）：** 知识库里没看到模型联动过来的待审卡片；期待先显示在「知识审核」、用户确认后才进入知识库。现状是「同步到知识库」直接落盘，没有审核动作。
@@ -629,3 +752,18 @@
 
 > **触发：** ①左侧「健脑室」标题加粗放大、侧栏字体整体 +2；②移除订阅管理与拉取全部按钮，进入页面时若距上次刷新 ≥30 分钟自动抓取；超过 30 天且未收藏的文章不再显示；③书籍增加改名按钮；④订阅源默认全部折叠，每次进入随机展开一个源展示其文章；⑤阅读区顶部标题栏各按钮加粗，「+」改为收藏图标，收藏文章不受 30 天限制。
 > **实施：** 1) 侧栏标题 16px/700/letter-spacing，条目/注释/标签字号 +2；2) 移除两按钮；ReadingPage mount/focus 检查最大 last_fetched_at，≥30 分钟静默 rss_fetch 并刷新列表；3) RSS 列表过滤 30 天（published_ts 或 fetched_at，favorite 例外）；4) RssArticleMeta 增加 favorite（serde default），新增 rss_article_set_favorite 命令 + api；阅读头 + 改为星标 toggle（仅 rss；本地书保留导入 +）；星标文章一直显示、行内显示星标；5) 书籍改名：reading_rename_book 命令（book+meta title，非 rss），侧栏/管理弹窗铅笔按钮 + 输入弹窗；6) 侧栏源默认折叠，进入时随机展开一个源（一次）；7) 头栏 笔记/导出/写想法/整理笔记 font-semibold。验证：cargo、tsc、build、003–010 与新增 011 全过；证据 stage10.md。不提交不推送。
+
+### OD-READ-002 阶段 11：正文阅读设置 + RSS 文末模块（2026-11-20，用户本轮明确指令）
+
+> **触发（用户本轮指令）：** ①顶部右上角加「阅读设置」：字体、文字大小、排列方式仅作用于正文，标题不变；不设宽度与颜色；字体增加免费的思源黑体、思源宋体、霞鹜文楷。②RSS 阅读底部增加附件模块、结束标记、预计阅读时间和下一篇文章标题。③文章阅读上下滑动，不需要底部模块或隐藏。
+>
+> **借鉴要点（≤2 句）：** Pocket/Medium 的正文是安静窄栏、控制集中在顶部或侧边（screenshots-design-inspiration，2026-11-20）；Apple News 用编辑化标题层级和紧凑的字体/对齐选择器。阅读设置弹层沿用本应用暖纸新拟物，不照搬参考产品的配色与宽度控件。
+
+**实施范围（本轮亲自执行）：**
+> 1. **字体资源**：新增 `@fontsource-variable/noto-sans-sc`、`@fontsource-variable/noto-serif-sc`、`lxgw-wenkai-webfont` 三个自托管依赖（SIL OFL 1.1），`main.tsx` 引入；OFL 文本复制到 `desktop/public/fonts/`，`THIRD-PARTY-NOTICES.md` 增列。运行时零外链。
+> 2. **阅读设置**：ReadingPage 顶栏右侧新增 `Aa` 按钮与弹层；选项为「系统默认 / 思源黑体 / 思源宋体 / 霞鹜文楷」、字号 14–26、排列「左对齐 / 两端对齐 / 右对齐」；设置写入 `localStorage`（`omnidesk.reading.settings.v1`）并提供恢复默认；点击外部或 Esc 关闭。
+> 3. **仅正文**：设置以 CSS 变量落在 `.reading-page` 根节点，只被 `.reading-page .reading-paragraph` 消费；章节标题、顶栏、侧栏、附件与文末模块保持原字号与字体。宽度、背景色、颜色不提供设置。
+> 4. **RSS 附件数据**：`RssArticleMeta` 新增 `attachments: Vec<RssAttachment>`（serde default）；解析 `enclosure` / `media:content` 中非图片的音频、视频、PDF 等，只收 http(s)、最多 20 条、记录标题、MIME 与字节数；旧文章在下次抓取时补写元数据，正文与批注不动。
+> 5. **RSS 文末模块（仅 `source_format === "rss"`）**：附件井（音频/视频复用既有 MediaBlock 与远程媒体链路；文件提供「打开原文件」）、「打开原文」、居中「—— 完 ——」、按正文字数估算的「约 N 分钟读完」（400 字/分钟，至少 1 分钟）、同一订阅源上一篇更早文章的「下一篇」卡片（点击直接打开）。本地书籍不渲染该模块。
+> 6. **验证**：`cargo test --offline --lib -- --test-threads=1`、`npx tsc --noEmit`、`npm run build`、既有 verify_reading_003–011 与新增 `verify_reading_012_settings_and_footer.py`；新增 RSS 附件解析与旧元数据补写单测。证据写入 `tests/verification/desktop/evidence/od-read-002/stage11.md`。
+> 7. **明确不做**：不提供宽度/颜色/主题设置；不改标题字号；不改批注锚定；不改 RSS 抓取网络策略；不把本地书籍套用文末模块；不提交不推送。

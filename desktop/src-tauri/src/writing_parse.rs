@@ -10,9 +10,10 @@
 //!
 //! 证据等级：源码事实 + 模块内 cargo test。
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,8 @@ use crate::writing_store::{self, DOCUMENT_TYPES};
 pub const REQUIREMENT_SCHEMA: &str = "omnidesk.writing-requirement.v1";
 pub const MAX_RESULT_BYTES: usize = 256 * 1024;
 pub const MAX_INPUT_CHARS: usize = 20_000;
+/// 提示词组装子进程的超时（OD-HARDEN-2043 任务 E）：超时即 kill，不让界面无限等待。
+pub const HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 pub const MAX_TITLE_CHARS: usize = 200;
 /// 单字段长度上限，照 task_extract 的分类/备注等常量先例收紧到 400 字。
 pub const MAX_FIELD_CHARS: usize = 400;
@@ -292,11 +295,52 @@ pub fn build_requirement_prompt(
             .write_all(payload.to_string().as_bytes())
             .map_err(|e| format!("写入写作需求提示词请求失败：{e}"))?;
     }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("等待写作需求提示词组装失败：{e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    // 10 秒超时（OD-HARDEN-2043 任务 E）。pipe 由两个线程同时读，避免子进程写满
+    // 缓冲区后阻塞在 write 上；超时就 kill 并回收，不让界面无限等待。
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+    let stdout_reader = std::thread::spawn(move || {
+        let mut buffer = Vec::new();
+        if let Some(pipe) = stdout_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut buffer);
+        }
+        buffer
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut buffer = Vec::new();
+        if let Some(pipe) = stderr_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut buffer);
+        }
+        buffer
+    });
+    let deadline = Instant::now() + HELPER_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!(
+                    "写作需求提示词组装超时（{} 秒），已终止子进程。",
+                    HELPER_TIMEOUT.as_secs()
+                ));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!("等待写作需求提示词组装失败：{e}"));
+            }
+        }
+    };
+    let stdout = stdout_reader.join().unwrap_or_default();
+    let stderr = stderr_reader.join().unwrap_or_default();
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr);
         let tail: String = stderr
             .lines()
             .rev()
@@ -308,7 +352,7 @@ pub fn build_requirement_prompt(
             .join(" | ");
         return Err(format!("写作需求提示词组装失败：{tail}"));
     }
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+    let value: serde_json::Value = serde_json::from_slice(&stdout)
         .map_err(|e| format!("写作需求提示词组装返回的不是 JSON：{e}"))?;
     let prompt = value
         .get("prompt")

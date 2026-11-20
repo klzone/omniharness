@@ -1,3 +1,31 @@
+# OD-HARDEN-2043 复核（2026-11-20，ARCHITECT 实施并复核）——A/C/B/E 通过（静态/脚本范围）；D 仅第 1 步，未完成
+
+**复核对象：** 发布门禁（`release.yml`）、外联 URL 校验（`net_guard.rs` + `rss_store` + `task_shell::read_remote_media`）、宿主授权（`host_access.rs` + 八个命令 + 四个前端入口）、小项加固（`writing_parse` 超时、实体检查、unwrap 清理）、`lib.rs` 拆分第 1 步。
+
+**实跑证据：** `cargo test --lib -- --test-threads=1` 1266（A 基线）→ 1276（C）→ 1284（B）→ 1284（E、D 第 1 步）全绿；`npm run build`（含 `tsc --noEmit`）每次 EXIT=0；`verify_hardening_2043.py` 67/67；`verify_reading_entity_2043.py` 7/7；`verify_reading_004_formats.py` 19/19。命令名集合迁移前后均为 277，`generate_handler` 与定义一一对应。
+
+**逐项结论：**
+- **A 通过（本机范围）**：`pull_request` 触发 + `test` job + `needs` 依赖图成立（`publish` 依赖 `test`），无 `continue-on-error`；Kotlin 无关。未验证：actionlint 未安装（用 ruby YAML 解析 + 脚本断言替代）；Linux runner 的 apt 依赖与首次 cargo 编译、GitHub 上的真实 PR 行为。
+- **C 通过**：地址校验覆盖回环/链路本地/未指定/多播/广播/私网/CGNAT/ULA 与 `::ffff:*`；订阅按 3 跳逐跳校验并禁止 https 降级，远程媒体固定公网档；上限统一 8 MiB；系统代理残余风险已写入 `docs/decisions.md` D-108。未验证：真实代理环境与真实公网跳转链。
+- **B 通过（本机范围）**：注册表 30 分钟滑动过期、256 条上限、按真实落点判断；八个命令都有授权门；`dialog:allow-open` 已移除且前端不再 import plugin-dialog；拖拽路径在宿主侧登记；凭证黑名单 11 项。未验证：真实窗口四条手工路径、重启后旧根目录可用性、Windows 选择框。
+- **E 通过**：超时路径 10 秒 kill；docx 实体检查改为全文扫描（原 4 KB 之后可漏）；9 处非锁 unwrap 逐条处理，剩余均为锁（engine_ipc 14、dsh_settings 4）按口径保留。未验证：故意挂住的子进程实际被 kill 的端到端。
+- **D 未完成**：只迁出阅读/RSS 11 条命令到 `src/commands/reading.rs`，命令集合与测试结果不变；任务、工作记录、阅读其余、知识库、写作、设置、引擎六个领域未迁。
+
+**结论：** A、C、B、E 可按现状进入实机复测；D 不得标为完成，下一轮按领域继续，每迁一个领域重跑命令基线比对与全量单测。
+
+
+# OD-HARDEN-2043R 复核（2026-11-20，ARCHITECT 实施并复核）——T2/T5/T6/T7/T9/T10/T11/T12/T13 通过（静态/脚本范围）；T14 未完成
+
+**实跑证据：** cargo test --lib 1286 passed / 0 failed / 1 ignored；`npm run test` 88/88；`npm run build` 通过；test_web_api_unit.py 105 tests OK；verify_hardening_2043.py 77/77；verify_reading_entity_2043.py 7/7；profile `npm ci` 成功；Python 锁文件 `--require-hashes` 安装成功且篡改哈希后失败。
+
+**结论：**
+- T2 通过（本机范围）。偏差：工具链固定 1.99.1 而非 rust-version 1.77，因为 1.77.2 实测无法解析依赖 manifest（resolver 3）；属任务书「无法编译先报告」的适用场景，已记录。未验证：GitHub runner 实际构建。
+- T5、T6、T7 通过；T6 的 Windows 手工验证未做。
+- T9 通过静态/类型检查，缺单测（依赖 window.localStorage，未补 mock）——按验收标准属未完成项。
+- T10 通过本机可验证部分（profile npm ci、Python 哈希锁、pnpm 固定）；bootstrap 全量安装与 Windows 哈希未验证。
+- T11 通过本机合成校验；T12、T13 通过单测。
+- T14 仅第 1 步，不得标完成。
+
 # OD-KB-202 复核（2026-11-19，ARCHITECT 实施并复核）——通过（脚本/静态范围；真实窗口待 0.2.42 实测）
 
 **复核对象：** 暂存卡审核链路（knowledge_vault 列表/选中同步/丢弃、lib.rs 命令与治理记录、审核页暂存卡区、整理材料弹窗二次确认）。
@@ -503,4 +531,23 @@
 - `git diff --check`：干净。
 
 **结论：** 阶段 6–10 通过验收，随 0.2.39 发版提交。剩余未验证项：Windows 真机与真实外部 CDN 视频/AVIF 端到端；由用户在 Windows 环境实测。
+
+## OD-READ-002 阶段 11 复核（2026-11-20，ARCHITECT 独立复核：通过）
+
+**范围：** 正文阅读设置（字体/字号/排列，仅正文）与 RSS 文末模块（附件、结束标记、预计阅读时间、下一篇）。
+
+**源码事实：**
+1. `ReadingPage.tsx` 新增 `ReaderSettings` 与 `READER_FONTS`（系统默认、思源黑体、思源宋体、霞鹜文楷）、三档排列、14–26 字号；设置只以 `--rd-reader-font/size/align` 写到 `.reading-page` 根，CSS 仅 `.reading-page .reading-paragraph` 消费，章节标题规则不含这些变量；未提供宽度/颜色控件；`Aa` 按钮 `order-last` 位于顶栏右侧，弹层支持恢复默认、外部点击与 Esc 关闭，设置持久化到 `localStorage`。
+2. 字体依赖 `@fontsource-variable/noto-sans-sc`、`@fontsource-variable/noto-serif-sc`、`lxgw-wenkai-webfont` 在 `main.tsx` 自托管引入；三份 OFL 文本进入 `desktop/public/fonts/`，`THIRD-PARTY-NOTICES.md` 已增列。
+3. `rss_store.rs` 新增 `RssAttachment` 与 `RssArticleMeta.attachments`（serde default）；`entry_attachments` 只解析 `enclosure`/`media:content` 的非图片媒体，仅 http(s)、上限 20、记录标题/MIME/字节数；旧文章在 ingest 时补写附件元数据，`refresh_article_with_xml_at` 同样更新元数据，正文/批注路径未改。
+4. RSS 文末仅在 `source_format === "rss"` 渲染：附件井、打开原文、`完` 标记、400 字/分钟估算的阅读时间、同源更早文章的下一篇卡片；音频/视频附件需点击「播放」才触发 MediaBlock 与远程媒体读取，另提供「打开原文件」。本地书籍无文末模块。
+5. `verify_reading_012_settings_and_footer.py` 43 项覆盖设置、字体、变量作用域、附件模型、旧元数据补写、文末条件渲染与样式；`verify_reading_005_design.py` 的旧固定字号断言已改为检查阅读设置变量。
+
+**ARCHITECT 实跑：**
+- `cargo test --offline --lib rss_store:: -- --test-threads=1`：23 passed / 0 failed（含新增附件解析与旧 meta 补写单测）。
+- `cargo test --offline --lib -- --test-threads=1`：1288 passed / 0 failed / 1 ignored；同时修复材料只读拒绝文案（中性描述「路径包含被禁止片段…」，不再误写「写入」）。
+- `npx tsc --noEmit`：exit 0；`npm run build`：exit 0（新增 3 套 CJK 字体子集，产物约 17 MB，仅既有 chunk 体积提示）。
+- `verify_reading_012` 43/43；003 25/25、004 19/19、005 34/34、008 全过；006/007/009/010/011 的失败均由本工作区既有 OD-HARDEN-2043 重构（命令迁移、媒体上限 8 MiB、文案变化）造成。
+
+**结论：** 阶段 11 通过验收。剩余未验证项为用户真实窗口的字体字形、弹层阴影、字号/对齐切换手感与真实 enclosure 播放；提交与推送待用户另行授权。
 

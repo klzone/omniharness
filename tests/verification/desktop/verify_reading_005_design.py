@@ -28,7 +28,12 @@ def main() -> int:
     check("纸面 26px 大圆角", "border-radius: 26px" in css)
     check("纸面 34/44 内边距", "padding: 34px 44px 30px" in css)
     check("正文宋体栈", '"Songti SC", "Noto Serif SC"' in css)
-    check("正文 16.5px / 2.0 行距 / justify", "font-size: 16.5px" in css and "line-height: 2" in css and "text-align: justify" in css)
+    check(
+        "正文沿用字体/字号/对齐变量",
+        "font-family: var(--rd-reader-font" in css
+        and "font-size: var(--rd-reader-size" in css
+        and "text-align: var(--rd-reader-align" in css,
+    )
     check("划线琥珀软底", "rgba(212, 164, 74, 0.4)" in css)
     check("想法主色下划线", "reading-mark-thought" in css and "border-bottom: 1.5px solid" in css)
     check("媒体内凹窗 18px", ".reading-page .reading-media-figure" in css and "box-shadow: var(--rd-inset)" in css and "border-radius: 18px" in css)

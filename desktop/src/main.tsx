@@ -7,6 +7,11 @@ import "@fontsource-variable/inter/wght.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
 import "@fontsource/ibm-plex-mono/latin-600.css";
+// 阅读设置可选的中文字体（SIL OFL 1.1，自托管、无运行时外链）：
+// 思源黑体/宋体对应 Noto Sans/Serif SC，霞鹜文楷为 LXGW WenKai。
+import "@fontsource-variable/noto-sans-sc";
+import "@fontsource-variable/noto-serif-sc";
+import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
 // 设计系统（Tailwind + 视觉令牌）必须先于旧样式加载。
 import "./theme.css";
 import "./styles.css";

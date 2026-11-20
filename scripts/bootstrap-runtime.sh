@@ -73,11 +73,16 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-if [ ! -f "$INSTALL_DIR/package.json" ]; then
-  ( cd "$INSTALL_DIR" && npm init -y >/dev/null 2>&1 )
-fi
-info "正在安装 @deepseek-ai/dsh@${LOCK_VERSION}（首次约需数分钟）..."
-( cd "$INSTALL_DIR" && npm install --no-audit --no-fund "@deepseek-ai/dsh@$LOCK_VERSION" )
+# OD-HARDEN-2043 T10：依赖树由 runtime/dsh-runtime.package-lock.json 锁定，
+# 用 npm ci 安装，保证同一 commit 每次装出同一套传递依赖。
+LOCK_PKG="$PROJECT_ROOT/runtime/dsh-runtime.package.json"
+LOCK_FILE="$PROJECT_ROOT/runtime/dsh-runtime.package-lock.json"
+[ -f "$LOCK_PKG" ] || die "缺少 runtime/dsh-runtime.package.json"
+[ -f "$LOCK_FILE" ] || die "缺少 runtime/dsh-runtime.package-lock.json"
+cp "$LOCK_PKG" "$INSTALL_DIR/package.json"
+cp "$LOCK_FILE" "$INSTALL_DIR/package-lock.json"
+info "正在按 lockfile 安装 @deepseek-ai/dsh@${LOCK_VERSION}（首次约需数分钟）..."
+( cd "$INSTALL_DIR" && npm ci --no-audit --no-fund )
 
 FINAL="$(installed_version)"
 [ "$FINAL" = "$LOCK_VERSION" ] || die "安装后版本校验失败：得到 '${FINAL:-空}'，期望 '$LOCK_VERSION'。"

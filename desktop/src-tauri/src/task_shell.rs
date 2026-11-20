@@ -307,6 +307,22 @@ const FORBIDDEN_PATH_FRAGMENTS: &[&str] = &[
     "omniharness",
 ];
 
+/// 凭证类位置（OD-HARDEN-2043 任务 B 纵深防御）：材料与附件读取都拒绝。
+/// 这些片段同时作用于文本路径与解析后的真实落点。
+const CREDENTIAL_PATH_FRAGMENTS: &[&str] = &[
+    "/.ssh",
+    "/.aws",
+    "/.gnupg",
+    "/.kube",
+    "/.config/gcloud",
+    "/.docker",
+    "/library/keychains",
+    "/appdata/roaming/microsoft/credentials",
+    "id_rsa",
+    "id_ed25519",
+    ".env",
+];
+
 fn normalize_path(path: &Path) -> PathBuf {
     match fs::canonicalize(path) {
         Ok(canonical) => canonical,
@@ -385,7 +401,16 @@ fn assert_no_forbidden_path_fragment(path: &Path) -> Result<(), String> {
     for fragment in FORBIDDEN_PATH_FRAGMENTS {
         if normalized.contains(fragment) {
             return Err(format!(
-                "拒绝把本地数据写入 {}：路径包含被禁止片段 {:?}（原版 DSH / agent / 仓库内）",
+                "路径包含被禁止片段 {:?}（原版 DSH / agent / 仓库内）：{}",
+                fragment,
+                path.display(),
+            ));
+        }
+    }
+    for fragment in CREDENTIAL_PATH_FRAGMENTS {
+        if normalized.contains(fragment) {
+            return Err(format!(
+                "拒绝使用 {}：路径包含凭证位置 {:?}，不允许作为材料或数据根。",
                 path.display(),
                 fragment
             ));
@@ -410,12 +435,21 @@ const ATTACHMENT_FORBIDDEN_PATH_FRAGMENTS: &[&str] = &[
     "omniharness",
 ];
 
-fn assert_attachment_path_allowed(path: &Path) -> Result<(), String> {
+pub(crate) fn assert_attachment_path_allowed(path: &Path) -> Result<(), String> {
     let normalized = path.to_string_lossy().to_lowercase().replace('\\', "/");
     for fragment in ATTACHMENT_FORBIDDEN_PATH_FRAGMENTS {
         if normalized.contains(fragment) {
             return Err(format!(
                 "拒绝读取 {}：路径包含被禁止片段 {:?}（原版 DSH / agent 数据）",
+                path.display(),
+                fragment
+            ));
+        }
+    }
+    for fragment in CREDENTIAL_PATH_FRAGMENTS {
+        if normalized.contains(fragment) {
+            return Err(format!(
+                "拒绝读取 {}：路径包含凭证位置 {:?}。",
                 path.display(),
                 fragment
             ));
@@ -2544,19 +2578,11 @@ pub fn read_material(path_text: &str) -> Result<MaterialRead, String> {
     if !path.is_absolute() {
         return Err(format!("材料路径必须是绝对路径：{}", raw));
     }
-    assert_no_forbidden_path_fragment(path).map_err(|_| {
-        format!(
-            "拒绝读取 {}：该路径位于被禁止的目录（DSH / agent / 仓库内）。",
-            path.display()
-        )
-    })?;
+    assert_no_forbidden_path_fragment(path)
+        .map_err(|e| format!("拒绝读取 {}：{}", path.display(), e))?;
     let resolved = resolve_real_path(path)?;
-    assert_no_forbidden_path_fragment(&resolved).map_err(|_| {
-        format!(
-            "拒绝读取 {}：解析后的真实落点位于被禁止的目录（DSH / agent / 仓库内）。",
-            resolved.display()
-        )
-    })?;
+    assert_no_forbidden_path_fragment(&resolved)
+        .map_err(|e| format!("拒绝读取 {}：{}", resolved.display(), e))?;
     assert_outside_repo(&resolved).map_err(|_| {
         format!(
             "拒绝读取 {}：该文件位于工作区仓库内，不能作为模型材料。",
@@ -3145,7 +3171,7 @@ fn media_mime_allowed(mime: &str) -> bool {
         || value.starts_with("video/")
 }
 
-const REMOTE_IMAGE_MAX_BYTES: usize = 32 * 1024 * 1024;
+const REMOTE_IMAGE_MAX_BYTES: usize = 8 * 1024 * 1024;
 const REMOTE_IMAGE_TIMEOUT: Duration = Duration::from_secs(10);
 const REMOTE_IMAGE_ALLOWED_MIMES: &[&str] = &[
     "image/png",
@@ -3176,9 +3202,10 @@ fn remote_image_mime(content_type: &str) -> Option<String> {
 
 /// RSS 正文里的远程图片（OD-READ-002 阶段 6）。
 ///
-/// 只读 http/https；重定向由本函数逐跳处理（最多 2 跳，每跳重新校验协议），
-/// 10 秒超时，响应必须是 image/* 白名单且不超过 8 MiB。返回 base64 供前端
-/// 转 data URL，避免 Tauri CSP 直接拦截远程 https 图片。
+/// 只读 http/https 且只允许公网地址（回环/私网/链路本地/多播/未指定一律拒绝，
+/// 不受「允许内网订阅源」开关影响）；重定向由本函数逐跳处理（最多 2 跳，每跳重新
+/// 校验协议、地址并钉住解析结果），10 秒超时，响应必须是媒体白名单且不超过 8 MiB。
+/// 返回 base64 供前端转 data URL，避免 Tauri CSP 直接拦截远程 https 图片。
 pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> {
     let raw = url_text.trim();
     if raw.is_empty() {
@@ -3188,15 +3215,20 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
     if !matches!(current.scheme(), "http" | "https") {
         return Err("只允许读取 http/https 图片。".to_string());
     }
-    let client = reqwest::blocking::Client::builder()
-        .timeout(REMOTE_IMAGE_TIMEOUT)
-        .connect_timeout(REMOTE_IMAGE_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
-        .user_agent("OmniDesk-Reading/0.2 (+https://omnidesk.local)")
-        .build()
-        .map_err(|e| format!("创建图片读取客户端失败：{e}"))?;
     let mut hops = 0usize;
     loop {
+        let addrs = crate::net_guard::assert_url_addresses(&current, crate::net_guard::NetPolicy::PublicOnly)?;
+        let client = crate::net_guard::pin_client(
+            reqwest::blocking::Client::builder()
+                .timeout(REMOTE_IMAGE_TIMEOUT)
+                .connect_timeout(REMOTE_IMAGE_TIMEOUT)
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent("OmniDesk-Reading/0.2 (+https://omnidesk.local)"),
+            &current,
+            &addrs,
+        )
+        .build()
+        .map_err(|e| format!("创建图片读取客户端失败：{e}"))?;
         let response = client
             .get(current.clone())
             .header(
@@ -3226,6 +3258,9 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
             let next = current
                 .join(location)
                 .map_err(|_| "图片重定向地址无效。".to_string())?;
+            if crate::net_guard::rejects_scheme_downgrade(&current, &next) {
+                return Err("图片重定向不允许从 https 降级到 http。".to_string());
+            }
             if !matches!(next.scheme(), "http" | "https") {
                 return Err("图片重定向只允许 http/https。".to_string());
             }
@@ -3251,7 +3286,8 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
             .unwrap_or(0);
         if declared > REMOTE_IMAGE_MAX_BYTES as u64 {
             return Err(format!(
-                "媒体超过 32 MiB 上限（{} KB）。",
+                "媒体超过 {} MiB 上限（{} KB）。",
+                REMOTE_IMAGE_MAX_BYTES / 1024 / 1024,
                 declared / 1024
             ));
         }
@@ -3264,7 +3300,10 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
             return Err("图片内容为空。".to_string());
         }
         if bytes.len() > REMOTE_IMAGE_MAX_BYTES {
-            return Err("图片超过 8 MiB 上限。".to_string());
+            return Err(format!(
+                "媒体超过 {} MiB 上限。",
+                REMOTE_IMAGE_MAX_BYTES / 1024 / 1024
+            ));
         }
         return Ok(ReadingMediaPayload {
             mime,
@@ -3509,19 +3548,11 @@ pub fn read_attachment(path_text: &str) -> Result<MaterialRead, String> {
     if !path.is_absolute() {
         return Err(format!("附件路径必须是绝对路径：{}", raw));
     }
-    assert_attachment_path_allowed(path).map_err(|_| {
-        format!(
-            "拒绝读取 {}：该路径位于被禁止的目录（DSH / agent 数据）。",
-            path.display()
-        )
-    })?;
+    assert_attachment_path_allowed(path)
+        .map_err(|e| format!("拒绝读取 {}：{}", path.display(), e))?;
     let resolved = resolve_real_path(path)?;
-    assert_attachment_path_allowed(&resolved).map_err(|_| {
-        format!(
-            "拒绝读取 {}：解析后的真实落点位于被禁止的目录（DSH / agent 数据）。",
-            resolved.display()
-        )
-    })?;
+    assert_attachment_path_allowed(&resolved)
+        .map_err(|e| format!("拒绝读取 {}：{}", resolved.display(), e))?;
 
     let meta = fs::metadata(&resolved)
         .map_err(|e| format!("无法读取文件 {}：{}", resolved.display(), e))?;
@@ -6020,10 +6051,24 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
             "Content-Type: image/png\r\n",
             b"\x89PNG\r\n".to_vec(),
         );
+        // 测试专用：只在本线程放行回环，生产代码没有这个开关。
+        crate::net_guard::allow_loopback_in_tests(true);
         let payload = read_remote_media(&url).unwrap();
+        crate::net_guard::allow_loopback_in_tests(false);
         assert_eq!(payload.mime, "image/png");
         assert_eq!(payload.bytes, 6);
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn remote_media_rejects_loopback_address_without_test_hook() {
+        let error = read_remote_media("http://127.0.0.1:9/image.png").unwrap_err();
+        assert!(error.contains("禁止范围"), "{error}");
+        assert!(error.contains("回环"), "{error}");
+        let error = read_remote_media("http://[::ffff:127.0.0.1]:9/image.png").unwrap_err();
+        assert!(error.contains("禁止范围"), "{error}");
+        let error = read_remote_media("http://169.254.169.254/latest/meta-data").unwrap_err();
+        assert!(error.contains("禁止范围"), "{error}");
     }
 
     #[test]
@@ -6035,8 +6080,28 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
             "Content-Type: text/html\r\n",
             b"<html></html>".to_vec(),
         );
+        crate::net_guard::allow_loopback_in_tests(true);
         let error = read_remote_media(&url).unwrap_err();
+        crate::net_guard::allow_loopback_in_tests(false);
         assert!(error.contains("不是支持的媒体类型"), "{error}");
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn attachment_rejects_symlink_pointing_at_ssh_dir() {
+        let dir = std::env::temp_dir().join(format!("omnidesk-attach-ssh-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let secret = dir.join(".ssh");
+        fs::create_dir_all(&secret).unwrap();
+        let target = secret.join("id_rsa");
+        fs::write(&target, "BEGIN OPENSSH PRIVATE KEY").unwrap();
+        let link = dir.join("notes.txt");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let error = read_attachment(link.to_str().unwrap()).unwrap_err();
+        assert!(error.contains("凭证位置"), "{error}");
+        let error = read_material(link.to_str().unwrap()).unwrap_err();
+        assert!(error.contains("凭证位置"), "{error}");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -1,5 +1,113 @@
 # 执行状态
 
+## OD-HARDEN-2043R 第二批/第三批/第四批执行记录（ARCHITECT 亲自执行，2026-11-20）
+
+- 基线：HEAD `2046d12d33`，保留前轮 A/C/B/E 与 D 第 1 步的未提交改动。
+- **T2**：`release.yml` 顶层 `permissions: contents: read`，仅 `publish` 声明 `contents: write`；18 处 `uses:` 全部固定 40 位 SHA（SHA 由 GitHub API 按标签查得：checkout v4 `11d5960a…`、setup-node v4 `49933ea5…`、upload-artifact v4 `ea165f8d…`、download-artifact v4 `d3f86a10…`、setup-python v5 `a26af69b…`、Swatinem/rust-cache v2 `d1527c8f…`、softprops/action-gh-release v2 `3bb12739…`、dtolnay/rust-toolchain stable `39008827…`）；新增 `.github/dependabot.yml`（github-actions 每周）。**与任务书的偏差**：工具链无法对齐 `rust-version = 1.77`——`cargo +1.77.2 check` 实测报错 `resolver setting 3 is not valid`（依赖 cssparser-macros 0.7.1 的 manifest），故固定为在本机验证可编译的 `1.99.1`（`rustc 1.99.1`）。未验证：GitHub runner 是否能在 `1.99.1` 上完整构建（仅本机 `cargo check` 通过）。
+- **T5**：`export_engine::resolve_target_dir` 增加 `config_dir` 参数，非注册表且不在成果根下的目录一律拒绝；`target_path` 改为父目录 `canonicalize` 后比较，并注释文件名安全依赖 `is_safe_id`。新增单测 `target_dir_requires_host_authorization_or_artifact_root`；既有导出测试改为模拟「选择框已登记」。`cargo test --lib export_engine` 26 passed。
+- **T6**：`platform.rs` Windows 分支改用 `rundll32.exe url.dll,FileProtocolHandler`，目标用 `Command::arg` 传单个参数；构造抽成 `windows_opener_argv`。单测 `windows_opener_does_not_use_cmd`（断言程序名不含 cmd、`%USERPROFILE%` 原样保留）。Windows 实机手工验证未做。
+- **T7**：F1 启动后 DSH 输出改 `collections.deque(maxlen=200)`（新增 `_pump_stdout`，管道继续读空）；F2 `_parse_announcement` 只接受 `127.0.0.1/localhost/::1`，拒绝信息不含令牌。新增 3 个单测（回环通过、非回环拒绝且 detail 无令牌、10 万行只保留 200 行）。`python3 test_web_api_unit.py` → 105 tests OK。
+- **T9**：`sceneThreads.ts` 的 `writeLocal` 只写元数据（`toLocalMeta` 去掉 `messages`），首屏 `readLocal` 返回空消息视图；迁移仍用 `readLocalRaw` 读完整正文，置位迁移标记后调用 `stripLocalMessagesAfterMigration` 清掉旧键里的正文。`npx tsc --noEmit` 0。
+- **T10**：新增 `runtime/dsh-runtime.package.json` 与 `dsh-runtime.package-lock.json`（`@deepseek-ai/dsh` 精确 0.2.1-rc.5，687 个包条目），`bootstrap-runtime.sh` 改 `npm ci`；三个 profile 生成 `samples/profiles/<name>.profile-lock.json`，`prepare-runtime-assets.sh` 改 `npm ci --omit=dev`（缺 lock 直接报错不降级）；pnpm 固定 `11.28.11`（本机 runtime 实际安装版本）；新增 `scripts/python-requirements.lock`（pip-compile 解析 + PyPI 哈希，含 macOS 与 win_amd64/win32 轮子）。验证：profile `npm ci` 成功；`python3.13 pip install --require-hashes -r lock` 成功且 `import requests,docx,lxml,pypdf,setproctitle` OK；把 certifi 哈希改成全 0 后安装失败（PIP_EXIT=1）。未验证：Windows 上的哈希安装、bootstrap 全量 DSH 安装端到端、「连续两次执行结果完全一致」的对比（未跑两次全量 prepare）。
+- **T11**：`publish` 新增「生成校验和」（`shasum -a 256` 写入 `SHA256SUMS.txt`），作为 Release 资产上传并在说明里给 macOS/Windows 校验命令。本机合成文件验证 `shasum -c` 两条均 OK。
+- **T12**：`desktop/package.json` 新增 `"test": "node --experimental-strip-types --test src"`，本机 `npm run test` → `tests 88 / pass 88 / fail 0`（含原有 8 个文件 79 项）；新增 `src/workIntent.test.mjs`（9 项：分类正常/边界/非法、周月季年边界、跨年与闰年、全角归一、词表插入）。`recordReview.ts`、`displayText.ts` 覆盖情况：本轮未补（needs 复核）。CI 的 test job 已加入 `npm run test`。
+- **T13**：`PERIOD_REVIEW_KEYWORDS` 改为 `PERIOD_REVIEW_TABLE`（`{ keyword, period, offset }`），移除 `slice(0,6)/slice(6,14)/slice(14,20)`；新增「上月复盘/复盘上月/上个月复盘」（offset=1，标签「上月」，一月取上一年十二月）。可选项「复盘提示词补传日期」按默认未做。
+- **T14**：仍未完成其余六个领域；命令集仍为 277 且与基线一致。
+- 全量：`cargo test --lib -- --test-threads=1` → `1286 passed; 0 failed; 1 ignored`；`npm run build` ✓ 1.83s；`verify_hardening_2043.py` 77/77、`verify_reading_entity_2043.py` 7/7、`verify_reading_004_formats.py` 19/19。
+- 未验证：actionlint（本机无）、GitHub 上真实 PR 与 publish 行为、Windows 实机、真实窗口手工清单、T10 的两次全量一致性对比。
+
+
+## OD-HARDEN-2043 任务 D：拆分 lib.rs（第 1 步：阅读/RSS 切片，ARCHITECT 亲自执行，2026-11-20）
+
+- 基线导出：新增 `tests/verification/desktop/export_commands_2043.py`，扫描 `src/**/*.rs` 的 `#[tauri::command]` 与 `lib.rs` 的 `generate_handler!` 清单；基线写入 `tests/verification/desktop/evidence/od-harden-2043/commands-baseline.json` → `count=277, handler=277`（A/B/C 已新增 4 个命令，故不是任务书写的 281：277 = 原 273 + 4 新增，见下条说明）。
+- 计数口径说明：任务书写「281 个命令」是按 `#[tauri::command]` 文本出现次数统计的（含注释/文档里的字样）；按「真正带该属性且紧随函数定义」统计，迁移前是 273 个，加上本轮新增的 `rss_settings_get`、`rss_settings_set_allow_private_feeds`、`host_pick_files`、`host_pick_directory` 共 277 个。基线与迁移后逐个比对一致。
+- 第 1 步迁移：`src/commands/mod.rs`（新增）+ `src/commands/reading.rs`（新增），把 lib.rs 中「健脑室 RSS 订阅」整段 11 条命令（`rss_subscriptions_list`、`rss_preset_sources`、`rss_subscription_add`、`rss_subscription_remove`、`rss_articles_list`、`rss_article_mark_read`、`rss_article_set_favorite`、`rss_refresh_article`、`rss_fetch`、`rss_settings_get`、`rss_settings_set_allow_private_feeds`）机械迁出，只加 `pub(crate)` 与 `use crate::{rss_store, SharedHost}`；`generate_handler!` 改为 `commands::reading::…`。未改签名、命令名与行为。
+- 逐项比对：迁移前 `count=277 / handler=277 / missing=[]`；迁移后 `count=277 / handler=277 / missing_in_handler=[] / missing_in_commands=[]`，命令名集合与基线完全一致，无新增无缺失。
+- 回归：迁移前后 `cargo test --lib -- --test-threads=1` 均为 `1284 passed; 0 failed; 1 ignored`；`cargo check --lib` 通过；前端 `invoke` 名称零改动（未改 `api.ts`）。
+- 剩余领域（未执行）：任务、工作记录、阅读（其余命令）、知识库、写作、设置、引擎。按计划「一次一个领域」，下一步从哪个领域开始由用户决定；本轮只完成「阅读/RSS」切片，D 尚未完成。
+
+
+## OD-HARDEN-2043 任务 E：小项加固（ARCHITECT 亲自执行，2026-11-20）
+
+- E-1 `writing_parse.rs::build_requirement_prompt`：`wait_with_output()` 换成「两个线程同时读 stdout/stderr + `try_wait` 轮询」，超时 `HELPER_TIMEOUT = 10 秒` 即 `kill` 并 `wait` 回收，再返回「已终止子进程」错误；`try_wait` 返回 `Err` 时同样 kill 回收。两个读线程保证子进程写满管道时不会卡死。既有写作解析单测仍全过。
+- E-2 `scripts/reading_attachment_extract.py`：
+  - docx 分支原来只看前 4 KB：`<!` 实体声明放在 4 KB 之后会漏掉。改为扫全文 `<!ENTITY` 拒绝，`<!DOCTYPE` 只剥离不拒绝（与 epub 的 `_parse_xml` 口径一致）。
+  - epub 分支原本已扫全文 `<!ENTITY` 并剥离 DOCTYPE，本轮核对无漏洞。
+  - 新增 `tests/verification/desktop/verify_reading_entity_2043.py`（全部合成样本，不读用户文件）：恶意 docx（ENTITY 放在 5 KB 注释之后）被拒；正常 docx 提取出正文；正常 epub（XHTML 带 `<!DOCTYPE html>`）正常提取；恶意 epub（DOCTYPE 内部子集含 ENTITY）被拒。结果 `cases=7 failures=0`。
+- E-3 非锁类生产 `unwrap/expect` 逐条处理（以第一个 `#[cfg(test)]` 之前为界）：
+
+| 位置 | 原写法 | 处理 |
+|---|---|---|
+| `engine_ipc.rs:245` | `.expect("spawn stdout reader")` | `map_err` 返回 `io::Error::other`，失败时先 `kill`/`wait` 子进程 |
+| `engine_ipc.rs:268` | `.expect("spawn stderr reader")` | 同上 |
+| `rss_store.rs` 7 处 `body[index..].chars().next().unwrap()` | 内联 unwrap | 新增 `char_at()`（`text.get(index..)`），调用点改 `let Some(ch) = … else { break }` |
+| `rss_store.rs:1055` `stack.pop().unwrap()` | 闭合标签回填循环 | `let Some(node) = stack.pop() else { break }` |
+| `rss_store.rs:1060` `stack.pop().unwrap()` | 同上 | 同上 |
+| `rss_store.rs:1092` `stack.pop().unwrap()` | 收尾堆栈平衡 | `let Some(node) … else { break }` |
+| `writing_outline.rs:282` | `from_str(DEFAULT_TEMPLATES_JSON).expect(…)` | `default_templates()` 改为返回 `Result<WritingTemplates, String>` |
+| `writing_outline.rs:285` | `templates.validate().expect(…)` | 同上，改 `validate()?` |
+| `writing_outline.rs:819` | `current.take().unwrap()` | `if let Some(section) = current.take()` |
+
+  与任务书计数的差异：按同一口径实测，engine_ipc 生产段 16 处中 14 处是 `.lock().unwrap()`（按「非锁类」口径不动），非锁 2 处已改；rss_store 10 处非锁全部改完；writing_outline 3 处非锁全部改完（另 4 处 `expect` 在测试代码里，保留）；dsh_settings 4 处全部是 `.lock().unwrap()`，不在本任务口径内。
+- 全量测试：`cargo test --lib -- --test-threads=1` → `1284 passed; 0 failed; 1 ignored`（50.68s）；`verify_hardening_2043.py` → `cases=67 failures=0`。
+- 未验证：超时路径没有构造「故意挂住的 Python」实测（只跑了正常路径与既有用例）；真实窗口里写作需求解析超时的提示文案。
+
+
+## OD-HARDEN-2043 任务 B：本地读文件改为宿主授权（ARCHITECT 亲自执行，2026-11-20）
+
+- 改动：
+  - `desktop/src-tauri/src/host_access.rs`（新增）：`HostAccess` 注册表（`Mutex<HashMap<真实落点, Instant>>`，30 分钟滑动过期，256 条上限，超出淘汰最早项）；`remember` / `assert_authorized`；7 个单测。
+  - `lib.rs`：`pub mod host_access`；新增 `host_pick_files`（Rust 侧 `DialogExt` 选择框，返回规范化并已登记的路径，取消返回空数组）与 `host_pick_directory`（取消返回 null），均已注册。新增 `authorize_selected_path`（只认注册表）与 `authorize_selected_or_known_root`（注册表或成果根/库根子路径）。
+  - 八个命令加门：`profile_import`、`knowledge_vault_set_root`、`reading_import_book`、`task_set_library_root`、`task_set_working_root`、`task_set_artifact_root` 走注册表校验；`task_read_material`、`task_read_attachment` 走「注册表或成果根/库根」，并新增 `State` 参数（前端 invoke 不变，Tauri 自动注入）。校验后的真实落点才交给底层读取，符号链接按真实落点判断。`task_open_local_file`、`task_read_reference` 未改，只核对（前者按成果根、后者按成果根+库根）。
+  - `task_shell.rs`：`CREDENTIAL_PATH_FRAGMENTS` 追加 `/.ssh`、`/.aws`、`/.gnupg`、`/.kube`、`/.config/gcloud`、`/.docker`、`/library/keychains`、`/appdata/roaming/microsoft/credentials`、`id_rsa`、`id_ed25519`、`.env`，同时作用于材料与附件；两条 `map_err` 改为透传具体原因（不再一律折叠成「DSH / agent 数据」）。`assert_attachment_path_allowed` 改为 `pub(crate)` 供选择框登记时复用。
+  - 拖拽：`on_window_event` 里识别 `WindowEvent::DragDrop(DragDropEvent::Drop)`，由宿主直接登记通过禁区校验的真实落点；不新增前端可调用的登记命令，拖拽路径不经网页层授权。
+  - 前端：`HomeChat.tsx`、`ReadingPage.tsx`、`KnowledgeVaultPage.tsx`、`SettingsPanel.tsx` 去掉 `@tauri-apps/plugin-dialog` 的 `open`，改调 `host.pickFiles` / `host.pickDirectory`（新增于 `api.ts`）。三处根目录输入框旁新增「选择目录…」按钮，选择后立即保存——手输路径现在会被拒绝，必须经选择框。
+  - `capabilities/default.json`：移除 `dialog:allow-open`；保留 `tauri_plugin_dialog::init()` 与 npm/Cargo 依赖（Rust 侧 DialogExt 仍需要）。
+  - `tests/verification/desktop/verify_home_polish_078.py`：断言由「capability 存在」改为「capability 已移除且宿主选择命令存在」。
+- 测试（脚本测试）：
+  - `cargo test --lib -- --test-threads=1` → `1284 passed; 0 failed; 1 ignored`（49.54s）。
+  - 新增单测：未登记路径拒绝；登记放行；过期拒绝且清理；命中刷新过期时间；符号链接指向 `.ssh/id_rsa` 经真实落点被凭证黑名单拒绝（附件与材料两条都断言）；`..` 穿越到未登记文件拒绝；注册表上限按最早选择淘汰。
+  - `npm run build`（含 `tsc --noEmit`）→ EXIT=0；`npx tsc --noEmit` 单独跑亦 EXIT=0。
+  - `verify_hardening_2043.py` → `cases=56 failures=0`（含八个命令的授权门、capability 移除、前端不再 import plugin-dialog、拖拽登记、11 个凭证片段）。
+- 手工清单（未验证，需要实机窗口）：附件选择（「+」按钮）、阅读导入、知识库根目录设置（选择框）、成果目录设置（文本框与「选择目录…」两条路）。另需实机确认：拖拽一个桌面文件进输入区后能读取；重启应用后旧根目录仍能正常列出（注册表只在内存，重启后靠「成果根/库根子路径」这条规则放行）。
+- 未验证：Windows 下的 `blocking_pick_*` 行为；macOS 沙盒/权限提示；`verify_home_polish_078.py` 的真实窗口部分（需要 Xvfb）。
+
+
+## OD-HARDEN-2043 任务 C：外联 URL 统一校验（ARCHITECT 亲自执行，2026-11-20）
+
+- 改动：
+  - `desktop/src-tauri/src/net_guard.rs`（新增）：`NetPolicy::PublicOnly / AllowPrivate`；`assert_public_http_url`、`assert_http_url`、`assert_url_addresses`、`pin_client`、`rejects_scheme_downgrade`。只放行 http/https、拒绝用户名密码、拒绝空主机；回环、未指定、链路本地（含 169.254.0.0/16）、多播、广播在任何策略下拒绝；RFC1918 私网、fc00::/7、100.64/10 只在 `AllowPrivate` 放行；`::ffff:*` 先还原成 IPv4 再判断。
+  - `rss_store.rs`：`RssStoreFile` 增加 `allow_private_feeds`（serde default=false，兼容旧 store.json）；删除 `http_client`，改为每跳 `feed_client(policy, url)`（校验 + `resolve` 钉扎 + `redirect::Policy::none()`）；`fetch_feed_xml(url, policy)` 手动最多 3 跳，每跳重新校验，禁止 https→http 降级；新增 `allow_private_feeds` / `set_allow_private_feeds` 支撑函数。
+  - `task_shell.rs::read_remote_media`：每跳 `assert_url_addresses(…, PublicOnly)` + `pin_client`，禁止 https 降级；`REMOTE_IMAGE_MAX_BYTES` 与注释/错误文案统一为 8 MiB（原 32 MiB）。
+  - `lib.rs`：`pub mod net_guard`；新增并注册 `rss_settings_get`、`rss_settings_set_allow_private_feeds`。
+  - `desktop/src/api.ts`、`shell/ReadingPage.tsx`：订阅弹窗新增「允许内网订阅源」勾选（默认关，打开弹窗时读取、切换即保存），同一行右侧注明「回环与 169.254 始终拒绝」。
+  - `docs/decisions.md`：新增 D-108，写明策略分档与系统代理下的残余风险。
+- 界面借鉴（OD-ARCH-035，动工前用 screenshots-design-inspiration 检索）：Gemini（Android，「Toggle Settings」标签）与 Acuity Scheduling（Web 表单页）都是「左侧标签 + 右侧控件」的单行开关，不配说明段落。本改动照此做成一行紧凑勾选，边界提示压到同一行右侧。
+- 测试（脚本测试）：
+  - `cargo test --lib -- --test-threads=1` → `1276 passed; 0 failed; 1 ignored`（50.63s；基线 1266 + 新增 10：net_guard 7、rss 重定向 2、媒体回环拒绝 1）。
+  - `net_guard` 表驱动覆盖：0.0.0.0、127.0.0.0/8、169.254/16、224/4、239/4、255.255.255.255、::、::1、fe80::/10、ff02::/16 在 AllowPrivate 下也拒绝；10/8、172.16/12、192.168/16、100.64/10、fd00::、fc00:: 在 PublicOnly 拒绝、AllowPrivate 放行；::ffff:127.0.0.1、::ffff:169.254.169.254、::ffff:10.0.0.1、::ffff:100.64.0.1 拒绝，::ffff:8.8.8.8 放行。
+  - 订阅源 302 到 169.254.169.254 → 拒绝（错误含「禁止范围」）；连续 302 → 第 4 跳拒绝；图片地址 127.0.0.1 / `[::ffff:127.0.0.1]` / 169.254.169.254 → 拒绝。
+  - 既有 `fetches_local_http_feed_and_ingests_entries` 与两条本地媒体单测改用 `#[cfg(test)]` 的线程局部放行入口（`allow_loopback_in_tests`），生产构建不存在该开关。
+  - `npm run build`（含 `tsc --noEmit`）→ `✓ built in 1.37s`，EXIT=0；`verify_hardening_2043.py` → `cases=30 failures=0`。
+- 未验证：系统代理（`HTTPS_PROXY`）下钉扎失效的实际表现；真实窗口里开关的点击与持久化；真实公网订阅源的跳转链；IPv4/IPv6 双栈解析差异。
+
+
+## OD-HARDEN-2043 任务 A：发布流程加测试门禁（ARCHITECT 亲自执行，2026-11-20）
+
+- 开工基线：HEAD `2046d12d33c874131ba20319cf1b8686f7b401ad`；`git status --short` 仅 `M PLANS.md`（本任务书计划节）。
+- 改动：
+  - `.github/workflows/release.yml`：新增 `pull_request` 触发；新增 `test` job（ubuntu-latest），装 Tauri 2 Linux 依赖（libwebkit2gtk-4.1-dev、libgtk-3-dev、libayatana-appindicator3-dev、librsvg2-dev、patchelf），跑 `cargo test --lib -- --test-threads=1`（CI 不带 `--offline`）、`npm ci && npm run build`、`pip install -r scripts/python-requirements.txt` 后跑选定验证脚本；cargo 用 `Swatinem/rust-cache@v2`、npm 用 `actions/setup-node` 的 `cache: npm`（与既有 macos/windows job 同一套缓存）。
+  - 依赖图：`meta` 加 `if: github.event_name != 'pull_request'`（PR 上不查 release、不置 publish 标志）；`macos`、`windows` 改为 `needs: [meta, test]`；`publish` 改为 `needs: [meta, test, macos, windows]`。test 失败时 publish 不会被调度。
+  - `tests/verification/desktop/verify_hardening_2043.py`（新增）：核对上面这些 YAML 事实（PR 触发、test job、apt 依赖清单、单线程 cargo、无 `--offline`、npm ci/build、依赖图、无 `continue-on-error`），并作为 CI 的门禁脚本之一。
+- 本机基线实测（静态检查 / 脚本测试）：
+  - `cargo test --lib -- --test-threads=1` → `test result: ok. 1266 passed; 0 failed; 1 ignored`（50.49s），EXIT=0。
+  - `npm run build`（脚本为 `tsc --noEmit && vite build`）→ `✓ built in 1.86s`，EXIT=0；仅有既有的 chunk >500 kB 体积警告。
+  - `python3 verify_reading_004_formats.py` → `cases=19 failures=0`；`python3 verify_knowledge_staging_202.py` → `cases=14 failures=0`；`python3 verify_hardening_2043.py` → `cases=16 failures=0`。
+  - 基线无失败，未使用 `continue-on-error`，未删改任何既有测试。
+- Python 子集取舍：CI 只跑 `verify_reading_004_formats.py` 与 `verify_hardening_2043.py`。理由：`tests/verification/desktop` 下 196 个脚本中 62 个依赖 `window_harness`/Xvfb（CI 的 ubuntu runner 无 xvfb-run，且需要真实窗口点击），其余多为一次性验收脚本；`verify_knowledge_staging_202.py` 内部固定调用 `cargo test --offline`，CI 首次运行没有可离线命中的依赖缓存时会直接失败，故不进 CI，仅在本机记录其结果。
+- YAML 检查：本机无 `actionlint`（`actionlint not found`）——标「未验证」。替代证据：`ruby -ryaml -e 'YAML.load_file(".github/workflows/release.yml")'` 解析成功，读出 `jobs` 键为 `["meta","test","macos","windows","publish"]`、`publish.needs` 为 `["meta","test","macos","windows"]`；`verify_hardening_2043.py` 的 needs/if 断言全部 PASS（人工核对依赖图：test 不经 meta，publish 经 test）。
+- 未验证：Linux runner 上 apt 依赖与 `cargo test` 是否与 macOS 同样通过（本机为 macOS）；`actions/setup-python@v5` + pip 安装 `python-requirements.txt` 的实际耗时与 `lxml` 轮子可用性；GitHub 上 PR 触发的实际行为；actionlint。
+
 ## OD-KB-202 暂存知识卡进入「知识审核」再入库（ARCHITECT 亲自执行，2026-11-19）
 
 - 触发：用户反馈模型写在 workspace/staging/kb 的知识卡没有出现在「知识审核」；「同步到知识库」直接落盘，缺少人工确认。
@@ -1037,3 +1145,14 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 测试：`OMNIDESK_REPO_ROOT=/Users/yvan/Code/MyWorkStation /Users/yvan/.cargo/bin/cargo test --offline --lib -- --test-threads=1` → 1264 passed / 0 failed / 1 ignored（55.82s）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；verify_reading_003 25/25、004 19/19、005 34/34、006 34/34、007 40/40、008 49/49、009 36/36、010 22/22、新增 011 47/47；`git diff --check` exit 0。
 - 证据：`tests/verification/desktop/evidence/od-read-002/stage10.md`（`.gitignore` 忽略）。
 - 未验证：真实窗口的侧栏字号层级/铅笔按钮触控可见性、真实 >30 天文章过滤与 favorite 例外、真实挂载/聚焦后台刷新耗时与失败展示、真实改名后 header/书架即时刷新、随机展开分布与手动折叠持久性。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。
+
+## OD-READ-002 阶段 11 执行记录（ARCHITECT 亲自实施，2026-11-20）
+
+- 基线：`2046d12d33c874131ba20319cf1b8686f7b401ad`；保留全部既有未提交/未跟踪改动；未提交、未推送、未打标签。
+- 阅读设置：`ReadingPage` 顶栏右侧 `Aa` 按钮（`order-last` 视觉置右）与弹层；字体选项「系统默认/思源黑体/思源宋体/霞鹜文楷」，字号 14–26，排列「左/两端/右」；`localStorage` 持久化（`omnidesk.reading.settings.v1`）、恢复默认、点击外部/Esc 关闭。设置以 `--rd-reader-font/size/align` 落在 `.reading-page` 根，只有 `.reading-page .reading-paragraph` 消费；章节标题、顶栏、侧栏与文末模块不跟随；未提供宽度/颜色。
+- 字体资源：新增 `@fontsource-variable/noto-sans-sc`、`@fontsource-variable/noto-serif-sc`、`lxgw-wenkai-webfont`（SIL OFL 1.1）；`main.tsx` 自托管引入；OFL 文本复制到 `desktop/public/fonts/`；`THIRD-PARTY-NOTICES.md` 增列。构建产物约 17 MB，运行时无外链。
+- RSS 附件：`RssArticleMeta` 增加 `attachments`（serde default）；解析 `enclosure`/`media:content` 非图片媒体（http(s)、≤20 条、标题/MIME/字节数）；旧文章刷新时补写元数据，不动正文/批注；单测覆盖解析与旧 meta 补写。
+- RSS 文末：仅 `source_format === "rss"` 渲染；附件井（音频/视频「播放」后按需走 MediaBlock，另给「打开原文件」）、「打开原文」、`完` 标记、`约 N 分钟读完`（400 字/分钟，至少 1 分钟）、同源更早文章的下一篇卡片（点击直接打开）。本地书籍不显示。
+- 测试：`cargo test --offline --lib rss_store::` 23/23；全量 lib 1288 passed / 0 failed / 1 ignored（顺带把材料拒绝文案改为中性描述，修复既有断言）；`npx tsc --noEmit` exit 0；`npm run build` exit 0；`npm run test` 88/88；`verify_reading_012_settings_and_footer.py` 43/43；003 25/25、004 19/19、005 34/34、008 全过；006/007/009/010/011 的既有静态断言因 OD-HARDEN-2043 重构失败（命令迁到 `commands/reading.rs`、媒体上限 8 MiB、错误文案调整）。
+- 证据：`tests/verification/desktop/evidence/od-read-002/stage11.md`（Git 忽略）。
+- 未验证：真实窗口字体字形/弹层阴影/字号与对齐切换手感；真实 enclosure 音频/PDF 的播放与外链打开；CJK 子集首次按需加载耗时；下一篇切换后的滚动位置。既有 4 个未跟踪 `runtime/` 构建符号链接保留，未暂存、未修改。

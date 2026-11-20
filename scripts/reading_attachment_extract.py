@@ -143,9 +143,17 @@ def extract_docx(path: Path) -> dict[str, Any]:
     except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
         return _metadata(f"docx 解压失败：{exc}")
 
-    head = raw[:4096].upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
-        return _metadata("docx 正文含 DOCTYPE/ENTITY，拒绝解析")
+    # OD-HARDEN-2043：实体声明可能在 4 KB 之后，必须扫全文；DOCTYPE 不拒绝。
+    if b"<!ENTITY" in raw.upper():
+        return _metadata("docx 正文含实体声明，拒绝解析")
+    if b"<!DOCTYPE" in raw[:4096].upper():
+        raw = re.sub(
+            rb"<!DOCTYPE[^>\[]*(?:\[[\s\S]*?\])?>",
+            b"",
+            raw,
+            count=1,
+            flags=re.IGNORECASE,
+        )
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as exc:

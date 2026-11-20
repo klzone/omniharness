@@ -242,7 +242,11 @@ impl EngineChannel {
                     exited.store(true, Ordering::SeqCst);
                     let _ = exit_code;
                 })
-                .expect("spawn stdout reader");
+                .map_err(|e| {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    std::io::Error::other(format!("启动引擎输出读取线程失败：{e}"))
+                })?;
         }
 
         // stderr 线程：只保留末尾若干行用于诊断，绝不写入协议通道。
@@ -265,7 +269,11 @@ impl EngineChannel {
                         buf.push(line);
                     }
                 })
-                .expect("spawn stderr reader");
+                .map_err(|e| {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    std::io::Error::other(format!("启动引擎错误输出读取线程失败：{e}"))
+                })?;
         }
 
         Ok(Self {

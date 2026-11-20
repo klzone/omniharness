@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.44] - 2026-11-20
+
+### Added
+- 健脑室正文阅读设置：顶栏 `Aa` 弹层可选系统默认 / 思源黑体 / 思源宋体 / 霞鹜文楷、字号 14–26、左/两端/右对齐；设置本地记住，只作用于正文段落。三款中文字体随包自托管（SIL OFL 1.1），运行时无外链。
+- RSS 文末模块：附件（音频、视频、PDF 等 `enclosure` / `media:content`）、打开原文、`完` 标记、按字数估算的阅读时间、同源下一篇标题；音频/视频点播放后才加载。本地书籍不显示该模块。
+- 发布门禁：`release.yml` 增加 Linux 测试 job（Rust 单测、前端构建与测试、Python 验证），PR 只跑测试不构建；发布 job 生成安装包 SHA-256 校验和。
+
+### Changed
+- 本地文件选择改由宿主登记授权：移除前端 `plugin-dialog` 直开，八个读写命令统一走 30 分钟有效的授权注册表；拖拽路径同样登记。
+- 订阅源与远程媒体统一 URL 校验：拒绝回环、私网、CGNAT、链路本地与协议降级，逐跳固定解析结果；订阅源最多 3 跳，媒体统一 8 MiB 上限。
+- 新增 `net_guard`、`host_access` 与 `commands/reading.rs` 切片；阅读/RSS 11 条命令从 `lib.rs` 迁出，命令名与注册清单保持一致。
+- DSH runtime、三个 profile 与 Python 依赖改为 lock 文件安装，pnpm 固定 `11.28.11`。
+- 材料读取的禁区文案改为中性描述，不再把只读拒绝误写为“写入”。
+
+### Verification
+- `cargo test --offline --lib -- --test-threads=1`：1288 通过 / 0 失败 / 1 忽略。
+- `npx tsc --noEmit`、`npm run build`、`npm run test`（88 项）通过。
+- `verify_hardening_2043.py` 77/77、`verify_reading_entity_2043.py` 7/7、`verify_reading_004_formats.py` 19/19、`verify_reading_012_settings_and_footer.py` 43/43；`verify_reading_003` 25/25、`004` 19/19、`005` 34/34、`008` 全过。
+- 真实窗口字体字形、弹层手感与真实 enclosure 播放待 Windows/macOS 实机复测。
+
 ## [0.2.43] - 2026-11-20
 
 ### Added

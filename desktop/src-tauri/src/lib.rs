@@ -34,6 +34,9 @@ pub mod knowledge_link;
 pub mod knowledge_link_store;
 pub mod material_store;
 pub mod material_query;
+pub mod net_guard;
+pub mod host_access;
+pub mod commands;
 mod local_http;
 pub mod model_settings;
 pub mod model_routes;
@@ -2140,6 +2143,7 @@ fn profile_import(
     rename_to: Option<String>,
     label: Option<String>,
 ) -> Result<profile_lifecycle::ImportReceipt, String> {
+    let bundle = authorize_selected_path(&path)?;
     let app_root = {
         let host = state.lock().unwrap();
         host.paths.root.clone()
@@ -2151,7 +2155,6 @@ fn profile_import(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let bundle = std::path::PathBuf::from(path.trim());
     let receipt = profile_lifecycle::import_bundle(
         &bundle,
         &dsh_home,
@@ -4959,11 +4962,12 @@ fn knowledge_vault_set_root(
     state: State<'_, SharedHost>,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_path(&path)?;
     let paths = {
         let host = state.lock().unwrap();
         host.paths.clone()
     };
-    let root = settings::set_knowledge_vault_root(&paths, &path)?;
+    let root = settings::set_knowledge_vault_root(&paths, &authorized.display().to_string())?;
     Ok(serde_json::json!({
         "ok": true,
         "knowledge_vault_root": root.display().to_string(),
@@ -5091,11 +5095,12 @@ fn reading_import_book(
     state: State<'_, SharedHost>,
     path: String,
 ) -> Result<reading_store::ReadingImportResult, String> {
+    let authorized = authorize_selected_path(&path)?;
     let paths = {
         let host = state.lock().unwrap();
         host.paths.clone()
     };
-    reading_store::import_book(&paths, &path)
+    reading_store::import_book(&paths, &authorized.display().to_string())
 }
 
 #[tauri::command(async)]
@@ -5368,122 +5373,6 @@ async fn reading_remote_media(url: String) -> Result<task_shell::ReadingMediaPay
     tauri::async_runtime::spawn_blocking(move || task_shell::read_remote_media(&url))
         .await
         .map_err(|e| format!("图片读取任务异常退出：{e}"))?
-}
-
-// ---------------------------------------------------------------------------
-// 健脑室 RSS 订阅（OD-READ-002 阶段 1）
-//
-// 订阅清单与文章元数据只落在阅读目录的 rss/ 下；文章正文与普通书共用
-// books/<book_id>.json，批注继续走 reading_store 的既有命令。
-// ---------------------------------------------------------------------------
-
-#[tauri::command(async)]
-fn rss_subscriptions_list(
-    state: State<'_, SharedHost>,
-) -> Result<Vec<rss_store::RssSubscription>, String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    rss_store::list_subscriptions(&paths)
-}
-
-#[tauri::command(async)]
-fn rss_preset_sources() -> Vec<rss_store::RssPresetSource> {
-    rss_store::preset_sources()
-}
-
-#[tauri::command(async)]
-fn rss_subscription_add(
-    state: State<'_, SharedHost>,
-    url: String,
-    name: Option<String>,
-) -> Result<rss_store::RssSubscription, String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    rss_store::add_subscription(&paths, &url, name.as_deref())
-}
-
-#[tauri::command(async)]
-fn rss_subscription_remove(
-    state: State<'_, SharedHost>,
-    id: String,
-) -> Result<(), String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    rss_store::remove_subscription(&paths, &id)
-}
-
-#[tauri::command(async)]
-fn rss_articles_list(
-    state: State<'_, SharedHost>,
-) -> Result<Vec<rss_store::RssArticleMeta>, String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    rss_store::list_articles(&paths)
-}
-
-#[tauri::command(async)]
-fn rss_article_mark_read(
-    state: State<'_, SharedHost>,
-    book_id: String,
-) -> Result<rss_store::RssArticleMeta, String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    rss_store::mark_article_read(&paths, &book_id)
-}
-
-/// 收藏/取消收藏一篇订阅文章；只写 articles/<book_id>.json。
-#[tauri::command(async)]
-fn rss_article_set_favorite(
-    state: State<'_, SharedHost>,
-    book_id: String,
-    favorite: bool,
-) -> Result<rss_store::RssArticleMeta, String> {
-    let paths = {
-        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
-        host.paths.clone()
-    };
-    rss_store::set_article_favorite(&paths, &book_id, favorite)
-}
-
-/// 单篇 RSS 文章正文回填：重新抓取所属 feed，按 guid/link 匹配后补齐媒体标记。
-#[tauri::command(async)]
-async fn rss_refresh_article(
-    state: State<'_, SharedHost>,
-    book_id: String,
-) -> Result<rss_store::RssArticleRefreshResult, String> {
-    let paths = {
-        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
-        host.paths.clone()
-    };
-    tauri::async_runtime::spawn_blocking(move || rss_store::refresh_article(&paths, &book_id))
-        .await
-        .map_err(|e| format!("RSS 文章回填任务异常退出：{e}"))?
-}
-
-#[tauri::command(async)]
-async fn rss_fetch(
-    state: State<'_, SharedHost>,
-    subscription_id: Option<String>,
-) -> Result<rss_store::RssFetchReport, String> {
-    let paths = {
-        let host = state.lock().unwrap();
-        host.paths.clone()
-    };
-    tauri::async_runtime::spawn_blocking(move || {
-        rss_store::fetch(&paths, subscription_id.as_deref())
-    })
-    .await
-    .map_err(|e| format!("RSS 拉取任务异常退出：{e}"))?
 }
 
 /// 显式重建并原子发布链接索引。构建在锁外完成，只有完整快照才替换旧快照。
@@ -8368,11 +8257,12 @@ fn task_set_library_root(
     state: State<'_, SharedHost>,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_path(&path)?;
     let paths = {
         let host = state.lock().unwrap();
         host.paths.clone()
     };
-    let root = settings::set_library_root(&paths, &path)?;
+    let root = settings::set_library_root(&paths, &authorized.display().to_string())?;
     Ok(serde_json::json!({
         "ok": true,
         "library_root": root.display().to_string(),
@@ -8423,11 +8313,12 @@ fn task_set_working_root(
     state: State<'_, SharedHost>,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_path(&path)?;
     let paths = {
         let host = state.lock().unwrap();
         host.paths.clone()
     };
-    let root = settings::set_working_root(&paths, &path)?;
+    let root = settings::set_working_root(&paths, &authorized.display().to_string())?;
     Ok(serde_json::json!({
         "ok": true,
         "working_root": root.display().to_string(),
@@ -8444,11 +8335,12 @@ fn task_set_artifact_root(
     state: State<'_, SharedHost>,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_path(&path)?;
     let paths = {
         let host = state.lock().unwrap();
         host.paths.clone()
     };
-    let root = settings::set_artifact_root(&paths, &path)?;
+    let root = settings::set_artifact_root(&paths, &authorized.display().to_string())?;
     Ok(serde_json::json!({
         "ok": true,
         "artifact_root": root.display().to_string(),
@@ -9301,13 +9193,160 @@ fn task_read_offline_artifact(file_name: String) -> Result<serde_json::Value, St
         .map(|item| serde_json::json!(item))
 }
 
+// ---------------------------------------------------------------------------
+// 宿主授权（OD-HARDEN-2043 任务 B）
+//
+// 前端不再直接调用 dialog 插件开选择框；由宿主弹出选择框，选中的真实落点登记到
+// host_access 注册表（30 分钟、256 条上限），再返回给前端。读取命令只接受
+// 「已登记」或「成果根/库根子路径」的路径。
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct HostPickFilter {
+    name: String,
+    extensions: Vec<String>,
+}
+
+fn register_picked_path(path: &std::path::Path, directory: bool) -> Result<String, String> {
+    let real = crate::app_paths::resolve_real_path(path)?;
+    if directory {
+        crate::task_shell::assert_local_root_allowed(&real)?;
+    } else {
+        crate::task_shell::assert_attachment_path_allowed(&real)?;
+    }
+    crate::host_access::remember(&real);
+    Ok(real.display().to_string())
+}
+
+/// 宿主侧文件选择框：返回规范化后的绝对路径；取消时返回空数组。
+#[tauri::command]
+async fn host_pick_files(
+    app: AppHandle,
+    title: Option<String>,
+    filters: Option<Vec<HostPickFilter>>,
+    multiple: Option<bool>,
+) -> Result<Vec<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let mut builder = app.dialog().file();
+        if let Some(title) = title {
+            builder = builder.set_title(title);
+        }
+        if let Some(filters) = filters {
+            for filter in filters {
+                let extensions: Vec<&str> = filter.extensions.iter().map(|e| e.as_str()).collect();
+                builder = builder.add_filter(filter.name, &extensions);
+            }
+        }
+        if multiple.unwrap_or(false) {
+            builder.blocking_pick_files()
+        } else {
+            builder.blocking_pick_file().map(|path| vec![path])
+        }
+    })
+    .await
+    .map_err(|e| format!("文件选择任务异常退出：{e}"))?;
+    let picked = picked.unwrap_or_default();
+    let mut paths = Vec::with_capacity(picked.len());
+    for file in picked {
+        let path = file
+            .into_path()
+            .map_err(|e| format!("选择框返回的路径不可用：{e}"))?;
+        paths.push(register_picked_path(&path, false)?);
+    }
+    Ok(paths)
+}
+
+/// 宿主侧目录选择框：返回规范化后的绝对路径；取消时返回 None。
+#[tauri::command]
+async fn host_pick_directory(
+    app: AppHandle,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let mut builder = app.dialog().file();
+        if let Some(title) = title {
+            builder = builder.set_title(title);
+        }
+        builder.blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| format!("目录选择任务异常退出：{e}"))?;
+    let Some(folder) = picked else {
+        return Ok(None);
+    };
+    let path = folder
+        .into_path()
+        .map_err(|e| format!("选择框返回的路径不可用：{e}"))?;
+    Ok(Some(register_picked_path(&path, true)?))
+}
+
+/// 只接受本次选择框登记过的真实落点（导入、设根目录用）。
+fn authorize_selected_path(raw: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空。".to_string());
+    }
+    let path = std::path::Path::new(trimmed);
+    if !path.is_absolute() {
+        return Err(format!("路径必须是绝对路径：{trimmed}"));
+    }
+    let real = crate::app_paths::resolve_real_path(path)?;
+    crate::host_access::assert_authorized(&real)?;
+    Ok(real)
+}
+
+/// 已登记，或落在成果根/库根内（读取材料、附件用）。
+fn authorize_selected_or_known_root(
+    state: &State<'_, SharedHost>,
+    raw: &str,
+) -> Result<std::path::PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空。".to_string());
+    }
+    let path = std::path::Path::new(trimmed);
+    if !path.is_absolute() {
+        return Err(format!("路径必须是绝对路径：{trimmed}"));
+    }
+    let real = crate::app_paths::resolve_real_path(path)?;
+    if crate::host_access::registry().is_authorized(&real) {
+        return Ok(real);
+    }
+    let config_dir = {
+        let host = state.lock().map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.config.clone()
+    };
+    let artifact_root = settings::effective_root(&config_dir)?.root;
+    if real.starts_with(&artifact_root) {
+        return Ok(real);
+    }
+    if let Ok(library) = settings::effective_library_root(&config_dir) {
+        let library_root = crate::app_paths::resolve_real_path(&library.root)
+            .unwrap_or_else(|_| library.root.clone());
+        if real.starts_with(&library_root) || real.starts_with(&library.root) {
+            return Ok(real);
+        }
+    }
+    Err(format!(
+        "拒绝读取 {}：这个路径不是本次从文件选择框选中的文件，也不在成果目录/库根内。",
+        real.display()
+    ))
+}
+
 /// 只读读取用户**明确给出路径**的一个材料文件（OD-ARCH-026）。
 ///
 /// 一次一个文件，不列目录、不递归、不解析数据库；绝对路径、普通文件、
 /// 扩展名白名单、大小上限与 UTF-8 全部由 task_shell::read_material 强制。
 #[tauri::command(async)]
-fn task_read_material(path: String) -> Result<serde_json::Value, String> {
-    task_shell::read_material(&path).map(|item| serde_json::json!(item))
+fn task_read_material(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_or_known_root(&state, &path)?;
+    task_shell::read_material(&authorized.display().to_string())
+        .map(|item| serde_json::json!(item))
 }
 
 // ---------------------------------------------------------------------------
@@ -9394,8 +9433,13 @@ fn task_read_reference(
 /// 禁区（DSH / agent / 仓库）、普通文件、大小上限、真实 UTF-8 文本仍由
 /// `task_shell::read_attachment` 强制；二进制一律如实报错，不生成假摘要。
 #[tauri::command(async)]
-fn task_read_attachment(path: String) -> Result<serde_json::Value, String> {
-    task_shell::read_attachment(&path).map(|item| serde_json::json!(item))
+fn task_read_attachment(
+    state: State<'_, SharedHost>,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let authorized = authorize_selected_or_known_root(&state, &path)?;
+    task_shell::read_attachment(&authorized.display().to_string())
+        .map(|item| serde_json::json!(item))
 }
 
 // ---------------------------------------------------------------------------
@@ -10107,15 +10151,19 @@ pub fn run() {
             reading_rename_book,
             reading_refresh_content,
             reading_remote_media,
-            rss_subscriptions_list,
-            rss_preset_sources,
-            rss_subscription_add,
-            rss_subscription_remove,
-            rss_articles_list,
-            rss_article_mark_read,
-            rss_article_set_favorite,
-            rss_refresh_article,
-            rss_fetch,
+            host_pick_files,
+            host_pick_directory,
+            commands::reading::rss_subscriptions_list,
+            commands::reading::rss_preset_sources,
+            commands::reading::rss_subscription_add,
+            commands::reading::rss_subscription_remove,
+            commands::reading::rss_articles_list,
+            commands::reading::rss_article_mark_read,
+            commands::reading::rss_article_set_favorite,
+            commands::reading::rss_refresh_article,
+            commands::reading::rss_fetch,
+            commands::reading::rss_settings_get,
+            commands::reading::rss_settings_set_allow_private_feeds,
             knowledge_sync_to_vault,
             knowledge_staging_list,
             knowledge_staging_sync,
@@ -10259,6 +10307,17 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // OD-HARDEN-2043：拖拽进窗口的文件在宿主侧登记，前端只从事件里拿路径；
+            // 不经过命令，网页层无法凭空登记任意路径。仍按附件禁区校验真实落点。
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                for path in paths {
+                    if let Ok(real) = crate::app_paths::resolve_real_path(path) {
+                        if crate::task_shell::assert_attachment_path_allowed(&real).is_ok() {
+                            crate::host_access::remember(&real);
+                        }
+                    }
+                }
+            }
             // OD-ARCH-076 S2：DSH 原生设置窗口已移除，只有主窗口会走到这里。
             if let tauri::WindowEvent::Destroyed = event {
                 // 窗口关闭即收尾引擎，不留孤儿进程。

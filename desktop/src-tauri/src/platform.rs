@@ -598,10 +598,12 @@ fn spawn_opener(target: &str) -> Result<Child, String> {
 #[cfg(target_os = "windows")]
 fn spawn_opener(target: &str) -> Result<Child, String> {
     use std::os::windows::process::CommandExt;
-    let mut command = Command::new("cmd");
-    command.arg("/C");
-    // `start` 的第一个带引号参数是窗口标题，必须给空串，否则带空格的路径会被当成标题。
-    command.raw_arg(format!("start \"\" \"{}\"", target.replace('"', "")));
+    let (program, args) = windows_opener_argv(target);
+    let mut command = Command::new(program);
+    // 目标用 arg 传一个完整参数，不拼命令行，也不经 cmd —— cmd 会对 `%NAME%` 做环境变量展开。
+    for arg in args {
+        command.arg(arg);
+    }
     // 不加这个标志，双击启动时会跟着弹一个黑框（OD-ARCH-134）。
     hide_console(&mut command);
     command
@@ -609,7 +611,18 @@ fn spawn_opener(target: &str) -> Result<Child, String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("cmd /C start：{}", e))
+        .map_err(|e| format!("rundll32：{}", e))
+}
+
+/// Windows 打开目标的「程序 + 参数」构造（OD-HARDEN-2043 T6）。
+///
+/// 独立成纯函数，macOS / Linux 上也能单测：目标必须原样作为一个参数传入，
+/// 不经过 `cmd /C start`（cmd 会展开 `%NAME%`，把进程环境变量拼进外发链接）。
+fn windows_opener_argv(target: &str) -> (String, Vec<String>) {
+    (
+        "rundll32.exe".to_string(),
+        vec!["url.dll,FileProtocolHandler".to_string(), target.to_string()],
+    )
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -1145,6 +1158,17 @@ pub fn process_table() -> Vec<ProcRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// T6：Windows 打开链接不经 cmd，目标原样作为单个参数（% 不被展开）。
+    #[test]
+    fn windows_opener_does_not_use_cmd() {
+        let (program, args) = windows_opener_argv("https://example.com/?k=%USERPROFILE%");
+        let lowered = program.to_ascii_lowercase();
+        assert!(!lowered.contains("cmd"), "program = {program}");
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[1], "https://example.com/?k=%USERPROFILE%");
+        assert_eq!(args[0], "url.dll,FileProtocolHandler");
+    }
 
     /// 版本解析只认「主版本」，前缀 v 可有可无（node 输出 `v22.19.0`，有的发行版不给 v）。
     #[test]

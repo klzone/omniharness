@@ -151,6 +151,20 @@ pub struct RssArticleMeta {
     pub read: bool,
     #[serde(default)]
     pub favorite: bool,
+    /// 条目附带的非图片媒体（播客音频、视频、PDF 等）；旧文件缺省为空。
+    #[serde(default)]
+    pub attachments: Vec<RssAttachment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RssAttachment {
+    pub url: String,
+    #[serde(default)]
+    pub mime: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -182,10 +196,22 @@ pub(crate) struct RssStoreFile {
     schema: String,
     #[serde(default)]
     subscriptions: Vec<RssSubscription>,
+    /// 「允许内网订阅源」开关（OD-HARDEN-2043）。默认关：私网与 CGNAT 地址一律拒绝。
+    /// 回环、链路本地、未指定、多播不受此开关影响，始终拒绝。
+    #[serde(default)]
+    allow_private_feeds: bool,
 }
 
 fn schema_default() -> String {
     RSS_SCHEMA.to_string()
+}
+
+fn policy_for(store: &RssStoreFile) -> crate::net_guard::NetPolicy {
+    if store.allow_private_feeds {
+        crate::net_guard::NetPolicy::AllowPrivate
+    } else {
+        crate::net_guard::NetPolicy::PublicOnly
+    }
 }
 
 fn now_secs() -> f64 {
@@ -270,6 +296,7 @@ fn preset_store(now: f64) -> RssStoreFile {
                 last_error: String::new(),
             })
             .collect(),
+        allow_private_feeds: false,
     }
 }
 
@@ -320,6 +347,21 @@ fn load_store_at(root: &Path) -> Result<RssStoreFile, String> {
 pub fn list_subscriptions(paths: &AppPaths) -> Result<Vec<RssSubscription>, String> {
     let root = crate::reading_store::resolve_reading_root(paths)?;
     Ok(load_store_at(&root)?.subscriptions)
+}
+
+/// 读取「允许内网订阅源」开关；默认关。
+pub fn allow_private_feeds(paths: &AppPaths) -> Result<bool, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    Ok(load_store_at(&root)?.allow_private_feeds)
+}
+
+/// 保存「允许内网订阅源」开关。只影响订阅源；正文图片/媒体始终只允许公网。
+pub fn set_allow_private_feeds(paths: &AppPaths, allow: bool) -> Result<bool, String> {
+    let root = crate::reading_store::resolve_reading_root(paths)?;
+    let mut store = load_store_at(&root)?;
+    store.allow_private_feeds = allow;
+    save_store_at(&root, &store)?;
+    Ok(store.allow_private_feeds)
 }
 
 pub fn add_subscription(
@@ -481,6 +523,15 @@ fn article_path(root: &Path, book_id: &str) -> Result<PathBuf, String> {
     Ok(articles_dir(root).join(format!("{book_id}.json")))
 }
 
+fn write_article_meta_at(root: &Path, meta: &RssArticleMeta) -> Result<(), String> {
+    let path = article_path(root, &meta.book_id)?;
+    let bytes = serde_json::to_vec_pretty(meta)
+        .map_err(|e| format!("序列化 RSS 文章元数据失败：{e}"))?;
+    write_replace_atomically(&path, &bytes)?;
+    harden_private(&path, 0o600);
+    Ok(())
+}
+
 fn reading_book_exists_at(root: &Path, book_id: &str) -> bool {
     is_safe_id(book_id) && root.join("books").join(format!("{book_id}.json")).exists()
 }
@@ -528,8 +579,10 @@ fn refresh_article_at(root: &Path, book_id: &str) -> Result<RssArticleRefreshRes
     let Some(feed_url) = subscription_feed_url(root, &meta) else {
         return Ok(not_updated("缺少可用的订阅源地址。"));
     };
-    let client = http_client()?;
-    let xml = fetch_feed_xml(&client, &feed_url)?;
+    let policy = load_store_at(root)
+        .map(|store| policy_for(&store))
+        .unwrap_or(crate::net_guard::NetPolicy::PublicOnly);
+    let xml = fetch_feed_xml(&feed_url, policy)?;
     refresh_article_with_xml_at(root, book_id, &xml)
 }
 
@@ -581,6 +634,11 @@ fn refresh_article_with_xml_at(
     let Some(entry) = matched else {
         return Ok(not_updated("订阅源中没有匹配的文章条目（guid/link 不一致）。"));
     };
+    if meta.attachments != entry.attachments {
+        let mut updated = meta.clone();
+        updated.attachments = entry.attachments.clone();
+        write_article_meta_at(root, &updated)?;
+    }
     let base_url = if !entry.link.trim().is_empty() {
         entry.link.trim().to_string()
     } else if !meta.link.trim().is_empty() {
@@ -645,7 +703,7 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
         }
         None => (0..store.subscriptions.len()).collect(),
     };
-    let client = http_client()?;
+    let policy = policy_for(&store);
     let mut report = RssFetchReport {
         fetched: 0,
         failed: 0,
@@ -656,7 +714,7 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
     let fetched_at = utc_iso8601(now_secs());
     for index in targets {
         let subscription = store.subscriptions[index].clone();
-        match fetch_feed_xml(&client, &subscription.url) {
+        match fetch_feed_xml(&subscription.url, policy) {
             Ok(xml) => {
                 let summary = ingest_feed_at(&root, &subscription, &xml, now_secs());
                 match summary {
@@ -708,19 +766,34 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
     Ok(report)
 }
 
-fn http_client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
+/// 订阅源最多 3 跳重定向（OD-HARDEN-2043）。
+const MAX_FEED_REDIRECTS: usize = 3;
+
+/// 每一跳都重新校验地址并钉住解析结果，防 DNS 重绑定。
+fn feed_client(
+    policy: crate::net_guard::NetPolicy,
+    url: &reqwest::Url,
+) -> Result<reqwest::blocking::Client, String> {
+    let addrs = crate::net_guard::assert_url_addresses(url, policy)?;
+    let builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
         .connect_timeout(Duration::from_secs(10))
         .user_agent("OmniDesk-RSS/0.1 (+https://omnidesk.local)")
+        .redirect(reqwest::redirect::Policy::none());
+    crate::net_guard::pin_client(builder, url, &addrs)
         .build()
         .map_err(|e| format!("创建 RSS 网络客户端失败：{e}"))
 }
 
-fn fetch_feed_xml(client: &reqwest::blocking::Client, url: &str) -> Result<String, String> {
+fn fetch_feed_xml(url: &str, policy: crate::net_guard::NetPolicy) -> Result<String, String> {
     let url = validate_feed_url(url)?;
-    let response = client
-        .get(&url)
+    let mut current =
+        reqwest::Url::parse(&url).map_err(|_| "订阅地址不是有效的网址。".to_string())?;
+    let mut hops = 0usize;
+    loop {
+        let client = feed_client(policy, &current)?;
+        let response = client
+        .get(current.clone())
         .header(
             reqwest::header::ACCEPT,
             "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
@@ -735,28 +808,57 @@ fn fetch_feed_xml(client: &reqwest::blocking::Client, url: &str) -> Result<Strin
                 format!("请求失败：{e}")
             }
         })?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("HTTP 状态 {}：{}", status.as_u16(), url));
-    }
-    if let Some(length) = response.content_length() {
-        if length > MAX_FETCH_BYTES as u64 {
+        let status = response.status();
+        if status.is_redirection() {
+            if hops >= MAX_FEED_REDIRECTS {
+                return Err(format!("订阅地址重定向超过 {} 次。", MAX_FEED_REDIRECTS));
+            }
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "订阅重定向缺少 Location。".to_string())?;
+            let next = current
+                .join(location)
+                .map_err(|_| "订阅重定向地址无效。".to_string())?;
+            if crate::net_guard::rejects_scheme_downgrade(&current, &next) {
+                return Err("订阅地址不允许从 https 降级到 http。".to_string());
+            }
+            if !matches!(next.scheme(), "http" | "https") {
+                return Err("订阅重定向只允许 http/https。".to_string());
+            }
+            // 下一跳在 feed_client 里重新校验并重新钉住。
+            current = next;
+            hops += 1;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP 状态 {}：{}", status.as_u16(), current));
+        }
+        if let Some(length) = response.content_length() {
+            if length > MAX_FETCH_BYTES as u64 {
+                return Err(format!(
+                    "响应体 {} KB，超过 {} KB 上限。",
+                    length / 1024,
+                    MAX_FETCH_BYTES / 1024
+                ));
+            }
+        }
+        let mut reader = response.take((MAX_FETCH_BYTES + 1) as u64);
+        let mut body = Vec::new();
+        reader
+            .read_to_end(&mut body)
+            .map_err(|e| format!("读取响应体失败：{e}"))?;
+        if body.len() > MAX_FETCH_BYTES {
             return Err(format!(
-                "响应体 {} KB，超过 {} KB 上限。",
-                length / 1024,
+                "响应体超过 {} KB 上限，已拒绝解析。",
                 MAX_FETCH_BYTES / 1024
             ));
         }
+        return Ok(String::from_utf8_lossy(&body).to_string());
     }
-    let mut reader = response.take((MAX_FETCH_BYTES + 1) as u64);
-    let mut body = Vec::new();
-    reader
-        .read_to_end(&mut body)
-        .map_err(|e| format!("读取响应体失败：{e}"))?;
-    if body.len() > MAX_FETCH_BYTES {
-        return Err(format!("响应体超过 {} KB 上限，已拒绝解析。", MAX_FETCH_BYTES / 1024));
-    }
-    Ok(String::from_utf8_lossy(&body).to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -771,6 +873,7 @@ struct FeedEntry {
     content_html: String,
     summary: String,
     image_url: String,
+    attachments: Vec<RssAttachment>,
 }
 
 #[derive(Default)]
@@ -804,6 +907,12 @@ fn ingest_feed_at(
             hash8(&key)
         );
         if reading_book_exists_at(root, &book_id) || article_path(root, &book_id)?.exists() {
+            if let Ok(Some(mut meta)) = read_article_meta_at(root, &book_id) {
+                if meta.attachments != entry.attachments {
+                    meta.attachments = entry.attachments.clone();
+                    write_article_meta_at(root, &meta)?;
+                }
+            }
             if let Ok(mut book) = read_book_at(root, &book_id) {
                 if book.source_format == "rss" && book.annotations.is_empty() {
                     let mut paragraphs = html_to_paragraphs(&entry.content_html, &entry.link);
@@ -897,6 +1006,7 @@ fn ingest_feed_at(
             fetched_at: fetched_at.clone(),
             read: false,
             favorite: false,
+            attachments: entry.attachments.clone(),
         };
         let path = article_path(root, &book_id)?;
         let raw = serde_json::to_vec_pretty(&meta)
@@ -978,12 +1088,12 @@ fn parse_xml(input: &str) -> XmlNode {
             let closing = local_name(name.trim());
             if let Some(position) = stack.iter().rposition(|node| node.name == closing) {
                 while stack.len() > position + 1 {
-                    let node = stack.pop().unwrap();
+                    let Some(node) = stack.pop() else { break };
                     if let Some(parent) = stack.last_mut() {
                         parent.children.push(node);
                     }
                 }
-                let node = stack.pop().unwrap();
+                let Some(node) = stack.pop() else { break };
                 if let Some(parent) = stack.last_mut() {
                     parent.children.push(node);
                 }
@@ -1015,7 +1125,7 @@ fn parse_xml(input: &str) -> XmlNode {
         index += end + 1;
     }
     while stack.len() > 1 {
-        let node = stack.pop().unwrap();
+        let Some(node) = stack.pop() else { break };
         if let Some(parent) = stack.last_mut() {
             parent.children.push(node);
         }
@@ -1043,6 +1153,11 @@ fn find_tag_end(rest: &str) -> Option<usize> {
     None
 }
 
+/// 取当前下标处的字符；越界返回 None，避免在 release（panic = abort）下直接杀进程。
+fn char_at(text: &str, index: usize) -> Option<char> {
+    text.get(index..).and_then(|rest| rest.chars().next())
+}
+
 fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
     let trimmed = inner.trim();
     let self_closing = trimmed.ends_with('/');
@@ -1061,7 +1176,7 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
     let mut index = name_end;
     while index < body.len() {
         while index < body.len() {
-            let ch = body[index..].chars().next().unwrap();
+            let Some(ch) = char_at(body, index) else { break };
             if ch.is_whitespace() {
                 index += ch.len_utf8();
             } else {
@@ -1073,7 +1188,7 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
         }
         let key_start = index;
         while index < body.len() {
-            let ch = body[index..].chars().next().unwrap();
+            let Some(ch) = char_at(body, index) else { break };
             if ch.is_whitespace() || ch == '=' {
                 break;
             }
@@ -1081,7 +1196,7 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
         }
         let key = local_name(&body[key_start..index]);
         while index < body.len() {
-            let ch = body[index..].chars().next().unwrap();
+            let Some(ch) = char_at(body, index) else { break };
             if ch.is_whitespace() {
                 index += ch.len_utf8();
             } else {
@@ -1091,7 +1206,7 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
         if index < body.len() && body[index..].starts_with('=') {
             index += 1;
             while index < body.len() {
-                let ch = body[index..].chars().next().unwrap();
+                let Some(ch) = char_at(body, index) else { break };
                 if ch.is_whitespace() {
                     index += ch.len_utf8();
                 } else {
@@ -1099,12 +1214,12 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
                 }
             }
             if index < body.len() {
-                let quote = body[index..].chars().next().unwrap();
+                let Some(quote) = char_at(body, index) else { break };
                 let value = if quote == '\"' || quote == '\'' {
                     index += 1;
                     let start = index;
                     while index < body.len() {
-                        let ch = body[index..].chars().next().unwrap();
+                        let Some(ch) = char_at(body, index) else { break };
                         if ch == quote {
                             break;
                         }
@@ -1118,7 +1233,7 @@ fn parse_start_tag(inner: &str) -> (String, Vec<(String, String)>, bool) {
                 } else {
                     let start = index;
                     while index < body.len() {
-                        let ch = body[index..].chars().next().unwrap();
+                        let Some(ch) = char_at(body, index) else { break };
                         if ch.is_whitespace() {
                             break;
                         }
@@ -1259,6 +1374,7 @@ fn parse_entry(node: &XmlNode) -> FeedEntry {
         guid.clone()
     };
     let image_url = entry_image_url(node, &link);
+    let attachments = entry_attachments(node, &link);
     FeedEntry {
         key,
         guid,
@@ -1270,6 +1386,7 @@ fn parse_entry(node: &XmlNode) -> FeedEntry {
         content_html,
         summary,
         image_url,
+        attachments,
     }
 }
 
@@ -1302,6 +1419,104 @@ fn entry_image_url(node: &XmlNode, base_url: &str) -> String {
         }
     }
     String::new()
+}
+
+/// 条目附带的非图片媒体：enclosure / media:content 中声明为音频、视频或其他文件。
+/// 只保留 http(s) 地址，最多 20 条，供阅读区底部「附件」模块使用。
+fn entry_attachments(node: &XmlNode, base_url: &str) -> Vec<RssAttachment> {
+    let mut attachments = Vec::new();
+    for child in &node.children {
+        if child.name != "enclosure" && child.name != "content" {
+            continue;
+        }
+        let Some(url) = attr_value(child, "url") else {
+            continue;
+        };
+        let Some(mime) = attachment_mime(child, &url) else {
+            continue;
+        };
+        let Some(url) = sanitize_media_url(&url, base_url) else {
+            continue;
+        };
+        if !url.to_ascii_lowercase().starts_with("http") {
+            continue;
+        }
+        if url.len() > 2_000 {
+            continue;
+        }
+        if attachments.iter().any(|item: &RssAttachment| item.url == url) {
+            continue;
+        }
+        let title = attr_value(child, "title")
+            .map(|value| clamp_chars(value.trim(), 160))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| attachment_title_from_url(&url));
+        let size_bytes = attr_value(child, "length")
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+        attachments.push(RssAttachment {
+            url,
+            mime,
+            title,
+            size_bytes,
+        });
+        if attachments.len() >= 20 {
+            break;
+        }
+    }
+    attachments
+}
+
+fn attachment_mime(node: &XmlNode, url: &str) -> Option<String> {
+    let kind = attr_value(node, "type").unwrap_or_default();
+    let lower = kind.trim().to_ascii_lowercase();
+    if lower.starts_with("image/") {
+        return None;
+    }
+    if !lower.is_empty() {
+        return Some(lower);
+    }
+    let medium = attr_value(node, "medium")
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if medium == "image" {
+        return None;
+    }
+    if medium == "audio" || medium == "video" {
+        return Some(format!("{medium}/unknown"));
+    }
+    attachment_mime_from_extension(url)
+}
+
+fn attachment_mime_from_extension(url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let ext = path.rsplit('.').next()?.trim().to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "mp3" => "audio/mpeg",
+        "m4a" | "aac" => "audio/mp4",
+        "ogg" | "oga" | "opus" => "audio/ogg",
+        "wav" => "audio/wav",
+        "flac" => "audio/flac",
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "pdf" => "application/pdf",
+        "epub" => "application/epub+zip",
+        "zip" => "application/zip",
+        _ => return None,
+    };
+    Some(mime.to_string())
+}
+
+fn attachment_title_from_url(url: &str) -> String {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let name = path.rsplit('/').next().unwrap_or("附件");
+    if name.trim().is_empty() {
+        "附件".to_string()
+    } else {
+        clamp_chars(name.trim(), 160)
+    }
 }
 
 fn atom_or_text_link(node: &XmlNode) -> String {
@@ -1829,6 +2044,47 @@ mod tests {
     }
 
     #[test]
+    fn parses_audio_and_file_enclosures_as_attachments() {
+        let xml = r#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel><item>
+    <title>播客文章</title><link>https://example.test/podcast</link><guid>podcast</guid>
+    <enclosure url="https://example.test/cover.jpg" type="image/jpeg" length="1234"/>
+    <enclosure url="https://example.test/episode.mp3" type="audio/mpeg" length="52428800" title="节目音频"/>
+    <media:content url="https://example.test/notes.pdf" type="application/pdf" length="204800" title="节目文稿"/>
+    <description>正文</description>
+  </item></channel>
+</rss>"#;
+        let entries = parse_feed(xml).unwrap();
+        assert_eq!(entries[0].image_url, "https://example.test/cover.jpg");
+        assert_eq!(entries[0].attachments.len(), 2);
+        assert_eq!(entries[0].attachments[0].title, "节目音频");
+        assert_eq!(entries[0].attachments[0].mime, "audio/mpeg");
+        assert_eq!(entries[0].attachments[0].size_bytes, 52_428_800);
+        assert_eq!(entries[0].attachments[1].title, "节目文稿");
+        assert_eq!(entries[0].attachments[1].mime, "application/pdf");
+    }
+
+    #[test]
+    fn existing_article_metadata_gains_new_attachments() {
+        let root = temp_root("attachments");
+        let subscription = sample_subscription();
+        let plain = r#"<rss><channel><item><title>旧播客</title><link>https://example.test/old-pod</link><guid>old-pod</guid><description>只有文字</description></item></channel></rss>"#;
+        ingest_feed_at(&root, &subscription, plain, 1_800_000_000.0).unwrap();
+        let items = list_articles_at(&root).unwrap();
+        assert!(items[0].attachments.is_empty());
+        let with_audio = r#"<rss><channel><item><title>旧播客</title><link>https://example.test/old-pod</link><guid>old-pod</guid><description>只有文字</description><enclosure url="https://example.test/old.mp3" type="audio/mpeg" length="1048576"/></item></channel></rss>"#;
+        let summary = ingest_feed_at(&root, &subscription, with_audio, 1_800_000_010.0).unwrap();
+        assert_eq!(summary.added, 0);
+        assert_eq!(summary.skipped, 1);
+        let refreshed = list_articles_at(&root).unwrap();
+        assert_eq!(refreshed[0].attachments.len(), 1);
+        assert_eq!(refreshed[0].attachments[0].url, "https://example.test/old.mp3");
+        assert_eq!(refreshed[0].attachments[0].size_bytes, 1_048_576);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn backfills_old_article_media_without_annotations() {
         let root = temp_root("backfill");
         let subscription = sample_subscription();
@@ -2146,11 +2402,12 @@ mod tests {
             );
             stream.write_all(response.as_bytes()).unwrap();
         });
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap();
-        let fetched = fetch_feed_xml(&client, &format!("http://{address}/feed.xml")).unwrap();
+        // 本机回环监听器：只在这个测试里临时放行回环（生产代码没有这个开关）。
+        crate::net_guard::allow_loopback_in_tests(true);
+        let fetched =
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly)
+                .unwrap();
+        crate::net_guard::allow_loopback_in_tests(false);
         server.join().unwrap();
         let root = temp_root("http");
         let subscription = sample_subscription();
@@ -2160,5 +2417,52 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "本地回放");
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn feed_redirect_to_link_local_is_rejected() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            let response = "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        crate::net_guard::allow_loopback_in_tests(true);
+        let result =
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly);
+        crate::net_guard::allow_loopback_in_tests(false);
+        server.join().unwrap();
+        let error = result.expect_err("跳到 169.254.169.254 必须被拒绝");
+        assert!(error.contains("169.254.169.254"), "{error}");
+        assert!(error.contains("禁止范围"), "{error}");
+    }
+
+    #[test]
+    fn feed_redirect_over_limit_is_rejected() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let payload = format!("http://{address}/again");
+        let server = std::thread::spawn(move || {
+            for _ in 0..4 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 4096];
+                let _ = std::io::Read::read(&mut stream, &mut request);
+                let response = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    payload
+                );
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        crate::net_guard::allow_loopback_in_tests(true);
+        let result =
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly);
+        crate::net_guard::allow_loopback_in_tests(false);
+        server.join().unwrap();
+        let error = result.expect_err("第 4 跳必须被拒绝");
+        assert!(error.contains("重定向超过"), "{error}");
     }
 }

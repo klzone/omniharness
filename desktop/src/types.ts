@@ -4274,6 +4274,15 @@ export interface RssArticleMeta {
   read: boolean;
   /** 收藏的文章不受 30 天显示过滤影响。 */
   favorite: boolean;
+  /** 条目附带的非图片媒体（播客音频、视频、文件）；旧数据缺省为空。 */
+  attachments?: RssAttachment[];
+}
+
+export interface RssAttachment {
+  url: string;
+  mime: string;
+  title: string;
+  size_bytes: number;
 }
 
 export interface RssArticleRefreshResult {

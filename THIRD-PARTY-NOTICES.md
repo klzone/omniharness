@@ -42,4 +42,12 @@ SOFTWARE.
 
 ## 其他依赖
 
+### 阅读设置中文字体
+
+- 思源黑体（Noto Sans SC Variable）：`@fontsource-variable/noto-sans-sc`，SIL Open Font License 1.1，版权 Google Inc.；许可证文本保留在 `desktop/public/fonts/OFL-NotoSansSC.txt`。
+- 思源宋体（Noto Serif SC Variable）：`@fontsource-variable/noto-serif-sc`，SIL Open Font License 1.1，版权 Google Inc.；许可证文本保留在 `desktop/public/fonts/OFL-NotoSerifSC.txt`。
+- 霞鹜文楷（LXGW WenKai）：`lxgw-wenkai-webfont`，SIL Open Font License 1.1；许可证文本保留在 `desktop/public/fonts/OFL-LXGWWenKai.txt`。
+
+三款字体随安装包自托管，运行时只从本地资源加载，不请求外部字体服务。
+
 `runtime/`、安装包和开发依赖中还包含其他 npm、Python 第三方包。各包的许可证文本保留在对应包目录内；打包分发时应一并包含其许可证与 NOTICE 要求。

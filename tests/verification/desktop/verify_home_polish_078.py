@@ -195,7 +195,11 @@ def source_checks() -> dict:
         "no_avatar_block": "rounded-full bg-surface-container-high ring-1" not in top,
         "no_mascot": "mascot" not in canvas,
         "dialog_plugin": "tauri_plugin_dialog::init()" in rust,
-        "dialog_capability": "dialog:allow-open" in cap,
+        # OD-HARDEN-2043：前端不再直接开选择框，权限从 capabilities 移除；
+        # 选择框改由宿主命令 host_pick_files / host_pick_directory 提供。
+        "dialog_capability_removed": "dialog:allow-open" not in cap,
+        "host_pick_commands": "fn host_pick_files(" in rust
+        and "fn host_pick_directory(" in rust,
     }
 
 

@@ -6,7 +6,6 @@
 // 密钥是单向输入：保存后立刻清空输入框，界面只显示“已配置 / 来源”。
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import {
   host,
   invalidateEngineFactsCache,
@@ -1106,15 +1105,12 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
   const pickImportFile = useCallback(async () => {
     setMigrateReceipt(null);
     try {
-      const picked = await openDirectoryDialog({
-        directory: false,
+      const [picked] = await host.pickFiles({
         multiple: false,
         filters: [{ name: "OmniDesk Profile 包", extensions: ["json"] }],
         title: "选择要导入的 Profile 包",
       });
-      if (typeof picked !== "string" || picked.length === 0) {
-        return;
-      }
+      if (!picked) return;
       await importProfile(picked, null);
     } catch (e) {
       setAssetsError(e instanceof Error ? e.message : String(e));
@@ -1642,14 +1638,8 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
     setVaultError(null);
     setVaultMessage(null);
     try {
-      const picked = await openDirectoryDialog({
-        directory: true,
-        multiple: false,
-        title: "选择知识库目录（只读）",
-      });
-      if (typeof picked !== "string" || picked.length === 0) {
-        return;
-      }
+      const picked = await host.pickDirectory("选择知识库目录（只读）");
+      if (!picked) return;
       const r = await shell.setKnowledgeVaultRoot(picked);
       setVaultMessage(r.note + " 当前知识库：" + r.knowledge_vault_root);
       await refreshVault();
@@ -2330,6 +2320,63 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
       setWorkingBusy(false);
     }
   }, [workingInput, refreshWorking]);
+
+  /** 宿主目录选择框：选完立即保存（路径已在宿主登记）。 */
+  const chooseArtifactRoot = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const picked = await host.pickDirectory("选择成果目录");
+      if (!picked) return;
+      setInput(picked);
+      const r = await shell.setArtifactRoot(picked);
+      setMessage(r.note + " 当前目录：" + r.artifact_root);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh]);
+
+  const chooseLibraryRoot = useCallback(async () => {
+    setLibraryBusy(true);
+    setLibrarySaveError(null);
+    setLibraryMessage(null);
+    try {
+      const picked = await host.pickDirectory("选择库根目录");
+      if (!picked) return;
+      setLibraryInput(picked);
+      const r = await shell.setLibraryRoot(picked);
+      setLibraryMessage(r.note + " 当前库根：" + r.library_root);
+      setLibraryInput("");
+      await refreshLibrary();
+    } catch (e) {
+      setLibrarySaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }, [refreshLibrary]);
+
+  const chooseWorkingRoot = useCallback(async () => {
+    setWorkingBusy(true);
+    setWorkingSaveError(null);
+    setWorkingMessage(null);
+    try {
+      const picked = await host.pickDirectory("选择工作记录根目录");
+      if (!picked) return;
+      setWorkingInput(picked);
+      const r = await shell.setWorkingRoot(picked);
+      setWorkingMessage(r.note + " 当前目录：" + r.working_root);
+      setWorkingInput("");
+      await refreshWorking();
+    } catch (e) {
+      setWorkingSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkingBusy(false);
+    }
+  }, [refreshWorking]);
 
   const previewMigration = useCallback(async () => {
     setMigrationBusy(true);
@@ -4747,6 +4794,9 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             >
               {busy ? "校验并保存中…" : "校验并保存"}
             </button>
+            <button className="ghost" onClick={() => void chooseArtifactRoot()} disabled={busy}>
+              选择目录…
+            </button>
             <button className="ghost" onClick={() => void openArtifacts()}>
               打开当前目录
             </button>
@@ -4846,6 +4896,9 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
             >
               {libraryBusy ? "校验并保存中…" : "校验并保存"}
             </button>
+            <button className="ghost" onClick={() => void chooseLibraryRoot()} disabled={libraryBusy}>
+              选择目录…
+            </button>
             <button className="ghost" onClick={() => void refreshLibrary()}>
               刷新状态
             </button>
@@ -4927,6 +4980,9 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
               disabled={workingBusy || workingInput.trim().length === 0}
             >
               {workingBusy ? "校验并保存中…" : "校验并保存"}
+            </button>
+            <button className="ghost" onClick={() => void chooseWorkingRoot()} disabled={workingBusy}>
+              选择目录…
             </button>
             <button className="ghost" onClick={() => void refreshWorking()}>
               刷新状态

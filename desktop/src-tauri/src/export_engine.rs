@@ -233,7 +233,8 @@ pub fn export_writing(
         ));
     }
 
-    let target_dir = resolve_target_dir(app_root, writing_id, request.target_dir.as_deref())?;
+    let target_dir =
+        resolve_target_dir(app_root, config_dir, writing_id, request.target_dir.as_deref())?;
     let source = load_source(root, writing_id)?;
     let text = match (format, mode) {
         (FORMAT_MD, MODE_FORMAL) => strip_internal(&source.markdown),
@@ -354,6 +355,7 @@ fn load_source(root: &Path, writing_id: &str) -> Result<ExportSource, String> {
 
 fn resolve_target_dir(
     app_root: &Path,
+    config_dir: &Path,
     writing_id: &str,
     requested: Option<&str>,
 ) -> Result<PathBuf, String> {
@@ -376,6 +378,18 @@ fn resolve_target_dir(
                 .map_err(|error| format!("导出目录不存在或不可访问（{}）：{error}", candidate.display()))?;
             if !canonical.is_dir() {
                 return Err("导出目标不是目录。".to_string());
+            }
+            // OD-HARDEN-2043 T5：导出目录必须来自本次宿主选择框登记，或位于成果根之下。
+            if !crate::host_access::registry().is_authorized(&canonical) {
+                let artifact_root = crate::settings::effective_root(config_dir)?.root;
+                let artifact_root =
+                    crate::app_paths::resolve_real_path(&artifact_root).unwrap_or(artifact_root);
+                if !canonical.starts_with(&artifact_root) {
+                    return Err(format!(
+                        "拒绝导出到 {}：该目录不是本次从选择框选中的目录，也不在成果目录内。",
+                        canonical.display()
+                    ));
+                }
             }
             Ok(canonical)
         }
@@ -419,7 +433,15 @@ fn target_path(dir: &Path, writing_id: &str, format: &str, now: f64, bytes: &[u8
         _ => return Err("导出格式不认识。".to_string()),
     };
     let path = unique_file_name(writing_id, now, extension, dir);
-    if !path.starts_with(dir) {
+    // OD-HARDEN-2043 T5：按父目录的真实落点比较，字面 starts_with 拦不住 .. 逃逸。
+    // 文件名的安全性另依赖 writing_id 先过 is_safe_id（只允许字母数字、- 与 _）。
+    let same_dir = path
+        .parent()
+        .and_then(|parent| fs::canonicalize(parent).ok())
+        .zip(fs::canonicalize(dir).ok())
+        .map(|(parent, base)| parent == base)
+        .unwrap_or(false);
+    if !same_dir {
         return Err("导出文件名逃逸出目标目录，已拒绝。".to_string());
     }
     write_new_atomically(&path, bytes)?;
@@ -1590,6 +1612,8 @@ mod tests {
     fn target_dir(fixture: &Fixture) -> String {
         let dir = fixture.base.join("out");
         fs::create_dir_all(&dir).unwrap();
+        // OD-HARDEN-2043 T5：导出目录现在要求宿主授权；测试模拟「选择框已登记该目录」。
+        crate::host_access::remember(&fs::canonicalize(&dir).unwrap());
         dir.to_string_lossy().to_string()
     }
 
@@ -1804,10 +1828,45 @@ mod tests {
     #[test]
     fn target_dir_rejects_relative_and_parent_escape() {
         let fixture = Fixture::new("target-dir");
-        let relative = resolve_target_dir(&fixture.base, "w-target", Some("relative/out")).unwrap_err();
+        let relative =
+            resolve_target_dir(&fixture.base, &fixture.config, "w-target", Some("relative/out"))
+                .unwrap_err();
         assert!(relative.contains("绝对路径"), "{relative}");
-        let parent = resolve_target_dir(&fixture.base, "w-target", Some("/tmp/../out")).unwrap_err();
+        let parent =
+            resolve_target_dir(&fixture.base, &fixture.config, "w-target", Some("/tmp/../out"))
+                .unwrap_err();
         assert!(parent.contains(".."), "{parent}");
+    }
+
+    #[test]
+    fn target_dir_requires_host_authorization_or_artifact_root() {
+        let fixture = Fixture::new("target-auth");
+        fs::create_dir_all(&fixture.config).unwrap();
+        let outside = fixture.base.join("outside-out");
+        fs::create_dir_all(&outside).unwrap();
+
+        // 未登记、且不在成果目录下：拒绝。
+        let rejected =
+            resolve_target_dir(&fixture.base, &fixture.config, "w-target", Some(outside.to_str().unwrap()))
+                .unwrap_err();
+        assert!(rejected.contains("拒绝导出"), "{rejected}");
+
+        // 登记后放行（真实落点由 canonicalize 决定）。
+        let canonical = fs::canonicalize(&outside).unwrap();
+        crate::host_access::remember(&canonical);
+        let allowed =
+            resolve_target_dir(&fixture.base, &fixture.config, "w-target", Some(outside.to_str().unwrap()))
+                .expect("登记后应放行");
+        assert_eq!(allowed, canonical);
+
+        // 成果根之下的目录无需登记即可导出。
+        let artifact_root = crate::settings::effective_root(&fixture.config).unwrap().root;
+        let inside = artifact_root.join("写作导出");
+        fs::create_dir_all(&inside).unwrap();
+        let under_root =
+            resolve_target_dir(&fixture.base, &fixture.config, "w-target", Some(inside.to_str().unwrap()))
+                .expect("成果根下应放行");
+        assert_eq!(under_root, fs::canonicalize(&inside).unwrap());
     }
 
     #[test]

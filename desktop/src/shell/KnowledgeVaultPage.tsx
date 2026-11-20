@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { host, shell } from "../api";
 import type {
   KnowledgeGovernanceRecord,
@@ -395,12 +394,10 @@ export function KnowledgeVaultPage({
     setRawUploadError(null);
     setRawUploadReport(null);
     try {
-      const picked = await openFileDialog({
+      const paths = await host.pickFiles({
         title: "上传原始资料到 raw/",
         multiple: true,
-        directory: false,
       });
-      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
       if (paths.length === 0) return;
       setRawUploadBusy(true);
       const report = await shell.knowledgeRawAdmitPaths(paths);

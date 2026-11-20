@@ -6,6 +6,14 @@
 # 权威来源（二选一，二者版本必须一致）：
 #   1) 源码底本（git submodule）：runtime/deepseek-harness
 #   2) 可运行 CLI（npm，由 scripts/bootstrap-runtime.sh 安装）
+#
+# OD-HARDEN-2043 T10：依赖安装改为可复现。
+#   * DSH 依赖树：runtime/dsh-runtime.package.json + runtime/dsh-runtime.package-lock.json（npm ci）
+#   * Profile 依赖树：samples/profiles/<name>.profile-lock.json（npm ci --omit=dev）
+#   * Python：scripts/python-requirements.lock（pip install --require-hashes）
+#   * pnpm：固定 11.28.11
+# 升级 DSH 或任一依赖时，必须同时更新对应 lockfile，并重跑 tests/golden_tasks 与隔离自检；
+# 只改版本号不改 lockfile 会让构建失败或装出与锁定不符的依赖树。
 
 source:
   repo: https://github.com/deepseek-ai/deepseek-harness.git

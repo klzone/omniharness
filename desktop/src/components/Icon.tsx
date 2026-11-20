@@ -49,7 +49,13 @@ export type IconName =
   | "home"
   | "grid"
   | "star"
-  | "chat";
+  | "chat"
+  /** 阅读设置与附件模块。 */
+  | "align-left"
+  | "align-justify"
+  | "align-right"
+  | "paperclip"
+  | "video";
 
 const PATHS: Record<IconName, JSX.Element> = {
   brand: (
@@ -242,6 +248,16 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M19 12.4a6.6 6.6 0 0 1-6.6 6.6H9.2L5 21.4v-3.9A6.6 6.6 0 0 1 11.6 5h.8A6.6 6.6 0 0 1 19 11.6Z" />
       <path d="M9 10.5h6M9 13.5h4" />
+    </>
+  ),
+  "align-left": <path d="M4 6h16M4 12h10M4 18h16" />,
+  "align-justify": <path d="M4 6h16M4 12h16M4 18h16" />,
+  "align-right": <path d="M4 6h16M10 12h10M4 18h16" />,
+  paperclip: <path d="m20 9.5-9 9a5 5 0 0 1-7-7L13.5 2a3.5 3.5 0 0 1 5 5L9 16.5" />,
+  video: (
+    <>
+      <rect x="3" y="6" width="13" height="12" rx="2.5" />
+      <path d="m16 10 5-3v10l-5-3" />
     </>
   ),
   "chevron-up": <path d="m18 15-6-6-6 6" />,

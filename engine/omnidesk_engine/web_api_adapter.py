@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import base64
+import collections
 import json
 import os
 import queue
@@ -640,16 +641,17 @@ class WebApiAdapter(TaskCoreBase):
             # stdout 由 reader 线程接管：readline() 在有界等待里可能永久阻塞，
             # 这里用队列 + 超时，保证“进程起来了但不说地址”能报超时而不是卡死。
             lines: "queue.Queue[Optional[str]]" = queue.Queue()
-
-            def pump() -> None:
-                assert proc.stdout is not None
-                try:
-                    for line in proc.stdout:
-                        lines.put(line)
-                finally:
-                    lines.put(None)
-
-            threading.Thread(target=pump, name="omni-web-stdout", daemon=True).start()
+            # OD-HARDEN-2043 T7-F1：启动阶段走队列；拿到地址后只保留最近 200 行，
+            # 管道继续读空（不读会让 DSH 因写满管道而阻塞）。
+            recent: "collections.deque[str]" = collections.deque(maxlen=200)
+            announced = threading.Event()
+            assert proc.stdout is not None
+            threading.Thread(
+                target=self._pump_stdout,
+                args=(proc.stdout, lines, recent, announced),
+                name="omni-web-stdout",
+                daemon=True,
+            ).start()
             deadline = time.monotonic() + self._init_timeout
             url: Optional[str] = None
             while time.monotonic() < deadline:
@@ -683,6 +685,7 @@ class WebApiAdapter(TaskCoreBase):
                 self._startup_error = err
                 self._terminate_process()
                 raise err
+            announced.set()
             self._root, token = self._parse_announcement(url)
             self._token = token
             try:
@@ -694,12 +697,26 @@ class WebApiAdapter(TaskCoreBase):
             # token 用完即丢弃；后续只用 cookie。
             self._token = None
 
+    LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+    def _pump_stdout(self, stream, lines, recent, announced) -> None:
+        """读空 DSH stdout：启动阶段放进队列，之后只保留最近 200 行（脱敏）。"""
+        try:
+            for line in stream:
+                text = line.rstrip("\r\n")
+                recent.append(self._redact(text))
+                if not announced.is_set():
+                    lines.put(line)
+        finally:
+            lines.put(None)
+
     def _parse_announcement(self, raw: str) -> tuple[str, str]:
         parsed = urllib.parse.urlsplit(raw)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or host not in self.LOOPBACK_HOSTS:
             raise EngineError(
                 EngineErrorCode.EVENT_PARSE_ERROR,
-                "DSH web announcement is not an http URL",
+                "DSH web announcement is not a loopback http URL",
                 detail={"channel": "web-api"},
             )
         token = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]

@@ -1,6 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { host, shell } from "../api";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { host, openExternalUrl, shell } from "../api";
 import {
   TERMINAL_STATES,
   type ReadingAnnotation,
@@ -10,6 +9,7 @@ import {
   type ReadingLibrary,
   type ReadingStats,
   type ReadingSavedNote,
+  type RssAttachment,
   type RssArticleMeta,
   type RssPresetSource,
   type RssSubscription,
@@ -54,6 +54,111 @@ type SideTab = "notes" | "ai";
 const PANEL_AUTO_CLOSE_MS = 90_000;
 const RSS_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const RSS_SHELF_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+type ReaderFont = "system" | "sans" | "serif" | "kai";
+type ReaderAlign = "left" | "justify" | "right";
+type ReaderSettings = {
+  font: ReaderFont;
+  size: number;
+  align: ReaderAlign;
+};
+
+const READER_SETTINGS_KEY = "omnidesk.reading.settings.v1";
+const READER_DEFAULT_SETTINGS: ReaderSettings = { font: "system", size: 17, align: "justify" };
+const READER_MIN_SIZE = 14;
+const READER_MAX_SIZE = 26;
+
+const READER_FONTS: Array<{ id: ReaderFont; label: string; stack: string }> = [
+  {
+    id: "system",
+    label: "系统默认",
+    stack: '"Songti SC", "Noto Serif SC", "SimSun", serif',
+  },
+  {
+    id: "sans",
+    label: "思源黑体",
+    stack:
+      '"Noto Sans SC Variable", "Noto Sans SC", "Source Han Sans SC", "PingFang SC", ui-sans-serif, sans-serif',
+  },
+  {
+    id: "serif",
+    label: "思源宋体",
+    stack:
+      '"Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif',
+  },
+  {
+    id: "kai",
+    label: "霞鹜文楷",
+    stack: '"LXGW WenKai", "LXGW WenKai Mono", "Kaiti SC", "STKaiti", serif',
+  },
+];
+
+const READER_ALIGNMENTS: Array<{ id: ReaderAlign; label: string; icon: "align-left" | "align-justify" | "align-right" }> = [
+  { id: "left", label: "左对齐", icon: "align-left" },
+  { id: "justify", label: "两端对齐", icon: "align-justify" },
+  { id: "right", label: "右对齐", icon: "align-right" },
+];
+
+function clampReaderSize(value: number): number {
+  if (!Number.isFinite(value)) return READER_DEFAULT_SETTINGS.size;
+  return Math.max(READER_MIN_SIZE, Math.min(READER_MAX_SIZE, Math.round(value)));
+}
+
+function loadReaderSettings(): ReaderSettings {
+  try {
+    const raw = window.localStorage.getItem(READER_SETTINGS_KEY);
+    if (!raw) return READER_DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<ReaderSettings>;
+    const font = READER_FONTS.some((item) => item.id === parsed.font)
+      ? (parsed.font as ReaderFont)
+      : READER_DEFAULT_SETTINGS.font;
+    const align = READER_ALIGNMENTS.some((item) => item.id === parsed.align)
+      ? (parsed.align as ReaderAlign)
+      : READER_DEFAULT_SETTINGS.align;
+    return { font, size: clampReaderSize(Number(parsed.size)), align };
+  } catch {
+    return READER_DEFAULT_SETTINGS;
+  }
+}
+
+function readerSettingsStyle(settings: ReaderSettings): CSSProperties {
+  const stack = READER_FONTS.find((item) => item.id === settings.font)?.stack ?? READER_FONTS[0].stack;
+  return {
+    "--rd-reader-font": stack,
+    "--rd-reader-size": `${settings.size}px`,
+    "--rd-reader-align": settings.align,
+  } as CSSProperties;
+}
+
+const READING_MEDIA_MARKER_RE = /!\[img\]\(([^)\n]+)\)|\[(audio|video)\]\(([^)\n]+)\)/g;
+
+function estimatedReadingMinutes(book: ReadingBook): number {
+  let chars = 0;
+  for (const chapter of book.chapters) {
+    for (const paragraph of chapter.paragraphs) {
+      const text = paragraph.replace(READING_MEDIA_MARKER_RE, "").replace(/\[图片：[^\]]*\]/g, "");
+      chars += codeLength(text.trim());
+    }
+  }
+  return Math.max(1, Math.ceil(chars / 400));
+}
+
+function formatAttachmentBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function attachmentKind(attachment: RssAttachment): MediaKind | "file" {
+  const mime = attachment.mime.trim().toLowerCase();
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  const path = attachment.url.split(/[?#]/)[0].toLowerCase();
+  if (/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)$/.test(path)) return "audio";
+  if (/\.(mp4|m4v|webm|mov)$/.test(path)) return "video";
+  return "file";
+}
 
 function kindLabel(kind: string): string {
   return kind === "highlight" ? "划线" : kind === "bookmark" ? "标记" : "想法";
@@ -308,6 +413,51 @@ function MediaBlock({
   );
 }
 
+function AttachmentItem({
+  bookId,
+  attachment,
+  onOpenImage,
+}: {
+  bookId: string;
+  attachment: RssAttachment;
+  onOpenImage: (src: string) => void;
+}) {
+  const kind = attachmentKind(attachment);
+  const size = formatAttachmentBytes(attachment.size_bytes);
+  const [playing, setPlaying] = useState(false);
+  return (
+    <div className="reading-attachment-item" data-testid="rss-attachment-item">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon name={kind === "audio" ? "volume" : kind === "file" ? "paperclip" : "video"} className="h-3.5 w-3.5 shrink-0 text-outline" />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-on-surface">{attachment.title}</span>
+        {size ? <span className="shrink-0 text-[10.5px] text-outline">{size}</span> : null}
+      </div>
+      {kind === "audio" || kind === "video" ? (
+        playing ? (
+          <MediaBlock bookId={bookId} kind={kind} src={attachment.url} onOpenImage={onOpenImage} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPlaying(true)}
+            className="reading-attachment-play"
+            data-testid="rss-attachment-play"
+          >
+            {kind === "audio" ? "播放音频" : "播放视频"}
+          </button>
+        )
+      ) : null}
+      <button
+        type="button"
+        onClick={() => void openExternalUrl(attachment.url).catch(() => undefined)}
+        className="reading-attachment-open"
+      >
+        打开原文件
+        <Icon name="arrow-right" className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 const INLINE_MARKDOWN_RE = /\[([^\]\n]+)\]\((https?:\/\/[^)\n]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
 
 /**
@@ -484,6 +634,8 @@ export function ReadingPage() {
   const [subscriptions, setSubscriptions] = useState<RssSubscription[]>([]);
   const [rssArticles, setRssArticles] = useState<RssArticleMeta[]>([]);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [allowPrivateFeeds, setAllowPrivateFeeds] = useState(false);
+  const [allowPrivateBusy, setAllowPrivateBusy] = useState(false);
   const [subscribeUrl, setSubscribeUrl] = useState("");
   const [subscribeName, setSubscribeName] = useState("");
   const [rssBusy, setRssBusy] = useState<"add" | "refresh" | null>(null);
@@ -500,6 +652,9 @@ export function ReadingPage() {
   const [renameBusy, setRenameBusy] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [readerSettings, setReaderSettings] = useState<ReaderSettings>(loadReaderSettings);
+  const [readerSettingsOpen, setReaderSettingsOpen] = useState(false);
+  const readerSettingsRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shelfSearchRef = useRef<HTMLInputElement | null>(null);
   const restoredBook = useRef<string | null>(null);
@@ -522,6 +677,32 @@ export function ReadingPage() {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(readerSettings));
+    } catch {
+      // 本地存储不可用时本次会话仍生效，不打断阅读。
+    }
+  }, [readerSettings]);
+
+  useEffect(() => {
+    if (!readerSettingsOpen) return undefined;
+    const onPointer = (event: PointerEvent) => {
+      if (readerSettingsRef.current && !readerSettingsRef.current.contains(event.target as Node)) {
+        setReaderSettingsOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReaderSettingsOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [readerSettingsOpen]);
 
   const flushReadingTime = useCallback((id: string | null) => {
     const seconds = pendingSeconds.current;
@@ -905,13 +1086,13 @@ export function ReadingPage() {
   const importBook = async () => {
     setImportBusy(true);
     try {
-      const picked = await openFileDialog({
+      const pickedList = await host.pickFiles({
         multiple: false,
-        directory: false,
         title: "选择要读的文件",
         filters: [{ name: "阅读文件", extensions: ["md", "markdown", "txt", "pdf", "docx", "epub", "mobi"] }],
       });
-      if (!picked || Array.isArray(picked)) return;
+      const picked = pickedList[0];
+      if (!picked) return;
       const result = await shell.readingImportBook(picked);
       await refreshLibrary();
       setBookId(result.book.book_id);
@@ -961,6 +1142,27 @@ export function ReadingPage() {
       setRssError(String(e));
     } finally {
       setPendingSubscriptionDelete(null);
+    }
+  };
+
+  const openSubscriptions = () => {
+    setSubscriptionOpen(true);
+    void shell
+      .rssSettingsGet()
+      .then((value) => setAllowPrivateFeeds(value))
+      .catch(() => setAllowPrivateFeeds(false));
+  };
+
+  const toggleAllowPrivateFeeds = async () => {
+    if (allowPrivateBusy) return;
+    setAllowPrivateBusy(true);
+    try {
+      const saved = await shell.rssSettingsSetAllowPrivateFeeds(!allowPrivateFeeds);
+      setAllowPrivateFeeds(saved);
+    } catch (e) {
+      setRssError(String(e));
+    } finally {
+      setAllowPrivateBusy(false);
     }
   };
 
@@ -1660,6 +1862,34 @@ export function ReadingPage() {
     const fetched = meta ? Date.parse(meta.fetched_at) : NaN;
     return Number.isFinite(fetched) ? fetched : 0;
   };
+  const rssReadingMinutes = useMemo(
+    () => (book && book.source_format === "rss" ? estimatedReadingMinutes(book) : 0),
+    [book],
+  );
+  const rssAttachments = useMemo(
+    () => (book ? (rssMetaById.get(book.book_id)?.attachments ?? []) : []),
+    [book, rssMetaById],
+  );
+  const rssNextArticle = useMemo(() => {
+    if (!book || book.source_format !== "rss") return null;
+    const current = rssMetaById.get(book.book_id);
+    if (!current) return null;
+    const stamp = (item: RssArticleMeta): number =>
+      item.published_ts > 0 ? item.published_ts * 1000 : Date.parse(item.fetched_at) || 0;
+    const currentStamp = stamp(current);
+    const sameFeed = rssArticles.filter(
+      (item) =>
+        item.book_id !== current.book_id &&
+        (item.subscription_id === current.subscription_id ||
+          (item.feed_url && current.feed_url && item.feed_url === current.feed_url)),
+    );
+    const older = sameFeed
+      .filter((item) => stamp(item) > 0 && stamp(item) < currentStamp)
+      .sort((a, b) => stamp(b) - stamp(a));
+    return older[0] ?? null;
+  }, [book, rssArticles, rssMetaById]);
+  const rssArticleLinkRaw = book ? (rssMetaById.get(book.book_id)?.link ?? "") : "";
+  const rssArticleLink = /^https?:\/\//i.test(rssArticleLinkRaw) ? rssArticleLinkRaw : "";
   const shelfBooks = (library?.books ?? []).filter((item) => item.source_format !== "rss");
   const shelfArticles = (library?.books ?? [])
     .filter((item) => item.source_format === "rss")
@@ -1715,7 +1945,11 @@ export function ReadingPage() {
     book && book.source_format === "rss" ? Boolean(rssMetaById.get(book.book_id)?.favorite) : false;
 
   return (
-    <div className="reading-page flex h-full min-h-0 w-full flex-col md:pl-20" data-testid="reading-page">
+    <div
+      className="reading-page flex h-full min-h-0 w-full flex-col md:pl-20"
+      data-testid="reading-page"
+      style={readerSettingsStyle(readerSettings)}
+    >
       <div className="flex min-h-0 flex-1 gap-2 p-2 xl:gap-3 xl:p-3">
         {book ? (
         <aside
@@ -1973,8 +2207,8 @@ export function ReadingPage() {
               onImport={() => void importBook()}
               onViewAll={() => setShelfManagerOpen(true)}
               onOpenBook={(id) => void openBook(id)}
-              onManageSubscriptions={() => setSubscriptionOpen(true)}
-              onCustomFeed={() => setSubscriptionOpen(true)}
+              onManageSubscriptions={() => openSubscriptions()}
+              onCustomFeed={() => openSubscriptions()}
               onSubscribePreset={subscribePreset}
             />
           ) : null}
@@ -2049,6 +2283,94 @@ export function ReadingPage() {
                     <Icon name="plus" className="h-3.5 w-3.5" />
                   </button>
                 )}
+                <div ref={readerSettingsRef} className="relative order-last">
+                  <button
+                    type="button"
+                    onClick={() => setReaderSettingsOpen((open) => !open)}
+                    className="rounded-lg border border-outline-variant/50 p-1.5 text-on-surface-variant hover:text-primary"
+                    aria-label="阅读设置"
+                    aria-expanded={readerSettingsOpen}
+                    title="阅读设置"
+                    data-testid="reading-settings-toggle"
+                  >
+                    <span className="font-serif text-[13px] font-semibold tracking-tight">Aa</span>
+                  </button>
+                  {readerSettingsOpen ? (
+                    <div className="reading-settings-popover" data-testid="reading-settings-popover">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[12px] font-semibold text-on-surface">阅读设置</p>
+                        <button
+                          type="button"
+                          onClick={() => setReaderSettings(READER_DEFAULT_SETTINGS)}
+                          className="text-[10.5px] text-outline hover:text-primary"
+                          data-testid="reading-settings-reset"
+                        >
+                          恢复默认
+                        </button>
+                      </div>
+                      <div className="reading-settings-grid" data-testid="reading-settings-fonts">
+                        {READER_FONTS.map((font) => (
+                          <button
+                            key={font.id}
+                            type="button"
+                            onClick={() => setReaderSettings((prev) => ({ ...prev, font: font.id }))}
+                            className={
+                              "reading-settings-option" +
+                              (readerSettings.font === font.id ? " is-active" : "")
+                            }
+                            aria-pressed={readerSettings.font === font.id}
+                            data-testid={`reading-settings-font-${font.id}`}
+                          >
+                            {font.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="reading-settings-size" data-testid="reading-settings-size">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReaderSettings((prev) => ({ ...prev, size: clampReaderSize(prev.size - 1) }))
+                          }
+                          disabled={readerSettings.size <= READER_MIN_SIZE}
+                          aria-label="减小正文字号"
+                          data-testid="reading-settings-size-down"
+                        >
+                          A−
+                        </button>
+                        <span>{readerSettings.size}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReaderSettings((prev) => ({ ...prev, size: clampReaderSize(prev.size + 1) }))
+                          }
+                          disabled={readerSettings.size >= READER_MAX_SIZE}
+                          aria-label="增大正文字号"
+                          data-testid="reading-settings-size-up"
+                        >
+                          A+
+                        </button>
+                      </div>
+                      <div className="reading-settings-grid reading-settings-align" data-testid="reading-settings-align">
+                        {READER_ALIGNMENTS.map((alignment) => (
+                          <button
+                            key={alignment.id}
+                            type="button"
+                            onClick={() => setReaderSettings((prev) => ({ ...prev, align: alignment.id }))}
+                            className={
+                              "reading-settings-option" +
+                              (readerSettings.align === alignment.id ? " is-active" : "")
+                            }
+                            aria-label={alignment.label}
+                            aria-pressed={readerSettings.align === alignment.id}
+                            data-testid={`reading-settings-align-${alignment.id}`}
+                          >
+                            <Icon name={alignment.icon} className="h-3.5 w-3.5" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -2154,6 +2476,53 @@ export function ReadingPage() {
                       })}
                     </section>
                   ))}
+                  {book.source_format === "rss" ? (
+                    <footer className="reading-article-footer" data-testid="rss-article-footer">
+                      {rssAttachments.length > 0 || rssArticleLink ? (
+                        <section className="reading-article-attachments" data-testid="rss-article-attachments">
+                          <p className="reading-article-footer-label">附件</p>
+                          {rssAttachments.map((attachment) => (
+                            <AttachmentItem
+                              key={attachment.url}
+                              bookId={book.book_id}
+                              attachment={attachment}
+                              onOpenImage={setLightbox}
+                            />
+                          ))}
+                          {rssArticleLink ? (
+                            <button
+                              type="button"
+                              onClick={() => void openExternalUrl(rssArticleLink).catch(() => undefined)}
+                              className="reading-attachment-open"
+                              data-testid="rss-article-source-link"
+                            >
+                              打开原文
+                              <Icon name="arrow-right" className="h-3 w-3" />
+                            </button>
+                          ) : null}
+                        </section>
+                      ) : null}
+                      <div className="reading-end-mark" data-testid="rss-end-mark">
+                        <span>完</span>
+                      </div>
+                      <p className="reading-read-time" data-testid="rss-read-time">
+                        约 {rssReadingMinutes} 分钟读完
+                      </p>
+                      {rssNextArticle ? (
+                        <button
+                          type="button"
+                          onClick={() => void openBook(rssNextArticle.book_id)}
+                          className="reading-next-article"
+                          data-testid="rss-next-article"
+                          aria-label={`下一篇：${rssNextArticle.title}`}
+                        >
+                          <span className="reading-next-kicker">下一篇 · {book.source_name}</span>
+                          <span className="reading-next-title">{rssNextArticle.title}</span>
+                          <Icon name="arrow-right" className="reading-next-arrow h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </footer>
+                  ) : null}
                 </article>
               </div>
             </>
@@ -2773,6 +3142,20 @@ export function ReadingPage() {
                   </button>
                 </div>
               ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 border-t border-outline-variant/30 py-2">
+              <label className="flex items-center gap-1.5 text-[10.5px] text-on-surface-variant">
+                <input
+                  type="checkbox"
+                  checked={allowPrivateFeeds}
+                  disabled={allowPrivateBusy}
+                  onChange={() => void toggleAllowPrivateFeeds()}
+                  className="h-3 w-3 accent-primary"
+                />
+                允许内网订阅源
+              </label>
+              <p className="text-[9.5px] text-outline">回环与 169.254 始终拒绝</p>
             </div>
 
             <div className="flex items-center justify-between gap-2 border-t border-outline-variant/30 pt-2">

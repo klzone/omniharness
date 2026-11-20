@@ -330,13 +330,7 @@
   background: color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 
-@media (max-width: 640px) {
-  .reading-paragraph {
-    font-size: 1rem;
-    line-height: 1.9;
-    text-align: left;
-  }
-}
+/* 正文字号、对齐与字体由顶部阅读设置控制；窄屏也沿用用户选择，不再强制左对齐。 */
 
 /* -------------------------------------------------------------------------
  * OD-READ-002 阶段 4：健脑室暖纸新拟物（作用域只落在阅读页根类）
@@ -584,11 +578,11 @@
 .reading-page .reading-paragraph {
   margin: 0 0 16px;
   color: var(--color-on-surface);
-  font-family: "Songti SC", "Noto Serif SC", "SimSun", serif;
-  font-size: 16.5px;
-  line-height: 35px;
+  font-family: var(--rd-reader-font, "Songti SC", "Noto Serif SC", "SimSun", serif);
+  font-size: var(--rd-reader-size, 17px);
+  line-height: calc(var(--rd-reader-size, 17px) * 2.06);
   letter-spacing: 0.01em;
-  text-align: justify;
+  text-align: var(--rd-reader-align, justify);
 }
 
 .reading-page .reading-mark {
@@ -1432,4 +1426,233 @@
   .reading-dash-empty-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* -------------------------------------------------------------------------
+ * OD-READ-002 阶段 11：阅读设置（只作用于正文段落）与 RSS 文末模块
+ * ---------------------------------------------------------------------- */
+
+.reading-settings-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 60;
+  display: flex;
+  width: 304px;
+  max-width: calc(100vw - 24px);
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 58%, transparent);
+  background: var(--color-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 18px 38px -22px rgba(70, 55, 40, 0.45);
+}
+
+.reading-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.reading-settings-option {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 0 8px;
+  color: var(--color-on-surface-variant);
+  background: color-mix(in srgb, var(--color-surface) 92%, white 8%);
+  box-shadow: var(--rd-raise-sm);
+  font-size: 11.5px;
+  transition: box-shadow 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.reading-settings-option:hover {
+  color: var(--color-on-surface);
+}
+
+.reading-settings-option.is-active {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+  box-shadow: var(--rd-inset-sm), var(--rd-ring);
+}
+
+.reading-settings-align {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reading-settings-size {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.reading-settings-size button {
+  width: 72px;
+  min-height: 34px;
+  border-radius: 10px;
+  color: var(--color-on-surface-variant);
+  background: color-mix(in srgb, var(--color-surface) 92%, white 8%);
+  box-shadow: var(--rd-raise-sm);
+  font-size: 11.5px;
+}
+
+.reading-settings-size button:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.reading-settings-size button:disabled {
+  opacity: 0.38;
+}
+
+.reading-settings-size span {
+  min-width: 32px;
+  text-align: center;
+  color: var(--color-on-surface);
+  font-family: var(--font-label-caps);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reading-article-footer {
+  margin: 34px 0 4px;
+}
+
+.reading-article-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--rd-inset);
+}
+
+.reading-article-footer-label {
+  margin: 0;
+  color: var(--color-outline);
+  font-family: var(--font-label-caps);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+
+.reading-attachment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px dashed color-mix(in srgb, var(--color-outline-variant) 62%, transparent);
+}
+
+.reading-attachment-item .reading-media-figure {
+  margin: 2px 0 0;
+  box-shadow: var(--rd-inset-sm);
+}
+
+.reading-attachment-open {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  color: var(--color-primary);
+  font-size: 11.5px;
+}
+
+.reading-attachment-play {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--color-primary);
+  font-size: 11px;
+  box-shadow: var(--rd-raise-sm);
+}
+
+.reading-attachment-play:hover {
+  box-shadow: var(--rd-inset-sm);
+}
+
+.reading-attachment-open:hover {
+  text-decoration: underline;
+}
+
+.reading-end-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 34px 0 8px;
+  color: var(--color-outline);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+
+.reading-end-mark::before,
+.reading-end-mark::after {
+  content: "";
+  width: 54px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-outline) 52%, transparent));
+}
+
+.reading-end-mark::after {
+  transform: scaleX(-1);
+}
+
+.reading-read-time {
+  margin: 0 0 4px;
+  text-align: center;
+  color: var(--color-outline);
+  font-size: 10.5px;
+}
+
+.reading-next-article {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  margin-top: 20px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--rd-raise-sm);
+  text-align: left;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.reading-next-article:hover {
+  box-shadow: var(--rd-inset-sm);
+  transform: translateY(1px);
+}
+
+.reading-next-kicker {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-outline);
+  font-size: 10.5px;
+}
+
+.reading-next-title {
+  grid-column: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-on-surface);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.reading-next-arrow {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-primary);
 }

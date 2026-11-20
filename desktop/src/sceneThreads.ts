@@ -90,7 +90,8 @@ export function onThreadStoreChange(listener: () => void): () => void {
  */
 const HYDRATE_TIMEOUT_MS = 4000;
 
-function readLocal(): SceneThread[] {
+/** 旧缓存的完整记录（可能含 messages）；只供迁移与一次性兜底使用。 */
+function readLocalRaw(): SceneThread[] {
   try {
     const raw = window.localStorage.getItem(THREADS_KEY);
     if (!raw) return [];
@@ -101,12 +102,34 @@ function readLocal(): SceneThread[] {
   }
 }
 
+/**
+ * OD-HARDEN-2043 T9：WebView 缓存只存元数据，不存对话正文。
+ * 正文只在数据根里（可备份、可迁移）；缓存丢了也不影响数据完整性。
+ */
+function toLocalMeta(thread: SceneThread): Omit<SceneThread, "messages"> {
+  const { messages: _messages, ...meta } = thread;
+  return meta;
+}
+
+/** 首屏兜底视图：正文为空，等宿主读回来后填充。 */
+function readLocal(): SceneThread[] {
+  return readLocalRaw().map((thread) => ({ ...thread, messages: [] }));
+}
+
 function writeLocal(threads: SceneThread[]) {
   try {
-    window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads));
+    window.localStorage.setItem(THREADS_KEY, JSON.stringify(threads.map(toLocalMeta)));
   } catch {
     /* 存储不可用只是不持久化，不影响本次使用 */
   }
+}
+
+/** 迁移标记已置位后，清除旧键里遗留的 messages；未迁移时不动任何数据。 */
+function stripLocalMessagesAfterMigration() {
+  if (!migratedFlag()) return;
+  const raw = readLocalRaw();
+  if (raw.length === 0) return;
+  writeLocal(raw.map((thread) => ({ ...thread, messages: thread.messages ?? [] })));
 }
 
 function read(): SceneThread[] {
@@ -198,7 +221,8 @@ function persist(thread: SceneThread | { remove: string }) {
  */
 export async function hydrateThreads(): Promise<void> {
   if (hydrated) return;
-  const local = readLocal();
+  // 迁移要用完整正文：只从旧缓存一次性搬进数据根，之后旧键只留元数据。
+  const local = readLocalRaw();
   if (!hostAvailable()) {
     cache = local;
     hydrated = true;
@@ -222,7 +246,7 @@ export async function hydrateThreads(): Promise<void> {
       storageNote = "读取数据根较慢，先用本地缓存显示；读到后会自动补上。";
       pending.then(
         (listing) => {
-          applyListing(listing, readLocal());
+          applyListing(listing, readLocalRaw());
         },
         () => {
           /* 后台读取最终失败：保留缓存，不再打扰用户 */
@@ -275,6 +299,7 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
     hydrated = true;
     for (const thread of local) persist(thread);
     setMigratedFlag();
+    stripLocalMessagesAfterMigration();
     storageNote =
       "已把 " + local.length + " 条本地缓存的对话迁移到数据根（旧缓存保留）。";
     notifyThreadStore();

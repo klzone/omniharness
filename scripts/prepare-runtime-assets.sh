@@ -46,8 +46,15 @@ for profile in omnidesk-base web discipline; do
   mkdir -p "$SEED/profiles/$profile"
   cp "$ROOT/samples/profiles/$profile.profile.json" "$SEED/profiles/$profile/package.json"
   cp "$ROOT/samples/profiles/$profile.profile.patch.yml" "$SEED/profiles/$profile/cordis.patch.yml"
+  # OD-HARDEN-2043 T10：每个 Profile 带 lockfile，用 npm ci 固定传递依赖。
+  PROFILE_LOCK="$ROOT/samples/profiles/$profile.profile-lock.json"
+  if [ ! -f "$PROFILE_LOCK" ]; then
+    say "错误：缺少 $PROFILE_LOCK；请先按 lockfile 流程重新生成。"
+    exit 1
+  fi
+  cp "$PROFILE_LOCK" "$SEED/profiles/$profile/package-lock.json"
   say "安装 Profile 依赖：$profile"
-  if ! ( cd "$SEED/profiles/$profile" && npm install --no-audit --no-fund --omit=dev >/dev/null 2>&1 ); then
+  if ! ( cd "$SEED/profiles/$profile" && npm ci --no-audit --no-fund --omit=dev >/dev/null 2>&1 ); then
     say "警告：$profile 依赖安装失败，该 Profile 插件不可用（基础对话不受影响）"
   fi
 done
@@ -66,9 +73,12 @@ prune "$SEED"
 # 宿主把该目录加进 PYTHONPATH，引擎与它拉起的检索子进程都能直接 import。
 # ---------------------------------------------------------------------------
 PY_REQS="$ROOT/scripts/python-requirements.txt"
+PY_LOCK="$ROOT/scripts/python-requirements.lock"
 VENDOR="$TARGET/python-vendor"
-if [ ! -f "$PY_REQS" ]; then
-  say "警告：缺少 $PY_REQS，跳过 Python 模块内置"
+if [ ! -f "$PY_LOCK" ]; then
+  # OD-HARDEN-2043 T10：不再降级为无哈希安装。
+  say "错误：缺少 $PY_LOCK；请先生成带哈希的锁文件。"
+  exit 1
 elif [ -d "$ROOT/runtime/python-vendor" ] && [ "$TARGET" != "$ROOT/runtime" ]; then
   say "复用已构建的 python-vendor：$ROOT/runtime/python-vendor"
   rm -rf "$VENDOR"
@@ -82,7 +92,7 @@ else
     rm -rf "$VENDOR"
     mkdir -p "$VENDOR"
     if ! "$PY_HOST" -m pip install --no-input --disable-pip-version-check \
-      --no-compile --target "$VENDOR" -r "$PY_REQS" >/dev/null 2>&1; then
+      --require-hashes --no-compile --target "$VENDOR" -r "$PY_LOCK" >/dev/null 2>&1; then
       say "警告：Python 模块内置失败，anysearch 联网检索可能不可用"
     else
       # universal macOS 包会同时含 arm64/x86_64 两个切片；只删除 charset_normalizer
@@ -112,7 +122,8 @@ else
   rm -rf "$PNPM_DIR"
   mkdir -p "$PNPM_DIR"
   printf '{ "name": "omnidesk-runtime-pnpm", "private": true, "version": "0.0.0" }\n' > "$PNPM_DIR/package.json"
-  if ! ( cd "$PNPM_DIR" && npm install --no-audit --no-fund "pnpm@11" >/dev/null 2>&1 ); then
+  # OD-HARDEN-2043 T10：pnpm 固定到构建实际装到的版本（原先是主版本号 "11"）。
+  if ! ( cd "$PNPM_DIR" && npm install --no-audit --no-fund "pnpm@11.28.11" >/dev/null 2>&1 ); then
     say "警告：pnpm 内置失败，插件安装通道将不可用（基础对话不受影响）"
   fi
 fi

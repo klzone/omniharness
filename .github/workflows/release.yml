@@ -3,10 +3,11 @@ name: Release
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,12 +19,13 @@ env:
 
 jobs:
   meta:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: v
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,27 +40,72 @@ jobs:
             echo "准备发布 v$VERSION。"
           fi
 
+  # OD-HARDEN-2043：发布前的测试门禁。push 到 main 时与 macos/windows 并行跑，
+  # 任一失败则整条发布链跳过；pull_request 时只跑本 job，不构建、不发布。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: 安装 Tauri 2 Linux 依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: 1.99.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Rust 单测
+        working-directory: desktop/src-tauri
+        run: cargo test --lib -- --test-threads=1
+      - name: 前端类型检查与构建
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run build
+          npm run test
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - name: 安装验证脚本依赖
+        run: python3 -m pip install -r scripts/python-requirements.txt
+      - name: Python 验证脚本
+        working-directory: tests/verification/desktop
+        run: |
+          python3 verify_reading_004_formats.py
+          python3 verify_reading_entity_2043.py
+          python3 verify_hardening_2043.py
+
   macos:
-    needs: meta
+    needs: [meta, test]
     if: needs.meta.outputs.publish == 'true'
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 应用发布源码补丁
         run: |
           if [ -f .github/release-source.patch ]; then
             git apply .github/release-source.patch
             echo "已应用 .github/release-source.patch"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: 1.99.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: desktop/src-tauri
       - name: 安装前端依赖
@@ -98,21 +145,21 @@ jobs:
       - name: 构建桌面程序
         working-directory: desktop
         run: npx tauri build --features custom-protocol --target universal-apple-darwin --bundles dmg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-package
           path: desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   windows:
-    needs: meta
+    needs: [meta, test]
     if: needs.meta.outputs.publish == 'true'
     runs-on: windows-latest
     steps:
       - name: 关闭换行符自动转换
         shell: pwsh
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 应用发布源码补丁
         shell: bash
         run: |
@@ -120,13 +167,15 @@ jobs:
             git apply .github/release-source.patch
             echo "已应用 .github/release-source.patch"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: 1.99.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: desktop/src-tauri
       - name: 安装前端依赖
@@ -172,18 +221,20 @@ jobs:
           done
           echo "NSIS 打包连续失败 6 次，放弃本次构建。" >&2
           exit 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-package
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   publish:
-    needs: [meta, macos, windows]
+    needs: [meta, test, macos, windows]
     if: needs.meta.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
           merge-multiple: true
@@ -200,7 +251,18 @@ jobs:
           done
       - name: 列出产物
         run: ls -lh artifacts
-      - uses: softprops/action-gh-release@v2
+      # OD-HARDEN-2043 T11：未签名安装包至少提供 SHA-256 校验和，供下载后核对。
+      - name: 生成校验和
+        shell: bash
+        run: |
+          cd artifacts
+          : > SHA256SUMS.txt
+          find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*-setup.exe' \) -print0 \
+            | sort -z | while IFS= read -r -d '' f; do
+                shasum -a 256 "${f#./}" >> SHA256SUMS.txt
+              done
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ needs.meta.outputs.version }}
           name: OmniDesk v${{ needs.meta.outputs.version }}
@@ -210,6 +272,7 @@ jobs:
           files: |
             artifacts/*.dmg
             artifacts/*.exe
+            artifacts/SHA256SUMS.txt
           body: |
             ## OmniDesk v${{ needs.meta.outputs.version }}
 
@@ -228,6 +291,12 @@ jobs:
             ```
 
             Windows 包未签名，SmartScreen 可能提示“未知发布者”，选择“仍要运行”。
+
+            ### 校验下载
+            发布包附带 `SHA256SUMS.txt`。下载后在同目录执行：
+            - macOS：`shasum -a 256 -c SHA256SUMS.txt`
+            - Windows PowerShell：`Get-FileHash .\OmniDesk_*_x64-setup.exe -Algorithm SHA256`，
+              与 `SHA256SUMS.txt` 中的值逐字对比。
 
             ### 首次启动
             程序会先把包内 `runtime/dsh-home-seed` 的 Profile 与 Skill 复制到 `~/OmniDesk/runtime/dsh-home`

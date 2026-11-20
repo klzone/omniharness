@@ -379,6 +379,28 @@ export const host = {
     });
   },
 
+  /** 宿主侧文件选择框（OD-HARDEN-2043）：选中的路径已在宿主登记，可直接读取。 */
+  pickFiles(options: {
+    title?: string;
+    filters?: { name: string; extensions: string[] }[];
+    multiple?: boolean;
+  }): Promise<string[]> {
+    return invoke<string[]>("host_pick_files", {
+      title: options.title,
+      filters: options.filters,
+      multiple: options.multiple ?? false,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 宿主侧目录选择框；取消返回 null。 */
+  pickDirectory(title?: string): Promise<string | null> {
+    return invoke<string | null>("host_pick_directory", { title }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
   /** 开启/关闭某一类端点的模型权限；未知类别由宿主拒绝。 */
   setModelPermission(
     category: "local" | "private" | "public",
@@ -2052,6 +2074,20 @@ export const shell = {
   /** 健脑室空态用的内置精选作者清单。 */
   rssPresetSources(): Promise<RssPresetSource[]> {
     return invoke<RssPresetSource[]>("rss_preset_sources").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 「允许内网订阅源」开关，默认关；只影响订阅源拉取。 */
+  rssSettingsGet(): Promise<boolean> {
+    return invoke<boolean>("rss_settings_get").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存「允许内网订阅源」开关；返回保存后的值。 */
+  rssSettingsSetAllowPrivateFeeds(allow: boolean): Promise<boolean> {
+    return invoke<boolean>("rss_settings_set_allow_private_feeds", { allow }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

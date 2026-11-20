@@ -1,0 +1,197 @@
+{
+  "name": "dsh-profile-web",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "dsh-profile-web",
+      "dependencies": {
+        "dsh-cost-meter": "1.9.6",
+        "dsh-free-search": "0.9.5"
+      }
+    },
+    "node_modules/@deepseek-ai/cordis": {
+      "version": "4.0.5",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/cordis/-/cordis-4.0.5.tgz",
+      "integrity": "sha512-Sktq5axy0owk9PdnivBRNOJjHEVEibCt0+TDDZcv0+UH2KS1M910fX4kn5y45YFsrpZIi1mJf/1s5VzywMUnyg==",
+      "license": "MIT",
+      "peer": true,
+      "dependencies": {
+        "@deepseek-ai/cosmokit": "~1.8.6",
+        "@standard-schema/spec": "^1.1.0"
+      },
+      "bin": {
+        "cordis": "bin.js"
+      },
+      "peerDependencies": {
+        "@deepseek-ai/cordis-plugin-include": "~1.0.10",
+        "@deepseek-ai/cordis-plugin-loader": "~1.0.6"
+      },
+      "peerDependenciesMeta": {
+        "@deepseek-ai/cordis-plugin-include": {
+          "optional": true
+        },
+        "@deepseek-ai/cordis-plugin-loader": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/@deepseek-ai/cosmokit": {
+      "version": "1.8.6",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/cosmokit/-/cosmokit-1.8.6.tgz",
+      "integrity": "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ==",
+      "license": "MIT",
+      "peer": true
+    },
+    "node_modules/@deepseek-ai/dsh-brand": {
+      "version": "0.2.1-rc.5",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/dsh-brand/-/dsh-brand-0.2.1-rc.5.tgz",
+      "integrity": "sha512-7lUfWjWWAkrb/CFtMbXgjXLYQnL3KJwv+GLMTgY5EZ/4sOH0ufZUX8xlBWyMpdV2LqdvJ1yPKQ+mopH71/wbMQ==",
+      "license": "MIT",
+      "peer": true,
+      "peerDependencies": {
+        "@deepseek-ai/cordis": "~4.0.5"
+      }
+    },
+    "node_modules/@deepseek-ai/dsh-credentials": {
+      "version": "0.2.1-rc.5",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/dsh-credentials/-/dsh-credentials-0.2.1-rc.5.tgz",
+      "integrity": "sha512-acO5+ytVNCqiej/5QI2Xy36gjiOrsf2X59rllNbVfA+IpanLeVBMsBQaSB+bKpgU3r4MVwvrz5EvcJuk4FeONw==",
+      "license": "MIT",
+      "peer": true,
+      "dependencies": {
+        "@deepseek-ai/dsh-brand": "0.2.1-rc.5"
+      },
+      "peerDependencies": {
+        "@deepseek-ai/cordis": "~4.0.5"
+      }
+    },
+    "node_modules/@deepseek-ai/dsh-home-paths": {
+      "version": "0.2.1-rc.5",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/dsh-home-paths/-/dsh-home-paths-0.2.1-rc.5.tgz",
+      "integrity": "sha512-yEGBsUON7xynPYAQKHxvRJ5kywht2ByHfEh20j9FkPluopNRtEnlF0f0/mRL1eC9UMVzDUqUArnAY6dWdb2NDw==",
+      "license": "MIT",
+      "peer": true,
+      "peerDependencies": {
+        "@deepseek-ai/cordis": "~4.0.5"
+      }
+    },
+    "node_modules/@deepseek-ai/schemastery": {
+      "version": "3.19.0",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/schemastery/-/schemastery-3.19.0.tgz",
+      "integrity": "sha512-bDXoYQa7ghAhmdYD5VPlzKxEzJV/aKkz5l4V5h1u06z8GAPN1ROewSjvR9WiXhpa52E9fng8lpH5QdCRIQgnyQ==",
+      "license": "MIT",
+      "dependencies": {
+        "@deepseek-ai/cosmokit": "~1.9.0",
+        "@standard-schema/spec": "^1.1.0"
+      }
+    },
+    "node_modules/@deepseek-ai/schemastery/node_modules/@deepseek-ai/cosmokit": {
+      "version": "1.9.0",
+      "resolved": "https://registry.npmjs.org/@deepseek-ai/cosmokit/-/cosmokit-1.9.0.tgz",
+      "integrity": "sha512-5O1S53mZiJyZYcvxxD0Qv1EY7qFPSxbGyD8CbVK6gw7W9FvcXZj2YIX1ZkOqyQQ3Xt2rFkZDHJv0+V3Zmmp8CA==",
+      "license": "MIT"
+    },
+    "node_modules/@standard-schema/spec": {
+      "version": "1.1.0",
+      "resolved": "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz",
+      "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==",
+      "license": "MIT"
+    },
+    "node_modules/acorn": {
+      "version": "8.15.0",
+      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz",
+      "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
+      "license": "MIT",
+      "bin": {
+        "acorn": "bin/acorn"
+      },
+      "engines": {
+        "node": ">=0.4.0"
+      }
+    },
+    "node_modules/dsh-cost-meter": {
+      "version": "1.9.6",
+      "resolved": "https://registry.npmjs.org/dsh-cost-meter/-/dsh-cost-meter-1.9.6.tgz",
+      "integrity": "sha512-GQAPvCZJJS+wphADyfq3KI+j1OENfQ0w+6kflzBIP/WUoFYt3I1mHiu1MN+c3Y7eC2u/2fVsarUzERz1OTp07g==",
+      "license": "MIT",
+      "os": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "dependencies": {
+        "acorn": "8.15.0",
+        "zod": "4.6.5"
+      },
+      "bin": {
+        "dsh-cost-meter-repair-sessions": "lib/repair-sessions-cli.js"
+      },
+      "engines": {
+        "dsh": ">=0.2.0-rc.1 <0.3.0-0",
+        "node": ">=20"
+      },
+      "peerDependencies": {
+        "@deepseek-ai/dsh-credentials": ">=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-0 <0.3.0-0",
+        "@deepseek-ai/dsh-home-paths": ">=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-0 <0.3.0-0"
+      }
+    },
+    "node_modules/dsh-free-search": {
+      "version": "0.9.5",
+      "resolved": "https://registry.npmjs.org/dsh-free-search/-/dsh-free-search-0.9.5.tgz",
+      "integrity": "sha512-YuzVRL27Wjb82yeYsanqhJVaUKW+04LJOdhUQKLUYK8reGTo1dOZRtvV0W95KO78WBLlLsSQ3R4Gndpk603DJg==",
+      "license": "MIT",
+      "dependencies": {
+        "@deepseek-ai/schemastery": "^3.18.4"
+      },
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": {
+        "@deepseek-ai/cordis": "^4.0.1",
+        "@deepseek-ai/dsh-client-ui-commands": "^0.1.7-rc.1 || ^0.2.0-rc.1",
+        "@deepseek-ai/dsh-client-ui-plugin-manager": "^0.1.7-rc.1 || ^0.2.0-rc.1",
+        "@deepseek-ai/dsh-client-ui-renderer": "^0.1.7-rc.1 || ^0.2.0-rc.1",
+        "@deepseek-ai/dsh-settings": "^0.1.7-rc.1 || ^0.2.0-rc.1",
+        "@deepseek-ai/dsh-tools": "^0.1.7-rc.1 || ^0.2.0-rc.1",
+        "@deepseek-ai/schemastery": "^3.18.4",
+        "react": "^18.2.0"
+      },
+      "peerDependenciesMeta": {
+        "@deepseek-ai/cordis": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-client-ui-commands": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-client-ui-plugin-manager": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-client-ui-renderer": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-settings": {
+          "optional": true
+        },
+        "@deepseek-ai/dsh-tools": {
+          "optional": true
+        },
+        "@deepseek-ai/schemastery": {
+          "optional": true
+        },
+        "react": {
+          "optional": true
+        }
+      }
+    },
+    "node_modules/zod": {
+      "version": "4.6.5",
+      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.5.tgz",
+      "integrity": "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==",
+      "license": "MIT",
+      "funding": {
+        "url": "https://github.com/sponsors/colinhacks"
+      }
+    }
+  }
+}
