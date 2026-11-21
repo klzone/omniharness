@@ -1,5 +1,13 @@
 # 执行状态
 
+## 0.2.47：OD-SLIM-022 策略 B 运行时精简（ARCHITECT 亲自执行，2026-11-22）
+
+- 触发：用户批准策略 B，要求一次到位并在 Windows 上验证。
+- 改动：`scripts/runtime-prune-packages.sh` 增加 LibreOffice kits、office-kit/tool-office/skill-office、subagent 全家、AgentTeam、schedule 栈、plugin-manager/plugin-market、CUA/computer-use、chat-import、推荐卡片、terminal-panel/action-cards/plugin-detail/mcp-manager 的移出规则；三份 profile patch 删除 skill-office、tool-schedule、plugin-market 与 subagent 启用条目；版本升到 0.2.47。
+- 实测：`prepare-runtime-assets.sh` EXIT=0；`runtime/dsh-runtime` 由 1.4 GB 降到 315 MB；剪枝后目录 + 新 seed 实跑 `dsh --profile web --port 0 --no-open` → 打印 `dsh web: http://127.0.0.1:…`（67 条插件导入告警，不阻断启动）；三份 patch YAML 解析通过。
+- 未验证（用户明天 Windows 实机）：设置窗内的插件管理页（预期不可用）、office 工具/子代理/DSH 调度（预期不可用）、真实对话与阅读导出；Windows 构建与安装包体积。
+
+
 ## 0.2.46：RSS 图片与订阅源兼容修复（ARCHITECT 亲自执行，2026-11-21）
 
 - 触发：实机反馈阅读页提示「图片读取失败：响应不是支持的媒体类型：text/html」，以及部分订阅源报错。

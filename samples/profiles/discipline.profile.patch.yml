@@ -1,14 +1,6 @@
 # OmniDesk Discipline Profile Patch (OD-ARCH-104)
 # 本层在每个 bundle 之后应用：顶层 YAML 数组，id 定向覆盖或 insert 列表。
 #
-# 办公能力（Word / PowerPoint / Excel 工作流）只随专业 Profile 挂载：
-# dsh-skill-office 提供 office-docx / office-pptx / office-xlsx 三个候选项，
-# 配合 discipline-core 内已启用的 skill 注册表与 tool-skill 生效。
-# 基础标准（omnidesk-base）不加这条，插件面保持与官方 dsh-base 一致。
-- insert:
-    - id: skill-office
-      name: '@deepseek-ai/dsh-skill-office'
-
 # 费用统计随所有出厂 Profile 装配（OD-ARCH-173 阶段 1：免 key 搜索不再常驻）。
 - insert:
     - id: cost-meter
@@ -236,8 +228,6 @@
           sampleOverCapGlobResults: false
       - id: tool-jobs
         name: '@deepseek-ai/dsh-tool-jobs'
-      - id: tool-schedule
-        name: '@deepseek-ai/dsh-tool-schedule'
       - id: skill-filesystem
         name: '@deepseek-ai/dsh-skill-filesystem'
       - id: tool-skill
@@ -290,21 +280,6 @@
         isolate:
           workflowEngine: true
         config:
-          - id: tool-subagent-control
-            name: '@deepseek-ai/dsh-tool-subagent-control'
-          - id: tool-subagent-list-agents
-            name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
-          - id: tool-subagent
-            name: '@deepseek-ai/dsh-tool-subagent'
-            config:
-              provider: spawn
-              toolName: subagent
-              modelSelectionSettings: true
-          - id: tool-subagent-fork
-            name: '@deepseek-ai/dsh-tool-subagent'
-            config:
-              provider: fork
-              toolName: subagent_fork
           - id: workflow-ptc
             name: '@deepseek-ai/dsh-workflow-ptc'
             config:
@@ -324,12 +299,6 @@
           searchTimeoutMs: 60000
       - id: present
         name: '@deepseek-ai/dsh-tool-present'
-      - id: tool-plugin-manager
-        name: '@deepseek-ai/dsh-plugin-manager/tools'
-        disabled: true
-      - id: tool-plugin-market
-        name: '@deepseek-ai/dsh-plugin-market/tools'
-        disabled: true
 # 第一批/第二批剪枝：自有 Tauri UI 不加载这些 DSH Web UI 行。
 # 例外：dsh-web-frontend 与 dsh-client-ui-directory-picker-native 仍保留。
 - id: ui-open-in-app

@@ -1,3 +1,12 @@
+# 0.2.47 复核（2026-11-22，ARCHITECT 实施并复核）——本机启动验证通过，Windows 实机待用户验证
+
+**对象：** `scripts/runtime-prune-packages.sh`、三份 profile patch、0.2.47 版本号与文档。
+
+**证据：** prepare 后运行时由 1.4 GB 降到 315 MB；剪枝后的运行目录能启动 `dsh web` 并打印回环公告；缺失插件只产生导入告警。三份 patch YAML 解析通过。
+
+**结论：** 精简已落地，符合批准的策略 B；已知代价是 DSH Web UI 插件管理页、office 工具、子代理与 DSH 调度不可用，OmniDesk 自有功能路径不受影响。Windows 实机行为与安装包体积未验证。
+
+
 # DSH 0.2.2-rc.5 升级复核（2026-11-20，ARCHITECT 实施并复核）——本机范围通过，实机任务待用户验证
 
 **对象：** `runtime/RUNTIME.lock`、`runtime/dsh-runtime.package*.json`、`platform.rs` 的 Node 门槛、README/脚本/发布说明、`docs/decisions.md` D-109。

@@ -5,6 +5,22 @@
 
 ## 已确定
 
+### D-110（2026-11-22，OD-SLIM-022 策略 B）：运行时按 0.2.1 下限做二次精简
+
+**状态：** 已实施（\`scripts/runtime-prune-packages.sh\`、三份 \`samples/profiles/*.profile.patch.yml\`、\`VERSION 0.2.47\`）。实机功能验证由用户次日完成。
+
+**决策：**
+1. 以 0.2.1 已含功能为下限，但用户明确批准策略 B：连同 0.2.1 的 subagent、DSH schedule、office 工具与 LibreOffice kits 一起移出，换取安装包体积。
+2. 移出清单：\`libreoffice-kit-*\`、\`dsh-office-kit\`、\`dsh-tool-office\`、\`dsh-skill-office\`、subagent 全家、AgentTeam 全家、\`dsh-schedule\`/\`dsh-tool-schedule\`、\`dsh-plugin-manager\`/\`dsh-plugin-market\`、CUA/computer-use、会话导入、推荐卡片、terminal-panel、action-cards、plugin-detail、mcp-manager；profile patch 同步删除对应启用条目。
+3. 仍保留：agent loop、LLM 与模型目录、session/credentials/settings API、bash/pwsh 工具、fs 工具、skill 文件系统、web-frontend、directory-picker-native、cost-meter。
+
+**证据：** 本机 \`prepare-runtime-assets.sh\` 后 \`runtime/dsh-runtime\` 由 1.4 GB 降到 315 MB；用剪枝后运行目录 + 新 seed 实跑 \`dsh --profile web --port 0 --no-open\` 能打印 \`dsh web: http://127.0.0.1:…\`（缺失插件只是告警，不阻断启动）。
+
+**残余风险：** DSH Web UI 的插件管理页、office 工具、子代理与 DSH 调度不可用；依赖这些插件的 DSH 设置项会显示导入失败告警。OmniDesk 自有的写作导出（系统 soffice）、阅读抽取（Python）、任务调度（Rust scheduler）不受影响。
+
+**回滚：** 从 \`/tmp/omnidesk-prune-022b\` 移回被剪包，并恢复 profile patch 与旧版 prune 脚本。
+
+
 ### D-109（2026-11-20，DSH 运行时升级）：核心从 0.2.1-rc.5 升到 0.2.2-rc.5
 
 **状态：** 已实施（`runtime/RUNTIME.lock`、`runtime/dsh-runtime.package.json`、`runtime/dsh-runtime.package-lock.json`、`desktop/src-tauri/src/platform.rs`、README/脚本/发布说明的 Node 文案）。真实模型任务与 golden_tasks 由用户实机验证。

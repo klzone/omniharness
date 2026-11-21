@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.47] - 2026-11-22
+
+### Changed
+- 运行时二次精简（OD-SLIM-022 策略 B）：移出 LibreOffice kits、office-kit/tool-office/skill-office、subagent 与 AgentTeam、DSH schedule、plugin-manager/plugin-market，以及 0.2.2 新增的 CUA、会话导入、推荐卡片、terminal-panel/action-cards/plugin-detail/mcp-manager 等未使用模块。
+- profile patch 同步删除 skill-office、tool-schedule、plugin-market、subagent 相关启用条目；dsh web 冷启动与公告验证通过。
+- 运行时 node_modules 由约 1.1 GB 降到约 315 MB（本机 prepare 后实测）。
+
+### Known
+- 移除后 DSH Web UI 的插件管理页与 office 工具、子代理、DSH 调度不可用；OmniDesk 自有功能不受影响。
+
 ## [0.2.46] - 2026-11-21
 
 ### Changed

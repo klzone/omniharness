@@ -1,5 +1,29 @@
 # 当前实施计划
 
+### OD-SLIM-022：0.2.2 运行时可精简项审计（待用户批准，2026-11-22）
+
+> 触发：0.2.2-rc.5 升级后运行时依赖树 1116 MB（node_modules 实际字节，du 显示 1.3 G）。用户要求以 0.2.1 的核心为下限，只精简升级带来的新增冗余。
+
+**版本对比（两份 package-lock 的包名集合）：** 0.2.1 620 个包，0.2.2 659 个；新增 47 个、移除 8 个。新增合计约 89 MB（实际字节），其中 18 个是 dsh-experimental-* 与 dsh-client-ui-*，已被现有剪枝规则覆盖（约 45 MB）。剔除这部分后，0.2.2 新引入且未被覆盖的约 44 MB。
+
+**0.2.1 就有的组件（按用户要求保留）：** subagent 栈（dsh-subagent / tool-subagent / tool-subagent-control）、schedule 栈、office skill、LibreOffice kits（302 MB，0.2.1 已有且旧剪枝未移）、plugin-manager / plugin-market、agent loop、session/credentials/model API。
+
+**策略 A（推荐，安全）：只删 0.2.2 新增且用不到的 extras，约 50 MB**
+- CUA：dsh-cua、dsh-cua-bundle、dsh-computer-use、dsh-experimental-cua-macos（已被既有规则覆盖）
+- 会话导入：dsh-deepseek-chat-import
+- AgentTeam：dsh-agent-team、dsh-tool-agent-team、dsh-client-ui-agent-team（保留 0.2.1 的 subagent 栈）
+- 推荐卡片：dsh-creation-recommendations、dsh-personalized-recommendations、dsh-plugin-recommendations 及对应 client-ui
+- 其他 UI：dsh-terminal-panel、dsh-action-cards、dsh-plugin-detail
+- 工具管理：dsh-mcp-manager（OmniDesk 未接 MCP 时）
+- Office 新增工具：dsh-office-kit、dsh-tool-office（保留 0.2.1 的 skill-office 与 LibreOffice kits）
+
+**策略 B（可选，会低于 0.2.1 的功能面）：追加约 350 MB**
+- libreoffice-kit-darwin-arm64 + libreoffice-kit-wasm（302 MB）：与 office 工具一起删；写作导出仍走系统 soffice、阅读抽取走 Python
+- subagent 栈（约 30 MB）与 schedule 栈（约 15 MB）连同 profile patch 条目一起删
+- dsh-plugin-manager / dsh-plugin-market（约 19 MB）
+
+**执行与验收：** 只改 scripts/runtime-prune-packages.sh（移动到 /tmp 备份，不删文件）与必要的 profile patch；跑 prepare-runtime-assets.sh 对比前后体积；实机验证冷启动、设置窗、真实对话（bash/读写工具）、阅读、导出、Windows 构建。任一步失败从备份移回。
+
 ### OD-HARDEN-2043R：加固与改进任务书（汇总版，T1–T14）（待用户批准执行，2026-11-20）
 
 > **触发：** 用户下发合并后的总任务书（原 A/C/B/E/D + G1/G2/G3 + F1/F2/F3 + 新项）。本轮只整理范围与现状，待批准后按批次执行；批准不扩大本节范围。
