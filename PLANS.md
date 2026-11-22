@@ -1,5 +1,27 @@
 # 当前实施计划
 
+### OD-PRJ-602：项目跟踪页项目甘特、界面规范化与数据一致性验证（用户当轮批准执行，2026-11-23）
+
+> 触发：用户对 0.2.51 的三条新要求：①四象限下方甘特图增加项目维度（同一项目的任务分行显示，含重叠/接续/间隔时间，项目行联动）；②按 OmniDesk 暖纸新拟物规范对项目跟踪页做界面规范化重构（大布局不变、分辨率适配、与全站一致、重点突出）；③验证项目页数据/模块与 app 其他模块、知识库的一致性，修掉不关联或冲突的部分。执行：子代理 BUILDER（OpenDesign/deepseek-v4.1-flash-eco，high），ARCHITECT 只规划与复核；完成后版本 → 0.2.52 并提交推送 origin main。
+
+**现状核实（源码事实，2026-11-23）：**
+- 甘特（TaskManager.tsx ganttRows，1019 行起）只画带 due_date 的任务，按 created_at→due_date 画条，无项目分组，无项目行。
+- 项目实体 = work/项目/<id>.md（project_store）；任务挂接靠 task.project_id；projectOverview 反向派生任务/记录/素材/知识四组关联。
+- 界面材质已大面走 --od-neu-*，但仍有残留写死色值（甘特状态条 TASK_STATE_BAR 六色、#5747f8/#9481ff 靛蓝渐变、#eaf8ef/#2f7a51 绿色、#c0855f 等暖棕），与 OD-UI-717 后的全站令牌存在漂移。
+- ScenePage 仍加载 projectItemsRead/saveProjectItems（project-items.v1.json 事项表）但以 void 弃用；ProjectBoard.tsx（旧事项甘特页）已不挂载但仍在仓库。docs/decisions.md:919 已明确「project_items.rs 事项表不动」。
+- 知识关联：任务/记录的 related_knowledge 由 knowledge_link 四命令管理，projectOverview 已聚合；项目复盘卡片的「提炼知识卡」走 knowledgeReviewStage → 知识审核队列，与 KnowledgeReviewCenter 同一条链路。
+
+**实施内容：**
+1. **项目甘特（S1）**：甘特改为「项目分组行」结构——每个有任务的项目一个可折叠分组行（项目名 + 任务数），组内每个任务一行（任务名、状态色条 created_at→due_date）；无项目任务归入「未挂接项目」组。同一项目任务条自然呈现重叠（并行）、接续与间隔（视觉留白即时间间隔），不伪造进度。项目行本身可选画一条汇总带（最早开始 → 最晚截止，浅色底），仅作视觉聚合。联动：点项目组头折叠/展开；任务行点击打开既有编辑弹窗；组内 hover 高亮整组。任务数多时分页或滚动（延续每页 8 条口径用滚动）。范围切换（1/3/6/12 月）沿用。甘特行数超过 30 时折叠未挂接组并提示。
+2. **界面规范化重构（S2）**：大布局（左四象限+甘特 / 右统计卡+已完成+复盘+维护）不变。清理写死色值：TASK_STATE_BAR 六色改用令牌化 CSS 类（theme.css 新增 .od-task-bar--* 变量段）；#5747f8/#9481ff 渐变与 #eaf8ef/#2f7a51 绿色替换为 --od-neu-accent 系与既有语义色（参考 ReviewArchive/WorkRecordLibrary 已改完的令牌用法）。弹窗材质与 wr-dialog 对齐。响应式：右列在 <1280 单列堆叠已有 xl 断点，补 lg 中间断点检查；四象限 compact 形态（工作记录页 panel）回归不受影响。重点突出：四象限为主视觉，复盘与维护卡标题层级、间距、圆角统一到 wr-* 与 od-neu 令牌。
+3. **数据一致性（S3）**：a) ScenePage 清掉 projectItems 死代码（projectRecords/load/save 全部删除，project-items.v1.json 文件保留不动）；b) ProjectBoard.tsx 保持不挂载不删除（历史文件）；c) 验证四条链路并写进证据：任务挂接后 projectOverview 计数、复盘存档路径与知识审核队列条目、知识卡 source 路径指向复盘 md、甘特行与 task.project_id 一致；d) docs/decisions.md 若有口径变化补一行（无变化不补）。
+
+**验证：** cargo 全量、tsc、npm test、build；扩展 verify_project_601.py 或新增 verify_project_602.py（甘特分组行、令牌化色板、死代码清除、一致性断言）；证据落 evidence/od-prj-602/。
+
+**明确不做：** 不改 runtime/ 与模型路由；不改四张统计卡口径；不删 project-items.v1.json 用户文件与 ProjectBoard.tsx；不做甘特拖拽调期；不重排四象限算法。
+
+**发布：** 完成并复核后版本 → 0.2.52（VERSION/package.json/tauri.conf.json/CHANGELOG），提交推送 origin main。
+
 ### OD-PRJ-601：项目跟踪模块完善迭代（用户当轮批准执行，2026-11-23）
 
 > 触发：用户当轮指令。完善项目跟踪模块：任务完成确认、AI 辅助复盘、右侧卡片下方项目维护区域。用户明确授权「任务执行全部交给子 agent，模型 OpenDesign/deepseek-v4.1-flash-eco，思考等级 high」，任务完成后提交推送新版本到 GitHub。

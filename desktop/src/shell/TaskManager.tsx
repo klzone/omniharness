@@ -6,8 +6,14 @@ import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProjectMaintenance } from "./ProjectMaintenance";
 import { ProjectReviewCard, type ProjectReviewSeed } from "./ProjectReviewCard";
+import {
+  autoCollapseGroups,
+  buildProjectGanttGroups,
+  summaryRangeLabel,
+} from "../projectGanttGroups";
 import type {
   AvailabilityConfig,
+  ProjectInfo,
   ScheduleEntryView,
   ScheduleGenerateReport,
   TaskDueKind,
@@ -832,12 +838,12 @@ const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: strin
 
 /** 甘特条表达状态，不表达伪造的进度百分比。 */
 const TASK_STATE_BAR: Record<WorkTaskState, string> = {
-  待确认: "bg-[#c0855f]",
-  待开始: "bg-[#8a7f6e]",
-  进行中: "bg-[#a24e2c]",
-  已完成: "bg-[#3f7d5a]",
-  已取消: "bg-[#b5a896]",
-  暂停: "bg-[#8a5a12]",
+  待确认: "od-task-bar--pending-confirm",
+  待开始: "od-task-bar--not-started",
+  进行中: "od-task-bar--in-progress",
+  已完成: "od-task-bar--done",
+  已取消: "od-task-bar--cancelled",
+  暂停: "od-task-bar--paused",
 };
 
 const QUADRANT_SHORT: Record<string, string> = {
@@ -895,6 +901,7 @@ export function TaskQuadrantBoard({
 }) {
   const [views, setViews] = useState<TaskQuadrantView[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -911,6 +918,8 @@ export function TaskQuadrantBoard({
   const [localNotice, setLocalNotice] = useState<Notice | null>(null);
   const [completeConfirm, setCompleteConfirm] = useState(false);
   const [reviewSeed, setReviewSeed] = useState<ProjectReviewSeed>(null);
+  /** 甘特组折叠：用户手动覆盖默认折叠（默认值在超过 30 行时自动给出）。 */
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   function announce(notice: Notice | null) {
     setLocalNotice(notice);
@@ -920,11 +929,16 @@ export function TaskQuadrantBoard({
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([shell.taskQuadrantViews(LOCAL_OFFSET_MINUTES()), shell.taskList()])
-      .then(([quadrants, listing]) => {
+    Promise.all([
+      shell.taskQuadrantViews(LOCAL_OFFSET_MINUTES()),
+      shell.taskList(),
+      shell.projectList(),
+    ])
+      .then(([quadrants, listing, projectListing]) => {
         if (!alive) return;
         setViews(quadrants);
         setTasks(listing.items);
+        setProjects(projectListing.items);
         setError(null);
       })
       .catch((e) => {
@@ -1016,30 +1030,38 @@ export function TaskQuadrantBoard({
     [timeline],
   );
 
-  const ganttRows = useMemo(() => {
-    const rows = tasks
-      .filter((task) => task.due_date)
-      .map((task) => {
-        const start = dayStart(task.created_at) ?? timeline.start;
-        const end = dayStart(task.due_date as string);
-        if (!end) return null;
-        const from = Math.max(start.getTime(), timeline.start.getTime());
-        const to = Math.min(end.getTime(), timeline.end.getTime());
-        if (to <= timeline.start.getTime() || from >= timeline.end.getTime()) return null;
-        const left = ((from - timeline.start.getTime()) / timeline.span) * 100;
-        const width = Math.max(2, ((to - from) / timeline.span) * 100);
-        return { task, left, width, clamped: end.getTime() >= timeline.end.getTime() };
-      })
-      .filter((row): row is { task: WorkTask; left: number; width: number; clamped: boolean } => row !== null)
-      .sort((a, b) => a.left - b.left);
-    return rows.slice(0, 8);
-  }, [tasks, timeline]);
+  /** 甘特分组行：坐标换算与排序都在 projectGanttGroups 纯函数里，组件只负责渲染。 */
+  const ganttGroups = useMemo(
+    () =>
+      buildProjectGanttGroups(tasks, projects, {
+        start: timeline.start.getTime(),
+        end: timeline.end.getTime(),
+        span: timeline.span,
+      }),
+    [tasks, projects, timeline],
+  );
+
+  /** 总行数超过 30 时默认折叠未挂接组与最早结束的组。 */
+  const autoCollapsedIds = useMemo(() => autoCollapseGroups(ganttGroups), [ganttGroups]);
+  const collapsedCount = ganttGroups.filter(
+    (group) => collapsedGroups[group.projectId] ?? autoCollapsedIds.includes(group.projectId),
+  ).length;
+
+  function isGroupCollapsed(projectId: string): boolean {
+    return collapsedGroups[projectId] ?? autoCollapsedIds.includes(projectId);
+  }
+
+  function toggleGroup(projectId: string) {
+    const current = isGroupCollapsed(projectId);
+    setCollapsedGroups((previous) => ({ ...previous, [projectId]: !current }));
+  }
 
   const todayPercent = ((today.getTime() - timeline.start.getTime()) / timeline.span) * 100;
 
-  function openEditor(view: TaskQuadrantView) {
-    const task = taskMap.get(view.task_id);
-    setEditing(view.task_id);
+  /** 四象限与甘特行共用同一个编辑弹窗入口。 */
+  function openEditor(taskId: string) {
+    const task = taskMap.get(taskId);
+    setEditing(taskId);
     setImportanceDraft(task?.importance ?? "待评估");
     setQuadrantDraft(task?.quadrant_override ?? "自动");
     setDueDraft(isoDay(task?.due_date ?? null));
@@ -1137,16 +1159,16 @@ export function TaskQuadrantBoard({
   const compact = variant === "panel";
 
   const arrowUp = (
-    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[#b8b4ac]" />
+    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[color:var(--od-neu-ink-3)]" />
   );
   const arrowDown = (
-    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[#b8b4ac]" />
+    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[color:var(--od-neu-ink-3)]" />
   );
   const arrowLeft = (
-    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[#b8b4ac]" />
+    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[color:var(--od-neu-ink-3)]" />
   );
   const arrowRight = (
-    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#b8b4ac]" />
+    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[color:var(--od-neu-ink-3)]" />
   );
 
   const matrix = (
@@ -1217,7 +1239,7 @@ export function TaskQuadrantBoard({
           >
             <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
               {items.length === 0 ? (
-                <p className="m-auto text-[11px] text-[#85858c]">暂无任务</p>
+                <p className="m-auto text-[11px] text-[color:var(--od-neu-ink-3)]">暂无任务</p>
               ) : (
                 items.map((view) => {
                   const task = taskMap.get(view.task_id);
@@ -1225,7 +1247,7 @@ export function TaskQuadrantBoard({
                     <article key={view.task_id} data-task-quadrant-row={view.task_id} className="min-w-0">
                       <button
                         type="button"
-                        onClick={() => openEditor(view)}
+                        onClick={() => openEditor(view.task_id)}
                         title={view.title}
                         className={
                           "grid w-full items-center rounded-xl bg-[color:var(--od-neu-surface)] text-left shadow-[var(--od-neu-raise-1)] transition " +
@@ -1282,7 +1304,7 @@ export function TaskQuadrantBoard({
   const gantt = (
     <section aria-label="任务甘特图" className={"min-w-0 rounded-[22px] px-6 py-5 " + NEU_CARD_STRONG}>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <span className="text-[11px] tracking-[0.14em] text-[#8a877f]">时间范围</span>
+        <span className="text-[11px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">时间范围</span>
         <div className="flex gap-1.5">
           {RANGE_OPTIONS.map((option) => (
             <button
@@ -1294,7 +1316,7 @@ export function TaskQuadrantBoard({
                 "rounded-full px-3 py-1.5 text-[11px] transition " +
                 (range === option.key
                   ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
-                  : NEU_TILE + " text-[#5f5f67]")
+                  : NEU_TILE + " text-[color:var(--od-neu-ink-2)]")
               }
             >
               {option.label}
@@ -1307,56 +1329,117 @@ export function TaskQuadrantBoard({
         <span />
         <div className="grid grid-cols-7">
           {ticks.map((day, index) => (
-            <span key={index} className="mono text-[10px] text-[#8a877f]">
+            <span key={index} className="mono text-[10px] text-[color:var(--od-neu-ink-3)]">
               {mmdd(day)}
             </span>
           ))}
         </div>
       </div>
 
-      {ganttRows.length === 0 ? (
-        <p className="pt-2 text-[11.5px] text-[#85858c]">当前范围内没有带截止日期的任务。</p>
+      {ganttGroups.length === 0 ? (
+        <p className="pt-2 text-[11.5px] text-[color:var(--od-neu-ink-3)]">
+          当前范围内没有带截止日期的任务。
+        </p>
       ) : (
         <div className="relative flex flex-col">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute -top-2 bottom-0 w-px bg-[repeating-linear-gradient(180deg,rgba(87,71,248,0.42)_0_5px,transparent_5px_11px)]"
+            className="pointer-events-none absolute -top-2 bottom-0 w-px bg-[repeating-linear-gradient(180deg,color-mix(in_oklab,var(--od-neu-accent-ink)_42%,transparent)_0_5px,transparent_5px_11px)]"
             style={{
               left: "calc(min(168px, 100% - 1px) + 16px + (100% - min(168px, 100% - 1px) - 16px) * " + Math.max(0, Math.min(1, todayPercent / 100)) + ")",
             }}
           />
-          {ganttRows.map(({ task, left, width, clamped }) => {
+          {ganttGroups.map((group) => {
+            const collapsed = isGroupCollapsed(group.projectId);
+            const rangeLabel = summaryRangeLabel(group.summary);
             return (
               <div
-                key={task.id}
-                data-task-gantt-row={task.id}
-                className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[#d0cdc6]/60 py-2.5 last:border-b-0 last:pb-0"
+                key={group.projectId || "unattached"}
+                data-project-gantt-group={group.projectId}
+                className="group flex flex-col"
               >
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <span title={task.title} className="truncate text-[12px] font-medium text-[#34343b]">
-                    {task.title}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.projectId)}
+                  aria-expanded={!collapsed}
+                  className="grid grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[color:var(--od-neu-line-strong)] py-2.5 text-left transition group-hover:bg-[color:var(--od-neu-surface-high)]"
+                  data-project-gantt-group-header={group.projectId}
+                >
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Icon
+                        name={collapsed ? "chevron-down" : "chevron-up"}
+                        className="h-3 w-3 shrink-0 text-[color:var(--od-neu-ink-3)]"
+                      />
+                      <span
+                        title={group.projectName}
+                        className="truncate text-[12px] font-semibold text-[color:var(--od-neu-ink)]"
+                      >
+                        {group.projectName}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">
+                        {group.rows.length}
+                      </span>
+                    </span>
+                    <span className="mono pl-[18px] text-[9.5px] text-[color:var(--od-neu-ink-3)]">
+                      {rangeLabel}
+                    </span>
                   </span>
-                  <span className="shrink-0 text-[10px] text-[#8a877f]">{task.state}</span>
-                </div>
-                <div className="relative h-[10px] rounded-[5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
-                  <div
-                    className={
-                      "gantt-bar absolute top-0 h-[10px] " +
-                      TASK_STATE_BAR[task.state] + " " +
-                      (clamped ? "rounded-l-full" : "rounded-full")
-                    }
-                    style={{ left: left + "%", width: width + "%" }}
-                  />
-                  {clamped ? (
+                  <span className="relative h-[14px]">
                     <span
                       aria-hidden="true"
-                      className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[#5747f8]/70"
+                      className="absolute top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[color:var(--od-neu-accent-soft)] shadow-[var(--od-neu-inset-1)]"
+                      style={{ left: group.summary.leftPct + "%", width: group.summary.widthPct + "%" }}
                     />
-                  ) : null}
-                </div>
+                  </span>
+                </button>
+                {collapsed
+                  ? null
+                  : group.rows.map(({ task, left, width, clamped }) => (
+                      <button
+                        type="button"
+                        key={task.id}
+                        data-task-gantt-row={task.id}
+                        onClick={() => openEditor(task.id)}
+                        className="grid w-full grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[color:var(--od-neu-line-strong)] py-2.5 text-left transition hover:bg-[color:var(--od-neu-accent-soft)] group-hover:bg-[color:var(--od-neu-surface-high)] last:border-b-0 last:pb-0"
+                      >
+                        <span className="flex min-w-0 items-baseline gap-2 pl-[18px]">
+                          <span
+                            title={task.title}
+                            className="truncate text-[12px] font-medium text-[color:var(--od-neu-ink)]"
+                          >
+                            {task.title}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">
+                            {task.state}
+                          </span>
+                        </span>
+                        <span className="relative h-[10px] rounded-[5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
+                          <span
+                            className={
+                              "gantt-bar absolute top-0 h-[10px] " +
+                              TASK_STATE_BAR[task.state] + " " +
+                              (clamped ? "rounded-l-full" : "rounded-full")
+                            }
+                            style={{ left: left + "%", width: width + "%" }}
+                          />
+                          {clamped ? (
+                            <span
+                              aria-hidden="true"
+                              className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[color:var(--od-neu-accent-ink)]"
+                            />
+                          ) : null}
+                        </span>
+                      </button>
+                    ))}
               </div>
             );
           })}
+          {collapsedCount > 0 ? (
+            <p className="pt-3 text-[10.5px] text-[color:var(--od-neu-ink-3)]">
+              已折叠 {collapsedCount} 组，展开查看
+            </p>
+          ) : null}
         </div>
       )}
     </section>
@@ -1368,7 +1451,7 @@ export function TaskQuadrantBoard({
       label: "今日新增",
       value: stats.created,
       icon: "clock" as const,
-      tone: "text-[#5f5f67]",
+      tone: "text-[color:var(--od-neu-ink-2)]",
       tile: "bg-[color:var(--od-neu-sunken)]",
     },
     {
@@ -1408,8 +1491,8 @@ export function TaskQuadrantBoard({
               <Icon name={item.icon} className="h-[15px] w-[15px]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[10px] text-[#8a877f]">{item.label}</span>
-              <span className="mt-0.5 block text-[20px] font-semibold leading-none text-[#34343b] tabular-nums">
+              <span className="block truncate text-[10px] text-[color:var(--od-neu-ink-3)]">{item.label}</span>
+              <span className="mt-0.5 block text-[20px] font-semibold leading-none text-[color:var(--od-neu-ink)] tabular-nums">
                 {item.value}
               </span>
             </span>
@@ -1421,25 +1504,25 @@ export function TaskQuadrantBoard({
 
   const completedPanel = (
     <aside aria-label="已完成任务" className={"rounded-[18px] px-5 py-4 " + WELL}>
-      <div className="flex items-center gap-2 border-b border-[#d0cdc6]/40 pb-3">
-        <Icon name="check" className="h-3.5 w-3.5 text-[#2f7a51]" />
+      <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
+        <Icon name="check" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
         <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">已完成</h3>
-        <span className="mono ml-auto text-[10px] text-[#8a877f]">{completed.length}</span>
+        <span className="mono ml-auto text-[10px] text-[color:var(--od-neu-ink-3)]">{completed.length}</span>
       </div>
       {completed.length === 0 ? (
-        <p className="pt-3 text-[11px] text-[#85858c]">暂无已完成任务。</p>
+        <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">暂无已完成任务。</p>
       ) : (
         <ul className="pt-2 flex flex-col gap-1">
           {completed.slice(0, 5).map((task) => (
             <li key={task.id} className="flex items-center gap-3 rounded-lg bg-[color:var(--od-neu-surface)] px-2 py-2 shadow-[var(--od-neu-raise-1)]">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eaf8ef] text-[#2f7a51]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]">
                 <Icon name="check" className="h-3 w-3" />
               </span>
               <span className="min-w-0 flex-1">
                 <span title={task.title} className="block truncate text-[12.5px] font-medium text-[color:var(--od-neu-ink)]">
                   {task.title}
                 </span>
-                <span className="mono mt-0.5 block text-[9.5px] text-[#8a877f]">{isoDay(task.updated_at)}</span>
+                <span className="mono mt-0.5 block text-[9.5px] text-[color:var(--od-neu-ink-3)]">{isoDay(task.updated_at)}</span>
               </span>
               <button
                 type="button"
@@ -1452,7 +1535,7 @@ export function TaskQuadrantBoard({
                       : "该任务未挂接项目；先到下方「项目」区挂接后再复盘。",
                   });
                 }}
-                className={"shrink-0 rounded-full px-2 py-1 text-[10px] text-[#5f5f67] " + NEU_TILE}
+                className={"shrink-0 rounded-full px-2 py-1 text-[10px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                 data-task-review-entry=""
               >
                 AI 复盘
@@ -1494,12 +1577,12 @@ export function TaskQuadrantBoard({
           </p>
         </div>
         <label className="wr-search ml-auto">
-          <Icon name="search" className="h-3.5 w-3.5 text-[#5747f8]/80" />
+          <Icon name="search" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索任务"
-            className="w-full bg-transparent text-[11.5px] text-[#34343b] placeholder:text-[#8a877f] focus:outline-none"
+            className="w-full bg-transparent text-[11.5px] text-[color:var(--od-neu-ink)] placeholder:text-[color:var(--od-neu-ink-3)] focus:outline-none"
             aria-label="搜索任务"
           />
         </label>
@@ -1512,7 +1595,7 @@ export function TaskQuadrantBoard({
             "relative mb-3 rounded-2xl px-4 py-2 text-[11.5px] leading-relaxed " +
             (localNotice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-white/80 text-[#5f5f67]")
+              : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
           }
         >
           {localNotice.text}
@@ -1523,7 +1606,7 @@ export function TaskQuadrantBoard({
           读取四象限失败：{error}
         </p>
       ) : null}
-      {loading ? <p className="relative pb-2 text-[11.5px] text-[#8a877f]">正在读取任务…</p> : null}
+      {loading ? <p className="relative pb-2 text-[11.5px] text-[color:var(--od-neu-ink-3)]">正在读取任务…</p> : null}
 
       <div className="relative grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-5">
@@ -1565,14 +1648,14 @@ export function TaskQuadrantBoard({
             className="wr-dialog w-full max-w-[520px] p-6"
           >
             <div className="flex items-start gap-3 pb-4">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[linear-gradient(145deg,#9481ff,#5747f8)] text-white shadow-[0_8px_18px_-10px_rgba(87,71,248,0.7)]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[color:var(--od-neu-accent)] text-white shadow-[var(--od-neu-raise-1)]">
                 <Icon name="edit" className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <h3 title={editingTask.title} className="truncate text-[15px] font-semibold text-[#34343b]">
+                <h3 title={editingTask.title} className="truncate text-[15px] font-semibold text-[color:var(--od-neu-ink)]">
                   {editingTask.title}
                 </h3>
-                <p className="mt-1 text-[10.5px] text-[#8a877f]">
+                <p className="mt-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">
                   {editingTask.state} · 创建于 {isoDay(editingTask.created_at)}
                 </p>
               </div>
@@ -1580,7 +1663,7 @@ export function TaskQuadrantBoard({
                 type="button"
                 aria-label="关闭"
                 onClick={() => setEditing(null)}
-                className={"flex h-9 w-9 items-center justify-center rounded-full text-[#5f5f67] " + NEU_TILE}
+                className={"flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
                 <Icon name="x" className="h-4 w-4" />
               </button>
@@ -1588,7 +1671,7 @@ export function TaskQuadrantBoard({
 
             <div className="flex flex-col gap-4">
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">重要性</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">重要性</p>
                 <div className="flex flex-wrap gap-2">
                   {IMPORTANCE_CHOICES.map((level) => (
                     <button
@@ -1599,7 +1682,7 @@ export function TaskQuadrantBoard({
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (importanceDraft === level
                           ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
-                          : NEU_TILE + " text-[#5f5f67]")
+                          : NEU_TILE + " text-[color:var(--od-neu-ink-2)]")
                       }
                     >
                       {level}
@@ -1609,7 +1692,7 @@ export function TaskQuadrantBoard({
               </div>
 
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">象限</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">象限</p>
                 <div className="flex flex-wrap gap-2">
                   {QUADRANT_CHOICES.map((choice) => (
                     <button
@@ -1620,7 +1703,7 @@ export function TaskQuadrantBoard({
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (quadrantDraft === choice
                           ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
-                          : NEU_TILE + " text-[#5f5f67]")
+                          : NEU_TILE + " text-[color:var(--od-neu-ink-2)]")
                       }
                     >
                       {choice === "自动" ? "自动" : QUADRANT_SHORT[choice] ?? choice}
@@ -1630,14 +1713,14 @@ export function TaskQuadrantBoard({
               </div>
 
               <div>
-                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">截止日期</p>
+                <p className="pb-2 text-[10.5px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">截止日期</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="date"
                     value={dueDraft}
                     onChange={(event) => setDueDraft(event.target.value)}
                     aria-label="截止日期"
-                    className={"h-9 rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                   />
                   {(["target", "hard"] as TaskDueKind[]).map((kind) => (
                     <button
@@ -1648,7 +1731,7 @@ export function TaskQuadrantBoard({
                         "rounded-full px-3.5 py-1.5 text-[11.5px] transition " +
                         (dueKindDraft === kind
                           ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)] shadow-[var(--od-neu-inset-1)]"
-                          : NEU_TILE + " text-[#5f5f67]")
+                          : NEU_TILE + " text-[color:var(--od-neu-ink-2)]")
                       }
                     >
                       {kind === "hard" ? "硬截止" : "目标日"}
@@ -1658,13 +1741,13 @@ export function TaskQuadrantBoard({
               </div>
 
               <label className="block">
-                <span className="block pb-2 text-[10.5px] tracking-[0.14em] text-[#8a877f]">调整理由</span>
+                <span className="block pb-2 text-[10.5px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">调整理由</span>
                 <input
                   value={reasonDraft}
                   onChange={(event) => setReasonDraft(event.target.value)}
                   placeholder="调整重要性或截止日期时必填"
                   className={
-                    "h-10 w-full rounded-2xl px-3.5 text-[11.5px] text-[#34343b] placeholder:text-[#85858c] " +
+                    "h-10 w-full rounded-2xl px-3.5 text-[11.5px] text-[color:var(--od-neu-ink)] placeholder:text-[color:var(--od-neu-ink-3)] " +
                     NEU_INSET
                   }
                 />
@@ -1683,7 +1766,7 @@ export function TaskQuadrantBoard({
                   type="button"
                   onClick={requestComplete}
                   disabled={busy}
-                  className="rounded-full bg-[#eaf8ef] px-4 py-2 text-[11.5px] font-medium text-[#2f7a51] disabled:opacity-50"
+                  className="rounded-full bg-[color:var(--od-neu-accent-soft)] px-4 py-2 text-[11.5px] font-medium text-[color:var(--od-neu-accent-ink)] disabled:opacity-50"
                   data-task-complete-entry=""
                 >
                   标记完成
@@ -1695,7 +1778,7 @@ export function TaskQuadrantBoard({
                 <button
                   type="button"
                   onClick={() => setEditing(null)}
-                  className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
+                  className={"rounded-full px-4 py-2 text-[11.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                 >
                   取消
                 </button>
@@ -1703,7 +1786,7 @@ export function TaskQuadrantBoard({
                   type="button"
                   onClick={() => void saveEditor()}
                   disabled={busy}
-                  className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
+                  className="rounded-full bg-[color:var(--od-neu-accent)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-50"
                 >
                   {busy ? "保存中…" : "保存修改"}
                 </button>

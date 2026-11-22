@@ -12,7 +12,6 @@ import {
 } from "../sceneThreads";
 import type {
   OfflineArtifactEntry,
-  ProjectItemRecord,
   SceneOverview,
 } from "../types";
 import { useThreadCategories } from "../threadCategories";
@@ -35,7 +34,6 @@ import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
 import type { WorklogArchiveList, WorklogWeekFile, WorklogWeekView } from "../types";
 import {
   countReportEntries,
-  localToday,
   parseWeekView,
   parseWorklog,
   REPORT_DESTINATION,
@@ -153,15 +151,6 @@ export function ScenePage({
   const [includeSubdirs, setIncludeSubdirs] = useState<boolean>(() =>
     fixedSubdirs(scene),
   );
-  /** 项目跟进页的本机事项（OD-ARCH-102）：读写 project-items.v1.json，不调模型。 */
-  const [projectRecords, setProjectRecords] = useState<ProjectItemRecord[]>([]);
-  const [projectLoading, setProjectLoading] = useState(false);
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [projectNote, setProjectNote] = useState<string | null>(null);
-  const [projectSaving, setProjectSaving] = useState(false);
-  /** 项目页右栏视图：时间线 / 阶段成果只改视图，不重新取数。 */
-  const [projectRightView, setProjectRightView] = useState<"timeline" | "artifacts">("timeline");
-  void localToday; void projectRecords; void projectLoading; void projectError; void projectNote; void projectSaving; void projectRightView;
   /** 项目跟踪页的默认视图：先看任务，再到项目。 */
   const [overview, setOverview] = useState<SceneOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -188,13 +177,12 @@ export function ScenePage({
    * 换场景时页签回到该场景的默认值（OD-ARCH-091）。
    *
    * 场景页组件在 `report`/`writing`/`project` 之间是同一个 React 实例，
-   * 不重置的话「项目跟进」的进度页签会带进别的场景，落在一个没有按钮的分支里。
+   * 不重置的话上一场景的成果预览与筛选会带进别的场景。
    */
   useEffect(() => {
     setOpened(null);
     setWritingStatusFilter(null);
     setWritingStaleOnly(false);
-    setProjectRightView("timeline");
     setIncludeSubdirs(fixedSubdirs(scene));
   }, [scene, def.hasProgress]);
 
@@ -242,50 +230,6 @@ export function ScenePage({
       alive = false;
     };
   }, [def.scenario, pendingTick, includeSubdirs]);
-
-  /**
-   * 项目跟进：读本机事项文件（OD-ARCH-102）。
-   * 与旧版确定性汇总的差别：输入不再从最近一段对话里猜，而是用户在本页显式录入。
-   */
-  useEffect(() => {
-    let alive = true;
-    if (scene !== "project") return;
-    setProjectLoading(true);
-    shell
-      .projectItemsRead()
-      .then((r) => {
-        if (!alive) return;
-        setProjectRecords(r.items);
-        setProjectNote(r.note);
-        setProjectError(null);
-      })
-      .catch((e) => {
-        if (!alive) return;
-        // 读不到就如实报错，不能显示成「零事项」。
-        setProjectRecords([]);
-        setProjectNote(null);
-        setProjectError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (alive) setProjectLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [scene]);
-
-  /** 整批写回；宿主做完整校验与原子写，成功后以回执为准刷新界面。 */
-  const saveProjectItems = useCallback(async (items: ProjectItemRecord[]) => {
-    setProjectSaving(true);
-    try {
-      const receipt = await shell.projectItemsSave(items);
-      setProjectRecords(receipt.items);
-      setProjectError(null);
-      setProjectNote(null);
-    } finally {
-      setProjectSaving(false);
-    }
-  }, []);
 
   const openArtifact = useCallback(async (fileName: string) => {
     try {
@@ -833,10 +777,7 @@ export function ScenePage({
           </section>
         </div>
       ) : scene === "project" ? (
-        <>
-          <TaskQuadrantBoard />
-          <span hidden>{String(saveProjectItems)}</span>
-        </>
+        <TaskQuadrantBoard />
       ) : (
         /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
         <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">

@@ -32,9 +32,9 @@ function shortDate(value: string | null): string {
 function ProjectStatusChip({ status }: { status: string }) {
   const tone =
     status === "已完成"
-      ? "bg-[#eaf8ef] text-[#2f7a51]"
+      ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]"
       : status === "已搁置"
-        ? "bg-[color:var(--od-neu-sunken)] text-[#8a877f]"
+        ? "bg-[color:var(--od-neu-sunken)] text-[color:var(--od-neu-ink-3)]"
         : "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]";
   return (
     <span className={"shrink-0 rounded-full px-2 py-0.5 text-[10px] " + tone} data-project-status={status}>
@@ -273,17 +273,17 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
 
   return (
     <aside aria-label="项目维护" data-project-maintenance="" className={"rounded-[18px] px-5 py-4 " + NEU_CARD}>
-      <div className="flex items-center gap-2 border-b border-[#d0cdc6]/40 pb-3">
+      <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
         <Icon name="folder" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
         <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">项目</h3>
-        <span className="mono ml-auto text-[10px] text-[#8a877f]">{projects.length}</span>
+        <span className="mono ml-auto text-[10px] text-[color:var(--od-neu-ink-3)]">{projects.length}</span>
         <button
           type="button"
           onClick={() => {
             setNewProjectOpen(true);
             setProjectError(null);
           }}
-          className={"flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] text-[#5f5f67] " + NEU_TILE}
+          className={"flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
           data-project-new=""
         >
           <Icon name="plus" className="h-3 w-3" />
@@ -291,7 +291,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
         </button>
       </div>
 
-      {loading ? <p className="pt-3 text-[11px] text-[#85858c]">正在读取项目…</p> : null}
+      {loading ? <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">正在读取项目…</p> : null}
       {error ? (
         <p className="mt-3 rounded-xl bg-error-container/70 px-3 py-2 text-[11px] text-on-error-container">
           读取项目失败：{error}
@@ -304,7 +304,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
             "mt-3 rounded-xl px-3 py-2 text-[11px] leading-relaxed " +
             (notice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-white/80 text-[#5f5f67]")
+              : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
           }
         >
           {notice.text}
@@ -312,7 +312,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
       ) : null}
 
       {!loading && !error && projects.length === 0 ? (
-        <p className="pt-3 text-[11px] text-[#85858c]">还没有项目，先新建一个。</p>
+        <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">还没有项目，先新建一个。</p>
       ) : null}
 
       {projects.length > 0 ? (
@@ -322,7 +322,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
             onChange={(event) => changeProject(event.target.value)}
             aria-label="选择项目"
             data-project-select=""
-            className={"h-9 rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+            className={"h-9 rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
           >
             {projects.map((project) => (
               <option key={project.project_id} value={project.project_id}>
@@ -344,24 +344,24 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     setAddTaskOpen(true);
                     setAddTaskError(null);
                   }}
-                  className={"rounded-full px-2.5 py-1 text-[10.5px] text-[#5f5f67] " + NEU_TILE}
+                  className={"rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                   data-project-add-task=""
                 >
                   添加任务
                 </button>
               </div>
-              <p className="mono mt-1 text-[10px] text-[#8a877f]">
+              <p className="mono mt-1 text-[10px] text-[color:var(--od-neu-ink-3)]">
                 {shortDate(selectedProject.start)} → {shortDate(selectedProject.end)}
               </p>
               {selectedProject.goal ? (
-                <p className="mt-1 text-[11px] leading-relaxed text-[#5f5f67]">{selectedProject.goal}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-2)]">{selectedProject.goal}</p>
               ) : null}
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {overviewLoading ? <p className="pt-3 text-[11px] text-[#85858c]">正在读取项目任务…</p> : null}
+      {overviewLoading ? <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">正在读取项目任务…</p> : null}
       {overviewError ? (
         <p className="mt-3 rounded-xl bg-error-container/70 px-3 py-2 text-[11px] text-on-error-container">
           读取项目任务失败：{overviewError}
@@ -371,13 +371,13 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
       {overview ? (
         <div className="pt-3" data-project-tasks="">
           <div className="flex items-center justify-between gap-2 pb-1.5">
-            <span className="text-[10.5px] text-[#8a877f]">项目任务 · {projectRows.length}</span>
-            <span className="mono text-[10px] text-[#8a877f]">
+            <span className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">项目任务 · {projectRows.length}</span>
+            <span className="mono text-[10px] text-[color:var(--od-neu-ink-3)]">
               {page} / {totalPages}
             </span>
           </div>
           {projectRows.length === 0 ? (
-            <p className="pt-2 text-[11px] text-[#85858c]">这个项目还没有任务。</p>
+            <p className="pt-2 text-[11px] text-[color:var(--od-neu-ink-3)]">这个项目还没有任务。</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {pageRows.map((row) => (
@@ -390,7 +390,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     <span title={row.title} className="block truncate text-[11.5px] font-medium text-[color:var(--od-neu-ink)]">
                       {row.title}
                     </span>
-                    <span className="mono mt-0.5 block truncate text-[9.5px] text-[#8a877f]">
+                    <span className="mono mt-0.5 block truncate text-[9.5px] text-[color:var(--od-neu-ink-3)]">
                       {row.due ? "截止 " + shortDate(row.due) : "未设截止"} · {projectNameOf(row.projectId)}
                     </span>
                   </span>
@@ -408,7 +408,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                         label: projectId ? projectNameOf(projectId) : "",
                       });
                     }}
-                    className={"h-8 max-w-[92px] rounded-full px-2 text-[10px] text-[#5f5f67] " + NEU_INSET}
+                    className={"h-8 max-w-[92px] rounded-full px-2 text-[10px] text-[color:var(--od-neu-ink-2)] " + NEU_INSET}
                   >
                     <option value="">（未挂接）</option>
                     {projects.map((project) => (
@@ -421,7 +421,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     type="button"
                     aria-label={"删除任务 " + row.title}
                     onClick={() => setPending({ kind: "delete", taskId: row.id, title: row.title })}
-                    className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#8a877f] " + NEU_TILE}
+                    className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-3)] " + NEU_TILE}
                   >
                     <Icon name="trash" className="h-3.5 w-3.5" />
                   </button>
@@ -435,7 +435,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                 type="button"
                 disabled={page <= 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className={"rounded-full px-2.5 py-1 text-[10.5px] text-[#5f5f67] disabled:opacity-40 " + NEU_TILE}
+                className={"rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] disabled:opacity-40 " + NEU_TILE}
                 data-project-page-prev=""
               >
                 上一页
@@ -444,7 +444,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                 type="button"
                 disabled={page >= totalPages}
                 onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                className={"rounded-full px-2.5 py-1 text-[10.5px] text-[#5f5f67] disabled:opacity-40 " + NEU_TILE}
+                className={"rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] disabled:opacity-40 " + NEU_TILE}
                 data-project-page-next=""
               >
                 下一页
@@ -467,51 +467,51 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
             <h3 className="text-[14px] font-semibold text-on-surface">新建项目</h3>
             <div className="mt-3 flex flex-col gap-3">
               <label className="block">
-                <span className="block pb-1 text-[10.5px] text-[#8a877f]">名称</span>
+                <span className="block pb-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">名称</span>
                 <input
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                   placeholder="项目名称"
-                  className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                  className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                   data-project-name=""
                 />
               </label>
               <label className="block">
-                <span className="block pb-1 text-[10.5px] text-[#8a877f]">目标</span>
+                <span className="block pb-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">目标</span>
                 <textarea
                   value={projectGoal}
                   onChange={(event) => setProjectGoal(event.target.value)}
                   placeholder="这个项目要达成什么（可选）"
                   rows={3}
-                  className={"w-full resize-none rounded-xl px-3 py-2 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                  className={"w-full resize-none rounded-xl px-3 py-2 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                 />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="block pb-1 text-[10.5px] text-[#8a877f]">开始日期</span>
+                  <span className="block pb-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">开始日期</span>
                   <input
                     type="date"
                     value={projectStart}
                     onChange={(event) => setProjectStart(event.target.value)}
-                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                   />
                 </label>
                 <label className="block">
-                  <span className="block pb-1 text-[10.5px] text-[#8a877f]">结束日期</span>
+                  <span className="block pb-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">结束日期</span>
                   <input
                     type="date"
                     value={projectEnd}
                     onChange={(event) => setProjectEnd(event.target.value)}
-                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                   />
                 </label>
               </div>
               <label className="block">
-                <span className="block pb-1 text-[10.5px] text-[#8a877f]">状态</span>
+                <span className="block pb-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">状态</span>
                 <select
                   value={projectStatus}
                   onChange={(event) => setProjectStatus(event.target.value as ProjectStatus)}
-                  className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                  className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                 >
                   {STATUSES.map((status) => (
                     <option key={status} value={status}>
@@ -528,7 +528,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
               <button
                 type="button"
                 onClick={() => setNewProjectOpen(false)}
-                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
+                className={"rounded-full px-4 py-2 text-[11.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
                 取消
               </button>
@@ -536,7 +536,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                 type="button"
                 disabled={busy}
                 onClick={() => void createProject()}
-                className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
+                className="rounded-full bg-[color:var(--od-neu-accent)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-50"
               >
                 {busy ? "创建中…" : "创建项目"}
               </button>
@@ -566,7 +566,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     "rounded-full px-3 py-1.5 text-[11px] " +
                     (addMode === mode
                       ? "bg-[color:var(--od-neu-accent-soft)] font-medium text-[color:var(--od-neu-accent-ink)]"
-                      : NEU_TILE + " text-[#5f5f67]")
+                      : NEU_TILE + " text-[color:var(--od-neu-ink-2)]")
                   }
                 >
                   {mode === "existing" ? "挂接现有任务" : "新建任务"}
@@ -576,13 +576,13 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
             <div className="mt-3 flex flex-col gap-3">
               {addMode === "existing" ? (
                 unassignedTasks.length === 0 ? (
-                  <p className="text-[11px] text-[#85858c]">没有未挂接项目的活动任务，可改用「新建任务」。</p>
+                  <p className="text-[11px] text-[color:var(--od-neu-ink-3)]">没有未挂接项目的活动任务，可改用「新建任务」。</p>
                 ) : (
                   <select
                     value={existingTaskId}
                     onChange={(event) => setExistingTaskId(event.target.value)}
                     aria-label="选择现有任务"
-                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                     data-project-existing-task=""
                   >
                     <option value="">选择任务</option>
@@ -599,7 +599,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     value={newTaskTitle}
                     onChange={(event) => setNewTaskTitle(event.target.value)}
                     placeholder="任务标题"
-                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                     data-project-task-title=""
                   />
                   <input
@@ -607,7 +607,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                     value={newTaskDue}
                     onChange={(event) => setNewTaskDue(event.target.value)}
                     aria-label="任务截止日期"
-                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[#34343b] " + NEU_INSET}
+                    className={"h-9 w-full rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
                   />
                 </>
               )}
@@ -619,7 +619,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
               <button
                 type="button"
                 onClick={() => setAddTaskOpen(false)}
-                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
+                className={"rounded-full px-4 py-2 text-[11.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
                 取消
               </button>
@@ -627,7 +627,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
                 type="button"
                 disabled={busy}
                 onClick={() => void addTask()}
-                className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
+                className="rounded-full bg-[color:var(--od-neu-accent)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-50"
               >
                 {busy ? "提交中…" : addMode === "existing" ? "挂接任务" : "创建并挂接"}
               </button>

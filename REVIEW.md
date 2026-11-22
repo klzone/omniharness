@@ -1,3 +1,24 @@
+## OD-PRJ-602 复核（2026-11-23，ARCHITECT 复核 BUILDER 交付）：通过（源码 diff + 本机复跑）
+
+**范围：** 项目甘特分组行（组头 + 汇总带 + 折叠联动）、页面令牌化重构、ScenePage 死代码清除、数据一致性静态验收、版本 0.2.52 发布准备。
+
+**源码事实（ARCHITECT 逐段审阅实际 diff）：**
+1. `projectGanttGroups.ts`：分组/夹取/排序/折叠纯函数，坐标口径与旧 ganttRows 完全一致（created_at→due_date、窗口夹取、2% 宽度下限、clamped 标记），无第二套换算；未挂接口径与宿主 project_id 空串一致；空项目与窗口外任务不出现。
+2. `TaskManager.tsx`：甘特渲染分组行——组头（项目名 + 任务数 + 汇总区间 + 浅色汇总带，可点击折叠）+ 组内任务行（状态色条、点击开编辑弹窗、hover 联动）；today 竖线贯穿；超 30 行自动折叠未挂接组与最早结束组并提示；TASK_STATE_BAR 改语义类。
+3. `theme.css` 只新增 `.od-task-bar--*` 六段（既有段未动）；三个组件内写死 hex 全部换 `--od-neu-*` 令牌，靛蓝渐变按钮改实色 accent；布局与 compact 变体不变。
+4. `ScenePage.tsx` 只删 projectItems 前端死代码（状态、effect、saveProjectItems、void 占位、import），localToday 仍被 NotificationCenter/WeeklyTimeline 使用（各自独立定义/引用，清理正确）；宿主 project-items 命令与用户文件保留。
+
+**ARCHITECT 复跑（script，2026-11-23）：**
+- `verify_project_602.py` 18/18；`verify_project_601.py` 15/15；`verify_project_ui_716.py` 7/7；`verify_task_quadrant_ui_402.py` 10/10（既有断言全部未动）。
+- `npx tsc --noEmit` EXIT=0；`npm run test` 97/97；`cargo test --lib --offline` 1292/0/1；`npm run build` EXIT=0。
+- `git status --porcelain runtime/` → 空。
+
+**未验证（如实声明）：** 真实窗口甘特观感（组头密度、长任务名截断、hover 联动）、真实模型复盘输出、Windows 实机、`cargo fmt`（rustfmt 未安装）。
+
+**结论：** 验收通过；版本 0.2.52（VERSION/package.json/tauri.conf.json/CHANGELOG 已同步），可提交推送。
+
+---
+
 ## OD-PRJ-601 复核（2026-11-23，ARCHITECT 复核 BUILDER 交付）：通过（源码 diff + 本机复跑）
 
 **范围：** 项目跟踪页四象限完成确认（二次确认 + 归档展示）、AI 项目复盘（存档/确认/知识卡提炼）、项目维护区（新建/挂接/换绑/删除 + 分页）、版本 0.2.51 发布准备。

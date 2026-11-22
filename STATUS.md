@@ -1,5 +1,40 @@
 # 执行状态
 
+## OD-PRJ-602 发布准备（ARCHITECT 亲自执行，2026-11-23）
+
+- **BUILDER 交付复核（file fact）：** 逐段审阅 projectGanttGroups.ts（分组/夹取/折叠纯函数，坐标口径与旧 ganttRows 一致且无第二套换算）、TaskManager.tsx（甘特分组渲染、today 竖线贯穿、折叠交互、令牌替换）、theme.css（仅新增 .od-task-bar--* 段）、ScenePage.tsx（仅清 projectItems 死代码，localToday 等 import 清理正确）、ProjectReviewCard/ProjectMaintenance（纯令牌替换，行为未动）。
+- **ARCHITECT 复跑验证（script）：**
+  - `python3 tests/verification/desktop/verify_project_602.py` → 18/18；`verify_project_601.py` → 15/15；`verify_project_ui_716.py` → 7/7；`verify_task_quadrant_ui_402.py` → 10/10（三份既有脚本断言未动）。
+  - `cd desktop && npx tsc --noEmit` → EXIT=0；`npm run test` → 97/97（含新增 9 项分组单测）。
+  - `cd desktop/src-tauri && cargo test --lib --offline -- --test-threads=1` → 1292 passed / 0 failed / 1 ignored。
+  - `cd desktop && npm run build` → EXIT=0（仅既有 chunk 提示）。
+- **版本（file fact）：** VERSION / desktop/package.json / tauri.conf.json → 0.2.52（sync-app-version.sh 确认一致）；CHANGELOG 增加 0.2.52 条目。
+- **计划偏差（BUILDER 记录，ARCHITECT 认可）：** 旧甘特 `slice(0,8)` 截断改为全量分组 + 超 30 行自动折叠（符合本轮任务书，替代 601 时代口径）；组头区间取窗口内可见区间；完成状态绿 #3f7d5a 按任务书允许项保留为语义色。
+- **未验证：** 真实窗口的甘特组头密度、长任务名截断、hover 联动观感；真实模型复盘输出；Windows 实机。
+
+## OD-PRJ-602：项目甘特分组、界面令牌化与数据一致性（BUILDER 亲自执行，2026-11-23）
+
+- **基线（file fact）：** HEAD `e3b5c68a19`；开工 `git status --porcelain` 显示 `M PLANS.md` 与未跟踪 `docs/od-prj-602-dispatch.md`（任务书写的「工作区干净」与实测不符），两处均为规划输入，原样保留，未 reset/clean/stash。
+- **UI 参考（MCP，实际调用 `search_inspiration` 与截图查看）：** 参考 Airtable 的「分组表头 + 行内汇总条」与 Teamweek 的「项目分组甘特」：组头同一行放折叠箭头、项目名、任务数与可见区间，组内任务各占一行、保留真实重叠与间隔；配色与材质全部换成本应用 `--od-neu-*` 令牌。
+- **S1 项目甘特：**
+  - 新增纯函数 `desktop/src/projectGanttGroups.ts`：`layoutTaskBar`（created_at→due_date、窗口夹取、2% 最小宽度、clamped 标记）与 `buildProjectGanttGroups`（按 task.project_id 分组、空/失效项目归「未挂接项目」、空项目不出现、组按汇总带左端排序、组内按条左端排序），另含 `autoCollapseGroups` 与 `summaryRangeLabel`。
+  - `TaskManager.tsx` 改为项目分组行：组头可折叠（组件 state，不持久化），组头画浅色汇总带并显示项目名 + 任务数 + `MM.DD → MM.DD`；组内任务条保留状态色与 `data-task-gantt-row`，点击调用既有编辑弹窗；组内 hover 联动底色微亮；today 竖线贯穿组头与任务行。
+  - 总任务行 > 30 时默认折叠「未挂接项目」组与最早结束的组，底部提示「已折叠 N 组，展开查看」；移除旧的 `rows.slice(0, 8)` 截断，所有组可见，折叠控制信息量。
+  - 新增 `desktop/src/projectGanttGroups.test.mjs` 9 项：重叠、接续、间隔、未挂接、空项目、clamp、窗口外、区间文字、30 行折叠阈值。
+- **S2 界面令牌化：** `TASK_STATE_BAR` 六色改为 `.od-task-bar--*` 语义类并集中在 `theme.css`（完成绿 `#3f7d5a` 保留，避免与进行中 accent 混淆）；TaskManager / ProjectReviewCard / ProjectMaintenance / ScenePage 的写死 hex 与 `#9481ff/#5747f8` 渐变全部替换为 `--od-neu-*` 令牌，主按钮改为实色 accent + 中性投影；`wr-dialog`、四象限 compact 变体与 `xl:grid-cols-[minmax(0,1fr)_300px]` 单列堆叠行为保持不变。
+- **S3 数据一致性：** `ScenePage.tsx` 删除 `projectRecords` 状态、`projectItemsRead` effect、`saveProjectItems` 与 void 占位，场景分支恢复为单个 `<TaskQuadrantBoard />`；`project-items.rs`、`project_items_read/save` 命令与 `project-items.v1.json` 未动。新增 `tests/verification/desktop/verify_project_602.py`：断言甘特/维护/复盘同源 `taskList + projectList + task.project_id`、复盘知识卡 source 为 `[review.path]`、projectOverview 的 knowledge 聚合读取 `task/record.related_knowledge`（与 knowledge_link 字段一致）。
+- **验证（script，实际命令与结果）：**
+  - `cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1292 passed / 0 failed / 1 ignored**。
+  - `cd desktop && npx tsc --noEmit` → **EXIT=0**。
+  - `cd desktop && npm run test` → **97/97 passed**（含新增 9 项分组单测）。
+  - `cd desktop && npm run build` → **EXIT=0**（仅既有 >500 kB chunk 提示）。
+  - `python3 tests/verification/desktop/verify_project_602.py` → **18/18 passed**。
+  - 回归：`verify_project_601.py` **15/15**、`verify_project_ui_716.py` **7/7**、`verify_task_quadrant_ui_402.py` **10/10**，未调整任何断言。
+- **证据：** `tests/verification/desktop/evidence/od-prj-602/verify_output.txt`（含单测实际运行行）；cargo/npm 输出见本轮终端记录。
+- **计划偏差：** ① 基线并非干净工作区（见上），未做任何清理；② 甘特不再按旧 `slice(0, 8)` 只显示 8 行，改为显示全部组、>30 行自动折叠两组，以符合任务书折叠提示口径；③ 组头区间取「窗口内可见区间」，任务跨到窗口右端时结束日显示为窗口边界日（如 12-01），与刻度终点同口径；④ 项目列表读取并入 TaskManager 首次加载的 `Promise.all`，读取失败时沿用整页错误提示；⑤ 完成绿 `#3f7d5a` 按任务书允许项保留为语义状态色，其余 success 绿色改为 accent 系令牌。
+- **未验证：** 未启动 dev/release 窗口做真实视觉验收（组头密度、长任务名截断、hover 联动观感仅经静态与单测检查）；未用真实模型/真实项目数据跑复盘与知识卡；Windows 实机；真实数据根 `~/OmniDesk/` 未写入。版本号、CHANGELOG、commit/push/tag 按任务书留给 ARCHITECT。
+- **交付状态（file fact）：** 改动见最终回复文件清单；未 commit / push / tag。
+
 ## OD-PRJ-601 发布准备（ARCHITECT 亲自执行，2026-11-23）
 
 - **BUILDER 交付复核（file fact + script）：** 逐段审阅 `TaskManager.tsx`、`project_review_store.rs`、`ProjectReviewCard.tsx`、`ProjectMaintenance.tsx`、`api.ts`、`lib.rs` 的实际 diff；确认工作记录页 panel 变体共用逻辑未被破坏、统计卡口径未动、runtime/ 无改动（`git status --porcelain runtime/` 为空）。

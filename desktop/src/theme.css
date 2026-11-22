@@ -4193,6 +4193,27 @@ button.wr-backlink:hover {
   color: var(--od-neu-ink-2);
   box-shadow: var(--od-neu-inset-1);
 }
+
+/* OD-PRJ-602 任务甘特状态条（语义与 OD-UI-717 前一致，色值集中在此） */
+.od-task-bar--pending-confirm {
+  background: #c0855f; /* 待确认 */
+}
+.od-task-bar--not-started {
+  background: #8a7f6e; /* 待开始 */
+}
+.od-task-bar--in-progress {
+  background: #a24e2c; /* 进行中 */
+}
+.od-task-bar--done {
+  background: #3f7d5a; /* 已完成：保留既有完成绿，避免和进行中的 accent 混淆 */
+}
+.od-task-bar--cancelled {
+  background: #b5a896; /* 已取消 */
+}
+.od-task-bar--paused {
+  background: #8a5a12; /* 暂停 */
+}
+
 .gantt-bar {
   box-shadow:
     0 1px 3px rgba(90, 74, 56, 0.35),
