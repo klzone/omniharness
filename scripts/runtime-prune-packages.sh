@@ -76,10 +76,11 @@ for name in dsh-schedule dsh-tool-schedule; do
 done
 
 # 0.2.2 新增的 extras。
+# plugin-manager / plugin-detail 必须保留：dsh plugin 命令本身依赖它们，删掉会让
+# 设置页安装插件报 ERR_MODULE_NOT_FOUND。只移除未使用的 market。
 for name in dsh-cua dsh-cua-bundle dsh-computer-use dsh-deepseek-chat-import \
             dsh-creation-recommendations dsh-personalized-recommendations dsh-plugin-recommendations \
-            dsh-terminal-panel dsh-action-cards dsh-plugin-detail dsh-mcp-manager \
-            dsh-plugin-manager dsh-plugin-market; do
+            dsh-terminal-panel dsh-action-cards dsh-mcp-manager dsh-plugin-market; do
   [ -e "$RUNTIME/node_modules/@deepseek-ai/$name" ] && move_package "$RUNTIME/node_modules/@deepseek-ai/$name"
 done
 

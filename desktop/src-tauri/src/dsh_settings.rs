@@ -622,6 +622,19 @@ fn port_listening(port: u16) -> bool {
 }
 
 fn kill_pid(pid: u32) {
+    // OD-SYS-701 补充（0.2.48）：Windows 没有 kill 命令，原实现是空操作，
+    // 导致关闭应用后 dsh/node 设置服务残留。改用 taskkill 结束整棵进程树。
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        return;
+    }
+    #[cfg(not(windows))]
     let _ = Command::new("kill")
         .arg(pid.to_string())
         .stdin(Stdio::null())

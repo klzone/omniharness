@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.48] - 2026-11-22
+
+### Fixed
+- Windows 关闭应用后遗留 node 进程：设置服务的 kill_pid 原来调用不存在的 kill 命令（空操作），改用 taskkill /T /F；窗口关闭时也停掉设置服务并清扫孤儿 DSH node。
+- Windows 设置页安装插件报 package_json_reader 栈：运行时精简误删了 dsh plugin 命令依赖的 plugin-manager/plugin-detail，已恢复并调整剪枝脚本；专业 Profile 的缺件提示随之消失。
+
 ## [0.2.47] - 2026-11-22
 
 ### Changed

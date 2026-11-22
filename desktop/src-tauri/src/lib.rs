@@ -358,6 +358,27 @@ fn stop_engine(
 /// 未发送”），不会被排队到关闭结束。
 fn on_window_destroyed_shutdown(state: &SharedHost) {
     let _ = stop_engine(state, Duration::from_secs(5));
+    // 0.2.48：窗口关闭时也做一次 Windows 孤儿 DSH node 清扫。
+    // 旧行为只在 RunEvent::Exit 兜底；仅关闭窗口时可能留下一个 node。
+    let engine_state = match state.lock() {
+        Ok(host) => Some(host.paths.engine_state.clone()),
+        Err(_) => None,
+    };
+    if let Some(dir) = engine_state {
+        crate::process_owner::cleanup_child_on_exit(&dir);
+    }
+}
+
+/// 停掉宿主自起的 DSH 设置服务（OD-ARCH-050 / 0.2.48 Windows 修复）。
+/// 之前只在 RunEvent::Exit 调用；窗口关闭时就该收尾，否则 Windows 会残留 node。
+fn stop_settings_service(app: &tauri::AppHandle) {
+    if let Some(service) = app.try_state::<Arc<dsh_settings::SettingsService>>() {
+        let record = app
+            .try_state::<HostSnapshot>()
+            .map(|snap| snap.paths.engine_state.join("dsh-settings.json"))
+            .unwrap_or_default();
+        service.stop(&record);
+    }
 }
 
 /// 准入拒绝时的统一结构（与 admission.rs 的错误码一致）。
@@ -10323,6 +10344,7 @@ pub fn run() {
                 if let Some(state) = window.app_handle().try_state::<SharedHost>() {
                     on_window_destroyed_shutdown(state.inner());
                 }
+                stop_settings_service(&window.app_handle());
             }
         })
         .build(tauri::generate_context!())
@@ -10330,13 +10352,7 @@ pub fn run() {
         .run(|app, event| {
             // OD-ARCH-050：应用退出时停掉自起的 DSH 设置服务，避免再留占用端口的僵尸进程。
             if let tauri::RunEvent::Exit = event {
-                if let Some(service) = app.try_state::<Arc<dsh_settings::SettingsService>>() {
-                    let record = app
-                        .try_state::<HostSnapshot>()
-                        .map(|snap| snap.paths.engine_state.join("dsh-settings.json"))
-                        .unwrap_or_default();
-                    service.stop(&record);
-                }
+                stop_settings_service(app);
                 // OD-ARCH-183：退出兜底——窗口关闭路径之外（菜单退出/异常收尾）
                 // 也按登记回收 DSH node 子树，避免残留。
                 if let Some(snap) = app.try_state::<HostSnapshot>() {

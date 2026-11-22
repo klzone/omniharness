@@ -1,5 +1,16 @@
 # 执行状态
 
+## 0.2.48：Windows 进程残留与插件安装修复（ARCHITECT 亲自执行，2026-11-22）
+
+- 触发：Windows 实机反馈关闭应用后残留 1 个 node 进程；专业 Profile 提示缺少插件，设置页安装插件报 node:internal/modules/package_json_reader 栈。
+- 根因（源码事实）：
+  - `dsh_settings::kill_pid` 在 Windows 上执行不存在的 `kill` 命令，等于空操作；设置服务只在 RunEvent::Exit 停止，且窗口关闭路径未清扫孤儿 node。
+  - 0.2.47 精简把 `dsh-plugin-manager`/`dsh-plugin-detail` 移出，而 `dsh plugin` 命令本身 import 它们 → 安装插件报 ERR_MODULE_NOT_FOUND（即用户看到的 package_json_reader 栈），缺件提示由此触发。
+- 改动：`kill_pid` Windows 分支改 `taskkill /PID /T /F`；窗口 Destroyed 时调用 `stop_settings_service` 与 `cleanup_child_on_exit`；剪枝脚本保留 plugin-manager/plugin-detail（仅移除未用的 plugin-market）。
+- 验证：`cargo check --lib` 通过；恢复后 `dsh plugin --profile web list` EXIT=0（此前会报模块缺失）；`cargo test --lib` 1279 passed；npm run test 88/88；npm run build 通过。
+- 未验证：Windows 实机关闭后进程列表、设置页安装插件与专业 Profile 缺件提示。
+
+
 ## 0.2.47：OD-SLIM-022 策略 B 运行时精简（ARCHITECT 亲自执行，2026-11-22）
 
 - 触发：用户批准策略 B，要求一次到位并在 Windows 上验证。

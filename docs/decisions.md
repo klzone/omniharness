@@ -5,6 +5,12 @@
 
 ## 已确定
 
+### D-111（2026-11-22，0.2.48）：Windows 进程收尾与插件命令依赖回滚
+
+**状态：** 已实施（`dsh_settings.rs`、`lib.rs` 的窗口关闭收尾、`runtime-prune-packages.sh`）。Windows 实机未验证。
+**决策：** ①设置服务 kill 在 Windows 改 `taskkill /T /F`；②窗口关闭即停设置服务并调用孤儿 DSH node 清扫；③`dsh plugin` 命令依赖 `dsh-plugin-manager`/`dsh-plugin-detail`，二者不得进入剪枝名单，只保留移除 plugin-market。
+**复审触发：** Windows 再次出现残留 node 或插件安装失败时，检查 DSH 0.2.2 的 plugin 子命令依赖是否变化。
+
 ### D-110（2026-11-22，OD-SLIM-022 策略 B）：运行时按 0.2.1 下限做二次精简
 
 **状态：** 已实施（\`scripts/runtime-prune-packages.sh\`、三份 \`samples/profiles/*.profile.patch.yml\`、\`VERSION 0.2.47\`）。实机功能验证由用户次日完成。
