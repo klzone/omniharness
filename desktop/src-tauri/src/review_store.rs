@@ -1295,18 +1295,6 @@ mod tests {
             .unwrap()
     }
 
-    fn weekly_text(record_id: &str, task_id: &str) -> String {
-        format!(
-            "## 本周期工作概况\n整理材料 #{record_id}。\n\n\
-## 重点工作事项\n推进任务 #{task_id}。\n\n\
-## 工作成果与完成情况\n完成记录 #{record_id}。\n\n\
-## 问题与不足\n材料仍有缺项 #{record_id}。\n\n\
-## 经验与思考\n先守住事实 #{record_id}。\n\n\
-## 未完成事项\n任务未收尾 #{task_id}。\n\n\
-## 下周期建议\n继续核对 #{record_id}。"
-        )
-    }
-
     fn text_for_period(period: &str, record_id: &str, task_id: &str) -> String {
         let sections = sections_for(period).unwrap();
         sections
@@ -1354,7 +1342,6 @@ mod tests {
     #[test]
     fn collect_period_lists_prior_review_titles() {
         let temp = TempRoot::new("prior");
-        let now = noon("2026-11-11");
         let october = noon("2026-10-15");
         let a = record(temp.root(), "2026-10-08", "甲", "十月材料", false, october);
         let t = task(temp.root(), "在办", None, october);

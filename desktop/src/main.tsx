@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 // 自托管字体（@fontsource，运行时零外链，符合 CSP）：Inter 做正文/标题，
 // IBM Plex Mono 做序号与等宽小标；CJK 走系统字体，不额外下载中文字集。
 import "@fontsource-variable/inter/wght.css";
@@ -21,6 +22,8 @@ import "./reading.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

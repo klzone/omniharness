@@ -45,6 +45,7 @@ pub mod pending_writes;
 pub mod platform;
 pub mod project_items;
 pub mod project_store;
+pub mod project_review_store;
 pub mod process_owner;
 pub mod profile_decl;
 pub mod profile_choice;
@@ -3271,6 +3272,48 @@ fn project_overview(
 ) -> Result<ProjectOverview, String> {
     let root = work_root(&state)?;
     project_overview_impl(&root, &project_id)
+}
+
+// ---------------------------------------------------------------------------
+// 项目复盘存档（OD-PRJ-601）
+//
+// 一个项目一份最新复盘：work/复盘/项目/<project_id>.md。宿主只校验五段固定
+// 标题与 #t-… 引用，草稿可覆盖并留 .bak；已确认复盘拒绝覆盖。
+// ---------------------------------------------------------------------------
+
+#[tauri::command(async)]
+fn project_review_read(
+    state: State<'_, SharedHost>,
+    project_id: String,
+) -> Result<project_review_store::ProjectReviewRead, String> {
+    let root = work_root(&state)?;
+    project_review_store::read_project_review(&root, &project_id)
+}
+
+#[tauri::command(async)]
+fn project_review_save(
+    state: State<'_, SharedHost>,
+    project_id: String,
+    task_ids: Vec<String>,
+    content: String,
+) -> Result<project_review_store::ProjectReviewReceipt, String> {
+    let root = work_root(&state)?;
+    project_review_store::save_project_review(
+        &root,
+        &project_id,
+        &task_ids,
+        &content,
+        task_shell::now_secs(),
+    )
+}
+
+#[tauri::command(async)]
+fn project_review_confirm(
+    state: State<'_, SharedHost>,
+    project_id: String,
+) -> Result<project_review_store::ProjectReviewReceipt, String> {
+    let root = work_root(&state)?;
+    project_review_store::confirm_project_review(&root, &project_id, task_shell::now_secs())
 }
 
 // ---------------------------------------------------------------------------
@@ -6680,6 +6723,55 @@ fn work_record_create_impl(
     let (body, extra) = gate_user_text(&draft.body, policy, "记录正文")?;
     add_counts(&mut counts, extra);
     draft.body = body;
+    // OD-WR-312：草稿单槽。同一天已有草稿时覆盖同一条记录，不新增；
+    // 正式记录（draft=false）不参与覆盖，取消草稿后后续草稿也不会再碰它。
+    if draft.draft {
+        let date = draft
+            .record_date
+            .clone()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| worklog::date_label(now, utc_offset_minutes));
+        let listing = worklog_records::list_records(
+            root,
+            &worklog_records::RecordFilter {
+                draft: Some(true),
+                ..Default::default()
+            },
+        )?;
+        let existing = listing
+            .items
+            .into_iter()
+            .filter(|record| record.record_date == date)
+            .max_by(|a, b| a.updated_at.cmp(&b.updated_at));
+        if let Some(record) = existing {
+            let patch = worklog_records::RecordPatch {
+                title: draft
+                    .title
+                    .clone()
+                    .filter(|title| !title.trim().is_empty()),
+                record_date: Some(date),
+                draft: Some(true),
+                body: Some(draft.body.clone()),
+                ..Default::default()
+            };
+            let updated = worklog_records::update_record(root, &record.id, &patch, now)?;
+            let _ = event_log::append(
+                root,
+                "work_record.updated",
+                "user",
+                ("work_record", &updated.id),
+                &[],
+                None,
+            );
+            return Ok(WorkRecordSaved {
+                record: updated,
+                masked: counts.any(),
+                masked_id_card: counts.id_card,
+                masked_phone: counts.phone,
+            });
+        }
+    }
     let record = worklog_records::create_record(root, &draft, now, utc_offset_minutes)?;
     // OD-HAR-202：业务事件登记；失败不影响记录落盘（事件缺席时以记录自身为准）。
     let _ = event_log::append(
@@ -10298,6 +10390,9 @@ pub fn run() {
             project_update,
             project_list,
             project_overview,
+            project_review_read,
+            project_review_save,
+            project_review_confirm,
             knowledge_link_suggest,
             knowledge_link_confirm,
             knowledge_link_remove,
@@ -11949,6 +12044,52 @@ mod work_store_ipc_tests {
             worklog_records::read_record(temp.root(), &saved.record.id).expect("落盘记录必须可读");
         assert!(stored.body.contains("110*************77"));
         assert!(!stored.body.contains("110101199003077777"));
+    }
+
+    /// OD-WR-312：同一天的第二条草稿覆盖同一条记录，不新增条目。
+    #[test]
+    fn draft_create_overwrites_same_day_draft() {
+        let temp = TempRoot::new("draft-slot");
+        let policy = policy_with(&[], true);
+        let date = crate::worklog::date_label(NOW, OFFSET);
+        let mut first = record_draft("草稿一", "临时内容一");
+        first.draft = true;
+        first.record_date = Some(date.clone());
+        let saved1 = work_record_create_impl(temp.root(), &policy, first, NOW, OFFSET).unwrap();
+        let mut second = record_draft("草稿二", "临时内容二");
+        second.draft = true;
+        second.record_date = Some(date);
+        let saved2 = work_record_create_impl(temp.root(), &policy, second, NOW + 60.0, OFFSET).unwrap();
+        assert_eq!(saved1.record.id, saved2.record.id, "同日草稿应覆盖同一条");
+        let listing = worklog_records::list_records(temp.root(), &Default::default()).unwrap();
+        assert_eq!(listing.items.len(), 1, "同日草稿只保留一条");
+        assert!(listing.items[0].draft, "覆盖后仍是草稿");
+        assert!(listing.items[0].body.contains("临时内容二"), "正文应是最新草稿");
+    }
+
+    /// OD-WR-312：正式记录不被后续草稿覆盖。
+    #[test]
+    fn draft_create_does_not_overwrite_formal_record() {
+        let temp = TempRoot::new("draft-formal");
+        let policy = policy_with(&[], true);
+        let date = crate::worklog::date_label(NOW, OFFSET);
+        let mut formal = record_draft("正式记录", "正式内容");
+        formal.record_date = Some(date.clone());
+        let saved = work_record_create_impl(temp.root(), &policy, formal, NOW, OFFSET).unwrap();
+        let mut draft = record_draft("草稿", "草稿内容");
+        draft.draft = true;
+        draft.record_date = Some(date);
+        let saved_draft = work_record_create_impl(temp.root(), &policy, draft, NOW + 60.0, OFFSET).unwrap();
+        assert_ne!(saved.record.id, saved_draft.record.id, "草稿应新建，不覆盖正式记录");
+        let listing = worklog_records::list_records(temp.root(), &Default::default()).unwrap();
+        assert_eq!(listing.items.len(), 2, "正式记录与草稿并存");
+        assert!(
+            listing
+                .items
+                .iter()
+                .any(|record| !record.draft && record.body.contains("正式内容")),
+            "正式记录保持不变"
+        );
     }
 
     #[test]

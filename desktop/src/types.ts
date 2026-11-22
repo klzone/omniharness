@@ -1174,6 +1174,29 @@ export interface ProjectOverview {
   broken_materials: number;
 }
 
+/** 项目复盘存档（OD-PRJ-601）：work/复盘/项目/<project_id>.md。 */
+export interface ProjectReviewRead {
+  exists: boolean;
+  path: string;
+  project_id: string;
+  task_ids: string[];
+  generated_at: string | null;
+  status: string | null;
+  confirmed_at: string | null;
+  body: string;
+}
+
+export interface ProjectReviewReceipt {
+  ok: boolean;
+  path: string;
+  project_id: string;
+  task_ids: string[];
+  generated_at: string;
+  status: string;
+  confirmed_at: string | null;
+  backup: string | null;
+}
+
 /** 素材十类（OD-KM-501 白名单）。 */
 export type WritingMaterialType =
   | "工作事实"

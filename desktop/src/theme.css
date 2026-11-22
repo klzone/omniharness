@@ -1460,6 +1460,18 @@ a[class~="bg-primary"]:active {
   flex-direction: column;
 }
 
+/* OD-WR-312：工作记录页正文统一思源黑体 14 号（字体已随包自托管，无外链）。 */
+.od-worklog-page {
+  font-family: "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+}
+
+.od-worklog-page .wr-card-preview,
+.od-worklog-page .md-body,
+.od-worklog-page textarea {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 .wr-records-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

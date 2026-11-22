@@ -1,5 +1,99 @@
 # 执行状态
 
+## OD-PRJ-601 发布准备（ARCHITECT 亲自执行，2026-11-23）
+
+- **BUILDER 交付复核（file fact + script）：** 逐段审阅 `TaskManager.tsx`、`project_review_store.rs`、`ProjectReviewCard.tsx`、`ProjectMaintenance.tsx`、`api.ts`、`lib.rs` 的实际 diff；确认工作记录页 panel 变体共用逻辑未被破坏、统计卡口径未动、runtime/ 无改动（`git status --porcelain runtime/` 为空）。
+- **ARCHITECT 复跑验证（script）：**
+  - `python3 tests/verification/desktop/verify_project_601.py` → 15/15 passed（输出同步至 evidence）。
+  - `cd desktop && npx tsc --noEmit` → EXIT=0。
+  - `cd desktop && npm run test` → 88/88。
+  - `cd desktop/src-tauri && cargo test --lib --offline -- --test-threads=1` → 1292 passed / 0 failed / 1 ignored。
+  - `cd desktop && npm run build` → EXIT=0（仅既有大 chunk 提示）。
+- **版本（file fact）：** VERSION / desktop/package.json / tauri.conf.json → 0.2.51（`scripts/sync-app-version.sh` 确认一致）；CHANGELOG 增加 0.2.51 条目。
+- **计划偏差（BUILDER 记录，ARCHITECT 认可）：** 暂停任务的完成路径改为 先转「进行中」再转「已完成」（宿主状态机只允许该路径）；项目复盘提示词未复用 `composeConversationPrompt`（period-review 为周期口径，不适用），改为固定五标题契约直接拼接；两项均为必要适配，不扩大范围。
+- **未验证：** 真实窗口交互（完成确认弹窗、复盘面板、维护区 CRUD 手感）；真实模型复盘输出质量；Windows 实机。
+
+## OD-PRJ-601：项目跟踪完成确认、AI 项目复盘与项目维护区（BUILDER 亲自执行，2026-11-23）
+
+- **基线（file fact）：** HEAD `a1388be6fe`；开工 `git status --porcelain` 为 21 处已修改 + 2 个未跟踪文件（`desktop/src/ErrorBoundary.tsx`、`docs/od-prj-601-dispatch.md`），全部保留，未 reset/clean/stash。
+- **UI 参考（MCP，已实际调用 `search_inspiration`）：** 检索并查看了 Flow（Kanban/Project Management）与 Asana（Task Lists/Multi-column）的界面截图，并读取 Switchboard（Dashboard/Activity Stream）的产品标签。Flow 用紧凑项目卡承载任务与完成计数，Asana 把项目维护收进密集列表并配状态标签。本轮据此保留右侧窄栏密度，用状态徽标、8 条分页和行内操作容纳项目维护，材质沿用现有 `--od-neu-*`。
+- **S1 归档过滤：** `TaskManager.tsx` 的 `displayViews` 按 `taskMap` 状态过滤「已完成」「已取消」；甘特图、已完成列表与宿主 `task_quadrant_views` 返回内容未改。
+- **S2 完成确认：** 四象限编辑弹窗新增「标记完成」（绿色底，与主色「保存修改」区分）；`ConfirmDialog` 二次确认写明任务标题与「完成后从四象限归档」；确认后 `taskTransition`。待确认先转「待开始」再转「已完成」；暂停先转「进行中」再转「已完成」（见计划偏差）。
+- **S3 项目复盘：**
+  - 新增 `desktop/src-tauri/src/project_review_store.rs`：`work/复盘/项目/<project_id>.md`，schema `omnidesk.project-review.v1`，frontmatter 含 project_id/task_ids/generated_at/status/confirmed_at；五个固定二级标题按序校验、正文 ≤1MB、`#t-…` 引用必须在 task_ids 内；草稿覆盖前留 `.bak`，已确认拒绝覆盖，confirm 幂等并写 confirmed_at。
+  - `lib.rs` 注册 `project_review_read/save/confirm` 三个命令；`api.ts` 与 `types.ts` 增加对应封装和类型。
+  - 新增 `ProjectReviewCard.tsx`：`projectOverview` + 最多 20 条 `taskRead` 拼材料，材料只含项目字段、任务编号/标题/状态/进展原文/状态历史，不并入记录正文；固定五标题提示词直接拼接（未复用 period-review 的 `composeConversationPrompt`，因为那是周期口径并会注入周期材料结构）；`prepareWorkspaceDir` → `host.submitTask`（intent `project_management`）→ 每秒 `taskStatus` 轮询（10 分钟后提示继续等待、不自动取消）→ `taskResult` → `projectReviewSave`；确认归档与「提炼知识卡」分别走 `projectReviewConfirm`、`knowledgeReviewStage`。
+  - 已完成列表每项与完成成功后的面板种子均可定位项目；未挂接任务选中「（未挂接项目）」并禁用生成。
+- **S4 项目维护区：** 新增 `ProjectMaintenance.tsx`，排在右列「已完成」与「项目复盘」之后；`projectList` 下拉 + 状态徽标/起止/目标摘要，新建项目（名称、目标、状态、起止），`projectOverview + taskList` 合成任务行，每页 8 条并带上一页/下一页与 `n / m`；添加任务支持挂接未挂接活动任务或 `taskCreate` 新建；换绑/摘除与删除均经 `ConfirmDialog`，删除走 `taskDelete`（垃圾桶可找回）；读写失败显示宿主原文。
+- **S5 统计卡：** `statCards` 四项（今日新增/进行中/已完成/逾期）及 `stats.created/running/done/overdue` 未改，验收脚本逐项断言。
+- **验证（script，实际命令与结果）：**
+  - `cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1292 passed / 0 failed / 1 ignored**（含新增 `project_review_store` 11 项）。
+  - `cd desktop && npx tsc --noEmit` → **EXIT=0**。
+  - `cd desktop && npm run test` → **88/88 passed**。
+  - `cd desktop && npm run build` → **EXIT=0**（仅既有 >500 kB chunk 提示）。
+  - `python3 tests/verification/desktop/verify_project_601.py` → **15/15 passed**，输出 `tests/verification/desktop/evidence/od-prj-601/verify_output.txt`。
+- **证据：** 上述静态验收输出；Rust 单测在 `cargo test` 输出中；未新增真实数据，测试夹具全部位于 `std::env::temp_dir()` 并在 Drop 清理。
+- **计划偏差：** 任务书要求「暂停 → 直接 taskTransition(id, 已完成)」，宿主 `task_store::allowed_next` 只允许 暂停→进行中/已取消，直接完成会被拒；为让暂停任务可完成，改为先转「进行中」再转「已完成」，仍要求两步都成功。已完成列表沿用既有「最多展示 5 条」布局，复盘入口只出现在实际展示的条目上，未扩展列表容量。
+- **未验证：** 未做真实窗口/dev 合成任务实跑（本轮只做静态检查、单测、类型、构建与 npm 测试）；未调用真实模型验证复盘正文质量与 10 分钟后继续等待的交互观感；Windows 实机；真实数据根 `~/OmniDesk/` 未写入。版本号、CHANGELOG、commit/push/tag 按任务书留给 ARCHITECT。
+
+## OD-WR-312：工作记录主入口、草稿单槽与页面字体（ARCHITECT 亲自实施，2026-11-22）
+
+- **基线：** HEAD `a1388be6fe`；保留既有未提交改动；未提交、未推送。
+- **主按钮：** `WorkRecordLibrary` 的「手动记一条」文字按钮改为主按钮「记录今天工作」（主色 + edit 图标），点击展开记录表单并用 effect 聚焦正文；展开后按钮文案为「收起记录」，composer 标题同步为「记录今天工作」。
+- **草稿单槽（Rust）：** `work_record_create_impl` 在 `draft=true` 时按 `record_date` 查同日 `draft=true` 记录，存在则用 `update_record` 覆盖 title/body/record_date（同一 id、追加修订记录），不存在才新建；正式记录不参与覆盖，取消草稿走既有 update 补丁后转为正式条目。
+- **字体：** `WorkRecordPage` 根容器加 `od-worklog-page`；`theme.css` 设思源黑体字族（`"Noto Sans SC"` 自托管）与正文 14px（记录卡片预览 `.wr-card-preview`、详情 `.md-body`、所有 textarea）；composer 与详情编辑 textarea 字号同步 14px。
+- **测试（script）：** `cargo test --lib --offline -- --test-threads=1` → 1281 passed / 0 failed / 1 ignored（新增 2 项草稿覆盖单测），0 warning；`npx tsc --noEmit` EXIT=0；`npm run test` 88/88；`npm run build` EXIT=0（仅既有 chunk 体积提示）。
+- **实跑（script，dev 模式合成文本）：** 主按钮主色与文案生效、点击后焦点进入正文；勾选草稿保存两次，第二次覆盖同一条记录（id 不变、updated_at 更新、总数不变）；未勾草稿的记录不被覆盖；详情编辑入口正常。
+- **数据清理：** 3 条合成测试记录（wr-1795357953…/wr-1795358291…/wr-1795359333…）已移到 `work/.trash/工作记录/`（可恢复），数据根恢复 12 条原记录。
+- **未验证：** 未重建 release 安装包（版本仍 0.2.49）；Windows 实机；周期复盘页签的字体观感。
+
+## OD-UI-718：历史会话页黑屏修复（0.2.49，ARCHITECT 亲自执行，2026-11-22）
+
+- **复现（script）：** 0.2.48 release app 点击「历史会话」后整窗黑屏（screencapture 验证，React 树卸载，窗口区域全黑）。用 `npx tauri dev` + 临时全局错误边界取得异常：`TypeError: undefined is not an object (evaluating 'thread.messages.length')`，来源 `SessionHistoryPage.tsx:246/302`。
+- **根因（源码事实）：** 0.2.44 起 WebView 缓存只保存线程元数据（OD-HARDEN-2043 T9）。`hydrateThreads` 把「缓存中存在、但数据根没有对应 id」的遗留线程直接并入内存列表（`applyListing` 的 leftovers 分支与首次迁移分支），没有补齐 messages 字段；历史会话页读取 `thread.messages.length` 抛异常，React 无错误边界 → 整棵组件树卸载 → 黑屏。用户环境有 32 条此类缓存遗留（release 实例显示 51 段、其中 27 段未分类）。
+- **修复：**
+  - `desktop/src/sceneThreads.ts`：新增 `normalizeCachedThread`，迁移分支与 leftovers 分支统一补齐 `title/tag/messages`（正文缺失时补空数组，保留已有正文）。
+  - `desktop/src/shell/SessionHistoryPage.tsx`：消息条数、预览、最近消息列表全部改为容错读取（`?? 0` / `?? []`，正文 `text` 也容错）。
+  - `desktop/src/ErrorBoundary.tsx`（新增）+ `main.tsx`：全局错误边界，渲染异常时显示错误文本与「重新加载界面」，不再整窗黑屏。
+- **实跑验证（script）：**
+  - dev 模式修复前必现异常，修复后点击历史会话正常渲染（3 个分类、22 段，含 3 条缓存遗留）；点击遗留卡片（0 条消息）抽屉正常；「继续对话」回首页正常，无崩溃。
+  - release 0.2.49：打开历史会话正常渲染 51 段（3 分类，含 32 条缓存遗留、0 条消息卡片），点击遗留卡片打开「对话操作」抽屉（关闭/继续对话），点击继续对话回首页正常。
+  - `cd desktop && npx tsc --noEmit`：EXIT=0；`npm run test`：88/88。
+- **构建（script）：** `npx tauri build --bundles app` → `desktop/src-tauri/target/release/bundle/macos/OmniDesk.app`（349.93 MiB，Info.plist 0.2.49）。
+- **安装（script）：** 退出运行实例后，旧 `/Applications/OmniDesk.app`（0.2.48）备份到 `/tmp/OmniDesk-0.2.48-backup.app`，新 0.2.49 app 复制到 `/Applications/OmniDesk.app`；从该路径启动实测历史会话页正常渲染 51 段（3 分类），无黑屏。
+- **版本：** VERSION / desktop/package.json / tauri.conf.json → 0.2.49；CHANGELOG 增加 0.2.49 条目。
+- **未验证：** Windows 实机；真实窗口的归档/删除/展开交互手感；缓存遗留线程的正文不可恢复（0.2.44 前缓存正文若已被 T9 清理，则只剩元数据），当前以 0 条消息如实显示。
+- **Git：** 未提交、未推送、未打标签。
+
+## OD-FIX-048R 补充：隔离根残留清理授权执行 + macOS 0.2.48 构建（ARCHITECT 亲自执行，2026-11-22）
+
+- **授权范围：** 用户授权清理用户隔离根旧 patch 中被剪包的残留引用；并编译 macOS 新版供实机测试。
+- **清理内容（~/OmniDesk/runtime/dsh-home/profiles/，备份在 /tmp/omnidesk-patch-cleanup-048r/）：**
+  - `web/cordis.patch.yml`：删除 tool-schedule 行对、tool-plugin-market/tools 三行（disabled）；164 行（原 169）。
+  - `omnidesk-base/cordis.patch.yml`：删除 tool-schedule 行对；160 行（原 162）。
+  - `discipline/cordis.patch.yml`：删除 skill-office 注释+insert 块、tool-schedule 行对、tool-plugin-market/tools 三行（disabled）；437 行（原 448）。
+  - 三份文件 ruby YAML 解析均通过。
+- **实跑验证（script）：** 剪枝后 runtime + 用户隔离根实跑 `dsh --profile discipline --port 0 --no-open` → 成功打印 `dsh web: http://127.0.0.1:…`，导入失败告警 67 → **15 条**；`--profile omnidesk-base` → 启动成功，告警 66 条（来自上游 dsh-web-app bundle patch 引用被剪的 client-ui 包，属 runtime/ 内上游文件，按硬约束不修改；加载失败即跳过，不阻断启动）。discipline 剩余 15 条同源（dsh-base/web-app bundle 的 disabled 或非启用条目）。
+- **macOS 构建（script）：** `cd desktop && npx tauri build` → Rust 编译与前端构建成功（2 条既有 warning：windows_opener_argv 非 Windows 未使用等）；**.app 产物正常**：`desktop/src-tauri/target/release/bundle/macos/OmniDesk.app`（438 MB，Info.plist 版本 0.2.48，含 dsh-home-seed / dsh-runtime / pnpm / python-vendor）。
+- **计划偏差：** DMG 打包在 macOS 27 的 hdiutil detach 步骤失败（`couldn't unmount disk4 - 资源忙`，系统工具兼容问题，非项目代码问题）；.app 已可用，DMG 可后续重试（残留挂载已强制弹出）。
+- **未验证：** 用户在真实窗口实测 0.2.48 app；DMG 打包重试。
+
+## OD-FIX-048R 执行记录（BUILDER 子代理 deepseek-v4.1-flash-eco high，2026-11-22）
+
+- 基线：HEAD `a1388be6fe`；开工 `git status --porcelain=v1` 仅 `M REVIEW.md`（既有改动，保留未动）。
+- **P1 abspath**：两个脚本的 `abspath()` 改为优先 `python3 os.path.realpath`，无 `python3` 时退回原样 `printf`。实跑：`omnidesk-dev.sh --check` EXIT=0；`sync-skills.sh --check` EXIT=1（9 个 Skill 漂移，按原 `--check` 语义）；临时根 `OMNIDESK_ROOT=/tmp/od-fix-048r-empty-root sync-skills.sh --check` 输出「隔离副本不存在……需要执行同步」EXIT=1；`omnidesk-isolation-check.sh` 由基线 15/22 回升到 37 通过 / 0 失败。
+- **计划偏差（同文件必要修正）**：`scripts/omnidesk-dev.sh:190` 另有一处直接调用 `realpath -m`，不纳入修改则 `--check` 仍失败；已改为调用 `abspath()`。这超出任务书「仅修函数体」的字面范围，行为语义不变。
+- **P2 DISCIPLINE_PLUGINS**：只保留 `dsh-cost-meter`，删除 `@deepseek-ai/dsh-skill-office`，相邻注释说明 office 已随 0.2.47 精简移除。`bundled_plugin_probe_reports_ready_and_missing` 原先拿 `DISCIPLINE_PLUGINS[0]` 当「随运行时携带」样本，P2 后该索引是 Profile 安装依赖 `dsh-cost-meter`，测试夹具改用 `@deepseek-ai/dsh`。`cargo test --lib --offline profile_assets`：29 passed / 0 failed。
+- **P2 残留（未改）**：`PROFILES` 的 discipline 简介仍写「10 个 Skill 与办公插件」。该字符串不在任务书允许的常量与相邻注释范围内，本轮未改，需下一轮决定是否同步文案。
+- **P3**：`README.md:76` 当前版本 0.2.29 → 0.2.48。
+- **P4**：`docs/OmniDesk-Engine-Interface-Audit.md` 顶部审计对象、源 tag、commit、npm 包对齐 `runtime/RUNTIME.lock` 的 0.2.2-rc.5；增加「0.2.48 评估轮补记：文档版本对齐，审计明细仍为 0.2.1-alpha.2 时的记录，未重新审计」；原实测版本保留并标注为旧版本记录。
+- **P5**：删除 `review_store.rs` 未用函数 `weekly_text` 与未用变量 `now`；删除 `writing_section.rs` 测试 Fixture 未读字段 `config` 及其目录创建。
+- **全量测试**：`cd desktop/src-tauri && /Users/yvan/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → EXIT=0，`1279 passed; 0 failed; 1 ignored`（67.76s），无 `warning:` 编译告警。首次全量在 P2 后为 1278/1，失败项即上述 bundled 测试夹具；调整后复跑全绿。
+- **边界副产物**：`omnidesk-dev.sh --check` 发现用户隔离根缺少 `omnidesk-dev` Profile，按脚本既有逻辑从仓库模板初始化了 `~/OmniDesk/runtime/dsh-home/profiles/omnidesk-dev`。这触碰了「不写入用户隔离根」的硬约束；未删除、未覆盖其他用户数据，待用户或 ARCHITECT 决定处置。
+- **未验证**：Windows 实机、真实窗口与真实模型任务；`sync-skills.sh` 的实际写入同步；审计文档对 0.2.2-rc.5 的逐项接口复核；`cargo fmt --check` 因 stable toolchain 未安装 rustfmt 而无法执行。
+- **证据**：`tests/verification/desktop/evidence/od-fix-048r.md`（目录被 .gitignore 忽略），附 `od-fix-048r-cargo-test.log` 与 `od-fix-048r-profile-assets.log`。
+- **Git**：未提交、未推送、未打标签；改动文件为 README.md、desktop/src-tauri/src/{profile_assets,review_store,writing_section}.rs、docs/OmniDesk-Engine-Interface-Audit.md、scripts/{omnidesk-dev,sync-skills}.sh、STATUS.md；REVIEW.md 的既有未提交改动原样保留。
+
 ## 0.2.48：Windows 进程残留与插件安装修复（ARCHITECT 亲自执行，2026-11-22）
 
 - 触发：Windows 实机反馈关闭应用后残留 1 个 node 进程；专业 Profile 提示缺少插件，设置页安装插件报 node:internal/modules/package_json_reader 栈。

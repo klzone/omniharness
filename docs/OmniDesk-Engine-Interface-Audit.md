@@ -1,10 +1,12 @@
 # OmniDesk 引擎接口现状审计报告（P1 第一步）
 
 - 审计日期：2026-10-16
-- 审计对象：仓库内锁定的 DSH 底座 `dsh-v0.2.1-alpha.2`（见 `runtime/RUNTIME.lock`）
+- 审计对象：仓库内锁定的 DSH 底座 `dsh-v0.2.2-rc.5`（见 `runtime/RUNTIME.lock`）
 - 审计方式：只读源码追踪 + 只读进程级探测（全部使用一次性 `DSH_HOME`，`cwd=/tmp`）
 - 本次**未**安装、未覆盖、未迁移、未删除任何 DSH 或用户数据，未修改 `runtime/deepseek-harness`，未读取、打印或复制任何凭证，未接触仓库外个人数据，未接入正式制度库
 - 本文对应 P1 计划的**第一步（只读审计）**。（原文此处写「第二步 / 第三步均未开始」为**成文当时**状态；其后第二步契约已完成、第三步最小适配器原型已实现并通过 E01–E20 验证，当前状态以 [OmniDesk-Engine-Interface-Test-Matrix.md](OmniDesk-Engine-Interface-Test-Matrix.md) 与 [../tests/reports/p1-engine-adapter-prototype-report.md](../tests/reports/p1-engine-adapter-prototype-report.md) 为准。）
+
+> 0.2.48 评估轮补记（2026-11-22）：文档版本对齐到 `runtime/RUNTIME.lock` 的 0.2.2-rc.5；审计明细仍为 0.2.1-alpha.2 时的记录，未重新审计，也不构成对新版本的结论。
 
 本报告严格区分四类内容：**已由源码证实的事实**、**已由实测证实的事实**、**尚未证实的推断与边界**、**推荐方案及实施计划**。每项结论标注证据等级：`static`（静态/文件事实）、`script`（脚本或隔离进程实测）、`model`（真实模型输出）、`unverified`。
 
@@ -42,12 +44,12 @@
 
 | 项目 | 值 | 证据 |
 | --- | --- | --- |
-| 源 tag | `dsh-v0.2.1-alpha.2` | `static`（`runtime/RUNTIME.lock`） |
-| commit | `d743267388641bc76f17c45ce8b4c231aed1d32c` | `static` |
-| npm 包 | `@deepseek-ai/dsh@0.2.1-alpha.2` | `static` |
+| 源 tag | `dsh-v0.2.2-rc.5` | `static`（`runtime/RUNTIME.lock`，2026-11-22 对齐） |
+| commit | `9c2670d3bce5275e0d1610272958121af87787bb` | `static` |
+| npm 包 | `@deepseek-ai/dsh@0.2.2-rc.5` | `static` |
 | node engine | `>=24.9.0` | `static` |
 | 安装目录 | `runtime/dsh-runtime`（gitignore） | `static` |
-| 实测版本 | `--version` -> `0.2.1-alpha.2` | `script`（`evidence/raw/A0-version.txt`） |
+| 审计时实测版本 | `--version` -> `0.2.1-alpha.2` | `script`（`evidence/raw/A0-version.txt`，旧版本审计记录） |
 
 审计入口二进制定为 `runtime/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js`，与隔离启动器 `scripts/omnidesk-dev.sh` 的首选入口一致（`static`）。
 

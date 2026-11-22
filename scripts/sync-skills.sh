@@ -59,8 +59,9 @@ on_exit() {
 trap on_exit EXIT
 
 abspath() {
-  if command -v realpath >/dev/null 2>&1; then
-    realpath -m -- "$1"
+  # macOS 27 的 realpath 已不支持 -m；用 python3 做绝对化与软链接解析。
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
   else
     printf '%s\n' "$1"
   fi

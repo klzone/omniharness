@@ -64,6 +64,8 @@ import type {
   ProjectListing,
   ProjectOverview,
   ProjectPatchInput,
+  ProjectReviewRead,
+  ProjectReviewReceipt,
   ProjectSummary,
   MaterialDetail,
   MaterialDraftInput,
@@ -2844,6 +2846,35 @@ export const shell = {
   /** 项目概览：任务/记录/素材/知识全部反向派生，素材计数来自素材篮只读查询。 */
   projectOverview(projectId: string): Promise<ProjectOverview> {
     return invoke<ProjectOverview>("project_overview", { projectId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 读取项目复盘草稿/已确认稿；不存在返回 exists=false，不建文件。 */
+  projectReviewRead(projectId: string): Promise<ProjectReviewRead> {
+    return invoke<ProjectReviewRead>("project_review_read", { projectId }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 保存项目复盘正文；宿主校验五段标题与 #t-… 引用，草稿覆盖前留 .bak。 */
+  projectReviewSave(
+    projectId: string,
+    taskIds: string[],
+    content: string,
+  ): Promise<ProjectReviewReceipt> {
+    return invoke<ProjectReviewReceipt>("project_review_save", {
+      projectId,
+      taskIds,
+      content,
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /** 确认项目复盘草稿；已确认稿拒绝再次生成覆盖。 */
+  projectReviewConfirm(projectId: string): Promise<ProjectReviewReceipt> {
+    return invoke<ProjectReviewReceipt>("project_review_confirm", { projectId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
   },

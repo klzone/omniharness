@@ -1093,7 +1093,6 @@ mod tests {
     struct Fixture {
         base: PathBuf,
         work: PathBuf,
-        config: PathBuf,
     }
 
     impl Fixture {
@@ -1106,10 +1105,8 @@ mod tests {
             ));
             let _ = fs::remove_dir_all(&base);
             let work = base.join("work");
-            let config = base.join("config");
             fs::create_dir_all(&work).unwrap();
-            fs::create_dir_all(&config).unwrap();
-            Self { base, work, config }
+            Self { base, work }
         }
 
         fn work(&self) -> &Path {

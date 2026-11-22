@@ -1,10 +1,124 @@
-# 0.2.47 复核（2026-11-22，ARCHITECT 实施并复核）——本机启动验证通过，Windows 实机待用户验证
+## OD-PRJ-601 复核（2026-11-23，ARCHITECT 复核 BUILDER 交付）：通过（源码 diff + 本机复跑）
 
-**对象：** `scripts/runtime-prune-packages.sh`、三份 profile patch、0.2.47 版本号与文档。
+**范围：** 项目跟踪页四象限完成确认（二次确认 + 归档展示）、AI 项目复盘（存档/确认/知识卡提炼）、项目维护区（新建/挂接/换绑/删除 + 分页）、版本 0.2.51 发布准备。
 
-**证据：** prepare 后运行时由 1.4 GB 降到 315 MB；剪枝后的运行目录能启动 `dsh web` 并打印回环公告；缺失插件只产生导入告警。三份 patch YAML 解析通过。
+**源码事实（ARCHITECT 逐段审阅实际 diff）：**
+1. `TaskManager.tsx`：`displayViews` 过滤已完成/已取消任务（暂停保留）；「标记完成」按钮只对非终态显示；`ConfirmDialog` 确认后才调 `taskTransition`，待确认先转待开始、暂停先转进行中（两步迁移，中途失败如实报错并刷新）；完成后设置 `reviewSeed` 让复盘面板选中该项目；统计卡数字口径未改。
+2. `project_review_store.rs`：五段固定标题按序校验、`#t-…` 引用必须落在 task_ids、≤1MB、草稿覆盖留 `.bak`、已确认拒绝覆盖、confirm 幂等；与周期复盘 `review_store` 的既有模式一致（两者都不做内容闸门，口径一致）。
+3. `ProjectReviewCard.tsx`：材料只含项目字段与任务编号/标题/状态/进展/历史原文（≤20 条，不调模型）；固定五标题契约提示词；`prepareWorkspaceDir → submitTask → taskStatus` 轮询（10 分钟后继续等待不取消）→ `projectReviewSave`；确认归档、提炼知识卡（`knowledgeReviewStage`）齐全；未挂接项目时如实禁用并提示。
+4. `ProjectMaintenance.tsx`：新建项目（projectCreate）、项目下拉（projectList）、任务分页（每页 8 条，page 越界自动收敛）、挂接/新建任务（taskUpdate.project_id / taskCreate）、换绑/摘除与删除均过 ConfirmDialog；读写失败显示原文错误。
 
-**结论：** 精简已落地，符合批准的策略 B；已知代价是 DSH Web UI 插件管理页、office 工具、子代理与 DSH 调度不可用，OmniDesk 自有功能路径不受影响。Windows 实机行为与安装包体积未验证。
+**ARCHITECT 复跑（script，2026-11-23）：**
+- `python3 tests/verification/desktop/verify_project_601.py` → 15/15 passed。
+- `cd desktop && npx tsc --noEmit` → EXIT=0；`npm run test` → 88/88；`npm run build` → EXIT=0。
+- `cd desktop/src-tauri && cargo test --lib --offline -- --test-threads=1` → 1292 passed / 0 failed / 1 ignored。
+- `git status --porcelain runtime/` → 空。
+
+**未验证（如实声明）：** 真实窗口交互手感、真实模型复盘输出质量、Windows 实机、`cargo fmt`（rustfmt 未安装）。
+
+**结论：** 验收通过；版本 0.2.51（VERSION/package.json/tauri.conf.json/CHANGELOG 已同步），可提交推送。
+
+---
+
+## OD-WR-312 复核（2026-11-22，ARCHITECT 实施并复核）：通过（源码 + 本机实跑）
+
+**范围：** 工作记录页主入口「记录今天工作」、草稿单槽覆盖、同日草稿在周视图可编辑、页面正文字体思源黑体 14px。
+
+**源码事实：**
+1. `work_record_create_impl` 在 `draft=true` 时按 `record_date` 查同日草稿并 `update_record`（title/body/record_date），不新增；`draft=false` 走原新建路径，正式记录不参与覆盖。
+2. `WorkRecordLibrary` 主按钮改为主色按钮并自动聚焦正文；记录卡片原有的「草稿」徽标与详情编辑（含草稿勾选保存）继续可用。
+3. `WorkRecordPage` 根容器应用 `od-worklog-page`，`theme.css` 设思源黑体字族与正文 14px（卡片预览、`.md-body`、textarea）；字体由 `@fontsource-variable/noto-sans-sc` 自托管加载。
+
+**ARCHITECT 实跑：**
+- `cargo test --lib --offline -- --test-threads=1` → 1281 passed / 0 failed / 1 ignored，0 warning（新增同日草稿覆盖、正式记录不被覆盖 2 项单测）。
+- `npx tsc --noEmit` EXIT=0；`npm run test` 88/88；`npm run build` EXIT=0。
+- dev 模式合成文本：勾选草稿连续保存，第二次覆盖同一条记录（id 不变、updated_at 更新、总数不变）；未勾草稿的记录保持独立；按钮与字体在截图中生效。
+
+**数据处置：** 合成测试记录 3 条移入 `work/.trash/工作记录/`，原 12 条记录未改。
+
+**未验证：** release 安装包未重建（版本仍 0.2.49）；Windows 实机；周期复盘页签字体观感。
+
+---
+
+# 0.2.48 全量评估（2026-11-22，ARCHITECT 亲自执行，聚焦问题发现与解决）
+
+## OD-UI-718 复核（2026-11-22，ARCHITECT 实施并复核）：通过
+
+**问题：** 0.2.48 release 版打开「历史会话」页后整窗黑屏（可稳定复现，screencapture 确认为黑色空白窗口，WebView AX 树只剩窗口本身）。
+
+**根因（源码事实 + dev 实跑）：** `sceneThreads.ts` 的 `hydrateThreads` 把「浏览器缓存中存在、但数据根没有对应 id」的线程作为 leftovers 直接并入内存列表。0.2.44 起缓存只写元数据（T9），这些 leftovers 没有 `messages` 字段；`SessionHistoryPage` 读取 `thread.messages.length` 抛 `TypeError`，React 无错误边界，整棵组件树卸载，Tauri 窗口显示黑色。dev 模式加错误边界后取得完整堆栈：`undefined is not an object (evaluating 'thread.messages.length')`（SessionHistoryPage.tsx:246/302）。
+
+**修复（3 处）：**
+1. `sceneThreads.ts` 新增 `normalizeCachedThread`，迁移分支与 leftovers 分支统一补齐 title/tag/messages，保留已有正文。
+2. `SessionHistoryPage` 所有 `messages` 读取改为容错（条数、预览、最近消息列表、正文 `text`）。
+3. 新增 `ErrorBoundary` 并在 `main.tsx` 包裹 App，异常时显示可读错误与「重新加载界面」，避免整窗黑屏。
+
+**ARCHITECT 实跑：**
+- dev 模式：修复前必现异常，修复后历史会话页正常渲染；点击 0 条消息的缓存遗留卡片打开抽屉正常；继续对话回首页正常。
+- release 0.2.49：打开历史会话渲染 51 段（3 分类，含 32 条缓存遗留），点击遗留卡片、继续对话均正常，无崩溃。
+- `npx tsc --noEmit` EXIT=0；`npm run test` 88/88。
+
+**遗留说明：** 缓存遗留线程只剩元数据（0.2.44 前缓存中的正文若已被 T9 清理则不可恢复），页面以「0 条消息」如实显示，不伪造消息；这些线程仍可继续对话。Windows 实机与归档/删除交互手感未验证。
+
+**版本：** 0.2.49（VERSION / package.json / tauri.conf.json / CHANGELOG）。
+
+**Git：** 未提交、未推送、未打标签。
+
+---
+
+**评估对象：** HEAD `a1388be6fe`（0.2.48）及 0.2.46–0.2.48 三个提交：DSH 0.2.2-rc.5 升级、运行时精简（OD-SLIM-022 策略 B）、Windows 进程收尾与插件依赖修复。
+
+**ARCHITECT 实跑（本机 macOS 27.2 / Node 26.13.0）：**
+- `cargo test --lib --offline -- --test-threads=1`：1279 passed / 0 failed / 1 ignored（83.42s，与 STATUS 记录一致）。
+- `cd desktop && npm run test`：88/88 通过；`npx tsc --noEmit` EXIT=0。
+- `dsh --version`（仓库 runtime，剪枝后）→ 0.2.2-rc.5；`dsh plugin --profile web list` EXIT=0。
+- `python3 scripts/diagnose-omnidesk.py`：引擎未运行；模型路由元数据正常（open-design 端点、discipline Profile）。
+- `bash scripts/omnidesk-isolation-check.sh`：15 通过 / 22 失败（见 P1）。
+
+## 评估结论（按严重程度）
+
+### P1（高，开发链路阻断，根因已定位）：隔离自检与 dev 脚本在 macOS 27 上全部失败
+**事实：** `scripts/omnidesk-dev.sh --check`、`scripts/sync-skills.sh --check/--dry-run`、`omnidesk-isolation-check.sh` 均在 `realpath -m --` 处以 `illegal option -- m` 退出 1；隔离自检 22 项失败全部由此级联（脚本提前退出导致各项断言判 FAIL）。
+**根因：** macOS 27.2 更新了 /bin/realpath（2026-10-23 构建），不再支持 `-m` 选项；本机无 GNU coreutils，`abspath()` 的 fallback 永远不触发。属系统升级引入的回归，与 0.2.46–0.2.48 三个提交无关。桌面 App 本体不受影响（Rust 侧不依赖 shell realpath）。
+**修复方向（待批准）：** 改两处 `abspath()`（`scripts/omnidesk-dev.sh:66`、`scripts/sync-skills.sh:62`）为不依赖 GNU 选项的实现（如 python3 os.path.realpath 或 pwd -P 拼接）。
+
+### P2（中，一致性遗留）：DISCIPLINE_PLUGINS 仍声明 dsh-skill-office 为必需插件
+**事实：** 0.2.47 已从 discipline patch 删除 skill-office insert 且运行时已剪枝该包；但 `profile_assets.rs:78-82` 仍把它列为必需插件。纪检专业 Profile 资产页会持续显示缺失并可一键装回，与策略 B 冲突。用户隔离根的旧 patch 还残留 skill-office insert 与未禁用的 tool-schedule 行（被剪包），是启动时 67 条导入告警的主要来源。
+**修复方向（待批准）：** 从 DISCIPLINE_PLUGINS 移除 dsh-skill-office；清理用户隔离根旧 patch 的残留引用（涉及隔离根写入，须用户授权）。
+
+### P3（低，文档漂移）：README 版本行停留 0.2.29（README.md:76），实际 0.2.48。
+### P4（低，文档漂移）：docs/OmniDesk-Engine-Interface-Audit.md 仍以 dsh-v0.2.1-alpha.2 为审计对象，与 RUNTIME.lock（0.2.2-rc.5）脱节。
+### P5（低，测试卫生）：cargo test 有 3 条 warning（review_store.rs 未用变量 now / 未用函数 weekly_text、writing_section.rs 未读字段 config）。
+
+### 已验证正常的部分
+- **0.2.48 Windows 修复本体**：kill_pid 的 taskkill 分支、窗口 Destroyed 收尾（stop_settings_service + cleanup_child_on_exit）、dsh plugin 对 plugin-manager/plugin-detail 的依赖恢复均逐行核对，本机 plugin list 实测通过；Windows 实机行为仍待用户验证。
+- **DSH 0.2.2-rc.5 适配面**：启动参数、303+Set-Cookie 鉴权、session/credentials/llm RPC、插件 peer 版本（cost-meter 1.9.6 / free-search 0.9.5 要求 >=0.2.0-rc.1 <0.3.0）均兼容。
+- **精简完整性**：seed 三份 profile 与 samples patch 无对被剪包的悬空启用引用。
+- **Rust 安全边界**（net_guard / host_access / export_engine 授权门）：1279 项测试覆盖通过。
+
+**未验证：** Windows 实机关闭后进程列表、设置页安装插件、缺件提示消失；DSH 0.2.2 真实模型任务含工具调用；golden_tasks 40 项真实模型评测。
+
+**下一轮建议（待批准）：** ①修 P1 两处 abspath 并重跑 isolation-check 全绿；②P2 删 skill-office 声明；③P3/P4/P5 文档与 warning 清理。合计约 1 小时，不涉及引擎协议改动。
+
+## OD-FIX-048R 复核（2026-11-22，ARCHITECT 独立复核）：通过
+
+**派工与执行：** BUILDER 子代理（deepseek-v4.1-flash-eco / high）按上述建议执行；ARCHITECT 逐文件审阅实际 diff 并独立复跑关键验证。
+
+**逐项核对（源码事实 + 独立实跑）：**
+1. **P1 通过。** 两处 `abspath()` 改为 `python3 os.path.realpath`（无 python3 时退回原样 printf），`omnidesk-dev.sh:190` 另一处裸 `realpath -m` 改走 abspath（同文件必要修正，已记为计划偏差）。全仓 `rg 'realpath -m' scripts/` 无残留。ARCHITECT 实跑：`omnidesk-dev.sh --check` EXIT=0；`sync-skills.sh --check` EXIT=1 且输出 9 个 Skill 漂移（--check 对既有漂移的原有语义）；`omnidesk-isolation-check.sh` **37 通过 / 0 失败**（修复前 15/22）。
+2. **P2 通过。** `DISCIPLINE_PLUGINS` 仅剩 dsh-cost-meter，注释说明 office 已随 0.2.47 精简移除。bundled 探测测试的夹具从 `DISCIPLINE_PLUGINS[0]`（现为 Profile 安装依赖）改为 `@deepseek-ai/dsh`，测试语义不变；首次全量 1278/1 的失败即此夹具，调整后复绿。残留：`PROFILES` discipline 简介文案仍写「10 个 Skill 与办公插件」，超出本轮白名单未改，记入后续待办。
+3. **P3/P4 通过。** README 版本行 0.2.48；审计文档对齐 0.2.2-rc.5 并以补记明确「审计明细仍是 0.2.1-alpha.2 时的记录，未重新审计」，无虚构结论。
+4. **P5 通过。** 删除 review_store 未用函数/变量与 writing_section Fixture 未读字段；ARCHITECT 独立复跑 `cargo test --lib --offline -- --test-threads=1`：**1279 passed / 0 failed / 1 ignored**（55.93s），编译输出 **0 条 warning**。
+
+**边界事件（需用户知悉）：** `omnidesk-dev.sh --check` 按脚本既有逻辑在用户隔离根初始化了 `~/OmniDesk/runtime/dsh-home/profiles/omnidesk-dev`（仅 package.json + cordis.patch.yml，来自仓库模板）。这是脚本既有行为，非本轮代码引入；目录未删除未覆盖其他数据，处置（保留 / 删除）待用户决定。
+
+**遗留与未验证：** 用户隔离根旧 patch 的被剪包残留引用（skill-office insert / tool-schedule 行）本轮明确不做，仍待授权清理；skill 同步的写入动作未执行（9 个 Skill 漂移待同步）；Windows 实机与真实模型任务仍未验证；rustfmt 未安装，`cargo fmt --check` 未执行。
+
+**Git：** 未提交、未推送、未打标签。工作区改动：README.md、STATUS.md、REVIEW.md、scripts/{omnidesk-dev,sync-skills}.sh、desktop/src-tauri/src/{profile_assets,review_store,writing_section}.rs、docs/OmniDesk-Engine-Interface-Audit.md。
+
+---
+
+**（0.2.47 当时证据存档）** prepare 后运行时由 1.4 GB 降到 315 MB；剪枝后的运行目录能启动 `dsh web` 并打印回环公告；缺失插件只产生导入告警。三份 patch YAML 解析通过。精简符合批准的策略 B；已知代价是 DSH Web UI 插件管理页、office 工具、子代理与 DSH 调度不可用。Windows 实机行为与安装包体积未验证。
 
 
 # DSH 0.2.2-rc.5 升级复核（2026-11-20，ARCHITECT 实施并复核）——本机范围通过，实机任务待用户验证
@@ -608,3 +722,49 @@
 
 **结论：** 性能修复通过本机验证。150 秒目标必须靠 Windows 实机复测确认；分段计时可定位剩余耗时落在判定、素材、提交/排队、首字还是生成。未提交、未推送。
 
+**评估范围：** HEAD `a1388be6fe`（0.2.48），涵盖 0.2.46–0.2.48 三个提交（DSH 0.2.2-rc.5 升级、运行时精简、Windows 进程收尾与插件依赖修复）。
+
+**ARCHITECT 实跑（本机 macOS 27.2 / Node 26.13.0）：**
+- `cargo test --lib --offline -- --test-threads=1`：**1279 passed / 0 failed / 1 ignored**（83.42s；与 STATUS.md 记录一致）。
+- `cd desktop && npm run test`：**88/88 通过**（15.05s）。
+- `cd desktop && npx tsc --noEmit`：EXIT=0。
+- `dsh --version`（仓库 runtime，剪枝后）→ `0.2.2-rc.5`；`dsh plugin --profile web list` → EXIT=0。
+- `python3 scripts/diagnose-omnidesk.py`：引擎未运行，模型路由元数据正常（open-design 端点、discipline Profile）。
+- `bash scripts/omnidesk-isolation-check.sh`：**15 通过 / 22 失败**（见问题 P1）。
+
+## 评估结论（按严重程度）
+
+### P1（高，功能阻断 · 已定位根因）：隔离自检与开发脚本在 macOS 27 上全军覆没
+**事实：** `scripts/omnidesk-dev.sh --check`、`scripts/sync-skills.sh --check/--dry-run`、`omnidesk-isolation-check.sh` 均在 `realpath -m --` 处以 `illegal option -- m` 退出 1。隔离自检 22 项失败全部由此级联（拒收路径断言、dry-run 断言、sync 断言全部因脚本提前退出而判 FAIL）。
+**根因：** macOS 27.2 更新了 `/bin/realpath`（2026-10-23 构建），移除了 BSD 时代曾支持（或第三方 coreutils 提供）的 `-m` 选项，只保留 `[-q] [path...]`。两个脚本的 `abspath()` 把 `command -v realpath` 命中当作「支持 GNU 选项」，但本机无 GNU coreutils（`/opt/homebrew/opt/coreutils` 不存在），因此 fallback 永远不触发。此问题在 macOS 26.x 上不存在，属系统升级引入的兼容回归，与 0.2.46–0.2.48 三个提交无关。
+**影响：** 开发者无法用 `--check`/隔离自检验证隔离边界；`sync-skills.sh` 完全不可用。桌面 App 本体不受影响（Rust 侧用自家 abspath，不依赖 shell realpath）。
+**修复方向（待批准）：** 两处 `abspath()` 改为不依赖 GNU 选项的实现——`cd \"$(dirname \"$1\")\" && printf '%s/%s' \"$(pwd -P)\" \"$(basename \"$1\")\"`，或直接 `python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))'`。改动面只有 `scripts/omnidesk-dev.sh:66` 与 `scripts/sync-skills.sh:62` 两处函数体。
+
+### P2（中，一致性遗留）：`profile_assets.rs` 的 DISCIPLINE_PLUGINS 仍声明 `@deepseek-ai/dsh-skill-office` 为必需插件
+**事实：** 0.2.47 已从 `samples/profiles/discipline.profile.patch.yml` 删除 skill-office insert（用户隔离根的旧 patch 里还残留一条），且运行时已剪枝 `dsh-skill-office`；但 `profile_assets.rs:78-82` 的 `DISCIPLINE_PLUGINS` 仍把它列为 discipline Profile 的必需插件。
+**影响：** 纪检专业 Profile 的资产页会持续显示该插件「缺失」，用户可点「安装」装回（dsh plugin add 走 pnpm、从 npm 源装到 profile 目录，不在剪枝范围），与策略 B「office 工具随包精简」的决定冲突；且用户隔离根的旧 patch 仍引用被剪的 `dsh-tool-schedule`/`dsh-tool-subagent-control`/`dsh-plugin-market/tools`（后两个已 disabled，前一个未禁用），每次启动产生 67 条导入告警中的相当部分。
+**修复方向（待批准）：** 从 `DISCIPLINE_PLUGINS` 移除 `dsh-skill-office`（保留 dsh-cost-meter）；同步清理用户隔离根三份旧 patch 中的 `skill-office` insert 与 `tool-schedule` 行（须用户授权，涉及隔离根写入）。
+
+### P3（低，文档漂移）：README 版本行停留在 0.2.29
+**事实：** `README.md:76` 写「当前版本 0.2.29」，实际 VERSION/tauri.conf/package.json 均为 0.2.48。
+**修复方向：** 一次文本更新。
+
+### P4（低，文档漂移）：`docs/OmniDesk-Engine-Interface-Audit.md` 仍以 `dsh-v0.2.1-alpha.2` 为审计对象
+**事实：** 与 RUNTIME.lock（0.2.2-rc.5）脱节；审计文档自 10 月起未随升级刷新。
+
+### P5（低，测试卫生）：`cargo test` 有 3 条 warning
+**事实：** `review_store.rs:1357` 未用变量 `now`、`review_store.rs:1298` 未用函数 `weekly_text`、`writing_section.rs:1096` 未读字段 `config`。
+
+### 已验证正常的部分
+- **0.2.48 Windows 修复本体**：`kill_pid` 的 Windows 分支（taskkill /T /F）、窗口 Destroyed 收尾（`stop_settings_service` + `cleanup_child_on_exit`）、`dsh plugin` 对 plugin-manager/plugin-detail 的依赖恢复均已在源码逐行核对，与本机实测（plugin list EXIT=0）一致；Windows 实机行为仍待用户验证（继续标记未验证）。
+- **DSH 0.2.2-rc.5 适配面**：启动参数（--profile/--port/--no-open）、303+Set-Cookie 鉴权、session/credentials/llm RPC、插件 peer 版本（cost-meter 1.9.6 / free-search 0.9.5 要求 >=0.2.0-rc.1 <0.3.0）均核对兼容。
+- **运行时精简的完整性**：用户可见产物（seed 三份 profile）已同步删除被剪包的引用；`samples/profiles/*.patch.yml` 无对被剪包的悬空启用引用。
+- **Rust 侧安全边界**（net_guard、host_access、export_engine 授权门）经既有 1279 项测试覆盖通过。
+
+**未验证（需要 Windows 实机或真实窗口）：** 0.2.48 的关闭后进程列表、设置页安装插件、专业 Profile 缺件提示消失；DSH 0.2.2 真实模型任务含工具调用；golden_tasks 40 项真实模型评测。
+
+**下一轮建议（供批准）：** ①修 P1 两处 abspath 并重跑 isolation-check 全绿；②P2 删 DISCIPLINE_PLUGINS 里的 skill-office 声明；③P3/P4/P5 文档与 warning 清理。合计约 1 小时工作量，不涉及 Windows 与引擎协议改动。
+
+---
+
+# 0.2.47 复核（2026-11-22，ARCHITECT 实施并复核）——本机启动验证通过，Windows 实机待用户验证

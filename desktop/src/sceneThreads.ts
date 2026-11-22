@@ -287,6 +287,19 @@ interface ThreadListing {
   note: string;
 }
 
+/**
+ * 缓存里的线程条目可能只有元数据（OD-HARDEN-2043 T9 起 WebView 缓存不再存正文）。
+ * 它们进入内存列表时必须补齐界面依赖的字段，否则历史会话页读取 messages 会抛错。
+ */
+function normalizeCachedThread(thread: SceneThread): SceneThread {
+  return {
+    ...thread,
+    title: typeof thread.title === "string" ? thread.title : "",
+    tag: normalizeTag(thread.tag as string | null | undefined),
+    messages: Array.isArray(thread.messages) ? thread.messages : [],
+  };
+}
+
 /** 把数据根读到的记录并入缓存；`hydrated` 只在这里置位（表示数据根已被读过一次）。 */
 function applyListing(listing: ThreadListing, local: SceneThread[]): void {
   const fromDisk = listing.threads
@@ -295,9 +308,9 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
   const issues = listing.issues ?? [];
   if (fromDisk.length === 0 && local.length > 0 && !migratedFlag()) {
     // 首次迁移：旧缓存一次性写入数据根，旧缓存保留（只读兼容）。
-    cache = local;
+    cache = local.map(normalizeCachedThread);
     hydrated = true;
-    for (const thread of local) persist(thread);
+    for (const thread of cache) persist(thread);
     setMigratedFlag();
     stripLocalMessagesAfterMigration();
     storageNote =
@@ -306,7 +319,9 @@ function applyListing(listing: ThreadListing, local: SceneThread[]): void {
     return;
   }
   const diskIds = new Set(fromDisk.map((t) => t.id));
-  const leftovers = local.filter((t) => !diskIds.has(t.id));
+  const leftovers = local
+    .filter((t) => !diskIds.has(t.id))
+    .map(normalizeCachedThread);
   cache = [...fromDisk, ...leftovers];
   hydrated = true;
   storageNote =

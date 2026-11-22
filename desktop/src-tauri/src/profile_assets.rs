@@ -73,13 +73,10 @@ pub struct AssetProfile {
     pub plugins: &'static [PluginRequirement],
 }
 
-// OD-ARCH-147a / OD-ARCH-173 S3：办公 Skill 与费用统计随 discipline Profile 装配；
+// OD-ARCH-147a / OD-ARCH-173 S3：费用统计插件随 discipline Profile 装配；
 // 免 key 搜索（dsh-free-search）已在阶段 1 从补丁层移除，阶段 3 同步清掉依赖声明。
+// 办公 Skill（@deepseek-ai/dsh-skill-office）已随 0.2.47 运行时精简移除，不再声明为必需插件。
 const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[
-    PluginRequirement {
-        package: "@deepseek-ai/dsh-skill-office",
-        version: None,
-    },
     PluginRequirement {
         package: "dsh-cost-meter",
         version: None,
@@ -3022,8 +3019,13 @@ mod tests {
         let dsh_home = root.join("dsh-home");
         let profile_dir = dsh_home.join("profiles/discipline");
         fs::create_dir_all(&profile_dir).unwrap();
-        let req = &DISCIPLINE_PLUGINS[0];
-        let ready = probe_plugin(req, &dsh_home, &profile_dir, &dsh_cli);
+        // DISCIPLINE_PLUGINS 现在是通过 Profile 安装的依赖，不再随运行时携带。
+        // 用 DSH 自身的包验证「随运行时携带的插件可被探测为就绪」这条路径。
+        let req = PluginRequirement {
+            package: "@deepseek-ai/dsh",
+            version: None,
+        };
+        let ready = probe_plugin(&req, &dsh_home, &profile_dir, &dsh_cli);
         if dsh_cli.is_file() {
             assert_eq!(
                 ready.status, STATUS_READY,

@@ -1,5 +1,76 @@
 # 当前实施计划
 
+### OD-PRJ-601：项目跟踪模块完善迭代（用户当轮批准执行，2026-11-23）
+
+> 触发：用户当轮指令。完善项目跟踪模块：任务完成确认、AI 辅助复盘、右侧卡片下方项目维护区域。用户明确授权「任务执行全部交给子 agent，模型 OpenDesign/deepseek-v4.1-flash-eco，思考等级 high」，任务完成后提交推送新版本到 GitHub。
+
+**现状核实（源码事实，2026-11-23）：**
+- 项目跟踪页 = ScenePage project 分支 → TaskQuadrantBoard（TaskManager.tsx）。左列四象限 + 甘特，右列四张统计卡 + 已完成列表。
+- 四象限点任务只开编辑弹窗（重要性/象限/截止），没有完成按钮；shell.taskTransition 存在但四象限弹窗未接。
+- classify_quadrant 已给已完成/已取消/暂停任务 active=false，但 task_quadrant_views 仍返回它们，四象限页未过滤。
+- project_store.rs 与 project_create/update/list/overview 命令齐全，但没有任何前端界面调用 projectCreate/projectUpdate；任务与项目的挂接（TaskPatch.project_id）也无界面。
+- 周期复盘链路（worklog_period_review_collect/generate/confirm + composeConversationPrompt(mode: period-review) + host.submitTask）已在 ReviewArchive.tsx 跑通，可复用。
+
+**实施内容：**
+1. 任务完成确认：四象限任务弹窗新增「标记完成」，二次确认（显示任务标题）后才调 task_transition → 已完成；完成的任务从四象限消失（宿主过滤优先，或前端按 active 过滤），只进「已完成」列表。
+2. AI 辅助复盘：完成后弹窗提供「AI 复盘」入口；汇集项目信息 + 该项目全部任务 + 关联记录（走既有 project_overview / task_list 只读命令），复用 composeConversationPrompt 与 host.submitTask 生成复盘；报告落盘 work/复盘/project/（沿用 review_store 草稿/确认机制）；复盘正文可一键「提炼知识卡」，走 knowledgeReviewStage → 知识审核队列。
+3. 右侧四张统计卡数字口径不变。
+4. 右侧卡片下方新增项目维护区：新建项目、项目列表、为项目添加任务（新建或从现有任务挂接 taskUpdate.project_id）、任务换绑/摘除、任务删减（task_delete，需确认）。项目文件保持 work/项目/<id>.md YAML frontmatter（Obsidian 可读），不引入新存储格式。
+5. 分页：项目下任务每页 8 条分页；四象限单象限任务多时滚动显示。
+
+**验证：** cargo 单测（完成归档过滤、项目任务挂接校验）、npx tsc --noEmit、npm run test、npm run build；新增 tests/verification/desktop/verify_project_601.py；证据落 tests/verification/desktop/evidence/od-prj-601/。
+
+**明确不做：** 不改 runtime/；不改模型路由与凭证；不改右侧四卡片；不删 ProjectBoard.tsx；不做项目级甘特重排。
+
+**发布：** 完成后版本号 → 0.2.51（VERSION / package.json / tauri.conf.json / CHANGELOG），ARCHITECT 复核后提交推送 origin main。
+
+### OD-WR-312：工作记录主入口、草稿单槽与页面字体（已批准并实施，2026-11-22；执行记录见 STATUS.md）
+
+> 触发：用户要求手动记录与首页 AI 记录都进入周文件；把「手动记一条」改为显眼的「记录今天工作」主按钮；草稿勾选时周报内可修改、后续新增覆盖草稿直到取消草稿；工作记录页正文改用思源黑体 14 号。
+
+**现状核实（源码事实）：**
+- 首页 AI 记录（`worklog_append` → `quicklog::append`）与手动记录（`work_record_create`）现已写入同一记录库 `work/工作记录/<id>.md`，周视图 `quicklog::week_view` 按 `record_date` 聚合两者。磁盘上的 `work/周文件存档/<周>.md` 是旧格式历史文件，当前写入路径不再追加（`quicklog.rs` 头注释：随手记链路已切换到记录库）。「都进入周文件」在周视图口径下已成立，本轮保持该口径，不新增物理周 md 写入，避免同一事实双写。
+- 手动记录表单已有「记录日期」与「草稿」勾选；记录模型已有 `draft` 字段与更新补丁支持。
+
+**实施内容：**
+1. **主按钮**：`WorkRecordLibrary` 的「手动记一条」文字按钮改为页面显眼位置的主按钮「记录今天工作」（主色填充 + 图标），点击展开记录表单并聚焦正文输入框；表单保留收起与日期、草稿选项。
+2. **草稿单槽覆盖**：`work_record_create_impl` 在 `draft=true` 时先查同一天（`record_date` 相同）且 `draft=true` 的记录，存在则用 `update_record` 覆盖同一条正文（并更新标题），不新增；不存在才新建。`draft=false` 保持新建。取消草稿通过现有编辑路径保存（`draft` 补丁），该记录转为正式条目，之后的新草稿不再覆盖它。AI 记录 `draft=false`，不参与草稿覆盖。
+3. **周视图草稿可修改**：周视图条目显示「草稿」徽标，点击草稿条目打开对应记录详情/编辑（复用 `focusRecordId` 通路），保证周报上下文里能直接修改或取消草稿。
+4. **字体**：`WorkRecordPage` 根容器加 `od-worklog-page` 类；CSS 设正文字族为思源黑体（`"Noto Sans SC"`，已由 `@fontsource-variable/noto-sans-sc` 自托管加载）且正文 14px（记录卡片正文、详情正文、编辑 textarea）；标题与元信息保持现有字号层级。
+
+**测试与验收：**
+- Rust 单测：同日第二条草稿覆盖同一条记录、不同日期不覆盖、取消草稿后转正式且不被新草稿覆盖、正式记录不被草稿覆盖。
+- `cargo test --lib` 全量、`npx tsc --noEmit`、`npm run test`。
+- dev 实跑（合成文本）：保存两次草稿只留一条且内容为最新；取消草稿后变正式；周视图可见草稿徽标并进入编辑；字体与 14px 生效。
+
+**不在范围：** 旧周 md 文件迁移或回写；周报生成规则与 AI 意图判定；解析日期校验（见 OD-WR-310，另行批准）。
+
+### OD-WR-310：手动记录解析失败修复与工作记录落盘口径（待用户批准，2026-11-22）
+
+> 触发：用户手动记一条后触发 AI 解析，返回「第 1 条素材候选的事件日期不在正文里，不得凭空生成日期」，记录标记为解析失败。用户同时指出手动记录比首页 AI 记录更方便可控，询问两者落盘是否一致。
+
+**根因（已核实）：**
+1. 解析提示词把 `record.record_date` 一并交给模型（`task_extract.rs:256`），模型倾向把它填进 `event_date`。
+2. 宿主校验要求 `event_date` 必须字面出现在记录正文里（`task_extract.rs:528`，`record.body.contains(date)`）。
+3. 手动记录把日期放在独立字段 `quickDate`（默认今天），正文通常不写日期。实测用户最近 3 条手动记录的 `record_date` 均不在正文，正文也不含 ISO 或「X月X日」日期。因此解析必失败。
+
+**落盘事实（已核实）：**
+- 手动记一条：`work_record_create` → `work/工作记录/<id>.md`（frontmatter 结构化记录，含解析状态、可编辑、可解析）。
+- 首页 AI 记录：`worklog_append` → `work/周文件存档/<周>.md`（按周聚合的文本条目）。两者路径、格式与生命周期都不同，记录列表与解析互不相通。
+
+**方案 A（推荐，先做）：修正事件日期口径（约 1–2 小时）**
+- 提示词明确：`event_date` 只能取正文明确出现的日期；`record_date` 是记录元数据，不是事件日期，正文没写就留空。
+- 校验放宽为「正文含该 ISO 日期」或「正文含同月日的 `MM月DD日` 表达」或「候选日期等于用户填写的 `record_date`」。三者之外仍拒绝。
+- 单测覆盖：正文无日期 + event_date=record_date（放行）、正文写「11月19日」+ event_date 同年该日（放行）、模型凭空日期（拒绝）、形状错误（拒绝）。
+- 验收：用现有 3 条手动记录重跑解析不失败；`cargo test --lib task_extract` 全绿。
+
+**方案 B（可选，后续评估）：统一落盘**
+- B1：首页 AI 记录同时创建结构化工作记录（周文件保留为汇总视图），让 AI 记录可编辑、可解析、出现在同一列表。
+- B2：手动记录保存时同步追加到周文件，让手动记录进入周报视图。
+- 涉及 HomeChat 意图路径、周报生成与旧数据兼容，需单独批准；本轮只做 A。
+
+**不在范围：** 真实模型输出的质量评测；修改 `work/工作记录` 既有用户数据（方案 A 不改任何记录文件）。
+
 ### OD-SLIM-022：0.2.2 运行时可精简项审计（待用户批准，2026-11-22）
 
 > 触发：0.2.2-rc.5 升级后运行时依赖树 1116 MB（node_modules 实际字节，du 显示 1.3 G）。用户要求以 0.2.1 的核心为下限，只精简升级带来的新增冗余。

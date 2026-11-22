@@ -63,8 +63,9 @@ info() { printf '[OmniDesk] %s\n' "$*"; }
 die()  { printf '[OmniDesk][错误] %s\n' "$*" >&2; exit 1; }
 
 abspath() {
-  if command -v realpath >/dev/null 2>&1; then
-    realpath -m -- "$1"
+  # macOS 27 的 realpath 已不支持 -m；用 python3 做绝对化与软链接解析。
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
   else
     printf '%s\n' "$1"
   fi
@@ -186,7 +187,7 @@ if [ ! -d "$PROFILE_DIR" ] || [ ! -f "$PROFILE_DIR/package.json" ]; then
 fi
 
 # 3.5 Profile 实际路径必须落在隔离根内，且不是软链接到原版数据
-PROFILE_REAL="$(realpath -m -- "$PROFILE_DIR")"
+PROFILE_REAL="$(abspath "$PROFILE_DIR")"
 case "$PROFILE_REAL/" in
   "$DSH_HOME_ABS"/*) ;;
   *) die "Profile 实际路径 $PROFILE_REAL 不在隔离根之下（可能是软链接），拒绝启动。" ;;

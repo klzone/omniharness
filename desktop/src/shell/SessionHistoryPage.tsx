@@ -214,14 +214,14 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
                         <span className="sh-entry-body">
                           <span className="sh-entry-top">
                             <span className="sh-entry-time mono">
-                              {threadUpdatedLabel(thread.updatedAt)} · {thread.messages.length} 条
+                              {threadUpdatedLabel(thread.updatedAt)} · {thread.messages?.length ?? 0} 条
                             </span>
                             <span className="sh-entry-arrow" aria-hidden="true">
                               <Icon name="chevron-down" className="h-3.5 w-3.5" />
                             </span>
                           </span>
                           <span className="sh-entry-title">{threadTitle(thread)}</span>
-                          <span className="sh-entry-preview">{threadPreview(thread.messages)}</span>
+                          <span className="sh-entry-preview">{threadPreview(thread.messages ?? [])}</span>
                           {thread.inflightTaskId ? (
                             <span className="sh-entry-running">
                               <Icon name="clock" className="h-3 w-3" />
@@ -294,7 +294,7 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
               {selectedCategory ? (
                 <span className="wr-category is-neutral">{selectedCategory}</span>
               ) : null}
-              <span>{selected.messages.length} 条消息</span>
+              <span>{selected.messages?.length ?? 0} 条消息</span>
             </div>
 
             <button
@@ -338,15 +338,15 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
               ) : null}
             </section>
 
-            {selected.messages.length > 0 ? (
+            {(selected.messages?.length ?? 0) > 0 ? (
               <section aria-label="最近消息" className="sh-section">
                 <div className="sh-section-head">
                   <Icon name="chat" className="h-3.5 w-3.5" />
                   <h3>最近消息</h3>
                 </div>
                 <div className="sh-message-list">
-                  {selected.messages
-                    .filter((message) => message.text.trim())
+                  {(selected.messages ?? [])
+                    .filter((message) => (message.text ?? "").trim())
                     .slice(-4)
                     .map((message) => (
                       <div key={message.id} className="sh-message">

@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { shell } from "../api";
 import { Icon, type IconName } from "../components/Icon";
 import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { ProjectMaintenance } from "./ProjectMaintenance";
+import { ProjectReviewCard, type ProjectReviewSeed } from "./ProjectReviewCard";
 import type {
   AvailabilityConfig,
   ScheduleEntryView,
@@ -906,6 +909,8 @@ export function TaskQuadrantBoard({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localNotice, setLocalNotice] = useState<Notice | null>(null);
+  const [completeConfirm, setCompleteConfirm] = useState(false);
+  const [reviewSeed, setReviewSeed] = useState<ProjectReviewSeed>(null);
 
   function announce(notice: Notice | null) {
     setLocalNotice(notice);
@@ -945,13 +950,17 @@ export function TaskQuadrantBoard({
 
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
-  const displayViews = useMemo(
-    () =>
-      views.map((view) =>
+  const displayViews = useMemo(() => {
+    const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
+    return views
+      .filter((view) => {
+        const task = taskMap.get(view.task_id);
+        return !task || !archived.has(task.state);
+      })
+      .map((view) =>
         view.quadrant === "待评估" ? { ...view, quadrant: "Q2" as const } : view,
-      ),
-    [views],
-  );
+      );
+  }, [views, taskMap]);
 
   const visibleViews = useMemo(() => {
     const needle = query.trim();
@@ -1072,6 +1081,53 @@ export function TaskQuadrantBoard({
       setTick((n) => n + 1);
     } catch (e) {
       setEditorError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestComplete() {
+    if (!editingTask || busy) return;
+    setEditorError(null);
+    setCompleteConfirm(true);
+  }
+
+  async function markComplete() {
+    if (!editing || busy) return;
+    const task = taskMap.get(editing);
+    if (!task) return;
+    setBusy(true);
+    setEditorError(null);
+    try {
+      const preState: WorkTaskState | null =
+        task.state === "待确认" ? "待开始" : task.state === "暂停" ? "进行中" : null;
+      if (preState) {
+        try {
+          await shell.taskTransition(editing, preState);
+        } catch (e) {
+          setEditorError("先转为" + preState + "失败：" + errText(e));
+          return;
+        }
+      }
+      try {
+        await shell.taskTransition(editing, "已完成");
+      } catch (e) {
+        setEditorError(
+          (preState ? "已转为" + preState + "，但" : "") + "标记完成失败：" + errText(e),
+        );
+        if (preState) setTick((n) => n + 1);
+        return;
+      }
+      setCompleteConfirm(false);
+      setEditing(null);
+      setReviewSeed({ projectId: task.project_id ?? "", nonce: Date.now() });
+      announce({
+        kind: "ok",
+        text: task.project_id
+          ? "任务已完成并归档；可在下方「项目复盘」生成复盘。"
+          : "任务已完成并归档；该任务未挂接项目，可先在「项目」区挂接后再复盘。",
+      });
+      setTick((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -1385,6 +1441,22 @@ export function TaskQuadrantBoard({
                 </span>
                 <span className="mono mt-0.5 block text-[9.5px] text-[#8a877f]">{isoDay(task.updated_at)}</span>
               </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewSeed({ projectId: task.project_id ?? "", nonce: Date.now() });
+                  announce({
+                    kind: task.project_id ? "ok" : "err",
+                    text: task.project_id
+                      ? "已在「项目复盘」选中该项目，可生成复盘。"
+                      : "该任务未挂接项目；先到下方「项目」区挂接后再复盘。",
+                  });
+                }}
+                className={"shrink-0 rounded-full px-2 py-1 text-[10px] text-[#5f5f67] " + NEU_TILE}
+                data-task-review-entry=""
+              >
+                AI 复盘
+              </button>
             </li>
           ))}
         </ul>
@@ -1461,8 +1533,23 @@ export function TaskQuadrantBoard({
         <div className="flex min-w-0 flex-col gap-5">
           {statsPanel}
           {completedPanel}
+          <ProjectReviewCard seed={reviewSeed} onNotice={announce} />
+          <ProjectMaintenance onNotice={announce} />
         </div>
       </div>
+
+      <ConfirmDialog
+        open={completeConfirm && Boolean(editingTask)}
+        title="标记任务完成？"
+        description={
+          "「" + (editingTask?.title ?? "") +
+          "」完成后将从四象限归档，只出现在「已完成」列表。"
+        }
+        confirmLabel="标记完成"
+        onConfirm={() => void markComplete()}
+        onCancel={() => setCompleteConfirm(false)}
+        testId="task-complete-confirm"
+      />
 
       {editingTask ? (
         <div
@@ -1590,22 +1677,37 @@ export function TaskQuadrantBoard({
               ) : null}
             </div>
 
-            <div className="mt-5 flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveEditor()}
-                disabled={busy}
-                className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
-              >
-                {busy ? "保存中…" : "保存修改"}
-              </button>
+            <div className="mt-5 flex items-center justify-between gap-2.5">
+              {editingTask.state !== "已完成" && editingTask.state !== "已取消" ? (
+                <button
+                  type="button"
+                  onClick={requestComplete}
+                  disabled={busy}
+                  className="rounded-full bg-[#eaf8ef] px-4 py-2 text-[11.5px] font-medium text-[#2f7a51] disabled:opacity-50"
+                  data-task-complete-entry=""
+                >
+                  标记完成
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className={"rounded-full px-4 py-2 text-[11.5px] text-[#5f5f67] " + NEU_TILE}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveEditor()}
+                  disabled={busy}
+                  className="rounded-full bg-[linear-gradient(145deg,#9481ff,#5747f8)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[0_10px_20px_-12px_rgba(87,71,248,0.8)] disabled:opacity-50"
+                >
+                  {busy ? "保存中…" : "保存修改"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

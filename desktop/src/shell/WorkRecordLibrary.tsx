@@ -260,6 +260,7 @@ export function WorkRecordLibrary({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [quickText, setQuickText] = useState("");
   const [quickDate, setQuickDate] = useState(todayLocal());
+  const quickRef = useRef<HTMLTextAreaElement | null>(null);
   const [quickDraft, setQuickDraft] = useState(false);
   const [busy, setBusy] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -271,6 +272,10 @@ export function WorkRecordLibrary({
   const [backlinksLoading, setBacklinksLoading] = useState(false);
   const [backlinksError, setBacklinksError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  // OD-WR-312：点「记录今天工作」后直接把光标放进正文，减少一次点击。
+  useEffect(() => {
+    if (composerOpen) quickRef.current?.focus();
+  }, [composerOpen]);
   const [month, setMonth] = useState("");
   const [allRecords, setAllRecords] = useState<WorkRecord[]>([]);
   const [timeRangeOpen, setTimeRangeOpen] = useState(false);
@@ -1010,21 +1015,26 @@ export function WorkRecordLibrary({
                 type="button"
                 onClick={() => setComposerOpen((open) => !open)}
                 data-record-compose-toggle=""
-                className="wr-text-button"
+                className="wr-primary-button"
               >
-                {composerOpen ? "收起手动记录" : "手动记一条"}
+                <Icon
+                  name={composerOpen ? "chevron-up" : "edit"}
+                  className="h-3.5 w-3.5"
+                />
+                {composerOpen ? "收起记录" : "记录今天工作"}
               </button>
             </div>
           </section>
 
           {composerOpen ? (
             <section aria-label="快速记录" className={CARD + " wr-composer"}>
-              <p className="wr-composer-title">手动记录</p>
+              <p className="wr-composer-title">记录今天工作</p>
               <textarea
+                ref={quickRef}
                 value={quickText}
                 onChange={(e) => setQuickText(e.target.value)}
                 placeholder="记点什么…"
-                className="w-full min-h-[88px] resize-y bg-transparent text-[13px] leading-relaxed text-on-surface placeholder:text-outline/70 focus:outline-none"
+                className="w-full min-h-[88px] resize-y bg-transparent text-[14px] leading-relaxed text-on-surface placeholder:text-outline/70 focus:outline-none"
                 data-work-record-quick=""
               />
               <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -1455,7 +1465,7 @@ export function WorkRecordLibrary({
                   value={form.body}
                   onChange={(e) => setForm({ ...form, body: e.target.value })}
                   aria-label="正文"
-                  className={FIELD_BLOCK + " min-h-[280px] resize-y leading-relaxed"}
+                  className={FIELD_BLOCK + " min-h-[280px] resize-y text-[14px] leading-relaxed"}
                 />
                 <div className="flex items-center gap-2 pt-1">
                   <button
