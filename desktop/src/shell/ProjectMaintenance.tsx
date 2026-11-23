@@ -47,7 +47,13 @@ function TaskStateChip({ state }: { state: WorkTask["state"] }) {
   return <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">{state}</span>;
 }
 
-export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | null) => void }) {
+export function ProjectMaintenance({
+  onNotice,
+  onChanged,
+}: {
+  onNotice?: (notice: Notice | null) => void;
+  onChanged?: () => void;
+}) {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
   const [selected, setSelected] = useState("");
@@ -171,6 +177,7 @@ export function ProjectMaintenance({ onNotice }: { onNotice?: (notice: Notice | 
 
   function refresh() {
     setTick((value) => value + 1);
+    onChanged?.();
   }
 
   function changeProject(projectId: string) {

@@ -1,5 +1,10 @@
 # 当前实施计划
 
+### OD-PRJ-604：项目跟踪六项实测修复（用户实测反馈，2026-11-23 批准执行）
+
+> 触发：Windows 实测六项问题。执行：子代理（deepseek-v4.1-flash-eco，high），ARCHITECT 复核。任务书 docs/od-prj-604-dispatch.md。
+> F1 标记完成补 待开始→进行中 前置迁移；F2 ProjectMaintenance/ProjectReviewCard 写操作后 onChanged 传播到 TaskManager 立即刷新（修「新建项目/任务不实时显示」与「新任务四象限不显示」）；F3+F5 甘特双层条（浅色计划条 + 状态色进度填充，进度=时间比例纯函数）、项目汇总带同样双层（无 end 默认 start+90 天）、项目名/任务名层级区分；F6 项目复盘改为 76vw×76vh 居中弹窗（生成成功自动打开、侧栏留入口与状态徽标、Esc/遮罩关闭）。纯前端，不改宿主；验证 npm test/tsc/build + projectGanttProgress 新测试；真实窗口交互由用户复测。
+
 ### OD-GROW-301：每日习惯整理与未决问题（成长计划 v2，用户批准执行，2026-11-23）
 
 > 触发：用户批准合并任务书（v2）。执行方式：全部改动派子代理（deepseek-v4.1-flash-eco，思考等级 high），ARCHITECT 负责规划、派工、复核 diff、重跑验收并写 STATUS.md / REVIEW.md。三份 omniharness 原文已确认不存在，相关任务内联如下；R2–R6 不可恢复，从本计划移除。D1 已答复：允许复盘失败后自动重试一轮。红线策略：隐私命中自动脱敏保留原意通过；禁入类别或不确定的进待审定队列，用户逐条批准/排除，不静默丢弃；既有 engine_submit_task 红线拒绝不放松，专用整理提交命令仅携带批准记录时放行。测试基线（0.2.52）：cargo lib 1292 passed / 1 ignored；npm test 97 passed。

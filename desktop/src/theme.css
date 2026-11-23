@@ -4214,6 +4214,37 @@ button.wr-backlink:hover {
   background: #8a5a12; /* 暂停 */
 }
 
+/* OD-PRJ-604 甘特双层条：浅色计划底 + 状态色进度覆盖 */
+.od-gantt-plan--pending-confirm {
+  background: color-mix(in oklab, #c0855f 20%, var(--od-neu-accent-soft));
+}
+.od-gantt-plan--not-started {
+  background: color-mix(in oklab, #8a7f6e 18%, var(--od-neu-accent-soft));
+}
+.od-gantt-plan--in-progress {
+  background: color-mix(in oklab, #a24e2c 16%, var(--od-neu-accent-soft));
+}
+.od-gantt-plan--done {
+  background: color-mix(in oklab, #3f7d5a 18%, var(--od-neu-accent-soft));
+}
+.od-gantt-plan--cancelled {
+  background: color-mix(in oklab, #b5a896 20%, var(--od-neu-accent-soft));
+}
+.od-gantt-plan--paused {
+  background: color-mix(in oklab, #8a5a12 16%, var(--od-neu-accent-soft));
+}
+
+.od-gantt-progress--task {
+  box-shadow:
+    0 1px 3px rgba(90, 74, 56, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.od-gantt-progress--project {
+  background: var(--od-neu-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
 .gantt-bar {
   box-shadow:
     0 1px 3px rgba(90, 74, 56, 0.35),

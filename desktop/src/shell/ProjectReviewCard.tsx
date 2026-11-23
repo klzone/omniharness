@@ -98,9 +98,11 @@ function buildPrompt(material: string, taskIds: string[]): string {
 export function ProjectReviewCard({
   seed,
   onNotice,
+  onChanged,
 }: {
   seed?: ProjectReviewSeed;
   onNotice?: (notice: Notice | null) => void;
+  onChanged?: () => void;
 }) {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selected, setSelected] = useState("");
@@ -113,6 +115,7 @@ export function ProjectReviewCard({
   const [stage, setStage] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [tick, setTick] = useState(0);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   function announce(next: Notice | null) {
     setNotice(next);
@@ -147,6 +150,7 @@ export function ProjectReviewCard({
 
   useEffect(() => {
     if (!seed) return;
+    setReviewOpen(false);
     if (!seed.projectId) {
       setSelected("");
       return;
@@ -189,12 +193,23 @@ export function ProjectReviewCard({
   );
   const confirmed = review?.status === "已确认";
 
+  useEffect(() => {
+    if (!reviewOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReviewOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [reviewOpen]);
+
   function refresh() {
     setTick((value) => value + 1);
+    onChanged?.();
   }
 
   function selectProject(projectId: string) {
     setSelected(projectId);
+    setReviewOpen(false);
     announce(null);
   }
 
@@ -251,7 +266,10 @@ export function ProjectReviewCard({
         kind: "ok",
         text: "已写入项目复盘草稿" + (saved.backup ? "，旧草稿已备份为 .bak" : "") + "。",
       });
+      setReview(null);
+      setReviewLoading(true);
       refresh();
+      setReviewOpen(true);
     } catch (e) {
       announce({ kind: "err", text: errText(e) });
     } finally {
@@ -286,6 +304,7 @@ export function ProjectReviewCard({
     try {
       await shell.knowledgeReviewStage(review.body, [review.path]);
       announce({ kind: "ok", text: "已提交知识审核队列，请到「知识审核」裁决。" });
+      onChanged?.();
     } catch (e) {
       announce({ kind: "err", text: errText(e) });
     } finally {
@@ -294,23 +313,31 @@ export function ProjectReviewCard({
   }
 
   return (
+    <>
     <aside aria-label="项目复盘" data-project-review-card="" className={"rounded-[18px] px-5 py-4 " + CARD}>
       <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
         <Icon name="book" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
         <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">项目复盘</h3>
-        {review?.status ? (
-          <span
-            className={
-              "ml-auto rounded-full px-2 py-0.5 text-[10px] " +
-              (confirmed
-                ? "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]"
-                : "bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]")
-            }
-            data-project-review-status={review.status}
-          >
-            {review.status}
-          </span>
-        ) : null}
+        <span className="ml-auto flex items-center gap-1.5">
+          {review?.exists ? (
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className={"rounded-full px-2.5 py-1 text-[10px] text-[color:var(--od-neu-ink-2)] " + TILE}
+              data-project-review-open=""
+            >
+              查看
+            </button>
+          ) : null}
+          {review?.status ? (
+            <span
+              className="rounded-full bg-[color:var(--od-neu-accent-soft)] px-2 py-0.5 text-[10px] text-[color:var(--od-neu-accent-ink)]"
+              data-project-review-status={review.status}
+            >
+              {review.status}
+            </span>
+          ) : null}
+        </span>
       </div>
 
       {loading ? <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">正在读取项目…</p> : null}
@@ -360,17 +387,6 @@ export function ProjectReviewCard({
         </p>
       ) : null}
 
-      {review?.exists ? (
-        <div className="pt-3" data-project-review-body="">
-          <p className="mono pb-2 text-[9.5px] text-[color:var(--od-neu-ink-3)]">
-            生成 {review.generated_at ? shortDate(review.generated_at) : "未知"} · 任务 {review.task_ids.length} 条
-          </p>
-          <div className={"max-h-[300px] overflow-y-auto rounded-xl px-3 py-2 " + INSET}>
-            <MarkdownText text={review.body} />
-          </div>
-        </div>
-      ) : null}
-
       {stage ? (
         <p className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-2)]" role="status">
           {stage}
@@ -400,32 +416,114 @@ export function ProjectReviewCard({
         >
           {busy ? "生成中…" : review?.exists ? "重新生成" : "AI 复盘"}
         </button>
-        {review?.exists && !confirmed ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void confirmReview()}
-            className={"rounded-full px-3.5 py-1.5 text-[11px] text-[color:var(--od-neu-accent-ink)] " + TILE}
-            data-project-review-confirm=""
-          >
-            确认归档
-          </button>
-        ) : null}
-        {review?.exists ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void stageKnowledge()}
-            className={"rounded-full px-3.5 py-1.5 text-[11px] text-[color:var(--od-neu-ink-2)] " + TILE}
-            data-project-review-knowledge=""
-          >
-            提炼知识卡
-          </button>
-        ) : null}
       </div>
       {confirmed ? (
         <p className="mt-2 text-[10px] text-[color:var(--od-neu-ink-3)]">已确认的复盘不可再生成覆盖。</p>
       ) : null}
     </aside>
+
+    {reviewOpen && selected ? (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+        role="presentation"
+        onClick={() => setReviewOpen(false)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="项目复盘"
+          onClick={(event) => event.stopPropagation()}
+          className="wr-dialog flex flex-col overflow-hidden"
+          style={{ width: "min(76vw, 1100px)", height: "76vh" }}
+          data-project-review-dialog=""
+        >
+          <div className="wr-dialog-head shrink-0">
+            <span className="wr-dialog-mark" aria-hidden="true">
+              <Icon name="book" className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 title={selectedProject?.name ?? selected} className="truncate text-[14px] font-semibold text-[color:var(--od-neu-ink)]">
+                {selectedProject?.name ?? selected}
+              </h3>
+              {review?.exists ? (
+                <p className="mono mt-0.5 text-[9.5px] text-[color:var(--od-neu-ink-3)]">
+                  生成 {review.generated_at ? shortDate(review.generated_at) : "未知"} · 任务 {review.task_ids.length} 条
+                </p>
+              ) : null}
+            </div>
+            {review?.status ? (
+              <span
+                className="rounded-full bg-[color:var(--od-neu-accent-soft)] px-2.5 py-0.5 text-[10px] text-[color:var(--od-neu-accent-ink)]"
+                data-project-review-dialog-status={review.status}
+              >
+                {review.status}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              aria-label="关闭"
+              onClick={() => setReviewOpen(false)}
+              className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-3)] " + TILE}
+              data-project-review-close=""
+            >
+              <Icon name="x" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-7 py-5">
+            {reviewLoading ? (
+              <p className="text-[11px] text-[color:var(--od-neu-ink-3)]">正在读取项目复盘…</p>
+            ) : reviewError ? (
+              <p className="rounded-xl bg-error-container/70 px-3 py-2 text-[11px] text-on-error-container">
+                读取项目复盘失败：{reviewError}
+              </p>
+            ) : review?.exists ? (
+              <div className="od-project-review-body">
+                <MarkdownText text={review.body} />
+              </div>
+            ) : (
+              <p className="text-[11px] text-[color:var(--od-neu-ink-3)]">暂无项目复盘。</p>
+            )}
+            {notice ? (
+              <p
+                role="status"
+                className={
+                  "mt-4 rounded-xl px-3 py-2 text-[11px] leading-relaxed " +
+                  (notice.kind === "err"
+                    ? "bg-error-container/70 text-on-error-container"
+                    : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
+                }
+              >
+                {notice.text}
+              </p>
+            ) : null}
+          </div>
+          {review?.exists ? (
+            <div className="wr-dialog-foot shrink-0 justify-end">
+              {!confirmed ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void confirmReview()}
+                  className={"rounded-full px-4 py-1.5 text-[11px] text-[color:var(--od-neu-accent-ink)] " + TILE}
+                  data-project-review-confirm=""
+                >
+                  确认归档
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void stageKnowledge()}
+                className={"rounded-full px-4 py-1.5 text-[11px] text-[color:var(--od-neu-ink-2)] " + TILE}
+                data-project-review-knowledge=""
+              >
+                提炼知识卡
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }

@@ -72,7 +72,10 @@ def main() -> int:
         all(
             needle in task_manager
             for needle in (
-                'task.state === "待确认" ? "待开始"',
+                # OD-PRJ-604：preState 三元改为多行（待开始/暂停 → 进行中）。
+                'task.state === "待确认"',
+                '? "待开始"',
+                '? "进行中"',
                 'shell.taskTransition(editing, preState)',
                 '已转为" + preState + "，但',
             )
@@ -160,8 +163,10 @@ def main() -> int:
             needle in task_manager
             for needle in (
                 'data-task-review-entry=""',
-                "<ProjectReviewCard seed={reviewSeed} onNotice={announce} />",
-                "<ProjectMaintenance onNotice={announce} />",
+                # OD-PRJ-604：挂载增加 onChanged 即时刷新。
+                "<ProjectReviewCard",
+                "<ProjectMaintenance",
+                'onChanged={() => setTick((n) => n + 1)}',
             )
         ),
     )

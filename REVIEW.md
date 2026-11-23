@@ -818,3 +818,12 @@
 - **T14：** 用户裁定为下一步专项计划，等功能理顺后启动；本轮未实施。
 - **未验证：** 真实 Tauri 窗口、真实模型、真实知识库端到端（用户将在 Windows 实机验证）。
 
+
+
+## OD-PRJ-604 ARCHITECT 复核（2026-11-23）
+
+- **范围：** Windows 实测六项修复（F1 完成状态机前置链、F2 写操作 onChanged 即时刷新、F3/F5 甘特双层条与项目汇总进度、名称层级、F6 复盘 76vw×76vh 居中弹窗）。UI 参考实调 screenshots-design-inspiration（Teamweek 甘特、Glassdoor 弹窗）。
+- **ARCHITECT 复跑（script）：** npm test 150/150；tsc 0；build 0；verify_project_601 15/15；verify_project_602 18/18；verify_hardening_2043 77/77。
+- **静态断言适配（ARCHITECT 亲自改，非放松）：** verify_project_601.py S2/S3 与 verify_project_602.py S1 的精确字符串 needle 按 OD-PRJ-604 获批 JSX 变化更新（多行三元、onChanged 挂载、rangeLabel 局部变量）；断言语义不变（状态前置链、双卡挂载、纯函数调用仍逐一断言）。
+- **未验证：** 真实 Tauri 窗口六项交互由用户实机复测。
+

@@ -11,6 +11,11 @@ import {
   buildProjectGanttGroups,
   summaryRangeLabel,
 } from "../projectGanttGroups";
+import {
+  projectProgressRatio,
+  projectWindow,
+  taskProgressRatio,
+} from "../projectGanttProgress";
 import type {
   AvailabilityConfig,
   ProjectInfo,
@@ -836,7 +841,7 @@ const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: strin
   Q4: { icon: "book", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
 };
 
-/** 甘特条表达状态，不表达伪造的进度百分比。 */
+/** 甘特计划条保留状态色；实际填充比例由 projectGanttProgress 计算。 */
 const TASK_STATE_BAR: Record<WorkTaskState, string> = {
   待确认: "od-task-bar--pending-confirm",
   待开始: "od-task-bar--not-started",
@@ -844,6 +849,15 @@ const TASK_STATE_BAR: Record<WorkTaskState, string> = {
   已完成: "od-task-bar--done",
   已取消: "od-task-bar--cancelled",
   暂停: "od-task-bar--paused",
+};
+
+const TASK_PLAN_BAR: Record<WorkTaskState, string> = {
+  待确认: "od-gantt-plan--pending-confirm",
+  待开始: "od-gantt-plan--not-started",
+  进行中: "od-gantt-plan--in-progress",
+  已完成: "od-gantt-plan--done",
+  已取消: "od-gantt-plan--cancelled",
+  暂停: "od-gantt-plan--paused",
 };
 
 const QUADRANT_SHORT: Record<string, string> = {
@@ -882,6 +896,13 @@ function dayStart(value: string | Date): Date | null {
 
 function mmdd(date: Date): string {
   return date.getMonth() + 1 + "/" + date.getDate();
+}
+
+/** 毫秒时间戳转本地 YYYY-MM-DD，用于项目汇总带区间文字。 */
+function ganttDay(ms: number): string {
+  const date = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
 }
 
 function isoDay(value: string | null): string {
@@ -962,7 +983,12 @@ export function TaskQuadrantBoard({
     return () => window.removeEventListener("keydown", onKey);
   }, [editing]);
 
+  const nowMs = useMemo(() => Date.now(), [tick, range]);
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const projectMap = useMemo(
+    () => new Map(projects.map((project) => [project.project_id, project])),
+    [projects],
+  );
 
   const displayViews = useMemo(() => {
     const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
@@ -1039,6 +1065,35 @@ export function TaskQuadrantBoard({
         span: timeline.span,
       }),
     [tasks, projects, timeline],
+  );
+
+  /** 项目汇总带：计划区间浅带 + 时间进度填充，区间缺省时补 90 天。 */
+  const ganttSummaries = useMemo(
+    () =>
+      new Map(
+        ganttGroups.map((group) => {
+          const project = projectMap.get(group.projectId);
+          const fallbackStartMs = group.rows.length
+            ? Math.min(...group.rows.map((row) => row.startMs))
+            : timeline.start.getTime();
+          const window = projectWindow(project, fallbackStartMs);
+          const from = Math.max(window.startMs, timeline.start.getTime());
+          const to = Math.min(window.endMs, timeline.end.getTime());
+          const visibleFrom = to > from ? from : Math.min(...group.rows.map((row) => row.startMs));
+          const visibleTo = to > from ? to : Math.max(...group.rows.map((row) => row.endMs));
+          return [
+            group.projectId,
+            {
+              leftPct: ((visibleFrom - timeline.start.getTime()) / timeline.span) * 100,
+              widthPct: Math.max(2, ((visibleTo - visibleFrom) / timeline.span) * 100),
+              start: ganttDay(visibleFrom),
+              end: ganttDay(visibleTo),
+              ratio: projectProgressRatio(project, group.rows, nowMs),
+            },
+          ] as const;
+        }),
+      ),
+    [ganttGroups, projectMap, timeline, nowMs],
   );
 
   /** 总行数超过 30 时默认折叠未挂接组与最早结束的组。 */
@@ -1122,7 +1177,11 @@ export function TaskQuadrantBoard({
     setEditorError(null);
     try {
       const preState: WorkTaskState | null =
-        task.state === "待确认" ? "待开始" : task.state === "暂停" ? "进行中" : null;
+        task.state === "待确认"
+          ? "待开始"
+          : task.state === "待开始" || task.state === "暂停"
+            ? "进行中"
+            : null;
       if (preState) {
         try {
           await shell.taskTransition(editing, preState);
@@ -1351,7 +1410,11 @@ export function TaskQuadrantBoard({
           />
           {ganttGroups.map((group) => {
             const collapsed = isGroupCollapsed(group.projectId);
-            const rangeLabel = summaryRangeLabel(group.summary);
+            const summary = ganttSummaries.get(group.projectId) ?? {
+              ...group.summary,
+              ratio: 0,
+            };
+            const rangeLabel = summaryRangeLabel(summary);
             return (
               <div
                 key={group.projectId || "unattached"}
@@ -1373,7 +1436,7 @@ export function TaskQuadrantBoard({
                       />
                       <span
                         title={group.projectName}
-                        className="truncate text-[12px] font-semibold text-[color:var(--od-neu-ink)]"
+                        className="truncate text-[13px] font-bold text-[color:var(--od-neu-ink)]"
                       >
                         {group.projectName}
                       </span>
@@ -1389,49 +1452,73 @@ export function TaskQuadrantBoard({
                     <span
                       aria-hidden="true"
                       className="absolute top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[color:var(--od-neu-accent-soft)] shadow-[var(--od-neu-inset-1)]"
-                      style={{ left: group.summary.leftPct + "%", width: group.summary.widthPct + "%" }}
+                      style={{ left: summary.leftPct + "%", width: summary.widthPct + "%" }}
+                    />
+                    <span
+                      aria-hidden="true"
+                      data-project-gantt-progress={group.projectId}
+                      className="od-gantt-progress--project absolute top-1/2 h-[6px] -translate-y-1/2 rounded-full"
+                      style={{
+                        left: summary.leftPct + "%",
+                        width: summary.widthPct * summary.ratio + "%",
+                      }}
                     />
                   </span>
                 </button>
                 {collapsed
                   ? null
-                  : group.rows.map(({ task, left, width, clamped }) => (
-                      <button
-                        type="button"
-                        key={task.id}
-                        data-task-gantt-row={task.id}
-                        onClick={() => openEditor(task.id)}
-                        className="grid w-full grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[color:var(--od-neu-line-strong)] py-2.5 text-left transition hover:bg-[color:var(--od-neu-accent-soft)] group-hover:bg-[color:var(--od-neu-surface-high)] last:border-b-0 last:pb-0"
-                      >
-                        <span className="flex min-w-0 items-baseline gap-2 pl-[18px]">
-                          <span
-                            title={task.title}
-                            className="truncate text-[12px] font-medium text-[color:var(--od-neu-ink)]"
-                          >
-                            {task.title}
+                  : group.rows.map(({ task, left, width, clamped }) => {
+                      const progress = taskProgressRatio(task, nowMs);
+                      return (
+                        <button
+                          type="button"
+                          key={task.id}
+                          data-task-gantt-row={task.id}
+                          onClick={() => openEditor(task.id)}
+                          className="grid w-full grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-center gap-4 border-b border-dashed border-[color:var(--od-neu-line-strong)] py-2.5 text-left transition hover:bg-[color:var(--od-neu-accent-soft)] group-hover:bg-[color:var(--od-neu-surface-high)] last:border-b-0 last:pb-0"
+                        >
+                          <span className="flex min-w-0 items-baseline gap-2 pl-[18px]">
+                            <span
+                              title={task.title}
+                              className="truncate text-[11.5px] font-normal text-[color:var(--od-neu-ink-2)]"
+                            >
+                              {task.title}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">
+                              {task.state}
+                            </span>
                           </span>
-                          <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">
-                            {task.state}
-                          </span>
-                        </span>
-                        <span className="relative h-[10px] rounded-[5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
-                          <span
-                            className={
-                              "gantt-bar absolute top-0 h-[10px] " +
-                              TASK_STATE_BAR[task.state] + " " +
-                              (clamped ? "rounded-l-full" : "rounded-full")
-                            }
-                            style={{ left: left + "%", width: width + "%" }}
-                          />
-                          {clamped ? (
+                          <span className="relative h-[10px] rounded-[5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]">
                             <span
                               aria-hidden="true"
-                              className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[color:var(--od-neu-accent-ink)]"
+                              data-task-gantt-plan={task.id}
+                              className={
+                                "gantt-bar absolute top-0 h-[10px] " +
+                                TASK_PLAN_BAR[task.state] + " " +
+                                (clamped ? "rounded-l-full" : "rounded-full")
+                              }
+                              style={{ left: left + "%", width: width + "%" }}
                             />
-                          ) : null}
-                        </span>
-                      </button>
-                    ))}
+                            <span
+                              aria-hidden="true"
+                              data-task-gantt-progress={task.id}
+                              className={
+                                "od-gantt-progress--task absolute top-0 h-[10px] rounded-l-full " +
+                                TASK_STATE_BAR[task.state] + " " +
+                                (progress >= 1 ? "rounded-r-full" : "")
+                              }
+                              style={{ left: left + "%", width: width * progress + "%" }}
+                            />
+                            {clamped ? (
+                              <span
+                                aria-hidden="true"
+                                className="absolute right-0 top-1/2 h-0 w-0 -translate-y-1/2 border-y-[4px] border-l-[5px] border-y-transparent border-l-[color:var(--od-neu-accent-ink)]"
+                              />
+                            ) : null}
+                          </span>
+                        </button>
+                      );
+                    })}
               </div>
             );
           })}
@@ -1616,8 +1703,15 @@ export function TaskQuadrantBoard({
         <div className="flex min-w-0 flex-col gap-5">
           {statsPanel}
           {completedPanel}
-          <ProjectReviewCard seed={reviewSeed} onNotice={announce} />
-          <ProjectMaintenance onNotice={announce} />
+          <ProjectReviewCard
+            seed={reviewSeed}
+            onNotice={announce}
+            onChanged={() => setTick((n) => n + 1)}
+          />
+          <ProjectMaintenance
+            onNotice={announce}
+            onChanged={() => setTick((n) => n + 1)}
+          />
         </div>
       </div>
 

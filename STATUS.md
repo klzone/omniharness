@@ -1624,3 +1624,31 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - G9：cargo → 1360 passed / 0 failed / 1 ignored（+4）；范例段经红线+脱敏后进 knowledge_review 待审核队列（inbox/写作范例/ 源材料），未绕过准入；lib.rs 包装层约 15 行改动（原因见 REVIEW.md）。
 - 最终全量：cargo 1360 / npm 132 / tsc 0 / build 0 / 回归 16 PASS / verify_hardening 77/77。
 - 版本：0.2.53（用户批准提交推送）。
+
+## OD-PRJ-604 执行记录（BUILDER，2026-11-23）
+
+- 基线：HEAD `203748eef9`。开工 `git status` 为 `M PLANS.md` 与未跟踪 `docs/od-prj-604-dispatch.md`，两者原样保留；`desktop/src/` 下目标文件开工时无未提交改动。未改 `desktop/src-tauri/`、`engine/`、`runtime/`；未新增依赖；未提交、未推送、未打标签。
+- UI 参考：`screenshots-design-inspiration` 检索 gantt progress（AlphaSense）、project timeline（Teamweek、Flow）、review modal（Glassdoor），并查看 Teamweek 甘特截图。Teamweek 的泳道式甘特把左侧名称与右侧密集时间条清楚分开，适合沿用现有分组行；Glassdoor 的宽弹窗承载复核正文，适合把项目复盘移出侧栏。
+- 改动文件与行数：
+  - `desktop/src/shell/TaskManager.tsx`：+134 / −40（文件 2216 行）。F1 状态前置链、F2 右列 `onChanged` 接线、F3/F5 项目汇总带与任务双层条/名称层级。
+  - `desktop/src/shell/ProjectMaintenance.tsx`：+8 / −1（文件 668 行）。新增 `onChanged`，写操作成功后经 `refresh()` 传播。
+  - `desktop/src/shell/ProjectReviewCard.tsx`：+144 / −46（文件 529 行）。新增 `onChanged`、复盘居中模态、自动打开、Esc/遮罩关闭与底部动作迁移。
+  - `desktop/src/projectGanttProgress.ts`：新增 76 行；`taskProgressRatio`、`projectWindow`、`projectProgressRatio`。
+  - `desktop/src/projectGanttProgress.test.mjs`：新增 140 行、18 项表驱动用例。
+  - `desktop/src/theme.css`：+31 行；追加 `.od-gantt-plan--*` 与 `.od-gantt-progress--*`，既有 `.od-task-bar--*` 未改。
+  - `tests/verification/desktop/evidence/od-prj-604/verify_output.txt`：新增运行证据（Git 忽略的 evidence 目录）。
+- 六项修复对照：
+  1. 任务完成状态机：`待开始` 与 `暂停` 均先转 `进行中`，`待确认` 先转 `待开始`，随后标记 `已完成`；失败文案沿用现有路径。
+  2. 写入后即时刷新：ProjectMaintenance 的新建项目、添加/挂接任务、换绑/摘除、删除任务成功后调用 `onChanged`；ProjectReviewCard 的复盘保存、确认归档、知识卡暂存成功后调用；TaskManager 挂载处 bump `tick`，四象限、甘特、项目列表和统计同轮重载。
+  3. 任务甘特双层条：浅色计划条按 created→due 铺满，状态色进度覆盖按 `taskProgressRatio(task, nowMs)` 填充；完成=1，待确认/待开始=0，进行中按创建至截止夹取，取消/暂停保留当前时间进度。
+  4. 项目汇总进度：汇总带按 project.start→end，缺结束日补 90 天，缺开始日取组内最早任务，叠加 `projectProgressRatio` 时间填充；区间文字同步使用实际计划区间。
+  5. 名称层级：项目名 13px 粗体 ink，任务名 11.5px 常规 ink-2，状态字 10px ink-3。
+  6. 项目复盘大弹窗：`min(76vw,1100px)` × 76vh 居中，正文内滚；生成成功自动打开，卡片保留 AI 复盘/重新生成与状态徽标及「查看」；头部项目名+状态+关闭，底部确认归档、提炼知识卡；Esc 与点遮罩关闭。
+- 实际执行与结果：`cd desktop && npm run test` → **tests 150 / pass 150 / fail 0 / skipped 0，EXIT=0**（按 STATUS 既有基线 132，新增 18 项）；`cd desktop && npx tsc --noEmit` → 无输出，**EXIT=0**；`cd desktop && npm run build` → tsc + Vite 构建成功，**EXIT=0**（仅既有的 >500 kB chunk 提示）。证据见 `tests/verification/desktop/evidence/od-prj-604/verify_output.txt`。
+- 未验证：真实 Tauri 窗口中的六项交互（标记完成点击流、跨卡片即时刷新、甘特视觉、真实项目日期汇总、弹窗打开/Esc/遮罩/底部按钮）由用户实机复测；未在真实项目数据上核对进度填充与计划带重合。静态回归脚本 `verify_project_601.py` 当前 13/15：S2 旧断言在开工前已与本轮计划口径不符，S3 因新增 `onChanged` 后 JSX 精确字符串不再匹配；本轮未修改任何既有测试断言或该脚本。
+
+## OD-PRJ-604 ARCHITECT 验收复核（2026-11-23）
+
+- 复跑：npm test 150/150（+18）；tsc 0；build 0；verify_project_601 15/15；verify_project_602 18/18；verify_hardening_2043 77/77。
+- 静态断言适配：verify_project_601.py S2/S3、verify_project_602.py S1 needle 按获批 JSX 更新，语义不变（见 REVIEW.md）。
+- 版本：0.2.54（用户批准提交推送）。

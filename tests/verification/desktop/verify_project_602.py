@@ -110,7 +110,8 @@ def main() -> int:
                 "data-project-gantt-group-header={group.projectId}",
                 "data-task-gantt-row={task.id}",
                 "aria-expanded={!collapsed}",
-                "summaryRangeLabel(group.summary)",
+                # OD-PRJ-604：rangeLabel 取自局部 summary（项目计划区间），纯函数未变。
+                "summaryRangeLabel(summary)",
                 "已折叠 {collapsedCount} 组，展开查看",
             )
         ),
