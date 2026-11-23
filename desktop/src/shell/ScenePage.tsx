@@ -17,6 +17,7 @@ import type {
 import { useThreadCategories } from "../threadCategories";
 import { Icon } from "../components/Icon";
 import { AnnouncementBar } from "./AnnouncementBar";
+import { ConsolidationRunner } from "./ConsolidationRunner";
 import { ArtifactExplorer, type ArtifactArchiveEntry } from "./ArtifactExplorer";
 import { CategoryPicker } from "./CategoryPicker";
 import type { Scene } from "./Dock";
@@ -600,6 +601,7 @@ export function ScenePage({
         />
       )}
       <AnnouncementBar onPendingChanged={bumpPending} />
+      <ConsolidationRunner />
 
       {scene === "writing" ? (
         /*

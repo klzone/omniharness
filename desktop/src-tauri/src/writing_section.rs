@@ -101,6 +101,9 @@ pub struct SectionConfirmRequest {
     pub draft: SectionDraft,
     #[serde(default)]
     pub note: Option<String>,
+    /// 界面预览过的 AI 原稿（纯正文）；提供时先以 VersionSource::Ai 保存快照。
+    #[serde(default)]
+    pub ai_draft_text: Option<String>,
 }
 
 /// 章节确认/读取回执。
@@ -394,7 +397,7 @@ pub fn parse_section_draft_json(
     validate_section_draft(&raw, task, outline)
 }
 
-fn parse_body_sections(body: &str) -> Result<BTreeMap<u32, String>, String> {
+pub(crate) fn parse_body_sections(body: &str) -> Result<BTreeMap<u32, String>, String> {
     let mut sections = BTreeMap::new();
     let mut current: Option<(u32, Vec<String>)> = None;
     let mut saw_title = false;
@@ -791,6 +794,22 @@ fn confirm_allowed(status: &str) -> bool {
     )
 }
 
+/// AI 原稿快照只接受纯章节正文：空文本视为未提供，含 Markdown 标题行会
+/// 破坏正文.md 的分节结构，直接拒绝。
+fn validate_ai_draft_text(raw: &str) -> Result<Option<String>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed
+        .lines()
+        .any(|line| line.trim_start().starts_with('#'))
+    {
+        return Err("AI 原稿含 Markdown 标题行；请传入纯章节正文后再确认。".to_string());
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 /// 用户确认章节稿：校验 → 写正文.md + 快照 → 追加本章引用 → 全部确认后待核验。
 pub fn confirm_section(
     root: &Path,
@@ -827,6 +846,23 @@ pub fn confirm_section(
             return Err(format!(
                 "正文.md 中存在大纲之外的章节 {no}；请先修复正文，避免覆盖未知内容。"
             ));
+        }
+    }
+    if let Some(ai_draft_text) = request.ai_draft_text.as_deref() {
+        if let Some(ai_text) = validate_ai_draft_text(ai_draft_text)? {
+            // AI 原稿作为独立快照保留（文件事实），随后用户确认版覆盖当前正文。
+            let mut draft_sections = sections.clone();
+            draft_sections.insert(section.no, ai_text);
+            let draft_markdown = render_body(&outline, &draft_sections);
+            let ai_label = format!("ai-draft-section-{}", section.no);
+            let ai_spec = SnapshotSpec {
+                scope: VersionScope::Section,
+                source: VersionSource::Ai,
+                label: &ai_label,
+                note: "AI 原稿",
+            };
+            document_store::save_with_snapshot(root, writing_id, &ai_spec, &draft_markdown, now)
+                .map_err(|error| format!("AI 原稿快照写入失败：{error}"))?;
         }
     }
     let content = draft.content.clone();
@@ -926,6 +962,23 @@ pub fn read_section_state(
         masked_id_card: 0,
         masked_phone: 0,
     })
+}
+
+/// 章节确认后执行定稿范例暂存；暂存失败只记录错误，不回滚章节确认。
+pub fn confirm_section_with_stage<F>(
+    root: &Path,
+    request: &SectionConfirmRequest,
+    now: f64,
+    stage: F,
+) -> Result<WritingSectionConfirmed, String>
+where
+    F: FnOnce(&WritingSectionConfirmed) -> Result<(), String>,
+{
+    let confirmed = confirm_section(root, request, now)?;
+    if let Err(error) = stage(&confirmed) {
+        eprintln!("写作范例暂存失败（章节确认已保留）：{error}");
+    }
+    Ok(confirmed)
 }
 
 fn validate_revise_kind(value: &str) -> Result<String, String> {
@@ -1273,6 +1326,7 @@ mod tests {
                 writing_id: task.writing_id.clone(),
                 draft,
                 note: Some("虚构章节确认".to_string()),
+                ai_draft_text: None,
             },
             at,
         )
@@ -1419,6 +1473,75 @@ mod tests {
         let first = body.find("## 1. 工作概况").unwrap();
         let second = body.find("## 2. 问题与不足").unwrap();
         assert!(first < second, "{body}");
+    }
+
+    #[test]
+    fn confirm_saves_ai_draft_snapshot_only_when_provided() {
+        let (fixture, task, _outline) = ready_fixture("ai-draft");
+        let confirmed = confirm_section(
+            fixture.work(),
+            &SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"),
+                note: Some("虚构章节确认".to_string()),
+                ai_draft_text: Some("AI 虚构原稿第一段。\n\nAI 虚构原稿第二段。".to_string()),
+            },
+            NOW + 5.0,
+        )
+        .unwrap();
+        assert_eq!(confirmed.version, 3, "大纲 v1、AI 原稿 v2、用户确认 v3");
+
+        let versions = document_store::list_versions(fixture.work(), &task.writing_id).unwrap();
+        let ai_entry = versions
+            .iter()
+            .find(|entry| entry.source == VersionSource::Ai)
+            .expect("应有一条 AI 原稿快照");
+        assert_eq!(ai_entry.version, 2);
+        assert_eq!(ai_entry.scope, VersionScope::Section);
+        assert_eq!(ai_entry.note, "AI 原稿");
+        let ai_content = document_store::read_version(fixture.work(), &task.writing_id, 2)
+            .unwrap()
+            .content;
+        assert!(ai_content.contains("AI 虚构原稿第一段。"), "{ai_content}");
+        assert!(ai_content.contains("AI 虚构原稿第二段。"), "{ai_content}");
+        assert!(!ai_content.contains("试点推进总体平稳"), "AI 原稿快照不得混入用户确认内容");
+
+        let body = document_store::read_body(fixture.work(), &task.writing_id)
+            .unwrap()
+            .unwrap();
+        assert!(body.contains("本期完成三处试点"), "{body}");
+        assert!(!body.contains("AI 虚构原稿"), "当前正文应保持用户确认内容");
+
+        confirm(&fixture, &task, draft(2, "仍有三项试点待补齐。"), NOW + 6.0);
+        confirm_whitespace_ai(&fixture, &task, NOW + 7.0);
+        let versions = document_store::list_versions(fixture.work(), &task.writing_id).unwrap();
+        assert_eq!(
+            versions
+                .iter()
+                .filter(|entry| entry.source == VersionSource::Ai)
+                .count(),
+            1,
+            "未传 AI 原稿或只传空白时不得新增 AI 快照：{versions:?}"
+        );
+        drop(fixture);
+    }
+
+    fn confirm_whitespace_ai(
+        fixture: &Fixture,
+        task: &writing_store::WritingTask,
+        at: f64,
+    ) -> WritingSectionConfirmed {
+        confirm_section(
+            fixture.work(),
+            &SectionConfirmRequest {
+                writing_id: task.writing_id.clone(),
+                draft: draft(1, "本期完成三处试点。\n\n试点推进总体平稳。"),
+                note: None,
+                ai_draft_text: Some("   ".to_string()),
+            },
+            at,
+        )
+        .unwrap()
     }
 
     #[test]

@@ -26,6 +26,7 @@ import type {
 import { useThreadCategories, type ThreadCategory } from "../threadCategories";
 import type { Scene } from "./Dock";
 import { HomeChat, type ChatMessage, type ChatPreset } from "./HomeChat";
+import { HabitHomeNotice } from "./HabitHomeNotice";
 import { SceneScaffold } from "./SceneScaffold";
 
 /**
@@ -550,7 +551,9 @@ export function HomeCanvas({
   return (
     <SceneScaffold
       upper={
-        conversationStarted ? null : (
+        <>
+          <HabitHomeNotice />
+          {conversationStarted ? null : (
           <section className="flex flex-col flex-shrink-0 pt-1 pb-1 mb-1">
             <div className="home-hero">
               <h1 className="home-greeting" data-testid="home-greeting">
@@ -560,7 +563,8 @@ export function HomeCanvas({
             </div>
             <TodoTicker items={todos} error={todoError} loading={todoLoading} />
           </section>
-        )
+          )}
+        </>
       }
       chat={
         /* 下部：对话（全宽）。OD-ARCH-078 S2：去掉左侧吉祥物图片，

@@ -789,3 +789,32 @@
 ---
 
 # 0.2.47 复核（2026-11-22，ARCHITECT 实施并复核）——本机启动验证通过，Windows 实机待用户验证
+
+
+## OD-GROW-301 ARCHITECT 复核（2026-11-23）
+
+- **范围：** T1、G0、G1、G2、G3、H3、H5、G4、G5、G6、G10、H6+G11、H7+G12、T13；G8（写作差异）按 G0 结论属情形 2（AI 原稿未落盘），需另行方案与用户批准，本轮未实施；G9（可选）与 T14（拆 lib.rs 余下领域）未实施。未提交、未推送、未打标签。
+- **ARCHITECT 复跑（script）：**
+  - cargo：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1349 passed / 0 failed / 1 ignored**（基线 1292 → T1 +4 → G1 +11 → G2 +10 → G3 +2 → H3 +10 → G10 +5 → H7+G12 +15）。
+  - npm：`cd desktop && npm run test` → **132 passed / 0 failed**（基线 97 → H5 +4 → G4 +4 → G5 +10 → G6 +9 → H6/G11 +5 → T13 +3）；`npx tsc --noEmit` → 0；`npm run build` → 0。
+  - Python：`cd engine && python3 -m unittest discover -s omnidesk_engine -p habit_extract_test.py` → 4 tests OK。
+  - 回归：`python3 tests/verification/desktop/run_habit_regression.py` → 16 PASS / 0 FAIL。
+  - 既有门禁：`verify_hardening_2043.py` 77/77（见下方偏差 1）；`verify_home_work_0244.py` 31/31；`verify_conversation_prompt.py` 33/33；`verify_harness_220.py` 14/14。
+- **偏差与处理：**
+  1. verify_hardening_2043.py 的任务 D 基线校验原含 0.2.45 的 retired/added 差额（daily_summary 两条移除、engine_describe_if_running 新增）；G1 起基线改为「当前源码全集」口径重新生成后，双重加减导致 292≠291。ARCHITECT 将该脚本的 retired/added 集合改为空（命令名集合与基线一一对应的断言保留不变）。这是对既有校验脚本的记账性修正，非放松断言。
+  2. G13 缺口（G4 记录）：宿主暂无 habit 输出校验/暂存命令，G4 只做提交→终态→读结果→记录 raw；G3 解析器待后续以命令暴露后接入整理链路。
+  3. G6 统计落盘：宿主无统计追加命令，注入记录暂存 localStorage（≤50 行滚动）；正式统计待后续宿主命令。
+  4. 搁置口径：G5 前端 idleDays >= 7 与 G10 宿主 > 7 存在一天差异（第 7 天前端算逾期、宿主不算）；已记录，后续统一到第 8 天。
+- **未验证（需实机）：** 真实 Tauri 窗口界面（HabitDigestPanel/HabitCardsPage/HabitHomeNotice/铃铛条目）、真实模型整理端到端（G4）、复盘失败自动重试（H5）、真实数据根下的并发与断电恢复。
+- **结论：** 已批准范围内的任务全部实施并通过 ARCHITECT 复跑验收；G8/G9/T14 留待后续批准。
+
+
+
+## OD-GROW-301 G8/G9 ARCHITECT 复核（2026-11-23）
+
+- **G8 写作差异（用户批准实施）：** writing_section.rs 确认路径加 ai_draft_text 可选参数（Option/serde default，向后兼容），提供时以 VersionSource::Ai 保存「AI 原稿」快照（label 用 ASCII ai-draft-section-<n>，中文在 note，一次确认版本号递增 2）；writing_diff.rs 纯函数逐章节差异（片段 ≤100 字符）；consolidation.rs 收集 writing_diff 来源（同一被删片段在 ≥2 个不同稿件出现才提，仍走 G3 校验与用户确认，不自动写入生效卡）。ARCHITECT 复跑 cargo → **1356 passed / 0 failed / 1 ignored**（+7）。前端接线缺口（WritingSectionEditor 传 ai_draft_text）记入 STATUS，属下一轮界面任务。
+- **G9 范例进知识库（用户批准实施）：** knowledge_examples.rs 纯函数提取范例段（50–300 字、跳标题/列表、每章 ≤3 段），过 reject_keywords（命中跳段）+ mask_privacy 后写入 inbox/写作范例/ 源材料并调既有 knowledge_review::stage 进待审核队列；确认章节失败不影响主流程。未新增命令、未绕过审核队列。实施偏差：暂存放在命令包装层（confirm_section 拿不到数据根），lib.rs 改动约 15 行（超出任务书「只加模块声明」，原因与影响已记录）；来源路径改为真实存在的 inbox 文件（准入要求）。ARCHITECT 复跑 cargo → **1360 passed / 0 failed / 1 ignored**（+4）。
+- **G12/H7+G12 复核接入缺口：** review_active_cards/audit_quote 纯逻辑已交付，未接入整理运行器调用点（下轮界面/联调任务）。
+- **T14：** 用户裁定为下一步专项计划，等功能理顺后启动；本轮未实施。
+- **未验证：** 真实 Tauri 窗口、真实模型、真实知识库端到端（用户将在 Windows 实机验证）。
+

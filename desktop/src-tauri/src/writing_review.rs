@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::document_store::{
     self, DocumentKind, ParagraphDiff, VersionEntry, VersionScope, VersionSource,
 };
+use crate::habit_checks::{self, HabitCheckReport};
 use crate::writing_outline::{self, OutlineSection, WritingOutline};
 use crate::writing_section::{self, SectionConfirmRequest, SectionDraft};
 use crate::writing_store::{self, StatusRecord, WritingTask, WritingTaskPatch};
@@ -135,7 +136,7 @@ pub struct ReviewRequest {
     pub instruction: String,
 }
 
-/// 审阅提示词回执。本命令不写任何文件，模型调用仍在界面侧。
+/// 审阅提示词回执。除习惯检查只追加统计行外不写文件，模型调用仍在界面侧。
 #[derive(Debug, Clone, Serialize)]
 pub struct WritingReviewPrompt {
     pub prompt: String,
@@ -147,6 +148,8 @@ pub struct WritingReviewPrompt {
     pub masked: bool,
     pub masked_id_card: u64,
     pub masked_phone: u64,
+    /// OD-GROW-301 H3：写作场景习惯检查结果；只记统计，不拦审阅。
+    pub habits: HabitCheckReport,
 }
 
 /// 用户应用某条审阅问题：修订稿走 607 确认通道写正文与快照。
@@ -318,7 +321,8 @@ const DIMENSION_GUIDES: &[(&str, &str)] = &[
     ("与写作要求一致性", "逐条对照写作要求，检查是否遗漏、偏离或自行扩大要求。"),
 ];
 
-/// 构建十维审阅提示词。只读任务、大纲与正文，不写任何文件。
+/// 构建十维审阅提示词。只读任务、大纲与正文；除习惯检查追加 `habits-stats.jsonl`
+/// 的 `violation` 行外，不写任何文件。
 pub fn build_review_prompt(
     root: &Path,
     request: &ReviewRequest,
@@ -337,6 +341,7 @@ pub fn build_review_prompt(
     let outline = writing_outline::read_confirmed_outline(root, &writing_id)?.outline;
     let instruction = normalize_instruction(&request.instruction)?;
     let mut numbered = String::new();
+    let mut confirmed_body = String::new();
     let mut confirmed_sections = 0usize;
     for section in &outline.sections {
         let state = writing_section::read_section_state(root, &writing_id, section.no)?;
@@ -350,6 +355,10 @@ pub fn build_review_prompt(
         match state.content.as_deref() {
             Some(content) => {
                 confirmed_sections += 1;
+                if !confirmed_body.is_empty() {
+                    confirmed_body.push_str("\n\n");
+                }
+                confirmed_body.push_str(content);
                 for (index, paragraph) in section_paragraphs(content).iter().enumerate() {
                     let _ = writeln!(numbered, "{}. {}", index + 1, paragraph);
                 }
@@ -370,6 +379,11 @@ pub fn build_review_prompt(
         !instruction.is_empty(),
         &instruction,
     );
+    let habits = habit_checks::store_for_work_root(root)
+        .map(|store| {
+            habit_checks::check_habits(Some("material_writing"), &confirmed_body, &store)
+        })
+        .unwrap_or_default();
     Ok(WritingReviewPrompt {
         prompt,
         writing_id: task.writing_id,
@@ -380,6 +394,7 @@ pub fn build_review_prompt(
         masked: false,
         masked_id_card: 0,
         masked_phone: 0,
+        habits,
     })
 }
 
@@ -566,6 +581,7 @@ pub fn apply_finding(
             writing_id: writing_id.clone(),
             draft: request.draft.clone(),
             note: request.note.clone(),
+            ai_draft_text: None,
         },
         now,
     )?;
@@ -949,6 +965,7 @@ mod tests {
                 writing_id: task.writing_id.clone(),
                 draft,
                 note: Some("虚构章节确认".to_string()),
+                ai_draft_text: None,
             },
             at,
         )
@@ -1031,6 +1048,61 @@ mod tests {
         assert_eq!(prompt.confirmed_section_count, 1);
         assert_eq!(prompt.dimension_count, 10);
         assert!(!prompt.masked);
+    }
+
+    #[test]
+    fn review_prompt_runs_habit_checks_without_blocking() {
+        use crate::habit_cards::HabitStore;
+
+        let (fixture, task, _outline) = ready_fixture("habits");
+        confirm(
+            &fixture,
+            &task,
+            draft(1, "本期完成三处试点。\n\n正文包含合成禁用短语。"),
+            NOW + 4.0,
+        );
+        let card_dir = fixture.work().join("habits").join("active");
+        fs::create_dir_all(&card_dir).unwrap();
+        fs::write(
+            card_dir.join("hb.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "omnidesk.habit-card.v1",
+                "id": "hb",
+                "kind": "preference",
+                "scope": {"type": "global"},
+                "text": "合成习惯",
+                "check": {
+                    "type": "banned_phrases",
+                    "phrases": ["合成禁用短语"]
+                },
+                "evidence": {
+                    "thread_id": "thread-1",
+                    "message_id": "msg-1",
+                    "date": "2026-11-20"
+                },
+                "origin": "explicit",
+                "status": "active",
+                "created_at": "2026-11-20T04:00:00Z",
+                "last_seen_at": "2026-11-20T04:00:00Z"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let prompt = build_review_prompt(
+            fixture.work(),
+            &ReviewRequest {
+                writing_id: task.writing_id.clone(),
+                instruction: String::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(prompt.habits.checked_cards, vec!["hb".to_string()]);
+        assert_eq!(prompt.habits.violations.len(), 1);
+        let stats = HabitStore::for_root(fixture.work().join("habits")).read_stats();
+        assert!(stats
+            .items
+            .iter()
+            .any(|row| row.kind == "violation" && row.id.as_deref() == Some("hb")));
     }
 
     #[test]

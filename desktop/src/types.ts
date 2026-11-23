@@ -4299,3 +4299,43 @@ export interface RssFetchReport {
   skipped: number;
   errors: RssFetchFailure[];
 }
+
+export type HabitScope = { type: "global" } | { type: "scene"; scene: string };
+export type HabitCheck =
+  | { type: "banned_phrases"; phrases: string[] }
+  | { type: "paragraph_max_chars"; limit: number }
+  | { type: "required_phrases"; phrases: string[] };
+
+export interface HabitEvidence { thread_id: string; message_id: string; date: string; }
+
+export interface HabitCard {
+  schema: string; id: string; kind: string; scope: HabitScope; text: string;
+  check?: HabitCheck | null; evidence: HabitEvidence; origin: string; status: string;
+  created_at: string; confirmed_at?: string | null; last_seen_at: string; expect?: string | null;
+}
+
+export interface OpenQuestion {
+  schema: string; id: string; text: string; thread_id: string; message_id: string;
+  first_seen: string; last_seen: string; status: string; reminded?: number;
+}
+
+export interface PendingReviewItem {
+  schema: string; id: string; text: string; thread_id: string; message_id?: string;
+  reason_code?: string | null; status: string; created_at: string; decided_at?: string | null;
+}
+
+export interface HabitIssue { file: string; reason: string; }
+
+export interface HabitListing<T> { items: T[]; broken: number; issues: HabitIssue[]; }
+
+export interface HabitCandidateDecision {
+  id: string; action: "accept" | "reject"; scope?: HabitScope | null; reason_code?: string | null;
+}
+
+export interface HabitCandidateOutcome {
+  id: string; outcome: string; card?: HabitCard | null; rejection_count?: number | null;
+}
+
+export interface HabitCandidateDecisionResult {
+  items: HabitCandidateOutcome[]; broken: number; issues: HabitIssue[];
+}

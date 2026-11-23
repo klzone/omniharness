@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pendingWrites, scheduler, shell } from "../api";
+import { habits, pendingWrites, scheduler, shell } from "../api";
 import type { PendingWriteView, WorkTask } from "../types";
 import { Icon, type IconName } from "../components/Icon";
+import {
+  HABITS_CHANGED_EVENT,
+  habitBellNotice,
+  openHabitWorkspace,
+  systemUtcOffsetMinutes,
+} from "../habitNotice";
 import type { Scene } from "./Dock";
 
-type NoticeKind = "confirm" | "task" | "review";
+type NoticeKind = "confirm" | "task" | "review" | "habits";
 
 interface NoticeItem {
   id: string;
@@ -135,6 +141,31 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (scene: Scene) 
     } catch {
       // 调度未启用或读取失败时不制造额外通知。
     }
+    try {
+      const [candidateList, questionList] = await Promise.all([
+        habits.candidates(),
+        habits.openQuestions(),
+      ]);
+      const notice = habitBellNotice(candidateList.items, questionList.items, today, systemUtcOffsetMinutes());
+      const overdue = (notice?.overdueQuestions ?? 0) > 0;
+      if (notice) {
+        next.push({
+          id: "habits",
+          kind: "habits",
+          title: notice.count_items,
+          detail: overdue
+            ? `${notice.overdueQuestions} 个问题已搁置 7 天以上`
+            : "查看候选与未决问题",
+          scene: "report",
+          tone: overdue ? "error" : "normal",
+        });
+      }
+      if (candidateList.broken + questionList.broken > 0) {
+        problems.push(`${candidateList.broken + questionList.broken} 个习惯文件无法读取`);
+      }
+    } catch (e) {
+      problems.push("习惯候选：" + String(e));
+    }
     if (!aliveRef.current) return;
     setItems(next);
     setError(problems.length > 0 ? problems.join("；") : null);
@@ -147,10 +178,12 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (scene: Scene) 
     const timer = window.setInterval(() => void refresh(), REFRESH_MS);
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
+    window.addEventListener(HABITS_CHANGED_EVENT, onFocus);
     return () => {
       aliveRef.current = false;
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(HABITS_CHANGED_EVENT, onFocus);
     };
   }, [refresh]);
 
@@ -217,7 +250,8 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (scene: Scene) 
                   key={item.id}
                   onClick={() => {
                     setOpen(false);
-                    onNavigate(item.scene);
+                    if (item.kind === "habits") openHabitWorkspace();
+                    else onNavigate(item.scene);
                   }}
                   className="flex w-full items-start gap-2 rounded-xl px-2 py-2 text-left hover:bg-surface-container-low"
                   data-testid="topnav-notification-item"
@@ -229,7 +263,9 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (scene: Scene) 
                         ? "checklist"
                         : item.kind === "review"
                           ? "trend-up"
-                          : "clock"
+                          : item.kind === "habits"
+                            ? "spark"
+                            : "clock"
                     ) as IconName}
                     className={
                       "mt-0.5 h-3.5 w-3.5 shrink-0 " +

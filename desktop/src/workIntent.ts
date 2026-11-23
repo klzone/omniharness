@@ -101,6 +101,24 @@ export const PERIOD_REVIEW_TABLE: readonly PeriodReviewKeyword[] = [
 /** 词表字符串视图（既有引用与「关键词命中即复盘」判定沿用）。 */
 export const PERIOD_REVIEW_KEYWORDS: readonly string[] = PERIOD_REVIEW_TABLE.map((entry) => entry.keyword);
 
+/**
+ * 在词表里取最长命中的词条。
+ *
+ * 长词更具体：「上月复盘」比「月复盘」多带偏移，插入短词时不能反过来把长词遮住。
+ */
+export function matchPeriodReviewEntry(
+  text: string,
+  table: readonly PeriodReviewKeyword[] = PERIOD_REVIEW_TABLE,
+): PeriodReviewKeyword | null {
+  let best: PeriodReviewKeyword | null = null;
+  for (const entry of table) {
+    const keyword = normalizeIntentText(entry.keyword);
+    if (!text.includes(keyword)) continue;
+    if (!best || keyword.length > normalizeIntentText(best.keyword).length) best = entry;
+  }
+  return best;
+}
+
 export type PeriodReviewPeriod = "weekly" | "monthly" | "quarterly" | "annual";
 
 export interface PeriodReviewTarget {
@@ -158,18 +176,19 @@ export function detectPeriodReviewTarget(
   input: string,
   now: Date = new Date(),
   offsetMinutes?: number,
+  table: readonly PeriodReviewKeyword[] = PERIOD_REVIEW_TABLE,
 ): PeriodReviewTarget | null {
   const text = normalizeIntentText((input || "").trim());
   if (!text) return null;
   // OD-ARCH-182 修复：词表只收固定搭配，「复盘一下上周的工作」这类说法会漏配。
   // 只要出现总结动词 + 明确的相对周期词，也按复盘处理；范围仍由宿主演算。
-  const keywordHit = PERIOD_REVIEW_KEYWORDS.some((k) => text.includes(normalizeIntentText(k)));
+  // T13：周期只看结构化命中的词条，不再依赖数组下标。
+  const matched = matchPeriodReviewEntry(text, table);
+  const keywordHit = matched !== null;
   const summaryHit = ["复盘", "总结", "回顾", "梳理", "汇总", "小结"].some((w) =>
     text.includes(w),
   );
   if (!keywordHit && !summaryHit) return null;
-  // T13：周期只看结构化命中的词条，不再依赖数组下标。
-  const matched = PERIOD_REVIEW_TABLE.find((entry) => text.includes(normalizeIntentText(entry.keyword)));
 
   const cal = calendarOf(now, offsetMinutes);
   const month = new Date(cal.todayDay * DAY_MS).getUTCMonth() + 1;
@@ -178,7 +197,9 @@ export function detectPeriodReviewTarget(
     ? 2
     : /上周|上一周|前一周/.test(text)
       ? 1
-      : 0;
+      : matched?.period === "weekly"
+        ? matched.offset ?? 0
+        : 0;
   const weeklyHit =
     matched?.period === "weekly" ||
     (summaryHit && /周/.test(text));

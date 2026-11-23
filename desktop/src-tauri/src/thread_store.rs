@@ -67,6 +67,24 @@ pub struct ThreadSaveReceipt {
     pub bytes: u64,
 }
 
+/// 线程元数据：供批量挑选时使用，不携带消息正文。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadMetadata {
+    pub id: String,
+    pub tag: String,
+    pub title: String,
+    pub updated_at: f64,
+    pub message_count: usize,
+}
+
+/// 元数据列表；损坏文件与 `load()` 一样逐条报告。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadMetadataListing {
+    pub items: Vec<ThreadMetadata>,
+    pub skipped: usize,
+    pub issues: Vec<ThreadIssue>,
+}
+
 pub struct ThreadStore {
     root: PathBuf,
 }
@@ -342,6 +360,133 @@ impl ThreadStore {
             }
         }
     }
+
+    /// 轻量读取：复用 `load()` 的目录遍历与单文件结构校验，但只保留元数据。
+    ///
+    /// 消息正文在读到时即丢弃，避免全量线程正文同时留在内存里。
+    pub fn list_metadata(&self) -> Result<ThreadMetadataListing, String> {
+        self.assert_allowed()?;
+        let mut items = Vec::new();
+        let mut skipped = 0usize;
+        let mut issues: Vec<ThreadIssue> = Vec::new();
+        if !self.root.exists() {
+            return Ok(ThreadMetadataListing {
+                items,
+                skipped,
+                issues,
+            });
+        }
+        let dirs = std::fs::read_dir(&self.root)
+            .map_err(|e| format!("读取线程目录失败（{}）：{}", self.root.display(), e))?;
+        for dir_item in dirs {
+            let dir_item = match dir_item {
+                Ok(item) => item,
+                Err(_) => {
+                    skipped += 1;
+                    continue;
+                }
+            };
+            let meta = match std::fs::symlink_metadata(dir_item.path()) {
+                Ok(m) => m,
+                Err(_) => {
+                    skipped += 1;
+                    continue;
+                }
+            };
+            if !meta.file_type().is_dir()
+                || !project_dir_name_allowed(&dir_item.file_name().to_string_lossy())
+            {
+                skipped += 1;
+                continue;
+            }
+            let files = match std::fs::read_dir(dir_item.path()) {
+                Ok(f) => f,
+                Err(_) => {
+                    skipped += 1;
+                    continue;
+                }
+            };
+            for file_item in files {
+                let file_name = file_item
+                    .as_ref()
+                    .map(|i| i.file_name().to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "<不可读目录项>".to_string());
+                match self.read_one(&file_item) {
+                    Ok(value) => {
+                        if let Some(metadata) = metadata_from_thread(&value) {
+                            items.push(metadata);
+                        } else {
+                            skipped += 1;
+                            issues.push(ThreadIssue {
+                                file: file_name,
+                                reason: "线程元数据不完整".to_string(),
+                            });
+                        }
+                    }
+                    Err(ReadFailure::Ignored) => skipped += 1,
+                    Err(ReadFailure::Broken(reason)) => {
+                        skipped += 1;
+                        issues.push(ThreadIssue {
+                            file: file_name,
+                            reason,
+                        });
+                    }
+                }
+            }
+        }
+        items.sort_by(|a, b| {
+            b.updated_at
+                .partial_cmp(&a.updated_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(ThreadMetadataListing {
+            items,
+            skipped,
+            issues,
+        })
+    }
+
+    /// 按线程 id 读取正文；只认本存储目录内的普通 JSON 文件。
+    ///
+    /// 返回 `None` 表示文件已不存在，调用方按跳过处理。
+    pub fn read_thread(&self, id: &str) -> Result<Option<serde_json::Value>, String> {
+        if !thread_id_allowed(id) {
+            return Err(format!("线程 id 不合规，拒绝读取：{id}"));
+        }
+        self.assert_allowed()?;
+        for dir in self.project_dirs()? {
+            let path = dir.join(format!("{id}.json"));
+            let meta = match std::fs::symlink_metadata(&path) {
+                Ok(m) if m.file_type().is_file() => m,
+                _ => continue,
+            };
+            if meta.len() > THREAD_MAX_BYTES {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("读取线程失败（{}）：{}", path.display(), e))?;
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| format!("线程 JSON 解析失败（{}）：{}", path.display(), e))?;
+            let value = migrate_thread_record(value)
+                .map_err(|e| format!("线程记录无法迁移（{}）：{}", path.display(), e))?;
+            if !thread_value_allowed(&value, id) {
+                return Err(format!("线程结构不合规（{}）", path.display()));
+            }
+            return Ok(Some(value));
+        }
+        Ok(None)
+    }
+}
+
+fn metadata_from_thread(value: &serde_json::Value) -> Option<ThreadMetadata> {
+    Some(ThreadMetadata {
+        id: value.get("id")?.as_str()?.to_string(),
+        tag: value.get("tag")?.as_str()?.to_string(),
+        title: value.get("title")?.as_str()?.to_string(),
+        updated_at: value.get("updatedAt")?.as_f64()?,
+        message_count: value.get("messages")?.as_array()?.len(),
+    })
 }
 
 /// 线程 id：字母数字、减号、下划线，不以点开头，长度受限。

@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::material_store;
+use crate::habit_checks::{self, HabitCheckReport};
 use crate::task_store::{self, Task, TaskFilter};
 use crate::worklog_records::{self, RecordFilter, WorkRecord};
 use crate::writing_store;
@@ -129,6 +130,8 @@ pub struct PeriodReviewReceipt {
     pub backup: Option<String>,
     pub records: usize,
     pub tasks: usize,
+    /// OD-GROW-301 H3：习惯检查结果；只记统计，不阻止确认。
+    pub habits: HabitCheckReport,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -799,6 +802,7 @@ pub fn write_review(
         backup: backup.map(|path| path.display().to_string()),
         records: bundle.records.len(),
         tasks: bundle.tasks.len(),
+        habits: HabitCheckReport::empty(),
     })
 }
 
@@ -1180,6 +1184,7 @@ pub fn confirm_review(
                 backup: None,
                 records: 0,
                 tasks: 0,
+                habits: HabitCheckReport::empty(),
             });
         }
         Some(STATUS_DRAFT) => {}
@@ -1197,6 +1202,9 @@ pub fn confirm_review(
     let rendered = render_review(&front, &body);
     let backup = backup_existing(&path, now)?;
     worklog_records::write_replace_atomically(&path, rendered.as_bytes())?;
+    let habits = habit_checks::store_for_work_root(root)
+        .map(|store| habit_checks::check_habits(Some("report"), &body, &store))
+        .unwrap_or_default();
     Ok(PeriodReviewReceipt {
         ok: true,
         path: path.display().to_string(),
@@ -1210,6 +1218,7 @@ pub fn confirm_review(
         backup: backup.map(|path| path.display().to_string()),
         records: 0,
         tasks: 0,
+        habits,
     })
 }
 
@@ -1607,6 +1616,74 @@ mod tests {
         )
         .unwrap();
         assert_eq!(second.confirmed_at, first.confirmed_at, "重复确认不得改时间");
+    }
+
+    #[test]
+    fn confirm_runs_habit_checks_without_blocking() {
+        use crate::habit_cards::HabitStore;
+
+        let temp = TempRoot::new("confirm-habits");
+        let now = noon("2026-11-11");
+        let a = record(temp.root(), "2026-11-10", "甲", "本周材料", false, now);
+        let t = task(temp.root(), "在办", None, now);
+        let text = format!(
+            "{}\n\n正文包含合成禁用短语。",
+            text_for_period(PERIOD_WEEKLY, &a.id, &t.id)
+        );
+        write_review(
+            temp.root(),
+            PERIOD_WEEKLY,
+            "2026-11-09",
+            "2026-11-15",
+            &text,
+            now,
+        )
+        .unwrap();
+        let card_dir = temp.root().join("habits").join("active");
+        fs::create_dir_all(&card_dir).unwrap();
+        fs::write(
+            card_dir.join("hb.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": "omnidesk.habit-card.v1",
+                "id": "hb",
+                "kind": "preference",
+                "scope": {"type": "global"},
+                "text": "合成习惯",
+                "check": {
+                    "type": "banned_phrases",
+                    "phrases": ["合成禁用短语"]
+                },
+                "evidence": {
+                    "thread_id": "thread-1",
+                    "message_id": "msg-1",
+                    "date": "2026-11-20"
+                },
+                "origin": "explicit",
+                "status": "active",
+                "created_at": "2026-11-20T04:00:00Z",
+                "last_seen_at": "2026-11-20T04:00:00Z"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let confirmed = confirm_review(
+            temp.root(),
+            PERIOD_WEEKLY,
+            "2026-11-09",
+            "2026-11-15",
+            now + 30.0,
+        )
+        .unwrap();
+        assert_eq!(confirmed.status, STATUS_CONFIRMED);
+        assert_eq!(confirmed.habits.checked_cards, vec!["hb".to_string()]);
+        assert_eq!(confirmed.habits.violations.len(), 1);
+        assert_eq!(confirmed.habits.violations[0].card_id, "hb");
+        let stats = HabitStore::for_root(temp.root().join("habits")).read_stats();
+        assert!(stats
+            .items
+            .iter()
+            .any(|row| row.kind == "violation" && row.id.as_deref() == Some("hb")));
     }
 
     #[test]

@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { MarkdownText } from "./MarkdownText";
 import { stripRecordRefs } from "../displayText";
+import { nextReviewStep, reviewRetryPrompt } from "../reviewRetry";
 import type { Scene } from "./Dock";
 
 type Notice = { kind: "ok" | "err"; text: string };
@@ -296,7 +297,7 @@ export function ReviewArchive({
         skills: null,
         skillsByFlow: skills.length > 0 ? { periodReview: skills } : null,
       };
-      const promptText = composeConversationPrompt({
+      const basePromptText = composeConversationPrompt({
         preset,
         turns: [],
         current:
@@ -319,46 +320,74 @@ export function ReviewArchive({
       if (!workspace.ok || !workspace.workspace_dir) {
         throw new Error(workspace.error || "宿主未返回可用工作目录。");
       }
-      setNotice({ kind: "ok", text: "已提交生成任务，等待模型…" });
-      const receipt = await host.submitTask({
-        promptText,
-        intent: "weekly_report",
-        workspaceDir: workspace.workspace_dir,
-        userInputText:
-          "重新生成复盘 " + bundle.start + " 至 " + bundle.end,
-      });
-      const taskId = receipt.omni_task_id;
-      let status = await host.taskStatus(taskId);
-      for (let i = 0; i < 900 && !TERMINAL_STATES.includes(status.status); i += 1) {
-        await sleep(1000);
-        status = await host.taskStatus(taskId);
-        if (i % 10 === 0) {
-          setRegenStatus("模型正在生成…已等待 " + (i + 1) + " 秒");
+      let attempt = 0;
+      let promptText = basePromptText;
+      while (true) {
+        try {
+          if (nextReviewStep({ attempt, phase: "idle" }) !== "submit") {
+            throw new Error("复盘重试状态异常：无法提交。");
+          }
+          if (attempt === 0) {
+            setNotice({ kind: "ok", text: "已提交生成任务，等待模型…" });
+          }
+          const receipt = await host.submitTask({
+            promptText,
+            intent: "weekly_report",
+            workspaceDir: workspace.workspace_dir,
+            userInputText:
+              "重新生成复盘 " + bundle.start + " 至 " + bundle.end,
+          });
+          const taskId = receipt.omni_task_id;
+          let status = await host.taskStatus(taskId);
+          for (let i = 0; i < 900 && !TERMINAL_STATES.includes(status.status); i += 1) {
+            await sleep(1000);
+            status = await host.taskStatus(taskId);
+            if (i % 10 === 0) {
+              setRegenStatus("模型正在生成…已等待 " + (i + 1) + " 秒");
+            }
+          }
+          if (status.status !== "succeeded") {
+            const cancelNote =
+              status.cancel_phase !== "not_requested" ? " · 取消阶段：" + status.cancel_phase : "";
+            throw new Error(
+              "生成未完成：" +
+                status.status +
+                cancelNote +
+                (status.note ? " · " + status.note : ""),
+            );
+          }
+          const result = await host.taskResult(taskId);
+          if (!result.content.trim()) {
+            throw new Error("模型没有返回复盘正文，本次未写入。");
+          }
+          if (nextReviewStep({ attempt, phase: "succeeded" }) !== "ingest") {
+            throw new Error("复盘重试状态异常：无法写入草稿。");
+          }
+          const saved = await shell.worklogPeriodReviewGenerate(
+            bundle.period,
+            bundle.start,
+            bundle.end,
+            result.content,
+          );
+          setNotice({
+            kind: "ok",
+            text:
+              "已写入复盘草稿" +
+              (saved.backup ? "，旧草稿已备份为 .bak" : "") +
+              "。",
+          });
+          setReloadTick((value) => value + 1);
+          break;
+        } catch (e) {
+          const failReason = errText(e);
+          const step = nextReviewStep({ attempt, phase: "failed", failReason });
+          if (step !== "retry") throw e;
+          attempt = 1;
+          promptText = reviewRetryPrompt(basePromptText, failReason);
+          setNotice({ kind: "ok", text: "第一次生成未成功，正在重试…" });
+          setRegenStatus(null);
         }
       }
-      if (status.status !== "succeeded") {
-        throw new Error(
-          "生成未完成：" + status.status + (status.note ? " · " + status.note : ""),
-        );
-      }
-      const result = await host.taskResult(taskId);
-      if (!result.content.trim()) {
-        throw new Error("模型没有返回复盘正文，本次未写入。");
-      }
-      const saved = await shell.worklogPeriodReviewGenerate(
-        bundle.period,
-        bundle.start,
-        bundle.end,
-        result.content,
-      );
-      setNotice({
-        kind: "ok",
-        text:
-          "已写入复盘草稿" +
-          (saved.backup ? "，旧草稿已备份为 .bak" : "") +
-          "。",
-      });
-      setReloadTick((value) => value + 1);
     } catch (e) {
       setNotice({ kind: "err", text: errText(e) });
     } finally {

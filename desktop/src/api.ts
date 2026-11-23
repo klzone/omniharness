@@ -10,6 +10,7 @@ import {
   gatedReasoningEffort,
   type WorkIntentEffortEvidence,
 } from "./modelEffortEvidence";
+import { consolidationLocalDate } from "./consolidationFlow";
 import type {
   AdmissionStatusResponse,
   AnalysisRunResponse,
@@ -252,6 +253,7 @@ import type {
   RssPresetSource,
   RssSubscription,
 } from "./types";
+import type { HabitCard, HabitCandidateDecision, HabitCandidateDecisionResult, HabitListing, OpenQuestion, PendingReviewItem } from "./types";
 
 function normalizeError(error: unknown): string {
   if (typeof error === "string") return error;
@@ -3412,6 +3414,190 @@ export const scheduler = {
       throw new Error(normalizeError(e));
     });
   },
+};
+
+/** 每日整理配置（OD-GROW-301 G2）。`reasoning_effort` 为可选，宿主当前未持久化该字段。 */
+export interface ConsolidationConfig {
+  schema: string;
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  provider: string | null;
+  model: string | null;
+  sources: string[];
+  min_user_messages: number;
+  min_chars: number;
+  max_threads: number;
+  max_digest_chars: number;
+  utc_offset_minutes: number;
+  reasoning_effort?: string | null;
+}
+
+/** 宿主整理统计；字段名与 consolidation.rs 的 DigestStats 一致。 */
+export interface ConsolidationDigestStats {
+  thread_count: number;
+  message_count: number;
+  char_count: number;
+  skipped_threads: number;
+  redline_masked: number;
+  redline_pending: number;
+  truncated: number;
+  truncated_messages: number;
+  truncated_project_changes: number;
+  project_changes: number;
+}
+
+export interface ConsolidationTick {
+  now: number;
+  due: boolean;
+}
+
+export interface ConsolidationCollectResult {
+  /** 摘要所属本地日期；与 habits/state/digest-<date>.json 同名。 */
+  date: string;
+  digest_text: string;
+  stats: ConsolidationDigestStats;
+  /** host = 宿主直接返回；digest_file = 从当日摘要文件读取。 */
+  source: "host" | "digest_file";
+}
+
+type ConsolidationCollectHostResponse = ConsolidationDigestStats & {
+  digest_text?: unknown;
+  date?: unknown;
+  stats?: ConsolidationDigestStats;
+};
+
+function digestStatsOf(value: ConsolidationCollectHostResponse): ConsolidationDigestStats | null {
+  const candidate = value.stats ?? value;
+  if (!candidate || typeof candidate !== "object") return null;
+  return typeof candidate.thread_count === "number" && typeof candidate.message_count === "number"
+    ? (candidate as ConsolidationDigestStats)
+    : null;
+}
+
+/**
+ * 读取当日整理摘要正文。
+ *
+ * 宿主当前 consolidation_collect 只返回 DigestStats，正文已由 apply_digest 写入
+ * <应用数据根>/habits/state/digest-<date>.json。这里用既有的只读附件命令取回
+ * OmniDesk 自己的摘要文件，不改宿主命令；将来宿主若直接返回 digest_text，则不再读盘。
+ */
+async function readConsolidationDigestText(date: string): Promise<string> {
+  if (!date) throw new Error("无法确定整理摘要的本地日期。");
+  const info = await invoke<LocalRootInfo>("task_local_root_info").catch((e) => {
+    throw new Error("读取应用数据根失败：" + normalizeError(e));
+  });
+  if (!info.app_data_root) throw new Error("宿主没有返回应用数据根，无法读取整理摘要。");
+  const path =
+    info.app_data_root.replace(/\/+$/, "") + `/habits/state/digest-${date}.json`;
+  const read = await invoke<MaterialRead>("task_read_attachment", { path }).catch((e) => {
+    throw new Error(
+      "宿主 consolidation_collect 未返回 digest_text，读取当日摘要文件失败：" +
+        normalizeError(e),
+    );
+  });
+  if (read.content_kind !== "text") {
+    throw new Error("当日整理摘要不是可读文本，无法作为整理提示词。");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.content);
+  } catch {
+    throw new Error("当日整理摘要不是合法 JSON。");
+  }
+  const record = parsed as { schema?: unknown; digest_text?: unknown };
+  if (record?.schema !== "omnidesk.digest.v1") {
+    throw new Error("当日整理摘要 schema 不是 omnidesk.digest.v1。");
+  }
+  if (typeof record.digest_text !== "string") {
+    throw new Error("当日整理摘要缺少 digest_text。");
+  }
+  return record.digest_text;
+}
+
+/** 每日整理命令封装（OD-GROW-301 G4）。 */
+export const consolidation = {
+  getConfig(): Promise<ConsolidationConfig> {
+    return invoke<{ config: ConsolidationConfig }>("consolidation_config_get")
+      .then((value) => value.config)
+      .catch((e) => {
+        throw new Error(normalizeError(e));
+      });
+  },
+
+  setConfig(config: ConsolidationConfig): Promise<ConsolidationConfig> {
+    return invoke<{ config: ConsolidationConfig }>("consolidation_config_set", { config })
+      .then((value) => value.config)
+      .catch((e) => {
+        throw new Error(normalizeError(e));
+      });
+  },
+
+  tick(): Promise<ConsolidationTick> {
+    return invoke<ConsolidationTick>("consolidation_tick").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  preview(): Promise<ConsolidationDigestStats> {
+    return invoke<ConsolidationDigestStats>("consolidation_preview").catch((e) => {
+      throw new Error(normalizeError(e));
+    });
+  },
+
+  /**
+   * 收集并落盘当日摘要。宿主当前返回统计；正文从当日摘要文件补读。
+   * `nowSeconds` 用整理 tick 给出的宿主时间，避免跨午夜时日期不一致。
+   */
+  async collect(
+    nowSeconds: number = Date.now() / 1000,
+    config?: ConsolidationConfig,
+  ): Promise<ConsolidationCollectResult> {
+    const value = await invoke<ConsolidationCollectHostResponse>("consolidation_collect").catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+    const stats = digestStatsOf(value);
+    if (!stats) throw new Error("宿主 consolidation_collect 没有返回可识别的整理统计。");
+
+    if (typeof value.digest_text === "string") {
+      const date =
+        typeof value.date === "string" && value.date
+          ? value.date
+          : consolidationLocalDate(nowSeconds, 480);
+      return { date, digest_text: value.digest_text, stats, source: "host" };
+    }
+
+    const saved = config ?? (await consolidation.getConfig());
+    const date = consolidationLocalDate(nowSeconds, saved.utc_offset_minutes);
+    const digestText = await readConsolidationDigestText(date);
+    return { date, digest_text: digestText, stats, source: "digest_file" };
+  },
+};
+
+/** 习惯整理命令封装（OD-GROW-301 G5）。 */
+function habitInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return invoke<T>(command, args).catch((e) => {
+    throw new Error(normalizeError(e));
+  });
+}
+export const habits = {
+  candidates: () =>
+    habitInvoke<HabitListing<HabitCard>>("habit_candidate_list"),
+  decide: (decisions: HabitCandidateDecision[]) =>
+    habitInvoke<HabitCandidateDecisionResult>("habit_candidate_decide", { decisions }),
+  active: () => habitInvoke<HabitListing<HabitCard>>("habit_active_list"),
+  updateCard: (id: string, action: "disable" | "archive" | "reuse") =>
+    habitInvoke<HabitListing<HabitCard>>("habit_card_update", { id, action }),
+  openQuestions: () =>
+    habitInvoke<HabitListing<OpenQuestion>>("habit_open_question_list"),
+  setOpenQuestionStatus: (id: string, status: "closed" | "dropped") =>
+    habitInvoke<HabitListing<OpenQuestion>>("habit_open_question_set_status", { id, status }),
+  pendingReviews: () =>
+    habitInvoke<HabitListing<PendingReviewItem>>("habit_pending_review_list"),
+  decidePendingReview: (id: string, action: "approve" | "exclude") =>
+    habitInvoke<HabitListing<PendingReviewItem>>("habit_pending_review_decide", { id, action }),
 };
 
 /** 订阅宿主转发上来的任务事件流。 */

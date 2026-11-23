@@ -94,3 +94,70 @@ test("normalizeIntentText 全角与空白归一", () => {
   assert.equal(normalizeIntentText("  周　报  "), "周报");
   assert.equal(normalizeIntentText("ＡＢＣ"), "abc");
 });
+
+test("结构化词表：每个词条的起止与标签（表驱动）", () => {
+  const expected = {
+    weekly: [
+      { offset: 0, start: "2026-11-16", end: "2026-11-22", label: "本周" },
+      { offset: 1, start: "2026-11-09", end: "2026-11-15", label: "上周" },
+    ],
+    monthly: [
+      { offset: 0, start: "2026-11-01", end: "2026-11-30", label: "本月" },
+      { offset: 1, start: "2026-10-01", end: "2026-10-31", label: "上月" },
+    ],
+    quarterly: [
+      { offset: 0, start: "2026-10-01", end: "2026-12-31", label: "2026 Q4" },
+    ],
+    annual: [
+      { offset: 0, start: "2026-01-01", end: "2026-12-31", label: "2026 年" },
+    ],
+  };
+  for (const entry of PERIOD_REVIEW_TABLE) {
+    const offset = entry.offset ?? 0;
+    const want = expected[entry.period].find((item) => item.offset === offset);
+    assert.ok(want, entry.keyword + " 的周期与偏移缺少预期");
+    assert.deepEqual(
+      detectPeriodReviewTarget(entry.keyword, NOW),
+      { period: entry.period, start: want.start, end: want.end, label: want.label },
+      entry.keyword,
+    );
+  }
+});
+
+test("词表插入短词不会遮住既有长词（最长匹配）", () => {
+  const withShortWord = [{ keyword: "月复盘", period: "monthly" }, ...PERIOD_REVIEW_TABLE];
+  const lastMonth = detectPeriodReviewTarget("上月复盘", NOW, undefined, withShortWord);
+  assert.deepEqual(lastMonth, {
+    period: "monthly",
+    start: "2026-10-01",
+    end: "2026-10-31",
+    label: "上月",
+  });
+  assert.equal(detectPeriodReviewTarget("本月复盘", NOW, undefined, withShortWord)?.label, "本月");
+  assert.equal(detectPeriodReviewTarget("月度复盘", NOW, undefined, withShortWord)?.label, "本月");
+  assert.equal(detectPeriodReviewTarget("季度复盘", NOW, undefined, withShortWord)?.period, "quarterly");
+});
+
+test("上月复盘跨年边界：年末与年初取完整自然月", () => {
+  const december = detectPeriodReviewTarget("上月复盘", new Date("2026-12-20T04:00:00Z"));
+  assert.deepEqual(december, {
+    period: "monthly",
+    start: "2026-11-01",
+    end: "2026-11-30",
+    label: "上月",
+  });
+  const january = detectPeriodReviewTarget("复盘上月", new Date("2027-01-03T04:00:00Z"));
+  assert.deepEqual(january, {
+    period: "monthly",
+    start: "2026-12-01",
+    end: "2026-12-31",
+    label: "上月",
+  });
+  const current = detectPeriodReviewTarget("本月复盘", new Date("2027-01-03T04:00:00Z"));
+  assert.deepEqual(current, {
+    period: "monthly",
+    start: "2027-01-01",
+    end: "2027-01-31",
+    label: "本月",
+  });
+});

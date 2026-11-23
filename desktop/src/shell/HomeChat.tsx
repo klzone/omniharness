@@ -10,6 +10,7 @@ import {
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   host,
+  habits,
   invalidateEngineFactsCache,
   onTaskEvent,
   scheduler,
@@ -26,6 +27,7 @@ import {
   type AttachmentInput,
 } from "../attachmentPrompt";
 import { composeConversationPrompt } from "../conversationPrompt";
+import { injectHabits, recordHabitInjection } from "../habitInjection";
 import {
   buildKnowledgeContext,
   citationsFromHits,
@@ -113,6 +115,18 @@ import {
   resolveModelEffortDeclaration,
 } from "../modelEffortEvidence";
 import type { RecordReview } from "../recordReview";
+
+/** OD-GROW-301 G6：提交前读生效习惯卡并注入提示词；读取失败不阻塞对话。 */
+async function withHabitInjection(promptText: string, scene: string): Promise<string> {
+  try {
+    const applied = injectHabits(promptText, (await habits.active()).items, scene);
+    recordHabitInjection(applied.injected);
+    return applied.prompt;
+  } catch (error) {
+    console.warn("习惯卡读取失败，本轮不注入：", error);
+    return promptText;
+  }
+}
 
 /**
  * 首页 AI 对话（OD-ARCH-026）—— 首页的主要工作入口。
@@ -2454,7 +2468,7 @@ export function HomeChat({
         }
         const session = engineSessionIdRef.current;
         const continuation = Boolean(session);
-        const promptText = composeConversationPrompt({
+        let promptText = composeConversationPrompt({
           preset,
           turns: continuation
             ? []
@@ -2477,6 +2491,7 @@ export function HomeChat({
             : null,
           worklog,
         });
+        promptText = await withHabitInjection(promptText, activeTag);
         const effort = pickRoutedWorkIntentEffort(action);
         const factsNow = factsRef.current;
         setBusy(true);
@@ -3428,7 +3443,7 @@ export function HomeChat({
         // OD-ARCH-034：续接既有引擎会话时，**不再重放上文**——上下文由引擎会话自己持有，
         // 只发本轮输入；否则（新会话／旧线程／续接失败降级）仍按窗口化重放，保证历史不丢。
         const continuation = Boolean(effectiveEngineSessionId) && !replayNextTurn;
-        const promptText = composeConversationPrompt({
+        let promptText = composeConversationPrompt({
           preset,
           turns: messages.map((m) => ({ role: m.role, text: m.text })),
           // 附件正文进这一轮的用户输入：模型看到的正是用户勾选的文件原文。
@@ -3455,6 +3470,7 @@ export function HomeChat({
           knowledgeContext,
           knowledgeSkills,
         });
+        promptText = await withHabitInjection(promptText, activeTag);
         // 红线扫描只针对**用户原文**：场景预设里的写作规则含有「案件/线索/未公开」等词，
         // 若把整条提示词交上去扫描，规则本身会被误判成敏感内容（OD-ARCH-021 的口径：
         // 扫描用户原始输入，而不是拼好之后的完整提示词）。

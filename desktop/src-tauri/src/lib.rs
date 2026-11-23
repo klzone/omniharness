@@ -23,7 +23,12 @@ pub mod job_object;
 pub mod external_open;
 pub mod artifact_open;
 pub mod availability;
+pub mod consolidation;
 pub mod flow_pack;
+pub mod habit_cards;
+pub mod habit_audit;
+pub mod habit_checks;
+pub mod habit_extract;
 pub mod knowledge_governance;
 pub mod knowledge_quality;
 pub mod knowledge_review;
@@ -93,6 +98,8 @@ pub mod document_store;
 pub mod writing_parse;
 pub mod writing_outline;
 pub mod writing_section;
+pub mod knowledge_examples;
+pub mod writing_diff;
 pub mod writing_review;
 pub mod fact_check;
 
@@ -538,6 +545,15 @@ async fn engine_submit_task(
             }));
         }
     }
+    // OD-GROW-301 T1：工作目录缺省时由宿主决定，显式传入时原样下发。
+    // 目录准备先于 with_engine_call 完成，失败时不触达引擎。
+    let workspace_dir = match resolve_submit_workspace_dir(
+        workspace_dir.as_deref(),
+        task_shell::prepare_local_data_root,
+    ) {
+        Ok(dir) => Some(dir),
+        Err(error) => return Err(error),
+    };
     // 2026-10-23：不再向引擎下发任何等待上限。原版 DSH 跑一次联网检索到完成
     // 需要八分钟以上，固定秒数会误杀仍在正常运行、只是没吐字的任务。
     // 现在只有用户点「取消」才终止；进程退出、断流、上游报错仍照常落定。
@@ -4070,9 +4086,22 @@ fn writing_section_generate_impl(
 fn writing_section_confirm_impl(
     root: &std::path::Path,
     policy: &profile_rules::RulePolicy,
-    mut request: writing_section::SectionConfirmRequest,
+    request: writing_section::SectionConfirmRequest,
     now: f64,
 ) -> Result<writing_section::WritingSectionConfirmed, String> {
+    writing_section_confirm_impl_with_stage(root, policy, request, now, |_| Ok(()))
+}
+
+fn writing_section_confirm_impl_with_stage<F>(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_section::SectionConfirmRequest,
+    now: f64,
+    stage_examples: F,
+) -> Result<writing_section::WritingSectionConfirmed, String>
+where
+    F: FnOnce(&writing_section::WritingSectionConfirmed) -> Result<(), String>,
+{
     let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
     request.writing_id = writing_id;
     let mut total = counts;
@@ -4083,9 +4112,17 @@ fn writing_section_confirm_impl(
             add_counts(&mut total, extra);
         }
     }
+    if let Some(text) = request.ai_draft_text.clone() {
+        if !text.trim().is_empty() {
+            let (masked, extra) = gate_user_text(&text, policy, "AI 原稿")?;
+            request.ai_draft_text = Some(masked);
+            add_counts(&mut total, extra);
+        }
+    }
     let draft_counts = gate_section_draft(&mut request.draft, policy)?;
     add_counts(&mut total, draft_counts);
-    let mut confirmed = writing_section::confirm_section(root, &request, now)?;
+    let mut confirmed =
+        writing_section::confirm_section_with_stage(root, &request, now, stage_examples)?;
     confirmed.masked = total.any();
     confirmed.masked_id_card = total.id_card;
     confirmed.masked_phone = total.phone;
@@ -4145,7 +4182,14 @@ fn writing_section_confirm(
 ) -> Result<writing_section::WritingSectionConfirmed, String> {
     let root = work_root(&state)?;
     let policy = current_rule_policy(&state)?;
-    writing_section_confirm_impl(&root, &policy, request, task_shell::now_secs())
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    writing_section_confirm_impl_with_stage(&root, &policy, request, task_shell::now_secs(), |confirmed| {
+        knowledge_examples::stage_confirmed_examples(&paths, &policy, offset, confirmed).map(|_| ())
+    })
 }
 
 /// OD-WT-607：读取当前正文中的指定章节。
@@ -4508,9 +4552,22 @@ fn writing_review_impl(
 fn writing_review_apply_finding_impl(
     root: &std::path::Path,
     policy: &profile_rules::RulePolicy,
-    mut request: writing_review::ReviewApplyRequest,
+    request: writing_review::ReviewApplyRequest,
     now: f64,
 ) -> Result<writing_review::ReviewFindingApplied, String> {
+    writing_review_apply_finding_impl_with_stage(root, policy, request, now, |_, _| Ok(()))
+}
+
+fn writing_review_apply_finding_impl_with_stage<F>(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    mut request: writing_review::ReviewApplyRequest,
+    now: f64,
+    stage_examples: F,
+) -> Result<writing_review::ReviewFindingApplied, String>
+where
+    F: FnOnce(&writing_review::ReviewFindingApplied, &str) -> Result<(), String>,
+{
     let (writing_id, counts) = gate_user_text(&request.writing_id, policy, "写作任务编号")?;
     request.writing_id = writing_id;
     let mut total = counts;
@@ -4541,6 +4598,9 @@ fn writing_review_apply_finding_impl(
     applied.masked = total.any();
     applied.masked_id_card = total.id_card;
     applied.masked_phone = total.phone;
+    if let Err(error) = stage_examples(&applied, &request.draft.content) {
+        eprintln!("写作范例暂存失败（审阅修订已保留）：{error}");
+    }
     Ok(applied)
 }
 
@@ -4593,7 +4653,29 @@ fn writing_review_apply_finding(
 ) -> Result<writing_review::ReviewFindingApplied, String> {
     let root = work_root(&state)?;
     let policy = current_rule_policy(&state)?;
-    writing_review_apply_finding_impl(&root, &policy, request, task_shell::now_secs())
+    let paths = {
+        let host = state.lock().unwrap();
+        host.paths.clone()
+    };
+    let offset = worklog_offset_minutes(&state);
+    writing_review_apply_finding_impl_with_stage(
+        &root,
+        &policy,
+        request,
+        task_shell::now_secs(),
+        |applied, content| {
+            knowledge_examples::stage_text_examples(
+                &paths,
+                &policy,
+                offset,
+                &applied.writing_id,
+                applied.section_no,
+                applied.version,
+                content,
+            )
+            .map(|_| ())
+        },
+    )
 }
 
 /// OD-WT-608：版本列表（含每版说明与段落差异摘要）。
@@ -9029,6 +9111,38 @@ fn prepare_workspace_dir() -> Result<serde_json::Value, serde_json::Value> {
     }
 }
 
+/// 解析引擎提交时使用的工作目录。
+///
+/// 显式传入非空白路径时原样返回，行为与旧调用方一致；缺省或空白时复用
+/// task_shell::prepare_local_data_root()，与 task_prepare_workspace_dir
+/// 使用同一套数据根目录与边界校验。准备失败直接映射为宿主拒绝错误，调用方
+/// 在触达引擎之前返回，因此不会产生引擎侧半途状态。
+fn resolve_submit_workspace_dir<F>(
+    workspace_dir: Option<&str>,
+    prepare: F,
+) -> Result<String, serde_json::Value>
+where
+    F: FnOnce() -> Result<std::path::PathBuf, String>,
+{
+    if let Some(dir) = workspace_dir {
+        if !dir.trim().is_empty() {
+            return Ok(dir.to_string());
+        }
+    }
+    prepare()
+        .map(|root| root.display().to_string())
+        .map_err(|message| {
+            serde_json::json!({
+                "engine_error_code": "workspace_unavailable",
+                "message": format!("准备引擎工作目录失败，已拒绝提交：{message}"),
+                "detail": {
+                    "reason": "workspace_unavailable",
+                    "enforced_by": "host",
+                },
+            })
+        })
+}
+
 /// 运行确定性统计（本地代码，不联网、不调用模型）。
 ///
 /// 返回统计结果与红线扫描命中；两者都**不回显命中原文**。
@@ -10274,6 +10388,19 @@ pub fn run() {
             commands::reading::rss_fetch,
             commands::reading::rss_settings_get,
             commands::reading::rss_settings_set_allow_private_feeds,
+            commands::habits::habit_candidate_list,
+            commands::habits::habit_candidate_decide,
+            commands::habits::habit_active_list,
+            commands::habits::habit_card_update,
+            commands::habits::habit_open_question_list,
+            commands::habits::habit_open_question_set_status,
+            commands::habits::habit_pending_review_list,
+            commands::habits::habit_pending_review_decide,
+            commands::consolidation::consolidation_tick,
+            commands::consolidation::consolidation_preview,
+            commands::consolidation::consolidation_collect,
+            commands::consolidation::consolidation_config_get,
+            commands::consolidation::consolidation_config_set,
             knowledge_sync_to_vault,
             knowledge_staging_list,
             knowledge_staging_sync,
@@ -11732,6 +11859,75 @@ mod engine_lifecycle_wiring_tests {
             "以下命令仍是同步命令，会占用 UI 线程并导致整窗卡死：{:?}。\
              请改为 #[tauri::command(async)]（同步函数体保持不变即可）。",
             blocking
+        );
+    }
+
+    /// OD-GROW-301 T1：工作目录缺省（None / 空字符串）时使用本地数据根。
+    #[test]
+    fn submit_workspace_default_uses_local_data_root() {
+        let root = std::env::temp_dir().join("omnidesk-submit-workspace-root");
+        for given in [None, Some(""), Some("   ")] {
+            let resolved = resolve_submit_workspace_dir(given, || Ok(root.clone()))
+                .expect("缺省工作目录应能准备好");
+            assert_eq!(resolved, root.display().to_string());
+        }
+    }
+
+    /// OD-GROW-301 T1：显式传入的工作目录原样下发，且不触发数据根准备。
+    #[test]
+    fn submit_workspace_explicit_path_is_unchanged() {
+        let explicit = "/tmp/omnidesk-explicit-workspace";
+        let resolved = resolve_submit_workspace_dir(Some(explicit), || {
+            panic!("显式工作目录不应调用数据根准备")
+        })
+        .expect("显式工作目录应直接返回");
+        assert_eq!(resolved, explicit);
+    }
+
+    /// OD-GROW-301 T1：目录准备失败返回宿主错误码，且错误结构可被界面识别。
+    #[test]
+    fn submit_workspace_prepare_failure_is_workspace_unavailable() {
+        let error = resolve_submit_workspace_dir(None, || Err("磁盘不可写".to_string()))
+            .expect_err("目录准备失败必须拒绝提交");
+        assert_eq!(error["engine_error_code"], "workspace_unavailable");
+        assert_eq!(error["detail"]["reason"], "workspace_unavailable");
+        assert_eq!(error["detail"]["enforced_by"], "host");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("磁盘不可写"),
+            "错误信息应保留准备失败原因"
+        );
+    }
+
+    /// OD-GROW-301 T1：提交入口在触达引擎之前解析工作目录。
+    #[test]
+    fn submit_entry_resolves_workspace_before_touching_engine() {
+        let src = include_str!("lib.rs");
+        let body = src.split("\n#[cfg(test)]").next().expect("源码前缀");
+        let start = body
+            .find("fn engine_submit_task")
+            .expect("找不到 engine_submit_task");
+        let rest = &body[start..];
+        let end = rest[1..]
+            .find("\n#[tauri::command")
+            .map(|i| i + 1)
+            .unwrap_or(rest.len());
+        let cmd = &rest[..end];
+        let resolve = cmd
+            .find("resolve_submit_workspace_dir(")
+            .expect("提交入口必须解析工作目录");
+        let engine = cmd
+            .find("with_engine_call(")
+            .expect("提交入口必须经 with_engine_call");
+        assert!(
+            resolve < engine,
+            "工作目录解析必须先于触达引擎，失败时不得启动引擎"
+        );
+        assert!(
+            cmd.contains("task_shell::prepare_local_data_root"),
+            "缺省目录必须复用现有数据根准备逻辑"
         );
     }
 }
@@ -13743,6 +13939,7 @@ mod writing_section_ipc_tests {
                 writing_id: task.writing_id.clone(),
                 draft: draft("虚构机密内容"),
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 4.0,
         )
@@ -13766,6 +13963,7 @@ mod writing_section_ipc_tests {
                 writing_id: task.writing_id.clone(),
                 draft: bad_citation,
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 4.0,
         )
@@ -13781,6 +13979,7 @@ mod writing_section_ipc_tests {
                 writing_id: task.writing_id.clone(),
                 draft: bad_segment,
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 5.0,
         )
@@ -13802,6 +14001,7 @@ mod writing_section_ipc_tests {
                 writing_id: task.writing_id.clone(),
                 draft: draft("虚构正文段落。"),
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 4.0,
         )
@@ -14019,6 +14219,7 @@ mod writing_review_ipc_tests {
                 writing_id: task.writing_id.clone(),
                 draft: draft("虚构正常正文。"),
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 4.0,
         )
@@ -14227,6 +14428,7 @@ mod writing_factcheck_ipc_tests {
                     segments: vec![],
                 },
                 note: None,
+                ai_draft_text: None,
             },
             NOW + 4.0,
         )
@@ -14646,6 +14848,7 @@ mod writing_archive_ipc_tests {
                         segments: vec![],
                     },
                     note: None,
+                    ai_draft_text: None,
                 },
                 NOW + 4.0 + index as f64,
             )

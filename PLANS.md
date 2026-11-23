@@ -1,5 +1,40 @@
 # 当前实施计划
 
+### OD-GROW-301：每日习惯整理与未决问题（成长计划 v2，用户批准执行，2026-11-23）
+
+> 触发：用户批准合并任务书（v2）。执行方式：全部改动派子代理（deepseek-v4.1-flash-eco，思考等级 high），ARCHITECT 负责规划、派工、复核 diff、重跑验收并写 STATUS.md / REVIEW.md。三份 omniharness 原文已确认不存在，相关任务内联如下；R2–R6 不可恢复，从本计划移除。D1 已答复：允许复盘失败后自动重试一轮。红线策略：隐私命中自动脱敏保留原意通过；禁入类别或不确定的进待审定队列，用户逐条批准/排除，不静默丢弃；既有 engine_submit_task 红线拒绝不放松，专用整理提交命令仅携带批准记录时放行。测试基线（0.2.52）：cargo lib 1292 passed / 1 ignored；npm test 97 passed。
+
+**顺序与依赖：** T1 → G0（停下等用户确认）→ H1/G1 → H2/G2 → G3/H3/H5 → G4/G5 → G6/G10/H6+G11/H7 → G8/G12 → G9（可选）/T12 余项/T13/T14。
+
+**T1（原 R1）引擎提交工作目录由宿主决定：** engine_submit_task 的 workspace_dir 缺省时由宿主用现有 prepare_workspace_dir() 逻辑决定，前端不再必须传。允许修改：lib.rs（engine_submit_task 及其测试）、必要时 commands/。验收：cargo lib 全绿且数量增加。
+
+**G0 前置核实（只读，不写功能代码）：** ①写作版本链与逐章节差异可行性（writing_section/writing_store/document_store）；②线程消息字段（已知 id/role/text 无时间戳）、plain 识别、thread_store.load() 大量线程时的耗时与是否需分页；③无人值守提交先例与形态（WorkRecordLibrary workRecordAnalyze 链路）、纯文本无工具提交可行性、超时与取消行为、专用整理提交命令挂点；④首页提醒位置（已确认无现成横幅位：HomeCanvas 顶部条件渲染条）；⑤复盘草稿应用内编辑（已确认无）。产出写入 STATUS.md 并存 docs/od-g0-design-notes.md，停下等用户确认。
+
+**H1 复盘校验结构化：** review_store::validate_body 增加结构化结果与两条软检查（空章节、正文与记录引用明显不符），软检查只降结论不硬拒。
+**G1 习惯存储（Rust）：** 新增 habit_cards.rs、commands/habits.rs；lib.rs 与 commands/mod.rs 只加模块声明与命令注册。结构：习惯卡（id/kind/scope/text ≤60 字/check（禁用短语、段落字数上限、必备短语三种）/evidence（线程号、消息号、日期，不存原话）/origin（explicit、repeated、writing_diff）/status（候选、生效、停用、归档）/时间字段/expect 可选）；未决问题（id/text ≤80 字/thread_id/message_id/first_seen/last_seen/status（open、closed、dropped）/reminded）；整理水位；统计 jsonl（只追加、不存正文）；驳回哈希（驳回两次以上不再提出）。目录：<应用数据根>/habits/{candidates,active,archive,open-questions,state,pending-review}。严格校验（生效 ≤80、候选 ≤100）；保存前 RulePolicy::reject_keywords 红线检查（命中拒绝且不回显命中词）；原子写沿用 worklog_records 写法；损坏明确报错；七天未处理候选读取时归档；只归档不删除。命令：候选列表/决定（批量、可改 scope）/生效列表/停用归档/未决问题列表与状态变更/待审定列表与批准排除。验收：单测覆盖结构校验、红线拒绝、批量决定、七天归档、损坏文件、旧版本兼容；命令基线有意更新；cargo lib 全绿且数量增加。
+**H2 界面显示验收结论：** 复盘详情展示 verdict 明细（复用 CandidateVerdict 渲染方式）。
+**G2 摘要收集（宿主，不调模型）：** 新增 consolidation.rs、commands/consolidation.rs。配置 config/consolidation.v1.json：enabled（默认 false）/hour=21/minute=30/provider/model/sources（默认未分类线程与项目任务）/min_user_messages=6/min_chars=1500/max_threads=20/max_digest_chars=24000；未知字段与损坏明确报错。consolidation_tick() 沿用 scheduler.rs 到点规则（本地时区、错过补跑、每天一次），不改 scheduler.rs。收集按水位逐消息处理：隐私命中自动脱敏保留原意；禁入类别或不确定进待审定清单（存脱敏预览与来源引用，不存原话）；项目任务只取当日状态变化的标题与状态；截断如实报告；只读预演命令。验收：单测覆盖水位增量、阈值、脱敏通过、待审定分流、截断、到点与补跑、配置损坏；预演不写不发。
+
+**G3 提取契约：** 新增 engine/omnidesk_engine/habit_extract.py（只组装中文提示词，不落盘）与 habit_extract.rs（校验）。契约 omnidesk.habit-candidates.v1：items ≤10（text/kind/scope_hint/message_id/cue/可选 check）+ open_questions ≤10（text/message_id）。宿主校验：message_id 在本次摘要内且角色为用户；cue 是原文子串且在信号词白名单（以后/一律/总是/从现在起/记住/别再/不要再等，白名单在代码里）；无信号条目须宿主字面匹配两天及以上出现才收（origin=repeated）；scope 默认来源线程场景，原文出现「所有/一律/任何」等才允许 global，否则降级；长度与红线检查；与现有卡片、驳回哈希去重；check 按 H3 三种规则校验；未决问题只收「还没想好/待定/拿不准/要不要」类表达；每条候选附 CandidateVerdict（validator=habit-candidate.v1），被拒只计数记原因编号。验收：≥20 组合成样例表驱动测试（明确表述过；一次性请求拒；假设拒；转述拒；AI 建议未采纳拒；编号不存在拒；信号词不在原文拒；global 无据降级；重复与已驳回拒；红线词拒）。
+**H3（修订）习惯检查：** 验证器读取 G1 生效且带 check 的卡片（三种），在复盘与写作校验路径执行，命中写入 habits-stats jsonl；不单独维护 habits.v1.json。
+**H5 复盘失败自动重试一轮（D1=允许）：** 复盘生成或校验失败后把失败原因追加进重试提示词再提交一次，最多一轮；成功落草稿待确认，仍失败如实进铃铛「问题」；重试次数记统计。不改 scene_gate 与现有超时。
+
+**G4 无人值守运行器：** 新增 desktop/src/shell/ConsolidationRunner.tsx（不渲染）、desktop/src/consolidationFlow.ts（纯函数 nextStep：idle/prepare/submit/await/ingest/done/failed 全转移表驱动测试）、api.ts 接入；在挂载 AnnouncementBar 的位置同级加一行挂载。每 30 秒问宿主到点没有；空摘要记完成不调模型；非空用配置 provider/model 提交，intent 用非 scene_gate 场景的自定义值，工作目录由宿主决定（T1），终态后交宿主校验暂存；待审定条目按批准记录经专用整理提交命令纳入。代码常量强制：每天最多一次、失败不自动重试（记录错误）、超时沿用现有任务超时、关机放弃下次补跑、有进行中对话先让位。失败如实进铃铛「问题」。验收：表驱动测试 + npm build/test + 宿主单测覆盖同日二次触发被拒；真实模型端到端标「未验证」。
+**G5 界面：** NotificationCenter 新增通知类型（每天一条「N 条候选、M 个未决问题」，计入红标，处理完消失，只加条目不改既有逻辑）；首页提醒条挂 HomeCanvas 顶部（当天有新候选弹一次、可关闭、不重复，关闭记 ui-state）；新增 HabitDigestPanel（候选范围切换/来源/接受/驳回/全部接受；待审定区显示脱敏预览与批准/排除；未决问题区显示搁置天数与已定/放弃，7 天未动排前并进铃铛提示）；新增 HabitCardsPage（生效卡列表、停用归档、命中与违反次数；整理开关/时间/模型选择放这页，打开开关时明确写出读取范围，默认关闭）。不动 SettingsPanel 与 HomeChat 主体，单个既有文件改动 ≤40 行。
+
+**G6 生效注入：** 提示词组装处（G0 定前端 conversationPrompt.ts 或宿主 composeConversationPrompt）注入生效且范围匹配的卡片（≤8 张、≤600 字、最近确认优先），带「用户确认过的个人习惯，仅适用时遵守；与当前指令冲突以当前指令为准；拿不准先问」标注；总开关默认第一张卡生效后打开；注入把卡编号追加统计。单测覆盖选取、上限、场景匹配、开关关闭不注入、候选与归档卡不出现。
+**G10 未决问题刷新：** 新一轮摘要与 open 问题做字符二元组重叠（阈值常量+测试固定），达阈值刷新 last_seen 不新建；搁置 >7 天进整理卡提醒区；不自动关闭；不接复盘引用校验。
+**H6/G11 回归集与指标：** G3 的 20 组样例并入回归框架；改动提取提示词、白名单、校验逻辑、规则种类或相关 SKILL 必须先跑回归集。指标入习惯页只读展示：接受率、驳回原因分布（驳回可选「太绝对/不是我说的」）、违反率趋势、整理成功率与 token 数、待审定批准/排除分布、引用抽查不相符比例。
+**H7 引用抽查：** 抽查生效卡在复盘/写作中的命中是否有原文依据，结果只进指标不拦截。
+
+**G8 写作差异（2026-11-23 用户批准，含 AI 原稿快照）：** ①章节生成时把 AI 原稿落盘（document_store 以 VersionSource::Ai 保存快照，或独立 ai-drafts 目录，由实施者按现有结构选最小改动并记录）；②「确认章节」路径上已有用户快照，新增 AI 快照保存；③宿主逐章节确定性差异（解析 ## n. 分节），差异最大的若干条交 G3，origin=writing_diff；同一短语在至少两份不同稿件被删才提候选。证据等级：AI 原稿保存为文件事实；差异建议进候选只计数，最终候选仍走 G3 校验与用户确认。
+**G9 写作范例知识库候选（2026-11-23 用户批准）：** 定稿里的好段落/常用表述可作为知识库暂存卡候选，走 knowledgeReviewStage 现有准入与脱敏治理，不绕过。来源：写作定稿确认时（writing_section confirm 路径）把定稿段落作为候选文本，经红线与脱敏后调 knowledge_review_stage；确认进入知识审核队列，由用户逐条审定；不直接写知识库。
+**G12 确定性复核：** 整理运行时顺带扫描生效卡：90 天无命中无新证据标「可复核」；同范围矛盾卡标「冲突」；只提示不自动改删。
+**T12 余项、T13**：沿用遗留清单。
+**T14（拆 lib.rs）：** 2026-11-23 用户裁定：作为下一步专项计划，等功能理顺后再启动；本轮不做。新命令一律进 commands/ 的规则不变。
+
+**每卡验收：** cargo/npm/verify 脚本 + 证据落 tests/verification/desktop/evidence/；子代理交付后 ARCHITECT 重跑全部验收命令并审 diff；G3、G4、G6 diff 建议用户或更强模型再复核。全程不提交、不推送、不打标签。
+
 ### OD-PRJ-602：项目跟踪页项目甘特、界面规范化与数据一致性验证（用户当轮批准执行，2026-11-23）
 
 > 触发：用户对 0.2.51 的三条新要求：①四象限下方甘特图增加项目维度（同一项目的任务分行显示，含重叠/接续/间隔时间，项目行联动）；②按 OmniDesk 暖纸新拟物规范对项目跟踪页做界面规范化重构（大布局不变、分辨率适配、与全站一致、重点突出）；③验证项目页数据/模块与 app 其他模块、知识库的一致性，修掉不关联或冲突的部分。执行：子代理 BUILDER（OpenDesign/deepseek-v4.1-flash-eco，high），ARCHITECT 只规划与复核；完成后版本 → 0.2.52 并提交推送 origin main。

@@ -1359,3 +1359,268 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 分段计时：`ChatMessage.timing` 记录 `classifyMs/materialMs/submitMs`；路由提交使用原始 `ctx.startedAtMs`，消息显示「判定 / 素材 / 提交」，保留「首字」「总耗时」。
 - 测试：Rust 全量 1277 passed / 0 failed / 1 ignored；`npm test` 88/88；`npm run build` 通过；`verify_review_perf_0245.py` 21/21、`verify_home_work_0244.py` 31/31；process_owner 18/18、web-api 105/105。
 - 未验证：Windows 实机 150 秒目标、真实引擎重启次数与 GBK 输出；分段计时只覆盖前端可观测段，模型内部排队仍以 TTFT 近似。未提交、未推送。
+
+## OD-GROW-301 G0 执行记录（BUILDER，2026-11-23）
+
+- 基线为 `5dc5df4b622815f4803ec4cff07d448e9824dbf1`，开工前 git status 为 `M PLANS.md` 与未跟踪 `docs/od-grow-301-g0-dispatch.md`，全部既有改动保留。执行期间状态复查出现新的未跟踪 `docs/od-grow-301-t1-dispatch.md`，未读取、未修改、未删除。只读核实，未改源码、配置、测试，未提交、未推送、未打标签。
+- 实际执行的主要命令均为只读检索与源码查看。
+  - `git status --porcelain=v1 -b`、`git rev-parse HEAD`、`git diff --stat`、`git diff --cached --stat`。
+  - `rg --files -g 'writing_section.rs' -g 'writing_store.rs' -g 'document_store.rs' -g 'WritingWorkbench.tsx' -g 'thread_store.rs' -g 'sceneThreads.ts' -g 'threadCategories.ts' -g 'WorkRecordLibrary.tsx' -g 'lib.rs' -g 'pending_writes.rs' -g 'ReviewArchive.tsx' -g 'AnnouncementBar*' -g 'HomeCanvas*' -g 'api.ts'`。
+  - `nl -ba desktop/src-tauri/src/document_store.rs | sed -n '612,960p'`、`nl -ba desktop/src-tauri/src/writing_section.rs | sed -n '380,540p;780,930p'`。
+  - `nl -ba desktop/src/shell/WritingVersionPanel.tsx | sed -n '1,450p'`、`nl -ba desktop/src/shell/WritingSectionEditor.tsx | sed -n '1,12p;120,160p;424,466p'`。
+  - `nl -ba desktop/src-tauri/src/thread_store.rs | sed -n '1,280p;420,480p;640,720p'`、`nl -ba desktop/src/sceneThreads.ts | sed -n '280,520p'`。
+  - `nl -ba desktop/src/shell/WorkRecordLibrary.tsx | sed -n '580,670p;1700,1770p'`、`nl -ba desktop/src/api.ts | sed -n '300,510p'`。
+  - `nl -ba desktop/src-tauri/src/lib.rs | sed -n '380,560p;760,900p;8980,9040p'`、`nl -ba desktop/src-tauri/src/engine_bridge.rs | sed -n '200,290p'`。
+  - `nl -ba engine/omnidesk_engine/task_core.py | sed -n '150,215p;400,470p;580,670p;680,760p;900,975p'`、`nl -ba engine/omnidesk_engine/web_api_adapter.py | sed -n '500,530p;1480,1620p;2740,2830p'`。
+  - `nl -ba desktop/src-tauri/src/pending_writes.rs | sed -n '420,450p;580,610p'`、`nl -ba desktop/src/shell/AnnouncementBar.tsx | sed -n '1,300p'`、`nl -ba desktop/src/shell/HomeCanvas.tsx | sed -n '1,120p;300,620p'`。
+  - `nl -ba desktop/src/shell/ScenePage.tsx | sed -n '95,120p;590,615p'`、`nl -ba desktop/src-tauri/src/app_paths.rs | sed -n '20,115p'`、`nl -ba desktop/src/shell/ReviewArchive.tsx | sed -n '1,200p;400,800p'`、`nl -ba desktop/src-tauri/src/review_store.rs | sed -n '720,800p;1135,1205p'`。
+  - `rg -n 'save_with_snapshot|VersionSource::Ai|VersionSource::User|SnapshotSpec' desktop/src-tauri/src --glob '*.rs'`、`rg -n 'ui_state|ui-state' desktop/src-tauri/src`、`rg -n 'worklog_period_review_(read|confirm|list|generate|save|write|update)' desktop/src-tauri/src/lib.rs desktop/src/api.ts`。
+- 五项结论摘要，细节与逐条来源行号见 `docs/od-g0-design-notes.md`。
+  1. 写作版本链。章节确认保存的是整篇 `正文.md` 的 `Section/User` 快照，AI 草稿只在界面预览、确认前不落盘，生产路径没有 `VersionSource::Ai` 保存。按章对比数据上可行，但当前只有整篇段落 diff，且插入新段会错位后续段号。证据等级为文件事实与静态检查。
+  2. 线程。`ChatMessage` 必需 `id/role/text`，没有每条消息通用时间戳，助手轮次可选 `startedAtMs/endedAtMs`。plain 以 `tag === "plain"` 识别，未知标签归一为 plain。`thread_store::load` 逐文件读全部 JSON 和消息、全量排序，无分页，前端有 4 秒等待上限。建议 G2 用元数据列表加默认上限或分页，再按 20 条读取正文。证据等级为文件事实与静态检查，实际耗时未核实。
+  3. 无人值守提交。`WorkRecordLibrary` 的 prepare→workspace→submit→轮询→result→apply 可无聊天组件复用。纯文本提示词可提交，但接口没有工具禁用字段。结果按任务号直接取回，重启后只能恢复状态不能取回正文。没有引擎侧任务时限，900 秒只是调用方轮询上限，取消需显式调用且默认等 15 秒。挂点为新增 `commands/consolidation.rs`，用不在 `scene_for_intent` 白名单的 intent，并按批准记录放行。证据等级为文件事实与静态检查，真实模型行为未核实。
+  4. 首页提醒。`AnnouncementBar` 返回 null 且只挂 `ScenePage`。最小方案是在 `HomeCanvas` 的 `upper` 槽顶部条件渲染，且放在 `conversationStarted` 条件之外。`ui-state` 路径已定义，但没有读写命令，关闭状态持久化需 G5 新增最小入口。证据等级为文件事实与静态检查，持久化能力未核实。
+  5. 周期复盘。`ReviewArchive` 只支持生成、重新生成、确认、导出与交给 AI 分析，正文只读，宿主没有编辑命令，确认只改状态与时间。H1/H2 不依赖应用内编辑。证据等级为文件事实。
+- 改动文件只有 `docs/od-g0-design-notes.md` 新增和 `STATUS.md` 本节追加。未改任何源码、配置、测试，未提交、未推送、未打标签。
+
+## OD-GROW-301 T1 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`；开工时保留 `M PLANS.md`、`M STATUS.md` 与未跟踪 `docs/od-g0-design-notes.md`、`docs/od-grow-301-g0-dispatch.md`、`docs/od-grow-301-t1-dispatch.md`，未改动、未删除。未提交、未推送、未打标签。
+- 改动：`desktop/src-tauri/src/lib.rs` 的 `engine_submit_task` 在 `workspace_dir` 为 `None` 或空白字符串时，先经宿主 `resolve_submit_workspace_dir` 调用现有 `task_shell::prepare_local_data_root()`，把本地数据根作为工作目录下发；显式传入的非空白路径原样保留。目录准备失败返回 `engine_error_code=workspace_unavailable` 的 serde_json 错误，且发生在 `with_engine_call` 之前，不触达引擎。未改 engine/、runtime/、前端，未新增依赖。
+- 新增单测：缺省/空白使用数据根、显式路径不受影响且不触发准备、准备失败映射为 `workspace_unavailable`、提交入口在触达引擎前解析目录。既有静态接线断言未改，全部保持通过。
+- 测试：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → 1296 passed / 0 failed / 1 ignored（52.71s，编译 18.25s）；基线 1292 passed 加新增 4 项。证据：`tests/verification/desktop/evidence/od-grow-301/t1/verify_output.txt`。
+- 未验证：未跑真实模型的端到端提交流程；未验证 Windows 实机目录准备失败路径；目录创建失败用例以注入的失败函数验证错误映射，生产准备函数本身由既有 `task_shell` 单测覆盖。
+
+## OD-GROW-301 G1 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工前快照为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/lib.rs`，另有未跟踪 `docs/od-g0-design-notes.md`、`docs/od-grow-301-g0-dispatch.md`、`docs/od-grow-301-g1-dispatch.md`、`docs/od-grow-301-t1-dispatch.md`。上述既有改动全部保留，未读取或改写任务书之外的文件内容；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/habit_cards.rs`（新增）：习惯卡、未决问题、整理水位、统计 jsonl、驳回哈希与待审定条目的存储和校验。根目录为 `<应用数据根>/habits/`，子目录 `candidates/`、`active/`、`archive/`、`open-questions/`、`state/`、`pending-review/`；根与子目录都过 `task_shell::assert_local_root_allowed`、`assert_outside_repo` 与真实落点校验。
+  - `desktop/src-tauri/src/commands/habits.rs`（新增）：8 个 Tauri 命令，取宿主数据根与当前 Profile 规则后调用存储层。
+  - `desktop/src-tauri/src/commands/mod.rs`：只加 `pub mod habits;`。
+  - `desktop/src-tauri/src/lib.rs`：只加 `pub mod habit_cards;` 与 8 条 `generate_handler` 注册。
+- 新增命令：`habit_candidate_list`、`habit_candidate_decide`、`habit_active_list`、`habit_card_update`、`habit_open_question_list`、`habit_open_question_set_status`、`habit_pending_review_list`、`habit_pending_review_decide`。
+- 存储行为：候选上限 100、生效上限 80；每卡一个 JSON，id 只接受字母数字 `-` `_` 且 ≤64；文件不存在按空列表，损坏文件在返回的 `issues` 中给出文件名与原因并计入 `broken`，不猜测修补。写入复用 `worklog_records::write_new_atomically` / `write_replace_atomically`。卡片 `text`、`check.phrases`、`expect` 保存前用 `RulePolicy::reject_keywords` 做 contains-any-of 检查，错误信息不回显命中词。候选列表读取时把 `created_at` 早于 7 天的候选移入 `archive/` 并置 `archived`，不激活。驳回累计以规范化卡片文本的 sha256 记录；`rejection_blocks` 在次数 ≥2 时返回真。停用/归档/复用只移动文件并改状态，不删除卡片。
+- 任务书未给出待审定条目的具体字段，本层按 `pending-review.v1` 实现为脱敏预览 `text`、来源 `thread_id`/`message_id`、可选 `reason_code`、`status`（pending/approved/excluded）与时间字段；G2 落盘时仍需自行确保 `text` 是脱敏预览。时间字段统一使用 UTC ISO8601（`YYYY-MM-DDTHH:MM:SSZ`），证据日期保持 `YYYY-MM-DD`。
+- 单测覆盖：长度/枚举/上限、红线拒绝且不回显、批量接受与驳回（含改 scope、驳回次数累计到二次阻断）、七天归档、损坏文件明确报告、无新可选字段的旧 v1 读取、原子写失败不留临时/半文件、统计追加与损坏行跳过，以及未决问题、待审定与整理状态往返。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1307 passed / 0 failed / 1 ignored**（50.35s；基线 1296，新增 11 项）。
+- 命令基线：`python3 tests/verification/desktop/export_commands_2043.py --write tests/verification/desktop/evidence/od-harden-2043/commands-baseline.json` → `count=287 handler=287`，`missing_in_handler` 与 `missing_in_commands` 均为空。更新前该磁盘文件为 277，HEAD 源码为 279，差额 2 是此前未纳入基线的既有命令；本次新增的 8 条为上列 `habit_*` 命令。
+- 证据：`tests/verification/desktop/evidence/od-grow-301/g1/verify_output.txt`（全量测试输出与基线命令、命令名列表；证据目录受 `.gitignore` 忽略）。
+- 未验证：未新增或运行前端、真实 Tauri 窗口或真实模型链路；未验证真实数据根上的并发写、强制断电恢复与符号链接恶意替换；G2/G3 尚未接入未决问题生成、待审定分流与候选提取。
+
+## OD-GROW-301 G2 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工前快照为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`，另有未跟踪 `desktop/src-tauri/src/commands/habits.rs`、`desktop/src-tauri/src/habit_cards.rs` 与 `docs/od-*.md`。上述既有改动全部保留，未改写其既有内容；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/consolidation.rs`（新增）：配置、到点判定、纯收集、摘要渲染、待审定与水位的落盘。
+  - `desktop/src-tauri/src/commands/consolidation.rs`（新增）：5 个 Tauri 命令；从宿主取应用数据根、当前规则策略与工作记录根。
+  - `desktop/src-tauri/src/thread_store.rs`（只增）：新增 `ThreadMetadata`、`ThreadMetadataListing`、`list_metadata()` 与 `read_thread(id)`。目录遍历和单文件结构校验复用原有读取口径，但元数据列表不累积消息正文；选中线程再按 id 读正文。
+  - `desktop/src-tauri/src/commands/mod.rs`：只加 `pub mod consolidation;`。
+  - `desktop/src-tauri/src/lib.rs`：只加 `pub mod consolidation;` 与 5 条 `generate_handler` 注册。
+- 新增命令：`consolidation_tick`、`consolidation_preview`、`consolidation_collect`、`consolidation_config_get`、`consolidation_config_set`。
+- 配置与到点：配置在 `<应用数据根>/config/consolidation.v1.json`，字段按任务书，另加 `utc_offset_minutes`（缺省东八区 480）用于本地日期与触发时间；未知字段、损坏 JSON、越界小时/分钟、未知来源、重复来源都整次报错。到点规则为开关关闭永不到点、当前本地时间未过 hour:minute 不到点、`last_run_at` 不是本地今天且已过点则 due、今天已跑则不再 due。
+- 状态取舍：直接复用 G1 的 `habits/state/consolidation-state.v1.json`，用已有 `last_run_at` / `last_error` 记每日执行与失败，不新增 `consolidation-schedule.v1`，也不改 G1 结构或函数签名。水位按线程消息下标记录最后扫描位置；未达到阈值或整线程被排除时，仍按任务书把水位推进到当前末尾并计入 `skipped_threads`。
+- 收集分流：先按 `updatedAt` 降序选 `tag === "plain"` 的线程并截到 `max_threads`；每线程只处理水位之后的 `role === "user"` 消息。逐消息先做 `mask_privacy`，脱敏后仍含 `reject_keywords` 则进待审定，否则脱敏通过；空文本、缺消息 id、超 10000 字符或无法判定也进待审定。待审定条目只写脱敏预览（≤2000 字符，并把红线关键词替换为“〔已隐去〕”）、线程/消息引用、原因代码与时间，不写原话。
+- 预演与落盘的取舍：`collect_digest` 保持纯读取，返回 `DigestPlan`；预演命令只调用它，状态读取走不建目录的只读加载。`consolidation_collect` 再调用 `apply_digest`，先写待审定条目，再把 `digest-<本地日期>.json` 原子替换写入 `habits/state/`，最后保存水位与 `last_run_at`，避免摘要文件失败时水位已推进。失败时记录 `last_error` 并记本次 `last_run_at`，避免同一天自动反复重试。
+- 摘要结构样例（合成数据）：`【线程】合成线程` 后接 `- [m-0] 以后每天先写三行总结`；项目任务段为 `【项目任务状态变化】` 后接 `- 合成任务：待开始 → 进行中`。超过 `max_digest_chars` 时按整条消息截断，统计 `truncated`（线程数）与 `truncated_messages`。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1317 passed / 0 failed / 1 ignored**（52.38s；基线 1307，新增 10 项）。
+- 命令基线：`python3 tests/verification/desktop/export_commands_2043.py --write tests/verification/desktop/evidence/od-harden-2043/commands-baseline.json` → `count=292 handler=292`，`missing_in_handler` 与 `missing_in_commands` 均为空；相对 G1 的 287 增加 5 条，即上列 `consolidation_*` 命令。
+- 证据：`tests/verification/desktop/evidence/od-grow-301/g2/verify_output.txt`（全量测试输出、命令基线输出与新增命令名；证据目录受 `.gitignore` 忽略）。
+- 未验证：未运行前端或真实 Tauri 窗口；未调用真实模型；未验证真实数据根上的并发写、强制断电恢复与符号链接恶意替换；项目任务只依赖 `task_store` 的本地状态变化记录，真实历史数据未抽样核对。
+
+## OD-GROW-301 G3 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工前快照为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/thread_store.rs`，另有未跟踪 G1/G2 模块与 `docs/od-*.md`。既有改动全部保留；未提交、未推送、未打标签。
+- 改动文件：
+  - `engine/omnidesk_engine/habit_extract.py`（新增）：`build_habit_prompt(digest_text, threads_meta)` 只组装中文提示词，写明接地规则、`omnidesk.habit-candidates.v1` 契约、禁入表达、信号词与未决表达、数量/长度/check 限制；不调模型、不落盘、不调用工具。另提供只输出 `schema + prompt` 的 stdin CLI。
+  - `engine/omnidesk_engine/habit_extract_test.py`（新增）：4 个 unittest，覆盖接地规则关键词、输出契约字段、信号词/未决词和 CLI 输出。
+  - `desktop/src-tauri/src/habit_extract.rs`（新增）：模型文本解析、代码围栏容忍、逐条候选/未决问题校验、32 组表驱动合成样例、`StagedHabitCandidate::into_card` 与 `StagedOpenQuestion::into_question`。
+  - `desktop/src-tauri/src/lib.rs`：为让 `cargo test --lib` 实际编译新模块，只新增一行 `pub mod habit_extract;`；既有未提交改动未改写。
+  - `tests/verification/desktop/evidence/od-grow-301/g3/verify_output.txt`：两端完整测试输出与命令、结果摘要。
+- 校验口径：候选来源必须是本次摘要中的用户消息；cue 必须是原文子串且整体命中 12 项信号词白名单之一。无白名单信号时，只有 `existing.repeated_texts` 中同一文本累计 ≥2 天才收为 `origin=repeated`，否则 `NO_SIGNAL`。`global` 仅在同一条来源消息出现「所有/一律/任何」时保留，否则降级为来源线程的 scene 并记录 `GLOBAL_DOWNGRADED`。text 非空、无控制字符且 ≤60 字；check 仅接受三种结构化形态，短语非空且每条 ≤20 字，段落上限 10..=2000。text/check.phrases 命中红线返回 `REDLINE`，`RejectedEntry` 只含原因编号。候选/生效卡同文本拒绝 `DUPLICATE`，驳回次数 ≥2 拒绝 `REJECTED_BEFORE`。open_questions 只查用户来源、非空/无控制字符/≤80 字，并要求命中 7 项未决表达之一。两类数组都只保留先到的 10 条，超出逐条记 `OVERFLOW`。
+- 判定取舍：为满足任务书中的“假设、转述、AI 建议未采纳必须被拒”样例，宿主在文本层增加明确标记词检查（如「假设/假如/如果/同事说/听说/AI 建议/我认为」），命中按 `NO_SIGNAL` 拒绝；不做语气或话题推断。通过与重复候选均附 `CandidateVerdict::new("habit-candidate.v1", …)`，固定五项检查 `cue_in_source`、`signal_whitelisted`、`scope_valid`、`not_duplicate`、`redline_clean`。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1319 passed / 0 failed / 1 ignored**（51.79s；相较 G2 的 1317 新增 2 个测试，其中表驱动测试含 32 组样例）。
+- Python 组织探测：仓库未找到 `requirements*.txt`、`pyproject.toml`、`pytest.ini`；`/usr/bin/python3` 与 Homebrew `python3.13` 的 `pytest` 均为 `No module named pytest`。按任务书允许的回退路径采用 engine 现有 unittest 风格。`cd engine && python3 -m unittest discover -s omnidesk_engine -p habit_extract_test.py -v` → **Ran 4 tests / OK**。
+- 未验证：未调用真实模型，未运行前端或 Tauri 窗口，未抽样真实摘要；未新增依赖，未修改 `runtime/`、`scheduler.rs`、`habit_cards.rs`、`consolidation.rs` 既有函数或既有测试断言。
+
+## OD-GROW-301 H3 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工时 `git status` 为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/thread_store.rs`，另有未跟踪 `desktop/src-tauri/src/commands/consolidation.rs`、`desktop/src-tauri/src/commands/habits.rs`、`desktop/src-tauri/src/consolidation.rs`、`desktop/src-tauri/src/habit_cards.rs`、`desktop/src-tauri/src/habit_extract.rs`、`engine/omnidesk_engine/habit_extract*.py` 与 `docs/od-*.md`。上述既有改动全部保留，未改写其既有内容；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/habit_checks.rs`（新增）：`check_habits(scope_scene, body, store) -> HabitCheckReport` 与 `store_for_work_root(work_root) -> Option<HabitStore>`。报告只含 `checked_cards` 与 `violations {card_id, kind, detail_code}`，不含正文或命中的原文；违规经 `HabitStore::append_stat` 追加 `type=violation` 行，统计失败不回滚结论、不阻断主流程。
+  - `desktop/src-tauri/src/lib.rs`：只新增一行 `pub mod habit_checks;`；未加命令或改既有函数。
+  - `desktop/src-tauri/src/review_store.rs`：`PeriodReviewReceipt` 新增 `habits` 字段；`confirm_review` 在原有校验与落盘通过后，以 `scope=report` 调用检查并随回执返回。已确认分支返回空报告，不重复记统计；既有确认、幂等与防覆盖逻辑不变。另新增 1 个集成测试。
+  - `desktop/src-tauri/src/writing_review.rs`：`WritingReviewPrompt` 新增 `habits` 字段；`build_review_prompt` 在原有校验通过、拼完提示词后，以 `scope=material_writing` 对已确认章节正文调用检查。既有十维提示词、状态门禁与文档只读行为不变。另新增 1 个集成测试。
+  - `tests/verification/desktop/evidence/od-grow-301/h3/verify_output.txt`：全量测试原始输出。
+- 检查口径：只读 `list_active()` 中 `status=active` 且带 `check` 的卡；`global` 始终参与，`scene` 仅在 `scope_scene` 相等时参与。`banned_phrases` 任一命中、`paragraph_max_chars` 任一按空行分段后的段落字符数超过上限（等于上限不报）、`required_phrases` 任一缺失，各记一条违规；`detail_code` 固定为 `banned_phrase_match` / `paragraph_over_limit` / `required_phrase_missing`，同时作为统计 `reason_code`。
+- 存储定位取舍：`review_store::confirm_review` 与 `writing_review::build_review_prompt` 只持有工作根，不持有应用数据根，且任务书限定 `lib.rs` 只加模块声明。为此 `store_for_work_root` 按只读探测顺序寻找 `<OMNIDESK_APP_DATA_ROOT>/habits`、工作根同级 `app/habits`、工作根内 `habits`，全部不存在时返回空报告；不创建目录。默认 `~/OmniDesk/work` 布局可命中同级 `~/OmniDesk/app/habits`；自定义工作根若不在应用根同侧，需要显式设置 `OMNIDESK_APP_DATA_ROOT` 才会执行检查。这是为遵守改动边界而采用的约定，未做真实自定义根验证。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1329 passed / 0 failed / 1 ignored**（52.79s；G3 基线 1319，新增 8 个检查单测与 2 个接入集成测试）。
+- 未验证：未运行真实 Tauri 窗口、前端或真实模型链路；未验证自定义工作根下的存储定位；未验证符号链接替换与并发追加统计。未新增依赖，未修改 `runtime/`、`engine/`、前端、`habit_cards.rs` 既有函数或既有测试断言。
+
+## OD-GROW-301 H5 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工时 `git status` 为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/review_store.rs`、`M desktop/src-tauri/src/thread_store.rs`、`M desktop/src-tauri/src/writing_review.rs`，另有未跟踪 G1/G2/H3 模块、`engine/omnidesk_engine/habit_extract*.py` 与 `docs/od-*.md`。上述既有改动全部保留，未改写其内容；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src/reviewRetry.ts`（新增）：`nextReviewStep`、`isRetryableReviewFailure`、`reviewRetryPrompt` 纯函数。
+  - `desktop/src/reviewRetry.test.mjs`（新增）：表驱动覆盖全部状态转移、取消/准入拒绝、attempt 边界与提示词追加。
+  - `desktop/src/shell/ReviewArchive.tsx`：`regenerate` 的提交→轮询→取结果→宿主校验改为最多两轮循环；首轮可重试失败时追加失败原因后重新提交一次，并显示一次「第一次生成未成功，正在重试…」；第二轮仍失败沿用 `setNotice({kind:"err"})`，不弹系统弹窗。既有生成、确认、导出、筛选行为不变。
+  - `tests/verification/desktop/evidence/od-grow-301/h5/verify_output.txt`：本次三条验证命令的原始输出与结果摘要。
+- 重试口径：仅模型未完成、正文校验失败、结果为空进入重试。用户取消（`cancelled`/取消/中断）与准入拒绝（`endpoint_unconfirmed`、`endpoint_unknown`、`red_line_rejected`、`pending_write_blocked`、`workspace_unavailable`、准入/红线）优先排除；未知错误保守地不重试。重试提示词为原提示词末尾追加「上一次尝试失败，原因：…；请修正后重新输出」。
+- 统计边界：按任务书不新增宿主接口，本轮重试次数只记录在本条执行记录；习惯统计文件接入留给 G11。
+- 实际执行：`cd desktop && npm run test` → **101 passed / 0 failed**（基线 97，新增 4 项）；`npx tsc --noEmit` → 0；`npm run build` → 成功（退出码 0，仅有既有 chunk 体积警告）。
+- 未验证：真实模型端到端重试行为未验证，需要实机与真实模型端点；未运行真实 Tauri 窗口。未新增依赖，未修改 `runtime/`、`engine/`、`desktop/src-tauri/` 或既有测试断言。
+
+## OD-GROW-301 G4 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工时 `git status` 为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/review_store.rs`、`M desktop/src-tauri/src/thread_store.rs`、`M desktop/src-tauri/src/writing_review.rs`、`M desktop/src/shell/ReviewArchive.tsx`，另有未跟踪 G1/G2/G3/H3/H5 模块、`engine/omnidesk_engine/habit_extract*.py`、`desktop/src/reviewRetry*` 与 `docs/od-*.md`。上述既有改动全部保留，未改写既有内容；未提交、未推送、未打标签。
+- 开工前核实：① `desktop/src/api.ts` 原先没有任何 consolidation 封装或类型，G2 只提供了宿主命令；② `sceneThreads.ts` 的 `inflightTaskId` 是逐线程的在途任务号，`HomeChat` 拿到任务号后写入、终态后清空。工作台现有唯一可读的全局“进行中对话”判定是 `listThreads().some(t => Boolean(t.inflightTaskId))`；G4 直接复用它，不新增全局 store；③ `consolidation.rs::collect_digest` 的 `DigestPlan` 与 `DigestRecord` 都有 `digest_text` 和 `stats`，但宿主命令 `consolidation_collect` 实际只返回 `DigestStats`（字段为 `thread_count`、`message_count`、`char_count`、`skipped_threads`、`redline_masked`、`redline_pending`、`truncated`、`truncated_messages`、`truncated_project_changes`、`project_changes`）。
+- 改动文件：
+  - `desktop/src/consolidationFlow.ts`（新增）：纯函数 `nextStep(state)`、本地日期换算、每日本地存储键与 G5 通知事件/类型。
+  - `desktop/src/consolidationFlow.test.mjs`（新增）：28 行表驱动全转移，加“今日已跑对所有相位都回 idle”、纯函数不改入参、UTC 偏移日期换算 3 个补充测试。
+  - `desktop/src/shell/ConsolidationRunner.tsx`（新增）：`return null`，每 30 秒调 `consolidation_tick`；到点且无在途对话才执行；宿主失败、提交被拒、终态失败与 1800 秒超时都只 `console.warn` 并派发 `omnidesk:consolidation-notice`，不弹系统错误框。
+  - `desktop/src/api.ts`（只增）：`consolidation_config_get/tick/preview/collect` 封装及 `ConsolidationConfig`、`ConsolidationDigestStats`、`ConsolidationTick`、`ConsolidationCollectResult` 类型；未改既有函数。
+  - `desktop/src/shell/ScenePage.tsx`（只增两行）：在 `<AnnouncementBar />` 同级挂载 `<ConsolidationRunner />`。
+  - `tests/verification/desktop/evidence/od-grow-301/g4/verify_output.txt`：三条验证命令的原始输出。
+- 状态机转移（代码常量，不写进提示词）：`attemptDate === today` 是全相位最高优先闸门，返回 `idle`。其余：`idle + due + 无对话 → prepare`；`idle + 无对话但未到点/有对话 → idle`；`prepare + 空摘要 → done`；`prepare + 非空 → submit`；`submit + 被拒 → failed`；`submit + 成功 → await`；`await + 未终态 → await`；`await + 成功终态 → ingest`；`await + 失败终态/超时 → failed`；`ingest → done`；`done → done`；`failed → failed`。Runner 从 localStorage 的 `omnidesk.consolidation.lastRun` 恢复当日闸门；昨天或无记录时由宿主 tick 决定是否补跑。
+- 提交与终态：`intent=habit_consolidation`，provider/model 取 `consolidation_config_get`（配置为空时按宿主当前路由传 null）。整理配置当前没有 `reasoning_effort` 字段；按任务书缺省 `low`，模型名含 `eco` 时用 `off`，配置将来有该字段则直接使用。提交仍走既有 `effortEvidence` 门，目录/Profile 没有声明该档位时会静默降级为不显式传档位。任务终态成功后读 `taskResult.content`，按 Unicode 字符截到 20000，写 `omnidesk.consolidation.lastOutput`；`console.info` 只报 thread/message/char 与输出字符数，不打印正文。
+- 摘要正文缺口：宿主 `consolidation_collect` 不返回 `digest_text`，且没有普通文件读取命令。G4 未改宿主，`api.ts` 在宿主未直接返回正文时，用 `task_local_root_info` 取 `app_data_root`，按整理配置的 UTC 偏移定位 `<应用数据根>/habits/state/digest-<date>.json`，再经既有只读 `task_read_attachment` 取回并校验 `schema=omnidesk.digest.v1` 与 `digest_text`。这是前端适配，真实摘要文件读取尚未在 Tauri 窗口验证；G5 若在宿主增加直接返回正文或专用读取命令，应移除该回退。
+- 宿主校验与暂存缺口：G3 的解析/校验没有以 `habit_output_validate` 或 `consolidation_apply_output` 命令暴露，G4 按任务书方案 B 只做“提交→等终态→读结果→记录 raw 并通知”，不伪造校验或暂存；真正校验、纳入生效卡与待审定处理留给 G5 配合宿主补齐。
+- 实际执行：`cd desktop && npm test` → **105 passed / 0 failed / 0 skipped**（基线 101，新增 4 个测试；表内 28 行转移）；`npx tsc --noEmit` → exit 0；`npm run build` → exit 0（`tsc` 通过，vite 1.22s，仅有既有 chunk 体积警告）。证据见 `tests/verification/desktop/evidence/od-grow-301/g4/verify_output.txt`。
+- 未验证：真实模型端到端整理未运行，需用户实机执行一次并回报；真实 Tauri 窗口中的 30 秒定时、摘要文件回退读取、localStorage 写入与 G5 事件消费未验证。未新增依赖，未修改 `runtime/`、`engine/`、`desktop/src-tauri/` 或既有测试断言。
++
+## OD-GROW-301 G5 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`。开工时 `git status` 为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/review_store.rs`、`M desktop/src-tauri/src/thread_store.rs`、`M desktop/src-tauri/src/writing_review.rs`、`M desktop/src/api.ts`、`M desktop/src/shell/ReviewArchive.tsx`、`M desktop/src/shell/ScenePage.tsx`，另有未跟踪 G1/G2/G3/H3/H5 与 G4 前端模块、`engine/omnidesk_engine/habit_extract*.py`、`docs/od-*.md`。既有改动全部保留；未提交、未推送、未打标签。
+- UI 参考：用 `screenshots-design_inspiration` 的 `search_inspiration` 检索并查看了 Superhuman 收件箱与 Asana 任务列表截图，另检索到 Branch Messenger 通知徽标页元数据。借鉴点：收件箱式列表把标题、来源与操作收在同一行，右侧只留一个主动作；分组计数与状态徽标沿用暖纸卡片层级，7 天未动的问题用错误色先被看见。
+- 改动文件（行数为相对开工前快照的本轮改动）：
+  - `desktop/src/habitNotice.ts`（新增，114 行）：铃铛计数、7 天未决排序、当天新候选、首页关闭日期与打开事件。
+  - `desktop/src/habitNotice.test.mjs`（新增，109 行）：6 项测试覆盖无候选、计数、处理完消失、7 天排序、当天关闭与新一天重置、UTC 跨午夜。
+  - `desktop/src/habitCardsView.ts`（新增，62 行）：候选范围切换、批量接受与驳回原因代码纯函数。
+  - `desktop/src/habitCardsView.test.mjs`（新增，73 行）：4 项测试覆盖默认/切换范围、按编号保持选择、批量接受与可选原因。
+  - `desktop/src/shell/HabitDigestPanel.tsx`（新增，312 行）：候选、未决问题、待审定三个区；接受/驳回/全部接受与批准/排除直接走 G1 命令。
+  - `desktop/src/shell/HabitCardsPage.tsx`（新增，335 行）：习惯浮层，含生效卡停用/归档/复用、整理开关/时间/服务商/模型与保存；命中与违反次数如实标注「待 G11」。
+  - `desktop/src/shell/HabitHomeNotice.tsx`（新增，97 行）：首页顶部条件提醒条；当天只弹一次，查看或关闭写 `omnidesk.habits.homeNoticeDismissed`。
+  - `desktop/src/types.ts`：+40 行，新增 HabitScope、HabitCheck、HabitCard、OpenQuestion、PendingReviewItem、HabitListing 与候选决定类型。
+  - `desktop/src/api.ts`：+26 行，新增 `consolidation.setConfig` 与 8 个 `habits` 命令封装；G4 既有 consolidation 段未改写。
+  - `desktop/src/shell/NotificationCenter.tsx`：+22/-4 行（净 +18），新增 `habits` 条目与刷新事件；confirm/task/review 既有逻辑未改。
+  - `desktop/src/shell/HomeCanvas.tsx`：+6/-2 行（净 +4），在 upper 槽的 `conversationStarted` 条件外挂载首页提醒条。
+  - `desktop/src/shell/TopNav.tsx`：+14 行，增加习惯图标入口并挂载 `HabitsOverlayHost`。
+- 进入点取舍：任务书允许 Dock 或 TopNav；本轮选 TopNav 与首页提醒，习惯浮层不改 `Scene`/应用路由，报告页与 `WorkRecordPage` 均未改动。HabitDigestPanel 从首页提醒或顶栏进入浮层，符合「首页入口」备选。
+- 功能口径：铃铛每天只加一条 `kind=habits`，数字为「N 条习惯候选，M 个未决问题」，候选或问题清零后消失；首页只在当天存在 `candidate` 且当天未关闭时显示。面板范围切换写入候选决定的 `scope`；驳回原因可选「太绝对」(`too_absolute`)/「不是我说的」(`not_mine`)/不填，驳回哈希由宿主记录。整理开关默认取宿主配置（默认关闭），开启后显示读取范围「未分类对话、项目任务」。
+- 实际执行：`cd desktop && npm run test` → **115 passed / 0 failed / 0 skipped**（基线 105，新增 10 项；新增 6+4 项）；`npx tsc --noEmit` → exit 0；`npm run build` → exit 0（vite 1.21s，仅有既有 chunk 体积警告）。证据：`tests/verification/desktop/evidence/od-grow-301/g5/verify_output.txt`。
+- 未验证：真实 Tauri 窗口与实机视觉未验证；未用真实候选数据走一遍接受/驳回/待审定/整理开关；行为依赖宿主 G1 命令与 localStorage，均只经纯函数单测与编译验证。未新增依赖，未修改 `runtime/`、`engine/`、`desktop/src-tauri/`、既有测试断言或模型路由与凭证。
+
+## OD-GROW-301 G6 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 为 `M PLANS.md`、`M STATUS.md`、`M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M desktop/src-tauri/src/review_store.rs`、`M desktop/src-tauri/src/thread_store.rs`、`M desktop/src-tauri/src/writing_review.rs`、`M desktop/src/api.ts`、`M desktop/src/shell/HomeCanvas.tsx`、`M desktop/src/shell/NotificationCenter.tsx`、`M desktop/src/shell/ReviewArchive.tsx`、`M desktop/src/shell/ScenePage.tsx`、`M desktop/src/shell/TopNav.tsx`、`M desktop/src/types.ts`，另有 G1-G5/H3/H5 未跟踪模块、`engine/omnidesk_engine/habit_extract*.py`、`docs/od-*.md`。以上既有改动全部保留；未改写 `desktop/src-tauri/*`、`engine/`、`HabitCardsPage`/`HabitDigestPanel`/`habitNotice`/`habitCardsView`/`consolidationFlow`；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src/habitInjection.ts`（新增，126 行）：纯函数 `selectHabitCards` / `injectHabits`（过滤 active 与 global/当前场景、最近确认优先、≤8 张、卡文字合计 ≤600、超限整张跳过并记 `skipped`、固定说明段 + 每卡「- {text}」、空列表原样返回）；`injectionLogLine` / `rollInjectionLog` / `recordHabitInjection` 负责 localStorage 滚动记录（键 `omnidesk.habits.lastInjected`，≤50 行，含日期与卡编号，不写卡正文）。
+  - `desktop/src/habitInjection.test.mjs`（新增，9 项测试）：生效/候选/停用/归档筛选、global 与场景匹配、最近确认排序、8 张上限、600 字上限与超出跳过、空 active 列表（开关关闭模拟）不注入、固定文案与每卡一行、50 行滚动与日期/编号格式、localStorage 写入与失败不外抛。
+  - `desktop/src/shell/HomeChat.tsx`（+18/−2 行，共 20 行改动）：新增模块级 `withHabitInjection`，在两个用户提交路径的 `composeConversationPrompt` 之后调用；读取 `habits.activeList()` 失败时 `console.warn` 并原样提交，不阻塞对话。
+  - `tests/verification/desktop/evidence/od-grow-301/g6/verify_output.txt`（新增）：三条验证命令的原始输出与退出码。
+- 注入接入点取舍：未改 `conversationPrompt.ts`。`composeConversationPrompt` 保持同步纯组装；注入放在 HomeChat 的提交边缘（普通对话提交，以及周报/周期复盘草稿提交），分类调用（`mode=classify`）不注入，避免习惯卡影响意图判定。理由是注入需要异步读 `habits.activeList()`，放在提交前最贴近“本轮发什么给模型”，且 HomeChat 改动控制在 20 行。
+- 功能口径：只注入 `status=active` 且 `scope=global` 或 `scope.scene===activeTag` 的卡；总开关按“active 卡数量 > 0 即注入”实现，active 列表为空即不注入；固定说明段用任务书原文；卡片列表为空时提示词原样返回。
+- 统计落盘缺口（如实标注）：宿主没有“习惯注入统计”追加命令，本任务按任务书在 localStorage 键 `omnidesk.habits.lastInjected` 追加“日期\t卡编号”行并滚动保留 50 行；**正式统计落盘待 G11 宿主命令**。G11 补命令后应迁移并移除该前端记录。
+- 实际执行：`cd desktop && npm run test` → **124 passed / 0 failed / 0 skipped**（基线 115，新增 9 项）；`npx tsc --noEmit` → exit 0；`npm run build` → exit 0（`tsc` 通过，vite 1.23s，仅有既有 chunk 体积警告）。证据见 `tests/verification/desktop/evidence/od-grow-301/g6/verify_output.txt`。
+- 未验证：未在真实 Tauri 窗口里提交一轮对话，未验证 `habit_active_list` 的实际返回、注入后模型的真实行为、localStorage 写入与 50 行滚动在应用内的表现；以上只经纯函数单测、类型检查与构建验证。未新增依赖，未修改既有测试断言、`runtime/`、`engine/`、`desktop/src-tauri/` 或模型路由与凭证。
+
+## OD-GROW-301 G10 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 G5/G6 记录一致：`M PLANS.md`、`M STATUS.md`、既有宿主与前端改动，以及 G1-G6/H3/H5 未跟踪模块、`engine/omnidesk_engine/habit_extract*.py`、`docs/od-*.md`。既有改动全部保留；未改 `PLANS.md` 既有内容、前端、`engine/`、`runtime/`、`desktop/src-tauri/src/commands/*` 或 `docs/od-*.md`；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/consolidation.rs`：新增 `QUESTION_BIGRAM_THRESHOLD = 0.34`、`question_bigram_overlap(question_text, message_text) -> f64`、`refresh_open_questions(paths, plan, now) -> Result<usize, String>`；`apply_digest` 在待审定落盘后、摘要与水位写入前调用刷新。既有函数签名未改。
+  - `desktop/src-tauri/src/habit_cards.rs`：新增 `QUESTION_STALE_DAYS = 7`、`touch_open_question_last_seen(id, now)`（仅 open 状态写 `last_seen`，复用 `write_replace_atomically`）、`open_question_idle_days(last_seen, today, utc_offset_minutes)`、`stale_open_questions(now, utc_offset_minutes)` 与 `StaleOpenQuestion(List)`；既有函数签名未改。
+  - `tests/verification/desktop/evidence/od-grow-301/g10/verify_output.txt`（新增）：全量 cargo 测试原始输出。
+- 判定口径：字符二元组按问题文本去重集合计算，分母为问题自身二元组数；ASCII 大小写归一、连续空白压成一个空格。重叠 `>= 0.34` 命中，34/100 与常量字面值相等；33/100 不命中。刷新只更新既有 `open` 问题文件，不新建、不改 `closed`/`dropped`。搁置按本地日期差 `> 7` 天（第 8 天起）进入提醒列表，第 7 天不算。
+- 与既有前端的口径差异：G5 的 `desktop/src/habitNotice.ts` 用 `idleDays >= 7` 标记前端逾期，宿主 G10 按任务书用 `> 7`。任务书要求本轮不改前端，因此未动；后续 G5/铃铛若改用宿主 `stale_open_questions`，需统一到第 8 天。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1334 passed / 0 failed / 1 ignored**（共 1335 项；G10 新增 5 项：consolidation 3 项、habit_cards 2 项；满足 `>= 1329 + 5`）。证据见 `tests/verification/desktop/evidence/od-grow-301/g10/verify_output.txt`。
+- 未验证：未在真实应用数据目录中跑一轮真实整理摘要，未用真实未决问题验证提及刷新与搁置提醒的端到端表现；只经合成数据单测。`cargo fmt --check` 未运行成功（当前工具链未安装 rustfmt），未改动依赖或安装组件。
+
+## OD-GROW-301 H6+G11 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 G10 记录一致：`M PLANS.md`、`M STATUS.md`、既有宿主与前端改动，以及 G1-G10/H3/H5 未跟踪模块、`engine/omnidesk_engine/habit_extract*.py`、`docs/od-*.md`。既有改动全部保留；未改 `PLANS.md` 存量内容、`runtime/`、`engine/`、`desktop/src-tauri/`、`docs/od-*.md` 或既有测试断言；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src/metricsView.ts`（新增）：纯函数 `buildMetrics` / `rejectionTop` / `formatMetric` / `formatRejectionTop` / `formatViolationTrend` 与输入输出类型。接受率按「接受 /（接受 + 驳回）」计算（%，保留 1 位小数）；驳回原因按次数降序取前三，同次数按原因码升序；违反趋势按卡片 `lastDate` 合并计数后取最近 7 个日期升序；整理成功率按「成功 /（成功 + 失败）」计算。任一必需数字缺失或分母为 0 返回 `null` / `[]`，界面显示 `—`，不估算、不补零。
+  - `desktop/src/metricsView.test.mjs`（新增，5 项）：接受率（含 0 分母与缺失返回 `null`）、Top3 排序与同次数稳定排序、违反趋势同日合并与 7 日期窗口、整理成功率与缺失、`—` 与带单位格式化。
+  - `desktop/src/shell/HabitCardsPage.tsx`（仅追加 30 行，≤30）：底部只读指标区「接受率 / 驳回原因 Top3 / 违反趋势（最近 7 次）/ 整理成功率」，显示本地 `omnidesk.habits.lastInjected` 的最近注入行数，并注明「统计读取待 G11 宿主命令；缺失显示 —」。不拦截任何流程，不改既有区块。
+  - `tests/verification/desktop/run_habit_regression.py`（新增，141 行）：习惯回归入口。依次运行 `cargo test --lib --offline -- habit_extract`、`cargo test --lib --offline -- habit_checks`、`cd engine && python3 -m unittest discover -s omnidesk_engine -p habit_extract_test.py`；任一失败退出 1，输出每组 PASS/FAIL 与通过数。自动在 `PATH` 与 `~/.cargo/bin` 查找 cargo；`--output <文件>` 可把完整输出落盘。用法：`python3 tests/verification/desktop/run_habit_regression.py [--output <文件>]`。后续改提取提示词、信号词白名单、宿主校验、规则种类或相关 SKILL 前先跑此脚本。
+  - `tests/verification/desktop/evidence/od-grow-301/h6-g11/verify_output.txt`（新增）：回归脚本完整输出 + `npm run test` / `npx tsc --noEmit` / `npm run build` 原始输出与退出码。
+- 回归集口径：`habit_extract` 过滤命中 2 项测试，其中表驱动宿主校验测试内部含 ≥20 组合成样例（明确表述、一次性请求、假设、转述、AI 建议未采纳、编号不存在、信号词不在原文、global 无据降级、重复与已驳回、红线词等）；`habit_checks` 10 项（含复盘/写作路径软检查）；engine 提示词 4 项。合计 16 项，未新增样例断言，仅提供统一入口。
+- 指标数据来源缺口（如实标注）：宿主 G1 目前没有候选决定、`habits-stats.jsonl`、整理统计的读取命令（`commands/habits.rs` 只有 candidate/active/open-question/pending-review 列表与决定命令）。因此本页接受率、驳回 Top3、违反趋势、整理成功率均显示 `—`，并注明待 G11 宿主命令；只展示真实可读的 `habits.activeList()` 生效卡与 localStorage 最近注入行数，不伪造数字。
+- 实际执行：`cd desktop && npm run test` → **129 passed / 0 failed / 0 skipped**（基线 124，新增 5 项）；`npx tsc --noEmit` → exit 0；`npm run build` → exit 0（仅有既有 chunk 体积警告）；`python3 tests/verification/desktop/run_habit_regression.py` → **habit_extract 2 + habit_checks 10 + engine 4 = 16 passed / 0 failed**。证据见 `tests/verification/desktop/evidence/od-grow-301/h6-g11/verify_output.txt`。
+- 未验证：未在真实 Tauri 窗口查看指标区布局与真实统计；本轮只跑定向 cargo 过滤测试，未重跑全量 `cargo test --lib`；宿主统计读取命令与真实候选决定数据接入仍未存在。
+
+## OD-GROW-301 H7+G12 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 H6+G11 记录一致：`M PLANS.md`、`M STATUS.md`、既有宿主改动 `M desktop/src-tauri/src/commands/mod.rs`、`M desktop/src-tauri/src/lib.rs`、`M review_store.rs`、`M thread_store.rs`、`M writing_review.rs`，既有前端改动 `M desktop/src/api.ts`、`M HomeCanvas.tsx`、`M HomeChat.tsx`、`M NotificationCenter.tsx`、`M ReviewArchive.tsx`、`M ScenePage.tsx`、`M TopNav.tsx`、`M types.ts`，以及 G1-G10/H3/H5/H6+G11 未跟踪模块、`engine/omnidesk_engine/habit_extract*.py`、`docs/od-*.md`、`tests/verification/desktop/run_habit_regression.py`。既有改动全部保留；未改 `PLANS.md` 既有内容、`STATUS.md` 既有内容、前端、`engine/`、`runtime/`、`docs/od-*.md` 或 `consolidation.rs`；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/habit_audit.rs`（新增）：H7 纯逻辑 `audit_quote` / `audit_active_quotes` / `record_quote_audits` / `read_quote_audits`，G12 纯逻辑 `review_active_cards`；报告与统计不含正文。15 项合成数据单测。
+  - `desktop/src-tauri/src/lib.rs`（仅加 1 行）：`pub mod habit_audit;`。
+  - `desktop/src-tauri/src/habit_cards.rs`（只加不改）：新增 `STAT_QUOTE_AUDIT` 常量并加入既有允许类型列表，新增 `stats_path()` 与 `utc_iso8601_seconds()` 读取辅助；既有函数体与签名未改。
+  - `tests/verification/desktop/evidence/od-grow-301/h7-g12/verify_output.txt`（新增）：全量 cargo 测试原始输出与最终 `test result`。
+- H7 口径：只审 `status=active` 且带 `BannedPhrases` / `RequiredPhrases` 的卡；统计中有该卡 `violation` 行才抽查，否则 Skipped。禁用短语卡在样本正文找到任一声称短语即 Matched；必备短语卡把 violation 视为「缺少必备短语」，任一样本缺少任一必备短语即 Matched，所有样本都包含全部必备短语则 Mismatched。无样本返回 Unknown，`checked=0` 时比例为 None，不做估算。只给 Matched / Mismatched 写统计行，`unknown` / `skipped` 不写。
+- 统计行结构：`{"ts": ..., "type": "quote_audit", "id": <card_id>, "mismatch": <bool>}`。既有 `HabitStatRow` 不能承载布尔字段，本轮未改其结构，改由审计模块经 `stats_path()` 追加；已把 `quote_audit` 加入允许统计类型，`read_stats` 可读取该行（未知的 `mismatch` 字段在既有列表视图中被忽略，布尔值由审计模块的 `read_quote_audits` 读取）。
+- 汇总结构：`QuoteAuditReport { checked, mismatches, skipped, unknown, items: [QuoteAuditResult { card_id, status }] }`，`mismatch_ratio() = mismatches / checked`，`checked=0` 返回 `None`。
+- G12 口径：只处理生效卡；`review_due` 要求统计窗口内无该卡 `inject` 记录且 `last_seen_at` 严格早于 90 天前（第 90 天整不发标记，第 91 天发）；`conflict` 只在 scope 完全相同的两张卡之间判定，同一短语一边在 `banned_phrases`、另一边在 `required_phrases` 时双方都标；跨 scope 不计。报告只列至少有一个标记的卡：`{ items: [{ card_id, flags: { review_due, conflict } }] }`。`stats_cursor` 为调用方传入的统计行窗口，函数只读、不改文件、不改卡。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1349 passed / 0 failed / 1 ignored**（共 1350 项；基线 1334 passed / 1 ignored，新增 15 项；满足 ≥ 1334 + 15）。证据见 `tests/verification/desktop/evidence/od-grow-301/h7-g12/verify_output.txt`。
+- 未验证：G12 复核函数尚未接入整理运行器调用点，本轮只交付纯逻辑与单测；未在真实应用数据目录上跑一轮抽查或复核，未做界面展示；报告与统计只经合成数据验证。未新增依赖，未修改既有测试断言。
+
+## OD-GROW-301 T13 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 H7+G12 记录一致，既有未提交/未跟踪改动全部保留（`PLANS.md`、`STATUS.md`、`desktop/src-tauri/*`、`desktop/src/*`、`docs/od-*.md`、`engine/`、`tests/verification/desktop/run_habit_regression.py` 等）；未改 `runtime/`、`engine/`、`desktop/src-tauri/`；未提交、未推送、未打标签。
+- **实施前事实**：HEAD 的 `desktop/src/workIntent.ts` 已含 `PERIOD_REVIEW_TABLE`（`{ keyword, period, offset }`）与「上月复盘 / 复盘上月 / 上个月复盘」，由 0.2.45（`cd6b847698`）引入；`PERIOD_REVIEW_KEYWORDS` 仅作派生字符串视图，周期判断已无 `slice` 下标。本轮不再重复造表，只补齐词条优先级与可验证性。
+- 改动文件：
+  - `desktop/src/workIntent.ts`（新增 `matchPeriodReviewEntry`）：按最长命中选词条，插入「月复盘」这类短词不会遮住「上月复盘」的长词偏移；`detectPeriodReviewTarget` 增加可选第 4 参数 `table`（默认 `PERIOD_REVIEW_TABLE`，既有调用行为不变），周偏移在词表无命中时回退到 `matched.offset`。默认调用结果与改动前一致。
+  - `desktop/src/workIntent.test.mjs`（只追加 3 项，既有 9 项断言未改）：每个词条在固定日期的精确起止与标签；插入短词后的最长匹配；「上月复盘」年末/年初跨年（2026-12 → 2026-11、2027-01 → 2026-12）。
+  - `tests/verification/desktop/evidence/od-grow-301/t13/verify_output.txt`（新增）：命令、数字、退出码与开工快照。
+- 实际执行：`cd desktop && npm run test` → **tests 132 / pass 132 / fail 0 / cancelled 0 / skipped 0**（改动前同命令基线 129 pass，新增 3，exit 0）；`cd desktop && npx tsc --noEmit` → 无输出，exit 0。证据见 `tests/verification/desktop/evidence/od-grow-301/t13/verify_output.txt`。
+- 未验证：无。本轮只涉及前端纯函数与 Node 单测，未新增依赖。可选项「复盘提示词补传今天日期」按任务书默认未做。
+
+
+## OD-GROW-301 ARCHITECT 验收复核（2026-11-23）
+
+- 复跑命令与结果（全部实际执行）：
+  - `cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → 1349 passed / 0 failed / 1 ignored
+  - `cd desktop && npm run test` → 132 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run build` → 0
+  - `cd engine && python3 -m unittest discover -s omnidesk_engine -p habit_extract_test.py -v` → 4 tests OK
+  - `python3 tests/verification/desktop/run_habit_regression.py` → 16 PASS / 0 FAIL
+  - `python3 tests/verification/desktop/verify_hardening_2043.py` → 77/77（含 verify 脚本 retired/added 记账修正，见 REVIEW.md 偏差 1）
+  - `verify_home_work_0244.py` 31/31；`verify_conversation_prompt.py` 33/33；`verify_harness_220.py` 14/14
+- 未实施（按计划留下轮）：G8（需先出 AI 原稿快照方案并经用户批准）、G9（可选，需批准）、T14（拆 lib.rs 余下领域）、T12 余项（npm test 接入 CI test job）。
+- 未验证：真实 Tauri 窗口界面、真实模型整理端到端、复盘重试端到端（需实机）。
+
+## OD-GROW-301 G8 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 T13 记录一致，既有未提交/未跟踪改动全部保留；未改 `PLANS.md` 既有内容、`STATUS.md`/`REVIEW.md` 既有内容、前端、`engine/`、`runtime/`、`docs/od-*.md` 或既有测试断言；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/writing_diff.rs`（新增）：纯函数 `section_diffs(text_a, text_b)`。按 `parse_body_sections` 拆章，章内按空行分段，只报被删/新增段落中在另一侧整篇章节里不存在的句子；按 `。！？!?；` 与换行切句，单句超过 100 字符按字符切成 ≤100 字符片段；同章去重，章节按编号升序。解析失败返回空列表。5 项合成数据单测（未变/章删除/章新增/改写句/长片段切分/空与畸形文本）。
+  - `desktop/src-tauri/src/writing_section.rs`：`SectionConfirmRequest` 新增 `#[serde(default)] ai_draft_text: Option<String>`（前端不传时行为不变）；`parse_body_sections` 改为 `pub(crate)` 供差异模块复用；`confirm_section` 在用户版快照前，先以 `VersionScope::Section` + `VersionSource::Ai` 保存 label `ai-draft-section-<n>`、note「AI 原稿」的快照（内容为当前已确认章节 + 本章 AI 纯正文）；空白 AI 文本视为未提供，含 Markdown 标题行的文本拒绝（避免破坏正文分节）。1 项单测覆盖带/不带/空白 AI 原稿的版本数与当前正文。
+  - `desktop/src-tauri/src/consolidation.rs`：新增 `WritingDiffHint { origin, writing_id, section_no, fragment }`、`collect_writing_diffs(work_root)`：扫描 `work/写作/` 下 ≥2 版的文稿，取 manifest 最近两版做逐章节差异；同一被删片段出现在 ≥2 个不同 `writing_id` 才输出，单份删除不提。`collect_digest` 将其追加为摘要段落「【写作差异】」并受 `max_digest_chars` 预算约束；`DigestStats` 新增 `writing_diff_candidates` 与 `truncated_writing_diffs`。1 项单测覆盖两份同片段命中、单份不命中、单版本不扫描，以及摘要接入。
+  - `desktop/src-tauri/src/lib.rs`：只加 `pub mod writing_diff;`；`writing_section_confirm_impl` 对 `ai_draft_text` 与既有章节文本一样过红线与隐私掩码；测试结构体字面量补 `ai_draft_text: None`（编译所需，不改断言）。
+  - `desktop/src-tauri/src/writing_review.rs`、`desktop/src-tauri/src/export_engine.rs`：既有测试结构体字面量补 `ai_draft_text: None`（编译所需，不改断言）。
+  - `tests/verification/desktop/evidence/od-grow-301/g8/verify_output.txt`（新增）：全量 cargo 测试原始输出。
+- AI 快照口径与偏差：`document_store::normalize_label` 只允许 ASCII 字母数字与 `-`/`_`，无法使用中文 label「AI 原稿」，故 label 取 `ai-draft-section-<n>`、中文说明放在 `note`（测试断言 note 为「AI 原稿」）。接入点沿用现有唯一写入口 `save_with_snapshot`：提供 AI 原稿时先写入 AI 版快照（当前正文临时为 AI 内容），紧接着写用户确认版并覆盖当前正文；因此一次确认的版本号递增 2（大纲 v1、AI 原稿 v2、用户版 v3）。AI 原稿文本在本轮按纯章节正文保存，不存原始 JSON 包。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1356 passed / 0 failed / 1 ignored**（基线 1349 passed / 1 ignored，新增 7 项：writing_diff 5、writing_section 1、consolidation 1；满足 ≥ 1349 + 7）。证据见 `tests/verification/desktop/evidence/od-grow-301/g8/verify_output.txt`。
+- 前端接线缺口（本轮按任务书不改前端）：`desktop/src/types.ts` 的 `WritingSectionConfirmInput` 尚无 `ai_draft_text` 字段；`desktop/src/shell/WritingSectionEditor.tsx` 的 `confirmDraft` 只传 `draft`，且生成阶段拿到模型原文后未保留原稿文本。下一轮界面任务需要：在编辑器保存本次模型返回的纯章节正文，确认时以 `ai_draft_text` 一并提交；现有调用不传该字段时宿主行为与改动前一致。
+- 未验证：未在真实应用数据目录上跑一轮 AI 原稿落盘与两版差异；未接 G3 校验与 G5 展示，writing_diff 只作为摘要来源与统计计数，不自动写入生效卡。未用真实模型输出验证原稿清洗口径（本轮要求界面传入纯正文）。
+
+
+## OD-GROW-301 G9 执行记录（BUILDER，2026-11-23）
+
+- 基线：`5dc5df4b622815f4803ec4cff07d448e9824dbf1`（main）。开工 `git status` 与 G8 记录一致，既有未提交/未跟踪改动全部保留；未改 `PLANS.md` 既有内容、`STATUS.md`/`REVIEW.md` 既有内容、前端、`engine/`、`runtime/`、`docs/od-*.md` 或 `writing_diff.rs`；未提交、未推送、未打标签。
+- 改动文件：
+  - `desktop/src-tauri/src/knowledge_examples.rs`（新增）：纯函数 `extract_example_paragraphs(body)` 按空行分段，取 50–300 字符、跳过 `#` 标题与列表开头段落、每章最多 3 段；`stage_section_examples(...)` 对候选段先过 `RulePolicy::reject_keywords`（命中跳过该段），再过 `mask_privacy`，然后把脱敏正文写入 `inbox/写作范例/` 源材料（`writing_id + 章节 + 版本` 可追溯），最后调用既有 `knowledge_review::stage` 进入待审核队列；`stage_confirmed_examples(paths, ...)` 解析已配置知识库根与审核目录后再暂存。`knowledge_examples.rs` 内 4 项合成数据单测：49/50/300/301 长度边界、标题与列表过滤、3 段上限、确认后暂存并跳过红线、暂存失败不影响确认。
+  - `desktop/src-tauri/src/writing_section.rs`：新增 `confirm_section_with_stage`（先执行既有 `confirm_section`，再执行范例暂存；暂存失败只 `eprintln!` 记录，返回仍为确认成功）。既有章节确认逻辑与测试断言未改。
+  - `desktop/src-tauri/src/lib.rs`：新增 `pub mod knowledge_examples;`；`writing_section_confirm` 命令路径改为 `writing_section_confirm_impl_with_stage`，在章节确认后以闭包调用 `knowledge_examples::stage_confirmed_examples`；`writing_review_apply_finding` 命令路径改为 `writing_review_apply_finding_impl_with_stage`，应用审阅修订后调用 `knowledge_examples::stage_text_examples`（覆盖 `confirm_section` 的修订入口）；原 `writing_section_confirm_impl` 与 `writing_review_apply_finding_impl` 保留为无暂存的兼容入口（既有单测不变）。
+  - `tests/verification/desktop/evidence/od-grow-301/g9/verify_output.txt`（新增）：全量 cargo 测试原始输出与最终 `test result`。
+- stage 接入点：①章节确认 `writing_section_confirm`（`lib.rs`）→ `writing_section_confirm_impl_with_stage` → `writing_section::confirm_section_with_stage` → `knowledge_examples::stage_confirmed_examples`；②审阅修订 `writing_review_apply_finding`（`lib.rs`）→ `writing_review_apply_finding_impl_with_stage` → `knowledge_examples::stage_text_examples`；两条都落到 `knowledge_review::stage(vault_root, review_dir, result_text, [inbox/写作范例/<writing_id>-第N章-vV.md], policy, offset)`。未新增命令、未绕过审核队列；知识卡只有用户在「知识审核」批准后才由既有 `knowledge_review::decide` 落盘。
+- 实施偏差（任务书与现有准入的差异，如实记录）：①任务书允许 `lib.rs` 只加模块声明，但 `writing_section::confirm_section` 只拿到工作根，拿不到应用数据根、知识库根与审核目录；因此暂存放在命令包装层（章节确认与审阅修订两处约 45 行改动），否则无法调用现有 `knowledge_review::stage`。②任务书写 `sourcePaths=[writing_id + 章节]`，但现有准入要求 `sources` 指向知识库中真实存在的 `inbox/` 或 `raw/` 文件；本轮把脱敏后的确认正文写入 `inbox/写作范例/` 源材料区（不是知识卡），来源路径包含写作编号、章节与版本，批准后由既有归档流程移到 `知识库/原文/`。③不做新开关：沿用 `knowledge_review` 待审核队列本身作为准入；没有配置知识库根时暂存失败只记日志，章节确认照常完成。
+- 实际执行：`cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1` → **1360 passed / 0 failed / 1 ignored**（基线 1356 passed / 1 ignored，新增 4 项；满足 ≥ 1356 + 4）。证据见 `tests/verification/desktop/evidence/od-grow-301/g9/verify_output.txt`。
+- 未验证：未在真实应用数据目录与真实知识库上跑一轮“确认章节 → 审核队列 → 批准落卡”的端到端；未接界面展示；未用真实模型输出验证范例质量。测试全部为合成数据，未写入案件、线索或人物画像类内容。未新增依赖，未修改既有测试断言。
+
+## OD-GROW-301 G8/G9 ARCHITECT 验收复核（2026-11-23）
+
+- G8：cargo → 1356 passed / 0 failed / 1 ignored（+7）；AI 原稿快照走 VersionSource::Ai（一次确认版本号 +2）；writing_diff 候选只进摘要来源，不自动生效。前端 ai_draft_text 接线留下一轮界面任务。
+- G9：cargo → 1360 passed / 0 failed / 1 ignored（+4）；范例段经红线+脱敏后进 knowledge_review 待审核队列（inbox/写作范例/ 源材料），未绕过准入；lib.rs 包装层约 15 行改动（原因见 REVIEW.md）。
+- 最终全量：cargo 1360 / npm 132 / tsc 0 / build 0 / 回归 16 PASS / verify_hardening 77/77。
+- 版本：0.2.53（用户批准提交推送）。

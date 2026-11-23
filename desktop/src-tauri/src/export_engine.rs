@@ -1584,6 +1584,7 @@ mod tests {
                     segments: Vec::new(),
                 },
                 note: Some("虚构章节确认".to_string()),
+                ai_draft_text: None,
             },
             NOW + 3.0,
         )

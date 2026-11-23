@@ -10,6 +10,8 @@ import type {
 import { ThreeWeekCalendar } from "./ThreeWeekCalendar";
 import { WindowControls } from "./WindowChrome";
 import { NotificationCenter } from "./NotificationCenter";
+import { HabitsOverlayHost } from "./HabitCardsPage";
+import { openHabitWorkspace } from "../habitNotice";
 import type { Scene } from "./Dock";
 
 /**
@@ -922,7 +924,19 @@ export function TopNav({
             <Icon name="settings" className="w-[19px] h-[19px]" />
           </button>
 
+          <button
+            type="button"
+            onClick={openHabitWorkspace}
+            className="neu-icon-btn w-8 h-8 rounded-full text-on-surface-variant hover:text-on-surface flex items-center justify-center"
+            data-hover-hint="习惯候选与生效卡"
+            aria-label="习惯"
+            data-testid="topnav-habits"
+          >
+            <Icon name="spark" className="w-[19px] h-[19px]" />
+          </button>
+
           <NotificationCenter onNavigate={onNavigate} />
+          <HabitsOverlayHost />
 
           {/* OD-ARCH-078 S2：删掉账户头像占位块——本版本没有身份系统，
               摆一个假头像只会让人以为已经登录。 */}

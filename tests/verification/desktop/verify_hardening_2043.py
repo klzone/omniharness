@@ -213,10 +213,12 @@ def main() -> int:
                 )
             )
         current = sorted(set(current))
-        # 0.2.45：当日摘要下线，两条命令按产品决定移除；其余命令仍须与基线一一对应。
-        retired = {"worklog_daily_summary_generate", "worklog_daily_summary_read"}
-        # 0.2.45：新增只读描述命令（不启动引擎），用于修复 5 秒轮询重启循环。
-        added = {"engine_describe_if_running"}
+        # 基线自 OD-GROW-301 G1 起改为「当前源码全集」口径：每次有意更新命令
+        # （新增命令模块）时用 export_commands_2043.py --write 重新生成，历史
+        # 的 retired/added 差额（当日摘要下线、engine_describe_if_running 新增）
+        # 已包含在基线内，这里不再重复加减。命令名集合仍须与基线一一对应。
+        retired: set[str] = set()
+        added: set[str] = set()
         expected_names = sorted((set(baseline["names"]) - retired) | added)
         expected_count = baseline["count"] - len(retired) + len(added)
         check("d_modules_exist", (SRC / "commands" / "mod.rs").is_file() and (SRC / "commands" / "reading.rs").is_file())
