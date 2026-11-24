@@ -55,13 +55,10 @@ export function WorkRecordPage({ onNavigate }: { onNavigate: (scene: Scene) => v
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="wr-hero-title">工作记录</h1>
-            <p className="wr-hero-sub">记录工作轨迹，沉淀思考与成长</p>
           </div>
           <span className="wr-hero-pill" data-month-count={monthCount}>
             <Icon name="trend-up" className="h-3.5 w-3.5" />
-            本月记录
             <span className="wr-hero-pill-number">{monthCount}</span>
-            条
           </span>
         </header>
 
