@@ -1,5 +1,7 @@
 # 当前实施计划
 
+> 2026-11-24 起，Agent 角色、模型调度、会话与 Git 规则以 AGENTS.md 为准。下方历史任务中的 ARCHITECT/BUILDER 称谓按当时的执行记录理解。
+
 ### OD-PRJ-604：项目跟踪六项实测修复（用户实测反馈，2026-11-23 批准执行）
 
 > 触发：Windows 实测六项问题。执行：子代理（deepseek-v4.1-flash-eco，high），ARCHITECT 复核。任务书 docs/od-prj-604-dispatch.md。

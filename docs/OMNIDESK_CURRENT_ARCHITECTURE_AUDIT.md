@@ -70,7 +70,7 @@ flowchart TD
 | 独立记忆 | 无 Agent 级记忆。共享数据 = work/ 库/ 文件；会话 = DSH session.v4.jsonl.zstd + app/threads/*.json | §三 存储审计 |
 | 失败处理 | 引擎事件 task_failed + 错误码 13 类（contract.py EngineErrorCode）；宿主校验失败置 ai_analysis_status=failed | contract.py、task_extract.rs |
 | 结果交付 | 结果持久化 engine-state/results/ + 结果文本返回；写操作全部走 pending_writes 确认 | pending_writes.rs |
-| 子 Agent / Agent 间调用 | 不存在。D-092 明确移除 delegation 组（subagent/workflow）；用户指令「不派子代理」 | decisions.md D-092 |
+| 子 Agent / Agent 间调用 | 产品运行时不存在。D-092 明确移除 delegation 组（subagent/workflow）；该限制只指产品运行时，开发协作规则见 AGENTS.md | decisions.md D-092 |
 | 任务状态与恢复 | 九态状态机（contract.py TaskState）+ 合法转换表 + 台账恢复 + 会话 resume/fork（serve.py m_recover_session/m_fork_session） | contract.py、task_core.py |
 
 ## 三、业务能力真实清单（对照第四部分要求）

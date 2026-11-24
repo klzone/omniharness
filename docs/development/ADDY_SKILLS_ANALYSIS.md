@@ -1,5 +1,6 @@
 # Addy Osmani agent-skills 分析与 DeepSeek 执行规范适配
 
+> 历史研究快照（2026-11-04）。其中双会话、任务卡强制与上下文规范建议已由 2026-11-24 的 AGENTS.md 取代，不作为现行规则。
 > 研究对象：https://github.com/addyosmani/agent-skills（2026-11-04 克隆 main 快照到 /private/tmp/addy-research，仅阅读研究，未安装、未引入）。
 > 本文区分：**已验证事实**、**研究结论**、**建议**。
 
@@ -57,7 +58,7 @@
 
 **研究结论：** 这是本次上下文研究的骨架。OmniDesk 现有资产可直接对号入座：AGENTS.md + 工程规范 = 层 1；GOALS/PLANS/decisions = 层 2；任务卡点名的文件与行号 = 层 3；STATUS 证据 = 层 4；历史会话 = 层 5（可丢弃）。
 
-**建议：** 作为 CONTEXT_MANAGEMENT_STANDARD.md 的分层框架，不引入其 CLAUDE.md 模板细节。
+**建议：** 作为 AGENTS.md 会话管理原则的分层参考，不引入其 CLAUDE.md 模板细节。
 
 ### 7. debugging-and-error-recovery（替代任务书中的 diagnosing-bugs）
 
@@ -87,4 +88,4 @@
 | 自动化验收与门禁？ | 按任务类型分级的门禁组合，证据落盘 tests/verification/ |
 | 避免技术债？ | 报告必列"未做与已知限制"；GLM 按五轴审查 |
 | 避免无价值输出？ | 报告模板定字段；工具调用间叙述限一行 |
-| 控制上下文膨胀？ | 见 CONTEXT_MANAGEMENT_STANDARD.md |
+| 控制上下文膨胀？ | 见 AGENTS.md 的会话管理与验证预算 |

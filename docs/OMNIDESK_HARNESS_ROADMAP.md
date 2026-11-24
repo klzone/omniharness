@@ -1,6 +1,6 @@
 # OmniDesk Harness + Multi-Agent 最小化改造路线（Phase A–F）
 
-> 状态：OD-ARCH-150 规划成果（路线与任务卡，未实施；每阶段须用户批准后执行）。
+> 状态：OD-ARCH-150 规划成果（路线与任务卡）。2026-11-24 起执行规则以 AGENTS.md 为准，阶段是否形成计划与审批由复杂度、风险和用户当轮授权决定。
 > 实施进度（2026-11-13）：Phase A/B/C 已实施；Phase D（OD-HAR-221/222 事件反馈与引用体检）与 Phase E（OD-HAR-231/232 12 例合成基准与指标测量）已实施。Work Review preset 最终为「可写文件、无 shell」（D-097）；删除文件仍由宿主回收站负责。真实模型评测未做（需授权）。
 > 关联：[现状审计](OMNIDESK_CURRENT_ARCHITECTURE_AUDIT.md) · [存储审计](OMNIDESK_STORAGE_ARCHITECTURE_AUDIT.md) · [Harness 设计](OMNIDESK_HARNESS_ARCHITECTURE.md) · [Graph 设计](OMNIDESK_MULTI_AGENT_GRAPH_DESIGN.md) · [试点设计](WORK_REVIEW_AGENT_DESIGN.md)
 
@@ -13,7 +13,7 @@
 | C | Work Review Agent 试点 | B1-B3 | 3 张任务卡 |
 | D | 事件与交接机制（跨 Agent） | C 验收 | 2 张任务卡 |
 | E | Golden Task 评估与改进 | C/D | 2 张任务卡 |
-| F | 后续三 Agent 扩展规划 | C 试点通过+用户批准 | 另行规划 |
+| F | 后续三 Agent 扩展规划 | C 试点通过且真实需求出现 | 按需决策 |
 
 原则：每张任务卡单一交付目标+确切验收命令+实跑证据落盘；runtime/、生产数据、凭证、模型路由始终不动；不建通用平台。
 

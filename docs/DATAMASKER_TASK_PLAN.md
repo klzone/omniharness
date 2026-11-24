@@ -1,5 +1,6 @@
 # DataMasker Task 1 实施任务卡（OD-ARCH-139 · 待批准后交实施）
 
+> 历史任务卡（2026-10）。审批与复核流程已被 2026-11-24 的 AGENTS.md 取代，下文技术内容按历史设计参考。
 > 运行目录统一：cd tests/verification/engine-interface/adapter
 > 测试文件：test_security_masker_unit.py（unittest，全部虚构数据）
 > 每步验收 = 指定 -k 前缀全部通过 + 脚本 docstring 声明的最小断言数达标 + 退出码 0

@@ -825,7 +825,7 @@
 - 来源：用户批准与验收记录（PLANS.md、STATUS.md、REVIEW.md）；`desktop/src-tauri/tauri.conf.json`、`desktop/src-tauri/capabilities/default.json`、`desktop/src/shell/WindowChrome.tsx`、`desktop/src/shell/TopNav.tsx`、`desktop/src/App.tsx`。
 
 ### D-023：项目级固定双 Agent——超级Plan（规划）与超级劳工（执行）
-- 状态：已实施并已入库（2026-10-19 实施；文件进入提交 `593c49f`，随 OD-ARCH-029 批次推送 `origin/main`）；**四项复测 2026-10-20 晚全部闭环**（`git rev-parse` 放行 / 管道命令语义明确 / `git diff --check` 通过 / 嵌套派工经用户批准 `experimental.subagent_depth: 2` 后端到端调通）。
+- 状态：**已废止（2026-11-24，被 D-112 与现行 AGENTS.md 取代）**。历史实施记录：2026-10-19 实施，随 OD-ARCH-029 推送 `origin/main`；四项复测 2026-10-20 闭环。
 - 决策：在仓库内以 OpenCode V2 项目级 agent 固定两个角色，均不设 `default_agent`、不改全局模型路由与凭证。**超级Plan**（ID `super-plan`，model `opencode/glm-5.3-flash-free`）负责只读调研代码库与文档、需求分类、产出计划写入 `PLANS.md`，经用户明确批准后派工；权限为「默认全拒后逐条放行」：read/grep/glob、仅 `PLANS.md` 的 edit、只读 git 命令、仅 `super-worker` 的 subagent，并对 `.env*`/`*credentials*`/`*secret*`/`*.pem`/`*.key` 追加 read deny。**超级劳工**（ID `super-worker`，model `opencode/deepseek-v4.1-flash-free`）负责在获批范围内实施，权限等同 build 默认，边界靠 prompt 红线约束（范围刚性、禁改 `runtime/`、禁读凭证、禁触真实业务材料、开工记快照、执行记录写 `STATUS.md`、完成即停等待复核）。
 - 理由：把「规划」与「执行」分成两个可识别、模型固定、权限分层的角色，使计划产出与实施证据可分别审查，降低单会话既规划又动手的越界风险；模型按用户指定分工（规划用 GLM-5.3-Flash Free，执行用 DeepSeek V4.1 Flash Free），不使用会话继承模型。
 - 影响：两 agent 的 system prompt 内嵌 AGENTS.md 纪律，形成**配置级**防线而非代码级安全控制；super-worker 保留编辑与 shell 能力，若出现越界应先加权限白名单。规划方唯一可写文件是 `PLANS.md`，因此计划登记与状态更新仍由 ARCHITECT 落盘。当前已验证：两 agent 可被发现加载、super-plan 只读 git 白名单逐条命令生效（`git rev-parse`/`git diff --check` 通过，**管道复合命令被拒**——白名单仅按单条命令前缀匹配，安全上合理）、未放行命令被拒、未越界写入、frontmatter 静态解析通过；**派工链路已打通**：用户批准新增项目级 `.opencode/opencode.json` 设 `experimental.subagent_depth: 2`（实验性设置，写入后同会话即时生效），ARCHITECT→super-plan→super-worker 端到端调通（super-worker 自报模型 `deepseek-v4.1-flash-free` 并只读回报 HEAD）。复审触发条件：任一 agent 出现越界写入、模型绑定被改、`experimental.subagent_depth` 语义随 OpenCode 升级变动（该键为实验性）、或双绑定模型额度长期耗尽导致不可用。
@@ -839,7 +839,7 @@
 - 来源：OD-ARCH-028 证据索引 `tests/verification/desktop/evidence/od-arch-028/README.md` 与 REVIEW.md 同名小节；`desktop/src/shell/OfflineFlows.tsx`、`desktop/src/aiDraft.ts`、`desktop/src-tauri/src/task_shell.rs`。
 
 ### D-022：提交与推送的授权边界（一次性备份授权，不成为常态）
-- 状态：已确定（OD-ARCH-029，用户 2026-10-20 批准执行）。
+- 状态：**已废止（2026-11-24，被 D-112 与现行 AGENTS.md 的 Git 策略取代）**。历史批准：OD-ARCH-029，用户 2026-10-20。
 - 决策：仓库此前**一律不提交、不推送、不打标签**（见 PLANS.md 顶部约束与各计划的「不提交」条款）。
   OD-ARCH-029 的一次性批准**只**授权把当时工作区的既有改动**分批提交并推送到 `origin/main`**，
   作为防单点丢失的备份；**不**授权常态化提交、**不**授权合并 `omniharness-ui` worktree、**不**授权打标签，
@@ -1494,4 +1494,27 @@
 **证据：** `cargo test --lib -- --test-threads=1` 1225/0/1 ignored；`reading_store` 5/5、`reading_source` 2/2；`cargo check`、`npx tsc --noEmit`、`npm run build` 通过；`node --experimental-strip-types --test src/readingAi.test.mjs` 4/4；EPUB/GBK 纯文本 helper 手工样例通过（`/tmp/od-reading-helper-test`）。真实窗口点击、真实模型整理与跨段选择尚未验证。
 
 **复审触发：** ①书目或批注规模导致书架列表/阅读器出现可观察卡顿；②需要跨段划线、重叠批注重建或多人共享；③用户要求接入微信读书/GitHub 等远程书架；④AI 整理稿需要直接写入知识库；⑤真实模型结果出现无法回查的引文或编造原文。
+
+### D-112（2026-11-24，已实施）：AI 原生单主 Agent + 按需 Eco 子 Agent
+
+**状态：** 已实施。仓库规则、Codex 模型配置与子 Agent 默认配置已调整；旧双会话规范与固定 OpenCode agent 文件已移除。当前会话仍由 Eco 承载，主模型配置对新会话生效。
+
+**决策：** 采用单主 Agent 持续指挥、按需调度子 Agent 的工作模式。主 Agent 使用 OpenDesign/glm-5.3-flash（High），负责需求理解、关键决策、调度、关键审核和最终验收。默认执行走 OpenDesign/deepseek-v4.1-flash-eco（High），承担调查、实现、修复、重构、文档、测试与 Git。Eco 出现明确能力瓶颈时才升级到 OpenDesign/deepseek-v4.1-flash（High）。
+
+**执行：**
+
+1. AGENTS.md 改为 8 条极简工程原则，并写入模型优先级、Eco 优先调度、统一工作循环、单会话管理、风险分级验证和 Git 边界。
+2. Codex 全局配置 model 设为 OpenDesign/glm-5.3-flash，model_reasoning_effort 设为 high；[agents] 默认子模型保持 OpenDesign/deepseek-v4.1-flash-eco、effort high；修改前备份为 config.toml.bak-od-ai-native-20261124。
+3. 删除固定 OpenCode 角色 .opencode/agents/super-plan.md、.opencode/agents/super-worker.md 与 .opencode/opencode.json，避免继续形成固定规划/执行双角色。
+4. 删除旧双会话与强制任务卡规范：docs/development/OMNIDESK_ENGINEERING_STANDARD.md、IMPLEMENTED_RULES.md、CONTEXT_MANAGEMENT_STANDARD.md、SKILL_ADAPTATION_MATRIX.md、HANDOFF_TEMPLATE.md。Git 历史保留原文。
+5. docs/BUILDER-Task-Instruction-Template.md 改为按需使用的子 Agent 任务指令模板，默认 Eco/High，不再要求先获批计划或完成后等待独立复核会话。
+6. PLANS.md 与 README.md 只做口径修正，保留共享状态文件作为恢复入口，不要求每个任务建立正式计划。
+
+**取舍与影响：** 主 Agent 不再被要求亲自完成所有执行工作，也不再为每个任务生成完整计划、交接文件或独立审核会话。数据安全、凭证边界、runtime/ 不可改、用户数据不得擅自覆盖等硬边界保留。Cost 优化依赖 Eco 承担实际执行；主模型仍可能直接处理关键路径上的即时阻塞。全局 Codex 配置会影响其他项目的新会话，这是实现“主 Agent 为 GLM”的直接方式。
+
+**证据：** 配置文件事实：~/.codex/config.toml 第 13 行 model=OpenDesign/glm-5.3-flash，第 4 行 model_reasoning_effort=high，第 255/257 行子 Agent 默认 Eco/high。ocx agent injection set 返回 Injection settings saved，guidance=true，sync=true。git diff --check 退出 0。子 Agent 调度已以 Eco/High 实测发起（agent Dirac）；独立复审首轮发现 3 处中/低残留，修正后复查为无。
+
+**未验证：** 本轮当前会话不能热切换到 GLM；主模型实际调用质量与新会话启动后的模型显示需在下一会话确认。旧文档删除后的外部链接未逐一检查，仓库内仅保留历史引用。
+
+**复审触发：** ①新会话仍未使用 GLM/High，或 Codex 配置被 OpenCodex 重写；②子 Agent 默认模型被改回其他模型；③Eco 频繁失败且升级后仍不可用；④实际使用表明单主会话出现上下文退化或调度成本高于收益。
 

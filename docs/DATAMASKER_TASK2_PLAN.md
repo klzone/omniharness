@@ -1,5 +1,6 @@
 # DataMasker Task 2 实施任务卡（OD-ARCH-140 · 待批准后交实施）
 
+> 历史任务卡（2026-10）。审批与复核流程已被 2026-11-24 的 AGENTS.md 取代，下文技术内容按历史设计参考。
 > 前置：Task 1（OD-ARCH-139）已收口，masker.py 纯文本引擎可用。
 > 测试文件：tests/verification/engine-interface/adapter/test_security_masker_markdown_unit.py（unittest，全虚构数据）。
 > 运行：cd tests/verification/engine-interface/adapter && python3 -m unittest -v test_security_masker_markdown_unit -k <Key>

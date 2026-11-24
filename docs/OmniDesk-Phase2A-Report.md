@@ -1,5 +1,6 @@
 # OmniDesk Phase 2A 变更报告：材料写作 Skill 端到端调用链修复
 
+> 历史报告（2026-10-15）。文中“完成后暂停等待确认”属于当时流程，2026-11-24 起执行规则见 AGENTS.md。
 - 日期：2026-10-15
 - 仓库：`git@github.com:klzone/omniharness.git`，分支 `main`，基线 commit `cebb4a8`
 - 运行时底座：`runtime/deepseek-harness`，tag `dsh-v0.2.1-alpha.2`（**只读，未改动**）

@@ -117,11 +117,11 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 
 ## 文档入口
 
-- [AGENTS.md](AGENTS.md)：协作规则
+- [AGENTS.md](AGENTS.md)：AI 原生协作规则（单主 Agent + 按需 Eco 子 Agent）
 - [GOALS.md](GOALS.md)：产品方向与阶段目标
-- [PLANS.md](PLANS.md)：当前计划
-- [STATUS.md](STATUS.md)：实施状态
-- [REVIEW.md](REVIEW.md)：验收结论
+- [PLANS.md](PLANS.md)：当前复杂或多阶段计划
+- [STATUS.md](STATUS.md)：实际执行与验证摘要
+- [REVIEW.md](REVIEW.md)：需要追溯的验收结论
 - [docs/decisions.md](docs/decisions.md)：架构决策
 
 ## License
