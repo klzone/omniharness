@@ -183,8 +183,8 @@ def main() -> int:
     check(
         "S2 弹窗材质与响应式布局保留",
         'className="wr-dialog w-full max-w-[520px] p-6"' in task_manager
-        and "xl:grid-cols-[minmax(0,1fr)_300px]" in task_manager
-        and "grid-cols-[minmax(150px,168px)_minmax(0,1fr)]" in task_manager,
+        and "pj-main" in task_manager
+        and "@media (max-width: 1279px)" in theme,
     )
 
     # S3 ScenePage 死代码清除，宿主事项命令与文件保留。

@@ -28,11 +28,10 @@ def main() -> int:
 
     check(
         "project_uses_work_record_header",
-        'className="wr-hero"' in task
-        and 'className="wr-hero-mark"' in task
-        and 'className="wr-hero-title"' in task
-        and 'className="wr-search ml-auto"' in task,
-        "项目跟踪页复用工作记录的页头与搜索材质",
+        'className="pj-head"' in task
+        and 'pj-head-title' in task
+        and 'aria-label="搜索任务"' in task,
+        "OD-UI-900：项目跟踪页使用极简新拟物页头（标题+图标功能组+搜索）",
     )
     check(
         "project_has_no_cold_blue_palette",

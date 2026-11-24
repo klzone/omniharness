@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmniDesk 项目跟踪 · 设计样图</title>
+<style>
+  :root {
+    --bg: #f2e9d8;
+    --surface: #f6efe1;
+    --surface-high: #faf4e8;
+    --sunken: #e9dfca;
+    --sunken-deep: #e2d6bd;
+    --ink: #2c2823;
+    --ink-2: #5b5349;
+    --ink-3: #8a7f6a;
+    --accent: #a24e2c;
+    --accent-soft: #f3e2d6;
+    --accent-ink: #7c3a1f;
+    --hi: rgba(255, 252, 244, 0.95);
+    --lo: rgba(168, 145, 112, 0.40);
+    --lo-soft: rgba(168, 145, 112, 0.28);
+    --line: rgba(120, 100, 75, 0.12);
+    --line-strong: rgba(120, 100, 75, 0.20);
+    --raise-1: 3px 3px 8px var(--lo-soft), -3px -3px 8px var(--hi);
+    --raise-2: 8px 8px 24px var(--lo-soft), -8px -8px 24px var(--hi);
+    --raise-3: 14px 14px 36px var(--lo), -12px -12px 30px var(--hi);
+    --inset-1: inset 2px 2px 5px var(--lo-soft), inset -2px -2px 5px var(--hi);
+    --inset-2: inset 4px 4px 9px var(--lo), inset -4px -4px 9px var(--hi);
+    --state-progress: #a24e2c;
+    --state-done: #5747f8;
+    --state-wait: #8a7f6e;
+    --state-pause: #8a5a12;
+    --state-plan: rgba(168, 145, 112, 0.45);
+    --proj-col: 128px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 85% -100px, rgba(255,252,244,0.8), transparent 60%),
+      var(--bg);
+    font-family: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1440px; margin: 0 auto; padding: 24px 32px 48px; }
+
+  /* 顶部导航 */
+  .topnav {
+    display: flex; align-items: center; gap: 18px;
+    background: var(--surface); border-radius: 18px;
+    box-shadow: var(--raise-2); padding: 10px 18px; margin-bottom: 16px;
+  }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .brand small { display: block; font-weight: 500; font-size: 10px; color: var(--ink-3); letter-spacing: 0.14em; }
+  .nav-tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .nav-tab {
+    padding: 7px 14px; border-radius: 12px; color: var(--ink-2);
+    font-size: 12.5px; font-weight: 500; transition: all 160ms ease;
+  }
+  .nav-tab:hover { background: var(--sunken); box-shadow: var(--inset-1); }
+  .nav-tab.active { background: var(--accent); color: #fff; box-shadow: 3px 3px 8px var(--lo-soft), -3px -3px 8px rgba(255,255,255,0.6); }
+  .topnav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .nav-search {
+    background: var(--sunken); box-shadow: var(--inset-1); border: none; outline: none;
+    border-radius: 12px; padding: 7px 12px; width: 200px; font-size: 12.5px; color: var(--ink);
+    font-family: inherit;
+  }
+  .nav-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--surface); box-shadow: var(--raise-1); display: grid; place-items: center; font-size: 12px; color: var(--accent-ink); font-weight: 600; }
+
+  /* 页头 */
+  .page-head { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .page-sub { color: var(--ink-2); font-size: 12.5px; margin-top: 4px; }
+  .head-actions { margin-left: auto; display: flex; gap: 10px; }
+  .btn {
+    border: none; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500;
+    padding: 8px 16px; border-radius: 12px; color: var(--ink-2); background: var(--surface);
+    box-shadow: var(--raise-1); transition: all 160ms ease;
+  }
+  .btn:hover { background: var(--sunken); box-shadow: var(--inset-1); }
+  .btn:active { box-shadow: var(--inset-2); }
+  .btn.primary { background: var(--accent); color: #fff; box-shadow: 4px 4px 10px var(--lo-soft), -4px -4px 10px rgba(255,255,255,0.55); }
+  .btn.primary:hover { background: var(--accent-ink); }
+
+  /* 概览条 */
+  .stat-strip {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px;
+  }
+  .stat {
+    background: var(--surface); border-radius: 16px; box-shadow: var(--raise-1);
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .stat .num { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .lbl { font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em; }
+  .stat .delta { font-size: 10px; color: var(--ink-3); }
+  .stat .delta.up { color: #3f7d5a; }
+  .stat .delta.down { color: var(--accent-ink); }
+  .stat .num.warn { color: var(--accent); }
+  .stat.mini { flex-direction: row; align-items: baseline; justify-content: space-between; padding: 12px 14px; }
+  .stat.mini .lbl { font-size: 10px; }
+  .stat.mini .num { font-size: 14px; color: var(--ink-2); }
+
+  /* 概览条：单卡分栏式 */
+  .overview-card {
+    background: var(--surface); border-radius: 20px; box-shadow: var(--raise-2);
+    display: flex; align-items: stretch; margin-bottom: 16px; padding: 4px;
+  }
+  /* 概览条 v4：图标化状态胶囊条 */
+  .status-bar {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 20px;
+  }
+  .chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border-radius: 999px;
+    box-shadow: var(--raise-1); padding: 8px 16px 8px 10px;
+    font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+    color: var(--ink); cursor: pointer; transition: all 150ms ease;
+  }
+  .chip:hover { background: var(--sunken); box-shadow: var(--inset-1); }
+  .chip .ic {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: var(--sunken); box-shadow: var(--inset-1);
+  }
+  .chip .ic svg { display: block; }
+  .chip small { font-size: 11px; font-weight: 400; color: var(--ink-3); margin-left: 2px; }
+  .chip.warn { color: var(--accent); }
+  .chip.warn .ic svg circle, .chip.warn .ic svg path { stroke: var(--accent); }
+  .chip-sep { flex: 1; }
+
+  .legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-3); }
+  .legend .sw { width: 10px; height: 10px; border-radius: 3px; }
+  .ov-cell {
+    flex: 1; padding: 15px 20px 13px; display: flex; flex-direction: column; gap: 4px;
+    position: relative; border-radius: 16px; transition: background 150ms ease;
+  }
+  .ov-cell:hover { background: var(--sunken); box-shadow: var(--inset-1); }
+  .ov-cell + .ov-cell::before {
+    content: ""; position: absolute; left: 0; top: 15px; bottom: 13px; width: 1px;
+    background: var(--line-strong); transition: opacity 150ms ease;
+  }
+  .ov-cell:hover::before { opacity: 0; }
+  .ov-num-row { display: flex; align-items: baseline; gap: 5px; }
+  .ov-num { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .ov-unit { font-size: 11px; color: var(--ink-3); font-weight: 500; }
+  .ov-lbl { font-size: 11px; color: var(--ink-3); letter-spacing: 0.06em; }
+  .ov-delta { position: absolute; right: 18px; top: 17px; font-size: 10px; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 3px; }
+  .ov-delta.up { color: #3f7d5a; }
+  .ov-delta.down { color: var(--accent-ink); }
+  .ov-delta.warn { color: var(--accent); font-weight: 700; }
+  .ov-cell.emph .ov-num { color: var(--accent); }
+  .ov-ring { position: absolute; right: 14px; bottom: 10px; }
+  .ov-ring svg { display: block; }
+
+  /* 主区域 */
+  .main { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 20px; align-items: start; --proj-col: 128px; }
+
+  /* 左列：优先级分组任务列表 */
+  .panel { background: var(--surface); border-radius: 20px; box-shadow: var(--raise-2); padding: 22px; }
+  .panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .panel-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .panel-meta { font-size: 11px; color: var(--ink-3); margin-left: auto; }
+
+  /* 面板图标：融入材料的圆形图标钮 */
+  .panel-ic {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center;
+    background: var(--sunken); box-shadow: var(--inset-1);
+  }
+  .panel-ic svg { display: block; }
+
+  /* 头部图标按钮：新建项目 / 添加任务 */
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer;
+    display: grid; place-items: center; font-family: inherit;
+    background: var(--surface); box-shadow: var(--raise-1);
+    transition: all 150ms ease; padding: 0;
+  }
+  .icon-btn:hover { background: var(--sunken); box-shadow: var(--inset-1); }
+  .icon-btn.primary {
+    background: var(--accent); box-shadow: 3px 3px 8px var(--lo-soft), -3px -3px 8px rgba(255,255,255,0.55);
+  }
+  .icon-btn.primary:hover { background: var(--accent-ink); }
+  .icon-btn svg { display: block; }
+  .icon-group { display: flex; align-items: center; gap: 8px; }
+
+  /* 甘特头部图标化 */
+  .gantt-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .priority-group { margin-bottom: 6px; }
+  .priority-group:last-child { margin-bottom: 0; }
+  .pg-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 11px; cursor: pointer;
+    background: var(--sunken); box-shadow: var(--inset-1);
+    transition: all 150ms ease;
+  }
+  .pg-head:hover { background: var(--sunken-deep); }
+  .pg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .pg-name { font-size: 12px; font-weight: 600; color: var(--ink-2); letter-spacing: 0.02em; }
+  .pg-count { margin-left: auto; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; background: var(--surface-high); border-radius: 8px; padding: 2px 7px; box-shadow: 1px 1px 3px var(--lo-soft), -1px -1px 3px var(--hi); }
+  .pg-chev { font-size: 9px; color: var(--ink-3); }
+  .pg-body { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; padding-left: 4px; }
+  .task-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface-high); border-radius: 11px; padding: 10px 12px;
+    box-shadow: 2px 2px 5px var(--lo-soft), -2px -2px 5px var(--hi);
+    cursor: pointer; transition: all 140ms ease;
+    min-height: 42px;
+  }
+  .task-row:hover { transform: translateY(-1px); box-shadow: 3px 3px 8px var(--lo-soft), -2px -2px 6px var(--hi); }
+  .task-row .check {
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    border: 1.5px solid var(--line-strong); background: var(--surface);
+    display: grid; place-items: center; font-size: 9px; color: var(--ink-3);
+  }
+  .task-row .t {
+    flex: 1; font-size: 12.5px; line-height: 1.4; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  .task-row.hot .t { font-weight: 600; }
+  .task-row.hot .check { border-color: var(--accent); }
+  .task-row .due {
+    font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .task-row .avatar {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: var(--sunken); box-shadow: var(--inset-1);
+    display: grid; place-items: center; font-size: 9.5px; color: var(--ink-2); font-weight: 600;
+  }
+  .task-row.hot .due { color: var(--accent-ink); font-weight: 600; }
+  .task-row.overdue .due { color: var(--accent); font-weight: 700; }
+
+  /* 右列：甘特（参考 Roadmap 布局：左侧项目轨 + 大任务条 + 右侧元信息尾翼） */
+  .gantt-panel { padding: 24px; }
+  .gantt-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .range-switch { display: flex; background: var(--sunken); box-shadow: var(--inset-1); border-radius: 12px; padding: 3px; gap: 2px; margin-left: auto; }
+  .range-btn { border: none; background: transparent; font-family: inherit; font-size: 11.5px; padding: 5px 12px; border-radius: 9px; color: var(--ink-3); cursor: pointer; }
+  .range-btn.active { background: var(--surface-high); color: var(--ink); box-shadow: 2px 2px 5px var(--lo-soft), -2px -2px 5px var(--hi); font-weight: 600; }
+
+  .gantt { position: relative; }
+  .gantt-grid-row {
+    position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line);
+  }
+  .gantt-scale {
+    display: grid; grid-template-columns: var(--proj-col) minmax(0,1fr);
+    padding: 0 0 8px; border-bottom: 1px solid var(--line-strong);
+  }
+  .gantt-scale .cells { position: relative; height: 18px; }
+  .gantt-scale .cell-lbl {
+    position: absolute; top: 0; transform: translateX(-50%);
+    font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  }
+  .gantt-scale .cell-lbl.today { color: var(--accent); font-weight: 700; }
+
+  .proj-row {
+    display: grid; grid-template-columns: var(--proj-col) minmax(0,1fr);
+    border-bottom: 1px solid var(--line);
+  }
+  .proj-row:last-child { border-bottom: none; }
+  .proj-rail {
+    padding: 18px 16px 18px 6px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    border-right: 1px solid var(--line);
+  }
+  .proj-rail .p-name { font-size: 14px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.3; }
+  .proj-rail .p-range { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .proj-canvas { position: relative; }
+  .proj-canvas .rowlane { position: relative; height: 44px; }
+  .proj-canvas .rowlane + .rowlane { border-top: 1px dashed var(--line); }
+  .proj-canvas .rowlane.lane-gap { height: 16px; }
+
+  .tbar {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    height: 30px; border-radius: 9px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; min-width: 60px;
+    box-shadow: 3px 3px 8px var(--lo-soft), -2px -2px 5px var(--hi);
+    cursor: pointer; transition: transform 130ms ease, box-shadow 130ms ease;
+    z-index: 2;
+  }
+  .tbar:hover { transform: translateY(-50%) scale(1.01); box-shadow: 4px 4px 10px var(--lo), -2px -2px 6px var(--hi); z-index: 3; }
+  .tbar .t-name { font-size: 12.5px; font-weight: 600; color: #fff; letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+  .tbar .t-meta { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; overflow: hidden; }
+  .tbar .t-stat { font-size: 10.5px; color: rgba(255,255,255,0.85); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tbar .t-avatars { display: flex; }
+  .tbar .t-avatars .av {
+    width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.75);
+    display: grid; place-items: center; font-size: 8.5px; font-weight: 600; color: #fff;
+    background: rgba(255,255,255,0.22);
+  }
+  .tbar .t-avatars .av + .av { margin-left: -6px; }
+  .tbar.c-accent { background: var(--accent); }
+  .tbar.c-ink { background: var(--ink-2); }
+  .tbar.c-done { background: #5b54d6; }
+  .tbar.c-pause { background: var(--state-pause); }
+  .tbar.ghost {
+    background: var(--sunken); box-shadow: var(--inset-1);
+  }
+  .tbar.ghost .t-name { color: var(--ink-2); font-weight: 500; }
+  .tbar.ghost .t-stat { color: var(--ink-3); }
+  .tbar.ghost .t-avatars .av { border-color: var(--surface-high); background: var(--sunken-deep); color: var(--ink-2); }
+  .tbar.thin { height: 22px; border-radius: 7px; background: var(--sunken); box-shadow: var(--inset-1); padding: 0 10px; }
+  .tbar.thin .t-name { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+
+  .today-vline { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: 0.45; z-index: 1; }
+  .today-flag {
+    position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* 项目卡 */
+  .proj-cards { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin-top: 20px; }
+  .pcard {
+    background: var(--surface-high); border-radius: 16px;
+    box-shadow: 4px 4px 10px var(--lo-soft), -4px -4px 10px var(--hi);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+    cursor: pointer; transition: transform 140ms ease;
+  }
+  .pcard:hover { transform: translateY(-2px); }
+  .pcard .p-head { display: flex; align-items: center; gap: 8px; }
+  .pcard .p-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .pcard .p-name { font-size: 13px; font-weight: 700; letter-spacing: 0.01em; }
+  .pcard .p-menu { margin-left: auto; color: var(--ink-3); font-size: 13px; letter-spacing: 2px; padding: 0 2px; }
+  .pcard .p-progress-row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; color: var(--ink-3); }
+  .pcard .p-progress-row .pct { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .pcard .p-track { height: 6px; border-radius: 3px; background: var(--sunken); box-shadow: var(--inset-1); overflow: hidden; }
+  .pcard .p-fill { height: 100%; border-radius: 3px; }
+  .pcard .p-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .pcard .p-avatars { display: flex; }
+  .pcard .p-avatars .av {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 9px; font-weight: 600; color: var(--ink-2);
+    background: var(--sunken); box-shadow: 1px 1px 3px var(--lo-soft), -1px -1px 3px var(--hi);
+  }
+  .pcard .p-avatars .av + .av { margin-left: -6px; }
+  .pcard .p-foot .f-meta { margin-left: auto; display: flex; gap: 8px; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  /* 统计卡 */
+  .side-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .metric {
+    background: var(--surface); border-radius: 16px; box-shadow: var(--raise-1); padding: 14px;
+  }
+  .metric .num { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .metric .lbl { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+  .metric .num.accent { color: var(--accent); }
+  .metric .trend { font-size: 10px; margin-top: 6px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; }
+  .metric .trend.up { color: #3f7d5a; }
+  .metric .trend.down { color: var(--accent-ink); }
+
+  /* 已完成列表 */
+  .done-list { margin-top: 12px; }
+  .done-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 4px;
+    border-bottom: 1px dashed var(--line); font-size: 12.5px;
+  }
+  .done-item:last-child { border-bottom: none; }
+  .done-check {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--sunken); box-shadow: var(--inset-1);
+    display: grid; place-items: center; font-size: 10px; color: var(--ink-3); flex-shrink: 0;
+  }
+  .done-item .t { flex: 1; color: var(--ink-2); }
+  .done-item .d { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 8px; }
+  .spark .s { flex: 1; border-radius: 3px 3px 0 0; background: var(--sunken-deep); }
+  .spark .s.hot { background: var(--accent); }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- 顶栏 -->
+  <nav class="topnav">
+    <div class="brand">OmniDesk<small>PROJECT TRACK</small></div>
+    <div class="nav-tabs">
+      <div class="nav-tab">首页</div>
+      <div class="nav-tab">工作记录</div>
+      <div class="nav-tab active">项目跟踪</div>
+      <div class="nav-tab">知识库</div>
+      <div class="nav-tab">设置</div>
+    </div>
+    <div class="topnav-right">
+      <input class="nav-search" placeholder="搜索任务、项目…">
+      <div class="nav-avatar">Y</div>
+    </div>
+  </nav>
+
+  <!-- 页头 -->
+  <div class="page-head">
+    <div class="page-title">项目跟踪</div>
+    <div class="head-actions">
+      <div class="icon-group">
+        <button class="icon-btn" title="新建项目">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4.5C2 3.7 2.7 3 3.5 3H6l1.2 1.5H12.5C13.3 4.5 14 5.2 14 6V11.5C14 12.3 13.3 13 12.5 13H3.5C2.7 13 2 12.3 2 11.5V4.5Z" stroke="var(--ink-2)" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M8 7.2V10.3M6.45 8.75H9.55" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="icon-btn primary" title="添加任务">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3.5 8.2L6.6 11.3L12.5 4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 概览条：图标状态胶囊 -->
+  <div class="status-bar">
+    <div class="chip">
+      <span class="ic">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <rect x="2" y="2" width="10" height="10" rx="3" stroke="var(--ink-2)" stroke-width="1.4"/>
+          <path d="M4.5 7l1.8 1.8L9.8 5.3" stroke="var(--ink-2)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      21<small>已完成</small>
+    </div>
+    <div class="chip">
+      <span class="ic">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="5" stroke="var(--ink-2)" stroke-width="1.4"/>
+          <path d="M7 4.5V7l1.8 1.2" stroke="var(--ink-2)" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </span>
+      8<small>进行中</small>
+    </div>
+    <div class="chip warn">
+      <span class="ic">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 1.8L12.5 11.5H1.5L7 1.8Z" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M7 5.5V8" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="7" cy="9.8" r="0.7" fill="var(--accent)"/>
+        </svg>
+      </span>
+      3<small>逾期</small>
+    </div>
+    <div class="chip-sep"></div>
+  </div>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <!-- 左列 -->
+    <div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-ic">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="2" y="2" width="11" height="11" rx="3.5" stroke="var(--ink-2)" stroke-width="1.3"/>
+              <path d="M4.8 7.5l2 2L10.5 5.8" stroke="var(--ink-2)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <button class="icon-btn" style="width:26px;height:26px;margin-left:auto;" title="添加任务">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 2.5V9.5M2.5 6H9.5" stroke="var(--ink-2)" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="priority-group">
+          <div class="pg-head">
+            <span class="pg-dot" style="background:var(--accent)"></span>
+            <span class="pg-name">紧急重要</span>
+            <span class="pg-chev">▾</span>
+            <span class="pg-count">5</span>
+          </div>
+          <div class="pg-body">
+            <div class="task-row hot overdue">
+              <span class="check">!</span>
+              <span class="t">年终复盘报告撰写</span>
+              <span class="avatar">砚</span>
+              <span class="due">已逾期 2 天</span>
+            </div>
+            <div class="task-row hot">
+              <span class="check"></span>
+              <span class="t">项目甘特分组与界面规范化验收</span>
+              <span class="due">周四截止</span>
+            </div>
+            <div class="task-row hot">
+              <span class="check"></span>
+              <span class="t">设计走查与视觉规范定稿</span>
+              <span class="due">周五截止</span>
+            </div>
+            <div class="task-row hot">
+              <span class="check"></span>
+              <span class="t">客户答疑与资料回传</span>
+              <span class="due">今日 16:00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="priority-group">
+          <div class="pg-head">
+            <span class="pg-dot" style="background:var(--state-done)"></span>
+            <span class="pg-name">重要不紧急</span>
+            <span class="pg-chev">▾</span>
+            <span class="pg-count">9</span>
+          </div>
+          <div class="pg-body">
+            <div class="task-row">
+              <span class="check"></span>
+              <span class="t">知识库标签体系重构与数据迁移</span>
+              <span class="avatar">李</span>
+              <span class="due">12月10日</span>
+            </div>
+            <div class="task-row">
+              <span class="check"></span>
+              <span class="t">桌面端渲染性能优化方案</span>
+              <span class="due">12月18日</span>
+            </div>
+            <div class="task-row">
+              <span class="check"></span>
+              <span class="t">年终汇报框架起草与数据核对</span>
+              <span class="due">12月19日</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="priority-group">
+          <div class="pg-head">
+            <span class="pg-dot" style="background:var(--state-wait)"></span>
+            <span class="pg-name">紧急不重要</span>
+            <span class="pg-chev">▸</span>
+            <span class="pg-count">6</span>
+          </div>
+        </div>
+
+        <div class="priority-group">
+          <div class="pg-head">
+            <span class="pg-dot" style="background:#c0b7a4"></span>
+            <span class="pg-name">不紧急不重要</span>
+            <span class="pg-chev">▸</span>
+            <span class="pg-count">4</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右列：甘特（Roadmap 布局） + 项目卡 -->
+    <div class="panel gantt-panel">
+      <div class="gantt-head">
+        <div class="panel-ic">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M2 3.5H13" stroke="var(--ink-2)" stroke-width="1.3" stroke-linecap="round"/>
+            <rect x="3" y="5.2" width="7" height="2.2" rx="1.1" fill="var(--ink-2)" opacity="0.55"/>
+            <rect x="6" y="8.6" width="6" height="2.2" rx="1.1" fill="var(--ink-2)"/>
+          </svg>
+        </div>
+        <div class="range-switch">
+          <button class="range-btn">周</button>
+          <button class="range-btn active">月</button>
+          <button class="range-btn">季</button>
+        </div>
+      </div>
+
+      <div class="gantt">
+        <div class="gantt-scale">
+          <div></div>
+          <div class="cells">
+            <span class="cell-lbl" style="left:4%">11.24</span>
+            <span class="cell-lbl" style="left:17%">11.28</span>
+            <span class="cell-lbl" style="left:31%">12.02</span>
+            <span class="cell-lbl today" style="left:45%">12.06</span>
+            <span class="cell-lbl" style="left:59%">12.10</span>
+            <span class="cell-lbl" style="left:73%">12.14</span>
+            <span class="cell-lbl" style="left:87%">12.18</span>
+            <span class="cell-lbl" style="left:97%">12.22</span>
+          </div>
+        </div>
+
+        <div class="proj-row">
+          <div class="proj-rail">
+            <div class="p-name">品牌改版</div>
+            <div class="p-range">11.25 → 12.20</div>
+          </div>
+          <div class="proj-canvas" style="position:relative">
+            <div class="today-vline" style="left:45%"><span class="today-flag"></span></div>
+            <div class="rowlane">
+              <div class="tbar c-accent" style="left:2%;width:46%">
+                <span class="t-name">视觉规范定稿</span>
+                <span class="t-meta"><span class="t-stat">5/5</span><span class="t-avatars"><span class="av">砚</span><span class="av">李</span></span></span>
+              </div>
+            </div>
+            <div class="rowlane">
+              <div class="tbar ghost" style="left:36%;width:30%">
+                <span class="t-name">设计走查</span>
+                <span class="t-meta"><span class="t-stat">62%</span></span>
+              </div>
+            </div>
+            <div class="rowlane">
+              <div class="tbar c-ink" style="left:58%;width:34%">
+                <span class="t-name">开发联调</span>
+                <span class="t-meta"><span class="t-stat">3/9</span><span class="t-avatars"><span class="av">陈</span><span class="av">王</span></span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="proj-row">
+          <div class="proj-rail">
+            <div class="p-name">知识库重构</div>
+            <div class="p-range">11.28 → 12.22</div>
+          </div>
+          <div class="proj-canvas" style="position:relative">
+            <div class="today-vline" style="left:45%"><span class="today-flag"></span></div>
+            <div class="rowlane">
+              <div class="tbar c-accent" style="left:10%;width:38%">
+                <span class="t-name">数据模型迁移</span>
+                <span class="t-meta"><span class="t-stat">6/12</span><span class="t-avatars"><span class="av">李</span></span></span>
+              </div>
+            </div>
+            <div class="rowlane">
+              <div class="tbar c-pause" style="left:42%;width:28%">
+                <span class="t-name">检索性能优化</span>
+                <span class="t-meta"><span class="t-stat">30%</span><span class="t-avatars"><span class="av">张</span></span></span>
+              </div>
+            </div>
+            <div class="rowlane">
+              <div class="tbar ghost" style="left:66%;width:26%">
+                <span class="t-name">上线回归验证</span>
+                <span class="t-meta"><span class="t-stat">0/7</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="proj-row">
+          <div class="proj-rail">
+            <div class="p-name">年终汇报</div>
+            <div class="p-range">12.02 → 12.19</div>
+          </div>
+          <div class="proj-canvas" style="position:relative">
+            <div class="today-vline" style="left:45%"><span class="today-flag"></span></div>
+            <div class="rowlane">
+              <div class="tbar c-accent" style="left:20%;width:34%">
+                <span class="t-name">汇报框架起草</span>
+                <span class="t-meta"><span class="t-stat">55%</span><span class="t-avatars"><span class="av">砚</span></span></span>
+              </div>
+            </div>
+            <div class="rowlane">
+              <div class="tbar c-ink" style="left:52%;width:40%">
+                <span class="t-name">数据与图表核对</span>
+                <span class="t-meta"><span class="t-stat">2/8</span><span class="t-avatars"><span class="av">王</span><span class="av">李</span></span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="proj-cards">
+        <div class="pcard">
+          <div class="p-head">
+            <span class="p-dot" style="background:var(--accent)"></span>
+            <span class="p-name">品牌改版</span>
+            <span class="p-menu">⋮</span>
+          </div>
+          <div class="p-progress-row"><span>进度</span><span class="pct">68%</span></div>
+          <div class="p-track"><div class="p-fill" style="width:68%;background:var(--accent)"></div></div>
+          <div class="p-foot">
+            <span class="p-avatars"><span class="av">砚</span><span class="av">李</span><span class="av">陈</span></span>
+            <span class="f-meta"><span>13 任务</span><span>4/5 里程碑</span></span>
+          </div>
+        </div>
+        <div class="pcard">
+          <div class="p-head">
+            <span class="p-dot" style="background:#5b54d6"></span>
+            <span class="p-name">知识库重构</span>
+            <span class="p-menu">⋮</span>
+          </div>
+          <div class="p-progress-row"><span>进度</span><span class="pct">45%</span></div>
+          <div class="p-track"><div class="p-fill" style="width:45%;background:#5b54d6"></div></div>
+          <div class="p-foot">
+            <span class="p-avatars"><span class="av">李</span><span class="av">张</span></span>
+            <span class="f-meta"><span>12 任务</span><span>6/12</span></span>
+          </div>
+        </div>
+        <div class="pcard">
+          <div class="p-head">
+            <span class="p-dot" style="background:var(--ink-2)"></span>
+            <span class="p-name">年终汇报</span>
+            <span class="p-menu">⋮</span>
+          </div>
+          <div class="p-progress-row"><span>进度</span><span class="pct">23%</span></div>
+          <div class="p-track"><div class="p-fill" style="width:23%;background:var(--ink-2)"></div></div>
+          <div class="p-foot">
+            <span class="p-avatars"><span class="av">砚</span><span class="av">王</span></span>
+            <span class="f-meta"><span>8 任务</span><span>2/8</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+

@@ -233,22 +233,16 @@ def main() -> int:
         ),
     )
 
-    # S5：四张统计卡口径不变。
-    stats_block = re.search(r"const statCards = \[(.*?)\n  \];", task_manager, re.S)
-    ok = bool(stats_block)
-    detail = "未找到 statCards 定义"
-    if stats_block:
-        block = stats_block.group(1)
-        labels = re.findall(r'label: "([^"]+)"', block)
-        values = re.findall(r"value: (stats\.[a-z]+)", block)
-        ok = labels == ["今日新增", "进行中", "已完成", "逾期"] and values == [
-            "stats.created",
-            "stats.running",
-            "stats.done",
-            "stats.overdue",
-        ]
-        detail = "labels=" + repr(labels) + " values=" + repr(values)
-    check("S5 右侧四张统计卡数字口径未改", ok, detail)
+    # S5（OD-UI-900 修订）：统计改为状态胶囊条，数字口径仍来自 stats.*。
+    ok = (
+        "stats.done" in task_manager
+        and "stats.running" in task_manager
+        and "stats.overdue" in task_manager
+        and 'data-pj-chip-done=""' in task_manager
+        and 'data-pj-chip-running=""' in task_manager
+        and 'data-pj-chip-overdue=""' in task_manager
+    )
+    check("S5 状态胶囊条数字口径未改（OD-UI-900）", ok)
 
     # IPC 封装与类型。
     check(

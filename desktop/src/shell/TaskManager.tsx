@@ -821,11 +821,10 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
  * OD-UI-716：项目跟踪的视觉层。
  * 布局仍是「四象限 + 甘特 + 统计 / 已完成」，但材质改回工作记录页的暖白新拟物：
  * 象牙灰底、近白凸起、品牌靛蓝只用在小面积强调；不再使用冷蓝渐变与光斑。
+ * 甘特条表达状态，不伪造时间进度百分比。
  */
 const NEU_TILE =
   "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
-const NEU_CARD =
-  "bg-[color:var(--od-neu-surface)] shadow-[var(--od-neu-raise-1)]";
 const NEU_CARD_STRONG =
   "bg-[color:var(--od-neu-surface)] shadow-[var(--od-neu-raise-2)]";
 const NEU_INSET =
@@ -941,6 +940,12 @@ export function TaskQuadrantBoard({
   const [reviewSeed, setReviewSeed] = useState<ProjectReviewSeed>(null);
   /** 甘特组折叠：用户手动覆盖默认折叠（默认值在超过 30 行时自动给出）。 */
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  /** OD-UI-900：快捷新建任务弹层（项目跟踪页头扇形入口）。 */
+  const [quickTaskOpen, setQuickTaskOpen] = useState(false);
+  const [quickTaskTitle, setQuickTaskTitle] = useState("");
+  const [quickTaskDue, setQuickTaskDue] = useState("");
+  const [quickTaskProject, setQuickTaskProject] = useState("");
+  const [quickTaskBusy, setQuickTaskBusy] = useState(false);
 
   function announce(notice: Notice | null) {
     setLocalNotice(notice);
@@ -1214,6 +1219,30 @@ export function TaskQuadrantBoard({
     }
   }
 
+  /** OD-UI-900：从页头扇形「+」直接建任务（可带截止日期与项目挂接）。 */
+  async function createQuickTask() {
+    const title = quickTaskTitle.trim();
+    if (!title) return;
+    setQuickTaskBusy(true);
+    try {
+      await shell.taskCreate({
+        title,
+        due_date: quickTaskDue || null,
+        project_id: quickTaskProject || null,
+      });
+      setQuickTaskOpen(false);
+      setQuickTaskTitle("");
+      setQuickTaskDue("");
+      setQuickTaskProject("");
+      announce({ kind: "ok", text: "已新建任务「" + title + "」。" });
+      setTick((n) => n + 1);
+    } catch (e) {
+      announce({ kind: "err", text: errText(e) });
+    } finally {
+      setQuickTaskBusy(false);
+    }
+  }
+
   const editingTask = editing ? taskMap.get(editing) ?? null : null;
   const compact = variant === "panel";
 
@@ -1363,7 +1392,9 @@ export function TaskQuadrantBoard({
   const gantt = (
     <section aria-label="任务甘特图" className={"min-w-0 rounded-[22px] px-6 py-5 " + NEU_CARD_STRONG}>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <span className="text-[11px] tracking-[0.14em] text-[color:var(--od-neu-ink-3)]">时间范围</span>
+        <span className="pj-panel-ic" aria-hidden="true">
+          <Icon name="calendar" className="h-3.5 w-3.5" />
+        </span>
         <div className="flex gap-1.5">
           {RANGE_OPTIONS.map((option) => (
             <button
@@ -1532,63 +1563,6 @@ export function TaskQuadrantBoard({
     </section>
   );
 
-  const statCards = [
-    {
-      key: "created",
-      label: "今日新增",
-      value: stats.created,
-      icon: "clock" as const,
-      tone: "text-[color:var(--od-neu-ink-2)]",
-      tile: "bg-[color:var(--od-neu-sunken)]",
-    },
-    {
-      key: "running",
-      label: "进行中",
-      value: stats.running,
-      icon: "arrow-right" as const,
-      tone: "text-[color:var(--od-neu-ink-2)]",
-      tile: "bg-[color:var(--od-neu-sunken)]",
-    },
-    {
-      key: "done",
-      label: "已完成",
-      value: stats.done,
-      icon: "check" as const,
-      tone: "text-[color:var(--od-neu-ink-2)]",
-      tile: "bg-[color:var(--od-neu-sunken)]",
-    },
-    {
-      key: "overdue",
-      label: "逾期",
-      value: stats.overdue,
-      icon: "clock" as const,
-      tone: "text-[color:var(--od-neu-accent-ink)]",
-      tile: "bg-[color:var(--od-neu-accent-soft)]",
-    },
-  ];
-
-  const statsPanel = (
-    <div className="grid grid-cols-2 gap-3">
-      {statCards.map((item) => (
-        <div key={item.key} className={"rounded-[18px] px-3.5 py-3 " + NEU_CARD}>
-          <div className="flex items-center gap-2.5">
-            <span
-              className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] " + item.tile + " " + item.tone}
-            >
-              <Icon name={item.icon} className="h-[15px] w-[15px]" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[10px] text-[color:var(--od-neu-ink-3)]">{item.label}</span>
-              <span className="mt-0.5 block text-[20px] font-semibold leading-none text-[color:var(--od-neu-ink)] tabular-nums">
-                {item.value}
-              </span>
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
   const completedPanel = (
     <aside aria-label="已完成任务" className={"rounded-[18px] px-5 py-4 " + WELL}>
       <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
@@ -1651,29 +1625,125 @@ export function TaskQuadrantBoard({
     <section
       aria-label="任务四象限"
       data-task-quadrant=""
-      className="relative mx-auto max-w-[1180px]"
+      className="pj-page relative mx-auto max-w-[1240px]"
     >
-      <header className="wr-hero">
-        <div className="wr-hero-mark" aria-hidden="true">
-          <Icon name="checklist" className="h-6 w-6" />
-        </div>
-        <div className="relative min-w-0 flex-1">
-          <h2 className="wr-hero-title">项目跟踪</h2>
-          <p className="wr-hero-sub">
-            {today.getFullYear()} 年 {today.getMonth() + 1} 月 {today.getDate()} 日
-          </p>
-        </div>
-        <label className="wr-search ml-auto">
-          <Icon name="search" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
+      {/* OD-UI-900 状态胶囊条：图标+数字，语义由图标承担 */}
+      <div className="pj-statusbar" data-pj-statusbar="">
+        <button
+          type="button"
+          className="pj-chip"
+          data-pj-chip-done=""
+          onClick={() => setQuery("")}
+          title={"已完成 " + stats.done + " 项"}
+        >
+          <span className="pj-chip-ic">
+            <Icon name="check" className="h-3.5 w-3.5" />
+          </span>
+          {stats.done}
+          <small>已完成</small>
+        </button>
+        <button
+          type="button"
+          className="pj-chip"
+          data-pj-chip-running=""
+          onClick={() => setQuery("")}
+          title={"进行中 " + stats.running + " 项"}
+        >
+          <span className="pj-chip-ic">
+            <Icon name="clock" className="h-3.5 w-3.5" />
+          </span>
+          {stats.running}
+          <small>进行中</small>
+        </button>
+        <button
+          type="button"
+          className={"pj-chip" + (stats.overdue > 0 ? " is-warn" : "")}
+          data-pj-chip-overdue=""
+          onClick={() => setQuery("")}
+          title={"逾期 " + stats.overdue + " 项"}
+        >
+          <span className="pj-chip-ic">
+            <Icon name="bell" className="h-3.5 w-3.5" />
+          </span>
+          {stats.overdue}
+          <small>逾期</small>
+        </button>
+      </div>
+
+      {/* 页头：标题 + 图标功能组（新建项目 / 扇形任务入口） */}
+      <div className="pj-head">
+        <h2 className="pj-head-title">项目跟踪</h2>
+        <div className="pj-head-actions">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索任务"
-            className="w-full bg-transparent text-[11.5px] text-[color:var(--od-neu-ink)] placeholder:text-[color:var(--od-neu-ink-3)] focus:outline-none"
             aria-label="搜索任务"
+            className={
+              "h-8 w-[150px] rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] placeholder:text-[color:var(--od-neu-ink-3)] focus:outline-none " +
+              NEU_INSET
+            }
           />
-        </label>
-      </header>
+          <button
+            type="button"
+            className="pj-fab"
+            title="新建项目"
+            data-pj-new-project=""
+            onClick={() => {
+              setQuickTaskOpen(false);
+              document
+                .querySelector<HTMLButtonElement>('[data-project-new=""]')
+                ?.click();
+            }}
+          >
+            <Icon name="folder" className="h-4 w-4" />
+          </button>
+          <div className={"pj-fan" + (quickTaskOpen ? " is-open" : "")} data-pj-fan="">
+            <button
+              type="button"
+              className="pj-fan-trigger"
+              title="添加任务"
+              aria-haspopup="true"
+              aria-expanded={quickTaskOpen}
+              data-pj-fan-trigger=""
+              onClick={() => setQuickTaskOpen((open) => !open)}
+            >
+              <Icon name="plus" className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="pj-fan-item"
+              title="新建任务"
+              data-pj-fan-new-task=""
+              onClick={() => setQuickTaskOpen(true)}
+            >
+              <Icon name="edit" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="pj-fan-item"
+              title="生成项目复盘"
+              data-pj-fan-review=""
+              onClick={() => setReviewSeed({ projectId: "", nonce: Date.now() })}
+            >
+              <Icon name="refresh" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="pj-fan-item"
+              title="管理项目与关联任务"
+              data-pj-fan-manage=""
+              onClick={() => {
+                const select = document.querySelector<HTMLSelectElement>("[data-project-select]");
+                select?.focus();
+                select?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+            >
+              <Icon name="branch" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {localNotice ? (
         <p
@@ -1695,13 +1765,12 @@ export function TaskQuadrantBoard({
       ) : null}
       {loading ? <p className="relative pb-2 text-[11.5px] text-[color:var(--od-neu-ink-3)]">正在读取任务…</p> : null}
 
-      <div className="relative grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="pj-main relative">
         <div className="flex min-w-0 flex-col gap-5">
           {matrix}
           {gantt}
         </div>
         <div className="flex min-w-0 flex-col gap-5">
-          {statsPanel}
           {completedPanel}
           <ProjectReviewCard
             seed={reviewSeed}
@@ -1714,6 +1783,95 @@ export function TaskQuadrantBoard({
           />
         </div>
       </div>
+
+      {/* OD-UI-900 快捷新建任务弹层 */}
+      {quickTaskOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4"
+          role="presentation"
+          onClick={() => setQuickTaskOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="新建任务"
+            onClick={(event) => event.stopPropagation()}
+            className="wr-dialog w-full max-w-[420px] p-6"
+          >
+            <div className="flex items-start gap-3 pb-4">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-[color:var(--od-neu-accent)] text-white shadow-[var(--od-neu-raise-1)]">
+                <Icon name="edit" className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[15px] font-semibold text-[color:var(--od-neu-ink)]">新建任务</h3>
+                <p className="mt-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">
+                  建好后再到四象限里调整重要性与象限。
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={() => setQuickTaskOpen(false)}
+                className={"flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+              >
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-4">
+              <input
+                value={quickTaskTitle}
+                onChange={(event) => setQuickTaskTitle(event.target.value)}
+                placeholder="任务标题"
+                aria-label="任务标题"
+                autoFocus
+                className={
+                  "h-10 w-full rounded-2xl px-3.5 text-[12.5px] text-[color:var(--od-neu-ink)] placeholder:text-[color:var(--od-neu-ink-3)] focus:outline-none " +
+                  NEU_INSET
+                }
+              />
+              <div className="flex gap-2.5">
+                <input
+                  type="date"
+                  value={quickTaskDue}
+                  onChange={(event) => setQuickTaskDue(event.target.value)}
+                  aria-label="截止日期（可选）"
+                  className={"h-10 flex-1 rounded-2xl px-3.5 text-[12px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
+                />
+                <select
+                  value={quickTaskProject}
+                  onChange={(event) => setQuickTaskProject(event.target.value)}
+                  aria-label="挂接项目（可选）"
+                  className={"h-10 max-w-[160px] flex-1 rounded-2xl px-3 text-[12px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
+                >
+                  <option value="">不挂接项目</option>
+                  {projects.map((project) => (
+                    <option key={project.project_id} value={project.project_id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setQuickTaskOpen(false)}
+                className={"rounded-full px-4 py-2 text-[11.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void createQuickTask()}
+                disabled={quickTaskBusy || !quickTaskTitle.trim()}
+                className="rounded-full bg-[color:var(--od-neu-accent)] px-5 py-2 text-[11.5px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-50"
+              >
+                {quickTaskBusy ? "创建中…" : "创建任务"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={completeConfirm && Boolean(editingTask)}
