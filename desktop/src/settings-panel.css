@@ -1013,8 +1013,8 @@
 }
 
 .settings-surface .model-efforts .effort-on {
-  border-color: var(--accent, #5747f8);
-  color: var(--accent, #5747f8);
+  border-color: var(--accent, #a24e2c);
+  color: var(--accent, #a24e2c);
 }
 
 /* 档位按钮再收一档（约默认的一半）：字号与内边距都缩小，避免挤压模型设置布局。 */
