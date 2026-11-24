@@ -71,7 +71,7 @@ test("候选与问题处理完后条目消失", () => {
   );
 });
 
-test("7 天未动的问题排前，其余按搁置天数从旧到新", () => {
+test("搁置超过 7 天的问题排前，其余按搁置天数从旧到新", () => {
   const sorted = sortOpenQuestions(
     [
       question("recent", "2026-11-20T02:00:00Z"),
@@ -86,7 +86,7 @@ test("7 天未动的问题排前，其余按搁置天数从旧到新", () => {
     sorted.map((item) => [item.question.id, item.idleDays, item.overdue]),
     [
       ["old", 13, true],
-      ["edge", 7, true],
+      ["edge", 7, false],
       ["recent", 3, false],
     ],
   );

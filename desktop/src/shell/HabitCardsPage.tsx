@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { consolidation, shell, habits, type ConsolidationConfig } from "../api";
+import {
+  consolidation,
+  shell,
+  habits,
+  type ConsolidationConfig,
+  type HabitCuratorReport,
+} from "../api";
 import type { HabitCard, ModelRouteListing } from "../types";
 import { Icon } from "../components/Icon";
 import {
@@ -37,6 +43,7 @@ function sourceLabel(sources: string[]): string {
  */
 export function HabitCardsPage({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState<HabitCard[]>([]);
+  const [curator, setCurator] = useState<HabitCuratorReport | null>(null);
   const [config, setConfig] = useState<ConsolidationConfig | null>(null);
   const [routes, setRoutes] = useState<ModelRouteListing | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,12 +53,14 @@ export function HabitCardsPage({ onClose }: { onClose: () => void }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [listing, saved, routeList] = await Promise.all([
+      const [listing, saved, routeList, review] = await Promise.all([
         habits.active(),
         consolidation.getConfig(),
         shell.listModelRoutes().catch(() => null),
+        habits.curatorReview().catch(() => null),
       ]);
       setActive(listing.items);
+      setCurator(review);
       setConfig(saved);
       setRoutes(routeList);
       setError(listing.broken > 0 ? `${listing.broken} 个习惯文件无法读取` : null);
@@ -89,6 +98,11 @@ export function HabitCardsPage({ onClose }: { onClose: () => void }) {
   const models =
     providers.find((provider) => provider.id === config?.provider)?.models ?? [];
   const metrics = useMemo(() => buildMetrics({}), []);
+  const curatorFlags = useMemo(() => {
+    const map = new Map<string, { review_due: boolean; conflict: boolean }>();
+    for (const item of curator?.items ?? []) map.set(item.card_id, item.flags);
+    return map;
+  }, [curator]);
   const injectedRows = useMemo(() => {
     try {
       return (localStorage.getItem(HABIT_LAST_INJECTED_KEY) ?? "").split("\n").filter(Boolean).length;
@@ -188,6 +202,20 @@ export function HabitCardsPage({ onClose }: { onClose: () => void }) {
                             {" · 最近出现 "}
                             {localDateFromUtcIso(card.last_seen_at, systemUtcOffsetMinutes())}
                           </p>
+                          {curatorFlags.has(card.id) ? (
+                            <div className="mt-1 flex flex-wrap gap-1" data-habit-curator-flags="">
+                              {curatorFlags.get(card.id)?.review_due ? (
+                                <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] text-on-surface-variant">
+                                  可复核
+                                </span>
+                              ) : null}
+                              {curatorFlags.get(card.id)?.conflict ? (
+                                <span className="rounded-full bg-error-container/60 px-1.5 py-0.5 text-[10px] text-on-error-container">
+                                  冲突
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 flex-col gap-1">
                           {card.status === "active" ? (

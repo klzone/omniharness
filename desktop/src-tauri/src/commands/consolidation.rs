@@ -7,9 +7,12 @@ use tauri::State;
 
 use crate::app_paths::AppPaths;
 use crate::consolidation::{
-    apply_digest, collect_digest, load_config, read_state_readonly, record_collect_failure,
-    tick_due, write_config, ConsolidationConfig, DigestPaths, DigestRecord, DigestStats,
+    apply_digest, collect_digest, load_config, read_digest_record, read_state_readonly,
+    record_collect_failure, tick_due, write_config, ConsolidationConfig, DigestPaths, DigestRecord,
+    DigestStats,
 };
+use crate::habit_cards::HabitStore;
+use crate::habit_extract::apply_output;
 use crate::profile_rules::RulePolicy;
 use crate::task_shell::now_secs;
 use crate::SharedHost;
@@ -98,4 +101,34 @@ pub(crate) fn consolidation_collect(
         }
     }
     result.map(|record| record.stats)
+}
+
+/// 校验并暂存模型整理输出（OD-GROW-301 G13）。
+///
+/// raw 只参与校验，不落盘；候选与未决问题逐条走 G1 存储层，
+/// 红线检查、编号校验、去重与上限全部复用既有逻辑。
+#[tauri::command(async)]
+pub(crate) fn consolidation_apply_output(
+    state: State<'_, SharedHost>,
+    date: String,
+    raw: String,
+) -> Result<serde_json::Value, String> {
+    if raw.trim().is_empty() {
+        return Err("整理输出为空，拒绝校验。".to_string());
+    }
+    let paths = host_paths(&state)?;
+    let policy = policy(&state)?;
+    let digest_paths = digest_paths(&paths)?;
+    let now = now_secs();
+    let record = read_digest_record(&digest_paths.habits_root, &date)?;
+    let plan = record.to_plan();
+    let store = HabitStore::for_root(&digest_paths.habits_root);
+    let outcome = apply_output(&raw, &plan, &store, &policy, now)?;
+
+    Ok(serde_json::json!({
+        "date": date,
+        "candidates_created": outcome.candidates_created,
+        "open_questions_created": outcome.open_questions_created,
+        "rejected": outcome.rejected,
+    }))
 }

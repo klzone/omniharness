@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 
 use crate::consolidation::DigestPlan;
 use crate::habit_cards::{
-    rejection_blocks, HabitCard, HabitCheck, HabitEvidence, HabitScope, OpenQuestion,
+    rejection_blocks, HabitCard, HabitCheck, HabitEvidence, HabitScope, HabitStore, OpenQuestion,
     RejectionMemory, HABIT_CARD_SCHEMA, HABIT_TEXT_MAX_CHARS, KIND_FORMAT, KIND_PREFERENCE,
     KIND_RULE, OPEN_QUESTION_SCHEMA, OPEN_QUESTION_TEXT_MAX_CHARS, ORIGIN_EXPLICIT,
     ORIGIN_REPEATED, QUESTION_OPEN, STATUS_CANDIDATE,
@@ -664,9 +664,91 @@ fn contains_reject_keyword(text: &str, policy: &RulePolicy) -> bool {
         .any(|keyword| !keyword.is_empty() && text.contains(keyword.as_str()))
 }
 
+/// 一次整理输出的暂存结果；被拒条目只保留原因编号。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HabitApplyOutcome {
+    pub candidates_created: usize,
+    pub open_questions_created: usize,
+    pub rejected: Vec<String>,
+}
+
+/// 校验模型整理输出并逐条暂存候选卡与未决问题（G13）。
+///
+/// 红线检查、编号校验、上限与去重全部复用 G1 存储层；
+/// 已存在的候选卡或未决问题视为跳过，其他写入失败如实上报。
+pub fn apply_output(
+    raw: &str,
+    plan: &DigestPlan,
+    store: &HabitStore,
+    policy: &RulePolicy,
+    now: f64,
+) -> Result<HabitApplyOutcome, String> {
+    let candidates = store.list_candidates(now)?;
+    let active = store.list_active()?;
+    let mut cards = candidates.items;
+    cards.extend(active.items);
+    let existing = ExistingCardsRef::from_cards(&cards, BTreeMap::new());
+    let memory = store.rejection_memory()?;
+    let rejection = RejectionRef::from(&memory);
+    let parsed = parse_habit_output(
+        raw,
+        &DigestPlanRef::from_plan(plan),
+        policy,
+        &existing,
+        &rejection,
+        now,
+    )?;
+
+    let mut candidates_created = 0usize;
+    for staged in parsed.candidates {
+        match store.create_candidate(staged.into_card(), policy, now) {
+            Ok(_) => candidates_created += 1,
+            Err(error) if error.contains("已存在") => {}
+            Err(error) => {
+                return Err(format!(
+                    "已暂存 {candidates_created} 条候选后失败：{error}",
+                ));
+            }
+        }
+    }
+
+    let existing_questions = store.list_open_questions()?.items;
+    let mut known_ids: Vec<String> = existing_questions.into_iter().map(|q| q.id).collect();
+    let mut open_questions_created = 0usize;
+    for staged in parsed.open_questions {
+        if known_ids.iter().any(|id| id == &staged.id) {
+            continue;
+        }
+        let staged_id = staged.id.clone();
+        let question = staged.into_question();
+        match store.create_open_question(question) {
+            Ok(_) => {
+                known_ids.push(staged_id);
+                open_questions_created += 1;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "已暂存 {candidates_created} 条候选、{open_questions_created} 个未决问题后失败：{error}",
+                ));
+            }
+        }
+    }
+
+    Ok(HabitApplyOutcome {
+        candidates_created,
+        open_questions_created,
+        rejected: parsed
+            .rejected
+            .iter()
+            .map(|entry| entry.reason_code.clone())
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consolidation::{DigestMessage, DigestPlan, DigestStats, DigestThread};
     use crate::habit_cards::{
         normalize_rejection_phrase_hash, RejectionMemory, REJECTION_MEMORY_SCHEMA,
     };
@@ -1260,5 +1342,110 @@ mod tests {
         assert_eq!(card.evidence.date, LOCAL_DATE);
         assert_eq!(card.origin, ORIGIN_EXPLICIT);
         assert_eq!(card.status, STATUS_CANDIDATE);
+    }
+
+    fn temp_store(tag: &str) -> (HabitStore, std::path::PathBuf) {
+        let base = std::env::temp_dir().join(format!(
+            "omnidesk-habit-apply-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        (HabitStore::for_root(base.join("habits")), base)
+    }
+
+    fn fixture_plan(digest: &FixtureDigest) -> DigestPlan {
+        DigestPlan {
+            local_date: digest.local_date.clone(),
+            threads: digest
+                .threads
+                .iter()
+                .map(|thread| DigestThread {
+                    thread_id: thread.thread_id.clone(),
+                    title: String::new(),
+                    messages: thread
+                        .messages
+                        .iter()
+                        .filter(|(_, role, _)| role == "user")
+                        .map(|(id, _, text)| DigestMessage {
+                            id: id.clone(),
+                            text: text.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            project_changes: Vec::new(),
+            digest_text: String::new(),
+            stats: DigestStats::default(),
+            pending: Vec::new(),
+            watermarks: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn apply_output_stages_candidates_and_open_questions() {
+        let digest = FixtureDigest::standard();
+        let plan = fixture_plan(&digest);
+        let (store, base) = temp_store("stages");
+        let raw = payload(
+            vec![raw_item("以后都用清单收尾", "scene", "m-1", "以后")],
+            vec![json!({"text": "这套方案要不要做", "message_id": "m-9"})],
+        );
+        let outcome = apply_output(&raw, &plan, &store, &policy(None), NOW).unwrap();
+        assert_eq!(outcome.candidates_created, 1);
+        assert_eq!(outcome.open_questions_created, 1);
+        assert!(outcome.rejected.is_empty());
+        assert_eq!(store.list_candidates(NOW).unwrap().items.len(), 1);
+        assert_eq!(store.list_open_questions().unwrap().items.len(), 1);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn apply_output_skips_duplicates_on_second_run() {
+        let digest = FixtureDigest::standard();
+        let plan = fixture_plan(&digest);
+        let (store, base) = temp_store("dup");
+        let raw = payload(
+            vec![raw_item("以后都用清单收尾", "scene", "m-1", "以后")],
+            vec![json!({"text": "这套方案要不要做", "message_id": "m-9"})],
+        );
+        let first = apply_output(&raw, &plan, &store, &policy(None), NOW).unwrap();
+        assert_eq!(first.candidates_created, 1);
+        let second = apply_output(&raw, &plan, &store, &policy(None), NOW + 60.0).unwrap();
+        assert_eq!(second.candidates_created, 0);
+        assert_eq!(second.open_questions_created, 0);
+        assert_eq!(store.list_candidates(NOW).unwrap().items.len(), 1);
+        assert_eq!(store.list_open_questions().unwrap().items.len(), 1);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn apply_output_rejects_redline_candidate_without_echo() {
+        let digest = FixtureDigest::standard();
+        let plan = fixture_plan(&digest);
+        let (store, base) = temp_store("redline");
+        let raw = payload(
+            vec![raw_item("以后处理机密清单", "scene", "m-8", "以后")],
+            vec![],
+        );
+        let outcome = apply_output(&raw, &plan, &store, &policy(Some("机密")), NOW).unwrap();
+        assert_eq!(outcome.candidates_created, 0);
+        assert!(outcome.rejected.iter().any(|code| code == REASON_REDLINE));
+        assert!(!outcome.rejected.join(",").contains("机密"));
+        assert!(store.list_candidates(NOW).unwrap().items.is_empty());
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn apply_output_rejects_malformed_raw() {
+        let digest = FixtureDigest::standard();
+        let plan = fixture_plan(&digest);
+        let (store, base) = temp_store("malformed");
+        let error = apply_output("不是 JSON", &plan, &store, &policy(None), NOW).unwrap_err();
+        assert!(error.contains("不是合法 JSON"), "错误应明确：{error}");
+        let _ = std::fs::remove_dir_all(base);
     }
 }

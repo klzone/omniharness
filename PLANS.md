@@ -2,6 +2,13 @@
 
 > 2026-11-24 起，Agent 角色、模型调度、会话与 Git 规则以 AGENTS.md 为准。下方历史任务中的 ARCHITECT/BUILDER 称谓按当时的执行记录理解。
 
+### OD-0255：0.2.55 计划收尾（OD-GROW-301 接线补齐，用户授权执行，2026-11-24）
+
+> 触发：用户指令「继续 0.2.55 计划」并授权执行。执行：主 Agent 亲自实施（本会话未暴露子 Agent 调度工具），任务书 docs/od-0255-dispatch.md。
+> 内容：T1 章节确认携带 ai_draft_text（AI 原稿快照可触发）；T2 consolidation_apply_output 校验暂存命令；T3 整理运行器接入校验与复核；T4 habit_stat_inject 注入统计落盘；T5 habit_curator_review / habit_quote_audit 与习惯页复核徽标；T6 未决问题搁置口径统一到第 8 天。
+> 验证：cargo 1365 passed（+5）、npm test 150、tsc 0、build 0、habit 回归 20/20、hardening 77/77、project 601 15/15、project 602 18/18；证据 tests/verification/desktop/evidence/od-0255/。
+> 明确不做：不接 writing_diff 自动候选、不做 G9 界面、不做 T14、不改 runtime/ 与四象限/甘特。
+
 ### OD-PRJ-604：项目跟踪六项实测修复（用户实测反馈，2026-11-23 批准执行）
 
 > 触发：Windows 实测六项问题。执行：子代理（deepseek-v4.1-flash-eco，high），ARCHITECT 复核。任务书 docs/od-prj-604-dispatch.md。

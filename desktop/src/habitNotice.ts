@@ -45,7 +45,7 @@ function daysBetween(today: string, earlier: string): number {
   return Math.max(0, Math.round((left - right) / 86_400_000));
 }
 
-/** 只排序仍为 open 的问题：7 天未动的排前面，其余按搁置天数从旧到新。 */
+/** 只排序仍为 open 的问题：搁置超过 7 天（第 8 天起）的排前面，其余按天数从旧到新。 */
 export function sortOpenQuestions(
   questions: OpenQuestion[],
   today: string,
@@ -56,7 +56,7 @@ export function sortOpenQuestions(
     .map((question) => {
       const seen = localDateFromUtcIso(question.last_seen, utcOffsetMinutes);
       const idleDays = daysBetween(today, seen);
-      return { question, idleDays, overdue: idleDays >= 7 };
+      return { question, idleDays, overdue: idleDays > 7 };
     })
     .sort((a, b) => {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;

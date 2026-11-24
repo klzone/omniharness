@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 
 import {
   consolidation,
+  habits,
   host,
   shell,
   type ConsolidationCollectResult,
@@ -256,28 +257,52 @@ async function runCycle(nowSeconds: number, alive: () => boolean): Promise<void>
     return;
   }
 
-  let outputChars: number;
+  // G13：宿主校验与暂存。失败时保留 raw 便于排查，不伪造暂存成功。
+  let applied;
   try {
-    outputChars = storeRawOutput(content);
+    applied = await consolidation.applyOutput(collected.date, content);
   } catch (e) {
-    reportFailure(today, "记录整理输出失败：" + errorText(e));
+    try {
+      storeRawOutput(content);
+    } catch {
+      // 兜底记录失败不影响失败上报。
+    }
+    reportFailure(today, "整理输出校验未通过：" + errorText(e));
     return;
   }
 
-  // G4 只记录 raw；G5 再接宿主校验与暂存。
+  // G12/H7：复核标记与引用抽查各自独立，失败只记日志，不影响整理完成。
+  let curatorNote = "";
+  try {
+    const review = await habits.curatorReview();
+    if (review.items.length > 0) curatorNote = "；" + review.items.length + " 张卡有复核标记";
+  } catch (e) {
+    console.warn("[consolidation] 生效卡复核失败：" + errorText(e));
+  }
+  let auditNote = "";
+  try {
+    const audit = await habits.quoteAudit(collected.date);
+    if (audit.checked > 0) auditNote = "；引用抽查 " + audit.checked + " 张、不相符 " + audit.mismatches + " 张";
+  } catch (e) {
+    console.warn("[consolidation] 引用抽查失败：" + errorText(e));
+  }
+
   console.info(
     "[consolidation] 整理完成：" + collected.stats.thread_count + " 条线程，" +
       collected.stats.message_count + " 条发言，" + collected.stats.char_count +
-      " 字摘要；模型输出 " + outputChars + " 字已记为待校验结果。",
+      " 字摘要；新增候选 " + applied.candidates_created + " 条、未决问题 " +
+      applied.open_questions_created + " 个，被拒 " + applied.rejected.length + " 条。",
   );
   notify({
     kind: "done",
-    message: "整理完成，等待宿主校验与暂存",
+    message:
+      "整理完成，新增候选 " + applied.candidates_created + " 条、未决问题 " +
+      applied.open_questions_created + " 个" + curatorNote + auditNote,
     at: Date.now(),
     threads: collected.stats.thread_count,
     messages: collected.stats.message_count,
     chars: collected.stats.char_count,
-    outputChars,
+    outputChars: content.length,
   });
 }
 

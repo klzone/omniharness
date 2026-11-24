@@ -5,6 +5,11 @@
 
 use tauri::State;
 
+use crate::consolidation::read_digest_record;
+use crate::habit_audit::{
+    audit_active_quotes, record_quote_audits, review_active_cards, CuratorReport, QuoteAuditReport,
+    QuoteSample,
+};
 use crate::habit_cards::{
     HabitActiveList, HabitCandidateDecision, HabitCandidateDecisionResult, HabitCandidateList,
     HabitCardUpdateResult, HabitOpenQuestionList, HabitOpenQuestionUpdateResult,
@@ -91,4 +96,60 @@ pub(crate) fn habit_pending_review_decide(
     action: String,
 ) -> Result<HabitPendingReviewDecisionResult, String> {
     store(&state)?.decide_pending_review(&id, &action, now_secs())
+}
+
+/// 记录本轮注入生效卡的编号（G6 统计落盘）；只追加 inject 行，不存正文。
+#[tauri::command(async)]
+pub(crate) fn habit_stat_inject(
+    state: State<'_, SharedHost>,
+    ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let store = store(&state)?;
+    let now = now_secs();
+    let mut recorded = 0usize;
+    for id in ids.iter().map(|id| id.trim()).filter(|id| !id.is_empty()) {
+        store.append_stat(crate::habit_audit::INJECT_STAT_TYPE, Some(id), None, now)?;
+        recorded += 1;
+    }
+    Ok(serde_json::json!({ "recorded": recorded }))
+}
+
+/// 确定性复核生效卡（G12）：只返回可复核/冲突标记，不改卡、不删卡。
+#[tauri::command(async)]
+pub(crate) fn habit_curator_review(
+    state: State<'_, SharedHost>,
+) -> Result<CuratorReport, String> {
+    let store = store(&state)?;
+    let cards = store.list_active()?.items;
+    let stats = store.read_stats().items;
+    Ok(review_active_cards(&cards, &stats, now_secs()))
+}
+
+/// 抽查生效卡在当日整理样本里的引用依据（H7），结论写入 quote_audit 统计。
+#[tauri::command(async)]
+pub(crate) fn habit_quote_audit(
+    state: State<'_, SharedHost>,
+    date: String,
+) -> Result<QuoteAuditReport, String> {
+    let store = store(&state)?;
+    let record = read_digest_record(store.root(), &date)?;
+    let cards = store.list_active()?.items;
+    let stats = store.read_stats().items;
+    let samples: Vec<QuoteSample> = record
+        .threads
+        .iter()
+        .flat_map(|thread| {
+            thread
+                .messages
+                .iter()
+                .filter(|message| !message.text.trim().is_empty())
+                .map(|message| QuoteSample {
+                    context_id: thread.thread_id.clone(),
+                    body: message.text.clone(),
+                })
+        })
+        .collect();
+    let report = audit_active_quotes(&cards, &stats, &samples);
+    record_quote_audits(&store, &report, now_secs())?;
+    Ok(report)
 }

@@ -1,5 +1,28 @@
 # 执行状态
 
+## OD-0255 执行记录（2026-11-24）
+
+- **基线（file fact）：** main 最新提交 0.2.54（dccc5cc215）；开工 git status --porcelain 仅未跟踪 docs/od-0255-dispatch.md，既有改动原样保留，未 reset/clean/stash。执行方式说明：本会话 exec 工具目录未提供子 Agent 调度入口，按 AGENTS.md 例外由主 Agent 亲自实施，任务口径不变。
+- **UI 参考（MCP，实际调用 search_inspiration）：** 检索 LazyHabit、AllWork、Apple Books 的截图标签与产品布局。借鉴 AllWork 的行内状态徽标与 LazyHabit 的极简卡密度，把复核标记做成生效卡行尾小徽标，不新增区块或说明文字。
+- **T1 AI 原稿接线：** desktop/src/types.ts 增加 WritingSectionConfirmInput.ai_draft_text；WritingSectionEditor.tsx 生成/修订解析出纯正文后保存原稿状态，确认时随请求提交，确认成功、丢弃、切换章节与重载时清空。宿主侧无需改动（serde default 已就绪）。
+- **T2 G13 校验暂存：** consolidation.rs 的 DigestMessage/DigestThread/ProjectChange/DigestStats/DigestRecord 补 Deserialize，新增 DigestRecord::to_plan() 与 read_digest_record（日期格式、schema、日期一致性校验，缺文件明确报错）；habit_extract.rs 新增 apply_output（复用 parse_habit_output 与 G1 create_candidate/create_open_question，重复 id 跳过，部分失败带已创建数量上报）；commands/consolidation.rs 新增 consolidation_apply_output(date, raw)，lib.rs 注册。
+- **T3 运行器接入：** api.ts 新增 ConsolidationApplyResult 与 consolidation.applyOutput；ConsolidationRunner.tsx ingest 阶段改为调用宿主校验，成功按返回计数通知，失败保留 raw 到 localStorage 并 reportFailure；随后调用 habits.curatorReview 与 habits.quoteAudit（各自 try/catch，失败只记日志），完成通知附复核标记数与抽查结果。
+- **T4 注入统计：** commands/habits.rs 新增 habit_stat_inject(ids)（逐条 append_stat("inject")）；api.ts 新增 habits.appendStatInject；HomeChat.tsx 在 localStorage 记录后 fire-and-forget 调用宿主命令，失败只 console.warn。
+- **T5 复核与抽查：** 新增 habit_curator_review（review_active_cards，只读）与 habit_quote_audit(date)（以当日 digest threads 消息正文为 QuoteSample，audit_active_quotes 后 record_quote_audits 写统计）；HabitCardsPage.tsx 挂载时并行读取复核报告，生效卡行显示「可复核」「冲突」徽标。
+- **T6 搁置口径：** habitNotice.ts 的 overdue 改为 idleDays > 7（与宿主 stale_open_questions 一致），habitNotice.test.mjs 断言同步更新（第 7 天不计逾期）。
+- **验证（script，实际命令与结果）：**
+  - cd desktop/src-tauri && ~/.cargo/bin/cargo test --lib --offline -- --test-threads=1 → **1365 passed / 0 failed / 1 ignored**（基线 1360，新增 5：habit_extract 4、consolidation 1）。
+  - cd desktop && npx tsc --noEmit → **EXIT=0**。
+  - cd desktop && npm run test → **150 passed / 0 failed**。
+  - cd desktop && npm run build → **EXIT=0**。
+  - python3 tests/verification/desktop/run_habit_regression.py → **20 个测试，0 组失败**。
+  - python3 tests/verification/desktop/verify_hardening_2043.py → **77/77**；命令基线按新增 4 个命令用 export_commands_2043.py --write 重新生成（296），属有意更新，不是放松断言。
+  - python3 tests/verification/desktop/verify_project_601.py → **15/15**；verify_project_602.py → **18/18**。
+- **证据：** tests/verification/desktop/evidence/od-0255/verify_output.txt（Git 忽略目录）。
+- **计划偏差：** ①任务书 T5 原写「样本上限复用 review 既有常量」，实际没有该常量，直接使用当日摘要全部消息正文（受 max_threads=20 与 max_digest_chars 约束）；②T3 保留 localStorage raw 兜底路径（任务书写明可保留）；③T4 未新增宿主单测，inject 统计追加路径已由既有 habit_cards::append_stat 单测覆盖，新命令为薄封装。
+- **未验证：** 真实 Tauri 窗口的整理端到端（含真实模型输出、校验暂存、复核与抽查）、习惯页徽标观感、AI 原稿快照在真实写作数据下的版本链、Windows 实机。
+- **版本：** VERSION / desktop/package.json / tauri.conf.json → 0.2.55；CHANGELOG 增加 0.2.55 条目。
+
 ## OD-PRJ-602 发布准备（ARCHITECT 亲自执行，2026-11-23）
 
 - **BUILDER 交付复核（file fact）：** 逐段审阅 projectGanttGroups.ts（分组/夹取/折叠纯函数，坐标口径与旧 ganttRows 一致且无第二套换算）、TaskManager.tsx（甘特分组渲染、today 竖线贯穿、折叠交互、令牌替换）、theme.css（仅新增 .od-task-bar--* 段）、ScenePage.tsx（仅清 projectItems 死代码，localToday 等 import 清理正确）、ProjectReviewCard/ProjectMaintenance（纯令牌替换，行为未动）。

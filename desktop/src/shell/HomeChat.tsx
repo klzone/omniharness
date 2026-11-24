@@ -121,6 +121,12 @@ async function withHabitInjection(promptText: string, scene: string): Promise<st
   try {
     const applied = injectHabits(promptText, (await habits.active()).items, scene);
     recordHabitInjection(applied.injected);
+    if (applied.injected.length > 0) {
+      // G6 统计落盘：追加失败不影响本轮提交。
+      habits.appendStatInject(applied.injected).catch((error: unknown) => {
+        console.warn("习惯注入统计未写入宿主：", error);
+      });
+    }
     return applied.prompt;
   } catch (error) {
     console.warn("习惯卡读取失败，本轮不注入：", error);

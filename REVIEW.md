@@ -1,4 +1,24 @@
 ## OD-PRJ-602 复核（2026-11-23，ARCHITECT 复核 BUILDER 交付）：通过（源码 diff + 本机复跑）
+## OD-0255 复核（2026-11-24，主 Agent 实施并自检）：通过（源码 diff + 本机复跑）
+
+**范围：** OD-GROW-301 遗留接线补齐（G8 前端 ai_draft_text、G13 consolidation_apply_output、G4/G5 运行器接入、G6 注入统计落盘、G12/H7 复核与抽查接入、搁置口径统一），版本 0.2.55 发布准备。
+
+**源码事实：**
+1. consolidation_apply_output 只接受 date + raw，raw 不落盘；读当日 digest 记录校验 schema 与日期一致性，缺文件明确报错。
+2. apply_output 复用 parse_habit_output 与 G1 存储层，红线/编号/上限/去重无第二套实现；重复候选与未决问题跳过，部分失败上报已创建数量。
+3. 运行器 ingest 阶段先宿主校验再通知；校验失败保留 raw 到本地并报失败，不显示成功。复核与抽查各自独立，失败只记日志。
+4. habit_stat_inject / curator_review / quote_audit 均为薄封装，统计写入沿用 append_stat 与 record_quote_audits，不新增存储格式。
+5. WritingSectionEditor 提交 ai_draft_text 时宿主既有逻辑先写 VersionSource::Ai 快照；不带字段时行为不变。
+6. 习惯页复核徽标来自宿主报告，不伪造命中/违反数字。
+
+**复跑（script）：** cargo 1365 passed / 0 failed / 1 ignored；npm test 150/150；tsc 0；build 0；habit 回归 20/20；verify_hardening_2043 77/77（命令基线按新增 4 命令重新生成，296）；verify_project_601 15/15；verify_project_602 18/18。
+
+**有意更新：** verify_hardening_2043 的 commands-baseline.json 由 export_commands_2043.py --write 重新生成，反映 4 个新命令；集合一一对应断言保留。
+
+**未验证：** 真实 Tauri 窗口与真实模型的整理端到端、习惯页徽标观感、AI 原稿版本链真实数据、Windows 实机。
+
+---
+
 
 **范围：** 项目甘特分组行（组头 + 汇总带 + 折叠联动）、页面令牌化重构、ScenePage 死代码清除、数据一致性静态验收、版本 0.2.52 发布准备。
 

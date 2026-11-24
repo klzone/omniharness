@@ -3452,6 +3452,38 @@ export interface ConsolidationTick {
   due: boolean;
 }
 
+/** 整理输出校验结果（G13）；raw 只参与校验，不回传。 */
+export interface ConsolidationApplyResult {
+  date: string;
+  candidates_created: number;
+  open_questions_created: number;
+  rejected: string[];
+}
+
+/** 生效卡确定性复核标记（G12）。 */
+export interface HabitCuratorEntry {
+  card_id: string;
+  flags: { review_due: boolean; conflict: boolean };
+}
+
+export interface HabitCuratorReport {
+  items: HabitCuratorEntry[];
+}
+
+/** 生效卡引用抽查结果（H7），items 只含卡片编号与状态。 */
+export interface HabitQuoteAuditItem {
+  card_id: string;
+  status: "skipped" | "unknown" | "matched" | "mismatched";
+}
+
+export interface HabitQuoteAuditReport {
+  checked: number;
+  mismatches: number;
+  skipped: number;
+  unknown: number;
+  items: HabitQuoteAuditItem[];
+}
+
 export interface ConsolidationCollectResult {
   /** 摘要所属本地日期；与 habits/state/digest-<date>.json 同名。 */
   date: string;
@@ -3574,6 +3606,18 @@ export const consolidation = {
     const digestText = await readConsolidationDigestText(date);
     return { date, digest_text: digestText, stats, source: "digest_file" };
   },
+
+  /**
+   * 校验并暂存模型整理输出（G13）。raw 只上传校验，不回显、不落盘。
+   * 校验通过后候选卡与未决问题直接进入 G1 存储，等待用户在习惯页处理。
+   */
+  applyOutput(date: string, raw: string): Promise<ConsolidationApplyResult> {
+    return invoke<ConsolidationApplyResult>("consolidation_apply_output", { date, raw }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
 };
 
 /** 习惯整理命令封装（OD-GROW-301 G5）。 */
@@ -3598,6 +3642,11 @@ export const habits = {
     habitInvoke<HabitListing<PendingReviewItem>>("habit_pending_review_list"),
   decidePendingReview: (id: string, action: "approve" | "exclude") =>
     habitInvoke<HabitListing<PendingReviewItem>>("habit_pending_review_decide", { id, action }),
+  appendStatInject: (ids: string[]) =>
+    habitInvoke<{ recorded: number }>("habit_stat_inject", { ids }),
+  curatorReview: () => habitInvoke<HabitCuratorReport>("habit_curator_review"),
+  quoteAudit: (date: string) =>
+    habitInvoke<HabitQuoteAuditReport>("habit_quote_audit", { date }),
 };
 
 /** 订阅宿主转发上来的任务事件流。 */

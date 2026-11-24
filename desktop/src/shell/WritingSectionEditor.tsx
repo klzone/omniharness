@@ -207,6 +207,7 @@ export function WritingSectionEditor({
   const [collectLoaded, setCollectLoaded] = useState(false);
   const [collectError, setCollectError] = useState<string | null>(null);
   const [draft, setDraft] = useState<WritingSectionDraft | null>(null);
+  const [aiDraftText, setAiDraftText] = useState<string | null>(null);
   const [draftOrigin, setDraftOrigin] = useState<DraftOrigin>("generated");
   const [confirmedCitations, setConfirmedCitations] = useState<Record<number, WritingSectionCitation[]>>({});
   const [phase, setPhase] = useState<Phase>("idle");
@@ -234,6 +235,7 @@ export function WritingSectionEditor({
     setCollectLoaded(false);
     setCollectError(null);
     setDraft(null);
+    setAiDraftText(null);
     setConfirmedCitations({});
     setFactcheckNote(null);
     void (async () => {
@@ -287,6 +289,7 @@ export function WritingSectionEditor({
 
   useEffect(() => {
     setDraft(null);
+    setAiDraftText(null);
     setFactcheckNote(null);
     setMessage("");
     setReviseInstruction("");
@@ -413,7 +416,9 @@ export function WritingSectionEditor({
       const text = await runSectionPrompt(prompt.prompt, (seconds) =>
         setMessage("模型撰写第 " + prompt.section_no + " 章中… " + seconds + " 秒"),
       );
-      setDraft(parseSectionDraft(text, selected.no));
+      const parsed = parseSectionDraft(text, selected.no);
+      setDraft(parsed);
+      setAiDraftText(parsed.content);
       setDraftOrigin("generated");
       setFactcheckNote(null);
       setMessage("已生成第 " + selected.no + " 章建议稿；确认后才写入正文。");
@@ -432,7 +437,11 @@ export function WritingSectionEditor({
     const citations = draft.citations;
     const annotations = annotationsFor(draft);
     try {
-      const result = await shell.writingSectionConfirm({ writing_id: writingId, draft });
+      const result = await shell.writingSectionConfirm({
+        writing_id: writingId,
+        draft,
+        ai_draft_text: aiDraftText ?? undefined,
+      });
       setSectionStates((previous) => ({
         ...previous,
         [result.section_no]: {
@@ -451,6 +460,7 @@ export function WritingSectionEditor({
       }));
       setConfirmedCitations((previous) => ({ ...previous, [confirmedNo]: citations }));
       setDraft(null);
+      setAiDraftText(null);
       setMessage(
         "第 " + result.section_no + " 章已确认，写入 " + result.citations_added + " 条引用。" +
           (result.all_sections_confirmed ? "全部章节已确认。" : ""),
@@ -498,7 +508,9 @@ export function WritingSectionEditor({
       const text = await runSectionPrompt(prompt.prompt, (seconds) =>
         setMessage("模型修订中… " + seconds + " 秒"),
       );
-      setDraft(parseSectionDraft(text, selected.no));
+      const parsed = parseSectionDraft(text, selected.no);
+      setDraft(parsed);
+      setAiDraftText(parsed.content);
       setDraftOrigin("revised");
       setFactcheckNote(null);
       setMessage("已生成修订建议；确认应用后会新建版本并保留原文。");
@@ -665,7 +677,10 @@ export function WritingSectionEditor({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDraft(null)}
+                        onClick={() => {
+                          setDraft(null);
+                          setAiDraftText(null);
+                        }}
                         disabled={busy}
                         className="rounded-full px-2.5 py-1 text-[10.5px] text-outline hover:bg-surface-container disabled:opacity-50"
                         data-section-discard=""

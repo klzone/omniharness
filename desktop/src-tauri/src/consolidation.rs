@@ -246,20 +246,20 @@ pub struct DigestPaths {
     pub habits_root: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DigestMessage {
     pub id: String,
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DigestThread {
     pub thread_id: String,
     pub title: String,
     pub messages: Vec<DigestMessage>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectChange {
     pub task_id: String,
     pub title: String,
@@ -267,7 +267,7 @@ pub struct ProjectChange {
     pub to: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DigestStats {
     pub thread_count: usize,
     pub message_count: usize,
@@ -305,7 +305,7 @@ pub struct DigestPlan {
     pub watermarks: BTreeMap<String, u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DigestRecord {
     pub schema: String,
     pub date: String,
@@ -315,6 +315,64 @@ pub struct DigestRecord {
     pub threads: Vec<DigestThread>,
     pub project_changes: Vec<ProjectChange>,
     pub pending_written: usize,
+}
+
+impl DigestRecord {
+    /// 由已落盘的摘要记录还原校验视图；水位与待审定在采集时已处理。
+    pub fn to_plan(&self) -> DigestPlan {
+        DigestPlan {
+            local_date: self.date.clone(),
+            threads: self.threads.clone(),
+            project_changes: self.project_changes.clone(),
+            digest_text: self.digest_text.clone(),
+            stats: self.stats.clone(),
+            pending: Vec::new(),
+            watermarks: BTreeMap::new(),
+        }
+    }
+}
+
+/// 读取当日已落盘的整理摘要；不创建目录，不改任何状态。
+pub fn read_digest_record(habits_root: &Path, date: &str) -> Result<DigestRecord, String> {
+    if date.is_empty()
+        || !date
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '-')
+        || date.len() != 10
+    {
+        return Err(format!("整理摘要日期格式不合法：{date}"));
+    }
+    let path = habits_root
+        .join("state")
+        .join(format!("digest-{date}.json"));
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("当天还没有已落盘的整理摘要（{}）。请先运行整理收集。", path.display()));
+        }
+        Err(error) => {
+            return Err(format!(
+                "读取整理摘要失败（{}）：{}",
+                path.display(),
+                error
+            ))
+        }
+    };
+    let record: DigestRecord = serde_json::from_str(&text)
+        .map_err(|error| format!("整理摘要损坏（{}）：{}", path.display(), error))?;
+    if record.schema != DIGEST_SCHEMA {
+        return Err(format!(
+            "整理摘要 schema 不是 {}（实际 {}）",
+            DIGEST_SCHEMA, record.schema
+        ));
+    }
+    if record.date != date {
+        return Err(format!(
+            "整理摘要日期与文件名不一致（文件 {}，记录 {}）",
+            date, record.date
+        ));
+    }
+    Ok(record)
 }
 
 /// 只读取整理状态，不创建任何目录；预演与到点判定共用。
@@ -1659,5 +1717,34 @@ mod tests {
         assert_eq!(plan.stats.truncated_writing_diffs, 0);
         assert!(plan.digest_text.contains("【写作差异】"), "{}", plan.digest_text);
         assert!(plan.digest_text.contains(shared_fragment), "{}", plan.digest_text);
+    }
+
+    #[test]
+    fn read_digest_record_round_trips_and_reports_missing() {
+        let temp = TempBase::new("digest-read");
+        let paths = temp.paths();
+        let policy = synthetic_policy("红线词");
+        let config = config();
+        write_thread(
+            &paths.threads_root,
+            "digest-read-thread",
+            "plain",
+            "合成摘要线程",
+            NOW,
+            &[("user", "以后都用清单收尾")],
+        );
+        let plan = collect_digest(&paths, &config, &policy, NOW).unwrap();
+        let record = apply_digest(&paths, &plan, NOW).unwrap();
+
+        let read = read_digest_record(&paths.habits_root, &record.date).unwrap();
+        assert_eq!(read.date, record.date);
+        assert_eq!(read.threads, record.threads);
+        assert_eq!(read.digest_text, record.digest_text);
+        assert_eq!(read.to_plan().local_date, record.date);
+
+        let missing = read_digest_record(&paths.habits_root, "1999-01-01").unwrap_err();
+        assert!(missing.contains("还没有已落盘"), "{missing}");
+        let malformed_date = read_digest_record(&paths.habits_root, "bad").unwrap_err();
+        assert!(malformed_date.contains("格式不合法"), "{malformed_date}");
     }
 }

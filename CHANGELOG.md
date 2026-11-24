@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.55] - 2026-11-24
+
+### Added
+- 习惯整理闭环（OD-0255）：新增宿主 consolidation_apply_output，校验模型整理输出后直接把候选卡与未决问题写入习惯存储；红线、编号、上限与去重全部复用 G1 校验，raw 原文不落盘。
+- 新增 habit_stat_inject / habit_curator_review / habit_quote_audit 三个命令：注入统计落盘、生效卡确定性复核（可复核/冲突）、引用抽查结论写入 quote_audit 统计。
+
+### Changed
+- 整理运行器在任务终态后调用宿主校验与暂存，通知显示新增候选与未决问题数量；校验失败保留 raw 到本地并如实报告失败。运行器随后执行复核与引用抽查，失败只记日志。
+- 章节确认可携带本次 AI 原稿：编辑器生成或修订章节时保留模型纯正文，确认时随 ai_draft_text 提交，宿主保存 AI 版本快照后再写用户确认版。
+- 习惯页生效卡显示「可复核」「冲突」徽标；未决问题搁置超过 7 天（第 8 天起）才计入逾期，与宿主口径一致。
+
 ## [0.2.54] - 2026-11-23
 
 ### Fixed

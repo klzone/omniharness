@@ -1713,6 +1713,8 @@ export interface WritingSectionConfirmInput {
   writing_id: string;
   draft: WritingSectionDraft;
   note?: string | null;
+  /** 本次界面预览过、尚未确认的 AI 原稿纯正文；提供时宿主先保存 AI 版本快照。 */
+  ai_draft_text?: string | null;
 }
 
 /** 章节确认/读取回执。content 为 null 表示该章尚未确认。 */
