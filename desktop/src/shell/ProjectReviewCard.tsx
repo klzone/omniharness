@@ -316,8 +316,10 @@ export function ProjectReviewCard({
     <>
     <aside aria-label="项目复盘" data-project-review-card="" className={"rounded-[18px] px-5 py-4 " + CARD}>
       <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
-        <Icon name="book" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
-        <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">项目复盘</h3>
+        <span className="pj-panel-ic" aria-hidden="true">
+          <Icon name="book" className="h-3.5 w-3.5" />
+        </span>
+        <h3 className="sr-only">项目复盘</h3>
         <span className="ml-auto flex items-center gap-1.5">
           {review?.exists ? (
             <button
@@ -368,7 +370,7 @@ export function ProjectReviewCard({
             ))}
           </select>
           {!selected ? (
-            <p className="rounded-xl bg-white/80 px-3 py-2 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-2)]">
+            <p className="rounded-xl bg-[color:var(--od-neu-sunken)] px-3 py-2 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-2)]">
               未挂接项目的任务请先在下方「项目」区挂接，再生成复盘。
             </p>
           ) : null}
@@ -388,7 +390,7 @@ export function ProjectReviewCard({
       ) : null}
 
       {stage ? (
-        <p className="mt-3 rounded-xl bg-white/80 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-2)]" role="status">
+        <p className="mt-3 rounded-xl bg-[color:var(--od-neu-sunken)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-2)]" role="status">
           {stage}
         </p>
       ) : null}
@@ -399,7 +401,7 @@ export function ProjectReviewCard({
             "mt-3 rounded-xl px-3 py-2 text-[11px] leading-relaxed " +
             (notice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
+              : "bg-[color:var(--od-neu-sunken)] text-[color:var(--od-neu-ink-2)]")
           }
         >
           {notice.text}
@@ -490,7 +492,7 @@ export function ProjectReviewCard({
                   "mt-4 rounded-xl px-3 py-2 text-[11px] leading-relaxed " +
                   (notice.kind === "err"
                     ? "bg-error-container/70 text-on-error-container"
-                    : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
+                    : "bg-[color:var(--od-neu-sunken)] text-[color:var(--od-neu-ink-2)]")
                 }
               >
                 {notice.text}

@@ -129,7 +129,8 @@
   --od-neu-sunken-deep: #e0d4bc;
   --od-neu-ink: #2c2823;
   --od-neu-ink-2: #5b5349;
-  --od-neu-ink-3: #857a6a;
+  /* OD-UI-900 可读性修订：原 #857a6a 在凹陷面 3.18:1，加深到 4.5:1+ */
+  --od-neu-ink-3: #6b6152;
   --od-neu-accent: #a24e2c;
   --od-neu-accent-soft: #f3e2d6;
   --od-neu-accent-ink: #7c3a1f;
@@ -2672,10 +2673,10 @@ button.wr-backlink:hover {
 }
 
 .wr-dialog {
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--od-neu-line);
   border-radius: 24px;
-  background: linear-gradient(180deg, #fff 0%, #fbfaf8 100%);
-  box-shadow: 0 44px 110px -42px rgba(20, 24, 40, 0.58);
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-3);
 }
 
 .wr-dialog-head {
@@ -4280,6 +4281,23 @@ button.wr-backlink:hover {
   box-shadow: var(--od-neu-inset-1);
 }
 
+.pj-chip[aria-pressed="true"] {
+  background: var(--od-neu-accent);
+  color: #fff;
+  box-shadow:
+    3px 3px 8px var(--od-neu-lo-soft),
+    -3px -3px 8px rgba(255, 255, 255, 0.55);
+}
+
+.pj-chip[aria-pressed="true"] small {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pj-chip[aria-pressed="true"] .pj-chip-ic {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: none;
+}
+
 .pj-chip .pj-chip-ic {
   width: 26px;
   height: 26px;
@@ -4362,13 +4380,26 @@ button.wr-backlink:hover {
 
 .pj-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 316px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
   gap: 20px;
   align-items: start;
 }
 
 @media (max-width: 1279px) {
   .pj-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pj-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 1023px) {
+  .pj-tools {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -4610,6 +4641,50 @@ button.wr-backlink:hover {
   z-index: 1;
 }
 
+/* 键盘可达 + 悬停路径不断档：fan 用 ::after 铺透明连接区 */
+.pj-fan::after {
+  content: "";
+  position: absolute;
+  inset: -46px -56px;
+  pointer-events: none;
+}
+
+.pj-fan:hover::after,
+.pj-fan:focus-within::after,
+.pj-fan.is-open::after {
+  pointer-events: auto;
+}
+
+.pj-fan:focus-within .pj-fan-item {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pj-fan:focus-within .pj-fan-item:nth-child(1) {
+  transform: translate(-50%, -50%) translate(-40px, 2px) rotate(-24deg) scale(1);
+}
+
+.pj-fan:focus-within .pj-fan-item:nth-child(2) {
+  transform: translate(-50%, -50%) translate(0, -42px) rotate(0deg) scale(1);
+}
+
+.pj-fan:focus-within .pj-fan-item:nth-child(3) {
+  transform: translate(-50%, -50%) translate(40px, 2px) rotate(24deg) scale(1);
+}
+
+/* 焦点环：pj 系控件统一 2px accent */
+.pj-fab:focus-visible,
+.pj-chip:focus-visible,
+.pj-fan-trigger:focus-visible,
+.pj-fan-item:focus-visible,
+.pj-bar:focus-visible,
+.pj-task-row:focus-visible,
+.pj-group-head:focus-visible,
+.pj-card:focus-visible {
+  outline: 2px solid var(--od-neu-accent);
+  outline-offset: 2px;
+}
+
 .pj-fan:hover .pj-fan-item,
 .pj-fan.is-open .pj-fan-item {
   opacity: 1;
@@ -4805,9 +4880,31 @@ button.wr-backlink:hover {
   box-shadow: var(--od-neu-inset-1);
 }
 
+.pj-bar.is-accent {
+  background: var(--od-neu-accent);
+}
+
+.pj-bar.is-ink {
+  background: var(--od-neu-ink-2);
+}
+
 .pj-bar.is-ghost .pj-bar-name {
   color: var(--od-neu-ink-2);
   font-weight: 500;
+}
+
+.pj-bar .pj-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 9px 0 0 9px;
+  background: rgba(255, 252, 244, 0.22);
+  pointer-events: none;
+}
+
+.pj-bar.is-ghost .pj-bar-fill {
+  background: color-mix(in oklab, var(--od-neu-accent) 18%, transparent);
 }
 
 .pj-bar.is-ghost .pj-bar-stat {

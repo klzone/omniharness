@@ -281,8 +281,10 @@ export function ProjectMaintenance({
   return (
     <aside aria-label="项目维护" data-project-maintenance="" className={"rounded-[18px] px-5 py-4 " + NEU_CARD}>
       <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
-        <Icon name="folder" className="h-3.5 w-3.5 text-[color:var(--od-neu-accent-ink)]" />
-        <h3 className="text-[12px] font-semibold text-[color:var(--od-neu-ink)]">项目</h3>
+        <span className="pj-panel-ic" aria-hidden="true">
+          <Icon name="folder" className="h-3.5 w-3.5" />
+        </span>
+        <h3 className="sr-only">项目</h3>
         <span className="mono ml-auto text-[10px] text-[color:var(--od-neu-ink-3)]">{projects.length}</span>
         <button
           type="button"
@@ -294,7 +296,6 @@ export function ProjectMaintenance({
           data-project-new=""
         >
           <Icon name="plus" className="h-3 w-3" />
-          新建项目
         </button>
       </div>
 
@@ -311,7 +312,7 @@ export function ProjectMaintenance({
             "mt-3 rounded-xl px-3 py-2 text-[11px] leading-relaxed " +
             (notice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
-              : "bg-white/80 text-[color:var(--od-neu-ink-2)]")
+              : "bg-[color:var(--od-neu-sunken)] text-[color:var(--od-neu-ink-2)]")
           }
         >
           {notice.text}
@@ -351,10 +352,12 @@ export function ProjectMaintenance({
                     setAddTaskOpen(true);
                     setAddTaskError(null);
                   }}
-                  className={"rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+                  className={"flex h-7 w-7 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                   data-project-add-task=""
+                  aria-label={"添加任务到 " + selectedProject.name}
+                  title="添加任务"
                 >
-                  添加任务
+                  <Icon name="plus" className="h-3.5 w-3.5" />
                 </button>
               </div>
               <p className="mono mt-1 text-[10px] text-[color:var(--od-neu-ink-3)]">
@@ -468,7 +471,7 @@ export function ProjectMaintenance({
             aria-modal="true"
             aria-label="新建项目"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[460px] rounded-2xl bg-white p-5 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)]"
+            className="w-full max-w-[460px] wr-dialog w-full max-w-[460px] p-5"
             data-project-dialog="new"
           >
             <h3 className="text-[14px] font-semibold text-on-surface">新建项目</h3>
@@ -559,7 +562,7 @@ export function ProjectMaintenance({
             aria-modal="true"
             aria-label="添加任务"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[460px] rounded-2xl bg-white p-5 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)]"
+            className="w-full max-w-[460px] wr-dialog w-full max-w-[460px] p-5"
             data-project-dialog="add-task"
           >
             <h3 className="text-[14px] font-semibold text-on-surface">添加到「{projectNameOf(selected)}」</h3>

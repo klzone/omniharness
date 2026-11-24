@@ -43,8 +43,8 @@ def main() -> int:
         "var(--od-neu-surface)" in task
         and "var(--od-neu-sunken)" in task
         and "var(--od-neu-accent" in task
-        and "NEU_CARD" in task,
-        "卡片、凹槽与强调色落到暖纸新拟物令牌（OD-UI-717）",
+        and "pj-panel" in task,
+        "卡片、凹槽与强调色落到暖纸新拟物令牌（OD-UI-717/900 极简面板类）",
     )
     check(
         "fake_progress_removed",
