@@ -426,7 +426,7 @@ export function ProjectReviewCard({
 
     {reviewOpen && selected ? (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
+        className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
         role="presentation"
         onClick={() => setReviewOpen(false)}
       >

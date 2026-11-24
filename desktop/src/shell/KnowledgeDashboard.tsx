@@ -160,7 +160,7 @@ export function KnowledgeDashboard({
         </p>
       ) : null}
 
-      <section className="mb-3.5 overflow-hidden rounded-[22px] border border-white/85 bg-white/72 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]">
+      <section className="mb-3.5 overflow-hidden rounded-[22px] pj-panel">
         <div className="grid grid-cols-2 divide-y divide-outline-variant/20 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
         {[
           { id: "dashboard-stat-raw", value: raw.length, label: "原始资料", hint: "raw/", action: onOpenAssets },
@@ -185,7 +185,7 @@ export function KnowledgeDashboard({
       </section>
 
       <div className="grid grid-cols-1 gap-3.5 mb-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" data-testid="dashboard-duo">
-        <section className="rounded-[20px] border border-white/80 bg-white/70 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]" data-testid="dashboard-todo-card">
+        <section className="rounded-[20px] pj-panel" data-testid="dashboard-todo-card">
           <div className="flex items-center gap-2 px-4 py-3">
             <h3 className="text-[12.5px] font-semibold text-on-surface">需要你处理</h3>
             <button type="button" className="ml-auto mono text-[10px] text-outline hover:text-primary" onClick={() => onOpenReview("new")}>
@@ -240,7 +240,7 @@ export function KnowledgeDashboard({
           )}
         </section>
 
-        <section className="rounded-[20px] border border-white/80 bg-white/70 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]" data-testid="dashboard-ai-work-card">
+        <section className="rounded-[20px] pj-panel" data-testid="dashboard-ai-work-card">
           <div className="flex items-center gap-2 px-4 py-3">
             <h3 className="text-[12.5px] font-semibold text-on-surface">AI 最近工作</h3>
             <button type="button" className="ml-auto mono text-[10px] text-outline hover:text-primary" onClick={() => setShowTasks((v) => !v)}>
@@ -266,7 +266,7 @@ export function KnowledgeDashboard({
         </section>
       </div>
 
-      <section className="rounded-[20px] border border-white/80 bg-white/70 shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]" data-testid="dashboard-health-card">
+      <section className="rounded-[20px] pj-panel" data-testid="dashboard-health-card">
         <div className="flex items-center gap-2 px-4 py-3">
           <h3 className="text-[12.5px] font-semibold text-on-surface">知识库健康 · AI 运行质量</h3>
           <span className="ml-auto mono text-[10px] text-outline">四格均为真实数据</span>
@@ -332,7 +332,7 @@ export function KnowledgeDashboard({
       </section>
 
       {showExpired ? (
-        <section className="mt-3.5 rounded-[20px] border border-white/80 bg-white/70 p-4" data-testid="dashboard-expired-list">
+        <section className="mt-3.5 rounded-[20px] pj-panel" data-testid="dashboard-expired-list">
           <div className="flex items-center gap-2">
             <h3 className="text-[12.5px] font-semibold text-on-surface">可能过期 / 质量风险</h3>
             <span className="mono text-[10px] text-outline">阈值 {quality?.threshold_days ?? "—"} 天</span>
@@ -373,14 +373,14 @@ export function KnowledgeDashboard({
         </section>
       ) : null}
 
-      <section className="mt-3.5 rounded-[20px] border border-white/80 bg-white/70 p-4" data-testid="dashboard-retrieval">
+      <section className="mt-3.5 rounded-[20px] pj-panel" data-testid="dashboard-retrieval">
         <div className="flex items-baseline gap-2">
           <h3 className="text-[12.5px] font-semibold text-on-surface">检索抽检</h3>
           <span className="mono text-[9.5px] text-outline">全文检索 · 非向量</span>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <input
-            className="min-w-0 flex-1 rounded-lg border border-outline-variant/50 bg-white px-2.5 py-1.5 text-[11.5px]"
+            className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-[11.5px] bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -434,7 +434,7 @@ export function KnowledgeDashboard({
       </section>
 
       {showTasks ? (
-        <section className="mt-3.5 rounded-[20px] border border-white/80 bg-white/70 p-4" data-testid="dashboard-task-records">
+        <section className="mt-3.5 rounded-[20px] pj-panel" data-testid="dashboard-task-records">
           <div className="flex items-center gap-2">
             <h3 className="text-[12.5px] font-semibold text-on-surface">任务记录</h3>
             <button type="button" className="ml-auto text-[10.5px] text-outline hover:text-primary" onClick={() => setShowTasks(false)}>

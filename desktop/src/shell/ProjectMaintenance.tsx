@@ -88,6 +88,19 @@ export function ProjectMaintenance({
     onNotice?.(next);
   }
 
+  /** OD-UI-900：两个弹层都支持 Escape 关闭。 */
+  useEffect(() => {
+    if (!newProjectOpen && !addTaskOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNewProjectOpen(false);
+        setAddTaskOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [newProjectOpen, addTaskOpen]);
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -465,13 +478,13 @@ export function ProjectMaintenance({
       ) : null}
 
       {newProjectOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4" role="presentation" onClick={() => setNewProjectOpen(false)}>
+        <div className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4" role="presentation" onClick={() => setNewProjectOpen(false)}>
           <div
             role="dialog"
             aria-modal="true"
             aria-label="新建项目"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[460px] wr-dialog w-full max-w-[460px] p-5"
+            className="wr-dialog w-full max-w-[460px] p-5"
             data-project-dialog="new"
           >
             <h3 className="text-[14px] font-semibold text-on-surface">新建项目</h3>
@@ -556,13 +569,13 @@ export function ProjectMaintenance({
       ) : null}
 
       {addTaskOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4" role="presentation" onClick={() => setAddTaskOpen(false)}>
+        <div className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4" role="presentation" onClick={() => setAddTaskOpen(false)}>
           <div
             role="dialog"
             aria-modal="true"
             aria-label="添加任务"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[460px] wr-dialog w-full max-w-[460px] p-5"
+            className="wr-dialog w-full max-w-[460px] p-5"
             data-project-dialog="add-task"
           >
             <h3 className="text-[14px] font-semibold text-on-surface">添加到「{projectNameOf(selected)}」</h3>

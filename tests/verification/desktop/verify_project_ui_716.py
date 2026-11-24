@@ -61,8 +61,8 @@ def main() -> int:
     check(
         "modal_uses_warm_dialog",
         'className="wr-dialog w-full max-w-[520px] p-6"' in task
-        and "bg-[rgba(24,26,40,0.3)]" in task,
-        "任务编辑弹层复用暖白对话框材质",
+        and "pj-modal-overlay" in task,
+        "OD-UI-900：任务编辑弹层复用暖白对话框材质与统一暖墨遮罩",
     )
     check(
         "work_record_tokens_exist",

@@ -28,7 +28,7 @@ import {
 } from "../writingStudio";
 
 const CARD =
-  "bg-white/78 " +
+  "pj-panel " +
   "border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] " +
   "px-4 py-4 lg:px-5 lg:py-5 min-w-0";
 
@@ -131,7 +131,7 @@ export function WritingContinueCard({
         <p className="mt-3.5 text-[12px] text-outline leading-relaxed">正在读取本机成果…</p>
       ) : target ? (
         <div
-          className="mt-3.5 rounded-2xl border border-amber-500/20 bg-white/82 px-4 py-4"
+          className="mt-3.5 rounded-2xl bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] px-4 py-4"
           data-continue-target={target.relative_path}
         >
           <div className="flex items-center gap-1.5 flex-wrap">

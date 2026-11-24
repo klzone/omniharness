@@ -12,7 +12,6 @@ import {
   summaryRangeLabel,
 } from "../projectGanttGroups";
 import {
-  projectProgressRatio,
   projectWindow,
   taskProgressRatio,
 } from "../projectGanttProgress";
@@ -803,7 +802,7 @@ export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string)
       ) : null}
 
       {view === "quadrant" ? (
-        <div className="max-w-7xl mx-auto md:-translate-x-8">
+        <div className="mx-auto">
           <TaskQuadrantBoard onNotice={setNotice} />
         </div>
       ) : null}
@@ -1004,17 +1003,10 @@ export function TaskQuadrantBoard({
     [projects],
   );
 
-  const displayViews = useMemo(() => {
-    const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
-    return views
-      .filter((view) => {
-        const task = taskMap.get(view.task_id);
-        return !task || !archived.has(task.state);
-      })
-      .map((view) =>
-        view.quadrant === "待评估" ? { ...view, quadrant: "Q2" as const } : view,
-      );
-  }, [views, taskMap]);
+  const displayViews = useMemo(() =>
+    views.map((view) =>
+      view.quadrant === "待评估" ? { ...view, quadrant: "Q2" as const } : view,
+    ), [views]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -1025,14 +1017,8 @@ export function TaskQuadrantBoard({
   const visibleViews = useMemo(() => {
     const needle = query.trim();
     let base = displayViews;
-    if (needle) {
-      base = base.filter((view) => {
-        const title = taskMap.get(view.task_id)?.title ?? view.title;
-        return title.includes(needle);
-      });
-    }
+    // OD-UI-900：归档剔除放在状态筛选之后，「已完成」胶囊才看得到数据。
     if (statusFilter !== "all") {
-      const taskStateOf = (taskId: string) => taskMap.get(taskId)?.state;
       const overdue = (taskId: string) => {
         const task = taskMap.get(taskId);
         return Boolean(
@@ -1043,10 +1029,22 @@ export function TaskQuadrantBoard({
         );
       };
       base = base.filter((view) => {
-        const state = taskStateOf(view.task_id);
+        const state = taskMap.get(view.task_id)?.state;
         if (statusFilter === "done") return state === "已完成";
         if (statusFilter === "running") return state === "进行中";
         return overdue(view.task_id);
+      });
+    } else {
+      const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
+      base = base.filter((view) => {
+        const task = taskMap.get(view.task_id);
+        return !task || !archived.has(task.state);
+      });
+    }
+    if (needle) {
+      base = base.filter((view) => {
+        const title = taskMap.get(view.task_id)?.title ?? view.title;
+        return title.includes(needle);
       });
     }
     return base;
@@ -1065,7 +1063,11 @@ export function TaskQuadrantBoard({
     const todayKey = isoDay(today.toISOString());
     const created = tasks.filter((task) => isoDay(task.created_at) === todayKey).length;
     const running = tasks.filter((task) => task.state === "进行中").length;
-    const done = tasks.filter((task) => task.state === "已完成").length;
+    // 胶囊计数与四象限数据源同口径：只数出现在象限视图里的任务。
+    const viewIds = new Set(views.map((view) => view.task_id));
+    const done = tasks.filter(
+      (task) => task.state === "已完成" && viewIds.has(task.id),
+    ).length;
     const overdue = tasks.filter(
       (task) =>
         task.due_date &&
@@ -1074,7 +1076,7 @@ export function TaskQuadrantBoard({
         (dayStart(task.due_date)?.getTime() ?? Infinity) < today.getTime(),
     ).length;
     return { created, running, done, overdue };
-  }, [tasks, today]);
+  }, [tasks, views, today]);
 
   const timeline = useMemo(() => {
     const totalMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 1;
@@ -1123,7 +1125,12 @@ export function TaskQuadrantBoard({
               widthPct: Math.max(2, ((visibleTo - visibleFrom) / timeline.span) * 100),
               start: ganttDay(visibleFrom),
               end: ganttDay(visibleTo),
-              ratio: projectProgressRatio(project, group.rows, nowMs),
+              // OD-UI-900 评审修订：进度槽改用「已完成任务占比」，不再用时间流逝比。
+              ratio:
+                group.rows.length === 0
+                  ? 0
+                  : group.rows.filter((row) => row.task.state === "已完成").length /
+                    group.rows.length,
             },
           ] as const;
         }),
@@ -1291,12 +1298,12 @@ export function TaskQuadrantBoard({
 
   const matrix = (
     <div
-      className="grid w-full"
+      className="pj-matrix grid w-full"
       style={{
         gridTemplateColumns: "26px minmax(0,1fr) 20px minmax(0,1fr)",
         gridTemplateRows: compact
-          ? "20px 126px 18px 126px"
-          : "26px 178px 20px 178px",
+          ? "20px 118px 18px 118px"
+          : "22px 150px 18px 150px",
       }}
     >
       <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 2, gridRow: 1 }}>
@@ -1357,7 +1364,10 @@ export function TaskQuadrantBoard({
           >
             <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
               {items.length === 0 ? (
-                <p className="m-auto text-[11px] text-[color:var(--od-neu-ink-3)]">暂无任务</p>
+                <span className="m-auto flex items-center gap-1 text-[11px] text-[color:var(--od-neu-ink-3)]" aria-label="此象限暂无任务">
+                  <Icon name="check" className="h-3 w-3" />
+                  0
+                </span>
               ) : (
                 items.map((view) => {
                   const task = taskMap.get(view.task_id);
@@ -1460,7 +1470,7 @@ export function TaskQuadrantBoard({
                     key={index}
                     className={
                       "pj-gantt-scale-lbl" +
-                      (Math.abs(day.getTime() - timeline.start.getTime()) < timeline.span / 14 ? " is-today" : "")
+                      (day.toDateString() === today.toDateString() ? " is-today" : "")
                     }
                     style={{ left: (index / 6) * 100 + "%" }}
                   >
@@ -1491,6 +1501,7 @@ export function TaskQuadrantBoard({
                 <div
                   key={group.projectId || "unattached"}
                   data-project-gantt-group={group.projectId}
+                  data-collapsed={collapsed}
                   className="pj-proj-row"
                 >
                   <button
@@ -1516,11 +1527,15 @@ export function TaskQuadrantBoard({
                       {group.rows.length} 项 · {rangeLabel}
                     </span>
                     <span
-                      aria-hidden="true"
-                      className="pj-card-track"
+                      className="pj-proj-track"
+                      role="progressbar"
+                      aria-valuenow={Math.round(summary.ratio * 100)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={group.projectName + " 完成度"}
                     >
                       <span
-                        className="pj-card-fill"
+                        className="pj-proj-fill"
                         style={{ width: Math.round(summary.ratio * 100) + "%" }}
                       />
                     </span>
@@ -1544,7 +1559,8 @@ export function TaskQuadrantBoard({
                               title={task.title + " · " + task.state}
                               className={
                                 "pj-bar " + solid +
-                                (clamped ? " is-clamped" : "")
+                                (clamped && left <= 0 ? " is-clamped-left" : "") +
+                                (clamped && left + width >= 100 ? " is-clamped-right" : "")
                               }
                               style={{ left: left + "%", width: Math.max(8, width) + "%" }}
                             >
@@ -1561,8 +1577,6 @@ export function TaskQuadrantBoard({
                                 <span className="pj-bar-stat">
                                   {done ? (
                                     <Icon name="check" className="h-3 w-3" />
-                                  ) : task.due_date ? (
-                                    mmdd(dayStart(task.due_date) ?? new Date())
                                   ) : (
                                     task.state
                                   )}
@@ -1623,10 +1637,12 @@ export function TaskQuadrantBoard({
                       : "该任务未挂接项目；先到下方「项目」区挂接后再复盘。",
                   });
                 }}
-                className={"shrink-0 rounded-full px-2 py-1 text-[10px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+                className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                 data-task-review-entry=""
+                title="选入项目复盘"
+                aria-label="选入项目复盘"
               >
-                AI 复盘
+                <Icon name="refresh" className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}
@@ -1746,7 +1762,6 @@ export function TaskQuadrantBoard({
             <Icon name="check" className="h-3.5 w-3.5" />
           </span>
           {stats.done}
-          <small>已完成</small>
         </button>
         <button
           type="button"
@@ -1760,7 +1775,6 @@ export function TaskQuadrantBoard({
             <Icon name="clock" className="h-3.5 w-3.5" />
           </span>
           {stats.running}
-          <small>进行中</small>
         </button>
         <button
           type="button"
@@ -1774,7 +1788,6 @@ export function TaskQuadrantBoard({
             <Icon name="bell" className="h-3.5 w-3.5" />
           </span>
           {stats.overdue}
-          <small>逾期</small>
         </button>
       </div>
 
@@ -1802,9 +1815,30 @@ export function TaskQuadrantBoard({
           复盘/项目维护/已完成收进底部工具抽屉行，不挤首屏。 */}
       <div className="pj-main relative">
         <div className="pj-panel min-w-0" data-pj-quadrant-panel="">
+          <div className="pj-panel-head">
+            <span className="pj-panel-ic" aria-hidden="true">
+              <Icon name="grid" className="h-3.5 w-3.5" />
+            </span>
+            {(statusFilter !== "all" || query.trim()) ? (
+              <button
+                type="button"
+                className="pj-fab"
+                style={{ width: 26, height: 26 }}
+                title="清除筛选"
+                aria-label="清除筛选"
+                data-pj-filter-clear=""
+                onClick={() => {
+                  setStatusFilter("all");
+                  setQuery("");
+                }}
+              >
+                <Icon name="x" className="h-3 w-3" />
+              </button>
+            ) : null}
+          </div>
           {matrix}
         </div>
-        <div className="min-w-0">{gantt}</div>
+        <div className="pj-main-canvas min-w-0">{gantt}</div>
       </div>
 
       <div className="pj-tools" data-pj-tools="">
@@ -1823,7 +1857,7 @@ export function TaskQuadrantBoard({
       {/* OD-UI-900 快捷新建任务弹层 */}
       {quickTaskOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4"
+          className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
           role="presentation"
           onClick={() => setQuickTaskOpen(false)}
         >
@@ -1924,7 +1958,7 @@ export function TaskQuadrantBoard({
 
       {editingTask ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(24,26,40,0.3)] px-4"
+          className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
           role="presentation"
           onClick={() => setEditing(null)}
         >
