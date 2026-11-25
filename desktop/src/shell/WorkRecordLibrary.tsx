@@ -94,11 +94,11 @@ const FIELD_LABEL: Record<string, string> = {
   body: "正文",
 };
 
-const CARD = "bg-white/80 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]";
+const CARD = "bg-[color:var(--od-neu-surface)] rounded-[20px] shadow-[var(--od-neu-raise-2)]";
 const FIELD =
-  "rounded-full border border-outline-variant/50 bg-white px-3 py-1.5 text-[11.5px] text-on-surface-variant focus:outline-none focus:ring-1 focus:ring-primary/30";
+  "rounded-full bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] px-3 py-1.5 text-[11.5px] text-[color:var(--od-neu-ink)] outline-none focus-visible:outline-2 focus-visible:outline-[color:var(--od-neu-focus)]";
 const FIELD_BLOCK =
-  "w-full rounded-xl border border-outline-variant/50 bg-white px-3 py-2 text-[12.5px] text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/30";
+  "w-full rounded-xl bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] px-3 py-2 text-[12.5px] text-[color:var(--od-neu-ink)] outline-none focus-visible:outline-2 focus-visible:outline-[color:var(--od-neu-focus)]";
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -1076,7 +1076,11 @@ export function WorkRecordLibrary({
               <>
                 <div className="wr-timeline-list" data-work-record-list="">
                   {listing.items.length === 0 ? (
-                    <p className="wr-empty-state">还没有记录。可以在首页对话里说今天做了什么，让 AI 整理成记录。</p>
+                    <div className="wr-empty-state" aria-label="暂无记录">
+                      <span className="wr-empty-mark" aria-hidden="true">
+                        <Icon name="note" className="h-7 w-7" />
+                      </span>
+                    </div>
                   ) : (
                     groups.map((group) => {
                       const isToday = group.date === today;
@@ -1204,13 +1208,14 @@ export function WorkRecordLibrary({
               <span className="wr-side-mark is-violet" aria-hidden="true">
                 <Icon name="trend-up" className="h-4 w-4" />
               </span>
-              <h2 className="wr-side-title">本月工作概览</h2>
+              <h2 className="sr-only">本月工作概览</h2>
               <button
                 type="button"
                 onClick={() => focusOverview(null)}
                 className="wr-text-link"
+                aria-label="查看本月工作详情"
+                title="查看本月工作详情"
               >
-                详情
                 <Icon name="arrow-right" className="h-3 w-3" />
               </button>
             </div>
@@ -1219,37 +1224,43 @@ export function WorkRecordLibrary({
                 type="button"
                 onClick={() => focusOverview(null)}
                 data-overview-stat="total"
+                aria-label="本月记录总数"
+                title="本月记录总数"
                 className="wr-stat"
               >
                 <span className="wr-stat-icon is-blue" aria-hidden="true">
                   <Icon name="note" className="h-4 w-4" />
                 </span>
                 <span className="wr-stat-number">{stats.month}</span>
-                <span className="wr-stat-label">记录总数</span>
+                <span className="sr-only">记录总数</span>
               </button>
               <button
                 type="button"
                 onClick={() => focusOverview("analyzed")}
                 data-overview-stat="analyzed"
+                aria-label="已解析记录"
+                title="已解析记录"
                 className="wr-stat"
               >
                 <span className="wr-stat-icon is-green" aria-hidden="true">
                   <Icon name="check" className="h-4 w-4" />
                 </span>
                 <span className="wr-stat-number">{monthAnalyzed}</span>
-                <span className="wr-stat-label">已解析</span>
+                <span className="sr-only">已解析</span>
               </button>
               <button
                 type="button"
                 onClick={() => focusOverview("unanalyzed")}
                 data-overview-stat="pending"
+                aria-label="待解析记录"
+                title="待解析记录"
                 className="wr-stat"
               >
                 <span className="wr-stat-icon is-amber" aria-hidden="true">
                   <Icon name="clock" className="h-4 w-4" />
                 </span>
                 <span className="wr-stat-number">{monthPending}</span>
-                <span className="wr-stat-label">待解析</span>
+                <span className="sr-only">待解析</span>
               </button>
             </div>
             <button
@@ -1259,7 +1270,7 @@ export function WorkRecordLibrary({
               className="wr-audit-link"
             >
               <Icon name="shield-check" className="h-3.5 w-3.5" />
-              AI 候选审核
+              审核
               <Icon name="arrow-right" className="ml-auto h-3 w-3" />
             </button>
           </section>
@@ -1274,8 +1285,7 @@ export function WorkRecordLibrary({
               <Icon name="star" className="h-4.5 w-4.5" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="wr-review-cta-title">一键生成 · 本月复盘</span>
-              <span className="wr-review-cta-sub">基于工作记录和任务，生成月度总结</span>
+              <span className="wr-review-cta-title">本月复盘</span>
             </span>
             <span className="wr-review-cta-arrow" aria-hidden="true">
               <Icon name="arrow-right" className="h-4 w-4" />
@@ -1283,7 +1293,7 @@ export function WorkRecordLibrary({
           </button>
 
           <section className="wr-side-card">
-            <h2 className="wr-side-section-title">快捷操作</h2>
+            <h2 className="sr-only">快捷操作</h2>
             <div className="wr-quick-grid">
               <button
                 type="button"
@@ -1296,7 +1306,6 @@ export function WorkRecordLibrary({
                 </span>
                 <span className="min-w-0">
                   <span className="wr-quick-label">生成周复盘</span>
-                  <span className="wr-quick-sub">本周工作总结</span>
                 </span>
               </button>
               <button
@@ -1310,7 +1319,6 @@ export function WorkRecordLibrary({
                 </span>
                 <span className="min-w-0">
                   <span className="wr-quick-label">生成月总结</span>
-                  <span className="wr-quick-sub">月度工作回顾</span>
                 </span>
               </button>
               <button
@@ -1326,7 +1334,6 @@ export function WorkRecordLibrary({
                 </span>
                 <span className="min-w-0">
                   <span className="wr-quick-label">整理选中记录</span>
-                  <span className="wr-quick-sub">优化记录内容</span>
                 </span>
               </button>
               <button
@@ -1342,7 +1349,6 @@ export function WorkRecordLibrary({
                 </span>
                 <span className="min-w-0">
                   <span className="wr-quick-label">关联任务</span>
-                  <span className="wr-quick-sub">添加相关任务</span>
                 </span>
               </button>
             </div>
@@ -1365,9 +1371,7 @@ export function WorkRecordLibrary({
             <span className="wr-hint-icon" aria-hidden="true">
               <Icon name="spark" className="h-4 w-4" />
             </span>
-            <span className="min-w-0 flex-1">
-              你可以在首页对话中，让 AI 帮你整理工作记录
-            </span>
+            <span className="min-w-0 flex-1">AI 整理</span>
             <Icon name="arrow-right" className="h-3.5 w-3.5 opacity-60" />
           </button>
         </aside>

@@ -48,7 +48,7 @@ export function WorkRecordPage({ onNavigate }: { onNavigate: (scene: Scene) => v
       className="od-worklog-page flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-10"
       data-work-record-page=""
     >
-      <div className="mx-auto w-full max-w-[1400px]">
+      <div className="mx-auto w-full max-w-[1280px]">
         <header className="wr-hero" data-work-record-hero="">
           <div className="wr-hero-mark" aria-hidden="true">
             <Icon name="note" className="h-6 w-6" />
