@@ -70,10 +70,6 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
     ? sessionCategoryLabel(selected.tag, categories)
     : null;
   const storageNote = threadStorageNote();
-  const latestUpdatedAt = threads.reduce(
-    (latest, thread) => Math.max(latest, thread.updatedAt),
-    0,
-  );
 
   const closeSelected = () => {
     setSelectedId(null);
@@ -110,7 +106,7 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
       className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-10"
       data-session-history-page=""
     >
-      <div className="mx-auto w-full max-w-[1180px]">
+      <div className="mx-auto w-full max-w-[1280px]">
         <header className="sh-masthead" data-session-history-hero="">
           <div className="sh-masthead-main">
             <span className="sh-mast-mark" aria-hidden="true">
@@ -118,17 +114,6 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
             </span>
             <div className="min-w-0">
               <h1 className="sh-mast-title">历史会话</h1>
-              <p className="sh-mast-meta">
-                <span>{groups.length} 个分类</span>
-                <span className="sh-mast-dot" aria-hidden="true" />
-                <span>{threads.length} 段对话</span>
-                {latestUpdatedAt > 0 ? (
-                  <>
-                    <span className="sh-mast-dot" aria-hidden="true" />
-                    <span>最近更新 {threadUpdatedLabel(latestUpdatedAt)}</span>
-                  </>
-                ) : null}
-              </p>
             </div>
           </div>
           <div className="sh-mast-total" aria-label="对话总数">
@@ -156,7 +141,9 @@ export function SessionHistoryPage({ onNavigate }: { onNavigate: (scene: Scene) 
 
         {groups.length === 0 ? (
           <section className="wr-empty-state sh-empty" data-session-empty="">
-            <p>还没有对话。回首页开始一段对话，之后会按分类出现在这里。</p>
+            <span className="wr-empty-mark" aria-hidden="true">
+              <Icon name="history" className="h-7 w-7" />
+            </span>
             <button
               type="button"
               onClick={() => onNavigate("home")}
