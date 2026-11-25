@@ -1662,8 +1662,8 @@ export function TaskQuadrantBoard({
                               <button
                                 type="button"
                                 className="pj-bar-tool"
-                                title="修改任务"
                                 aria-label={"修改任务 " + task.title}
+                                data-hover-hint="修改任务"
                                 onClick={() => openEditor(task.id)}
                               >
                                 <Icon name="edit" className="h-3 w-3" />
@@ -1671,8 +1671,8 @@ export function TaskQuadrantBoard({
                               <button
                                 type="button"
                                 className="pj-bar-tool is-danger"
-                                title="删除任务"
                                 aria-label={"删除任务 " + task.title}
+                                data-hover-hint="删除任务"
                                 onClick={() => setDeleteTaskId(task.id)}
                               >
                                 <Icon name="trash" className="h-3 w-3" />
@@ -1732,8 +1732,8 @@ export function TaskQuadrantBoard({
                   <button
                     type="button"
                     className="pj-project-tool"
-                    title="管理项目与任务"
                     aria-label={"管理项目 " + project.name}
+                    data-hover-hint="管理项目与任务"
                     onClick={() => {
                       setManageProjectId(project.project_id);
                       setManageOpen(true);
@@ -1744,20 +1744,8 @@ export function TaskQuadrantBoard({
                   <button
                     type="button"
                     className="pj-project-tool"
-                    title="给项目添加任务"
-                    aria-label={"给项目添加任务 " + project.name}
-                    onClick={() => {
-                      setQuickTaskProject(project.project_id);
-                      setQuickTaskOpen(true);
-                    }}
-                  >
-                    <Icon name="plus" className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    className="pj-project-tool"
-                    title="生成项目复盘"
                     aria-label={"生成项目复盘 " + project.name}
+                    data-hover-hint="生成项目复盘"
                     onClick={() =>
                       setReviewSeed({ projectId: project.project_id, nonce: Date.now() })}
                   >
@@ -1853,8 +1841,8 @@ export function TaskQuadrantBoard({
           <button
             type="button"
             className="pj-fab"
-            title="项目管理"
             aria-label="项目管理"
+            data-hover-hint="项目管理"
             onClick={() => {
               setManageProjectId("");
               setNewProjectNonce((value) => value + 1);
@@ -1899,8 +1887,8 @@ export function TaskQuadrantBoard({
             <button
               type="button"
               className="pj-fab"
-              title="新建任务"
               aria-label="新建任务"
+              data-hover-hint="新建任务"
               onClick={() => {
                 setQuickTaskProject("");
                 setQuickTaskOpen(true);
@@ -1943,6 +1931,7 @@ export function TaskQuadrantBoard({
               <button
                 type="button"
                 aria-label="关闭"
+                data-hover-hint="关闭"
                 onClick={() => setStatusModal(null)}
                 className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
@@ -2014,10 +2003,11 @@ export function TaskQuadrantBoard({
               <span className="pj-panel-ic" aria-hidden="true">
                 <Icon name="branch" className="h-3.5 w-3.5" />
               </span>
-              <h3 className="sr-only">项目与任务管理</h3>
+              <h3 className="text-[16px] font-semibold text-[color:var(--od-neu-ink)]">项目与任务</h3>
               <button
                 type="button"
                 aria-label="关闭"
+                data-hover-hint="关闭"
                 onClick={() => setManageOpen(false)}
                 className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
@@ -2051,10 +2041,11 @@ export function TaskQuadrantBoard({
               <span className="pj-panel-ic" aria-hidden="true">
                 <Icon name="refresh" className="h-3.5 w-3.5" />
               </span>
-              <h3 className="sr-only">项目复盘</h3>
+              <h3 className="text-[16px] font-semibold text-[color:var(--od-neu-ink)]">项目复盘</h3>
               <button
                 type="button"
                 aria-label="关闭"
+                data-hover-hint="关闭"
                 onClick={() => setReviewSeed(null)}
                 className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
@@ -2093,6 +2084,7 @@ export function TaskQuadrantBoard({
               <button
                 type="button"
                 aria-label="关闭"
+                data-hover-hint="关闭"
                 onClick={() => setQuickTaskOpen(false)}
                 className={"flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
@@ -2206,6 +2198,7 @@ export function TaskQuadrantBoard({
               <button
                 type="button"
                 aria-label="关闭"
+                data-hover-hint="关闭"
                 onClick={() => setEditing(null)}
                 className={"flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >

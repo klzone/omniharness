@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { shell } from "../api";
 import { Icon } from "../components/Icon";
@@ -80,6 +80,8 @@ export function ProjectMaintenance({
   const [pending, setPending] = useState<ProjectAction | null>(null);
 
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const projectPickerRef = useRef<HTMLDivElement | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectGoal, setProjectGoal] = useState("");
   const [projectStatus, setProjectStatus] = useState<ProjectStatus>("进行中");
@@ -151,6 +153,24 @@ export function ProjectMaintenance({
       setProjectError(null);
     }
   }, [newProjectNonce]);
+
+  useEffect(() => {
+    if (!projectPickerOpen) return;
+    const onDown = (event: PointerEvent) => {
+      if (!projectPickerRef.current?.contains(event.target as Node)) {
+        setProjectPickerOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProjectPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [projectPickerOpen]);
 
   useEffect(() => {
     if (!selected) {
@@ -331,6 +351,8 @@ export function ProjectMaintenance({
           }}
           className={"flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
           data-project-new=""
+          aria-label="新建项目"
+          data-hover-hint="新建项目"
         >
           <Icon name="plus" className="h-3 w-3" />
         </button>
@@ -362,19 +384,62 @@ export function ProjectMaintenance({
 
       {projects.length > 0 ? (
         <div className="pt-3 flex flex-col gap-2.5">
-          <select
-            value={selected}
-            onChange={(event) => changeProject(event.target.value)}
-            aria-label="选择项目"
-            data-project-select=""
-            className={"h-9 rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + NEU_INSET}
-          >
-            {projects.map((project) => (
-              <option key={project.project_id} value={project.project_id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <div className="pj-picker" ref={projectPickerRef}>
+            <button
+              type="button"
+              className="pj-picker-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={projectPickerOpen}
+              aria-label="选择项目"
+              data-project-select=""
+              data-hover-hint="选择项目"
+              onClick={() => setProjectPickerOpen((open) => !open)}
+            >
+              <span className="pj-picker-value">
+                {selectedProject ? (
+                  <span
+                    className="pj-state-dot shrink-0"
+                    data-task-state={selectedProject.status}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>{selectedProject?.name ?? "选择项目"}</span>
+              </span>
+              <Icon
+                name={projectPickerOpen ? "chevron-up" : "chevron-down"}
+                className="pj-picker-chev"
+              />
+            </button>
+            {projectPickerOpen ? (
+              <div className="pj-picker-menu" role="listbox" aria-label="选择项目">
+                {projects.map((project) => (
+                  <button
+                    key={project.project_id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected === project.project_id}
+                    className={
+                      "pj-picker-item" + (selected === project.project_id ? " is-selected" : "")
+                    }
+                    onClick={() => {
+                      changeProject(project.project_id);
+                      setProjectPickerOpen(false);
+                    }}
+                  >
+                    <span
+                      className="pj-state-dot shrink-0"
+                      data-task-state={project.status}
+                      aria-hidden="true"
+                    />
+                    <span className="pj-picker-item-name">{project.name}</span>
+                    {selected === project.project_id ? (
+                      <Icon name="check" className="h-3 w-3" />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           {selectedProject ? (
             <div className={"rounded-xl px-3 py-2.5 " + NEU_INSET} data-project-summary={selectedProject.project_id}>
@@ -390,7 +455,7 @@ export function ProjectMaintenance({
                   className={"flex h-7 w-7 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
                   data-project-add-task=""
                   aria-label={"添加任务到 " + selectedProject.name}
-                  title="添加任务"
+                  data-hover-hint="添加任务"
                 >
                   <Icon name="plus" className="h-3.5 w-3.5" />
                 </button>
@@ -463,6 +528,7 @@ export function ProjectMaintenance({
                   <button
                     type="button"
                     aria-label={"删除任务 " + row.title}
+                    data-hover-hint="删除任务"
                     onClick={() => setPending({ kind: "delete", taskId: row.id, title: row.title })}
                     className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-3)] " + NEU_TILE}
                   >

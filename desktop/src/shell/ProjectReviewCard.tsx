@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { host, shell } from "../api";
 import { Icon } from "../components/Icon";
@@ -12,7 +12,6 @@ export type ProjectReviewSeed = { projectId: string; nonce: number } | null;
 
 const CARD = "bg-[color:var(--od-neu-surface)] shadow-[var(--od-neu-raise-1)]";
 const TILE = "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
-const INSET = "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 const PROMPT_SECTIONS = [
   "项目概况",
   "任务完成情况",
@@ -116,6 +115,8 @@ export function ProjectReviewCard({
   const [notice, setNotice] = useState<Notice | null>(null);
   const [tick, setTick] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   function announce(next: Notice | null) {
     setNotice(next);
@@ -201,6 +202,22 @@ export function ProjectReviewCard({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [reviewOpen]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDown = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
 
   function refresh() {
     setTick((value) => value + 1);
@@ -355,20 +372,72 @@ export function ProjectReviewCard({
 
       {projects.length > 0 ? (
         <div className="pt-3 flex flex-col gap-2.5">
-          <select
-            value={selected}
-            onChange={(event) => selectProject(event.target.value)}
-            aria-label="选择复盘项目"
-            data-project-review-select=""
-            className={"h-9 rounded-full px-3 text-[11.5px] text-[color:var(--od-neu-ink)] " + INSET}
-          >
-            <option value="">（未挂接项目）</option>
-            {projects.map((project) => (
-              <option key={project.project_id} value={project.project_id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <div className="pj-picker" ref={pickerRef}>
+            <button
+              type="button"
+              className="pj-picker-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={pickerOpen}
+              data-project-review-select=""
+              data-hover-hint="选择复盘项目"
+              onClick={() => setPickerOpen((open) => !open)}
+            >
+              <span className="pj-picker-value">
+                {selectedProject ? (
+                  <span
+                    className="pj-state-dot shrink-0"
+                    data-task-state={selectedProject.status}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>{selectedProject?.name ?? "（未挂接项目）"}</span>
+              </span>
+              <Icon
+                name={pickerOpen ? "chevron-up" : "chevron-down"}
+                className="pj-picker-chev"
+              />
+            </button>
+            {pickerOpen ? (
+              <div className="pj-picker-menu" role="listbox" aria-label="选择复盘项目">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected === ""}
+                  className={"pj-picker-item" + (selected === "" ? " is-selected" : "")}
+                  onClick={() => {
+                    selectProject("");
+                    setPickerOpen(false);
+                  }}
+                >
+                  <span className="pj-picker-item-name">（未挂接项目）</span>
+                  {selected === "" ? <Icon name="check" className="h-3 w-3" /> : null}
+                </button>
+                {projects.map((project) => (
+                  <button
+                    key={project.project_id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected === project.project_id}
+                    className={
+                      "pj-picker-item" + (selected === project.project_id ? " is-selected" : "")
+                    }
+                    onClick={() => {
+                      selectProject(project.project_id);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <span
+                      className="pj-state-dot shrink-0"
+                      data-task-state={project.status}
+                      aria-hidden="true"
+                    />
+                    <span className="pj-picker-item-name">{project.name}</span>
+                    {selected === project.project_id ? <Icon name="check" className="h-3 w-3" /> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {!selected ? (
             <p className="rounded-xl bg-[color:var(--od-neu-sunken)] px-3 py-2 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-2)]">
               未挂接项目的任务请先在下方「项目」区挂接，再生成复盘。
@@ -421,9 +490,10 @@ export function ProjectReviewCard({
           type="button"
           disabled={!selected || busy || confirmed}
           onClick={() => void generateReview()}
-          className="rounded-full bg-[color:var(--od-neu-accent)] px-4 py-1.5 text-[11px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--od-neu-accent)] px-4 py-1.5 text-[11px] font-medium text-white shadow-[var(--od-neu-raise-1)] disabled:opacity-40"
           data-project-review-generate=""
         >
+          <Icon name="spark" className="h-3 w-3" />
           {busy ? "生成中…" : review?.exists ? "重新生成" : "AI 复盘"}
         </button>
       </div>
@@ -452,6 +522,7 @@ export function ProjectReviewCard({
               <Icon name="book" className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
+              <p className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">项目复盘</p>
               <h3 title={selectedProject?.name ?? selected} className="truncate text-[14px] font-semibold text-[color:var(--od-neu-ink)]">
                 {selectedProject?.name ?? selected}
               </h3>
@@ -472,6 +543,7 @@ export function ProjectReviewCard({
             <button
               type="button"
               aria-label="关闭"
+              data-hover-hint="关闭"
               onClick={() => setReviewOpen(false)}
               className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-3)] " + TILE}
               data-project-review-close=""
