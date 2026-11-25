@@ -1684,3 +1684,11 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 评审：Openference/DeepSeek-V4.1-Flash-1017-Free（high）首轮 7.0，提出四象限裁切、状态文字、进度轨道缺失、扇形碰撞等 P0/P1；修复后复评 8.0。第二次调用该模型返回 402「Free models require credit balance above $1」，复评由 `OpenDesign/glm-5.3-flash`（high）完成，仍为独立只读评审。
 - 实际执行：`cd desktop && npm run test` → 150 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run build` → 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 7/7、`verify_task_quadrant_ui_402` 10/10。
 - 未验证：真实 Tauri 窗口的悬停扇形、外部点击收回、管理弹窗、键盘焦点顺序与 1600/1280 两档真实数据布局；复评截图来自临时 1600×1000 合成演示预览，预览文件已在提交前删除。
+
+## OD-UI-901 项目跟踪验收修正（2026-11-25）
+
+- 基线：0.2.56（`619dc6f6d5`）。按用户验收截图重排项目跟踪页：左栏 288px 纵向四单元，默认展开 Q1/Q2；右栏甘特 + 最近项目卡。
+- 移除甘特项目轨进度条；左栏任务行改为状态点 + 重要/紧急图标 + 标题 + 右对齐截止日/逾期天数；甘特任务条功能组内嵌条内右侧，项目卡片功能组在左下，均保留 spring 展开；移除右上 + 功能组与底部已完成/维护模块。
+- 左上状态按钮改为居中弹层（已完成/进行中/逾期）；左栏底部新增项目跟进历史会话模块，默认折叠，点击回首页继续。首页恢复书法标语「坚持学习人生的有无限可能」。
+- 实际执行：`npm run test` 150 passed；`npx tsc --noEmit` 0；`npm run build` 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 7/7、`verify_task_quadrant_ui_402` 10/10。
+- 未验证：真实项目跟进历史会话数量与点击回首页链路、任务条/项目卡悬停展开的真实指针动效、窗口较窄时的 3 卡回落与单列布局。
