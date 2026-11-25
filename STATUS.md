@@ -1701,3 +1701,9 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 项目与任务弹层增加可见标题「项目与任务」，主项目选择换成同一套自定义下拉，图标按钮补齐悬停说明。
 - 实际执行：`npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 9/9、`verify_task_quadrant_ui_402` 10/10、`verify_project_ui_512` 26/26。
 - 未验证：用户本轮自行验收；未在真实 Tauri 窗口逐项检查原生下拉替换后的键盘操作与 320ms 提示的实际手感。
+
+## OD-UI-903 项目摘要换行修正（2026-11-26）
+
+- 项目与任务弹层的项目摘要原为「状态一行 + 日期一行」，在窄宽度下日期区间会折行并撑破圆角背景。现改为单行：状态胶囊、`YYYY-MM-DD → YYYY-MM-DD`、添加任务按钮同排；日期 `truncate`，完整区间放 `title`。
+- 实际执行：`npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- 未验证：用户实机窗口宽度下的最终视觉。

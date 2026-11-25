@@ -442,27 +442,30 @@ export function ProjectMaintenance({
           </div>
 
           {selectedProject ? (
-            <div className={"rounded-xl px-3 py-2.5 " + NEU_INSET} data-project-summary={selectedProject.project_id}>
-              <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1" aria-hidden="true" />
-                <ProjectStatusChip status={selectedProject.status} />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddTaskOpen(true);
-                    setAddTaskError(null);
-                  }}
-                  className={"flex h-7 w-7 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
-                  data-project-add-task=""
-                  aria-label={"添加任务到 " + selectedProject.name}
-                  data-hover-hint="添加任务"
-                >
-                  <Icon name="plus" className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <p className="mono mt-1 text-[10px] text-[color:var(--od-neu-ink-3)]">
+            <div
+              className={"flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 " + NEU_INSET}
+              data-project-summary={selectedProject.project_id}
+            >
+              <ProjectStatusChip status={selectedProject.status} />
+              <span
+                className="mono min-w-0 flex-1 truncate text-[10px] text-[color:var(--od-neu-ink-3)]"
+                title={shortDate(selectedProject.start) + " → " + shortDate(selectedProject.end)}
+              >
                 {shortDate(selectedProject.start)} → {shortDate(selectedProject.end)}
-              </p>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddTaskOpen(true);
+                  setAddTaskError(null);
+                }}
+                className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+                data-project-add-task=""
+                aria-label={"添加任务到 " + selectedProject.name}
+                data-hover-hint="添加任务"
+              >
+                <Icon name="plus" className="h-3.5 w-3.5" />
+              </button>
             </div>
           ) : null}
         </div>

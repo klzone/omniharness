@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.59] - 2026-11-26
+
+### Fixed
+- 项目与任务弹层项目摘要改为单行布局：状态胶囊、日期区间和添加任务按钮同排，日期超宽时省略号截断并提供完整悬浮文本，不再折成两行撑破圆角条。
+
+### Verification
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+
 ## [0.2.58] - 2026-11-26
 
 ### Changed

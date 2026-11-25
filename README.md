@@ -73,7 +73,7 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 
 ## 当前状态
 
-当前版本 0.2.58。功能仍在迭代，已实现与未验证的范围以 [STATUS.md](STATUS.md)、[REVIEW.md](REVIEW.md) 和 [GOALS.md](GOALS.md) 为准。
+当前版本 0.2.59。功能仍在迭代，已实现与未验证的范围以 [STATUS.md](STATUS.md)、[REVIEW.md](REVIEW.md) 和 [GOALS.md](GOALS.md) 为准。
 
 ## 安装与运行
 
