@@ -788,13 +788,12 @@ export function KnowledgeVaultPage({
 
   return (
     <main
-      className="flex-1 min-h-0 flex flex-col gap-2.5 px-6 md:pl-28 md:pr-10 pb-5"
+      className="mx-auto w-full max-w-[1280px] flex-1 min-h-0 flex flex-col gap-2.5 px-6 md:pl-28 md:pr-10 pb-5"
       data-testid="knowledge-vault-page"
     >
-      <header className="flex-none rounded-[16px] bg-white/80 border border-white/90 px-5 py-3.5 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)]">
+      <header className="flex-none rounded-[16px] bg-[color:var(--od-neu-surface)] px-5 py-3.5 shadow-[var(--od-neu-raise-1)]">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-headline-md text-[18px] font-semibold text-on-surface">知识库</h1>
-          <span className="mono text-[10px] text-outline">本机 Markdown · AI 治理</span>
+          <h1 className="font-headline-md text-[22px] font-bold text-[color:var(--od-neu-ink)]">知识库</h1>
           <div
             className="ml-2 flex items-center gap-0.5 rounded-lg bg-[color:var(--od-neu-sunken)] p-0.5 shadow-[var(--od-neu-inset-1)]"
             role="tablist"

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { shell } from "../api";
+import { Icon } from "../components/Icon";
 import type {
   KnowledgeGovernanceRecord,
   KnowledgeQualityReport,
@@ -144,7 +145,6 @@ export function KnowledgeDashboard({
     <section className="flex-1 min-h-0 overflow-y-auto" data-testid="knowledge-dashboard">
       <div className="flex items-baseline gap-3 mb-3.5">
         <h2 className="text-[18px] font-semibold tracking-tight text-on-surface">知识驾驶舱</h2>
-        <span className="mono text-[10px] text-outline">AI Knowledge Operations</span>
         <button
           type="button"
           className="ml-auto rounded-lg border border-outline-variant/60 px-3 py-1.5 text-[11.5px] text-on-surface-variant hover:border-primary hover:text-primary"
@@ -163,11 +163,11 @@ export function KnowledgeDashboard({
       <section className="mb-3.5 overflow-hidden rounded-[22px] pj-panel">
         <div className="grid grid-cols-2 divide-y divide-outline-variant/20 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
         {[
-          { id: "dashboard-stat-raw", value: raw.length, label: "原始资料", hint: "raw/", action: onOpenAssets },
-          { id: "dashboard-stat-wiki", value: wiki.length, label: "Wiki 知识条目", hint: "知识库/", action: onOpenAssets },
-          { id: "dashboard-stat-review", value: pending, label: "待审核", hint: "需人工裁决", action: () => onOpenReview("new") },
-          { id: "dashboard-stat-conflict", value: conflicts.length, label: "待处理冲突", hint: "来源或链接异常", action: () => onOpenReview("conflict") },
-          { id: "dashboard-stat-task-fail", value: failures.length, label: "AI 任务失败", hint: "任务台账", action: () => setShowTasks(true) },
+          { id: "dashboard-stat-raw", value: raw.length, label: "原始资料", action: onOpenAssets },
+          { id: "dashboard-stat-wiki", value: wiki.length, label: "Wiki 知识条目", action: onOpenAssets },
+          { id: "dashboard-stat-review", value: pending, label: "待审核", action: () => onOpenReview("new") },
+          { id: "dashboard-stat-conflict", value: conflicts.length, label: "待处理冲突", action: () => onOpenReview("conflict") },
+          { id: "dashboard-stat-task-fail", value: failures.length, label: "AI 任务失败", action: () => setShowTasks(true) },
         ].map((stat) => (
           <button
             key={stat.id}
@@ -178,7 +178,6 @@ export function KnowledgeDashboard({
           >
             <span className="block mono text-[25px] font-semibold tracking-[-0.03em] text-on-surface group-hover:text-primary">{stat.value}</span>
             <span className="mt-0.5 block text-[11.5px] text-on-surface-variant">{stat.label}</span>
-            <span className="mt-1 block mono text-[9.5px] text-outline">{stat.hint}</span>
           </button>
         ))}
         </div>
@@ -188,8 +187,8 @@ export function KnowledgeDashboard({
         <section className="rounded-[20px] pj-panel" data-testid="dashboard-todo-card">
           <div className="flex items-center gap-2 px-4 py-3">
             <h3 className="text-[12.5px] font-semibold text-on-surface">需要你处理</h3>
-            <button type="button" className="ml-auto mono text-[10px] text-outline hover:text-primary" onClick={() => onOpenReview("new")}>
-              全部 →
+            <button type="button" className="ml-auto text-outline hover:text-primary" aria-label="查看全部待处理事项" onClick={() => onOpenReview("new")}>
+              <Icon name="arrow-right" className="h-3.5 w-3.5" />
             </button>
           </div>
           {pending === 0 && conflicts.length === 0 && failures.length === 0 && expired.length === 0 ? (
@@ -201,7 +200,6 @@ export function KnowledgeDashboard({
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[12px] font-medium text-on-surface">知识审核 · {pending} 项待确认</span>
-                    <span className="block text-[10.5px] text-outline">AI 提取结果等待人工裁决</span>
                   </span>
                   <span className="mono text-[10px] text-outline">›</span>
                 </button>
@@ -211,7 +209,6 @@ export function KnowledgeDashboard({
                   <span className="h-1.5 w-1.5 rounded-full bg-error" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[12px] font-medium text-on-surface">知识冲突 · {conflicts.length} 项</span>
-                    <span className="block text-[10.5px] text-outline">同名条目、扫描异常或链接问题</span>
                   </span>
                   <span className="mono text-[10px] text-outline">›</span>
                 </button>
@@ -221,7 +218,6 @@ export function KnowledgeDashboard({
                   <span className="h-1.5 w-1.5 rounded-full bg-primary" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[12px] font-medium text-on-surface">AI 任务失败 · {failures.length} 项</span>
-                    <span className="block text-[10.5px] text-outline">任务台账中的失败或未知终态</span>
                   </span>
                   <span className="mono text-[10px] text-outline">›</span>
                 </button>
