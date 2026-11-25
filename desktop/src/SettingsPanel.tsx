@@ -2559,10 +2559,6 @@ export default function SettingsPanel({ profileEpoch = 0 }: { profileEpoch?: num
           设置
           <span className="count">本地</span>
         </h2>
-        <p className="hint">
-          以下设置只作用于本机的 OmniDesk 实例。模型端点与密钥就在这里填写，不需要打开 DSH。
-          成果文件不会因为改设置而移动、覆盖或删除；应用配置与成果目录分开存放。
-        </p>
         <div className="view-tabs" role="tablist" aria-label="设置分页" data-testid="settings-tabs">
           {SETTINGS_TABS.map((t) => (
             <button

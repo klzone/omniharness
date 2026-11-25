@@ -668,7 +668,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
                 {creating ? (
                   <div className="space-y-1.5 px-1" data-testid="topnav-profile-create-form">
                     <input
-                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      className="w-full rounded-lg px-2 py-1 text-[11.5px] outline-none bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] focus-visible:outline-2 focus-visible:outline-[color:var(--od-neu-focus)]"
                       placeholder="名字，如 my-work"
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
@@ -676,7 +676,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
                       aria-label="新 Profile 名字"
                     />
                     <input
-                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      className="w-full rounded-lg px-2 py-1 text-[11.5px] outline-none bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] focus-visible:outline-2 focus-visible:outline-[color:var(--od-neu-focus)]"
                       placeholder="显示名（可选），如 我的工作台"
                       value={newLabel}
                       onChange={(e) => setNewLabel(e.target.value)}
@@ -684,7 +684,7 @@ function ProfileBadge({ onProfileChanged }: { onProfileChanged?: () => void }) {
                       aria-label="新 Profile 显示名"
                     />
                     <select
-                      className="w-full rounded-lg border border-outline-variant/40 bg-white px-2 py-1 text-[11.5px] outline-none focus:border-primary"
+                      className="w-full rounded-lg px-2 py-1 text-[11.5px] outline-none bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)] focus-visible:outline-2 focus-visible:outline-[color:var(--od-neu-focus)]"
                       value={copyFrom}
                       onChange={(e) => setCopyFrom(e.target.value)}
                       data-testid="topnav-profile-copy-from"
