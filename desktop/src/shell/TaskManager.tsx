@@ -15,6 +15,13 @@ import {
   projectWindow,
   taskProgressRatio,
 } from "../projectGanttProgress";
+import {
+  listThreadsByTag,
+  onThreadStoreChange,
+  requestOpenThread,
+  type SceneThread,
+} from "../sceneThreads";
+import type { Scene } from "./Dock";
 import type {
   AvailabilityConfig,
   ProjectInfo,
@@ -108,6 +115,16 @@ function StateChip({ state }: { state: WorkTaskState }) {
       aria-label={state}
     />
   );
+}
+
+function taskStateIcon(
+  state: WorkTaskState,
+): "check" | "clock" | "checklist" | "stop" | "x" {
+  if (state === "已完成") return "check";
+  if (state === "进行中") return "clock";
+  if (state === "暂停") return "stop";
+  if (state === "已取消") return "x";
+  return "checklist";
 }
 
 export function TaskManager({ onOpenRecord }: { onOpenRecord: (recordId: string) => void }) {
@@ -826,9 +843,6 @@ const NEU_TILE =
   "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 const NEU_INSET =
   "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
-const AXIS = "text-[12px] font-medium tracking-[0.02em] text-[color:var(--od-neu-ink-2)]";
-const WELL =
-  "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 
 /** 甘特状态色语义表（OD-UI-900 后条内以实底色区分，此表供语义引用与测试锚定）。 */
 export const TASK_STATE_BAR: Record<WorkTaskState, string> = {
@@ -876,6 +890,13 @@ function mmdd(date: Date): string {
   return date.getMonth() + 1 + "/" + date.getDate();
 }
 
+function threadDate(updatedAt: number): string {
+  const date = new Date(updatedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return pad(date.getMonth() + 1) + "/" + pad(date.getDate());
+}
+
 /** 毫秒时间戳转本地 YYYY-MM-DD，用于项目汇总带区间文字。 */
 function ganttDay(ms: number): string {
   const date = new Date(ms);
@@ -893,9 +914,11 @@ function isoDay(value: string | null): string {
 
 export function TaskQuadrantBoard({
   onNotice,
+  onNavigate,
   variant = "page",
 }: {
   onNotice?: (notice: Notice | null) => void;
+  onNavigate?: (scene: Scene) => void;
   variant?: "page" | "panel";
 }) {
   const [views, setViews] = useState<TaskQuadrantView[]>([]);
@@ -919,41 +942,32 @@ export function TaskQuadrantBoard({
   const [reviewSeed, setReviewSeed] = useState<ProjectReviewSeed>(null);
   /** 甘特组折叠：用户手动覆盖默认折叠（默认值在超过 30 行时自动给出）。 */
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  /** OD-UI-900：快捷新建任务弹层（项目跟踪页头扇形入口）。 */
-  const [statusFilter, setStatusFilter] = useState<"all" | "done" | "running" | "overdue">("all");
+  /** 左栏四象限：默认展开紧急重要与重要不紧急，其余折叠。 */
+  const [expandedQuadrants, setExpandedQuadrants] = useState<Record<string, boolean>>({
+    Q1: true,
+    Q2: true,
+    Q3: false,
+    Q4: false,
+  });
+  const [statusModal, setStatusModal] = useState<"done" | "running" | "overdue" | null>(null);
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
+  const [projectThreads, setProjectThreads] = useState<SceneThread[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [quickTaskOpen, setQuickTaskOpen] = useState(false);
   const [quickTaskTitle, setQuickTaskTitle] = useState("");
   const [quickTaskDue, setQuickTaskDue] = useState("");
   const [quickTaskProject, setQuickTaskProject] = useState("");
   const [quickTaskBusy, setQuickTaskBusy] = useState(false);
-  /** 扇形功能组固定展开态（点击触发；悬停仍由 CSS 自动展开）。 */
-  const [fanOpen, setFanOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
-  const fanRef = useRef<HTMLDivElement | null>(null);
-  const fanTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [manageProjectId, setManageProjectId] = useState("");
+  const [newProjectNonce, setNewProjectNonce] = useState(0);
+  const [projectCardLimit, setProjectCardLimit] = useState(3);
+  const projectRowRef = useRef<HTMLDivElement | null>(null);
 
   function announce(notice: Notice | null) {
     setLocalNotice(notice);
     onNotice?.(notice);
   }
-
-  useEffect(() => {
-    if (!fanOpen) return;
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!fanRef.current?.contains(event.target as Node)) setFanOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setFanOpen(false);
-      fanTriggerRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [fanOpen]);
 
   useEffect(() => {
     if (!manageOpen) return;
@@ -963,6 +977,41 @@ export function TaskQuadrantBoard({
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [manageOpen]);
+
+  useEffect(() => {
+    if (!statusModal) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setStatusModal(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [statusModal]);
+
+  useEffect(() => {
+    const load = () => {
+      setProjectThreads(
+        listThreadsByTag("project")
+          .slice()
+          .sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1)),
+      );
+    };
+    load();
+    const unsubscribe = onThreadStoreChange(load);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const element = projectRowRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setProjectCardLimit(width >= 980 ? 4 : 3);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [projects.length, tasks.length]);
 
   useEffect(() => {
     let alive = true;
@@ -1030,31 +1079,11 @@ export function TaskQuadrantBoard({
 
   const visibleViews = useMemo(() => {
     const needle = query.trim();
-    let base = displayViews;
-    // OD-UI-900：归档剔除放在状态筛选之后，「已完成」胶囊才看得到数据。
-    if (statusFilter !== "all") {
-      const overdue = (taskId: string) => {
-        const task = taskMap.get(taskId);
-        return Boolean(
-          task?.due_date &&
-            task.state !== "已完成" &&
-            task.state !== "已取消" &&
-            (dayStart(task.due_date)?.getTime() ?? Infinity) < today.getTime(),
-        );
-      };
-      base = base.filter((view) => {
-        const state = taskMap.get(view.task_id)?.state;
-        if (statusFilter === "done") return state === "已完成";
-        if (statusFilter === "running") return state === "进行中";
-        return overdue(view.task_id);
-      });
-    } else {
-      const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
-      base = base.filter((view) => {
-        const task = taskMap.get(view.task_id);
-        return !task || !archived.has(task.state);
-      });
-    }
+    const archived = new Set<WorkTaskState>(["已完成", "已取消"]);
+    let base = displayViews.filter((view) => {
+      const task = taskMap.get(view.task_id);
+      return !task || !archived.has(task.state);
+    });
     if (needle) {
       base = base.filter((view) => {
         const title = taskMap.get(view.task_id)?.title ?? view.title;
@@ -1062,26 +1091,13 @@ export function TaskQuadrantBoard({
       });
     }
     return base;
-  }, [displayViews, query, statusFilter, taskMap, today]);
-
-  const completed = useMemo(
-    () =>
-      tasks
-        .filter((task) => task.state === "已完成")
-        .slice()
-        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)),
-    [tasks],
-  );
+  }, [displayViews, query, taskMap]);
 
   const stats = useMemo(() => {
     const todayKey = isoDay(today.toISOString());
     const created = tasks.filter((task) => isoDay(task.created_at) === todayKey).length;
     const running = tasks.filter((task) => task.state === "进行中").length;
-    // 胶囊计数与四象限数据源同口径：只数出现在象限视图里的任务。
-    const viewIds = new Set(views.map((view) => view.task_id));
-    const done = tasks.filter(
-      (task) => task.state === "已完成" && viewIds.has(task.id),
-    ).length;
+    const done = tasks.filter((task) => task.state === "已完成").length;
     const overdue = tasks.filter(
       (task) =>
         task.due_date &&
@@ -1090,7 +1106,7 @@ export function TaskQuadrantBoard({
         (dayStart(task.due_date)?.getTime() ?? Infinity) < today.getTime(),
     ).length;
     return { created, running, done, overdue };
-  }, [tasks, views, today]);
+  }, [tasks, today]);
 
   const timeline = useMemo(() => {
     const totalMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 1;
@@ -1166,6 +1182,53 @@ export function TaskQuadrantBoard({
     const current = isGroupCollapsed(projectId);
     setCollapsedGroups((previous) => ({ ...previous, [projectId]: !current }));
   }
+
+  const projectCards = useMemo(() => {
+    return projects
+      .slice()
+      .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1))
+      .map((project) => {
+        const rows = tasks.filter((task) => task.project_id === project.project_id);
+        const done = rows.filter((task) => task.state === "已完成").length;
+        const fallbackStart =
+          (project.start ? dayStart(project.start)?.getTime() : null) ?? nowMs;
+        const window = projectWindow(project, fallbackStart);
+        const span = Math.max(1, window.endMs - window.startMs);
+        const ratio = Math.max(0, Math.min(1, (nowMs - window.startMs) / span));
+        return { project, total: rows.length, done, ratio };
+      });
+  }, [projects, tasks, nowMs]);
+
+  const visibleProjectCards = projectCards.slice(
+    0,
+    Math.max(1, Math.min(projectCardLimit, projectCards.length)),
+  );
+
+  const statusTasks = useMemo(() => {
+    if (!statusModal) return [];
+    if (statusModal === "done") {
+      return tasks
+        .filter((task) => task.state === "已完成")
+        .slice()
+        .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
+    }
+    if (statusModal === "running") {
+      return tasks
+        .filter((task) => task.state === "进行中")
+        .slice()
+        .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
+    }
+    return tasks
+      .filter(
+        (task) =>
+          task.due_date &&
+          task.state !== "已完成" &&
+          task.state !== "已取消" &&
+          (dayStart(task.due_date)?.getTime() ?? Infinity) < nowMs,
+      )
+      .slice()
+      .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""));
+  }, [statusModal, tasks, nowMs]);
 
   const todayPercent = ((today.getTime() - timeline.start.getTime()) / timeline.span) * 100;
 
@@ -1294,144 +1357,161 @@ export function TaskQuadrantBoard({
     }
   }
 
+  async function removeTask() {
+    if (!deleteTaskId || busy) return;
+    setBusy(true);
+    try {
+      await shell.taskDelete(deleteTaskId);
+      announce({ kind: "ok", text: "任务已删除。" });
+      setDeleteTaskId(null);
+      setEditing(null);
+      setTick((n) => n + 1);
+    } catch (e) {
+      announce({ kind: "err", text: errText(e) });
+      setDeleteTaskId(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const editingTask = editing ? taskMap.get(editing) ?? null : null;
-  const compact = variant === "panel";
 
-  const arrowUp = (
-    <span className="h-0 w-0 border-x-[4px] border-b-[5px] border-x-transparent border-b-[color:var(--od-neu-ink-3)]" />
-  );
-  const arrowDown = (
-    <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-[color:var(--od-neu-ink-3)]" />
-  );
-  const arrowLeft = (
-    <span className="h-0 w-0 border-y-[4px] border-r-[5px] border-y-transparent border-r-[color:var(--od-neu-ink-3)]" />
-  );
-  const arrowRight = (
-    <span className="h-0 w-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-[color:var(--od-neu-ink-3)]" />
-  );
-
-  const matrix = (
-    <div
-      className="pj-matrix grid w-full"
-      style={{
-        gridTemplateColumns: "26px minmax(0,1fr) 20px minmax(0,1fr)",
-        gridTemplateRows: compact
-          ? "20px 118px 18px 118px"
-          : "22px minmax(0,1fr) 18px minmax(0,1fr)",
-      }}
-    >
-      <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 2, gridRow: 1 }}>
-        紧急
-      </span>
-      <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 4, gridRow: 1 }}>
-        不紧急
-      </span>
-      <span
-        className={AXIS + " flex items-center justify-center [writing-mode:vertical-rl] [text-orientation:upright]"}
-        style={{ gridColumn: 1, gridRow: 2, letterSpacing: "0.3em" }}
-      >
-        重要
-      </span>
-      <span
-        className={AXIS + " flex items-center justify-center [writing-mode:vertical-rl] [text-orientation:upright]"}
-        style={{ gridColumn: 1, gridRow: 4, letterSpacing: "0.3em" }}
-      >
-        不重要
-      </span>
-
-      <div
-        aria-hidden="true"
-        className="flex flex-col items-center justify-center gap-0.5"
-        style={{ gridColumn: 3, gridRow: "2 / 5" }}
-      >
-        {arrowUp}
-        <span className="w-px flex-1 bg-[color:var(--od-neu-sunken-deep)]" />
-        {arrowDown}
-      </div>
-
-      <div
-        aria-hidden="true"
-        className="flex items-center justify-center gap-0.5"
-        style={{ gridColumn: "2 / 5", gridRow: 3 }}
-      >
-        {arrowLeft}
-        <span className="h-px flex-1 bg-[color:var(--od-neu-sunken-deep)]" />
-        {arrowRight}
-      </div>
-
+  const quadrantList = (
+    <div className="pj-quads">
       {QUADRANT_COLUMNS.slice(0, 4).map((column) => {
         const items = visibleViews.filter((view) => view.quadrant === column.key);
-        const leftColumn = column.key === "Q1" || column.key === "Q3";
-        const topRow = column.key === "Q1" || column.key === "Q2";
+        const expanded = expandedQuadrants[column.key];
+        const important = column.key === "Q1" || column.key === "Q2";
+        const urgent = column.key === "Q1" || column.key === "Q3";
         return (
           <section
             key={column.key}
             aria-label={column.label}
             data-quadrant-column={column.key}
-            style={{ gridColumn: leftColumn ? 2 : 4, gridRow: topRow ? 2 : 4 }}
-            className={
-              "relative flex min-w-0 flex-col overflow-hidden " +
-              (compact ? "rounded-[14px] px-3 py-2.5 " : "rounded-[18px] px-3 py-3 ") +
-              WELL
-            }
+            className="pj-quad"
           >
-            <div className={(compact ? "flex flex-col gap-2.5" : "flex flex-col gap-3.5") + " min-h-0 overflow-y-auto pr-0.5"}>
-              {items.length === 0 ? (
-                <span className="m-auto flex items-center gap-1 text-[11px] text-[color:var(--od-neu-ink-3)]" aria-label="此象限暂无任务">
-                  <Icon name="check" className="h-3 w-3" />
-                  0
-                </span>
-              ) : (
-                items.map((view) => {
-                  const task = taskMap.get(view.task_id);
-                  return (
-                    <article key={view.task_id} data-task-quadrant-row={view.task_id} className="min-w-0">
+            <button
+              type="button"
+              className="pj-quad-head"
+              aria-expanded={expanded}
+              onClick={() =>
+                setExpandedQuadrants((previous) => ({
+                  ...previous,
+                  [column.key]: !previous[column.key],
+                }))
+              }
+            >
+              <span className={"pj-quad-dot is-" + column.key} aria-hidden="true" />
+              <span className="pj-quad-name">{column.label}</span>
+              <span className="pj-quad-count">{items.length}</span>
+              <Icon
+                name={expanded ? "chevron-up" : "chevron-down"}
+                className="pj-quad-chev"
+              />
+            </button>
+            {expanded ? (
+              <div className="pj-quad-list">
+                {items.length === 0 ? (
+                  <span className="pj-quad-empty" aria-label="此象限暂无任务">
+                    0
+                  </span>
+                ) : (
+                  items.map((view) => {
+                    const task = taskMap.get(view.task_id);
+                    const state = task?.state ?? "待开始";
+                    const due = task?.due_date ? dayStart(task.due_date) : null;
+                    const overdue =
+                      due !== null &&
+                      state !== "已完成" &&
+                      state !== "已取消" &&
+                      due.getTime() < nowMs;
+                    const overdueDays =
+                      overdue && due
+                        ? Math.max(1, Math.floor((nowMs - due.getTime()) / 86_400_000))
+                        : 0;
+                    return (
                       <button
+                        key={view.task_id}
                         type="button"
+                        data-task-quadrant-row={view.task_id}
                         onClick={() => openEditor(view.task_id)}
                         title={view.title}
-                        className={
-                          "grid w-full items-center rounded-xl bg-[color:var(--od-neu-surface)] text-left shadow-[var(--od-neu-raise-1)] transition " +
-                          "hover:bg-[color:var(--od-neu-surface-high)] " +
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--od-neu-accent)]/40 " +
-                          (compact
-                            ? "grid-cols-[8px_minmax(0,1fr)] gap-2 px-2 py-1.5"
-                            : "grid-cols-[8px_minmax(0,1fr)] gap-2.5 px-3 py-2")
-                        }
+                        className="pj-quad-row"
                       >
-                        <StateChip state={task?.state ?? "待开始"} />
-                        <span className="min-w-0">
-                          <span
-                            title={view.title}
-                            className={
-                              "block font-semibold leading-[1.35] text-[color:var(--od-neu-ink)] " +
-                              (compact
-                                ? "line-clamp-2 text-[11.5px]"
-                                : "line-clamp-2 text-[12.5px]")
-                            }
-                          >
-                            {view.title}
+                        <StateChip state={state} />
+                        {important ? (
+                          <span className="pj-quad-flag is-important" title="重要" aria-label="重要">
+                            <Icon name="star" className="h-3 w-3" />
                           </span>
-                          <span
-                            title={task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state}
-                            className={
-                              "mt-1 flex items-center gap-1 truncate text-[10.5px] tabular-nums text-[color:var(--od-neu-ink-3)] " + (compact ? "hidden" : "")
-                            }
-                          >
-                            <Icon name="clock" className="h-2.5 w-2.5 shrink-0" />
-                            {task?.due_date ? mmdd(dayStart(task.due_date) ?? new Date()) : "—"}
+                        ) : null}
+                        {urgent ? (
+                          <span className="pj-quad-flag is-urgent" title="紧急" aria-label="紧急">
+                            <Icon name="bell" className="h-3 w-3" />
                           </span>
+                        ) : null}
+                        <span className="pj-quad-row-title">{view.title}</span>
+                        <span className={overdue ? "pj-quad-row-side is-overdue" : "pj-quad-row-side"}>
+                          {overdue
+                            ? "逾期 " + overdueDays + " 天"
+                            : task?.due_date && due
+                              ? mmdd(due)
+                              : "—"}
                         </span>
                       </button>
-                    </article>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
           </section>
         );
       })}
     </div>
+  );
+
+  const projectHistory = (
+    <section className="pj-history">
+      <button
+        type="button"
+        className="pj-quad-head"
+        aria-expanded={historyOpen}
+        onClick={() => setHistoryOpen((open) => !open)}
+      >
+        <span className="pj-history-mark" aria-hidden="true">
+          <Icon name="history" className="h-3.5 w-3.5" />
+        </span>
+        <span className="pj-quad-name">历史会话</span>
+        <span className="pj-quad-count">{projectThreads.length}</span>
+        <Icon
+          name={historyOpen ? "chevron-up" : "chevron-down"}
+          className="pj-quad-chev"
+        />
+      </button>
+      {historyOpen ? (
+        <div className="pj-quad-list">
+          {projectThreads.length === 0 ? (
+            <span className="pj-quad-empty">0</span>
+          ) : (
+            projectThreads.map((thread) => (
+              <button
+                key={thread.id}
+                type="button"
+                className="pj-history-row"
+                title={thread.title}
+                onClick={() => {
+                  requestOpenThread(thread.id);
+                  onNavigate?.("home");
+                }}
+              >
+                <Icon name="chat" className="h-3 w-3 shrink-0" />
+                <span className="pj-history-title">{thread.title || "未命名对话"}</span>
+                <span className="pj-history-date mono">{threadDate(thread.updatedAt)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 
   const gantt = (
@@ -1531,19 +1611,6 @@ export function TaskQuadrantBoard({
                     <span className="pj-proj-range">
                       {group.rows.length} 项 · {rangeLabel}
                     </span>
-                    <span
-                      className="pj-proj-track"
-                      role="progressbar"
-                      aria-valuenow={Math.round(summary.ratio * 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={group.projectName + " 完成度"}
-                    >
-                      <span
-                        className="pj-proj-fill"
-                        style={{ width: Math.round(summary.ratio * 100) + "%" }}
-                      />
-                    </span>
                   </button>
                   <div className="pj-proj-canvas">
                     {collapsed ? (
@@ -1586,12 +1653,31 @@ export function TaskQuadrantBoard({
                                   }
                                   style={{ width: Math.round(width * progress * 100) + "%" }}
                                 />
-                                <span className="pj-bar-stat">
-                                  {done ? <Icon name="check" className="h-3 w-3" /> : null}
-                                  {overdue ? <Icon name="clock" className="h-3 w-3" /> : null}
-                                </span>
                               </span>
                             </button>
+                            <div
+                              className="pj-bar-tools"
+                              style={{ left: "calc(" + Math.min(99, left + width) + "% - 14px)" }}
+                            >
+                              <button
+                                type="button"
+                                className="pj-bar-tool"
+                                title="修改任务"
+                                aria-label={"修改任务 " + task.title}
+                                onClick={() => openEditor(task.id)}
+                              >
+                                <Icon name="edit" className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                className="pj-bar-tool is-danger"
+                                title="删除任务"
+                                aria-label={"删除任务 " + task.title}
+                                onClick={() => setDeleteTaskId(task.id)}
+                              >
+                                <Icon name="trash" className="h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })
@@ -1611,53 +1697,82 @@ export function TaskQuadrantBoard({
     </section>
   );
 
-  const completedPanel = (
-    <aside aria-label="已完成任务" className={"rounded-[18px] px-5 py-4 " + WELL}>
-      <div className="flex items-center gap-2 border-b border-[color:var(--od-neu-line-strong)] pb-3">
-        <span className="pj-panel-ic" aria-hidden="true">
-          <Icon name="check" className="h-3.5 w-3.5" />
-        </span>
-        <h3 className="sr-only">已完成</h3>
-        <span className="mono ml-auto text-[10px] text-[color:var(--od-neu-ink-3)]">{completed.length}</span>
-      </div>
-      {completed.length === 0 ? (
-        <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">暂无已完成任务。</p>
+  const projectCardsBlock = (
+    <section className="pj-project-cards" aria-label="最近项目">
+      {visibleProjectCards.length === 0 ? (
+        <p className="pj-project-empty">暂无项目</p>
       ) : (
-        <ul className="pt-2 flex flex-col gap-1">
-          {completed.slice(0, 5).map((task) => (
-            <li key={task.id} className="flex items-center gap-3 rounded-lg bg-[color:var(--od-neu-surface)] px-2 py-2 shadow-[var(--od-neu-raise-1)]">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--od-neu-accent-soft)] text-[color:var(--od-neu-accent-ink)]">
-                <Icon name="check" className="h-3 w-3" />
+        <div
+          ref={projectRowRef}
+          className="pj-project-card-row"
+          style={{
+            gridTemplateColumns: `repeat(${visibleProjectCards.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {visibleProjectCards.map(({ project, total, done, ratio }) => (
+            <article className="pj-project-card" data-project-card={project.project_id} key={project.project_id}>
+              <div className="pj-project-card-head">
+                <span
+                  className="pj-state-dot"
+                  data-task-state={project.status}
+                  title={project.status}
+                  aria-label={project.status}
+                />
+                <h3 title={project.name}>{project.name}</h3>
+              </div>
+              <div className="pj-project-card-progress">
+                <span>进度</span>
+                <span className="mono">{Math.round(ratio * 100)}%</span>
+              </div>
+              <span className="pj-project-card-track" aria-hidden="true">
+                <span style={{ width: Math.round(ratio * 100) + "%" }} />
               </span>
-              <span className="min-w-0 flex-1">
-                <span title={task.title} className="block truncate text-[12.5px] font-medium text-[color:var(--od-neu-ink)]">
-                  {task.title}
+              <div className="pj-project-card-foot">
+                <div className="pj-project-tools">
+                  <button
+                    type="button"
+                    className="pj-project-tool"
+                    title="管理项目与任务"
+                    aria-label={"管理项目 " + project.name}
+                    onClick={() => {
+                      setManageProjectId(project.project_id);
+                      setManageOpen(true);
+                    }}
+                  >
+                    <Icon name="branch" className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    className="pj-project-tool"
+                    title="给项目添加任务"
+                    aria-label={"给项目添加任务 " + project.name}
+                    onClick={() => {
+                      setQuickTaskProject(project.project_id);
+                      setQuickTaskOpen(true);
+                    }}
+                  >
+                    <Icon name="plus" className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    className="pj-project-tool"
+                    title="生成项目复盘"
+                    aria-label={"生成项目复盘 " + project.name}
+                    onClick={() =>
+                      setReviewSeed({ projectId: project.project_id, nonce: Date.now() })}
+                  >
+                    <Icon name="refresh" className="h-3 w-3" />
+                  </button>
+                </div>
+                <span className="pj-project-count mono">
+                  {done}/{total} 任务
                 </span>
-                <span className="mono mt-0.5 block text-[9.5px] text-[color:var(--od-neu-ink-3)]">{isoDay(task.updated_at)}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setReviewSeed({ projectId: task.project_id ?? "", nonce: Date.now() });
-                  announce({
-                    kind: task.project_id ? "ok" : "err",
-                    text: task.project_id
-                      ? "已在「项目复盘」选中该项目，可生成复盘。"
-                      : "该任务未挂接项目；先到下方「项目」区挂接后再复盘。",
-                  });
-                }}
-                className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
-                data-task-review-entry=""
-                title="选入项目复盘"
-                aria-label="选入项目复盘"
-              >
-                <Icon name="refresh" className="h-3.5 w-3.5" />
-              </button>
-            </li>
+              </div>
+            </article>
           ))}
-        </ul>
+        </div>
       )}
-    </aside>
+    </section>
   );
 
   if (variant === "panel") {
@@ -1668,20 +1783,62 @@ export function TaskQuadrantBoard({
             读取四象限失败：{error}
           </p>
         ) : null}
-        {matrix}
+        {quadrantList}
       </section>
     );
   }
 
   return (
     <section
-      aria-label="任务四象限"
+      aria-label="项目跟踪"
       data-task-quadrant=""
-      className="pj-page relative mx-auto max-w-[1280px]"
+      className="pj-page relative mx-auto max-w-[1600px]"
     >
-      {/* 页头：标题 + 图标功能组（新建项目 / 扇形任务入口） */}
       <div className="pj-head">
-        <h2 className="pj-head-title">项目跟踪</h2>
+        <div className="pj-head-left">
+          <h2 className="pj-head-title">项目跟踪</h2>
+          <div className="pj-statusbar" data-pj-statusbar="">
+            <button
+              type="button"
+              className="pj-chip"
+              data-pj-chip-done=""
+              onClick={() => setStatusModal("done")}
+              title={"已完成 " + stats.done + " 项"}
+            >
+              <span className="pj-chip-ic">
+                <Icon name="check" className="h-3.5 w-3.5" />
+              </span>
+              <span className="pj-chip-num">{stats.done}</span>
+              <span className="pj-chip-label">已完成</span>
+            </button>
+            <button
+              type="button"
+              className="pj-chip"
+              data-pj-chip-running=""
+              onClick={() => setStatusModal("running")}
+              title={"进行中 " + stats.running + " 项"}
+            >
+              <span className="pj-chip-ic">
+                <Icon name="clock" className="h-3.5 w-3.5" />
+              </span>
+              <span className="pj-chip-num">{stats.running}</span>
+              <span className="pj-chip-label">进行中</span>
+            </button>
+            <button
+              type="button"
+              className={"pj-chip" + (stats.overdue > 0 ? " is-warn" : "")}
+              data-pj-chip-overdue=""
+              onClick={() => setStatusModal("overdue")}
+              title={"逾期 " + stats.overdue + " 项"}
+            >
+              <span className="pj-chip-ic">
+                <Icon name="bell" className="h-3.5 w-3.5" />
+              </span>
+              <span className="pj-chip-num">{stats.overdue}</span>
+              <span className="pj-chip-label">逾期</span>
+            </button>
+          </div>
+        </div>
         <div className="pj-head-actions">
           <input
             value={query}
@@ -1693,119 +1850,20 @@ export function TaskQuadrantBoard({
               NEU_INSET
             }
           />
-          <div ref={fanRef} className={"pj-fan" + (fanOpen ? " is-open" : "")} data-pj-fan="">
-            <button
-              type="button"
-              className="pj-fan-trigger"
-              ref={fanTriggerRef}
-              title="更多项目操作"
-              aria-label="更多项目操作"
-              aria-haspopup="true"
-              aria-expanded={fanOpen}
-              data-pj-fan-trigger=""
-              onClick={() => setFanOpen((open) => !open)}
-            >
-              <Icon name="plus" className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="pj-fan-item"
-              title="新建项目"
-              data-pj-new-project=""
-              tabIndex={0}
-              onClick={() => {
-                setFanOpen(false);
-                document
-                  .querySelector<HTMLButtonElement>('[data-project-new=""]')
-                  ?.click();
-              }}
-            >
-              <Icon name="folder" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="pj-fan-item"
-              title="新建任务"
-              data-pj-fan-new-task=""
-              tabIndex={0}
-              onClick={() => {
-                setFanOpen(false);
-                setQuickTaskOpen(true);
-              }}
-            >
-              <Icon name="edit" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="pj-fan-item"
-              title="生成项目复盘"
-              data-pj-fan-review=""
-              tabIndex={0}
-              onClick={() => {
-                setFanOpen(false);
-                setReviewSeed({ projectId: "", nonce: Date.now() });
-              }}
-            >
-              <Icon name="refresh" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="pj-fan-item"
-              title="管理项目与关联任务"
-              data-pj-fan-manage=""
-              tabIndex={0}
-              onClick={() => {
-                setFanOpen(false);
-                setManageOpen(true);
-              }}
-            >
-              <Icon name="branch" className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="pj-fab"
+            title="项目管理"
+            aria-label="项目管理"
+            onClick={() => {
+              setManageProjectId("");
+              setNewProjectNonce((value) => value + 1);
+              setManageOpen(true);
+            }}
+          >
+            <Icon name="folder" className="h-4 w-4" />
+          </button>
         </div>
-      </div>
-
-      {/* OD-UI-900 状态胶囊条：图标+数字，语义由图标承担 */}
-      <div className="pj-statusbar" data-pj-statusbar="">
-        <button
-          type="button"
-          className="pj-chip"
-          data-pj-chip-done=""
-          onClick={() => setStatusFilter(statusFilter === "done" ? "all" : "done")}
-          aria-pressed={statusFilter === "done"}
-          title={"已完成 " + stats.done + " 项"}
-        >
-          <span className="pj-chip-ic">
-            <Icon name="check" className="h-3.5 w-3.5" />
-          </span>
-          {stats.done}
-        </button>
-        <button
-          type="button"
-          className="pj-chip"
-          data-pj-chip-running=""
-          onClick={() => setStatusFilter(statusFilter === "running" ? "all" : "running")}
-          aria-pressed={statusFilter === "running"}
-          title={"进行中 " + stats.running + " 项"}
-        >
-          <span className="pj-chip-ic">
-            <Icon name="clock" className="h-3.5 w-3.5" />
-          </span>
-          {stats.running}
-        </button>
-        <button
-          type="button"
-          className={"pj-chip" + (stats.overdue > 0 ? " is-warn" : "")}
-          data-pj-chip-overdue=""
-          onClick={() => setStatusFilter(statusFilter === "overdue" ? "all" : "overdue")}
-          aria-pressed={statusFilter === "overdue"}
-          title={"逾期 " + stats.overdue + " 项"}
-        >
-          <span className="pj-chip-ic">
-            <Icon name="bell" className="h-3.5 w-3.5" />
-          </span>
-          {stats.overdue}
-        </button>
       </div>
 
       {localNotice ? (
@@ -1823,49 +1881,121 @@ export function TaskQuadrantBoard({
       ) : null}
       {error ? (
         <p className="relative mb-3 rounded-2xl bg-error-container/70 px-4 py-2 text-[11.5px] leading-relaxed text-on-error-container">
-          读取四象限失败：{error}
+          读取任务失败：{error}
         </p>
       ) : null}
-      {loading ? <p className="relative pb-2 text-[11.5px] text-[color:var(--od-neu-ink-3)]">正在读取任务…</p> : null}
+      {loading ? (
+        <p className="relative pb-2 text-[11.5px] text-[color:var(--od-neu-ink-3)]">正在读取任务…</p>
+      ) : null}
 
-      {/* OD-UI-900：主画布是甘特（右侧 2fr），左侧 1fr 是四象限任务面板；
-          复盘/项目维护/已完成收进底部工具抽屉行，不挤首屏。 */}
       <div className="pj-main relative">
-        <div className="pj-panel min-w-0" data-pj-quadrant-panel="">
-          <div className="pj-panel-head">
+        <aside className="pj-panel pj-left-panel min-w-0" data-pj-quadrant-panel="">
+          <div className="pj-left-head">
             <span className="pj-panel-ic" aria-hidden="true">
-              <Icon name="grid" className="h-3.5 w-3.5" />
+              <Icon name="checklist" className="h-3.5 w-3.5" />
             </span>
-            {(statusFilter !== "all" || query.trim()) ? (
+            <h3 className="sr-only">任务</h3>
+            <span className="pj-left-count mono">{visibleViews.length}</span>
+            <button
+              type="button"
+              className="pj-fab"
+              title="新建任务"
+              aria-label="新建任务"
+              onClick={() => {
+                setQuickTaskProject("");
+                setQuickTaskOpen(true);
+              }}
+            >
+              <Icon name="plus" className="h-4 w-4" />
+            </button>
+          </div>
+          {quadrantList}
+          {projectHistory}
+        </aside>
+
+        <div className="pj-right min-w-0">
+          {gantt}
+          {projectCardsBlock}
+        </div>
+      </div>
+
+      {statusModal ? (
+        <div
+          className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
+          role="presentation"
+          onClick={() => setStatusModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={statusModal === "done" ? "已完成任务" : statusModal === "running" ? "进行中任务" : "逾期任务"}
+            onClick={(event) => event.stopPropagation()}
+            className="wr-dialog flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden p-6"
+          >
+            <div className="flex items-center gap-3 pb-4">
+              <span className="pj-panel-ic" aria-hidden="true">
+                <Icon name={statusModal === "done" ? "check" : statusModal === "running" ? "clock" : "bell"} className="h-3.5 w-3.5" />
+              </span>
+              <h3 className="text-[13px] font-semibold text-[color:var(--od-neu-ink)]">
+                {statusModal === "done" ? "已完成任务" : statusModal === "running" ? "进行中任务" : "逾期任务"}
+              </h3>
+              <span className="mono text-[11px] text-[color:var(--od-neu-ink-3)]">{statusTasks.length}</span>
               <button
                 type="button"
-                className="pj-fab"
-                style={{ width: 26, height: 26 }}
-                title="清除筛选"
-                aria-label="清除筛选"
-                data-pj-filter-clear=""
-                onClick={() => {
-                  setStatusFilter("all");
-                  setQuery("");
-                }}
+                aria-label="关闭"
+                onClick={() => setStatusModal(null)}
+                className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
               >
-                <Icon name="x" className="h-3 w-3" />
+                <Icon name="x" className="h-4 w-4" />
               </button>
-            ) : null}
+            </div>
+            <div className="pj-status-list">
+              {statusTasks.length === 0 ? (
+                <p className="pj-status-empty">暂无</p>
+              ) : (
+                statusTasks.map((task) => {
+                  const due = task.due_date ? dayStart(task.due_date) : null;
+                  const overdue =
+                    due !== null &&
+                    task.state !== "已完成" &&
+                    task.state !== "已取消" &&
+                    due.getTime() < nowMs;
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      className="pj-status-row"
+                      onClick={() => {
+                        setStatusModal(null);
+                        openEditor(task.id);
+                      }}
+                    >
+                      <span className="pj-quad-row-ic" data-task-state={task.state} aria-hidden="true">
+                        <Icon name={taskStateIcon(task.state)} className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="pj-quad-row-title">{task.title}</span>
+                        <span className="pj-quad-row-meta">
+                          <span className={overdue ? "pj-quad-row-state is-overdue" : "pj-quad-row-state"}>
+                            {task.state}
+                          </span>
+                          {task.due_date ? (
+                            <>
+                              <span className="pj-quad-meta-dot" aria-hidden="true" />
+                              <Icon name="clock" className="h-2.5 w-2.5" />
+                              <span className="mono">{mmdd(due ?? new Date(task.due_date))}</span>
+                            </>
+                          ) : null}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
-          {matrix}
         </div>
-        <div className="pj-main-canvas min-w-0">{gantt}</div>
-      </div>
-
-      <div className="pj-tools" data-pj-tools="">
-        {completedPanel}
-        <ProjectReviewCard
-          seed={reviewSeed}
-          onNotice={announce}
-          onChanged={() => setTick((n) => n + 1)}
-        />
-      </div>
+      ) : null}
 
       {manageOpen ? (
         <div
@@ -1895,6 +2025,8 @@ export function TaskQuadrantBoard({
               </button>
             </div>
             <ProjectMaintenance
+              focusProjectId={manageProjectId || null}
+              newProjectNonce={newProjectNonce}
               onNotice={announce}
               onChanged={() => setTick((n) => n + 1)}
             />
@@ -1902,7 +2034,42 @@ export function TaskQuadrantBoard({
         </div>
       ) : null}
 
-      {/* OD-UI-900 快捷新建任务弹层 */}
+      {reviewSeed ? (
+        <div
+          className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
+          role="presentation"
+          onClick={() => setReviewSeed(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="项目复盘"
+            onClick={(event) => event.stopPropagation()}
+            className="wr-dialog flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-y-auto p-5"
+          >
+            <div className="flex items-center gap-3 pb-3">
+              <span className="pj-panel-ic" aria-hidden="true">
+                <Icon name="refresh" className="h-3.5 w-3.5" />
+              </span>
+              <h3 className="sr-only">项目复盘</h3>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={() => setReviewSeed(null)}
+                className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+              >
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <ProjectReviewCard
+              seed={reviewSeed}
+              onNotice={announce}
+              onChanged={() => setTick((n) => n + 1)}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {quickTaskOpen ? (
         <div
           className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
@@ -1922,9 +2089,6 @@ export function TaskQuadrantBoard({
               </span>
               <div className="min-w-0 flex-1">
                 <h3 className="text-[15px] font-semibold text-[color:var(--od-neu-ink)]">新建任务</h3>
-                <p className="mt-1 text-[10.5px] text-[color:var(--od-neu-ink-3)]">
-                  建好后再到四象限里调整重要性与象限。
-                </p>
               </div>
               <button
                 type="button"
@@ -1990,6 +2154,16 @@ export function TaskQuadrantBoard({
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(deleteTaskId)}
+        title="删除任务？"
+        description={"「" + (deleteTaskId ? taskMap.get(deleteTaskId)?.title ?? "" : "") + "」删除后不可恢复。"}
+        confirmLabel="删除"
+        onConfirm={() => void removeTask()}
+        onCancel={() => setDeleteTaskId(null)}
+        testId="task-delete-confirm"
+      />
 
       <ConfirmDialog
         open={completeConfirm && Boolean(editingTask)}

@@ -63,7 +63,8 @@ def main() -> int:
     check(
         "scene_page_uses_task_board",
         'from "./TaskManager"' in scene_page
-        and "<TaskQuadrantBoard />" in scene_page
+        and "<TaskQuadrantBoard onNavigate={onNavigate} />" in scene_page
+        and '<TaskQuadrantBoard variant="panel" onNavigate={onNavigate} />' in scene_page
         and "<WeeklyQuadrants" not in scene_page,
         "ScenePage 四象限区改用任务象限视图",
     )

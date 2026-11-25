@@ -55,9 +55,13 @@ function TaskStateChip({ state }: { state: WorkTask["state"] }) {
 }
 
 export function ProjectMaintenance({
+  focusProjectId = null,
+  newProjectNonce = 0,
   onNotice,
   onChanged,
 }: {
+  focusProjectId?: string | null;
+  newProjectNonce?: number;
   onNotice?: (notice: Notice | null) => void;
   onChanged?: () => void;
 }) {
@@ -134,6 +138,19 @@ export function ProjectMaintenance({
       alive = false;
     };
   }, [tick]);
+
+  useEffect(() => {
+    if (focusProjectId && projects.some((project) => project.project_id === focusProjectId)) {
+      setSelected(focusProjectId);
+    }
+  }, [focusProjectId, projects]);
+
+  useEffect(() => {
+    if (newProjectNonce > 0) {
+      setNewProjectOpen(true);
+      setProjectError(null);
+    }
+  }, [newProjectNonce]);
 
   useEffect(() => {
     if (!selected) {

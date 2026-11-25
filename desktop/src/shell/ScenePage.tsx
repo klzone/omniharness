@@ -717,7 +717,7 @@ export function ScenePage({
            */}
           <div className="min-w-0 max-lg:contents lg:flex lg:flex-col lg:gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:[grid-area:left]">
           <div className="min-w-0 max-lg:order-1">
-            <TaskQuadrantBoard variant="panel" />
+            <TaskQuadrantBoard variant="panel" onNavigate={onNavigate} />
           </div>
 
           {/* 四象限正下方就是历史对话（用户点名顺序）。 */}
@@ -778,7 +778,7 @@ export function ScenePage({
           </section>
         </div>
       ) : scene === "project" ? (
-        <TaskQuadrantBoard />
+        <TaskQuadrantBoard onNavigate={onNavigate} />
       ) : (
         /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
         <section className="bg-[color:var(--od-neu-surface)] rounded-2xl shadow-[var(--od-neu-raise-2)] p-3 flex flex-col min-h-[320px]">

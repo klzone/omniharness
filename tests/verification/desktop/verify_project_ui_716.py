@@ -40,9 +40,11 @@ def main() -> int:
     )
     check(
         "project_uses_warm_neumorphic_tokens",
-        "var(--od-neu-surface)" in task
-        and "var(--od-neu-sunken)" in task
-        and "var(--od-neu-accent" in task
+        "var(--od-neu-surface)" in theme
+        and "var(--od-neu-sunken)" in theme
+        and "var(--od-neu-accent" in theme
+        and ".pj-project-card" in theme
+        and ".pj-quad" in theme
         and "pj-panel" in task,
         "卡片、凹槽与强调色落到暖纸新拟物令牌（OD-UI-717/900 极简面板类）",
     )
@@ -63,6 +65,19 @@ def main() -> int:
         'className="wr-dialog w-full max-w-[520px] p-6"' in task
         and "pj-modal-overlay" in task,
         "OD-UI-900：任务编辑弹层复用暖白对话框材质与统一暖墨遮罩",
+    )
+    check(
+        "project_uses_reference_dual_column",
+        "grid-template-columns: 288px minmax(0, 1fr)" in theme
+        and "pj-project-card-row" in task
+        and "pj-bar-tools" in task
+        and "pj-proj-track" not in task,
+        "项目页左右双栏、甘特任务内功能组与项目卡片，项目轨不再画进度条",
+    )
+    check(
+        "project_history_module",
+        'listThreadsByTag("project")' in task and "pj-history" in task,
+        "左栏底部项目跟进历史会话默认折叠",
     )
     check(
         "work_record_tokens_exist",

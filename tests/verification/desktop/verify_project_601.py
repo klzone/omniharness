@@ -158,11 +158,12 @@ def main() -> int:
         ),
     )
     check(
-        "S3 已完成列表复盘入口与右列挂载",
+        "S3 项目卡片复盘入口与弹窗挂载",
         all(
             needle in task_manager
             for needle in (
-                'data-task-review-entry=""',
+                'data-project-card=',
+                '"生成项目复盘"',
                 # OD-PRJ-604：挂载增加 onChanged 即时刷新。
                 "<ProjectReviewCard",
                 "<ProjectMaintenance",
