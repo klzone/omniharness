@@ -44,7 +44,14 @@ function ProjectStatusChip({ status }: { status: string }) {
 }
 
 function TaskStateChip({ state }: { state: WorkTask["state"] }) {
-  return <span className="shrink-0 text-[10px] text-[color:var(--od-neu-ink-3)]">{state}</span>;
+  return (
+    <span
+      className="pj-state-dot shrink-0"
+      data-task-state={state}
+      title={state}
+      aria-label={state}
+    />
+  );
 }
 
 export function ProjectMaintenance({
@@ -333,7 +340,7 @@ export function ProjectMaintenance({
       ) : null}
 
       {!loading && !error && projects.length === 0 ? (
-        <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">还没有项目，先新建一个。</p>
+        <p className="pt-3 text-[11px] text-[color:var(--od-neu-ink-3)]">暂无项目</p>
       ) : null}
 
       {projects.length > 0 ? (
@@ -355,9 +362,7 @@ export function ProjectMaintenance({
           {selectedProject ? (
             <div className={"rounded-xl px-3 py-2.5 " + NEU_INSET} data-project-summary={selectedProject.project_id}>
               <div className="flex items-center gap-2">
-                <span title={selectedProject.name} className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[color:var(--od-neu-ink)]">
-                  {selectedProject.name}
-                </span>
+                <span className="min-w-0 flex-1" aria-hidden="true" />
                 <ProjectStatusChip status={selectedProject.status} />
                 <button
                   type="button"
@@ -376,9 +381,6 @@ export function ProjectMaintenance({
               <p className="mono mt-1 text-[10px] text-[color:var(--od-neu-ink-3)]">
                 {shortDate(selectedProject.start)} → {shortDate(selectedProject.end)}
               </p>
-              {selectedProject.goal ? (
-                <p className="mt-1 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-2)]">{selectedProject.goal}</p>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -394,13 +396,13 @@ export function ProjectMaintenance({
       {overview ? (
         <div className="pt-3" data-project-tasks="">
           <div className="flex items-center justify-between gap-2 pb-1.5">
-            <span className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">项目任务 · {projectRows.length}</span>
+            <span className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">{projectRows.length}</span>
             <span className="mono text-[10px] text-[color:var(--od-neu-ink-3)]">
               {page} / {totalPages}
             </span>
           </div>
           {projectRows.length === 0 ? (
-            <p className="pt-2 text-[11px] text-[color:var(--od-neu-ink-3)]">这个项目还没有任务。</p>
+            <p className="pt-2 text-[11px] text-[color:var(--od-neu-ink-3)]">暂无任务</p>
           ) : (
             <ul className="flex flex-col gap-1">
               {pageRows.map((row) => (
@@ -413,8 +415,9 @@ export function ProjectMaintenance({
                     <span title={row.title} className="block truncate text-[11.5px] font-medium text-[color:var(--od-neu-ink)]">
                       {row.title}
                     </span>
-                    <span className="mono mt-0.5 block truncate text-[9.5px] text-[color:var(--od-neu-ink-3)]">
-                      {row.due ? "截止 " + shortDate(row.due) : "未设截止"} · {projectNameOf(row.projectId)}
+                    <span className="mono mt-0.5 flex items-center gap-1 truncate text-[9.5px] text-[color:var(--od-neu-ink-3)]">
+                      <Icon name="clock" className="h-2.5 w-2.5 shrink-0" />
+                      {row.due ? shortDate(row.due) : "—"}
                     </span>
                   </span>
                   {row.state ? <TaskStateChip state={row.state} /> : null}

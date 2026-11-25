@@ -375,8 +375,16 @@ export function ProjectReviewCard({
             </p>
           ) : null}
           {selectedProject ? (
-            <p className="mono text-[10px] text-[color:var(--od-neu-ink-3)]">
-              {selectedProject.status} · {shortDate(selectedProject.start)} → {shortDate(selectedProject.end)}
+            <p className="flex items-center gap-1.5 text-[10px] text-[color:var(--od-neu-ink-3)]">
+              <span
+                className="pj-state-dot shrink-0"
+                data-task-state={selectedProject.status}
+                title={selectedProject.status}
+                aria-label={selectedProject.status}
+              />
+              <span className="mono">
+                {shortDate(selectedProject.start)} → {shortDate(selectedProject.end)}
+              </span>
             </p>
           ) : null}
         </div>

@@ -93,7 +93,6 @@
   /* 宋体不进界面；保留给导出报告、正式文档、打印页。 */
   --font-report-serif: "Inter Variable", "Inter", "Source Han Serif SC", "思源宋体", "Noto Serif SC", "Songti SC", "STSong", serif;
   /* 设计标语 / 品牌类中文：演示夏行楷，缺字体回退黑体，绝不拖累正文。 */
-  --font-slogan: "Inter Variable", "Inter", "Slidexiaxing", "Yanshi Xiaxingkai", "演示夏行楷", "YanshiXiaxingkai", "STXingkai", "Xingkai SC", "Kaiti SC", "Source Han Sans SC", "PingFang SC", cursive;
 
   /* ---- 圆角（对齐 Stitch 的 borderRadius 配置） ---- */
   --radius-lg: 2rem;
@@ -138,7 +137,7 @@
   --od-neu-hi: rgba(255, 252, 244, 0.92);
   --od-neu-hi-soft: rgba(255, 252, 244, 0.82);
   --od-neu-lo: rgba(168, 145, 112, 0.36);
-  --od-neu-lo-soft: rgba(168, 145, 112, 0.26);
+  --od-neu-lo-soft: rgba(168, 145, 112, 0.30);
   --od-neu-line-dark: rgba(90, 74, 56, 0.22);
   --od-neu-line: rgba(120, 100, 75, 0.10);
   --od-neu-line-strong: rgba(120, 100, 75, 0.18);
@@ -146,11 +145,11 @@
     3px 3px 7px var(--od-neu-lo-soft),
     -3px -3px 7px var(--od-neu-hi);
   --od-neu-raise-2:
-    8px 8px 22px var(--od-neu-lo-soft),
-    -8px -8px 22px var(--od-neu-hi);
+    6px 6px 16px var(--od-neu-lo-soft),
+    -6px -6px 16px var(--od-neu-hi);
   --od-neu-raise-3:
-    14px 14px 34px var(--od-neu-lo),
-    -12px -12px 28px var(--od-neu-hi);
+    12px 12px 28px var(--od-neu-lo),
+    -10px -10px 24px var(--od-neu-hi);
   --od-neu-inset-1:
     inset 2px 2px 5px var(--od-neu-lo),
     inset -2px -2px 5px var(--od-neu-hi);
@@ -169,13 +168,6 @@
   /* 底材由全局背景层（app-scape-base）提供；这里保持透明，
      否则根节点的实底会盖住负层级的风景插画。 */
   background-color: transparent;
-}
-
-.font-slogan {
-  font-family: var(--font-slogan);
-  font-weight: 700;
-  color: var(--od-neu-accent);
-  text-rendering: optimizeLegibility;
 }
 
 .neu-nav {
@@ -938,6 +930,31 @@ a[class~="bg-primary"]:active {
   background: linear-gradient(270deg, transparent, rgba(150, 146, 138, 0.32));
 }
 
+/* 首页空态：用一枚浮起的灵感托替代标语文字 */
+.home-motif-badge {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--od-neu-accent);
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+}
+
+.home-motif-badge::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--od-neu-accent);
+  opacity: 0.35;
+  transform: translate(16px, -14px);
+}
+
 .home-quick-pill {
   display: inline-flex;
   align-items: center;
@@ -1003,14 +1020,6 @@ a[class~="bg-primary"]:active {
   height: 14px;
   margin-top: -7px;
   border-radius: 2px;
-}
-
-.home-slogan-text {
-  font-size: clamp(16px, 1.65vw, 22px);
-  line-height: 1.4;
-  letter-spacing: 0.16em;
-  color: #6b5a45;
-  text-shadow: none;
 }
 
 .neu-date-chip {
@@ -1348,8 +1357,8 @@ a[class~="bg-primary"]:active {
 }
 
 .wr-hero-title {
-  font-size: clamp(24px, 2.2vw, 30px);
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1.12;
   letter-spacing: -0.015em;
   color: #2f2f38;
@@ -1842,6 +1851,30 @@ a[class~="bg-primary"]:active {
   line-height: 1.7;
 }
 
+.wr-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 4px;
+}
+
+.wr-empty-state.sh-empty {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wr-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: var(--od-neu-ink-3);
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  opacity: 0.75;
+}
+
 .od-record-group {
   position: relative;
   padding: 0 0 20px 30px;
@@ -2227,7 +2260,8 @@ a[class~="bg-primary"]:active {
 }
 
 .wr-side-mark.is-violet {
-  background: linear-gradient(150deg, #cbbfff, #947dff);
+  background: linear-gradient(150deg, var(--od-neu-accent-soft), #e0c3ae);
+  color: var(--od-neu-accent-ink);
 }
 
 .wr-side-title {
@@ -2400,7 +2434,7 @@ a[class~="bg-primary"]:active {
   position: relative;
   z-index: 1;
   display: block;
-  color: #3a2f7a;
+  color: var(--od-neu-accent-ink);
   font-size: 12.5px;
   font-weight: 650;
 }
@@ -2495,7 +2529,7 @@ a[class~="bg-primary"]:active {
 
 .wr-quick-label {
   display: block;
-  color: #44444f;
+  color: var(--od-neu-ink);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
@@ -3216,8 +3250,8 @@ button.wr-backlink:hover {
 .sh-mast-title {
   margin: 0;
   color: var(--od-neu-ink);
-  font-size: clamp(22px, 2.1vw, 28px);
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 700;
   line-height: 1.12;
   letter-spacing: -0.015em;
 }
@@ -4232,6 +4266,7 @@ button.wr-backlink:hover {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  padding-top: 24px;
 }
 
 .pj-statusbar {
@@ -4299,6 +4334,42 @@ button.wr-backlink:hover {
   flex-shrink: 0;
   background: var(--od-neu-sunken);
   box-shadow: var(--od-neu-inset-1);
+}
+
+/* 四象限卡片状态点：颜色即状态，避免状态文字挤占任务名 */
+.pj-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--od-neu-ink-3);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--od-neu-ink-3) 12%, transparent);
+}
+
+.pj-state-dot[data-task-state="进行中"] {
+  background: var(--od-neu-accent);
+  box-shadow: 0 0 0 2px var(--od-neu-accent-soft);
+}
+
+.pj-state-dot[data-task-state="已完成"] {
+  background: var(--od-neu-ink-2);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--od-neu-ink-2) 14%, transparent);
+}
+
+.pj-state-dot[data-task-state="待开始"],
+.pj-state-dot[data-task-state="待确认"] {
+  background: transparent;
+  border: 1.5px solid var(--od-neu-ink-3);
+  box-shadow: none;
+}
+
+.pj-state-dot[data-task-state="暂停"] {
+  background: #b58a3a;
+  box-shadow: 0 0 0 2px color-mix(in oklab, #b58a3a 16%, transparent);
+}
+
+.pj-state-dot[data-task-state="已取消"] {
+  background: #b9ae99;
+  box-shadow: none;
 }
 
 .pj-chip.is-warn {
@@ -4380,12 +4451,17 @@ button.wr-backlink:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
 }
 
 /* 主画布撑满行高：甘特是页面重心 */
 .pj-main > .pj-main-canvas {
   align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.pj-main > .pj-panel {
   display: flex;
   flex-direction: column;
 }
@@ -4397,6 +4473,8 @@ button.wr-backlink:hover {
 /* 四象限：整块单滚动 */
 .pj-matrix {
   position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 @media (max-width: 1279px) {
@@ -4407,7 +4485,7 @@ button.wr-backlink:hover {
 
 .pj-tools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 14px;
   align-items: start;
 }
@@ -4487,8 +4565,8 @@ button.wr-backlink:hover {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -4512,9 +4590,8 @@ button.wr-backlink:hover {
 .pj-fan::after {
   content: "";
   position: absolute;
-  inset: -50px -52px;
+  inset: -6px -66px -86px -66px;
   pointer-events: none;
-  clip-path: polygon(50% 78%, 0% 100%, 50% 0%, 100% 100%);
 }
 
 .pj-fan:hover::after,
@@ -4528,16 +4605,20 @@ button.wr-backlink:hover {
   pointer-events: auto;
 }
 
-.pj-fan:focus-within .pj-fan-item:nth-child(1) {
-  transform: translate(-50%, -50%) translate(-40px, 2px) rotate(-24deg) scale(1);
-}
-
 .pj-fan:focus-within .pj-fan-item:nth-child(2) {
-  transform: translate(-50%, -50%) translate(0, -42px) rotate(0deg) scale(1);
+  transform: translate(-50%, -50%) translate(-52px, 34px) rotate(-24deg) scale(1);
 }
 
 .pj-fan:focus-within .pj-fan-item:nth-child(3) {
-  transform: translate(-50%, -50%) translate(40px, 2px) rotate(24deg) scale(1);
+  transform: translate(-50%, -50%) translate(-42px, 58px) rotate(-16deg) scale(1);
+}
+
+.pj-fan:focus-within .pj-fan-item:nth-child(4) {
+  transform: translate(-50%, -50%) translate(-20px, 70px) rotate(-8deg) scale(1);
+}
+
+.pj-fan:focus-within .pj-fan-item:nth-child(5) {
+  transform: translate(-50%, -50%) translate(4px, 66px) rotate(0deg) scale(1);
 }
 
 /* 焦点环：pj 系控件统一 2px accent */
@@ -4559,21 +4640,27 @@ button.wr-backlink:hover {
   pointer-events: auto;
 }
 
-.pj-fan:hover .pj-fan-item:nth-child(1),
-.pj-fan.is-open .pj-fan-item:nth-child(1) {
-  transform: translate(-50%, -50%) translate(-40px, 2px) rotate(-24deg) scale(1);
-}
-
 .pj-fan:hover .pj-fan-item:nth-child(2),
 .pj-fan.is-open .pj-fan-item:nth-child(2) {
-  transform: translate(-50%, -50%) translate(0, -42px) rotate(0deg) scale(1);
-  transition-delay: 30ms;
+  transform: translate(-50%, -50%) translate(-52px, 34px) rotate(-24deg) scale(1);
 }
 
 .pj-fan:hover .pj-fan-item:nth-child(3),
 .pj-fan.is-open .pj-fan-item:nth-child(3) {
-  transform: translate(-50%, -50%) translate(40px, 2px) rotate(24deg) scale(1);
+  transform: translate(-50%, -50%) translate(-42px, 58px) rotate(-16deg) scale(1);
+  transition-delay: 30ms;
+}
+
+.pj-fan:hover .pj-fan-item:nth-child(4),
+.pj-fan.is-open .pj-fan-item:nth-child(4) {
+  transform: translate(-50%, -50%) translate(-20px, 70px) rotate(-8deg) scale(1);
   transition-delay: 60ms;
+}
+
+.pj-fan:hover .pj-fan-item:nth-child(5),
+.pj-fan.is-open .pj-fan-item:nth-child(5) {
+  transform: translate(-50%, -50%) translate(4px, 66px) rotate(0deg) scale(1);
+  transition-delay: 90ms;
 }
 
 .pj-fan-item:hover {
@@ -4582,22 +4669,26 @@ button.wr-backlink:hover {
   transform-origin: center;
 }
 
-.pj-fan-item:nth-child(1):hover {
-  transform: translate(-50%, -50%) translate(-40px, 2px) rotate(-24deg) scale(1.12);
-}
-
 .pj-fan-item:nth-child(2):hover {
-  transform: translate(-50%, -50%) translate(0, -42px) rotate(0deg) scale(1.12);
+  transform: translate(-50%, -50%) translate(-52px, 34px) rotate(-24deg) scale(1.1);
 }
 
 .pj-fan-item:nth-child(3):hover {
-  transform: translate(-50%, -50%) translate(40px, 2px) rotate(24deg) scale(1.12);
+  transform: translate(-50%, -50%) translate(-42px, 58px) rotate(-16deg) scale(1.1);
+}
+
+.pj-fan-item:nth-child(4):hover {
+  transform: translate(-50%, -50%) translate(-20px, 70px) rotate(-8deg) scale(1.1);
+}
+
+.pj-fan-item:nth-child(5):hover {
+  transform: translate(-50%, -50%) translate(4px, 66px) rotate(0deg) scale(1.1);
 }
 
 /* 甘特：项目轨 + 大任务条 */
 .pj-gantt {
   position: relative;
-  --pj-rail: 128px;
+  --pj-rail: 152px;
 }
 
 .pj-gantt-scale {
@@ -4661,6 +4752,25 @@ button.wr-backlink:hover {
   font-size: 10.5px;
   color: var(--od-neu-ink-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* 项目完成度：4px 凹槽 + 暖橙填充（JSX 已按 summary.ratio 写宽度） */
+.pj-proj-track {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  overflow: hidden;
+}
+
+.pj-proj-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--od-neu-accent);
 }
 
 /* 折叠态：项目轨收成单行，与紧凑画布同高 */
@@ -4773,11 +4883,15 @@ button.wr-backlink:hover {
 .pj-bar .pj-bar-stat {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   font-size: 10.5px;
   color: rgba(255, 255, 255, 0.85);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.pj-bar.is-overdue .pj-bar-stat {
+  color: #fff;
 }
 
 .pj-bar.is-ghost {
@@ -4791,6 +4905,20 @@ button.wr-backlink:hover {
 
 .pj-bar.is-ink {
   background: var(--od-neu-ink-2);
+}
+
+/* 逾期只用斜纹端帽 + 时钟符号表达，不写状态文字 */
+.pj-bar.is-overdue::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 7px,
+    rgba(255, 252, 244, 0.18) 7px 8px
+  );
 }
 
 .pj-bar.is-ghost .pj-bar-name {
@@ -4857,4 +4985,32 @@ button.wr-backlink:hover {
 [data-testid="knowledge-vault-page"] [class*="rounded-full"][class*="bg-white"],
 [data-testid="knowledge-vault-page"] [class*="rounded-full"][class*="bg-surface"] {
   border-radius: 8px !important;
+}
+
+/* 知识库：把残留的白卡与白输入统一到暖材质，避免冷暖混搭 */
+[data-testid="knowledge-vault-page"] [class*="bg-white"] {
+  background-color: var(--od-neu-surface) !important;
+}
+
+[data-testid="knowledge-vault-page"] [class*="border-white"] {
+  border-color: transparent !important;
+}
+
+[data-testid="knowledge-vault-page"] section[class*="bg-white"],
+[data-testid="knowledge-vault-page"] header[class*="bg-white"] {
+  box-shadow: var(--od-neu-raise-1) !important;
+}
+
+[data-testid="knowledge-vault-page"] input,
+[data-testid="knowledge-vault-page"] textarea,
+[data-testid="knowledge-vault-page"] select {
+  background-color: var(--od-neu-sunken) !important;
+  border-color: transparent !important;
+  box-shadow: var(--od-neu-inset-1) !important;
+  color: var(--od-neu-ink) !important;
+}
+
+[data-testid="knowledge-vault-page"] input::placeholder,
+[data-testid="knowledge-vault-page"] textarea::placeholder {
+  color: var(--od-neu-ink-3) !important;
 }

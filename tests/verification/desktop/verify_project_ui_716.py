@@ -54,9 +54,9 @@ def main() -> int:
         "甘特条表达状态，不再伪造 15%/55% 进度",
     )
     check(
-        "quadrant_icons_use_tone_color",
-        "QUADRANT_TONE" in task and "tone.color" in task and "tone.tile" not in task,
-        "四象限图标只用文字层级配色，不再加彩色底块（OD-UI-717 复核）",
+        "quadrant_state_dot_replaces_icon",
+        "pj-state-dot" in task and "data-task-state" in task and "iconForTask" not in task,
+        "四象限不再用无稳定语义的关键词图标，状态由颜色圆点承担（OD-UI-900 二轮）",
     )
     check(
         "modal_uses_warm_dialog",

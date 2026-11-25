@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { shell } from "../api";
-import { Icon, type IconName } from "../components/Icon";
+import { Icon } from "../components/Icon";
 import { KnowledgeLinkPanel } from "./KnowledgeLinkPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProjectMaintenance } from "./ProjectMaintenance";
@@ -102,11 +102,11 @@ function shortTime(iso: string): string {
 function StateChip({ state }: { state: WorkTaskState }) {
   return (
     <span
-      className="shrink-0 text-[10px] font-medium text-[color:var(--od-neu-ink-3)]"
+      className="pj-state-dot shrink-0"
       data-task-state={state}
-    >
-      {state}
-    </span>
+      title={state}
+      aria-label={state}
+    />
   );
 }
 
@@ -830,13 +830,6 @@ const AXIS = "text-[12px] font-medium tracking-[0.02em] text-[color:var(--od-neu
 const WELL =
   "bg-[color:var(--od-neu-sunken)] shadow-[var(--od-neu-inset-1)]";
 
-const QUADRANT_TONE: Record<string, { icon: IconName; color: string; tile: string }> = {
-  Q1: { icon: "star", color: "text-[color:var(--od-neu-accent-ink)]", tile: "" },
-  Q2: { icon: "calendar", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
-  Q3: { icon: "clock", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
-  Q4: { icon: "book", color: "text-[color:var(--od-neu-ink-3)]", tile: "" },
-};
-
 /** 甘特状态色语义表（OD-UI-900 后条内以实底色区分，此表供语义引用与测试锚定）。 */
 export const TASK_STATE_BAR: Record<WorkTaskState, string> = {
   待确认: "od-task-bar--pending-confirm",
@@ -871,17 +864,6 @@ const RANGE_OPTIONS = [
   { key: "1y", label: "1 年", months: 12 },
 ] as const;
 type RangeKey = (typeof RANGE_OPTIONS)[number]["key"];
-
-/** 按标题关键词挑图标：只做视觉区分，不参与任务语义判断。 */
-function iconForTask(title: string, fallback: IconName): IconName {
-  if (/报告|方案|提纲|模板|纪要|文稿|材料表/.test(title)) return "note";
-  if (/台账|数据|核对|统计|分解表/.test(title)) return "checklist";
-  if (/记录|归档|整理|档案/.test(title)) return "folder";
-  if (/制度|知识|规范|要点/.test(title)) return "book";
-  if (/会议|复盘|列席|排期/.test(title)) return "calendar";
-  if (/报送|催办|汇报|上报/.test(title)) return "arrow-up";
-  return fallback;
-}
 
 function dayStart(value: string | Date): Date | null {
   const date = value instanceof Date ? new Date(value) : new Date(value);
@@ -944,11 +926,43 @@ export function TaskQuadrantBoard({
   const [quickTaskDue, setQuickTaskDue] = useState("");
   const [quickTaskProject, setQuickTaskProject] = useState("");
   const [quickTaskBusy, setQuickTaskBusy] = useState(false);
+  /** 扇形功能组固定展开态（点击触发；悬停仍由 CSS 自动展开）。 */
+  const [fanOpen, setFanOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const fanRef = useRef<HTMLDivElement | null>(null);
+  const fanTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   function announce(notice: Notice | null) {
     setLocalNotice(notice);
     onNotice?.(notice);
   }
+
+  useEffect(() => {
+    if (!fanOpen) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!fanRef.current?.contains(event.target as Node)) setFanOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setFanOpen(false);
+      fanTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [fanOpen]);
+
+  useEffect(() => {
+    if (!manageOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setManageOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [manageOpen]);
 
   useEffect(() => {
     let alive = true;
@@ -1303,7 +1317,7 @@ export function TaskQuadrantBoard({
         gridTemplateColumns: "26px minmax(0,1fr) 20px minmax(0,1fr)",
         gridTemplateRows: compact
           ? "20px 118px 18px 118px"
-          : "22px 150px 18px 150px",
+          : "22px minmax(0,1fr) 18px minmax(0,1fr)",
       }}
     >
       <span className={AXIS + " flex items-end justify-center pb-1.5"} style={{ gridColumn: 2, gridRow: 1 }}>
@@ -1347,7 +1361,6 @@ export function TaskQuadrantBoard({
 
       {QUADRANT_COLUMNS.slice(0, 4).map((column) => {
         const items = visibleViews.filter((view) => view.quadrant === column.key);
-        const tone = QUADRANT_TONE[column.key] ?? QUADRANT_TONE.Q1;
         const leftColumn = column.key === "Q1" || column.key === "Q3";
         const topRow = column.key === "Q1" || column.key === "Q2";
         return (
@@ -1358,7 +1371,7 @@ export function TaskQuadrantBoard({
             style={{ gridColumn: leftColumn ? 2 : 4, gridRow: topRow ? 2 : 4 }}
             className={
               "relative flex min-w-0 flex-col overflow-hidden " +
-              (compact ? "rounded-[14px] px-3.5 py-3 " : "rounded-[18px] px-5 py-4 ") +
+              (compact ? "rounded-[14px] px-3 py-2.5 " : "rounded-[18px] px-3 py-3 ") +
               WELL
             }
           >
@@ -1382,25 +1395,19 @@ export function TaskQuadrantBoard({
                           "hover:bg-[color:var(--od-neu-surface-high)] " +
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--od-neu-accent)]/40 " +
                           (compact
-                            ? "grid-cols-[26px_minmax(0,1fr)] gap-2 px-2 py-1.5"
-                            : "grid-cols-[34px_minmax(0,1fr)_auto] gap-3 px-3 py-2.5")
+                            ? "grid-cols-[8px_minmax(0,1fr)] gap-2 px-2 py-1.5"
+                            : "grid-cols-[8px_minmax(0,1fr)] gap-2.5 px-3 py-2")
                         }
                       >
-                        <span
-                          className={
-                            "flex shrink-0 items-center justify-center " +
-                            (compact ? "h-[26px] w-[26px] " : "h-[34px] w-[34px] ") +
-                            tone.color
-                          }
-                        >
-                          <Icon name={iconForTask(view.title, tone.icon)} className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                        </span>
+                        <StateChip state={task?.state ?? "待开始"} />
                         <span className="min-w-0">
                           <span
                             title={view.title}
                             className={
-                              "block truncate font-semibold leading-snug text-[color:var(--od-neu-ink)] " +
-                              (compact ? "text-[12px]" : "text-[13.5px]")
+                              "block font-semibold leading-[1.35] text-[color:var(--od-neu-ink)] " +
+                              (compact
+                                ? "line-clamp-2 text-[11.5px]"
+                                : "line-clamp-2 text-[12.5px]")
                             }
                           >
                             {view.title}
@@ -1408,15 +1415,13 @@ export function TaskQuadrantBoard({
                           <span
                             title={task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state}
                             className={
-                              "mt-0.5 block truncate text-[10.5px] text-[color:var(--od-neu-ink-3)] " + (compact ? "hidden" : "")
+                              "mt-1 flex items-center gap-1 truncate text-[10.5px] tabular-nums text-[color:var(--od-neu-ink-3)] " + (compact ? "hidden" : "")
                             }
                           >
-                            {task?.due_date ? "截止 " + mmdd(dayStart(task.due_date) ?? new Date()) : task?.state ?? "待开始"}
+                            <Icon name="clock" className="h-2.5 w-2.5 shrink-0" />
+                            {task?.due_date ? mmdd(dayStart(task.due_date) ?? new Date()) : "—"}
                           </span>
                         </span>
-                        {compact ? null : (
-                          <StateChip state={task?.state ?? "待开始"} />
-                        )}
                       </button>
                     </article>
                   );
@@ -1549,6 +1554,12 @@ export function TaskQuadrantBoard({
                         const done = task.state === "已完成";
                         const ghost = task.state === "待开始" || task.state === "待确认" || task.state === "已取消";
                         const solid = done ? "is-ink" : ghost ? "is-ghost" : "is-accent";
+                        const dueDay = task.due_date ? dayStart(task.due_date) : null;
+                        const overdue =
+                          !done &&
+                          task.state !== "已取消" &&
+                          dueDay !== null &&
+                          dueDay.getTime() < nowMs;
                         return (
                           <div className="pj-lane" key={task.id}>
                             <button
@@ -1559,6 +1570,7 @@ export function TaskQuadrantBoard({
                               title={task.title + " · " + task.state}
                               className={
                                 "pj-bar " + solid +
+                                (overdue ? " is-overdue" : "") +
                                 (clamped && left <= 0 ? " is-clamped-left" : "") +
                                 (clamped && left + width >= 100 ? " is-clamped-right" : "")
                               }
@@ -1575,11 +1587,8 @@ export function TaskQuadrantBoard({
                                   style={{ width: Math.round(width * progress * 100) + "%" }}
                                 />
                                 <span className="pj-bar-stat">
-                                  {done ? (
-                                    <Icon name="check" className="h-3 w-3" />
-                                  ) : (
-                                    task.state
-                                  )}
+                                  {done ? <Icon name="check" className="h-3 w-3" /> : null}
+                                  {overdue ? <Icon name="clock" className="h-3 w-3" /> : null}
                                 </span>
                               </span>
                             </button>
@@ -1668,7 +1677,7 @@ export function TaskQuadrantBoard({
     <section
       aria-label="任务四象限"
       data-task-quadrant=""
-      className="pj-page relative mx-auto max-w-[1240px]"
+      className="pj-page relative mx-auto max-w-[1280px]"
     >
       {/* 页头：标题 + 图标功能组（新建项目 / 扇形任务入口） */}
       <div className="pj-head">
@@ -1684,39 +1693,45 @@ export function TaskQuadrantBoard({
               NEU_INSET
             }
           />
-          <button
-            type="button"
-            className="pj-fab"
-            title="新建项目"
-            data-pj-new-project=""
-            onClick={() => {
-              setQuickTaskOpen(false);
-              document
-                .querySelector<HTMLButtonElement>('[data-project-new=""]')
-                ?.click();
-            }}
-          >
-            <Icon name="folder" className="h-4 w-4" />
-          </button>
-          <div className={"pj-fan" + (quickTaskOpen ? " is-open" : "")} data-pj-fan="">
+          <div ref={fanRef} className={"pj-fan" + (fanOpen ? " is-open" : "")} data-pj-fan="">
             <button
               type="button"
               className="pj-fan-trigger"
-              title="添加任务"
+              ref={fanTriggerRef}
+              title="更多项目操作"
+              aria-label="更多项目操作"
               aria-haspopup="true"
-              aria-expanded={quickTaskOpen}
+              aria-expanded={fanOpen}
               data-pj-fan-trigger=""
-              onClick={() => setQuickTaskOpen((open) => !open)}
+              onClick={() => setFanOpen((open) => !open)}
             >
               <Icon name="plus" className="h-4 w-4" />
             </button>
             <button
               type="button"
               className="pj-fan-item"
+              title="新建项目"
+              data-pj-new-project=""
+              tabIndex={0}
+              onClick={() => {
+                setFanOpen(false);
+                document
+                  .querySelector<HTMLButtonElement>('[data-project-new=""]')
+                  ?.click();
+              }}
+            >
+              <Icon name="folder" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="pj-fan-item"
               title="新建任务"
               data-pj-fan-new-task=""
-              tabIndex={quickTaskOpen ? 0 : -1}
-              onClick={() => setQuickTaskOpen(true)}
+              tabIndex={0}
+              onClick={() => {
+                setFanOpen(false);
+                setQuickTaskOpen(true);
+              }}
             >
               <Icon name="edit" className="h-3.5 w-3.5" />
             </button>
@@ -1725,8 +1740,11 @@ export function TaskQuadrantBoard({
               className="pj-fan-item"
               title="生成项目复盘"
               data-pj-fan-review=""
-              tabIndex={quickTaskOpen ? 0 : -1}
-              onClick={() => setReviewSeed({ projectId: "", nonce: Date.now() })}
+              tabIndex={0}
+              onClick={() => {
+                setFanOpen(false);
+                setReviewSeed({ projectId: "", nonce: Date.now() });
+              }}
             >
               <Icon name="refresh" className="h-3.5 w-3.5" />
             </button>
@@ -1735,11 +1753,10 @@ export function TaskQuadrantBoard({
               className="pj-fan-item"
               title="管理项目与关联任务"
               data-pj-fan-manage=""
-              tabIndex={quickTaskOpen ? 0 : -1}
+              tabIndex={0}
               onClick={() => {
-                const select = document.querySelector<HTMLSelectElement>("[data-project-select]");
-                select?.focus();
-                select?.scrollIntoView({ behavior: "smooth", block: "center" });
+                setFanOpen(false);
+                setManageOpen(true);
               }}
             >
               <Icon name="branch" className="h-3.5 w-3.5" />
@@ -1848,11 +1865,42 @@ export function TaskQuadrantBoard({
           onNotice={announce}
           onChanged={() => setTick((n) => n + 1)}
         />
-        <ProjectMaintenance
-          onNotice={announce}
-          onChanged={() => setTick((n) => n + 1)}
-        />
       </div>
+
+      {manageOpen ? (
+        <div
+          className="pj-modal-overlay fixed inset-0 z-50 flex items-center justify-center px-4"
+          role="presentation"
+          onClick={() => setManageOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="项目与任务管理"
+            onClick={(event) => event.stopPropagation()}
+            className="wr-dialog flex max-h-[86vh] w-full max-w-[720px] flex-col overflow-y-auto p-6"
+          >
+            <div className="flex items-center gap-3 pb-3">
+              <span className="pj-panel-ic" aria-hidden="true">
+                <Icon name="branch" className="h-3.5 w-3.5" />
+              </span>
+              <h3 className="sr-only">项目与任务管理</h3>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={() => setManageOpen(false)}
+                className={"ml-auto flex h-9 w-9 items-center justify-center rounded-full text-[color:var(--od-neu-ink-2)] " + NEU_TILE}
+              >
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <ProjectMaintenance
+              onNotice={announce}
+              onChanged={() => setTick((n) => n + 1)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* OD-UI-900 快捷新建任务弹层 */}
       {quickTaskOpen ? (
