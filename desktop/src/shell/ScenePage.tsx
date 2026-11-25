@@ -513,7 +513,7 @@ export function ScenePage({
   const threadsSection = (
     <section
       aria-label="本场景对话"
-      className="bg-white/85 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
+      className="bg-[color:var(--od-neu-surface)] rounded-2xl shadow-[var(--od-neu-raise-2)] px-4 py-4 lg:px-5 lg:py-5 min-w-0"
     >
       <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
         <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
@@ -610,13 +610,12 @@ export function ScenePage({
          * 与知识库统一为 Aetheria 浅色卡面与靛青主色；工作记录页保持原有四色区分。
          */
         <>
-          <div className="mx-auto mt-1 mb-3 flex max-w-7xl items-baseline gap-3 md:-translate-x-8">
+          <div className="mx-auto mt-1 mb-3 flex max-w-7xl items-baseline gap-3">
             <h1 className="text-[22px] font-semibold tracking-tight text-on-surface">文案写作</h1>
-            <span className="text-[11.5px] text-on-surface-variant">起草、改写与归档稿件</span>
           </div>
           <div
             className={
-              "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
+              "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto " +
               "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] " +
               "lg:[grid-template-areas:'left_pipeline_artifacts']"
             }
@@ -644,7 +643,7 @@ export function ScenePage({
               {artifactsError ? (
                 <section
                   aria-label="稿件"
-                  className="bg-white/80 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] px-5 py-6"
+                  className="bg-[color:var(--od-neu-surface)] rounded-[20px] shadow-[var(--od-neu-raise-2)] px-5 py-6"
                 >
                   <p className="text-[11.5px] text-error leading-relaxed">
                     读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
@@ -666,7 +665,7 @@ export function ScenePage({
 
             <section
               aria-label="成果文档库"
-              className="bg-white/80 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
+              className="bg-[color:var(--od-neu-surface)] rounded-[20px] shadow-[var(--od-neu-raise-2)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
             >
               <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
                 <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
@@ -704,7 +703,7 @@ export function ScenePage({
          */
         <div
           className={
-            "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto md:-translate-x-8 " +
+            "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto " +
             "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] " +
             "lg:[grid-template-areas:'left_log_artifacts']"
           }
@@ -749,7 +748,7 @@ export function ScenePage({
 
           <section
             aria-label="成果文档库"
-            className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
+            className="bg-[color:var(--od-neu-surface)] rounded-2xl shadow-[var(--od-neu-raise-2)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
           >
             <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
               <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
@@ -782,7 +781,7 @@ export function ScenePage({
         <TaskQuadrantBoard />
       ) : (
         /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
-        <section className="bg-white/80 border border-white/90 rounded-2xl shadow-[0_4px_20px_-2px_rgba(15,23,42,0.03)] p-3 flex flex-col min-h-[320px]">
+        <section className="bg-[color:var(--od-neu-surface)] rounded-2xl shadow-[var(--od-neu-raise-2)] p-3 flex flex-col min-h-[320px]">
           <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
             <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果文档库</h2>
           </div>

@@ -480,7 +480,6 @@ export function WritingWorkbench() {
               >
                 {creating ? "正在创建…" : "创建任务"}
               </button>
-              <span className="text-[10px] text-outline">类型和标题确定后即可创建</span>
             </div>
           </div>
         ) : (
@@ -584,9 +583,7 @@ export function WritingWorkbench() {
           </div>
         ) : visible.length === 0 ? (
           <p className="text-[11.5px] leading-relaxed text-outline" data-writing-empty="">
-            {typeFilter
-              ? "这个类型下还没有任务。"
-              : "还没有写作任务。在上面描述要写什么，解析后创建。"}
+            暂无任务
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">

@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { shell } from "../api";
+import { Icon } from "../components/Icon";
 import type { SceneThread } from "../sceneThreads";
 import type { OfflineArtifactEntry } from "../types";
 import { WritingMaterialBasket } from "./WritingMaterialBasket";
@@ -28,9 +29,7 @@ import {
 } from "../writingStudio";
 
 const CARD =
-  "pj-panel " +
-  "border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)] " +
-  "px-4 py-4 lg:px-5 lg:py-5 min-w-0";
+  "pj-panel px-4 py-4 lg:px-5 lg:py-5 min-w-0";
 
 function CardHead({
   title,
@@ -168,7 +167,9 @@ export function WritingContinueCard({
         </div>
       ) : (
         <div className="mt-3.5">
-          <p className="text-[12px] text-on-surface-variant leading-relaxed">还没有稿件。</p>
+          <span className="wr-empty-mark" aria-hidden="true">
+            <Icon name="edit" className="h-6 w-6" />
+          </span>
           <button
             className="mt-3 px-3.5 py-1.5 rounded-full text-[11px] bg-primary text-on-primary hover:opacity-90"
             onClick={onNewThread}
@@ -204,7 +205,9 @@ export function WritingInspirationShelf({
       />
       {threads.length === 0 ? (
         <div className="pt-3.5">
-          <p className="text-[11.5px] text-outline leading-relaxed">还没有写作对话。</p>
+          <span className="wr-empty-mark" aria-hidden="true">
+            <Icon name="book" className="h-6 w-6" />
+          </span>
           <button
             className="mt-2.5 text-[11px] text-primary hover:underline"
             onClick={onNewThread}
