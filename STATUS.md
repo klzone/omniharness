@@ -1675,3 +1675,12 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 复跑：npm test 150/150（+18）；tsc 0；build 0；verify_project_601 15/15；verify_project_602 18/18；verify_hardening_2043 77/77。
 - 静态断言适配：verify_project_601.py S2/S3、verify_project_602.py S1 needle 按获批 JSX 更新，语义不变（见 REVIEW.md）。
 - 版本：0.2.54（用户批准提交推送）。
+
+## OD-UI-900 全站 UI 收口执行记录（2026-11-25）
+
+- 基线：HEAD `74f9b70321`（0.2.55 + OD-UI-900 阶段1–5）。开工保留既有未提交的 `desktop/src/shell/TopNav.tsx` 三处暖材质输入框改动。
+- 项目跟踪页二轮：`TaskQuadrantBoard` 四象限与甘特改为 stretch + 1fr 行高，Q1/Q2 三项目全部可见；任务卡移除关键词图标，改状态圆点 + 时钟日期；甘特条删除状态文字，逾期加斜纹与时钟；补齐 `.pj-proj-track`/`.pj-proj-fill`；页头功能组拆出独立 `fanOpen` 状态，4×34px 子项、Tab 可达、Esc/外部点击收回，管理动作打开项目维护弹窗；底栏收敛为「已完成 + 项目复盘」两卡。
+- 跨页收口：工作记录/历史会话/知识库/设置页头统一 22px；内容宽度统一 1280（含取消写作页 `-translate-x-8`）；设置页标题、选中卡与输入框回到暖橙材质；知识库白卡由属性选择器统一到暖材质；首页空态书法标语换为浮起灵感托；工作记录/写作/历史空态改图标。
+- 评审：Openference/DeepSeek-V4.1-Flash-1017-Free（high）首轮 7.0，提出四象限裁切、状态文字、进度轨道缺失、扇形碰撞等 P0/P1；修复后复评 8.0。第二次调用该模型返回 402「Free models require credit balance above $1」，复评由 `OpenDesign/glm-5.3-flash`（high）完成，仍为独立只读评审。
+- 实际执行：`cd desktop && npm run test` → 150 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run build` → 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 7/7、`verify_task_quadrant_ui_402` 10/10。
+- 未验证：真实 Tauri 窗口的悬停扇形、外部点击收回、管理弹窗、键盘焦点顺序与 1600/1280 两档真实数据布局；复评截图来自临时 1600×1000 合成演示预览，预览文件已在提交前删除。
