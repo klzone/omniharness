@@ -4288,9 +4288,9 @@ export function HomeChat({
             data-testid="home-empty-slogan"
           >
             <span className="home-rule flex-1" />
-            <p className="font-slogan home-slogan-text whitespace-nowrap select-none">
-              坚持学习人生的有无限可能
-            </p>
+            <span className="home-motif-badge" aria-hidden="true">
+              <Icon name="spark" className="h-4 w-4" />
+            </span>
             <span className="home-rule-right flex-1" />
           </div>
         ) : null}
