@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.58] - 2026-11-26
+
+### Changed
+- 项目卡片功能组移除「添加任务」按钮，添加任务统一在项目管理弹层内完成。
+- 项目页图标按钮改用应用内自定义悬停提示，约 0.32 秒出现，不再等待原生 title 的约 1 秒气泡。
+- 项目复盘弹层增加可见标题「项目复盘」，项目选择改为暖白自定义下拉，生成按钮增加图标；复盘查看弹层也补充「项目复盘」标识。
+- 项目与任务弹层增加可见标题「项目与任务」，主项目选择改为同一套自定义下拉，图标按钮补充悬停说明。
+
+### Verification
+- `npm run test` 150 passed；`npx tsc --noEmit` 0；`npm run build` 0。
+- `verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 9/9、`verify_task_quadrant_ui_402` 10/10、`verify_project_ui_512` 26/26。
+
 ## [0.2.57] - 2026-11-25
 
 ### Changed

@@ -1692,3 +1692,12 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 左上状态按钮改为居中弹层（已完成/进行中/逾期）；左栏底部新增项目跟进历史会话模块，默认折叠，点击回首页继续。首页恢复书法标语「坚持学习人生的有无限可能」。
 - 实际执行：`npm run test` 150 passed；`npx tsc --noEmit` 0；`npm run build` 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 7/7、`verify_task_quadrant_ui_402` 10/10。
 - 未验证：真实项目跟进历史会话数量与点击回首页链路、任务条/项目卡悬停展开的真实指针动效、窗口较窄时的 3 卡回落与单列布局。
+
+## OD-UI-902 验收细节修正（2026-11-26）
+
+- 项目卡片功能组去掉添加任务，只保留「管理项目与任务」「生成项目复盘」；添加任务从项目管理弹层进入。
+- 图标按钮统一改用全局 `data-hover-hint`，约 320ms 出现暖白提示卡；移除任务条/卡片/文件夹/关闭按钮上的原生 `title`，避免约 1 秒后才出现的系统气泡。
+- 复盘弹层增加可见标题「项目复盘」，项目选择换成自定义暖白下拉，生成按钮加 spark 图标；复盘正文弹层补充「项目复盘」标识。
+- 项目与任务弹层增加可见标题「项目与任务」，主项目选择换成同一套自定义下拉，图标按钮补齐悬停说明。
+- 实际执行：`npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0；`verify_project_601` 15/15、`verify_project_602` 18/18、`verify_project_ui_716` 9/9、`verify_task_quadrant_ui_402` 10/10、`verify_project_ui_512` 26/26。
+- 未验证：用户本轮自行验收；未在真实 Tauri 窗口逐项检查原生下拉替换后的键盘操作与 320ms 提示的实际手感。
