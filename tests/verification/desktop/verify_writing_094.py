@@ -279,6 +279,35 @@ def main() -> int:
         "showTypeLabels" in desk_tsx and "stalePaths" in desk_tsx,
         "成果页签复用成果浏览器",
     )
+    collect_panel = (SRC / "shell" / "WritingCollectPanel.tsx").read_text(encoding="utf-8")
+    check(
+        "writing_demand_transition",
+        "需求待整理" in desk_tsx
+        and 'to: "素材收集中"' in desk_tsx
+        and "confirmDemand" in desk_tsx,
+        "需求确认后可进入素材收集",
+    )
+    check(
+        "writing_collect_panel",
+        "WritingCollectPanel" in desk_tsx
+        and "writingCollectMaterials" in collect_panel
+        and "writingSelectMaterials" in collect_panel,
+        "素材候选可采纳进可信素材包",
+    )
+    check(
+        "writing_next_step",
+        "selectedPackCount" in desk_tsx
+        and "确认需求，开始收集素材" in desk_tsx
+        and "收集素材" in desk_tsx,
+        "状态对应下一步动作",
+    )
+    check(
+        "writing_conversation_handoff",
+        "onUseForWriting" in desk_tsx
+        and "initialRequirement" in workbench
+        and "带入写作" in studio_tsx,
+        "写作对话可带入新建需求",
+    )
     check("no_subtitle_props_in_studio", "subtitle" not in studio_tsx, "区块标题只用中文")
     check(
         "no_subtitle_props_in_scene",

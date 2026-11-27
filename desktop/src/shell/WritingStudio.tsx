@@ -191,11 +191,13 @@ export function WritingInspirationShelf({
   nowSeconds,
   onOpenThread,
   onNewThread,
+  onUseForWriting,
 }: {
   threads: SceneThread[];
   nowSeconds: number;
   onOpenThread: (id: string) => void;
   onNewThread: () => void;
+  onUseForWriting?: (thread: SceneThread) => void;
 }) {
   return (
     <section aria-label="写作对话" className={CARD} data-writing-inspiration="">
@@ -219,27 +221,40 @@ export function WritingInspirationShelf({
         <ul className="pt-3 flex flex-col gap-1.5 max-h-[260px] overflow-y-auto">
           {threads.slice(0, 12).map((t, i) => (
             <li key={t.id}>
-              <button
-                onClick={() => onOpenThread(t.id)}
-                className="group w-full text-left rounded-xl px-2.5 py-2 hover:bg-surface-container-low border border-transparent hover:border-primary/20 min-w-0"
-                data-hover-hint={t.title}
-                data-inspiration-thread={t.id}
-              >
-                <span className="flex items-baseline gap-2 min-w-0">
-                  <span className="mono shrink-0 text-[9.5px] text-outline/70">
-                    {String(i + 1).padStart(2, "0")}
+              <div className="flex items-start gap-1">
+                <button
+                  onClick={() => onOpenThread(t.id)}
+                  className="group min-w-0 flex-1 text-left rounded-xl px-2.5 py-2 hover:bg-surface-container-low border border-transparent hover:border-primary/20"
+                  data-hover-hint={t.title}
+                  data-inspiration-thread={t.id}
+                >
+                  <span className="flex items-baseline gap-2 min-w-0">
+                    <span className="mono shrink-0 text-[9.5px] text-outline/70">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span className="min-w-0 flex-1 text-[12px] text-on-surface line-clamp-2 leading-snug break-words">
+                      {t.title || "未命名对话"}
+                    </span>
                   </span>
-                  <span className="min-w-0 flex-1 text-[12px] text-on-surface line-clamp-2 leading-snug break-words">
-                    {t.title || "未命名对话"}
+                  <span className="mt-1 flex items-center gap-2 pl-[22px] text-[10px] text-outline">
+                    <span>{relativeUpdated(t.updatedAt, nowSeconds)}</span>
+                    <span className="ml-auto text-primary opacity-0 group-hover:opacity-100">
+                      继续对话 →
+                    </span>
                   </span>
-                </span>
-                <span className="mt-1 flex items-center gap-2 pl-[22px] text-[10px] text-outline">
-                  <span>{relativeUpdated(t.updatedAt, nowSeconds)}</span>
-                  <span className="ml-auto text-primary opacity-0 group-hover:opacity-100">
-                    继续对话 →
-                  </span>
-                </span>
-              </button>
+                </button>
+                {onUseForWriting ? (
+                  <button
+                    type="button"
+                    className="shrink-0 self-center rounded-full px-2 py-1 text-[9.5px] text-primary hover:bg-primary/10"
+                    onClick={() => onUseForWriting(t)}
+                    data-use-thread-for-writing={t.id}
+                    data-hover-hint="把这段对话带入写作台，作为新写作需求"
+                  >
+                    带入写作
+                  </button>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>

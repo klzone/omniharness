@@ -144,9 +144,12 @@ function TaskRow({ task, onOpen }: { task: WritingTask; onOpen: (id: string) => 
  */
 export function WritingWorkbench({
   onOpenTask,
+  initialRequirement,
 }: {
   /** 传了就打开新的写作台；不传则沿用内置任务详情（旧页面兼容）。 */
   onOpenTask?: (writingId: string) => void;
+  /** 从写作对话带入的原始需求；只在创建新任务前预填。 */
+  initialRequirement?: string;
 } = {}) {
   const [items, setItems] = useState<WritingTask[]>([]);
   const [broken, setBroken] = useState(0);
@@ -157,13 +160,17 @@ export function WritingWorkbench({
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialRequirement ?? "");
   const [parsing, setParsing] = useState(false);
   const [parseHint, setParseHint] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [draft, setDraft] = useState<WritingRequirementDraft | null>(null);
   const [answers, setAnswers] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (initialRequirement) setInput(initialRequirement);
+  }, [initialRequirement]);
 
   useEffect(() => {
     let alive = true;

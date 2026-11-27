@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { ArtifactExplorer } from "./ArtifactExplorer";
 import { WritingArchivePanel } from "./WritingArchivePanel";
+import { WritingCollectPanel } from "./WritingCollectPanel";
 import { WritingFactCheckPanel } from "./WritingFactCheckPanel";
 import { WritingInspirationShelf } from "./WritingStudio";
 import { WritingMaterialBasket } from "./WritingMaterialBasket";
@@ -28,6 +29,7 @@ type DrawerState =
   | { kind: "library"; tab: LibraryTab }
   | { kind: "outline" }
   | { kind: "section"; sectionNo: number }
+  | { kind: "collect" }
   | { kind: "materials" }
   | { kind: "factcheck" }
   | { kind: "versions" }
@@ -171,6 +173,8 @@ function LibraryDrawer({
   onOpenThread,
   onNewThread,
   onNavigateHome,
+  initialRequirement,
+  onUseForWriting,
   onOpenOutline,
   onOpenSection,
 }: {
@@ -192,6 +196,8 @@ function LibraryDrawer({
   onOpenThread: (id: string) => void;
   onNewThread: () => void;
   onNavigateHome: () => void;
+  initialRequirement?: string;
+  onUseForWriting?: (thread: SceneThread) => void;
   onOpenOutline: () => void;
   onOpenSection: () => void;
 }) {
@@ -238,7 +244,10 @@ function LibraryDrawer({
                   </button>
                 </div>
               ) : null}
-              <WritingWorkbench onOpenTask={onOpenTask} />
+              <WritingWorkbench
+                onOpenTask={onOpenTask}
+                initialRequirement={initialRequirement}
+              />
             </>
           ) : tab === "artifacts" ? (
             <>
@@ -288,6 +297,7 @@ function LibraryDrawer({
                 nowSeconds={nowSeconds}
                 onOpenThread={onOpenThread}
                 onNewThread={onNewThread}
+                onUseForWriting={onUseForWriting}
               />
             </>
           )}
@@ -332,6 +342,7 @@ export function WritingDesk({
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [prefillRequirement, setPrefillRequirement] = useState("");
   const [contextTab, setContextTab] = useState<"materials" | "factcheck" | "versions">("materials");
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -507,6 +518,7 @@ export function WritingDesk({
         setWritingId(writingIdToOpen);
         setTask(next);
         writeActiveId(writingIdToOpen);
+        setPrefillRequirement("");
         setDrawer(null);
         setNotice(next ? null : { kind: "err", text: "稿件列表里没有找到这份任务。" });
         return;
@@ -518,6 +530,7 @@ export function WritingDesk({
     setWritingId(writingIdToOpen);
     setTask(found);
     writeActiveId(writingIdToOpen);
+    setPrefillRequirement("");
     setDrawer(null);
     setNotice(null);
   }
@@ -555,37 +568,121 @@ export function WritingDesk({
     }
   }
 
-  let primary = {
+  async function confirmDemand() {
+    if (!task) return;
+    try {
+      await shell.writingStatusTransition({
+        writing_id: task.writing_id,
+        to: "素材收集中",
+        reason: "用户确认写作需求",
+      });
+      setNotice({ kind: "ok", text: "需求已确认，开始收集素材。" });
+      bump();
+    } catch (error) {
+      setNotice({ kind: "err", text: errText(error) });
+    }
+  }
+
+  function useThreadForWriting(thread: SceneThread) {
+    const messages = thread.messages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => (message.role === "user" ? "【我】" : "【AI】") + " " + message.text.trim())
+      .filter((line) => line.trim().length > 0);
+    const text = ("对话主题：" + thread.title + "\n\n" + messages.join("\n\n")).slice(0, 8000);
+    setPrefillRequirement(text);
+    setDrawer({ kind: "library", tab: "tasks" });
+  }
+
+  const selectedPackCount = task
+    ? task.selected_material_ids.length + task.selected_knowledge_ids.length
+    : 0;
+
+  type NextStep = { title: string; detail: string; label: string; run: () => void };
+  let nextStep: NextStep = {
+    title: "材料写作",
+    detail: "选择一份稿件继续，或从一段写作需求开始。",
     label: "所有稿件",
     run: () => openLibrary("tasks"),
   };
   if (task) {
     switch (task.status) {
       case "需求待整理":
+        nextStep = {
+          title: "需求待整理",
+          detail: "先核对左侧文档简报；确认需求后进入素材收集。",
+          label: "确认需求，开始收集素材",
+          run: () => void confirmDemand(),
+        };
+        break;
       case "素材收集中":
+        nextStep = selectedPackCount > 0
+          ? {
+              title: "素材收集中",
+              detail: "素材包已就绪，可以生成大纲。",
+              label: "生成大纲",
+              run: () => setDrawer({ kind: "outline" }),
+            }
+          : {
+              title: "素材收集中",
+              detail: "先在素材收集里采纳至少一条素材或知识依据。",
+              label: "收集素材",
+              run: () => setDrawer({ kind: "collect" }),
+            };
+        break;
       case "大纲待确认":
-        primary = { label: "编辑大纲", run: () => setDrawer({ kind: "outline" }) };
+        nextStep = {
+          title: "大纲待确认",
+          detail: "生成或修改大纲，确认后进入写作。",
+          label: "编辑大纲",
+          run: () => setDrawer({ kind: "outline" }),
+        };
         break;
       case "写作中":
-        primary = {
+        nextStep = {
+          title: "写作中",
+          detail: "逐章生成或编辑正文。",
           label: "编辑本章",
           run: () => setDrawer({ kind: "section", sectionNo: activeSectionNo ?? 1 }),
         };
         break;
       case "待核验":
       case "待审核":
-        primary = { label: "开始核验", run: () => setDrawer({ kind: "factcheck" }) };
+        nextStep = {
+          title: "待核验",
+          detail: "核验事实与引用，处理冲突后再提交审阅。",
+          label: "开始核验",
+          run: () => setDrawer({ kind: "factcheck" }),
+        };
         break;
       case "已定稿":
-        primary = { label: "导出", run: () => setExportOpen(true) };
+        nextStep = {
+          title: "已定稿",
+          detail: "导出 Word、PDF、Markdown 或公众号 HTML。",
+          label: "导出",
+          run: () => setExportOpen(true),
+        };
         break;
       case "已归档":
-        primary = { label: "查看成果", run: () => setDrawer({ kind: "archive" }) };
+        nextStep = {
+          title: "已归档",
+          detail: "这份材料已归档，可查看成果或复制为新稿。",
+          label: "查看成果",
+          run: () => setDrawer({ kind: "archive" }),
+        };
+        break;
+      case "已取消":
+        nextStep = {
+          title: "已取消",
+          detail: "这份任务已取消。",
+          label: "查看任务",
+          run: () => openLibrary("tasks"),
+        };
         break;
       default:
-        primary = { label: "查看任务", run: () => openLibrary("tasks") };
+        break;
     }
   }
+  const primary = { label: nextStep.label, run: nextStep.run };
 
   function renderDrawer() {
     if (!drawer) return null;
@@ -610,6 +707,8 @@ export function WritingDesk({
           onOpenThread={onOpenThread}
           onNewThread={onNewThread}
           onNavigateHome={onNavigateHome}
+          initialRequirement={prefillRequirement}
+          onUseForWriting={useThreadForWriting}
           onOpenOutline={() => setDrawer({ kind: "outline" })}
           onOpenSection={() => setDrawer({ kind: "section", sectionNo: activeSectionNo ?? 1 })}
         />
@@ -640,6 +739,19 @@ export function WritingDesk({
                 bump();
                 close();
               }}
+            />
+          </Drawer>
+        );
+      case "collect":
+        return (
+          <Drawer title="素材收集" onClose={close}>
+            <WritingCollectPanel
+              writingId={task.writing_id}
+              canNext={task.status === "素材收集中" || task.status === "大纲待确认"}
+              nextHint={task.status === "需求待整理" ? "先确认需求，再生成大纲。" : undefined}
+              onSelected={() => bump()}
+              onNext={() => setDrawer({ kind: "outline" })}
+              onOpenMaterials={() => setDrawer({ kind: "materials" })}
             />
           </Drawer>
         );
@@ -845,7 +957,7 @@ export function WritingDesk({
         <aside className="wd-rail" aria-label="大纲" data-writing-outline-rail="">
           <div className="wd-rail-head">
             <div className="wd-rail-title">大纲</div>
-            {!readOnly ? (
+            {!readOnly && (outline || task.status === "大纲待确认") ? (
               <button type="button" className="wd-rail-link" onClick={() => setDrawer({ kind: "outline" })}>
                 编辑
               </button>
@@ -927,7 +1039,7 @@ export function WritingDesk({
                   <button
                     type="button"
                     className="ml-auto text-[color:var(--od-neu-accent-ink)]"
-                    onClick={() => setDrawer({ kind: "materials" })}
+                    onClick={() => setDrawer({ kind: "collect" })}
                   >
                     管理
                   </button>
@@ -936,12 +1048,21 @@ export function WritingDesk({
             </>
           ) : (
             <div className="mt-3 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
-              <p>{outlineLoading ? "正在读取大纲…" : outlineError ? "大纲读取失败：" + outlineError : "尚未确认大纲。"}</p>
-              {!readOnly ? (
-                <button type="button" className="wr-primary-button mt-2" onClick={() => setDrawer({ kind: "outline" })}>
-                  编辑大纲
-                </button>
-              ) : null}
+              {outlineLoading ? (
+                <p>正在读取大纲…</p>
+              ) : outlineError ? (
+                <p>大纲读取失败：{outlineError}</p>
+              ) : (
+                <>
+                  <p className="font-medium text-[color:var(--od-neu-ink)]">{nextStep.title}</p>
+                  <p className="mt-1">{nextStep.detail}</p>
+                  {!readOnly ? (
+                    <button type="button" className="wr-primary-button mt-2" onClick={nextStep.run}>
+                      {nextStep.label}
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
           )}
         </aside>
@@ -1017,10 +1138,11 @@ export function WritingDesk({
               </>
             ) : (
               <div className="wd-empty-section mt-6">
-                <p>这份材料还没有大纲。</p>
+                <p className="font-medium text-[color:var(--od-neu-ink)]">{nextStep.title}</p>
+                <p className="mt-1">{nextStep.detail}</p>
                 {!readOnly ? (
-                  <button type="button" className="wr-primary-button mt-2" onClick={() => setDrawer({ kind: "outline" })}>
-                    编辑大纲
+                  <button type="button" className="wr-primary-button mt-2" onClick={nextStep.run}>
+                    {nextStep.label}
                   </button>
                 ) : null}
               </div>
@@ -1056,7 +1178,7 @@ export function WritingDesk({
                   <button
                     type="button"
                     className="ml-auto text-[color:var(--od-neu-accent-ink)]"
-                    onClick={() => setDrawer({ kind: "materials" })}
+                    onClick={() => setDrawer({ kind: "collect" })}
                   >
                     管理
                   </button>

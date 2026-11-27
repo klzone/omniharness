@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.61] - 2026-11-27
+
+### Fixed
+- 写作台补齐「需求待整理」到「素材收集中」的确认动作，主按钮、左侧大纲空态和纸面空态都会给出当前状态的下一步，不再统一跳到会被状态门禁拒绝的大纲编辑器。
+- 素材收集中新增素材收集面板：列出宿主推荐候选，支持采纳/移出素材与知识；选够后可直接进入生成大纲。
+- 写作对话增加「带入写作」入口，把对应线程的最近对话内容预填到新建写作需求，解决首页想法无法进入写作页的问题。
+- 需求待整理和素材收集中阶段不再显示容易误导的「编辑大纲」入口，改为按状态显示确认需求或收集素材。
+
+### Verification
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 67/67；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77；`verify_reading_004_formats` 19/19；`verify_reading_entity_2043` 7/7。
+
+---
+
 ## [0.2.60] - 2026-11-27
 
 ### Changed
