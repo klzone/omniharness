@@ -1322,15 +1322,23 @@ fn repair_structural_punctuation(text: &str) -> String {
             if ch == close || (close == '”' && ch == '"') {
                 // 字符串结束引号后面必须紧跟结构符号；否则多半是正文里的裸引号，
                 // 例如标题写成「关于"从严"治党的决定」。
-                let next_structural = chars
-                    .clone()
-                    .find(|next| !next.is_whitespace())
-                    .map_or(true, |next| {
-                        matches!(next, ',' | '，' | ':' | '：' | '}' | '｝' | ']' | '］' | '"')
-                    });
-                if close == '"' && !next_structural {
-                    out.push_str("\\\"");
-                    continue;
+                let next = chars.clone().find(|next| !next.is_whitespace());
+                if close == '"' {
+                    match next {
+                        // 下一个是引号说明漏了逗号，补上分隔再继续。
+                        Some('"') => {
+                            out.push('"');
+                            closer = None;
+                            out.push(',');
+                            continue;
+                        }
+                        Some(next) if matches!(next, ',' | '，' | ':' | '：' | '}' | '｝' | ']' | '］') => {}
+                        Some(_) => {
+                            out.push_str("\\\"");
+                            continue;
+                        }
+                        None => {}
+                    }
                 }
                 out.push('"');
                 closer = None;

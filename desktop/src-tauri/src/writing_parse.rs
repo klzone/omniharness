@@ -483,6 +483,17 @@ mod tests {
     }
 
     #[test]
+    fn salvages_missing_comma_between_members() {
+        let json = complete_payload().to_string();
+        let broken = json.replace(
+            "\"十一月份试点推进总结\",\"topic\"",
+            "\"十一月份试点推进总结\" \"topic\"",
+        );
+        let applied = validate_requirement_payload(&broken).unwrap();
+        assert_eq!(applied.draft.topic.as_deref(), Some("试点推进情况"));
+    }
+
+    #[test]
     fn truncated_payload_reports_clear_error() {
         let json = complete_payload().to_string();
         let cut: String = json.chars().take(json.chars().count() - 12).collect();

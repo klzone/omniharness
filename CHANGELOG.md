@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - 带入对话只保留最近十轮并逐条截断，最早一条用户发言保留，减少长对话给解析带来的噪声。
 
 ### Verification
-- `cargo test writing_parse --lib` 14 passed；`cargo test knowledge_ingest --lib` 29 passed。
+- `cargo test writing_parse --lib` 15 passed；`cargo test knowledge_ingest --lib` 29 passed。
 - `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
 - `verify_writing_094` 70/70；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77。
 
