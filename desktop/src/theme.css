@@ -5921,7 +5921,7 @@ button.wr-backlink:hover {
 .wd-body {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: 252px minmax(0, 1fr) 300px;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
   gap: 18px;
   min-height: 0;
   padding-top: 18px;
@@ -5929,7 +5929,7 @@ button.wr-backlink:hover {
 
 /* 需求与素材阶段还没有大纲，收起右侧上下文，把注意力留给当前这一步。 */
 .wd-body.is-early {
-  grid-template-columns: 282px minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
 }
 
 .wd-rail {
@@ -6153,7 +6153,7 @@ button.wr-backlink:hover {
 
 .wd-outline-row .wc {
   color: var(--od-neu-ink-3);
-  font-size: 10.5px;
+  font-size: 10px;
   white-space: nowrap;
 }
 
