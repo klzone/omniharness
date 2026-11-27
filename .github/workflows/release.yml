@@ -282,7 +282,7 @@ jobs:
             ### 使用前
             1. 装 Node.js 24.9+（https://nodejs.org）
             2. 装 Python 3.10+（https://www.python.org）
-            3. 解压后直接运行：Windows 双击 `OmniDesk.exe`；macOS 双击 `OmniDesk.app`（也可拖入「应用程序」）
+            3. 安装后运行：Windows 双击 `OmniDesk_*_x64-setup.exe` 按向导安装，完成后从开始菜单或桌面启动；macOS 打开 dmg，把 `OmniDesk.app` 拖入「应用程序」。
 
             macOS 包未做 Apple 签名/公证，首次打开若提示“无法验证开发者”，请右键点图标 → 打开，
             或在终端执行一次：

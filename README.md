@@ -68,18 +68,16 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 2. **本地优先**：数据放在本机可读、可备份的目录；文件与 Git 是当前状态、知识和评测资产的首选载体。
 3. **确认制**：AI 产生候选、建议和草稿，落盘、定稿、归档和状态迁移由人触发；未经确认的内容不进入可信集合。
 4. **事实优先**：文稿结论要能追溯到素材或知识原文；无来源不编造，冲突不合并。
-5. **可验证**：每次改动都通过源码、构建、测试和验收记录来证明；状态文件区分待实现、已实现、已测试和已验收。
+5. **可验证**：每次改动都通过源码、构建、测试和验收记录来证明；关键结论保留可回溯的验收记录。
 6. **可替换引擎**：不修改 DSH Runtime，不把其私有数据格式、UI 或内部实现当成产品边界；引擎变化不应绑死产品。
 
 ## 当前状态
 
-当前版本 0.2.59。功能仍在迭代，已实现与未验证的范围以 [STATUS.md](STATUS.md)、[REVIEW.md](REVIEW.md) 和 [GOALS.md](GOALS.md) 为准。
+当前版本 0.2.60。功能仍在迭代，产品方向以 [GOALS.md](GOALS.md) 为准，关键架构决策见 [docs/decisions.md](docs/decisions.md)。
 
 ## 安装与运行
 
-最新版本见 [Releases](https://github.com/klzone/omniharness/releases)：macOS 通用版 .dmg 与 Windows x64 .exe。
-
-> 2026-11-17：旧安装包已因个人资料清理下线。当前源码已清理，安装包将在 0.2.30 从清理后的源码重新构建并发布。
+最新发布见 [Releases](https://github.com/klzone/omniharness/releases)：macOS 通用版 .dmg 与 Windows x64 安装包。
 
 安装包内置 DSH 运行时和 Python 依赖模块；需要系统已安装 Node.js 24.9+ 与 Python 3.10+，首次启动会做依赖自检并明确提示缺项。
 
@@ -117,11 +115,7 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 
 ## 文档入口
 
-- [AGENTS.md](AGENTS.md)：AI 原生协作规则（单主 Agent + 按需 Eco 子 Agent）
 - [GOALS.md](GOALS.md)：产品方向与阶段目标
-- [PLANS.md](PLANS.md)：当前复杂或多阶段计划
-- [STATUS.md](STATUS.md)：实际执行与验证摘要
-- [REVIEW.md](REVIEW.md)：需要追溯的验收结论
 - [docs/decisions.md](docs/decisions.md)：架构决策
 
 ## License
@@ -129,6 +123,3 @@ OmniDesk 的开发目的不是再做一个聊天壳，而是验证一种更可�
 OmniDesk 自有代码（`desktop/`、`engine/`、`skills/`、`docs/` 等）采用 [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)。个人、学习、研究及非营利用途可免费使用；公司内部使用、为客户交付、付费产品、SaaS、转售和白标等商业用途须取得商业授权，见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
 
 `runtime/` 中的 DeepSeek Harness 及其依赖仍按各自许可证分发，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
-
-本授权自 0.2.30 起生效。0.2.29 及更早版本仍按 Apache-2.0 授权，已授予的权利不因本次变更收回。
-
