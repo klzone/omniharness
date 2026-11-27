@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.60] - 2026-11-27
+
+### Changed
+- 写作页改为文档居中的三栏写作台：左侧大纲与文档简报，中间纸面正文，右侧本章资料、核验与版本；任务、成果和写作对话收进「所有稿件」抽屉。
+- 写作台复用既有大纲、章节、素材、核验、版本和归档编辑器，统一放进抽屉；页面材质改用 `--od-neu-*` 新拟物令牌，纸面正文使用报告宋体。
+- 新增统一动作门禁 `action_gate`：引擎调用、模型写入和外联地址先经过同一判定入口，并把判定结果写入 `engine-state/action-gate/decisions.jsonl`。
+- Work Review 增加 A/B runner：同一批 12 道题比较两版提示词或两批已有输出；评分脚本支持 `--cases/--outputs`。
+
+### Verification
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0；`cargo test --lib` 1369 passed / 1 ignored。
+- `verify_writing_094` 63/63；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77；`verify_reading_004_formats` 19/19；`verify_reading_entity_2043` 7/7。
+
+---
+
 ## [0.2.59] - 2026-11-26
 
 ### Fixed

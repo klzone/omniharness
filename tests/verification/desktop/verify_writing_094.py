@@ -170,98 +170,126 @@ def main() -> int:
     check("ts_types_optional",
           "status?: string | null" in types_ts and "artifact_type?: string | null" in types_ts, "")
 
-    # ---- S01 指标四卡 ----
-    writing_branch = strip_tsx.split('scene.key === "writing" ? (')[1].split("</>")[0]
-    check("band_four_writing_metrics", writing_branch.count("<WritingMetric") == 4,
-          str(writing_branch.count("<WritingMetric")))
-    for label in ("本月成文", "进行中草稿", "写作对话", "最近更新"):
-        check("metric_" + label, f'label="{label}"' in writing_branch, "")
-    for icon in ("book", "edit", "spark", "clock"):
-        check("metric_icon_" + icon, f'icon="{icon}"' in writing_branch, "")
-    check("metric_this_month_from_overview",
-          "String(overview.artifacts_this_month)" in writing_branch, "宿主聚合")
-    check("metric_draft_from_artifact_meta",
-          "writingDraftCount === null ? \"—\"" in writing_branch, "未读到显 —")
-    check("metric_inspiration_from_threads",
-          "writingInspirationCount === null ? \"—\"" in writing_branch, "")
-    check("metric_recent_from_latest_artifact",
-          "relativeUpdated(overview?.latest_artifact_at ?? null, writingNow)" in writing_branch, "")
-    check("metric_distinct_from_weekly_tones",
-          all(t in strip_tsx for t in ("violet: {", "cyan: {", "ink: {", "ochre: {")),
-          "写作页用墨色/青绿/琥珀，不复用周报的紫青靛")
-    check("metric_unified_light_surface",
-          "bg-white/78" in strip_tsx and "border-white/90" in strip_tsx, "与知识库统一的浅色卡面")
-    check("metric_no_zero_before_load",
-          'scene === "writing" && artifactsLoaded && !artifactsError' in scene_tsx
-          and "writingCounts ? writingCounts.draft : null" in scene_tsx,
-          "成果未读到时给 null 而不是 0")
-    check("metric_load_state_tracked",
-          "setArtifactsLoaded(false)" in scene_tsx and "setArtifactsLoaded(true)" in scene_tsx, "")
+    # ---- OD-WD-001 写作台 ----
+    desk_tsx = (SRC / "shell" / "WritingDesk.tsx").read_text(encoding="utf-8")
+    theme_css = (SRC / "theme.css").read_text(encoding="utf-8")
+    workbench = (SRC / "shell" / "WritingWorkbench.tsx").read_text(encoding="utf-8")
+    section_editor = (SRC / "shell" / "WritingSectionEditor.tsx").read_text(encoding="utf-8")
 
-    # ---- S02 三栏 ----
-    check("writing_board_exists", 'data-writing-board=""' in scene_tsx, "")
-    check("writing_three_columns",
-          "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]" in scene_tsx
-          and "[grid-template-areas:'left_pipeline_artifacts']" in scene_tsx, "")
-    check("writing_board_nav_width",
-          scene_tsx.count('data-board-width="nav"') == 2, "与工作记录页同宽")
-    check("writing_narrow_order",
-          all(t in scene_tsx for t in ("max-lg:order-1", "max-lg:order-2", "max-lg:order-3")),
-          "窄窗 左 → 中 → 右")
-    check("writing_continue_and_shelf_in_left",
-          scene_tsx.index("<WritingContinueCard") < scene_tsx.index("<WritingInspirationShelf")
-          < scene_tsx.index("<WritingPipeline"), "左栏上继续创作、下写作对话")
-    check("writing_page_has_no_extra_thread_block",
-          'scene === "weekly" || scene === "writing" || scene === "project" ? null' in scene_tsx,
-          "写作页不在底部重复渲染会话历史")
-    check("inspiration_opens_thread_home",
-          "onOpenThread={openThread}" in scene_tsx and "requestOpenThread(id)" in scene_tsx, "")
-    check("inspiration_no_new_storage",
-          "localStorage" not in studio_tsx and "saveThread" not in studio_tsx, "不新增存储格式")
-    check("writing_no_editor",
-          "textarea" not in studio_tsx.lower() and "contentEditable" not in studio_tsx,
-          "本页不承载编辑器")
-
-    # ---- S02/S04 稿件分组 ----
-    check("pipeline_three_groups",
-          all(f'key: "{k}"' in (SRC / "writingStudio.ts").read_text(encoding="utf-8")
-              for k in ("draft", "finished", "published")), "")
-    check("pipeline_groups_clickable",
-          "onStatusFilter(active ? null : s.key)" in studio_tsx, "再点取消")
-    check("pipeline_no_default_note",
-          "STATUS_DEFAULT_NOTE" not in studio_tsx and "口径：" not in studio_tsx,
-          "不在页面上堆口径说明")
-    check("pipeline_directory_rows_excluded",
-          "files.filter((f) => !f.is_dir)" in studio_tsx, "")
-    check("pipeline_two_line_titles",
-          "line-clamp-2" in studio_tsx, "")
-    check("stale_filter_present",
-          "data-stale-filter" in studio_tsx and "超过 90 天未动" in studio_tsx, "")
-    check("stale_filter_does_not_mutate",
-          "只改视图" in scene_tsx or "setWritingStaleOnly" in scene_tsx, "")
-
-    # ---- S04 右栏类型标签 ----
-    check("artifact_type_labels_opt_in",
-          "showTypeLabels = false" in art_tsx and "showTypeLabels" in scene_tsx, "")
-    check("artifact_type_from_host_first",
-          "typeLabel(r.artifact_type ?? m?.type ?? null)" in art_tsx, "宿主字段优先")
-    check("artifact_accent_primary",
-          'accent="primary"' in scene_tsx and 'accent?: "primary" | "secondary"' in art_tsx, "")
-    check("artifact_stale_marker",
-          "stalePaths" in art_tsx and "data-artifact-stale" in art_tsx, "")
-    check("artifact_writing_keeps_toolbar",
-          'compactToolbar' not in scene_tsx.split('data-writing-board=""')[1].split("</>")[0],
-          "写作页保留时间筛选（固定近一月的规则只属于工作记录页）")
-
-    # ---- 写作页不再有英文副标题或解释性标题 ----
-    check("no_subtitle_props_in_studio",
-          "subtitle" not in studio_tsx, "区块标题只用中文")
-    check("no_subtitle_props_in_scene",
-          "def.subtitles" not in scene_tsx.split('scene === "writing" ? (')[1].split('scene === "weekly" ? (')[0],
-          "写作页不接场景副标题")
-    check("no_writing_english_keys",
-          "studio:" not in scenes_ts.split('writing: {')[1].split("project: {")[0],
-          "写作场景配置不再带英文小标")
+    check("writing_desk_component", "export function WritingDesk" in desk_tsx, "")
+    check(
+        "writing_desk_three_zones",
+        all(token in desk_tsx for token in ("wd-page", "wd-body", "wd-rail", "wd-paper")),
+        "页头 + 左大纲 + 中纸面 + 右上下文",
+    )
+    check("writing_desk_paper_entry", 'data-writing-paper=""' in desk_tsx, "")
+    check(
+        "writing_desk_outline_rail",
+        'data-writing-outline-rail=""' in desk_tsx and "本章提示" in desk_tsx,
+        "",
+    )
+    check(
+        "writing_desk_context_rail",
+        'data-writing-context-rail=""' in desk_tsx and "本章上下文" in desk_tsx,
+        "",
+    )
+    check(
+        "writing_desk_library_drawer",
+        'data-writing-library=""' in desk_tsx
+        and 'data-writing-library-tab={item.key}' in desk_tsx
+        and all(f'key: "{tab}", label:' in desk_tsx for tab in ("tasks", "artifacts", "threads")),
+        "稿件 / 成果 / 对话三页签",
+    )
+    check(
+        "writing_desk_history_entries",
+        "← 所有稿件" in desk_tsx and "所有稿件" in desk_tsx and "对话" in desk_tsx,
+        "左上角回稿件库，右上角对话",
+    )
+    check(
+        "writing_desk_reuses_editors",
+        all(
+            name in desk_tsx
+            for name in (
+                "WritingOutlineEditor",
+                "WritingSectionEditor",
+                "WritingFactCheckPanel",
+                "WritingVersionPanel",
+                "WritingArchivePanel",
+                "WritingMaterialBasket",
+            )
+        ),
+        "复用既有编辑器，放进抽屉",
+    )
+    check(
+        "writing_desk_five_stage",
+        all(label in desk_tsx for label in ("需求", "大纲", "写作", "核验", "定稿")),
+        "",
+    )
+    check(
+        "writing_desk_neu_ui",
+        all(
+            token in desk_tsx
+            for token in (
+                "wr-primary-button",
+                "wr-ghost-button",
+                "wr-icon-button",
+                "var(--od-neu-sunken)",
+            )
+        )
+        and all(
+            token in theme_css
+            for token in ("var(--od-neu-surface-high)", "var(--od-neu-raise-2)")
+        ),
+        "新拟物按钮与材质",
+    )
+    check(
+        "writing_desk_report_serif",
+        "var(--font-report-serif)" in theme_css,
+        "纸面正文用报告宋体",
+    )
+    check(
+        "writing_desk_theme_classes",
+        all(cls in theme_css for cls in (".wd-page", ".wd-rail", ".wd-paper", ".wd-drawer")),
+        "",
+    )
+    check(
+        "scene_uses_writing_desk",
+        'import { WritingDesk } from "./WritingDesk"' in scene_tsx and "<WritingDesk" in scene_tsx,
+        "",
+    )
+    check(
+        "scene_old_writing_board_removed",
+        "<WritingPipeline" not in scene_tsx
+        and "<WritingContinueCard" not in scene_tsx
+        and "<WritingInspirationShelf" not in scene_tsx,
+        "旧三栏管理页退出主画布",
+    )
+    check(
+        "workbench_opens_desk",
+        "onOpenTask" in workbench and "onOpenTask(created.task.writing_id)" in workbench,
+        "稿件库选中任务后进入写作台",
+    )
+    check(
+        "section_initial_section",
+        "initialSectionNo" in section_editor and "initialSectionNo !== undefined" in section_editor,
+        "章节抽屉可定位到当前章",
+    )
+    check(
+        "artifact_explorer_in_library",
+        "showTypeLabels" in desk_tsx and "stalePaths" in desk_tsx,
+        "成果页签复用成果浏览器",
+    )
+    check("no_subtitle_props_in_studio", "subtitle" not in studio_tsx, "区块标题只用中文")
+    check(
+        "no_subtitle_props_in_scene",
+        "def.subtitles" not in scene_tsx.split('scene === "writing" ? (')[1].split('scene === "weekly" ? (')[0],
+        "写作台不接场景副标题",
+    )
+    check(
+        "no_writing_english_keys",
+        "studio:" not in scenes_ts.split('writing: {')[1].split("project: {")[0],
+        "写作场景配置不再带英文小标",
+    )
 
     # ---- 编译并执行真实派生模块 ----
     tmp = Path(tempfile.mkdtemp(prefix="od094-"))

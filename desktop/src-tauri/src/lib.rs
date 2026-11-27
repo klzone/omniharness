@@ -9,6 +9,7 @@
 //! 本层把 IPC-2（Rust ↔ Python）归一化结果，再以 Tauri 命令/事件的形式交给 UI（IPC-1）。
 //! UI 永远看不到 ACP / DSH 内部字段。
 
+pub mod action_gate;
 pub mod admission;
 pub mod app_paths;
 pub mod capabilities;
@@ -257,9 +258,32 @@ where
         .map_err(|reason| engine_call_blocked(&reason))?;
 
     let (config, config_dir) = admission_context(state)?;
-    let admitted = admission::check(&config, &config_dir, refusal)
-        .map_err(admission_denied)?
-        .stamp_epoch(gate.epoch());
+    let admitted = match action_gate::authorize_engine(
+        &config,
+        &config_dir,
+        refusal,
+        Some(&config.engine_state_dir),
+    ) {
+        action_gate::Decision::Allow(admitted) => admitted.stamp_epoch(gate.epoch()),
+        action_gate::Decision::Deny {
+            code,
+            message,
+            detail,
+        } => {
+            return Err(serde_json::json!({
+                "engine_error_code": code,
+                "message": message,
+                "detail": detail,
+            }));
+        }
+        action_gate::Decision::NeedConfirm { .. } => {
+            return Err(serde_json::json!({
+                "engine_error_code": "admission_need_confirm",
+                "message": "准入判定返回了待确认，不能用于引擎调用。",
+                "detail": { "enforced_by": "host" },
+            }));
+        }
+    };
     // 非重入校验：守卫已持有互斥锁，直接读它持有的世代，**不得**再调用
     // lifecycle.is_current()（会自锁 —— OD-ARCH-024 修复）。
     if gate.current_epoch() != admitted.grant().epoch() {
@@ -291,9 +315,32 @@ where
         .begin_call()
         .map_err(|reason| engine_call_blocked(&reason))?;
     let (config, config_dir) = admission_context(state)?;
-    let admitted = admission::check(&config, &config_dir, refusal)
-        .map_err(admission_denied)?
-        .stamp_epoch(gate.epoch());
+    let admitted = match action_gate::authorize_engine(
+        &config,
+        &config_dir,
+        refusal,
+        Some(&config.engine_state_dir),
+    ) {
+        action_gate::Decision::Allow(admitted) => admitted.stamp_epoch(gate.epoch()),
+        action_gate::Decision::Deny {
+            code,
+            message,
+            detail,
+        } => {
+            return Err(serde_json::json!({
+                "engine_error_code": code,
+                "message": message,
+                "detail": detail,
+            }));
+        }
+        action_gate::Decision::NeedConfirm { .. } => {
+            return Err(serde_json::json!({
+                "engine_error_code": "admission_need_confirm",
+                "message": "准入判定返回了待确认，不能用于引擎调用。",
+                "detail": { "enforced_by": "host" },
+            }));
+        }
+    };
     // 非重入校验（同 with_engine_call）：不得在守卫内再次加锁。
     if gate.current_epoch() != admitted.grant().epoch() {
         return Err(engine_call_blocked("权限世代已变化"));
@@ -387,11 +434,6 @@ fn stop_settings_service(app: &tauri::AppHandle) {
             .unwrap_or_default();
         service.stop(&record);
     }
-}
-
-/// 准入拒绝时的统一结构（与 admission.rs 的错误码一致）。
-fn admission_denied(err: serde_json::Value) -> serde_json::Value {
-    err
 }
 
 /// 读取引擎描述（会确保子进程已启动并完成 initialize）。
@@ -5534,8 +5576,19 @@ async fn reading_refresh_content(
 
 /// RSS 正文里的远程图片：http/https、最多 2 跳重定向、10s 超时、8 MiB 上限。
 #[tauri::command]
-async fn reading_remote_media(url: String) -> Result<task_shell::ReadingMediaPayload, String> {
-    tauri::async_runtime::spawn_blocking(move || task_shell::read_remote_media(&url))
+async fn reading_remote_media(
+    state: State<'_, SharedHost>,
+    url: String,
+) -> Result<task_shell::ReadingMediaPayload, String> {
+    let audit_dir = {
+        let host = state
+            .lock()
+            .map_err(|_| "宿主状态锁不可用。".to_string())?;
+        host.paths.engine_state.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        task_shell::read_remote_media(&url, Some(&audit_dir))
+    })
         .await
         .map_err(|e| format!("图片读取任务异常退出：{e}"))?
 }
@@ -9684,6 +9737,17 @@ fn pending_write_dir(state: &State<'_, SharedHost>) -> std::path::PathBuf {
     pending_writes::dir(&host.paths.engine_state)
 }
 
+/// 待确认记录目录与审计目录。两者都在引擎状态根下，但用途不同。
+fn pending_write_paths(
+    state: &State<'_, SharedHost>,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let host = state.lock().unwrap();
+    (
+        pending_writes::dir(&host.paths.engine_state),
+        host.paths.engine_state.clone(),
+    )
+}
+
 /// 场景状态汇总（OD-ARCH-060 S1/S5）。
 ///
 /// 只读取宿主机自己落盘的两类元数据：待确认写入记录（不含正文）与成果目录列表
@@ -9729,10 +9793,15 @@ fn pending_write_create(
     state: State<'_, SharedHost>,
     request: pending_writes::CreatePendingWrite,
 ) -> Result<serde_json::Value, String> {
-    let dir = pending_write_dir(&state);
+    let (dir, engine_state) = pending_write_paths(&state);
     let now = task_shell::now_secs();
-    pending_writes::create(&dir, &request, now)
-        .map(|record| serde_json::json!(record.view(now)))
+    match action_gate::authorize_model_write(&dir, &request, now, Some(&engine_state)) {
+        action_gate::Decision::Allow(record)
+        | action_gate::Decision::NeedConfirm {
+            permit: record, ..
+        } => Ok(serde_json::json!(record.view(now))),
+        action_gate::Decision::Deny { message, .. } => Err(message),
+    }
 }
 
 /// 列出待确认记录（新的在前）。损坏的记录只计数，不伪造内容。
@@ -9755,12 +9824,21 @@ fn pending_write_confirm(
     let _guard = PENDING_CONFIRM_LOCK
         .lock()
         .map_err(|_| "确认通道不可用（锁已损坏），未执行写入。".to_string())?;
-    let dir = pending_write_dir(&state);
+    let (dir, engine_state) = pending_write_paths(&state);
     let now = task_shell::now_secs();
     // 先载入以拿到登记时的正文；随后用同一份正文回校验，任何前端改动都会被拒。
-    let record = pending_writes::load(&dir, &id)?;
-    let validated =
-        pending_writes::validate_for_write(&dir, &id, &record.payload, now)?;
+    let validated = match action_gate::authorize_confirmed_write(
+        &dir,
+        &id,
+        now,
+        Some(&engine_state),
+    ) {
+        action_gate::Decision::Allow(record) => record,
+        action_gate::Decision::Deny { message, .. } => return Err(message),
+        action_gate::Decision::NeedConfirm { .. } => {
+            return Err("确认动作不应返回待确认。".to_string())
+        }
+    };
     let request = task_shell::SaveOfflineRequest::from_record(&validated);
     // 写失败时保持 pending：调用方能看到错误，也能重试或放弃。
     let receipt = task_shell::save_offline_artifact(&request, now)?;
@@ -11620,14 +11698,26 @@ mod engine_lifecycle_wiring_tests {
             );
         }
 
-        // 准入判定只允许出现在两个守卫辅助函数内部：
+        // 准入判定只允许经 action_gate 出现在两个守卫辅助函数内部：
         //   * with_engine_call（准入 + 启动引擎）
         //   * with_call_gate（准入 + 非启动副作用）
         // 出现第三处即说明又有入口在守卫之外取准入结果，本测试会失败。
         assert_eq!(
-            body.matches("admission::check(").count(),
+            body.matches("action_gate::authorize_engine(").count(),
             2,
-            "准入判定只允许出现在 with_engine_call 与 with_call_gate 内部（防止锁外取准入结果）"
+            "准入判定只允许经 action_gate::authorize_engine 出现在 with_engine_call 与 with_call_gate 内部"
+        );
+        assert!(
+            !body.contains("admission::check("),
+            "准入判定必须收口到 action_gate，不得在 lib.rs 直接调用 admission::check"
+        );
+        assert!(
+            !body.contains("pending_writes::create("),
+            "写动作必须先经 action_gate，不得在 lib.rs 直接调用 pending_writes::create"
+        );
+        assert!(
+            !body.contains("net_guard::assert_url_addresses("),
+            "外联动作必须先经 action_gate，不得在 lib.rs 直接调用 net_guard::assert_url_addresses"
         );
         assert!(
             !body.contains("permission_barrier"),

@@ -124,7 +124,7 @@ function ConflictSide({
     <button
       type="button"
       onClick={() => onLocate?.(side.section_no, side.paragraph_no)}
-      className="min-w-0 flex-1 rounded-lg border border-error/20 bg-white/85 px-2.5 py-2 text-left hover:border-error/45"
+      className="min-w-0 flex-1 rounded-lg border border-error/20 bg-[color:var(--od-neu-surface-high)] px-2.5 py-2 text-left hover:border-error/45"
       data-factcheck-conflict-side={`${side.section_no}:${side.paragraph_no}`}
     >
       <span className="flex items-baseline gap-1.5">
@@ -328,7 +328,7 @@ export function WritingFactCheckPanel({
             {conflicts.map((conflict, index) => (
               <div
                 key={`${conflict.metric}-${index}`}
-                className="rounded-lg bg-white/70 px-2.5 py-2"
+                className="rounded-lg bg-[color:var(--od-neu-surface-high)] px-2.5 py-2"
                 data-factcheck-conflict={conflict.metric}
               >
                 <p className="text-[10.5px] text-on-error-container">
@@ -370,11 +370,11 @@ export function WritingFactCheckPanel({
       </div>
 
       {records.length === 0 ? (
-        <div className="rounded-[18px] border border-white/80 bg-white/70 px-5 py-9 text-center text-[12px] text-outline" data-factcheck-empty="no-records">
+        <div className="rounded-[18px] border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface-high)] px-5 py-9 text-center text-[12px] text-outline" data-factcheck-empty="no-records">
           还没有核验记录。点「运行核验」开始。
         </div>
       ) : visible.length === 0 ? (
-        <div className="rounded-[18px] border border-white/80 bg-white/70 px-5 py-9 text-center text-[12px] text-outline" data-factcheck-empty="no-filter-match">
+        <div className="rounded-[18px] border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface-high)] px-5 py-9 text-center text-[12px] text-outline" data-factcheck-empty="no-filter-match">
           该结论下暂无记录。
         </div>
       ) : (
@@ -442,7 +442,7 @@ export function WritingFactCheckPanel({
                     type="button"
                     onClick={() => void resolve(record, resolution)}
                     disabled={Boolean(busy) || record.resolution === resolution}
-                    className="rounded-lg border border-outline-variant/55 bg-white/75 px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
+                    className="rounded-lg border border-outline-variant/55 bg-[color:var(--od-neu-surface-high)] px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
                     data-factcheck-resolve={resolution}
                   >
                     {busy === `${record.record_id}:${resolution}` ? "处理中…" : resolution}

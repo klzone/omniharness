@@ -31,7 +31,7 @@ type DraftOrigin = "generated" | "revised";
 type Peek = { title: string; body: string };
 
 const CARD =
-  "bg-white/78 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]";
+  "bg-[color:var(--od-neu-surface-high)] border border-[color:var(--od-neu-line)] rounded-[20px] shadow-[var(--od-neu-raise-2)]";
 const FIELD =
   "neu-inset-field w-full rounded-lg px-2.5 py-1.5 text-[11.5px] leading-relaxed text-on-surface outline-none placeholder:text-outline/70 disabled:opacity-70";
 
@@ -183,6 +183,8 @@ function SegmentPill({ segment }: { segment: WritingSectionSegment }) {
 
 export interface WritingSectionEditorProps {
   writingId: string;
+  /** 抽屉打开时默认定位的章节；不传则用第一章。 */
+  initialSectionNo?: number;
   /** 章节确认后回调；父页面可刷新任务状态或核验页签。 */
   onSectionConfirmed?: (confirmed: WritingSectionConfirmed) => void;
   className?: string;
@@ -195,6 +197,7 @@ export interface WritingSectionEditorProps {
  */
 export function WritingSectionEditor({
   writingId,
+  initialSectionNo,
   onSectionConfirmed,
   className,
 }: WritingSectionEditorProps) {
@@ -251,7 +254,13 @@ export function WritingSectionEditor({
         if (!alive) return;
         if (!confirmedOutline) return;
         setOutline(confirmedOutline);
-        setSelectedNo(confirmedOutline.outline.sections[0]?.no ?? null);
+        const firstNo = confirmedOutline.outline.sections[0]?.no ?? null;
+        const preferred =
+          initialSectionNo !== undefined &&
+          confirmedOutline.outline.sections.some((section) => section.no === initialSectionNo)
+            ? initialSectionNo
+            : firstNo;
+        setSelectedNo(preferred);
         const results = await Promise.allSettled(
           confirmedOutline.outline.sections.map((section) =>
             shell.writingSectionGet(writingId, section.no),
@@ -285,7 +294,7 @@ export function WritingSectionEditor({
     return () => {
       alive = false;
     };
-  }, [writingId]);
+  }, [writingId, initialSectionNo]);
 
   useEffect(() => {
     setDraft(null);

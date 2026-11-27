@@ -26,7 +26,7 @@ type Phase = "idle" | "prepare" | "model" | "confirm";
 type Peek = { title: string; body: string };
 
 const CARD =
-  "bg-white/78 border border-white/90 rounded-[20px] shadow-[0_16px_40px_-12px_rgba(15,23,42,0.04)]";
+  "bg-[color:var(--od-neu-surface-high)] border border-[color:var(--od-neu-line)] rounded-[20px] shadow-[var(--od-neu-raise-2)]";
 const FIELD =
   "neu-inset-field w-full rounded-lg px-2.5 py-1.5 text-[11.5px] leading-relaxed text-on-surface outline-none placeholder:text-outline/70 disabled:opacity-70";
 const SECTION_BUTTON =

@@ -111,7 +111,12 @@ def main() -> int:
     check("net_guard_maps_ipv4_mapped", "to_ipv4_mapped()" in guard)
     check("net_guard_pins_resolved", "fn pin_client(" in guard and ".resolve(" in guard)
     check("rss_manual_redirect", "redirect::Policy::none()" in rss and "MAX_FEED_REDIRECTS" in rss)
-    check("rss_revalidates_each_hop", "assert_url_addresses(url, policy)" in rss)
+    check(
+        "rss_revalidates_each_hop",
+        "authorize_external_fetch(url, policy, audit_dir)" in rss
+        and "feed_client(policy, &current, audit_dir)" in rss
+        and "assert_url_addresses" not in rss,
+    )
     # 0.2.46：同主机降级放行，跨主机仍拒绝（判定在 net_guard::downgrade_permitted）。
     check(
         "rss_downgrade_policy",
@@ -126,7 +131,12 @@ def main() -> int:
         and "fn rss_settings_set_allow_private_feeds(" in reading_src
         and "commands::reading::rss_settings_set_allow_private_feeds," in lib
     )
-    check("media_guarded_each_hop", "assert_url_addresses(&current" in shell)
+    check(
+        "media_guarded_each_hop",
+        "authorize_external_fetch(" in shell
+        and "&current," in shell
+        and "assert_url_addresses" not in shell,
+    )
     check("media_public_only", "NetPolicy::PublicOnly" in shell)
     check("media_limit_8_mib", "REMOTE_IMAGE_MAX_BYTES: usize = 8 * 1024 * 1024" in shell)
     check(

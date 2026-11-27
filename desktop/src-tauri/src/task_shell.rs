@@ -3257,7 +3257,10 @@ fn attr_value<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
 /// 不受「允许内网订阅源」开关影响）；重定向由本函数逐跳处理（最多 2 跳，每跳重新
 /// 校验协议、地址并钉住解析结果），10 秒超时，响应必须是媒体白名单且不超过 8 MiB。
 /// 返回 base64 供前端转 data URL，避免 Tauri CSP 直接拦截远程 https 图片。
-pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> {
+pub fn read_remote_media(
+    url_text: &str,
+    audit_dir: Option<&Path>,
+) -> Result<ReadingMediaPayload, String> {
     let raw = url_text.trim();
     if raw.is_empty() {
         return Err("图片地址为空。".to_string());
@@ -3269,7 +3272,17 @@ pub fn read_remote_media(url_text: &str) -> Result<ReadingMediaPayload, String> 
     let mut hops = 0usize;
     let mut og_tried = false;
     loop {
-        let addrs = crate::net_guard::assert_url_addresses(&current, crate::net_guard::NetPolicy::PublicOnly)?;
+        let addrs = match crate::action_gate::authorize_external_fetch(
+            &current,
+            crate::net_guard::NetPolicy::PublicOnly,
+            audit_dir,
+        ) {
+            crate::action_gate::Decision::Allow(addrs) => addrs,
+            crate::action_gate::Decision::Deny { message, .. } => return Err(message),
+            crate::action_gate::Decision::NeedConfirm { .. } => {
+                return Err("外联地址判定不应返回待确认。".to_string())
+            }
+        };
         let client = crate::net_guard::pin_client(
             reqwest::blocking::Client::builder()
                 .timeout(REMOTE_IMAGE_TIMEOUT)
@@ -6132,7 +6145,7 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
         );
         // 测试专用：只在本线程放行回环，生产代码没有这个开关。
         crate::net_guard::allow_loopback_in_tests(true);
-        let payload = read_remote_media(&url).unwrap();
+        let payload = read_remote_media(&url, None).unwrap();
         crate::net_guard::allow_loopback_in_tests(false);
         assert_eq!(payload.mime, "image/png");
         assert_eq!(payload.bytes, 6);
@@ -6141,12 +6154,12 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
 
     #[test]
     fn remote_media_rejects_loopback_address_without_test_hook() {
-        let error = read_remote_media("http://127.0.0.1:9/image.png").unwrap_err();
+        let error = read_remote_media("http://127.0.0.1:9/image.png", None).unwrap_err();
         assert!(error.contains("禁止范围"), "{error}");
         assert!(error.contains("回环"), "{error}");
-        let error = read_remote_media("http://[::ffff:127.0.0.1]:9/image.png").unwrap_err();
+        let error = read_remote_media("http://[::ffff:127.0.0.1]:9/image.png", None).unwrap_err();
         assert!(error.contains("禁止范围"), "{error}");
-        let error = read_remote_media("http://169.254.169.254/latest/meta-data").unwrap_err();
+        let error = read_remote_media("http://169.254.169.254/latest/meta-data", None).unwrap_err();
         assert!(error.contains("禁止范围"), "{error}");
     }
 
@@ -6188,7 +6201,7 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
             ("HTTP/1.1 200 OK".to_string(), "Content-Type: image/png\r\n".to_string(), b"\x89PNG\r\n".to_vec()),
         ]);
         crate::net_guard::allow_loopback_in_tests(true);
-        let payload = read_remote_media(&url);
+        let payload = read_remote_media(&url, None);
         crate::net_guard::allow_loopback_in_tests(false);
         handle.join().unwrap();
         let payload = payload.expect("og:image 回退应成功");
@@ -6202,7 +6215,7 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
             ("HTTP/1.1 200 OK".to_string(), "Content-Type: application/octet-stream\r\n".to_string(), b"\x89PNG\r\n".to_vec()),
         ]);
         crate::net_guard::allow_loopback_in_tests(true);
-        let payload = read_remote_media(&url);
+        let payload = read_remote_media(&url, None);
         crate::net_guard::allow_loopback_in_tests(false);
         handle.join().unwrap();
         let payload = payload.expect("按文件头应识别为 png");
@@ -6211,15 +6224,15 @@ path.write_bytes(bytes(header) + bytes(infos) + b"".join(blobs))
 
     #[test]
     fn remote_media_rejects_non_http_scheme_and_non_image_type() {
-        assert!(read_remote_media("file:///etc/passwd").is_err());
-        assert!(read_remote_media("data:image/png;base64,AAAA").is_err());
+        assert!(read_remote_media("file:///etc/passwd", None).is_err());
+        assert!(read_remote_media("data:image/png;base64,AAAA", None).is_err());
         let (url, handle) = serve_media_once(
             "HTTP/1.1 200 OK",
             "Content-Type: application/json\r\n",
             b"{\"ok\":true}".to_vec(),
         );
         crate::net_guard::allow_loopback_in_tests(true);
-        let error = read_remote_media(&url).unwrap_err();
+        let error = read_remote_media(&url, None).unwrap_err();
         crate::net_guard::allow_loopback_in_tests(false);
         assert!(error.contains("不是支持的媒体类型"), "{error}");
         handle.join().unwrap();

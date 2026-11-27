@@ -26,12 +26,8 @@ import { WeeklyTimeline } from "./WeeklyTimeline";
 import { TaskQuadrantBoard } from "./TaskManager";
 import { SourcePeekSheet } from "./SourcePeekSheet";
 import { WeeklyReportStatus } from "./WeeklyReportPanel";
-import {
-  WritingContinueCard,
-  WritingInspirationShelf,
-  WritingPipeline,
-} from "./WritingStudio";
-import { staleFiles, statusCounts, type WritingStatus } from "../writingStudio";
+import { WritingDesk } from "./WritingDesk";
+import { staleFiles } from "../writingStudio";
 import type { WorklogArchiveList, WorklogWeekFile, WorklogWeekView } from "../types";
 import {
   countReportEntries,
@@ -159,9 +155,6 @@ export function ScenePage({
   const [pendingTick, setPendingTick] = useState(0);
   /** 会话历史默认收起（OD-ARCH-060 S3）。 */
   const [showThreads, setShowThreads] = useState(false);
-  /** 写作页（OD-ARCH-094）：稿件状态筛选与 90 天提醒筛选，都只改视图。 */
-  const [writingStatusFilter, setWritingStatusFilter] = useState<WritingStatus | null>(null);
-  const [writingStaleOnly, setWritingStaleOnly] = useState(false);
   /** 写作页的「现在」：一次渲染内固定，避免相对时间在每次重绘时抖动。 */
   const writingNow = useMemo(() => Math.floor(Date.now() / 1000), []);
 
@@ -182,8 +175,6 @@ export function ScenePage({
    */
   useEffect(() => {
     setOpened(null);
-    setWritingStatusFilter(null);
-    setWritingStaleOnly(false);
     setIncludeSubdirs(fixedSubdirs(scene));
   }, [scene, def.hasProgress]);
 
@@ -384,21 +375,6 @@ export function ScenePage({
     onNavigate("home");
   }, [onNavigate]);
 
-  /** 写作页最近的写作对话：写作对话卡「继续对话」与「继续创作」的入口。 */
-  const latestWritingThread = useMemo(
-    () => [...threads].sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
-    [threads],
-  );
-  const continueWritingThread = useCallback(() => {
-    if (latestWritingThread) openThread(latestWritingThread.id);
-    else newWritingThread();
-  }, [latestWritingThread, openThread, newWritingThread]);
-
-  /** 写作页指标：草稿数来自已读取的成果元数据；还没读到就是 null，界面显示「—」。 */
-  const writingCounts = useMemo(
-    () => (scene === "writing" && artifactsLoaded && !artifactsError ? statusCounts(artifacts) : null),
-    [scene, artifacts, artifactsError, artifactsLoaded],
-  );
   const writingStalePaths = useMemo(() => {
     if (scene !== "writing") return undefined;
     return new Set(staleFiles(artifacts, writingNow).map((f) => f.relative_path));
@@ -584,7 +560,7 @@ export function ScenePage({
   return (
     <main className="flex-1 min-h-0 overflow-y-auto px-6 md:pl-28 md:pr-12 pb-6">
       {/* 项目跟进 v3（OD-ARCH-102）不设顶部指标卡：计数进入左栏标题；周报/写作保持原样。 */}
-      {scene === "project" ? null : (
+      {scene === "project" || scene === "writing" ? null : (
         <SceneStatusStrip
           scene={def}
           overview={overview}
@@ -594,106 +570,27 @@ export function ScenePage({
           weekReportEntries={weekReportEntries}
           reportLabel={reportLabel}
           onRequestReport={requestWeeklyReport}
-          writingDraftCount={writingCounts ? writingCounts.draft : null}
-          writingInspirationCount={scene === "writing" ? threads.length : null}
-          writingNow={writingNow}
-          onRequestWriting={scene === "writing" ? newWritingThread : undefined}
         />
       )}
-      <AnnouncementBar onPendingChanged={bumpPending} />
-      <ConsolidationRunner />
+      {scene === "writing" ? null : <AnnouncementBar onPendingChanged={bumpPending} />}
+      {scene === "writing" ? null : <ConsolidationRunner />}
 
       {scene === "writing" ? (
-        /*
-         * 文案写作主区（OD-ARCH-094 S02）：三栏同屏——左「继续创作 + 写作对话」、
-         * 中「稿件」、右「成果文档库」。窄窗按 左 → 中 → 右 单列堆叠。
-         * 与知识库统一为 Aetheria 浅色卡面与靛青主色；工作记录页保持原有四色区分。
-         */
-        <>
-          <div className="mx-auto mt-1 mb-3 flex max-w-7xl items-baseline gap-3">
-            <h1 className="text-[22px] font-semibold tracking-tight text-on-surface">文案写作</h1>
-          </div>
-          <div
-            className={
-              "grid grid-cols-1 gap-4 lg:gap-5 items-start max-w-7xl mx-auto " +
-              "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] " +
-              "lg:[grid-template-areas:'left_pipeline_artifacts']"
-            }
-            data-writing-board=""
-            data-board-width="nav"
-          >
-            <div className="min-w-0 flex flex-col gap-4 max-lg:order-1 lg:[grid-area:left] lg:max-h-[70vh] lg:overflow-y-auto">
-              <WritingContinueCard
-                files={artifacts.filter((f) => !f.is_dir)}
-                nowSeconds={writingNow}
-                loading={!artifactsLoaded && !artifactsError}
-                onOpen={(p) => void openArtifact(p)}
-                onContinueThread={continueWritingThread}
-                onNewThread={newWritingThread}
-              />
-              <WritingInspirationShelf
-                threads={threads}
-                nowSeconds={writingNow}
-                onOpenThread={openThread}
-                onNewThread={newWritingThread}
-              />
-            </div>
-
-            <div className="min-w-0 max-lg:order-2 lg:[grid-area:pipeline]">
-              {artifactsError ? (
-                <section
-                  aria-label="稿件"
-                  className="bg-[color:var(--od-neu-surface)] rounded-[20px] shadow-[var(--od-neu-raise-2)] px-5 py-6"
-                >
-                  <p className="text-[11.5px] text-error leading-relaxed">
-                    读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
-                  </p>
-                </section>
-              ) : (
-                <WritingPipeline
-                  files={artifacts}
-                  nowSeconds={writingNow}
-                  metadataLoading={!artifactsLoaded && !artifactsError}
-                  statusFilter={writingStatusFilter}
-                  staleOnly={writingStaleOnly}
-                  onStatusFilter={setWritingStatusFilter}
-                  onStaleToggle={() => setWritingStaleOnly((v) => !v)}
-                  onOpen={(p) => void openArtifact(p)}
-                />
-              )}
-            </div>
-
-            <section
-              aria-label="成果文档库"
-              className="bg-[color:var(--od-neu-surface)] rounded-[20px] shadow-[var(--od-neu-raise-2)] px-4 py-4 lg:px-5 lg:py-5 flex flex-col min-w-0 max-h-[70vh] max-lg:max-h-none max-lg:order-3 lg:[grid-area:artifacts]"
-            >
-              <div className="flex items-baseline gap-2.5 pb-3.5 border-b border-surface-variant/25">
-                <h2 className="font-headline-md text-[16px] font-semibold tracking-tight text-on-surface">
-                  成果文档库
-                </h2>
-                <span className="mono text-[10.5px] text-outline ml-auto shrink-0">
-                  {artifacts.filter((f) => !f.is_dir).length} 条
-                </span>
-              </div>
-              <div className="pt-3.5 flex-1 flex flex-col min-h-0 overflow-y-auto">
-                {artifactsError ? (
-                  <p className="text-[11.5px] text-error leading-relaxed pb-2">
-                    读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
-                  </p>
-                ) : null}
-                <ArtifactExplorer
-                  files={artifacts}
-                  emptyHint={def.emptyHint}
-                  includeSubdirs={includeSubdirs}
-                  onToggleSubdirs={toggleSubdirs}
-                  showTypeLabels
-                  stalePaths={writingStalePaths}
-                  onOpen={(p) => void openArtifact(p)}
-                />
-              </div>
-            </section>
-          </div>
-        </>
+        <WritingDesk
+          artifacts={artifacts}
+          artifactsLoaded={artifactsLoaded}
+          artifactsError={artifactsError}
+          threads={threads}
+          nowSeconds={writingNow}
+          includeSubdirs={includeSubdirs}
+          onToggleSubdirs={toggleSubdirs}
+          stalePaths={writingStalePaths}
+          emptyHint={def.emptyHint}
+          onOpenArtifact={(path) => void openArtifact(path)}
+          onOpenThread={openThread}
+          onNewThread={newWritingThread}
+          onNavigateHome={() => onNavigate("home")}
+        />
       ) : scene === "weekly" ? (
         /*
          * 工作记录主区（OD-ARCH-093 S03；2026-10-27 修订）：三栏同屏——左「四象限 + 历史对话」、
@@ -780,7 +677,7 @@ export function ScenePage({
       ) : scene === "project" ? (
         <TaskQuadrantBoard onNavigate={onNavigate} />
       ) : (
-        /* 文案写作的兜底分支：只有成果文档库（项目跟进已改两栏，见上）。 */
+        /* 其它场景兜底：只有成果文档库。 */
         <section className="bg-[color:var(--od-neu-surface)] rounded-2xl shadow-[var(--od-neu-raise-2)] p-3 flex flex-col min-h-[320px]">
           <div className="flex items-center justify-between pb-2 border-b border-surface-variant/20">
             <h2 className="font-headline-md text-[12px] font-semibold text-on-surface">成果文档库</h2>

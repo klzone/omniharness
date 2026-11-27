@@ -78,7 +78,7 @@ function defaultRange(versions: WritingVersionSummary[]): {
 function ChangeRow({ change }: { change: WritingParagraphChange }) {
   return (
     <div
-      className="rounded-lg bg-white/80 px-2.5 py-2"
+      className="rounded-lg bg-[color:var(--od-neu-surface-high)] px-2.5 py-2"
       data-version-change={change.kind}
       data-paragraph-no={change.paragraph_no}
     >
@@ -289,7 +289,7 @@ export function WritingVersionPanel({
         <p className="text-[11px] text-outline">正在读取版本记录…</p>
       ) : versions.length === 0 ? (
         <div
-          className="rounded-[18px] border border-white/80 bg-white/70 px-5 py-9 text-center text-[12px] text-outline"
+          className="rounded-[18px] border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface-high)] px-5 py-9 text-center text-[12px] text-outline"
           data-version-empty="no-versions"
         >
           还没有版本快照。确认大纲或正文后会生成。
@@ -317,7 +317,7 @@ export function WritingVersionPanel({
                     type="button"
                     onClick={() => setPendingRestore(version.version)}
                     disabled={version.current || Boolean(busy)}
-                    className="ml-auto rounded-lg border border-outline-variant/55 bg-white/75 px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
+                    className="ml-auto rounded-lg border border-outline-variant/55 bg-[color:var(--od-neu-surface-high)] px-2.5 py-1 text-[10.5px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-40"
                     data-version-restore={version.version}
                   >
                     {version.current ? "当前版" : "恢复"}

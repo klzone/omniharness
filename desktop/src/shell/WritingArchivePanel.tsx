@@ -192,7 +192,7 @@ export function WritingArchivePanel({
             {association.export_receipts.map((receipt, index) => (
               <div
                 key={`${receipt.format}-${receipt.at}-${index}`}
-                className="rounded-lg bg-white/80 px-2.5 py-1.5"
+                className="rounded-lg bg-[color:var(--od-neu-surface-high)] px-2.5 py-1.5"
                 data-archive-export-format={receipt.format}
               >
                 <span className="mono text-[10px] text-on-surface">{receipt.format}</span>
@@ -224,7 +224,7 @@ export function WritingArchivePanel({
             {association.factcheck_counts.map((item) => (
               <span
                 key={item.conclusion}
-                className="rounded-full bg-white/80 px-1.5 py-[1px] text-[9.5px] text-on-surface-variant"
+                className="rounded-full bg-[color:var(--od-neu-surface-high)] px-1.5 py-[1px] text-[9.5px] text-on-surface-variant"
                 data-archive-factcheck-conclusion={item.conclusion}
               >
                 {item.conclusion} {item.count}
@@ -258,7 +258,7 @@ export function WritingArchivePanel({
               {candidates.map((candidate, index) => (
                 <label
                   key={`${candidate.title}-${index}`}
-                  className="flex cursor-pointer items-start gap-2 rounded-lg bg-white/80 px-2.5 py-1.5"
+                  className="flex cursor-pointer items-start gap-2 rounded-lg bg-[color:var(--od-neu-surface-high)] px-2.5 py-1.5"
                   data-knowledge-feedback-candidate={index}
                 >
                   <input

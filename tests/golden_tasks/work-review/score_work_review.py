@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Work Review 合成基准评分（OD-HAR-231）。
 
-只评估 fixtures 的候选输出，不调用模型。检查项与宿主现有确定性规则一致：
+只评估 `--outputs` 目录下的候选输出，不调用模型。默认读 fixtures 的 outputs/。
+检查项与宿主现有确定性规则一致：
 原文引用必须落在记录正文、日期不得凭空出现、重要性要带依据、低置信度需
 显式不确定说明；敏感用例必须整体拒绝。指标口径见 docs/WORK_REVIEW_AGENT_DESIGN.md。
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -14,8 +16,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def load(case_id: str) -> dict:
-    return json.loads((HERE / "outputs" / f"{case_id}.json").read_text(encoding="utf-8"))
+def load(case_id: str, outputs_dir: Path) -> dict:
+    return json.loads((outputs_dir / f"{case_id}.json").read_text(encoding="utf-8"))
 
 
 def needs_review(candidate: dict) -> bool:
@@ -28,7 +30,11 @@ def needs_review(candidate: dict) -> bool:
 
 
 def main() -> int:
-    bundle = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    parser = argparse.ArgumentParser(description="Work Review 合成基准评分")
+    parser.add_argument("--cases", type=Path, default=HERE / "cases.json")
+    parser.add_argument("--outputs", type=Path, default=HERE / "outputs")
+    args = parser.parse_args()
+    bundle = json.loads(args.cases.read_text(encoding="utf-8"))
     cases = bundle["cases"]
     failures: list[dict] = []
     grounded = 0
@@ -44,7 +50,7 @@ def main() -> int:
     material_cases = 0
 
     for case in cases:
-        output = load(case["id"])
+        output = load(case["id"], args.outputs)
         expected = case["expected"]
         body = case["input"]["body"]
         if expected.get("refused"):

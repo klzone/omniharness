@@ -1,0 +1,1116 @@
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+
+import { shell } from "../api";
+import type { SceneThread } from "../sceneThreads";
+import type {
+  OfflineArtifactEntry,
+  WritingExportFormat,
+  WritingOutlineConfirmed,
+  WritingSectionState,
+  WritingTask,
+  WritingTaskStatus,
+  WritingVersionSummary,
+} from "../types";
+import { ArtifactExplorer } from "./ArtifactExplorer";
+import { WritingArchivePanel } from "./WritingArchivePanel";
+import { WritingFactCheckPanel } from "./WritingFactCheckPanel";
+import { WritingInspirationShelf } from "./WritingStudio";
+import { WritingMaterialBasket } from "./WritingMaterialBasket";
+import { WritingOutlineEditor } from "./WritingOutlineEditor";
+import { WritingSectionEditor } from "./WritingSectionEditor";
+import { WritingVersionPanel } from "./WritingVersionPanel";
+import { WritingWorkbench } from "./WritingWorkbench";
+
+const ACTIVE_KEY = "omnidesk.writing.active.v1";
+
+type LibraryTab = "tasks" | "artifacts" | "threads";
+type DrawerState =
+  | { kind: "library"; tab: LibraryTab }
+  | { kind: "outline" }
+  | { kind: "section"; sectionNo: number }
+  | { kind: "materials" }
+  | { kind: "factcheck" }
+  | { kind: "versions" }
+  | { kind: "archive" };
+
+type Notice = { kind: "ok" | "err"; text: string };
+
+export type WritingDeskProps = {
+  artifacts: OfflineArtifactEntry[];
+  artifactsLoaded: boolean;
+  artifactsError: string | null;
+  threads: SceneThread[];
+  nowSeconds: number;
+  includeSubdirs: boolean;
+  onToggleSubdirs: (next: boolean) => void;
+  stalePaths?: Set<string>;
+  emptyHint: string;
+  onOpenArtifact: (relativePath: string) => void;
+  onOpenThread: (id: string) => void;
+  onNewThread: () => void;
+  onNavigateHome: () => void;
+};
+
+function errText(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
+function shortTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getMonth() + 1}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function countWords(content: string | null | undefined): number {
+  return content ? content.replace(/\s/g, "").length : 0;
+}
+
+function paragraphsOf(content: string): string[] {
+  return content
+    .split("\n\n")
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function isMissingOutline(message: string): boolean {
+  return message.includes("尚未确认大纲") || message.includes("outline.md");
+}
+
+function expectedLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "—";
+  return trimmed.replace(/字$/, "").trim() || "—";
+}
+
+function stageOf(status: WritingTaskStatus | undefined): number {
+  switch (status) {
+    case "需求待整理":
+    case "素材收集中":
+      return 1;
+    case "大纲待确认":
+      return 2;
+    case "写作中":
+      return 3;
+    case "待核验":
+    case "待审核":
+      return 4;
+    case "已定稿":
+    case "已归档":
+      return 5;
+    default:
+      return 1;
+  }
+}
+
+const CN_NUMBERS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+
+function cnNumber(value: number): string {
+  if (value <= 10) return CN_NUMBERS[value] ?? String(value);
+  if (value < 20) return "十" + (CN_NUMBERS[value - 10] ?? "");
+  return String(value);
+}
+
+function readActiveId(): string | null {
+  try {
+    return window.localStorage.getItem(ACTIVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveId(value: string | null) {
+  try {
+    if (value) window.localStorage.setItem(ACTIVE_KEY, value);
+    else window.localStorage.removeItem(ACTIVE_KEY);
+  } catch {
+    // 本机缓存不可写只影响下次默认打开，不影响当前任务。
+  }
+}
+
+function Drawer({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="wd-drawer-backdrop" onClick={onClose} data-writing-drawer="">
+      <div className="wd-drawer" onClick={(event) => event.stopPropagation()}>
+        <div className="wd-drawer-head">
+          <div className="wd-drawer-title">{title}</div>
+          <button type="button" className="wd-drawer-close wr-icon-button" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <div className="wd-drawer-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function LibraryDrawer({
+  tab,
+  onTab,
+  onClose,
+  task,
+  onOpenTask,
+  artifacts,
+  artifactsLoaded,
+  artifactsError,
+  emptyHint,
+  includeSubdirs,
+  onToggleSubdirs,
+  stalePaths,
+  onOpenArtifact,
+  threads,
+  nowSeconds,
+  onOpenThread,
+  onNewThread,
+  onNavigateHome,
+  onOpenOutline,
+  onOpenSection,
+}: {
+  tab: LibraryTab;
+  onTab: (tab: LibraryTab) => void;
+  onClose: () => void;
+  task: WritingTask | null;
+  onOpenTask: (writingId: string) => void;
+  artifacts: OfflineArtifactEntry[];
+  artifactsLoaded: boolean;
+  artifactsError: string | null;
+  emptyHint: string;
+  includeSubdirs: boolean;
+  onToggleSubdirs: (next: boolean) => void;
+  stalePaths?: Set<string>;
+  onOpenArtifact: (relativePath: string) => void;
+  threads: SceneThread[];
+  nowSeconds: number;
+  onOpenThread: (id: string) => void;
+  onNewThread: () => void;
+  onNavigateHome: () => void;
+  onOpenOutline: () => void;
+  onOpenSection: () => void;
+}) {
+  const tabs: Array<{ key: LibraryTab; label: string }> = [
+    { key: "tasks", label: "稿件" },
+    { key: "artifacts", label: "成果" },
+    { key: "threads", label: "对话" },
+  ];
+  return (
+    <div className="wd-drawer-backdrop" onClick={onClose} data-writing-library="">
+      <div className="wd-drawer wd-drawer-left" onClick={(event) => event.stopPropagation()}>
+        <div className="wd-drawer-head">
+          <div className="wd-drawer-title">所有稿件</div>
+          <button type="button" className="wd-drawer-close wr-icon-button" onClick={onClose} aria-label="关闭">
+            ×
+          </button>
+        </div>
+        <div className="wd-library-tabs" role="tablist" aria-label="稿件历史">
+          {tabs.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.key}
+              className={"wd-library-tab " + (tab === item.key ? "active" : "")}
+              onClick={() => onTab(item.key)}
+              data-writing-library-tab={item.key}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="wd-drawer-body">
+          {tab === "tasks" ? (
+            <>
+              {task ? (
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-[color:var(--od-neu-sunken)] px-3 py-2 shadow-[var(--od-neu-inset-1)]">
+                  <span className="shrink-0 text-[9.5px] text-[color:var(--od-neu-ink-3)]">继续上次</span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[color:var(--od-neu-ink)]">
+                    {task.title}
+                  </span>
+                  <button type="button" className="wr-text-button shrink-0" onClick={() => onOpenTask(task.writing_id)}>
+                    打开
+                  </button>
+                </div>
+              ) : null}
+              <WritingWorkbench onOpenTask={onOpenTask} />
+            </>
+          ) : tab === "artifacts" ? (
+            <>
+              {!artifactsLoaded && !artifactsError ? (
+                <p className="mb-2 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+                  正在读取成果目录…
+                </p>
+              ) : null}
+              {artifactsError ? (
+                <p className="mb-2 text-[10.5px] leading-relaxed text-error">
+                  读取成果目录失败：{artifactsError}。这里不把它当成「没有成果」。
+                </p>
+              ) : null}
+              <ArtifactExplorer
+                files={artifacts}
+                emptyHint={emptyHint}
+                includeSubdirs={includeSubdirs}
+                onToggleSubdirs={onToggleSubdirs}
+                showTypeLabels
+                stalePaths={stalePaths}
+                onOpen={onOpenArtifact}
+              />
+            </>
+          ) : (
+            <>
+              <section className="wd-rail mb-3">
+                <div className="wd-rail-head">
+                  <div className="wd-rail-title">本次写作</div>
+                </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+                  {task ? "当前文档：" + task.title : "还没有打开稿件。"}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" className="wr-ghost-button" onClick={onOpenOutline} disabled={!task}>
+                    大纲
+                  </button>
+                  <button type="button" className="wr-ghost-button" onClick={onOpenSection} disabled={!task}>
+                    本章
+                  </button>
+                  <button type="button" className="wr-text-button ml-auto" onClick={onNavigateHome}>
+                    回首页继续讨论
+                  </button>
+                </div>
+              </section>
+              <WritingInspirationShelf
+                threads={threads}
+                nowSeconds={nowSeconds}
+                onOpenThread={onOpenThread}
+                onNewThread={onNewThread}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 写作台（OD-WD-001）：文档居中，左边大纲，右边当前章节上下文。
+ * 大纲/本章/核验/版本/归档继续复用既有编辑器，放进独立抽屉，
+ * 主画布只保留已确认正文和下一步动作。
+ */
+export function WritingDesk({
+  artifacts,
+  artifactsLoaded,
+  artifactsError,
+  threads,
+  nowSeconds,
+  includeSubdirs,
+  onToggleSubdirs,
+  stalePaths,
+  emptyHint,
+  onOpenArtifact,
+  onOpenThread,
+  onNewThread,
+  onNavigateHome,
+}: WritingDeskProps) {
+  const [tasks, setTasks] = useState<WritingTask[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [writingId, setWritingId] = useState<string | null>(() => readActiveId());
+  const [task, setTask] = useState<WritingTask | null>(null);
+  const [outline, setOutline] = useState<WritingOutlineConfirmed | null>(null);
+  const [outlineLoading, setOutlineLoading] = useState(false);
+  const [outlineError, setOutlineError] = useState<string | null>(null);
+  const [sectionStates, setSectionStates] = useState<Record<number, WritingSectionState>>({});
+  const [sectionsLoading, setSectionsLoading] = useState(false);
+  const [activeSectionNo, setActiveSectionNo] = useState<number | null>(null);
+  const [versions, setVersions] = useState<WritingVersionSummary[]>([]);
+  const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [contextTab, setContextTab] = useState<"materials" | "factcheck" | "versions">("materials");
+  const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setListLoading(true);
+    shell
+      .writingList({})
+      .then((listing) => {
+        if (!alive) return;
+        setTasks(listing.items);
+        setListError(null);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setListError(errText(error));
+      })
+      .finally(() => {
+        if (alive) setListLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [reloadTick]);
+
+  useEffect(() => {
+    if (tasks.length === 0) {
+      if (!listLoading) {
+        setTask(null);
+        setWritingId(null);
+        writeActiveId(null);
+      }
+      return;
+    }
+    const remembered = writingId ? tasks.find((item) => item.writing_id === writingId) : null;
+    if (remembered) {
+      setTask(remembered);
+      return;
+    }
+    const sorted = [...tasks].sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+    const candidate =
+      sorted.find((item) => item.status !== "已归档" && item.status !== "已取消") ?? sorted[0] ?? null;
+    if (!candidate) {
+      setTask(null);
+      setWritingId(null);
+      writeActiveId(null);
+      return;
+    }
+    setWritingId(candidate.writing_id);
+    setTask(candidate);
+    writeActiveId(candidate.writing_id);
+  }, [tasks, writingId, listLoading]);
+
+  const activeWritingId = task?.writing_id ?? null;
+
+  useEffect(() => {
+    if (!activeWritingId) {
+      setOutline(null);
+      setOutlineError(null);
+      setSectionStates({});
+      setActiveSectionNo(null);
+      setOutlineLoading(false);
+      setSectionsLoading(false);
+      return;
+    }
+    let alive = true;
+    const writingIdForLoad = activeWritingId;
+    setOutlineLoading(true);
+    setOutlineError(null);
+    setOutline(null);
+    setSectionStates({});
+    setSectionsLoading(false);
+    setActiveSectionNo(null);
+    void (async () => {
+      try {
+        const confirmed = await shell.writingOutlineGet(writingIdForLoad);
+        if (!alive) return;
+        setOutline(confirmed);
+        setOutlineLoading(false);
+        setSectionsLoading(true);
+        const results = await Promise.allSettled(
+          confirmed.outline.sections.map((section) =>
+            shell.writingSectionGet(writingIdForLoad, section.no),
+          ),
+        );
+        if (!alive) return;
+        const next: Record<number, WritingSectionState> = {};
+        for (const result of results) {
+          if (result.status === "fulfilled") next[result.value.section_no] = result.value;
+        }
+        setSectionStates(next);
+        setSectionsLoading(false);
+        setActiveSectionNo((previous) => {
+          if (previous !== null && confirmed.outline.sections.some((section) => section.no === previous)) {
+            return previous;
+          }
+          const firstOpen = confirmed.outline.sections.find((section) => !next[section.no]?.confirmed);
+          return firstOpen?.no ?? confirmed.outline.sections[0]?.no ?? null;
+        });
+      } catch (error) {
+        if (!alive) return;
+        const text = errText(error);
+        setOutline(null);
+        setOutlineError(isMissingOutline(text) ? null : text);
+        setOutlineLoading(false);
+        setSectionsLoading(false);
+        setSectionStates({});
+        setActiveSectionNo(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [activeWritingId, reloadTick]);
+
+  useEffect(() => {
+    if (!activeWritingId) {
+      setVersions([]);
+      return;
+    }
+    let alive = true;
+    shell
+      .writingVersionList(activeWritingId)
+      .then((result) => {
+        if (alive) setVersions(result.versions);
+      })
+      .catch(() => {
+        if (alive) setVersions([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeWritingId, reloadTick]);
+
+  useEffect(() => {
+    if (activeSectionNo === null) return;
+    const target = document.getElementById("wd-section-" + String(activeSectionNo));
+    target?.scrollIntoView({ block: "nearest" });
+  }, [activeSectionNo]);
+
+  const activeSection = useMemo(
+    () => outline?.outline.sections.find((section) => section.no === activeSectionNo) ?? null,
+    [outline, activeSectionNo],
+  );
+  const activeState = activeSectionNo !== null ? sectionStates[activeSectionNo] ?? null : null;
+  const activeWords = countWords(activeState?.content);
+  const wordCount = Object.values(sectionStates).reduce(
+    (sum, state) => sum + countWords(state.content),
+    0,
+  );
+  const confirmedCount = outline
+    ? outline.outline.sections.filter((section) => sectionStates[section.no]?.confirmed).length
+    : 0;
+  const progress = outline && outline.outline.sections.length > 0
+    ? Math.round((confirmedCount / outline.outline.sections.length) * 100)
+    : 0;
+  const currentVersion = versions.find((entry) => entry.current) ?? versions[0] ?? null;
+  const readOnly =
+    task?.status === "已定稿" || task?.status === "已归档" || task?.status === "已取消";
+  const stage = stageOf(task?.status);
+
+  function openLibrary(tab: LibraryTab) {
+    setDrawer({ kind: "library", tab });
+  }
+
+  async function selectTask(writingIdToOpen: string) {
+    const found = tasks.find((item) => item.writing_id === writingIdToOpen) ?? null;
+    if (!found) {
+      try {
+        const listing = await shell.writingList({});
+        setTasks(listing.items);
+        const next = listing.items.find((item) => item.writing_id === writingIdToOpen) ?? null;
+        setWritingId(writingIdToOpen);
+        setTask(next);
+        writeActiveId(writingIdToOpen);
+        setDrawer(null);
+        setNotice(next ? null : { kind: "err", text: "稿件列表里没有找到这份任务。" });
+        return;
+      } catch (error) {
+        setNotice({ kind: "err", text: errText(error) });
+        return;
+      }
+    }
+    setWritingId(writingIdToOpen);
+    setTask(found);
+    writeActiveId(writingIdToOpen);
+    setDrawer(null);
+    setNotice(null);
+  }
+
+  function bump() {
+    setReloadTick((value) => value + 1);
+  }
+
+  async function finalizeTask() {
+    if (!task) return;
+    try {
+      await shell.writingStatusTransition({
+        writing_id: task.writing_id,
+        to: "已定稿",
+        reason: "用户定稿",
+      });
+      setNotice({ kind: "ok", text: "已定稿。" });
+      bump();
+    } catch (error) {
+      const text = errText(error);
+      setNotice({ kind: "err", text });
+      throw error;
+    }
+  }
+
+  async function exportDoc(format: WritingExportFormat) {
+    if (!task) return;
+    setExportOpen(false);
+    try {
+      const outcome = await shell.writingExport({ writing_id: task.writing_id, format });
+      setNotice({ kind: "ok", text: `已导出 ${format.toUpperCase()}：${outcome.path}` });
+      bump();
+    } catch (error) {
+      setNotice({ kind: "err", text: errText(error) });
+    }
+  }
+
+  let primary = {
+    label: "所有稿件",
+    run: () => openLibrary("tasks"),
+  };
+  if (task) {
+    switch (task.status) {
+      case "需求待整理":
+      case "素材收集中":
+      case "大纲待确认":
+        primary = { label: "编辑大纲", run: () => setDrawer({ kind: "outline" }) };
+        break;
+      case "写作中":
+        primary = {
+          label: "编辑本章",
+          run: () => setDrawer({ kind: "section", sectionNo: activeSectionNo ?? 1 }),
+        };
+        break;
+      case "待核验":
+      case "待审核":
+        primary = { label: "开始核验", run: () => setDrawer({ kind: "factcheck" }) };
+        break;
+      case "已定稿":
+        primary = { label: "导出", run: () => setExportOpen(true) };
+        break;
+      case "已归档":
+        primary = { label: "查看成果", run: () => setDrawer({ kind: "archive" }) };
+        break;
+      default:
+        primary = { label: "查看任务", run: () => openLibrary("tasks") };
+    }
+  }
+
+  function renderDrawer() {
+    if (!drawer) return null;
+    if (drawer.kind === "library") {
+      return (
+        <LibraryDrawer
+          tab={drawer.tab}
+          onTab={(tab) => setDrawer({ kind: "library", tab })}
+          onClose={() => setDrawer(null)}
+          task={task}
+          onOpenTask={selectTask}
+          artifacts={artifacts}
+          artifactsLoaded={artifactsLoaded}
+          artifactsError={artifactsError}
+          emptyHint={emptyHint}
+          includeSubdirs={includeSubdirs}
+          onToggleSubdirs={onToggleSubdirs}
+          stalePaths={stalePaths}
+          onOpenArtifact={onOpenArtifact}
+          threads={threads}
+          nowSeconds={nowSeconds}
+          onOpenThread={onOpenThread}
+          onNewThread={onNewThread}
+          onNavigateHome={onNavigateHome}
+          onOpenOutline={() => setDrawer({ kind: "outline" })}
+          onOpenSection={() => setDrawer({ kind: "section", sectionNo: activeSectionNo ?? 1 })}
+        />
+      );
+    }
+    if (!task) return null;
+    const close = () => setDrawer(null);
+    switch (drawer.kind) {
+      case "outline":
+        return (
+          <Drawer title="编辑大纲" onClose={close}>
+            <WritingOutlineEditor
+              writingId={task.writing_id}
+              onOutlineConfirmed={() => {
+                bump();
+                close();
+              }}
+            />
+          </Drawer>
+        );
+      case "section":
+        return (
+          <Drawer title={`编辑本章 · 第 ${drawer.sectionNo} 章`} onClose={close}>
+            <WritingSectionEditor
+              writingId={task.writing_id}
+              initialSectionNo={drawer.sectionNo}
+              onSectionConfirmed={() => {
+                bump();
+                close();
+              }}
+            />
+          </Drawer>
+        );
+      case "materials":
+        return (
+          <Drawer title="素材库" onClose={close}>
+            <WritingMaterialBasket />
+          </Drawer>
+        );
+      case "factcheck":
+        return (
+          <Drawer title="事实核验" onClose={close}>
+            <WritingFactCheckPanel writingId={task.writing_id} />
+          </Drawer>
+        );
+      case "versions":
+        return (
+          <Drawer title="版本" onClose={close}>
+            <WritingVersionPanel
+              writingId={task.writing_id}
+              status={task.status}
+              onRestored={() => bump()}
+              onFinalize={finalizeTask}
+            />
+          </Drawer>
+        );
+      case "archive":
+        return (
+          <Drawer title="导出与归档" onClose={close}>
+            <WritingArchivePanel
+              writingId={task.writing_id}
+              status={task.status}
+              onArchived={() => bump()}
+            />
+          </Drawer>
+        );
+      default:
+        return null;
+    }
+  }
+
+  if (!task) {
+    return (
+      <div className="wd-page" data-writing-desk="" data-writing-board="">
+        <header className="wd-head" data-writing-desk-head="">
+          <div className="wd-kicker">
+            <span>材料写作</span>
+            <span className="h-3 w-px bg-[color:var(--od-neu-line-strong)]" />
+            <span>写作台</span>
+          </div>
+          <div className="wd-title-row">
+            <div className="min-w-0">
+              <h1 className="wd-doc-title">材料写作</h1>
+              <div className="wd-meta">
+                <span>选择一份稿件继续，或从一段写作需求开始。</span>
+              </div>
+            </div>
+            <div className="wd-actions">
+              <button type="button" className="wr-ghost-button" onClick={() => openLibrary("artifacts")}>
+                成果
+              </button>
+              <button type="button" className="wr-ghost-button" onClick={() => openLibrary("threads")}>
+                对话
+              </button>
+              <button type="button" className="wr-primary-button" onClick={() => openLibrary("tasks")}>
+                所有稿件
+              </button>
+            </div>
+          </div>
+        </header>
+        {notice ? (
+          <div className={"wd-notice " + (notice.kind === "err" ? "err" : "")} role="status">
+            <div className="flex items-start gap-2">
+              <span className="min-w-0 flex-1 break-words">{notice.text}</span>
+              <button type="button" className="shrink-0 text-[10px]" onClick={() => setNotice(null)}>
+                ×
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+          <div className="wd-empty w-full max-w-[560px]">
+            <h2 className="text-[16px] font-semibold text-[color:var(--od-neu-ink)]">还没有打开的稿件</h2>
+            <p className="max-w-[360px] text-[10.5px] leading-relaxed">
+              从一段写作需求开始，或打开已有稿件继续。材料、知识依据和范例都在写作台里。
+            </p>
+            {listError ? (
+              <p className="text-[10.5px] leading-relaxed text-error">读取稿件列表失败：{listError}</p>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <button type="button" className="wr-primary-button" onClick={() => openLibrary("tasks")}>
+                新建材料
+              </button>
+              <button type="button" className="wr-ghost-button" onClick={() => openLibrary("tasks")}>
+                所有稿件
+              </button>
+            </div>
+          </div>
+        </div>
+        {renderDrawer()}
+      </div>
+    );
+  }
+
+  const stageLabels = ["需求", "大纲", "写作", "核验", "定稿"];
+
+  return (
+    <div className="wd-page" data-writing-desk="" data-writing-board="">
+      <header className="wd-head" data-writing-desk-head="">
+        <div className="wd-kicker">
+          <button type="button" onClick={() => openLibrary("tasks")}>
+            ← 所有稿件
+          </button>
+          <span className="h-3 w-px bg-[color:var(--od-neu-line-strong)]" />
+          <span>材料写作</span>
+        </div>
+        <div className="wd-title-row">
+          <div className="min-w-0">
+            <h1 className="wd-doc-title break-words">{task.title}</h1>
+            <div className="wd-meta">
+              <span className="wr-chip is-active">{task.document_type}</span>
+              <span className="wr-chip">{task.status}</span>
+              {task.writing_period ? <span>{task.writing_period}</span> : null}
+              <span>第 {currentVersion?.version ?? outline?.version ?? "—"} 版</span>
+              <span>
+                {wordCount} / {expectedLabel(task.expected_length)} 字
+              </span>
+              <span>已保存 {shortTime(task.updated_at)}</span>
+            </div>
+          </div>
+          <div className="wd-actions">
+            <button type="button" className="wr-ghost-button" onClick={() => openLibrary("threads")}>
+              对话
+            </button>
+            <div className="wd-export-wrap">
+              <button
+                type="button"
+                className="wr-ghost-button"
+                onClick={() => setExportOpen((value) => !value)}
+                aria-expanded={exportOpen}
+              >
+                导出
+              </button>
+              {exportOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-30 cursor-default"
+                    aria-label="关闭导出菜单"
+                    onClick={() => setExportOpen(false)}
+                  />
+                  <div className="wd-export-pop">
+                    <button type="button" onClick={() => void exportDoc("docx")}>Word 公文</button>
+                    <button type="button" onClick={() => void exportDoc("pdf")}>PDF 阅读版</button>
+                    <button type="button" onClick={() => void exportDoc("md")}>Markdown</button>
+                    <button type="button" onClick={() => void exportDoc("html")}>公众号 HTML</button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <button type="button" className="wr-primary-button" onClick={primary.run}>
+              {primary.label}
+            </button>
+            <button
+              type="button"
+              className="wr-icon-button"
+              title="更多"
+              onClick={() => setDrawer({ kind: "archive" })}
+            >
+              ⋯
+            </button>
+          </div>
+        </div>
+        <div className="wd-stage">
+          {stageLabels.map((label, index) => {
+            const number = index + 1;
+            const state = number < stage ? "done" : number === stage ? "active" : "";
+            return (
+              <Fragment key={label}>
+                <div className={"wd-stage-step " + state}>
+                  <span className="n">{number < stage ? "✓" : number}</span>
+                  <span>{label}</span>
+                </div>
+                {index < stageLabels.length - 1 ? <div className="wd-stage-line" /> : null}
+              </Fragment>
+            );
+          })}
+        </div>
+      </header>
+
+      {notice ? (
+        <div className={"wd-notice " + (notice.kind === "err" ? "err" : "")} role="status" data-writing-notice={notice.kind}>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 break-words">{notice.text}</span>
+            <button type="button" className="shrink-0 text-[10px]" onClick={() => setNotice(null)}>
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="wd-body">
+        <aside className="wd-rail" aria-label="大纲" data-writing-outline-rail="">
+          <div className="wd-rail-head">
+            <div className="wd-rail-title">大纲</div>
+            {!readOnly ? (
+              <button type="button" className="wd-rail-link" onClick={() => setDrawer({ kind: "outline" })}>
+                编辑
+              </button>
+            ) : null}
+          </div>
+          {outline ? (
+            <>
+              <div className="wd-progress">
+                <div className="wd-progress-meta">
+                  <span>章节进度</span>
+                  <span>{confirmedCount} / {outline.outline.sections.length} 章已确认</span>
+                </div>
+                <div className="wd-progress-track">
+                  <div className="wd-progress-fill" style={{ width: progress + "%" }} />
+                </div>
+              </div>
+              <div className="wd-outline">
+                {outline.outline.sections.map((section) => {
+                  const state = sectionStates[section.no];
+                  const active = section.no === activeSectionNo;
+                  const done = Boolean(state?.confirmed);
+                  return (
+                    <button
+                      key={section.no}
+                      type="button"
+                      className={
+                        "wd-outline-row " +
+                        (active ? "current " : "") +
+                        (done ? "done" : "")
+                      }
+                      onClick={() => setActiveSectionNo(section.no)}
+                      data-writing-outline-section={section.no}
+                    >
+                      <span className="no">{String(section.no).padStart(2, "0")}</span>
+                      <span className="name">{section.heading}</span>
+                      <span className="wc">
+                        {countWords(state?.content)} / {section.expected_words}
+                      </span>
+                      <span className={"st " + (done ? "" : "empty")}>
+                        {done ? "✓" : active ? "●" : "○"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="mt-1 text-left text-[10px] text-[color:var(--od-neu-accent-ink)]"
+                  onClick={() => setDrawer({ kind: "outline" })}
+                >
+                  + 编辑章节
+                </button>
+              ) : null}
+              <div className="wd-tip">
+                <div className="wd-tip-head">本章提示</div>
+                <div className="wd-tip-line">
+                  <span>目标 {activeSection?.expected_words ?? "—"} 字 · 已写 {activeWords} 字</span>
+                </div>
+                <div className="wd-tip-line">
+                  <span>
+                    素材 {activeSection?.material_ids.length ?? 0} · 知识 {activeSection?.knowledge_ids.length ?? 0}
+                  </span>
+                  <span>{activeState?.confirmed ? "已确认" : "未生成"}</span>
+                </div>
+              </div>
+              <div className="wd-brief">
+                <div className="wd-rail-title text-[10.5px]">文档简报</div>
+                <div className="wd-brief-grid">
+                  <div>类型<strong>{task.document_type}</strong></div>
+                  <div>周期<strong>{task.writing_period || "—"}</strong></div>
+                  <div>受众<strong>{task.audience || "—"}</strong></div>
+                  <div>目的<strong>{task.writing_purpose || "—"}</strong></div>
+                  <div>篇幅<strong>{task.expected_length || "—"}</strong></div>
+                  <div>风格<strong>{task.writing_style || "—"}</strong></div>
+                </div>
+                <div className="mt-2 flex items-center gap-2 text-[9px] text-[color:var(--od-neu-ink-3)]">
+                  <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
+                  <button
+                    type="button"
+                    className="ml-auto text-[color:var(--od-neu-accent-ink)]"
+                    onClick={() => setDrawer({ kind: "materials" })}
+                  >
+                    管理
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="mt-3 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+              <p>{outlineLoading ? "正在读取大纲…" : outlineError ? "大纲读取失败：" + outlineError : "尚未确认大纲。"}</p>
+              {!readOnly ? (
+                <button type="button" className="wr-primary-button mt-2" onClick={() => setDrawer({ kind: "outline" })}>
+                  编辑大纲
+                </button>
+              ) : null}
+            </div>
+          )}
+        </aside>
+
+        <section className="wd-paper-wrap" aria-label="正文">
+          <article className="wd-paper" data-writing-paper="">
+            <h1>{outline?.outline.title || task.title}</h1>
+            <div className="sub">{task.writing_period || task.document_type}</div>
+            <div className="rule" />
+            {outline ? (
+              <>
+                {outline.outline.sections.map((section) => {
+                  const state = sectionStates[section.no];
+                  const active = section.no === activeSectionNo;
+                  const body = state?.content?.trim() ? paragraphsOf(state.content) : [];
+                  return (
+                    <section
+                      key={section.no}
+                      id={"wd-section-" + String(section.no)}
+                      className={"wd-paper-section " + (active ? "current" : "")}
+                      data-writing-paper-section={section.no}
+                    >
+                      <h2>
+                        {cnNumber(section.no)}、{section.heading}
+                        {active ? <span className="wd-current-mark">正在写</span> : null}
+                      </h2>
+                      {body.length > 0 ? (
+                        <div className="body">
+                          {body.map((paragraph, index) => (
+                            <p key={index}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="wd-empty-section">
+                          {sectionsLoading ? "正在读取本章…" : "这一章还没写。"}
+                          {!sectionsLoading && !readOnly ? (
+                            <button
+                              type="button"
+                              className="wr-ghost-button mt-2"
+                              onClick={() => setDrawer({ kind: "section", sectionNo: section.no })}
+                            >
+                              生成本章
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                      <div className="wd-section-actions">
+                        <span className="meta">
+                          {state?.confirmed ? "已确认 · 第 " + state.version + " 版" : readOnly ? "只读" : "未确认"}
+                        </span>
+                        {!readOnly ? (
+                          <button
+                            type="button"
+                            className="wr-ghost-button"
+                            onClick={() => setDrawer({ kind: "section", sectionNo: section.no })}
+                          >
+                            编辑本章
+                          </button>
+                        ) : null}
+                        {active ? (
+                          <button
+                            type="button"
+                            className="wr-text-button"
+                            onClick={() => setDrawer({ kind: "factcheck" })}
+                          >
+                            核验
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
+                  );
+                })}
+              </>
+            ) : (
+              <div className="wd-empty-section mt-6">
+                <p>这份材料还没有大纲。</p>
+                {!readOnly ? (
+                  <button type="button" className="wr-primary-button mt-2" onClick={() => setDrawer({ kind: "outline" })}>
+                    编辑大纲
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </article>
+        </section>
+
+        <aside className="wd-rail wd-context-rail" aria-label="本章上下文" data-writing-context-rail="">
+          <div className="wd-context-head">
+            <div className="wd-rail-title">本章上下文</div>
+            <div className="wd-rail-link">第 {activeSectionNo ?? "—"} 章</div>
+          </div>
+          <div className="wd-context-tabs" role="tablist" aria-label="章节上下文">
+            {(["materials", "factcheck", "versions"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={contextTab === tab}
+                className={"wd-context-tab " + (contextTab === tab ? "active" : "")}
+                onClick={() => setContextTab(tab)}
+                data-writing-context-tab={tab}
+              >
+                {tab === "materials" ? "资料" : tab === "factcheck" ? "核验" : "版本"}
+              </button>
+            ))}
+          </div>
+          <div className="wd-context-body">
+            {contextTab === "materials" ? (
+              <>
+                <div className="flex items-center gap-2 text-[9px] text-[color:var(--od-neu-ink-3)]">
+                  <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
+                  <button
+                    type="button"
+                    className="ml-auto text-[color:var(--od-neu-accent-ink)]"
+                    onClick={() => setDrawer({ kind: "materials" })}
+                  >
+                    管理
+                  </button>
+                </div>
+                <div className="wd-context-card">
+                  <div className="label">本章映射</div>
+                  <div className="value">{activeSection ? "第 " + activeSection.no + " 章 · " + activeSection.heading : "尚未选择章节"}</div>
+                  <div className="note">
+                    {activeSection
+                      ? "大纲映射 " + activeSection.material_ids.length + " 条素材 · " + activeSection.knowledge_ids.length + " 条知识"
+                      : "点左侧大纲选择一章，右栏会切到该章的资料和核验。"}
+                  </div>
+                </div>
+                <div className="wd-context-card">
+                  <div className="label">文档简报</div>
+                  <div className="value">{task.document_type} · {task.writing_period || "未注周期"}</div>
+                  <div className="note">受众 {task.audience || "—"} · 目的 {task.writing_purpose || "—"}</div>
+                </div>
+                <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "materials" })}>
+                  打开素材库
+                </button>
+              </>
+            ) : contextTab === "factcheck" ? (
+              <>
+                <div className="wd-context-card">
+                  <div className="label">事实核验</div>
+                  <div className="value">本章与全文引用</div>
+                  <div className="note">核验结论在独立面板里逐条处理。冲突左右并列，不自动合并。</div>
+                </div>
+                <button type="button" className="wr-primary-button mt-3 w-full" onClick={() => setDrawer({ kind: "factcheck" })}>
+                  打开核验
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="wd-context-card">
+                  <div className="label">当前版本</div>
+                  <div className="value">{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</div>
+                  <div className="note">{currentVersion ? shortTime(currentVersion.at) : "还没有版本记录。"}</div>
+                </div>
+                <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "versions" })}>
+                  打开版本
+                </button>
+              </>
+            )}
+          </div>
+          <div className="wd-context-foot">
+            <span>{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</span>
+            <span className="ml-auto">{shortTime(task.updated_at)} 保存</span>
+          </div>
+        </aside>
+      </div>
+
+      {renderDrawer()}
+    </div>
+  );
+}

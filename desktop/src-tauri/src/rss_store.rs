@@ -553,10 +553,14 @@ fn read_article_meta_at(root: &Path, book_id: &str) -> Result<Option<RssArticleM
 /// 只有文章没有批注时才改写 chapters/author/source_sha256，progress 与已读状态原样保留。
 pub fn refresh_article(paths: &AppPaths, book_id: &str) -> Result<RssArticleRefreshResult, String> {
     let root = crate::reading_store::resolve_reading_root(paths)?;
-    refresh_article_at(&root, book_id)
+    refresh_article_at(&root, book_id, Some(&paths.engine_state))
 }
 
-fn refresh_article_at(root: &Path, book_id: &str) -> Result<RssArticleRefreshResult, String> {
+fn refresh_article_at(
+    root: &Path,
+    book_id: &str,
+    audit_dir: Option<&Path>,
+) -> Result<RssArticleRefreshResult, String> {
     let not_updated = |reason: &str| RssArticleRefreshResult {
         updated: false,
         reason: reason.to_string(),
@@ -583,7 +587,7 @@ fn refresh_article_at(root: &Path, book_id: &str) -> Result<RssArticleRefreshRes
     let policy = load_store_at(root)
         .map(|store| policy_for(&store))
         .unwrap_or(crate::net_guard::NetPolicy::PublicOnly);
-    let xml = fetch_feed_xml(&feed_url, policy)?;
+    let xml = fetch_feed_xml(&feed_url, policy, audit_dir)?;
     refresh_article_with_xml_at(root, book_id, &xml)
 }
 
@@ -715,7 +719,7 @@ pub fn fetch(paths: &AppPaths, subscription_id: Option<&str>) -> Result<RssFetch
     let fetched_at = utc_iso8601(now_secs());
     for index in targets {
         let subscription = store.subscriptions[index].clone();
-        match fetch_feed_xml(&subscription.url, policy) {
+        match fetch_feed_xml(&subscription.url, policy, Some(&paths.engine_state)) {
             Ok(xml) => {
                 let summary = ingest_feed_at(&root, &subscription, &xml, now_secs());
                 match summary {
@@ -774,8 +778,15 @@ const MAX_FEED_REDIRECTS: usize = 3;
 fn feed_client(
     policy: crate::net_guard::NetPolicy,
     url: &reqwest::Url,
+    audit_dir: Option<&Path>,
 ) -> Result<reqwest::blocking::Client, String> {
-    let addrs = crate::net_guard::assert_url_addresses(url, policy)?;
+    let addrs = match crate::action_gate::authorize_external_fetch(url, policy, audit_dir) {
+        crate::action_gate::Decision::Allow(addrs) => addrs,
+        crate::action_gate::Decision::Deny { message, .. } => return Err(message),
+        crate::action_gate::Decision::NeedConfirm { .. } => {
+            return Err("外联地址判定不应返回待确认。".to_string())
+        }
+    };
     let builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
         .connect_timeout(Duration::from_secs(10))
@@ -786,13 +797,17 @@ fn feed_client(
         .map_err(|e| format!("创建 RSS 网络客户端失败：{e}"))
 }
 
-fn fetch_feed_xml(url: &str, policy: crate::net_guard::NetPolicy) -> Result<String, String> {
+fn fetch_feed_xml(
+    url: &str,
+    policy: crate::net_guard::NetPolicy,
+    audit_dir: Option<&Path>,
+) -> Result<String, String> {
     let url = validate_feed_url(url)?;
     let mut current =
         reqwest::Url::parse(&url).map_err(|_| "订阅地址不是有效的网址。".to_string())?;
     let mut hops = 0usize;
     loop {
-        let client = feed_client(policy, &current)?;
+        let client = feed_client(policy, &current, audit_dir)?;
         let response = client
         .get(current.clone())
         .header(
@@ -2406,7 +2421,7 @@ mod tests {
         // 本机回环监听器：只在这个测试里临时放行回环（生产代码没有这个开关）。
         crate::net_guard::allow_loopback_in_tests(true);
         let fetched =
-            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly)
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly, None)
                 .unwrap();
         crate::net_guard::allow_loopback_in_tests(false);
         server.join().unwrap();
@@ -2433,7 +2448,7 @@ mod tests {
         });
         crate::net_guard::allow_loopback_in_tests(true);
         let result =
-            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly);
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly, None);
         crate::net_guard::allow_loopback_in_tests(false);
         server.join().unwrap();
         let error = result.expect_err("跳到 169.254.169.254 必须被拒绝");
@@ -2460,7 +2475,7 @@ mod tests {
         });
         crate::net_guard::allow_loopback_in_tests(true);
         let result =
-            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly);
+            fetch_feed_xml(&format!("http://{address}/feed.xml"), crate::net_guard::NetPolicy::PublicOnly, None);
         crate::net_guard::allow_loopback_in_tests(false);
         server.join().unwrap();
         let error = result.expect_err("第 4 跳必须被拒绝");

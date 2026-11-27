@@ -451,7 +451,7 @@ export function WritingMaterialBasket() {
               <p className="mt-1 text-[10.5px] text-amber-700">{source.entity.note}</p>
             ) : null}
 
-            <div className="mt-2 rounded-lg bg-white/80 px-2.5 py-2" data-material-quote="">
+            <div className="mt-2 rounded-lg bg-[color:var(--od-neu-surface-high)] px-2.5 py-2" data-material-quote="">
               <p className="text-[9.5px] text-outline">引用原文</p>
               <p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.7] text-on-surface-variant break-words">
                 {source.quote}

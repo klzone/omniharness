@@ -142,7 +142,12 @@ function TaskRow({ task, onOpen }: { task: WritingTask; onOpen: (id: string) => 
  * host.submitTask 通道。任务详情先显示真实元数据，大纲/正文入口调用
  * 606/607 的只读命令，能读则显示简表，读不到如实给出行内外提示。
  */
-export function WritingWorkbench() {
+export function WritingWorkbench({
+  onOpenTask,
+}: {
+  /** 传了就打开新的写作台；不传则沿用内置任务详情（旧页面兼容）。 */
+  onOpenTask?: (writingId: string) => void;
+} = {}) {
   const [items, setItems] = useState<WritingTask[]>([]);
   const [broken, setBroken] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -287,7 +292,8 @@ export function WritingWorkbench() {
       setDraft(null);
       setAnswers([]);
       setInput("");
-      setSelected(null);
+      if (onOpenTask) onOpenTask(created.task.writing_id);
+      else setSelected(null);
       setTypeFilter(null);
       setReloadTick((n) => n + 1);
       setNotice({
@@ -305,6 +311,11 @@ export function WritingWorkbench() {
     } finally {
       setCreating(false);
     }
+  }
+
+  function openTask(writingId: string) {
+    if (onOpenTask) onOpenTask(writingId);
+    else setSelected(writingId);
   }
 
   if (selectedTask) {
@@ -583,7 +594,11 @@ export function WritingWorkbench() {
           </div>
         ) : visible.length === 0 ? (
           <p className="text-[11.5px] leading-relaxed text-outline" data-writing-empty="">
-            暂无任务
+            {typeFilter
+              ? "这个类型下还没有任务。"
+              : items.length === 0
+                ? "还没有写作任务。在上面描述要写什么，解析后创建。"
+                : "暂无任务"}
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">
@@ -596,7 +611,7 @@ export function WritingWorkbench() {
                 <ul className="flex flex-col gap-1.5">
                   {group.items.map((task) => (
                     <li key={task.writing_id}>
-                      <TaskRow task={task} onOpen={setSelected} />
+                      <TaskRow task={task} onOpen={openTask} />
                     </li>
                   ))}
                 </ul>

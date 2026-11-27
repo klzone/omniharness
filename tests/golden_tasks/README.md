@@ -17,3 +17,29 @@
 ## 验收铁律
 - 材料与审查类：严格杜绝假大空，三级大纲清晰，事实量化扎实。
 - 知识检索类：严格四要素（答案 + 原文引用 + 来源文件 + 引用位置），准确率底线 ≥ 95%。
+
+## Work Review A/B 对照
+
+`work-review/ab_runner.py` 用同一批 12 道题、同一把尺子比较两版提示词或两批已有输出。
+
+跑两版提示词时，每道题调用一次 runner。runner 从 stdin 读取 `{case_id, variant, prompt}`，把候选 JSON 写到 stdout，日志走 stderr。
+runner 可以是任何本地模型 CLI、HTTP 包装或测试替身，只要遵守这个 stdin/stdout 协议。
+
+```bash
+python3 tests/golden_tasks/work-review/ab_runner.py \
+  --variant baseline=variants/baseline.txt \
+  --variant strict=variants/strict.txt \
+  --runner-cmd "python3 my_model_runner.py"
+```
+
+只比较已有输出时，不需要 runner。
+
+```bash
+python3 tests/golden_tasks/work-review/ab_runner.py \
+  --score baseline=/tmp/run-a \
+  --score strict=/tmp/run-b
+```
+
+输出是一张 Markdown 表，列出事实引用、条数、需复核、重复匹配、敏感拒绝、知识提示六项准确率和平均耗时。脚本默认把中间输出写到临时目录，只打印分数与耗时，不打印提示词或候选正文。
+
+这个对照只用于合成基准上的相对比较，不代表真实业务材料的绝对质量。
