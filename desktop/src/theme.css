@@ -5671,7 +5671,7 @@ button.wr-backlink:hover {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 1280px;
+  max-width: 1340px;
   height: 100%;
   min-height: 0;
   margin: 0 auto;
@@ -5679,16 +5679,16 @@ button.wr-backlink:hover {
 
 .wd-head {
   flex: 0 0 auto;
-  padding-bottom: 12px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--od-neu-line-strong);
 }
 
 .wd-kicker {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   color: var(--od-neu-ink-3);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .wd-kicker button {
@@ -5701,37 +5701,39 @@ button.wr-backlink:hover {
 
 .wd-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 16px;
-  margin-top: 7px;
+  gap: 20px;
+  margin-top: 9px;
 }
 
 .wd-doc-title {
   margin: 0;
   color: var(--od-neu-ink);
   font-family: var(--font-headline-lg);
-  font-size: 21px;
-  font-weight: 650;
-  line-height: 1.25;
-  letter-spacing: 0.2px;
+  font-size: 27px;
+  font-weight: 680;
+  line-height: 1.3;
+  letter-spacing: 0;
 }
 
 .wd-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 10px;
   color: var(--od-neu-ink-3);
-  font-size: 10px;
+  font-size: 12.5px;
 }
 
 .wd-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
-  padding-top: 2px;
+  padding-top: 4px;
 }
 
 .wd-export-wrap {
@@ -5743,8 +5745,8 @@ button.wr-backlink:hover {
   top: calc(100% + 8px);
   right: 0;
   z-index: 40;
-  width: 210px;
-  padding: 8px;
+  width: 230px;
+  padding: 9px;
   border: 1px solid var(--od-neu-line);
   border-radius: 16px;
   background: var(--od-neu-surface-high);
@@ -5756,10 +5758,10 @@ button.wr-backlink:hover {
   width: 100%;
   align-items: center;
   gap: 8px;
-  padding: 8px 9px;
+  padding: 9px 10px;
   border-radius: 9px;
   color: var(--od-neu-ink-2);
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: left;
 }
 
@@ -5771,33 +5773,47 @@ button.wr-backlink:hover {
 .wd-stage {
   display: flex;
   align-items: center;
-  margin-top: 9px;
+  margin-top: 14px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
   color: var(--od-neu-ink-3);
-  font-size: 9.5px;
+  font-size: 13px;
 }
 
 .wd-stage-step {
   display: flex;
+  flex: 1;
+  justify-content: center;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
+  min-width: 76px;
+  padding: 4px 6px;
+  border-radius: 9px;
   white-space: nowrap;
 }
 
 .wd-stage-step .n {
   display: grid;
-  width: 17px;
-  height: 17px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border-radius: 50%;
   background: var(--od-neu-sunken);
   box-shadow: var(--od-neu-inset-1);
   color: var(--od-neu-ink-3);
-  font-size: 8px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .wd-stage-step.done .n {
   background: #e6efe9;
   color: #3f7d5a;
+}
+
+.wd-stage-step.done {
+  color: var(--od-neu-ink-2);
 }
 
 .wd-stage-step.active .n {
@@ -5807,28 +5823,113 @@ button.wr-backlink:hover {
 }
 
 .wd-stage-step.active {
+  background: var(--od-neu-accent-soft);
   color: var(--od-neu-accent-ink);
   font-weight: 600;
+  font-size: 13.5px;
 }
 
 .wd-stage-line {
   width: 26px;
-  height: 1px;
-  margin: 0 7px;
+  flex: 0 0 26px;
+  height: 2px;
+  margin: 0 6px;
   background: var(--od-neu-line-strong);
+  border-radius: 2px;
 }
 
 .wd-stage-step.done + .wd-stage-line {
   background: #b9d3c2;
 }
 
+/* 下一步：整页唯一的主行动入口，固定显示当前阶段与动作。 */
+.wd-next {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "index copy action"
+    "index after action";
+  gap: 4px 18px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px 20px;
+  border: 1px solid var(--od-neu-line);
+  border-radius: 22px;
+  background: var(--od-neu-surface-high);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wd-next-index {
+  display: flex;
+  grid-area: index;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
+}
+
+.wd-next-index .n {
+  font-family: var(--font-headline-lg);
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.wd-next-copy {
+  grid-area: copy;
+  min-width: 0;
+}
+
+.wd-next-kicker {
+  color: var(--od-neu-accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+
+.wd-next-copy h2 {
+  margin: 3px 0 0;
+  color: var(--od-neu-ink);
+  font-family: var(--font-headline-lg);
+  font-size: 21px;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.wd-next-copy p {
+  margin: 4px 0 0;
+  color: var(--od-neu-ink-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.wd-next-action {
+  grid-area: action;
+  align-self: center;
+}
+
+.wd-next-after {
+  grid-area: after;
+  color: var(--od-neu-ink-3);
+  font-size: 11.5px;
+}
+
 .wd-body {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: 190px minmax(0, 1fr) 270px;
-  gap: 14px;
+  grid-template-columns: 252px minmax(0, 1fr) 300px;
+  gap: 18px;
   min-height: 0;
-  padding-top: 14px;
+  padding-top: 18px;
+}
+
+/* 需求与素材阶段还没有大纲，收起右侧上下文，把注意力留给当前这一步。 */
+.wd-body.is-early {
+  grid-template-columns: 282px minmax(0, 1fr);
 }
 
 .wd-rail {
@@ -5836,70 +5937,183 @@ button.wr-backlink:hover {
   min-height: 0;
   flex-direction: column;
   overflow-y: auto;
-  padding: 14px;
+  padding: 18px;
   border: 1px solid var(--od-neu-line);
-  border-radius: 22px;
+  border-radius: 24px;
   background: var(--od-neu-surface);
   box-shadow: var(--od-neu-raise-2);
 }
 
 .wd-rail-head {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
 .wd-rail-title {
   color: var(--od-neu-ink);
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 14.5px;
+  font-weight: 660;
+  letter-spacing: 0.2px;
 }
 
 .wd-rail-link {
   margin-left: auto;
   color: var(--od-neu-accent-ink);
-  font-size: 9.5px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.wd-rail-step {
+  margin-left: auto;
+  color: var(--od-neu-ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.wd-rail-head-sub {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--od-neu-line);
+}
+
+.wd-rail-note {
+  margin-top: 10px;
+  color: var(--od-neu-ink-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.wd-rail-note.err {
+  color: #93000a;
+}
+
+/* 流程清单：六步固定顺序，当前步高亮，完成步打勾。 */
+.wd-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wd-flow-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border-radius: 11px;
+}
+
+.wd-flow-item .dot {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-ink-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wd-flow-item .copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wd-flow-item .label {
+  color: var(--od-neu-ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.wd-flow-item .hint {
+  overflow: hidden;
+  color: var(--od-neu-ink-2);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-flow-item.current {
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+}
+
+.wd-flow-item.current .dot {
+  background: var(--od-neu-accent);
+  box-shadow: var(--od-neu-raise-1);
+  color: #fff;
+}
+
+.wd-flow-item.current .label {
+  color: var(--od-neu-accent-ink);
+}
+
+.wd-flow-item.current .hint {
+  color: var(--od-neu-accent-ink);
+  opacity: 0.8;
+}
+
+.wd-flow-item.done .dot {
+  background: #e6efe9;
+  color: #3f7d5a;
+  box-shadow: none;
+}
+
+.wd-flow-item.done .label {
+  color: var(--od-neu-ink-3);
+  font-weight: 500;
 }
 
 .wd-progress {
-  margin-top: 9px;
+  margin-top: 14px;
 }
 
 .wd-progress-meta {
   display: flex;
   justify-content: space-between;
   color: var(--od-neu-ink-3);
-  font-size: 9px;
+  font-size: 11.5px;
 }
 
 .wd-progress-track {
-  height: 4px;
-  margin-top: 5px;
+  height: 6px;
+  margin-top: 7px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--od-neu-sunken);
   box-shadow: var(--od-neu-inset-1);
 }
 
 .wd-progress-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--od-neu-accent);
 }
 
 .wd-outline {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   margin-top: 12px;
 }
 
 .wd-outline-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 9px;
   align-items: center;
-  padding: 8px 7px;
+  padding: 9px 8px;
   border-left: 2px solid transparent;
   border-radius: 9px;
   text-align: left;
@@ -5919,15 +6133,15 @@ button.wr-backlink:hover {
 .wd-outline-row .no {
   color: var(--od-neu-ink-3);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .wd-outline-row .name {
   min-width: 0;
   overflow: hidden;
   color: var(--od-neu-ink);
-  font-size: 11.5px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5939,17 +6153,25 @@ button.wr-backlink:hover {
 
 .wd-outline-row .wc {
   color: var(--od-neu-ink-3);
-  font-size: 8.5px;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 
 .wd-outline-row .st {
   display: grid;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   border-radius: 50%;
-  font-size: 8px;
+  font-size: 9.5px;
+}
+
+.wd-outline-edit-more {
+  margin-top: 6px;
+  padding: 6px 2px;
+  color: var(--od-neu-accent-ink);
+  font-size: 12px;
+  text-align: left;
 }
 
 .wd-outline-row.done .st {
@@ -5968,46 +6190,65 @@ button.wr-backlink:hover {
 }
 
 .wd-tip {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--od-neu-line);
 }
 
 .wd-tip-head {
   color: var(--od-neu-ink-2);
-  font-size: 9.5px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 
 .wd-tip-line {
   display: flex;
   justify-content: space-between;
-  margin-top: 6px;
+  margin-top: 7px;
   color: var(--od-neu-ink-3);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .wd-brief {
-  margin-top: auto;
-  padding-top: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
   border-top: 1px solid var(--od-neu-line);
+}
+
+.wd-brief-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wd-brief-title {
+  color: var(--od-neu-ink);
+  font-size: 12.5px;
+  font-weight: 650;
 }
 
 .wd-brief-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 8px;
-  margin-top: 8px;
+  gap: 8px 10px;
+  margin-top: 10px;
   color: var(--od-neu-ink-3);
-  font-size: 9px;
+  font-size: 11.5px;
 }
 
 .wd-brief-grid strong {
   display: block;
-  margin-top: 1px;
+  margin-top: 2px;
   color: var(--od-neu-ink-2);
-  font-size: 9.5px;
+  font-size: 12.5px;
   font-weight: 500;
+  line-height: 1.4;
+}
+
+.wd-brief-foot {
+  margin-top: 12px;
+  color: var(--od-neu-ink-3);
+  font-size: 11px;
 }
 
 .wd-paper-wrap {
@@ -6018,12 +6259,12 @@ button.wr-backlink:hover {
 }
 
 .wd-paper {
-  width: min(700px, 100%);
+  width: min(760px, 100%);
   height: 100%;
   overflow-y: auto;
-  padding: 34px clamp(28px, 4vw, 46px) 28px;
+  padding: 42px clamp(32px, 4vw, 54px) 36px;
   border: 1px solid var(--od-neu-line);
-  border-radius: 24px;
+  border-radius: 26px;
   background: var(--od-neu-surface-high);
   box-shadow: var(--od-neu-raise-3);
 }
@@ -6032,46 +6273,46 @@ button.wr-backlink:hover {
   margin: 0;
   color: var(--od-neu-ink);
   font-family: var(--font-report-serif);
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 700;
-  line-height: 1.45;
-  letter-spacing: 2px;
-  text-align: center;
-}
-
-.wd-paper .sub {
-  margin-top: 6px;
-  color: var(--od-neu-ink-3);
-  font-family: var(--font-body-sm);
-  font-size: 10.5px;
+  line-height: 1.5;
   letter-spacing: 1px;
   text-align: center;
 }
 
+.wd-paper .sub {
+  margin-top: 8px;
+  color: var(--od-neu-ink-3);
+  font-family: var(--font-body-sm);
+  font-size: 12.5px;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
 .wd-paper .rule {
-  width: 46px;
+  width: 54px;
   height: 1px;
-  margin: 14px auto 0;
+  margin: 18px auto 0;
   background: var(--od-neu-line-strong);
 }
 
 .wd-paper h2 {
-  margin: 24px 0 8px;
+  margin: 28px 0 10px;
   color: var(--od-neu-ink);
   font-family: var(--font-report-serif);
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 700;
   line-height: 1.4;
   letter-spacing: 1px;
 }
 
 .wd-paper .body p {
-  margin: 0 0 9px;
+  margin: 0 0 11px;
   color: var(--od-neu-ink);
   font-family: var(--font-report-serif);
-  font-size: 15px;
-  line-height: 1.9;
-  letter-spacing: 0.2px;
+  font-size: 16.5px;
+  line-height: 1.95;
+  letter-spacing: 0.3px;
   text-align: justify;
   text-justify: inter-ideograph;
   text-indent: 2em;
@@ -6087,14 +6328,64 @@ button.wr-backlink:hover {
 }
 
 .wd-empty-section {
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
   background: var(--od-neu-sunken);
   box-shadow: var(--od-neu-inset-1);
   color: var(--od-neu-ink-3);
   font-family: var(--font-body-sm);
-  font-size: 10.5px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 纸面空态：把当前步骤写成一张可直接开始的任务卡。 */
+.wd-paper-empty {
+  display: flex;
+  max-width: 520px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 34px auto 0;
+  padding: 24px 26px;
+  border: 1px solid var(--od-neu-line);
+  border-radius: 20px;
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-2);
+}
+
+.wd-paper-empty-tag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--od-neu-accent-soft);
+  color: var(--od-neu-accent-ink);
+  font-family: var(--font-body-sm);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wd-paper-empty h2 {
+  margin: 2px 0 0;
+  color: var(--od-neu-ink);
+  font-family: var(--font-headline-lg);
+  font-size: 21px;
+  font-weight: 680;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.wd-paper-empty p {
+  margin: 0;
+  color: var(--od-neu-ink-2);
+  font-family: var(--font-body-sm);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.wd-paper-empty-next {
+  color: var(--od-neu-ink-3);
+  font-family: var(--font-body-sm);
+  font-size: 11.5px;
 }
 
 .wd-current-mark {
@@ -6102,12 +6393,12 @@ button.wr-backlink:hover {
   align-items: center;
   gap: 4px;
   margin-left: 10px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--od-neu-accent-soft);
   color: var(--od-neu-accent-ink);
   font-family: var(--font-body-sm);
-  font-size: 8.5px;
+  font-size: 10.5px;
   font-weight: 500;
   vertical-align: middle;
 }
@@ -6116,14 +6407,14 @@ button.wr-backlink:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin: 4px 0 12px;
+  gap: 9px;
+  margin: 6px 0 16px;
   font-family: var(--font-body-sm);
 }
 
 .wd-section-actions .meta {
   color: var(--od-neu-ink-3);
-  font-size: 9px;
+  font-size: 11.5px;
 }
 
 .wd-context-head {
@@ -6135,15 +6426,15 @@ button.wr-backlink:hover {
 .wd-context-tabs {
   display: flex;
   gap: 2px;
-  margin-top: 10px;
+  margin-top: 12px;
   border-bottom: 1px solid var(--od-neu-line);
 }
 
 .wd-context-tab {
   position: relative;
-  padding: 6px 8px 7px;
+  padding: 8px 10px 9px;
   color: var(--od-neu-ink-3);
-  font-size: 9.5px;
+  font-size: 12px;
 }
 
 .wd-context-tab.active {
@@ -6166,35 +6457,35 @@ button.wr-backlink:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-top: 10px;
+  padding-top: 12px;
 }
 
 .wd-context-card {
-  margin-top: 8px;
-  padding: 9px 10px;
+  margin-top: 10px;
+  padding: 12px 14px;
   border: 1px solid var(--od-neu-line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--od-neu-surface-high);
   box-shadow: var(--od-neu-raise-1);
 }
 
 .wd-context-card .label {
   color: var(--od-neu-ink-3);
-  font-size: 8.5px;
+  font-size: 10.5px;
 }
 
 .wd-context-card .value {
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--od-neu-ink);
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .wd-context-card .note {
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--od-neu-ink-3);
-  font-size: 9.5px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .wd-context-foot {
@@ -6202,21 +6493,21 @@ button.wr-backlink:hover {
   align-items: center;
   gap: 7px;
   margin-top: auto;
-  padding-top: 9px;
+  padding-top: 11px;
   border-top: 1px solid var(--od-neu-line);
   color: var(--od-neu-ink-3);
-  font-size: 9.5px;
+  font-size: 11.5px;
 }
 
 .wd-notice {
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border-radius: 12px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
   background: var(--od-neu-sunken);
   box-shadow: var(--od-neu-inset-1);
   color: var(--od-neu-ink-2);
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
 .wd-notice.err {
@@ -6225,17 +6516,68 @@ button.wr-backlink:hover {
 
 .wd-empty {
   display: flex;
-  min-height: 320px;
+  min-height: 380px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 32px;
-  border-radius: 22px;
+  gap: 16px;
+  padding: 40px;
+  border-radius: 26px;
   background: var(--od-neu-surface);
   box-shadow: var(--od-neu-raise-2);
   color: var(--od-neu-ink-3);
   text-align: center;
+}
+
+.wd-empty-title {
+  color: var(--od-neu-ink);
+  font-family: var(--font-headline-lg);
+  font-size: 24px;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.wd-empty-copy {
+  max-width: 430px;
+  color: var(--od-neu-ink-2);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.wd-empty-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: var(--od-neu-sunken);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-ink-3);
+  font-size: 11.5px;
+}
+
+.wd-empty-step {
+  color: var(--od-neu-ink-2);
+}
+
+.wd-empty-arrow {
+  color: var(--od-neu-ink-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.wd-empty-error {
+  color: #93000a;
+  font-size: 12px;
+}
+
+.wd-empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
 }
 
 .wd-drawer-backdrop {
@@ -6279,8 +6621,8 @@ button.wr-backlink:hover {
 
 .wd-drawer-title {
   color: var(--od-neu-ink);
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 660;
 }
 
 .wd-drawer-close {
@@ -6291,7 +6633,7 @@ button.wr-backlink:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 18px 22px;
+  padding: 18px 20px 26px;
 }
 
 .wd-library-tabs {
@@ -6304,9 +6646,9 @@ button.wr-backlink:hover {
 
 .wd-library-tab {
   position: relative;
-  padding: 7px 10px;
+  padding: 8px 12px;
   color: var(--od-neu-ink-3);
-  font-size: 10.5px;
+  font-size: 12.5px;
 }
 
 .wd-library-tab.active {
@@ -6325,9 +6667,42 @@ button.wr-backlink:hover {
   content: "";
 }
 
+/* 写作页内的动作按钮放大一档，和正文、标题同一套阅读尺度。 */
+.wd-page .wr-primary-button {
+  padding: 9px 18px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.wd-page .wr-ghost-button {
+  padding: 8px 14px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.wd-page .wr-text-button {
+  font-size: 12px;
+}
+
+.wd-page .wr-chip {
+  padding: 3px 9px;
+  font-size: 11.5px;
+}
+
+.wd-page .wr-icon-button {
+  width: 38px;
+  height: 38px;
+  flex-basis: 38px;
+  font-size: 16px;
+}
+
 @media (max-width: 1279px) {
   .wd-body {
-    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .wd-body.is-early {
+    grid-template-columns: 240px minmax(0, 1fr);
   }
 
   .wd-context-rail {
@@ -6341,7 +6716,29 @@ button.wr-backlink:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .wd-body.is-early {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .wd-paper {
     width: 100%;
+  }
+
+  .wd-next {
+    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-areas:
+      "index copy"
+      "index after"
+      "action action";
+  }
+
+  .wd-next-action {
+    justify-self: start;
+    margin-top: 10px;
+  }
+
+  .wd-stage {
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
 }

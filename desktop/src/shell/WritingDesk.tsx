@@ -85,21 +85,32 @@ function expectedLabel(value: string): string {
   return trimmed.replace(/字$/, "").trim() || "—";
 }
 
-function stageOf(status: WritingTaskStatus | undefined): number {
+/** 写作流程的六步：每一步都对应任务状态，界面用它告诉用户现在在哪、下一步做什么。 */
+const FLOW_STEPS: Array<{ label: string; hint: string; next: string }> = [
+  { label: "需求", hint: "确认写什么、给谁看", next: "素材收集" },
+  { label: "素材", hint: "采纳材料与依据", next: "大纲" },
+  { label: "大纲", hint: "确认章节结构", next: "正文" },
+  { label: "正文", hint: "逐章写正文", next: "核验" },
+  { label: "核验", hint: "核对事实与引用", next: "定稿" },
+  { label: "定稿", hint: "导出与归档", next: "完成" },
+];
+
+function stepOf(status: WritingTaskStatus | undefined): number {
   switch (status) {
     case "需求待整理":
-    case "素材收集中":
       return 1;
-    case "大纲待确认":
+    case "素材收集中":
       return 2;
-    case "写作中":
+    case "大纲待确认":
       return 3;
+    case "写作中":
+      return 4;
     case "待核验":
     case "待审核":
-      return 4;
+      return 5;
     case "已定稿":
     case "已归档":
-      return 5;
+      return 6;
     default:
       return 1;
   }
@@ -512,7 +523,8 @@ export function WritingDesk({
   const currentVersion = versions.find((entry) => entry.current) ?? versions[0] ?? null;
   const readOnly =
     task?.status === "已定稿" || task?.status === "已归档" || task?.status === "已取消";
-  const stage = stageOf(task?.status);
+  const stepNo = stepOf(task?.status);
+  const stepInfo = FLOW_STEPS[stepNo - 1];
 
   function openLibrary(tab: LibraryTab) {
     setPrefillRequirement("");
@@ -695,8 +707,6 @@ export function WritingDesk({
         break;
     }
   }
-  const primary = { label: nextStep.label, run: nextStep.run };
-
   function renderDrawer() {
     if (!drawer) return null;
     if (drawer.kind === "library") {
@@ -849,15 +859,23 @@ export function WritingDesk({
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1 items-center justify-center py-4">
-          <div className="wd-empty w-full max-w-[560px]">
-            <h2 className="text-[16px] font-semibold text-[color:var(--od-neu-ink)]">还没有打开的稿件</h2>
-            <p className="max-w-[360px] text-[10.5px] leading-relaxed">
-              从一段写作需求开始，或打开已有稿件继续。材料、知识依据和范例都在写作台里。
+          <div className="wd-empty w-full max-w-[640px]">
+            <h2 className="wd-empty-title">还没有打开的稿件</h2>
+            <p className="wd-empty-copy">
+              一段写作需求就能开始。写作台按需求、素材、大纲、正文、核验、定稿六步带你走完，每一步只做一件事。
             </p>
+            <div className="wd-empty-flow">
+              {FLOW_STEPS.map((item, index) => (
+                <Fragment key={item.label}>
+                  <span className="wd-empty-step">{item.label}</span>
+                  {index < FLOW_STEPS.length - 1 ? <span className="wd-empty-arrow">→</span> : null}
+                </Fragment>
+              ))}
+            </div>
             {listError ? (
-              <p className="text-[10.5px] leading-relaxed text-error">读取稿件列表失败：{listError}</p>
+              <p className="wd-empty-error">读取稿件列表失败：{listError}</p>
             ) : null}
-            <div className="flex items-center gap-2">
+            <div className="wd-empty-actions">
               <button type="button" className="wr-primary-button" onClick={() => openLibrary("tasks")}>
                 新建材料
               </button>
@@ -871,8 +889,6 @@ export function WritingDesk({
       </div>
     );
   }
-
-  const stageLabels = ["需求", "大纲", "写作", "核验", "定稿"];
 
   return (
     <div className="wd-page" data-writing-desk="" data-writing-board="">
@@ -928,9 +944,6 @@ export function WritingDesk({
                 </>
               ) : null}
             </div>
-            <button type="button" className="wr-primary-button" onClick={primary.run}>
-              {primary.label}
-            </button>
             <button
               type="button"
               className="wr-icon-button"
@@ -942,21 +955,36 @@ export function WritingDesk({
           </div>
         </div>
         <div className="wd-stage">
-          {stageLabels.map((label, index) => {
+          {FLOW_STEPS.map((item, index) => {
             const number = index + 1;
-            const state = number < stage ? "done" : number === stage ? "active" : "";
+            const state = number < stepNo ? "done" : number === stepNo ? "active" : "";
             return (
-              <Fragment key={label}>
+              <Fragment key={item.label}>
                 <div className={"wd-stage-step " + state}>
-                  <span className="n">{number < stage ? "✓" : number}</span>
-                  <span>{label}</span>
+                  <span className="n">{number < stepNo ? "✓" : number}</span>
+                  <span className="label">{item.label}</span>
                 </div>
-                {index < stageLabels.length - 1 ? <div className="wd-stage-line" /> : null}
+                {index < FLOW_STEPS.length - 1 ? <div className="wd-stage-line" /> : null}
               </Fragment>
             );
           })}
         </div>
       </header>
+
+      <section className="wd-next" data-writing-next="">
+        <div className="wd-next-index">
+          <span className="n">{stepNo}</span>
+        </div>
+        <div className="wd-next-copy">
+          <span className="wd-next-kicker">下一步 · 第 {stepNo} 步</span>
+          <h2>{nextStep.title}</h2>
+          <p>{nextStep.detail}</p>
+        </div>
+        <button type="button" className="wr-primary-button wd-next-action" onClick={nextStep.run}>
+          {nextStep.label}
+        </button>
+        <div className="wd-next-after">完成后进入「{stepInfo?.next ?? "下一步"}」</div>
+      </section>
 
       {notice ? (
         <div className={"wd-notice " + (notice.kind === "err" ? "err" : "")} role="status" data-writing-notice={notice.kind}>
@@ -969,18 +997,18 @@ export function WritingDesk({
         </div>
       ) : null}
 
-      <div className="wd-body">
-        <aside className="wd-rail" aria-label="大纲" data-writing-outline-rail="">
-          <div className="wd-rail-head">
-            <div className="wd-rail-title">大纲</div>
-            {!readOnly && (outline || task.status === "大纲待确认") ? (
-              <button type="button" className="wd-rail-link" onClick={() => setDrawer({ kind: "outline" })}>
-                编辑
-              </button>
-            ) : null}
-          </div>
+      <div className={"wd-body" + (outline ? "" : " is-early")}>
+        <aside className="wd-rail" aria-label="写作流程" data-writing-outline-rail="">
           {outline ? (
             <>
+              <div className="wd-rail-head">
+                <div className="wd-rail-title">大纲</div>
+                {!readOnly ? (
+                  <button type="button" className="wd-rail-link" onClick={() => setDrawer({ kind: "outline" })}>
+                    编辑
+                  </button>
+                ) : null}
+              </div>
               <div className="wd-progress">
                 <div className="wd-progress-meta">
                   <span>章节进度</span>
@@ -1022,7 +1050,7 @@ export function WritingDesk({
               {!readOnly ? (
                 <button
                   type="button"
-                  className="mt-1 text-left text-[10px] text-[color:var(--od-neu-accent-ink)]"
+                  className="wd-outline-edit-more"
                   onClick={() => setDrawer({ kind: "outline" })}
                 >
                   + 编辑章节
@@ -1040,47 +1068,60 @@ export function WritingDesk({
                   <span>{activeState?.confirmed ? "已确认" : "未生成"}</span>
                 </div>
               </div>
-              <div className="wd-brief">
-                <div className="wd-rail-title text-[10.5px]">文档简报</div>
-                <div className="wd-brief-grid">
-                  <div>类型<strong>{task.document_type}</strong></div>
-                  <div>周期<strong>{task.writing_period || "—"}</strong></div>
-                  <div>受众<strong>{task.audience || "—"}</strong></div>
-                  <div>目的<strong>{task.writing_purpose || "—"}</strong></div>
-                  <div>篇幅<strong>{task.expected_length || "—"}</strong></div>
-                  <div>风格<strong>{task.writing_style || "—"}</strong></div>
-                </div>
-                <div className="mt-2 flex items-center gap-2 text-[9px] text-[color:var(--od-neu-ink-3)]">
-                  <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
-                  <button
-                    type="button"
-                    className="ml-auto text-[color:var(--od-neu-accent-ink)]"
-                    onClick={() => setDrawer({ kind: "collect" })}
-                  >
-                    管理
-                  </button>
-                </div>
-              </div>
             </>
           ) : (
-            <div className="mt-3 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
-              {outlineLoading ? (
-                <p>正在读取大纲…</p>
-              ) : outlineError ? (
-                <p>大纲读取失败：{outlineError}</p>
-              ) : (
-                <>
-                  <p className="font-medium text-[color:var(--od-neu-ink)]">{nextStep.title}</p>
-                  <p className="mt-1">{nextStep.detail}</p>
-                  {!readOnly ? (
-                    <button type="button" className="wr-primary-button mt-2" onClick={nextStep.run}>
-                      {nextStep.label}
-                    </button>
-                  ) : null}
-                </>
-              )}
-            </div>
+            <>
+              <div className="wd-rail-head">
+                <div className="wd-rail-title">写作流程</div>
+                <div className="wd-rail-step">
+                  {stepNo} / {FLOW_STEPS.length}
+                </div>
+              </div>
+              <ol className="wd-flow">
+                {FLOW_STEPS.map((item, index) => {
+                  const number = index + 1;
+                  const state = number < stepNo ? "done" : number === stepNo ? "current" : "";
+                  return (
+                    <li key={item.label} className={"wd-flow-item " + state}>
+                      <span className="dot">{number < stepNo ? "✓" : number}</span>
+                      <div className="copy">
+                        <span className="label">{item.label}</span>
+                        <span className="hint">{item.hint}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+              {outlineLoading ? <p className="wd-rail-note">正在读取大纲…</p> : null}
+              {outlineError ? (
+                <p className="wd-rail-note err">大纲读取失败：{outlineError}</p>
+              ) : null}
+            </>
           )}
+
+          <div className="wd-brief">
+            <div className="wd-brief-head">
+              <div className="wd-brief-title">文档简报</div>
+              <button
+                type="button"
+                className="wd-rail-link"
+                onClick={() => setDrawer({ kind: "collect" })}
+              >
+                素材管理
+              </button>
+            </div>
+            <div className="wd-brief-grid">
+              <div>类型<strong>{task.document_type}</strong></div>
+              <div>周期<strong>{task.writing_period || "—"}</strong></div>
+              <div>受众<strong>{task.audience || "—"}</strong></div>
+              <div>目的<strong>{task.writing_purpose || "—"}</strong></div>
+              <div>篇幅<strong>{task.expected_length || "—"}</strong></div>
+              <div>风格<strong>{task.writing_style || "—"}</strong></div>
+            </div>
+            <div className="wd-brief-foot">
+              <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
+            </div>
+          </div>
         </aside>
 
         <section className="wd-paper-wrap" aria-label="正文">
@@ -1153,99 +1194,107 @@ export function WritingDesk({
                 })}
               </>
             ) : (
-              <div className="wd-empty-section mt-6">
-                <p className="font-medium text-[color:var(--od-neu-ink)]">{nextStep.title}</p>
-                <p className="mt-1">{nextStep.detail}</p>
+              <div className="wd-paper-empty">
+                <span className="wd-paper-empty-tag">
+                  第 {stepNo} 步 · {stepInfo?.label ?? "下一步"}
+                </span>
+                <h2>{nextStep.title}</h2>
+                <p>{nextStep.detail}</p>
                 {!readOnly ? (
-                  <button type="button" className="wr-primary-button mt-2" onClick={nextStep.run}>
+                  <button type="button" className="wr-primary-button" onClick={nextStep.run}>
                     {nextStep.label}
                   </button>
                 ) : null}
+                <div className="wd-paper-empty-next">
+                  这一步完成后进入「{stepInfo?.next ?? "下一步"}」
+                </div>
               </div>
             )}
           </article>
         </section>
 
-        <aside className="wd-rail wd-context-rail" aria-label="本章上下文" data-writing-context-rail="">
-          <div className="wd-context-head">
-            <div className="wd-rail-title">本章上下文</div>
-            <div className="wd-rail-link">第 {activeSectionNo ?? "—"} 章</div>
-          </div>
-          <div className="wd-context-tabs" role="tablist" aria-label="章节上下文">
-            {(["materials", "factcheck", "versions"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={contextTab === tab}
-                className={"wd-context-tab " + (contextTab === tab ? "active" : "")}
-                onClick={() => setContextTab(tab)}
-                data-writing-context-tab={tab}
-              >
-                {tab === "materials" ? "资料" : tab === "factcheck" ? "核验" : "版本"}
-              </button>
-            ))}
-          </div>
-          <div className="wd-context-body">
-            {contextTab === "materials" ? (
-              <>
-                <div className="flex items-center gap-2 text-[9px] text-[color:var(--od-neu-ink-3)]">
-                  <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
-                  <button
-                    type="button"
-                    className="ml-auto text-[color:var(--od-neu-accent-ink)]"
-                    onClick={() => setDrawer({ kind: "collect" })}
-                  >
-                    管理
-                  </button>
-                </div>
-                <div className="wd-context-card">
-                  <div className="label">本章映射</div>
-                  <div className="value">{activeSection ? "第 " + activeSection.no + " 章 · " + activeSection.heading : "尚未选择章节"}</div>
-                  <div className="note">
-                    {activeSection
-                      ? "大纲映射 " + activeSection.material_ids.length + " 条素材 · " + activeSection.knowledge_ids.length + " 条知识"
-                      : "点左侧大纲选择一章，右栏会切到该章的资料和核验。"}
+        {outline ? (
+          <aside className="wd-rail wd-context-rail" aria-label="本章上下文" data-writing-context-rail="">
+            <div className="wd-context-head">
+              <div className="wd-rail-title">本章上下文</div>
+              <div className="wd-rail-link">第 {activeSectionNo ?? "—"} 章</div>
+            </div>
+            <div className="wd-context-tabs" role="tablist" aria-label="章节上下文">
+              {(["materials", "factcheck", "versions"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={contextTab === tab}
+                  className={"wd-context-tab " + (contextTab === tab ? "active" : "")}
+                  onClick={() => setContextTab(tab)}
+                  data-writing-context-tab={tab}
+                >
+                  {tab === "materials" ? "资料" : tab === "factcheck" ? "核验" : "版本"}
+                </button>
+              ))}
+            </div>
+            <div className="wd-context-body">
+              {contextTab === "materials" ? (
+                <>
+                  <div className="flex items-center gap-2 text-[9px] text-[color:var(--od-neu-ink-3)]">
+                    <span>素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}</span>
+                    <button
+                      type="button"
+                      className="ml-auto text-[color:var(--od-neu-accent-ink)]"
+                      onClick={() => setDrawer({ kind: "collect" })}
+                    >
+                      管理
+                    </button>
                   </div>
-                </div>
-                <div className="wd-context-card">
-                  <div className="label">文档简报</div>
-                  <div className="value">{task.document_type} · {task.writing_period || "未注周期"}</div>
-                  <div className="note">受众 {task.audience || "—"} · 目的 {task.writing_purpose || "—"}</div>
-                </div>
-                <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "materials" })}>
-                  打开素材库
-                </button>
-              </>
-            ) : contextTab === "factcheck" ? (
-              <>
-                <div className="wd-context-card">
-                  <div className="label">事实核验</div>
-                  <div className="value">本章与全文引用</div>
-                  <div className="note">核验结论在独立面板里逐条处理。冲突左右并列，不自动合并。</div>
-                </div>
-                <button type="button" className="wr-primary-button mt-3 w-full" onClick={() => setDrawer({ kind: "factcheck" })}>
-                  打开核验
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="wd-context-card">
-                  <div className="label">当前版本</div>
-                  <div className="value">{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</div>
-                  <div className="note">{currentVersion ? shortTime(currentVersion.at) : "还没有版本记录。"}</div>
-                </div>
-                <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "versions" })}>
-                  打开版本
-                </button>
-              </>
-            )}
-          </div>
-          <div className="wd-context-foot">
-            <span>{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</span>
-            <span className="ml-auto">{shortTime(task.updated_at)} 保存</span>
-          </div>
-        </aside>
+                  <div className="wd-context-card">
+                    <div className="label">本章映射</div>
+                    <div className="value">{activeSection ? "第 " + activeSection.no + " 章 · " + activeSection.heading : "尚未选择章节"}</div>
+                    <div className="note">
+                      {activeSection
+                        ? "大纲映射 " + activeSection.material_ids.length + " 条素材 · " + activeSection.knowledge_ids.length + " 条知识"
+                        : "点左侧大纲选择一章，右栏会切到该章的资料和核验。"}
+                    </div>
+                  </div>
+                  <div className="wd-context-card">
+                    <div className="label">文档简报</div>
+                    <div className="value">{task.document_type} · {task.writing_period || "未注周期"}</div>
+                    <div className="note">受众 {task.audience || "—"} · 目的 {task.writing_purpose || "—"}</div>
+                  </div>
+                  <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "materials" })}>
+                    打开素材库
+                  </button>
+                </>
+              ) : contextTab === "factcheck" ? (
+                <>
+                  <div className="wd-context-card">
+                    <div className="label">事实核验</div>
+                    <div className="value">本章与全文引用</div>
+                    <div className="note">核验结论在独立面板里逐条处理。冲突左右并列，不自动合并。</div>
+                  </div>
+                  <button type="button" className="wr-primary-button mt-3 w-full" onClick={() => setDrawer({ kind: "factcheck" })}>
+                    打开核验
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="wd-context-card">
+                    <div className="label">当前版本</div>
+                    <div className="value">{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</div>
+                    <div className="note">{currentVersion ? shortTime(currentVersion.at) : "还没有版本记录。"}</div>
+                  </div>
+                  <button type="button" className="wr-ghost-button mt-3 w-full" onClick={() => setDrawer({ kind: "versions" })}>
+                    打开版本
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="wd-context-foot">
+              <span>{currentVersion ? "第 " + currentVersion.version + " 版" : "—"}</span>
+              <span className="ml-auto">{shortTime(task.updated_at)} 保存</span>
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       {renderDrawer()}

@@ -335,6 +335,33 @@ def main() -> int:
         and "composeOnly ? null" in workbench,
         "带入写作只显示新建需求，不混在稿件列表里",
     )
+    check(
+        "writing_next_step_panel",
+        ".wd-next" in theme_css
+        and "data-writing-next" in desk_tsx
+        and "下一步 · 第" in desk_tsx,
+        "页面固定显示当前步骤与唯一主行动",
+    )
+    check(
+        "writing_desk_flow",
+        "FLOW_STEPS" in desk_tsx
+        and ".wd-flow" in theme_css
+        and "写作流程" in desk_tsx,
+        "六步流程按顺序展示，当前步高亮",
+    )
+    check(
+        "writing_desk_early_focus",
+        "is-early" in desk_tsx
+        and ".wd-body.is-early" in theme_css
+        and "{outline ? (" in desk_tsx,
+        "需求与素材阶段收起右栏，聚焦当前一步",
+    )
+    check(
+        "writing_desk_paper_empty",
+        "wd-paper-empty" in theme_css
+        and "这一步完成后进入" in desk_tsx,
+        "纸面空态直接给出当前步骤与后续步骤",
+    )
     check("no_subtitle_props_in_studio", "subtitle" not in studio_tsx, "区块标题只用中文")
     check(
         "no_subtitle_props_in_scene",

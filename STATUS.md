@@ -1,5 +1,13 @@
 # 执行状态
 
+## 写作台 UI 重设计（2026-11-27，0.2.63）
+
+- **UI 参考（MCP，实际调用 search_inspiration / get_product_screenshots）：** 查看 Notion 文档页与 Claude Design 起始面板。借鉴 Notion 的大标题、宽留白和左栏分离，以及 Claude Design 把下一步做成明确起点、只留一个主按钮的做法。
+- **页面结构（file fact）：** WritingDesk 的 `stageOf` 改为六步 `stepOf`（需求/素材/大纲/正文/核验/定稿）；新增整页「下一步」面板、头部六步进度条、左栏流程清单与纸面空态；需求/素材阶段（无大纲）收起右栏并加 `is-early`；有大纲后左栏切为大纲列表。
+- **字号与材质（file fact）：** theme.css 的 `.wd-*` 段整体上调，标题 27/30px、正文 16.5px、辅助文字 11.5–13px，写作页内按钮 12.5–13px；全部沿用 `--od-neu-*` 令牌，不引入新配色。
+- **验证（script + 预览，实际命令与结果）：** `npx tsc --noEmit` → 0；`npm run build` → 0；`verify_writing_094` → 75/75；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。用真实构建 CSS 在 1360×900 的静态预览检查了需求/素材阶段与写作阶段。
+- **未验证：** 真实 Tauri 窗口不同缩放比例、Windows 实机字体渲染、长标题在窄窗口下的折行。
+
 ## 写作需求解析兜底与创建流程收敛（2026-11-27，0.2.62）
 
 - **代码（file fact）：** knowledge_ingest::parse_result_text 增加代码围栏剥离、外层对象截取，以及全角结构标点、正文裸引号、字符串内裸换行和尾逗号的保守修复；无法修复时仍报原始 JSON 错误。writing_parse 单测覆盖围栏/解释文字、全角逗号、中文引号、裸引号标题、裸换行、尾逗号与截断输出。

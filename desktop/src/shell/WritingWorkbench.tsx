@@ -56,9 +56,9 @@ const STATUS_SKIN: Record<WritingTaskStatus, string> = {
 };
 
 const FIELD =
-  "neu-inset-field w-full rounded-lg px-2.5 py-1.5 text-[11.5px] leading-relaxed text-on-surface outline-none placeholder:text-outline/70";
+  "neu-inset-field w-full rounded-lg px-3 py-2 text-[13px] leading-relaxed text-on-surface outline-none placeholder:text-outline/70";
 const BTN_PRIMARY =
-  "rounded-full bg-primary px-3 py-1 text-[10.5px] text-on-primary transition hover:opacity-90 disabled:opacity-40";
+  "rounded-full bg-primary px-4 py-1.5 text-[12.5px] text-on-primary transition hover:opacity-90 disabled:opacity-40";
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -465,8 +465,8 @@ export function WritingWorkbench({
         {draft ? (
           <div className="flex flex-col gap-2" data-writing-draft="">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10.5px] text-outline">核对需求</span>
-              <button type="button" onClick={resetCreate} className="ml-auto text-[10.5px] text-primary hover:underline">
+              <span className="text-[12px] text-outline">核对需求</span>
+              <button type="button" onClick={resetCreate} className="ml-auto text-[12px] text-primary hover:underline">
                 重新描述
               </button>
             </div>
@@ -476,11 +476,11 @@ export function WritingWorkbench({
                 className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2"
                 data-writing-fallback-note=""
               >
-                <p className="text-[10.5px] leading-relaxed text-amber-700">{fallbackNote}</p>
+                <p className="text-[12px] leading-relaxed text-amber-700">{fallbackNote}</p>
                 {parseError ? (
                   <details className="mt-1">
-                    <summary className="cursor-pointer text-[9.5px] text-outline">解析失败：查看详情</summary>
-                    <p className="mt-1 break-words text-[9.5px] leading-relaxed text-outline" data-writing-parse-error="">
+                    <summary className="cursor-pointer text-[10.5px] text-outline">解析失败：查看详情</summary>
+                    <p className="mt-1 break-words text-[10.5px] leading-relaxed text-outline" data-writing-parse-error="">
                       {parseError}
                     </p>
                   </details>
@@ -489,13 +489,13 @@ export function WritingWorkbench({
                   type="button"
                   onClick={() => void parseRequirement(sourceText)}
                   disabled={parsing}
-                  className="mt-1 text-[10px] text-primary hover:underline"
+                  className="mt-1 text-[11.5px] text-primary hover:underline"
                 >
                   {parsing ? "正在重试…" : "重试整理"}
                 </button>
               </div>
             ) : parseError ? (
-              <p className="text-[10.5px] leading-relaxed text-error" data-writing-parse-error="">
+              <p className="text-[12px] leading-relaxed text-error" data-writing-parse-error="">
                 解析失败：{parseError}
               </p>
             ) : null}
@@ -545,7 +545,7 @@ export function WritingWorkbench({
             </div>
 
             <details className="rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5">
-              <summary className="cursor-pointer text-[10px] text-outline">补充条件：主题、目的、受众、风格</summary>
+              <summary className="cursor-pointer text-[11.5px] text-outline">补充条件：主题、目的、受众、风格</summary>
               <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <input
                   value={draft.topic ?? ""}
@@ -579,7 +579,7 @@ export function WritingWorkbench({
             </details>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-outline">写作要点，一行一条</span>
+              <span className="text-[11.5px] text-outline">写作要点，一行一条</span>
               <textarea
                 value={draft.requirements.join("\n")}
                 onChange={(event) =>
@@ -600,11 +600,11 @@ export function WritingWorkbench({
 
             {draft.questions.length > 0 ? (
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2" data-writing-questions="">
-                <p className="text-[10px] text-amber-700">待补充</p>
+                <p className="text-[11.5px] text-amber-700">待补充</p>
                 <div className="mt-1 flex flex-col gap-1">
                   {draft.questions.map((question, index) => (
                     <div key={String(index) + "-" + question} className="flex flex-col gap-0.5">
-                      <span className="text-[10.5px] leading-relaxed text-on-surface-variant break-words">{question}</span>
+                      <span className="text-[12px] leading-relaxed text-on-surface-variant break-words">{question}</span>
                       <input
                         value={answers[index] ?? ""}
                         onChange={(event) =>
@@ -624,7 +624,7 @@ export function WritingWorkbench({
                 </div>
               </div>
             ) : (
-              <p className="text-[10px] text-outline" data-writing-questions-empty="">
+              <p className="text-[11.5px] text-outline" data-writing-questions-empty="">
                 没有待补充问题。
               </p>
             )}
@@ -639,17 +639,17 @@ export function WritingWorkbench({
               >
                 {creating ? "正在创建…" : "创建并开始收集素材"}
               </button>
-              <span className="text-[9.5px] leading-relaxed text-outline">
+              <span className="text-[11px] leading-relaxed text-outline">
                 创建后直接进入素材收集
               </span>
             </div>
 
             {sourceText ? (
               <details className="rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5">
-                <summary className="cursor-pointer text-[9.5px] text-outline">
+                <summary className="cursor-pointer text-[11px] text-outline">
                   查看原始需求（{sourceText.length} 字）
                 </summary>
-                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[9.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
                   {sourceText}
                 </pre>
               </details>
@@ -677,19 +677,19 @@ export function WritingWorkbench({
                 {parsing ? "正在解析…" : "解析需求"}
               </button>
               {parseHint ? (
-                <span className="text-[10px] text-outline" data-writing-parse-hint="">
+                <span className="text-[11.5px] text-outline" data-writing-parse-hint="">
                   {parseHint}
                 </span>
               ) : null}
             </div>
             {parseError ? (
               <div className="mt-1.5 flex flex-col gap-1" data-writing-parse-error="">
-                <p className="text-[10.5px] leading-relaxed text-error">解析失败：{parseError}</p>
+                <p className="text-[12px] leading-relaxed text-error">解析失败：{parseError}</p>
                 <button
                   type="button"
                   onClick={() => void parseRequirement()}
                   disabled={parsing || !input.trim()}
-                  className="self-start text-[10px] text-primary hover:underline"
+                  className="self-start text-[11.5px] text-primary hover:underline"
                 >
                   重试
                 </button>
