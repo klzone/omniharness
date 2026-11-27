@@ -643,13 +643,13 @@ export function WritingDesk({
         nextStep = selectedPackCount > 0
           ? {
               title: "素材收集中",
-              detail: "素材包已就绪，可以生成大纲。",
+              detail: "素材包已就绪；也可以继续联网检索或采纳候选，再生成大纲。",
               label: "生成大纲",
               run: () => setDrawer({ kind: "outline" }),
             }
           : {
               title: "素材收集中",
-              detail: "先在素材收集里采纳至少一条素材或知识依据。",
+              detail: "在素材收集里联网检索、采纳候选，或先确认素材。",
               label: "收集素材",
               run: () => setDrawer({ kind: "collect" }),
             };
@@ -775,6 +775,7 @@ export function WritingDesk({
               writingId={task.writing_id}
               canNext={task.status === "素材收集中" || task.status === "大纲待确认"}
               nextHint={task.status === "需求待整理" ? "先确认需求，再生成大纲。" : undefined}
+              searchTopic={[task.topic, task.title].find((value) => value.trim().length > 0) ?? ""}
               onSelected={() => bump()}
               onNext={() => setDrawer({ kind: "outline" })}
               onOpenMaterials={() => setDrawer({ kind: "materials" })}

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.64] - 2026-11-27
+
+### Added
+- 素材收集新增「联网检索」：检索词预填写作主题，可修改后调用本机 AnySearch CLI；结果逐条勾选，批量「存入素材篮」按收藏落盘（待审核），到素材库确认后即可采纳进素材包。
+- 检索词在宿主过统一红线与隐私掩码闸门；CLI 未安装时如实报错并指向设置页的配套插件指引，不伪造结果。
+
+### Changed
+- 素材收集面板头部常驻「素材库」入口；素材包就绪后的下一步说明同步提示可继续联网检索或采纳候选。
+
+### Verification
+- `cargo test --lib` 1377 passed / 0 failed（writing_websearch 新增 3 个解析测试）。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 77/77；`verify_writing_ui_610` 26/26；`verify_hardening_2043` 77/77（命令基线按新增 writing_web_search 更新到 297）；`verify_security_phase3` 25/25。
+- `verify_security_phase4` 31/35：4 项失败（gate_covers_section、gate_covers_review、export_receipt_local_only、no_sensitive_logs）在干净工作树同样出现，为 0.2.53 引入的既有失败，不由本轮改动负责。
+
+---
+
 ## [0.2.63] - 2026-11-27
 
 ### Changed

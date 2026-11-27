@@ -1514,6 +1514,21 @@ export interface WritingSelectResult {
   summary: string;
 }
 
+/** 写作素材联网检索的单条结果（anysearch 薄封装，未落盘）。 */
+export interface WritingWebSearchItem {
+  title: string;
+  url: string;
+  snippet: string;
+  date: string | null;
+}
+
+export interface WritingWebSearchOutcome {
+  query: string;
+  masked: boolean;
+  items: WritingWebSearchItem[];
+  note: string | null;
+}
+
 /** 文稿十二类（OD-WT-601 白名单）。 */
 export type WritingDocumentType =
   | "月度总结"

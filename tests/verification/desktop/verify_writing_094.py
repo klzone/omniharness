@@ -280,6 +280,8 @@ def main() -> int:
         "成果页签复用成果浏览器",
     )
     collect_panel = (SRC / "shell" / "WritingCollectPanel.tsx").read_text(encoding="utf-8")
+    lib_rs = (REPO / "desktop" / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
+    websearch_rs = (REPO / "desktop" / "src-tauri" / "src" / "writing_websearch.rs").read_text(encoding="utf-8")
     check(
         "writing_demand_transition",
         "需求待整理" in desk_tsx
@@ -293,6 +295,21 @@ def main() -> int:
         and "writingCollectMaterials" in collect_panel
         and "writingSelectMaterials" in collect_panel,
         "素材候选可采纳进可信素材包",
+    )
+    check(
+        "writing_collect_websearch",
+        "writingWebSearch" in collect_panel
+        and "data-writing-websearch-input" in collect_panel
+        and "data-writing-websearch-save" in collect_panel
+        and "materialCreate" in collect_panel,
+        "素材收集内可联网检索并按收藏存入素材篮",
+    )
+    check(
+        "writing_websearch_host_gate",
+        'gate_user_text(&request.query, &policy, "素材检索词")' in lib_rs
+        and "writing_websearch::web_search(" in lib_rs
+        and "locate_cli" in websearch_rs,
+        "检索词过宿主闸门，CLI 缺失时如实报错",
     )
     check(
         "writing_next_step",

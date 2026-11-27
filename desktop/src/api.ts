@@ -80,6 +80,7 @@ import type {
   WritingCollectResponse,
   WritingSelectInput,
   WritingSelectResult,
+  WritingWebSearchOutcome,
   WritingMaterial,
   WritingRequirementApplied,
   WritingRequirementDraft,
@@ -2962,6 +2963,18 @@ export const shell = {
         throw new Error(normalizeError(e));
       },
     );
+  },
+
+  /**
+   * 写作素材联网检索（anysearch 薄封装）：检索词过宿主红线与掩码后调用本机
+   * AnySearch CLI；结果只返回界面，不落盘。CLI 缺失时如实报错。
+   */
+  writingWebSearch(input: { query: string; max_results?: number }): Promise<WritingWebSearchOutcome> {
+    return invoke<WritingWebSearchOutcome>("writing_web_search", {
+      request: { query: input.query, max_results: input.max_results ?? 6 },
+    }).catch((e) => {
+      throw new Error(normalizeError(e));
+    });
   },
 
   /**

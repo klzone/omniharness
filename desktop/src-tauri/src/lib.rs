@@ -94,6 +94,7 @@ pub mod work_cleanup;
 pub mod writing_store;
 pub mod writing_records;
 pub mod writing_collect;
+pub mod writing_websearch;
 pub mod export_engine;
 pub mod document_store;
 pub mod writing_parse;
@@ -113,6 +114,7 @@ use app_paths::AppPaths;
 use engine_bridge::{EngineBridge, EventSink};
 use engine_lifecycle::EngineLifecycle;
 use engine_supervisor::{EngineConfig, EngineSupervisor};
+use serde::Deserialize;
 use task_shell::{SaveArtifactRequest, UsageRecordInput};
 
 /// UI 事件通道名。UI 只订阅这一个通道，拿到的都是归一化事件。
@@ -3931,6 +3933,39 @@ fn writing_collect_materials(
     };
     let vault = configured_vault_root(&paths).ok();
     writing_collect_materials_impl(&root, vault.as_deref(), &policy, request)
+}
+
+/// OD-WT-605 扩展：写作素材联网检索。检索词过红线与掩码后调用本机
+/// AnySearch CLI；结果只返回界面不落盘，用户确认后才经 material_create
+/// 的既有闸门写入素材篮。CLI 缺失时如实报错，不静默降级。
+#[derive(Debug, Deserialize)]
+struct WritingWebSearchRequest {
+    query: String,
+    #[serde(default)]
+    max_results: u32,
+}
+
+#[tauri::command(async)]
+fn writing_web_search(
+    state: State<'_, SharedHost>,
+    request: WritingWebSearchRequest,
+) -> Result<writing_websearch::WebSearchOutcome, String> {
+    let policy = current_rule_policy(&state)?;
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let (masked_query, counts) = gate_user_text(&request.query, &policy, "素材检索词")?;
+    let config = EngineConfig::from_env(&app_root)?;
+    writing_websearch::web_search(
+        &writing_websearch::WebSearchRequest {
+            query: masked_query,
+            max_results: request.max_results,
+        },
+        &config.python,
+        &app_root,
+        counts.any(),
+    )
 }
 
 #[tauri::command(async)]
@@ -10615,6 +10650,7 @@ pub fn run() {
             material_query,
             writing_collect_materials,
             writing_select_materials,
+            writing_web_search,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。
