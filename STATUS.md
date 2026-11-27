@@ -3,8 +3,8 @@
 ## 写作需求解析兜底与创建流程收敛（2026-11-27，0.2.62）
 
 - **代码（file fact）：** knowledge_ingest::parse_result_text 增加代码围栏剥离、外层对象截取，以及全角结构标点、正文裸引号、字符串内裸换行和尾逗号的保守修复；无法修复时仍报原始 JSON 错误。writing_parse 单测覆盖围栏/解释文字、全角逗号、中文引号、裸引号标题、裸换行、尾逗号与截断输出。
-- **前端（file fact）：** WritingWorkbench 从对话带入后自动整理；整理失败按原文生成可编辑草稿并保留错误详情与重试；核对页保留类型/标题/周期/篇幅，其余条件折叠；创建成功即推进到「素材收集中」。WritingDesk 打开稿件前刷新任务状态，书桌抽屉在带入时显示「带入写作」。
-- **验证（script，实际命令与结果）：** `cargo test writing_parse --lib` → 15 passed；`cargo test knowledge_ingest --lib` → 29 passed；`cargo test --lib` → 1374 passed / 1 ignored；`npx tsc --noEmit` → 0；`npm run test` → 150 passed；`npm run build` → 0；`verify_writing_094` → 70/70；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。
+- **前端（file fact）：** WritingWorkbench 从对话带入后自动整理；整理失败按原文生成可编辑草稿并保留错误详情与重试；核对页保留类型/标题/周期/篇幅，其余条件折叠；创建成功即推进到「素材收集中」。WritingDesk 打开稿件前刷新任务状态；带入时抽屉切成独立的「带入写作」面板（composeOnly），只显示新建需求，关闭即清空带入内容。
+- **验证（script，实际命令与结果）：** `cargo test writing_parse --lib` → 15 passed；`cargo test knowledge_ingest --lib` → 29 passed；`cargo test --lib` → 1374 passed / 1 ignored；`npx tsc --noEmit` → 0；`npm run test` → 150 passed；`npm run build` → 0；`verify_writing_094` → 71/71；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。
 - **未验证：** 真实模型输出下的长对话整理、真实 Tauri 窗口交互、Windows 实机。
 
 ## OD-0255 执行记录（2026-11-24）

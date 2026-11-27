@@ -214,11 +214,14 @@ function TaskRow({ task, onOpen }: { task: WritingTask; onOpen: (id: string) => 
 export function WritingWorkbench({
   onOpenTask,
   initialRequirement,
+  composeOnly = false,
 }: {
   /** 传了就打开新的写作台；不传则沿用内置任务详情（旧页面兼容）。 */
   onOpenTask?: (writingId: string) => void;
   /** 从写作对话带入的原始需求；只在创建新任务前预填。 */
   initialRequirement?: string;
+  /** 只显示新建需求这一段，不显示任务列表与类型筛选。 */
+  composeOnly?: boolean;
 } = {}) {
   const [items, setItems] = useState<WritingTask[]>([]);
   const [broken, setBroken] = useState(0);
@@ -696,95 +699,99 @@ export function WritingWorkbench({
         )}
       </section>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-1" data-writing-type-filters="">
-        <button
-          type="button"
-          onClick={() => setTypeFilter(null)}
-          aria-pressed={typeFilter === null}
-          className={
-            "rounded-full px-2.5 py-1 text-[10.5px] transition " +
-            (typeFilter === null
-              ? "bg-on-surface text-inverse-on-surface"
-              : "text-on-surface-variant hover:bg-surface-container")
-          }
-        >
-          全部 {items.length}
-        </button>
-        {DOCUMENT_TYPES.map((type) => (
+      {composeOnly ? null : (
+        <>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1" data-writing-type-filters="">
           <button
-            key={type}
             type="button"
-            onClick={() => setTypeFilter(typeFilter === type ? null : type)}
-            aria-pressed={typeFilter === type}
+            onClick={() => setTypeFilter(null)}
+            aria-pressed={typeFilter === null}
             className={
               "rounded-full px-2.5 py-1 text-[10.5px] transition " +
-              (typeFilter === type
+              (typeFilter === null
                 ? "bg-on-surface text-inverse-on-surface"
                 : "text-on-surface-variant hover:bg-surface-container")
             }
-            data-writing-type-filter={type}
           >
-            {type}
+            全部 {items.length}
           </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setReloadTick((n) => n + 1)}
-          className="ml-auto rounded-full px-2.5 py-1 text-[10px] text-outline transition hover:bg-surface-container"
-          data-writing-refresh=""
-        >
-          刷新
-        </button>
-      </div>
-
-      <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pr-0.5 max-h-[52vh]" data-writing-task-list="">
-        {loading ? (
-          <p className="text-[11.5px] text-outline">正在读取写作任务…</p>
-        ) : loadError ? (
-          <div className="flex flex-col gap-1.5" data-writing-list-error="">
-            <p className="text-[11.5px] leading-relaxed text-error">读取写作任务失败：{loadError}</p>
+          {DOCUMENT_TYPES.map((type) => (
             <button
+              key={type}
               type="button"
-              onClick={() => setReloadTick((n) => n + 1)}
-              className="self-start text-[10.5px] text-primary hover:underline"
+              onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+              aria-pressed={typeFilter === type}
+              className={
+                "rounded-full px-2.5 py-1 text-[10.5px] transition " +
+                (typeFilter === type
+                  ? "bg-on-surface text-inverse-on-surface"
+                  : "text-on-surface-variant hover:bg-surface-container")
+              }
+              data-writing-type-filter={type}
             >
-              重试
+              {type}
             </button>
-          </div>
-        ) : visible.length === 0 ? (
-          <p className="text-[11.5px] leading-relaxed text-outline" data-writing-empty="">
-            {typeFilter
-              ? "这个类型下还没有任务。"
-              : items.length === 0
-                ? "还没有写作任务。在上面描述要写什么，解析后创建。"
-                : "暂无任务"}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {groups.map((group) => (
-              <section key={group.status} data-writing-status-group={group.status}>
-                <div className="flex items-baseline gap-2 px-1 pb-1">
-                  <h3 className="text-[11px] font-medium text-on-surface-variant">{group.status}</h3>
-                  <span className="mono text-[9.5px] text-outline">{group.items.length}</span>
-                </div>
-                <ul className="flex flex-col gap-1.5">
-                  {group.items.map((task) => (
-                    <li key={task.writing_id}>
-                      <TaskRow task={task} onOpen={openTask} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
+          ))}
+          <button
+            type="button"
+            onClick={() => setReloadTick((n) => n + 1)}
+            className="ml-auto rounded-full px-2.5 py-1 text-[10px] text-outline transition hover:bg-surface-container"
+            data-writing-refresh=""
+          >
+            刷新
+          </button>
+        </div>
 
-        {broken > 0 ? (
-          <p className="mt-2 text-[10px] text-amber-700" data-writing-list-broken="">
-            另有 {broken} 个任务文件读不出来，未计入列表。
-          </p>
-        ) : null}
-      </div>
+        <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pr-0.5 max-h-[52vh]" data-writing-task-list="">
+          {loading ? (
+            <p className="text-[11.5px] text-outline">正在读取写作任务…</p>
+          ) : loadError ? (
+            <div className="flex flex-col gap-1.5" data-writing-list-error="">
+              <p className="text-[11.5px] leading-relaxed text-error">读取写作任务失败：{loadError}</p>
+              <button
+                type="button"
+                onClick={() => setReloadTick((n) => n + 1)}
+                className="self-start text-[10.5px] text-primary hover:underline"
+              >
+                重试
+              </button>
+            </div>
+          ) : visible.length === 0 ? (
+            <p className="text-[11.5px] leading-relaxed text-outline" data-writing-empty="">
+              {typeFilter
+                ? "这个类型下还没有任务。"
+                : items.length === 0
+                  ? "还没有写作任务。在上面描述要写什么，解析后创建。"
+                  : "暂无任务"}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {groups.map((group) => (
+                <section key={group.status} data-writing-status-group={group.status}>
+                  <div className="flex items-baseline gap-2 px-1 pb-1">
+                    <h3 className="text-[11px] font-medium text-on-surface-variant">{group.status}</h3>
+                    <span className="mono text-[9.5px] text-outline">{group.items.length}</span>
+                  </div>
+                  <ul className="flex flex-col gap-1.5">
+                    {group.items.map((task) => (
+                      <li key={task.writing_id}>
+                        <TaskRow task={task} onOpen={openTask} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {broken > 0 ? (
+            <p className="mt-2 text-[10px] text-amber-700" data-writing-list-broken="">
+              另有 {broken} 个任务文件读不出来，未计入列表。
+            </p>
+          ) : null}
+        </div>
+        </>
+      )}
     </div>
   );
 }

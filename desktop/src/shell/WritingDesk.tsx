@@ -206,32 +206,42 @@ function LibraryDrawer({
     { key: "artifacts", label: "成果" },
     { key: "threads", label: "对话" },
   ];
+  // 从写作对话带入时只显示新建需求这一段，避免在"所有稿件"列表里找入口。
+  const composing = Boolean(initialRequirement) && tab === "tasks";
   return (
     <div className="wd-drawer-backdrop" onClick={onClose} data-writing-library="">
       <div className="wd-drawer wd-drawer-left" onClick={(event) => event.stopPropagation()}>
         <div className="wd-drawer-head">
-          <div className="wd-drawer-title">{initialRequirement ? "带入写作" : "所有稿件"}</div>
+          <div className="wd-drawer-title">{composing ? "带入写作" : "所有稿件"}</div>
           <button type="button" className="wd-drawer-close wr-icon-button" onClick={onClose} aria-label="关闭">
             ×
           </button>
         </div>
-        <div className="wd-library-tabs" role="tablist" aria-label="稿件历史">
-          {tabs.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.key}
-              className={"wd-library-tab " + (tab === item.key ? "active" : "")}
-              onClick={() => onTab(item.key)}
-              data-writing-library-tab={item.key}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {composing ? null : (
+          <div className="wd-library-tabs" role="tablist" aria-label="稿件历史">
+            {tabs.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.key}
+                className={"wd-library-tab " + (tab === item.key ? "active" : "")}
+                onClick={() => onTab(item.key)}
+                data-writing-library-tab={item.key}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="wd-drawer-body">
-          {tab === "tasks" ? (
+          {composing ? (
+            <WritingWorkbench
+              onOpenTask={onOpenTask}
+              initialRequirement={initialRequirement}
+              composeOnly
+            />
+          ) : tab === "tasks" ? (
             <>
               {task ? (
                 <div className="mb-3 flex items-center gap-2 rounded-xl bg-[color:var(--od-neu-sunken)] px-3 py-2 shadow-[var(--od-neu-inset-1)]">
@@ -505,6 +515,7 @@ export function WritingDesk({
   const stage = stageOf(task?.status);
 
   function openLibrary(tab: LibraryTab) {
+    setPrefillRequirement("");
     setDrawer({ kind: "library", tab });
   }
 
@@ -693,7 +704,10 @@ export function WritingDesk({
         <LibraryDrawer
           tab={drawer.tab}
           onTab={(tab) => setDrawer({ kind: "library", tab })}
-          onClose={() => setDrawer(null)}
+          onClose={() => {
+            setPrefillRequirement("");
+            setDrawer(null);
+          }}
           task={task}
           onOpenTask={selectTask}
           artifacts={artifacts}

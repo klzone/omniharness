@@ -328,6 +328,13 @@ def main() -> int:
         and "创建并开始收集素材" in workbench,
         "创建即确认需求，直接进入素材收集",
     )
+    check(
+        "writing_compose_surface",
+        "const composing" in desk_tsx
+        and "composeOnly" in workbench
+        and "composeOnly ? null" in workbench,
+        "带入写作只显示新建需求，不混在稿件列表里",
+    )
     check("no_subtitle_props_in_studio", "subtitle" not in studio_tsx, "区块标题只用中文")
     check(
         "no_subtitle_props_in_scene",
