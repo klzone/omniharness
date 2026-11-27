@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.67] - 2026-11-28
+
+### Fixed
+- 正文抽取增加直连回退：AnySearch 抽不到时直接请求网页，手动跟随最多 3 次重定向并逐跳校验公网地址，按响应头或 HTML meta 的 charset 解码（GBK 站点不再乱码），去掉 script/style 与标签后保存正文。
+- 全文读取失败时保存流程不再整条卡死：降级只存摘要并标注「仅摘要」，可在素材库编辑补充；只有完全无正文才提示换来源。
+
+### Changed
+- 写作流程步骤收进标题行（需求/素材/大纲/正文/核验/定稿），尺寸与「对话」「导出」一致；点当前或之前的步骤直接回到对应页面，大纲、正文、核验可退回，点「素材」可回去换材料。
+- 「本章上下文」改为标题行的「本章」入口与抽屉；主画布只保留纸面，左右指导栏不再挤占内容区。
+
+### Verification
+- `cargo test --lib` 全部通过（正文直连、charset、标签清洗与回退状态迁移新增测试）。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 78/78；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77。
+
+---
+
 ## [0.2.66] - 2026-11-27
 
 ### Changed

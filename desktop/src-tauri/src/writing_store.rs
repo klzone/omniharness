@@ -683,6 +683,12 @@ pub fn is_allowed_transition(from: &str, to: &str, outline_confirmed: bool) -> b
     match (from, to) {
         (STATUS_NEEDS_ORGANIZING, STATUS_COLLECTING_MATERIALS) => true,
         (STATUS_COLLECTING_MATERIALS, STATUS_OUTLINE_PENDING) => true,
+        // 0.2.67：允许从大纲/写作/核验退回重新收集素材或重写大纲。
+        (STATUS_OUTLINE_PENDING, STATUS_COLLECTING_MATERIALS) => true,
+        (STATUS_WRITING, STATUS_OUTLINE_PENDING) => true,
+        (STATUS_WRITING, STATUS_COLLECTING_MATERIALS) => true,
+        (STATUS_FACT_CHECKING, STATUS_OUTLINE_PENDING) => true,
+        (STATUS_FACT_CHECKING, STATUS_COLLECTING_MATERIALS) => true,
         (STATUS_OUTLINE_PENDING, STATUS_WRITING) => outline_confirmed,
         (STATUS_WRITING, STATUS_FACT_CHECKING) => true,
         (STATUS_FACT_CHECKING, STATUS_PENDING_REVIEW) => true,
@@ -1543,5 +1549,34 @@ mod tests {
             .unwrap();
         let err = read_writing_task(temp.root(), &task.writing_id).unwrap_err();
         assert!(err.contains("写作状态不认识"), "{err}");
+    }
+
+    #[test]
+    fn allows_rollback_to_materials_and_outline() {
+        assert!(is_allowed_transition(
+            STATUS_OUTLINE_PENDING,
+            STATUS_COLLECTING_MATERIALS,
+            false
+        ));
+        assert!(is_allowed_transition(
+            STATUS_WRITING,
+            STATUS_OUTLINE_PENDING,
+            false
+        ));
+        assert!(is_allowed_transition(
+            STATUS_WRITING,
+            STATUS_COLLECTING_MATERIALS,
+            false
+        ));
+        assert!(is_allowed_transition(
+            STATUS_FACT_CHECKING,
+            STATUS_OUTLINE_PENDING,
+            false
+        ));
+        assert!(!is_allowed_transition(
+            STATUS_FINALIZED,
+            STATUS_WRITING,
+            true
+        ));
     }
 }

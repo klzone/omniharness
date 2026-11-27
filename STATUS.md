@@ -1,5 +1,12 @@
 # 执行状态
 
+## 抽取回退、流程回退与写作台布局收敛（2026-11-28，0.2.67）
+
+- **后端（file fact）：** writing_websearch 增加直连回退（reqwest + net_guard 逐跳校验、最多 3 次重定向、3MB 上限、响应头/meta charset 经 encoding_rs 解码、去 script/style 与标签、实体还原）；插件抽取失败或过短时走回退。writing_store 状态表新增 大纲待确认→素材收集中、写作中→大纲待确认/素材收集中、待核验→大纲待确认/素材收集中 五条回退边，并加单测。
+- **前端（file fact）：** 素材保存遇全文失败时降级存摘要并标「仅摘要」，不再阻断；写作台去掉左右两栏，六步流程收进标题行（点击回到对应步骤），「本章上下文」改为「本章」抽屉，主体只留纸面。
+- **验证（script，实际命令与结果）：** `cargo test writing_websearch --lib` → 8 passed；`npx tsc --noEmit` → 0；`npm run build` → 0；`npm run test` → 150 passed；`verify_writing_094` → 78/78；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。
+- **未验证：** 真机/真实站点批量抽取覆盖率（直连回退受站点反爬与 JS 渲染限制）、真实窗口点击流、Windows 实机。
+
 ## 联网检索读取全文与一次保存（2026-11-27，0.2.66）
 
 - **后端（file fact）：** writing_websearch 新增 extract_page：先校验公网 http/https，再调用 AnySearch extract；解析 JSON 后清洗图片语法、链接语法、站点导航（从首个 # 标题起）、分享/登录控件、发布时间与页脚；正文少于 150 字判定为图片版/需登录并明确拒绝。新增 writing_web_extract 命令（命令基线 298）。检索默认上限改为 10 条。

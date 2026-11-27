@@ -178,20 +178,25 @@ def main() -> int:
 
     check("writing_desk_component", "export function WritingDesk" in desk_tsx, "")
     check(
-        "writing_desk_three_zones",
-        all(token in desk_tsx for token in ("wd-page", "wd-body", "wd-rail", "wd-paper")),
-        "页头 + 左大纲 + 中纸面 + 右上下文",
+        "writing_desk_paper_focus",
+        all(token in desk_tsx for token in ("wd-page", "wd-body", "wd-paper"))
+        and 'data-writing-outline-rail=""' not in desk_tsx,
+        "主体只保留纸面，两侧指导栏退出画布",
     )
     check("writing_desk_paper_entry", 'data-writing-paper=""' in desk_tsx, "")
     check(
-        "writing_desk_outline_rail",
-        'data-writing-outline-rail=""' in desk_tsx and "本章提示" in desk_tsx,
-        "",
+        "writing_desk_step_chips",
+        'data-writing-steps=""' in desk_tsx
+        and "wd-step-chip" in theme_css
+        and "goToStep" in desk_tsx,
+        "流程步骤收进标题行，可点击回到对应页面",
     )
     check(
-        "writing_desk_context_rail",
-        'data-writing-context-rail=""' in desk_tsx and "本章上下文" in desk_tsx,
-        "",
+        "writing_desk_context_drawer",
+        'data-writing-context=""' in desk_tsx
+        and 'kind: "context"' in desk_tsx
+        and "本章资料" in desk_tsx,
+        "本章上下文改为标题行入口与抽屉",
     )
     check(
         "writing_desk_library_drawer",
@@ -376,11 +381,11 @@ def main() -> int:
         "六步流程按顺序展示，当前步高亮",
     )
     check(
-        "writing_desk_early_focus",
-        "is-early" in desk_tsx
-        and ".wd-body.is-early" in theme_css
-        and "{outline ? (" in desk_tsx,
-        "需求与素材阶段收起右栏，聚焦当前一步",
+        "writing_desk_single_column",
+        "wd-context-rail" not in desk_tsx
+        and "wd-paper-wrap" in desk_tsx
+        and "wd-steps" in desk_tsx,
+        "主体单列纸面，流程与本章入口都在标题行",
     )
     check(
         "writing_desk_paper_empty",

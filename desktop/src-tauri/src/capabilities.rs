@@ -291,13 +291,9 @@ pub fn retire_package(dsh_home: &Path, profile: &str, package: &str) -> Result<b
         return Ok(false);
     }
     let mut value = load_manifest(&dir)?;
-    let mut changed = false;
-    {
-        let list = bundles_mut(&mut value)?;
-        let before = list.len();
-        list.retain(|item| item.as_str() != Some(package));
-        changed = list.len() != before;
-    }
+    let before = bundle_names(&value)?.len();
+    bundles_mut(&mut value)?.retain(|item| item.as_str() != Some(package));
+    let mut changed = bundle_names(&value)?.len() != before;
     if let Some(deps) = value.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
         changed |= deps.remove(package).is_some();
     }

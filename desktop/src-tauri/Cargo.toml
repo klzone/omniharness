@@ -36,6 +36,8 @@ tauri-plugin-dialog = "2"
 # 这里只启用 blocking / native-tls（macOS 走系统 Security Framework），
 # 不启用 http2、cookies 等当前切片用不到的通道。
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "native-tls", "system-proxy"] }
+# 0.2.67：网页正文直连回退按响应头/HTML meta 的 charset 解码（GBK 站点不乱码）。
+encoding_rs = "0.8"
 
 # OD-ARCH-121：插件安装命令要能整组回收（killpg），避免超时后孙进程还攥着管道。
 # 该 crate 早已在 Cargo.lock 中（tauri 的传递依赖），离线构建可直接用。

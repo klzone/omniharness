@@ -118,9 +118,14 @@ export function WritingCollectPanel({
     setNotice(null);
     try {
       let extracted = item.url ? extracts[item.url] : undefined;
+      let extractFailed = false;
       if (!extracted && item.url) {
-        extracted = await shell.writingWebExtract(item.url);
-        setExtracts((prev) => ({ ...prev, [item.url]: extracted! }));
+        try {
+          extracted = await shell.writingWebExtract(item.url);
+          setExtracts((prev) => ({ ...prev, [item.url]: extracted! }));
+        } catch {
+          extractFailed = true;
+        }
       }
       const body = extracted?.text ?? item.snippet ?? item.title;
       const created = await shell.materialCreate({
@@ -130,7 +135,7 @@ export function WritingCollectPanel({
         source_type: "user",
         source_quote: (item.snippet || body).slice(0, 2000),
         source_location: item.url || null,
-        tags: ["联网检索"],
+        tags: extractFailed ? ["联网检索", "仅摘要"] : ["联网检索"],
       });
       await shell.materialReview(created.material_id, "confirm", "用户从联网检索存入并采纳");
       await shell.writingSelectMaterials({
@@ -139,7 +144,12 @@ export function WritingCollectPanel({
       });
       setNotice({
         kind: "ok",
-        text: "已存入素材库并采纳进本次素材包" + (extracted ? "（全文 " + extracted.chars + " 字）" : "（只取到摘要）") + "。",
+        text:
+          "已存入素材库并采纳进本次素材包" +
+          (extracted
+            ? "（全文 " + extracted.chars + " 字）"
+            : "（全文读取失败，只存了摘要；可在素材库编辑补充）") +
+          "。",
       });
       setReloadTick((value) => value + 1);
       onSelected?.();

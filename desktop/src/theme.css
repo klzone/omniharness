@@ -5736,6 +5736,48 @@ button.wr-backlink:hover {
   padding-top: 4px;
 }
 
+/* 流程步骤收进标题行：尺寸与「对话」「导出」一致，点一下回到对应页面。 */
+.wd-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.wd-step-chip {
+  padding: 8px 13px;
+  border-radius: 999px;
+  color: var(--od-neu-ink-2);
+  font-size: 12.5px;
+  line-height: 1.2;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.wd-step-chip:hover:not(:disabled) {
+  background: var(--od-neu-surface);
+  box-shadow: var(--od-neu-raise-1);
+  color: var(--od-neu-accent-ink);
+}
+
+.wd-step-chip.done {
+  color: var(--od-neu-ink-3);
+}
+
+.wd-step-chip.current {
+  background: var(--od-neu-accent-soft);
+  box-shadow: var(--od-neu-inset-1);
+  color: var(--od-neu-accent-ink);
+  font-weight: 600;
+}
+
+.wd-step-chip:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .wd-export-wrap {
   position: relative;
 }
@@ -5919,17 +5961,10 @@ button.wr-backlink:hover {
 }
 
 .wd-body {
-  display: grid;
+  display: block;
   flex: 1 1 auto;
-  grid-template-columns: 280px minmax(0, 1fr) 300px;
-  gap: 18px;
   min-height: 0;
   padding-top: 18px;
-}
-
-/* 需求与素材阶段还没有大纲，收起右侧上下文，把注意力留给当前这一步。 */
-.wd-body.is-early {
-  grid-template-columns: 300px minmax(0, 1fr);
 }
 
 .wd-rail {
@@ -6259,7 +6294,7 @@ button.wr-backlink:hover {
 }
 
 .wd-paper {
-  width: min(760px, 100%);
+  width: min(880px, 100%);
   height: 100%;
   overflow-y: auto;
   padding: 42px clamp(32px, 4vw, 54px) 36px;
@@ -6696,30 +6731,7 @@ button.wr-backlink:hover {
   font-size: 16px;
 }
 
-@media (max-width: 1279px) {
-  .wd-body {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  .wd-body.is-early {
-    grid-template-columns: 240px minmax(0, 1fr);
-  }
-
-  .wd-context-rail {
-    grid-column: 1 / -1;
-    min-height: 320px;
-  }
-}
-
 @media (max-width: 1023px) {
-  .wd-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .wd-body.is-early {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .wd-paper {
     width: 100%;
   }

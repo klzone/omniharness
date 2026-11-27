@@ -413,20 +413,39 @@ pub fn extract_page(
     }
     let parsed = reqwest::Url::parse(url).map_err(|_| "网页地址不是有效的网址。".to_string())?;
     crate::net_guard::assert_public_http_url(parsed.as_str())?;
-    let script = locate_cli().ok_or_else(|| {
-        "AnySearch 未安装或路径不可用；请先在本机技能目录安装 anysearch skill。".to_string()
+    // 先走 AnySearch 抽取（能处理一部分带反爬的站点）。
+    let plugin_text = locate_cli().and_then(|script| {
+        let args = vec!["extract".to_string(), url.to_string()];
+        run_cli(
+            python,
+            &script,
+            &args,
+            python_vendor_dir(app_root).as_deref(),
+            EXTRACT_TIMEOUT,
+        )
+        .ok()
+    });
+    if let Some((title, text)) = plugin_text
+        .as_deref()
+        .and_then(|output| parse_extract_output(output).ok())
+        .map(|page| (page.title, clean_extracted_text(&page.content)))
+    {
+        if text.chars().count() >= 150 {
+            return Ok(WebExtractOutcome {
+                url: url.to_string(),
+                title: title.filter(|value| !value.trim().is_empty()),
+                chars: text.chars().count(),
+                text,
+                source: "anysearch".to_string(),
+            });
+        }
+    }
+    // 插件抽不到时直连网页：按响应头或 HTML meta 的 charset 解码，再去标签。
+    let (title, raw_text) = fetch_direct(url).map_err(|_| {
+        "这个页面没有可用的文字正文（可能是图片版或需登录），可换一条来源再试。".to_string()
     })?;
-    let args = vec!["extract".to_string(), url.to_string()];
-    let output = run_cli(
-        python,
-        &script,
-        &args,
-        python_vendor_dir(app_root).as_deref(),
-        EXTRACT_TIMEOUT,
-    )?;
-    let raw = parse_extract_output(&output)?;
-    let text = clean_extracted_text(&raw.content);
-    if text.chars().count() < 150 {
+    let text = clean_extracted_text(&raw_text);
+    if text.chars().count() < 80 {
         return Err(
             "这个页面没有可用的文字正文（可能是图片版或需登录），可换一条来源再试。"
                 .to_string(),
@@ -434,11 +453,199 @@ pub fn extract_page(
     }
     Ok(WebExtractOutcome {
         url: url.to_string(),
-        title: raw.title.filter(|title| !title.trim().is_empty()),
+        title,
         chars: text.chars().count(),
         text,
-        source: "anysearch".to_string(),
+        source: "direct".to_string(),
     })
+}
+
+/// 直连网页：手动跟随最多 3 次重定向，每一跳重新校验公网地址并钉住解析结果。
+fn fetch_direct(url: &str) -> Result<(Option<String>, String), String> {
+    let mut current =
+        reqwest::Url::parse(url).map_err(|_| "网页地址不是有效的网址。".to_string())?;
+    let mut response: Option<reqwest::blocking::Response> = None;
+    for hop in 0..=3 {
+        let addrs = crate::net_guard::assert_url_addresses(
+            &current,
+            crate::net_guard::NetPolicy::PublicOnly,
+        )?;
+        let builder = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(10))
+            .user_agent("Mozilla/5.0 (compatible; OmniDesk/0.2)")
+            .redirect(reqwest::redirect::Policy::none());
+        let client = crate::net_guard::pin_client(builder, &current, &addrs)
+            .build()
+            .map_err(|error| format!("创建网页请求失败：{error}"))?;
+        let resp = client
+            .get(current.clone())
+            .header(
+                reqwest::header::ACCEPT,
+                "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
+            )
+            .send()
+            .map_err(|error| {
+                if error.is_timeout() {
+                    "网页请求超时".to_string()
+                } else {
+                    format!("网页请求失败：{error}")
+                }
+            })?;
+        if resp.status().is_redirection() {
+            if hop == 3 {
+                return Err("网页重定向次数过多。".to_string());
+            }
+            let location = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or_else(|| "网页重定向缺少目标地址。".to_string())?;
+            current = current
+                .join(location)
+                .map_err(|_| "网页重定向地址无效。".to_string())?;
+            continue;
+        }
+        if !resp.status().is_success() {
+            return Err(format!("网页返回状态 {}。", resp.status()));
+        }
+        response = Some(resp);
+        break;
+    }
+    let response = response.ok_or_else(|| "网页请求没有完成。".to_string())?;
+    if response.content_length().unwrap_or(0) > 3_000_000 {
+        return Err("网页过大，已跳过。".to_string());
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+    let bytes = response
+        .bytes()
+        .map_err(|error| format!("读取网页内容失败：{error}"))?;
+    if bytes.len() > 3_000_000 {
+        return Err("网页过大，已跳过。".to_string());
+    }
+    let decoded = detect_charset(content_type.as_deref(), &bytes).decode(&bytes).0;
+    let title = html_title(&decoded);
+    let text = strip_html(&decoded);
+    Ok((title, text))
+}
+
+/// 优先响应头 charset，其次 HTML meta；都认不出时按 UTF-8 解码。
+fn detect_charset(content_type: Option<&str>, bytes: &[u8]) -> &'static encoding_rs::Encoding {
+    let from_header = content_type.and_then(|value| {
+        let lower = value.to_ascii_lowercase();
+        let index = lower.find("charset=")?;
+        Some(lower[index + 8..].to_string())
+    });
+    let label = from_header.or_else(|| {
+        let head = &bytes[..bytes.len().min(4096)];
+        let lower = String::from_utf8_lossy(head).to_ascii_lowercase();
+        let index = lower.find("charset=")?;
+        Some(lower[index + 8..].to_string())
+    });
+    let label = label
+        .map(|value| {
+            value
+                .trim_start_matches(['"', '\'', ' '])
+                .chars()
+                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+                .collect::<String>()
+        })
+        .filter(|value| !value.is_empty());
+    label
+        .as_deref()
+        .and_then(|value| encoding_rs::Encoding::for_label(value.as_bytes()))
+        .unwrap_or(encoding_rs::UTF_8)
+}
+
+fn html_title(html: &str) -> Option<String> {
+    let open = find_ci(html, "<title")?;
+    let start = html[open..].find('>')? + open + 1;
+    let end = find_ci(&html[start..], "</title>")? + start;
+    let title = html[start..end].trim();
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
+}
+
+fn find_ci(haystack: &str, needle: &str) -> Option<usize> {
+    haystack
+        .to_ascii_lowercase()
+        .find(&needle.to_ascii_lowercase())
+}
+
+/// 去掉 script/style 块后剥离标签；块级标签换成换行，实体做最小还原。
+fn strip_html(html: &str) -> String {
+    let without_script = remove_block_ci(html, "script");
+    let without_style = remove_block_ci(&without_script, "style");
+    let mut out = String::new();
+    let mut rest = without_style.as_str();
+    loop {
+        let Some(lt) = rest.find('<') else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..lt]);
+        let Some(gt) = rest[lt..].find('>') else {
+            break;
+        };
+        let tag = &rest[lt + 1..lt + gt];
+        let name = tag
+            .trim_start_matches('/')
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if matches!(
+            name.as_str(),
+            "br" | "p" | "div" | "li" | "tr" | "td" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+                | "section" | "article" | "blockquote"
+        ) {
+            out.push('\n');
+        }
+        rest = &rest[lt + gt + 1..];
+    }
+    decode_entities(&out)
+}
+
+fn remove_block_ci(html: &str, name: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    loop {
+        let Some(open) = find_ci(rest, &format!("<{name}")) else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..open]);
+        let after = &rest[open..];
+        match find_ci(after, &format!("</{name}>")) {
+            Some(end) => rest = &after[end + name.len() + 3..],
+            None => break,
+        }
+    }
+    out
+}
+
+fn decode_entities(text: &str) -> String {
+    let mut out = text
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&ldquo;", "“")
+        .replace("&rdquo;", "”")
+        .replace("&mdash;", "—");
+    while out.contains("&amp;") {
+        out = out.replace("&amp;", "&");
+    }
+    out
 }
 
 #[derive(Debug, Deserialize)]
@@ -510,6 +717,24 @@ mod tests {
     fn image_only_page_leaves_short_text() {
         let raw = "# 标题\n\n*共产党员网* 分享 打印 纠错\n\n请先登录\n\n微信扫一扫 ×\n\n*发布时间：2022年10月17日* 分享 打印\n";
         assert!(clean_extracted_text(raw).chars().count() < 150);
+    }
+
+    #[test]
+    fn strip_html_drops_script_and_keeps_paragraphs() {
+        let html = "<html><head><script>var x = 1;</script><style>p{}</style></head><body><p>第一段</p><p>第二段&amp;说明</p></body></html>";
+        let text = strip_html(html);
+        assert!(text.contains("第一段"), "{text}");
+        assert!(text.contains("第二段&说明"), "{text}");
+        assert!(!text.contains("var x"), "{text}");
+    }
+
+    #[test]
+    fn charset_prefers_header_and_falls_back_to_meta() {
+        let bytes = b"<html><head><meta charset=\"gbk\"></head></html>";
+        let from_header = detect_charset(Some("text/html; charset=utf-8"), bytes);
+        assert_eq!(from_header.name(), "UTF-8");
+        let from_meta = detect_charset(None, bytes);
+        assert!(from_meta.name().to_ascii_lowercase().contains("gbk"), "{}", from_meta.name());
     }
 
     #[test]
