@@ -53,7 +53,13 @@ export function WritingCollectPanel({
   const [reloadTick, setReloadTick] = useState(0);
 
   // ---- 联网检索（anysearch）：检索 → 勾选 → 存为素材（待审核）----------
+  // 换稿件或重新打开时用当前主题重置检索词，不覆盖用户已输入的查询。
   const [searchQuery, setSearchQuery] = useState(searchTopic);
+  const [topicSeen, setTopicSeen] = useState(searchTopic);
+  if (searchTopic !== topicSeen) {
+    setTopicSeen(searchTopic);
+    setSearchQuery(searchTopic);
+  }
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchItems, setSearchItems] = useState<WritingWebSearchItem[]>([]);
