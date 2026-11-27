@@ -81,6 +81,7 @@ import type {
   WritingSelectInput,
   WritingSelectResult,
   WritingWebSearchOutcome,
+  WritingWebExtractOutcome,
   WritingMaterial,
   WritingRequirementApplied,
   WritingRequirementDraft,
@@ -2975,6 +2976,15 @@ export const shell = {
     }).catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /** 单页正文抽取：只接受公网 http/https；结果不落盘，用户确认后才写入素材库。 */
+  writingWebExtract(url: string): Promise<WritingWebExtractOutcome> {
+    return invoke<WritingWebExtractOutcome>("writing_web_extract", { request: { url } }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
   },
 
   /**

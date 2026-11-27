@@ -1529,6 +1529,15 @@ export interface WritingWebSearchOutcome {
   note: string | null;
 }
 
+/** 单页正文抽取结果（anysearch extract；未落盘）。 */
+export interface WritingWebExtractOutcome {
+  url: string;
+  title: string | null;
+  text: string;
+  chars: number;
+  source: string;
+}
+
 /** 文稿十二类（OD-WT-601 白名单）。 */
 export type WritingDocumentType =
   | "月度总结"

@@ -305,6 +305,15 @@ def main() -> int:
         "素材收集内可联网检索并按收藏存入素材篮",
     )
     check(
+        "writing_collect_extract_and_adopt",
+        "writingWebExtract" in collect_panel
+        and "data-writing-websearch-read" in collect_panel
+        and "materialReview" in collect_panel
+        and "adopt_material_ids" in collect_panel
+        and "fn writing_web_extract(" in lib_rs,
+        "选中后可读全文，并在同一动作内确认与采纳",
+    )
+    check(
         "writing_websearch_host_gate",
         'gate_user_text(&request.query, &policy, "素材检索词")' in lib_rs
         and "writing_websearch::web_search(" in lib_rs

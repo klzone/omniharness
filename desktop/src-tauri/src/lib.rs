@@ -3968,6 +3968,21 @@ fn writing_web_search(
     )
 }
 
+/// 检索结果的正文抽取：只接受公网 http/https 地址，结果不落盘。
+/// 用户确认后才把正文经 material_create 写入素材篮（见 0.2.66 的界面流程）。
+#[tauri::command(async)]
+fn writing_web_extract(
+    state: State<'_, SharedHost>,
+    request: writing_websearch::WebExtractRequest,
+) -> Result<writing_websearch::WebExtractOutcome, String> {
+    let app_root = {
+        let host = state.lock().unwrap();
+        host.paths.root.clone()
+    };
+    let config = EngineConfig::from_env(&app_root)?;
+    writing_websearch::extract_page(&request, &config.python, &app_root)
+}
+
 #[tauri::command(async)]
 fn writing_select_materials(
     state: State<'_, SharedHost>,
@@ -10651,6 +10666,7 @@ pub fn run() {
             writing_collect_materials,
             writing_select_materials,
             writing_web_search,
+            writing_web_extract,
         ])
         .setup(|app| {
             // 启动时只设置窗口标题，不拉起引擎（引擎按需启动）。

@@ -5,6 +5,7 @@ import type {
   WritingCollectItem,
   WritingCollectResponse,
   WritingMaterialType,
+  WritingWebExtractOutcome,
   WritingWebSearchItem,
 } from "../types";
 
@@ -30,6 +31,14 @@ function itemAction(item: WritingCollectItem): { kind: "material" | "knowledge";
   if (item.kind === "material" && item.material_id) return { kind: "material", id: item.material_id };
   if (item.kind === "knowledge" && item.knowledge_id) return { kind: "knowledge", id: item.knowledge_id };
   return null;
+}
+
+/** 公开来源多是政策原文；认不出时按工作事实落盘，用户可在素材库改类型。 */
+function guessMaterialType(text: string): WritingMaterialType {
+  if (/(规定|办法|条例|意见|通知|决定|gov\.cn|12371|人民网|新华网)/.test(text)) return "制度依据";
+  if (/(数据|统计|指标)/.test(text)) return "数据素材";
+  if (/(案例|典型)/.test(text)) return "典型案例";
+  return "工作事实";
 }
 
 /**
@@ -64,8 +73,9 @@ export function WritingCollectPanel({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchItems, setSearchItems] = useState<WritingWebSearchItem[]>([]);
   const [searchNote, setSearchNote] = useState<string | null>(null);
-  const [pickedUrls, setPickedUrls] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [extracts, setExtracts] = useState<Record<string, WritingWebExtractOutcome>>({});
+  const [fetchingUrl, setFetchingUrl] = useState<string | null>(null);
+  const [savingUrl, setSavingUrl] = useState<string | null>(null);
 
   async function runSearch() {
     const query = searchQuery.trim();
@@ -74,9 +84,9 @@ export function WritingCollectPanel({
     setSearchError(null);
     setSearchItems([]);
     setSearchNote(null);
-    setPickedUrls([]);
+    setExtracts({});
     try {
-      const outcome = await shell.writingWebSearch({ query, max_results: 6 });
+      const outcome = await shell.writingWebSearch({ query, max_results: 10 });
       setSearchItems(outcome.items);
       setSearchNote(outcome.note);
     } catch (value) {
@@ -86,41 +96,57 @@ export function WritingCollectPanel({
     }
   }
 
-  async function savePickedAsMaterials() {
-    if (!pickedUrls.length || saving) return;
-    setSaving(true);
-    setNotice(null);
-    let saved = 0;
-    let failed = 0;
-    for (const item of searchItems) {
-      if (!pickedUrls.includes(item.url)) continue;
-      try {
-        await shell.materialCreate({
-          title: item.title.slice(0, 200),
-          content: (item.snippet + (item.url ? "\n来源：" + item.url : "")).trim(),
-          material_type: "工作事实" satisfies WritingMaterialType,
-          source_type: "user",
-          source_quote: item.snippet || item.title,
-          source_location: item.url || null,
-          tags: ["联网检索"],
-        });
-        saved += 1;
-      } catch {
-        failed += 1;
-      }
+  async function readFullText(item: WritingWebSearchItem) {
+    if (!item.url || extracts[item.url] || fetchingUrl) return;
+    setFetchingUrl(item.url);
+    setSearchError(null);
+    try {
+      const outcome = await shell.writingWebExtract(item.url);
+      setExtracts((prev) => ({ ...prev, [item.url]: outcome }));
+    } catch (value) {
+      setSearchError(errText(value));
+    } finally {
+      setFetchingUrl(null);
     }
-    setPickedUrls([]);
-    setSaving(false);
-    if (saved > 0) {
+  }
+
+  /** 用户明确选择的外部结果：一次动作内完成落盘、确认与采纳。 */
+  async function saveAsMaterial(item: WritingWebSearchItem) {
+    const key = item.url || item.title;
+    if (savingUrl) return;
+    setSavingUrl(key);
+    setNotice(null);
+    try {
+      let extracted = item.url ? extracts[item.url] : undefined;
+      if (!extracted && item.url) {
+        extracted = await shell.writingWebExtract(item.url);
+        setExtracts((prev) => ({ ...prev, [item.url]: extracted! }));
+      }
+      const body = extracted?.text ?? item.snippet ?? item.title;
+      const created = await shell.materialCreate({
+        title: (extracted?.title || item.title).slice(0, 200),
+        content: body,
+        material_type: guessMaterialType(item.title + " " + item.url),
+        source_type: "user",
+        source_quote: (item.snippet || body).slice(0, 2000),
+        source_location: item.url || null,
+        tags: ["联网检索"],
+      });
+      await shell.materialReview(created.material_id, "confirm", "用户从联网检索存入并采纳");
+      await shell.writingSelectMaterials({
+        writing_id: writingId,
+        adopt_material_ids: [created.material_id],
+      });
       setNotice({
         kind: "ok",
-        text:
-          "已存入素材篮 " + saved + " 条（待审核）。" +
-          (failed > 0 ? failed + " 条失败，多为重复或触发红线。" : "到素材库确认后可采纳进素材包。"),
+        text: "已存入素材库并采纳进本次素材包" + (extracted ? "（全文 " + extracted.chars + " 字）" : "（只取到摘要）") + "。",
       });
+      setReloadTick((value) => value + 1);
       onSelected?.();
-    } else {
-      setNotice({ kind: "err", text: "保存失败，多为重复或触发红线。" });
+    } catch (value) {
+      setNotice({ kind: "err", text: errText(value) });
+    } finally {
+      setSavingUrl(null);
     }
   }
 
@@ -220,15 +246,18 @@ export function WritingCollectPanel({
         <p className="text-[10px] text-[color:var(--od-neu-ink-3)]">{data.knowledge_note}</p>
       ) : null}
 
-      {/* 联网检索：检索词预填主题，结果勾选后存为素材篮待审核素材。 */}
+      {/* 联网检索：检索词预填主题；选中后先读全文，再一次完成落盘、确认与采纳。 */}
       <section
         className="rounded-xl border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface)] px-3 py-3"
         data-writing-websearch=""
       >
         <div className="flex items-baseline gap-2">
           <h3 className="text-[12.5px] font-semibold text-[color:var(--od-neu-ink)]">联网检索</h3>
-          <span className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">anysearch</span>
+          <span className="text-[10.5px] text-[color:var(--od-neu-ink-3)]">最多 10 条</span>
         </div>
+        <p className="mt-1.5 text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+          存入的是本次写作素材库（work/素材篮），不是知识库。存入即确认并采纳，不需要再审批；之后可在素材库编辑或移出。
+        </p>
         <div className="mt-2 flex items-start gap-2">
           <input
             value={searchQuery}
@@ -258,64 +287,66 @@ export function WritingCollectPanel({
           <p className="mt-2 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-3)]">{searchNote}</p>
         ) : null}
         {searchItems.length > 0 ? (
-          <>
-            <ul className="mt-2 flex max-h-[280px] flex-col gap-2 overflow-y-auto pr-0.5">
-              {searchItems.map((item) => {
-                const picked = pickedUrls.includes(item.url);
-                return (
-                  <li
-                    key={item.url || item.title}
-                    className="rounded-lg border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface-high)] px-3 py-2"
-                    data-writing-websearch-item={item.url || item.title}
-                  >
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={picked}
-                        onChange={() =>
-                          setPickedUrls((prev) =>
-                            picked ? prev.filter((url) => url !== item.url) : [...prev, item.url],
-                          )
-                        }
-                        className="mt-0.5 shrink-0"
-                        aria-label="选中这条检索结果"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-[12px] font-medium leading-snug text-[color:var(--od-neu-ink)] break-words">
-                          {item.title}
-                        </span>
-                        {item.snippet ? (
-                          <span className="mt-0.5 block text-[11px] leading-relaxed text-[color:var(--od-neu-ink-3)] line-clamp-2">
-                            {item.snippet}
-                          </span>
-                        ) : null}
-                        {item.url ? (
-                          <span className="mt-0.5 block truncate text-[10px] text-[color:var(--od-neu-ink-3)]">
-                            {item.url}
-                            {item.date ? " · " + item.date : ""}
-                          </span>
-                        ) : null}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                className="wr-primary-button"
-                onClick={() => void savePickedAsMaterials()}
-                disabled={saving || pickedUrls.length === 0}
-                data-writing-websearch-save=""
-              >
-                {saving ? "正在保存…" : "存入素材篮（" + pickedUrls.length + "）"}
-              </button>
-              <span className="text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
-                按收藏落盘，先到素材库确认再采纳。
-              </span>
-            </div>
-          </>
+          <ul className="mt-2 flex max-h-[360px] flex-col gap-2 overflow-y-auto pr-0.5">
+            {searchItems.map((item) => {
+              const key = item.url || item.title;
+              const extracted = item.url ? extracts[item.url] : undefined;
+              return (
+                <li
+                  key={key}
+                  className="rounded-lg border border-[color:var(--od-neu-line)] bg-[color:var(--od-neu-surface-high)] px-3 py-2"
+                  data-writing-websearch-item={key}
+                >
+                  <div className="text-[12px] font-medium leading-snug text-[color:var(--od-neu-ink)] break-words">
+                    {item.title}
+                  </div>
+                  {item.snippet ? (
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-[color:var(--od-neu-ink-3)] line-clamp-2">
+                      {item.snippet}
+                    </p>
+                  ) : null}
+                  {item.url ? (
+                    <p className="mt-0.5 truncate text-[10px] text-[color:var(--od-neu-ink-3)]">
+                      {item.url}
+                      {item.date ? " · " + item.date : ""}
+                    </p>
+                  ) : null}
+                  {extracted ? (
+                    <details className="mt-1.5">
+                      <summary className="cursor-pointer text-[10.5px] text-[color:var(--od-neu-accent-ink)]">
+                        已读取全文（{extracted.chars} 字）
+                      </summary>
+                      <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[10.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+                        {extracted.text.slice(0, 1200)}
+                      </pre>
+                    </details>
+                  ) : null}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {item.url ? (
+                      <button
+                        type="button"
+                        className="wr-text-button"
+                        onClick={() => void readFullText(item)}
+                        disabled={fetchingUrl === item.url || Boolean(extracted)}
+                        data-writing-websearch-read={key}
+                      >
+                        {fetchingUrl === item.url ? "读取中…" : extracted ? "已读取全文" : "读取全文"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="wr-primary-button"
+                      onClick={() => void saveAsMaterial(item)}
+                      disabled={savingUrl === key}
+                      data-writing-websearch-save={key}
+                    >
+                      {savingUrl === key ? "保存中…" : "存入并采纳"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         ) : null}
       </section>
 
@@ -325,7 +356,7 @@ export function WritingCollectPanel({
         </p>
       ) : !data || data.items.length === 0 ? (
         <div className="rounded-xl bg-[color:var(--od-neu-sunken)] px-4 py-6 text-center text-[11px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
-          还没有推荐候选。可以先在素材库补充或确认素材，再回来重新检索。
+          还没有推荐候选。可以先联网检索，或在素材库补充素材。
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">

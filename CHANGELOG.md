@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.66] - 2026-11-27
+
+### Changed
+- 联网检索支持读取全文：每条结果可先「读取全文」，走 AnySearch extract，清洗图片语法、站点导航、分享/登录控件与页脚后保存为素材正文；图片版、需登录或没有文字正文的页面如实拒绝，避免存入空壳。
+- 搜索结果上限从 6 条提到 10 条；保存动作合并为「存入并采纳」，用户点击即完成落盘、确认与采纳，不再要求二次审批。素材进 work/素材篮，与知识库分开。
+- 素材类型按来源推断（政策法规类→制度依据、统计类→数据素材、案例类→典型案例，其余→工作事实），可在素材库修改。
+
+### Verification
+- `cargo test --lib` 全部通过（writing_websearch 新增正文清洗、抽取输出解析与图片版识别测试）。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 78/78；`verify_hardening_2043` 77/77（命令基线按新增 writing_web_extract 更新到 298）。
+
+---
+
 ## [0.2.65] - 2026-11-27
 
 ### Removed

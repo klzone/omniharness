@@ -1,5 +1,12 @@
 # 执行状态
 
+## 联网检索读取全文与一次保存（2026-11-27，0.2.66）
+
+- **后端（file fact）：** writing_websearch 新增 extract_page：先校验公网 http/https，再调用 AnySearch extract；解析 JSON 后清洗图片语法、链接语法、站点导航（从首个 # 标题起）、分享/登录控件、发布时间与页脚；正文少于 150 字判定为图片版/需登录并明确拒绝。新增 writing_web_extract 命令（命令基线 298）。检索默认上限改为 10 条。
+- **前端（file fact）：** 素材收集的搜索结果改为逐条「读取全文 / 存入并采纳」；保存时自动落盘→确认→采纳进本次素材包，用户一次点击完成；写明素材存 work/素材篮（不是知识库）；素材类型按来源推断。
+- **验证（script，实际命令与结果）：** `cargo test writing_websearch --lib` → 6 passed；真实 CLI 抽取两篇验证：文字页得到 4703 字可用正文，图片版页面被清洗后识别为空壳。`npx tsc --noEmit` → 0；`npm run build` → 0；`npm run test` → 150 passed；`verify_writing_094` → 78/78；`verify_hardening_2043` → 77/77。
+- **未验证：** 真实窗口内的完整点击流；Windows 实机。
+
 ## 移除 dsh-cost-meter 与配套插件推荐（2026-11-27，0.2.65）
 
 - **事实核查（file fact + rg）：** dsh-cost-meter 随 omnidesk-base / web / discipline 三个出厂 Profile 声明并安装，但产品内没有任何界面读取其费用数据；它只出现在「设置 → 能力管理」插件列表与「设置 → 配套插件推荐」两处。
