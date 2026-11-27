@@ -276,6 +276,42 @@ fn write_manifest(
     })
 }
 
+/// 退役一个不再随产品提供的插件（0.2.65）。
+///
+/// 只对 OmniDesk 自己管理的 Profile 生效：从 `dsh.profile.bundles` 与
+/// `dependencies` 同时移除，改动前留 `.bak`。用于升级前装过该插件的老数据根，
+/// 避免它继续加载、继续出现在能力管理列表里。自定义 Profile 不动。
+pub fn retire_package(dsh_home: &Path, profile: &str, package: &str) -> Result<bool, String> {
+    const MANAGED_PROFILES: [&str; 3] = ["web", "discipline", "omnidesk-base"];
+    if !MANAGED_PROFILES.contains(&profile) {
+        return Ok(false);
+    }
+    let dir = profile_dir(dsh_home, profile)?;
+    if !manifest_path(&dir).is_file() {
+        return Ok(false);
+    }
+    let mut value = load_manifest(&dir)?;
+    let mut changed = false;
+    {
+        let list = bundles_mut(&mut value)?;
+        let before = list.len();
+        list.retain(|item| item.as_str() != Some(package));
+        changed = list.len() != before;
+    }
+    if let Some(deps) = value.get_mut("dependencies").and_then(|d| d.as_object_mut()) {
+        changed |= deps.remove(package).is_some();
+    }
+    if !changed {
+        return Ok(false);
+    }
+    write_manifest(
+        &dir,
+        &value,
+        &format!("已从 Profile 移除退役插件 {}。", package),
+    )?;
+    Ok(true)
+}
+
 /// 启用/停用某个 bundle。停用只从 bundles 移除，dependencies 保留（便于回滚）。
 pub fn set_bundle(dir: &Path, name: &str, enabled: bool) -> Result<CapabilityReceipt, String> {
     let name = name.trim();
@@ -619,6 +655,33 @@ mod tests {
             Some("1.9.6"),
             "dependencies 必须原样保留"
         );
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn retire_package_removes_bundle_dependency_and_backs_up() {
+        let dir = fixture("retire");
+        let dsh_home = dir.parent().unwrap().parent().unwrap();
+        assert!(retire_package(dsh_home, "web", "dsh-cost-meter").unwrap());
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("package.json")).unwrap()).unwrap();
+        assert!(!bundle_names(&value)
+            .unwrap()
+            .iter()
+            .any(|name| name == "dsh-cost-meter"));
+        assert!(dependency_version(&value, "dsh-cost-meter").is_none());
+        let backups = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("package.json.bak-")
+            })
+            .count();
+        assert_eq!(backups, 1, "退役前必须留备份");
+        assert!(!retire_package(dsh_home, "custom", "dsh-cost-meter").unwrap());
         cleanup(&dir);
     }
 

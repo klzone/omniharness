@@ -1520,7 +1520,7 @@
 
 ### D-113（2026-11-27，OD-WT-605 扩展）：素材收集联网检索走本机 AnySearch CLI，结果按收藏落盘待审核
 
-**决策：** 写作素材收集阶段新增宿主命令 writing_web_search：检索词经 gate_user_text 红线与掩码后调用本机 AnySearch CLI（薄封装，不在仓库内打包 CLI；`~/.codex` 与 `~/.agents` 技能目录探测 + `ANYSEARCH_SKILL_DIR` 环境变量），CLI 缺失时如实报错并指向设置页配套插件指引。检索结果只返回界面，用户勾选后经 material_create 既有闸门按 user 收藏落盘（source_location 存 URL，tags 标「联网检索」），进素材篮待审核，不直接进素材包。
+**决策：** 写作素材收集阶段新增宿主命令 writing_web_search：检索词经 gate_user_text 红线与掩码后调用本机 AnySearch CLI（薄封装，不在仓库内打包 CLI；`~/.codex` 与 `~/.agents` 技能目录探测 + `ANYSEARCH_SKILL_DIR` 环境变量），CLI 缺失时如实报错。检索结果只返回界面，用户勾选后经 material_create 既有闸门按 user 收藏落盘（source_location 存 URL，tags 标「联网检索」），进素材篮待审核，不直接进素材包。
 
 **理由：** D-079/D-082 的词法检索只覆盖本地素材与知识库；公开规范与政策原文需要外检能力。AnySearch 已是常备推荐插件（OD-ARCH-177），用户侧已安装；结果一律走既有素材审核五态，AI 无写通道的纪律（D-080）不放宽。
 

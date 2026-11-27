@@ -112,8 +112,8 @@
           searchTimeoutMs: 60000
       - id: present
         name: '@deepseek-ai/dsh-tool-present'
-# 免 key 基础搜索与费用统计随所有出厂 Profile 装配（OD-ARCH-147a）。
-# profile 只绑定业务技能与场景规则；这两个插件属于底座能力。
+# 免 key 基础搜索随所有出厂 Profile 装配（OD-ARCH-147a）。
+# profile 只绑定业务技能与场景规则；该插件属于底座能力。
 - insert:
     - id: web-search-free
       name: dsh-free-search
@@ -121,6 +121,4 @@
         provider: bing
         disabledEngines: []
         bingMarket: zh-CN
-    - id: cost-meter
-      name: dsh-cost-meter
 

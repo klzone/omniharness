@@ -73,15 +73,10 @@ pub struct AssetProfile {
     pub plugins: &'static [PluginRequirement],
 }
 
-// OD-ARCH-147a / OD-ARCH-173 S3：费用统计插件随 discipline Profile 装配；
+// 0.2.65：费用统计插件没有 OmniDesk 侧读取入口，已从出厂 Profile 移除。
 // 免 key 搜索（dsh-free-search）已在阶段 1 从补丁层移除，阶段 3 同步清掉依赖声明。
 // 办公 Skill（@deepseek-ai/dsh-skill-office）已随 0.2.47 运行时精简移除，不再声明为必需插件。
-const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[
-    PluginRequirement {
-        package: "dsh-cost-meter",
-        version: None,
-    },
-];
+const DISCIPLINE_PLUGINS: &[PluginRequirement] = &[];
 
 const DISCIPLINE_SKILLS: &[&str] = &[
     "anysearch",

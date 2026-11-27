@@ -362,6 +362,11 @@ impl EngineConfig {
         // OmniDesk 写过的业务 Skill 收进停放区，切回来再归位。
         // 标准且从未装配过时这里是纯空操作，不会创建任何目录。
         crate::profile_assets::reconcile_managed_skills(&scope, &standard)?;
+        // 0.2.65：退役不再随产品提供的费用统计插件。老数据根里还留着它时，
+        // 从托管 Profile 的 bundles 与 dependencies 同时移除并留备份；失败不阻断启动。
+        for profile in ["web", "discipline", "omnidesk-base"] {
+            let _ = crate::capabilities::retire_package(&self.dsh_home, profile, "dsh-cost-meter");
+        }
         if self.profile.trim() == standard {
             return Ok(false);
         }
@@ -936,9 +941,8 @@ mod tests {
             .expect("应写入 cordis.patch.yml");
         assert_eq!(manifest, DEFAULT_WEB_PROFILE_JSON);
         assert_eq!(patch, DEFAULT_WEB_PROFILE_PATCH);
-        // 出厂清单必须真的登记了两个插件，否则播种等于没装。
+        // 出厂清单必须真的登记了免 key 搜索插件，否则播种等于没装。
         assert!(manifest.contains("dsh-free-search"));
-        assert!(manifest.contains("dsh-cost-meter"));
         // 资产里不得出现任何密钥值，只允许 apiKeyEnv 引用名。
         assert!(patch.contains("apiKeyEnv"));
     }

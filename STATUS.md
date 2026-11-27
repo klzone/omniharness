@@ -1,5 +1,13 @@
 # 执行状态
 
+## 移除 dsh-cost-meter 与配套插件推荐（2026-11-27，0.2.65）
+
+- **事实核查（file fact + rg）：** dsh-cost-meter 随 omnidesk-base / web / discipline 三个出厂 Profile 声明并安装，但产品内没有任何界面读取其费用数据；它只出现在「设置 → 能力管理」插件列表与「设置 → 配套插件推荐」两处。
+- **后端（file fact）：** samples/profiles 三份清单与 patch 去掉 cost-meter，lockfile 重新生成并通过 `npm ci --omit=dev`（三份均 0）；profile_assets 的 DISCIPLINE_PLUGINS 清空；engine_supervisor 启动装配新增 retire_package 调用，老数据根从托管 Profile 的 bundles 与 dependencies 移除该插件并留 .bak（新测试覆盖）。`scripts/prepare-runtime-assets.sh` 本地重建 seed 成功，seed 不再包含该插件。
+- **前端（file fact）：** 删除 companionPlugins.ts 与设置页「配套插件推荐」整块（AnySearch CLI 条目一并移除，skill 保留）；联网检索不可用时提示改为指向本机 anysearch skill 安装。
+- **验证（script，实际命令与结果）：** `cargo test --lib` → 1378 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run test` → 150 passed；`npm run build` → 0；`verify_writing_094` → 77/77；`verify_writing_ui_610` → 26/26；`verify_hardening_2043` → 77/77。
+- **未验证：** 真实窗口里老数据根首次启动的迁移（单测覆盖 retire 逻辑，未在真实 ~/OmniDesk 数据根上跑整窗）；`verify_capabilities_072.py` 仍指向已移除的 cost-meter 行，属历史窗口脚本，未重写。
+
 ## 素材收集联网检索（2026-11-27，0.2.64）
 
 - **后端（file fact）：** 新增 writing_websearch.rs（AnySearch CLI 薄封装：定位 `~/.codex` 或 `~/.agents` 下 anysearch_cli.py、PYTHONPATH 指向内置 python-vendor、45 秒超时 kill、Markdown 结果解析为标题/URL/摘要/日期）；lib.rs 新增 writing_web_search 命令（检索词过 gate_user_text 红线与掩码，EngineConfig 取 python），并注册进 handler；命令基线更新到 297。

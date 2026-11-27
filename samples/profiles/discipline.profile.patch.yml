@@ -1,11 +1,6 @@
 # OmniDesk Discipline Profile Patch (OD-ARCH-104)
 # 本层在每个 bundle 之后应用：顶层 YAML 数组，id 定向覆盖或 insert 列表。
 #
-# 费用统计随所有出厂 Profile 装配（OD-ARCH-173 阶段 1：免 key 搜索不再常驻）。
-- insert:
-    - id: cost-meter
-      name: dsh-cost-meter
-
 # OmniDesk 精简 Agent preset：只暴露产品实际使用的工具面。
 # preset-standard 保留为可回滚的完整上游基线，默认 preset 指向这里。
 - id: agent-preset-registry

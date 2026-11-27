@@ -269,7 +269,7 @@ pub fn web_search(
         return Err(format!("检索词过长（最多 {MAX_QUERY_CHARS} 字）。"));
     }
     let script = locate_cli().ok_or_else(|| {
-        "AnySearch 未安装或路径不可用；可在设置 → 配套插件查看安装指引。".to_string()
+        "AnySearch 未安装或路径不可用；请先在本机技能目录安装 anysearch skill。".to_string()
     })?;
     let max_results = request.max_results.clamp(1, 10);
     let output = run_cli(

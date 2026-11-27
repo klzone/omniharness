@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.65] - 2026-11-27
+
+### Removed
+- 移除 dsh-cost-meter 插件。产品内没有读取其费用数据的界面，它此前只出现在「能力管理」插件列表和「配套插件推荐」两处。出厂 Profile（omnidesk-base / web / discipline）不再声明依赖或加载它；升级后引擎启动会把老数据根托管 Profile 里的 bundles 与 dependencies 同步移除并留备份。
+- 删除「设置 → 配套插件推荐」整块。AnySearch CLI 的推荐条目一并移除，它已以 anysearch skill 形式安装，素材收集里直接调用本机 CLI。
+
+### Changed
+- 联网检索不可用时的提示改为指向本机 anysearch skill 安装，不再指向已删除的设置区块。
+
+### Verification
+- `cargo test --lib` 1378 passed / 0 failed（新增 capabilities 退役迁移测试）。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 77/77；`verify_writing_ui_610` 26/26；`verify_hardening_2043` 77/77。
+- 三个出厂 Profile 的 lockfile 已按新依赖重新生成，`npm ci --omit=dev` 三份均返回 0；`scripts/prepare-runtime-assets.sh` 本地重建 seed 成功，seed 内不再包含 dsh-cost-meter。
+
+---
+
 ## [0.2.64] - 2026-11-27
 
 ### Added

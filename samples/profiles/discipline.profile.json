@@ -1,9 +1,7 @@
 {
   "name": "dsh-profile-discipline",
   "private": true,
-  "dependencies": {
-    "dsh-cost-meter": "1.9.6"
-  },
+  "dependencies": {},
   "dsh": {
     "profile": {
       "bundles": [
