@@ -152,7 +152,7 @@ function StatusChip({ value }: { value: string }) {
   const status = statusFrom(value);
   return (
     <span
-      className={"shrink-0 rounded-full px-1.5 py-[1px] text-[9.5px] font-medium " + STATUS_SKIN[status]}
+      className={"shrink-0 rounded-full px-2 py-[2px] text-[10.5px] font-medium " + STATUS_SKIN[status]}
       data-writing-task-status-label={status}
     >
       {status}
@@ -162,7 +162,7 @@ function StatusChip({ value }: { value: string }) {
 
 function TypePill({ value }: { value: string }) {
   return (
-    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-[1px] text-[9.5px] text-primary">
+    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-[2px] text-[10.5px] text-primary">
       {value}
     </span>
   );
@@ -188,12 +188,12 @@ function TaskRow({ task, onOpen }: { task: WritingTask; onOpen: (id: string) => 
       data-writing-task-status={task.status}
     >
       <span className="flex items-start gap-2 min-w-0">
-        <span className="min-w-0 flex-1 text-[12.5px] font-medium leading-snug text-on-surface line-clamp-2 break-words">
+        <span className="min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-on-surface line-clamp-2 break-words">
           {task.title}
         </span>
         <StatusChip value={task.status} />
       </span>
-      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-outline">
+      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-outline">
         <TypePill value={task.document_type} />
         {task.writing_period ? <span>{task.writing_period}</span> : null}
         <span>素材 {materialCount(task)}</span>
@@ -450,7 +450,7 @@ export function WritingWorkbench({
         <div
           role="status"
           className={
-            "mb-2 rounded-xl px-2.5 py-1.5 text-[10.5px] leading-relaxed " +
+            "mb-2 rounded-xl px-3 py-2 text-[12px] leading-relaxed " +
             (notice.kind === "err"
               ? "bg-error-container/70 text-on-error-container"
               : "bg-surface-container text-on-surface-variant")
@@ -707,7 +707,7 @@ export function WritingWorkbench({
             onClick={() => setTypeFilter(null)}
             aria-pressed={typeFilter === null}
             className={
-              "rounded-full px-2.5 py-1 text-[10.5px] transition " +
+              "rounded-full px-3 py-1.5 text-[11.5px] transition " +
               (typeFilter === null
                 ? "bg-on-surface text-inverse-on-surface"
                 : "text-on-surface-variant hover:bg-surface-container")
@@ -722,7 +722,7 @@ export function WritingWorkbench({
               onClick={() => setTypeFilter(typeFilter === type ? null : type)}
               aria-pressed={typeFilter === type}
               className={
-                "rounded-full px-2.5 py-1 text-[10.5px] transition " +
+                "rounded-full px-3 py-1.5 text-[11.5px] transition " +
                 (typeFilter === type
                   ? "bg-on-surface text-inverse-on-surface"
                   : "text-on-surface-variant hover:bg-surface-container")
@@ -735,7 +735,7 @@ export function WritingWorkbench({
           <button
             type="button"
             onClick={() => setReloadTick((n) => n + 1)}
-            className="ml-auto rounded-full px-2.5 py-1 text-[10px] text-outline transition hover:bg-surface-container"
+            className="ml-auto rounded-full px-3 py-1.5 text-[11.5px] text-outline transition hover:bg-surface-container"
             data-writing-refresh=""
           >
             刷新
@@ -744,10 +744,10 @@ export function WritingWorkbench({
 
         <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pr-0.5 max-h-[52vh]" data-writing-task-list="">
           {loading ? (
-            <p className="text-[11.5px] text-outline">正在读取写作任务…</p>
+            <p className="text-[12.5px] text-outline">正在读取写作任务…</p>
           ) : loadError ? (
             <div className="flex flex-col gap-1.5" data-writing-list-error="">
-              <p className="text-[11.5px] leading-relaxed text-error">读取写作任务失败：{loadError}</p>
+              <p className="text-[12.5px] leading-relaxed text-error">读取写作任务失败：{loadError}</p>
               <button
                 type="button"
                 onClick={() => setReloadTick((n) => n + 1)}
@@ -757,7 +757,7 @@ export function WritingWorkbench({
               </button>
             </div>
           ) : visible.length === 0 ? (
-            <p className="text-[11.5px] leading-relaxed text-outline" data-writing-empty="">
+            <p className="text-[12.5px] leading-relaxed text-outline" data-writing-empty="">
               {typeFilter
                 ? "这个类型下还没有任务。"
                 : items.length === 0
@@ -769,8 +769,8 @@ export function WritingWorkbench({
               {groups.map((group) => (
                 <section key={group.status} data-writing-status-group={group.status}>
                   <div className="flex items-baseline gap-2 px-1 pb-1">
-                    <h3 className="text-[11px] font-medium text-on-surface-variant">{group.status}</h3>
-                    <span className="mono text-[9.5px] text-outline">{group.items.length}</span>
+                    <h3 className="text-[12px] font-medium text-on-surface-variant">{group.status}</h3>
+                    <span className="mono text-[10.5px] text-outline">{group.items.length}</span>
                   </div>
                   <ul className="flex flex-col gap-1.5">
                     {group.items.map((task) => (
@@ -786,7 +786,7 @@ export function WritingWorkbench({
 
           {broken > 0 ? (
             <p className="mt-2 text-[10px] text-amber-700" data-writing-list-broken="">
-              另有 {broken} 个任务文件读不出来，未计入列表。
+            另有 {broken} 个任务文件读不出来，未计入列表。
             </p>
           ) : null}
         </div>
@@ -841,10 +841,10 @@ function TaskDetail({
   return (
     <div className="flex min-h-0 flex-col pt-3" data-writing-task-detail={task.writing_id}>
       <div className="flex items-center gap-2 pb-2.5">
-        <button type="button" onClick={onBack} className="text-[11px] text-primary hover:underline">
+        <button type="button" onClick={onBack} className="text-[12px] text-primary hover:underline">
           ← 任务列表
         </button>
-        <span className="ml-auto text-[10px] text-outline">{shortTime(task.updated_at)}</span>
+        <span className="ml-auto text-[11.5px] text-outline">{shortTime(task.updated_at)}</span>
       </div>
 
       <h3 className="text-[14px] font-semibold leading-snug text-on-surface break-words">{task.title}</h3>
@@ -852,9 +852,9 @@ function TaskDetail({
         <StatusChip value={task.status} />
         <TypePill value={task.document_type} />
         {task.writing_period ? (
-          <span className="text-[10.5px] text-on-surface-variant">{task.writing_period}</span>
+          <span className="text-[11.5px] text-on-surface-variant">{task.writing_period}</span>
         ) : null}
-        <span className="text-[10.5px] text-outline">
+        <span className="text-[11.5px] text-outline">
           素材 {task.selected_material_ids.length} · 知识 {task.selected_knowledge_ids.length}
         </span>
       </div>
@@ -873,7 +873,7 @@ function TaskDetail({
             aria-selected={tab === item.key}
             onClick={() => setTab(item.key)}
             className={
-              "rounded-full px-2.5 py-1 text-[11px] transition " +
+              "rounded-full px-3 py-1.5 text-[12px] transition " +
               (tab === item.key
                 ? "bg-on-surface text-inverse-on-surface"
                 : "text-on-surface-variant hover:bg-surface-container")
