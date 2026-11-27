@@ -473,7 +473,9 @@ fn fetch_direct(url: &str) -> Result<(Option<String>, String), String> {
         let builder = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (compatible; OmniDesk/0.2)")
+            .user_agent(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
             .redirect(reqwest::redirect::Policy::none());
         let client = crate::net_guard::pin_client(builder, &current, &addrs)
             .build()
