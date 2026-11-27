@@ -541,6 +541,7 @@ export function WritingDesk({
   /** 点步骤回到对应页面；退回时按状态表迁移，向前仍走「下一步」主按钮。 */
   async function goToStep(target: number) {
     if (!task || target > stepNo) return;
+    if (readOnly && target !== 1 && target !== 6) return;
     if (target === 1) {
       setDrawer({ kind: "brief" });
       return;
@@ -1097,7 +1098,7 @@ export function WritingDesk({
                       (current ? "current" : "")
                     }
                     onClick={() => void goToStep(number)}
-                    disabled={number > stepNo}
+                    disabled={number > stepNo || (readOnly && number !== 1 && number !== 6)}
                     aria-current={current ? "step" : undefined}
                     data-writing-step={number}
                   >
