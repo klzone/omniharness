@@ -1,5 +1,12 @@
 # 执行状态
 
+## 素材收集联网检索（2026-11-27，0.2.64）
+
+- **后端（file fact）：** 新增 writing_websearch.rs（AnySearch CLI 薄封装：定位 `~/.codex` 或 `~/.agents` 下 anysearch_cli.py、PYTHONPATH 指向内置 python-vendor、45 秒超时 kill、Markdown 结果解析为标题/URL/摘要/日期）；lib.rs 新增 writing_web_search 命令（检索词过 gate_user_text 红线与掩码，EngineConfig 取 python），并注册进 handler；命令基线更新到 297。
+- **前端（file fact）：** WritingCollectPanel 新增联网检索区（预填任务主题/标题、回车或按钮触发、结果勾选、批量存入素材篮按 user 收藏落盘待审核、source_location 存 URL）；头部常驻素材库入口；WritingDesk 传 searchTopic 并更新素材阶段文案。
+- **验证（script，实际命令与结果）：** `cargo test --lib` → 1377 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run test` → 150 passed；`npm run build` → 0；`verify_writing_094` → 77/77；`verify_writing_ui_610` → 26/26；`verify_hardening_2043` → 77/77（基线 297）；`verify_security_phase3` → 25/25；`verify_security_phase4` → 31/35（4 项失败在干净树同样出现，为 0.2.53 既有失败）。
+- **未验证：** 真实 AnySearch 网络调用的端到端（本机 CLI 已可用，开发态 requests 走 vendor 已核实）、真实 Tauri 窗口交互、Windows 实机。
+
 ## 写作台 UI 重设计（2026-11-27，0.2.63）
 
 - **UI 参考（MCP，实际调用 search_inspiration / get_product_screenshots）：** 查看 Notion 文档页与 Claude Design 起始面板。借鉴 Notion 的大标题、宽留白和左栏分离，以及 Claude Design 把下一步做成明确起点、只留一个主按钮的做法。
@@ -1722,3 +1729,10 @@ M desktop/src-tauri/src/model_settings.rs（阶段 A 并行改动，非本次）
 - 项目与任务弹层的项目摘要原为「状态一行 + 日期一行」，在窄宽度下日期区间会折行并撑破圆角背景。现改为单行：状态胶囊、`YYYY-MM-DD → YYYY-MM-DD`、添加任务按钮同排；日期 `truncate`，完整区间放 `title`。
 - 实际执行：`npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
 - 未验证：用户实机窗口宽度下的最终视觉。
+
+## 远程工作专项架构研究（2026-11-27，只读调查）
+
+- **结论（文档）：** docs/architecture/remote-work/ 新增 15 份专项文档（现状基线→评估→设计→路线图→评审报告）。核心结论：现有架构适合远程化改造，成本集中在访问层；主方案为 Mac mini launchd 常驻无 UI Host Core + 现有 Python Engine/DSH + 回环 HTTP API + Tailscale + 复用 React 组件的 Web UI；Phase 1 最小改造仅动宿主层与新增 API/Web 壳，Engine/DSH/数据格式不变。
+- **调查方式（file fact + 本机 ls/rg）：** 通读 docs/ 架构与决策文档、engine/omnidesk_engine/ 源码头部（serve.py、task_core.py、web_api_adapter.py）、src-tauri 关键模块（engine_supervisor、task_store、thread_store、event_log、host_access、local_http、net_guard）、~/OmniDesk/ 真实数据根结构（engine-state 台账 60+、work/任务 Markdown、dsh-home sessions）。
+- **未验证：** 四象限视图完整度、DSH 0.2.1→0.2.2 旧会话 resume、SSE 弱网稳定性、热备份一致性、GLM→DeepSeek→GLM 三步真实演练；已在 architecture-review.md 附录列明验证方法。
+- **未改动：** 业务代码、配置、数据根、runtime/ 均未触碰；仅新增专项文档与本条记录。
