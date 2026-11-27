@@ -210,7 +210,7 @@ function LibraryDrawer({
     <div className="wd-drawer-backdrop" onClick={onClose} data-writing-library="">
       <div className="wd-drawer wd-drawer-left" onClick={(event) => event.stopPropagation()}>
         <div className="wd-drawer-head">
-          <div className="wd-drawer-title">所有稿件</div>
+          <div className="wd-drawer-title">{initialRequirement ? "带入写作" : "所有稿件"}</div>
           <button type="button" className="wd-drawer-close wr-icon-button" onClick={onClose} aria-label="关闭">
             ×
           </button>
@@ -509,30 +509,22 @@ export function WritingDesk({
   }
 
   async function selectTask(writingIdToOpen: string) {
-    const found = tasks.find((item) => item.writing_id === writingIdToOpen) ?? null;
-    if (!found) {
-      try {
-        const listing = await shell.writingList({});
-        setTasks(listing.items);
-        const next = listing.items.find((item) => item.writing_id === writingIdToOpen) ?? null;
-        setWritingId(writingIdToOpen);
-        setTask(next);
-        writeActiveId(writingIdToOpen);
-        setPrefillRequirement("");
-        setDrawer(null);
-        setNotice(next ? null : { kind: "err", text: "稿件列表里没有找到这份任务。" });
-        return;
-      } catch (error) {
-        setNotice({ kind: "err", text: errText(error) });
-        return;
-      }
-    }
+    const local = tasks.find((item) => item.writing_id === writingIdToOpen) ?? null;
     setWritingId(writingIdToOpen);
-    setTask(found);
     writeActiveId(writingIdToOpen);
     setPrefillRequirement("");
     setDrawer(null);
-    setNotice(null);
+    // 创建、确认、生成都可能刚改过状态，打开前先刷新一次列表，避免拿到旧状态。
+    try {
+      const listing = await shell.writingList({});
+      setTasks(listing.items);
+      const next = listing.items.find((item) => item.writing_id === writingIdToOpen) ?? null;
+      setTask(next);
+      setNotice(next ? null : { kind: "err", text: "稿件列表里没有找到这份任务。" });
+    } catch (error) {
+      setTask(local);
+      setNotice({ kind: "err", text: "刷新任务状态失败：" + errText(error) });
+    }
   }
 
   function bump() {
@@ -586,9 +578,19 @@ export function WritingDesk({
   function useThreadForWriting(thread: SceneThread) {
     const messages = thread.messages
       .filter((message) => message.role === "user" || message.role === "assistant")
-      .map((message) => (message.role === "user" ? "【我】" : "【AI】") + " " + message.text.trim())
-      .filter((line) => line.trim().length > 0);
-    const text = ("对话主题：" + thread.title + "\n\n" + messages.join("\n\n")).slice(0, 8000);
+      .filter((message) => message.text.trim().length > 0);
+    // 只带最近十轮，并保留最早一条用户发言；过长对话会拖慢解析、也容易让模型
+    // 把整段原文抄成写作要点，所以逐条截断后再拼。
+    const firstUser = messages.find((message) => message.role === "user");
+    const recent = messages.slice(-10);
+    if (firstUser && !recent.includes(firstUser)) recent.unshift(firstUser);
+    const lines = recent.map((message) => {
+      const limit = message.role === "user" ? 600 : 900;
+      const body = message.text.trim();
+      const clipped = body.length > limit ? body.slice(0, limit) + "…" : body;
+      return (message.role === "user" ? "【我】" : "【AI】") + " " + clipped;
+    });
+    const text = ("对话主题：" + thread.title + "\n\n" + lines.join("\n\n")).slice(0, 6000);
     setPrefillRequirement(text);
     setDrawer({ kind: "library", tab: "tasks" });
   }

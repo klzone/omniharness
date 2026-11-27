@@ -1244,18 +1244,155 @@ pub fn prepare_inbox(
     })
 }
 
+/// 解析模型返回的 JSON 文本。
+///
+/// 模型输出常见三类偏差：外层多一层代码围栏或前后解释、结构标点写成全角、
+/// 对象末尾多一个逗号。这里只做保守修补：先按原样解析，失败后再剥围栏、
+/// 截取最外层对象、修正字符串外的标点。不补全截断的 JSON，也不猜内容。
 pub fn parse_result_text(text: &str) -> Result<Value, String> {
-    let trimmed = text.trim();
-    let body = if trimmed.starts_with("```") {
-        let first_newline = trimmed.find('\n').ok_or_else(|| "模型返回了空代码围栏".to_string())?;
-        let rest = &trimmed[first_newline + 1..];
-        rest.rsplit_once("```")
-            .map(|(inner, _)| inner.trim())
-            .ok_or_else(|| "模型返回的代码围栏没有闭合".to_string())?
-    } else {
-        trimmed
+    let trimmed = text.trim().trim_start_matches('\u{feff}');
+    if trimmed.is_empty() {
+        return Err("模型返回了空结果。".to_string());
+    }
+    let body = strip_code_fence(trimmed);
+    let direct_error = match serde_json::from_str(body) {
+        Ok(value) => return Ok(value),
+        Err(error) => error.to_string(),
     };
-    serde_json::from_str(body).map_err(|e| format!("整理结果不是合法 JSON：{}", e))
+    let object = outermost_object(body);
+    if object.len() != body.len() {
+        if let Ok(value) = serde_json::from_str(object) {
+            return Ok(value);
+        }
+    }
+    let repaired = repair_structural_punctuation(object);
+    if repaired != object {
+        if let Ok(value) = serde_json::from_str(&repaired) {
+            return Ok(value);
+        }
+    }
+    Err(format!("整理结果不是合法 JSON：{direct_error}"))
+}
+
+/// 剥掉整段外层代码围栏（``` 或 ~~~，可带 json 之类的语言标记）。
+fn strip_code_fence(text: &str) -> &str {
+    for marker in ["```", "~~~"] {
+        if let Some(rest) = text.strip_prefix(marker) {
+            let body = rest.split_once('\n').map_or(rest, |(_, body)| body);
+            if let Some(inner) = body.trim_end().strip_suffix(marker) {
+                return inner.trim();
+            }
+            // 围栏没有闭合时保留原文，交给后面的外层对象截取。
+            return text;
+        }
+    }
+    text
+}
+
+/// 截取第一个 `{` 到最后一个 `}`，去掉前后解释文字。
+fn outermost_object(text: &str) -> &str {
+    match (text.find('{'), text.rfind('}')) {
+        (Some(start), Some(end)) if end >= start => &text[start..=end],
+        _ => text,
+    }
+}
+
+/// 修正常见的全角结构标点、字符串内的裸换行和多余的尾逗号。
+/// 字符串内部的内容原样保留，只把裸换行换成空格以便 JSON 能读。
+fn repair_structural_punctuation(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    // 当前字符串的结束引号：ASCII 引号或中文右引号。
+    let mut closer: Option<char> = None;
+    let mut escaped = false;
+    // 最近一个逗号的位置，用来删除 `,}` 和 `,]` 这类尾逗号。
+    let mut comma_at: Option<usize> = None;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if let Some(close) = closer {
+            if escaped {
+                out.push(ch);
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                out.push(ch);
+                escaped = true;
+                continue;
+            }
+            if ch == close || (close == '”' && ch == '"') {
+                // 字符串结束引号后面必须紧跟结构符号；否则多半是正文里的裸引号，
+                // 例如标题写成「关于"从严"治党的决定」。
+                let next_structural = chars
+                    .clone()
+                    .find(|next| !next.is_whitespace())
+                    .map_or(true, |next| {
+                        matches!(next, ',' | '，' | ':' | '：' | '}' | '｝' | ']' | '］' | '"')
+                    });
+                if close == '"' && !next_structural {
+                    out.push_str("\\\"");
+                    continue;
+                }
+                out.push('"');
+                closer = None;
+                continue;
+            }
+            if ch == '\n' || ch == '\r' {
+                out.push(' ');
+                continue;
+            }
+            out.push(ch);
+            continue;
+        }
+        match ch {
+            '"' => {
+                out.push('"');
+                closer = Some('"');
+                comma_at = None;
+            }
+            '“' | '”' => {
+                out.push('"');
+                closer = Some('”');
+                comma_at = None;
+            }
+            ',' | '，' => {
+                comma_at = Some(out.len());
+                out.push(',');
+            }
+            '{' | '｛' => {
+                comma_at = None;
+                out.push('{');
+            }
+            '}' | '｝' => {
+                if let Some(at) = comma_at {
+                    out.truncate(at);
+                }
+                comma_at = None;
+                out.push('}');
+            }
+            ']' | '］' => {
+                if let Some(at) = comma_at {
+                    out.truncate(at);
+                }
+                comma_at = None;
+                out.push(']');
+            }
+            '[' | '［' => {
+                comma_at = None;
+                out.push('[');
+            }
+            ':' | '：' => {
+                comma_at = None;
+                out.push(':');
+            }
+            '\u{3000}' => out.push(' '),
+            c if c.is_whitespace() => out.push(c),
+            c => {
+                comma_at = None;
+                out.push(c);
+            }
+        }
+    }
+    out
 }
 
 /// S7 冒烟：只用隔离根与合成材料，验证建卡后能被现有预算检索命中。

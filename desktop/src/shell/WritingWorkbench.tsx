@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { host, shell } from "../api";
 import { TERMINAL_STATES } from "../types";
@@ -64,6 +64,75 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+const TYPE_HINTS: Array<[WritingDocumentType, string[]]> = [
+  ["月度总结", ["月度总结", "月总结", "本月总结"]],
+  ["年度总结", ["年度总结", "年终总结", "年度工作"]],
+  ["专项汇报", ["专项汇报", "专题汇报"]],
+  ["经验交流", ["经验交流", "交流材料", "经验材料"]],
+  ["典型案例", ["典型案例", "案例材料"]],
+  ["调研报告", ["调研报告", "调研"]],
+  ["工作方案", ["工作方案", "实施方案", "方案"]],
+  ["领导讲话", ["领导讲话", "讲话稿", "讲话"]],
+  ["工作简报", ["工作简报", "简报"]],
+  ["专题分析", ["专题分析", "分析报告"]],
+  ["会议发言", ["会议发言", "发言稿", "发言"]],
+  ["个人述职", ["个人述职", "述职"]],
+];
+
+/** 从原始需求里按关键词认出文稿类型；认不出就让用户自己选。 */
+function guessDocumentType(text: string): WritingDocumentType | null {
+  for (const [type, hints] of TYPE_HINTS) {
+    if (hints.some((hint) => text.includes(hint))) return type;
+  }
+  return null;
+}
+
+/** 对话带入的文本第一行是「对话主题：…」，直接拿来做建议标题。 */
+function guessTitle(text: string): string | null {
+  const firstLine = text.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+  const stripped = firstLine
+    .replace(/^对话主题[：:]\s*/, "")
+    .replace(/^【[^】]*】\s*/, "")
+    .trim();
+  if (!stripped) return null;
+  return stripped.length > 60 ? stripped.slice(0, 60) + "…" : stripped;
+}
+
+/** 自动整理失败时，从原文挑出可用的要点，保证用户还能继续往下走。 */
+function pickRequirementLines(text: string): string[] {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("对话主题"));
+  const userLines = lines.filter((line) => line.startsWith("【我】") || line.startsWith("【用户】"));
+  const source = userLines.length > 0 ? userLines : lines;
+  const items: string[] = [];
+  for (const line of source) {
+    const body = line.replace(/^【[^】]*】\s*/, "").replace(/\s+/g, " ").trim();
+    if (body.length < 4) continue;
+    const item = body.length > 200 ? body.slice(0, 200) + "…" : body;
+    if (!items.includes(item)) items.push(item);
+    if (items.length >= 8) break;
+  }
+  return items;
+}
+
+function localRequirementDraft(text: string): WritingRequirementDraft {
+  return {
+    document_type: guessDocumentType(text),
+    title: guessTitle(text),
+    topic: null,
+    writing_purpose: null,
+    audience: null,
+    writing_period: null,
+    expected_length: null,
+    writing_style: null,
+    requirements: pickRequirementLines(text),
+    questions: [],
+    confidence: null,
+  };
 }
 
 function shortTime(iso: string): string {
@@ -167,9 +236,22 @@ export function WritingWorkbench({
   const [draft, setDraft] = useState<WritingRequirementDraft | null>(null);
   const [answers, setAnswers] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  /** 自动整理失败时的说明；有它时草稿来自本地兜底而不是模型。 */
+  const [fallbackNote, setFallbackNote] = useState<string | null>(null);
+  /** 原始需求原文，供用户核对带入内容。 */
+  const [sourceText, setSourceText] = useState<string>("");
+  const autoParsedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (initialRequirement) setInput(initialRequirement);
+    if (!initialRequirement) {
+      // 抽屉关闭后清掉标记，同一段对话再次带入时会重新自动整理。
+      autoParsedRef.current = null;
+      return;
+    }
+    setInput(initialRequirement);
+    if (autoParsedRef.current === initialRequirement) return;
+    autoParsedRef.current = initialRequirement;
+    void parseRequirement(initialRequirement);
   }, [initialRequirement]);
 
   useEffect(() => {
@@ -216,6 +298,8 @@ export function WritingWorkbench({
     setAnswers([]);
     setParseError(null);
     setParseHint(null);
+    setFallbackNote(null);
+    setSourceText("");
   }
 
   function patchDraft<K extends keyof WritingRequirementDraft>(
@@ -225,14 +309,16 @@ export function WritingWorkbench({
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
-  async function parseRequirement() {
-    const text = input.trim();
+  async function parseRequirement(source?: string) {
+    const text = (source ?? input).trim();
     if (!text || parsing) return;
     setParsing(true);
     setParseError(null);
-    setParseHint(null);
+    setParseHint("正在整理对话内容…");
     setDraft(null);
     setAnswers([]);
+    setFallbackNote(null);
+    setSourceText(text);
     setNotice(null);
     try {
       const prep = await shell.writingRequirementPrepare(text);
@@ -267,6 +353,11 @@ export function WritingWorkbench({
       setAnswers(applied.draft.questions.map(() => ""));
     } catch (e) {
       setParseError(errText(e));
+      // 模型输出不合格时不停在错误页：用原文兜底出一份可编辑草稿。
+      const fallback = localRequirementDraft(text);
+      setFallbackNote("自动整理没有完成，已按原文填好基础信息。请核对类型、标题和要点后创建。");
+      setDraft(fallback);
+      setAnswers(fallback.questions.map(() => ""));
     } finally {
       setParsing(false);
       setParseHint(null);
@@ -296,9 +387,23 @@ export function WritingWorkbench({
         document_type: documentType,
         requirements: [...draft.requirements, ...extraRequirements],
       });
+      // 草稿核对就是需求确认，创建后直接进入素材收集，不再多一道「确认需求」。
+      let startedCollecting = false;
+      try {
+        await shell.writingStatusTransition({
+          writing_id: created.task.writing_id,
+          to: "素材收集中",
+          reason: "创建任务时已核对需求",
+        });
+        startedCollecting = true;
+      } catch {
+        // 状态推进失败不影响任务本身，写作台里仍可手动确认需求。
+      }
       setDraft(null);
       setAnswers([]);
       setInput("");
+      setFallbackNote(null);
+      setSourceText("");
       if (onOpenTask) onOpenTask(created.task.writing_id);
       else setSelected(null);
       setTypeFilter(null);
@@ -309,12 +414,13 @@ export function WritingWorkbench({
           "已创建「" +
           created.task.title +
           "」。" +
+          (startedCollecting ? "已进入素材收集。" : "请在大纲区确认需求后继续。") +
           (created.masked
             ? "敏感信息已脱敏（身份证 " + created.masked_id_card + " / 电话 " + created.masked_phone + "）。"
             : ""),
       });
     } catch (e) {
-      setParseError(errText(e));
+      setNotice({ kind: "err", text: "创建失败：" + errText(e) });
     } finally {
       setCreating(false);
     }
@@ -354,7 +460,7 @@ export function WritingWorkbench({
 
       <section className="rounded-xl border border-primary/20 bg-primary/5 p-2.5" data-writing-create="">
         {draft ? (
-          <div className="flex flex-col gap-1.5" data-writing-draft="">
+          <div className="flex flex-col gap-2" data-writing-draft="">
             <div className="flex items-center gap-1.5">
               <span className="text-[10.5px] text-outline">核对需求</span>
               <button type="button" onClick={resetCreate} className="ml-auto text-[10.5px] text-primary hover:underline">
@@ -362,9 +468,32 @@ export function WritingWorkbench({
               </button>
             </div>
 
-            {parseError ? (
+            {fallbackNote ? (
+              <div
+                className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2"
+                data-writing-fallback-note=""
+              >
+                <p className="text-[10.5px] leading-relaxed text-amber-700">{fallbackNote}</p>
+                {parseError ? (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-[9.5px] text-outline">解析失败：查看详情</summary>
+                    <p className="mt-1 break-words text-[9.5px] leading-relaxed text-outline" data-writing-parse-error="">
+                      {parseError}
+                    </p>
+                  </details>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void parseRequirement(sourceText)}
+                  disabled={parsing}
+                  className="mt-1 text-[10px] text-primary hover:underline"
+                >
+                  {parsing ? "正在重试…" : "重试整理"}
+                </button>
+              </div>
+            ) : parseError ? (
               <p className="text-[10.5px] leading-relaxed text-error" data-writing-parse-error="">
-                未能完成：{parseError}
+                解析失败：{parseError}
               </p>
             ) : null}
 
@@ -397,27 +526,6 @@ export function WritingWorkbench({
                 data-writing-draft-title=""
               />
               <input
-                value={draft.topic ?? ""}
-                onChange={(event) => patchDraft("topic", event.target.value || null)}
-                className={FIELD}
-                placeholder="主题"
-                aria-label="写作主题"
-              />
-              <input
-                value={draft.writing_purpose ?? ""}
-                onChange={(event) => patchDraft("writing_purpose", event.target.value || null)}
-                className={FIELD}
-                placeholder="写作目的"
-                aria-label="写作目的"
-              />
-              <input
-                value={draft.audience ?? ""}
-                onChange={(event) => patchDraft("audience", event.target.value || null)}
-                className={FIELD}
-                placeholder="受众"
-                aria-label="目标受众"
-              />
-              <input
                 value={draft.writing_period ?? ""}
                 onChange={(event) => patchDraft("writing_period", event.target.value || null)}
                 className={FIELD}
@@ -431,31 +539,61 @@ export function WritingWorkbench({
                 placeholder="预计篇幅"
                 aria-label="预计篇幅"
               />
-              <input
-                value={draft.writing_style ?? ""}
-                onChange={(event) => patchDraft("writing_style", event.target.value || null)}
-                className={FIELD}
-                placeholder="写作风格"
-                aria-label="写作风格"
-              />
             </div>
 
-            <textarea
-              value={draft.requirements.join("\n")}
-              onChange={(event) =>
-                patchDraft(
-                  "requirements",
-                  event.target.value
-                    .split("\n")
-                    .map((line) => line.trim())
-                    .filter(Boolean),
-                )
-              }
-              rows={2}
-              className={FIELD}
-              placeholder="写作要求，一行一条"
-              aria-label="写作要求"
-            />
+            <details className="rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5">
+              <summary className="cursor-pointer text-[10px] text-outline">补充条件：主题、目的、受众、风格</summary>
+              <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <input
+                  value={draft.topic ?? ""}
+                  onChange={(event) => patchDraft("topic", event.target.value || null)}
+                  className={FIELD}
+                  placeholder="主题"
+                  aria-label="写作主题"
+                />
+                <input
+                  value={draft.writing_purpose ?? ""}
+                  onChange={(event) => patchDraft("writing_purpose", event.target.value || null)}
+                  className={FIELD}
+                  placeholder="写作目的"
+                  aria-label="写作目的"
+                />
+                <input
+                  value={draft.audience ?? ""}
+                  onChange={(event) => patchDraft("audience", event.target.value || null)}
+                  className={FIELD}
+                  placeholder="受众"
+                  aria-label="目标受众"
+                />
+                <input
+                  value={draft.writing_style ?? ""}
+                  onChange={(event) => patchDraft("writing_style", event.target.value || null)}
+                  className={FIELD}
+                  placeholder="写作风格"
+                  aria-label="写作风格"
+                />
+              </div>
+            </details>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-outline">写作要点，一行一条</span>
+              <textarea
+                value={draft.requirements.join("\n")}
+                onChange={(event) =>
+                  patchDraft(
+                    "requirements",
+                    event.target.value
+                      .split("\n")
+                      .map((line) => line.trim())
+                      .filter(Boolean),
+                  )
+                }
+                rows={3}
+                className={FIELD}
+                placeholder="例如：只写已确认事实；篇幅控制在 1200 字"
+                aria-label="写作要求"
+              />
+            </label>
 
             {draft.questions.length > 0 ? (
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2" data-writing-questions="">
@@ -496,9 +634,23 @@ export function WritingWorkbench({
                 className={BTN_PRIMARY}
                 data-writing-create-submit=""
               >
-                {creating ? "正在创建…" : "创建任务"}
+                {creating ? "正在创建…" : "创建并开始收集素材"}
               </button>
+              <span className="text-[9.5px] leading-relaxed text-outline">
+                创建后直接进入素材收集
+              </span>
             </div>
+
+            {sourceText ? (
+              <details className="rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5">
+                <summary className="cursor-pointer text-[9.5px] text-outline">
+                  查看原始需求（{sourceText.length} 字）
+                </summary>
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[9.5px] leading-relaxed text-[color:var(--od-neu-ink-3)]">
+                  {sourceText}
+                </pre>
+              </details>
+            ) : null}
           </div>
         ) : (
           <>

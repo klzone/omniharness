@@ -308,6 +308,26 @@ def main() -> int:
         and "带入写作" in studio_tsx,
         "写作对话可带入新建需求",
     )
+    check(
+        "writing_requirement_autoparse",
+        "autoParsedRef" in workbench
+        and "parseRequirement(initialRequirement)" in workbench,
+        "从对话带入后自动开始整理需求",
+    )
+    check(
+        "writing_requirement_fallback",
+        "localRequirementDraft" in workbench
+        and "data-writing-fallback-note" in workbench
+        and "自动整理没有完成" in workbench,
+        "模型输出不合格时按原文兜底，仍可创建",
+    )
+    check(
+        "writing_create_enters_collect",
+        'to: "素材收集中"' in workbench
+        and "创建任务时已核对需求" in workbench
+        and "创建并开始收集素材" in workbench,
+        "创建即确认需求，直接进入素材收集",
+    )
     check("no_subtitle_props_in_studio", "subtitle" not in studio_tsx, "区块标题只用中文")
     check(
         "no_subtitle_props_in_scene",

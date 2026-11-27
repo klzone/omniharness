@@ -421,6 +421,75 @@ mod tests {
         })
     }
 
+    /// 把结构引号整体换成中文引号，模拟模型按中文排版输出 JSON。
+    fn swap_structural_quotes(text: &str) -> String {
+        let mut open = true;
+        text.chars()
+            .map(|ch| {
+                if ch == '"' {
+                    let mapped = if open { '“' } else { '”' };
+                    open = !open;
+                    mapped
+                } else {
+                    ch
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn salvages_common_model_json_deviations() {
+        let json = complete_payload().to_string();
+        // 成员之间写成全角逗号。
+        let full_width = json.replace(",\"", "，\"");
+        let applied = validate_requirement_payload(&full_width).unwrap();
+        assert_eq!(
+            applied.draft.title.as_deref(),
+            Some("十一月份试点推进总结")
+        );
+        // 结构引号写成中文引号。
+        let smart = swap_structural_quotes(&json);
+        let applied = validate_requirement_payload(&smart).unwrap();
+        assert!(applied.ready_to_create);
+        // 前后带解释文字与代码围栏。
+        let fence = "\u{60}\u{60}\u{60}";
+        let wrapped = format!("整理结果如下：\n{fence}json\n{json}\n{fence}\n以上。");
+        let applied = validate_requirement_payload(&wrapped).unwrap();
+        assert_eq!(applied.draft.requirements.len(), 2);
+        // 对象末尾多一个逗号。
+        let trailing = json.replace('}', ",}");
+        let applied = validate_requirement_payload(&trailing).unwrap();
+        assert!(applied.ready_to_create);
+    }
+
+    #[test]
+    fn salvages_literal_newline_inside_string() {
+        let mut value = complete_payload();
+        value["topic"] = serde_json::json!("试点\n推进");
+        let text = value.to_string().replace("\\n", "\n");
+        let applied = validate_requirement_payload(&text).unwrap();
+        assert_eq!(applied.draft.topic.as_deref(), Some("试点 推进"));
+    }
+
+    #[test]
+    fn salvages_unescaped_quotes_inside_title() {
+        let json = complete_payload().to_string();
+        let broken = json.replace("十一月份试点推进总结", "关于\"从严\"治党的决定");
+        let applied = validate_requirement_payload(&broken).unwrap();
+        assert_eq!(
+            applied.draft.title.as_deref(),
+            Some("关于\"从严\"治党的决定")
+        );
+    }
+
+    #[test]
+    fn truncated_payload_reports_clear_error() {
+        let json = complete_payload().to_string();
+        let cut: String = json.chars().take(json.chars().count() - 12).collect();
+        let err = validate_requirement_payload(&cut).unwrap_err();
+        assert!(err.contains("不是合法 JSON"), "{err}");
+    }
+
     #[test]
     fn accepts_complete_payload_without_questions() {
         let text = complete_payload().to_string();

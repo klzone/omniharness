@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.62] - 2026-11-27
+
+### Fixed
+- 写作需求解析容忍模型返回的代码围栏、前后解释、全角结构标点、正文裸引号和字符串内裸换行；个别标点问题不再让整份解析失败。
+- 解析失败不再停在错误页：按原文就地生成可编辑草稿（类型、标题、要点），保留错误详情和重试入口，仍然可以继续创建任务。
+
+### Changed
+- 从写作对话点「带入写作」后自动开始整理需求，抽屉标题改为「带入写作」，不再需要手动再点一次解析。
+- 需求核对只保留类型、标题、周期、篇幅四项常用条件，主题、目的、受众、风格收进折叠区；原始需求可展开核对。
+- 创建任务即视为已核对需求，创建成功后直接进入素材收集，去掉重复的「确认需求」一步。
+- 带入对话只保留最近十轮并逐条截断，最早一条用户发言保留，减少长对话给解析带来的噪声。
+
+### Verification
+- `cargo test writing_parse --lib` 14 passed；`cargo test knowledge_ingest --lib` 29 passed。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 70/70；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77。
+
+---
+
 ## [0.2.61] - 2026-11-27
 
 ### Fixed

@@ -1,5 +1,12 @@
 # 执行状态
 
+## 写作需求解析兜底与创建流程收敛（2026-11-27，0.2.62）
+
+- **代码（file fact）：** knowledge_ingest::parse_result_text 增加代码围栏剥离、外层对象截取，以及全角结构标点、正文裸引号、字符串内裸换行和尾逗号的保守修复；无法修复时仍报原始 JSON 错误。writing_parse 单测覆盖围栏/解释文字、全角逗号、中文引号、裸引号标题、裸换行、尾逗号与截断输出。
+- **前端（file fact）：** WritingWorkbench 从对话带入后自动整理；整理失败按原文生成可编辑草稿并保留错误详情与重试；核对页保留类型/标题/周期/篇幅，其余条件折叠；创建成功即推进到「素材收集中」。WritingDesk 打开稿件前刷新任务状态，书桌抽屉在带入时显示「带入写作」。
+- **验证（script，实际命令与结果）：** `cargo test writing_parse --lib` → 14 passed；`cargo test knowledge_ingest --lib` → 29 passed；`npx tsc --noEmit` → 0；`npm run test` → 150 passed；`npm run build` → 0；`verify_writing_094` → 70/70；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。
+- **未验证：** 真实模型输出下的长对话整理、真实 Tauri 窗口交互、Windows 实机。
+
 ## OD-0255 执行记录（2026-11-24）
 
 - **基线（file fact）：** main 最新提交 0.2.54（dccc5cc215）；开工 git status --porcelain 仅未跟踪 docs/od-0255-dispatch.md，既有改动原样保留，未 reset/clean/stash。执行方式说明：本会话 exec 工具目录未提供子 Agent 调度入口，按 AGENTS.md 例外由主 Agent 亲自实施，任务口径不变。
