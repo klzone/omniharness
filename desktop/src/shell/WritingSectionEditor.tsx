@@ -150,7 +150,8 @@ async function runSectionPrompt(prompt: string, onTick: (seconds: number) => voi
 function paragraphsOf(content: string | null | undefined): string[] {
   if (!content) return [];
   return content
-    .split("\n\n")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n\s*\n/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 }
@@ -223,6 +224,7 @@ export function WritingSectionEditor({
   const [reviseInstruction, setReviseInstruction] = useState("");
   const [peek, setPeek] = useState<Peek | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const [mappingBusy, setMappingBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -340,7 +342,7 @@ export function WritingSectionEditor({
 
   const effectiveMaterialIds = useMemo(() => {
     if (!selected) return [];
-    if (selected.material_ids.length > 0) return selected.material_ids;
+    if (selected.inherit_materials === false) return selected.material_ids;
     return collect?.selected_material_ids ?? [];
   }, [selected, collect]);
 
@@ -361,6 +363,40 @@ export function WritingSectionEditor({
     [effectiveMaterialIds, collect],
   );
 
+  /** 整体素材库里尚未映射到本章的已确认素材。 */
+  const libraryRows = useMemo(
+    () =>
+      (collect?.items ?? [])
+        .filter((item) => item.kind === "material" && item.material_id)
+        .map((item) => ({
+          id: item.material_id as string,
+          title: item.title,
+          summary: item.content_summary,
+        }))
+        .filter((row) => !effectiveMaterialIds.some((id) => id === row.id)),
+    [collect, effectiveMaterialIds],
+  );
+
+  async function updateSectionMaterials(nextIds: string[]) {
+    if (!selected || mappingBusy) return;
+    setMappingBusy(true);
+    setMessage("正在更新本章素材…");
+    try {
+      const updated = await shell.writingOutlineSetSectionMaterials({
+        writing_id: writingId,
+        section_no: selected.no,
+        material_ids: nextIds,
+      });
+      setOutline(updated);
+      setMessage("本章素材已更新。");
+      setReloadTick((value) => value + 1);
+    } catch (error) {
+      setMessage("本章素材更新失败：" + errText(error));
+    } finally {
+      setMappingBusy(false);
+    }
+  }
+
   const hasKnownCitations =
     selectedNo !== null && Object.prototype.hasOwnProperty.call(confirmedCitations, selectedNo);
   const knownCitations = draft?.citations ?? (hasKnownCitations && selectedNo !== null
@@ -368,8 +404,7 @@ export function WritingSectionEditor({
     : null);
   const activeCitations = knownCitations ?? [];
   const citationsUnknown = draft === null && knownCitations === null && confirmedContent !== null;
-  const fallbackMaterials =
-    selected !== null && selected.material_ids.length === 0 && effectiveMaterialIds.length > 0;
+  const fallbackMaterials = selected !== null && selected.inherit_materials !== false;
 
   const busy = phase !== "idle";
 
@@ -771,11 +806,15 @@ export function WritingSectionEditor({
                         data-section-revise-scope=""
                       >
                         <option value="whole">整章</option>
-                        {paragraphs.map((_paragraph, index) => (
-                          <option key={index} value={String(index + 1)}>
-                            第 {index + 1} 段
-                          </option>
-                        ))}
+                        {paragraphs.map((paragraph, index) => {
+                          const preview = paragraph.replace(/\s+/g, " ").slice(0, 18);
+                          return (
+                            <option key={index} value={String(index + 1)}>
+                              第 {index + 1} 段 · {preview}
+                              {paragraph.length > 18 ? "…" : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                     <textarea
@@ -841,16 +880,28 @@ export function WritingSectionEditor({
             ) : (
               <div className="space-y-1">
                 {materialRows.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => void openMaterial(row.id)}
-                    className="w-full rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5 text-left hover:border-primary/25 hover:bg-surface-container-low"
-                    data-section-material={row.id}
-                  >
-                    <span className="block truncate text-[11px] font-medium text-on-surface">{row.title}</span>
-                    <span className="mt-0.5 block truncate text-[10px] text-outline">{row.summary || row.id}</span>
-                  </button>
+                  <div key={row.id} className="flex items-stretch gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void openMaterial(row.id)}
+                      className="min-w-0 flex-1 rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5 text-left hover:border-primary/25 hover:bg-surface-container-low"
+                      data-section-material={row.id}
+                    >
+                      <span className="block truncate text-[11px] font-medium text-on-surface">{row.title}</span>
+                      <span className="mt-0.5 block truncate text-[10px] text-outline">{row.summary || row.id}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 self-center rounded-full px-2 py-1 text-[10px] text-outline hover:bg-surface-container"
+                      disabled={mappingBusy}
+                      onClick={() =>
+                        void updateSectionMaterials(effectiveMaterialIds.filter((id) => id !== row.id))
+                      }
+                      data-section-material-remove={row.id}
+                    >
+                      移出
+                    </button>
+                  </div>
                 ))}
                 {effectiveKnowledgeIds.map((id) => (
                   <button
@@ -863,6 +914,41 @@ export function WritingSectionEditor({
                     <span className="block truncate text-[11px] font-medium text-on-surface">{id}</span>
                     <span className="mt-0.5 block text-[10px] text-outline">知识依据</span>
                   </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 border-y border-surface-variant/25 px-3 py-2">
+            <span className="text-[11px] font-medium text-on-surface">整体素材库</span>
+            <span className="mono text-[10px] text-outline">{libraryRows.length}</span>
+            {mappingBusy ? <span className="ml-auto text-[10px] text-outline">更新中…</span> : null}
+          </div>
+          <div className="max-h-[26%] min-h-[90px] overflow-y-auto px-2.5 py-2" data-section-library="">
+            {!collectLoaded ? (
+              <p className="px-1 py-2 text-[10.5px] text-outline">读取中…</p>
+            ) : libraryRows.length === 0 ? (
+              <p className="px-1 py-2 text-[10.5px] text-outline">素材库没有可加入本章的材料。</p>
+            ) : (
+              <div className="space-y-1">
+                {libraryRows.map((row) => (
+                  <div key={row.id} className="flex items-stretch gap-1">
+                    <span className="min-w-0 flex-1 rounded-lg border border-surface-variant/25 bg-surface-container-low/40 px-2 py-1.5">
+                      <span className="block truncate text-[10.5px] font-medium text-on-surface">{row.title}</span>
+                      <span className="mt-0.5 block truncate text-[9.5px] text-outline">{row.summary || row.id}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 self-center rounded-full px-2 py-1 text-[10px] text-primary hover:bg-primary/10"
+                      disabled={mappingBusy}
+                      onClick={() =>
+                        void updateSectionMaterials([...effectiveMaterialIds, row.id])
+                      }
+                      data-section-library-add={row.id}
+                    >
+                      加入
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

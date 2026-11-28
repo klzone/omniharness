@@ -69,6 +69,7 @@ import type {
   ProjectReviewReceipt,
   ProjectSummary,
   MaterialDetail,
+  MaterialDeleteOutcome,
   MaterialDraftInput,
   MaterialFilter,
   MaterialListing,
@@ -92,6 +93,7 @@ import type {
   WritingOutlineConfirmed,
   WritingOutlineGenerateInput,
   WritingOutlinePrompt,
+  WritingOutlineSectionMaterialsInput,
   WritingSectionConfirmInput,
   WritingSectionConfirmed,
   WritingSectionGenerateInput,
@@ -2935,6 +2937,15 @@ export const shell = {
     });
   },
 
+  /** 移出素材库：先同步移除任务素材包与大纲映射，再移入回收目录。 */
+  materialDelete(id: string, reason?: string | null): Promise<MaterialDeleteOutcome> {
+    return invoke<MaterialDeleteOutcome>("material_delete", { id, reason: reason ?? null }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
+  },
+
   /**
    * 第四阶段素材查询（OD-KM-509）：默认只返回已确认素材。
    * 关键词只在宿主本地匹配标题与正文，不落盘、不外发。
@@ -3057,6 +3068,17 @@ export const shell = {
     return invoke<WritingOutlineConfirmed>("writing_outline_get", { writingId }).catch((e) => {
       throw new Error(normalizeError(e));
     });
+  },
+
+  /** 调整本章素材映射：只改本章 material_ids，不改结构与状态。 */
+  writingOutlineSetSectionMaterials(
+    input: WritingOutlineSectionMaterialsInput,
+  ): Promise<WritingOutlineConfirmed> {
+    return invoke<WritingOutlineConfirmed>("writing_outline_set_section_materials", { request: input }).catch(
+      (e) => {
+        throw new Error(normalizeError(e));
+      },
+    );
   },
 
   /**

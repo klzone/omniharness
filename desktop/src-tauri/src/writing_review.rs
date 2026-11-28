@@ -886,6 +886,7 @@ mod tests {
                         vec![material_id]
                     },
                     knowledge_ids: vec![],
+                    inherit_materials: true,
                     expected_words: 300,
                 },
                 OutlineSection {
@@ -895,6 +896,7 @@ mod tests {
                     focus: "只写素材中明确记录的问题".to_string(),
                     material_ids: vec![],
                     knowledge_ids: vec![],
+                    inherit_materials: true,
                     expected_words: 200,
                 },
             ],

@@ -497,11 +497,23 @@ pub fn compose_full_text_for(root: &Path, writing_id: &str) -> Result<String, St
 }
 
 fn section_paragraphs(content: &str) -> Vec<String> {
-    content
-        .split("\n\n")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect()
+    let mut out: Vec<String> = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    let normalized = content.replace("\r\n", "\n");
+    for line in normalized.lines() {
+        if line.trim().is_empty() {
+            if !current.is_empty() {
+                out.push(current.join("\n").trim().to_string());
+                current.clear();
+            }
+            continue;
+        }
+        current.push(line);
+    }
+    if !current.is_empty() {
+        out.push(current.join("\n").trim().to_string());
+    }
+    out.into_iter().filter(|value| !value.is_empty()).collect()
 }
 
 fn paragraph_for_quote(content: &str, quote: &str) -> u32 {
@@ -691,7 +703,7 @@ pub fn build_section_prompt(
 }
 
 fn effective_material_ids<'a>(task: &'a WritingTask, section: &'a OutlineSection) -> &'a [String] {
-    if section.material_ids.is_empty() {
+    if section.inherit_materials {
         &task.selected_material_ids
     } else {
         &section.material_ids
@@ -1246,6 +1258,7 @@ mod tests {
                         vec![material_id]
                     },
                     knowledge_ids: vec!["k-607".to_string()],
+                    inherit_materials: true,
                     expected_words: 300,
                 },
                 OutlineSection {
@@ -1255,6 +1268,7 @@ mod tests {
                     focus: "只写素材中明确记录的问题".to_string(),
                     material_ids: vec![],
                     knowledge_ids: vec![],
+                    inherit_materials: true,
                     expected_words: 200,
                 },
             ],

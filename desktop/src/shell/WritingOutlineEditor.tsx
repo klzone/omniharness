@@ -103,6 +103,7 @@ function parseOutlineResult(text: string): WritingOutline {
       focus: section.focus.trim(),
       material_ids: stringList(section.material_ids, "素材编号"),
       knowledge_ids: stringList(section.knowledge_ids, "知识编号"),
+      inherit_materials: true,
       expected_words: words,
     };
   });
@@ -126,6 +127,7 @@ function normalizeOutline(outline: WritingOutline): WritingOutline {
       focus: section.focus.trim(),
       material_ids: section.material_ids.map((value) => value.trim()).filter(Boolean),
       knowledge_ids: section.knowledge_ids.map((value) => value.trim()).filter(Boolean),
+      inherit_materials: section.inherit_materials !== false,
       expected_words: Math.round(section.expected_words),
     })),
   };
@@ -262,6 +264,7 @@ export function WritingOutlineEditor({
   const [message, setMessage] = useState("");
   const [peek, setPeek] = useState<Peek | null>(null);
   const [regenOpen, setRegenOpen] = useState(false);
+  const [regenFrom, setRegenFrom] = useState(1);
 
   useEffect(() => {
     let alive = true;
@@ -350,6 +353,7 @@ export function WritingOutlineEditor({
       focus: "",
       material_ids: [],
       knowledge_ids: [],
+      inherit_materials: true,
       expected_words: 800,
     };
     setOutline({ ...outline, sections: [...outline.sections, section] });
@@ -367,7 +371,7 @@ export function WritingOutlineEditor({
     setSelectedNo(next?.no ?? null);
   }
 
-  async function generateOutline() {
+  async function generateOutline(startFrom?: number) {
     if (busy) return;
     const previousMode = mode;
     if (
@@ -382,7 +386,11 @@ export function WritingOutlineEditor({
     setPhase("prepare");
     setMessage("正在组装大纲提示词…");
     try {
-      const prompt = await shell.writingOutlineGenerate({ writing_id: writingId });
+      const partialFrom = startFrom && startFrom > 1 ? startFrom : undefined;
+      const prompt = await shell.writingOutlineGenerate({
+        writing_id: writingId,
+        start_no: partialFrom ?? null,
+      });
       setPhase("model");
       setMessage(
         "模型生成中… " + prompt.material_count + " 条素材 · " + prompt.knowledge_count + " 条知识",
@@ -391,10 +399,23 @@ export function WritingOutlineEditor({
         setMessage("模型生成大纲中… " + seconds + " 秒"),
       );
       const parsed = parseOutlineResult(text);
-      setOutline(parsed);
-      setSelectedNo(parsed.sections[0]?.no ?? null);
-      setMode("draft");
-      setMessage("已生成 " + parsed.sections.length + " 章；确认前可直接修改。");
+      if (partialFrom && outline) {
+        const kept = outline.sections.filter((section) => section.no < partialFrom);
+        const incoming = parsed.sections.filter((section) => section.no >= partialFrom);
+        const source = incoming.length > 0 ? incoming : parsed.sections;
+        const renumbered = source.map((section, index) => ({ ...section, no: partialFrom + index }));
+        setOutline({ ...parsed, sections: [...kept, ...renumbered] });
+        setSelectedNo(partialFrom);
+        setMode("draft");
+        setMessage(
+          "已保留前 " + (partialFrom - 1) + " 章，重写第 " + partialFrom + " 章起的 " + renumbered.length + " 章。",
+        );
+      } else {
+        setOutline(parsed);
+        setSelectedNo(parsed.sections[0]?.no ?? null);
+        setMode("draft");
+        setMessage("已生成 " + parsed.sections.length + " 章；确认前可直接修改。");
+      }
     } catch (error) {
       setMessage("生成失败：" + errText(error));
       if (previousMode === "confirmed") setMode("confirmed");
@@ -715,16 +736,35 @@ export function WritingOutlineEditor({
             {outline ? (
               <>
                 {locked ? (
-                  <button
-                    type="button"
-                    onClick={requestGenerate}
-                    disabled={busy}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/60 px-3 py-1 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
-                    data-outline-regenerate=""
-                  >
-                    <Icon name="refresh" className="h-3.5 w-3.5" />
-                    重新生成
-                  </button>
+                  <>
+                    {outline.sections.length > 1 ? (
+                      <select
+                        value={regenFrom}
+                        onChange={(event) => setRegenFrom(Number(event.target.value))}
+                        disabled={busy}
+                        className="rounded-full border border-outline-variant/60 bg-transparent px-2.5 py-1 text-[10.5px] text-on-surface-variant"
+                        aria-label="部分重写起点"
+                        data-outline-regen-from=""
+                      >
+                        <option value={1}>整份重写</option>
+                        {outline.sections.slice(1).map((section) => (
+                          <option key={section.no} value={section.no}>
+                            第 {section.no} 章起
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={requestGenerate}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/60 px-3 py-1 text-[11px] text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-50"
+                      data-outline-regenerate=""
+                    >
+                      <Icon name="refresh" className="h-3.5 w-3.5" />
+                      重新生成
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -808,7 +848,9 @@ export function WritingOutlineEditor({
           mode === "confirmed"
             ? confirmed && !outlineStageOpen(confirmed.status)
               ? "当前任务状态为「" + confirmed.status + "」；重新生成大纲需要新建写作任务，当前大纲不会被修改。"
-              : "会向模型请求一份新的大纲建议；当前已确认大纲不会被直接覆盖，新稿仍需再次确认。"
+              : regenFrom > 1
+                ? "保留前 " + (regenFrom - 1) + " 章，只重写第 " + regenFrom + " 章及以后；新稿仍需再次确认。"
+                : "会向模型请求一份新的大纲建议；当前已确认大纲不会被直接覆盖，新稿仍需再次确认。"
             : "当前编辑内容会被新的 AI 建议替换。"
         }
         confirmLabel={
@@ -820,7 +862,7 @@ export function WritingOutlineEditor({
         onConfirm={() => {
           setRegenOpen(false);
           if (!(mode === "confirmed" && confirmed && !outlineStageOpen(confirmed.status))) {
-            void generateOutline();
+            void generateOutline(regenFrom);
           }
         }}
         testId="outline-regenerate-confirm"

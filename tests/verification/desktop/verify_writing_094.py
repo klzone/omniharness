@@ -366,6 +366,32 @@ def main() -> int:
         and "composeOnly ? null" in workbench,
         "带入写作只显示新建需求，不混在稿件列表里",
     )
+    outline_editor = (SRC / "shell" / "WritingOutlineEditor.tsx").read_text(encoding="utf-8")
+    basket_tsx = (SRC / "shell" / "WritingMaterialBasket.tsx").read_text(encoding="utf-8")
+    check(
+        "writing_outline_partial_regen",
+        "start_no" in outline_editor
+        and "data-outline-regen-from" in outline_editor
+        and "partialFrom" in outline_editor,
+        "大纲可从第 N 章起局部重写，前 N-1 章保留",
+    )
+    check(
+        "writing_section_material_mapping",
+        "writingOutlineSetSectionMaterials" in section_editor
+        and "data-section-library-add" in section_editor
+        and "data-section-material-remove" in section_editor,
+        "本章素材与整体素材库可互加互移",
+    )
+    check(
+        "writing_paragraph_preview",
+        "第 {index + 1} 段 ·" in section_editor,
+        "修订段落编号带原文预览",
+    )
+    check(
+        "writing_material_delete",
+        "materialDelete" in basket_tsx and "data-material-delete" in basket_tsx,
+        "素材库可按两次点击移出并同步引用",
+    )
     check(
         "writing_next_step_panel",
         ".wd-next" in theme_css

@@ -1,5 +1,14 @@
 # 执行状态
 
+## 大纲局部重写、章节素材映射、段落口径与素材移出（2026-11-28，0.2.68）
+
+- **大纲局部重写（file fact）：** OutlineGenerateRequest 增加 start_no；提示词附「前 N-1 章已确认」与只输出第 N 章起的要求；界面增加起点选择并在返回后合并保留章节。
+- **章节素材映射（file fact）：** 新增 writing_outline_set_section_materials：只改本章 material_ids、关闭任务继承并写大纲快照，不改状态；OutlineSection 增加 inherit_materials（旧大纲默认 true）；分章右栏上半本章素材可移出，下半整体素材库可加入。
+- **段落口径（file fact）：** 前后端统一按「空行分段、兼容 CRLF」；修订下拉显示段落原文预览。
+- **素材移出（file fact）：** 新增 material_delete：先清理任务素材包与已确认大纲映射，再移入回收目录；素材库详情两次点击确认。
+- **验证（script，实际命令与结果）：** `cargo test --lib` → 1385 passed / 0 failed；`npx tsc --noEmit` → 0；`npm run build` → 0；`npm run test` → 150 passed；`verify_writing_094` → 82/82；`verify_writing_ui_610` → 26/26；`verify_writing_review_612` → 28/28；`verify_hardening_2043` → 77/77。
+- **未验证：** 真实窗口中局部重写与素材加减的完整点击流、Windows 实机。
+
 ## 抽取回退、流程回退与写作台布局收敛（2026-11-28，0.2.67）
 
 - **后端（file fact）：** writing_websearch 增加直连回退（reqwest + net_guard 逐跳校验、最多 3 次重定向、3MB 上限、响应头/meta charset 经 encoding_rs 解码、去 script/style 与标签、实体还原）；插件抽取失败或过短时走回退。writing_store 状态表新增 大纲待确认→素材收集中、写作中→大纲待确认/素材收集中、待核验→大纲待确认/素材收集中 五条回退边，并加单测。

@@ -67,7 +67,14 @@ pub struct OutlineSection {
     pub material_ids: Vec<String>,
     #[serde(default)]
     pub knowledge_ids: Vec<String>,
+    /// true = 沿用任务素材包；false = 只用本章 material_ids（可为空）。
+    #[serde(default = "default_inherit_materials")]
+    pub inherit_materials: bool,
     pub expected_words: u32,
+}
+
+fn default_inherit_materials() -> bool {
+    true
 }
 
 /// 可编辑的大纲 JSON。字段名直接作为模型输出契约。
@@ -122,6 +129,9 @@ pub struct LoadedTemplates {
 #[serde(default)]
 pub struct OutlineGenerateRequest {
     pub writing_id: String,
+    /// 从第 N 章起重新生成；1 或空 = 整份重写。前 N-1 章保持不动。
+    #[serde(default)]
+    pub start_no: Option<u32>,
 }
 
 /// 大纲提示词回执。模型调用仍由界面侧提交，本命令不写文件。
@@ -419,6 +429,7 @@ pub fn normalize_outline(outline: &WritingOutline) -> WritingOutline {
                 focus: section.focus.trim().to_string(),
                 material_ids: normalize_ids(&section.material_ids),
                 knowledge_ids: normalize_ids(&section.knowledge_ids),
+                inherit_materials: section.inherit_materials,
                 expected_words: section.expected_words,
             })
             .collect(),
@@ -712,7 +723,33 @@ pub fn generate_outline_prompt(
     }
     let loaded = load_templates(config_dir)?;
     let template = template_for_document_type(&loaded.templates, &task.document_type)?;
-    let prompt = build_outline_prompt(&task, template, &materials);
+    let mut prompt = build_outline_prompt(&task, template, &materials);
+    if let Some(start) = request.start_no.filter(|value| *value > 1) {
+        prompt.push_str("
+## 六、局部重写
+");
+        if let Ok(confirmed) = read_confirmed_outline(root, writing_id) {
+            let kept: Vec<&OutlineSection> = confirmed
+                .outline
+                .sections
+                .iter()
+                .filter(|section| section.no < start)
+                .collect();
+            if !kept.is_empty() {
+                let _ = writeln!(prompt, "前 {} 章已确认，保持不变，不要输出：", start - 1);
+                for section in kept {
+                    let _ = writeln!(prompt, "- 第 {} 章：{}", section.no, section.heading);
+                }
+                let _ = writeln!(prompt);
+            }
+        }
+        let _ = writeln!(
+            prompt,
+            "只输出第 {start} 章及以后的章节；sections 第一章的 no 必须为 {start}，不得输出更早章节。"
+        );
+        prompt.push_str("保持不变章节的编号与标题不要出现在输出里。
+");
+    }
     Ok(WritingOutlinePrompt {
         prompt,
         template_key: template.key.clone(),
@@ -765,6 +802,11 @@ pub fn render_outline_markdown(outline: &WritingOutline) -> String {
                 let _ = writeln!(out, "- {}", value.trim());
             }
         }
+        let _ = writeln!(
+            out,
+            "素材继承：{}",
+            if section.inherit_materials { "任务" } else { "本章" }
+        );
     }
     out.trim_end().to_string()
 }
@@ -835,6 +877,7 @@ pub fn parse_outline_markdown(markdown: &str) -> Result<WritingOutline, String> 
                 focus: String::new(),
                 material_ids: Vec::new(),
                 knowledge_ids: Vec::new(),
+                inherit_materials: true,
                 expected_words: 0,
             });
             mode = ParseMode::Section;
@@ -871,6 +914,13 @@ pub fn parse_outline_markdown(markdown: &str) -> Result<WritingOutline, String> 
         }
         if line == "知识编号：" {
             mode = ParseMode::Knowledge;
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("素材继承：") {
+            let section = current
+                .as_mut()
+                .ok_or_else(|| "素材继承标记出现在任何章节之前。".to_string())?;
+            section.inherit_materials = rest.trim() != "本章";
             continue;
         }
         if let Some(rest) = line.strip_prefix("- ") {
@@ -1004,6 +1054,113 @@ pub fn confirm_outline(
         masked_id_card: 0,
         masked_phone: 0,
     })
+}
+
+/// 章节素材映射调整：只改本章 material_ids 并关闭任务继承，不改变大纲结构与状态。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SectionMaterialsRequest {
+    pub writing_id: String,
+    pub section_no: u32,
+    pub material_ids: Vec<String>,
+}
+
+pub fn set_section_materials(
+    root: &Path,
+    request: &SectionMaterialsRequest,
+    now: f64,
+) -> Result<WritingOutlineConfirmed, String> {
+    let writing_id = request.writing_id.trim();
+    if writing_id.is_empty() {
+        return Err("写作任务编号不能为空。".to_string());
+    }
+    let task = writing_store::read_writing_task(root, writing_id)?;
+    let mut confirmed = read_confirmed_outline(root, writing_id)?;
+    let section = confirmed
+        .outline
+        .sections
+        .iter_mut()
+        .find(|section| section.no == request.section_no)
+        .ok_or_else(|| format!("大纲里没有第 {} 章。", request.section_no))?;
+    let mut material_ids: Vec<String> = Vec::new();
+    for id in &request.material_ids {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let material = material_store::read_material(root, trimmed)
+            .map_err(|error| format!("本章素材 {trimmed} 读取失败：{error}"))?;
+        if material.review_status != REVIEW_CONFIRMED {
+            return Err(format!(
+                "素材「{trimmed}」当前审核状态为「{}」；只有已确认素材可以加入本章。",
+                material.review_status
+            ));
+        }
+        if !material_ids.iter().any(|existing| existing == trimmed) {
+            material_ids.push(trimmed.to_string());
+        }
+    }
+    section.material_ids = material_ids;
+    section.inherit_materials = false;
+    let markdown = render_outline_markdown(&confirmed.outline);
+    let spec = SnapshotSpec {
+        scope: VersionScope::Outline,
+        source: VersionSource::User,
+        label: "section-materials",
+        note: "调整本章素材映射",
+    };
+    let entry = document_store::save_with_snapshot(root, writing_id, &spec, &markdown, now)
+        .map_err(|error| format!("本章素材写入失败：{error}"))?;
+    Ok(WritingOutlineConfirmed {
+        writing_id: task.writing_id.clone(),
+        status: task.status.clone(),
+        outline: confirmed.outline,
+        markdown,
+        version: entry.version,
+        updated_at: task.updated_at.clone(),
+        status_records: task.status_records.clone(),
+        masked: false,
+        masked_id_card: 0,
+        masked_phone: 0,
+    })
+}
+
+/// 从已确认大纲的所有章节里移除一条素材映射；没有可改内容时返回 false。
+pub fn remove_material_mapping(
+    root: &Path,
+    writing_id: &str,
+    material_id: &str,
+    now: f64,
+) -> Result<bool, String> {
+    let writing_id = writing_id.trim();
+    if writing_id.is_empty() || material_id.trim().is_empty() {
+        return Ok(false);
+    }
+    let mut confirmed = match read_confirmed_outline(root, writing_id) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    let mut changed = false;
+    for section in &mut confirmed.outline.sections {
+        let before = section.material_ids.len();
+        section.material_ids.retain(|id| id != material_id);
+        if section.material_ids.len() != before {
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(false);
+    }
+    let markdown = render_outline_markdown(&confirmed.outline);
+    let spec = SnapshotSpec {
+        scope: VersionScope::Outline,
+        source: VersionSource::User,
+        label: "material-removed",
+        note: "素材移出后同步大纲映射",
+    };
+    document_store::save_with_snapshot(root, writing_id, &spec, &markdown, now)
+        .map_err(|error| format!("大纲素材映射同步失败：{error}"))?;
+    Ok(true)
 }
 
 /// 读取已确认大纲。没有 outline.md 时明确报错，不返回默认大纲。
@@ -1179,6 +1336,7 @@ mod tests {
                     } else {
                         vec![knowledge_id.clone()]
                     },
+                    inherit_materials: true,
                     expected_words: 300,
                 },
                 OutlineSection {
@@ -1188,6 +1346,7 @@ mod tests {
                     focus: "只写素材中明确记录的问题，不推测原因".to_string(),
                     material_ids: vec![],
                     knowledge_ids: vec![],
+                    inherit_materials: true,
                     expected_words: 400,
                 },
             ],
@@ -1368,6 +1527,7 @@ mod tests {
             fixture.work(),
             fixture.config(),
             &OutlineGenerateRequest {
+            start_no: None,
                 writing_id: task.writing_id.clone(),
             },
         )
@@ -1382,6 +1542,7 @@ mod tests {
             fixture.work(),
             fixture.config(),
             &OutlineGenerateRequest {
+            start_no: None,
                 writing_id: task.writing_id.clone(),
             },
         )
@@ -1417,6 +1578,7 @@ mod tests {
             fixture.work(),
             fixture.config(),
             &OutlineGenerateRequest {
+            start_no: None,
                 writing_id: task.writing_id.clone(),
             },
         )
@@ -1562,5 +1724,28 @@ mod tests {
         assert_eq!(loaded.status, writing_store::STATUS_WRITING);
         assert_eq!(loaded.version, 1);
         assert!(!loaded.markdown.is_empty());
+    }
+
+    #[test]
+    fn render_and_parse_preserves_section_material_scope() {
+        let outline = WritingOutline {
+            title: "合成标题".to_string(),
+            writing_purpose: "合成用途".to_string(),
+            core_points: vec!["合成观点".to_string()],
+            sections: vec![OutlineSection {
+                no: 1,
+                heading: "合成章节".to_string(),
+                sub_headings: Vec::new(),
+                focus: "合成重点".to_string(),
+                material_ids: vec!["m-合成".to_string()],
+                knowledge_ids: Vec::new(),
+                inherit_materials: false,
+                expected_words: 800,
+            }],
+        };
+        let markdown = render_outline_markdown(&outline);
+        let parsed = parse_outline_markdown(&markdown).unwrap();
+        assert_eq!(parsed.sections[0].material_ids, vec!["m-合成".to_string()]);
+        assert!(!parsed.sections[0].inherit_materials);
     }
 }

@@ -3462,6 +3462,69 @@ fn material_create_impl(
     material_store::create_material(root, &draft, now)
 }
 
+#[derive(Debug, serde::Serialize)]
+struct MaterialDeleteOutcome {
+    material_id: String,
+    trashed_path: String,
+    tasks_updated: usize,
+    outlines_updated: usize,
+}
+
+/// 删除素材：先把它从所有写作任务的素材包与已确认大纲映射里移除，再移入回收目录。
+fn material_delete_impl(
+    root: &std::path::Path,
+    policy: &profile_rules::RulePolicy,
+    id: &str,
+    reason: Option<String>,
+    now: f64,
+) -> Result<MaterialDeleteOutcome, String> {
+    let (material_id, _) = gate_user_text(id, policy, "素材编号")?;
+    material_store::read_material(root, &material_id)?;
+    let reason = match reason {
+        Some(value) if !value.trim().is_empty() => {
+            Some(gate_user_text(&value, policy, "素材删除理由")?.0)
+        }
+        _ => None,
+    };
+    let reason_text = reason.as_deref().unwrap_or("用户移出素材库").to_string();
+    let listing = writing_store::list_writing_tasks(root, &Default::default())?;
+    let mut tasks_updated = 0usize;
+    let mut outlines_updated = 0usize;
+    for task in listing.items {
+        if task.selected_material_ids.iter().any(|value| value == &material_id) {
+            let remaining: Vec<String> = task
+                .selected_material_ids
+                .iter()
+                .filter(|value| *value != &material_id)
+                .cloned()
+                .collect();
+            writing_store::update_writing_task(
+                root,
+                &task.writing_id,
+                &writing_store::WritingTaskPatch {
+                    selected_material_ids: Some(remaining),
+                    reason: Some(format!("素材删除：{reason_text}")),
+                    ..Default::default()
+                },
+                now,
+            )?;
+            tasks_updated += 1;
+        }
+        if writing_outline::remove_material_mapping(root, &task.writing_id, &material_id, now)
+            .unwrap_or(false)
+        {
+            outlines_updated += 1;
+        }
+    }
+    let trashed = material_store::delete_material(root, &material_id, now)?;
+    Ok(MaterialDeleteOutcome {
+        material_id,
+        trashed_path: trashed,
+        tasks_updated,
+        outlines_updated,
+    })
+}
+
 fn material_edit_impl(
     root: &std::path::Path,
     policy: &profile_rules::RulePolicy,
@@ -3861,6 +3924,18 @@ fn material_edit(
     material_edit_impl(&root, &policy, &id, patch, task_shell::now_secs())
 }
 
+/// 删除素材：从任务素材包与大纲映射同步移除后，移入回收目录（可恢复）。
+#[tauri::command(async)]
+fn material_delete(
+    state: State<'_, SharedHost>,
+    id: String,
+    reason: Option<String>,
+) -> Result<MaterialDeleteOutcome, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    material_delete_impl(&root, &policy, &id, reason, task_shell::now_secs())
+}
+
 /// 第四阶段接口：纯只读素材查询（OD-KM-509）。
 /// 默认只返回已确认素材；关键词只在宿主本地匹配标题与正文，不落盘、不外发。
 #[tauri::command(async)]
@@ -4012,7 +4087,10 @@ fn writing_outline_generate_impl(
     let mut prompt = writing_outline::generate_outline_prompt(
         root,
         config_dir,
-        &writing_outline::OutlineGenerateRequest { writing_id },
+        &writing_outline::OutlineGenerateRequest {
+            writing_id,
+            start_no: request.start_no,
+        },
     )?;
     prompt.masked = counts.any();
     prompt.masked_id_card = counts.id_card;
@@ -4097,6 +4175,20 @@ fn writing_outline_generate(
         host.paths.config.clone()
     };
     writing_outline_generate_impl(&root, &config_dir, &policy, request)
+}
+
+/// 章节素材映射调整：只改本章 material_ids，不改大纲结构与任务状态。
+#[tauri::command(async)]
+fn writing_outline_set_section_materials(
+    state: State<'_, SharedHost>,
+    request: writing_outline::SectionMaterialsRequest,
+) -> Result<writing_outline::WritingOutlineConfirmed, String> {
+    let root = work_root(&state)?;
+    let policy = current_rule_policy(&state)?;
+    let (writing_id, _) = gate_user_text(&request.writing_id, &policy, "写作任务编号")?;
+    let mut request = request;
+    request.writing_id = writing_id;
+    writing_outline::set_section_materials(&root, &request, task_shell::now_secs())
 }
 
 /// OD-WT-606：用户确认可编辑大纲 → outline.md + 快照 → 写作中。
@@ -10610,6 +10702,7 @@ pub fn run() {
             writing_outline_generate,
             writing_outline_confirm,
             writing_outline_get,
+            writing_outline_set_section_materials,
             writing_section_generate,
             writing_section_confirm,
             writing_section_get,
@@ -10662,6 +10755,7 @@ pub fn run() {
             material_get,
             material_review,
             material_edit,
+            material_delete,
             material_query,
             writing_collect_materials,
             writing_select_materials,
@@ -13862,6 +13956,7 @@ mod writing_outline_ipc_tests {
                 focus: "虚构写作重点".to_string(),
                 material_ids: task.selected_material_ids.clone(),
                 knowledge_ids: vec![],
+                inherit_materials: true,
                 expected_words: 500,
             }],
         }
@@ -13875,6 +13970,7 @@ mod writing_outline_ipc_tests {
             temp.config(),
             &policy_with(&["机密"]),
             writing_outline::OutlineGenerateRequest {
+            start_no: None,
                 writing_id: "机密写作编号".to_string(),
             },
         )
@@ -14030,6 +14126,7 @@ mod writing_section_ipc_tests {
                         focus: "虚构写作重点".to_string(),
                         material_ids: task.selected_material_ids.clone(),
                         knowledge_ids: vec![],
+                        inherit_materials: true,
                         expected_words: 500,
                     }],
                 },
@@ -14287,6 +14384,7 @@ mod writing_review_ipc_tests {
                         focus: "虚构写作重点".to_string(),
                         material_ids: task.selected_material_ids.clone(),
                         knowledge_ids: vec![],
+                        inherit_materials: true,
                         expected_words: 500,
                     }],
                 },
@@ -14555,6 +14653,7 @@ mod writing_factcheck_ipc_tests {
                         focus: "虚构核验重点".to_string(),
                         material_ids: task.selected_material_ids.clone(),
                         knowledge_ids: vec![],
+                        inherit_materials: true,
                         expected_words: 500,
                     }],
                 },
@@ -14968,6 +15067,7 @@ mod writing_archive_ipc_tests {
                             focus: "虚构章节重点".to_string(),
                             material_ids: task.selected_material_ids.clone(),
                             knowledge_ids: vec![],
+                            inherit_materials: true,
                             expected_words: 300,
                         })
                         .collect(),

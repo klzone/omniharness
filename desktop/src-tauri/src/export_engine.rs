@@ -1547,6 +1547,7 @@ mod tests {
                         focus: "只概括虚构素材".to_string(),
                         material_ids: vec!["m-613".to_string()],
                         knowledge_ids: Vec::new(),
+                        inherit_materials: true,
                         expected_words: 300,
                     }],
                 },

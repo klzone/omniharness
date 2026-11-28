@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.2.68] - 2026-11-28
+
+### Added
+- 大纲支持局部重写：可保留前 N-1 章，只从第 N 章起重生成；确认前仍可继续编辑，旧大纲不被直接覆盖。
+- 分章写作右栏拆成上下两段：上半本章素材可逐条移出，下半整体素材库可把遗漏素材加入本章；映射写入大纲快照，并新增 `inherit_materials` 标记，本章素材清空后不会自动回退到任务素材包。
+- 素材库新增「移出素材库」：两次点击确认后移入回收目录，同时从写作任务素材包与已确认大纲映射中清理。
+
+### Fixed
+- 修订段落的计数统一按空行分段并兼容 CRLF；下拉选项带段落原文预览，避免只看编号无法判断范围。
+
+### Verification
+- `cargo test --lib` 全部通过（大纲素材继承渲染/解析新增测试）。
+- `npx tsc --noEmit` 0；`npm run test` 150 passed；`npm run build` 0。
+- `verify_writing_094` 82/82；`verify_writing_ui_610` 26/26；`verify_writing_review_612` 28/28；`verify_hardening_2043` 77/77（命令基线 300）。
+
+---
+
 ## [0.2.67] - 2026-11-28
 
 ### Fixed

@@ -1339,6 +1339,14 @@ export interface MaterialDetail {
   related_knowledge: MaterialTraceEntity[];
 }
 
+/** 素材删除回执：移入回收目录，并同步移除任务素材包与大纲映射。 */
+export interface MaterialDeleteOutcome {
+  material_id: string;
+  trashed_path: string;
+  tasks_updated: number;
+  outlines_updated: number;
+}
+
 /** 第四阶段素材查询入参（OD-KM-509）。审核状态省略时只返回已确认素材。 */
 export interface MaterialQueryInput {
   keyword?: string;
@@ -1643,6 +1651,8 @@ export interface WritingOutlineSection {
   focus: string;
   material_ids: string[];
   knowledge_ids: string[];
+  /** true = 本章沿用任务素材包；false = 只使用 material_ids（可为空）。 */
+  inherit_materials?: boolean;
   expected_words: number;
 }
 
@@ -1656,6 +1666,14 @@ export interface WritingOutline {
 
 export interface WritingOutlineGenerateInput {
   writing_id: string;
+  /** 从第 N 章起重新生成；省略 = 整份重写。 */
+  start_no?: number | null;
+}
+
+export interface WritingOutlineSectionMaterialsInput {
+  writing_id: string;
+  section_no: number;
+  material_ids: string[];
 }
 
 /** 大纲提示词回执：宿主过闸门后返回，模型调用由界面侧提交。 */

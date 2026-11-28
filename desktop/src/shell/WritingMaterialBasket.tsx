@@ -147,6 +147,7 @@ export function WritingMaterialBasket() {
   const [draftContent, setDraftContent] = useState("");
   const [draftType, setDraftType] = useState<WritingMaterialType>("工作事实");
   const [reviewAction, setReviewAction] = useState<"return" | "reject" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [peek, setPeek] = useState<{ title: string; body: string } | null>(null);
@@ -178,8 +179,10 @@ export function WritingMaterialBasket() {
   useEffect(() => {
     if (!selected) {
       setDetail(null);
+      setConfirmDelete(false);
       return;
     }
+    setConfirmDelete(false);
     let alive = true;
     setDetailLoading(true);
     setDetailError(null);
@@ -241,6 +244,28 @@ export function WritingMaterialBasket() {
       refreshList();
     } catch (e) {
       setNotice({ kind: "err", text: errText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeMaterial = async (materialId: string) => {
+    setBusy(true);
+    try {
+      const outcome = await shell.materialDelete(materialId, "使用中剔除");
+      setNotice({
+        kind: "ok",
+        text:
+          "已移出素材库（回收目录可恢复）" +
+          (outcome.tasks_updated > 0 ? "；同步清理 " + outcome.tasks_updated + " 个任务的素材包" : "") +
+          (outcome.outlines_updated > 0 ? "、" + outcome.outlines_updated + " 份大纲映射" : "") +
+          "。",
+      });
+      setSelected(null);
+      setDetail(null);
+      refreshList();
+    } catch (error) {
+      setNotice({ kind: "err", text: errText(error) });
     } finally {
       setBusy(false);
     }
@@ -633,6 +658,27 @@ export function WritingMaterialBasket() {
               ) : null}
               {!canConfirm && !canReturn && !canReject && !canDefer ? (
                 <span className="text-[10.5px] text-outline">这条素材当前没有可执行的审核动作。</span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmDelete) void removeMaterial(material.material_id);
+                  else setConfirmDelete(true);
+                }}
+                disabled={busy}
+                className="rounded-full border border-outline-variant/60 px-3 py-1 text-[10.5px] text-on-surface-variant transition hover:border-error/40 hover:text-error disabled:opacity-40"
+                data-material-delete=""
+              >
+                {confirmDelete ? "确认移出？" : "移出素材库"}
+              </button>
+              {confirmDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="rounded-full px-2.5 py-1 text-[10.5px] text-outline hover:bg-surface-container"
+                >
+                  取消
+                </button>
               ) : null}
             </div>
           )}
